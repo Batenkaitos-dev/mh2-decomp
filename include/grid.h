@@ -3,7 +3,7 @@
 
 #include "common.h"
 
-/* A paged list cursor (0xC bytes; sub_main's Menu_GridCursor moves it):
+/* A paged list cursor (12 bytes; sub_main's Menu_GridCursor moves it):
  * rows per column, the row and column, the columns and the rows of the last. */
 typedef struct Grid {
     /* 0x00 */ s32 filter;          /* the combination list's filter (CombineList_Setup: Recipe_IsListedFor's second argument) */

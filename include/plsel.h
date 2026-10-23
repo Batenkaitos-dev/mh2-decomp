@@ -8,12 +8,13 @@
 #include "quest.h"             /* gQuest (QuestState) */
 #include "window.h"            /* ListPanel, ListWin, Panel, Frame */
 #include "chat_log.h"          /* ChatLine (PlselSelWork.log) */
+#include "task.h"
 
 /* The player select overlay (plsel.bin). */
 
 
-/* The rewards list (PlselWork.rewList, 0x1A64 bytes up to noticeCount): text
- * entries of 0x4C bytes from +0x1DC. */
+/* The rewards list (PlselWork.rewList, 6756 bytes up to noticeCount): text
+ * entries of 76 bytes from +0x1DC. */
 typedef struct PlselRewEntry {
     s8 flag;                    /* 0x00: shown */
     u8 unk01[0x4C - 0x01];
@@ -142,10 +143,10 @@ typedef struct PlselWork {
     PlselList rewList;          /* 0x1F18: the rewards list */
     s32 noticeCount;            /* 0x397C: entries of notices */
     s32 noticePage;             /* 0x3980: the notices page shown (three a page) */
-    u16 notices[0x39];          /* 0x3984: notices to show: unlocks (Plsel_QueueFlagUnlocks), 0x3nn, 0x400, 0x500 */
+    u16 notices[0x39];          /* 0x3984: notices to show, each a kind (high byte) and an index (low byte): unlocks (Plsel_QueueFlagUnlocks), kind 3 (a training quest's index), kinds 4 and 5 */
     u8 unk39F6[0x39F8 - 0x39F6];
     s32 itemLines;              /* 0x39F8: item lines (Plsel_TallyRewards) */
-    s32 awardCount;             /* 0x39FC: entries of awards (at most 0x20) */
+    s32 awardCount;             /* 0x39FC: entries of awards (at most 32) */
     u16 awards[0x20];           /* 0x3A00: awards to show (Plsel_QueueAward) */
     u16 questLargest[0x50];     /* 0x3A40: largest size of the quest, per kind then per group */
     u16 questSmallest[0x50];    /* 0x3AE0: smallest size of the quest */
@@ -165,17 +166,17 @@ extern void *gOverlayWorkPtr; /* sub_main: the work pointer the overlays share *
 typedef struct PlselSelWork {
     u8 kbdOpen;                 /* 0x000: 1 while the chat keyboard is open (Plsel_ChatOpenKbd, Plsel_ChatUpdate) */
     u8 logHead;                 /* 0x001: the next chat log entry (wraps at 64; Plsel_AddChatLog) */
-    u8 logCount;                /* 0x002: chat log entries (at most 0x40) */
+    u8 logCount;                /* 0x002: chat log entries (at most 64) */
     u8 unk003[0x004 - 0x003];
-    s32 sendWait;               /* 0x004: frames before the next message may be sent (0x3C after one; Kbd_SetSubmitWait) */
-    u8 logScroll;               /* 0x008: counts messages added past 11 log lines (at most 0x3F) */
+    s32 sendWait;               /* 0x004: frames before the next message may be sent (60 after one; Kbd_SetSubmitWait) */
+    u8 logScroll;               /* 0x008: counts messages added past 11 log lines (at most 63) */
     u8 unk009[0x00B - 0x009];
     ChatLine log[64];           /* 0x00B: the chat log, a ring (logHead, logCount) */
     u8 unk13CB[0x13D4 - 0x13CB];
     u8 newMsg;                  /* 0x13D4: 1: a message was sent or came in */
     u8 newMsgMine;              /* 0x13D5: 1: it was the local player's */
     u8 unk13D6[0x13D8 - 0x13D6];
-    s16 logShowTimer;           /* 0x13D8: frames the chat log stays shown (0x12C after a message) */
+    s16 logShowTimer;           /* 0x13D8: frames the chat log stays shown (300 after a message) */
     u8 unk13DA[0x13DC - 0x13DA];
 } PlselSelWork;
 typedef char PlselSelWork_size_check[(sizeof(PlselSelWork) == 0x13DC) ? 1 : -1];
@@ -361,7 +362,7 @@ typedef struct PlselRec {
     s16 reward;                 /* the money per count (the delivery's whole reward) */
 } PlselRec;
 
-/* gPlselBonus: 0xD0 bytes of the file's .bss. */
+/* gPlselBonus: 208 bytes of the file's .bss. */
 typedef struct PlselBonus {
     u8 unk00[0x08];
     s32 rewardMoney;            /* 0xD7BD98: gRewardMoney at the results' start */
@@ -404,7 +405,7 @@ typedef struct PlselKind {
 } PlselKind;
 
 /* One hunt-count award: granted once the hunted count of `monster` (a
- * kind, or a group when byMonster is 0) reaches `count`. byMonster 0xFF
+ * kind, or a group when byMonster is 0) reaches `count`. byMonster 255
  * ends the list. */
 typedef struct PlselHuntAward
 {
@@ -415,7 +416,7 @@ typedef struct PlselHuntAward
 } PlselHuntAward;
 
 /* gPlselItemBox with the object after it (gPlselItemBoxSale), as the shop menu uses
- * them: one 0x20-byte work area. */
+ * them: one 32-byte work area. */
 typedef struct PlselShop {
     PlselItemBoxMenu t;               /* 0x00 */
     s32 money;                  /* 0x10 */
@@ -546,5 +547,132 @@ enum PlselArenaMenuStep {
 };
 #define ARENA_CHOICE_KEEP 0
 #define ARENA_CHOICE_SKIP 1
+
+void Ending_Init(void);
+s32 Ending_Update(void);
+void Ending_DrawTitle(s16 x, s16 y, char *str);
+void Ending_LoadTextures(void);
+void Ending_FreeTextures(void);
+void Ending_MoveObjects(void);
+void Ending_DrawObjects(void);
+void Ending_DrawRectF(TexRect *rect, f32 posX, f32 posY);
+
+void Galex_MusicHook(u8 music);
+void Galex_QuestTask(TaskSlot *task); /* plsel (OVERLAY_PLSEL) */
+s32 Galex_TourIndex(void);
+void Galex_Task(TaskSlot *task); /* plsel */
+void Galex_RollEmLevel(QuestEm *qem);
+void Galex_SetupQuest(void);
+
+void plsel_entry(TaskSlot *task); /* plsel (OVERLAY_PLSEL) */
+void Plsel_Setup(TaskSlot *task);
+void Plsel_WaitPlayersReady(TaskSlot *task);
+void Plsel_Finish(TaskSlot *task);
+void Plsel_DebugMenu(TaskSlot *task);
+void Plsel_InitSlots(void);
+void Plsel_SelectTask(TaskSlot *task); /* plsel */
+void Plsel_DrawHeader(u16 row);
+void Plsel_DrawFrame(s32 unused);
+void Plsel_SetCamera(void);
+void Plsel_SelectInit(TaskSlot *task);
+void Plsel_SelectWaitSound(TaskSlot *task);
+void Plsel_InitPlayer(Player *pl, s16 slotIndex);
+void Plsel_SetupPresetPlayer(Player *pl, s16 n);
+void Plsel_SetupSavedPlayer(Player *pl, s16 id);
+PlselPreset *Plsel_CurPreset(void);
+u8 Plsel_PresetSetForStage(void);
+void Plsel_SelectStartChoose(TaskSlot *task);
+void Plsel_SelectSetupPlayers(TaskSlot *task);
+void Plsel_DrawEquipPage(DrawSlot *hook);
+void Plsel_DrawChooseScreen(TaskSlot *task);
+void Plsel_StateChoose(TaskSlot *task);
+void Plsel_StateReady(TaskSlot *task);
+void Plsel_ApplyPresetEquip(Player *pl, s32 idx);
+void Plsel_SetupPresetPouch(Player *pl, s32 presetIndex);
+void Plsel_PlayDecideSe(void);
+void Plsel_PlayCursorSe(void);
+void Plsel_PlayChooseSe(void);
+void Plsel_InitSelWork(void);
+void Plsel_ChatOpenKbd(s32 mode);
+void Plsel_ChatInput(u16 unused);
+void Plsel_TickTimers(void);
+s32 Plsel_ChatUpdate(void);
+u8 Plsel_ChatRunKbd(u8 *dst, s32 held, s16 pressed);
+void Plsel_DrawChatWindow(s32 text, u8 n, s32 color);
+void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size);
+void Plsel_OpenPlayerMenu(u16 player);
+void Plsel_PlayerMenuUpdate(u16 pad);
+void Plsel_DrawPlayerMenuList(void);
+void Plsel_DrawPlayerMenu(void);
+void Plsel_DrawPouchPage(void);
+s32 Plsel_OpenStagePage(void);
+s32 Plsel_StagePageInput(s32 buttons);
+void Plsel_DrawStagePage(void);
+
+void PlselRes_PlayDecideSe(void);
+void PlselRes_PlayPageSe(void);
+void Plsel_UpdateSizeRecords(void);
+s32 Plsel_CheckSizeRecords(SceneState *scene, s32 unused);
+void Plsel_CheckTargetBonus(PlselWork *w);
+void Plsel_ResultsUpdate(void);
+void PlselRes_DrawQuitNotice(void);
+void Plsel_InitItemBoxMenu(void);
+s16 Plsel_ItemBoxMenu(void);
+u16 Plsel_ItemBoxHandlePad(PlselItemBoxMenu *menu, u16 pad);
+void Plsel_DrawItemBoxMenu(void);
+void Plsel_DrawMoney(void);
+s32 Plsel_ItemStackValue(u16 *stack);
+void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag);
+s32 Plsel_DrillPayout(void);
+void Plsel_ComputeRewards(Player *pl);
+void PlselRes_BeginClose(void);
+void Plsel_BuildRewardLines(PlselList *list);
+s32 Plsel_RewardListTask(SceneState *task);
+void Plsel_RewardListDraw(void);
+void Plsel_RewardListDrawText(SceneState *task);
+void Plsel_BuildResultText(s32 kind);
+void Plsel_SumQuestRewards(void);
+void Plsel_SumRecordRewards(void);
+void Plsel_TallyRewards(void);
+void Plsel_QueueAward(s32 id);
+void Plsel_CheckRankAwards(s16 rankAfter);
+void Plsel_ComputeReward(void);
+void Plsel_CheckQuestAwards(void);
+void Plsel_CheckVersusAwards(void);
+void Plsel_CheckDrillAwards(void);
+void Plsel_CheckTrainingAwards(void);
+void Plsel_CheckMonsterAwards(void);
+void Plsel_ComputeAllRewards(void);
+void Plsel_DrawResultsBg(void);
+void Plsel_DrawResultPage(s32 unused);
+s32 PlselRes_RewardPageInput(SceneState *scene);
+void PlselRes_InitRecordPage(void);
+s32 PlselRes_RecordPageInput(SceneState *scene);
+void PlselRes_InitPointsPage(void);
+s32 PlselRes_PointsPageInput(SceneState *scene);
+void PlselRes_InitMonsterPage(void);
+s32 PlselRes_MonsterPageInput(SceneState *scene);
+void Plsel_InitSaveRecordMenu(void);
+s32 Plsel_SaveRecordMenu(void);
+void Plsel_DrawSaveRecordMenu(void);
+void Plsel_SnapshotVersusMonster(void);
+void PlselRes_DrawArrow(s32 facesRight, s16 x, s16 y, s32 isSmall);
+void Plsel_LoadResultsTextures(void);
+void PlselRes_EmptyCloseHook(void);
+void PlselRes_Close(void);
+void Plsel_QueueFlagUnlocks(void);
+void Plsel_CheckCounterNotices(void);
+void Plsel_QueueDrillClearNotice(void);
+void Plsel_AddCounterPoints(void);
+s32 Plsel_HasNotices(void);
+void Plsel_BuildNoticeText(void);
+s32 PlselRes_NoticePageInput(void);
+void Plsel_DrawNoticeText(void);
+void Plsel_BuildTitleText(void);
+s32 PlselRes_TitlePageInput(void);
+void Plsel_DrawTitleText(void);
+void Plsel_CountHunts(PlselWork *w);
+void Plsel_QueueQuestUnlock(u16 *list, s32 idx);
+void Plsel_QueueQuestUnlocks(void);
 
 #endif /* PLSEL_H */

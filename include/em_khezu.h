@@ -1,5 +1,6 @@
 #ifndef EM_KHEZU_H
 #define EM_KHEZU_H
+#include "em.h"
 
 /*
  * The Khezu family's vocabulary (src/game/em_khezu.c): Khezu and Red Khezu
@@ -28,15 +29,15 @@ enum EmKhezuMotion {
     KHEZU_MOT_REST = 0x1F,              /* lying at rest while hp comes back */
     KHEZU_MOT_REST_START = 0x20,        /* lying down to rest */
     KHEZU_MOT_REST_END = 0x21,          /* getting up from the rest */
-    KHEZU_MOT_LIE = 0x22,               /* lying under status 1 or 2 (a periodic effect at bone 0x22) */
+    KHEZU_MOT_LIE = 0x22,               /* lying under status 1 or 2 (a periodic puff at KHEZU_BONE_BREATH) */
     KHEZU_MOT_ATK_ACTION_B = 0x23,      /* KHEZU_ATK_ACTION_B's motion: one effect at frame 40 */
     KHEZU_MOT_GET_UP = 0x25,            /* after status 1 or 2 */
     KHEZU_MOT_COLLAPSE = 0x26,          /* falling over when status 1 or 2 starts */
     KHEZU_MOT_LIE_DOWN = 0x27,          /* lying down under status 2 (KHEZU_IDLE_STATUS2_LIE_DOWN) */
     KHEZU_MOT_SPIN = 0x2B,              /* spinning in place, rotY falling 0x200 a frame; camera shakes at frames 44 and 73 */
-    KHEZU_MOT_SHOT_FAN = 0x2F,          /* three shots (EmRangedAttack kind 6) from the head at frame 176, sparks at 58 and 172 */
+    KHEZU_MOT_SHOT_FAN = 0x2F,          /* three shots (EMRANGED_KHEZU_GROUND_BOLT) from KHEZU_BONE_BREATH at frame 176, sparks at 58 and 172 */
     KHEZU_MOT_ALERT_IDLE = 0x33,        /* standing alert, in combat */
-    KHEZU_MOT_TURN_IN_PLACE = 0x36,     /* the turns to the goal, rotY stepped by hand until frame 60 */
+    KHEZU_MOT_TURN_ROAR = 0x36,         /* turning to the goal (rotY stepped by hand until frame 60), then the roar: KHEZU_SE_ROAR and the roar's rings at frame 78 */
     KHEZU_MOT_EAT = 0x3B,               /* eating, after KHEZU_MOT_EAT_START */
     KHEZU_MOT_FLINCH = 0x3C,
     KHEZU_MOT_SHAKE_OFF = 0x3E,         /* shaking off a status, the stun or a hold */
@@ -64,12 +65,12 @@ enum EmKhezuMotion {
     KHEZU_MOT_IDLE_ACTION_A = 0x66,     /* KHEZU_IDLE_ACTION_A's motion (layer 1) */
     KHEZU_MOT_CEIL_HANG = 0x67,         /* hanging from the ceiling */
     KHEZU_MOT_CEIL_LEAP = 0x68,         /* the leap from the floor to the ceiling, launched at frame 112 */
-    KHEZU_MOT_IDLE_ACTION_C = 0x69,     /* KHEZU_IDLE_ACTION_C's motion (layer 1); also a versus pose and the story scene's */
+    KHEZU_MOT_ROAR = 0x69,              /* the roar: KHEZU_SE_ROAR at frame 64, the roar's rings at 66; KHEZU_IDLE_ACTION_C's motion (layer 1), also a versus pose and the story scene's */
     KHEZU_MOT_LEAP = 0x6A,              /* a leap at the target (a hit at frame 70) */
     KHEZU_MOT_LEAP_LAND = 0x6B,         /* landing from a leap */
     KHEZU_MOT_LEAP_QUICK = 0x6C,        /* the leap with a short wind-up */
     KHEZU_MOT_CEIL_DROP = 0x6D,         /* letting go of the ceiling; the body is moved down at frame 12 */
-    KHEZU_MOT_CEIL_SHOTS = 0x6E,        /* on the ceiling: a shot (EmRangedAttack) from the head every 16 frames from frame 200 */
+    KHEZU_MOT_CEIL_SHOTS = 0x6E,        /* on the ceiling: a shot (EMRANGED_KHEZU_CEILING_SHOT) from KHEZU_BONE_BREATH every 16 frames from frame 200 */
     KHEZU_MOT_CEIL_SHOTS_END = 0x6F,    /* after the mine point is left below */
     KHEZU_MOT_ATK_ACTION_A = 0x70,      /* KHEZU_ATK_ACTION_A's motion: impact effects at frames 172-180 */
     KHEZU_MOT_ATK_ACTION_C = 0x71,      /* KHEZU_ATK_ACTION_C's motion: Red Khezu adds sparks from frame 120 to 180 */
@@ -80,6 +81,42 @@ enum EmKhezuMotion {
     KHEZU_MOT_CEIL_CRAWL = 0x77,        /* crawling on the ceiling; the ceiling turn rows' motFront */
     KHEZU_MOT_CEIL_TURN_RIGHT = 0x78,   /* the ceiling turn rows' motRight (EmKhezu_TurnParams[2..5]) */
     KHEZU_MOT_CEIL_TURN_LEFT = 0x79     /* their motLeft */
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes KhezuAttack_Create makes on given frames of a motion
+ * (KhezuAttack_HitShapes, by the attack rows' hit lists), where a shot or
+ * an effect starts, and the bones the steps' sounds take turns at. "A" and
+ * "B" are the two sides; which is left the code doesn't show. Bones no code
+ * explains stay numbers: the spin's spheres (41 and 44, its swing sound at
+ * 42), and 3 and 29 (one sphere each in a hit).
+ */
+enum EmKhezuBone {
+    KHEZU_BONE_ROOT = 0,        /* the skeleton's first bone: a sphere of KHEZU_MOT_ATK_ACTION_A's hit (with KHEZU_BONE_HEAD's), the sounds of its falls and landings */
+    KHEZU_BONE_BODY = 2,        /* the body's sphere in the leaps and their landings, KHEZU_MOT_ATK_ACTION_D's hit and the roars' wide sphere; the dust under it as it lands */
+    KHEZU_BONE_WING_A = 6,      /* the flight motions' wing beats play here and at KHEZU_BONE_WING_B, a few frames apart */
+    KHEZU_BONE_WING_B = 12,
+    KHEZU_BONE_LEG_A = 19,      /* leg A's sphere in the walk's and the turns' steps */
+    KHEZU_BONE_STEP_A = 20,     /* leg A's step sounds in the walk and the turns */
+    KHEZU_BONE_FOOT_A = 21,     /* leg A's sphere in a landing on both feet (KHEZU_MOT_TOUCH_DOWN, KHEZU_MOT_CEIL_DROP) */
+    KHEZU_BONE_LEG_B = 25,      /* the same for leg B */
+    KHEZU_BONE_STEP_B = 26,
+    KHEZU_BONE_FOOT_B = 27,
+    KHEZU_BONE_BREATH = 34,     /* where the shots (EMRANGED_KHEZU_CEILING_SHOT, EMRANGED_KHEZU_GROUND_BOLT) and the lying puffs start, and the roar's rings follow (ElementBurst_RoarBone); the sphere of KHEZU_MOT_ATK_ACTION_C's hits */
+    KHEZU_BONE_HEAD = 35        /* the head's sphere in the bites (KHEZU_MOT_EAT_START lowers the head to eat) and KHEZU_MOT_ATK_ACTION_B's hit */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (the program
+ * gSeBankByType gives the kind; Em_PlaySeAtBone and Em_PlaySeType). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmKhezuSe {
+    KHEZU_SE_ROAR = 91          /* the roar: on the frame its rings start (ElementBurst type 5) in KHEZU_MOT_TURN_ROAR, two frames before them in KHEZU_MOT_ROAR */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmKhezu_RunIdleState). */
@@ -127,8 +164,8 @@ enum EmKhezuMoveState {
 };
 
 /*
- * Group 2, EM_GROUP_FLY (EmKhezu_RunFlyState): flight (0x00-0x17) and the
- * ceiling (0x18-0x22: the states keep Em.ceilingTimer at 5 and the body at
+ * Group 2, EM_GROUP_FLY (EmKhezu_RunFlyState): flight (0 to 23) and the
+ * ceiling (24 to 34: the states keep Em.ceilingTimer at 5 and the body at
  * Em.surfaceY, the ceiling's height).
  */
 enum EmKhezuFlyState {
@@ -148,7 +185,7 @@ enum EmKhezuFlyState {
     KHEZU_FLY_HOVER_ONCE = 0x0E,        /* EmKhezu_EndFlyState's state: the script picks the next */
     KHEZU_FLY_RISE_ABOVE_GOAL = 0x0F,
     KHEZU_FLY_HOVER_TURN = 0x10,
-    KHEZU_FLY_EMPTY_A = 0x11,           /* 0x11, 0x12, 0x13 and 0x16 run empty functions */
+    KHEZU_FLY_EMPTY_A = 0x11,           /* the four KHEZU_FLY_EMPTY_* states run empty functions */
     KHEZU_FLY_EMPTY_B = 0x12,
     KHEZU_FLY_EMPTY_C = 0x13,
     KHEZU_FLY_HOP_SLAM = 0x14,
@@ -198,8 +235,8 @@ enum EmKhezuReactState {
     KHEZU_REACT_STATUS2_DOWNED_END = 0x0F,
     KHEZU_REACT_STATUS1_DOWNED_END = 0x10,
     KHEZU_REACT_HOLD2 = 0x11,           /* EM_DMG_ATTACK13 */
-    KHEZU_REACT_STUN = 0x12,            /* the stun, hit from one side ... */
-    KHEZU_REACT_STUN_B = 0x13,          /* ... or the other (the hit's angle against rotY) */
+    KHEZU_REACT_STUN = 0x12,            /* the stun, hit with (hitAngle - rotY) & 0xFFFF at most half a turn */
+    KHEZU_REACT_STUN_B = 0x13,          /* the stun, hit from the other side ((hitAngle - rotY) & 0xFFFF above half a turn) */
     KHEZU_REACT_STUN_DOWNED = 0x14,     /* the stun in a hold */
     KHEZU_REACT_STUN_DOWNED_END = 0x15
 };
@@ -215,7 +252,7 @@ enum EmKhezuDefeatState {
 /* Group 6 (and 7), EM_GROUP_EVENT (EmKhezu_RunEventState). */
 enum EmKhezuEventState {
     KHEZU_EVENT_STORY = 0x00,           /* the story scene of quest stage QUEST_ID_KHEZU_SCENE */
-    KHEZU_EVENT_CAPTURED = 0x04,        /* status 1 in holdTimer's hold (0x01-0x03 run the same function) */
+    KHEZU_EVENT_CAPTURED = 0x04,        /* status 1 in holdTimer's hold (1 to 3 run the same function) */
     KHEZU_EVENT_CAPTURED_HOLD2 = 0x05   /* status 1 in holdTimer2's hold */
 };
 
@@ -228,5 +265,39 @@ enum EmKhezuVersusState {
     KHEZU_VS_WAIT_BOTH = 0x98,
     KHEZU_VS_END = 0x99
 };
+
+extern void *EmKhezu_Callbacks[8];
+void EmKhezu_MotionSounds(Em *em, EmWork *work);
+void EmKhezu_Init(Em *em);
+void EmKhezu_Start(Em *em);
+void EmKhezu_Status2Downed(Em *em, EmWork *work);
+void EmKhezu_Status1Downed(Em *em, EmWork *work);
+void EmKhezu_TurnToGoal(Em *em, EmWork *work);
+void EmKhezu_Land(Em *em, EmWork *work);
+void EmKhezu_FlyOutOfArea(Em *em, EmWork *work);
+void EmKhezu_FlyToGoalAndLand(Em *em, EmWork *work);
+void EmKhezu_FlyIntoArea(Em *em, EmWork *work);
+void EmKhezu_CeilingShots(Em *em, EmWork *work);
+void EmKhezu_StoryScene(Em *em, EmWork *work);
+void EmKhezu_Captured(Em *em, EmWork *work);
+void EmKhezu_VersusEatBait(Em *em, EmWork *work);
+void EmKhezu_Die(Em *em, EmWork *work);
+void EmKhezu_DieHeld(Em *em, EmWork *work);
+void EmKhezu_DieFalling(Em *em, EmWork *work);
+void EmKhezu_RunReactState(Em *em, EmWork *work);
+void EmKhezu_Update(Em *em);
+void EmKhezu_RunState(Em *em, EmWork *work);
+void EmKhezu_MotionEffects(Em *em, EmKhezuWork *work);
+void EmKhezu_SpawnLandingImpact(Em *em);
+void EmKhezu_SetIdleState(Em *em, u16 state, u8 mode);
+void EmKhezu_SetMoveState(Em *em, u16 state, u8 mode);
+void EmKhezu_SetFlyState(Em *em, u16 state, u8 mode);
+void EmKhezu_SetAttackState(Em *em, u16 state, u8 mode);
+void EmKhezu_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmKhezu_MoveByVelYCurve(Em *em, s32 kind);
+void EmKhezu_StartCurves(Em *em, u8 kind);
+u8 EmKhezu_UpdateCurves(Em *em);
+u8 EmKhezu_NearestCeilingPoint(Em *em, f32 *out);
+s32 EmKhezu_InSpecialArea(u16 area);
 
 #endif /* EM_KHEZU_H */

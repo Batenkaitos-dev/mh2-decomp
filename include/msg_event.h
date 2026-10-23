@@ -36,4 +36,25 @@ enum MsgEventKind {
  * set once it has been shown. */
 #define MSGEV_SEEN_FLAG_BASE 200
 
+void Quest_CheckCampAdvice(void);
+void MsgEvent_Init(void);
+void MsgEvent_OpenPopup(void);
+s32 MsgEvent_OpenList(void);
+s32 MsgEvent_ListInput(u16 pad);
+void MsgEvent_DrawPopup(void);
+void MsgEvent_DrawList(void);
+void MsgEvent_DrawMessage(u8 inList, s32 windowOfs);
+void MsgEvent_DrawPageCounter(s16 x, s16 y);
+void MsgEvent_DrawIcon(s32 unused, s32 windowOfs);
+void MsgEvent_CopyQuestTitle(s8 *buf);
+void MsgEvent_Draw(void);
+s32 MsgEvent_Check(u16 kind);
+s32 MsgEvent_CheckQuest(s32 flag, s32 questId, s8 msgNo);
+s32 MsgEvent_CheckSupplyBoxClosed(void);
+u8 MsgEvent_CountInSet(u8 msgSet);
+s32 MsgEvent_IsSeen(u8 msgSet, u8 msgNo);
+char *MsgEvent_Title(u8 msgSet, u8 msgNo);
+char *MsgEvent_Line(u8 msgSet, u8 msgNo, u8 pageNo);
+u8 MsgEvent_PageCount(u8 msgSet, u8 msgNo);
+
 #endif

@@ -21,22 +21,30 @@
 #include "pad.h"
 #include "lobby_vobj.h"
 #include "lobby_state.h"
+#include "lobby_text.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "lobby_net.h"
+#include "records_menu.h"
+#include "equip_shop.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "my_house.h"
+#include "records_draw.h"
+#include "records_lists.h"
+#include "libc.h"
+#include "window.h"
 #pragma optimization_level 4
-void *memset(void *, s32, u32);
-void *memcpy(void *, const void *, u32);
 
-
-void LobbySe_Play(s32);
-s32 Menu_WrapLeftRight(s32 arg0, s32 arg1);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s16 gMenuOffsetY;
 extern s16 gMenuOffsetX;
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-s32 Records_CountHuntPages(u8 *save);
 
 /* Closes the records menu: back to TOWN_MODE_FREE, with no draw callbacks
  * and the menus' offsets cleared. */
@@ -50,22 +58,6 @@ void Records_Close(void)
     gMenuOffsetX = 0;
 }
 
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
-s32 Records_MenuInput(RecordMenu *menu, u16 pad);
-void Records_TallyItems(RecordMenu *menu);
-void Records_EquipInit(RecordMenu *menu);
-void Records_TallyTitles(RecordMenu *menu);
-void Records_GuidesInit(RecordMenu *menu);
-void Records_MonstersInit(RecordMenu *menu);
-s32 Records_EquipInput(RecordMenu *menu, u16 pad);
-s32 Records_ScoresInput(RecordMenu *menu, u16 pad);
-s32 Records_MonstersInput(RecordMenu *menu, u16 pad);
-s32 Records_GuidesInput(RecordMenu *menu, u16 pad);
-s32 Records_TitlesInput(RecordMenu *menu, u16 pad);
-s32 Records_ItemsInput(RecordMenu *menu, u16 pad);
-s32 Records_HouseAccessInput(RecordMenu *menu, u16 pad);
 extern u8 gMenuWork[];
 extern u8 gHouseAccess;
 extern char gHousePassword[];
@@ -89,7 +81,7 @@ void Records_Update(void)
     Chat_SetWindowMode(1, 2);
     switch (menu->mode) {
     case RECORDS_MODE_OPEN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case MENU_DONE:
             menu->mode++;
             break;
@@ -102,7 +94,7 @@ void Records_Update(void)
             menu->sel = 0;
             menu->page = 0;
             menu->toggle = 0;
-            WinSlide_Step(&menu->win, 0x118, RECORDS_EQUIP_BITS);
+            WinSlide_Step(&menu->win, 280, RECORDS_EQUIP_BITS);
             menu->eventMark = 0;
             switch (menu->kind[menu->menuSel]) {
             case RECORD_KIND_ITEMS:
@@ -154,7 +146,7 @@ void Records_Update(void)
         }
         break;
     case RECORDS_MODE_TO_PAGE:
-        switch (WinSlide_Step(&menu->win, 0x118, 0x280)) {
+        switch (WinSlide_Step(&menu->win, 280, 640)) {
         case MENU_DONE:
             switch (menu->kind[menu->menuSel]) {
             case RECORD_KIND_HOUSE_ACCESS:
@@ -185,7 +177,7 @@ void Records_Update(void)
         }
         break;
     case RECORDS_MODE_BACK:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case MENU_DONE:
             menu->mode = RECORDS_MODE_MENU;
             break;
@@ -197,7 +189,7 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
@@ -206,7 +198,7 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
@@ -215,7 +207,7 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
@@ -224,7 +216,7 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
@@ -233,7 +225,7 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
@@ -242,7 +234,7 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
@@ -251,21 +243,13 @@ void Records_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->mode = RECORDS_MODE_BACK;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             break;
         }
         break;
     }
 }
 
-s32 Game_IsOnline(void);
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-void EquipPreview_Reset(void);
-void Bits_Pack(u8 *dst, u8 *src, s32 n);
-void LobbyText_Open(s32);
-void TownMsg_SendRecordsAsk(u8 c);
-void Records_SetEquipPage(RecordMenu *menu, s16 page);
-s32 Records_EquipListInput(RecordMenu *menu, u16 pad);
 extern LobbyMenu *gLobbyMenu;
 
 /*
@@ -324,7 +308,7 @@ s32 Records_EquipInput(RecordMenu *menu, u16 pad)
                 Records_SetEquipPage(menu, 0);
             } else {
                 menu->step++;
-                LobbyText_Open(0x8E); /* asking the owner: wait */
+                LobbyText_Open(LOBBY_TEXT_PLEASE_WAIT); /* asking the owner: wait */
                 gLobbyMenu->redraw = 1;
                 memset(menu->equipBits, 0, RECORDS_EQUIP_BITS);
                 if (menu->kind[menu->menuSel] == RECORD_KIND_WEAPONS) {
@@ -366,7 +350,7 @@ s32 Records_EquipInput(RecordMenu *menu, u16 pad)
             }
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
             menu->genre = Menu_WrapUpDown(menu->genre, menu->genreCount);
@@ -376,7 +360,7 @@ s32 Records_EquipInput(RecordMenu *menu, u16 pad)
         gLobbyMenu->redraw = 1;
         if (--menu->timer <= 0) {
             menu->step = 3;
-            LobbyText_Open(0x79); /* the owner didn't answer */
+            LobbyText_Open(121); /* the owner didn't answer */
         }
         break;
     case 2:
@@ -397,18 +381,10 @@ s32 Records_EquipInput(RecordMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-void EquipPreview_Free(void);
-void EquipPreview_Hide(u8 hide);
-s32 Game_IsOnline(void);
-s8 MyHouse_LocalSlot(void);
-s32 Equip_IsNoModelArmor(EquipItem *e);
 /* unit's own declaration: the type and the gender as bytes (the definition takes u16 kind, u16 id, u16 female); the caller converts its arguments this way, as the game's code does */
 s32 Equip_GetModelId(u8 type, u16 id, u8 x);
 /* unit's own declaration: the type as a byte, the id and the gender as words (the definition takes u16 kind, u16 id, u8 female); the caller converts its arguments this way, as the game's code does */
 void EquipPreview_Load(u8 type, s32 n, s32 x);
-u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b);
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-void Records_SetEquipPage(RecordMenu *menu, s16 page);
 extern NetUser gNetUsers[];
 
 /* The house owner's gender, as their hunter card in gNetUsers gives it. */
@@ -453,7 +429,7 @@ s32 Records_EquipListInput(RecordMenu *menu, u16 pad)
                     EquipPreview_Hide(0);
                 }
                 menu->subCursor = 0;
-                menu->levelCount = Equip_LevelMark(&item, 0x40, 0);
+                menu->levelCount = Equip_LevelMark(&item, 64, 0);
                 menu->toggle = 1;
             } else {
                 EquipPreview_Free();
@@ -498,7 +474,7 @@ s32 Records_EquipListInput(RecordMenu *menu, u16 pad)
 s32 Records_ScoresInput(RecordMenu *menu, u16 pad)
 {
     if (pad & PAD_CROSS) {
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         return MENU_CANCEL;
     }
     menu->page = Menu_WrapLeftRight(menu->page, menu->pages);
@@ -518,7 +494,7 @@ void Records_MonstersInit(RecordMenu *menu)
 s32 Records_MonstersInput(RecordMenu *menu, u16 pad)
 {
     if (pad & PAD_CROSS) {
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         return MENU_CANCEL;
     }
     if (pad & (PAD_LEFT | PAD_RIGHT)) {
@@ -527,7 +503,6 @@ s32 Records_MonstersInput(RecordMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Menu_CountPages(s16 n, s16 per);
 /* Fills rows with page `page` (RECORDS_GUIDE_ROWS rows) of the guide
  * category chosen (gRecordGuideCats[sel]); sets page and pages and keeps the
  * cursor on a row. */
@@ -577,7 +552,7 @@ s32 Records_GuidesInput(RecordMenu *menu, u16 pad)
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
             menu->step = 0;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
             menu->sel = Menu_WrapUpDown(menu->sel, RECORD_GUIDE_COUNT);
@@ -610,11 +585,6 @@ s32 Records_GuidesInput(RecordMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-void Records_SetTitlePage(RecordMenu *menu, s16 page);
-s32 Game_IsOnline(void);
-s32 LobbyMenu_YesNoInput(s32 msg);
-void Menu_SetYesNo(s8 a);
-s32 Bits32_Test(u32 *bits, s32 n);
 /*
  * The titles: step 0 the HUNTER_TITLE_GROUPS tabs, 1 the titles earned in
  * one (PAD_SQUARE shows a title's description), 2 a yes/no to take the
@@ -633,7 +603,7 @@ s32 Records_TitlesInput(RecordMenu *menu, u16 pad)
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
             menu->step = 0;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
             menu->sel = Menu_WrapUpDown(menu->sel, HUNTER_TITLE_GROUPS);
@@ -669,7 +639,7 @@ s32 Records_TitlesInput(RecordMenu *menu, u16 pad)
         }
         break;
     case 2:
-        switch (LobbyMenu_YesNoInput(0x3A /* take this title? */)) {
+        switch (LobbyMenu_YesNoInput(58 /* take this title? */)) {
         case 0:
             menu->step--;
             gSave.title = menu->ids[menu->cursor];
@@ -710,7 +680,6 @@ void Records_SetTitlePage(RecordMenu *menu, s16 page)
     }
 }
 
-s32 ItemBits_Test(u32 *bits, u16 n);
 /* The same for the items obtained of category sel + 1. id is a u16 copy
  * of i: the game's code keeps the item id in a register of its own. */
 void Records_SetItemPage(RecordMenu *menu, s16 page)
@@ -742,7 +711,6 @@ void Records_SetItemPage(RecordMenu *menu, s16 page)
     }
 }
 
-s32 Item_IsDeco(u16 item);
 /*
  * The items: step 0 the RECORDS_ITEM_CATEGORIES categories, 1 the items
  * obtained in one; PAD_R1 steps through a decoration's three detail
@@ -762,7 +730,7 @@ s32 Records_ItemsInput(RecordMenu *menu, u16 pad)
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
             menu->step = 0;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
             menu->sel = Menu_WrapUpDown(menu->sel, RECORDS_ITEM_CATEGORIES);
@@ -810,9 +778,9 @@ void Records_TallyTitles(RecordMenu *menu)
         /* tallyBase is the menu plus the group's 8 bytes of tally: the game's code keeps
          * that one base for both counts, which the array form doesn't give */
         tallyBase = (u8 *)menu + title->group * 8;
-        (*(s32 *)(tallyBase + 0x6E0))++; /* tally[group][1] */
+        (*(s32 *)(tallyBase + 1760))++; /* tally[group][1] */
         if (Bits32_Test(menu->titleBits, i) == 1) {
-            (*(s32 *)(tallyBase + 0x6DC))++; /* tally[group][0] */
+            (*(s32 *)(tallyBase + 1756))++; /* tally[group][0] */
         }
     }
 }

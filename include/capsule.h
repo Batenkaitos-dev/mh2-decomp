@@ -3,10 +3,13 @@
 
 /*
  * The collision shapes: the capsules and spheres the hit tests and the pushes
- * between players and monsters build, and the hit lists' records (HitShape).
+ * between players and monsters build, the hit lists' records (HitShape), and
+ * the geometry tests on them (segments, capsules, spheres, cylinders and
+ * slabs: contacts, distances, push-outs and clipping).
  */
 
 #include "common.h"
+#include "objattach.h"
 
 /* A capsule: the segment from a to b and its radius. BoneHit_Place and Player_BodyCapsule write
  * one, Capsule_Copy reads one. */
@@ -98,5 +101,44 @@ typedef struct HitShape {
     f32 b[3];                   /* 0x1C: the capsule's second end */
 } HitShape;
 typedef char HitShape_size_check[(sizeof(HitShape) == 0x28) ? 1 : -1];
+
+void Segment_Init(f32 *start, f32 *end, Segment *seg);
+void Capsule_Copy(HitCapsule *src, Capsule *dst);
+s32 Spheres_Touch(f32 radiusA, f32 radiusB, f32 *centerA, f32 *centerB, f32 *out);
+s32 Sphere_PushOut(f32 radiusA, f32 radiusB, f32 *centerA, f32 *centerB, f32 *out);
+u8 Capsule_ContactCapsule(Capsule *capA, Capsule *capB, f32 *out);
+void Vec_PointAlong(f32 *from, f32 *dir, f32 *out, f32 len, f32 dist);
+f32 Seg_NearestPointDist(f32 *out, f32 *start, f32 *end, f32 *point);
+f32 Seg_SegDistance(f32 *startA, f32 *endA, f32 *startB, f32 *endB);
+s32 Capsule_SphereContact(f32 *center, Capsule *cap, f32 *out, f32 sphereRadius);
+s32 Capsule_PushSphere(Capsule *cap, f32 *center, f32 *out, f32 sphereRadius);
+s32 Capsule_SphereContactOnSphere(Capsule *cap, f32 *center, f32 *out, f32 sphereRadius);
+s32 Capsule_PushCapsule(Capsule *capA, Capsule *capB, f32 *out);
+void Vec_PushOut(f32 *dir, f32 reach, f32 dist, f32 *out);
+s32 Vec_ProjectOnDir(f32 *from, f32 *to, f32 *dir, f32 *out, f32 reach);
+u8 Capsule_Classify(Segment *seg, f32 *point, f32 radius);
+f32 Seg_PointDistance(f32 *start, f32 *end, f32 *dir, f32 *point, f32 len);
+void Seg_NearestPoint(f32 *start, f32 *end, f32 *dir, f32 *point, f32 *out, f32 len);
+s32 Cyl_Contains(f32 *point, f32 *center, f32 radius, f32 top, f32 bottom);
+u8 Slab_Contains(f32 *pos, f32 *start, f32 *end, f32 height, f32 radius);
+s32 Seg_ClipPlane(f32 *cap, f32 *planePoint, f32 *nrm, f32 *out);
+s32 Seg_ClipYRange(void *cap, f32 top, f32 bottom, void *planePoint, f32 *nrm, void *out);
+void Hit_ResetAll(void);
+void Hit_ClearStatusAll(void);
+void HitList_Next(Em *em, HitShape **cur);
+void Em_ApplyHitStatus(Player *target, ObjAttach *attach);
+void Player_UpdateHitTimers(Player *player);
+void ObjAttach_HitObjects(ObjAttach *attach);
+void ObjAttach_HitAll(void);
+s32 ObjAttach_TargetIsRemote(Em *target);
+void ObjAttach_DamageEm(ObjAttach *attach, Player *attacker, Em *em, HitShape *list, HitShape *elist, f32 *out);
+void ObjAttach_DamagePlayer(ObjAttach *attach, Player *attacker, Player *victim, f32 *pos);
+void ObjAttach_SetHitHeading(ObjAttach *attach, Player *target, f32 *from, f32 *to);
+void ObjAttach_LinkTarget(ObjAttach *attach, Player *attacker);
+void ObjAttach_NextMultiHit(ObjAttach *attach);
+void ObjAttach_UpdateTimers(ObjAttach *attach);
+void ObjAttach_UpdateAllTimers(void);
+void HitId_Reset(void);
+u8 HitId_Next(void);
 
 #endif /* CAPSULE_H */

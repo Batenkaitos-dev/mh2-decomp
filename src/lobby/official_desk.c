@@ -29,51 +29,40 @@
 #include "lobby_menu.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "text.h"
+#include "village_cond.h"
+#include "official_desk.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "quest_desk.h"
+#include "quest_desk_draw.h"
+#include "quest_order_terms.h"
+#include "rand.h"
+#include "talk.h"
+#include "libc.h"
 /* The game's code for the official desk was built at optimization level 4. */
 #pragma optimization_level 4
-void Menu_DrawLabelBar(s16, s16, s16, u32, char *, u8, u8);
 
 extern u8 gMenuWork[];
 
-void LobbySe_Play(s32 se);
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
-s32 Win_Shake(WinShake *s);
-s32 OfficialDesk_ChooseRow(OfficialDeskMenu *m, u16 pad);
-s32 OfficialDesk_ChooseQuest(OfficialDeskMenu *m, u16 pad);
-s32 OfficialDesk_CheckOrder(OfficialDeskMenu *m, u16 pad);
-s32 OfficialDesk_Post(OfficialDeskMenu *m, u16 pad);
-void OfficialDesk_Close(void);
-void CamFocus_SetAside(s8 a);
-void Talk_Say(s32 line, s8 question);
-s32 Talk_Update(void);
-u16 Rand_Next(s32 stream);
-void QuestRoom_ResetSettings(void);
-void QuestDesk_Accept(u16 id, s16 money, s32 pay);
 extern u16 gQuestStampRand;
 extern u16 gLobbyQuestId;
 extern u8 gQuestIsOfficial;
 extern s8 gQuestMinMembers;
-void CamFocus_End(void);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-s32 Save_IsQuestCleared(u16 id);
-extern u16 *gHrGateQuests[];
 extern s8 gMenuInputLock;
 extern s32 gTownMenuOpen;
 extern s32 gTownMode;
-void *memset(void *dst, s32 c, u32 n);
-s32 ElderRaid_InState1(void);
-s32 ElderRaid_InState2(void);
-s32 Equip_GunHasNoAmmo(struct Player *pl, struct SaveData *save);
-s32 Menu_PushNoticeOnce(s32);
-void OfficialDesk_FindGateQuest(OfficialDeskMenu *m, s32 gate);
-void OfficialDesk_ListRaid(OfficialDeskMenu *m);
-s32 OfficialDesk_GateIndex(struct Em *npc);
-void OfficialDesk_ListEvents(OfficialDeskMenu *m);
-void OfficialDesk_Draw(MenuTask *task);
-void OfficialDesk_Draw2(MenuTask *task);
 
 /*
  * Opens the desk at its clerk: TOWN_MODE_OFFICIAL_DESK, the rows window
@@ -92,7 +81,7 @@ void OfficialDesk_Open(struct Em *npc)
     memset(desk, 0, MENU_WORK_SIZE);
     LobbyMenu_Init();
     LobbyMenu_SetDraw(OfficialDesk_Draw, OfficialDesk_Draw2, 0, 0);
-    WinSlide_Step(&desk->win, 0x280, 0x118);
+    WinSlide_Step(&desk->win, 640, 280);
     CamFocus_SetAside(1);
     desk->npc = npc;
     if (gLobby->dlQuestsReady != 0) {
@@ -101,7 +90,7 @@ void OfficialDesk_Open(struct Em *npc)
     } else {
         desk->row[OFFICIAL_ROW_EVENTS] = OFFICIAL_ROW_NONE;
     }
-    if (ElderRaid_InState1() == 1 || ElderRaid_InState2() == 1) {
+    if (ElderRaid_IsOn() == 1 || ElderRaid_IsOnNoMovie() == 1) {
         desk->row[OFFICIAL_ROW_RAID] = OFFICIAL_ROW_RAID;
         OfficialDesk_ListRaid(desk);
     } else {
@@ -160,8 +149,6 @@ void OfficialDesk_FindGateQuest(OfficialDeskMenu *desk, s32 gate)
     }
 }
 
-s32 Cond_IsLatest(u16 id);
-
 /*
  * The HR gate this clerk offers now, or -1: NPC_OFFICIAL_DESK_LOW_HR
  * offers gates 0-2 and NPC_OFFICIAL_DESK_HIGH_HR gates 3-4, each while
@@ -171,21 +158,21 @@ s32 OfficialDesk_GateIndex(struct Em *npc)
 {
     switch (((NpcWork *)&npc->work)->id) {
     case NPC_OFFICIAL_DESK_LOW_HR:
-        if (Cond_IsLatest(0x5A) != 0) {
+        if (Cond_IsLatest(90) != 0) {
             return 0;
         }
-        if (Cond_IsLatest(0x5D) != 0) {
+        if (Cond_IsLatest(93) != 0) {
             return 1;
         }
-        if (Cond_IsLatest(0x62) != 0) {
+        if (Cond_IsLatest(98) != 0) {
             return 2;
         }
         break;
     case NPC_OFFICIAL_DESK_HIGH_HR:
-        if (Cond_IsLatest(0x65) != 0) {
+        if (Cond_IsLatest(101) != 0) {
             return 3;
         }
-        if (Cond_IsLatest(0x68) != 0 || Cond_IsLatest(0x69) != 0) {
+        if (Cond_IsLatest(104) != 0 || Cond_IsLatest(105) != 0) {
             return 4;
         }
         break;
@@ -224,7 +211,7 @@ void OfficialDesk_Close(void)
     LobbyMenu_SetDraw(0, 0, 0, 0);
     CamFocus_SetAside(0);
     CamFocus_End();
-    gMenuInputLock = 0x14; /* frames */
+    gMenuInputLock = 20; /* frames */
     LobbySe_Play(LOBBY_SE_CANCEL);
     gFieldControl = 1;
 }
@@ -246,7 +233,7 @@ void OfficialDesk_Update(void)
     Chat_SetWindowMode(1, 2);
     switch (desk->state) {
     case OFFICIAL_STEP_OPEN:
-        switch (WinSlide_Step(&desk->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&desk->win, 640, 280)) {
         case MENU_DONE:
             desk->state++;
             break;
@@ -256,8 +243,8 @@ void OfficialDesk_Update(void)
         switch (OfficialDesk_ChooseRow(desk, pad)) {
         case MENU_DONE:
             desk->state++;
-            WinSlide_Step(&desk->win, 0x118, 0x280);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            WinSlide_Step(&desk->win, 280, 640);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         case MENU_CANCEL:
             desk->state = OFFICIAL_STEP_LEAVE;
@@ -267,7 +254,7 @@ void OfficialDesk_Update(void)
         }
         break;
     case OFFICIAL_STEP_ROWS_OUT:
-        switch (WinSlide_Step(&desk->win, 0x118, 0x280)) {
+        switch (WinSlide_Step(&desk->win, 280, 640)) {
         case MENU_DONE:
             desk->state++;
             break;
@@ -281,7 +268,7 @@ void OfficialDesk_Update(void)
             break;
         case MENU_CANCEL:
             desk->state = OFFICIAL_STEP_ROWS_BACK;
-            WinSlide_Step(&desk->win, 0x280, 0x118);
+            WinSlide_Step(&desk->win, 640, 280);
             break;
         }
         break;
@@ -295,7 +282,7 @@ void OfficialDesk_Update(void)
             break;
         case MENU_CANCEL:
             desk->state = OFFICIAL_STEP_ROWS_BACK;
-            WinSlide_Step(&desk->win, 0x280, 0x118);
+            WinSlide_Step(&desk->win, 640, 280);
             break;
         }
         break;
@@ -317,9 +304,9 @@ void OfficialDesk_Update(void)
         case MENU_DONE:
             desk->state++;
             if (gQuestMinMembers == 0) { /* the clerk's words, by the least members */
-                Talk_Say(0xA, 0);
+                Talk_Say(10, 0);
             } else {
-                Talk_Say(0xB, 0);
+                Talk_Say(11, 0);
             }
             QuestDesk_Accept(desk->quest->id, 0, 1); /* no wanted fee; the quest's fee paid */
             gQuestIsOfficial = 1;
@@ -335,7 +322,7 @@ void OfficialDesk_Update(void)
         }
         break;
     case OFFICIAL_STEP_ROWS_BACK:
-        switch (WinSlide_Step(&desk->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&desk->win, 640, 280)) {
         case MENU_DONE:
             desk->state = OFFICIAL_STEP_ROWS;
             break;
@@ -358,14 +345,6 @@ INCLUDE_RODATA("asm/lobby/nonmatchings/official_desk", gOfficialDeskTextFmt);
 
 extern s8 gRoomPassOn;
 extern s8 gRoomPassword[9];
-s32 LobbyMenu_KbdEntry(void *opts);
-s32 Menu_PushNoticeOnce(s32);
-void LobbySe_Play(s32 se);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void *memset(void *dst, s32 c, u32 n);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
 /*
  * The room settings' input: up and down move over the four lines (the
  * password's line is skipped while the password is off), left and right
@@ -433,8 +412,6 @@ s32 OfficialDesk_RoomSettings(OfficialDeskMenu *desk, u16 pad)
 }
 
 extern LobbyMenu *gLobbyMenu;
-void LobbyText_Open(s32);
-s32 Quest_PostStep(MsgQuestPost *req);
 /*
  * The room settings, then the posting: once decided, fills the posting
  * (the quest, no wanted fee, this desk, the area), opens the sending text
@@ -470,8 +447,6 @@ s32 OfficialDesk_Post(OfficialDeskMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Quest_CheckOrderTerms(u8 id, u8 flag);
-void LobbyDialog_Grow(void);
 /*
  * Checks that the chosen quest can be taken: no quest taken already, the
  * quest's order terms met (else a dialog, closed with circle), its fee at
@@ -484,7 +459,7 @@ s32 OfficialDesk_CheckOrder(OfficialDeskMenu *desk, u16 pad)
     case 0:
         if (gLobby->questTaken != 0) {
             desk->subStep++;
-            Talk_Say(0xF, 0); /* a quest is already taken */
+            Talk_Say(15, 0); /* a quest is already taken */
             Talk_Update();
         } else if (Quest_CheckOrderTerms(desk->quest->terms, 0) == 0) {
             desk->subStep = 2;
@@ -537,10 +512,6 @@ static u16 *OfficialDesk_RowList(OfficialDeskMenu *desk)
 
 extern u16 gTalkLine;
 extern char *gTalkLineText;
-QuestInfo *Quest_GetDiscInfo(u16 id);
-char *Talk_LineText(u16 id);
-char *Text_FillDollar(char *arg0, s32 arg1);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
 u16 *OfficialDesk_RowList(OfficialDeskMenu *m);
 /*
  * The quest on the sheet: up and down move in the row's list, left and
@@ -560,7 +531,7 @@ s32 OfficialDesk_ChooseQuest(OfficialDeskMenu *desk, u16 pad)
             if (gLobby->questTaken != 0) {
                 desk->subStep = 3;
                 desk->quest = NULL;
-                Talk_Say(0xF, 0); /* a quest is already taken */
+                Talk_Say(15, 0); /* a quest is already taken */
             } else if (desk->quest->fee != 0) {
                 Talk_Say(6, 0); /* the confirmation, with the fee */
                 gTalkLineText = Text_FillDollar(Talk_LineText(gTalkLine), desk->quest->fee);
@@ -573,10 +544,10 @@ s32 OfficialDesk_ChooseQuest(OfficialDeskMenu *desk, u16 pad)
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
             desk->quest = NULL;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
-            desk->listCursor = Menu_WrapUpDownSe(desk->listCursor, desk->listCount, LOBBY_SE_WINDOW_OUT);
+            desk->listCursor = Menu_WrapUpDownSe(desk->listCursor, desk->listCount, LOBBY_SE_WINDOW_SLIDE);
             desk->sheetPage = Menu_WrapLeftRight(desk->sheetPage, QUEST_SHEET_PAGES);
         }
         break;
@@ -586,7 +557,7 @@ s32 OfficialDesk_ChooseQuest(OfficialDeskMenu *desk, u16 pad)
             desk->subStep = 0;
             return MENU_DONE;
         case MENU_CANCEL:
-            Talk_Say(0x10, 0); /* declined */
+            Talk_Say(16, 0); /* declined */
             desk->subStep++;
             break;
         }
@@ -669,14 +640,6 @@ s32 OfficialDesk_ChooseRow(OfficialDeskMenu *desk, u16 pad)
     return MENU_RUNNING;
 }
 
-extern char *gOfficialEventTexts[];
-void Menu_DrawDecoFrame(s16 x, s16 y0, s16 w0, s16 h, s8 kind, s8 b);
-void Font_SetColor(s32 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *text, s32 color);
-void Text_DrawShadowRgb(s16 x, s16 y, u32 c1, u32 c2, char *s);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
 /* Draws the rows window at (x, y): its frame and the three rows' names
  * (the third by the raid row's kind: blank without a raid), the row under
  * the cursor with arrows. */
@@ -687,35 +650,31 @@ void OfficialDesk_DrawRows(s16 x, s16 y)
     s32 i;
     s16 labelX;
 
-    Menu_DrawDecoFrame(x, y, 0x140, 0x168, 4, -1);
+    Menu_DrawDecoFrame(x, y, 320, 360, 4, -1);
     Font_SetColor(0x807F7F7F);
-    x = x + 0xA0;
-    y = y + 0x64;
-    Font_SetSpacing(0x18, 0x18);
+    x = x + 160;
+    y = y + 100;
+    Font_SetSpacing(24, 24);
     for (i = 0; i < OFFICIAL_ROWS; i++) {
         if (i < 2) {
             label = gOfficialEventTexts[i];
         } else {
             label = gOfficialEventTexts[desk->row[i]];
         }
-        labelX = Text_CenterX(label, x, 0x18);
+        labelX = Text_CenterX(label, x, 24);
         if (i == desk->cursor) {
-            Menu_DrawArrowsRev(labelX, y, 0x18, label, 0xFFB57510);
+            Menu_DrawArrowsRev(labelX, y, 24, label, 0xFFB57510);
             Text_DrawShadowRgb(labelX, y, 0xFF101010, 0xFF106060, label);
         } else {
             Font_SetColor(0xFF101010);
             Font_SetPos(labelX, y);
             Text_PrintfColored(label);
         }
-        y += 0x46;
+        y += 70;
     }
 }
 
-
-char *Quest_GetText(u16 id, s32 k);
-char *strcat(char *d, const char *s);
 extern char gOfficialDeskTextFmt[];
-extern char *gQuestKindNames[];
 
 /* Page QUEST_SHEET_OVERVIEW of a must-order quest's sheet
  * (QUEST_FLAG_MUST_ORDER): the name, texts 1-3, the stars, the order
@@ -723,40 +682,37 @@ extern char *gQuestKindNames[];
 void Quest_DrawMustOrderOverview(s16 x, s16 y, QuestInfo *quest)
 {
     s32 i;
-    char stars[0x40];
+    char stars[64];
     s16 top = y;
     s32 id = quest->id;
 
-    Font_SetPos(x, y += 0x14);
+    Font_SetPos(x, y += 20);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 0));
-    Font_SetPos(x, y += 0x3C);
+    Font_SetPos(x, y += 60);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 1));
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 2));
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 3));
-    Font_SetPos(x + 0x5A, y += 0x1C);
+    Font_SetPos(x + 90, y += 28);
     stars[0] = 0;
     for (i = 0; i < quest->stars; i++) {
         strcat(stars, gLobbyMarks[LOBBY_MARK_STAR]);
     }
     Text_PrintfColored(gOfficialDeskTextFmt, stars);
-    Font_SetPos(x, y + 0x3C);
+    Font_SetPos(x, y + 60);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestKindNames[quest->terms]);
     Font_SetColor(0x80301010);
-    x = x - 0xA;
-    y = top + 0x14;
-    y += 0x2A;
+    x = x - 10;
+    y = top + 20;
+    y += 42;
     Font_SetPos(x, y);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_MUST_ORDER]);
-    Font_SetPos(x, y += 0x60);
+    Font_SetPos(x, y += 96);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_DIFFICULTY]); /* the stars' label */
-    Font_SetPos(x, y + 0x2A);
+    Font_SetPos(x, y + 42);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_SPECIAL_COND]); /* the order condition's label */
 }
-
-s32 sprintf(char *buf, const char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
 
 /* Page QUEST_SHEET_TERMS of a must-order quest's sheet: the name, the time
  * limit in minutes, the fee and the reward (printed, then widened to
@@ -765,55 +721,45 @@ void Quest_DrawMustOrderTerms(s16 x, s16 y, QuestInfo *quest)
 {
     s16 top = y;
     s32 id = quest->id;
-    char wide[0x40];
-    char narrow[0x40];
+    char wide[64];
+    char narrow[64];
 
-    Font_SetPos(x, y += 0x14);
+    Font_SetPos(x, y += 20);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 0));
-    Font_SetPos(x + 0x7E, y += 0x2A);
+    Font_SetPos(x + 126, y += 42);
     sprintf(narrow, "%d%s", quest->timeLimit / 60 / 30, gLobbyWords[LOBBY_WORD_MINUTES]); /* frames to minutes; the minutes' unit */
     Sjis_Widen(narrow, wide);
     Text_PrintfColored(gOfficialDeskTextFmt, wide);
-    Font_SetPos(x + 0x7E, y += 0x18);
+    Font_SetPos(x + 126, y += 24);
     sprintf(narrow, "%dz", quest->fee);
     Sjis_Widen(narrow, wide);
     Text_PrintfColored(gOfficialDeskTextFmt, wide);
-    Font_SetPos(x + 0x7E, y += 0x18);
+    Font_SetPos(x + 126, y += 24);
     sprintf(narrow, "%dz", quest->reward);
     Sjis_Widen(narrow, wide);
     Text_PrintfColored(gOfficialDeskTextFmt, wide);
-    Font_SetPos(x, y += 0x2A);
+    Font_SetPos(x, y += 42);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 4));
-    Font_SetPos(x, y + 0x3C);
+    Font_SetPos(x, y + 60);
     Text_PrintfColored(gOfficialDeskTextFmt, Quest_GetText(id, 5));
     Font_SetColor(0x80301010);
-    x = x - 0xA;
-    y = top + 0x14;
-    y += 0x2A;
+    x = x - 10;
+    y = top + 20;
+    y += 42;
     Font_SetPos(x, y);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_TIME_LIMIT]); /* the time limit's label */
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_CONTRACT_FEE]);
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_REWARD]);
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_CLEAR_COND]);
-    Font_SetPos(x, y + 0x3C);
+    Font_SetPos(x, y + 60);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_FAIL_COND]);
 }
 
-void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 h, s16 *offs, s16 sel, s8 a, s32 b);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
-void Quest_DrawOverview(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawTerms(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawClearMark(s16 x, s16 y);
-s32 Save_IsQuestCleared(u16 id);
 u16 Map_Group(u16 id);
 extern s8 gMapGroupMapIds[][2];
-extern u16 gQuestStampRand;
 
 /*
  * Draws the quest sheet at (x, y): the title bar, the money, the map strip
@@ -832,9 +778,9 @@ void OfficialDesk_DrawSheet(OfficialDeskMenu *desk, s16 x, s16 y)
     if (desk->quest != NULL) {
         sheetQuest = desk->quest;
     }
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gQuestSheetTexts[QUEST_SHEET_TEXT_OFFICIAL_QUEST], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gQuestSheetTexts[QUEST_SHEET_TEXT_OFFICIAL_QUEST], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     memset(mapGroups, 0, sizeof(mapGroups));
     for (i = 0; i < OFFICIAL_ROW_QUESTS; i++) {
         if (list[i] == 0) {
@@ -845,53 +791,50 @@ void OfficialDesk_DrawSheet(OfficialDeskMenu *desk, s16 x, s16 y)
             mapGroups[i] = -mapGroups[i];
         }
     }
-    Menu_DrawQuestSheet(x, y, 0x140, 0x168, mapGroups, desk->listCursor, gMapGroupMapIds[Map_Group(sheetQuest->map)][0], -1);
+    Menu_DrawQuestSheet(x, y, 320, 360, mapGroups, desk->listCursor, gMapGroupMapIds[Map_Group(sheetQuest->map)][0], -1);
     Font_SetColor(0x80101010);
     if (desk->state == OFFICIAL_STEP_CHOOSE && desk->subStep == 0) {
-        Menu_DrawPageNum(0x21C, y + 0xE, desk->sheetPage, QUEST_SHEET_PAGES, 1);
+        Menu_DrawPageNum(540, y + 14, desk->sheetPage, QUEST_SHEET_PAGES, 1);
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (sheetQuest->flags & QUEST_FLAG_MUST_ORDER) {
         switch (desk->sheetPage) {
         case QUEST_SHEET_OVERVIEW:
-            Quest_DrawMustOrderOverview((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, sheetQuest);
+            Quest_DrawMustOrderOverview((s16)(x + 40) + 10, (s16)(y + 14) + 4, sheetQuest);
             break;
         case QUEST_SHEET_TERMS:
-            Quest_DrawMustOrderTerms((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, sheetQuest);
+            Quest_DrawMustOrderTerms((s16)(x + 40) + 10, (s16)(y + 14) + 4, sheetQuest);
             break;
         case QUEST_SHEET_DETAILS:
-            Quest_DrawDetails((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, sheetQuest);
+            Quest_DrawDetails((s16)(x + 40) + 10, (s16)(y + 14) + 4, sheetQuest);
             break;
         }
     } else {
         switch (desk->sheetPage) {
         case QUEST_SHEET_OVERVIEW:
-            Quest_DrawOverview((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, sheetQuest);
+            Quest_DrawOverview((s16)(x + 40) + 10, (s16)(y + 14) + 4, sheetQuest);
             break;
         case QUEST_SHEET_TERMS:
-            Quest_DrawTerms((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, sheetQuest);
+            Quest_DrawTerms((s16)(x + 40) + 10, (s16)(y + 14) + 4, sheetQuest);
             break;
         case QUEST_SHEET_DETAILS:
-            Quest_DrawDetails((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, sheetQuest);
+            Quest_DrawDetails((s16)(x + 40) + 10, (s16)(y + 14) + 4, sheetQuest);
             break;
         }
     }
     if (Save_IsQuestCleared(sheetQuest->id)) {
-        Quest_DrawClearMark(x + 0x28, y + 0xE);
+        Quest_DrawClearMark(x + 40, y + 14);
     }
     if (desk->quest != NULL) {
         switch (desk->state) {
         case OFFICIAL_STEP_STAMP:
         case OFFICIAL_STEP_ACCEPTED:
         case OFFICIAL_STEP_LEAVE:
-            Menu_DrawStamp(x + 0x28, y + 0xE, 0x140, 0x168, gQuestStampRand, desk->shake.timer);
+            Menu_DrawStamp(x + 40, y + 14, 320, 360, gQuestStampRand, desk->shake.timer);
             break;
         }
     }
 }
-
-void Menu_DrawArrows(s16 x, s16 y, s16 size, char *text, s32 color);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 color);
 
 /* Draws the room settings' sheet at (x, y): the least members, the
  * password on or off, the password in its box, and the decide line; the
@@ -901,52 +844,48 @@ void OfficialDesk_DrawRoomSettings(OfficialDeskMenu *desk, s16 x, s16 y)
     s16 top = y;
     s32 valueX;
 
-    Menu_DrawQuestSheet(x, y, 0x140, 0x168, NULL, 1, -1, -1);
-    Font_SetSpacing(0x12, 0x12);
+    Menu_DrawQuestSheet(x, y, 320, 360, NULL, 1, -1, -1);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
-    y += 0x28;
-    valueX = x + 0xD8;
-    Font_SetPos(valueX, y += 0x2A);
+    y += 40;
+    valueX = x + 216;
+    Font_SetPos(valueX, y += 42);
     Text_PrintfColored(gOfficialDeskTextFmt, gMemberCountTexts[gQuestMinMembers]);
     if (desk->menuCursor == ROOM_SETTING_MEMBERS) {
-        Menu_DrawArrows(valueX, y, 0x12, gMemberCountTexts[gQuestMinMembers], 0xFF106060);
+        Menu_DrawArrows(valueX, y, 18, gMemberCountTexts[gQuestMinMembers], 0xFF106060);
     }
-    Font_SetPos(valueX, y += 0x2A);
+    Font_SetPos(valueX, y += 42);
     Text_PrintfColored(gNoneSetTexts[gRoomPassOn]);
     if (desk->menuCursor == ROOM_SETTING_PASS_ON) {
-        Menu_DrawArrows(valueX, y, 0x12, gNoneSetTexts[gRoomPassOn], 0xFF106060);
+        Menu_DrawArrows(valueX, y, 18, gNoneSetTexts[gRoomPassOn], 0xFF106060);
     }
-    Font_SetPos(Text_CenterX((char *)gRoomPassword, 0x1B8, 0x12), y += 0x2A);
+    Font_SetPos(Text_CenterX((char *)gRoomPassword, 440, 18), y += 42);
     Text_PrintfColored(gOfficialDeskTextFmt, gRoomPassword);
     if (desk->menuCursor == ROOM_SETTING_PASSWORD) {
-        Menu_DrawArrowsRev(x + 0x64, y, 0x12, "             " /* the password box's width */, 0xFF106060);
-        Gfx_DrawRectFrame(x + 0x64, y - 1, 0x78, 0x14, 0xFF106060);
-        Gfx_DrawRectFrame(x + 0x63, y - 2, 0x7A, 0x16, 0xFF106060);
+        Menu_DrawArrowsRev(x + 100, y, 18, "             " /* the password box's width */, 0xFF106060);
+        Gfx_DrawRectFrame(x + 100, y - 1, 120, 20, 0xFF106060);
+        Gfx_DrawRectFrame(x + 99, y - 2, 122, 22, 0xFF106060);
     } else {
-        Gfx_DrawRectFrame(x + 0x64, y - 1, 0x78, 0x14, 0xFF606060);
-        Gfx_DrawRectFrame(x + 0x63, y - 2, 0x7A, 0x16, 0xFF606060);
+        Gfx_DrawRectFrame(x + 100, y - 1, 120, 20, 0xFF606060);
+        Gfx_DrawRectFrame(x + 99, y - 2, 122, 22, 0xFF606060);
     }
     Font_SetColor(0x80301010);
-    x = x + 0x28;
-    y = top + 0x28;
-    Font_SetPos(Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_RECRUIT], 0x1B8, 0x12), y);
+    x = x + 40;
+    y = top + 40;
+    Font_SetPos(Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_RECRUIT], 440, 18), y);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_RECRUIT]); /* the title */
-    Font_SetPos(x, y += 0x2A);
+    Font_SetPos(x, y += 42);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_MEMBERS]);
-    Font_SetPos(x, y += 0x2A);
+    Font_SetPos(x, y += 42);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_PASSWORD]); /* the password line's label */
-    x = Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 0x1B8, 0x12);
-    Font_SetPos(x, y += 0x78);
+    x = Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 440, 18);
+    Font_SetPos(x, y += 120);
     Text_PrintfColored(gOfficialDeskTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE]);
     if (desk->menuCursor == ROOM_SETTING_DECIDE) {
-        Menu_DrawArrowsRev(x, y, 0x12, gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 0xFF106060);
+        Menu_DrawArrowsRev(x, y, 18, gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 0xFF106060);
     }
 }
 
-void Text_SetSize(s32 a);
-void Menu_DrawDecoBox(s16 x, s16 y, s16 w, s16 h, s8 kind);
-void OfficialDesk_DrawSheet(OfficialDeskMenu *m, s16 x, s16 y);
-void OfficialDesk_DrawRoomSettings(OfficialDeskMenu *m, s16 x, s16 y);
 /* The desk's first draw: the rows window's empty box while it slides in
  * and during the row choice, the room settings before the posting starts,
  * nothing at the goodbye, else the quest sheet (shaken while the stamp
@@ -959,7 +898,7 @@ void OfficialDesk_Draw(MenuTask *task)
     switch (desk->state) {
     case OFFICIAL_STEP_OPEN:
     case OFFICIAL_STEP_ROWS:
-        Menu_DrawDecoBox(desk->win.pos, 0x3A, 0x140, 0x168, 4);
+        Menu_DrawDecoBox(desk->win.pos, 58, 320, 360, 4);
         break;
     case OFFICIAL_STEP_ROWS_OUT:
     case OFFICIAL_STEP_CHOOSE:
@@ -968,11 +907,11 @@ void OfficialDesk_Draw(MenuTask *task)
     case OFFICIAL_STEP_ACCEPTED:
     case OFFICIAL_STEP_ROWS_BACK:
     default:
-        OfficialDesk_DrawSheet(desk, desk->shake.dx + 0x118, desk->shake.dy + 0x3A);
+        OfficialDesk_DrawSheet(desk, desk->shake.dx + 280, desk->shake.dy + 58);
         break;
     case OFFICIAL_STEP_POST:
         if (desk->subStep == 0) {
-            OfficialDesk_DrawRoomSettings(desk, 0x118, 0x3A);
+            OfficialDesk_DrawRoomSettings(desk, 280, 58);
         }
         break;
     case OFFICIAL_STEP_LEAVE:
@@ -980,7 +919,6 @@ void OfficialDesk_Draw(MenuTask *task)
     }
 }
 
-void OfficialDesk_DrawRows(s16 x, s16 y);
 /* The desk's second draw: the rows window at its sliding x while it
  * shows. */
 void OfficialDesk_Draw2(MenuTask *task)
@@ -993,7 +931,7 @@ void OfficialDesk_Draw2(MenuTask *task)
     case OFFICIAL_STEP_ROWS:
     case OFFICIAL_STEP_ROWS_OUT:
     case OFFICIAL_STEP_ROWS_BACK:
-        OfficialDesk_DrawRows(desk->win.pos, 0x3A);
+        OfficialDesk_DrawRows(desk->win.pos, 58);
         break;
     }
 }

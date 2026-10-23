@@ -19,8 +19,6 @@
  *   and the rewards rolled at the end into gScene.supply (Quest_RollRewards).
  * - The players' quest messages (QMSG_*, sent by QSync_SendState with kind
  *   6, handled by Quest_HandleNetMsg).
- * - The player's state changes (Player_SetState and the flags), which the
- *   game overlay's state code calls.
  *
  * The scene's code starts and ends the quest; the quest's queries, the
  * versus code and the records are kept apart from it; the game overlay
@@ -37,6 +35,28 @@
 #include "objhead.h"
 #include "area.h"
 #include "qsync.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "capsule.h"
+#include "card.h"
+#include "fishing.h"
+#include "plsel.h"
+#include "qnet.h"
+#include "sound.h"
+#include "stream.h"
+#include "text.h"
+#include "engine_math.h"
+#include "field_objects.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "hit_spark.h"
+#include "libc.h"
+#include "msg_event.h"
+#include "em_melynx.h"
 
 /* One of the game's source files (it calls the static Quest_DeliveredCount,
  * defined further down). The game's compiler built it at optimization level
@@ -44,127 +64,31 @@
 #pragma optimization_level 4
 
 extern u32 gStageFile;          /* base address of the stage file */
-extern u16 **gStartAreaTables[];
-extern u16 gEmAppearMax[];
 extern PartBreakEffect gPartBreakEffects[];
-extern char *gDrillScoreTexts[];
-extern char *gQuestNoticeTexts[];
-extern u8 *gQuestTimedEventTbls[];
-
-void *memset(void *p, s32 c, u32 n);
-void *QuestRecord_Clear(void);
+extern TimedSupply *gQuestTimedEventTbls[];
 
 u16 Area_IdForCurrentTime(u16 area);
-u16 Rand_Next(s32 stream);
-s32 Player_IsLocal(void *obj);
 
 /* Prototypes shared by the parts of this unit. */
 void CamReq_TargetDown(); /* unit's own declaration: the definition takes no parameter; Quest_Update's call passes gQuest.result in a0, which it ignores, and the other call none */
 s32 Cond_HasItems(void *unused, u16 *r);
-s32 Em_HasRandomSize(s16 id);
-s32 Em_HasRandomSize2(s16 id);
-u8 Notice_Push(u8 kind, s16 a, s16 b);
-u8 Notice_PushItem(char *item);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 /* unit's own declaration: a u16 result as Quest_GiveRewards reads it; with the definition's u8 its code differs */
 u16 Pouch_Add(Player *pl, u16 item, s16 n);
-void QuestEm_CountCaptured(u16 i);
-void QuestEm_CountHunted(u16 i);
-QuestEm * QuestEm_FindByIndex(s16 idx, u16 area);
-s32 QuestEm_RollYamaTsukamiB(s32 a);
-Em * QuestEm_Spawn(QuestEm *q);
-s32 QuestGoal_DeliverCountFor(u16 target, u16 i);
-u16 QuestGoal_DeliverItem(u16 i);
-s32 QuestGoal_IsClearTarget(u16 target);
-s32 QuestGoal_OnCapture(u16 target);
-s32 QuestGoal_OnKill(u16 target);
-s32 QuestGoal_OnKillSlot(u16 target, u16 i);
-s32 QuestGoal_OnPartBroken(u16 id, u16 part);
-s32 Quest_CheckClear(s32 notify);
 static s32 Quest_DeliveredCount(u16 item);
-void Quest_SendKill(QuestEm *q, Player *p);
 struct StageEntry;
-void *StageEntry_GetData(struct StageEntry *e, s32 which);
-void *Stage_FindEntryData(s32 *tbl, s32 id, s32 which, s8 idx);
 void QuestEm_CapturedStub(); /* unit's own declaration: defined below as (void); its caller passes q and em in a0 and a1, which it ignores */
 void FireBlast_CreateAt(f32 *pos, s16 k);
-s32 Game_IsOnline(void);
-void QuestEm_SpawnArea(s32 a);
-void EmMine_RemoveTimed(Em *em);
-void QuestEm_SpawnAll(void);
-QuestEm *QuestEm_FindForEm(Em *em);
-void Quest_StoreElapsed(void);
-u8 MonsterGroup_First(u8 group);
-void Em_InitParts(Em *em);
-void QNetIf_Leave(void);
-void GmEm_ApplySize(Em *em);
-void GmEm_ResetState(Em *em);
-void GmLoad_LoadStagePartition(void);
-s32 Quest_GetOutcome(s32 withLoss);
-s32 QuestEm_PlaceAtRandomPoint(Em *em);
-void Em_RunAppearHook(Em *em);
-void Quest_NoteTargetDown(Em *em);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Vec_Copy(f32 *dst, f32 *src);
 
-s8 Versus_Team(s8 side);
-s32 Quest_HasDrillFlag(void);
-void Quest_CountEventKill(u16 type);
-void Quest_CountTarget(u16 type);
-void QuestStats_Add(s32 a, s32 b);
-void Quest_JumpToEnd(s32 a);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
 EmBone *Em_Bone(void *obj, s16 bone);
-s32 MonsterNote_Index(u16 id);
-s32 Em_KindMatches(u8 type, u8 kind);
 s32 Em_PartBroken(Em *em, u16 part); /* unit's own declaration: the definition (game) is s32 Em_PartBroken(Em *em, s32 arg1); the calls here match only with this one */
 void Em_PartBreakEffect(Em *em, s32 part);
-s32 Quest_IsVersus(void);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void QSync_SendState(u8 kind, u8 who);
-s16 Pouch_Count(Player *p, u16 item);
-void Quest_TargetMessage(void);
-char *Quest_SelectedText(s32 k);
-s16 Quest_CountDelivered(u16 item, s32 who);
-void Quest_DeliveryMessage(u16 item);
-s32 QuestGoal_InitialFlags(u16 i, s32 mask);
-s32 QuestGoal_DeliverCount(u16 i);
-u16 Quest_Deliver(Player *pl, u16 item, s32 count);
-void Jingle_Play(void *obj, s32 a);
 static s16 Quest_FindReward(u16 id);
-u16 Quest_AddReward(u16 item, s16 n);
 extern s8 gRewardGiveRolls[];
-void Effect17_SpawnArea(s32 area);
-void QuestEm_SpawnYamaTsukamiB(void);
-void GmLoad_LoadEmData(s32 kind, s32 idx);
-void EmSlot_LoadModels(s32 i);
-Em *EmSlot_Alloc(void);
-s32 GmEm_Task(Em *em);
-void Em_UpdateMatrix(Em *em);
-extern u8 gEmIsLarge[]; /* the game overlay's gEmIsLarge: 1 for the large monsters, by kind */
 extern Em gEms[];
-extern char *gReturn20sTownText[];
 extern char *gReturn20sVillageText;
-extern char *gReturn1mTownText[];
 extern char *gReturn1mVillageText;
-extern char *gQuestClearText[];
-extern char *gReturn10sTownText[];
 extern char *gReturn10sVillageText;
-void MinePoint_UpdateAll(void);
-void QuestGoal_Update(void);
-void Quest_UpdateCountdown(void);
-s16 Quest_StepScript(Player *pl, s16 a, s32 *out);
-s32 Quest_HasAdvice(void);
-void Quest_CheckCampAdvice(void);
-void Quest_UpdateTimers(s32 a);
-s32 QuestGoal_IsDone(s32 a);
-s32 Quest_IsDrill(void);
-s32 Quest_IsTraining(void);
-u16 Save_RankFromPoints(SaveData *s);
-s32 Side_Match(u8 a, u8 b, u8 c);
-void Quest_UpdateTimedEvent(void);
-void Quest_CheckItemTargets(void);
 extern u16 gNextQuestId;
 extern NextQuest gNextQuest;
 extern u8 gNetQuestSeeds[15];
@@ -173,35 +97,7 @@ extern EmSizeRange gEmSizeRangeDefaults[5];
 extern s8 gTraderVariantRolls[16];
 extern s16 *gStageFileTbls[];
 extern s16 gQuestGroupLastIds[];
-void *memcpy(void *dst, const void *src, u32 n);
-void MinePoint_ResetAll(void);
-void QuestGoal_ClearAll(void);
-void Bgm_Init(void);
-void QuestStats_Init(void);
-void MsgEvent_Init(void);
-s32 Season_Get(void);
 void Daytime_Set(s32 a);
-u8 Daytime_Get(void);
-void Quest_SetSeason(u8 a);
-s32 Mib_Read(s32 flid, void *buf);
-void Quest_SetCurrent(u16 stage, void *b, s32 a);
-void Versus_Init(void);
-void QuestGoal_InitFromDef(void);
-void QuestEm_InitAll(void);
-void SpecialMine_Clear(void);
-s32 MsgEvent_Check(u16 kind);
-void GmLoad_Reset(void);
-u16 Quest_Random(void);
-void Quest_SeedRandom(void);
-void Quest_ClearTargets(void);
-void Quest_LoadTargets(void);
-void Quest_SetStartArea(u16 who);
-s32 Quest_GetTime(s32 which);
-void EmMelynx_DeductReward(Em *em);
-void EmSlot_Free(Em *em);
-void QuestEm_ResetArea(s32 a);
-void EmSlot_FreeModels(s16 i);
-void QuestEm_Hunted(Em *em);
 
 /*
  * Clears gQuest for no quest: the default stage header's tables, the script
@@ -548,10 +444,10 @@ void Quest_SetStartArea(u16 who)
         return;
     }
     if (gQuest.header->randomStart != 0) {
-        /* (weight, area) pairs, 0xFFFF-terminated */
+        /* (weight, area) pairs, ended by START_AREA_END */
         weights = tbl[gQuest.header->randomStart - 1];
         sum = 0;
-        for (entry = weights; *entry != 0xFFFF; entry += 2) {
+        for (entry = weights; *entry != START_AREA_END; entry += 2) {
             sum += *entry;
         }
         if (who == START_AREA_SCENE) {
@@ -560,7 +456,7 @@ void Quest_SetStartArea(u16 who)
             roll = gQuest.seed[who] % sum;
         }
         sum = 0;
-        while (*weights != 0xFFFF) {
+        while (*weights != START_AREA_END) {
             if (roll < (sum += *weights++)) {
                 break;
             }
@@ -854,7 +750,7 @@ void QuestEm_Captured(Em *em)
             Quest_NoteTargetDown(em);
             return;
         }
-        gSysSettings.clearCapture = 0x81;
+        gSysSettings.clearCapture = 129;
         if (Quest_IsVersus() == 0) {
             QuestEm_CountCaptured(em->type);
             gQuest.captured[em->type]++;
@@ -872,7 +768,7 @@ void QuestEm_Captured(Em *em)
                 }
             }
         }
-        if (MonsterNote_Index(em->type) != 0xFF) {
+        if (MonsterNote_Index(em->type) != MONSTER_NOTE_NONE) {
             gQuest.capturedType = em->type;
             gQuest.capturedSize = em->sizePct;
             gQuest.capturedLevel = em->level - 3;
@@ -912,7 +808,7 @@ void Em_PartBreakEffect(Em *em, s32 part)
     PartBreakEffect *effect = gPartBreakEffects;
     u8 kind = gPartBreakEffects[0].kind;
 
-    if (kind != 0xFF) {
+    if (kind != 255) {
         do {
             if (Em_KindMatches(em->type, kind) != 0 && effect->part == part && Em_PartBroken(em, part) == 0) {
                 Mtx_Copy((f32 *) mtx, (f32 *) (Em_Bone(em, effect->bone)));
@@ -925,7 +821,7 @@ void Em_PartBreakEffect(Em *em, s32 part)
                 return;
             }
             effect++;
-        } while ((kind = effect->kind) != 0xFF);
+        } while ((kind = effect->kind) != 255);
     }
 }
 
@@ -1257,7 +1153,7 @@ s32 Quest_Update(void)
     return 0;
 }
 
-/* Seeds the quest's random stream from the seed bytes (0x1C3 for a zero sum). */
+/* Seeds the quest's random stream from the seed bytes (451 for a zero sum). */
 void Quest_SeedRandom(void)
 {
     s32 i;
@@ -1267,11 +1163,11 @@ void Quest_SeedRandom(void)
         gQuest.random += (u16)(gQuest.seed[i] + (u16)(gQuest.seed[i + 1] << 8));
     }
     if (gQuest.random == 0) {
-        gQuest.random = 0x1C3;
+        gQuest.random = 451;
     }
 }
 
-/* The quest's next random number (gQuest.random * 176 mod 0xFF53): the
+/* The quest's next random number (gQuest.random * 176 mod 65363): the
  * same on every player's machine, as the seed is the host's. */
 u16 Quest_Random(void)
 {
@@ -1280,7 +1176,7 @@ u16 Quest_Random(void)
     if (x == 0) {
         x = 1;
     }
-    return gQuest.random = x * 176 % 0xFF53;
+    return gQuest.random = x * 176 % 65363;
 }
 
 u8 Quest_GetSeedByte(u8 i)
@@ -1296,7 +1192,7 @@ u8 Quest_GetSeedByte(u8 i)
  */
 void Quest_UpdateTimedEvent(void)
 {
-    TimedSupply *step = (TimedSupply *)gQuestTimedEventTbls[gQuest.timedEventSet];
+    TimedSupply *step = gQuestTimedEventTbls[gQuest.timedEventSet];
 
     switch (gQuest.timedEvent) {
     case QUEST_EVENT_TIMED:
@@ -1311,7 +1207,7 @@ void Quest_UpdateTimedEvent(void)
         if ((Rand_Next(0) & 0x7F) < step->chance) {
             gQuest.timedEvent = QUEST_EVENT_NONE;
             Notice_PushItem(gQuestNoticeTexts[3]);
-            Sound_PlaySeFlat(1, 0x77, 0);
+            Sound_PlaySeFlat(1, 119, 0);
             gQuest.msgArg0 = 0;
             gQuest.msgType = QMSG_EVENT_OVER;
             gQuest.msgArg1 = 0;
@@ -1334,7 +1230,7 @@ void Quest_CountEventKill(u16 type)
             if (--gQuest.eventCount <= 0) {
                 gQuest.timedEvent = QUEST_EVENT_NONE;
                 Notice_PushItem(gQuestNoticeTexts[3]);
-                Sound_PlaySeFlat(1, 0x77, 0);
+                Sound_PlaySeFlat(1, 119, 0);
             }
         }
         break;
@@ -1846,7 +1742,7 @@ void Quest_DeductReward(Player *pl, u16 item, s16 n)
 
 /*
  * Gives pl the quest's item list, as rolled from
- * gRewardGiveRolls: the listed items (0), item 0xFF instead (1), or
+ * gRewardGiveRolls: the listed items (0), item 255 instead (1), or
  * nothing (2), each with its notice; then the list is cleared.
  */
 void Quest_GiveRewards(Player *pl)
@@ -1883,17 +1779,17 @@ void Quest_GiveRewards(Player *pl)
             }
             break;
         case 1:
-            switch (Pouch_Add(pl, 0xFF, 1)) {
+            switch (Pouch_Add(pl, 255, 1)) {
             case 0:
             case 1:
             case 2:
                 if (Player_IsLocal(pl) == 1) {
-                    Notice_Push(1, 0, 0xFF);
+                    Notice_Push(1, 0, 255);
                 }
                 break;
             case 3:
                 if (Player_IsLocal(pl) == 1) {
-                    Notice_Push(1, 3, 0xFF);
+                    Notice_Push(1, 3, 255);
                 }
             default:
                 if (Player_IsLocal(pl) == 1) {
@@ -2133,7 +2029,7 @@ void Quest_DeliverFromPouch(Player *pl, s32 mode)
         }
     }
     if (found) {
-        Jingle_Play(pl, 0xB7);
+        Jingle_Play(pl, 183);
     }
 }
 
@@ -2180,7 +2076,7 @@ u16 Quest_DeliverItem(Player *pl, u16 item, s16 count)
 
     if (n > 0) {
         Quest_DeliveryMessage(item);
-        Jingle_Play(pl, 0xB7);
+        Jingle_Play(pl, 183);
     }
     return n;
 }
@@ -2209,28 +2105,28 @@ u16 gRewardDeliverBands[6] = {
 u16 gRewardHuntBands[16] = {
 #include "sub_main/0044B530.inc"
 };
-u32 gRewardRatesMain[16] = {
+s8 gRewardRatesMain[64] = {
 #include "sub_main/0044B550.inc"
 };
-u32 gRewardRatesMainGoal[12] = {
+s8 gRewardRatesMainGoal[48] = {
 #include "sub_main/0044B590.inc"
 };
-u32 gRewardRatesSub[8] = {
+s8 gRewardRatesSub[32] = {
 #include "sub_main/0044B5C0.inc"
 };
-u32 gRewardRatesOther[2] = {
+s8 gRewardRatesOther[8] = {
 #include "sub_main/0044B5E0.inc"
 };
-u32 gRewardRatesDrill[3] = {
+s8 gRewardRatesDrill[12] = {
 #include "sub_main/0044B5E8.inc"
 };
-u32 gRewardRatesPart[2] = {
+s8 gRewardRatesPart[8] = {
 #include "sub_main/0044B5F8.inc"
 };
-u32 gRewardRatesCapture[2] = {
+s8 gRewardRatesCapture[8] = {
 #include "sub_main/0044B600.inc"
 };
-u32 gRewardRatesTraining[3] = {
+s8 gRewardRatesTraining[12] = {
 #include "sub_main/0044B608.inc"
 };
 #pragma explicit_zero_data on
@@ -2239,44 +2135,44 @@ u32 D_0044B618[2] = {
 };
 #pragma explicit_zero_data reset
 s8 *gRewardRateTables[8] = {
-    (s8 *)gRewardRatesMain, (s8 *)gRewardRatesMainGoal, (s8 *)gRewardRatesSub, (s8 *)gRewardRatesOther,
-    (s8 *)gRewardRatesDrill, (s8 *)gRewardRatesPart, (s8 *)gRewardRatesCapture, (s8 *)gRewardRatesTraining,
+    gRewardRatesMain, gRewardRatesMainGoal, gRewardRatesSub, gRewardRatesOther,
+    gRewardRatesDrill, gRewardRatesPart, gRewardRatesCapture, gRewardRatesTraining,
 };
-u8 gQuestTimedEventTbls_2[8] = {
+TimedSupply gQuestTimedEventTbls_2[4] = {
 #include "sub_main/0044B640.inc"
 };
-u8 gQuestTimedEventTbls_3[12] = {
+TimedSupply gQuestTimedEventTbls_3[6] = {
 #include "sub_main/0044B648.inc"
 };
-u8 gQuestTimedEventTbls_4[12] = {
+TimedSupply gQuestTimedEventTbls_4[6] = {
 #include "sub_main/0044B658.inc"
 };
-u8 gQuestTimedEventTbls_5[16] = {
+TimedSupply gQuestTimedEventTbls_5[8] = {
 #include "sub_main/0044B670.inc"
 };
-u8 gQuestTimedEventTbls_6[32] = {
+TimedSupply gQuestTimedEventTbls_6[16] = {
 #include "sub_main/0044B680.inc"
 };
-u8 gQuestTimedEventTbls_7[32] = {
+TimedSupply gQuestTimedEventTbls_7[16] = {
 #include "sub_main/0044B6A0.inc"
 };
-u8 gQuestTimedEventTbls_8[32] = {
+TimedSupply gQuestTimedEventTbls_8[16] = {
 #include "sub_main/0044B6C0.inc"
 };
-u8 gQuestTimedEventTbls_9[32] = {
+TimedSupply gQuestTimedEventTbls_9[16] = {
 #include "sub_main/0044B6E0.inc"
 };
-u8 gQuestTimedEventTbls_10[32] = {
+TimedSupply gQuestTimedEventTbls_10[16] = {
 #include "sub_main/0044B700.inc"
 };
-u8 gQuestTimedEventTbls_11[48] = {
+TimedSupply gQuestTimedEventTbls_11[24] = {
 #include "sub_main/0044B720.inc"
 };
-u8 *gQuestTimedEventTbls[16] = {
-    (u8 *)D_006AEDB8, (u8 *)D_006AEDB8, gQuestTimedEventTbls_2, gQuestTimedEventTbls_3,
+TimedSupply *gQuestTimedEventTbls[16] = {
+    (TimedSupply *)D_006AEDB8, (TimedSupply *)D_006AEDB8, gQuestTimedEventTbls_2, gQuestTimedEventTbls_3,
     gQuestTimedEventTbls_4, gQuestTimedEventTbls_5, gQuestTimedEventTbls_6, gQuestTimedEventTbls_7,
     gQuestTimedEventTbls_8, gQuestTimedEventTbls_9, gQuestTimedEventTbls_10, gQuestTimedEventTbls_11,
-    (u8 *)D_006AEDB8, NULL, NULL, NULL,
+    (TimedSupply *)D_006AEDB8, NULL, NULL, NULL,
 };
 
 /*
@@ -2290,22 +2186,6 @@ u8 *gQuestTimedEventTbls[16] = {
  * rolls the item from the game overlay's gGatherItemTables
  * (Gather_RollMineItem, random stream 0).
  */
-
-u16 Gather_RollMineItem(Player *p, u16 table);
-
-
-extern GatherEntry *gGatherItemTables[];
-
-s32 QuestGoal_InitialFlags(u16 i, s32 mask);
-s32 QuestGoal_IsDone(s32 i);
-s32 Player_HasSkill(Player *p, u8 skill);
-s32 SpecialMine_Gather(Player *p);
-void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
-f32 Math_Sqrtf(f32 x);   /* sqrtf */
-u16 Rand_Next(s32 stream);
-void MineActive_RemoveAt(s8 idx);
-void MineActive_Remove(s8 slot);
-void MineActive_Append(s8 slot);
 
 /*
  * Returns nonzero once a set-down delivery goal (QUEST_GOAL_DELIVER_SET) is
@@ -2326,7 +2206,7 @@ s32 QuestGoal_DeliveryDone(void)
 
 /*
  * Rolls an item from gathering table `tableIdx` (weights, random stream 0);
- * item 0x290 in pl's pouch moves the roll one step up the table. Returns
+ * item 656 in pl's pouch moves the roll one step up the table. Returns
  * GATHER_NO_ITEM when the roll falls past the table.
  */
 u16 Gather_RollMineItem(Player *pl, u16 tableIdx)
@@ -2371,7 +2251,7 @@ void MinePoint_ResetAll(void)
 
 /*
  * Counts down the timer of each timed point and removes the spent or
- * expired ones; every 64 frames the others spawn their glint (effect 0x15)
+ * expired ones; every 64 frames the others spawn their glint (effect 21)
  * 20 units above them, at scale 0.5, shrinking to 0.2 over the last 900
  * frames.
  */
@@ -2399,7 +2279,7 @@ void MinePoint_UpdateAll(void)
         pos[0] = point->x;
         pos[1] = point->y + 20.0f;
         pos[2] = point->z;
-        PartFx_SpawnAt(pos, 0x15, point->timer < 900 ? 0.2f + 0.3f * (point->timer / 900.0f) : 0.5f);
+        PartFx_SpawnAt(pos, 21, point->timer < 900 ? 0.2f + 0.3f * (point->timer / 900.0f) : 0.5f);
     }
 }
 
@@ -2417,7 +2297,7 @@ s32 MinePoint_Add(MinePoint *src, f32 *pos, u8 noBonus)
     point = gMinePoints;
     MinePoint_RemoveOldest();
     for (i = 0; i < MINE_POINT_COUNT; i++, point++) {
-        if (point->table != 0xFFFF) {
+        if (point->table != MINE_POINT_FREE) {
             continue;
         }
         if (pos == NULL) {
@@ -2476,7 +2356,7 @@ void MinePoint_SetArea(s32 slot, u16 area)
 
 /*
  * Returns the action (MINE_ACTION_*) of the point the object stands at, or
- * 0xFFFF when there is none: in its area, from 200 below to 100 above the
+ * 65535 when there is none: in its area, from 200 below to 100 above the
  * point, and within its radius.
  */
 u16 MinePoint_FindNearPlayer(void *obj)
@@ -2508,7 +2388,7 @@ u16 MinePoint_FindNearPlayer(void *obj)
         }
         return point->action;
     }
-    return 0xFFFF;
+    return 65535;
 }
 
 /*
@@ -2641,18 +2521,15 @@ extern u8 *gQuestEmSets;
 extern QuestInfo *gQuestInfo;
 extern u8 gQuestStats[];
 extern s32 gQuestPartyClearTime;
-extern s8 gEmTallyClass[0x4A];
+extern s8 gEmTallyClass[74];
 extern s32 gVersusEmAngles[2];
 extern f32 gVersusEmPos[2][3];
 extern char *gRewardCutFmt;
-extern char *gDrillScoreTexts[];
 extern u16 gMarkMonsterCands[];
 extern u8 *gEmSizeRollTbls[];
 extern u8 gEmSizeRollPicks[];
 extern SpecialMineReward *gSpecialMineRewards[];
 extern u16 gSpecialMinePoints[];
-extern u8 gEmShowsOnMap[];
-extern s8 *gEmLevelTables[];
 extern s8 gEmLevelTableIdx[][2];
 extern s8 gEmLevelSeasonAdd[][3];
 extern u16 gEmSizeSeasonAdd[][3];
@@ -2660,61 +2537,15 @@ extern s32 gQuestTimeLeft;
 extern u16 gSpecialMinePoint;
 extern s32 gSpecialMineAge;
 extern s32 gQuestCountdown;
-extern char *gElderFledText[];
 extern char *D_0044557C;
-extern char *gSubBSupplyText[];
 extern char *gGoalDoneTexts[];
-extern char *gMustOrderAllText[];
 extern char *gMustOrderOneText;
-extern EmMineEntry *gEmMinePoints[];
-extern EmMineEntry2 *gEmMinePoints2[];
 
-void *memset(void *p, s32 c, u32 n);
 s32 Quest_IsMustOrderOrVersus(); /* unit's own declaration: the definition takes no parameter; most callers here pass the object in a0, which it ignores */
 s32 Quest_IsVersus(void);
-s32 Quest_GetTime(s32 which);
-s32 Quest_IsPartBroken(u16 type, u16 part);
-void Versus_InitEm(Em *em);
-void EmSlot_LoadModels(s32 slot);
-void GmLoad_LoadEmData(s32 kind, s32 idx);
-s32 Quest_IsMustOrder(void);
-void Bgm_PlayEvent(s32 a);
-s32 MsgEvent_Check(u16 kind);
-void QSync_SendState(u8 kind, u8 who);
-u16 Quest_Random(void);
-u8 Notice_PushText(char *s);
 void vsprintf(char *buf, char *fmt, va_list ap);
 /* the calls cast to u8: this unit's code takes the value as u8 */
-s32 Quest_GetSeason(void);
-u8 Daytime_Get(void);
-s16 Pouch_Space(Player *p, u16 item);
-void Quest_Sprintf(char *buf, char *fmt, ...);
-void QuestEm_RollLevel(QuestEm *q);
-void QuestEm_Init(QuestEm *q, s32 *n);
-u16 QuestEm_RollSize(void);
-void QuestEm_InitSets(u8 *set, s32 *n);
-void QuestEm_InitAreaSets(u8 **list, s32 *n);
-void QuestGoal_Add(s32 flags, s16 target, s16 count);
-s32 Quest_GetOutcome(s32 withLoss);
-s32 Quest_GetTime(s32 a);
-void MinePoint_PrepareStub(MinePoint *pt);
-void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Quest_IsDrill(void);
-s32 Player_IsLocal(void *obj);
-u16 Rand_Next(s32 stream);
-s8 EmMine_CreateTimed(Em *em, f32 *pos, s32 idx);
-void EmMine_RemoveTimed(Em *em);
-void EmMine_Remove(Em *em);
-s32 Quest_CheckSubClear(void);
-void QuestGoal_Complete(u16 i, u32 flag);
-void QuestGoal_CompleteIfRunning(u16 i, s32 flag);
-void Quest_JumpToEnd(s32 a);
 static void Quest_JumpToGoalMet(s32 a);
-s32 QuestGoal_IsDone(s32 i);
-s32 QuestGoal_IsUsed(s32 i);
-s32 SpecialMine_Rank(void);
 
 /*
  * Adds em's carcass point from entry idx of its kind's list
@@ -2821,7 +2652,7 @@ s8 EmMine_CreateTimed(Em *em, f32 *pos, s32 idx)
             point.flags = 0;
             em->mineSlot2 = MinePoint_Add(&point, pos, 1);
             em->mineTimer2 = 1800;
-            Sound_PlaySeAtPosChecked(1, 0x8C, 0, pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 140, 0, pos, 1, 0);
         }
     }
     return em->mineSlot2;
@@ -2866,7 +2697,7 @@ void EmMine_Drop(Em *em, f32 *pos)
     point.timer = 1800;
     point.flags = 0;
     MinePoint_Add(&point, pos, 1);
-    Sound_PlaySeAtPosChecked(1, 0x8C, 0, pos, 1, 0);
+    Sound_PlaySeAtPosChecked(1, 140, 0, pos, 1, 0);
 }
 
 /* Frees em's dropped items (Em.mineSlot2). */
@@ -2905,7 +2736,7 @@ void EmMine_UpdateTimed(Em *em)
     pos[0] = gMinePoints[em->mineSlot2].x;
     pos[1] = gMinePoints[em->mineSlot2].y + 20.0f;
     pos[2] = gMinePoints[em->mineSlot2].z;
-    PartFx_SpawnAt(pos, 0x15, em->mineTimer2 < 900 ? 0.2f + 0.3f * (em->mineTimer2 / 900.0f) : 0.5f);
+    PartFx_SpawnAt(pos, 21, em->mineTimer2 < 900 ? 0.2f + 0.3f * (em->mineTimer2 / 900.0f) : 0.5f);
 }
 
 /* Adds a carcass point from entry 1 of the held monster's kind list at pos, in the holder's area; returns its slot or -1. */
@@ -2967,7 +2798,7 @@ void EmMine_Remove(Em *em)
 /*
  * The special point: the local player makes it by using an item where it
  * stands (gSpecialMinePoint holds the item, 0: none). Gathered later, it
- * gives item 0x2F7 and a reward that improves with the point's age
+ * gives item 759 and a reward that improves with the point's age
  * (gSpecialMineAge, ranked by gSpecialMineAgeRanks).
  */
 
@@ -3017,7 +2848,7 @@ s32 SpecialMine_Create(Player *pl)
 }
 
 /*
- * Gathers the special point for the local player pl: gives item 0x2F7 and
+ * Gathers the special point for the local player pl: gives item 759 and
  * returns the reward for the point's item at its rank (the list of
  * gSpecialMineRewards found by the item in gSpecialMinePoints), and frees
  * the point. Returns GATHER_NO_ITEM when there is none, the pouch is full,
@@ -3035,11 +2866,11 @@ s32 SpecialMine_Gather(Player *pl)
     if (gSpecialMinePoint == 0) {
         return GATHER_NO_ITEM;
     }
-    if (Pouch_Space(pl, 0x2F7) <= 0) {
+    if (Pouch_Space(pl, 759) <= 0) {
         return GATHER_NO_ITEM;
     }
-    Pouch_Add(pl, 0x2F7, 1);
-    Notice_Push(1, 0, 0x2F7);
+    Pouch_Add(pl, 759, 1);
+    Notice_Push(1, 0, 759);
     rank = SpecialMine_Rank();
     for (i = 0;; i++) {
         if (gSpecialMinePoints[i] == 0xFFFF /* the list end */) {
@@ -3074,8 +2905,8 @@ void QuestStats_Init(void)
 {
     s32 n;
 
-    memset(gQuestStats, 0, 0x1C);
-    for (n = 0; n < 0x49; n++) {
+    memset(gQuestStats, 0, 28);
+    for (n = 0; n < 73; n++) {
         if (gMarkMonsterCands[n] == 0) {
             break;
         }
@@ -3124,7 +2955,7 @@ void QuestStats_Tally(void)
         return;
     }
     gQuest.clearTime = gQuestPartyClearTime;
-    for (i = 0; i < 0x4A; i++) {
+    for (i = 0; i < 74; i++) {
         u16 n = gQuest.hunted[i];
 
         if (n <= 0) {
@@ -3162,10 +2993,10 @@ void QuestStats_Tally(void)
 /* Formats gQuest.penalty with gRewardCutFmt and shows it. */
 void Quest_ShowValue(void)
 {
-    char buf[0x20];
+    char buf[32];
 
     Quest_Sprintf(buf, gRewardCutFmt, gQuest.penalty);
-    buf[0x1F] = 0;
+    buf[31] = 0;
     Notice_PushText(buf);
 }
 
@@ -3376,13 +3207,13 @@ s32 Em_HasRandomSize2(s16 kind)
     return 0;
 }
 
-/* Initialises the monster sets at set (0x10 bytes each, until one is empty) and rolls their sizes. */
+/* Initialises the monster sets at set (16 bytes each, until one is empty) and rolls their sizes. */
 void QuestEm_InitSets(u8 *set, s32 *n)
 {
     s32 count;
     QuestEm *qem;
 
-    for (;; set += 0x10) {
+    for (;; set += 16) {
         count = (s32)StageEntry_GetData((struct StageEntry *) set, 0);
         qem = (QuestEm *)StageEntry_GetData((struct StageEntry *) set, 1);
         if (count == 0) {
@@ -3426,7 +3257,7 @@ void QuestEm_InitAreaSets(u8 **list, s32 *n)
         for (;;) {
             count = (s32)StageEntry_GetData((struct StageEntry *) set, 0);
             qem = (QuestEm *)StageEntry_GetData((struct StageEntry *) set, 1);
-            set += 0x10;
+            set += 16;
             if (count == 0) {
                 break;
             }
@@ -3694,15 +3525,15 @@ void QuestGoal_Complete(u16 i, u32 how)
             break;
         }
     }
-    /* message events (MsgEvent_Check): 0x11 killed, 0x12 captured, 0xF delivered */
+    /* message events (MsgEvent_Check): 17 killed, 18 captured, 15 delivered */
     if (how == GOAL_MET_KILLED) {
-        MsgEvent_Check(0x11);
+        MsgEvent_Check(17);
     }
     if (how == GOAL_MET_CAPTURED) {
-        MsgEvent_Check(0x12);
+        MsgEvent_Check(18);
     }
     if (how == GOAL_MET_DELIVERED) {
-        MsgEvent_Check(0xF);
+        MsgEvent_Check(15);
     }
     switch (gQuest.clearType) {
     case QUEST_CLEAR_ANY:
@@ -3745,7 +3576,7 @@ void QuestGoal_Complete(u16 i, u32 how)
                 }
             }
         }
-        Bgm_PlayEvent(0xB7);
+        Bgm_PlayEvent(183);
     }
     gQuest.msgArea = i;
     gQuest.msgArg0 = 0;
@@ -4209,15 +4040,7 @@ s32 QuestGoal_OnKillSlot(u16 target, u16 i)
 }
 
 extern QuestTimeNotice gQuestTimeNotices[];
-extern char *gTimeLeftMinFmt[];
-extern char *gQuestNoticeTexts[];
 extern s8 D_006ADB2E;
-void Quest_SendTime(void);
-u8 Quest_FindSpecialMonster(u8 type);
-void Quest_StoreElapsed(void);
-s32 Quest_IsTraining(void);
-void SeasonBanner_Create(void);
-void Quest_TargetMessage(void);
 u8 EmList_AnyBelowHalfHp(void); /* unit's own declaration: the definition (game) returns s32; Quest_StepScript masks the result to a byte as the game's code does, which only a u8 return gives */
 void Versus_End(s8 side);
 
@@ -4226,8 +4049,8 @@ void Versus_End(s8 side);
  * command pc until a command waits, and returns where it stopped (or the
  * QUEST_OP_MARK position). While the quest is ACTIVE it also counts the time
  * down, with the time-left notices and a QMSG_TIME_LEFT every 5 minutes;
- * when the time is up it jumps to the time-out label. A goal with flag
- * 0x100 (goalLabel) or a triggered event (eventLabel) jumps to its label.
+ * when the time is up it jumps to the time-out label. A goal with
+ * flag 0x100 (goalLabel) or a triggered event (eventLabel) jumps to its label.
  * QUEST_OP_NOTICE's text pointer is a local advanced by the index, the
  * form that gives the game's register order.
  */
@@ -4358,13 +4181,13 @@ s16 Quest_StepScript(Player *pl, s16 cmdIndex, s32 *out)
             break;
         case QUEST_OP_GOAL_MET:
             em = gQuest.spawnedEm;
-            if (em != NULL && Quest_FindSpecialMonster(em->type) != 0xFF) {
+            if (em != NULL && Quest_FindSpecialMonster(em->type) != 255) {
                 gQuest.savedEmHp = em->hp;
                 gQuest.parts[em->type] = em->partsBroken;
             }
             gQuest.msgArg0 = 0;
             gQuest.msgArg1 = 0;
-            gSysSettings.clearCapture = 0x81;
+            gSysSettings.clearCapture = 129;
             gQuest.result = QUEST_PHASE_GOAL_MET;
             cmdIndex++;
             gScene.questPhase = QUEST_PHASE_GOAL_MET;
@@ -4412,7 +4235,7 @@ s16 Quest_StepScript(Player *pl, s16 cmdIndex, s32 *out)
                 Notice_PushItem(gQuestNoticeTexts[0]);
             }
             if (Quest_IsVersus() == 0 && Quest_IsDrill() == 0 && Quest_IsTraining() == 0) {
-                Notice_Push(0, 0xF, 0);
+                Notice_Push(0, 15, 0);
             }
             break;
         case QUEST_OP_BEGIN:
@@ -4457,7 +4280,7 @@ s16 Quest_StepScript(Player *pl, s16 cmdIndex, s32 *out)
             continue;
         case QUEST_OP_GOAL_MET_ALT:
             em = gQuest.spawnedEm;
-            if (em != NULL && Quest_FindSpecialMonster(em->type) != 0xFF) {
+            if (em != NULL && Quest_FindSpecialMonster(em->type) != 255) {
                 gQuest.savedEmHp = em->hp;
                 gQuest.parts[em->type] = em->partsBroken;
             }
@@ -4490,7 +4313,7 @@ s16 Quest_StepScript(Player *pl, s16 cmdIndex, s32 *out)
             continue;
         case QUEST_OP_IF_EM_WEAK:
             if (EmList_AnyBelowHalfHp() == 1) {
-                QuestGoal_CompleteIfRunning(0, 0x200);
+                QuestGoal_CompleteIfRunning(0, 512);
                 cmdIndex++;
                 continue;
             }
@@ -4576,7 +4399,7 @@ s16 Quest_StepScript(Player *pl, s16 cmdIndex, s32 *out)
         }
         break;
     }
-    if (gSysSettings.clearCapture == 0x80) {
+    if (gSysSettings.clearCapture == 128) {
         gSysSettings.clearCapture = 0;
         if (QuestGoal_IsDone(0) == 1 && Quest_GetOutcome(0) != 0) {
             CamReq_TargetDown();
@@ -4589,11 +4412,6 @@ s16 Quest_StepScript(Player *pl, s16 cmdIndex, s32 *out)
 }
 
 extern s32 gDrillPayoutThresholds[];
-extern PartReward gPartRewardRecs[];
-extern u16 *gRewardItemTables[];
-u16 Dojo_GetParMinutes(u16 id);
-
-s32 Plsel_DrillPayout(void);
 
 #pragma optimization_level 3
 /*
@@ -4697,27 +4515,27 @@ void Quest_RollRewards(void)
                 }
                 break;
             case REWARD_HP_BELOW:
-                if (gScene.unk13A <= 0x6400 || gQuest.savedEmHp > 0x6400) {
+                if (gScene.unk13A <= 25600 || gQuest.savedEmHp > 25600) {
                     goto next;
                 }
                 break;
             case REWARD_HP_BELOW + 1:
-                if (gScene.unk13A <= 0x4B00 || gQuest.savedEmHp > 0x4B00) {
+                if (gScene.unk13A <= 19200 || gQuest.savedEmHp > 19200) {
                     goto next;
                 }
                 break;
             case REWARD_HP_BELOW + 2:
-                if (gScene.unk13A <= 0x3200 || gQuest.savedEmHp > 0x3200) {
+                if (gScene.unk13A <= 12800 || gQuest.savedEmHp > 12800) {
                     goto next;
                 }
                 break;
             case REWARD_HP_BELOW + 3:
-                if (gScene.unk13A <= 0x1900 || gQuest.savedEmHp > 0x1900) {
+                if (gScene.unk13A <= 6400 || gQuest.savedEmHp > 6400) {
                     goto next;
                 }
                 break;
             case REWARD_HP_BELOW + 4:
-                if (gScene.unk13A <= 0x1900 || gQuest.savedEmHp > 0x1900) {
+                if (gScene.unk13A <= 6400 || gQuest.savedEmHp > 6400) {
                     goto next;
                 }
                 break;
@@ -4846,7 +4664,7 @@ void Quest_RollRewards(void)
     }
     if (Quest_IsMustOrderOrVersus() == 0) {
         slot = REWARD_SLOT_PARTS;
-        for (partRec = gPartRewardRecs; partRec->kind != 0xFF; partRec++) {
+        for (partRec = gPartRewardRecs; partRec->kind != 255; partRec++) {
             if (partRec->part == PART_REWARD_CAPTURE) {
                 if (gQuest.captured[partRec->kind] == 0) {
                     continue;
@@ -4855,7 +4673,7 @@ void Quest_RollRewards(void)
                 continue;
             }
             tableIdx = partRec->table[gStageHeader->tier];
-            if (tableIdx == 0xFFFF /* none at this tier */) {
+            if (tableIdx == REWARD_TABLE_NONE) {
                 continue;
             }
             dropList = gRewardItemTables[tableIdx];
@@ -5085,7 +4903,7 @@ SpecialMineReward *gSpecialMineRewards[36] = {
 u16 gSpecialMinePoints[40] = {
 #include "sub_main/0044BD60.inc"
 };
-u32 gDefaultStageHeader_3[4] = {
+u16 gDefaultStageHeader_3[8] = {
 #include "sub_main/0044BDB0.inc"
 };
 s8 gRewardGiveRolls[16] = {
@@ -5094,7 +4912,7 @@ s8 gRewardGiveRolls[16] = {
 QuestTimeNotice gQuestTimeNotices[3] = {
 #include "sub_main/0044BDD0.inc"
 };
-u32 gStyleSymbolColors[2] = {
+u8 gStyleSymbolColors[8] = {
 #include "sub_main/0044BDE8.inc"
 };
 s32 gVersusEmAngles[2] = {
@@ -5103,16 +4921,16 @@ s32 gVersusEmAngles[2] = {
 f32 gVersusEmPos[2][3] = {
 #include "sub_main/0044BE00.inc"
 };
-u32 gStageFileTbls_0[12] = {
+s16 gStageFileTbls_0[24] = {
 #include "sub_main/0044BE20.inc"
 };
-u32 gStageFileTbls_1[6] = {
+s16 gStageFileTbls_1[12] = {
 #include "sub_main/0044BE50.inc"
 };
-u32 gStageFileTbls_2[3] = {
+s16 gStageFileTbls_2[6] = {
 #include "sub_main/0044BE68.inc"
 };
-u32 gStageFileTbls_3[44] = {
+s16 gStageFileTbls_3[88] = {
 #include "sub_main/0044BE80.inc"
 };
 
@@ -5128,48 +4946,26 @@ u32 gStageFileTbls_3[44] = {
  */
 
 /* The monster QuestEm_SpawnYamaTsukamiB builds for QuestEm_Spawn: a
- * QuestEm, but 0x40 bytes, the stack frame the game's function has. The
+ * QuestEm, but 64 bytes, the stack frame the game's function has. The
  * positions are written as integers (0). */
 typedef struct SpawnRequest {
     s16 kind;
     s16 variant;
-    u8 unk04[0x1C - 0x04];
+    u8 unk04[28 - 4];
     s32 rotY;
     s32 x;
     s32 y;
     s32 z;
-    u8 unk2C[0x30 - 0x2C];
+    u8 unk2C[48 - 44];
     s16 size;
     s16 hp;
-    u8 unk34[0x40 - 0x34];
+    u8 unk34[64 - 52];
 } SpawnRequest;
 
 /* The quest record's counts per monster kind (QuestRecord in the boot
  * ELF's main.c: kindA and kindB). */
 extern u8 gQuestRecordHunted[];
 extern u8 gQuestRecordCaptured[];
-extern s32 gQuestPartyClearTime;
-
-
-s16 Pouch_Count(Player *p, u16 item);
-u16 Rand_Next(s32 stream);
-u16 Area_DayId(u16 a);
-void QSync_SendState(u8 kind, u8 who);
-s32 Quest_GetTime(s32 a);
-s32 Player_IsLocal(void *obj);
-void Player_UpdateMotionTime(Player *p, s16 step);
-void QSync_SendPlayer(Player *p, s32 kind, u16 mode);
-void Player_ReturnToIdle(Player *p, s32 action, s32 a2, s32 a3);
-void Player_ReturnToIdleKeepParts(Player *p, s32 action, s32 a2, s32 a3);
-void Player_ResetAttackPercent(Player *p);
-s16 Area_Temperature(u16 area);
-s32 Player_HasSkill(Player *p, u8 skill);
-/* unit's own declaration: an s32 frame as Player_StartIdleMotion's calls pass it; with the definition's s16 the calls compile differently */
-void Player_SetMotion(Player *pl, s32 motion, s32 blend, s32 frame, s32 layer);
-
-void Player_ClearPartOverrides(Player *p);
-void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
-void Player_SetFlag(void *obj, u32 flag);
 
 /* Nonzero when the local player holds the items of a QUEST_OP_WAIT_ITEMS
  * command (cmd: the command read as halfwords: its item, then its count). */
@@ -5232,14 +5028,14 @@ static void Quest_JumpToGoalMet(s32 alt)
     }
 }
 
-/* 1, one time in 16, on the quests 0x2B04 to 0x2B06 in the area of day id
- * 0x6E (QuestEm_SpawnArea then adds Yama Tsukami's second kind). */
+/* 1, one time in 16, on the quests 11012 to 11014 in the area of day id
+ * AREA_JUNGLE_0 (QuestEm_SpawnArea then adds Yama Tsukami's second kind). */
 s32 QuestEm_RollYamaTsukamiB(s32 area)
 {
     switch (gQuest.stage) {
-    case 0x2B04:
-    case 0x2B05:
-    case 0x2B06:
+    case 11012:
+    case 11013:
+    case 11014:
         if (Area_DayId(area) == AREA_JUNGLE_0 && (Rand_Next(0) & 0xF) == 0) {
             return 1;
         }
@@ -5263,14 +5059,6 @@ void QuestEm_SpawnYamaTsukamiB(void)
     request.rotY = 0;
     QuestEm_Spawn((QuestEm *)&request);
 }
-
-extern s32 gQuestCountdown;
-void Quest_JumpToEnd(s32 a);
-void Quest_OnRemoteKill(void);
-u8 Quest_SetDelivered(Player *pl, u16 item, s32 count);
-void QuestGoal_Complete(u16 i, u32 flag);
-void Versus_End(s8 side);
-s32 Side_Match(u8 a, u8 b, u8 c);
 
 /* Applies the quest message another player sent (gQuest.msgType, QMSG_*);
  * Quest_JumpToGoalMet is static in this unit. */
@@ -5369,22 +5157,16 @@ typedef struct QuestEmView {
     s16 kind;           /* 0x00 */
     u8 pad2[2];
     s8 count;           /* 0x04 */
-    u8 pad5[0x2C - 0x5];
+    u8 pad5[44 - 5];
     u8 index;           /* 0x2C: QuestEm.index's low byte */
     u8 pad2D;
     s16 flags;          /* 0x2E */
-    u8 pad30[0x34 - 0x30];
+    u8 pad30[52 - 48];
     s8 emIndex;         /* 0x34 */
     s8 large;           /* 0x35 */
 } QuestEmView;
 
-void EmMine_Remove(Em *em);
 void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode);
-void Quest_CountEventKill(u16 type);
-void Quest_CountTarget(u16 type);
-s32 Quest_IsVersus(void);
-void QuestEm_CountHunted(u16 i);
-extern Em gEms[];
 
 /*
  * Another player's QMSG_KILL (Quest_SendKill): the quest monster it names
@@ -5530,404 +5312,4 @@ void Quest_StoreElapsed(void)
     s32 limit = Quest_GetTime(QUEST_TIME_LIMIT);
 
     gQuest.elapsed = limit - Quest_GetTime(QUEST_TIME_LEFT);
-}
-
-/*
- * The player's state code (sub_main's half of it; the states themselves are
- * the game overlay's, include/player.h). The state calls take a Player or an
- * Em (both start with ObjHead).
- */
-
-/* Turns off the part motion overrides of the four motion layers. */
-void Player_ClearPartOverrides(Player *pl)
-{
-    s32 i;
-
-    for (i = 0; i < 4; i++) {
-        pl->partAnimOn[i] = 0;
-        pl->partAnimMotion[i] = 0;
-        pl->partAnimWeight[i] = 0;
-    }
-}
-
-/*
- * Sets the state group and state of a player or a monster (obj), as
- * Player_SetState but without its checks or flags. A monster keeps no
- * previous state nor stateRand, and keeps its part overrides in weapon-group
- * states 0, 4 and 5 when the byte at Player.weaponType is 1, 5 or 10. For a
- * player with unk01E 0, the local player sends the change; another player
- * put in the idle state returns to the idle motion.
- */
-void Player_ForceState(void *obj, s32 state, s32 sub)
-{
-    Player *pl = obj;
-    if (pl->isEm == 0) {
-        pl->prevStateGroup = pl->stateGroup;
-        pl->prevState = pl->state;
-    }
-    pl->stateGroup = state;
-    pl->state = sub;
-    pl->step = 0;
-    pl->stateVar0 = 0;
-    pl->stateVar1 = 0;
-    if (pl->isEm == 0) {
-        pl->stateRand = Rand_Next(1);
-    }
-    if (pl->isEm == 0) {
-        Player_ClearPartOverrides(pl);
-    } else {
-        switch (pl->weaponType) {
-        case WEAPON_HEAVY_BOWGUN:
-        case WEAPON_LIGHT_BOWGUN:
-        case WEAPON_BOW:
-            if (pl->stateGroup == PL_GROUP_WEAPON) {
-                switch (pl->state) {
-                case 0:
-                case 4:
-                case 5:
-                    break;
-                default:
-                    Player_ClearPartOverrides(pl);
-                    break;
-                }
-            } else {
-                Player_ClearPartOverrides(pl);
-            }
-            break;
-        default:
-            Player_ClearPartOverrides(pl);
-            break;
-        }
-    }
-    if (pl->isEm == 0 && pl->stateGroup == PL_GROUP_REACT) {
-        pl->unk417 = 0;
-    }
-    Player_UpdateMotionTime(pl, 0);
-    pl->flags &= 0x100100;
-    pl->stateFlags = 0;
-    if (pl->isEm == 0 && pl->ownTask == 0) {
-        if (Player_IsLocal(pl) == 1) {
-            QSync_SendPlayer(pl, QSYNC_PL_STATE, 0);
-            return;
-        }
-        if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_IDLE) != 0) {
-            Player_ReturnToIdle(pl, 0, 4, 0);
-        }
-    }
-}
-
-/*
- * Changes pl's state to group `state`, state `sub` (PL_GROUP_*, and the
- * group's enum in player.h): the old one goes to prevStateGroup/prevState,
- * the step, the scratch bytes, the motion speed and the flags not kept are
- * reset, and stateRand is drawn again. `flags` are PL_SET_*. The local
- * player sends the change (QSync_SendPlayer); another player put in the idle
- * state returns to the idle motion. While the local player moves to another
- * area, only an event state is taken.
- */
-void Player_SetState(Player *pl, u16 state, u8 sub, u16 flags)
-{
-    u16 low;
-
-    if (Player_IsLocal(pl) == 1 && pl->areaMoveState != PL_AREA_MOVE_NONE && state != PL_GROUP_EVENT) {
-        return;
-    }
-    pl->prevStateGroup = pl->stateGroup;
-    pl->prevState = pl->state;
-    pl->stateGroup = state;
-    pl->state = sub;
-    pl->step = 0;
-    pl->stateVar0 = 0;
-    pl->stateVar1 = 0;
-    if (flags & PL_SET_KEEP_RAND) {
-        low = (u8)pl->stateRand;
-        pl->stateRand = Rand_Next(1) & 0xFF00;
-        pl->stateRand |= low;
-    } else {
-        pl->stateRand = Rand_Next(1);
-    }
-    pl->stateRequest = 0;
-    pl->motionSpeed = 1.0f;
-    if (!(flags & PL_SET_KEEP_PARTS)) {
-        Player_ClearPartOverrides(pl);
-        pl->aimWeight = 0;
-    }
-    Player_ResetAttackPercent(pl);
-    if (pl->stateGroup == PL_GROUP_REACT) {
-        pl->unk417 = 0;
-    }
-    Player_UpdateMotionTime(pl, 0);
-    pl->flags &= 0x80100;
-    pl->stateFlags = 0;
-    pl->motion[0].step = 2.0f;
-    pl->motion[1].step = 2.0f;
-    if (Player_IsLocal(pl) == 1) {
-        if (!(flags & PL_SET_NO_SYNC)) {
-            if (flags & PL_SET_SYNC_OFFER) {
-                QSync_SendPlayer(pl, QSYNC_PL_HANDOVER, flags);
-            } else if (flags & PL_SET_SYNC_ALT) {
-                QSync_SendPlayer(pl, QSYNC_PL_STATE_AIM, flags);
-            } else {
-                QSync_SendPlayer(pl, QSYNC_PL_STATE, flags);
-            }
-        }
-    } else if (Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_IDLE) != 0) {
-        if (!(flags & PL_SET_KEEP_PARTS)) {
-            Player_ReturnToIdle(pl, 0, 4, 0);
-        } else {
-            Player_ReturnToIdleKeepParts(pl, 0, 4, 0);
-        }
-    }
-}
-
-/* Player_SetState, marked as a request (stateRequest); refused as there while the local player changes areas. */
-void Player_RequestState(Player *pl, u16 state, u8 sub, u16 flags)
-{
-    if (Player_IsLocal(pl) != 1 || pl->areaMoveState == PL_AREA_MOVE_NONE || state == PL_GROUP_EVENT) {
-        Player_SetState(pl, state, sub, flags);
-        pl->stateRequest = 1;
-    }
-}
-
-/*
- * Player_RequestState with PL_SET_KEEP_RAND: the low byte of stateRand
- * carries gQuest.drillCharm for the local player (0 for another).
- */
-void Player_RequestStateSynced(Player *pl, u16 state, u8 sub, u16 flags)
-{
-    if (Player_IsLocal(pl) != 1 || pl->areaMoveState == PL_AREA_MOVE_NONE || state == PL_GROUP_EVENT) {
-        if (Player_IsLocal(pl) == 1) {
-            pl->stateRand = gQuest.drillCharm;
-        } else {
-            pl->stateRand = 0;
-        }
-        Player_SetState(pl, state, sub, flags | PL_SET_KEEP_RAND);
-        pl->stateRequest = 1;
-    }
-}
-
-/* Returns 1 when the player or monster obj is in group `state`, state `sub`. */
-s16 Player_IsState(void *obj, u8 state, u8 sub)
-{
-    ObjHead *head = obj;
-    if (head->stateGroup == state && head->state == sub) {
-        return 1;
-    }
-    return 0;
-}
-
-/* Returns obj's flags masked by `flag`; with bit 31 set, its stateFlags (cleared at each state change) instead. */
-u32 Player_TestFlag(void *obj, u32 flag)
-{
-    ObjHead *head = obj;
-    if ((flag & 0x80000000) == 0) {
-        return head->flags & flag;
-    }
-    return head->stateFlags & (flag & 0x7FFFFFFF);
-}
-
-/* Sets `flag` in obj's flags, or in its stateFlags with bit 31 set. */
-void Player_SetFlag(void *obj, u32 flag)
-{
-    ObjHead *head = obj;
-    if (!(flag & 0x80000000)) {
-        head->flags |= flag;
-    } else {
-        head->stateFlags |= flag & 0x7FFFFFFF;
-    }
-}
-
-/* Clears `flag` in obj's flags, or in its stateFlags with bit 31 set. */
-void Player_ClearFlag(void *obj, u32 flag)
-{
-    ObjHead *head = obj;
-    if (!(flag & 0x80000000)) {
-        head->flags &= ~flag;
-    } else {
-        head->stateFlags &= ~(flag & 0x7FFFFFFF);
-    }
-}
-
-/* Sets the player's posture (Player.action, PL_POSTURE_*) and nothing else. */
-void Player_SetPostureOnly(Player *pl, u8 posture)
-{
-    pl->action = posture;
-}
-
-/* Returns obj's ObjHead.attackFlags bits (ATKF_*) masked by `mask`. */
-s32 Player_TestFlags(void *obj, s32 mask)
-{
-    ObjHead *head = obj;
-    return head->attackFlags & mask;
-}
-
-/* Returns obj's ObjHead.attackFlags bits (ATKF_*) masked by `mask`, then sets them. */
-s32 Player_TestSetFlags(void *obj, s32 mask)
-{
-    ObjHead *head = obj;
-    s32 ret = head->attackFlags & mask;
-
-    head->attackFlags |= (u16)mask;
-    return ret;
-}
-
-/*
- * The idle motion in the air (Player_ReturnToIdle with move mode 2): motion
- * 0x3F9 from frame 8, blended over `blend` frames; `variant` picks unk2B4,
- * 2 or 6. Sets flag 1.
- */
-void Player_SetAirIdle(Player *pl, s16 blend, s32 variant)
-{
-    pl->motionId[0] = 0x3F9;
-    if (variant == 0) {
-        pl->unk2B4 = 2;
-    } else {
-        pl->unk2B4 = 6;
-    }
-    pl->motionBlend[0] = blend / 2;
-    pl->motionBlend[1] = blend / 2;
-    pl->motionFrame[0] = 8;
-    pl->motionFrame[1] = 8;
-    Player_SetFlag(pl, 1);
-}
-
-/*
- * Starts pl's idle motion pair (lower and upper layers), blended over
- * `blend` frames from `startFrame`: riding, the weapon drawn, tired (the
- * maximum stamina below 76), or by the area's temperature (AREA_TEMP_*)
- * unless a resistance skill covers it.
- */
-void Player_StartIdleMotion(Player *pl, s32 blend, s32 startFrame)
-{
-    u16 lowerMotion;
-    u16 upperMotion;
-
-    if (pl->rideState != 0) {
-        lowerMotion = 0x18;
-        upperMotion = 0x7C;
-    } else if (pl->weaponOut != 0) {
-        lowerMotion = 0x3E9;
-        upperMotion = 0x44D;
-    } else if (pl->staminaMax < 76 /* tired */) {
-        lowerMotion = 0x193;
-        upperMotion = 0x1F7;
-    } else {
-        switch (Area_Temperature(pl->area)) {
-        case AREA_TEMP_NORMAL:
-        default:
-            lowerMotion = 1;
-            upperMotion = 0x65;
-            break;
-        case AREA_TEMP_HOT:
-            if (Player_HasSkill(pl, SKILL_HEAT_RES) == 1 || Player_HasSkill(pl, SKILL_HEAT_RES2) == 1) {
-                lowerMotion = 1;
-                upperMotion = 0x65;
-            } else {
-                lowerMotion = 0x15;
-                upperMotion = 0x79;
-            }
-            break;
-        case AREA_TEMP_VERY_HOT:
-            if (Player_HasSkill(pl, SKILL_HEAT_RES2) == 1) {
-                lowerMotion = 1;
-                upperMotion = 0x65;
-            } else {
-                lowerMotion = 0x15;
-                upperMotion = 0x79;
-            }
-            break;
-        case AREA_TEMP_COLD:
-            if (Player_HasSkill(pl, SKILL_COLD_RES) == 1 || Player_HasSkill(pl, SKILL_COLD_RES2) == 1) {
-                lowerMotion = 1;
-                upperMotion = 0x65;
-            } else {
-                lowerMotion = 0x1AF;
-                upperMotion = 0x213;
-            }
-            break;
-        case AREA_TEMP_VERY_COLD:
-            if (Player_HasSkill(pl, SKILL_COLD_RES2) == 1) {
-                lowerMotion = 1;
-                upperMotion = 0x65;
-            } else {
-                lowerMotion = 0x1AF;
-                upperMotion = 0x213;
-            }
-            break;
-        }
-    }
-    Player_SetMotion(pl, lowerMotion, blend, startFrame, 0);
-    Player_SetMotion(pl, upperMotion, blend, startFrame, 1);
-}
-
-/*
- * Puts pl in the idle state (group 0, state 0) with the idle motions of
- * Player_StartIdleMotion, set to start at the next motion update; the local
- * player sends the change unless `quiet`.
- */
-void Player_SetIdle(Player *pl, s32 blend, s32 startFrame, s32 quiet)
-{
-    if (pl->rideState != 0) {
-        pl->motionId[0] = 0x18;
-        pl->motionId[1] = 0x7C;
-    } else if (pl->weaponOut != 0) {
-        pl->motionId[0] = 0x3E9;
-        pl->motionId[1] = 0x44D;
-    } else if (pl->staminaMax < 76 /* tired */) {
-        pl->motionId[0] = 0x193;
-        pl->motionId[1] = 0x1F7;
-    } else {
-        switch (Area_Temperature(pl->area)) {
-        case AREA_TEMP_NORMAL:
-        default:
-            pl->motionId[0] = 1;
-            pl->motionId[1] = 0x65;
-            break;
-        case AREA_TEMP_HOT:
-            if (Player_HasSkill(pl, SKILL_HEAT_RES) == 1 || Player_HasSkill(pl, SKILL_HEAT_RES2) == 1) {
-                pl->motionId[0] = 1;
-                pl->motionId[1] = 0x65;
-            } else {
-                pl->motionId[0] = 0x15;
-                pl->motionId[1] = 0x79;
-            }
-            break;
-        case AREA_TEMP_VERY_HOT:
-            if (Player_HasSkill(pl, SKILL_HEAT_RES2) == 1) {
-                pl->motionId[0] = 1;
-                pl->motionId[1] = 0x65;
-            } else {
-                pl->motionId[0] = 0x15;
-                pl->motionId[1] = 0x79;
-            }
-            break;
-        case AREA_TEMP_COLD:
-            if (Player_HasSkill(pl, SKILL_COLD_RES) == 1 || Player_HasSkill(pl, SKILL_COLD_RES2) == 1) {
-                pl->motionId[0] = 1;
-                pl->motionId[1] = 0x65;
-            } else {
-                pl->motionId[0] = 0x1AF;
-                pl->motionId[1] = 0x213;
-            }
-            break;
-        case AREA_TEMP_VERY_COLD:
-            if (Player_HasSkill(pl, SKILL_COLD_RES2) == 1) {
-                pl->motionId[0] = 1;
-                pl->motionId[1] = 0x65;
-            } else {
-                pl->motionId[0] = 0x1AF;
-                pl->motionId[1] = 0x213;
-            }
-            break;
-        }
-    }
-    pl->motionBlend[0] = blend / 2;
-    pl->motionBlend[1] = blend / 2;
-    pl->motionFrame[0] = startFrame;
-    pl->motionFrame[1] = startFrame;
-    pl->stateGroup = PL_GROUP_ACTION;
-    pl->state = PL_ACT_IDLE;
-    if (Player_IsLocal(pl) == 1 && quiet == 0) {
-        QSync_SendPlayer(pl, QSYNC_PL_STATE, 0);
-    }
 }

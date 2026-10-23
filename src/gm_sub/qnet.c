@@ -15,6 +15,8 @@
  */
 #include "common.h"
 #include "qnet.h"
+#include "libc.h"
+#include "libkernl.h"
 
 /* .bss, declared from the highest address down (MWCC emits the last
  * declared first). */
@@ -24,38 +26,19 @@ QNetBuf gQNetGameRecv;          /* game messages received */
 QNetBuf gQNetGameSend;          /* game messages to send */
 QNetBuf gQNetSysRecv;           /* system messages received */
 QNetBuf gQNetSysSend;           /* system messages to send */
-u8 gQNetRecvData[0x400];
-u8 gQNetGameRecvData[0x4000];
-u8 gQNetGameSendData[0x1000];
-u8 gQNetSysRecvData[0x400];
-u8 gQNetSysSendData[0x400];
-u8 gQNetMsg[0x200];             /* a packet or message being built */
+u8 gQNetRecvData[1024];
+u8 gQNetGameRecvData[16384];
+u8 gQNetGameSendData[4096];
+u8 gQNetSysRecvData[1024];
+u8 gQNetSysSendData[1024];
+u8 gQNetMsg[512];             /* a packet or message being built */
 f32 gQNetPing[4];
 u8 gQNetPingCounts[4];
 
-void *memcpy(void *dst, const void *src, u32 n);
-void *memset(void *dst, s32 c, u32 n);
-s32 NetTcp_Status(s32 sock, NetTcpStatus *st);
-s32 NetTcp_Recv(s32, void *, s16);
-s32 NetTcp_Send(s32, void *, s16);
-void *memmove(void *dst, const void *src, u32 n);
-s64 GetTimerSystemTime(void);
-void TimerBusClock2USec(s64, u32 *, u32 *);
 /* QuestNet_Parse's call compiles as the game's code only with the parameter
  * declared u16, not the definition's s32 x.
  * unit's own declaration: declared as the caller uses it. */
 u16 Swap16(u16);
-s32 rand(void);
-s32 NetIf_GetError(void);
-s32 QuestNet_Send(QNet *, QNetBuf *, u8);
-s32 QuestNet_Recv(QNet *);
-s32 QuestNet_Parse(QNet *, u8 *, s32, QNetHdr *);
-s32 QuestNet_Dispatch(QNet *, u8, u8, u8 *, u8);
-s32 QuestNet_OnSysMsg(QNet *, u8, QNetSysMsg *);
-s32 QuestNet_ProcessQueue(QNet *, QNetBuf *);
-void QuestNet_Update(QNet *);
-s32 QuestNet_GetError(void);
-s32 QuestNet_CanSend(void);
 
 /*
  * Advances the clock *time (seconds) by the time since the system timer

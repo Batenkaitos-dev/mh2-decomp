@@ -1,4 +1,4 @@
-# EquipFx_ChainUpdate (sub_main, src/sub_main/model_setup.c)
+# EquipFx_ChainUpdate (sub_main, src/sub_main/player_looks.c)
 
 ## Status
 

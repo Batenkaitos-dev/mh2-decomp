@@ -2,8 +2,9 @@
 #define PAD_H
 
 #include "common.h"
+#include "padio.h"
 
-/* One controller port (0x22 bytes); gPadState[0] is the first port. */
+/* One controller port (34 bytes); gPadState[0] is the first port. */
 typedef struct PadState {
     u16 held;       /* 0x00: buttons down */
     u16 prevHeld;   /* 0x02: held of the previous frame (the repeat counters compare it with held) */
@@ -13,9 +14,9 @@ typedef struct PadState {
     u16 dirPrev;    /* 0x0A: dir of the previous frame */
     u16 dirPressed; /* 0x0C */
     u16 dirReleased; /* 0x0E */
-    u16 degL;       /* 0x10: the left stick's angle (0x10000 a turn) */
+    u16 degL;       /* 0x10: the left stick's angle (ANGLE_TURN to a turn) */
     u16 degR;       /* 0x12: the right stick's angle */
-    u16 magL;       /* 0x14: the left stick's tilt (Pad_StickDeadZone; > 0x40 counts as held) */
+    u16 magL;       /* 0x14: the left stick's tilt (Pad_StickDeadZone; > 64 counts as held) */
     u16 magR;       /* 0x16: the right stick's tilt */
     u16 repeat;     /* 0x18: pressed, then auto-repeated while held */
     u16 repeatCnt;  /* 0x1A: frames held unchanged (the repeat counter) */
@@ -92,5 +93,34 @@ typedef struct PadPortInput {
 } PadPortInput;
 typedef char PadPortInput_size_check[(sizeof(PadPortInput) == 0x20) ? 1 : -1];
 extern PadPortInput gPadInput;
+
+void Pad_ClearMem(void *dst, s32 size);
+s32 Pad_Init(void);
+void Pad_End(void);
+void Pad_ClearInputs(void);
+void Pad_SetConfig(PadConfig *cfg, s32 port);
+void Pad_Update(void);
+void Pad_Remap(void);
+void Pad_RaisePressure(u8 *pressure, u8 value, u32 bits);
+void Pad_StickAngle(PadStick *stick);
+void Pad_SetHeld(PadInput *pad, u32 held);
+void Pad_CountHolds(PadInput *pad);
+u8 Pad_GetConnected(void);
+void Pad_EnableVibration(u8 enable);
+s32 Pad_Open(void);
+void Pad_Close(void);
+void Pad_SetVibrationFlag(u8 enable);
+void Pad_SetLimits(s32 port, s16 pressMin, s16 deadL, s16 deadR);
+void Pad_Read(void);
+void Pad_ClearBuffers(void);
+
+s32 Pad_ConvertData(s32 port);
+void Pad_StickPolar(PadStick *stick, s16 deadZone);
+u8 Pad_StickDirBits(PadStick *stick);
+s32 Pad_StartLibs(void);
+void Pad_OpenSocket(s32 port, s32 slot, PadPort *padPort);
+void Pad_EndLibs(void);
+void Pad_ReadPort(s32 port);
+s32 Pad_SetVibration(s32 port, s32 level, s32 frames);
 
 #endif /* PAD_H */

@@ -1,18 +1,21 @@
 /*
- * The main heap's calls: each passes gHeap to the
- * handle heap's function of the same name (include/heap.h).
- * The handles go out as pointers.
+ * The main heap: Sys_InitHeap sets it up (gHeap over a memory area, with
+ * gHeapBlocks' HEAP_BLOCK_COUNT blocks), and its calls each pass gHeap to
+ * the handle heap's function of the same name (include/heap.h). The
+ * handles go out as pointers.
  */
 #include "common.h"
 #include "heap.h"
 
-s32 Heap_Alloc(Heap *h, u32 size);
 extern Heap gHeap;
-s32 Heap_AllocTopAligned(Heap *h, u32 size);
-u32 Heap_MaxAlloc(Heap *h, u32 size);
-u32 Heap_GetAddr(Heap *h, s32 handle);
-s32 Heap_Free(Heap *h, s32 handle);
-u32 Heap_Compact(Heap *h);
+extern HeapBlock gHeapBlocks[];
+
+/* Sets the main heap up over size bytes at start. Sys_InitWork gives it
+ * the system heap's area, aligned to 64 bytes; the heap allocates upward. */
+void Sys_InitHeap(void *start, s32 size, s32 align)
+{
+    Heap_Init(&gHeap, gHeapBlocks, HEAP_BLOCK_COUNT, (u32)start, size, align, 1);
+}
 
 void *MainHeap_Alloc(u32 size)
 {

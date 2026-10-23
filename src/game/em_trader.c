@@ -23,63 +23,28 @@
 #include "player.h"
 #include "area.h"
 #include "chat_log.h"
+#include "shadow.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "capsule.h"
+#include "window.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "gm_load.h"
+#include "rand.h"
+#include "libc.h"
+#include "vec_math.h"
+#include "save.h"
 /* prototypes of callees */
-void Em_PlayCommonSeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-u16 Rand_Next(s32 stream);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void EmTrader_MotionSounds(void *arg0, EmWork *work);
-s32 EmTrader_IsPlayerNear(Em *);
-void EmTrader_ToIdle(Em *em, u8 flag, u16 a, u16 b);
-void EmTrader_TurnToYaw(Em *);
-void EmTrader_StandIdle(Em *);
-void EmTrader_JumpOut(Em *);
-void EmTrader_GreetPlayer(Em *);
-void EmTrader_Talk(Em *em);
-void EmTrader_RefuseTrade(Em *, s32);
-void EmTrader_AgreeGesture(Em *);
-void EmTrader_WanderNearHome(Em *);
-void EmTrader_RunState(Em *em);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-void Shadow_Spawn(void *obj, s16 type);
-s32 EmTrader_RunTalk(Em *em);
-s32 Game_IsOnline(void);
-f32 Vec_Distance(f32 *a, f32 *b);
 /* unit's own declaration: declared here as the callers use it; with the definition's s16 (void *obj, u8 state, u8 sub), the calls in EmTrader_TurnToYaw and EmPlesioth_WaitForBait compile differently */
 s32 Player_IsState(void *obj, s32 group, s32 state);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-s32 sprintf(char *, const char *, ...);
 extern char *gItemNames[];
 extern char gEmTraderMsgBufs[];
-s32 Obj_InCurrentArea(void *obj);
-void Em_InitParts(Em *em);
-void Player_MoveAccel(Player *p);
-void Player_ClearAccel(Player *p);
-s32 Player_StartJump(void *obj, s16 frames);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-u16 Vec_Heading(f32 *a, f32 *b);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-s32 Quest_IsDrill(void);
-u16 Pouch_FindCarryItem(Player *p);
-s32 EmTrader_MsgIdForVariant(Em *em, s32 item);
-void EmTrader_ShowMessage(Em *em, u16 id);
-s16 Pouch_Count(Player *p, u16 item);
-s16 Pouch_HasFreeSlot(Player *p);
 extern u16 EmTrader_GiftItemsV0[];
 extern u16 EmTrader_GiftItemsV1[];
-s32 Notice_OpenTalk(char *text, u32 frame, s32 a, s32 b);
-s32 Quest_PhaseIsOver(s32);
-u16 Map_DayId(u16);
-s16 Pouch_Space(Player *p, u16 item);
 /* unit's own declaration: declared here as the callers use it; with the definition's u8 (Player *p, u16 item, s16 n), the calls in EmTrader_RunTalk compile differently */
 u16 Pouch_Add(Player *pl, u16 item, s16 n);
-s16 Pouch_ClearSlot(Player *p, s16 slot);
-u8 Notice_Push(u8 kind, s16 a, s16 b);
-s32 Quest_DrillTakeCharm(void);
 extern u16 EmTrader_TradesForestHillsV0[];
 extern u16 EmTrader_TradesForestHillsV1[];
 extern u16 EmTrader_TradesSwampV0[];
@@ -100,26 +65,26 @@ extern EmTradeRate EmTrader_TradeRates[];
 /* The trader's (EM_KIND_TRADER) own meanings of the work area's bytes (EmWork has the shared ones). */
 typedef struct EmTraderWork {
     u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 (runs MotionEffects) */
-    u8 unk001[0x008 - 0x001];
+    u8 unk001[8 - 1];
     f32 home[3];                /* 0x008: Init: the position; State0_01 puts the trader back there */
     u16 homeYaw;                /* 0x014: Init: rotY; State0_01 restores rotY and targetYaw from it */
-    u8 unk016[0x018 - 0x016];
+    u8 unk016[24 - 22];
     u8 greeted;                 /* 0x018: Init: 0; EmTrader_GreetPlayer: 1 (nothing reads it) */
-    u8 unk019[0x01A - 0x019];
+    u8 unk019[26 - 25];
     u8 noAnswer;                /* 0x01A: 1: Trade takes no answer (State0_05 and State0_09 set it before calling Trade while their motion plays); Trade and the states clear it */
     u8 choice;                  /* 0x01B: the talk's cursor (Notice_OpenTalk's last argument): 0 on the first answer, 1 on the second (ShowMessage's start); Trade moves it */
-    s16 msgWait;                /* 0x01C: ShowMessage: 30 frames for the kinds that wait (1, 4, 5, 0xA), else 0; Trade counts it down and takes no answer before 0 */
+    s16 msgWait;                /* 0x01C: ShowMessage: 30 frames for the kinds that wait (TRADER_MSG_CHOICE, _CONFIRM_TRADE, _ASK_GIFT, _DRILL_CHARM), else 0; Trade counts it down and takes no answer before 0 */
     u8 msgBuf;                  /* 0x01E: which of the two 256-byte text buffers of gEmTraderMsgBufs holds the message (SetMessage flips it) */
-    u8 unk01F[0x020 - 0x01F];
+    u8 unk01F[32 - 31];
     EmTraderMsg msg;            /* 0x020: the message shown: ShowMessage copies its gEmTraderMsgs row here, then points text at the buffer SetMessage wrote */
-    u8 unk028[0x100 - 0x028];
+    u8 unk028[256 - 40];
 } EmTraderWork;
 typedef char EmTraderWork_size_check[(sizeof(EmTraderWork) == sizeof(EmWork)) ? 1 : -1];
 
 /*
  * Plays the sounds of the trader's motions on their frames, switched on
- * work->fxMotion (motion N shows as 0x3E8 + N: 0x3EA motion 2 .. 0x3F6
- * motion 0xE); the last case falls into default.
+ * work->fxMotion (EM_MOTION_ID(0, N): TRADER_MOT_HIDDEN to
+ * TRADER_MOT_FIDGET); the last case falls into default.
  */
 void EmTrader_MotionSounds(void *em, EmWork *work)
 {
@@ -128,113 +93,113 @@ void EmTrader_MotionSounds(void *em, EmWork *work)
     motion = work->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, TRADER_MOT_HIDDEN):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0x1A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 26, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_JUMP_OUT):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xA, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x1B, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 6, 0x43, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 10, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 27, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 6, 67, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_LAND):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 4, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 6, 0x3A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 4, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 6, 58, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_REST):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB0, 7, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD4, 0x1A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 176, 7, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 26, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 212, 26, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_REST_FIDGET):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 8, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB2, 9, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5C, 0x1C, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xCE, 0x1C, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 8, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 178, 9, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 92, 28, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 206, 28, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_GREET):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 6, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x1A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 6, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 26, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_TALK):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0xB, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0x22, 6, 0x23, 0), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, Sound_RandomSe(0x23, 6, 0x24, 0), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB6, Sound_RandomSe(0x24, 6, 9, 2), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xEE, 0xD, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x15E, 7, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB2, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x11E, 0x1C, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 0x19, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 11, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, Sound_RandomSe(34, 6, 35, 0), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, Sound_RandomSe(35, 6, 36, 0), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 182, Sound_RandomSe(36, 6, 9, 2), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 238, 13, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 350, 7, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 26, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 178, 26, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 286, 28, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 78, 25, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_REFUSE_B):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 5, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA4, 0x17, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0x18, 0x3D, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0x1B, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7A, 0x1C, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 5, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 22, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 164, 23, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 24, 61, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 27, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 122, 28, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_REFUSE_C):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 3, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0xA, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0xD, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x1B, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7E, 0x1C, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 3, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, 10, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 13, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 23, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, 23, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 164, 22, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 27, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 126, 28, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_REFUSE_A):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 1, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x72, 2, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB0, 3, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x1B, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 0x1B, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x1B, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xEA, 0x16, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0x3C, 0x3D, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0x72, 0x4A, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0x88, 0x4A, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0xB0, 0x4A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 0, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, 1, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 114, 2, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 176, 3, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 23, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 27, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 76, 27, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 160, 27, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 22, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 234, 22, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 60, 61, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 114, 74, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 136, 74, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 176, 74, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_AGREE):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xC, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7E, 4, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0x1C, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x1B, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0x50, 0x4A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 12, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 126, 4, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 28, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 160, 27, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 80, 74, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xE, 4, 0xF, 2), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, Sound_RandomSe(0x11, 2, 0xE, 4), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x50, 0x1A, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, Sound_RandomSe(14, 4, 15, 2), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, Sound_RandomSe(17, 2, 14, 4), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 20, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 21, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 76, 20, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 106, 21, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 26, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 80, 26, TRADER_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, TRADER_MOT_FIDGET):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xE, 4, 0x11, 4), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB4, Sound_RandomSe(0x10, 3, 0x11, 3), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12C, Sound_RandomSe(0xE, 3, 0xF, 3), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x174, Sound_RandomSe(0x11, 3, 0x10, 3), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1DC, Sound_RandomSe(0xE, 3, 0xF, 3), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x258, Sound_RandomSe(0xE, 3, 0x10, 3), 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 0x1C, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xFE, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1BE, 0x1A, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0x7E, 0x4C, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0xB0, 0x4C, 0);
-        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 0xDC, 0x4C, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A4, 0x19, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1B8, 0x19, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x122, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, Sound_RandomSe(14, 4, 17, 4), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 180, Sound_RandomSe(16, 3, 17, 3), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 300, Sound_RandomSe(14, 3, 15, 3), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 372, Sound_RandomSe(17, 3, 16, 3), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 476, Sound_RandomSe(14, 3, 15, 3), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 600, Sound_RandomSe(14, 3, 16, 3), TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, 28, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 254, 26, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 446, 26, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 126, 76, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 176, 76, TRADER_BONE_ROOT);
+        Em_PlayCommonSeAtBoneOnFrame((Em *) em, 220, 76, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 420, 25, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 440, 25, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 20, TRADER_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 290, 21, TRADER_BONE_ROOT);
         
     default:
         break;
@@ -243,7 +208,7 @@ void EmTrader_MotionSounds(void *em, EmWork *work)
 
 /*
  * Returns the gEmTraderMsgs row for the trader's variant: the id itself for
- * variant 0 and for ids 0x22..0x63 (the shared chat and drill rows), else
+ * variant 0 and for ids 34..99 (the shared chat and drill rows), else
  * (id + em->variant) & 0xFF (the variant rows come in pairs). Takes and
  * returns a message id, not an item.
  */
@@ -257,10 +222,10 @@ s32 EmTrader_MsgIdForVariant(Em *em, s32 item)
         return item;
     }
     id = item & 0xFF;
-    if ((id >= 0x22) && (id < 0x59)) {
+    if ((id >= 34) && (id < 89)) {
         return item;
     }
-    if ((id >= 0x59) && (id < 0x64)) {
+    if ((id >= 89) && (id < 100)) {
         return item;
     }
     return (id + variant) & 0xFF;
@@ -281,7 +246,7 @@ void EmTrader_FormatMessage(Em *em, EmTraderWork *w)
     src = w->msg.text;
     dst = gEmTraderMsgBufs + (w->msgBuf << 8);
     while (*src != 0) {
-        if (src[0] == 0x7C && src[1] == 0x7C) {
+        if (src[0] == 124 && src[1] == 124) {
             src += 2;
             dst += (s8) sprintf(dst, "~C05%s~C00", gItemNames[em->msgItem]);
         } else {
@@ -315,10 +280,11 @@ s32 EmTrader_IsPlayerNear(Em *em)
 }
 
 /*
- * Starts message id: sets em->msgId, clears tradeStep and msgTimer, puts
- * the cursor on the second answer, copies the gEmTraderMsgs row into
- * w->msg, formats its text, and gives kinds 1, 4, 5 and 0xA a 30-frame
- * answer wait; keeps the talk open (Player.tradeMsgTimer = 10).
+ * Starts message id: sets em->msgId, clears tradeStep and msgTimer, puts the
+ * cursor on the second answer, copies the gEmTraderMsgs row into w->msg,
+ * formats its text, and gives the kinds TRADER_MSG_CHOICE, _CONFIRM_TRADE,
+ * _ASK_GIFT and _DRILL_CHARM a 30-frame answer wait; keeps the talk open
+ * (Player.tradeMsgTimer = 10).
  */
 void EmTrader_ShowMessage(Em *em, u16 id)
 {
@@ -356,10 +322,10 @@ void EmTrader_ShowMessage(Em *em, u16 id)
 /*
  * The outcome when nothing is traded: 40% picks a gift from
  * EmTrader_GiftItemsV0/V1 (weights against a roll of 0..100) into
- * Player.tradeGetItem and shows the gift message (row 0x14 by variant,
+ * Player.tradeGetItem and shows the gift message (row 20 by variant,
  * TRADER_MSG_GIFT) with the agree gesture (TRADER_IDLE_AGREE); else, or
  * when the player already has the gift or no free slot, a chat opener
- * (0x24, or 0x22 from 70%). Shows the message with an inlined copy of
+ * (36, or 34 from 70%). Shows the message with an inlined copy of
  * ShowMessage; does not add the item itself.
  */
 void EmTrader_ShowGiftOrChat(Em *em)
@@ -394,14 +360,14 @@ void EmTrader_ShowGiftOrChat(Em *em)
                 break;
             }
         }
-        em->msgId = (u8) EmTrader_MsgIdForVariant(em, 0x14);
+        em->msgId = (u8) EmTrader_MsgIdForVariant(em, 20);
         Em_SetStateRand(em, 0, 9);
     } else {
     other:
         if (roll <= 69) {
-            em->msgId = 0x24;
+            em->msgId = 36;
         } else {
-            em->msgId = 0x22;
+            em->msgId = 34;
         }
     }
     shown = &w->msg;
@@ -430,14 +396,14 @@ void EmTrader_ShowGiftOrChat(Em *em)
     }
 }
 
-extern s8 gSeBankByType[];
 /*
- * Runs the open talk each frame: Notice_OpenTalk shows w->msg; once the
- * text is out it moves the cursor (kinds 1, 4, 5, 0xA) and, on an answer
- * (unless w->noAnswer or w->msgWait), acts on w->msg.kind: closes the talk,
- * follows next/nextNo, works out a trade offer (kind 3), swaps items, gives
- * a gift, takes the drill charm or redeems tokens. Picks the map's trade
- * table (EmTrader_Trades<Map>V0/V1) first. Always returns 0.
+ * Runs the open talk each frame: Notice_OpenTalk shows w->msg; once the text
+ * is out it moves the cursor (the kinds TRADER_MSG_CHOICE, _CONFIRM_TRADE,
+ * _ASK_GIFT and _DRILL_CHARM) and, on an answer (unless w->noAnswer or
+ * w->msgWait), acts on w->msg.kind: closes the talk, follows next/nextNo,
+ * works out a trade offer (kind 3), swaps items, gives a gift, takes the
+ * drill charm or redeems tokens. Picks the map's trade table
+ * (EmTrader_Trades<Map>V0/V1) first. Always returns 0.
  */
 s32 EmTrader_RunTalk(Em *em)
 {
@@ -529,40 +495,40 @@ s32 EmTrader_RunTalk(Em *em)
                 if ((u16) Pouch_FindCarryItem(player) != 0xFFFF) {
                     result = TRADE_CARRYING;
                 }
-                if (result == TRADE_NONE && Pouch_Count(player, 0x2E0) >= 99 && Pouch_Space(player, 0x9D) > 0) {
-                    player->tradeGiveItem = 0x2E0;
+                if (result == TRADE_NONE && Pouch_Count(player, 736) >= 99 && Pouch_Space(player, 157) > 0) {
+                    player->tradeGiveItem = 736;
                     player->tradeGiveCount = -99;
-                    player->tradeGetItem = 0x9D;
+                    player->tradeGetItem = 157;
                     result = TRADE_OFFER;
                 }
-                if (result == TRADE_NONE && Pouch_Count(player, 0x226) > 0 && Pouch_Space(player, 0x2D8) > 0) {
-                    player->tradeGiveItem = 0x226;
+                if (result == TRADE_NONE && Pouch_Count(player, 550) > 0 && Pouch_Space(player, 728) > 0) {
+                    player->tradeGiveItem = 550;
                     player->tradeGiveCount = -1;
-                    player->tradeGetItem = 0x2D8;
+                    player->tradeGetItem = 728;
                     result = TRADE_OFFER;
                 }
-                if (result == TRADE_NONE && Pouch_Count(player, 0x2A4) > 0 && Pouch_Space(player, 0x2A5) > 0) {
-                    player->tradeGiveItem = 0x2A4;
+                if (result == TRADE_NONE && Pouch_Count(player, 676) > 0 && Pouch_Space(player, 677) > 0) {
+                    player->tradeGiveItem = 676;
                     player->tradeGiveCount = -1;
-                    player->tradeGetItem = 0x2A5;
+                    player->tradeGetItem = 677;
                     result = TRADE_OFFER;
                 }
-                if (result == TRADE_NONE && Pouch_Count(player, 0x2F5) > 0 && Pouch_Space(player, 0x62) > 0) {
-                    player->tradeGiveItem = 0x2F5;
+                if (result == TRADE_NONE && Pouch_Count(player, 757) > 0 && Pouch_Space(player, 98) > 0) {
+                    player->tradeGiveItem = 757;
                     player->tradeGiveCount = -1;
-                    player->tradeGetItem = 0x62;
+                    player->tradeGetItem = 98;
                     result = TRADE_OFFER;
                 }
-                if (result == TRADE_NONE && Pouch_Count(player, 0x2F2) >= 99 && Pouch_Space(player, 0xA0) > 0) {
-                    player->tradeGiveItem = 0x2F2;
+                if (result == TRADE_NONE && Pouch_Count(player, 754) >= 99 && Pouch_Space(player, 160) > 0) {
+                    player->tradeGiveItem = 754;
                     player->tradeGiveCount = -99;
-                    player->tradeGetItem = 0xA0;
+                    player->tradeGetItem = 160;
                     result = TRADE_OFFER;
                 }
-                if (result == TRADE_NONE && Pouch_Count(player, 0x2B8) >= 5 && Game_IsOnline() == 1) {
-                    player->tradeGiveItem = 0x2B8;
+                if (result == TRADE_NONE && Pouch_Count(player, 696) >= 5 && Game_IsOnline() == 1) {
+                    player->tradeGiveItem = 696;
                     player->tradeGiveCount = -1;
-                    player->tradeGetItem = 0x5C;
+                    player->tradeGetItem = 92;
                     result = TRADE_TOKENS;
                 }
                 if (result == TRADE_NONE && gQuest.traderWantItem != 0) {
@@ -642,10 +608,10 @@ s32 EmTrader_RunTalk(Em *em)
                 case TRADE_UNUSED_1:
                 case TRADE_OFFER:
                 case TRADE_UNUSED_3:
-                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0xE));
+                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 14));
                     break;
                 case TRADE_CARRYING:
-                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x18));
+                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 24));
                     break;
                 case TRADE_WANT_NEW:
                     EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 2));
@@ -657,10 +623,10 @@ s32 EmTrader_RunTalk(Em *em)
                     EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 8));
                     break;
                 case TRADE_TOKENS:
-                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x64));
+                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 100));
                     break;
                 case TRADE_WANT_NO_ROOM:
-                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x68));
+                    EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 104));
                     break;
                 }
                 break;
@@ -696,10 +662,10 @@ s32 EmTrader_RunTalk(Em *em)
                 break;
             case TRADER_MSG_REDEEM_TOKENS:
                 player->tradeMsgTimer = 0;
-                Pouch_Add(player, 0x2B8, -5);
+                Pouch_Add(player, 696, -5);
                 rate = EmTrader_TradeRates;
                 roll = Rand_Next(1) % 32;
-                player->tradeGetItem = 0x5E;
+                player->tradeGetItem = 94;
                 weightSum = 0;
                 if ((rateWeight = EmTrader_TradeRates[0].weight) != 0xFFFF) {
                     do {
@@ -720,15 +686,15 @@ s32 EmTrader_RunTalk(Em *em)
             case TRADER_MSG_CONFIRM_TRADE:
                 if (w->choice == 0) {
                     Em_SetStateRand(em, 0, 9);
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x21, gSeBankByType[EM_KIND_TRADER]);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 33, gSeBankByType[EM_KIND_TRADER]);
                     switch (em->msgId) {
-                    case 0xF:
-                    case 0xE:
-                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x10));
+                    case 15:
+                    case 14:
+                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 16));
                         break;
                     case 8:
                     case 9:
-                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0xC));
+                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 12));
                         break;
                     }
                     Pouch_Add(player, player->tradeGiveItem, player->tradeGiveCount);
@@ -737,56 +703,56 @@ s32 EmTrader_RunTalk(Em *em)
                         gQuest.traderWantItem = 0;
                     }
                     if (player->tradeGiveCount == -1) {
-                        Notice_Push(1, 0x10, (s16) player->tradeGiveItem);
+                        Notice_Push(1, 16, (s16) player->tradeGiveItem);
                     } else {
-                        Notice_Push(1, 0x11, (s16) player->tradeGiveItem);
+                        Notice_Push(1, 17, (s16) player->tradeGiveItem);
                     }
                     Notice_Push(NOTICE_KIND_ITEM, NOTICE_ITEM_RECEIVED, (s16) player->tradeGetItem);
                 } else {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x20, gSeBankByType[EM_KIND_TRADER]);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 32, gSeBankByType[EM_KIND_TRADER]);
                     switch (em->msgId) {
-                    case 0xF:
-                    case 0xE:
-                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x12));
+                    case 15:
+                    case 14:
+                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 18));
                         break;
                     case 8:
                     case 9:
-                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0xA));
+                        EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 10));
                         break;
                     }
                 }
                 break;
             case TRADER_MSG_ASK_GIFT:
                 if (w->choice == 0) {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x21, gSeBankByType[EM_KIND_TRADER]);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 33, gSeBankByType[EM_KIND_TRADER]);
                     EmTrader_ShowGiftOrChat(em);
                 } else {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x20, gSeBankByType[EM_KIND_TRADER]);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 32, gSeBankByType[EM_KIND_TRADER]);
                     player->tradeMsgTimer = 0;
                 }
                 break;
             case TRADER_MSG_DRILL_CHARM:
                 if (w->choice == 0) {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x21, gSeBankByType[EM_KIND_TRADER]);
-                    EmTrader_ShowMessage(em, 0x60);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 33, gSeBankByType[EM_KIND_TRADER]);
+                    EmTrader_ShowMessage(em, 96);
                     Quest_DrillTakeCharm();
                 } else {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x20, gSeBankByType[EM_KIND_TRADER]);
-                    EmTrader_ShowMessage(em, 0x5F);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 32, gSeBankByType[EM_KIND_TRADER]);
+                    EmTrader_ShowMessage(em, 95);
                 }
                 break;
             case TRADER_MSG_CHOICE:
                 if (w->choice == 0) {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x21, gSeBankByType[EM_KIND_TRADER]);
-                    if (shown->next != 0xFF) {
+                    Sound_PlaySeFlat(SE_SLOT_EM, 33, gSeBankByType[EM_KIND_TRADER]);
+                    if (shown->next != 255) {
                         Em_SetStateRand(em, 0, 9);
                         EmTrader_ShowMessage(em, shown->next);
                     } else {
                         player->tradeMsgTimer = 0;
                     }
                 } else {
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x20, gSeBankByType[EM_KIND_TRADER]);
-                    if (shown->nextNo != 0xFF) {
+                    Sound_PlaySeFlat(SE_SLOT_EM, 32, gSeBankByType[EM_KIND_TRADER]);
+                    if (shown->nextNo != 255) {
                         EmTrader_ShowMessage(em, shown->nextNo);
                     } else {
                         player->tradeMsgTimer = 0;
@@ -794,17 +760,17 @@ s32 EmTrader_RunTalk(Em *em)
                 }
                 break;
             case TRADER_MSG_NEXT:
-                if (shown->next != 0xFF) {
+                if (shown->next != 255) {
                     EmTrader_ShowMessage(em, shown->next);
                 } else {
                     player->tradeMsgTimer = 0;
                 }
                 break;
             case TRADER_MSG_CHAT_A:
-                EmTrader_ShowMessage(em, Rand_Next(1) % 29 + 0x26);
+                EmTrader_ShowMessage(em, Rand_Next(1) % 29 + 38);
                 break;
             case TRADER_MSG_CHAT_B:
-                EmTrader_ShowMessage(em, Rand_Next(1) % 22 + 0x43);
+                EmTrader_ShowMessage(em, Rand_Next(1) % 22 + 67);
                 break;
             }
         } else {
@@ -815,13 +781,13 @@ s32 EmTrader_RunTalk(Em *em)
             case TRADER_MSG_DRILL_CHARM:
                 if ((player->input.pressed & 0x800) && cursor != 0) {
                     w->choice = 0;
-                    Sound_PlaySeFlat(0, 0x16, 0);
+                    Sound_PlaySeFlat(0, 22, 0);
                 } else if ((player->input.pressed & 0x400) && cursor == 0) {
                     w->choice = 1;
-                    Sound_PlaySeFlat(0, 0x16, 0);
+                    Sound_PlaySeFlat(0, 22, 0);
                 } else if ((player->input.pressed & 0x40) && cursor == 0) {
                     w->choice = 1;
-                    Sound_PlaySeFlat(SE_SLOT_EM, 0x20, gSeBankByType[EM_KIND_TRADER]);
+                    Sound_PlaySeFlat(SE_SLOT_EM, 32, gSeBankByType[EM_KIND_TRADER]);
                 }
                 break;
             }
@@ -840,15 +806,15 @@ end:
  * Sets the trader up: no hit or push, hp 200, scale 1, blind, home position
  * and yaw (work and startPos), idle pose 1 (em->yawCenter) with motion 1 in
  * TRADER_IDLE_STAND; clears greeted, noAnswer, unk634 and msgItem. The jump
- * to TRADER_IDLE_HIDDEN tests Rand & 3 against 0xFF and never runs.
+ * to TRADER_IDLE_HIDDEN tests Rand & 3 against 255 and never runs.
  */
 void EmTrader_Init(Em *em)
 {
     EmTraderWork *w = (EmTraderWork *)&em->work;
     u16 roll;
 
-    em->noHitTimer = 0x63;
-    em->noPushTimer = 0x63;
+    em->noHitTimer = 99;
+    em->noPushTimer = 99;
     em->yawCenter = 0;
     em->unk634 = 0;
     em->msgItem = 0;
@@ -870,7 +836,7 @@ void EmTrader_Init(Em *em)
     em->targetYaw = em->rotY;
     em->stance = EM_STANCE_GROUND;
     em->timer = 0;
-    if (roll == 0xFF) {
+    if (roll == 255) {
         Em_SetStateRand(em, 0, 1);
         Em_SetMotion(em, TRADER_MOT_HIDDEN, 0, 0);
     }
@@ -892,10 +858,10 @@ void EmTrader_Init(Em *em)
 
 /*
  * Returns to the idle of the trader's pose (em->yawCenter): 0
- * TRADER_IDLE_STAND (motion 1), 1 TRADER_IDLE_WANDER (motion 0xD), 2
- * TRADER_IDLE_REST (motion 5), with the given blend and start frame unless
- * that motion already plays; only mode 0 does anything; turns field
- * collision back on.
+ * TRADER_IDLE_STAND (TRADER_MOT_STAND), 1 TRADER_IDLE_WANDER
+ * (TRADER_MOT_WALK), 2 TRADER_IDLE_REST (TRADER_MOT_REST), with the given
+ * blend and start frame unless that motion already plays; only mode 0 does
+ * anything; turns field collision back on.
  */
 void EmTrader_ToIdle(Em *em, u8 mode, u16 blend, u16 startFrame)
 {
@@ -912,7 +878,7 @@ void EmTrader_ToIdle(Em *em, u8 mode, u16 blend, u16 startFrame)
             }
             break;
         case 1:
-            Em_SetStateRand(em, 0, 0xA);
+            Em_SetStateRand(em, 0, 10);
             if (em->motionId[0] != EM_MOTION_ID(0, TRADER_MOT_WALK)) {
                 Em_SetMotion(em, TRADER_MOT_WALK, blend, startFrame);
             }
@@ -930,9 +896,9 @@ void EmTrader_ToIdle(Em *em, u8 mode, u16 blend, u16 startFrame)
 }
 
 /*
- * Every frame (from Update) steps rotY toward targetYaw, 0x71C per frame
+ * Every frame (from Update) steps rotY toward targetYaw, 1820 per frame
  * while the trader is in TRADER_IDLE_GREET (Player_IsState on the Em),
- * 0xFA4 otherwise, snapping when within a step.
+ * 4004 otherwise, snapping when within a step.
  */
 void EmTrader_TurnToYaw(Em *em)
 {
@@ -940,9 +906,9 @@ void EmTrader_TurnToYaw(Em *em)
     u32 diff;
 
     if ((s16) Player_IsState(em, 0, 3)) {
-        step = 0x71C;
+        step = 1820;
     } else {
-        step = 0xFA4;
+        step = 4004;
     }
     diff = (em->targetYaw - (em->rotY & 0xFFFF)) & 0xFFFF;
     if ((u32) ((diff + step) & 0xFFFF) < step * 2) {
@@ -994,9 +960,9 @@ void EmTrader_StandIdle(Em *em)
                     break;
                 case 1:
                     if (Rand_Next(1) & 3) {
-                        Em_SetStateRand(em, 0, 0xA);
+                        Em_SetStateRand(em, 0, 10);
                     } else {
-                        Em_SetStateRand(em, 0, 0xB);
+                        Em_SetStateRand(em, 0, 11);
                     }
                     break;
                 }
@@ -1068,7 +1034,7 @@ void EmTrader_JumpOut(Em *em)
             em->velY = 6.0f;
             em->velZ = worldOffset[2];
             Player_ClearAccel((Player *) em);
-            Player_StartJump(em, 0xC);
+            Player_StartJump(em, 12);
         }
         break;
     case 2:
@@ -1090,14 +1056,13 @@ void EmTrader_JumpOut(Em *em)
 }
 
 /*
- * TRADER_IDLE_GREET: turns to the player (targetYaw = heading - 0x4000)
- * with motion 7 and the greeting sound, sets greeted, and opens the talk:
- * in a drill the charm talk (0x59) or a drill line (0x61..0x63) unless
- * carrying an item; with Player.tradeCount at 7 and nothing carried a
- * refusal (0x1C/0x1E/0x20 by stateRand % 3, going to
- * TRADER_IDLE_REFUSE_A/B/C); else the offer opener (row 0,
- * TRADER_MSG_OFFER). Then runs the talk: idles when it closes, goes to
- * TRADER_IDLE_TALK when the motion ends.
+ * TRADER_IDLE_GREET: turns to the player (targetYaw = heading -
+ * ANGLE_TURN / 4) with TRADER_MOT_GREET and the greeting sound, sets greeted,
+ * and opens the talk: in a drill the charm talk (89) or a drill line (97..99)
+ * unless carrying an item; with Player.tradeCount at 7 and nothing carried a
+ * refusal (28/30/32 by stateRand % 3, going to TRADER_IDLE_REFUSE_A/B/C);
+ * else the offer opener (row 0, TRADER_MSG_OFFER). Then runs the talk: idles
+ * when it closes, goes to TRADER_IDLE_TALK when the motion ends.
  */
 void EmTrader_GreetPlayer(Em *em)
 {
@@ -1111,14 +1076,14 @@ void EmTrader_GreetPlayer(Em *em)
         Em_SetMotion(em, TRADER_MOT_GREET, 8, 0);
         w->greeted = 1;
         w->noAnswer = 0;
-        em->targetYaw = Vec_Heading(&em->posX, player->pos) - 0x4000;
-        Sound_PlaySeFlat(SE_SLOT_EM, 0x1E, gSeBankByType[EM_KIND_TRADER]);
+        em->targetYaw = Vec_Heading(&em->posX, player->pos) - ANGLE_TURN / 4;
+        Sound_PlaySeFlat(SE_SLOT_EM, 30, gSeBankByType[EM_KIND_TRADER]);
         if (Quest_IsDrill() == 1) {
             if ((u16) Pouch_FindCarryItem(player) == 0xFFFF) {
                 if (gQuest.drillCharm == 0) {
-                    EmTrader_ShowMessage(em, 0x59);
+                    EmTrader_ShowMessage(em, 89);
                 } else {
-                    EmTrader_ShowMessage(em, Rand_Next(1) % 3 + 0x61);
+                    EmTrader_ShowMessage(em, Rand_Next(1) % 3 + 97);
                 }
             } else {
                 EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0));
@@ -1126,15 +1091,15 @@ void EmTrader_GreetPlayer(Em *em)
         } else if (player->tradeCount >= 7 && (u16) Pouch_FindCarryItem(player) == 0xFFFF) {
             switch (em->stateRand % 3) {
             case 0:
-                EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x1C));
+                EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 28));
                 Em_SetStateRand(em, 0, 5);
                 break;
             case 1:
-                EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x1E));
+                EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 30));
                 Em_SetStateRand(em, 0, 7);
                 break;
             case 2:
-                EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 0x20));
+                EmTrader_ShowMessage(em, (u8) EmTrader_MsgIdForVariant(em, 32));
                 Em_SetStateRand(em, 0, 8);
                 break;
             }
@@ -1184,9 +1149,10 @@ void EmTrader_Talk(Em *em)
 }
 
 /*
- * TRADER_IDLE_REFUSE_A/B/C (variant 0, 1, 2: motion 0xB, 9, 0xA): plays the
- * refusal gesture while the talk runs without answers (noAnswer), then
- * stands in motion 1 taking answers until the talk closes, then idles.
+ * TRADER_IDLE_REFUSE_A/B/C (variant 0, 1, 2: TRADER_MOT_REFUSE_A, _B, _C):
+ * plays the refusal gesture while the talk runs without answers (noAnswer),
+ * then stands in TRADER_MOT_STAND taking answers until the talk closes, then
+ * idles.
  */
 void EmTrader_RefuseTrade(Em *em, s32 variant)
 {
@@ -1275,10 +1241,10 @@ void EmTrader_RestIdle(Em *em)
 }
 
 /*
- * TRADER_IDLE_AGREE: plays motion 0xC while the talk runs without answers,
- * then stands in motion 1 taking answers until the talk closes, then idles.
- * Entered on a yes (an accepted trade, a choice with a next row) and on a
- * gift.
+ * TRADER_IDLE_AGREE: plays TRADER_MOT_AGREE while the talk runs without
+ * answers, then stands in TRADER_MOT_STAND taking answers until the talk
+ * closes, then idles. Entered on a yes (an accepted trade, a choice with a
+ * next row) and on a gift.
  */
 void EmTrader_AgreeGesture(Em *em)
 {
@@ -1311,7 +1277,7 @@ void EmTrader_AgreeGesture(Em *em)
 }
 
 /*
- * TRADER_IDLE_WANDER: the idle of pose 1: walks (motion 0xD) for 100..163
+ * TRADER_IDLE_WANDER: the idle of pose 1: walks (TRADER_MOT_WALK) for 100..163
  * frames while turning 0x100 per frame toward its home position (work + 8),
  * then TRADER_IDLE_FIDGET; greets the player when they are near and
  * talking.
@@ -1327,7 +1293,7 @@ void EmTrader_WanderNearHome(Em *em)
     switch (step) {
     case 0:
         em->step += 1;
-        em->timer = (Rand_Next(1) & 0xFFFF & 0x3F) + 0x64;
+        em->timer = (Rand_Next(1) & 0xFFFF & 0x3F) + 100;
         if (em->motionId[0] != EM_MOTION_ID(0, TRADER_MOT_WALK)) {
             Em_SetMotion(em, TRADER_MOT_WALK, 6, 0);
         }
@@ -1337,7 +1303,7 @@ void EmTrader_WanderNearHome(Em *em)
             em->timer--;
         }
         if (em->timer <= 0) {
-            Em_SetStateRand(em, 0, 0xB);
+            Em_SetStateRand(em, 0, 11);
         } else {
             em->targetAngle = Math_AngleXZ(&em->posX, (f32 *) (traderWork + 8)) & 0xFFFF;
             Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x100);
@@ -1352,8 +1318,8 @@ void EmTrader_WanderNearHome(Em *em)
 }
 
 /*
- * TRADER_IDLE_FIDGET: plays the one-shot motion 0xE, then idles (back to
- * the wander in pose 1); greets the player when they are near and talking.
+ * TRADER_IDLE_FIDGET: plays the one-shot TRADER_MOT_FIDGET, then idles (back
+ * to the wander in pose 1); greets the player when they are near and talking.
  */
 void EmTrader_Fidget(Em *em)
 {
@@ -1436,8 +1402,8 @@ void EmTrader_RunIdleState(Em *em)
  */
 void EmTrader_Update(Em *em)
 {
-    em->noHitTimer = 0x63;
-    em->noPushTimer = 0x63;
+    em->noHitTimer = 99;
+    em->noPushTimer = 99;
     EmTrader_RunState(em);
     if (em->stateRequest != 0) {
         EmTrader_RunState(em);
@@ -1513,12 +1479,12 @@ void EmTrader_UpdateMotionEffects(Em *em)
 }
 
 /*
- * Spawns effect 01 of type 0 on the trader (Shadow_Spawn); in the first
- * two slots of EmTrader_Callbacks.
+ * Spawns the trader's shadow (SHADOW_MODEL); in the first two slots of
+ * EmTrader_Callbacks.
  */
-void EmTrader_SpawnEffect01(u8 *em)
+void EmTrader_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* Does nothing; fills two slots of EmTrader_Callbacks. */
@@ -1527,7 +1493,6 @@ void EmTrader_TableNop(void)
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 u16 EmTrader_TradesJungleV0[168] = {
 #include "game/008C6540.inc"
 };
@@ -1568,6 +1533,6 @@ EmTradeRate EmTrader_TradeRates[12] = {
 #include "game/008C7260.inc"
 };
 void *EmTrader_Callbacks[8] = {
-    EmTrader_SpawnEffect01, EmTrader_SpawnEffect01, EmTrader_TableNop, EmTrader_UpdateMotionEffects,
+    EmTrader_SpawnShadow, EmTrader_SpawnShadow, EmTrader_TableNop, EmTrader_UpdateMotionEffects,
     GmEm_ReturnZero, EmTrader_TableNop, NULL, NULL,
 };

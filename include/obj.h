@@ -2,9 +2,10 @@
 #define OBJ_H
 
 #include "common.h"
+#include "objattach.h"
 
 /*
- * An object of sub_main's first object pool (0x80 objects of 0x40 bytes,
+ * An object of sub_main's first object pool (128 objects of 64 bytes,
  * gObjPool; Obj_Alloc, Obj_Free), which the game overlay uses for its
  * short-lived objects: an update function run every frame steps the state
  * in +0x4. The struct is generated from include/obj.spec
@@ -29,7 +30,7 @@ typedef struct Obj {
     void *buf;                  /* 0x018: its blocks of the object buffer (the kind's data: a struct of its own per kind) */
     u8 blk;                     /* 0x01C */
     u8 nblk;                    /* 0x01D */
-    u8 var4;                    /* 0x01E: per-kind scratch byte: a player index, a position-table index (0xFF none), a random lifetime */
+    u8 var4;                    /* 0x01E: per-kind scratch byte: a player index, a position-table index (255 none), a random lifetime */
     u8 keep;                    /* 0x01F: not freed by Obj_FreeUnkept */
     f32 pos[3];                 /* 0x020 */
     ObjFn update;               /* 0x02C: run every frame (Obj_UpdateAll) */
@@ -46,5 +47,25 @@ typedef char Obj_size_check[(sizeof(Obj) == 0x40) ? 1 : -1];
 #define OBJ_KIND_AREA_PROP 0x06     /* AreaProp_Task */
 #define OBJ_KIND_SOUND 0x0C         /* a sound object (SoundObj_Task) */
 #define OBJ_KIND_AREA_ATMOS 0x0D    /* the area's atmosphere (AreaAtmos_Task) */
+
+/* The object pools: Obj's and ObjAttach's, and the object buffer's blocks. */
+void Obj_InitAll(void);
+void Obj_FreeAll(void);
+s32 ObjBuf_FindFree(s32 n);
+u8 *ObjBuf_GetBlock(s32 blk);
+void ObjBuf_MarkUsed(s32 start, s32 n);
+void ObjBuf_MarkFree(s32 start, s32 n);
+void Obj_InitPool(void);
+void Obj_FreeUnkept(void);
+Obj *Obj_Alloc(s32 n);
+void Obj_Free(Obj *obj);
+void Obj_UpdateAll(void);
+void Obj_DrawAll(void);
+void ObjAttach_InitPool(void);
+void ObjAttach_FreeUnkept(void);
+ObjAttach *ObjAttach_Alloc(s32 n);
+void ObjAttach_Free(ObjAttach *att);
+void ObjAttach_UpdateAll(void);
+void ObjAttach_DrawAll(void);
 
 #endif /* OBJ_H */

@@ -29,6 +29,17 @@
 #include "image.h"
 #include "model.h"
 #include "texture.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "dma.h"
+#include "quest.h"
+#include "village_cond.h"
+#include "file_load.h"
+#include "lobby_world.h"
+#include "main.h"
+#include "packet_tim2.h"
+#include "packs.h"
+#include "libkernl.h"
 
 #pragma opt_lifetimes off
 
@@ -36,44 +47,21 @@
  * LoadCompressedFile). */
 #define AFS_DATA_FILES 0x30000
 
-/* Tex_LoadSystemPack's modes, by its callers: everything (the game, the
- * title, the character select's start), the lobby's set (without slots
- * 2, 4 and 5), and the character select's set (without 10 and 11 too). */
-#define SYSTEM_TEX_ALL 0
-#define SYSTEM_TEX_LOBBY 1
-#define SYSTEM_TEX_CHARA 2
-
 /* The quest end's file: two TIM2 pictures of 256 x 256 8-bit pixels, each
  * with a 256-colour palette after its pixels. */
-#define QUEST_END_FILE 0x28
-#define QUEST_END_PIXELS (sizeof(Tim2FileHeader) + 0x30)   /* past the file's and the picture's headers */
+#define QUEST_END_FILE 40
+#define QUEST_END_PIXELS (sizeof(Tim2FileHeader) + 48)     /* past the file's and the picture's headers */
 #define QUEST_END_CLUT (QUEST_END_PIXELS + 256 * 256)
-
-s32 LoadFile(u8 *dst, s32 id);
-s32 LoadCompressedFile(u8 *dst, s32 id);
-void Pack_CopyParts01(u8 *pack, u8 *dst0, u8 *dst1);
-s32 Afs_ReadId(u32 id, void *dst);
-s32 LzDecompress(u8 *src, u8 *dst);
 
 extern u8 *gLoadBuf;
 extern u8 *gReadBuf;
 
-s32 Pack_Count(s32 *buf);
-void *Pack_GetPart(u8 *buf, s32 a);
-u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
-
 extern s32 gTexHandles[];
-extern s32 gTexCreateKinds[];
 extern s32 gSystemTexFiles;
 extern s32 gSystemExtraTexFiles;
 extern s8 gSystemPackTexSlots[];
 extern s8 gSystemPackTexSlotsB[];
 
-
-s32 Debug_IsOn(s32 unused0);
-void FlushCache(s32 op);
-s32 Dma_WaitIdle(void);
-s32 VramSlot_FreeAll(void);
 void Mem_Copy64ByQwords(u8 *src, s32 dst, s32 n);
 
 /* A pack file's entry, after its 8-byte head: a part's offset from the
@@ -83,33 +71,23 @@ typedef struct PackEntry {
     s32 size;
 } PackEntry;
 
-s32 Quest_IsVersus(void);
-s32 ElderRaid_InState1(void);
-s32 LobbyWorld_GetSeason(void);
 u8 Village_FacilityLevel(s32 k);
-void AreaPack_ReadPart2(s32 *pack);
 
 extern s16 gTexFileIds[];
 extern s16 gStageTexFileIds[];
 extern u8 gMapPackTexIndex[];
 extern s32 gAreaPackFiles[];
-extern s32 gAreaSubModelFiles[];
-extern s32 gArea83PackFiles[2];
-extern s32 gArea83SubModelFiles[2];
-extern s32 gArea83SubModelFileS1;
+extern s32 gOnlineVillagePackFiles[2];
+extern s32 gOnlineVillageSubModelFiles[2];
+extern s32 gOnlineVillageSubModelFileSeason1;
 extern s32 gArea84PackFiles[2];
 extern s32 gFarmFacilityModelFiles[];
 
 extern s32 gPlayerAnimFiles[];
 extern s32 gCommonAnimFiles[];
 extern s32 gEmAnimFiles[];
-extern s32 *gEmSlotAnimFiles[];
 extern s32 gCommonModelPackFiles[];
-extern s32 gWeaponModelPackFiles[];
-extern s32 *gPartModelFilesMale[];
-extern s32 *gPartModelFilesFemale[];
 extern s32 gEmMainModelPackFiles[];
-extern s32 gEmPartModelPackFiles[];
 extern s32 gEmSlotModelPackFiles[];
 extern s32 gEquipModelPackFilesMale[];
 extern s32 gEquipModelPackFilesFemale[];
@@ -174,7 +152,7 @@ void Tex_LoadSystemPackB(void)
 /*
  * Loads the quest end's file into gLoadBuf, ahead of the quest's end, and
  * prepares its two pictures' palettes for the GS: each colour's alpha is
- * halved, and 0xFF becomes 0x80. Does nothing while debug switch 0x9C is on
+ * halved, and 255 becomes 128. Does nothing while debug switch 156 is on
  * (never in the retail game).
  */
 void Tex_LoadQuestEndFile(void)
@@ -186,14 +164,14 @@ void Tex_LoadQuestEndFile(void)
     u32 alpha;
     u32 color;
 
-    if (Debug_IsOn(0x9C) == 0) {
+    if (Debug_IsOn(156) == 0) {
         LoadCompressedFile(entry, QUEST_END_FILE);
         FlushCache(0);
         Dma_WaitIdle();
         entry += 8;
         for (j = 0; j < 2; j++) {
             clut = (u32 *)((s32)gLoadBuf + *(s32 *)entry + QUEST_END_CLUT);
-            for (i = 0; i < 0x100; i++) {
+            for (i = 0; i < 256; i++) {
                 color = *clut;
                 alpha = color & 0xFF000000;
                 if (alpha == 0xFF000000) {
@@ -211,10 +189,10 @@ void Tex_LoadQuestEndFile(void)
 
 /*
  * Copies the quest end's two pictures, which Tex_LoadQuestEndFile left in
- * gLoadBuf, into the textures of slot TEX_SLOT_AREA_MAP and slot 0x146,
+ * gLoadBuf, into the textures of slot TEX_SLOT_AREA_MAP and slot 326,
  * pixels and palette, and frees the GS memory so that they are uploaded
  * again. A slot's handle holds the texture's handle in its low half and its
- * palette's in the high half. Does nothing while debug switch 0x9C is on.
+ * palette's in the high half. Does nothing while debug switch 156 is on.
  */
 void Tex_SetQuestEndImages(void)
 {
@@ -226,11 +204,11 @@ void Tex_SetQuestEndImages(void)
     s32 handles;
     Image info;
 
-    if (Debug_IsOn(0x9C) == 0) {
+    if (Debug_IsOn(156) == 0) {
         entry += 8;
         for (i = 0; i < 2; i++) {
             picture = (s32)gLoadBuf + *(s32 *)entry;
-            handles = gTexHandles[i == 0 ? TEX_SLOT_AREA_MAP : 0x146];
+            handles = gTexHandles[i == 0 ? TEX_SLOT_AREA_MAP : 326];
             texHandle = handles & 0xFFFF;
             palHandle = (u32)(handles & 0xFFFF0000) >> 16;
             flLockTexture(0, texHandle, &info, 2);
@@ -247,7 +225,7 @@ void Tex_SetQuestEndImages(void)
 
 /*
  * Loads texture file file (gTexFileIds) into texture slot slot, made as
- * gTexCreateKinds[kind]. The slots 0, 0x148, TEX_SLOT_ICONS and
+ * gTexCreateKinds[kind]. The slots 0, 328, TEX_SLOT_ICONS and
  * TEX_SLOT_AREA_MAP are loaded once and kept. The area map's file is a pack
  * of maps: its picture is gMapPackTexIndex's by gScene.map.
  */
@@ -261,7 +239,7 @@ void Tex_LoadFile(s32 file, s32 slot, s32 kind)
 
     switch (slot) {
     case 0:
-    case 0x148:
+    case 328:
     case TEX_SLOT_ICONS:
     case TEX_SLOT_AREA_MAP:
         if (gTexHandles[slot] != 0) {
@@ -290,9 +268,9 @@ void Tex_LoadFile(s32 file, s32 slot, s32 kind)
 
 /*
  * Loads the stage's texture file for map map (gStageTexFileIds) into slot
- * slot, made as gTexCreateKinds[kind]. The great arena's maps use file 0x10
- * in a versus quest; on other maps, quests 1 and 2 use file 0xB, and quests
- * 3 to 5 file 0xC in the jungle and 0x1A elsewhere. The quest is read from
+ * slot, made as gTexCreateKinds[kind]. The great arena's maps use file 16
+ * in a versus quest; on other maps, quests 1 and 2 use file 11, and quests
+ * 3 to 5 file 12 in the jungle and 26 elsewhere. The quest is read from
  * gScene, not from unusedQuestId.
  */
 void Tex_LoadStageFile(s32 map, s32 unusedQuestId, s32 slot, s32 kind)
@@ -304,18 +282,18 @@ void Tex_LoadStageFile(s32 map, s32 unusedQuestId, s32 slot, s32 kind)
     id = gStageTexFileIds[map];
     if (map == MAP_GREAT_ARENA || map == MAP_GREAT_ARENA_NIGHT) {
         if (Quest_IsVersus() == 1) {
-            id = 0x10;
+            id = 16;
         }
     } else {
         switch (gScene.questId) {
         case 1:
         case 2:
-            id = 0xB;
+            id = 11;
             break;
         case 3:
         case 4:
         case 5:
-            id = (map == MAP_JUNGLE) ? 0xC : 0x1A;
+            id = (map == MAP_JUNGLE) ? 12 : 26;
             break;
         }
     }
@@ -389,9 +367,9 @@ void Load_EmSlotAnim(s32 slot, s32 set)
 
 /*
  * Loads area area's model pack and sets it up: its model file and skeleton
- * are copied to the model load buffer and its part 2 read. AREA_HUB_0x83 and
+ * are copied to the model load buffer and its part 2 read. AREA_ONLINE_VILLAGE and
  * AREA_HUB_0x84 have a second pack, used in the lobby while
- * ElderRaid_InState1.
+ * ElderRaid_IsOn.
  */
 void Load_AreaPack(s32 area)
 {
@@ -401,15 +379,15 @@ void Load_AreaPack(s32 area)
 
     end = (base = (*(u8 * *)&gSysSettings.modelPack)) + MODEL_LOAD_SKEL_OFFSET;
     switch (area) {
-    case AREA_HUB_0x83:
-        if (gScene.inLobby != 0 && ElderRaid_InState1() == 1) {
-            file = gArea83PackFiles[1];
+    case AREA_ONLINE_VILLAGE:
+        if (gScene.inLobby != 0 && ElderRaid_IsOn() == 1) {
+            file = gOnlineVillagePackFiles[1];
         } else {
-            file = gArea83PackFiles[0];
+            file = gOnlineVillagePackFiles[0];
         }
         break;
     case AREA_HUB_0x84:
-        if (gScene.inLobby != 0 && ElderRaid_InState1() == 1) {
+        if (gScene.inLobby != 0 && ElderRaid_IsOn() == 1) {
             file = gArea84PackFiles[1];
         } else {
             file = gArea84PackFiles[0];
@@ -525,7 +503,7 @@ void Load_EquipModelPack(s32 id, s32 female)
 /*
  * Loads one of area area's extra model packs and copies its model file and
  * skeleton to the model load buffer. sub 0 is the area's own: in the lobby,
- * AREA_HUB_0x83's follows the season (LobbyWorld_GetSeason). sub 1 and on are
+ * AREA_ONLINE_VILLAGE's follows the season (LobbyWorld_GetSeason). sub 1 and on are
  * AREA_HUB_0x89's facilities, by facility and level; other areas have none.
  */
 void Load_AreaSubModelPack(s32 area, s32 sub)
@@ -535,22 +513,22 @@ void Load_AreaSubModelPack(s32 area, s32 sub)
 
     if (sub == 0) {
         switch (area) {
-        case AREA_HUB_0x83:
+        case AREA_ONLINE_VILLAGE:
             if (gScene.inLobby != 0) {
                 switch (LobbyWorld_GetSeason()) {
                 case 2:
                 default:
-                    file = gArea83SubModelFiles[0];
+                    file = gOnlineVillageSubModelFiles[0];
                     break;
                 case 0:
-                    file = gArea83SubModelFiles[1];
+                    file = gOnlineVillageSubModelFiles[1];
                     break;
                 case 1:
-                    file = gArea83SubModelFileS1;
+                    file = gOnlineVillageSubModelFileSeason1;
                     break;
                 }
             } else {
-                file = gArea83SubModelFiles[0];
+                file = gOnlineVillageSubModelFiles[0];
             }
             break;
         default:
@@ -674,7 +652,7 @@ s32 *gEmSlotAnimFiles[20] = {
 s32 gEmSlotModelPackFiles[20] = {
 #include "sub_main/00422460.inc"
 };
-u32 gStageFilePairs[4] = {
+FilePair gStageFilePairs[2] = {
 #include "sub_main/004224B0.inc"
 };
 s32 gCommonModelPackFiles[8] = {

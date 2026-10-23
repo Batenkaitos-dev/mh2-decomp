@@ -1,20 +1,20 @@
 /*
- * The browser's URLs and the page's object pool. First the URLs: the
- * browser's current URL (Browser_SetUrl), comparing and copying URLs, the
- * base URL that relative links resolve against, resolving a link against
- * it (relative paths, the current and parent directories, "//", schemes),
- * the schemes the browser knows (gUrlSchemes) and the script scheme it
- * refuses (gScriptSchemes), and a URL's file type (URL_TYPE_*). Url_FileType
+ * The browser's URLs: the browser's current URL (Browser_SetUrl),
+ * comparing and copying URLs, the base URL that relative links resolve
+ * against, resolving a link against it (relative paths, the current and
+ * parent directories, "//", schemes), the schemes the browser knows
+ * (gUrlSchemes) and the script scheme it refuses (gScriptSchemes), and a
+ * URL's file type (URL_TYPE_*). Url_FileType
  * keeps registers across the static Url_PathEnd and Url_LastDot, so they
  * are compiled with it in one file, as in the game.
  *
- * Then URL escapes and the Shift-JIS and EUC-JP conversions, the page's
- * object pool and its object lists (BLAYER_*), and the page's textures.
- * The work area is BrowserWork (browser.h).
+ * Then URL escapes and the Shift-JIS and EUC-JP conversions. The work
+ * area is BrowserWork (browser.h).
  */
 #include "common.h"
 #include "browser.h"
 #include "lobby_globals.h"
+#include "nethttp.h"
 
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
@@ -22,25 +22,12 @@ u32 strlen(const char *s);
 s32 strncmp(const char *a, const char *b, u32 n);
 char *strncpy(char *dst, const char *src, u32 n);
 void *memmove(void *dst, const void *src, u32 n);
-void Mem_Compact(void);
-s32 flReleasePaletteHandle(u32);
 /* unit's own declaration: declared with a u16 handle (the definition takes u32): so PageTex_ReleaseAll passes the handle's low 16 bits, as the game's code does */
-s32 flReleaseTextureHandle(u16);
-u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
-s32 Http_ReadFile(void *p, s32 a1);            /* nethttp */
 void Url_Copy(char *dst, const char *src);
-s32 Url_SpecialScheme(const char *url);
-s32 Url_GetScheme(const char *url);
-void Str_ToLower(char *s);
-
-extern char *gScriptSchemes[]; /* the script scheme, then NULL */
-extern UrlScheme gUrlSchemes[]; /* the schemes the browser loads, then a zero entry */
-
-void Url_ClearBase(void);
 
 /* The script scheme's text, gScriptSchemes' first entry (.rodata). */
 #pragma rodata on
-char gScriptSchemes_0[0xC] = {
+char gScriptSchemes_0[12] = {
 #include "lobby/00839018.inc"
 };
 #pragma rodata off
@@ -232,7 +219,7 @@ char *Url_Combine(char *base, char *url, s32 isBase)
     len = strlen(url);
     end = Url_PathEnd(url);
     if (Url_LastDot(url, end) == NULL && *end == 0 && isBase) {
-        if (len >= 0xFF) {
+        if (len >= 255) {
             return NULL;
         }
         if (end[-1] != '/') {
@@ -244,7 +231,7 @@ char *Url_Combine(char *base, char *url, s32 isBase)
         len = strlen(url);
         end = Url_PathEnd(url);
         if (Url_FindSlash(Url_FindDoubleSlash(url, end) + 2, end) == NULL) {
-            if (len >= 0xFF) {
+            if (len >= 255) {
                 return NULL;
             }
             if (end[-1] != '/') {
@@ -339,7 +326,7 @@ void Str_ToLower(char *str)
     if (character != 0) {
         do {
             if (character >= 'A' && character < 'Z' + 1) {
-                *str += 0x20;
+                *str += 32;
             }
             str++;
             character = *str;
@@ -449,19 +436,19 @@ static u32 Sjis_ToEuc(u32 code)
     u32 lowByte = code & 0xFF;
     u32 row;
 
-    row = ((highByte - (highByte < 0xA0 ? 0x71 : 0xB1)) << 1) + 1;
-    if (lowByte >= 0x9E) {
-        lowByte -= 0x7E;
+    row = ((highByte - (highByte < 160 ? 113 : 177)) << 1) + 1;
+    if (lowByte >= 158) {
+        lowByte -= 126;
         row++;
-    } else if (lowByte > 0x7F) {
-        lowByte -= 0x20;
+    } else if (lowByte > 127) {
+        lowByte -= 32;
     } else {
-        lowByte -= 0x1F;
+        lowByte -= 31;
     }
     lowByte |= 0x80;
     row |= 0x80;
-    if (lowByte == 0xA0) {
-        lowByte = 0xFE;
+    if (lowByte == 160) {
+        lowByte = 254;
         row--;
     }
     return (row << 8) | lowByte;
@@ -476,13 +463,13 @@ static u32 Euc_ToSjis(u32 code)
     lowByte = code & 0xFFFF7F7F;
     highByte = (lowByte >> 8) & 0xFF;
     lowByte &= 0xFF;
-    lowByte += (highByte & 1) ? 0x1F : 0x7D;
-    if (lowByte >= 0x7F) {
+    lowByte += (highByte & 1) ? 31 : 125;
+    if (lowByte >= 127) {
         lowByte++;
     }
-    highByte = ((highByte - 0x21) >> 1) + 0x81;
-    if (highByte > 0x9F) {
-        highByte += 0x40;
+    highByte = ((highByte - 33) >> 1) + 129;
+    if (highByte > 159) {
+        highByte += 64;
     }
     return (highByte << 8) | lowByte;
 }
@@ -502,9 +489,9 @@ void Str_SjisToEuc(u8 *str)
 
         code = *cur;
 
-        if (code <= 0x7F) {
+        if (code <= 127) {
             str[j++] = code;
-        } else if (code >= 0xA0 && code <= 0xDF) {
+        } else if (code >= 160 && code <= 223) {
             str[j++] = '_';
         } else {
             code = (code << 8) | cur[1];
@@ -519,7 +506,7 @@ void Str_SjisToEuc(u8 *str)
 }
 
 /* Converts str from EUC-JP to Shift-JIS in place; half-width katakana
- * (0x8E, then the character) are kept
+ * (lead character 0x8E, then the character) are kept
  * as their second byte. */
 void Str_EucToSjis(u8 *str)
 {
@@ -530,7 +517,7 @@ void Str_EucToSjis(u8 *str)
 
     for (i = 0, j = 0; i < len; i++) {
         code = str[i];
-        if (code <= 0x7F) {
+        if (code <= 127) {
             str[j++] = code;
         } else {
             code = (code << 8) | str[i + 1];
@@ -546,227 +533,4 @@ void Str_EucToSjis(u8 *str)
         }
     }
     str[j] = 0;
-}
-
-/* Empties the BLAYER_COUNT object lists and puts the 512 objects on the
- * free list. */
-void PageObj_InitPool(void)
-{
-    s32 i;
-    BrowserObj *pageObj;
-    s32 n;
-
-    for (i = 0; i < BLAYER_COUNT; i++) {
-        gBrowserWork->layerHead[i] = NULL;
-        gBrowserWork->layerTail[i] = NULL;
-    }
-    n = 0x200;
-    gBrowserWork->unk1A640 = 0;
-    gBrowserWork->unk1A644 = 0;
-    gBrowserWork->freeObj = pageObj = gBrowserWork->objPool;
-    while (n-- != 0) {
-        memset(pageObj, 0, sizeof(BrowserObj));
-        if (n != 0) {
-            pageObj->next = pageObj + 1;
-        }
-        pageObj++;
-    }
-}
-
-/* Takes one object from the free list; NULL when it is empty. */
-static BrowserObj *PageObj_Take(void)
-{
-    BrowserObj *pageObj = gBrowserWork->freeObj;
-
-    if (pageObj != NULL) {
-        gBrowserWork->freeObj = pageObj->next;
-    }
-    return pageObj;
-}
-
-/* Clears an object and puts it back on the free list. */
-static void PageObj_Give(BrowserObj *pageObj)
-{
-    memset(pageObj, 0, sizeof(BrowserObj));
-    pageObj->next = gBrowserWork->freeObj;
-    gBrowserWork->freeObj = pageObj;
-}
-
-/* Takes an object from the pool into list layer (BLAYER_*), at its head or
- * (atTail) its tail; NULL when the pool is empty. */
-BrowserObj *PageObj_Alloc(s32 layer, s32 atTail)
-{
-    BrowserObj *cur;
-    BrowserObj *pageObj = PageObj_Take();
-
-    if (pageObj == NULL) {
-        return NULL;
-    }
-    pageObj->layer = layer;
-    if (atTail == 0) {
-        pageObj->next = cur = gBrowserWork->layerHead[layer];
-        gBrowserWork->layerHead[layer] = pageObj;
-        pageObj->prev = NULL;
-        if (cur == NULL) {
-            gBrowserWork->layerTail[layer] = pageObj;
-        } else {
-            cur->prev = pageObj;
-        }
-    } else {
-        pageObj->prev = cur = gBrowserWork->layerTail[layer];
-        gBrowserWork->layerTail[layer] = pageObj;
-        pageObj->next = NULL;
-        if (cur == NULL) {
-            gBrowserWork->layerHead[layer] = pageObj;
-        } else {
-            cur->next = pageObj;
-        }
-    }
-    return pageObj;
-}
-
-/* Takes an object out of its list and puts it back in the pool. */
-void PageObj_Free(BrowserObj *pageObj)
-{
-    BrowserObj *prev = pageObj->prev;
-
-    if (prev == NULL) {
-        BrowserObj *next;
-
-        gBrowserWork->layerHead[pageObj->layer] = next = pageObj->next;
-        if (next == NULL) {
-            gBrowserWork->layerTail[pageObj->layer] = NULL;
-        } else {
-            next->prev = NULL;
-        }
-    } else if (pageObj->next == NULL) {
-        gBrowserWork->layerTail[pageObj->layer] = prev;
-        prev->next = NULL;
-    } else {
-        prev->next = pageObj->next;
-        pageObj->next->prev = pageObj->prev;
-    }
-    PageObj_Give(pageObj);
-}
-
-/* Runs the update function of each active object in list layer. */
-void PageObj_UpdateLayer(s32 layer)
-{
-    BrowserObj *pageObj = gBrowserWork->layerHead[layer];
-    BrowserObj *next;
-
-    if (pageObj != NULL) {
-        do {
-            next = pageObj->next;
-            if (pageObj->active) {
-                pageObj->update(pageObj);
-            }
-            pageObj = next;
-        } while (next != NULL);
-    }
-}
-
-/* Runs the draw function of each visible object in list layer. */
-void PageObj_DrawLayer(s32 layer)
-{
-    BrowserObj *pageObj = gBrowserWork->layerHead[layer];
-    BrowserObj *next;
-
-    if (pageObj != NULL) {
-        do {
-            next = pageObj->next;
-            if (pageObj->visible) {
-                pageObj->draw(pageObj);
-            }
-            pageObj = next;
-        } while (next != NULL);
-    }
-}
-
-/* Releases the page's textures and their palettes, then compacts memory. */
-void PageTex_ReleaseAll(void)
-{
-    s32 i;
-    u32 *texEntry = gBrowserWork->tex;
-
-    for (i = 0; i < gBrowserWork->nTex; i++, texEntry++) {
-        if (*texEntry != 0) {
-            u16 handle;
-
-            if ((*texEntry & 0xFFFF0000) >> 16) {
-                flReleasePaletteHandle((*texEntry & 0xFFFF0000) >> 16);
-            }
-            handle = *(u16 *)texEntry;
-            if (handle) {
-                flReleaseTextureHandle(handle);
-            }
-            *texEntry = 0;
-        }
-    }
-    gBrowserWork->nTex = 0;
-    Mem_Compact();
-}
-
-/* Adds tex to the page's textures; returns 0, or -1 when the PAGE_TEX_SLOTS
- * slots are full. */
-s32 PageTex_Add(u32 tex)
-{
-    s8 n = gBrowserWork->nTex;
-
-    if (n == PAGE_TEX_SLOTS) {
-        return -1;
-    }
-    gBrowserWork->tex[n] = tex;
-    gBrowserWork->nTex++;
-    return 0;
-}
-
-/* Returns the page texture in slot i, or -1 for a slot not in use. */
-u32 PageTex_Get(s8 i)
-{
-    if (i < 0 || gBrowserWork->nTex <= i) {
-        return -1;
-    }
-    return gBrowserWork->tex[i];
-}
-
-/* Loads the frame's texture, a step a frame (*step 0 to 4), in mode 3;
- * other modes do nothing. */
-void Browser_LoadFrame(s32 mode, u8 *step)
-{
-    switch (mode) {
-    case 3:
-        switch (*step) {
-        case 0:
-            Http_ReadFile(gLoadBuf, BRDATA_FRAME_TEX);
-            (*step)++;
-            break;
-        case 1:
-            PageTex_Add(Tex_CreateFromTim2(gLoadBuf, 0));
-            (*step)++;
-            break;
-        case 2:
-            *step = *step + 1;
-            break;
-        case 3:
-            *step = *step + 1;
-            break;
-        case 4:
-            break;
-        }
-        break;
-    }
-}
-
-/* The URL schemes the browser knows and the script scheme it refuses. */
-extern char gScriptSchemes_0[];
-UrlScheme gUrlSchemes[7] = {
-#include "lobby/007EEA40.inc"
-};
-char *gScriptSchemes[2] = {
-    gScriptSchemes_0, NULL,
-};
-
-void PageObj_Nop(void)
-{
 }

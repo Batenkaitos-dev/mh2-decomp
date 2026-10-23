@@ -19,7 +19,7 @@
  * the hops into the area after a reappearance.
  */
 enum EmDromeMotion {
-    DROME_MOT_IDLE = 0x01,                /* DROME_IDLE, the Init row, the scenes and VS waits (0x3E9 tests) */
+    DROME_MOT_IDLE = 0x01,                /* DROME_IDLE, the Init row, the scenes and VS waits (tested in Em.motionId) */
     DROME_MOT_WALK = 0x02,                /* DROME_MOVE_WALK, the Jungle scene walk */
     DROME_MOT_HOP = 0x03,                 /* HOP_FORWARD, EVENT2_HOP_IN/LEAP_DOWN_IN; airborne from frame 10; dust at 18 */
     DROME_MOT_HOP_UP = 0x04,              /* HOP_UP; airborne from frame 22; dust at 20 */
@@ -34,10 +34,10 @@ enum EmDromeMotion {
     DROME_MOT_LEAP = 0x14,                /* the LEAP_* attacks; airborne from frame 22 */
     DROME_MOT_LEAP_LAND = 0x15,           /* their landing */
     DROME_MOT_STRIKE = 0x16,              /* STRIKE_A/B/C; DromeAttack at frame 40 */
-    DROME_MOT_POUNCE = 0x17,              /* DROME_ATK_POUNCE; DromeAttack 2 at 32, PartFx 0x1B at 22 (EmDrome_MotionEffects) */
+    DROME_MOT_POUNCE = 0x17,              /* DROME_ATK_POUNCE; DromeAttack 2 at 32, PartFx at DROME_BONE_POUNCE_DUST at 22 (EmDrome_MotionEffects) */
     DROME_MOT_POUNCE_LAND = 0x18,         /* its landing */
     DROME_MOT_QUICK_STRIKE = 0x19,        /* QUICK_STRIKE_A/B; DromeAttack at frame 12 */
-    DROME_MOT_SPIT = 0x1A,                /* DROME_ATK_SPIT(_FAST); spit from bone 0xF at frame 80 */
+    DROME_MOT_SPIT = 0x1A,                /* DROME_ATK_SPIT(_FAST); spit from DROME_BONE_MOUTH at frame 80 */
     DROME_MOT_FLINCH = 0x1E,              /* DROME_REACT_FLINCH, DROME_REACT_HOLD2 start */
     DROME_MOT_KNOCKED_BACK = 0x1F,        /* DROME_REACT_KNOCKED_BACK, DIE_BACK */
     DROME_MOT_KNOCKED_BACK_LAND = 0x20,   /* their landing */
@@ -49,9 +49,9 @@ enum EmDromeMotion {
     DROME_MOT_KNOCKED_SIDE_A_LAND = 0x26, /* their landing */
     DROME_MOT_GET_UP = 0x27,              /* DROME_IDLE_GET_UP, STATUS1/2_END */
     DROME_MOT_DEAD = 0x29,                /* the carcass of DIE_* with the carve point */
-    DROME_MOT_DAZED = 0x2A,               /* DROME_IDLE_BLINDED (0x412 test), DROME_REACT_DAZE, DROME_REACT_STUN, DROME_VS_POSE_A */
+    DROME_MOT_DAZED = 0x2A,               /* DROME_IDLE_BLINDED (tested in Em.motionId), DROME_REACT_DAZE, DROME_REACT_STUN, DROME_VS_POSE_A */
     DROME_MOT_COLLAPSE = 0x2B,            /* DROME_IDLE_STATUS1/2, DROME_EVENT_CAPTURED */
-    DROME_MOT_LIE = 0x2C,                 /* lying after the collapse; puffs at bone 0xF each frame */
+    DROME_MOT_LIE = 0x2C,                 /* lying after the collapse; puffs at DROME_BONE_MOUTH each frame */
     DROME_MOT_DIE = 0x2E,                 /* DIE_* after the landing; field collision off */
     DROME_MOT_STATUS4 = 0x2F,             /* DROME_REACT_STATUS4, DROME_REACT_HOLD2 until the timer */
     DROME_MOT_THREAT = 0x32,              /* DROME_IDLE_THREAT, DROME_IDLE_RAGE (rage start), the Jungle scene, DROME_VS_POSE_C */
@@ -101,10 +101,10 @@ enum EmDromeHopState {
 
 /* Group 3, EM_GROUP_ATTACK (EmDrome_RunAttackState): the strikes, the pounce, the leaps and the spit. */
 enum EmDromeAttackState {
-    DROME_ATK_STRIKE_A = 0x00,      /* the kind's DromeAttack 1/0xD/7 at frame 40 */
+    DROME_ATK_STRIKE_A = 0x00,      /* the kind's DromeAttack 1/13/7 at frame 40 */
     DROME_ATK_POUNCE = 0x01,        /* DROME_CURVE_POUNCE, DROME_MOT_POUNCE */
     DROME_ATK_LEAP_MEDIUM_A = 0x02, /* velY 75 velZ 50; the kind's 3/8/9 */
-    DROME_ATK_QUICK_STRIKE_A = 0x03, /* frame 12; the kind's 5/0xA/0xB */
+    DROME_ATK_QUICK_STRIKE_A = 0x03, /* frame 12; the kind's 5/10/11 */
     DROME_ATK_LEAP_LONG_A = 0x04,   /* velZ 100; the kind's 3/8/9 */
     DROME_ATK_LEAP_HIGH_A = 0x05,   /* velY 150; the kind's 3/8/9 */
     DROME_ATK_SPIT = 0x06,          /* prey spit variant 1 */
@@ -114,17 +114,17 @@ enum EmDromeAttackState {
     DROME_ATK_LEAP_LONG_B = 0x0A,   /* DromeAttack 3 */
     DROME_ATK_LEAP_HIGH_B = 0x0B,   /* DromeAttack 3 */
     DROME_ATK_LEAP_TO_GOAL = 0x0C,  /* velY aimed above a higher goal */
-    DROME_ATK_STRIKE_C = 0x0D,      /* DromeAttack 0xC */
+    DROME_ATK_STRIKE_C = 0x0D,      /* DromeAttack 12 */
     DROME_ATK_SPIT_FAST = 0x0E      /* prey spit variant 3 (double speed) */
 };
 
 /* Group 4, EM_GROUP_REACT (EmDrome_RunReactState): what EmDrome_Update picks from Em_UpdateDamage's result. */
 enum EmDromeReactState {
     DROME_REACT_FLINCH = 0x00,         /* DROME_MOT_FLINCH; PART_FLINCH/HIT on the ground */
-    DROME_REACT_KNOCKED_BACK = 0x01,   /* hit angle 0x6000-0xA000 from the heading */
+    DROME_REACT_KNOCKED_BACK = 0x01,   /* hit from three to five eighths of a turn off the heading (the back) */
     DROME_REACT_KNOCKED_FORWARD = 0x02, /* hit angle near the heading */
-    DROME_REACT_KNOCKED_SIDE_A = 0x03, /* 0x2000-0x6000 */
-    DROME_REACT_KNOCKED_SIDE_B = 0x04, /* 0xA000-0xE000 */
+    DROME_REACT_KNOCKED_SIDE_A = 0x03, /* hit from one to three eighths of a turn off the heading */
+    DROME_REACT_KNOCKED_SIDE_B = 0x04, /* hit from five to seven eighths of a turn off the heading */
     DROME_REACT_DAZE = 0x05,           /* DROME_MOT_DAZED once; not picked in this file */
     DROME_REACT_STATUS4 = 0x06,        /* EM_DMG_STATUS4; Em_BeginStatus4 */
     DROME_REACT_HOLD2 = 0x07,          /* EM_DMG_ATTACK13; Em_EndAllStatus, Em_SetHold2 */
@@ -133,10 +133,10 @@ enum EmDromeReactState {
 
 /* Group 5, EM_GROUP_DEFEAT (EmDrome_RunDefeatState): death, by the side it falls on, and appearing again. */
 enum EmDromeDefeatState {
-    DROME_DEFEAT_DIE_BACK = 0x00,   /* killed, hit 0x6000-0xA000; carcass to carve */
+    DROME_DEFEAT_DIE_BACK = 0x00,   /* killed, hit from three to five eighths of a turn off the heading; carcass to carve */
     DROME_DEFEAT_DIE_FORWARD = 0x01, /* killed by a hit near the heading */
-    DROME_DEFEAT_DIE_SIDE_A = 0x02, /* killed, 0x2000-0x6000 */
-    DROME_DEFEAT_DIE_SIDE_B = 0x03, /* killed, 0xA000-0xE000 */
+    DROME_DEFEAT_DIE_SIDE_A = 0x02, /* killed, hit from one to three eighths of a turn off the heading */
+    DROME_DEFEAT_DIE_SIDE_B = 0x03, /* killed, hit from five to seven eighths of a turn off the heading */
     DROME_DEFEAT_REAPPEAR = 0x04    /* QuestEm_Appear; appear point by area */
 };
 
@@ -209,5 +209,55 @@ typedef struct EmDromeKindEntry {
     f32 scale;          /* 0x04 */
     s32 se;             /* 0x08: the sound at death */
 } EmDromeKindEntry;
+
+/*
+ * Bones: a bone number indexes the model's skeleton (the bone argument of
+ * Em_PlaySeAtBoneOnFrame, EmRangedAttack_CreateAtBone, PartFx_SpawnForEm and
+ * Em_SpawnLyingPuffs). The names say what the family's code shows a bone to
+ * be. The preys share the skeleton, and the Velociprey's code uses these
+ * names the same way: its spits and its lying puffs start at
+ * DROME_BONE_MOUTH, its stun stars circle DROME_BONE_STUN_STARS, its hops,
+ * its moves aside and its pounce raise their dust at
+ * DROME_BONE_HOP_DUST and DROME_BONE_POUNCE_DUST, and its sounds play at
+ * DROME_BONE_ROOT. Bones no code explains stay numbers: 2 (the idle's random call plays
+ * there), 26 (the sphere of DromeAttack's row 4, which no state makes), and
+ * 7 and 10 (the spheres of hit list 3, which no row uses).
+ *
+ * Sounds: a sound number indexes the kind's own sound bank. None is named:
+ * the code shows only where each plays (all but the idle's call at
+ * DROME_BONE_ROOT), not what it is.
+ */
+enum EmDromeBone {
+    DROME_BONE_ROOT = 0,            /* the skeleton's first bone: the sounds play there, and every attack's sphere is offset from it (DromeAttack_HitShapes' lists 0 and 1) */
+    DROME_BONE_HOP_DUST = 1,        /* the dust in the hops and the moves aside (PartFx_SpawnForEm) */
+    DROME_BONE_STUN_STARS = 14,     /* where the stun stars circle (StunStars_CreateEm, EmDrome_Stun) */
+    DROME_BONE_MOUTH = 15,          /* where the spit starts (EMRANGED_PREY_SPIT, DROME_MOT_SPIT's frame 80) and the lying puffs (DROME_MOT_LIE) */
+    DROME_BONE_POUNCE_DUST = 27     /* the pounce's dust (DROME_MOT_POUNCE's frame 22, ten frames before its hit) */
+};
+
+extern void *EmDrome_Callbacks[8];
+void EmDrome_MotionSounds(Em *em, EmWork *work);
+void EmDrome_Init(Em *em);
+void EmDrome_Start(Em *em);
+void EmDrome_RunIdleState(Em *em, EmWork *work);
+void EmDrome_Walk(Em *em, EmWork *work);
+void EmDrome_RunAttackState(Em *em, EmWork *work);
+void EmDrome_DieBack(Em *em, EmWork *work);
+void EmDrome_DieForward(Em *em, EmWork *work);
+void EmDrome_DieSideA(Em *em, EmWork *work);
+void EmDrome_DieSideB(Em *em, EmWork *work);
+void EmDrome_Reappear(Em *em, EmWork *work);
+void EmDrome_EventJungleScene(Em *em, EmWork *work);
+void EmDrome_VsEatBait(Em *em, EmWork *work);
+void EmDrome_Update(Em *em);
+void EmDrome_RunState(Em *em, s32 work);
+void EmDrome_MotionEffects(Em *em, EmWork *work);
+void EmDrome_SetIdleState(Em *em, u16 state, u8 mode);
+void EmDrome_SetMoveState(Em *em, u16 state, u8 mode);
+void EmDrome_SetHopState(Em *em, u16 state, u8 mode);
+void EmDrome_SetAttackState(Em *em, u16 state, u8 mode);
+void EmDrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmDrome_StartCurves(Em *em, u8 kind);
+u8 EmDrome_UpdateCurves(Em *em);
 
 #endif

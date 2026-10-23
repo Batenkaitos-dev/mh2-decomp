@@ -35,83 +35,38 @@
 #include "scene.h"
 #include "save.h"
 #include "lobby_labels.h"
+#include "lobby_steps.h"
+#include "elder_forecast.h"
+#include "game_util.h"
+#include "hunter_card.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_queries.h"
+#include "lobby_world.h"
+#include "server_name.h"
+#include "town_members.h"
+#include "libc.h"
 
 s32 LobbyNet_GetErrText(s8 *);
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-s32 HunterCard_Sanitize(void *);
-s32 LobbyReq_QuestRecord(void *src, s32 n, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_LoginInfo(void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_CharaSelectText(char *dst, s32 arg1, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_HunterCard(void *src, u16 n, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_ChatColorMode(u8 arg0, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyNet_GetLoginInfo(struct NetLoginInfo *dst);
-s32 LobbyNet_GetCharaSelectText(s32 *dst);
-void LobbyStep_HunterCardDone(NetMsg m, NetMsg *pm);
-void LobbyStep_LoginInfoDone(NetMsg m, NetMsg *pm);
-void LobbyStep_CharaSelectTextDone(NetMsg m, NetMsg *pm);
-void LobbyStep_ChatColorModeDone(NetMsg m, NetMsg *pm);
-void LobbyStep_QuestRecordDone(NetMsg m, NetMsg *pm);
 extern QuestRecord gQuestRecord;
-s32 LobbyReq_TownData(u8 i, u8 *dst, s32 max, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_TownClock(void (*onReply)(NetMsg, NetMsg *));
-void Lobby_ApplyTownData(void);
-void LobbyStep_TownDataDone(NetMsg m, NetMsg *pm);
-void LobbyStep_TownClockDone(NetMsg m, NetMsg *pm);
-void LobbyStep_Level1ListDone(NetMsg m, NetMsg *pm);
-void LobbyStep_Level1AllowedDone(NetMsg m, NetMsg *pm);
-s32 LobbyNet_GetTownData(u8 *);
-s32 LobbyNet_GetTownClock(NetTownClock *dst);
 void Season_Set(s32 a);
-u32 LobbyWorld_TicksToSeconds(u32 t);
-void LobbyTime_SetClock(u32 time);
 extern u32 gTownYear;
 extern u32 gTownDay;
 extern u32 gTownSeason;
 extern u32 gTownSeasonDays[3];
 extern u32 gTownDayTicks;
 extern s32 gLobbyTime;
-s32 LobbyNet_GetListReplies(u16 *);
-s32 LobbyLevel_SelId(s32 level);
-s32 LobbyReq_Level1Enter(u16 id, char *pass, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1Users(u16 id, void (*onReply)(NetMsg, NetMsg *));
-void Lobby_SetPlace(s32 a);
-void LobbyDialog_OpenWait(void *text);
 extern u8 gLobbyLevel1Sel;
-void LobbyStep_Level1EnterDone(NetMsg m, NetMsg *pm);
-void LobbyStep_Level1UsersDone(NetMsg m, NetMsg *pm);
-void LobbyStep_FetchLevel1UsersDone(NetMsg m, NetMsg *pm);
-s32 LobbyNet_GetUser(u16, char *, char *, u8 *);
-s32 memcmp(void *a, void *b, s32 n);
 extern NetUser gNetUsers[10];
 extern u8 gMyUserId[];                   /* the player's id (sub_main) */
-void HunterCard_Apply(s8 idx, void *src);
-void TownPc_Spawn(u8 pl, struct NetUser *id, char *name);
-void Lobby_Disconnect(s32);
 extern u8 gLobbyScreenStep;
 s32 LobbyReq_Level1Open(s32 id, void (*onReply)(NetMsg, NetMsg *)); /* unit's own declaration: an s32 id; with the definition's u16 id, LobbyStep_Level1Open compiles differently */
 void LobbyStep_Level1OpenDone(NetMsg m, NetMsg *pm);
-void LobbyStep_Level1SettingsDone(NetMsg m, NetMsg *pm);
-s32 NetLevel1SettingsTask_Start(NetEntrySettings *p, void (*onDone)(NetMsg, NetMsg *));
-char *strcpy(char *dst, const char *src);
-s32 Lobby_HrAtLeast31(void);
-void Lobby_ClearHost(void);
-s32 LobbyStep_Level1Enter(void);
-s32 LobbyStep_Level1Users(void);
 s32 LobbyReq_Level1SetColor(s8 v, void (*onReply)(NetMsg, NetMsg *)); /* unit's own declaration: an s8 colour; with the definition's s32, LobbyStep_Level1SetColor compiles differently */
 void LobbyStep_Level1SetColorDone(NetMsg m, NetMsg *pm);
-QuestInfo *Quest_CurrentInfo(void);
-s32 NetDlFileTask_Start(u8 file, u8 *buf, s32 size, void (*onDone)(NetMsg, NetMsg *));
-void LobbyStep_DownloadDone(NetMsg m, NetMsg *pm);
-s32 LobbyReq_Level1Leave(void (*onReply)(NetMsg, NetMsg *));
-void LobbyStep_Level1LeaveDone(NetMsg m, NetMsg *pm);
 extern s32 gTownMenuOpen;
 extern s32 gTownMode;
 extern u8 gTownModeStep;
-s32 Game_IsOnline(void);
-void HunterCard_Build(void *out);
-s32 LobbyReq_HunterCardPart(void *src, u16 n, u16 x, void (*onReply)(NetMsg, NetMsg *));
-void Lobby_IgnoreReply(NetMsg m, NetMsg *pm);
 extern u8 gLobbyTextDirty;
 extern u8 gOnlineMark;
 
@@ -237,7 +192,7 @@ void LobbyStep_LoginInfoDone(NetMsg msg, NetMsg *msgPtr)
 /*
  * A step of the character select screen, on LobbyState.seqStep: asks for
  * the screen's text with LobbyReq_CharaSelectText (614D), which the reply
- * writes into LobbyState.errText (cleared first; at most its 0x300 bytes).
+ * writes into LobbyState.errText (cleared first; at most its 768 bytes).
  * Returns LOBBY_STEP_BUSY while waiting, LOBBY_STEP_DONE done,
  * LOBBY_STEP_FAILED failed (errText is cleared again).
  */
@@ -416,9 +371,6 @@ void LobbyStep_QuestRecordDone(NetMsg msg, NetMsg *msgPtr)
 extern u16 gLobbyRateValues[];                /* the 6884 slot 1 */
 extern ElderRaidEvent gElderRaidEvent;
 extern s32 gRateSnapshot[LOBBY_RATE_COUNT];              /* sub_main */
-void ElderRaid_SetState(void);
-void ElderRaid_CheckChanged(void);
-void LobbyWorld_ScheduleEvents(LobbyWorldEvent *ev, s32 *flags);
 
 /*
  * Applies the town data the server sent with 6884 (its slots sit in
@@ -461,7 +413,7 @@ void Lobby_ApplyTownData(void)
 /*
  * A login step on LobbyState.seqStep: fetches the 6884 slots first to last
  * (LobbyReq_TownData, LOBBY_CMD_TOWN_DATA), one request at a time, each
- * into its own 0x100 bytes of gTownQuestLists (cleared first);
+ * into its own 256 bytes of gTownQuestLists (cleared first);
  * LobbyState.questList holds the slot being fetched. Once the last is in it
  * applies them (Lobby_ApplyTownData). Returns LOBBY_STEP_BUSY while busy,
  * LOBBY_STEP_DONE done, LOBBY_STEP_FAILED failed (questList is reset either
@@ -614,20 +566,11 @@ void LobbyStep_TownClockDone(NetMsg msg, NetMsg *msgPtr)
     }
 }
 
-/* a level-1 entry as sub_main keeps them (gLobbyLevel1Entries, 0x164 bytes each) */
+/* a level-1 entry as sub_main keeps them (gLobbyLevel1Entries, 356 bytes each) */
 extern LevelEntry gLobbyLevel1Entries[];          /* level 1's entries (sub_main copies) */
 extern u16 gLobbyLevel1Count;                  /* the number of level-1 entries */
 s32 NetLevel1ListTask_Start(u16 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *)); /* unit's own declaration: a u16 first argument; with the definition's s32, LobbyStep_Level1List compiles differently */
 s32 NetLevel1AllowedTask_Start(u16 n, void (*onDone)(NetMsg, NetMsg *));
-s32 NetList1_GetCount(u16 *n);
-s32 NetList1_GetByte(u16 id, u8 *out);
-s32 NetList1_GetColor(u16 id, s32 *out);
-s32 NetList1_GetUsers(u16 id, u16 *a, u16 *b);
-s32 NetList1_GetName(u16 id, char *dst);
-s32 NetList1_GetMaxUsers(u16 id, u16 *out);
-s32 NetList1_GetText(u16 id, char *dst);
-s32 NetList1_GetGroupInfo(u16 id, u8 *out);
-s32 LobbyNet_GetEntryVals(u16 id, NetEntryVals *out);
 
 /*
  * Fetches the second level's list (task 3, NetLevel1ListTask_Start: each
@@ -880,7 +823,7 @@ s32 LobbyStep_Level1Users(void)
 /* 630A's reply: the entry's users become the members (LobbyState and
  * gNetUsers), each in the slot it had or the first free one */
 /* Level 4 (the file stays at 3: HunterCard_SendOnlineMark doesn't match at 4);
- * at level 3, k * 0x11C is computed again after the host block. */
+ * at level 3, k * 284 is computed again after the host block. */
 #pragma optimization_level 4
 /*
  * LobbyStep_Level1Users's reply handler (awaitReply
@@ -936,10 +879,10 @@ void LobbyStep_Level1UsersDone(NetMsg msg, NetMsg *msgPtr)
                         memset(&gLobby->members[slot], 0, sizeof(NetUser));
                         memset(&gNetUsers[slot], 0, sizeof(NetUser));
                         memcpy(gLobby->members[slot].id, user.id, sizeof(user.id));
-                        memcpy(gLobby->members[slot].name, userName, 0x10);
+                        memcpy(gLobby->members[slot].name, userName, 16);
                         memcpy(gLobby->members[slot].text, userText, sizeof(user.text));
                         memcpy(gNetUsers[slot].id, gLobby->members[slot].id, sizeof(user.id));
-                        memcpy(gNetUsers[slot].name, gLobby->members[slot].name, 0x10);
+                        memcpy(gNetUsers[slot].name, gLobby->members[slot].name, 16);
                         memcpy(gNetUsers[slot].text, gLobby->members[slot].text, sizeof(user.text));
                         if (memcmp(user.id, gMyUserId, sizeof(user.id)) == 0) {
                             gScene.localPlayer = slot;
@@ -1301,10 +1244,6 @@ void LobbyStep_FetchLevel1UsersDone(NetMsg msg, NetMsg *msgPtr)
 }
 
 extern u8 gQuestFiles[];
-s32 NetDlListTask_Start(void (*onDone)(NetMsg, NetMsg *));
-s32 LobbyNet_GetDlFiles(u8 *count, NetDlFile **files);
-void Lobby_ApplyServerTimers(void);
-void LobbyStep_DlListDone(NetMsg m, NetMsg *pm);
 
 /*
  * Downloads the quest files the server offers. Task 13
@@ -1597,14 +1536,10 @@ void LobbyStep_Level1LeaveDone(NetMsg msg, NetMsg *msgPtr)
 }
 
 /* the third-level entry the player looks at (gLobbyRecs): what may be sent,
- * and task 6's records as the level-2 screens show them (0x14A8 bytes each) */
+ * and task 6's records as the level-2 screens show them (5288 bytes each) */
 extern LobbyRecs gLobbyRecs;
-s32 NetLevel2RecsTask_Start(u16 id, void (*onDone)(NetMsg, NetMsg *));
 s32 NetLevel2RecsTask_GetRecs(u16 id, NetRecs2 *dst); /* unit's own declaration: a u16 id; with the definition's s32, LobbyStep_Level2Entry compiles differently */
 s32 LobbyReq_Level2Users(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 NetList2_GetUser(u16 i, char *id, char *name, u8 *text);
-void LobbyStep_Level2RecsDone(NetMsg m, NetMsg *pm);
-void LobbyStep_Level2UsersDone(NetMsg m, NetMsg *pm);
 
 /*
  * Fetches level-2 entry id (0-based; the server's id is entryId, id + 1)
@@ -1748,12 +1683,12 @@ void LobbyStep_Level2UsersDone(NetMsg msg, NetMsg *msgPtr)
  * card goes into LobbyState.members[localPlayer], myText, gPlayerText and
  * gNetUsers[localPlayer] and is sent whole (LobbyReq_HunterCard, 6190).
  * The replies are ignored (Lobby_IgnoreReply). Clears gLobbyTextDirty.
- * Returns 0. text holds 0xE0 bytes, but sizeof(UserText) are compared and copied
+ * Returns 0. text holds 224 bytes, but sizeof(UserText) are compared and copied
  * from it, as in the game's code.
  */
 s32 HunterCard_SendChanged(void)
 {
-    u8 text[0xE0];
+    u8 text[224];
     u8 colorMode;
     u8 newColor;
 
@@ -1838,12 +1773,12 @@ void HunterCard_SendOnlineMark(void)
  * the whole card into LobbyState.members[localPlayer], myText,
  * gPlayerText and gNetUsers[localPlayer] and sends those bytes
  * (LobbyReq_HunterCardPart, 6192; the reply is ignored). The callers pass
- * offsets of HunterCard fields. text holds 0xE0 bytes, but 0x100 are
+ * offsets of HunterCard fields. text holds 224 bytes, but 256 are
  * copied from it, as in the game's code.
  */
 void HunterCard_SendPart(u16 offset, u16 count)
 {
-    char text[0xE0];
+    char text[224];
     u8 *newText;
     u32 pos;
 

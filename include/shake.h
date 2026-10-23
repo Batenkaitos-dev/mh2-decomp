@@ -20,4 +20,12 @@ typedef struct ShakeOffset {
     s16 y;
 } ShakeOffset;
 
+void Shake_Start(u8 id, u8 flags, f32 amp);
+s32 Shake_Update(u8 id);
+void Shake_Stop(void);
+s32 Shake_Value(u8 id);
+void *Shake_GetOffset(u8 id);
+s32 Shake_CopyOffset(u8 id, ShakeOffset *out);
+u8 Shake_Flags(u8 id);
+
 #endif

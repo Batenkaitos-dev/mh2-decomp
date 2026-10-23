@@ -16,125 +16,35 @@
 #include "quest.h"
 #include "em.h"
 #include "em_drome.h"
+#include "objattach.h"
 #include "player.h"
 #include "area.h"
+#include "shadow.h"
+#include "capsule.h"
+#include "save.h"
+#include "sound.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "vec_math.h"
+#include "em_hermitaur.h"
+#include "em_script.h"
 /* prototypes of callees */
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-s32 Versus_DefeatCamera(Em *pl);
-void Versus_RouteEmByTeam(Em *em);
-void PartFx_SpawnForEm(Em *em, s32 a, s32 b);
 
 /* prototypes */
-void EmDrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus1(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-void QuestEm_Captured(Em *em);
 void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void DromeAttack_Create(Em *, s8);
-void Em_MoveRotatedAccel(Em *, void *);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmDrome_ChangeState, EmDrome_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void Em_ClearPoison(Em *em);
-void Em_SetHold2(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_RestartScript(Em *em);
-void EmDrome_Init(Em *em);
-void EmDrome_RunIdleState(Em *em, EmWork *work);
-void EmDrome_Walk(Em *, EmWork *);
-void EmDrome_RunAttackState(Em *em, EmWork *work);
-void EmDrome_DieBack(Em *, EmWork *);
-void EmDrome_DieForward(Em *em, EmWork *work);
-void EmDrome_DieSideA(Em *em, EmWork *work);
-void EmDrome_DieSideB(Em *em, EmWork *work);
-void EmDrome_Reappear(Em *, EmWork *);
-void EmDrome_EventJungleScene(Em *, EmWork *);
-void EmDrome_VsEatBait(Em *, EmWork *);
-void EmDrome_MotionEffects(Em *, EmWork *);
-void EmDrome_StartCurves(Em *em, u8 kind);
-u8 EmDrome_UpdateCurves(Em *em);
 void StunStars_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-s32 ObjListA70_Add(EmObj *obj);
-void ObjListA70_Remove(EmObj *obj);
-s32 Versus_BothDefeated(void);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
 extern EmTurnParams EmDrome_TurnParams[2];
-void Em_InitParts(Em *em);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-u16 Area_DayId(u16 id);
-void EmDrome_SetIdleState(Em *em, u16 state, u8 mode);
-void EmDrome_SetMoveState(Em *em, u16 state, u8 mode);
-void EmDrome_SetHopState(Em *em, u16 state, u8 mode);
-void EmDrome_SetAttackState(Em *em, u16 state, u8 mode);
-s32 Game_IsOnline(void);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_StartRage(Em *em);
-void Em_StartPendingRage(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_TargetPlayerInRange(Em *);
-void Versus_MarkDefeat(Em *);
-s8 QuestEm_Appear(Em *em);
-void Em_ResetToBasePose(Em *em);
-void Em_BreakPart(Em *em, s32 part);
 void Em_EndAllStatus(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_CheckRageByHp(Em *em, s16 n);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-void Em_SetTargetAngle(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_ResetNotice(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_AddNeed2(Em *em, s32 n);
-void Em_ClearNeed1State(Em *em);
-void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-void MinePoint_Remove(s32);
 extern Vec3f EmDrome_CarveThrowPt __attribute__((aligned(8)));
-void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-s32 Save_TestEventFlag(s32 flag);
-void GmEm_ResetSize(Em *em);
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaisePlayerAreaTrigger(Em *em);
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
 /* A quest appearance point: the position and the point the monster faces. */
 typedef struct EmDromeAppearPoint {
     f32 pos[3];
@@ -143,15 +53,6 @@ typedef struct EmDromeAppearPoint {
 extern EmDromeAppearPoint EmDrome_AppearPtForestHills10;
 extern EmDromeAppearPoint EmDrome_AppearPtsForestHills2[2];
 extern EmDromeAppearPoint EmDrome_AppearPtsForestHills1[4];
-u8 Em_SenseObjects(Em *em, EmObj *self);
-s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
-void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetKindTimer(Em *em);
-void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmDrome_RunState(Em *em, s32 arg1);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 /* end of prototypes */
 
 /*
@@ -166,175 +67,175 @@ void EmDrome_MotionSounds(Em *em, EmWork *work)
 
     prevMotion = work->prevMotion;
     switch (prevMotion) {
-    case 0x3E9:
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, Sound_RandomSe(0xE, 2, 0xE, 2), 0);
+    case EM_MOTION_ID(0, DROME_MOT_IDLE):
+        Em_PlaySeAtBoneOnFrame(em, 200, Sound_RandomSe(14, 2, 14, 2), DROME_BONE_ROOT);
         break;
-    case 0x3EA:
-        Em_PlaySeAtBoneOnFrame(em, 8, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 2, 0);
+    case EM_MOTION_ID(0, DROME_MOT_WALK):
+        Em_PlaySeAtBoneOnFrame(em, 8, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, 2, DROME_BONE_ROOT);
         break;
-    case 0x3EB:
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 3, 0);
+    case EM_MOTION_ID(0, DROME_MOT_HOP):
+        Em_PlaySeAtBoneOnFrame(em, 20, 8, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 3, DROME_BONE_ROOT);
         break;
-    case 0x3EC:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0);
+    case EM_MOTION_ID(0, DROME_MOT_HOP_UP):
+        Em_PlaySeAtBoneOnFrame(em, 22, 8, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 3, DROME_BONE_ROOT);
         break;
-    case 0x3ED:
-        Em_PlaySeAtBoneOnFrame(em, 4, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 0);
+    case EM_MOTION_ID(0, DROME_MOT_HOP_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 4, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 1, DROME_BONE_ROOT);
         break;
-    case 0x3EE:
-    case 0x3EF:
-        Em_PlaySeAtBoneOnFrame(em, 6, 5, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 4, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0);
+    case EM_MOTION_ID(0, DROME_MOT_TURN_LEFT):
+    case EM_MOTION_ID(0, DROME_MOT_TURN_RIGHT):
+        Em_PlaySeAtBoneOnFrame(em, 6, 5, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 4, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 42, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 48, 1, DROME_BONE_ROOT);
         break;
-    case 0x3F0:
-        Em_PlaySeAtBoneOnFrame(em, 8, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 8, 4, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 7, 0);
+    case EM_MOTION_ID(0, DROME_MOT_MOVE_ACTION_A):
+        Em_PlaySeAtBoneOnFrame(em, 8, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 8, 4, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 7, DROME_BONE_ROOT);
         break;
-    case 0x3F1:
-    case 0x3F2:
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 7, 0);
+    case EM_MOTION_ID(0, DROME_MOT_MOVE_ACTION_B):
+    case EM_MOTION_ID(0, DROME_MOT_MOVE_ACTION_C):
+        Em_PlaySeAtBoneOnFrame(em, 12, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 12, 4, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 36, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 7, DROME_BONE_ROOT);
         break;
-    case 0x3F3:
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x104, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 0x17, 0);
+    case EM_MOTION_ID(0, DROME_MOT_ALERT):
+        Em_PlaySeAtBoneOnFrame(em, 68, 17, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 164, 18, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 34, 23, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 260, 23, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 288, 23, DROME_BONE_ROOT);
         break;
-    case 0x3F4:
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 0xE, 0);
+    case EM_MOTION_ID(0, DROME_MOT_IDLE_B):
+        Em_PlaySeAtBoneOnFrame(em, 118, 14, DROME_BONE_ROOT);
         break;
-    case 0x3FC:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 8, 0);
+    case EM_MOTION_ID(0, DROME_MOT_LEAP):
+        Em_PlaySeAtBoneOnFrame(em, 22, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 3, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 8, DROME_BONE_ROOT);
         break;
-    case 0x3FD:
-        Em_PlaySeAtBoneOnFrame(em, 4, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0);
+    case EM_MOTION_ID(0, DROME_MOT_LEAP_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 4, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 6, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 36, 0, DROME_BONE_ROOT);
         break;
-    case 0x3FE:
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 0);
+    case EM_MOTION_ID(0, DROME_MOT_STRIKE):
+        Em_PlaySeAtBoneOnFrame(em, 40, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 60, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 118, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 16, DROME_BONE_ROOT);
         break;
-    case 0x3FF:
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 8, 0);
+    case EM_MOTION_ID(0, DROME_MOT_POUNCE):
+        Em_PlaySeAtBoneOnFrame(em, 22, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 3, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 8, DROME_BONE_ROOT);
         break;
-    case 0x400:
-        Em_PlaySeAtBoneOnFrame(em, 4, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 1, 0);
+    case EM_MOTION_ID(0, DROME_MOT_POUNCE_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 4, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 6, 1, DROME_BONE_ROOT);
         break;
-    case 0x401:
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x10, 0);
+    case EM_MOTION_ID(0, DROME_MOT_QUICK_STRIKE):
+        Em_PlaySeAtBoneOnFrame(em, 2, 16, DROME_BONE_ROOT);
         break;
-    case 0x402:
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x1C, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 8, 0);
+    case EM_MOTION_ID(0, DROME_MOT_SPIT):
+        Em_PlaySeAtBoneOnFrame(em, 60, 0, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 128, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 72, 28, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 60, 8, DROME_BONE_ROOT);
         break;
-    case 0x406:
-        Em_PlaySeAtBoneOnFrame(em, 4, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 8, 0);
+    case EM_MOTION_ID(0, DROME_MOT_FLINCH):
+        Em_PlaySeAtBoneOnFrame(em, 4, 9, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 54, 8, DROME_BONE_ROOT);
         break;
-    case 0x407:
-    case 0x409:
-    case 0x40B:
-    case 0x40D:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xB, 0);
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_BACK):
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_FORWARD):
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_SIDE_B):
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_SIDE_A):
+        Em_PlaySeAtBoneOnFrame(em, 4, 11, DROME_BONE_ROOT);
         break;
-    case 0x408:
-    case 0x40A:
-    case 0x40C:
-    case 0x40E:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 0);
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_BACK_LAND):
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_FORWARD_LAND):
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_SIDE_B_LAND):
+    case EM_MOTION_ID(0, DROME_MOT_KNOCKED_SIDE_A_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 4, 15, DROME_BONE_ROOT);
         break;
-    case 0x40F:
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 2, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0, 0);
+    case EM_MOTION_ID(0, DROME_MOT_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 24, 3, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 54, 2, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 88, 0, DROME_BONE_ROOT);
         break;
-    case 0x412:
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0xB, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0, 0);
+    case EM_MOTION_ID(0, DROME_MOT_DAZED):
+        Em_PlaySeAtBoneOnFrame(em, 180, 9, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 132, 11, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 52, 10, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 68, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 86, 0, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 132, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 140, 0, DROME_BONE_ROOT);
         break;
-    case 0x413:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xF, 0);
+    case EM_MOTION_ID(0, DROME_MOT_COLLAPSE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 17, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 66, 17, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 130, 18, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 48, 23, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 122, 0, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 162, 15, DROME_BONE_ROOT);
         break;
-    case 0x414:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0);
+    case EM_MOTION_ID(0, DROME_MOT_LIE):
+        Em_PlaySeAtBoneOnFrame(em, 4, 14, DROME_BONE_ROOT);
         break;
-    case 0x416:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xD, 0);
+    case EM_MOTION_ID(0, DROME_MOT_DIE):
+        Em_PlaySeAtBoneOnFrame(em, 10, 13, DROME_BONE_ROOT);
         break;
-    case 0x417:
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0);
+    case EM_MOTION_ID(0, DROME_MOT_STATUS4):
+        Em_PlaySeAtBoneOnFrame(em, 14, 25, DROME_BONE_ROOT);
         break;
-    case 0x41A:
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x17, 0);
+    case EM_MOTION_ID(0, DROME_MOT_THREAT):
+        Em_PlaySeAtBoneOnFrame(em, 32, 21, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 68, 21, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 104, 22, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 160, 23, DROME_BONE_ROOT);
         break;
-    case 0x41B:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 0, 0);
+    case EM_MOTION_ID(0, DROME_MOT_CALL):
+        Em_PlaySeAtBoneOnFrame(em, 10, 20, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 20, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 6, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 122, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 134, 0, DROME_BONE_ROOT);
         break;
-    case 0x41C:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0, 0);
+    case EM_MOTION_ID(0, DROME_MOT_SHAKE_OFF):
+        Em_PlaySeAtBoneOnFrame(em, 8, 21, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 98, 22, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 106, 1, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 158, 0, DROME_BONE_ROOT);
         break;
-    case 0x41D:
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x18, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0x18, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x102, 0x1A, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x124, 0x1B, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0xB, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 2, 0);
+    case EM_MOTION_ID(0, DROME_MOT_VS_BAIT):
+        Em_PlaySeAtBoneOnFrame(em, 84, 24, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 126, 24, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 216, 26, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 258, 26, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 292, 27, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 156, 11, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, DROME_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 2, DROME_BONE_ROOT);
         
     default:
         break;
@@ -349,16 +250,17 @@ void EmDrome_Setup(Em *em)
 }
 
 /*
- * Shadow_Spawn(em, 0); slots 0 and 1 of EmDrome_Callbacks.
+ * Slots 0 and 1 of EmDrome_Callbacks: spawns the monster's shadow
+ * (SHADOW_MODEL).
  */
-void EmDrome_SpawnEffect01(u8 *em)
+void EmDrome_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /*
  * Out of a quest (gQuest.stage 0) puts the monster at a start spot by area
- * (AREA_SNOWY_MOUNTAINS_NIGHT_9, area 0x0D, which area.h doesn't name, and
+ * (AREA_SNOWY_MOUNTAINS_NIGHT_9, area 13, which area.h doesn't name, and
  * AREA_FOREST_HILLS_10: a grid by slotNo; else a row by slotNo), then
  * DROME_MOT_IDLE, ground stance, hp/hpMax from Em_ComputeMaxHp,
  * scriptPending, clears blind, the pack call flag and hunted,
@@ -495,7 +397,7 @@ void EmDrome_IdleThreat(Em *em)
 
 /*
  * DROME_MOT_CALL; at frame 40 puts callObj (at its position, radius 1000,
- * its area, kind 0) into the sense list (ObjListA70_Add, gEmSenseObjs) for
+ * its area, kind 0) into the sense list (EmSenseObjs_Add, gEmSenseObjs) for
  * the other raptors and sets callActive; removes it when the motion ends,
  * then EmDrome_EndState.
  */
@@ -513,12 +415,12 @@ void EmDrome_PackCall(Em *em, EmWork *work)
             work->moveAngCY = 0x447A0000;
             ((EmDromeWork *)work)->callObj.area = (s16) *(u8 *)&em->area;
             ((EmDromeWork *)work)->callObj.kind = 0;
-            ObjListA70_Add((EmObj *)&work->moveAngBY);
+            EmSenseObjs_Add((EmObj *)&work->moveAngBY);
             work->countdown = 1;
         }
         if (em->motion[0].playing == 0) {
             if (work->countdown != 0) {
-                ObjListA70_Remove((EmObj *)&work->moveAngBY);
+                EmSenseObjs_Remove((EmObj *)&work->moveAngBY);
                 work->countdown = 0;
             }
             EmDrome_EndState(em, 0, 0);
@@ -880,7 +782,7 @@ void EmDrome_TurnToTarget(Em *em, EmWork *work)
 }
 
 /*
- * DROME_MOT_WALK to the goal (Em_StepToGoal 0x80), keeping the start
+ * DROME_MOT_WALK to the goal (Em_StepToGoal 128), keeping the start
  * position and the frames walked; reaching the goal within 100 of the start
  * after more than 60 frames (stuck) starts DROME_HOP_FORWARD, else EmDrome_EndState.
  */
@@ -900,12 +802,12 @@ void EmDrome_Walk(Em *em, EmWork *work)
         break;
     case 1:
         work->walkFrames++;
-        if (Em_StepToGoal(em, 0x80, 0) == 1) {
+        if (Em_StepToGoal(em, 128, 0) == 1) {
             if (em->remote == 0) {
                 startPos[0] = work->startX;
                 startPos[1] = em->posY;
                 startPos[2] = work->startZ;
-                if (Vec_DistanceXZ(&em->posX, startPos) < 100.0f && work->walkFrames > 0x3C) {
+                if (Vec_DistanceXZ(&em->posX, startPos) < 100.0f && work->walkFrames > 60) {
                     EmDrome_ChangeState(em, EM_GROUP_FLY, DROME_HOP_FORWARD, EM_SYNC_OWNER_FLAGGED);
                     break;
                 }
@@ -1115,8 +1017,8 @@ void EmDrome_RunHopState(Em *em, EmWork *work)
 }
 
 /*
- * DROME_MOT_STRIKE turning to the goal (0x80), the kind's DromeAttack
- * (Velocidrome 1, Gendrome 0xD, Iodrome 7) at frame 40, then EmDrome_EndState.
+ * DROME_MOT_STRIKE turning to the goal (128), the kind's DromeAttack
+ * (Velocidrome 1, Gendrome 13, Iodrome 7) at frame 40, then EmDrome_EndState.
  */
 void EmDrome_AttackStrikeA(Em *em, EmWork *work)
 {
@@ -1133,14 +1035,14 @@ void EmDrome_AttackStrikeA(Em *em, EmWork *work)
                 DromeAttack_Create(em, 1);
                 break;
             case EM_KIND_GENDROME:
-                DromeAttack_Create(em, 0xD);
+                DromeAttack_Create(em, 13);
                 break;
             case EM_KIND_IODROME:
                 DromeAttack_Create(em, 7);
                 break;
             }
         }
-        Em_TurnToGoal(em, 0x80, 0);
+        Em_TurnToGoal(em, 128, 0);
         if (em->motion[0].playing == 0) {
             EmDrome_EndState(em, 0, 0);
         }
@@ -1173,7 +1075,7 @@ void EmDrome_AttackPounce(Em *em)
             ended = EmDrome_UpdateCurves(em) & 0xFF;
         }
         if ((em->hasGoal != 0) && (em->stance == EM_STANCE_AIR)) {
-            Em_TurnToGoal(em, 0x40, 0);
+            Em_TurnToGoal(em, 64, 0);
         }
         if ((ended != 0) && (em->posY <= em->floorY)) {
             em->step++;
@@ -1268,7 +1170,7 @@ void EmDrome_AttackLeapMediumA(Em *em, EmWork *work)
 }
 
 /*
- * DROME_MOT_QUICK_STRIKE, the kind's DromeAttack (5, 0xA, 0xB) at frame 12,
+ * DROME_MOT_QUICK_STRIKE, the kind's DromeAttack (5, 10, 11) at frame 12,
  * then EmDrome_EndState.
  */
 void EmDrome_AttackQuickStrikeA(Em *em, EmWork *work)
@@ -1286,10 +1188,10 @@ void EmDrome_AttackQuickStrikeA(Em *em, EmWork *work)
                 DromeAttack_Create(em, 5);
                 break;
             case EM_KIND_GENDROME:
-                DromeAttack_Create(em, 0xA);
+                DromeAttack_Create(em, 10);
                 break;
             case EM_KIND_IODROME:
-                DromeAttack_Create(em, 0xB);
+                DromeAttack_Create(em, 11);
                 break;
             }
         }
@@ -1301,7 +1203,7 @@ void EmDrome_AttackQuickStrikeA(Em *em, EmWork *work)
 }
 
 /*
- * As LeapMediumA with velZ 100, accelZ -0.75 and turning to the goal (0x100)
+ * As LeapMediumA with velZ 100, accelZ -0.75 and turning to the goal (256)
  * in the air; the kind's DromeAttack (3, 8, 9).
  */
 void EmDrome_AttackLeapLongA(Em *em, EmWork *work)
@@ -1361,7 +1263,7 @@ void EmDrome_AttackLeapLongA(Em *em, EmWork *work)
             }
         }
         if (em->hasGoal != 0 && em->stance == EM_STANCE_AIR) {
-            Em_TurnToGoal(em, 0x100, 0);
+            Em_TurnToGoal(em, 256, 0);
         }
         if (landed && em->posY <= em->floorY) {
             em->step++;
@@ -1439,7 +1341,7 @@ void EmDrome_AttackLeapHighA(Em *em, EmWork *work)
             }
         }
         if (em->hasGoal != 0 && em->stance == EM_STANCE_AIR) {
-            Em_TurnToGoal(em, 0x100, 0);
+            Em_TurnToGoal(em, 256, 0);
         }
         if (landed && em->posY <= em->floorY) {
             em->step++;
@@ -1457,7 +1359,7 @@ void EmDrome_AttackLeapHighA(Em *em, EmWork *work)
 }
 
 /*
- * DROME_MOT_SPIT; at frame 80 an EMRANGED_PREY_SPIT from bone 0xF, variant 1
+ * DROME_MOT_SPIT; at frame 80 an EMRANGED_PREY_SPIT from DROME_BONE_MOUTH, variant 1
  * (variant arg 0) or 3 (variant arg 1: twice the speed), then EmDrome_EndState.
  */
 void EmDrome_AttackSpit(Em *em, EmWork *work, s32 variant)
@@ -1472,12 +1374,12 @@ void EmDrome_AttackSpit(Em *em, EmWork *work, s32 variant)
         case 0:
         default:
             if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0) {
-                EmRangedAttack_CreateAtBone(em, 0xF, 9, 1, 0xF8E5, 0);
+                EmRangedAttack_CreateAtBone(em, DROME_BONE_MOUTH, EMRANGED_PREY_SPIT, 1, 63717, 0);
             }
             break;
         case 1:
             if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0) {
-                EmRangedAttack_CreateAtBone(em, 0xF, 9, 3, 0xF8E5, 0);
+                EmRangedAttack_CreateAtBone(em, DROME_BONE_MOUTH, EMRANGED_PREY_SPIT, 3, 63717, 0);
             }
             break;
         }
@@ -1503,7 +1405,7 @@ void EmDrome_AttackStrikeB(Em *em)
             DromeAttack_Create(em, 6);
         }
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x80, 0);
+            Em_TurnToGoal(em, 128, 0);
         }
         if (em->motion[0].playing == 0) {
             EmDrome_EndState(em, 0, 0);
@@ -1649,7 +1551,7 @@ void EmDrome_AttackLeapLongB(Em *em, EmWork *work)
             }
         }
         if (em->hasGoal != 0 && em->stance == EM_STANCE_AIR) {
-            Em_TurnToGoal(em, 0x100, 0);
+            Em_TurnToGoal(em, 256, 0);
         }
         if (landed && em->posY <= em->floorY) {
             em->step++;
@@ -1716,7 +1618,7 @@ void EmDrome_AttackLeapHighB(Em *em, EmWork *work)
             }
         }
         if (em->hasGoal != 0 && em->stance == EM_STANCE_AIR) {
-            Em_TurnToGoal(em, 0x100, 0);
+            Em_TurnToGoal(em, 256, 0);
         }
         if (landed && em->posY <= em->floorY) {
             em->step++;
@@ -1810,7 +1712,7 @@ void EmDrome_AttackLeapToGoal(Em *em, EmWork *work)
 }
 
 /*
- * As StrikeB with DromeAttack 0xC.
+ * As StrikeB with DromeAttack 12.
  */
 void EmDrome_AttackStrikeC(Em *em)
 {
@@ -1822,10 +1724,10 @@ void EmDrome_AttackStrikeC(Em *em)
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
-            DromeAttack_Create(em, 0xC);
+            DromeAttack_Create(em, 12);
         }
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x80, 0);
+            Em_TurnToGoal(em, 128, 0);
         }
         if (em->motion[0].playing == 0) {
             EmDrome_EndState(em, 0, 0);
@@ -1951,8 +1853,9 @@ void EmDrome_KnockedBack(Em *em, EmWork *work)
 }
 
 /*
- * As EmDrome_KnockedBack along rotY + 0x8000 with DROME_MOT_KNOCKED_FORWARD(_LAND);
- * turns rotY by -0x555 a frame until the landing reaches frame 26.
+ * As EmDrome_KnockedBack along rotY + half a turn with
+ * DROME_MOT_KNOCKED_FORWARD(_LAND); turns rotY by -0x555 a frame until the
+ * landing reaches frame 26.
  */
 void EmDrome_KnockedForward(Em *em, EmWork *work)
 {
@@ -1994,8 +1897,8 @@ void EmDrome_KnockedForward(Em *em, EmWork *work)
 }
 
 /*
- * As EmDrome_KnockedBack along rotY - 0x4000 with DROME_MOT_KNOCKED_SIDE_A(_LAND);
- * rotY -0x2AA a frame until frame 26.
+ * As EmDrome_KnockedBack along rotY - ANGLE_TURN / 4 with
+ * DROME_MOT_KNOCKED_SIDE_A(_LAND); rotY -0x2AA a frame until frame 26.
  */
 void EmDrome_KnockedSideA(Em *em, EmWork *work)
 {
@@ -2004,7 +1907,7 @@ void EmDrome_KnockedSideA(Em *em, EmWork *work)
         em->step++;
         Em_SetMotion(em, DROME_MOT_KNOCKED_SIDE_A, 0, 0);
         work->accelAngX = 0;
-        work->accelAngY = (em->rotY - 0x4000) & 0xFFFF;
+        work->accelAngY = (em->rotY - ANGLE_TURN / 4) & 0xFFFF;
         work->accelAngZ = 0;
         Player_ClearVelocity(em);
         em->velY = 23.35f;
@@ -2037,8 +1940,8 @@ void EmDrome_KnockedSideA(Em *em, EmWork *work)
 }
 
 /*
- * As EmDrome_KnockedBack along rotY + 0x4000 with DROME_MOT_KNOCKED_SIDE_B(_LAND);
- * rotY +0x2AA a frame until frame 26.
+ * As EmDrome_KnockedBack along rotY + ANGLE_TURN / 4 with
+ * DROME_MOT_KNOCKED_SIDE_B(_LAND); rotY +0x2AA a frame until frame 26.
  */
 void EmDrome_KnockedSideB(Em *em, EmWork *work)
 {
@@ -2047,7 +1950,7 @@ void EmDrome_KnockedSideB(Em *em, EmWork *work)
         em->step++;
         Em_SetMotion(em, DROME_MOT_KNOCKED_SIDE_B, 0, 0);
         work->accelAngX = 0;
-        work->accelAngY = (em->rotY + 0x4000) & 0xFFFF;
+        work->accelAngY = (em->rotY + ANGLE_TURN / 4) & 0xFFFF;
         work->accelAngZ = 0;
         Player_ClearVelocity(em);
         em->velY = 23.35f;
@@ -2166,7 +2069,7 @@ void EmDrome_Hold2(Em *em, EmWork *work)
 }
 
 /*
- * DROME_MOT_DAZED with stun stars at bone 0xE for em->timer frames, then
+ * DROME_MOT_DAZED with stun stars at DROME_BONE_STUN_STARS for em->timer frames, then
  * DROME_IDLE_STUN_END (mode 4).
  */
 void EmDrome_Stun(Em *em, EmWork *work)
@@ -2176,7 +2079,7 @@ void EmDrome_Stun(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         Em_SetMotion(em, DROME_MOT_DAZED, 0, 0);
-        StunStars_CreateEm(em, 1, 0xE, *(s16 *)&em->timer, 50.0f, 1.0f);
+        StunStars_CreateEm(em, 1, DROME_BONE_STUN_STARS, *(s16 *)&em->timer, 50.0f, 1.0f);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -2303,7 +2206,7 @@ void EmDrome_DieBack(Em *em, EmWork *work)
 }
 
 /*
- * As EmDrome_DieBack, flung along rotY + 0x8000 with
+ * As EmDrome_DieBack, flung along rotY + ANGLE_TURN / 2 with
  * DROME_MOT_KNOCKED_FORWARD(_LAND).
  */
 void EmDrome_DieForward(Em *em, EmWork *work)
@@ -2316,7 +2219,7 @@ void EmDrome_DieForward(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         Em_SetMotion(em, DROME_MOT_KNOCKED_FORWARD, 0, 0);
         work->accelAngX = 0;
-        work->accelAngY = (em->rotY + 0x8000) & 0xFFFF;
+        work->accelAngY = (em->rotY + ANGLE_TURN / 2) & 0xFFFF;
         work->accelAngZ = 0;
         Player_ClearVelocity(em);
         em->velY = 23.35f;
@@ -2372,7 +2275,7 @@ void EmDrome_DieForward(Em *em, EmWork *work)
 }
 
 /*
- * As EmDrome_DieBack, flung along rotY - 0x4000 with
+ * As EmDrome_DieBack, flung along rotY - ANGLE_TURN / 4 with
  * DROME_MOT_KNOCKED_SIDE_A(_LAND).
  */
 void EmDrome_DieSideA(Em *em, EmWork *work)
@@ -2385,7 +2288,7 @@ void EmDrome_DieSideA(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         Em_SetMotion(em, DROME_MOT_KNOCKED_SIDE_A, 0, 0);
         work->accelAngX = 0;
-        work->accelAngY = (em->rotY - 0x4000) & 0xFFFF;
+        work->accelAngY = (em->rotY - ANGLE_TURN / 4) & 0xFFFF;
         work->accelAngZ = 0;
         Player_ClearVelocity(em);
         em->velY = 23.35f;
@@ -2441,7 +2344,7 @@ void EmDrome_DieSideA(Em *em, EmWork *work)
 }
 
 /*
- * As EmDrome_DieBack, flung along rotY + 0x4000 with
+ * As EmDrome_DieBack, flung along rotY + ANGLE_TURN / 4 with
  * DROME_MOT_KNOCKED_SIDE_B(_LAND).
  */
 void EmDrome_DieSideB(Em *em, EmWork *work)
@@ -2454,7 +2357,7 @@ void EmDrome_DieSideB(Em *em, EmWork *work)
         QuestEm_Hunted(em);
         Em_SetMotion(em, DROME_MOT_KNOCKED_SIDE_B, 0, 0);
         work->accelAngX = 0;
-        work->accelAngY = (em->rotY + 0x4000) & 0xFFFF;
+        work->accelAngY = (em->rotY + ANGLE_TURN / 4) & 0xFFFF;
         work->accelAngZ = 0;
         Player_ClearVelocity(em);
         em->velY = 23.35f;
@@ -2582,8 +2485,8 @@ void EmDrome_Reappear(Em *em, EmWork *work)
  */
 void EmDrome_RunDefeatState(Em *em, s32 work)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->state) {
     case DROME_DEFEAT_DIE_BACK:
         EmDrome_DieBack(em, (EmWork *) work);
@@ -2618,7 +2521,7 @@ void EmDrome_Captured(Em *em, EmWork *work)
     case 0:
         em->step++;
         Em_SetMotion(em, DROME_MOT_COLLAPSE, 0, 0);
-        em->timer = 0x96;
+        em->timer = 150;
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
         em->stance = EM_STANCE_GROUND;
@@ -2634,7 +2537,7 @@ void EmDrome_Captured(Em *em, EmWork *work)
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
                 break;
             }
         }
@@ -3025,7 +2928,7 @@ void EmDrome_VsEnd(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x5A;
+        em->timer = 90;
         if (em->motionId[0] != EM_MOTION_ID(0, DROME_MOT_IDLE)) {
             Em_SetMotion(em, DROME_MOT_IDLE, 0, 0);
         }
@@ -3117,14 +3020,14 @@ void EmDrome_Update(Em *em)
     case EM_DMG_DEAD: {
         u16 hitAngle = em->hitAngle;
         s32 hitRel = (hitAngle - em->rotY) & 0xFFFF;
-        if (hitRel >= 0x6000 && hitRel < 0xA000) {
-            em->rotY = hitAngle + 0x8000;
+        if (hitRel >= 24576 && hitRel < 0xA000) {
+            em->rotY = hitAngle + ANGLE_TURN / 2;
             EmDrome_ChangeState(em, EM_GROUP_DEFEAT, DROME_DEFEAT_DIE_BACK, EM_SYNC_OWNER);
-        } else if (hitRel >= 0x2000 && hitRel < 0x6000) {
-            em->rotY = hitAngle - 0x4000;
+        } else if (hitRel >= 8192 && hitRel < 24576) {
+            em->rotY = hitAngle - ANGLE_TURN / 4;
             EmDrome_ChangeState(em, EM_GROUP_DEFEAT, DROME_DEFEAT_DIE_SIDE_A, EM_SYNC_OWNER);
         } else if (hitRel >= 0xA000 && hitRel < 0xE000) {
-            em->rotY = hitAngle + 0x4000;
+            em->rotY = hitAngle + ANGLE_TURN / 4;
             EmDrome_ChangeState(em, EM_GROUP_DEFEAT, DROME_DEFEAT_DIE_SIDE_B, EM_SYNC_OWNER);
         } else {
             em->rotY = hitAngle & 0xFFFF;
@@ -3137,14 +3040,14 @@ void EmDrome_Update(Em *em)
             (em->stateGroup != EM_GROUP_REACT || em->state != DROME_REACT_KNOCKED_SIDE_A) && (em->stateGroup != EM_GROUP_REACT || em->state != DROME_REACT_KNOCKED_SIDE_B)) {
             u16 hitAngle = em->hitAngle;
             s32 hitRel = (hitAngle - em->rotY) & 0xFFFF;
-            if (hitRel >= 0x6000 && hitRel < 0xA000) {
-                em->rotY = hitAngle + 0x8000;
+            if (hitRel >= 24576 && hitRel < 0xA000) {
+                em->rotY = hitAngle + ANGLE_TURN / 2;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_BACK, EM_SYNC_OWNER);
-            } else if (hitRel >= 0x2000 && hitRel < 0x6000) {
-                em->rotY = hitAngle - 0x4000;
+            } else if (hitRel >= 8192 && hitRel < 24576) {
+                em->rotY = hitAngle - ANGLE_TURN / 4;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_A, EM_SYNC_OWNER);
             } else if (hitRel >= 0xA000 && hitRel < 0xE000) {
-                em->rotY = hitAngle + 0x4000;
+                em->rotY = hitAngle + ANGLE_TURN / 4;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_B, EM_SYNC_OWNER);
             } else {
                 em->rotY = hitAngle & 0xFFFF;
@@ -3172,7 +3075,7 @@ void EmDrome_Update(Em *em)
         break;
     case 10:
         switch (em->state) {
-        case 0xD:
+        case 13:
             EmDrome_ChangeState(em, EM_GROUP_IDLE, DROME_IDLE_STATUS1_END, EM_SYNC_OWNER);
             break;
         default:
@@ -3185,14 +3088,14 @@ void EmDrome_Update(Em *em)
         if (em->type == EM_KIND_VELOCIDROME) {
             u16 hitAngle = em->hitAngle;
             s32 hitRel = (hitAngle - em->rotY) & 0xFFFF;
-            if (hitRel >= 0x6000 && hitRel < 0xA000) {
-                em->rotY = hitAngle + 0x8000;
+            if (hitRel >= 24576 && hitRel < 0xA000) {
+                em->rotY = hitAngle + ANGLE_TURN / 2;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_BACK, EM_SYNC_OWNER);
-            } else if (hitRel >= 0x2000 && hitRel < 0x6000) {
-                em->rotY = hitAngle - 0x4000;
+            } else if (hitRel >= 8192 && hitRel < 24576) {
+                em->rotY = hitAngle - ANGLE_TURN / 4;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_A, EM_SYNC_OWNER);
             } else if (hitRel >= 0xA000 && hitRel < 0xE000) {
-                em->rotY = hitAngle + 0x4000;
+                em->rotY = hitAngle + ANGLE_TURN / 4;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_B, EM_SYNC_OWNER);
             } else {
                 em->rotY = hitAngle & 0xFFFF;
@@ -3201,14 +3104,14 @@ void EmDrome_Update(Em *em)
         } else if (em->stance == EM_STANCE_AIR) {
             u16 hitAngle = em->hitAngle;
             s32 hitRel = (hitAngle - em->rotY) & 0xFFFF;
-            if (hitRel >= 0x6000 && hitRel < 0xA000) {
-                em->rotY = hitAngle + 0x8000;
+            if (hitRel >= 24576 && hitRel < 0xA000) {
+                em->rotY = hitAngle + ANGLE_TURN / 2;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_BACK, EM_SYNC_OWNER);
-            } else if (hitRel >= 0x2000 && hitRel < 0x6000) {
-                em->rotY = hitAngle - 0x4000;
+            } else if (hitRel >= 8192 && hitRel < 24576) {
+                em->rotY = hitAngle - ANGLE_TURN / 4;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_A, EM_SYNC_OWNER);
             } else if (hitRel >= 0xA000 && hitRel < 0xE000) {
-                em->rotY = hitAngle + 0x4000;
+                em->rotY = hitAngle + ANGLE_TURN / 4;
                 EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_B, EM_SYNC_OWNER);
             } else {
                 em->rotY = hitAngle & 0xFFFF;
@@ -3222,14 +3125,14 @@ void EmDrome_Update(Em *em)
         if (em->type == EM_KIND_VELOCIDROME) {
             em->scriptPending = 0;
             if (em->stance == EM_STANCE_AIR) {
-                if (em->hitAngle >= 0x6000 && em->hitAngle < 0xA000) {
-                    em->rotY = em->hitAngle + 0x8000;
+                if (em->hitAngle >= (ANGLE_TURN * 3 / 8) && em->hitAngle < (ANGLE_TURN * 5 / 8)) {
+                    em->rotY = em->hitAngle + ANGLE_TURN / 2;
                     EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_BACK, EM_SYNC_OWNER);
-                } else if (em->hitAngle >= 0x2000 && em->hitAngle < 0x6000) {
-                    em->rotY = em->hitAngle - 0x4000;
+                } else if (em->hitAngle >= (ANGLE_TURN / 8) && em->hitAngle < (ANGLE_TURN * 3 / 8)) {
+                    em->rotY = em->hitAngle - ANGLE_TURN / 4;
                     EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_A, EM_SYNC_OWNER);
-                } else if (em->hitAngle >= 0xA000 && em->hitAngle < 0xE000) {
-                    em->rotY = em->hitAngle + 0x4000;
+                } else if (em->hitAngle >= (ANGLE_TURN * 5 / 8) && em->hitAngle < (ANGLE_TURN * 7 / 8)) {
+                    em->rotY = em->hitAngle + ANGLE_TURN / 4;
                     EmDrome_ChangeState(em, EM_GROUP_REACT, DROME_REACT_KNOCKED_SIDE_B, EM_SYNC_OWNER);
                 } else {
                     em->rotY = em->hitAngle & 0xFFFF;
@@ -3322,12 +3225,12 @@ void EmDrome_MotionEffectsDefault(Em *em)
 {
 }
 
-void EmDrome_MotionSounds(Em *em, EmWork *work);
 /*
- * Keeps motionId[0] in prevMotion, runs EmDrome_MotionSounds (defined in
- * player_hit.c), then by motion: dust (PartFx 1) for the hops (frames 18/20)
- * and the move actions (12/14), the pounce DromeAttack 2 (frame 32) and
- * PartFx 0x1B (22), lying puffs at bone 0xF during DROME_MOT_LIE.
+ * Keeps motionId[0] in prevMotion, plays the motion's sounds
+ * (EmDrome_MotionSounds), then by motion: the dust at DROME_BONE_HOP_DUST in
+ * the hops (frames 18 and 20) and the moves aside (12 and 14); in the
+ * pounce the dust at DROME_BONE_POUNCE_DUST (frame 22) and DromeAttack row 2
+ * (frame 32); the lying puffs at DROME_BONE_MOUTH during DROME_MOT_LIE.
  */
 void EmDrome_MotionEffects(Em *em, EmWork *work)
 {
@@ -3340,23 +3243,23 @@ void EmDrome_MotionEffects(Em *em, EmWork *work)
     switch (work->prevMotion) {
     case EM_MOTION_ID(0, DROME_MOT_HOP):
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0U) != 0) {
-            PartFx_SpawnForEm(em, 1, 0);
+            PartFx_SpawnForEm(em, DROME_BONE_HOP_DUST, 0);
         }
         break;
     case EM_MOTION_ID(0, DROME_MOT_HOP_UP):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0) {
-            PartFx_SpawnForEm(em, 1, 0);
+            PartFx_SpawnForEm(em, DROME_BONE_HOP_DUST, 0);
         }
         break;
     case EM_MOTION_ID(0, DROME_MOT_MOVE_ACTION_A):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEm(em, 1, 0);
+            PartFx_SpawnForEm(em, DROME_BONE_HOP_DUST, 0);
         }
         break;
     case EM_MOTION_ID(0, DROME_MOT_MOVE_ACTION_B):
     case EM_MOTION_ID(0, DROME_MOT_MOVE_ACTION_C):
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
-            PartFx_SpawnForEm(em, 1, 0);
+            PartFx_SpawnForEm(em, DROME_BONE_HOP_DUST, 0);
         }
         break;
     case EM_MOTION_ID(0, DROME_MOT_POUNCE):
@@ -3364,14 +3267,14 @@ void EmDrome_MotionEffects(Em *em, EmWork *work)
             DromeAttack_Create(em, 2);
         }
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0U) != 0) {
-            PartFx_SpawnForEm(em, 0x1B, 0);
+            PartFx_SpawnForEm(em, DROME_BONE_POUNCE_DUST, 0);
         }
         break;
     case EM_MOTION_ID(0, DROME_MOT_LIE):
         puffOfs[0] = 0.0f;
         puffOfs[1] = 10.0f;
         puffOfs[2] = 40.0f;
-        Em_SpawnLyingPuffs(em, 0xF, puffOfs, 1.0f);
+        Em_SpawnLyingPuffs(em, DROME_BONE_MOUTH, puffOfs, 1.0f);
         break;
     default:
         EmDrome_MotionEffectsDefault(em);
@@ -3440,8 +3343,9 @@ void EmDrome_TableNop(void)
  * DROME_IDLE becomes DROME_IDLE_ALERT in combat with hp at least 30%;
  * DROME_IDLE_WAIT becomes ALERT (owner only, offline or mode nonzero) in
  * combat when the goal is a player outside nearRadius, on an even stateRand;
- * begins/ends the statuses (7 Begin2, 8 End2, 0xA End4, 0xD Begin1, 0xE
- * End1, 0x10 End5), 0xF clears holdTimer2, 0x11 Em_StartRage, 0x12
+ * begins/ends the statuses (DROME_IDLE_STATUS2, _STATUS2_END, _STATUS4_END,
+ * _STATUS1, _STATUS1_END, _STUN_END), DROME_IDLE_HOLD2_SHAKE_OFF clears
+ * holdTimer2, DROME_IDLE_RAGE Em_StartRage, DROME_IDLE_PENDING_RAGE
  * Em_StartPendingRage; ground stance, Em_SetStateSync.
  */
 void EmDrome_SetIdleState(Em *em, u16 state, u8 mode)
@@ -3566,7 +3470,7 @@ void EmDrome_ChangeState(Em *em, u16 group, u16 state, u8 mode)
     EmDromeWork *w = (EmDromeWork *)&em->work;
 
     if ((u8)w->countdown != 0) {
-        ObjListA70_Remove((EmObj *)((&w->callObj)));
+        EmSenseObjs_Remove((EmObj *)((&w->callObj)));
         w->countdown = 0U;
     }
     if (em->remote == 0) {
@@ -3613,7 +3517,7 @@ void EmDrome_ChangeState(Em *em, u16 group, u16 state, u8 mode)
         Em_SetStateSync(em, group, state, mode);
         return;
     case EM_GROUP_VERSUS:
-        if (state == 0x98) {
+        if (state == 152) {
             Versus_MarkDefeat(em);
         }
         em->motionSpeed = 1.0f;
@@ -3626,7 +3530,8 @@ void EmDrome_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 
 /*
  * Clears the curve flags, keeps the kind, starts the vertical curve (and the
- * speed curve for DROME_CURVE_UNUSED and DROME_CURVE_HOP_FORWARD) at frame 0x16, clears the velocity.
+ * speed curve for DROME_CURVE_UNUSED and DROME_CURVE_HOP_FORWARD) at frame
+ * 22, clears the velocity.
  */
 void EmDrome_StartCurves(Em *em, u8 kind)
 {
@@ -3640,20 +3545,20 @@ void EmDrome_StartCurves(Em *em, u8 kind)
     case DROME_CURVE_UNUSED:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x16;
+        w->curveFrame = 22;
         break;
     case DROME_CURVE_POUNCE:
         w->curveVelY = 1;
-        w->curveFrame = 0x16;
+        w->curveFrame = 22;
         break;
     case DROME_CURVE_HOP_FORWARD:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x16;
+        w->curveFrame = 22;
         break;
     case DROME_CURVE_HOP_UP:
         w->curveVelY = 1;
-        w->curveFrame = 0x16;
+        w->curveFrame = 22;
         break;
     }
     Player_ClearVelocity(em);
@@ -3807,9 +3712,8 @@ EmTurnParams EmDrome_TurnParams[2] = {
 Vec3f EmDrome_CarveThrowPt = {
 #include "game/008C3F38.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmDrome_Callbacks[8] = {
-    EmDrome_SpawnEffect01, EmDrome_SpawnEffect01, EmDrome_TableNop, EmDrome_UpdateMotionEffects,
+    EmDrome_SpawnShadow, EmDrome_SpawnShadow, EmDrome_TableNop, EmDrome_UpdateMotionEffects,
     GmEm_ReturnZero, EmDrome_Reinit, NULL, NULL,
 };
 EmCurveKey EmDrome_VelYCurves_0[10] = {

@@ -1,5 +1,6 @@
 #ifndef EM_SHAKALAKA_H
 #define EM_SHAKALAKA_H
+#include "em.h"
 
 /*
  * The Shakalaka family (EM_KIND_SHAKALAKA): its motions and its states, by
@@ -48,6 +49,30 @@ enum EmShakalakaMotion {
     SHAK_MOT_DIE = 0x44,
     SHAK_MOT_FALL = 0x45,               /* falling out of the air */
     SHAK_MOT_FALL_LAND = 0x46
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix Em_BonePos reads). The names say what the family's code
+ * shows a bone to be: where the ground effects (EmShakalaka_SpawnGroundEffect
+ * and _Offset, by EmShakalaka_MotionEffects) and the lying puffs go. Which
+ * part of the body a bone is the code doesn't show. Every attack's sphere
+ * (ShakalakaAttack's one hit list: radius 30 on bone 9) is in the attack's
+ * data only.
+ *
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeOnFrame plays it at the monster).
+ * None is named: none plays only on the frame of the event it goes with
+ * (sound 5 plays as SHAK_MOT_STRIKE's attack starts at frame 24, but also
+ * in the run, the leap and the jump on frames where no attack starts; sound
+ * 16 on SHAK_MOT_FALL_LAND's dust at frame 2, and 4 to 10 frames from the
+ * knock-down's and the collapse's).
+ */
+enum EmShakalakaBone {
+    SHAK_BONE_DUST = 1,             /* the ground effects of the move actions, the ambush, the knock-down and the death (55 ahead of it), and SHAK_MOT_JUMP_LAND's impact (55 ahead of it at frame 4) */
+    SHAK_BONE_FALL_DUST = 3,        /* SHAK_MOT_FALL_LAND's ground effects (frames 2 and 48) */
+    SHAK_BONE_BREATH = 10,          /* where the lying puffs start (SHAK_MOT_LIE in SHAK_IDLE_STATUS2); the ground effects of SHAK_MOT_LEAP_LAND, the shake-off and the ends of the collapse and the death */
+    SHAK_BONE_PROP = 11             /* variant 3's prop (EMBODYFX_SHAKALAKA_PROP) is drawn on this bone, and its flame (FireBlast type 12) burns at a small offset from it, following it every frame; the hiding variant's cover (EMBODYFX_SHAKALAKA_COVER) starts here */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmShakalaka_RunIdleState). Most are the script's
@@ -146,5 +171,26 @@ typedef struct EmShakalakaWork {
     u8 unk05E[0x100 - 0x05E];
 } EmShakalakaWork;
 typedef char EmShakalakaWork_size_check[(sizeof(EmShakalakaWork) == sizeof(EmWork)) ? 1 : -1];
+
+extern void *EmShakalaka_Callbacks[8];
+void EmShakalaka_Init(Em *em);
+void EmShakalaka_Start(Em *em);
+s32 EmShakalaka_BombState(Em *em);
+void EmShakalaka_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmShakalaka_IdleAction(Em *em, s32 variant);
+void EmShakalaka_Ambush(Em *em);
+void EmShakalaka_Status2Collapse(Em *em);
+void EmShakalaka_MoveAction(Em *em, s32 variant);
+void EmShakalaka_MoveStraight(Em *em, s32 variant);
+void EmShakalaka_WanderHome(Em *em, s32 variant);
+void EmShakalaka_RunToFlank(Em *em, s8 variant);
+void EmShakalaka_Leap(Em *em, s32 variant);
+void EmShakalaka_KnockDown(Em *em);
+void EmShakalaka_Die(Em *em);
+void EmShakalaka_DieInAir(Em *em);
+void EmShakalaka_Reappear(Em *em);
+void EmShakalaka_Update(Em *em);
+void EmShakalaka_RunState(Em *em);
+void EmShakalaka_MotionEffects(Em *em, EmWork *work);
 
 #endif /* EM_SHAKALAKA_H */

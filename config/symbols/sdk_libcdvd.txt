@@ -1,12 +1,15 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libcdvd, "PsIIlibcdvd 3000" (.data 0x195C00), text 0x1002A8-0x101F18; asm piece sdk/libcdvd
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libcdvd (version 3000, by its id string
+// in .data at 0x195C00), text 0x1002A8-0x101F18; asm piece sdk/libcdvd.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 
-// Sony libkernl, libcdvd and libscf (IOP control), named from Iop_Init: their strings (CD_Init, rom0:UDNL, SceStdio*Sema) and the standard IOP reboot sequence
+// The disc drive's start-up as Iop_Init calls it, named from the strings
+// these calls use and the standard IOP reboot sequence.
 sceCdInit = 0x001010D8; // type:func
 sceCdMmode = 0x00101D60; // type:func
 
-// Round 27 (names h1) - library functions the C calls, named from the evidence
+// Functions the game's C calls, named from what each does (its line's
+// comment).
 sceCdSync = 0x00100DC0; // type:func N command wait - mode 0 loops on sceSifCheckStatRpc with DelayThread (string N cmd wait)
 sceCdDiskReady = 0x001015D8; // type:func string NEW DiskReady Call, falls back to the old DiskReady RPC
 sceCdStandby = 0x00101AA8; // type:func N command RPC 6, no arguments, callback function code 5

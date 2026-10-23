@@ -27,72 +27,33 @@
 #include "chat_log.h"
 #include "item.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "box_menu.h"
+#include "camera.h"
+#include "text.h"
+#include "equip_parts.h"
+#include "font.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "town_frame.h"
+#include "libc.h"
+#include "window.h"
 
 /* The game built this file at optimization level 4. */
 #pragma optimization_level 4
-void Items_Take(s32 item, s32 n);
-s8 Items_Give(s32 item, s32 n);
-s32 Item_HalfPrice(u16 item);
-void LobbySe_Play(s32 se);
-s32 Menu_PushNoticeOnce(s32);
-u8 Notice_Push(u8, s16, s16);
-void Save_AddMoney(s32 n);
-s32 Deco_GetAttachFee(u16 deco);
-s32 Equip_FreeSlots(EquipItem *e);
-s32 Deco_FitsEquip(EquipItem *e, u16 deco);
-struct DecoData *Item_GetDecoration(u16 item);
-void Chat_SetColor(s16 color);
-s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
-s16 Box_GetPageCount(SaveData *save);
-void *memset(void *dst, s32 c, u32 n);
-void Deco_LoadRecipes(DecoWork *m, s16 page);
-s32 Deco_WearAskInput(DecoWork *m, u16 pad);
-void Deco_DrawEquipAsk(DecoWork *m, s16 k);
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-s32 Menu_WrapLeftRight(s32 cursor, s32 count);
-s32 Menu_CountPages(s16 n, s16 per);
 extern s8 gMenuInputLock;
 /* end of prototypes */
 
-void CamFocus_SetAside(s8 arg0);
-s32 Items_HaveEnough(u16 item, s32 n);
-void Menu_SetYesNo(s8 arg0);
-s32 LobbyMenu_YesNoInput(s32 msg);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
-u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b);
-u8 Equip_PreviewSkills(Player *player, EquipItem *e);
-void Equip_Refresh(SaveData *save);
-void Player_LoadFromSave(struct Player *player);
-s32 Equip_EquipSlot(SaveData *save, u16 idx);
-void Player_SetupFromSave(struct Player *player, struct SaveData *save);
-void Player_CalcSkills(struct Player *player);
-void Town_ReloadLocalPlayer(void);
 extern u8 gLobbyTextDirty;
-void Menu_PushNotice(s32 msg);
-s32 Equip_CanWear(SaveData *save, EquipItem *item);
-s32 Equip_IsSlotEquipped(SaveData *save, s32 idx);
-void Equip_CopyEquipped(EquipItem *out, s16 type);
-s32 Menu_YesNoInput(void);
-void Font_SetSpacing(u8 a, u8 b);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void EquipDetail_Draw(Player *a, s16 x, s16 y, u32 flags);
-void BoxMenu_DrawItemList(s16 cur, u32 flags, f32 fx);
-char *Text_FillDollar(char *fmt, M2C_UNK n);
 void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-void Font_SetPos(s16 x, s16 y);
-void Text_Printf(const char *fmt, ...);
-void Font_SetColor(s32 color);
-void EquipCompare_Draw(EquipItem *a, EquipItem *b, s32 c, s16 y, u8 flags);
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
-void Text_PrintfColored(const char *fmt, ...);
-char *Equip_GetName(u8 type, u16 id);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-s32 Items_DrawNeedLine(s16 x, s16 y, u16 item, s32 n, u32 color);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: declared with s16 coordinates as the counter's draws pass them; with the definition's s32 coordinates and s16 kind the calls compile differently */
 void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: declared with s16 coordinates as the draws pass them; with the definition's s32 ones the calls compile differently */
 /* The workshop opens the counter with it (Workshop_OpenCounter); it has
@@ -101,13 +62,6 @@ void Deco_Open(void)
 {
 }
 
-void Deco_OpenMake(DecoWork *m);
-s32 Deco_MenuInput(DecoWork *m, u16 pad);
-s32 Deco_MakeInput(DecoWork *m, u16 pad);
-s32 Deco_AttachInput(DecoWork *m, u16 pad);
-s32 Deco_RemoveInput(DecoWork *m, u16 pad);
-void Deco_OpenAttach(DecoWork *m);
-void Deco_OpenRemove(DecoWork *m);
 /*
  * The decorations counter's input, once a frame while the workshop shows
  * it: the top menu (make, attach, remove), then the chosen screen. Returns
@@ -186,7 +140,6 @@ s32 Deco_Input(u8 *task, u16 pad)
 }
 
 s32 Forge_CheckCondition(s16 cond);
-s32 Save_IsItemObtained(SaveData *save, u16 item);
 /*
  * Whether a decoration recipe is shown: it is hidden while one of its
  * materials has a condition that holds and that material has never been
@@ -255,10 +208,9 @@ void Deco_OpenMake(DecoWork *counter)
     counter->page = 0;
     counter->viewPages = DECO_DETAIL_PAGES;
     Deco_LoadRecipes(counter, 0);
-    WinSlide_Step(&counter->win, 0x280, 0x128);
+    WinSlide_Step(&counter->win, 640, 296);
 }
 
-s32 Items_Room(s32 item);
 /*
  * Whether n of a recipe's decoration can be made: enough money for n times
  * its price, enough of each material for n, room for n more of the
@@ -288,9 +240,6 @@ s32 Deco_CanMake(s32 recipeIdx, s32 quantity)
     return 0;
 }
 
-s32 Deco_RecipeListInput(DecoWork *m, u16 pad);
-s32 Deco_QuantityInput(DecoWork *m, u16 pad);
-void Deco_Make(DecoWork *m);
 /*
  * The make screen's steps: the window slides in, the recipe list, the
  * quantity, then the price question (the detail view and its pages still
@@ -301,7 +250,7 @@ s32 Deco_MakeInput(DecoWork *counter, u16 pad)
 {
     switch (counter->step) {
     case DECO_MAKE_SLIDE_IN:
-        switch (WinSlide_Step(&counter->win, 0x280, 0x128)) {
+        switch (WinSlide_Step(&counter->win, 640, 296)) {
         case MENU_DONE:
             counter->step++;
             break;
@@ -387,7 +336,7 @@ void Deco_Make(DecoWork *counter)
     for (i = 0; i < DECO_RECIPE_MATS; i++) {
         Items_Take(recipe->need[i].item, recipe->need[i].count * counter->quantity);
     }
-    Notice_Push(NOTICE_KIND_ITEM, 0x12, recipe->deco);
+    Notice_Push(NOTICE_KIND_ITEM, 18, recipe->deco);
     if (Items_Give(recipe->deco, counter->quantity) != 0) {
         Menu_PushNoticeOnce(LOBBY_NOTICE_SENT_TO_BOX);
     }
@@ -486,7 +435,7 @@ s32 Deco_RecipeListInput(DecoWork *counter, u16 pad)
             LobbySe_Play(LOBBY_SE_REFUSE);
         }
     } else if (pad & PAD_CROSS) {
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         if (counter->view == DECO_MAKE_VIEW_LIST) {
             return MENU_CANCEL;
         }
@@ -539,14 +488,9 @@ void Deco_OpenRemove(DecoWork *counter)
     counter->pages = Box_GetPageCount(&gSave);
     counter->view = DECO_BOX_VIEW_GRID;
     counter->equip = gSave.box[counter->row * BOX_PAGE_COLS + counter->page * BOX_PAGE_SLOTS + counter->col];
-    WinSlide_Step(&counter->win, 0x280, 0x12C);
+    WinSlide_Step(&counter->win, 640, 300);
 }
 
-void Deco_OpenRemovePanel(DecoWork *m);
-void Deco_CountPanelViewPages(DecoWork *m);
-s32 Deco_BoxInput(DecoWork *m, u16 pad);
-s32 Deco_ChooseRemove(DecoWork *m, u16 pad);
-void Equip_RemoveDecoration(EquipItem *e, s32 i);
 /*
  * The remove screen's steps: the window slides in, the player picks a box
  * piece that holds decorations, then one of its decorations, then answers
@@ -558,7 +502,7 @@ s32 Deco_RemoveInput(DecoWork *counter, u16 pad)
 {
     switch (counter->step) {
     case DECO_REMOVE_SLIDE_IN:
-        switch (WinSlide_Step(&counter->win, 0x280, 0x12C)) {
+        switch (WinSlide_Step(&counter->win, 640, 300)) {
         case MENU_DONE:
             counter->step++;
             break;
@@ -645,11 +589,10 @@ void Deco_OpenRemovePanel(DecoWork *counter)
     counter->cursor = 0;
     counter->count = decoCount;
     counter->viewPage = 0;
-    WinSlide_Step(&counter->win2, 0x280, 0x128);
+    WinSlide_Step(&counter->win2, 640, 296);
     Deco_CountPanelViewPages(counter);
 }
 
-s32 Deco_GetRemoveFee(u16 deco);
 /*
  * The removal panel: after its slide in, circle picks the decoration at
  * the cursor when its fee can be paid, square cycles the detail views
@@ -664,7 +607,7 @@ s32 Deco_ChooseRemove(DecoWork *counter, u16 pad)
 
     switch (counter->panelStep) {
     case DECO_PANEL_SLIDE_IN:
-        switch (WinSlide_Step(&counter->win2, 0x280, 0x128)) {
+        switch (WinSlide_Step(&counter->win2, 640, 296)) {
         case MENU_DONE:
             counter->panelStep++;
             break;
@@ -769,12 +712,9 @@ void Deco_OpenAttach(DecoWork *counter)
     counter->pages = Box_GetPageCount(&gSave);
     counter->view = DECO_BOX_VIEW_GRID;
     counter->equip = gSave.box[counter->row * BOX_PAGE_COLS + counter->page * BOX_PAGE_SLOTS + counter->col];
-    WinSlide_Step(&counter->win, 0x280, 0x12C);
+    WinSlide_Step(&counter->win, 640, 300);
 }
 
-void Deco_LoadOwned(DecoWork *m, s16 page);
-s32 Deco_ChooseAttach(DecoWork *m, u16 pad);
-void Equip_AddDecoration(EquipItem *e, u16 deco);
 /*
  * The attach screen's steps: the window slides in, the player picks a box
  * piece with a free slot, the decoration list slides in, the player picks
@@ -787,7 +727,7 @@ s32 Deco_AttachInput(DecoWork *counter, u16 pad)
 {
     switch (counter->step) {
     case DECO_ATTACH_SLIDE_IN:
-        switch (WinSlide_Step(&counter->win, 0x280, 0x12C)) {
+        switch (WinSlide_Step(&counter->win, 640, 300)) {
         case MENU_DONE:
             counter->step++;
             break;
@@ -802,7 +742,7 @@ s32 Deco_AttachInput(DecoWork *counter, u16 pad)
             counter->viewPage = 0;
             counter->viewPages = DECO_DETAIL_PAGES;
             Deco_LoadOwned(counter, 0);
-            WinSlide_Step(&counter->win2, 0x280, 0x128);
+            WinSlide_Step(&counter->win2, 640, 296);
             counter->changed = counter->equip;
             Equip_AddDecoration(&counter->changed, counter->list[counter->cursor]);
             break;
@@ -812,7 +752,7 @@ s32 Deco_AttachInput(DecoWork *counter, u16 pad)
         }
         break;
     case DECO_ATTACH_LIST_SLIDE_IN:
-        switch (WinSlide_Step(&counter->win2, 0x280, 0x128)) {
+        switch (WinSlide_Step(&counter->win2, 640, 296)) {
         case MENU_DONE:
             counter->step++;
             break;
@@ -1004,9 +944,6 @@ s32 Deco_ChooseAttach(DecoWork *counter, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Equip_CountDecos(EquipItem *e);
-void Deco_CountBoxViewPages(DecoWork *m);
-
 /*
  * The equipment box of the attach and remove screens: circle picks the
  * piece at the cursor when it has a free slot (attach) or a decoration
@@ -1160,7 +1097,7 @@ void Deco_CountPanelViewPages(DecoWork *counter)
         } else {
             Equip_AddDecoration(&result, counter->list[counter->cursor]);
         }
-        counter->viewPages = Equip_LevelMark(&counter->equip, 0x10, &result);
+        counter->viewPages = Equip_LevelMark(&counter->equip, 16, &result);
         counter->viewPage = 0;
         break;
     default:
@@ -1180,7 +1117,7 @@ s32 Deco_MenuInput(DecoWork *counter, u16 pad)
     if (pad & PAD_CIRCLE) {
         switch (counter->choice) {
         case DECO_CHOICE_MAKE:
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         default:
             LobbySe_Play(LOBBY_SE_SELECT);
@@ -1253,7 +1190,6 @@ void Deco_Remove(DecoWork *counter)
     counter->equip = counter->changed;
 }
 
-void Deco_Remove(DecoWork *m);
 /*
  * The wear question after an attach or a removal, the workshop's confirm
  * step: a changed piece that can't be worn is changed without asking, and
@@ -1295,7 +1231,7 @@ s32 Deco_WearAskInput(DecoWork *counter, u16 pad)
             } else {
                 Equip_CopyEquipped(&worn, counter->changed.type);
             }
-            counter->viewPages = Equip_LevelMark(&worn, 0x10, &counter->changed);
+            counter->viewPages = Equip_LevelMark(&worn, 16, &counter->changed);
         }
         break;
     case DECO_WEAR_ASK:
@@ -1342,7 +1278,7 @@ s32 Deco_WearAskInput(DecoWork *counter, u16 pad)
         }
         counter->view = DECO_BOX_VIEW_GRID;
         counter->viewPage = 0;
-        WinSlide_Step(&counter->win, 0x280, 0x12C);
+        WinSlide_Step(&counter->win, 640, 300);
         return MENU_DONE;
     }
     return MENU_RUNNING;
@@ -1379,19 +1315,19 @@ void Deco_DrawAttachEquip(DecoWork *counter, s32 x, s16 y)
     s32 freeSlots;
     char *msg;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0xAA, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_ATTACH], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 170, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_ATTACH], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (counter->step) {
     case DECO_ATTACH_SLIDE_IN:
     case DECO_ATTACH_BOX:
         switch (counter->view) {
         case DECO_BOX_VIEW_SKILLS:
-            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, y, counter->viewPage);
+            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, y, counter->viewPage);
             break;
         default:
             if (counter->view == DECO_BOX_VIEW_GRID) {
-                BoxMenu_DrawItemList(slot, 0x10, x);
+                BoxMenu_DrawItemList(slot, 16, x);
             } else {
                 BoxMenu_DrawItemList(slot, (counter->viewPage & 7) | 0x78, x);
             }
@@ -1403,16 +1339,13 @@ void Deco_DrawAttachEquip(DecoWork *counter, s32 x, s16 y)
             } else {
                 msg = gForgeTexts[FORGE_TEXT_ATTACH_PICK_PIECE];
             }
-            Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, msg);
+            Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, msg);
             break;
         }
         break;
     }
 }
 
-void Menu_DrawPageArrows(s16 x, s16 y, s16 page, s16 n, u32 color);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Menu_DrawItemPriceRow(s16 x, s16 y, u16 item, u32 color, s32 price);
 void ItemInfo_Draw(s16 x, s16 y, s32 w, u8 a, u16 item, s32 b, s8 c, u32 color); /* unit's own declaration: declared with the types the counter's draws pass (an s32 width, a u16 item); with the definition's (s16 w, s32 item, u16 extra) the calls compile differently */
 void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 
@@ -1442,26 +1375,26 @@ void Deco_DrawAttachList(DecoWork *counter, s16 x, s16 y)
     s32 textX;
     s32 cursorX;
 
-    Win_Draw(x, y, 0x14C, 0x122, 0xBDB59F6C, 0x80202020, 2);
+    Win_Draw(x, y, 332, 290, 0xBDB59F6C, 0x80202020, 2);
     if (counter->list[0] == 0) {
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(Text_CenterX(gForgeTexts[FORGE_TEXT_NO_DECO_HELD], x + 0xA6, 0x12), 0xAE);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(Text_CenterX(gForgeTexts[FORGE_TEXT_NO_DECO_HELD], x + 166, 18), 174);
         Text_Printf(gForgeTexts[FORGE_TEXT_NO_DECO_HELD]);
     } else {
         Font_SetColor(0x807F7F7F);
         top = rowY;
         left = x;
-        Menu_DrawPageArrows(left + 0xF0, top + 0xA, counter->decoPage, counter->decoPages, 0xFF106060);
-        rowY += 0x1E;
-        Font_SetSpacing(0x14, 0x14);
-        textX = left + 0x32;
-        cursorX = left + 0xA;
+        Menu_DrawPageArrows(left + 240, top + 10, counter->decoPage, counter->decoPages, 0xFF106060);
+        rowY += 30;
+        Font_SetSpacing(20, 20);
+        textX = left + 50;
+        cursorX = left + 10;
         for (i = 0; i < FORGE_LIST_ROWS; i++) {
             item = counter->list[i];
             Font_SetPos(textX, rowY);
             if (i == counter->cursor) {
                 selItem = item;
-                Menu_DrawLine(cursorX, rowY - 1, 0x138, 0x18, 0);
+                Menu_DrawRowHighlight(cursorX, rowY - 1, 312, 24, 0);
             }
             if (item != 0) {
                 if (Deco_CheckAttach(&counter->equip, item) == 0) {
@@ -1471,12 +1404,12 @@ void Deco_DrawAttachList(DecoWork *counter, s16 x, s16 y)
                 }
                 Menu_DrawItemPriceRow(textX, rowY, item, color, Deco_GetAttachFee(item));
             }
-            rowY += 0x16;
+            rowY += 22;
         }
-        Gfx_DrawLine(left + 0x14, top + 0xBA, 0x124, 2, 0xBDB59F6C);
+        Gfx_DrawLine(left + 20, top + 186, 292, 2, 0xBDB59F6C);
         if (selItem != 0) {
             Font_SetColor(0x807F7F7F);
-            ItemInfo_Draw((s16)(left + 0x32) - 0x38, top + 0xBE, 0x14C, counter->view, (s32)selItem, 0, counter->viewPage, 0x807F7F7F);
+            ItemInfo_Draw((s16)(left + 50) - 56, top + 190, 332, counter->view, (s32)selItem, 0, counter->viewPage, 0x807F7F7F);
         }
     }
     if (selItem != 0) {
@@ -1494,10 +1427,9 @@ void Deco_DrawAttachList(DecoWork *counter, s16 x, s16 y)
     } else {
         msg = gForgeTexts[FORGE_TEXT_ATTACH_PICK_DECO];
     }
-    Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, msg);
+    Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, msg);
 }
 
-void Deco_DrawAttachList(DecoWork *m, s16 x, s16 y);
 /*
  * Draws the attach screen once a piece is chosen: the decoration list, the
  * compare view of the piece with the decoration, or the skills window, and
@@ -1508,9 +1440,9 @@ void Deco_DrawAttachConfirm(DecoWork *counter, s16 x, s16 y)
     EquipItem changed;
 
     memset(&changed, 0, sizeof(changed));
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0xAA, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_ATTACH], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 170, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_ATTACH], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (counter->view) {
     case DECO_VIEW_NONE:
     case DECO_VIEW_DETAILS:
@@ -1519,17 +1451,17 @@ void Deco_DrawAttachConfirm(DecoWork *counter, s16 x, s16 y)
     case DECO_VIEW_COMPARE:
         changed = counter->equip;
         Equip_AddDecoration(&changed, counter->list[counter->cursor]);
-        EquipCompare_Draw(&counter->equip, &changed, 0x136, y + 4, counter->viewPage | 0x50);
+        EquipCompare_Draw(&counter->equip, &changed, 310, y + 4, counter->viewPage | 0x50);
         break;
     case DECO_VIEW_SKILLS:
-        EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, 0x36, counter->viewPage);
+        EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, 54, counter->viewPage);
         return;
     }
     switch (counter->step) {
     case DECO_ATTACH_ASK:
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020,
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020,
                       Text_FillDollar(gForgeTexts[FORGE_TEXT_ATTACH_FEE_ASK], Deco_GetAttachFee(counter->list[counter->cursor])));
-        Font_SetPos(0x1BC, 0x190);
+        Font_SetPos(444, 400);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
@@ -1546,19 +1478,19 @@ void Deco_DrawRemoveEquip(DecoWork *counter, s32 x, s16 y)
     s32 slot = counter->row * BOX_PAGE_COLS + counter->page * BOX_PAGE_SLOTS + counter->col;
     char *msg;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0xAA, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_REMOVE], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 170, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_REMOVE], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (counter->step) {
     case DECO_REMOVE_SLIDE_IN:
     case DECO_REMOVE_BOX:
         switch (counter->view) {
         case DECO_BOX_VIEW_SKILLS:
-            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, y, counter->viewPage);
+            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, y, counter->viewPage);
             break;
         default:
             if (counter->view == DECO_BOX_VIEW_GRID) {
-                BoxMenu_DrawItemList(slot, 0x10, x);
+                BoxMenu_DrawItemList(slot, 16, x);
             } else {
                 BoxMenu_DrawItemList(slot, (counter->viewPage & 7) | 0x78, x);
             }
@@ -1569,7 +1501,7 @@ void Deco_DrawRemoveEquip(DecoWork *counter, s32 x, s16 y)
             } else {
                 msg = gForgeTexts[FORGE_TEXT_REMOVE_PICK_PIECE];
             }
-            Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, msg);
+            Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, msg);
             break;
         }
         break;
@@ -1596,36 +1528,35 @@ void Deco_DrawRemovePanel(DecoWork *counter, s16 x, s16 y)
     s32 selItem;
     s32 fee;
 
-    Win_Draw(x, y, 0x14C, 0x122, 0xBDB59F6C, 0x80202020, 2);
+    Win_Draw(x, y, 332, 290, 0xBDB59F6C, 0x80202020, 2);
     left = x + 12;
     top = y;
     y += 14;
-    Lobby_DrawEquipIcon(left, y, 0x3C, 0x3C, &counter->equip);
-    Item_DrawRarity(left + 12, y + 0x3C, Equip_GetRarity(counter->equip.type, counter->equip.id));
-    Font_SetPos(left + 0x4E, y + 0x14);
+    Lobby_DrawEquipIcon(left, y, 60, 60, &counter->equip);
+    Item_DrawRarity(left + 12, y + 60, Equip_GetRarity(counter->equip.type, counter->equip.id));
+    Font_SetPos(left + 78, y + 20);
     Text_PrintfColored(gDecoTextFmt, Equip_GetName(counter->equip.type, counter->equip.id));
-    Gfx_DrawLine(left, top + 0x5E, 0x134, 2, 0xBDB59F6C);
-    rowY += 0x6A;
-    Font_SetSpacing(0x14, 0x14);
+    Gfx_DrawLine(left, top + 94, 308, 2, 0xBDB59F6C);
+    rowY += 106;
+    Font_SetSpacing(20, 20);
     for (i = 0; i < 3; i++) {
         item = counter->list[i];
-        Font_SetPos(left + 0x14, rowY);
+        Font_SetPos(left + 20, rowY);
         if (i == counter->cursor) {
             selItem = item;
-            Menu_DrawLine(x + 10, rowY - 1, 0x138, 0x18, 0);
+            Menu_DrawRowHighlight(x + 10, rowY - 1, 312, 24, 0);
         }
         if (item != 0) {
             fee = Deco_GetRemoveFee(item);
-            Menu_DrawItemPriceRow(left + 0x28, rowY, item, (gSave.money < fee) ? 0x8042352E : 0x807F7F7F, fee);
+            Menu_DrawItemPriceRow(left + 40, rowY, item, (gSave.money < fee) ? 0x8042352E : 0x807F7F7F, fee);
         }
-        rowY += 0x16;
+        rowY += 22;
     }
-    Gfx_DrawLine(left, rowY, 0x134, 2, 0xBDB59F6C);
+    Gfx_DrawLine(left, rowY, 308, 2, 0xBDB59F6C);
     Font_SetColor(0x807F7F7F);
-    ItemInfo_Draw(left - 0x10, rowY + 12, 0x14C, counter->view, selItem, 0, counter->viewPage, 0x807F7F7F);
+    ItemInfo_Draw(left - 16, rowY + 12, 332, counter->view, selItem, 0, counter->viewPage, 0x807F7F7F);
 }
 
-void Deco_DrawRemovePanel(DecoWork *m, s16 x, s16 y);
 /*
  */
 void Deco_DrawRemove(DecoWork *counter, s16 x, s16 y)
@@ -1633,9 +1564,9 @@ void Deco_DrawRemove(DecoWork *counter, s16 x, s16 y)
     EquipItem piece;
 
     memset(&piece, 0, sizeof(piece));
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0xAA, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_REMOVE], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 170, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_REMOVE], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (counter->view) {
     case DECO_VIEW_NONE:
     case DECO_VIEW_DETAILS:
@@ -1644,27 +1575,24 @@ void Deco_DrawRemove(DecoWork *counter, s16 x, s16 y)
     case DECO_VIEW_COMPARE:
         piece = counter->equip;
         Equip_RemoveDecoration(&piece, counter->cursor);
-        EquipCompare_Draw(&counter->equip, &piece, 0x136, y + 4, counter->viewPage | 0x50);
+        EquipCompare_Draw(&counter->equip, &piece, 310, y + 4, counter->viewPage | 0x50);
         break;
     case DECO_VIEW_SKILLS:
-        EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, y, counter->viewPage);
+        EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, y, counter->viewPage);
         return;
     }
     switch (counter->step) {
     case DECO_REMOVE_PANEL:
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_REMOVE_PICK_DECO]);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_REMOVE_PICK_DECO]);
         break;
     case DECO_REMOVE_ASK:
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020,
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020,
                       Text_FillDollar(gForgeTexts[FORGE_TEXT_REMOVE_FEE_ASK], Deco_GetRemoveFee(counter->list[counter->cursor])));
-        Font_SetPos(0x1BC, 0x190);
+        Font_SetPos(444, 400);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
 }
-
-void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 color, u32 color2);
-s32 Deco_CanMake(s32 idx, s32 n);
 
 /*
  * Draws the make list: the page, each recipe's decoration with its price
@@ -1682,22 +1610,22 @@ void Deco_DrawMakeList(DecoWork *counter, s16 x, s16 y)
     u16 selItem;
     char *msg;
 
-    Icon_Draw(x, y, 0x154, 0x122, 0xFFFFDDDD, 0);
+    Icon_Draw(x, y, 340, 290, 0xFFFFDDDD, 0);
     top = rowY;
     left = x;
-    Icon_Draw(left + 0x6E, top + 0x2D, 0x78, 0xC8, 0x60FFFFFF, 0x24);
-    Font_SetSpacing(0x14, 0x14);
+    Icon_Draw(left + 110, top + 45, 120, 200, 0x60FFFFFF, 36);
+    Font_SetSpacing(20, 20);
     if (counter->count == 0) {
         msg = gForgeTexts[FORGE_TEXT_NO_DECO_TO_MAKE];
-        Font_SetPos(Text_CenterX(msg, left + 0xAA, 0x14), top + 0x78);
+        Font_SetPos(Text_CenterX(msg, left + 170, 20), top + 120);
         Font_SetColor(0x8000052C);
         Text_PrintfColored(gDecoTextFmt, msg);
         return;
     }
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(left + 0xFA, top + 0xE, counter->page, counter->pages, 1);
-    Font_SetSpacing(0x14, 0x14);
-    rowY += 0x1E;
+    Menu_DrawPageNum(left + 250, top + 14, counter->page, counter->pages, 1);
+    Font_SetSpacing(20, 20);
+    rowY += 30;
     for (i = 0; i < counter->count; i++) {
         recipe = &gDecoRecipes[(s16)counter->recipes[i]];
         if (Deco_CanMake((s16)counter->recipes[i], 1) == 1) {
@@ -1707,13 +1635,13 @@ void Deco_DrawMakeList(DecoWork *counter, s16 x, s16 y)
         }
         if (i == counter->cursor) {
             selItem = recipe->deco;
-            Menu_DrawCursorRow(left + 0x46, rowY, 0xFA, 0x32, 0xC0106060, 0xFF106060);
+            Menu_DrawCursorRow(left + 70, rowY, 250, 50, 0xC0106060, 0xFF106060);
         }
-        Menu_DrawItemPriceRow(left + 0x46, rowY, recipe->deco, color, Item_HalfPrice(recipe->deco));
-        rowY += 0x16;
+        Menu_DrawItemPriceRow(left + 70, rowY, recipe->deco, color, Item_HalfPrice(recipe->deco));
+        rowY += 22;
     }
-    Menu_DrawDashLine(left + 0x14, top + 0xBA, 0x12C, 0xFF000000);
-    ItemInfo_Draw(left + 0xA, top + 0xC3, 0x14C, counter->view, (s32)selItem, 0, -1, 0x80101010);
+    Menu_DrawDashLine(left + 20, top + 186, 300, 0xFF000000);
+    ItemInfo_Draw(left + 10, top + 195, 332, counter->view, (s32)selItem, 0, -1, 0x80101010);
 }
 
 /*
@@ -1729,12 +1657,12 @@ void Deco_DrawRecipeList(DecoWork *counter, s16 x, s16 y)
     s16 i;
     s16 recipeIdx;
 
-    Icon_Draw(x, y, 0x122, 0xB4, 0xFFFFDDDD, 0);
-    Icon_Draw(x + 0x64, y + 0xF, 0x5A, 0x96, 0x60FFFFFF, 0x24);
+    Icon_Draw(x, y, 290, 180, 0xFFFFDDDD, 0);
+    Icon_Draw(x + 100, y + 15, 90, 150, 0x60FFFFFF, 36);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(x + 0xC8, y + 0xC, counter->page, counter->pages, 1);
-    Font_SetSpacing(0x11, 0x11);
-    rowY += 0x1E;
+    Menu_DrawPageNum(x + 200, y + 12, counter->page, counter->pages, 1);
+    Font_SetSpacing(17, 17);
+    rowY += 30;
     for (i = 0; i < counter->count; i++) {
         recipeIdx = counter->recipes[i];
         recipe = &gDecoRecipes[recipeIdx];
@@ -1744,14 +1672,13 @@ void Deco_DrawRecipeList(DecoWork *counter, s16 x, s16 y)
             color = 0x8042352E;
         }
         if (i == counter->cursor) {
-            Menu_DrawCursorRow((s16)(x + 0x3C) - 6, rowY, 0xC8, 0x32, 0xC0106060, 0xFF106060);
+            Menu_DrawCursorRow((s16)(x + 60) - 6, rowY, 200, 50, 0xC0106060, 0xFF106060);
         }
-        Menu_DrawItemPriceRow(x + 0x3C, rowY, recipe->deco, color, Item_HalfPrice(recipe->deco));
-        rowY += 0x14;
+        Menu_DrawItemPriceRow(x + 60, rowY, recipe->deco, color, Item_HalfPrice(recipe->deco));
+        rowY += 20;
     }
 }
 
-s32 Items_DrawNeedLineAfter(s16 x, s16 y, u16 item, s32 n, u32 color);
 /*
  * Draws the chosen recipe's panel: the decoration's info or details, then
  * its materials, each for one or (at the quantity and question steps) for
@@ -1764,35 +1691,31 @@ void Deco_DrawRecipeDetail(DecoWork *counter, s16 x, s16 y)
     s32 product = recipe->deco;
     s16 i;
 
-    Win_Draw(x, y, 0x14C, 0x122, 0xBDB59F6C, 0x80202020, 2);
-    ItemInfo_Draw(x - 6, rowY += 0x18, 0x14C, counter->view - 1, product, 0, counter->viewPage, 0x807F7F7F);
-    Gfx_DrawLine(x + 0x14, rowY += 0x6E, 0x124, 2, 0xBDB59F6C);
-    rowY += 0xE;
-    Font_SetSpacing(0x12, 0x12);
+    Win_Draw(x, y, 332, 290, 0xBDB59F6C, 0x80202020, 2);
+    ItemInfo_Draw(x - 6, rowY += 24, 332, counter->view - 1, product, 0, counter->viewPage, 0x807F7F7F);
+    Gfx_DrawLine(x + 20, rowY += 110, 292, 2, 0xBDB59F6C);
+    rowY += 14;
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0xE, rowY);
+    Font_SetPos(x + 14, rowY);
     if (counter->step == DECO_MAKE_QUANTITY || counter->step == DECO_MAKE_ASK) {
         Text_PrintfColored(gForgeTexts[FORGE_TEXT_USED_MATERIALS_HEAD]);
     } else {
         Text_PrintfColored(gForgeTexts[FORGE_TEXT_MATERIALS_HEAD]);
     }
     Font_SetColor(0x807F7F7F);
-    x += 0x22;
+    x += 34;
     for (i = 0; i < DECO_RECIPE_MATS; i++) {
         if (recipe->need[i].item != 0) {
             if (counter->step == DECO_MAKE_QUANTITY || counter->step == DECO_MAKE_ASK) {
-                Items_DrawNeedLineAfter(x, rowY += 0x14, recipe->need[i].item, recipe->need[i].count * counter->quantity, 0x807F7F7F);
+                Items_DrawNeedLineAfter(x, rowY += 20, recipe->need[i].item, recipe->need[i].count * counter->quantity, 0x807F7F7F);
             } else {
-                Items_DrawNeedLine(x, rowY += 0x14, recipe->need[i].item, recipe->need[i].count, 0x807F7F7F);
+                Items_DrawNeedLine(x, rowY += 20, recipe->need[i].item, recipe->need[i].count, 0x807F7F7F);
             }
         }
     }
 }
 
-void Deco_DrawMakeList(DecoWork *m, s16 x, s16 y);
-void Sjis_Widen(char *src, char *dst);
-s32 sprintf(char *buf, const char *fmt, ...);
-void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode);
 /*
  * Draws the make screen: the title and the money, the make list or the
  * recipe list with the recipe's panel, then the message, the quantity with
@@ -1805,9 +1728,9 @@ void Deco_DrawMake(DecoWork *counter, s16 x, s16 y)
     s32 recipeIdx;
     s32 fee;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0xAA, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_MAKE], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 170, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_MAKE], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (counter->step) {
     case DECO_MAKE_ASK:
     case DECO_MAKE_QUANTITY:
@@ -1831,32 +1754,30 @@ void Deco_DrawMake(DecoWork *counter, s16 x, s16 y)
     case DECO_MAKE_ASK:
         fee = Item_HalfPrice(gDecoRecipes[counter->recipes[counter->cursor]].deco);
         fee *= counter->quantity;
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, Text_FillDollar(gShopPromptTexts[SHOP_PROMPT_PRICE_ASK], fee));
-        Font_SetPos(0x1B2, 0x192);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, Text_FillDollar(gShopPromptTexts[SHOP_PROMPT_PRICE_ASK], fee));
+        Font_SetPos(434, 402);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     case DECO_MAKE_QUANTITY:
         recipeIdx = counter->recipes[counter->cursor];
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_MAKE_COUNT_ASK]);
-        Font_SetPos(0x20B, 0x184);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_MAKE_COUNT_ASK]);
+        Font_SetPos(523, 388);
         sprintf(buf, "%02d", counter->quantity);
         Sjis_Widen(buf, wide);
         Text_PrintfColored(wide);
         if (Deco_CanMake(recipeIdx, counter->quantity + 1) == 1 && counter->quantity < DECO_MAKE_LIMIT - 1) {
-            Icon_DrawMode(0x20C, 0x16E, 0x24, 0x16, 0xFF00FF00, 0x29, 2);
+            Icon_DrawMode(524, 366, 36, 22, 0xFF00FF00, 41, 2);
         }
         if (counter->quantity > 1) {
-            Icon_DrawMode(0x20D, 0x196, 0x24, 0x16, 0xFF00FF00, 0x28, 2);
+            Icon_DrawMode(525, 406, 36, 22, 0xFF00FF00, 40, 2);
         }
         break;
     default:
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_MAKE_PICK_DECO]);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_MAKE_PICK_DECO]);
         break;
     }
 }
 
-void Deco_DrawMake(DecoWork *m, s16 x, s16 y);
-void Deco_DrawRemove(DecoWork *m, s16 x, s16 y);
 /*
  * Draws the decorations counter for the workshop: the top menu, or the
  * make, attach or remove screen at its step, its window at the slide's
@@ -1868,21 +1789,21 @@ void Deco_Draw(u8 *task)
 
     switch (counter->mode) {
     case DECO_MODE_MENU:
-        Font_SetSpacing(0x14, 0x14);
-        Menu_DrawLabelList(0x1CC, gDecoMenuTexts, DECO_CHOICE_COUNT, counter->choice, 0xFFB0B000);
+        Font_SetSpacing(20, 20);
+        Menu_DrawLabelList(460, gDecoMenuTexts, DECO_CHOICE_COUNT, counter->choice, 0xFFB0B000);
         break;
     case DECO_MODE_MAKE:
-        Deco_DrawMake(counter, counter->win.pos, 0x34);
+        Deco_DrawMake(counter, counter->win.pos, 52);
         break;
     case DECO_MODE_ATTACH:
         switch (counter->step) {
         case DECO_ATTACH_LIST_SLIDE_IN:
         case DECO_ATTACH_LIST:
         case DECO_ATTACH_ASK:
-            Deco_DrawAttachConfirm(counter, counter->win2.pos, 0x34);
+            Deco_DrawAttachConfirm(counter, counter->win2.pos, 52);
             break;
         default:
-            Deco_DrawAttachEquip(counter, (s16)(counter->win.pos + 12), 0x34);
+            Deco_DrawAttachEquip(counter, (s16)(counter->win.pos + 12), 52);
             break;
         }
         break;
@@ -1890,11 +1811,11 @@ void Deco_Draw(u8 *task)
         switch (counter->step) {
         case DECO_REMOVE_SLIDE_IN:
         case DECO_REMOVE_BOX:
-            Deco_DrawRemoveEquip(counter, (s16)(counter->win.pos + 12), 0x34);
+            Deco_DrawRemoveEquip(counter, (s16)(counter->win.pos + 12), 52);
             break;
         case DECO_REMOVE_PANEL:
         case DECO_REMOVE_ASK:
-            Deco_DrawRemove(counter, counter->win2.pos, 0x34);
+            Deco_DrawRemove(counter, counter->win2.pos, 52);
             break;
         }
         break;
@@ -1920,8 +1841,8 @@ void Deco_DrawEquipAsk(DecoWork *counter, s16 choice)
     char *msg;
 
     memset(&worn, 0, sizeof(worn));
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0x8C, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_ATTACH], 2, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 140, 0xFFB0B000, gDecoMenuTexts[DECO_TITLE_ATTACH], 2, 1);
     switch (counter->mode) {
     case DECO_WEAR_ASK:
         msg = gForgeTexts[FORGE_TEXT_EQUIP_ASK];
@@ -1937,9 +1858,9 @@ void Deco_DrawEquipAsk(DecoWork *counter, s16 choice)
     } else {
         Equip_CopyEquipped(&worn, counter->changed.type);
     }
-    EquipCompare_Draw(&worn, &counter->changed, 0x136, 0x38, counter->viewPage | 0x50);
-    Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, msg);
-    Font_SetPos(0x144, 0x190);
+    EquipCompare_Draw(&worn, &counter->changed, 310, 56, counter->viewPage | 0x50);
+    Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, msg);
+    Font_SetPos(324, 400);
     Text_Printf(gEquipNowTexts[gLobbyMenu->yesNo]);
 }
 

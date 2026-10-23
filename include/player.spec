@@ -47,21 +47,21 @@ size 0x970
 0x7E8 f32 targetPos[3] // the point the monsters aim at (Em_GetTargetPos)
 0x81A u8 supplyBoxOpen // Hud_SupplyBoxOpen, gHudState->supply; the supply box menu clears it on cancel (pouch.c)
 0x848 u8 freeState // set to 1 each frame by the idle and move states, cleared at the frame start (Player_Update): items can be used (Player_IsFree, the pouch menu)
-0x8B1 u8 deliveryMenu // the delivery menu: 0xFF, 1, 0 (Player_RunDeliveryMenu, Player_StateBedMenu); blocks the pad input
+0x8B1 u8 deliveryMenu // the delivery menu: 255, 1, 0 (Player_RunDeliveryMenu, Player_StateBedMenu); blocks the pad input
 0x8D5 u8 deliveryOpen // Hud_DeliveryOpen, gHudState->unk23; Quest_DeliveryMenu clears it when closing (pouch.c)
 0x01C u8 roundsLoaded // bowgun: rounds loaded
 0x01D u8 clipSize // bowgun: clip size
 0x2C2 s16 hp // health (as Em.hp)
-0x432 s16 noFlinchTimer // the attack states set it (0x3C, 0x28, 2...), Player_TickTimers counts it down; while nonzero Player_IgnoresFlinch (pouch.c) returns 1 and Player_ReactToHit (player_hit.c) skips the flinch
+0x432 s16 noFlinchTimer // the attack states set it (60, 40, 2...), Player_TickTimers counts it down; while nonzero Player_IgnoresFlinch (pouch.c) returns 1 and Player_ReactToHit (player_hit.c) skips the flinch
 0x534 u8 ammoType // kind of the loaded ammo (ItemData.ammoKind)
 0x694 s16 stamina
-0x69C u16 lean // the body lean while turning, a 16-bit turn kept within 0xF600..0xA00 (Player_UpdateAutoTurn, Actor_TurnToTarget); Player_TwistBoneToLook rolls a bone by it
+0x69C u16 lean // the body lean while turning, a 16-bit turn kept within 2560 of upright either way (Player_UpdateAutoTurn, Actor_TurnToTarget); Player_TwistBoneToLook rolls a bone by it
 0x6DC s16 hpRecoverable // the red part of the health bar
 0x6DE s16 hpMax // 1..150
 0x754 f32 moveTo[3] // a point to move to (Player_StartMoveTo, Player_MoveToSpawn, Contest_TakeSeat, HairMenu_MovePlayer)
 0x760 f32 moveToStep[3] // added to pos each frame while moveToFrames counts (Player_UpdateMoveTo, pouch.c)
 0x76C s16 moveToFrames // frames to reach moveTo (Player_StartMoveTo, Player_UpdateMoveTo)
-0x76E s16 lookYaw // the head turn toward the nearest monster (Player_FindLookTarget; pouch.c reads it signed; the lobby unwinds it by 0x400 a frame through u16, TownPc_UnwindAngle76E)
+0x76E s16 lookYaw // the head turn toward the nearest monster (Player_FindLookTarget; pouch.c reads it signed; the lobby unwinds it by ANGLE_TURN / 64 a frame through u16, TownPc_UnwindAngle76E)
 0x775 u8 coatingSlot // bow: the pouch slot of the loaded coating, 0xFF: none (sub_main Bow_SetCoatingSlot; a shot uses one up)
 0x77C ItemStack{4} pouch[20] // the item pouch
 0x7D6 s16 sharpness
@@ -79,17 +79,17 @@ size 0x970
 0x82A u8 savedClipSize // clipSize saved with savedCoatingSlot (Player_BowgunAmmoSwitch, Bow_StateFire)
 0x849 u8 menuPage // menu page
 0x84B u8 menuDelay // menu input delay
-0x872 u16 hotDrinkTimer // frames left of item 0x16's effect (18000; Item_Use); nonzero: no cold in zones 2 and 4 (Player_UpdateHunger, Hud_StaminaColor)
+0x872 u16 hotDrinkTimer // frames left of item ITEM_ID_HOT_DRINK's effect (18000; Item_Use); nonzero: no cold in zones 2 and 4 (Player_UpdateHunger, Hud_StaminaColor)
 0x877 u8 supplyTaken // nonzero once the supply box was taken from (SupplyBox_Take, QSync_OnSupply)
 0x88E u16 supplyBoxTimer // 900 frames after a supply box take (SupplyBox_Take, SupplyBox_Update)
 0x899 s8 demonMode // dual swords: 1 in the demon mode (DualSwords_StateDemonToggle; PlayerAttack_Setup)
-0x89A s16 noFlinchItemTimer // item 0x14 sets it with defenseBuffTimer (Item_Use); counted down; tested with noFlinchTimer and demonMode (Player_IgnoresFlinch)
+0x89A s16 noFlinchItemTimer // item ITEM_ID_DEFENSE_BURST sets it with defenseBuffTimer (Item_Use); counted down; tested with noFlinchTimer and demonMode (Player_IgnoresFlinch)
 0x8B2 u8 yesNoCursor // the delivery menu: the yes or no cursor (gYesNoTexts[it], DeliveryMenu.yesNo; Player_RunDeliveryMenu, Quest_DeliveryMenu)
 0x8FC s16 hpMaxBase // hpMax without the song effect 3: set from hpMax, raised by Player_AddMaxHp unless temporary (to 150); restored to hpMax when effect 3 ends (Player_UpdateStatus)
 0x8A4 u32 styleColor // gPlayerColorWords[style] (Player_SetColorWord)
-0x8CB u8 style // the style (save symbolColor; Player_SetColorWord); 0xFF none; the lobby draws its icon (0xB cycles colours)
+0x8CB u8 style // the style (save symbolColor; Player_SetColorWord); 255 none; the lobby draws its icon (11 cycles colours)
 0x005 u8 step // as Em.step: the step within the state (counted up by the states), cleared on every state change (Player_ClearActionState)
-0x006 u8 stateVar0 // as Em.stateVar0: per-state scratch byte (a counter to 5 in state 0/0x27), cleared on every state change
+0x006 u8 stateVar0 // as Em.stateVar0: per-state scratch byte (a counter to 5 in PL_ACT_WALL_HOLD), cleared on every state change
 0x007 u8 stateVar1 // as Em.stateVar1: per-state scratch byte (a "hit once" flag with hitPending; a countdown in the lobby states)
 0x010 u8 isEm // 0 for a hunter: copied to the effects' isEm (Explosion_Create); the Melynx steal checks it is 0
 0x012 u8 weaponOut // nonzero while the weapon is drawn (set per weapon type by state 0/04; the idle input branches on it)
@@ -110,10 +110,10 @@ size 0x970
 0x821 s8 aimWeight // bowgun: -100..100, the weight of the second motion layers (Bowgun_SetAimLayers)
 0x8B4 f32 motionSpeed // motion speed factor (1.0; 0.5..1.54 per state: Player_SetState and the weapon states); motionStep0/1 are 2.0 times it
 0x537 u8 spotCheckDelay // nonzero: no action spot check (Player_CheckActionSpot sets 20; Player_UpdateStatus counts it down)
-0x538 u16 startAngle // its heading: gStartAngle, the action spot angle + 0x4000
+0x538 u16 startAngle // its heading: gStartAngle, the action spot angle + ANGLE_TURN / 4
 0x688 f32 startPos[3] // where the player starts in the area: gStartPos, the action spot target (Player_InitAll, Player_CheckActionSpot)
 0x020 f32 rotMtx[16] // the rotation matrix from rot (Mtx_FromAnglesXYZ, Player_Reset; as Em.rotMtx)
-0x0A0 s32 rot[3] // rotation angles as integers, 0x10000 per turn; rot[1] the heading (as Em.rotX..rotZ)
+0x0A0 s32 rot[3] // rotation angles as integers, ANGLE_TURN per turn; rot[1] the heading (as Em.rotX..rotZ)
 0x2C0 u16 motionLayerCount // number of motion layers
 0x4B8 u16 statusIcons // the HUD's status icons, PL_STATUS_ICON_* bits (Player_UpdateStatusIcons)
 0x628 s8 attackDrug // attack bonus of the drugs (Item_Use: at least 3 or 5), kept in gScene.mealAttack (Player_RecomputeStats)
@@ -128,8 +128,8 @@ size 0x970
 0x728 f32 defenseFactor // defense factor: defense / 2, at least 1
 0x771 u8 unk771
 0x868 u8 skills[5] // skill ids (PL_SKILL_SLOTS)
-0x870 u16 coolDrinkTimer // frames left of item 0x15's effect (18000; Item_Use); nonzero: Hud_HealthColor and Player_UpdateEnvironment skip the heat
-0x874 u16 regenTimer // frames left of items 0x0C, 0x3A-0x3D (Item_Use, 3600..14400): doubles the health recovery step (Player_UpdateStatus); Notice 0x16 at the end; status icon 0x1000
+0x870 u16 coolDrinkTimer // frames left of item ITEM_ID_COOL_DRINK's effect (18000; Item_Use); nonzero: Hud_HealthColor and Player_UpdateEnvironment skip the heat
+0x874 u16 regenTimer // frames left of items ITEM_ID_REGEN and ITEM_ID_FOOD_REGEN_SHORT to ITEM_ID_FOOD_REGEN_LONG (Item_Use, 3600..14400): doubles the health recovery step (Player_UpdateStatus); Notice 22 at the end; status icon PL_STATUS_ICON_REGEN
 0x878 f32 resist[5] // element resistances (fire, water, thunder, ice, dragon), -100..100
 0x894 u8 skillGroups[5] // the skill group of each slot
 0x89D s8 skillPoints[5]
@@ -139,7 +139,7 @@ size 0x970
 0x8D0 s16 status7Hit // the hit status 7 amount: > 0 starts status7Timer unless SKILL_STATUS7_IMMUNE (Player_ReactToHit)
 0x8D2 s16 status7Timer // status 7 frames left: 1800 at a hit or a poisoning item (900 with SKILL_STATUS7_HALF; Player_ReactToHit, Item_Use), counted down (Player_UpdateStatus), cleared with the other statuses; an icon (Player_UpdateStatusIcons)
 0x8D6 u8 songEffect[12] // the level of each effect kind, PL_SONG_* (Player_HasSongEffect, Player_ClearSongEffects; only the hunting horn's songs set them)
-0x8E2 s16 songEffectTimer[12] // per kind: frames left (0x708, 0xA8C, 0xE10; counted down by Player_UpdateStatus)
+0x8E2 s16 songEffectTimer[12] // per kind: frames left (1800, 2700, 3600; counted down by Player_UpdateStatus)
 0x312 EquipItem{12} equip[7] // 0, 2-5: armour; 6: the weapon (type 7: a bowgun); 3: the torso
 0x011 u8 gender // the hunter gender (from the save data)
 0x30C u16 weaponKind // the weapon kind (EquipItem kind, Equip_GetKind)
@@ -153,8 +153,8 @@ size 0x970
 0x774 u8 weaponFlags // flags of the weapon type (WeaponType_Flags(weaponType): 1, 2, 4; Player_SkillApplies)
 0x776 s16 swordGauge // long sword: the spirit gauge 0..100 (LongSword_AddGauge, LongSword_GaugeAtLeast, Hud_DrawWeaponBox)
 0x824 s16 staminaLockTimer // frames left of an item effect that keeps the stamina (Item_Use; Player_StaminaLocked)
-0x82B u8 voice // the voice: save data +0x20D8 and the hunter card (Player_SetupFromSave); gVoiceBanks[gender * 0x10 + it] (lobby), Chara_SetVoiceMotion
-0x846 s16 aimPitch // the aim pitch, 16-bit turn: the first-person camera (camera mode 1, Mtx_FromAngles16Pos) and Hud_DrawObjMarker use it with the heading rot[1]; up/down input adds +-0x400 clamped to +-0x2000 (45 deg; Player_AddAimPitch, gScene.aimReverse flips it); Player_AddAimPitchPct sets it from aimPitchPct
+0x82B u8 voice // the voice: save data +0x20D8 and the hunter card (Player_SetupFromSave); gVoiceBanks[gender * 16 + it] (lobby), Chara_SetVoiceMotion
+0x846 s16 aimPitch // the aim pitch, 16-bit turn: the first-person camera (camera mode 1, Mtx_FromAngles16Pos) and Hud_DrawObjMarker use it with the heading rot[1]; up/down input adds +-ANGLE_TURN / 64 clamped to +-ANGLE_TURN / 8 (45 deg; Player_AddAimPitch, gScene.aimReverse flips it); Player_AddAimPitchPct sets it from aimPitchPct
 0x8A2 u8 attackPercent // the attack power in percent (great sword charge levels: 100..130)
 0x8A3 u8 attackPercentBase // the weapon type's attack percent (gWeaponClassAttack[weaponType], Player_ResetAttackPercent)
 0x8BC u8 charType // the character's TYPE, 0-3 (SaveData.charType, HunterCard.charType, the preset characters): with gender it picks the row of gLookPartMap0/3/4 (gender * 16 + it * 4)
@@ -171,12 +171,12 @@ size 0x970
 0x6FE s16 status2Buildup // the status 2 buildup: status2Hit added per hit (Player_ReactToHit); > 0 picks the status state (Player_PickStatusState)
 0x710 s16 status4Buildup // the status 4 buildup: status4Hit added per hit (Player_ReactToHit); > 0 picks the status state (Player_PickStatusState)
 0x744 s16 mashBuildup // the buildup toward the mash status: mashBuildupHit added per hit (Player_ReactToHit); Player_HasMashBuildup, Player_InMashStatus
-0x746 s16 mashLeft // the status of state 2/0x1E: pressed buttons take 10 (SKILL_MASH_FAST twice, SKILL_MASH_SLOW half: mashTimer); at 0 state 2/0x1C; synced in qnet_sync message 3
+0x746 s16 mashLeft // the status of state 2/0x1E: pressed buttons take 10 (SKILL_MASH_FAST twice, SKILL_MASH_SLOW half: mashTimer); at 0 PL_REACT_MASH_FREE; synced in qnet_sync message 3
 0x88C s16 detectTimer // frames left of an item effect (Item_Use) that Player_DetectLevel and the HUD glow test
 0x890 s16 recoverTimer // state 4/x: 150 frames (skill 1 halves, skill 3 doubles), mashing takes 1 more each 3 frames; the hunter gets up at 0
 0x8BA s16 actDetectTimer // 300 frames from the gesture state 6/2 (Player_StateGestureScout): as detectTimer (Player_DetectLevel, Map_MonsterLocated, AreaFlyer_Run)
 0x772 u8 inBattle // nonzero while a monster fights it (Player_UpdateInBattle; Bgm_IsBattle, Hud_DrawPlayerStatus)
-0x86F u8 teamItemMask // set to 15 when a team item (0xB0-0xB3) is used (Item_UseTeamPowder); the bit of each player reached is cleared (player_motion_fx.c)
+0x86F u8 teamItemMask // set to 15 when a team item (ITEM_ID_TEAM_HEAL to ITEM_ID_TEAM_DEFENSE) is used (Item_UseTeamPowder); the bit of each player reached is cleared (player_motion_fx.c)
 0x83E s16 gotItem // the item to give the player (Pouch_GiveItem: Item_Use, Player_GatherAtSpot, Contest_GivePrize, PoogieMenu_Update)
 0x661 u8 floorArg // byte 1 of the floor triangle (as Em.floorArg): passed with the voice SEs (bank 7, PlayerSe_VoiceAtFrame)
 0x698 u32 wallHitDirs // as Em.wallHitDirs: Em_CollideField also runs for the players (Field_Update); Motion_VoiceAtFrame tests 0xE0000007 (a wall ahead) to pick the voice from gEmWallContacts
@@ -191,7 +191,7 @@ size 0x970
 0x410 u16 noPushTimer // frames without body pushing (as Em.noPushTimer): Field_PushApart skips the player while nonzero; counted down by Player_TickTimers; states set 2/10
 0x52C struct DrawSlot * drawSlot // its draw slot: an entry of the pool at 0x6A5AD0 (DrawSlot_Get), drawn by DrawCb_LocalPlayer (Player_InitAll)
 0x530 s16 drawSlotId // its index, -1: none
-0x532 u8 painted // the Em paint mark read through Player (as Em.painted): Player_TickPaint runs only for isEm objects; Player_Reset sets 0xFF (players: never); Map_MonsterLocated tests it
+0x532 u8 painted // the Em paint mark read through Player (as Em.painted): Player_TickPaint runs only for isEm objects; Player_Reset sets 255 (players: never); Map_MonsterLocated tests it
 0x53A s16 paintTimer // frames until painted is cleared (as Em.paintTimer; Player_TickPaint)
 0x540 u32 lightFadeColors[3] // per light of light set 1: the colour it fades from, 0xFFRRGGBB (LightSet_FadeColors moves it a fifth of the way to the set's colour each draw and keeps the result; 0: the set's own colour). Player_ClearLightColors clears it; the character maker sets 0x01000000 (from black)
 0x664 void * lightColors // the hunter's own colours of lights 0 and 1 (LightSet_SetColors reads it as rows of 4 floats); NULL: the area's
@@ -225,21 +225,21 @@ size 0x970
 0x81D u8 weaponShown // nonzero: the weapon model is drawn (Player_DrawLocal, Player_Draw call Player_DrawWeapon); Player_Reset and the hunter setups set 1, plsel's preset players 0, the town hunters while not free (TownPc_IsFree)
 0x4C8 s8 meshShown[32] // one per mesh of model, 1: drawn (as Em.meshShown): Player_InitRecords sets all 32; Player_DrawLocal and Player_Draw skip the others
 0x683 u8 nearCamera // 1: another player's hunter within 200 of the camera (Player_Update): drawn at alpha 0.2 in the sorted list (Player_Draw); 0 for the local player
-0x860 u8 offerRequest // the pouch menu's offer sets it with offerTo/offerItem/offerCount; the idle states then enter state 0/0x67
-0x81E u8 tradeMsgTimer // the trader kind 0x0A sets 5, 10, 60 (EmTrader_RunTalk, EmTrader_ShowMessage); Player_UpdateStatus counts it down
-0x892 u8 offerNoticeTimer // 0x5A frames after the pouch-full notice for an offered item (no new take while nonzero)
+0x860 u8 offerRequest // the pouch menu's offer sets it with offerTo/offerItem/offerCount; the idle states then enter PL_ACT_OFFER_ITEM
+0x81E u8 tradeMsgTimer // EM_KIND_TRADER sets 5, 10, 60 (EmTrader_RunTalk, EmTrader_ShowMessage); Player_UpdateStatus counts it down
+0x892 u8 offerNoticeTimer // 90 frames after the pouch-full notice for an offered item (no new take while nonzero)
 0x845 u8 bowgunReady // 1 while the bowgun attack input runs with rounds loaded (Bowgun_AttackInput), cleared at each frame start (Player_Update) and by Player_Reset; Player_IsAiming tests it
 0x89C u8 prevFreeState // freeState of the last frame (Player_Update): the guard SKILL_AUTO_GUARD and the heavy bowgun shield guard only then
-0x84A u8 pouchHudFlags // pouch HUD flags: 2 next, 4 previous item (Player_UpdateItemSelect), 1, 8, 0x10 (ItemHud_Update, Hud_DrawPouchBar)
+0x84A u8 pouchHudFlags // pouch HUD flags: 2 next, 4 previous item (Player_UpdateItemSelect), 1, 8, 16 (ItemHud_Update, Hud_DrawPouchBar)
 0x596 u8 pushPriority // compared between two bodies to pick the one pushed (PlayerEm_PushApart, EmEm_PushApart); Player_Reset sets 1
 0x597 u8 nearLargeMonster // 1 while a large monster (pushPriority 3 or more) is near: within 300 horizontally, 500 for one above 3, and less than 300 below the player (Player_UpdateNearMonster)
-0x6AC s16 dashDelay // frames before R1 with the stick dashes again (states 0/0x24, 2/0x20, 5/1): the states set 30, counted down (Player_UpdateStatus, TownPc_TickTimers)
-0x7DE u8 itemUseDelay // counted down (Player_UpdateStatus); the item button (0x200) does nothing while nonzero (idle and move states)
+0x6AC s16 dashDelay // frames before R1 with the stick dashes again (states PL_ACT_RUN_AFTER_DASH, PL_REACT_MASH_RUN, PL_CARRY_WALK): the states set 30, counted down (Player_UpdateStatus, TownPc_TickTimers)
+0x7DE u8 itemUseDelay // counted down (Player_UpdateStatus); the item button (PAD_SQUARE) does nothing while nonzero (idle and move states)
 0x816 u8 ammoMenuLock // counted down to 0 by Player_UpdateStatus; Player_BowgunAmmoSwitch does nothing while nonzero. Player_Reset zeroes it; no C code sets it nonzero
 0x864 s16 envTimer // frames to the next environment effect (30..180, Player_UpdateEnvironment)
 0x669 u8 floorHazard // byte 7 of the floor kind's gAreaKindFlags row. Player_UpdateEnvironment: 1 poison (at least 10 unless SKILL_POISON_IMMUNE), 2 damage every 8 frames
 0x7D9 s8 fishTimer // fishing: frames (Lure_Update, Fish_StepBite), counted down by Player_UpdateStatus
-0x0D0 struct PlRec * partRecs[32] // the 32 records of 0xB0 bytes in the 0x1600-byte block at 0x5DE5D0 (Player_InitPartTable, CamScript_AtPoint)
+0x0D0 struct PlRec * partRecs[32] // the 32 records of 176 bytes in the 5632-byte block at 0x5DE5D0 (Player_InitPartTable, CamScript_AtPoint)
 0x154 MotionLayer{80} motion[4] // motion layers (include/motion.h; as Em.motion): Player_SetLayerMotion starts one, Player_UpdateMotion steps it
 0x4C6 u16 unk4C6
 0x4E8 s16 modelCount // model slots used by the body (as Em.modelCount; Player_LoadPartModels, Player_FreeModels)
@@ -248,7 +248,7 @@ size 0x970
 0x514 s16 partModelCount[6] // parts 1-5: model slots used
 0x520 s16 partModelFirst[6] // parts 1-5: the first model slot
 0x4EC struct Model * model // the skeleton (as Em.model): select_chara.c sets it to Model_Get(gAreaSubModelId[slot])
-0x4F4 struct Model * weaponModel // the model: a 0x80-byte header of the pool at 0x6AE000 (Player_LoadWeaponModel)
+0x4F4 struct Model * weaponModel // the model: a 128-byte header of the pool at 0x6AE000 (Player_LoadWeaponModel)
 0x4F8 s16 weaponModelSlotCount // model slots used by the weapon model (Player_AllocWeaponModel)
 0x4FA s16 weaponModelSlot // the first model slot of the weapon model (Player_AllocWeaponModel, Player_FreeWeaponModel)
 0x8A8 u8 lookPartId[6] // per armour part: the model part id Look_MapPartId picked (Player_LoadLookModels), PL_LOOK_PART_NONE: none (Player_InitPartTable)
@@ -270,7 +270,7 @@ size 0x970
 0x019 u8 hitPending // nonzero: hitKind is to be handled
 0x589 u8 rideEm // the slotNo of the monster the player stands on (Em_CarryRiders, Player_CheckRideSlip)
 0x59C f32 rideDelta[3] // how far the monster carried the player this frame (Em_CarryRiders; Player_CheckRideSlip compares its length)
-0x5A8 EquipFxSwing{32} equipFx[4] // the swinging parts of the equipment (Players_RunEquipEffects, Effect_RunList); cleared by Player_ClearFxBlock
+0x5A8 EquipFxSwing{32} equipFx[4] // the swinging parts of the equipment (Player_RunEquipEffects, Effect_RunList); cleared by Player_ClearFxBlock
 0x773 u8 prevInBattle // the previous inBattle (Player_UpdateInBattle)
 0x3AC s32 targetAngle // the heading from target, plus a quarter turn (Player_UpdateInBattle)
 0x3B4 void * target // the Em it deals with: the monster in battle with it that set inBattle (Player_UpdateInBattle), the one it hit (ObjAttach_DamagePlayer), in the lobby the townsperson it talks to
@@ -286,7 +286,7 @@ size 0x970
 0x893 s8 fallGrabCount // the ledge grabs out of a fall: Player_StateLedgeHang counts PL_ACT_LEDGE_GRAB after PL_ACT_FALL; Player_Update zeroes it in any other state; Player_StateLeapOrFall allows the grab while it is under 21
 0x535 u8 savedAmmoType // ammoType saved while the ammo menu is open (Player_BowgunAmmoSwitch)
 0x668 u8 mustCrouch // byte 2 of the floor kind's gAreaKindFlags row. While set, moving is PL_ACT_CROUCH_WALK (no walk, run, roll, standing up or weapon draw)
-0x863 u8 offerStarted // 1 in the frame an offer starts (offerRequest taken, state 0/0x67): the pouch menu closes (PouchMenu_Update); cleared by Player_Update
+0x863 u8 offerStarted // 1 in the frame an offer starts (offerRequest taken, PL_ACT_OFFER_ITEM): the pouch menu closes (PouchMenu_Update); cleared by Player_Update
 0x366 u8 armourKind[6] // per armour piece a kind: sub_main copies it from the lobby record colour[] and the model setup (Look_MapPartId) reads it; main armour rattle sound picks from it
 0x3F9 u8 hitIds[16] // the ids of the attacks that hit it last (as Em.hitIds)
 0x412 u8 hitIdNext // the next slot of hitIds (as Em.hitIdNext)
@@ -305,7 +305,7 @@ size 0x970
 0x8D4 u8 status8Hit // the hit status 8 amount: > 0 lowers staminaMax unless SKILL_STATUS7_IMMUNE (Player_ReactToHit)
 0x416 u8 fxMade // 1 once the state made its effect (WeaponTrail_Create) at its frame: LongSword_StateSlash, LongSword_StateSpirit1 (as Em.unk416)
 0x060 f32 worldMtx[4][4] // as Em.worldMtx (the hunters states turn vectors with it, Vec_Rotate)
-0x294 u16 yawCenter // as Em.yawCenter: the heading targetYaw is kept within 0x4000 of (Player_UpdateLean, Player_StateMountedGunAim)
+0x294 u16 yawCenter // as Em.yawCenter: the heading targetYaw is kept within a quarter turn of (Player_UpdateLean, Player_StateMountedGunAim)
 0x29A s16 msgTimer // as Em.msgTimer (cleared by Player_StateFishReel)
 0x568 f32 prevPos[3] // the position before the move of this frame (as Em.prevPosX..prevPosZ; TownPc_Update copies pos)
 0x660 u8 floorKind // the floor triangle under the player (as Em.floorKind; TownPc_Update passes it to Em_GetFloorInfo as a TriHdr)
@@ -316,7 +316,7 @@ size 0x970
 0x634 u16 tradeGetItem // the trader kind 0x0A: the item it gives the player (Pouch_Add with 1, Notice_Push; EmTrader_RunTalk)
 0x636 u16 tradeGiveItem // the trader kind 0x0A: the item the player hands over (Pouch_Add with tradeGiveCount; cleared from gQuest.unk158 when it matches)
 0x58A u8 rideBone // the bone of the monster rideEm the player stands on (Em_CarryRiders: Em_PosInFrame with it)
-0x86E u8 questStatus // the lobby: low bits the quest category (QuestFlags_GetCategory), 0x80 accepted and paid, 0x40 accepted (QuestDesk_Accept), 0x20 set out (Town_UpdateMode); cleared by QuestDesk_Drop; on the hunter card (HunterCard_Build)
+0x86E u8 questStatus // the lobby: low bits the quest category (QuestFlags_GetCategory), QUEST_STATUS_PAID accepted and paid, QUEST_STATUS_TAKEN accepted (QuestDesk_Accept), QUEST_STATUS_SET_OUT set out (Town_UpdateMode); cleared by QuestDesk_Drop; on the hunter card (HunterCard_Build)
 # Round 31 session 31 (types): the hit fields (sub_main hit_detection.c)
 0x414 u8 hitPhase // the player's hit window: 0 off, 1 waiting hitDelay frames, 2 open for hitFrames (Player_UpdateHitTimers; as ObjAttach.hitPhase)
 0x424 f32 hitPos[3] // where the last hit taken landed (ObjAttach_DamagePlayer)

@@ -7,14 +7,14 @@ size 0x100
 0x034 s32 moveAngY // set from rotY or Math_AngleXZ to the goal
 0x038 s32 moveAngZ // 0
 0x03C s32 pitchStep // added to or taken from rotX each frame
-0x040 s32 turnSpeed // Em_TurnToGoal speed (0x100)
-0x044 s32 rollSpeed // flying families: rotZ is stepped back to 0 by it (0x100 at init); Velocidrome and Velociprey State3: an f32 velZ kept while a wall stops the jump
+0x040 s32 turnSpeed // Em_TurnToGoal speed (256)
+0x044 s32 rollSpeed // flying families: rotZ is stepped back to 0 by it (256 at init); Velocidrome and Velociprey State3: an f32 velZ kept while a wall stops the jump
 0x050 s16 unk050
-0x000 u8 fxStep // UpdateMotionEffects: 0, then 1 (runs MotionEffects): Kirin, Anteka, kind 0x1D (the families with a view keep their own, at +0 or elsewhere)
+0x000 u8 fxStep // UpdateMotionEffects: 0, then 1 (runs MotionEffects): Kirin, Anteka, kind 29 (the families with a view keep their own, at +0 or elsewhere)
 0x002 s16 sndMotion // the motion id the MotionEffects functions keep (motionId[0], stored when it changes) and the MotionSounds copies (Kut-Ku, Garuga, Rathalos, Gravios, Diablos, Khezu, Chameleos, Fatalis) switch on; Rathalos and Fatalis write it through their views (EmFlyerWork.sndMotion, EmFatalisWork.fxMotion); Yama Tsukami keeps a timer here (EmYamaTsukamiWork)
 0x004 s16 prevMotion // a motion id kept to see it change (motionId[0] stored and compared; switched on)
 0x008 s32 accelAngX // angles X, Y, Z for Em_MoveRotatedAccel (&accelAngX; set from rotX, rotY and 0)
-0x00C s32 accelAngY // set from rotY, or rotY +- 0x4000, + 0x8000
+0x00C s32 accelAngY // set from rotY, or rotY plus or minus a quarter turn, plus half a turn
 0x010 s32 accelAngZ // 0; some states keep an f32 distance here
 0x014 u16 goalYaw // Math_AngleXZ to the goal; copied to rotY
 0x017 u8 unk017

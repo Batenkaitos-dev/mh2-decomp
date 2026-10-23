@@ -183,4 +183,25 @@ enum GroupSearchLimit {
     GROUP_SEARCH_LIMITS = 4,
 };
 
+void GroupBoard_Open(void);
+s32 GroupBoard_QuestAllowed(s16 questIndex);
+void GroupBoard_Close(void);
+void GroupBoard_Update(void);
+s32 GroupBoard_Search(u16 pad);
+s32 GroupBoard_Results(u16 pad);
+void GroupBoard_BuildSearch(void);
+s32 GroupBoard_SearchInput(u16 pad);
+s32 GroupBoard_AreaGroups(u16 pad);
+s32 GroupBoard_NewGroup(u16 pad);
+s32 GroupBoard_NewGroupInput(u16 pad);
+s32 GroupBoard_ListInput(u16 pad);
+void GroupBoard_DrawAreaGroups(s16 x, s16 y);
+void GroupBoard_DrawResults(s16 x, s16 y);
+void GroupBoard_DrawNewGroupForm(s16 x, s16 y);
+void GroupBoard_DrawSearchForm(s16 x, s16 y);
+void GroupBoard_DrawSearchTargets(s16 x, s16 y);
+void GroupBoard_DrawGroupInfo(s16 x, s16 y);
+void GroupBoard_DrawButtonHints(void *menu, s16 x, s16 y, u32 color);
+void GroupBoard_DrawDetails(MenuTask *task);
+
 #endif

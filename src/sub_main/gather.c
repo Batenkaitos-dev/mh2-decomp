@@ -4,14 +4,15 @@
  * The current map's gathering points come from the stage data
  * (Gather_GetPoints(area)): 24-byte records, ended by x == -1.0f. The player
  * gathers at a point when his height is within [y - 200, y + 100) and his
- * horizontal distance from it is at most its radius. Each gather rolls an
+ * horizontal distance from it is at most its radius (Player_GetGatherPoint
+ * finds the point he stands at; Gather_AtPoint gathers). Each gather rolls an
  * item from the point's table (Gather_RollItem), then may use the point up:
- * a point has `count` gathers left (0xFF: unlimited); after its `bonus`
+ * a point has `count` gathers left (GATHER_UNLIMITED: unlimited); after its `bonus`
  * gathers, each gather empties it with chance (c + 1) / 32, where c is 4,
  * or with a skill of the gathering group 0, 2, 8 or 12 (SKILL_GATHER_*).
  *
  * The action spots (Player_FindActionSpot, Player_RecordActionSpot) are the
- * places in an area where the player can act (seen: kinds 2 and 0xB in the
+ * places in an area where the player can act (seen: kinds 2 and 11 in the
  * player's states): the same kind of list, from Stage_GetActionSpots.
  * The records (GatherPoint, GatherEntry, ActionSpot) are in quest.h.
  */
@@ -19,16 +20,49 @@
 #include "player.h"
 #include "item.h"
 #include "quest.h"
+#include "mine_point.h"
+#include "engine_math.h"
+#include "rand.h"
+#include "stage_data.h"
 
-void *Gather_GetPoints(s32 area);
-void *Stage_GetActionSpots(s32 area);
-void *Gather_GetTable(s32 table);
-u32 Player_TestFlag(void *obj, u32 flag);
-s32 Player_HasSkill(Player *p, u8 skill);
 u8 Player_GetSkill(Player *p, u8 group);
-f32 Math_Sqrtf(f32 x);   /* sqrtf */
-u16 Rand_Next(s32 stream);
-u16 Gather_RollItem(u16 table);
+
+/* The gathering point the player stands at (within its radius, from 200
+ * below it to 100 above): returns its item table, with its action
+ * (MINE_ACTION_*) in *action and its position in pos; GATHER_NO_ITEM when
+ * there is none. */
+u16 Player_GetGatherPoint(Player *pl, u16 *action, f32 *pos)
+{
+    GatherPoint *point;
+    f32 dx;
+    f32 dz;
+    u16 table;
+
+    point = Gather_GetPoints(pl->area);
+    if (point == NULL) {
+        return GATHER_NO_ITEM;
+    }
+    for (; point->x != -1.0f; point++) {
+        if (pl->pos[1] < point->y - 200.0f) {
+            continue;
+        }
+        if (!(pl->pos[1] < point->y + 100.0f)) {
+            continue;
+        }
+        dx = pl->pos[0] - point->x;
+        dz = pl->pos[2] - point->z;
+        if (!(Math_Sqrtf(dx * dx + dz * dz) <= point->radius)) {
+            continue;
+        }
+        table = point->table;
+        *action = point->action;
+        pos[0] = point->x;
+        pos[1] = point->y;
+        pos[2] = point->z;
+        return table;
+    }
+    return GATHER_NO_ITEM;
+}
 
 /*
  * Gathers at the point the player stands at: the item (0 or GATHER_NO_ITEM
@@ -132,8 +166,8 @@ u16 Player_FindActionSpot(Player *pl, f32 *pos, u16 *angle, u8 *type)
     return 0;
 }
 
-/* Records the action spot the player stands at in pl->spot (kind 2 spots
- * reach 30 further with player flag 0x80000), or NULL. */
+/* Records the action spot the player stands at in pl->spot, or NULL. A
+ * kind 2 spot reaches 30 further while the player fishes (PLF_FISHING). */
 void Player_RecordActionSpot(Player *pl)
 {
     ActionSpot *spot;
@@ -156,7 +190,7 @@ void Player_RecordActionSpot(Player *pl)
         dx = pl->pos[0] - spot->x;
         dz = pl->pos[2] - spot->z;
         dist = Math_Sqrtf(dx * dx + dz * dz);
-        if (spot->kind == 2 && Player_TestFlag(pl, 0x80000) != 0) {
+        if (spot->kind == 2 && Player_TestFlag(pl, PLF_FISHING) != 0) {
             dist -= 30.0f;
         }
         if (dist <= spot->radius) {

@@ -1,8 +1,9 @@
 /*
  * The area's collision. The area's table file gives two grids of triangle
- * lists (AreaTable_Relocate: gAreaGridCells and gAreaGrid2Cells, one list of
- * AreaTri pointers per cell, each ended by -1), and area.h describes the
- * triangles and the rows of their kinds.
+ * lists (loaded by Area_LoadTables when an area loads; AreaTable_Relocate
+ * makes gAreaGridCells and gAreaGrid2Cells, one list of AreaTri pointers per
+ * cell, each ended by -1), and area.h describes the triangles and the rows of
+ * their kinds.
  *
  * The sweeps test moving spheres (SweepCap) against the first grid: the
  * players' and monsters' bodies each frame (Em_CollideField, which runs
@@ -19,25 +20,25 @@
  * by place (gAreaLightZones), and a player's mustCrouch and floorHazard.
  */
 #include "common.h"
+#include "syssettings.h"
 #include "quest.h"
 #include "em.h"
 #include "scene.h"
 #include "area.h"
 #include "player.h"
 #include "objhead.h"
+#include "camera.h"
+#include "capsule.h"
+#include "engine_math.h"
+#include "equip_shop.h"
+#include "file_load.h"
+#include "stage_data.h"
+#include "packs.h"
+#include "libc.h"
+#include "cam_areas.h"
+#include "vec_math.h"
 
 /* prototypes */
-void Obj_UpdateLightColors(u8 i, f32 *pos, ObjHead *obj);
-AreaRecord *Stage_GetAreaRecord(u16 x);
-f32 Vec_Dot(f32 *a, f32 *b);
-s32 Tri_ContainsPoint(f32 *p, f32 *tri, f32 *n);
-void Vec_Diff(f32 *out, f32 *a, f32 *b);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
-void Vec_Scale(f32 *out, f32 *in, f32 s);
-f32 Math_Sqrtf(f32 x);
-void Vec_Normalize(f32 *v);
-f32 Vec_Length(f32 *v);
-f32 Math_Acos(f32 x);
 extern u32 gAreaGrid2CellX;
 extern u32 gAreaGrid2CellZ;
 extern u32 gAreaGrid2Cols;
@@ -48,18 +49,12 @@ extern u32 gAreaGridCellZ;
 extern u32 gAreaGridCols;
 extern u32 gAreaGridRows;
 extern u32 gAreaGrid2Rows;
-s32 Tri_Normal(f32 *a, f32 *b, f32 *c, f32 *out);
 extern s32 **gAreaGridCells;
 
 extern AreaKindRow *gAreaKindFlags[];
-s32 Tri_Contains2D(f32 *tri, f32 *p);
-s32 AreaGrid2_Contains(f32 *pos);
-s32 *AreaGrid2_GetCell(f32 *pos);
 extern AreaLightZone *gAreaLightZones[];
 extern AreaLightZone *gAreaLightZones2[];
 extern u8 *gAreaLightColors[];
-void Vec_Copy(f32 *dst, f32 *src);
-f32 Vec_Distance(f32 *a, f32 *b);
 
 /* The hits of the area tests (Capsule_TestTri; gAreaHitCount of them): the
  * triangle, the sphere center, the flags, the contact points. */
@@ -72,19 +67,10 @@ extern Vec3 gAreaHitPlanePoints[];
 extern Vec3 gAreaHitPoints[];       /* the contact point */
 extern Vec3 gAreaHitCapsulePos[];       /* the sphere center */
 extern AreaTri gAreaHits[];
-f32 Seg_NearestPointDist(f32 *out, f32 *a, f32 *b, f32 *p);
-s32 Capsule_TestTri(f32 *cap, AreaTri *t);
-void Vec_SnapSmall(f32 *dst, f32 *src);
-u8 Tri_PushOut(f32 *tri, Em *obj, s32 *timer, f32 *out, f32 h);
-void Vec_AngleToUp(f32 *v, s32 *out);
 extern f32 gFloorSlopeDrop[];
-f32 Math_Absf(f32 x);
-void Vec_Lerp(f32 *out, f32 *a, f32 *b, f32 t);
 extern s8 gAreaHitCount;
 /* The calls cast Obj_InCurrentArea's result to u8: the game's code here uses
  * only its low byte. */
-s32 Obj_InCurrentArea(void *obj);
-void Vec_Set(f32 *v, f32 x, f32 y, f32 z);
 /* The moving sphere of the sweep tests (AreaGrid_SweepSphere): its end and start,
  * radius and length. */
 typedef struct SweepCap {
@@ -96,34 +82,97 @@ typedef struct SweepCap {
     u16 skipBelow;      /* 0x22: 1: skip a triangle with no corner above the start (the bodies' sweeps) */
 } SweepCap;
 extern f32 gAreaQuadOffsets[][2];
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-extern f32 gPlayerBodySpheres[];
-extern f32 *gEmWallSpheres[];
-extern f32 *gEmPushSpheresLobby[];
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 void AreaHit_CollideSweep(SweepCap *cap, u16 mask, s32 em, f32 r);
 void AreaHit_CollideCapsule(SweepCap *cap, u16 mask, Em *em, f32 r);
-s32 AreaHit_Resolve(f32 *cap, f32 *out, u8 *flag);
-s32 AreaGrid_ClampSegment(f32 *out, f32 *to, f32 *from);
-s32 AreaGrid_Quadrant(f32 *pos);
-s32 AreaGrid_Contains(f32 *pos);
-s32 *AreaGrid_GetCell(f32 *pos);
-s32 List_Contains(s32 id, s32 *list, u32 n);
-s32 AreaHitTris_Contains(s32 id, u32 n);
 extern s32 gAreaHitTris[];
 extern WallContact gEmWallContacts[][WALL_CONTACTS];
 extern s8 gAreaHitIdCount;
 extern s8 gAreaHitIds[];
 extern AreaWallKindRow *gAreaTriKindFlags[];
-s32 Player_IsOnWall(void *obj);
-s32 Capsule_TestTriLevel(f32 *cap, AreaTri *t, f32 *from);
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
+extern u32 gAreaGrid2Data;
+extern u32 gAreaGridData;
+extern s32 gAreaTableFiles[];
+extern u8 *gLoadBuf;
+extern void *gWorkArea;
 
-void Vec_Sub(f32 *out, f32 *a, f32 *b);
 /* end of prototypes */
 
 #pragma optimization_level 4
+/*
+ * Loads an area's two grids from its table file (gAreaTableFiles): part 0
+ * into gWorkArea, part 1 into gSysSettings.extraBuf, each relocated in place.
+ */
+void Area_LoadTables(s32 id)
+{
+    u8 *buf;
+    void *dst;
+
+    buf = gLoadBuf;
+    LoadCompressedFile(buf, gAreaTableFiles[id]);
+    dst = gWorkArea;
+    memcpy(dst, (void *)Pack_GetPart(buf, 0), Pack_PartSize(buf, 0));
+    AreaTable_Relocate(dst);
+    dst = gSysSettings.extraBuf;
+    memcpy(dst, (void *)Pack_GetPart(buf, 1), Pack_PartSize(buf, 1));
+    AreaTable2_Relocate(dst);
+}
+
+/*
+ * Relocates the first grid (the header 8 bytes into the part): each cell's
+ * list of offsets, ended by -1, becomes pointers, and the grid's globals
+ * gAreaGrid* are set.
+ */
+void AreaTable_Relocate(u8 *file)
+{
+    AreaGridHeader *hdr = (AreaGridHeader *)(file + 8);
+    u32 i;
+    u32 j;
+    s32 k;
+    s32 **cell;
+
+    gAreaGridCellX = hdr->cellX;
+    gAreaGridCellZ = hdr->cellZ;
+    gAreaGridRows = hdr->rows;
+    gAreaGridCols = hdr->cols;
+    gAreaGridCells = (s32 **)((u8 *)hdr + hdr->tblOff);
+    gAreaGridData = (u32)((u8 *)hdr + hdr->dataOff);
+    for (i = 0; i < hdr->rows; i++) {
+        for (j = 0; j < hdr->cols; j++) {
+            cell = &gAreaGridCells[i * hdr->cols + j];
+            *cell = (s32 *)((u8 *)*cell + (u32)hdr);
+            for (k = 0; (*cell)[k] != -1; k++) {
+                (*cell)[k] += gAreaGridData;
+            }
+        }
+    }
+}
+
+/* The same for the second grid (gAreaGrid2*). */
+void AreaTable2_Relocate(u8 *file)
+{
+    AreaGridHeader *hdr = (AreaGridHeader *)(file + 8);
+    u32 i;
+    u32 j;
+    s32 k;
+    s32 **cell;
+
+    gAreaGrid2CellX = hdr->cellX;
+    gAreaGrid2CellZ = hdr->cellZ;
+    gAreaGrid2Rows = hdr->rows;
+    gAreaGrid2Cols = hdr->cols;
+    gAreaGrid2Cells = (s32 **)((u8 *)hdr + hdr->tblOff);
+    gAreaGrid2Data = (u32)((u8 *)hdr + hdr->dataOff);
+    for (i = 0; i < hdr->rows; i++) {
+        for (j = 0; j < hdr->cols; j++) {
+            cell = &gAreaGrid2Cells[i * hdr->cols + j];
+            *cell = (s32 *)((u8 *)*cell + (u32)hdr);
+            for (k = 0; (*cell)[k] != -1; k++) {
+                (*cell)[k] += gAreaGrid2Data;
+            }
+        }
+    }
+}
+
 /* Collides a player's sphere of the given radius, moved from seg->a to seg->b, with the
  * walls of the first area grid: the 2x2 cells nearest seg->b, skipping the
  * triangles whose attributes meet mask (AREA_TRI_ATTR_PLAYER_ON_WALL is not tested while
@@ -180,7 +229,7 @@ void AreaHit_CollideCapsule(SweepCap *seg, u16 mask, Em *em, f32 radius)
     if (Player_IsOnWall(em) == 1) {
         attrMask = (u16)~AREA_TRI_ATTR_PLAYER_ON_WALL;
     } else {
-        attrMask = 0xFFFF; /* every bit */
+        attrMask = 65535; /* every bit */
     }
     quad = AreaGrid_Quadrant((f32 *)&seg->b);
     cellX = seg->b.x / (f32)gAreaGridCellX;
@@ -226,7 +275,7 @@ void AreaHit_CollideCapsule(SweepCap *seg, u16 mask, Em *em, f32 radius)
         for (i = 0, contact = 0; i < gAreaHitIdCount; i++) {
             idx = gAreaHitIds[i];
             tri = (AreaTri *)gAreaHitTris[idx];
-            contactYaw = (u16)(Math_Heading(gAreaHitPoints[idx].x, gAreaHitPoints[idx].z, from[0], from[2]) + 0x4000);
+            contactYaw = (u16)(Math_Heading(gAreaHitPoints[idx].x, gAreaHitPoints[idx].z, from[0], from[2]) + ANGLE_TURN / 4);
             contactYaw = (u16)(contactYaw - em->rotY);
             gEmWallContacts[em->index][contact].flags = WALL_CONTACT_HIT;
             if (gAreaTriKindFlags[gScene.area][tri->kind].special) {
@@ -358,7 +407,7 @@ void AreaHit_CollideSweep(SweepCap *seg, u16 mask, s32 em_in, f32 radius)
     for (i = 0; i < gAreaHitIdCount; i++) {
         idx = gAreaHitIds[i];
         hitTri = (AreaTri *)gAreaHitTris[idx];
-        contactYaw = (u16)(Math_Heading(gAreaHitPoints[idx].x, gAreaHitPoints[idx].z, from[0], from[2]) + 0x4000);
+        contactYaw = (u16)(Math_Heading(gAreaHitPoints[idx].x, gAreaHitPoints[idx].z, from[0], from[2]) + ANGLE_TURN / 4);
         em->wallHitDirs |= 1 << ((u32)(u16)(contactYaw - em->rotY) >> 11);
         if (gAreaTriKindFlags[gScene.area][hitTri->kind].emSpecial) {
             em->wallHitSpecial = 1;
@@ -463,7 +512,6 @@ s32 List_Contains(s32 id, s32 *list, u32 n)
     return 0;
 }
 
-extern s32 gAreaHitTris[];
 
 /* 1 when id is one of the first n entries of gAreaHitTris, else 0. */
 s32 AreaHitTris_Contains(s32 id, u32 n)
@@ -881,7 +929,6 @@ s32 Tri_ContainsPoint(f32 *point, f32 *tri, f32 *n)
 
 extern u8 gTriUnsharedCorner[];
 s32 AreaHit_SpherePushOut(SweepCap *s, f32 *out, s8 id, s8 *flag);
-void Box_Accumulate(f32 *v, f32 *box, f32 lim);
 
 #pragma optimization_level 4
 /* The mask of e's vertices (bit b for e->v[b]) that are also vertices of f. */
@@ -2630,10 +2677,10 @@ s32 Em_FindFloorTri(Em *em, f32 *out, s32 apply)
     return -1;
 }
 
-/* For a floor whose slope (the angle of its normal from up, 0x10000 per turn,
+/* For a floor whose slope (the angle of its normal from up, ANGLE_TURN to a turn,
  * as Vec_AngleToUp gives it) is at least FLOOR_SLIDE_SLOPE: the offset that brings the
  * point (obj's x, its y less slope / 10000 * dropScale, its z) onto the plane of tri
- * (its normal and distance), in out, and 1. A vertical slope (0x4000, a quarter turn) is taken
+ * (its normal and distance), in out, and 1. A vertical slope (ANGLE_TURN / 4, a quarter turn) is taken
  * as 0. Below FLOOR_SLIDE_SLOPE it returns 0. */
 u8 Tri_PushOut(f32 *tri, Em *obj, s32 *slope, f32 *out, f32 dropScale)
 {
@@ -2644,7 +2691,7 @@ u8 Tri_PushOut(f32 *tri, Em *obj, s32 *slope, f32 *out, f32 dropScale)
     if (*slope < FLOOR_SLIDE_SLOPE) {
         return 0;
     }
-    if (*slope == 0x4000) { /* a quarter turn */
+    if (*slope == 16384) { /* a quarter turn */
         *slope = 0;
     }
     y = obj->posY - (f32)*slope / 10000.0f * dropScale;
@@ -2656,7 +2703,7 @@ u8 Tri_PushOut(f32 *tri, Em *obj, s32 *slope, f32 *out, f32 dropScale)
     return 1;
 }
 
-/* The angle between dir and the up axis, 0x10000 per turn. */
+/* The angle between dir and the up axis, ANGLE_TURN to a turn. */
 void Vec_AngleToUp(f32 *dir, s32 *out)
 {
     f32 upAxis[3];

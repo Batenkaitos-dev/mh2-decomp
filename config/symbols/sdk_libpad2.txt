@@ -1,6 +1,7 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libpad2, "PsIIlibpad2 3020" (.data 0x199850), text 0x1267F8-0x1270B0; asm piece sdk/libpad2
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libpad2 (version 3020, by its id string
+// in .data at 0x199850), text 0x1267F8-0x1270B0; asm piece sdk/libpad2.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 scePad2Init = 0x001267F8; // type:func
 scePad2End = 0x00126838; // type:func
 scePad2CreateSocket = 0x001268A0; // type:func

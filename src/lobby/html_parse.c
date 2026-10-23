@@ -1,9 +1,6 @@
 /*
  * The lobby browser's HTML parser, its driver and the page's own blocks.
  *
- * - Prim_Sprite, Prim_Rect and Prim_Tri: the browser's GS packets for a
- *   sprite, a filled rectangle and a triangle, the lobby's copies of
- *   main's own sprite and rectangle draws.
  * - The blocks the portal's pages carry for the game, outside HTML:
  *   <!--MMBB-FLAG-PASS-n--> sections, a <GAME-STYLE> list (the page's
  *   style bits, enum GameStyleKeyword), and comments that open with a page
@@ -15,6 +12,9 @@
  *   page (gHtmlModeTags: the tag set of each parser mode) and the passes
  *   Html_Parse runs, measuring then drawing. The tags' handlers are the
  *   Html_Tag* functions; the layout is the Layout_* functions.
+ * - Html_ResetLoadStep, which sends Html_Parse back to its first step for
+ *   the next page, and Html_DecodeEntities, which decodes the character
+ *   entities (&lt; ...) in an attribute's text.
  *
  * HtmlState (gHtml, in the browser's work area) is the parser's state;
  * BrowserWork and BrowserState are the browser's.
@@ -25,6 +25,8 @@
 #include "html.h"
 #include "lobby_globals.h"
 #include "hw_regs.h"
+#include "render_state.h"
+#include "syswork.h"
 
 /* This unit was compiled at optimization level 4 (Html_ParseSome). */
 #pragma optimization_level 4
@@ -35,57 +37,24 @@ void *memset(void *dst, s32 c, u32 n);
 u32 strlen(const void *s);
 s32 strcmp(const void *a, const void *b); /* strcmp */
 s32 atoi(const char *s);               /* atoi */
-void Page_SetDataMode(u8 mode);
 void Mmbb_SetField(s8 which, s8 idx, char *value); /* unit's own declaration: the definition takes idx as a u8; declared with an s8, Html_Csv passes it the way the game's code does */
 
-extern s32 gSysFrameMode;
-/* main's display and render state, which the primitives read as main's
- * own draws (Sprite_Draw, Prim_FillRect) do. */
-#define gPrimFrame (gSysFrameMode)          /* 0: field (half height) */
-extern s32 gSysFbWidth;
-#define gPrimScreenW (gSysFbWidth)
-extern s32 gSysFbLines;
-#define gPrimScreenH (gSysFbLines)
-extern f32 gSysZMax;
-#define gPrimZ (*(volatile f32 *)&gSysZMax)
-extern s32 gSysNoDraw;
-#define gPrimOff (gSysNoDraw)
-extern u32 gRenderFlags;
-#define gPrimFlags (gRenderFlags)
-#define GS_RGBAQ(r, g, b, a, q)     ((u64)(r) | ((u64)(g) << 8) | ((u64)(b) << 16) | ((u64)(a) << 24) | ((u64)(q) << 32))
-#define GS_XYZ(x, y, z) ((u64)(x) | ((u64)(y) << 16) | ((u64)(z) << 32))
-#define GS_UV(u, v) ((u64)(u) | ((u64)(v) << 16))
-void Mem_CopyQwords(void *src, void *dst, s32 qwc);  /* main: copies quadwords */
-u32 Gs_ColorToGs(u32 color, s32 mode);           /* main */
-s32 Prim_SendPacket(u32 *); /* main */
-extern u8 gPrimSpriteTmpl[];                         /* the packets' templates: Prim_Sprite's */
-extern u8 gPrimRectTmpl[];                         /* Prim_Rect's */
-extern u8 gPrimTriTmpl[];                         /* Prim_Tri's */
 u8 *strstr(const void *s, const void *sub); /* strstr */
-u8 Html_LookupKeyword(char *s, HtmlKeyword *table, u32 size);
 
 extern HtmlKeyword gGameStyleKeywords[12]; /* the <GAME-STYLE> keywords */
 extern HtmlKeyword gPageCommentKeywords[43]; /* the page keywords in comments */
 extern u8 gMmbbPass2Shown;           /* never set: MMBB-FLAG-PASS-2 sections are skipped */
 char *strncpy(char *dst, const char *src, u32 n); /* main: strncpy */
-void Form_SetLoginId(u8 *arg0);
-u8 Html_PageKeyword(u8 *s, HtmlKeyword *tbl, u32 size);
-void Html_GameStyle(void);
-void Html_Csv(u8 kind);
 void *strcpy(char *dst, const char *src);
 s32 Html_ParseColor(const char *s);             /* Html_ParseColor */
-void Html_SetCharWidths(u8 bold);                  /* Html_SetCharWidths */
-s32 Html_CloseTables(u8 **, u8 *); /* Html_CloseTables */
-void Layout_FlushBreak(u8 *text);                 /* Layout_FlushBreak */
-void Layout_TextFull(u8 *text);                 /* Layout_TextFull */
-void Html_NewPage(void);
 void Page_SetStyle(u16 flags, char *msg, u8 mode, u8 scroll); /* unit's own declaration: the definition takes the scroll as an s32; declared with a u8, Html_Parse passes it the way the game's code does */
 void Page_ExtendU16(u16 x, u16 y);
-void Draw_PageButton(u16 x, u16 y, u16 x2, u16 y2, u8 *label);
-void Page_SetKind(s8 kind);
 
 extern HtmlTagSet gHtmlModeTags[]; /* the tag set of each mode */
 extern u8 gHtmlParseStep;           /* Html_Parse's step */
+#define HTML_ENTITY_COUNT 9
+extern char gHtmlEntityChars[];  /* '<', '>', '"', '&', ' ', '"', '"', '\'', '\'' */
+extern char gHtmlAmpersand[];  /* "&" */
 
 /* The page button's label: Html_Parse copies it into a local from
  * gHtmlLabelInit, the local's initial value. */
@@ -94,337 +63,172 @@ typedef struct HtmlLabel {
 } HtmlLabel;
 extern HtmlLabel gHtmlLabelInit;
 
-extern u8 gCharClass[]; /* character classes (bit 0: a Shift-JIS lead byte) */
-extern u8 gToUpper[]; /* to upper case */
-extern u8 gHexDigitValues[]; /* a digit's value + 1 (0: not a digit) */
-
-s32 Html_ReadQuoted(char *dst, s32 max, s32 skipNewlines);
-void Lbs_ParseRow(u8 idx, u8 *s);
-void Mem_Swap(void *a, void *b, s32 n);
-void Lbs_Sort(void);
-s32 Html_ParseSome(u16 maxTags);
-
 /* The page keywords' names (read-only data): the strings that
  * gPageCommentKeywords' entries point at. */
 #pragma rodata on
-char D_008393E0[0x8] = {
+char gGameStyleKeywords_0[8] = {
 #include "lobby/008393E0.inc"
 };
-char D_008393E8[0x8] = {
+char gGameStyleKeywords_1[8] = {
 #include "lobby/008393E8.inc"
 };
-char D_008393F0[0x8] = {
+char gGameStyleKeywords_2[8] = {
 #include "lobby/008393F0.inc"
 };
-char D_008393F8[0x8] = {
+char gGameStyleKeywords_3[8] = {
 #include "lobby/008393F8.inc"
 };
-char D_00839400[0x8] = {
+char gGameStyleKeywords_4[8] = {
 #include "lobby/00839400.inc"
 };
-char D_00839408[0x8] = {
+char gGameStyleKeywords_5[8] = {
 #include "lobby/00839408.inc"
 };
-char D_00839410[0x8] = {
+char gGameStyleKeywords_6[8] = {
 #include "lobby/00839410.inc"
 };
-char D_00839418[0x8] = {
+char gGameStyleKeywords_7[8] = {
 #include "lobby/00839418.inc"
 };
-char D_00839420[0x8] = {
+char gGameStyleKeywords_8[8] = {
 #include "lobby/00839420.inc"
 };
-char D_00839428[0xC] = {
+char gGameStyleKeywords_9[12] = {
 #include "lobby/00839428.inc"
 };
-char D_00839438[0x8] = {
+char gGameStyleKeywords_10[8] = {
 #include "lobby/00839438.inc"
 };
-char D_00839440[0x10] = {
+char gGameStyleKeywords_11[16] = {
 #include "lobby/00839440.inc"
 };
-u32 gPageCommentKeywords_0[4] = {
+char gPageCommentKeywords_0[16] = {
 #include "lobby/00839450.inc"
 };
-char D_00839460[0x10] = {
+char gPageCommentKeywords_1[16] = {
 #include "lobby/00839460.inc"
 };
-char D_00839470[0x10] = {
+char gPageCommentKeywords_2[16] = {
 #include "lobby/00839470.inc"
 };
-char D_00839480[0x10] = {
+char gPageCommentKeywords_3[16] = {
 #include "lobby/00839480.inc"
 };
-char D_00839490[0x10] = {
+char gPageCommentKeywords_4[16] = {
 #include "lobby/00839490.inc"
 };
-char D_008394A0[0x10] = {
+char gPageCommentKeywords_5[16] = {
 #include "lobby/008394A0.inc"
 };
-char D_008394B0[0x10] = {
+char gPageCommentKeywords_6[16] = {
 #include "lobby/008394B0.inc"
 };
-char D_008394C0[0x10] = {
+char gPageCommentKeywords_7[16] = {
 #include "lobby/008394C0.inc"
 };
-char D_008394D0[0x10] = {
+char gPageCommentKeywords_8[16] = {
 #include "lobby/008394D0.inc"
 };
-u32 gPageCommentKeywords_9[4] = {
+char gPageCommentKeywords_9[16] = {
 #include "lobby/008394E0.inc"
 };
-u32 gPageCommentKeywords_10[4] = {
+char gPageCommentKeywords_10[16] = {
 #include "lobby/008394F0.inc"
 };
-u32 gPageCommentKeywords_11[4] = {
+char gPageCommentKeywords_11[16] = {
 #include "lobby/00839500.inc"
 };
-u32 gPageCommentKeywords_12[4] = {
+char gPageCommentKeywords_12[16] = {
 #include "lobby/00839510.inc"
 };
-u32 gPageCommentKeywords_14[6] = {
+char gPageCommentKeywords_14[24] = {
 #include "lobby/00839520.inc"
 };
 u32 gPageCommentKeywords_15[3] = {
 #include "lobby/00839538.inc"
 };
-u32 gPageCommentKeywords_16[2] = {
+char gPageCommentKeywords_16[8] = {
 #include "lobby/00839548.inc"
 };
-u32 gPageCommentKeywords_17[4] = {
+char gPageCommentKeywords_17[16] = {
 #include "lobby/00839550.inc"
 };
-u32 gPageCommentKeywords_18[8] = {
+char gPageCommentKeywords_18[32] = {
 #include "lobby/00839560.inc"
 };
-u32 gPageCommentKeywords_19[8] = {
+char gPageCommentKeywords_19[32] = {
 #include "lobby/00839580.inc"
 };
-u32 gPageCommentKeywords_20[8] = {
+char gPageCommentKeywords_20[32] = {
 #include "lobby/008395A0.inc"
 };
-u32 gPageCommentKeywords_21[8] = {
+char gPageCommentKeywords_21[32] = {
 #include "lobby/008395C0.inc"
 };
-u32 gPageCommentKeywords_22[8] = {
+char gPageCommentKeywords_22[32] = {
 #include "lobby/008395E0.inc"
 };
-u32 gPageCommentKeywords_23[8] = {
+char gPageCommentKeywords_23[32] = {
 #include "lobby/00839600.inc"
 };
-u32 gPageCommentKeywords_24[8] = {
+char gPageCommentKeywords_24[32] = {
 #include "lobby/00839620.inc"
 };
-u32 gPageCommentKeywords_25[8] = {
+char gPageCommentKeywords_25[32] = {
 #include "lobby/00839640.inc"
 };
-u32 gPageCommentKeywords_26[8] = {
+char gPageCommentKeywords_26[32] = {
 #include "lobby/00839660.inc"
 };
-u32 gPageCommentKeywords_27[8] = {
+char gPageCommentKeywords_27[32] = {
 #include "lobby/00839680.inc"
 };
-u32 gPageCommentKeywords_28[8] = {
+char gPageCommentKeywords_28[32] = {
 #include "lobby/008396A0.inc"
 };
-u32 gPageCommentKeywords_29[8] = {
+char gPageCommentKeywords_29[32] = {
 #include "lobby/008396C0.inc"
 };
-u32 gPageCommentKeywords_30[8] = {
+char gPageCommentKeywords_30[32] = {
 #include "lobby/008396E0.inc"
 };
-u32 gPageCommentKeywords_31[4] = {
+char gPageCommentKeywords_31[16] = {
 #include "lobby/00839700.inc"
 };
-u32 gPageCommentKeywords_32[4] = {
+char gPageCommentKeywords_32[16] = {
 #include "lobby/00839710.inc"
 };
-u32 gPageCommentKeywords_33[4] = {
+char gPageCommentKeywords_33[16] = {
 #include "lobby/00839720.inc"
 };
-u32 gPageCommentKeywords_34[4] = {
+char gPageCommentKeywords_34[16] = {
 #include "lobby/00839730.inc"
 };
-u32 gPageCommentKeywords_35[4] = {
+char gPageCommentKeywords_35[16] = {
 #include "lobby/00839740.inc"
 };
-u32 gPageCommentKeywords_36[8] = {
+char gPageCommentKeywords_36[32] = {
 #include "lobby/00839750.inc"
 };
-u32 gPageCommentKeywords_37[8] = {
+char gPageCommentKeywords_37[32] = {
 #include "lobby/00839770.inc"
 };
-u32 gPageCommentKeywords_38[8] = {
+char gPageCommentKeywords_38[32] = {
 #include "lobby/00839790.inc"
 };
-u32 gPageCommentKeywords_39[6] = {
+char gPageCommentKeywords_39[24] = {
 #include "lobby/008397B0.inc"
 };
-u32 gPageCommentKeywords_40[3] = {
+char gPageCommentKeywords_40[12] = {
 #include "lobby/008397C8.inc"
 };
-u32 gPageCommentKeywords_41[8] = {
+char gPageCommentKeywords_41[32] = {
 #include "lobby/008397E0.inc"
 };
-u32 gPageCommentKeywords_42[4] = {
+char gPageCommentKeywords_42[16] = {
 #include "lobby/00839800.inc"
 };
 #pragma rodata off
-
-/*
- * Draws a textured sprite with the texture bound before: the screen
- * corner and size of sprite, in the 640-wide coordinates centred in the
- * GS's 4096-unit space (in sixteenths), halved in height on a field
- * frame, and its texel rectangle. Half a texel is added to the texture
- * coordinates unless the textures are filtered (gRenderFlags 0x10000, the
- * bit RS_TEX_FILTER sets). sprite->color tints it.
- */
-void Prim_Sprite(Sprite *sprite)
-{
-    u64 *gifData;
-    s32 left;
-    s32 top;
-    s32 right;
-    s32 bottom;
-    s32 width;
-    s32 height;
-    s32 originX;
-    s32 originY;
-    f32 scale;
-    u32 gsColor;
-
-    if (gPrimOff != 0) {
-        return;
-    }
-    originX = ((0x1000 - gPrimScreenW) / 2) << 4;
-    originY = ((0x1000 - gPrimScreenH) / 2) << 4;
-    scale = (f32)gPrimScreenW / 640.0f;
-    left = 16.0f * (sprite->x * scale);
-    top = sprite->y << 4;
-    width = 16.0f * (sprite->w * scale);
-    height = sprite->h << 4;
-    if (gPrimFrame == 0) {
-        top >>= 1;
-        height >>= 1;
-    }
-    left += originX;
-    right = left + width;
-    top += originY;
-    bottom = top + height;
-    Mem_CopyQwords(gPrimSpriteTmpl, (void *)SCRATCHPAD, 3);
-    gifData = (u64 *)(SCRATCHPAD + 0x18);
-    *gifData++ = 0x535310;  /* the GIF tag's register list: RGBAQ, UV, XYZ2, UV, XYZ2 */
-    gifData++;
-    gsColor = Gs_ColorToGs(sprite->color, 0);
-    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
-    if ((gPrimFlags & 0x10000) == 0x10000) {
-        *gifData++ = GS_UV(sprite->u0 << 4, sprite->v0 << 4);
-        *gifData++ = GS_XYZ(left, top, (u32)gPrimZ);
-        *gifData++ = GS_UV(sprite->u1 << 4, sprite->v1 << 4);
-        *gifData++ = GS_XYZ(right, bottom, (u32)gPrimZ);
-    } else {
-        *gifData++ = GS_UV((sprite->u0 << 4) + 8, (sprite->v0 << 4) + 8);
-        *gifData++ = GS_XYZ(left, top, (u32)gPrimZ);
-        *gifData++ = GS_UV((sprite->u1 << 4) + 8, (sprite->v1 << 4) + 8);
-        *gifData++ = GS_XYZ(right, bottom, (u32)gPrimZ);
-    }
-    Prim_SendPacket((u32 *)SCRATCHPAD);
-}
-
-/*
- * Draws a filled rectangle from (x0, y0) to (x1, y1) of rect, placed as
- * Prim_Sprite places a sprite, in rect->color.
- */
-void Prim_Rect(PrimLine *rect)
-{
-    u64 *gifData;
-    s32 left;
-    s32 top;
-    s32 right;
-    s32 bottom;
-    s32 originX;
-    s32 originY;
-    f32 scale;
-    u32 gsColor;
-
-    if (gPrimOff != 0) {
-        return;
-    }
-    originX = ((0x1000 - gPrimScreenW) / 2) << 4;
-    originY = ((0x1000 - gPrimScreenH) / 2) << 4;
-    scale = (f32)gPrimScreenW / 640.0f;
-    left = 16.0f * (rect->x0 * scale);
-    top = rect->y0 << 4;
-    right = 16.0f * (rect->x1 * scale);
-    bottom = rect->y1 << 4;
-    if (gPrimFrame == 0) {
-        top >>= 1;
-        bottom >>= 1;
-    }
-    left += originX;
-    right += originX;
-    top += originY;
-    bottom += originY;
-    Mem_CopyQwords(gPrimRectTmpl, (void *)SCRATCHPAD, 3);
-    gifData = (u64 *)(SCRATCHPAD + 0x28);
-    gsColor = Gs_ColorToGs(rect->color, 1);
-    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
-    *gifData++ = GS_XYZ(left, top, (u32)gPrimZ);
-    *gifData++ = GS_XYZ(right, bottom, (u32)gPrimZ);
-    Prim_SendPacket((u32 *)SCRATCHPAD);
-}
-
-/*
- * Draws a filled triangle of tri's three corners, placed as Prim_Sprite
- * places a sprite, in tri->color. Returns 1.
- */
-s32 Prim_Tri(PrimTri *tri)
-{
-    u64 *gifData;
-    s32 x0;
-    s32 x1;
-    s32 y0;
-    s32 y1;
-    s32 x2;
-    s32 y2;
-    s32 originX;
-    s32 originY;
-    f32 scale;
-    u32 gsColor;
-
-    if (gPrimOff != 0) {
-        return 1;
-    }
-    Mem_CopyQwords(gPrimTriTmpl, (void *)SCRATCHPAD, 3);
-    gifData = (u64 *)(SCRATCHPAD + 0x28);
-    gsColor = Gs_ColorToGs(tri->color, 1);
-    *gifData++ = GS_RGBAQ((gsColor >> 16) & 0xFF, (gsColor >> 8) & 0xFF, gsColor & 0xFF, (gsColor >> 24) & 0xFF, 1);
-    originX = ((0x1000 - gPrimScreenW) / 2) << 4;
-    originY = ((0x1000 - gPrimScreenH) / 2) << 4;
-    scale = (f32)gPrimScreenW / 640.0f;
-    x0 = 16.0f * (tri->x0 * scale);
-    y0 = tri->y0 << 4;
-    x1 = 16.0f * (tri->x1 * scale);
-    y1 = tri->y1 << 4;
-    x2 = 16.0f * (tri->x2 * scale);
-    y2 = tri->y2 << 4;
-    if (gPrimFrame == 0) {
-        y0 >>= 1;
-        y1 >>= 1;
-        y2 >>= 1;
-    }
-    x0 += originX;
-    y0 += originY;
-    x1 += originX;
-    x2 += originX;
-    y1 += originY;
-    y2 += originY;
-    *gifData++ = GS_XYZ(x0, y0, (u32)gPrimZ);
-    *gifData++ = GS_XYZ(x1, y1, (u32)gPrimZ);
-    *gifData++ = GS_XYZ(x2, y2, (u32)gPrimZ);
-    Prim_SendPacket((u32 *)SCRATCHPAD);
-    return 1;
-}
 
 /* Reads the next "..." from the parse position into dst (at most max - 1
  * characters; newlines dropped when skipNewlines). Returns 0, or 1 at a
@@ -492,7 +296,7 @@ s32 Html_ReadQuotedRaw(char *dst, s32 max)
  * in a table of size bytes; 0 when none. */
 u8 Html_PageKeyword(u8 *text, HtmlKeyword *tbl, u32 size)
 {
-    u8 buf[0x20];
+    u8 buf[32];
     u16 k;
     u16 count;
     u8 ch;
@@ -514,7 +318,7 @@ u8 Html_PageKeyword(u8 *text, HtmlKeyword *tbl, u32 size)
         }
     }
     buf[k] = 0;
-    count = size >> 3;
+    count = size / HTML_KEYWORD_SIZE;
     for (k = 0; k < count; k++) {
         if (strncmp(buf, tbl[k].name, tbl[k].size - 1) == 0) {
             return tbl[k].value;
@@ -530,7 +334,7 @@ u8 Html_PageKeyword(u8 *text, HtmlKeyword *tbl, u32 size)
  * scroll and front label settings. */
 void Html_GameStyle(void)
 {
-    char buf[0x110];
+    char buf[272];
     u8 kind;
     u8 *eq;
     u8 turnOn;
@@ -582,7 +386,7 @@ void Html_GameStyle(void)
             memset(gHtml->backUrl, 0, sizeof(gHtml->backUrl));
             if (turnOn != 0) {
                 if (eq[3] == ':') {
-                    memcpy(gHtml->backUrl, eq + 4, 0xFF);
+                    memcpy(gHtml->backUrl, eq + 4, 255);
                 } else if (eq[3] == ';') {
                     url = eq + 4;
                     for (i = 0; i < gBrowserWork->exitArgs; i++) {
@@ -592,7 +396,7 @@ void Html_GameStyle(void)
                         }
                         url = eq + 1;
                     }
-                    for (i = 0; i < 0xFF; i++) {
+                    for (i = 0; i < 255; i++) {
                         ch = url[i];
                         if (ch == ';' || ch == 0) {
                             break;
@@ -601,7 +405,7 @@ void Html_GameStyle(void)
                     }
                 }
             } else if (eq[4] == ':') {
-                memcpy(gHtml->backUrl, eq + 5, 0xFF);
+                memcpy(gHtml->backUrl, eq + 5, 255);
             }
             break;
         case GAME_STYLE_FORWARD:
@@ -665,7 +469,7 @@ void Lbs_ParseRow(u8 idx, u8 *field)
         gLobbyServers.row[idx].key[i] = ch;
     }
     if (field[i] != ',') {
-        for (; i < 0x100; i++) {
+        for (; i < 256; i++) {
             ch = field[i];
             if (ch == ',') {
                 break;
@@ -677,7 +481,7 @@ void Lbs_ParseRow(u8 idx, u8 *field)
     }
     i++;
     len = 0;
-    while (i < 0x100 && len < 0xF4) {
+    while (i < 256 && len < 244) {
         ch = field[i];
         if (gCharClass[ch] & HTML_CHAR_SJIS_LEAD) {
             gLobbyServers.row[idx].text[len++] = ch;
@@ -700,14 +504,14 @@ void Lbs_ParseRow(u8 idx, u8 *field)
     number = 0;
     len = 0;
     if (field[i] == '0' && (field[i + 1] == 'x' || field[i + 1] == 'X')) {
-        for (i += 2; i < 0x100 || len < 8; i++, len++) {
+        for (i += 2; i < 256 || len < 8; i++, len++) {
             number = number * 16 + (gHexDigitValues[field[i]] - 1);
             if (field[i + 1] == 0) {
                 break;
             }
         }
     } else {
-        for (; i < 0x100 || len < 11; i++, len++) {
+        for (; i < 256 || len < 11; i++, len++) {
             number *= 10;
             number += gHexDigitValues[field[i]] - 1;
             if (field[i + 1] == 0) {
@@ -718,10 +522,10 @@ void Lbs_ParseRow(u8 idx, u8 *field)
     gLobbyServers.row[idx].value = number;
 }
 
-/* Swaps n bytes of first and second (at most 0x110). */
+/* Swaps n bytes of first and second (at most 272). */
 void Mem_Swap(void *first, void *second, s32 n)
 {
-    u8 scratch[0x110];
+    u8 scratch[272];
 
     memcpy(scratch, first, n);
     memcpy(first, second, n);
@@ -733,7 +537,7 @@ void Mem_Swap(void *first, void *second, s32 n)
 void Lbs_Sort(void)
 {
     LbsRow swapRow;
-    u8 order[0x30];
+    u8 order[48];
     u8 i;
     u8 j;
     u8 k;
@@ -769,7 +573,7 @@ void Lbs_Sort(void)
 }
 
 /* The longest item of a <CSV> block Html_Csv reads (with its terminator). */
-#define CSV_ITEM_LEN 0x100
+#define CSV_ITEM_LEN 256
 
 /* Reads the page's <CSV> block: the quoted items after it, by the block's
  * kind (CSV_KIND_*, HtmlState.csvKind), into the MMBB data's fields (and,
@@ -777,7 +581,7 @@ void Lbs_Sort(void)
  * 7, 9 and 14-19 are kept by number: no use of them shows what they are. */
 void Html_Csv(u8 kind)
 {
-    char buf[0x310];
+    char buf[784];
     u8 entries;
 
     gHtml->cur += 5;    /* past "<CSV>" */
@@ -943,7 +747,7 @@ void Html_Csv(u8 kind)
  * on an error. */
 s32 Html_ParseTag(u8 **cur, HtmlTagSet *set, u8 *text)
 {
-    u8 name[0x10];
+    u8 name[16];
     HtmlTag *tag;
     s32 i;
     s32 k;
@@ -976,7 +780,7 @@ s32 Html_ParseTag(u8 **cur, HtmlTagSet *set, u8 *text)
                     HtmlState *html = gHtml;
                     s32 nextMode = html->mode;
 
-                    if (nextMode == 2 || nextMode == 0x12) { /* the body, and mode 0x12 */
+                    if (nextMode == 2 || nextMode == 18) { /* the body, and mode 18 */
                         html->parseState = 0;
                     } else {
                         html->parseState = 2;
@@ -1031,7 +835,7 @@ s32 Html_ParseTag(u8 **cur, HtmlTagSet *set, u8 *text)
  * <CSV> kind, a <CSV> block before the comment's end. */
 void Html_Comment(void)
 {
-    char id[0x10];
+    char id[16];
     s32 skip = 0;
     u8 *pos;
     u8 keyword;
@@ -1094,13 +898,13 @@ void Html_Comment(void)
             gHtml->pageKind = keyword;
             break;
         case 8:     /* the access keys */
-        case 0xA:
-        case 0xB:
-        case 0x28:
-        case 0x2C:
-        case 0x2D:
-        case 0x2E:
-        case 0x2F:
+        case 10:
+        case 11:
+        case 40:
+        case 44:
+        case 45:
+        case 46:
+        case 47:
             gHtml->accessKey = keyword;
             break;
         case PAGE_KW_LOGIN_ID:
@@ -1124,19 +928,19 @@ void Html_Comment(void)
             gHtml->csvKind = CSV_KIND_MENU;
             gHtml->pageKind = keyword;
             break;
-        case 0x14:  /* 0x14-0x20: nothing */
-        case 0x15:
-        case 0x16:
-        case 0x17:
-        case 0x18:
-        case 0x19:
-        case 0x1A:
-        case 0x1B:
-        case 0x1C:
-        case 0x1D:
-        case 0x1E:
-        case 0x1F:
-        case 0x20:
+        case 20:  /* 20-32: nothing */
+        case 21:
+        case 22:
+        case 23:
+        case 24:
+        case 25:
+        case 26:
+        case 27:
+        case 28:
+        case 29:
+        case 30:
+        case 31:
+        case 32:
             break;
         case PAGE_KW_CSV_PORTAL:
             gHtml->csvKind = CSV_KIND_PORTAL;
@@ -1228,7 +1032,7 @@ void Html_Reset(s8 measure)
 /* Runs the parser from cur until the page's end (returns 0) or until
  * maxTags tags were handled (1); -1 on an error. Text between tags (in
  * <PRE> with its tabs and newlines) collects in text[], which is laid out
- * when it nears its 0x80 bytes. */
+ * when it nears its 128 bytes. */
 s32 Html_ParseSome(u16 maxTags)
 {
     HtmlTagSet *set;
@@ -1333,7 +1137,7 @@ s32 Html_Parse(u8 *page, u16 maxTags, u8 inFrame)
             gHtml->pageWidth = PAGE_VIEW_W;
         }
         memset(gHtml->lines, 0, sizeof(gHtml->lines));
-        gHtml->bottom = 0x17C;      /* 380: the page's least height */
+        gHtml->bottom = 380;      /* 380: the page's least height */
         gHtml->width = gHtml->pageWidth;
         gHtmlParseStep = 2;
         gHtml->cur = page;
@@ -1360,8 +1164,8 @@ s32 Html_Parse(u8 *page, u16 maxTags, u8 inFrame)
         }
         if (gHtml->measure == HTML_PASS_DRAW && gHtml->pageButton != 0 && gHtml->inFrame == 0) {
             labelWidth = strlen(label.s) * 8 + 8;
-            Draw_PageButton(0x10, gHtml->bottom, labelWidth + 0x10, gHtml->bottom + 0x14, (u8 *)label.s);
-            extra = 0x28;
+            Draw_PageButton(16, gHtml->bottom, labelWidth + 16, gHtml->bottom + 20, (u8 *)label.s);
+            extra = 40;
         }
         if (gHtml->inFrame == 0) {
             Page_ExtendU16(gHtml->width, gHtml->bottom + extra);
@@ -1408,142 +1212,178 @@ s32 Html_Parse(u8 *page, u16 maxTags, u8 inFrame)
     return 2;
 }
 
+/* Sends Html_Parse back to its first step for the next page. */
+void Html_ResetLoadStep(void)
+{
+    gHtmlParseStep = 0;
+}
+
+/* Replaces the character entities of s in place (&lt; &gt; &quot; &amp;
+ * &nbsp; &#34; &#39;): <IMG ALT=...> and <INPUT ALT=...>'s text. */
+void Html_DecodeEntities(char *str)
+{
+    char *src;
+    char *entity;
+    s32 i;
+    char **name;
+    char *next;
+    char *amp;
+
+    if ((amp = (char *)strstr(str, gHtmlAmpersand)) != NULL) {
+        do {
+            next = amp + 1;
+            for (i = 0, name = gHtmlEntityNames; i < HTML_ENTITY_COUNT; i++, name++) {
+                entity = *name;
+                if (strncmp(amp + 1, entity, strlen(entity)) == 0) {
+                    *amp = gHtmlEntityChars[i];
+                    src = amp + strlen(entity);
+                    do {
+                        src++;
+                        amp++;
+                        *amp = *src;
+                    } while (*src != 0);
+                    break;
+                }
+            }
+        } while ((amp = (char *)strstr(next, gHtmlAmpersand)) != NULL);
+    }
+}
+
 /* The names and tag handlers the tables below point at, then the
  * primitives' packet templates, the keyword tables and the tag sets of
  * each parser mode. */
-extern char D_008393E0[];
-extern char D_008393E8[];
-extern char D_008393F0[];
-extern char D_008393F8[];
-extern char D_00839400[];
-extern char D_00839408[];
-extern char D_00839410[];
-extern char D_00839418[];
-extern char D_00839420[];
-extern char D_00839428[];
-extern char D_00839438[];
-extern char D_00839440[];
-extern char D_00839460[];
-extern char D_00839470[];
-extern char D_00839480[];
-extern char D_00839490[];
-extern char D_008394A0[];
-extern char D_008394B0[];
-extern char D_008394C0[];
-extern char D_008394D0[];
+extern char gGameStyleKeywords_0[];
+extern char gGameStyleKeywords_1[];
+extern char gGameStyleKeywords_2[];
+extern char gGameStyleKeywords_3[];
+extern char gGameStyleKeywords_4[];
+extern char gGameStyleKeywords_5[];
+extern char gGameStyleKeywords_6[];
+extern char gGameStyleKeywords_7[];
+extern char gGameStyleKeywords_8[];
+extern char gGameStyleKeywords_9[];
+extern char gGameStyleKeywords_10[];
+extern char gGameStyleKeywords_11[];
+extern char gPageCommentKeywords_1[];
+extern char gPageCommentKeywords_2[];
+extern char gPageCommentKeywords_3[];
+extern char gPageCommentKeywords_4[];
+extern char gPageCommentKeywords_5[];
+extern char gPageCommentKeywords_6[];
+extern char gPageCommentKeywords_7[];
+extern char gPageCommentKeywords_8[];
 extern char D_00839908[];
-extern char D_00839910[];
-extern char D_00839918[];
-extern char D_00839920[];
-extern char D_00839928[];
-extern char D_00839930[];
-extern char D_00839938[];
-extern char D_00839940[];
-extern char D_00839948[];
-extern char D_00839950[];
-extern char D_00839958[];
-extern char D_00839960[];
-extern char D_00839968[];
-extern char D_00839970[];
-extern char D_00839978[];
-extern char D_00839980[];
-extern char D_00839988[];
-extern char D_00839990[];
-extern char D_00839998[];
-extern char D_008399A0[];
-extern char D_008399A8[];
-extern char D_008399B0[];
-extern char D_008399B8[];
-extern char D_008399C0[];
-extern char D_008399D0[];
-extern char D_008399D8[];
-extern char D_008399E0[];
-extern char D_008399E8[];
-extern char D_008399F0[];
-extern char D_008399F8[];
-extern char D_00839A00[];
-extern char D_00839A10[];
-extern char D_00839A20[];
-extern char D_00839A28[];
-extern char D_00839A30[];
-extern char D_00839A38[];
-extern char D_00839A40[];
-extern char D_00839A48[];
-extern char D_00839A50[];
-extern char D_00839A58[];
-extern char D_00839A60[];
-extern char D_00839A68[];
-extern char D_00839A70[];
-extern char D_00839A78[];
-extern char D_00839A80[];
-extern char D_00839A88[];
-extern char D_00839A90[];
-extern char D_00839A98[];
-extern char D_00839AA0[];
-extern char D_00839AB0[];
-extern char D_00839AC0[];
-extern char D_00839AD0[];
-extern char D_00839AE0[];
-extern char D_00839AF0[];
-extern char D_00839B00[];
-extern char D_00839B08[];
-extern char D_00839B18[];
-extern char D_00839B28[];
-extern char D_00839B30[];
-extern char D_00839B38[];
-extern char D_00839B40[];
-extern char D_00839B48[];
-extern char D_00839B58[];
-extern char D_00839B68[];
-extern char D_00839B70[];
-extern char D_00839B78[];
-extern char D_00839B80[];
-extern char D_00839B88[];
-extern char D_00839B90[];
-extern char D_00839B98[];
-extern char D_00839BA0[];
-extern char D_00839BA8[];
-extern char D_00839BB0[];
-extern char D_00839BB8[];
-extern char D_00839BC0[];
-extern char D_00839BC8[];
-extern char D_00839BD0[];
-extern char D_00839BD8[];
-extern char D_00839BE0[];
-extern char D_00839BE8[];
-extern char D_00839BF0[];
-extern char D_00839BF8[];
-extern char D_00839C00[];
-extern char D_00839C08[];
-extern char D_00839C10[];
-extern char D_00839C18[];
-extern char D_00839C20[];
-extern char D_00839C30[];
-extern char D_00839C38[];
-extern char D_00839C40[];
-extern char D_00839C48[];
-extern char D_00839C50[];
-extern char D_00839C58[];
-extern char D_00839C68[];
-extern char D_00839C70[];
-extern char D_00839C78[];
-extern char D_00839C80[];
-extern char D_00839C88[];
-extern char D_00839C90[];
-extern char D_00839C98[];
-extern char gHtmlTagClose[];
-extern char D_00839CA8[];
-extern char D_00839CB0[];
+extern char gHtmlModeTags_0_1[];
+extern char gHtmlModeTags_0_2[];
+extern char gHtmlModeTags_0_3[];
+extern char gHtmlModeTags_0_4[];
+extern char gHtmlModeTags_0_5[];
+extern char gHtmlModeTags_0_6[];
+extern char gHtmlModeTags_0_7[];
+extern char gHtmlModeTags_0_8[];
+extern char gHtmlModeTags_0_9[];
+extern char gHtmlModeTags_0_10[];
+extern char gHtmlModeTags_0_11[];
+extern char gHtmlModeTags_2_1[];
+extern char gHtmlModeTags_2_2[];
+extern char gHtmlModeTags_2_3[];
+extern char gHtmlModeTags_2_4[];
+extern char gHtmlModeTags_2_5[];
+extern char gHtmlModeTags_2_6[];
+extern char gHtmlModeTags_2_7[];
+extern char gHtmlModeTags_2_8[];
+extern char gHtmlModeTags_2_9[];
+extern char gHtmlModeTags_2_10[];
+extern char gHtmlModeTags_2_11[];
+extern char gHtmlModeTags_2_12[];
+extern char gHtmlModeTags_2_13[];
+extern char gHtmlModeTags_2_14[];
+extern char gHtmlModeTags_2_15[];
+extern char gHtmlModeTags_2_16[];
+extern char gHtmlModeTags_2_17[];
+extern char gHtmlModeTags_2_18[];
+extern char gHtmlModeTags_2_19[];
+extern char gHtmlModeTags_2_20[];
+extern char gHtmlModeTags_2_21[];
+extern char gHtmlModeTags_2_22[];
+extern char gHtmlModeTags_2_23[];
+extern char gHtmlModeTags_2_24[];
+extern char gHtmlModeTags_2_25[];
+extern char gHtmlModeTags_2_26[];
+extern char gHtmlModeTags_2_27[];
+extern char gHtmlModeTags_2_28[];
+extern char gHtmlModeTags_2_29[];
+extern char gHtmlModeTags_2_30[];
+extern char gHtmlModeTags_2_31[];
+extern char gHtmlModeTags_2_32[];
+extern char gHtmlModeTags_2_33[];
+extern char gHtmlModeTags_2_34[];
+extern char gHtmlModeTags_2_35[];
+extern char gHtmlModeTags_2_36[];
+extern char gHtmlModeTags_2_37[];
+extern char gHtmlModeTags_2_38[];
+extern char gHtmlModeTags_2_39[];
+extern char gHtmlModeTags_2_40[];
+extern char gHtmlModeTags_2_41[];
+extern char gHtmlModeTags_2_42[];
+extern char gHtmlModeTags_2_43[];
+extern char gHtmlModeTags_2_44[];
+extern char gHtmlModeTags_2_45[];
+extern char gHtmlModeTags_2_46[];
+extern char gHtmlModeTags_2_47[];
+extern char gHtmlModeTags_2_48[];
+extern char gHtmlModeTags_2_49[];
+extern char gHtmlModeTags_2_50[];
+extern char gHtmlModeTags_2_51[];
+extern char gHtmlModeTags_2_52[];
+extern char gHtmlModeTags_2_53[];
+extern char gHtmlModeTags_2_54[];
+extern char gHtmlModeTags_2_55[];
+extern char gHtmlModeTags_2_56[];
+extern char gHtmlModeTags_2_57[];
+extern char gHtmlModeTags_2_58[];
+extern char gHtmlModeTags_2_59[];
+extern char gHtmlModeTags_2_60[];
+extern char gHtmlModeTags_2_61[];
+extern char gHtmlModeTags_2_62[];
+extern char gHtmlModeTags_2_63[];
+extern char gHtmlModeTags_2_64[];
+extern char gHtmlModeTags_2_65[];
+extern char gHtmlModeTags_2_66[];
+extern char gHtmlModeTags_2_67[];
+extern char gHtmlModeTags_2_68[];
+extern char gHtmlModeTags_2_69[];
+extern char gHtmlModeTags_2_70[];
+extern char gHtmlModeTags_2_71[];
+extern char gHtmlModeTags_2_72[];
+extern char gHtmlModeTags_2_73[];
+extern char gHtmlModeTags_2_74[];
+extern char gHtmlModeTags_2_75[];
+extern char gHtmlModeTags_2_76[];
+extern char gHtmlModeTags_2_308[];
+extern char gHtmlModeTags_2_78[];
+extern char gHtmlModeTags_2_79[];
+extern char gHtmlModeTags_2_80[];
+extern char gHtmlModeTags_2_81[];
+extern char gHtmlModeTags_2_82[];
+extern char gHtmlModeTags_2_83[];
+extern char gHtmlModeTags_2_84[];
+extern char gHtmlModeTags_2_85[];
+extern char gHtmlModeTags_2_86[];
+extern char gHtmlModeTags_2_87[];
+extern char gHtmlModeTags_2_88[];
+extern char gHtmlModeTags_24_1[];
+extern char gHtmlModeTags_24_2[];
 extern char D_00839CB8[];
 extern char D_00839CC0[];
 extern char D_00839CC8[];
-extern char D_00839CD0[];
-extern char D_00839CE0[];
+extern char gHtmlModeTags_22_2[];
+extern char gHtmlModeTags_21_2[];
 extern char D_00839CF0[];
-extern char D_00839CF8[];
-extern char D_00839D08[];
-extern char D_00839D10[];
-extern char D_00839D20[];
+extern char gHtmlModeTags_14_1[];
+extern char gHtmlModeTags_14_2[];
+extern char gHtmlModeTags_14_3[];
+extern char gHtmlModeTags_14_4[];
 extern char D_00839D30[];
 extern char D_00839D38[];
 extern char D_00839D40[];
@@ -1552,172 +1392,22 @@ extern char D_00839D58[];
 extern char D_00839D60[];
 extern char D_00839D68[];
 extern char D_00839D70[];
-extern char D_00839D78[];
-extern char D_00839D88[];
-extern char D_00839D90[];
+extern char gHtmlModeTags_13_1[];
+extern char gHtmlModeTags_13_2[];
+extern char gHtmlModeTags_13_3[];
 extern char D_00839D98[];
-extern char D_00839DA0[];
-extern char D_00839DA8[];
-extern char D_00839DB0[];
-extern char D_00839DB8[];
+extern char gHtmlModeTags_4_4[];
+extern char gHtmlModeTags_5_1[];
+extern char gHtmlModeTags_5_2[];
+extern char gHtmlModeTags_6_1[];
 extern char D_00839DC0[];
-extern char D_00839DC8[];
+extern char gHtmlModeTags_7_1[];
 extern char D_00839DD0[];
-extern char D_00839DD8[];
-extern char D_00839DE8[];
+extern char gHtmlModeTags_7_5[];
+extern char gHtmlModeTags_7_6[];
 extern char D_00839DF0[];
-extern char D_00839DF8[];
-extern char D_00839E08[];
-s32 Html_AttrAHref(u8 **cur, u8 *text);
-s32 Html_AttrAName(u8 **cur, u8 *text);
-s32 Html_AttrAreaAlt(u8 **cur, u8 *text);
-s32 Html_AttrAreaCoords(u8 **cur, u8 *text);
-s32 Html_AttrAreaHref(u8 **cur, u8 *text);
-s32 Html_AttrAreaShape(u8 **cur, u8 *text);
-s32 Html_AttrBaseHref(u8 **cur, u8 *text);
-s32 Html_AttrBodyBackground(u8 **cur, u8 *text);
-s32 Html_AttrBodyBgcolor(u8 **cur, u8 *text);
-s32 Html_AttrBodyLink(u8 **cur, u8 *text);
-s32 Html_AttrBodyText(u8 **cur, u8 *text);
-s32 Html_AttrDivAlign(u8 **cur, u8 *text);
-s32 Html_AttrFontColor(u8 **cur, u8 *text);
-s32 Html_AttrFontSize(u8 **cur, u8 *text);
-s32 Html_AttrFormAction(u8 **cur, u8 *text);
-s32 Html_AttrFormMethod(u8 **cur, u8 *text);
-s32 Html_AttrHrSize(u8 **cur, u8 *text);
-s32 Html_AttrHrWidth(u8 **cur, u8 *text);
-s32 Html_AttrImgAlt(u8 **cur, u8 *text);
-s32 Html_AttrImgHeight(u8 **cur, u8 *text);
-s32 Html_AttrImgSrc(u8 **cur, u8 *text);
-s32 Html_AttrImgUsemap(u8 **cur, u8 *text);
-s32 Html_AttrImgWidth(u8 **cur, u8 *text);
-s32 Html_AttrInputAlt(u8 **cur, u8 *text);
-s32 Html_AttrInputChecked(u8 **cur, u8 *text);
-s32 Html_AttrInputHeight(u8 **cur, u8 *text);
-s32 Html_AttrInputMaxlength(u8 **cur, u8 *text);
-s32 Html_AttrInputName(u8 **cur, u8 *text);
-s32 Html_AttrInputSize(u8 **cur, u8 *text);
-s32 Html_AttrInputSrc(u8 **cur, u8 *text);
-s32 Html_AttrInputType(u8 **cur, u8 *text);
-s32 Html_AttrInputValue(u8 **cur, u8 *text);
-s32 Html_AttrInputWidth(u8 **cur, u8 *text);
-s32 Html_AttrMapName(u8 **cur, u8 *text);
-s32 Html_AttrMetaContent(u8 **cur, u8 *text);
-s32 Html_AttrMetaHttpEquiv(u8 **cur, u8 *text);
-s32 Html_AttrMetaUrl(u8 **cur, u8 *text);
-s32 Html_AttrOptionSelected(u8 **cur, u8 *text);
-s32 Html_AttrOptionValue(u8 **cur, u8 *text);
-s32 Html_AttrSelectName(u8 **cur, u8 *text);
-s32 Html_AttrTableBackground(u8 **cur, u8 *text);
-s32 Html_AttrTableBgcolor(u8 **cur, u8 *text);
-s32 Html_AttrTableBorder(u8 **cur, u8 *text);
-s32 Html_AttrTableBordercolor(u8 **cur, u8 *text);
-s32 Html_AttrTableCellpadding(u8 **cur, u8 *text);
-s32 Html_AttrTableCellspacing(u8 **cur, u8 *text);
-s32 Html_AttrTableHeight(u8 **cur, u8 *text);
-s32 Html_AttrTableWidth(u8 **cur, u8 *text);
-s32 Html_AttrTdAlign(u8 **cur, u8 *text);
-s32 Html_AttrTdBackground(u8 **cur, u8 *text);
-s32 Html_AttrTdBgcolor(u8 **cur, u8 *text);
-s32 Html_AttrTdColspan(u8 **cur, u8 *text);
-s32 Html_AttrTdHeight(u8 **cur, u8 *text);
-s32 Html_AttrTdNowrap(u8 **cur, u8 *text);
-s32 Html_AttrTdRowspan(u8 **cur, u8 *text);
-s32 Html_AttrTdValign(u8 **cur, u8 *text);
-s32 Html_AttrTdWidth(u8 **cur, u8 *text);
-s32 Html_AttrTrAlign(u8 **cur, u8 *text);
-s32 Html_AttrTrBgcolor(u8 **cur, u8 *text);
-s32 Html_AttrTrValign(u8 **cur, u8 *text);
-s32 Html_EntityAmp(u8 **cur, u8 *text);
-s32 Html_EntityApos(u8 **cur, u8 *text);
-s32 Html_EntityGt(u8 **cur, u8 *text);
-s32 Html_EntityLt(u8 **cur, u8 *text);
-s32 Html_EntityNbsp(u8 **cur, u8 *text);
-s32 Html_EntityQuot(u8 **cur, u8 *text);
-s32 Html_TagA(u8 **cur, u8 *text);
-s32 Html_TagAEnd(u8 **cur, u8 *text);
-s32 Html_TagArea(u8 **cur, u8 *text);
-s32 Html_TagAreaEnd(u8 **cur, u8 *text);
-s32 Html_TagB(u8 **cur, u8 *text);
-s32 Html_TagBig(u8 **cur, u8 *text);
-s32 Html_TagBody(u8 **cur, u8 *text);
-s32 Html_TagBodyEnd(u8 **cur, u8 *text);
-s32 Html_TagBr(u8 **cur, u8 *text);
-s32 Html_TagCenter(u8 **cur, u8 *text);
-s32 Html_TagDd(u8 **cur, u8 *text);
-s32 Html_TagDiv(u8 **cur, u8 *text);
-s32 Html_TagDl(u8 **cur, u8 *text);
-s32 Html_TagDropText(u8 **cur, u8 *text);
-s32 Html_TagDt(u8 **cur, u8 *text);
-s32 Html_TagEndA(u8 **cur, u8 *text);
-s32 Html_TagEndB(u8 **cur, u8 *text);
-s32 Html_TagEndCenter(u8 **cur, u8 *text);
-s32 Html_TagEndDiv(u8 **cur, u8 *text);
-s32 Html_TagEndDl(u8 **cur, u8 *text);
-s32 Html_TagEndFont(u8 **cur, u8 *text);
-s32 Html_TagEndForm(u8 **cur, u8 *text);
-s32 Html_TagEndH(u8 **cur, u8 *text);
-s32 Html_TagEndHtml(u8 **cur, u8 *text);
-s32 Html_TagEndMap(u8 **cur, u8 *text);
-s32 Html_TagEndOption(u8 **cur, u8 *text);
-s32 Html_TagEndP(u8 **cur, u8 *text);
-s32 Html_TagEndPre(u8 **cur, u8 *text);
-s32 Html_TagEndS(u8 **cur, u8 *text);
-s32 Html_TagEndSelect(u8 **cur, u8 *text);
-s32 Html_TagEndTable(u8 **cur, u8 *text);
-s32 Html_TagEndTd(u8 **cur, u8 *text);
-s32 Html_TagEndTitle(u8 **cur, u8 *text);
-s32 Html_TagEndTr(u8 **cur, u8 *text);
-s32 Html_TagEndU(u8 **cur, u8 *text);
-s32 Html_TagFlush(u8 **cur, u8 *text);
-s32 Html_TagFont(u8 **cur, u8 *text);
-s32 Html_TagFontAttrs(u8 **cur, u8 *text);
-s32 Html_TagFontEnd(u8 **cur, u8 *text);
-s32 Html_TagForm(u8 **cur, u8 *text);
-s32 Html_TagFormEnd(u8 **cur, u8 *text);
-s32 Html_TagH(u8 **cur, u8 *text);
-s32 Html_TagHr(u8 **cur, u8 *text);
-s32 Html_TagHrAttrs(u8 **cur, u8 *text);
-s32 Html_TagHrEnd(u8 **cur, u8 *text);
-s32 Html_TagHtml(u8 **cur, u8 *text);
-s32 Html_TagIgnore(u8 **cur, u8 *text);
-s32 Html_TagImg(u8 **cur, u8 *text);
-s32 Html_TagImgAttrs(u8 **cur, u8 *text);
-s32 Html_TagImgEnd(u8 **cur, u8 *text);
-s32 Html_TagInput(u8 **cur, u8 *text);
-s32 Html_TagInputEnd(u8 **cur, u8 *text);
-s32 Html_TagMeta(u8 **cur, u8 *text);
-s32 Html_TagMetaEnd(u8 **cur, u8 *text);
-s32 Html_TagOption(u8 **cur, u8 *text);
-s32 Html_TagOptionAttrs(u8 **cur, u8 *text);
-s32 Html_TagP(u8 **cur, u8 *text);
-s32 Html_TagPre(u8 **cur, u8 *text);
-s32 Html_TagS(u8 **cur, u8 *text);
-s32 Html_TagSelect(u8 **cur, u8 *text);
-s32 Html_TagSelectAttrs(u8 **cur, u8 *text);
-s32 Html_TagSelectEnd(u8 **cur, u8 *text);
-s32 Html_TagSmall(u8 **cur, u8 *text);
-s32 Html_TagTable(u8 **cur, u8 *text);
-s32 Html_TagTableAttrs(u8 **cur, u8 *text);
-void Html_TagTableEnd(u8 **cur, u8 *text);
-s32 Html_TagTd(u8 **cur, u8 *text);
-s32 Html_TagTdAttrs(u8 **cur, u8 *text);
-s32 Html_TagTdEnd(u8 **cur, u8 *text);
-s32 Html_TagTh(u8 **cur, u8 *text);
-s32 Html_TagThAttrs(u8 **cur, u8 *text);
-s32 Html_TagTr(u8 **cur, u8 *text);
-s32 Html_TagTrAttrs(u8 **cur, u8 *text);
-s32 Html_TagTrEnd(u8 **cur, u8 *text);
-s32 Html_TagU(u8 **cur, u8 *text);
-u8 gPrimSpriteTmpl[80] = {
-#include "lobby/007EEE30.inc"
-};
-u8 gPrimRectTmpl[64] = {
-#include "lobby/007EEE80.inc"
-};
-u8 gPrimTriTmpl[80] = {
-#include "lobby/007EEEC0.inc"
-};
+extern char gHtmlModeTags_9_2[];
+extern char gHtmlModeTags_12_5[];
 HtmlKeyword gGameStyleKeywords[12] = {
 #include "lobby/007EEF10.inc"
 };
@@ -1727,85 +1417,85 @@ HtmlKeyword gPageCommentKeywords[43] = {
 HtmlLabel gHtmlLabelInit = {
 #include "lobby/007EF0C8.inc"
 };
-u32 gHtmlHeadingSizes[4] = {
+u8 gHtmlHeadingSizes[16] = {
 #include "lobby/007EF0D0.inc"
 };
-u32 gFullCharWidths[4] = {
+u8 gFullCharWidths[2][8] = {
 #include "lobby/007EF0E0.inc"
 };
-u32 gHalfCharWidths[4] = {
+u8 gHalfCharWidths[2][8] = {
 #include "lobby/007EF0F0.inc"
 };
-u32 gHtmlModeTags_0[48] = {
+HtmlTag gHtmlModeTags_0[12] = {
 #include "lobby/007EF100.inc"
 };
-u32 gHtmlModeTags_2[356] = {
+HtmlTag gHtmlModeTags_2[89] = {
 #include "lobby/007EF1C0.inc"
 };
-u32 gHtmlModeTags_24[20] = {
+HtmlTag gHtmlModeTags_24[5] = {
 #include "lobby/007EF750.inc"
 };
-u32 gHtmlModeTags_23[8] = {
+HtmlTag gHtmlModeTags_23[2] = {
 #include "lobby/007EF7A0.inc"
 };
-u32 gHtmlModeTags_22[12] = {
+HtmlTag gHtmlModeTags_22[3] = {
 #include "lobby/007EF7C0.inc"
 };
-u32 gHtmlModeTags_21[12] = {
+HtmlTag gHtmlModeTags_21[3] = {
 #include "lobby/007EF7F0.inc"
 };
-u32 gHtmlModeTags_20[8] = {
+HtmlTag gHtmlModeTags_20[2] = {
 #include "lobby/007EF820.inc"
 };
-u32 gHtmlModeTags_19[4] = {
+HtmlTag gHtmlModeTags_19[1] = {
 #include "lobby/007EF840.inc"
 };
-u32 gHtmlModeTags_18[4] = {
+HtmlTag gHtmlModeTags_18[1] = {
 #include "lobby/007EF850.inc"
 };
-u32 gHtmlModeTags_14[36] = {
+HtmlTag gHtmlModeTags_14[9] = {
 #include "lobby/007EF860.inc"
 };
-u32 gHtmlModeTags_15[16] = {
+HtmlTag gHtmlModeTags_15[4] = {
 #include "lobby/007EF8F0.inc"
 };
-u32 gHtmlModeTags_16[40] = {
+HtmlTag gHtmlModeTags_16[10] = {
 #include "lobby/007EF930.inc"
 };
-u32 gHtmlModeTags_17[40] = {
+HtmlTag gHtmlModeTags_17[10] = {
 #include "lobby/007EF9D0.inc"
 };
-u32 gHtmlModeTags_3[8] = {
+HtmlTag gHtmlModeTags_3[2] = {
 #include "lobby/007EFA70.inc"
 };
-u32 gHtmlModeTags_13[16] = {
+HtmlTag gHtmlModeTags_13[4] = {
 #include "lobby/007EFA90.inc"
 };
-u32 gHtmlModeTags_4[20] = {
+HtmlTag gHtmlModeTags_4[5] = {
 #include "lobby/007EFAD0.inc"
 };
-u32 gHtmlModeTags_5[12] = {
+HtmlTag gHtmlModeTags_5[3] = {
 #include "lobby/007EFB20.inc"
 };
-u32 gHtmlModeTags_6[12] = {
+HtmlTag gHtmlModeTags_6[3] = {
 #include "lobby/007EFB50.inc"
 };
-u32 gHtmlModeTags_7[44] = {
+HtmlTag gHtmlModeTags_7[11] = {
 #include "lobby/007EFB80.inc"
 };
-u32 gHtmlModeTags_8[8] = {
+HtmlTag gHtmlModeTags_8[2] = {
 #include "lobby/007EFC30.inc"
 };
-u32 gHtmlModeTags_9[12] = {
+HtmlTag gHtmlModeTags_9[3] = {
 #include "lobby/007EFC50.inc"
 };
-u32 gHtmlModeTags_10[12] = {
+HtmlTag gHtmlModeTags_10[3] = {
 #include "lobby/007EFC80.inc"
 };
-u32 gHtmlModeTags_11[12] = {
+HtmlTag gHtmlModeTags_11[3] = {
 #include "lobby/007EFCB0.inc"
 };
-u32 gHtmlModeTags_12[24] = {
+HtmlTag gHtmlModeTags_12[6] = {
 #include "lobby/007EFCE0.inc"
 };
 HtmlTagSet gHtmlModeTags[25] = {
@@ -1815,415 +1505,415 @@ HtmlTagSet gHtmlModeTags[25] = {
 /* The tags' and attributes' names (read-only data): the strings that
  * the tag sets' entries point at. */
 #pragma rodata on
-char D_00839908[0x8] = {
+char D_00839908[8] = {
 #include "lobby/00839908.inc"
 };
-char D_00839910[0x8] = {
+char gHtmlModeTags_0_1[8] = {
 #include "lobby/00839910.inc"
 };
-char D_00839918[0x8] = {
+char gHtmlModeTags_0_2[8] = {
 #include "lobby/00839918.inc"
 };
-char D_00839920[0x8] = {
+char gHtmlModeTags_0_3[8] = {
 #include "lobby/00839920.inc"
 };
-char D_00839928[0x8] = {
+char gHtmlModeTags_0_4[8] = {
 #include "lobby/00839928.inc"
 };
-char D_00839930[0x8] = {
+char gHtmlModeTags_0_5[8] = {
 #include "lobby/00839930.inc"
 };
-char D_00839938[0x8] = {
+char gHtmlModeTags_0_6[8] = {
 #include "lobby/00839938.inc"
 };
-char D_00839940[0x8] = {
+char gHtmlModeTags_0_7[8] = {
 #include "lobby/00839940.inc"
 };
-char D_00839948[0x8] = {
+char gHtmlModeTags_0_8[8] = {
 #include "lobby/00839948.inc"
 };
-char D_00839950[0x8] = {
+char gHtmlModeTags_0_9[8] = {
 #include "lobby/00839950.inc"
 };
-char D_00839958[0x8] = {
+char gHtmlModeTags_0_10[8] = {
 #include "lobby/00839958.inc"
 };
-char D_00839960[0x8] = {
+char gHtmlModeTags_0_11[8] = {
 #include "lobby/00839960.inc"
 };
-char D_00839968[0x8] = {
+char gHtmlModeTags_2_1[8] = {
 #include "lobby/00839968.inc"
 };
-char D_00839970[0x8] = {
+char gHtmlModeTags_2_2[8] = {
 #include "lobby/00839970.inc"
 };
-char D_00839978[0x8] = {
+char gHtmlModeTags_2_3[8] = {
 #include "lobby/00839978.inc"
 };
-char D_00839980[0x8] = {
+char gHtmlModeTags_2_4[8] = {
 #include "lobby/00839980.inc"
 };
-char D_00839988[0x8] = {
+char gHtmlModeTags_2_5[8] = {
 #include "lobby/00839988.inc"
 };
-char D_00839990[0x8] = {
+char gHtmlModeTags_2_6[8] = {
 #include "lobby/00839990.inc"
 };
-char D_00839998[0x8] = {
+char gHtmlModeTags_2_7[8] = {
 #include "lobby/00839998.inc"
 };
-char D_008399A0[0x8] = {
+char gHtmlModeTags_2_8[8] = {
 #include "lobby/008399A0.inc"
 };
-char D_008399A8[0x8] = {
+char gHtmlModeTags_2_9[8] = {
 #include "lobby/008399A8.inc"
 };
-char D_008399B0[0x8] = {
+char gHtmlModeTags_2_10[8] = {
 #include "lobby/008399B0.inc"
 };
-char D_008399B8[0x8] = {
+char gHtmlModeTags_2_11[8] = {
 #include "lobby/008399B8.inc"
 };
-char D_008399C0[0x10] = {
+char gHtmlModeTags_2_12[16] = {
 #include "lobby/008399C0.inc"
 };
-char D_008399D0[0x8] = {
+char gHtmlModeTags_2_13[8] = {
 #include "lobby/008399D0.inc"
 };
-char D_008399D8[0x8] = {
+char gHtmlModeTags_2_14[8] = {
 #include "lobby/008399D8.inc"
 };
-char D_008399E0[0x8] = {
+char gHtmlModeTags_2_15[8] = {
 #include "lobby/008399E0.inc"
 };
-char D_008399E8[0x8] = {
+char gHtmlModeTags_2_16[8] = {
 #include "lobby/008399E8.inc"
 };
-char D_008399F0[0x8] = {
+char gHtmlModeTags_2_17[8] = {
 #include "lobby/008399F0.inc"
 };
-char D_008399F8[0x8] = {
+char gHtmlModeTags_2_18[8] = {
 #include "lobby/008399F8.inc"
 };
-char D_00839A00[0x10] = {
+char gHtmlModeTags_2_19[16] = {
 #include "lobby/00839A00.inc"
 };
-char D_00839A10[0x10] = {
+char gHtmlModeTags_2_20[16] = {
 #include "lobby/00839A10.inc"
 };
-char D_00839A20[0x8] = {
+char gHtmlModeTags_2_21[8] = {
 #include "lobby/00839A20.inc"
 };
-char D_00839A28[0x8] = {
+char gHtmlModeTags_2_22[8] = {
 #include "lobby/00839A28.inc"
 };
-char D_00839A30[0x8] = {
+char gHtmlModeTags_2_23[8] = {
 #include "lobby/00839A30.inc"
 };
-char D_00839A38[0x8] = {
+char gHtmlModeTags_2_24[8] = {
 #include "lobby/00839A38.inc"
 };
-char D_00839A40[0x8] = {
+char gHtmlModeTags_2_25[8] = {
 #include "lobby/00839A40.inc"
 };
-char D_00839A48[0x8] = {
+char gHtmlModeTags_2_26[8] = {
 #include "lobby/00839A48.inc"
 };
-char D_00839A50[0x8] = {
+char gHtmlModeTags_2_27[8] = {
 #include "lobby/00839A50.inc"
 };
-char D_00839A58[0x8] = {
+char gHtmlModeTags_2_28[8] = {
 #include "lobby/00839A58.inc"
 };
-char D_00839A60[0x8] = {
+char gHtmlModeTags_2_29[8] = {
 #include "lobby/00839A60.inc"
 };
-char D_00839A68[0x8] = {
+char gHtmlModeTags_2_30[8] = {
 #include "lobby/00839A68.inc"
 };
-char D_00839A70[0x8] = {
+char gHtmlModeTags_2_31[8] = {
 #include "lobby/00839A70.inc"
 };
-char D_00839A78[0x8] = {
+char gHtmlModeTags_2_32[8] = {
 #include "lobby/00839A78.inc"
 };
-char D_00839A80[0x8] = {
+char gHtmlModeTags_2_33[8] = {
 #include "lobby/00839A80.inc"
 };
-char D_00839A88[0x8] = {
+char gHtmlModeTags_2_34[8] = {
 #include "lobby/00839A88.inc"
 };
-char D_00839A90[0x8] = {
+char gHtmlModeTags_2_35[8] = {
 #include "lobby/00839A90.inc"
 };
-char D_00839A98[0x8] = {
+char gHtmlModeTags_2_36[8] = {
 #include "lobby/00839A98.inc"
 };
-char D_00839AA0[0x10] = {
+char gHtmlModeTags_2_37[16] = {
 #include "lobby/00839AA0.inc"
 };
-char D_00839AB0[0x10] = {
+char gHtmlModeTags_2_38[16] = {
 #include "lobby/00839AB0.inc"
 };
-char D_00839AC0[0x10] = {
+char gHtmlModeTags_2_39[16] = {
 #include "lobby/00839AC0.inc"
 };
-char D_00839AD0[0x10] = {
+char gHtmlModeTags_2_40[16] = {
 #include "lobby/00839AD0.inc"
 };
-char D_00839AE0[0x10] = {
+char gHtmlModeTags_2_41[16] = {
 #include "lobby/00839AE0.inc"
 };
-char D_00839AF0[0x10] = {
+char gHtmlModeTags_2_42[16] = {
 #include "lobby/00839AF0.inc"
 };
-char D_00839B00[0x8] = {
+char gHtmlModeTags_2_43[8] = {
 #include "lobby/00839B00.inc"
 };
-char D_00839B08[0xC] = {
+char gHtmlModeTags_2_44[12] = {
 #include "lobby/00839B08.inc"
 };
-char D_00839B18[0xC] = {
+char gHtmlModeTags_2_45[12] = {
 #include "lobby/00839B18.inc"
 };
-char D_00839B28[0x8] = {
+char gHtmlModeTags_2_46[8] = {
 #include "lobby/00839B28.inc"
 };
-char D_00839B30[0x8] = {
+char gHtmlModeTags_2_47[8] = {
 #include "lobby/00839B30.inc"
 };
-char D_00839B38[0x8] = {
+char gHtmlModeTags_2_48[8] = {
 #include "lobby/00839B38.inc"
 };
-char D_00839B40[0x8] = {
+char gHtmlModeTags_2_49[8] = {
 #include "lobby/00839B40.inc"
 };
-char D_00839B48[0xC] = {
+char gHtmlModeTags_2_50[12] = {
 #include "lobby/00839B48.inc"
 };
-char D_00839B58[0xC] = {
+char gHtmlModeTags_2_51[12] = {
 #include "lobby/00839B58.inc"
 };
-char D_00839B68[0x8] = {
+char gHtmlModeTags_2_52[8] = {
 #include "lobby/00839B68.inc"
 };
-char D_00839B70[0x8] = {
+char gHtmlModeTags_2_53[8] = {
 #include "lobby/00839B70.inc"
 };
-char D_00839B78[0x8] = {
+char gHtmlModeTags_2_54[8] = {
 #include "lobby/00839B78.inc"
 };
-char D_00839B80[0x8] = {
+char gHtmlModeTags_2_55[8] = {
 #include "lobby/00839B80.inc"
 };
-char D_00839B88[0x8] = {
+char gHtmlModeTags_2_56[8] = {
 #include "lobby/00839B88.inc"
 };
-char D_00839B90[0x8] = {
+char gHtmlModeTags_2_57[8] = {
 #include "lobby/00839B90.inc"
 };
-char D_00839B98[0x8] = {
+char gHtmlModeTags_2_58[8] = {
 #include "lobby/00839B98.inc"
 };
-char D_00839BA0[0x8] = {
+char gHtmlModeTags_2_59[8] = {
 #include "lobby/00839BA0.inc"
 };
-char D_00839BA8[0x8] = {
+char gHtmlModeTags_2_60[8] = {
 #include "lobby/00839BA8.inc"
 };
-char D_00839BB0[0x8] = {
+char gHtmlModeTags_2_61[8] = {
 #include "lobby/00839BB0.inc"
 };
-char D_00839BB8[0x8] = {
+char gHtmlModeTags_2_62[8] = {
 #include "lobby/00839BB8.inc"
 };
-char D_00839BC0[0x8] = {
+char gHtmlModeTags_2_63[8] = {
 #include "lobby/00839BC0.inc"
 };
-char D_00839BC8[0x8] = {
+char gHtmlModeTags_2_64[8] = {
 #include "lobby/00839BC8.inc"
 };
-char D_00839BD0[0x8] = {
+char gHtmlModeTags_2_65[8] = {
 #include "lobby/00839BD0.inc"
 };
-char D_00839BD8[0x8] = {
+char gHtmlModeTags_2_66[8] = {
 #include "lobby/00839BD8.inc"
 };
-char D_00839BE0[0x8] = {
+char gHtmlModeTags_2_67[8] = {
 #include "lobby/00839BE0.inc"
 };
-char D_00839BE8[0x8] = {
+char gHtmlModeTags_2_68[8] = {
 #include "lobby/00839BE8.inc"
 };
-char D_00839BF0[0x8] = {
+char gHtmlModeTags_2_69[8] = {
 #include "lobby/00839BF0.inc"
 };
-char D_00839BF8[0x8] = {
+char gHtmlModeTags_2_70[8] = {
 #include "lobby/00839BF8.inc"
 };
-char D_00839C00[0x8] = {
+char gHtmlModeTags_2_71[8] = {
 #include "lobby/00839C00.inc"
 };
-char D_00839C08[0x8] = {
+char gHtmlModeTags_2_72[8] = {
 #include "lobby/00839C08.inc"
 };
-char D_00839C10[0x8] = {
+char gHtmlModeTags_2_73[8] = {
 #include "lobby/00839C10.inc"
 };
-char D_00839C18[0x8] = {
+char gHtmlModeTags_2_74[8] = {
 #include "lobby/00839C18.inc"
 };
-char D_00839C20[0x10] = {
+char gHtmlModeTags_2_75[16] = {
 #include "lobby/00839C20.inc"
 };
-char D_00839C30[0x8] = {
+char gHtmlModeTags_2_76[8] = {
 #include "lobby/00839C30.inc"
 };
-char D_00839C38[0x8] = {
+char gHtmlModeTags_2_308[8] = {
 #include "lobby/00839C38.inc"
 };
-char D_00839C40[0x8] = {
+char gHtmlModeTags_2_78[8] = {
 #include "lobby/00839C40.inc"
 };
-char D_00839C48[0x8] = {
+char gHtmlModeTags_2_79[8] = {
 #include "lobby/00839C48.inc"
 };
-char D_00839C50[0x8] = {
+char gHtmlModeTags_2_80[8] = {
 #include "lobby/00839C50.inc"
 };
-char D_00839C58[0xC] = {
+char gHtmlModeTags_2_81[12] = {
 #include "lobby/00839C58.inc"
 };
-char D_00839C68[0x8] = {
+char gHtmlModeTags_2_82[8] = {
 #include "lobby/00839C68.inc"
 };
-char D_00839C70[0x8] = {
+char gHtmlModeTags_2_83[8] = {
 #include "lobby/00839C70.inc"
 };
-char D_00839C78[0x8] = {
+char gHtmlModeTags_2_84[8] = {
 #include "lobby/00839C78.inc"
 };
-char D_00839C80[0x8] = {
+char gHtmlModeTags_2_85[8] = {
 #include "lobby/00839C80.inc"
 };
-char D_00839C88[0x8] = {
+char gHtmlModeTags_2_86[8] = {
 #include "lobby/00839C88.inc"
 };
-char D_00839C90[0x8] = {
+char gHtmlModeTags_2_87[8] = {
 #include "lobby/00839C90.inc"
 };
-char D_00839C98[0x8] = {
+char gHtmlModeTags_2_88[8] = {
 #include "lobby/00839C98.inc"
 };
-char gHtmlTagClose[0x8] = {
+char gHtmlTagClose[8] = {
 #include "lobby/00839CA0.inc"
 };
-char D_00839CA8[0x8] = {
+char gHtmlModeTags_24_1[8] = {
 #include "lobby/00839CA8.inc"
 };
-char D_00839CB0[0x8] = {
+char gHtmlModeTags_24_2[8] = {
 #include "lobby/00839CB0.inc"
 };
-char D_00839CB8[0x8] = {
+char D_00839CB8[8] = {
 #include "lobby/00839CB8.inc"
 };
-char D_00839CC0[0x8] = {
+char D_00839CC0[8] = {
 #include "lobby/00839CC0.inc"
 };
-char D_00839CC8[0x8] = {
+char D_00839CC8[8] = {
 #include "lobby/00839CC8.inc"
 };
-char D_00839CD0[0x10] = {
+char gHtmlModeTags_22_2[16] = {
 #include "lobby/00839CD0.inc"
 };
-char D_00839CE0[0x10] = {
+char gHtmlModeTags_21_2[16] = {
 #include "lobby/00839CE0.inc"
 };
-char D_00839CF0[0x8] = {
+char D_00839CF0[8] = {
 #include "lobby/00839CF0.inc"
 };
-char D_00839CF8[0xC] = {
+char gHtmlModeTags_14_1[12] = {
 #include "lobby/00839CF8.inc"
 };
-char D_00839D08[0x8] = {
+char gHtmlModeTags_14_2[8] = {
 #include "lobby/00839D08.inc"
 };
-char D_00839D10[0x10] = {
+char gHtmlModeTags_14_3[16] = {
 #include "lobby/00839D10.inc"
 };
-char D_00839D20[0x10] = {
+char gHtmlModeTags_14_4[16] = {
 #include "lobby/00839D20.inc"
 };
-char D_00839D30[0x8] = {
+char D_00839D30[8] = {
 #include "lobby/00839D30.inc"
 };
-char D_00839D38[0x8] = {
+char D_00839D38[8] = {
 #include "lobby/00839D38.inc"
 };
-char D_00839D40[0x8] = {
+char D_00839D40[8] = {
 #include "lobby/00839D40.inc"
 };
-char D_00839D48[0xC] = {
+char D_00839D48[12] = {
 #include "lobby/00839D48.inc"
 };
-char D_00839D58[0x8] = {
+char D_00839D58[8] = {
 #include "lobby/00839D58.inc"
 };
-char D_00839D60[0x8] = {
+char D_00839D60[8] = {
 #include "lobby/00839D60.inc"
 };
-char D_00839D68[0x8] = {
+char D_00839D68[8] = {
 #include "lobby/00839D68.inc"
 };
-char D_00839D70[0x8] = {
+char D_00839D70[8] = {
 #include "lobby/00839D70.inc"
 };
-char D_00839D78[0xC] = {
+char gHtmlModeTags_13_1[12] = {
 #include "lobby/00839D78.inc"
 };
-char D_00839D88[0x8] = {
+char gHtmlModeTags_13_2[8] = {
 #include "lobby/00839D88.inc"
 };
-char D_00839D90[0x8] = {
+char gHtmlModeTags_13_3[8] = {
 #include "lobby/00839D90.inc"
 };
-char D_00839D98[0x8] = {
+char D_00839D98[8] = {
 #include "lobby/00839D98.inc"
 };
-char D_00839DA0[0x8] = {
+char gHtmlModeTags_4_4[8] = {
 #include "lobby/00839DA0.inc"
 };
-char D_00839DA8[0x8] = {
+char gHtmlModeTags_5_1[8] = {
 #include "lobby/00839DA8.inc"
 };
-char D_00839DB0[0x8] = {
+char gHtmlModeTags_5_2[8] = {
 #include "lobby/00839DB0.inc"
 };
-char D_00839DB8[0x8] = {
+char gHtmlModeTags_6_1[8] = {
 #include "lobby/00839DB8.inc"
 };
-char D_00839DC0[0x8] = {
+char D_00839DC0[8] = {
 #include "lobby/00839DC0.inc"
 };
-char D_00839DC8[0x8] = {
+char gHtmlModeTags_7_1[8] = {
 #include "lobby/00839DC8.inc"
 };
-char D_00839DD0[0x8] = {
+char D_00839DD0[8] = {
 #include "lobby/00839DD0.inc"
 };
-char D_00839DD8[0xC] = {
+char gHtmlModeTags_7_5[12] = {
 #include "lobby/00839DD8.inc"
 };
-char D_00839DE8[0x8] = {
+char gHtmlModeTags_7_6[8] = {
 #include "lobby/00839DE8.inc"
 };
-char D_00839DF0[0x8] = {
+char D_00839DF0[8] = {
 #include "lobby/00839DF0.inc"
 };
-char D_00839DF8[0xC] = {
+char gHtmlModeTags_9_2[12] = {
 #include "lobby/00839DF8.inc"
 };
-char D_00839E08[0x8] = {
+char gHtmlModeTags_12_5[8] = {
 #include "lobby/00839E08.inc"
 };
 #pragma rodata off

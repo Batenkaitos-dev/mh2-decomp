@@ -17,7 +17,34 @@ typedef struct SelPart {
     s16 x, y, w, h;         /* 0x0A */
 } SelPart;
 
+void Title_ResetBgAnim(void);
+void Title_StepBgAnim(void);
+void Title_RandomView(void);
+void Title_Draw(void);
 void Sel_DrawParts(SelPart *p, s32 n, u32 color);   /* select_title.c: draws n parts */
+void Sel_DrawPartsRotated(SelPart *part, s32 n, u32 color, s32 angle);
+void Title_DrawLogo(void);
+void Title_DrawMenu(void *unused);
+void ModeSel_DrawScreen(void);
+void Sel_DrawBackground(u8 gray);
+void Sel_DrawHeader(s16 kind);
+void ModeSel_StartSlide(void);
+s32 ModeSel_IsIdle(void);
+void ModeSel_UpdateSlide(void);
+void ModeSel_DrawExtra(void);
+void ModeSel_DrawButton(s32 *item);
+void ModeSel_DrawButtons(s32 sel, s32 frame);
+void ModeSel_Draw(s32 sel, s32 frame);
+void CharaSel_Start(void);
+void CharaSel_Leave(void);
+void CharaSel_Update(void);
+s32 CharaSel_IsIdle(void);
+s32 CharaSel_IsDone(void);
+s32 CharaSel_IsShown(void);
+void CharaSel_DrawSlots(void);
+void CharaSel_Draw(void);
+void Sel_LoadCommonTextures(void);
+void Sel_FreeTextures(void);
 
 /* Character creation's work, at 0x1000 in the shared work area. */
 typedef struct CharaWork {
@@ -29,7 +56,7 @@ typedef struct CharaWork {
     s32 slide[7]; /* 0x058: per panel, its slide step (x offset 80 per step, Parts_DrawPanels): counted down to 0 when sliding in, up to 10 when out (Parts_Animate); [0], [1] and [4] the side panels' timers and shared delay (Parts_Init, Parts_DrawSides) */
     s32 sliding[7]; /* 0x074: per panel, 1 while it slides (Parts_Animate clears it) */
     u8 unk90[0x7C];
-    f32 unk10C[6];          /* 0x10C: only CharaSel_Leave (the CharaSelWork view of 0x108) */
+    f32 unk10C[6];          /* 0x10C: only CharaSel_Leave (the CharaSelWork view of offset 0x108) */
     u8 unk124[0x3C];
     s32 slideDelay[7]; /* 0x160: per panel, frames before it slides out (Parts_SlideOutPanels: 0, 2, 4...) */
     u8 unk17C[4];
@@ -39,7 +66,7 @@ typedef struct CharaWork {
     s16 cursorY; /* 0x198: the cursor's y while it jumps (Parts_DrawCursor; Parts_StartPanel sets the start) */
     s16 cursorYEnd; /* 0x19A: where the jump ends (Parts_StartPanel) */
     u8 unk19C[2];
-    u8 cursorJump; /* 0x19E: the cursor's jump: 0 none, 1 up (-0x1C a frame, 12 frames), 2 down (+0x24 to cursorYEnd); Parts_StartPanel sets 1 */
+    u8 cursorJump; /* 0x19E: the cursor's jump: 0 none, 1 up (-28 a frame, 12 frames), 2 down (+36 to cursorYEnd); Parts_StartPanel sets 1 */
     u8 unk19F;
     s16 cursorJumpFrame; /* 0x1A0: frames of the jump up */
     u8 unk1A2[2];
@@ -98,7 +125,7 @@ enum CharaPartKind {
 #define CHARA_FACE_COUNT  27
 #define CHARA_HAIR_COUNT  18
 #define CHARA_VOICE_COUNT 15
-#define CHARA_HAIR_SPECIAL 0x11 /* the last hair style: offered only when gSysSave.bonusUnlocked is set; saved as style 0x13 */
+#define CHARA_HAIR_SPECIAL 0x11 /* the last hair style: offered only when gSysSave.bonusUnlocked is set; saved as style 19 */
 #define CHARA_COND_ANY 0        /* a condition that any part fits */
 #define CHARA_COND_NONE 99      /* in the condition tables: no value (the random look uses CHARA_COND_ANY instead) */
 
@@ -124,13 +151,13 @@ enum CharaQuestion {
     CHARA_ASK_SELECT,           /* 2: confirm the selected character */
     CHARA_ASK_QUIT,             /* 3: leave for the menu */
     CHARA_ASK_GENDER,           /* 4: go back to the gender choice */
-    CHARA_ASK_NET_MESSAGE       /* 5: the card menu's message 0x30 */
+    CHARA_ASK_NET_MESSAGE       /* 5: the card menu's message 48 */
 };
 
 /* Chara_SetCamera's views. */
 enum CharaCamera {
     CHARA_CAM_BODY,             /* 0: the whole body, from the front left */
-    CHARA_CAM_FACE,             /* 1: close on the head (bone 0x14) */
+    CHARA_CAM_FACE,             /* 1: close on the head (bone 20) */
     CHARA_CAM_FRONT             /* 2: the body from the front */
 };
 
@@ -312,7 +339,7 @@ enum GmSubMenuEntry {
 /* GmWork.logoAnim's last value: the logo's animation is over (GMSUB_STEP_LOGO). */
 #define GMSUB_LOGO_ANIM_END 4
 
-/* gm_sub's work area (gGmWork, 0xB0 bytes in gSysSettings.workArea): the
+/* gm_sub's work area (gGmWork, 176 bytes in gSysSettings.workArea): the
  * title menu's and mode select's state. gm_main.c runs the menus
  * (GmSub_Task, GmSub_UpdateMenu); select_title.c draws them from it. */
 typedef struct GmWork {
@@ -336,22 +363,23 @@ typedef struct GmWork {
     f32 logoScale;          /* 0x5C */
     s32 logoX;              /* 0x60: the logo's second part: position, angle and colour (Title_RandomView) */
     s32 logoY;              /* 0x64 */
-    s32 logoAngle;          /* 0x68: 0x10000 a turn */
+    s32 logoAngle;          /* 0x68: ANGLE_TURN a turn */
     s32 logoColor;          /* 0x6C */
     u8 unk70[0xB0 - 0x70];
 } GmWork;
 typedef char GmWork_size_check[(sizeof(GmWork) == 0xB0) ? 1 : -1];
 
 /* An entry of the character selection or of mode select: its two pictures
- * (0xFF: none), indices into gCharaSelEntryIcons or gModeSelIcons. */
+ * (255: none), indices into gCharaSelEntryIcons or gModeSelIcons. */
 typedef struct SelItem {
-    s32 kind;               /* 0x00: the first picture; 0xFF: the entry is empty */
+    s32 kind;               /* 0x00: the first picture; 255: the entry is empty */
     s32 pic2;               /* 0x04: the second picture */
 } SelItem;
 
 typedef struct CharaSelPos {
     f32 x, y;
 } CharaSelPos;
+void CharaSel_DrawEntry(s32 *item, CharaSelPos *pos);
 
 /* The character selection's work, at 0x1000 in the shared work area (the
  * memory of CharaWork, which character creation uses). Its entries slide
@@ -399,7 +427,7 @@ typedef struct ModeWork {
     f32 buttonHomeX[2];     /* 0x0C4: where each button's slide back stops */
     f32 piecePos[8][2];     /* 0x0CC: the buttons' pieces' offsets (gModeSelLayoutB) */
     f32 slideSpeed[2];      /* 0x10C: the buttons' slide speeds */
-    u32 slidePhase[2];      /* 0x114: ... their phases (0x10000 a turn) */
+    u32 slidePhase[2];      /* 0x114: ... their phases (ANGLE_TURN a turn) */
     u32 slidePhaseStep[2];  /* 0x11C: ... and phase steps */
     s32 layout;             /* 0x124: which button is on the left (gModeSelLayoutA/B's row) */
     s32 shownLayout;        /* 0x128: the layout drawn */
@@ -421,18 +449,18 @@ typedef struct GalWork {
     s8 state;               /* 0x000: GalState */
     s8 step;                /* 0x001: the state's step */
     u8 unk2[0xA];
-    s32 texHandles[16];     /* 0x00C: the common textures' handles (gTexHandles 0xA3-0xB2) */
+    s32 texHandles[16];     /* 0x00C: the common textures' handles (gTexHandles 163-178) */
     s32 settleTimer;        /* 0x04C: frames since a layout started; the category names move at 8 or 10 (Gallery_Settled) */
     s32 moveDelay[6];       /* 0x050: per picture, frames before it moves */
     s32 category;           /* 0x068: the category under the cursor, then shown */
     s32 categoryCount;      /* 0x06C: 3 */
     s32 moveState[6];       /* 0x070: per picture: 1 at rest, 2 waiting (moveDelay), 3 moving */
-    s32 pictures[6][2];     /* 0x088: the six pictures' texture ids (0xFF: none) */
+    s32 pictures[6][2];     /* 0x088: the six pictures' texture ids (255: none) */
     s32 drawOrder[6];       /* 0x0B8: the pictures in drawing order */
     f32 targetPos[6][2];    /* 0x0D0: the pictures' target positions */
     f32 speed[6][2];        /* 0x100: their speeds */
     f32 pos[6][2];          /* 0x130: their positions */
-    u32 movePhase[6];       /* 0x160: their moves' phases (an angle to 0x4000: the speed eases by its sine) */
+    u32 movePhase[6];       /* 0x160: their moves' phases (an angle up to a quarter turn: the speed eases by its sine) */
     s32 pictureCount;       /* 0x178: the pictures to draw (6) */
     s32 categoryPos[3][2];  /* 0x17C: the category names' positions */
     u8 unk194[0xC];
@@ -441,14 +469,14 @@ typedef struct GalWork {
     s8 panelSlide;          /* 0x1A2: the list panel's slide: 0 none, 1 in, 2 out (Gallery_StartPanel) */
     u8 unk1A3;
     s16 panelOffset;        /* 0x1A4: its offset while it slides */
-    u16 panelPhase;         /* 0x1A6: its slide's phase, to 0x4000 */
+    u16 panelPhase;         /* 0x1A6: its slide's phase, to ANGLE_TURN / 4 */
     s32 iconTimer;          /* 0x1A8: +1 a frame on the category menu */
     s32 iconFrame;          /* 0x1AC: 0-2, one step each 4 frames: the column of the pictures' animation (Gallery_DrawPicture) */
     s32 entryCounts[3];     /* 0x1B0: per category, the entries listed (Gallery_BuildList) */
     s32 listTop;            /* 0x1BC: the first entry shown in the list */
     s32 listRow;            /* 0x1C0: the row of the cursor, 0-3 */
     s32 listShown;          /* 0x1C4: the list is drawn */
-    u32 cursorPhase;        /* 0x1C8: the cursor's opening, an angle to 0x4000 */
+    u32 cursorPhase;        /* 0x1C8: the cursor's opening, an angle to ANGLE_TURN / 4 */
     s32 pageShown;          /* 0x1CC: the entry page is drawn */
     s32 fadeFrames;         /* 0x1D0: frames left of the black fade (Gallery_DrawFade) */
     s32 upArrowOfs;         /* 0x1D4: the up arrow's bounce offset */
@@ -459,7 +487,7 @@ typedef struct GalWork {
     s8 isNew[32];           /* 0x21E4: ... and whether they are new */
     u8 categoryNew[4];      /* 0x2204: per category: something new to see */
     s32 selected;           /* 0x2208: the entry chosen, an index into entries */
-    u8 entries[0x36];       /* 0x220C: the entries listed, by category (0xFF: locked) */
+    u8 entries[0x36];       /* 0x220C: the entries listed, by category (255: locked) */
     u8 entryCount;          /* 0x2242: how many */
     u8 unk2243;
     s32 night;              /* 0x2244: the time of day asked for an area: 0 day, 1 night */
@@ -543,7 +571,7 @@ typedef struct GalRect {
 
 /* The work area the units share, gSysSettings.workArea (sub_main's
  * gWorkArea): the boot's work at its start, then one screen's work at
- * 0x1000. */
+ * offset 0x1000. */
 typedef struct SelWork {
     u8 unk0[0x1000];        /* the boot's (BootWork, select_boot.c) */
     union {
@@ -555,14 +583,11 @@ typedef struct SelWork {
 } SelWork;
 
 /* main */
-s32 Gs_SetState(u8, u32);          /* (0x6C, 0) before drawing, (0x6C, 1) after */
 s32 Sprite_Draw(Sprite *s);          /* draws a sprite */
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);  /* a sound effect */
 
 /* sub_main: select a texture for the sprites (Gfx_SetTexFilter(1);
  * Tex_Prepare(1, tex); Tex_Bind(tex)) */
 void Gfx_SetTexFilter(s32);
-void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
 
 /* sub_main's task slots (TaskSlot, include/task.h): a task function gets
@@ -572,17 +597,10 @@ void *memset(void *, s32, u32);
 void *memcpy(void *, const void *, u32);
 
 /* sub_main */
-void TaskSlot_Set(void *func, s16 slot);     /* starts a task in a slot */
-void TaskSlot_End(TaskSlot *t);              /* ends a task */
-TaskSlot *TaskSlot_Get(s16 slot);            /* a slot */
-void FadeA_Start(s32);
-void Font_SetSpacing(u8 a, u8 b);                   /* text size */
-void Font_SetPos(s16, s16);                  /* text position */
-void Font_SetColor(s32 color);                       /* text colour */
 void Font_Printf(const char *fmt, ...);                    /* prints a string */
-void Text_DrawShadow2(s16, s16, s32, s32, char *);  /* draws a message */
 
 #include "chredit.h"            /* ChrEdit, gChrEdit */
+#include "player.h"
 
 /* ---- The PSP link (select_psp.c) ---- */
 
@@ -748,7 +766,7 @@ enum PspActorState {
 #define PSP_TEX_FIRST 0xA3      /* the files' first handle in gTexHandles */
 #define PSP_BUF_SIZE 0x40       /* each exchange buffer */
 
-/* The link's work: 0x1490 bytes at 0x100 in the select work area
+/* The link's work: 5264 bytes at offset 0x100 in the select work area
  * (gSysSettings.selWork; gPspWork). */
 typedef struct PspWork {
     s32 step;               /* 0x000: PspStep, while the task's mode is PSP_MODE_CONNECT */
@@ -795,5 +813,129 @@ typedef struct PspWork {
     s16 centerX[6];         /* 0x1478: the icon screens' centres */
     s16 centerY[6];         /* 0x1484 */
 } PspWork;
+
+void Chara_SetupEditPlayer(Player *pl, s32 mode, s32 slot);
+void Chara_SetupCardPlayer(Player *pl, s32 mode, s16 slot);
+void Chara_PlayCancelSe(void);
+void Chara_DrawNoMatch(ChrEdit *edit);
+void Chara_DrawQuestion(ChrEdit *edit, s16 mode);
+void Chara_SetCamera(Player *pl, s32 mode, s32 hold);
+void Chara_CreateTask(TaskSlot *task);
+void Chara_DrawEquipment(ChrEdit *unused, s32 mode);
+void Chara_SelectTask(TaskSlot *task);
+void Chara_Frame(TaskSlot *task);
+s32 Chara_CheckName(s8 *name);
+void Boot_Task(TaskSlot *task);
+void Boot_Update(TaskSlot *task);
+void Boot_ToTitle(void);
+void Boot_DrawTitleScreen(s32 alpha);
+void Boot_UpdateMovie(void);
+void Boot_UpdateScreens(void);
+void Select_BeginTaskFrame(void);
+void Select_LoadSoundBanks(void);
+s32 Select_CheckPad(void);
+s32 Select_IsPadReady(void);
+void Select_DrawPadWarning(void);
+void Select_DrawContentWarning(void);
+void Select_DrawSplash(void);
+s32 Select_ApplyBootArgs(void);
+void Option_Task(TaskSlot *task);
+s32 Option_MainInput(u16 trig, u16 rep);
+void Option_DrawMainPage(void);
+void Option_ControlInput(u16 trig, u16 rep);
+void Option_DrawControlPage(void);
+void Option_ScreenPosInput(u16 trig, u16 rep);
+void Option_DrawScreenPosPage(void);
+void Option_BrightnessInput(u16 trig, u16 rep);
+void Option_Update(TaskSlot *task);
+void Option_Start(TaskSlot *task, u16 net);
+void Option_Exit(void *task, s32 net);
+void NetOption_Task(TaskSlot *task);
+void NetOption_Update(TaskSlot *task, s32 unused);
+s32 NetOption_Input(u16 trig, u16 rep);
+void NetOption_DrawPage(void);
+void NetOption_ConfirmInput(u16 pad, u16 rep);
+void NetOption_DrawNetMenuPage(void);
+void NetOption_DrawConfirm(void);
+void Option_DrawBrightnessStrip(void);
+void Gallery_LoadSounds(void);
+void Gallery_Task(TaskSlot *task);
+void Gallery_LoadTextures(void);
+void Gallery_Init(TaskSlot *task);
+s32 Gallery_Update(TaskSlot *task);
+void Gallery_UpdateNewFlags(void);
+s32 Gallery_BuildList(s32 cat);
+void Gallery_Exit(TaskSlot *task);
+void Gallery_GetTextures(GalWork *gal);
+void Gallery_Draw(void);
+void Gallery_DrawFade(void);
+void Gallery_DrawCategories(GalWork *gal);
+void Gallery_DrawScrollBar(GalWork *gal);
+void Gallery_DrawList(GalWork *gal);
+void Gallery_DrawEntryPage(GalWork *gal);
+void Gallery_DrawPicture(s32 *ids, f32 *pos);
+void Gallery_DrawRecords(GalRec *rec, s32 n);
+void Gallery_UpdatePictures(void);
+void Gallery_SetLayout(s32 k);
+void Gallery_SetLayoutBack(s32 unused);
+s32 Gallery_PictureMoving(s32 i);
+s32 Gallery_Settled(void);
+void Gallery_FillNames(GalWork *gal);
+s32 Gallery_ListInput(GalWork *gal, u16 pad);
+void Gallery_PlayDecideSe(void);
+void Gallery_PlayCancelSe(void);
+void Gallery_PlayPageSe(void);
+void Gallery_DrawArrow(s32 k);
+void Gallery_StartPanel(GalWork *gal, s32 back);
+void Gallery_ResetPanel(GalWork *gal);
+void Psp_ConnectTask(TaskSlot *task);
+void Psp_Init(void);
+void Psp_Release(void);
+void Psp_InitItemMask(void);
+void Psp_StartThread(PspWork *work);
+void Psp_Shutdown(PspWork *work);
+void Psp_SelectFeatures(void);
+void Psp_LoadFiles(s32 *out);
+void Psp_FreeTextures(void);
+void Psp_InitActors(void);
+void Psp_MarkIcons(void);
+void Psp_ResetSceneActors(void);
+void Psp_UpdateObj(PspObj *obj);
+void Psp_DrawObject(PspObj *obj);
+s32 Psp_AnyObjectActive(void);
+void Psp_SpawnObject(s32 type, s32 flip);
+void Psp_SpawnChild(PspObj *src, s32 type, s32 x, s32 y);
+void Psp_UpdateActor(s32 i, PspActor *actor);
+void Psp_UpdateScene(void);
+void Psp_DrawActor(PspActor *actor);
+void Psp_DrawSwingActor(PspActor *actor, s32 icon);
+void Psp_DrawSwingFrame(PspActor *actor, s32 icon);
+void Psp_Draw(void);
+void Psp_DrawTexts(void);
+void Psp_Thread(void *arg);
+s32 Psp_IsItemUnlocked(u16 id);
+extern char *gNetOptValueNames_0[4];
+extern char *gNetOptValueNames_1[4];
+
+s32 NgWord_Check(s8 *name);
+void NgWord_Normalize(s8 *dst, s8 *src, s32 n);
+s32 NgWord_MatchAt(s8 *text);
+s32 NgWord_StartsWithListed(s8 *name, NgWordRec *list);
+s32 NgWord_ReadRecord(NgWordRec *rec, s8 *out, s32 max);
+void Parts_Init(void);
+s32 Parts_DrawSides(TaskSlot *task);
+void Parts_SlideInPanels(u8 sel);
+void Parts_SlideOutPanels(u8 sel);
+void Parts_StartBounce(u8 entry);
+void Parts_ResetBounces(void);
+void Parts_StartPanel(s16 toPanel);
+void Parts_Animate(void);
+s32 Parts_DrawPanels(TaskSlot *task);
+void Parts_DrawRotated(s16 x, s16 y, s16 width, s16 height, s32 deg);
+void Parts_DrawMarker(s16 x, s16 y, s16 width, s16 height, s32 angle, s32 color, u8 entry);
+void Parts_DrawTypes(s16 x, s16 y, s32 sel);
+void Parts_DrawFacePanel(s16 x, s16 y, s32 sel);
+void Parts_DrawHairPanel(s16 x, s16 y, s32 sel);
+void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel);
 
 #endif /* SELECT_H */

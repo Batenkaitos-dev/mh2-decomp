@@ -4,6 +4,8 @@
 #include "common.h"
 #include "item.h"
 #include "motion.h"
+#include "stageobj.h"
+#include "em.h"
 
 /* The weapon types (Player.weaponType): Player_RunWeaponState runs each
  * one's own states (state group PL_GROUP_WEAPON); the two bowguns share
@@ -131,41 +133,42 @@ enum PlayerStateGroup {
 #define PL_MOT_EAT          0x192  /* eating: the foods */
 #define PL_MOT_ITEM_POSE    0x197  /* the pose after an item's good effect */
 #define PL_MOT_ITEM_NO_GAIN 0x198  /* no good effect on the player: a cure that failed, the poison gamble, a prize draw */
+#define PL_MOT_PET_END      0x26B  /* the town: the player's motion as a petting of the pet ends, whatever its result (Poogie_UpdatePetting) */
 
 /* The player's motions (Player_SetMotionPair's motion), named by the states
  * that play them. */
 #define PL_MOT_IDLE                  0x001  /* Player_StateIdle (motion 1 is the plain idle; back from the tired idle once staminaMax > 75), Player_StateBedMenu, Player_StateBoxMenu, Player_StateTakeItemWait, Player_StateTrade: standing still while a menu/trade/answer is pending */
-#define PL_MOT_WALK                  0x002  /* Player_StateMove variant 1 PL_ACT_WALK; after 5 passes of frame 108 it plays 0x1D, then comes back to 2 from frame 0x24 */
+#define PL_MOT_WALK                  0x002  /* Player_StateMove variant 1 PL_ACT_WALK; after 5 passes of frame 108 it plays PL_MOT_WALK_VARIATION, then comes back to 2 from frame 36 */
 #define PL_MOT_RUN                   0x003  /* Player_StateMove variant 0 PL_ACT_RUN and 6 PL_ACT_RUN_AFTER_DASH; Player_StateDash plays it too with motion step 2.5 (the sprint is the run sped up) */
-#define PL_MOT_EXHAUSTED_PANT        0x005  /* Player_StateOutOfBreath (the 150-frame panting loop), Player_StateIdle (follows 0x15 from frame 0x90; an effect every 32 frames), Player_StateQuestAbort (after 0x15) */
+#define PL_MOT_EXHAUSTED_PANT        0x005  /* Player_StateOutOfBreath (the 150-frame panting loop), Player_StateIdle (follows PL_MOT_EXHAUSTED_START from frame 144; an effect every 32 frames), Player_StateQuestAbort (after PL_MOT_EXHAUSTED_START) */
 #define PL_MOT_EXHAUSTED_RECOVER     0x006  /* Player_StateOutOfBreath: after the pant; at its end stamina is refilled to staminaMax and idle */
 #define PL_MOT_CROUCH_DOWN           0x007  /* Player_StateCrouch variant 0, Player_StateKneelToPlace, Player_StateBinoculars variant 0: going down into the crouch (Player_UpdateLean(pl, 7) while it plays) */
 #define PL_MOT_CROUCH                0x008  /* the held crouch: Player_StateCrouch, Player_StateCrouchStop, Player_StateKneelToPlace(Crouched), Player_StatePlaceItem variant 0, Player_StateBinoculars (Player_UpdateLean(pl, 8)) */
 #define PL_MOT_CROUCH_STAND_UP       0x009  /* Player_StateCrouchStandUp; Player_StatePlaceItem variant 0 after 14 frames (stands up after setting the tool down) */
 #define PL_MOT_CROUCH_WALK           0x00A  /* Player_StateCrouchWalk; Player_StateMove variant 5 PL_ACT_CROUCH_WALK_ALT and variant 3 PL_ACT_RIDE_WALK (seen: the walk on a ridden monster uses the crouched walk) */
 #define PL_MOT_JUMP_UP_CROUCH        0x00B  /* Player_StateClimbAirborne variant 0 PL_ACT_JUMP_TO_LEDGE: the crouch before the jump up toward a high ledge */
-#define PL_MOT_CLIMB_AIRBORNE        0x00C  /* Player_StateClimbAirborne: the jump up (after 0xB), PL_ACT_WALL_LET_GO and PL_ACT_LEDGE_DROP (from frame 0x16): in the air off a wall or ledge */
-#define PL_MOT_CLIMB_LAND            0x00D  /* Player_StateClimbAirborne: the landing after 0xC (short fall), then idle */
-#define PL_MOT_LEAP_AIRBORNE         0x00F  /* Player_StateLeapOrFall: variant 0 the leap off a ledge, variant 1 the fall (from frame 0x20) */
+#define PL_MOT_CLIMB_AIRBORNE        0x00C  /* Player_StateClimbAirborne: the jump up (after PL_MOT_JUMP_UP_CROUCH), PL_ACT_WALL_LET_GO and PL_ACT_LEDGE_DROP (from frame 22): in the air off a wall or ledge */
+#define PL_MOT_CLIMB_LAND            0x00D  /* Player_StateClimbAirborne: the landing after PL_MOT_CLIMB_AIRBORNE (short fall), then idle */
+#define PL_MOT_LEAP_AIRBORNE         0x00F  /* Player_StateLeapOrFall: variant 0 the leap off a ledge, variant 1 the fall (from frame 32) */
 #define PL_MOT_LAND_INTO_DASH        0x010  /* Player_StateLeapOrFall: the landing with R2 held and the stick pushed (sheathed); then PL_ACT_DASH_RESUME or PL_ACT_FLEE_DASH */
 #define PL_MOT_LEDGE_HANG            0x011  /* Player_StateLedgeHang: hangs from a ledge */
-#define PL_MOT_LEDGE_CLIMB_UP        0x012  /* Player_StateLedgePullUp and Player_StateStepUp (from frame 0x58): climbs up onto the ledge/step */
+#define PL_MOT_LEDGE_CLIMB_UP        0x012  /* Player_StateLedgePullUp and Player_StateStepUp (from frame 88): climbs up onto the ledge/step */
 #define PL_MOT_LAND_HARD             0x013  /* Player_StateHardLanding: the landing after a long fall (pad and camera shake) */
-#define PL_MOT_EXHAUSTED_START       0x015  /* Player_StateOutOfBreath variant 1 and Player_StateQuestAbort: doubles over, then 0x5 (Player_StateIdle also chains 0x15 into 0x5) */
-#define PL_MOT_ROLL_FROM_CROUCH      0x016  /* Player_StateRoll variant 1 PL_ACT_ROLL_FROM_CROUCH: rises out of the crouch, then 0x1C from frame 6 */
+#define PL_MOT_EXHAUSTED_START       0x015  /* Player_StateOutOfBreath variant 1 and Player_StateQuestAbort: doubles over, then PL_MOT_EXHAUSTED_PANT (Player_StateIdle also chains it into PL_MOT_EXHAUSTED_PANT) */
+#define PL_MOT_ROLL_FROM_CROUCH      0x016  /* Player_StateRoll variant 1 PL_ACT_ROLL_FROM_CROUCH: rises out of the crouch, then PL_MOT_ROLL from frame 6 */
 #define PL_MOT_STAGGER               0x01A  /* Player_StateRideStagger (standing on a fast-moving monster), Player_StateStun (dazed, stun stars), Player_StateQuake (shaken by a tremor): staggering in place, unable to act */
 #define PL_MOT_ROLL                  0x01C  /* Player_StateRoll: the roll (sheathed, or drawn with any weapon but hammer/hunting horn) */
-#define PL_MOT_WALK_VARIATION        0x01D  /* Player_StateMove: every fifth walk cycle (motion 2 passing frame 108) plays this once, then back to 0x2 (likely a look-around while walking; the code shows only the timing) */
+#define PL_MOT_WALK_VARIATION        0x01D  /* Player_StateMove: every fifth walk cycle (motion 2 passing frame 108) plays this once, then back to PL_MOT_WALK (likely a look-around while walking; the code shows only the timing) */
 #define PL_MOT_RUN_STOP              0x01E  /* Player_StateRunStop: the skid at the end of a run or sprint */
-#define PL_MOT_WALL_CLIMB_UP         0x022  /* Player_StateWallClimbUp, Player_StateWallGrab (grabs, PL_ACT_WALL_HOLD at frame 90), Player_StateWallHold (held at frame 0x2E or 0x5A) */
-#define PL_MOT_WALL_CLIMB_DOWN       0x023  /* Player_StateWallClimbDown; Player_StateWallHold (held at frame 0 or 0x2C) */
+#define PL_MOT_WALL_CLIMB_UP         0x022  /* Player_StateWallClimbUp, Player_StateWallGrab (grabs, PL_ACT_WALL_HOLD at frame 90), Player_StateWallHold (held at frame 46 or 90) */
+#define PL_MOT_WALL_CLIMB_DOWN       0x023  /* Player_StateWallClimbDown; Player_StateWallHold (held at frame 0 or 44) */
 #define PL_MOT_WALL_DISMOUNT         0x024  /* Player_StateWallDismount: steps off the foot of the climbing wall */
 #define PL_MOT_CROUCH_WALK_FAST      0x025  /* Player_StateCrouchWalkFast: the crouched walk with the stick fully pushed */
 #define PL_MOT_FLEE_DASH             0x026  /* Player_StateFleeDash variants 0 and 2: the sprint away from the monster in battle */
 #define PL_MOT_DASH_TIRED            0x027  /* Player_StateFleeDash variant 1 PL_ACT_DASH_TIRED (stamina under 76), Player_StateTiredStop */
 #define PL_MOT_BATTLE_ALERT          0x029  /* Player_StateBattleAlert: the start of a battle with the weapon sheathed */
 #define PL_MOT_TURN_AROUND           0x02A  /* Player_StateTurnAround: the quick half turn when the stick is pulled back against a run */
-#define PL_MOT_WALL_PRESS            0x02B  /* Player_StateWallPress: puts its back to a wall (variant 1 holds it from frame 0x1E) */
+#define PL_MOT_WALL_PRESS            0x02B  /* Player_StateWallPress: puts its back to a wall (variant 1 holds it from frame 30) */
 #define PL_MOT_WALL_SIDLE_NEG        0x02C  /* Player_StateWallSidle variant 0 PL_ACT_WALL_SIDLE_NEG */
 #define PL_MOT_WALL_SIDLE_POS        0x02D  /* Player_StateWallSidle variant 1 PL_ACT_WALL_SIDLE_POS */
 #define PL_MOT_DIVE_START            0x02E  /* Player_StateDive: the take-off of the forward dive (75 stamina, hit-free) */
@@ -176,85 +179,85 @@ enum PlayerStateGroup {
 #define PL_MOT_CARRY_IDLE            0x033  /* Player_StateCarryIdle, Player_StateCarryHandOver (waiting), Player_StateMashIdle: standing holding a carried item; the mash status reuses the carry motions */
 #define PL_MOT_CARRY_WALK            0x034  /* Player_StateCarryWalk, Player_StateMashWalk */
 #define PL_MOT_CARRY_RUN             0x035  /* Player_StateCarryRun, Player_StateMashRun: the run for gender 0 (seen in Player_StateCarryRun's gender test) */
-#define PL_MOT_CARRY_PUT_DOWN        0x036  /* Player_StateCarryPutDown variants 0 and 2 (dropped or delivered, released at frame 0x72), Player_StateCarryHandOver (to the trader, frame 114) */
+#define PL_MOT_CARRY_PUT_DOWN        0x036  /* Player_StateCarryPutDown variants 0 and 2 (dropped or delivered, released at frame 114), Player_StateCarryHandOver (to the trader, frame 114) */
 #define PL_MOT_CARRY_DROP_TIRED      0x037  /* Player_StateCarryPutDown variant 1 PL_CARRY_DROP_TIRED: let go at once (frame 4) when stamina runs out */
-#define PL_MOT_CARRY_AIRBORNE        0x038  /* Player_StateCarryAirborne, Player_StateMashAirborne: hop off a ledge (frame 0) or fall (from frame 0x20) while carrying */
+#define PL_MOT_CARRY_AIRBORNE        0x038  /* Player_StateCarryAirborne, Player_StateMashAirborne: hop off a ledge (frame 0) or fall (from frame 32) while carrying */
 #define PL_MOT_CARRY_LAND_HARD       0x039  /* Player_StateCarryLand variant 0, Player_StateMashLand variant 0 */
 #define PL_MOT_CARRY_LAND            0x03A  /* Player_StateCarryLand variant 1, Player_StateMashLand variant 1 */
 #define PL_MOT_CARRY_RUN_ALT         0x03B  /* Player_StateCarryRun, Player_StateMashRun: the carry run for gender 1 */
 #define PL_MOT_OFFER_ITEM            0x03C  /* Player_StateOfferItem: holds an item out to another player */
 #define PL_MOT_OFFER_ITEM_END        0x03D  /* Player_StateOfferItemEnd: the giver's closing motion */
 #define PL_MOT_LAND                  0x03E  /* Player_StateLeapOrFall: the ordinary landing (under 30 frames aloft) */
-#define PL_MOT_IDLE_ALT              0x03F  /* Player_StateIdle, Player_StateBedMenu: replaces 0x1 after 240 frames for gender 1 */
+#define PL_MOT_IDLE_ALT              0x03F  /* Player_StateIdle, Player_StateBedMenu: replaces PL_MOT_IDLE after 240 frames for gender 1 */
 #define PL_MOT_FLINCH                0x0C9  /* Player_StateFlinch, Player_StateFlinchCarrying with the weapon sheathed: the light hit */
-#define PL_MOT_KNOCKDOWN_FACE_DOWN   0x0CA  /* Player_StateKnockdownFront: falls (then 0xD8, the face-down get-up) */
-#define PL_MOT_KNOCKDOWN_FACE_UP     0x0CC  /* Player_StateKnockdownBack: falls (then 0xCF, the face-up get-up) */
+#define PL_MOT_KNOCKDOWN_FACE_DOWN   0x0CA  /* Player_StateKnockdownFront: falls (then PL_MOT_GET_UP_FACE_DOWN) */
+#define PL_MOT_KNOCKDOWN_FACE_UP     0x0CC  /* Player_StateKnockdownBack: falls (then PL_MOT_GET_UP_FACE_UP) */
 #define PL_MOT_BLOWN_BACK_LAUNCH     0x0CD  /* Player_StateBlownBack: launched up and backward */
 #define PL_MOT_BLOWN_BACK_LAND       0x0CE  /* Player_StateBlownBack: lands on the back (impact sound, armour rattle) */
-#define PL_MOT_GET_UP_FACE_UP        0x0CF  /* getting up from lying on the back: Player_StateBlownBack, Player_StateKnockdownBack, Player_StateStatus2/4, Player_StateRevive (not after 0xD1), Player_StateGestureGetUp, Player_StateGesture03End (from frame 0x3C) */
+#define PL_MOT_GET_UP_FACE_UP        0x0CF  /* getting up from lying on the back: Player_StateBlownBack, Player_StateKnockdownBack, Player_StateStatus2/4, Player_StateRevive (not after PL_MOT_LIE_FACE_DOWN), Player_StateGestureGetUp, Player_StateGesture03End (from frame 60) */
 #define PL_MOT_BLOWN_FORWARD_LAUNCH  0x0D0  /* Player_StateBlownForward: flung forward */
-#define PL_MOT_LIE_FACE_DOWN         0x0D1  /* lands/lies on the face: Player_StateBlownForward (landing), Player_StateFaint variant 2 PL_FAINT_FACE_DOWN (from 0x8C), Player_StateCartDrop (from 0x46); Player_StateRevive tests it to pick 0xD8 */
-#define PL_MOT_LIE_FACE_UP           0x0D2  /* collapses/lies on the back: Player_StateFaint variants 0 and 1 (from 0x8C), Player_StateStatus2/4 (lying loop), Player_StateGestureLieDown, Player_StateLeave */
+#define PL_MOT_LIE_FACE_DOWN         0x0D1  /* lands/lies on the face: Player_StateBlownForward (landing), Player_StateFaint variant 2 PL_FAINT_FACE_DOWN (from frame 140), Player_StateCartDrop (from frame 70); Player_StateRevive tests it to pick PL_MOT_GET_UP_FACE_DOWN */
+#define PL_MOT_LIE_FACE_UP           0x0D2  /* collapses/lies on the back: Player_StateFaint variants 0 and 1 (from frame 140), Player_StateStatus2/4 (lying loop), Player_StateGestureLieDown, Player_StateLeave */
 #define PL_MOT_BRACE                 0x0D3  /* Player_StateWind (looped 4 or 1 times against wind pressure), Player_StateCannonFire (the cannon's recoil): bracing against a blast */
 #define PL_MOT_BRACE_END             0x0D4  /* Player_StateWind, Player_StateCannonFire: the end of the brace, then idle */
 #define PL_MOT_TOSSED_BACK_LAUNCH    0x0D5  /* Player_StateTossed variant 0, Player_StateInhaled: thrown up into the air backward */
-#define PL_MOT_FLUNG_BACK_AIR        0x0D6  /* in the air after 0xCD/0xD5: Player_StateBlownBack, Player_StateTossed variant 0, Player_StateInhaled */
-#define PL_MOT_TOSSED_LAND           0x0D7  /* Player_StateTossed, Player_StateInhaled: the landing; then the player turns half a turn and plays 0xD8 */
-#define PL_MOT_GET_UP_FACE_DOWN      0x0D8  /* getting up from lying on the face: Player_StateKnockdownFront, Player_StateBlownForward, Player_StateTossed, Player_StateInhaled, Player_StateCartDrop, Player_StateRevive (after 0xD1), Player_StateFishReel (after 0x32A) */
+#define PL_MOT_FLUNG_BACK_AIR        0x0D6  /* in the air after PL_MOT_BLOWN_BACK_LAUNCH or PL_MOT_TOSSED_BACK_LAUNCH: Player_StateBlownBack, Player_StateTossed variant 0, Player_StateInhaled */
+#define PL_MOT_TOSSED_LAND           0x0D7  /* Player_StateTossed, Player_StateInhaled: the landing; then the player turns half a turn and plays PL_MOT_GET_UP_FACE_DOWN */
+#define PL_MOT_GET_UP_FACE_DOWN      0x0D8  /* getting up from lying on the face: Player_StateKnockdownFront, Player_StateBlownForward, Player_StateTossed, Player_StateInhaled, Player_StateCartDrop, Player_StateRevive (after PL_MOT_LIE_FACE_DOWN), Player_StateFishReel (after PL_MOT_FISH_PULLED_DOWN) */
 #define PL_MOT_ROAR_COVER            0x0DA  /* Player_StateRoar: covers up against the roar, pushed back until frame 40 */
 #define PL_MOT_TOSSED_FORWARD_LAUNCH 0x0DB  /* Player_StateTossed variant 1: thrown up into the air forward */
-#define PL_MOT_FLUNG_FORWARD_AIR     0x0DC  /* in the air after 0xD0/0xDB: Player_StateBlownForward, Player_StateTossed variant 1, Player_StateInhaled */
-#define PL_MOT_CART_RIDE             0x0DD  /* Player_StateCart: carried away by the cart (follows the cart's bone 0x1D) */
+#define PL_MOT_FLUNG_FORWARD_AIR     0x0DC  /* in the air after PL_MOT_BLOWN_FORWARD_LAUNCH or PL_MOT_TOSSED_FORWARD_LAUNCH: Player_StateBlownForward, Player_StateTossed variant 1, Player_StateInhaled */
+#define PL_MOT_CART_RIDE             0x0DD  /* Player_StateCart: carried away by the cart (follows the cart's bone 29) */
 #define PL_MOT_CART_DROPPED          0x0DE  /* Player_StateCartDrop: dropped off the cart at camp, sinks to the floor */
-#define PL_MOT_LIE_FACE_UP_STIR      0x0DF  /* Player_StateFaint, Player_StateStatus4: a 1-in-64 random stir while lying on the back (after frame 164/170), then back to 0xD2 */
-#define PL_MOT_STATUS4_COLLAPSE      0x0E0  /* Player_StateStatus4 variant 0: falls into status 4 (unhittable, effect at bone 5), then 0xD2 */
+#define PL_MOT_LIE_FACE_UP_STIR      0x0DF  /* Player_StateFaint, Player_StateStatus4: a 1-in-64 random stir while lying on the back (after frame 164/170), then back to PL_MOT_LIE_FACE_UP */
+#define PL_MOT_STATUS4_COLLAPSE      0x0E0  /* Player_StateStatus4 variant 0: falls into status 4 (unhittable, effect at bone 5), then PL_MOT_LIE_FACE_UP */
 #define PL_MOT_FALL_ASLEEP           0x0E1  /* Player_StateStatus2: falls into status 2, then lies 240 frames regaining stamina (likely sleep: the same puff effect as Player_StateBedSleep) */
 #define PL_MOT_ROAR_RECOVER          0x0E2  /* Player_StateRoar: lowers the cover after the roar, then idle */
 #define PL_MOT_ROAR_STRONG_BRACE     0x0E3  /* Player_StateRoarStrong: braces against the strongest roar (unhittable to frame 64) */
 #define PL_MOT_THROW_ITEM            0x191  /* Player_StateThrowItem variant 0 PL_ACT_THROW_ITEM (release at frame 24) */
-#define PL_MOT_IDLE_TIRED            0x193  /* Player_StateIdle: replaces 0x1/0x3F while staminaMax is under 76 */
-#define PL_MOT_KNEEL_GATHER          0x195  /* kneels, works, stands: Player_StateGather (gather, rewards, special, drop), Player_StateGatherCrouched (from 0x24), Player_StateSetTrap (kneel, to frame 130), Player_StateSetTrapDone (the stand-up from 0xCE) */
+#define PL_MOT_IDLE_TIRED            0x193  /* Player_StateIdle: replaces PL_MOT_IDLE or PL_MOT_IDLE_ALT while staminaMax is under 76 */
+#define PL_MOT_KNEEL_GATHER          0x195  /* kneels, works, stands: Player_StateGather (gather, rewards, special, drop), Player_StateGatherCrouched (from frame 36), Player_StateSetTrap (kneel, to frame 130), Player_StateSetTrapDone (the stand-up from frame 206) */
 #define PL_MOT_DRINK                 0x196  /* Player_StateConsume variant 0 PL_ACT_DRINK */
-#define PL_MOT_PLACE_ITEM_CROUCHED   0x199  /* Player_StatePlaceItem variant 1 (from 0x14), Player_StateKneelToPlaceCrouched: sets a tool down from the crouch */
-#define PL_MOT_SET_TRAP              0x19A  /* Player_StateSetTrap (after 0x195), Player_StateSetTrapDone (from frame 0x3C): sets the trap or device */
-#define PL_MOT_GATHER_FROM_CROUCH    0x19B  /* Player_StateGatherCrouched variants 0, 2, 3: from the crouch into the gather (then 0x195) */
+#define PL_MOT_PLACE_ITEM_CROUCHED   0x199  /* Player_StatePlaceItem variant 1 (from frame 20), Player_StateKneelToPlaceCrouched: sets a tool down from the crouch */
+#define PL_MOT_SET_TRAP              0x19A  /* Player_StateSetTrap (after PL_MOT_KNEEL_GATHER), Player_StateSetTrapDone (from frame 60): sets the trap or device */
+#define PL_MOT_GATHER_FROM_CROUCH    0x19B  /* Player_StateGatherCrouched variants 0, 2, 3: from the crouch into the gather (then PL_MOT_KNEEL_GATHER) */
 #define PL_MOT_GATHER_TO_CROUCH      0x19C  /* Player_StateGatherCrouched: back to the crouch at frame 200 (Player_StateCrouch then blends 8 instead of 2) */
-#define PL_MOT_SHARPEN               0x19D  /* Player_StateSharpen: whetstone; skill 0x26 jumps from frame 98 to 0xEE */
-#define PL_MOT_MOUNTED_GUN           0x19E  /* Player_StateMountedGunAim (Player_UpdateLean(pl, 0x19E)), Player_StateMountedGunFire (from frame 0x42) */
+#define PL_MOT_SHARPEN               0x19D  /* Player_StateSharpen: whetstone; SKILL_SHARPEN_FAST jumps from frame 98 to 238 */
+#define PL_MOT_MOUNTED_GUN           0x19E  /* Player_StateMountedGunAim (Player_UpdateLean(pl, PL_MOT_MOUNTED_GUN)), Player_StateMountedGunFire (from frame 66) */
 #define PL_MOT_PICKAXE_SWING         0x19F  /* Player_StateGather variant 4 PL_ACT_MINE, Player_StateSpotStrike (strikes the countdown spot or the spot item) */
-#define PL_MOT_EATING                0x1A0  /* Player_StateConsume variant 1 PL_ACT_EAT (skill 0xBC speeds frames 38-180, 0xBD replays from 0x34); PL_MOT_EAT (0x192) is the after-motion Item_Use plays */
+#define PL_MOT_EATING                0x1A0  /* Player_StateConsume variant 1 PL_ACT_EAT (SKILL_EAT_FAST speeds frames 38-180, SKILL_EAT_SLOW replays from frame 52); PL_MOT_EAT is the after-motion Item_Use plays */
 #define PL_MOT_THROW_ITEM_ALT        0x1A1  /* Player_StateThrowItem variants 1 and 2 (release at frame 20); ItemAttack_SetupThrown uses ItemAttack_ThrowSpeedsAlt while this motion plays */
 #define PL_MOT_NET_SWING             0x1A2  /* Player_StateGather variant 5 PL_ACT_BUG_NET */
-#define PL_MOT_CARVE                 0x1A3  /* Player_StateGather variant 3 PL_ACT_CARVE (skill 0x97 skips to 0xE0), Player_StateGatherCrouched variant 1 (from 0x44) */
+#define PL_MOT_CARVE                 0x1A3  /* Player_StateGather variant 3 PL_ACT_CARVE (SKILL_GATHER_FAST skips to frame 224), Player_StateGatherCrouched variant 1 (from frame 68) */
 #define PL_MOT_HORN_PLAY             0x1A4  /* Player_StateInstrumentPlay variant 0, Player_StateHornItemPlay: blows the horn item (repeated per round) */
 #define PL_MOT_HORN_END              0x1A5  /* Player_StateInstrumentEnd variant 0, Player_StateHornItemPlay: lowers the horn */
-#define PL_MOT_CARVE_FROM_CROUCH     0x1A6  /* Player_StateGatherCrouched variant 1 PL_ACT_CARVE_CROUCHED: into the carve (then 0x1A3) */
+#define PL_MOT_CARVE_FROM_CROUCH     0x1A6  /* Player_StateGatherCrouched variant 1 PL_ACT_CARVE_CROUCHED: into the carve (then PL_MOT_CARVE) */
 #define PL_MOT_CARVE_TO_CROUCH       0x1A7  /* Player_StateGatherCrouched variant 1: back to the crouch at frame 294 */
 #define PL_MOT_TEAM_ITEM_USE         0x1A8  /* Player_StateInstrumentPlay variant 1 PL_ACT_TEAM_ITEM_USE (played twice) */
 #define PL_MOT_TEAM_ITEM_END         0x1A9  /* Player_StateInstrumentEnd variant 1 (Item_UseTeamPowder applied here) */
 #define PL_MOT_BED_LIE_DOWN          0x1AA  /* Player_StateBedLieDown */
 #define PL_MOT_BED_SLEEP             0x1AB  /* Player_StateBedSleep: the sleep loop (1 health a frame) */
-#define PL_MOT_BED_SLEEP_STIR        0x1AC  /* Player_StateBedSleep: a 1-in-128 random stir, then back to 0x1AB */
+#define PL_MOT_BED_SLEEP_STIR        0x1AC  /* Player_StateBedSleep: a 1-in-128 random stir, then back to PL_MOT_BED_SLEEP */
 #define PL_MOT_BED_GET_UP            0x1AD  /* Player_StateBedGetUp: turns half a turn and gets out of bed */
-#define PL_MOT_PLACE_LARGE_ITEM      0x1B0  /* Player_StatePlaceLargeItem (sets down at frame 78), Player_StatePlaceLargeItemSet (from 0x4E) */
+#define PL_MOT_PLACE_LARGE_ITEM      0x1B0  /* Player_StatePlaceLargeItem (sets down at frame 78), Player_StatePlaceLargeItemSet (from frame 78) */
 #define PL_MOT_TOWN_SIT              0x260  /* the town: sits down at a table (TownPc_State14) */
-#define PL_MOT_TOWN_SEATED           0x261  /* the town: seated at a table, held (TownPc_State14 and the seat's gestures; the served meal: the serve state 0x29 plays 0x27B, then holds it) */
+#define PL_MOT_TOWN_SEATED           0x261  /* the town: seated at a table, held (TownPc_State14 and the seat's gestures; the served meal: TOWN_PC_MEAL_SERVED plays 635, then holds it) */
 #define PL_MOT_GESTURE_SCOUT         0x26C  /* Player_StateGestureScout: looks out; spotting the area's flyer within about 33 degrees of the facing sets scoutSpotted */
-#define PL_MOT_GESTURE_SIT           0x26F  /* Player_StateGesture03 (looped, leave from frame 90) and Player_StateQuestEnd (sheathed, at the quest's end); likely sitting down: its end 0x270 is followed by the face-up get-up 0xCF */
-#define PL_MOT_GESTURE_SIT_END       0x270  /* Player_StateGesture03End: then 0xCF from frame 0x3C */
+#define PL_MOT_GESTURE_SIT           0x26F  /* Player_StateGesture03 (looped, leave from frame 90) and Player_StateQuestEnd (sheathed, at the quest's end); likely sitting down: its end PL_MOT_GESTURE_SIT_END is followed by PL_MOT_GET_UP_FACE_UP */
+#define PL_MOT_GESTURE_SIT_END       0x270  /* Player_StateGesture03End: then PL_MOT_GET_UP_FACE_UP from frame 60 */
 #define PL_MOT_TAKE_ITEM             0x280  /* Player_StateTakeItem: the taker's motion once the offered item has arrived */
 #define PL_MOT_SPIT_ROAST_START      0x320  /* Player_StateSpitRoastStart: sets up the spit */
 #define PL_MOT_SPIT_ROAST_SUCCESS    0x321  /* Player_StateSpitRoastEnd variant 0 (done or gourmet) */
 #define PL_MOT_SPIT_ROAST_FAIL       0x322  /* Player_StateSpitRoastEnd variant 1 (raw, rare or burnt) */
-#define PL_MOT_SPIT_ROAST_TURN       0x323  /* Player_StateSpitRoast: turns the meat (starts at a random frame 0-0x3F) */
+#define PL_MOT_SPIT_ROAST_TURN       0x323  /* Player_StateSpitRoast: turns the meat (starts at a random frame 0-63) */
 #define PL_MOT_FISH_READY            0x324  /* Player_StateFishWait variant 0 PL_ACT_FISH_READY */
 #define PL_MOT_FISH_CAST             0x325  /* Player_StateFishCast: casts; the lure appears at frame 104 */
 #define PL_MOT_FISH_WAIT             0x326  /* Player_StateFishWait variant 1 PL_ACT_FISH_WAIT (the line out) */
 #define PL_MOT_FISH_REEL             0x327  /* Player_StateFishReel: reels in (to frame 118, or twice with a monster on the line) */
 #define PL_MOT_FISH_CATCH            0x328  /* Player_StateFishReel: lands the catch; the item is given at frame 120 */
 #define PL_MOT_FISH_REEL_EMPTY       0x329  /* Player_StateFishReelEmpty: reels in nothing */
-#define PL_MOT_FISH_PULLED_DOWN      0x32A  /* Player_StateFishReel: a monster took the bait (bait lost); likely pulled over, since 0xD8 (face-down get-up) follows */
-#define PL_MOT_WPN_IDLE              0x3E9  /* not set here; compared in Player_StateIdle and Player_BowgunAim: the drawn idle (gunners blend the aim layers 0x3ED/0x3EE on it) */
+#define PL_MOT_FISH_PULLED_DOWN      0x32A  /* Player_StateFishReel: a monster took the bait (bait lost); likely pulled over, since PL_MOT_GET_UP_FACE_DOWN follows */
+#define PL_MOT_WPN_IDLE              0x3E9  /* not set here; compared in Player_StateIdle and Player_BowgunAim: the drawn idle (gunners blend the aim layers 1005/1006 on it) */
 #define PL_MOT_WPN_WALK              0x3EC  /* Player_StateMove variants 2 and 9: the drawn walk (blend by weapon type); ending it returns to gDrawnWalkStopIdle's idle */
 #define PL_MOT_WPN_GUARD_START       0x3ED  /* Player_StateGuard variant 0 (sword and shield, lance, gunlance), the gunlance's alt hold (from frame 4); for gunners the aim layer of a positive aimWeight (Player_SetAimLayers) */
 #define PL_MOT_WPN_GUARD_HOLD        0x3EE  /* Player_StateGuard hold (sword and shield, lance, gunlance); Player_StateSideEvade variant 1 for the long sword; the aim layer of a negative aimWeight (weapon-set slot: the meaning follows the weapon) */
@@ -267,7 +270,7 @@ enum PlayerStateGroup {
 #define PL_MOT_LANCE_HOP_BACK        0x3F8  /* Player_StateLanceHop variants 2 and 3 (back, back long) */
 #define PL_MOT_WPN_GUARD_DRAW        0x3FA  /* Player_StateGuardDraw: draws straight into the guard (lance, sword and shield, gunlance) */
 #define PL_MOT_FLINCH_DRAWN          0x4BB  /* Player_StateFlinch, Player_StateFlinchCarrying with the weapon drawn */
-#define PL_MOT_WPN_GUARD             0x584  /* Player_StateGuard for the great sword, long sword and default: guard start (blend 3) and hold (from 0x28) */
+#define PL_MOT_WPN_GUARD             0x584  /* Player_StateGuard for the great sword, long sword and default: guard start (blend 3) and hold (from frame 40) */
 #define PL_MOT_WPN_GUARD_PUSH        0x585  /* Player_StateGuardPush (not the heavy bowgun): a light guarded hit */
 #define PL_MOT_WPN_GUARD_STAGGER     0x586  /* Player_StateGuardRecoil variant 0 (short slide); Player_StateGuardEnd for the great sword, long sword and default */
 #define PL_MOT_WPN_GUARD_KNOCKBACK   0x587  /* Player_StateGuardRecoil variant 1 (long slide), not the heavy bowgun */
@@ -279,7 +282,7 @@ enum PlayerStateGroup {
  * with another weapon drawn the same id plays that weapon's motion (the
  * guard's, an evade's ...), so these names hold only in the hammer's and the
  * bow's own code. The charge's glow (effect type 6) ends once the player's
- * motion is none of these (the bow's list also holds 0x58B and 0x58C). */
+ * motion is none of these (the bow's list also holds 1419 and 1420). */
 #define PL_MOT_HAMMER_CHARGE_WALK    0x3ED  /* Hammer_StateChargeWalk */
 #define PL_MOT_HAMMER_CHARGE_START   0x3EE  /* Hammer_StateCharge: raises the hammer; the charge starts */
 #define PL_MOT_HAMMER_CHARGE_HOLD    0x3EF  /* Hammer_StateCharge: holds the charge */
@@ -420,7 +423,7 @@ enum BowgunState {
     BOWGUN_FIRE_RECOIL_0 = 0x00,       /* fires with the lightest recoil (Bowgun_RecoilLevel 0) */
     BOWGUN_RELOAD = 0x01,              /* reloads the clip (roundsLoaded) at a speed by Bowgun_ReloadLevel */
     BOWGUN_DRY_FIRE = 0x02,            /* the fire button with nothing loaded */
-    BOWGUN_MELEE = 0x03,               /* a melee blow with the gun (hit object 0x1D), outside the aim mode */
+    BOWGUN_MELEE = 0x03,               /* a melee blow with the gun (hit object 29), outside the aim mode */
     BOWGUN_FIRE_RECOIL_1 = 0x04,       /* fires with recoil level 1 */
     BOWGUN_FIRE_RECOIL_2 = 0x05,       /* fires with recoil level 2 */
     BOWGUN_DRAW_RELOAD = 0x06,         /* draws, then reloads (the stick held down at the draw: Bowgun_DrawAttack) */
@@ -435,14 +438,14 @@ enum BowgunState {
 enum HammerState {
     HAMMER_DOWN_ATTACK = 0x00,              /* the down flick's swing (hit object 6) */
     HAMMER_COMBO_1 = 0x01,                  /* the combo's first swing (hit object 7) */
-    HAMMER_COMBO_2 = 0x02,                  /* the combo's second swing (hit object 0x21) */
+    HAMMER_COMBO_2 = 0x02,                  /* the combo's second swing (hit object 33) */
     HAMMER_CHARGE = 0x03,                   /* charges, standing (weaponTimer counts, stamina drains) */
     HAMMER_CHARGE_WALK = 0x04,              /* charges while walking */
     HAMMER_CHARGE_SPIN = 0x05,              /* the moving release at level 2: spins chargeLevel + 2 turns */
     HAMMER_CHARGE_RELEASE_1 = 0x06,         /* the standing release at level 1: two hits */
-    HAMMER_CHARGE_RELEASE_2 = 0x07,         /* the standing release at level 2 (hit objects 0xA, 0xB) */
+    HAMMER_CHARGE_RELEASE_2 = 0x07,         /* the standing release at level 2 (hit objects 10, 11) */
     HAMMER_DRAW_ATTACK = 0x08,              /* the attack that draws on the move (Hammer_DrawAttack) */
-    HAMMER_SPIN_FINISH = 0x09,              /* ends the spin with a flick up (hit object 0x20) */
+    HAMMER_SPIN_FINISH = 0x09,              /* ends the spin with a flick up (hit object 32) */
     HAMMER_BOUNCE = 0x0A,                   /* the attack bounced off; a flick queues HAMMER_BOUNCE_SWING */
     HAMMER_COMBO_1_AFTER_DOWN = 0x0B,       /* the combo's first swing chained from HAMMER_DOWN_ATTACK */
     HAMMER_CHARGE_HOLD = 0x0C,              /* charges again standing still after HAMMER_CHARGE_WALK (keeps the charge time) */
@@ -452,7 +455,7 @@ enum HammerState {
     HAMMER_CHARGE_RELEASE_0_MOVING = 0x10,  /* the moving release at level 0 */
     HAMMER_CHARGE_RELEASE_1_MOVING = 0x11,  /* the moving release at level 1 (also a flick up in the spin's first turns) */
     HAMMER_BOUNCE_SWING = 0x12,             /* the swing from the bounce */
-    HAMMER_COMBO_3 = 0x13                   /* the combo's third swing (hit object 0x20, as HAMMER_SPIN_FINISH) */
+    HAMMER_COMBO_3 = 0x13                   /* the combo's third swing (hit object 32, as HAMMER_SPIN_FINISH) */
 };
 
 /* The lance's states (Lance_RunState, weapon_states.c). A flick of the attack
@@ -495,7 +498,7 @@ enum SwordShieldState {
     SNS_DRAW_JUMP_SLASH = 0x09,     /* the attack that draws on the move (SwordShield_DrawAttack) */
     SNS_BOUNCE_JUMP_SLASH = 0x0A,   /* the jump slash from the bounce */
     SNS_EVADE_RISING_SLASH = 0x0B,  /* the rising slash from a roll or an evade (SwordShield_EvadeAttack) */
-    SNS_SHIELD_BASH = 0x0C          /* likely: input.pressed PAD_R3 (hit object 0x64), then the rising slash */
+    SNS_SHIELD_BASH = 0x0C          /* likely: input.pressed PAD_R3 (hit object 100), then the rising slash */
 };
 
 /* The dual swords' states (DualSwords_RunState, weapon_states.c). A flick of the
@@ -627,7 +630,7 @@ enum GunlanceState {
     GLANCE_THRUST = 0x00,                  /* the first thrust (Gunlance_AttackInput; a forward hop) */
     GLANCE_SHELL_AFTER_THRUST = 0x01,      /* shells in a thrust's window */
     GLANCE_GUARD_THRUST = 0x02,            /* thrusts from the guard (Gunlance_GuardInput), back to the guard */
-    GLANCE_WYVERN_FIRE = 0x03,             /* likely: a 50-frame charge, then a blast with a 0x546-frame cooldown (weaponTimer) */
+    GLANCE_WYVERN_FIRE = 0x03,             /* likely: a 50-frame charge, then a blast with a 1350-frame cooldown (weaponTimer) */
     GLANCE_UPPER_THRUST = 0x04,            /* likely: a flick down from idle, or a back hop with a full clip */
     GLANCE_RELOAD = 0x05,                  /* reloads from the guard */
     GLANCE_LUNGE = 0x06,                   /* the left stick pushed far: moves forward while thrusting */
@@ -655,10 +658,10 @@ enum GunlanceState {
 };
 
 /* The bow's states (Bow_RunState). Its inputs: input.held
- * 0x80 aims (releasing it ends the aim), the attack stick held down
+ * PAD_R1 aims (releasing it ends the aim), the attack stick held down
  * (input.stickDir PAD_RSTICK_DOWN) charges
  * and releasing it shoots, a flick up (input.stickDirPressed PAD_RSTICK_UP) stabs, input.pressed
- * 0x40 evades and input.pressed PAD_R3 loads a coating. */
+ * PAD_CROSS evades and input.pressed PAD_R3 loads a coating. */
 enum BowState {
     BOW_FIRE = 0x00,               /* shoots a charge of level 1 or more (Bow_ChargeLevel), then BOW_AIM_RESUME */
     BOW_CHARGE = 0x01,             /* charges from the aim (weaponTimer counts the charge) */
@@ -698,7 +701,7 @@ enum PlayerActionState {
     PL_ACT_CROUCH = 0x08,             /* crouches down */
     PL_ACT_FALL = 0x09,               /* falls (Player_Update: high above the floor) */
     PL_ACT_SHEATHE_MOVING = 0x0A,     /* sheathes on the move */
-    PL_ACT_THROW_ITEM_ALT = 0x0B,     /* throws an item, the second motion (items 0x4B-0x4F standing) */
+    PL_ACT_THROW_ITEM_ALT = 0x0B,     /* throws an item, the second motion (items ITEM_ID_THROWN_GROUND_MARK_B to ITEM_ID_THROWN_GROUND_BURST_C standing) */
     PL_ACT_BED_MENU = 0x0C,           /* the menu of an action spot of kind 5 (the bed: sleep, or the quest's start and abort) */
     PL_ACT_TO_IDLE = 0x0D,            /* returns to idle at once (no entry seen) */
     PL_ACT_THROW_ITEM = 0x0E,         /* throws a pouch item */
@@ -740,8 +743,8 @@ enum PlayerActionState {
     PL_ACT_BED_LIE_DOWN = 0x33,       /* lies down on the bed (the bed's menu) */
     PL_ACT_BED_SLEEP = 0x34,          /* sleeps: health recovers */
     PL_ACT_BED_GET_UP = 0x35,
-    PL_ACT_MOUNTED_GUN_AIM = 0x36,    /* mans the mounted gun at an action spot of kind 6 (item 0x29B its ammo) */
-    PL_ACT_CANNON_FIRE = 0x37,        /* fires the carried item 0x29C at an action spot of kind 8 (likely a cannon) */
+    PL_ACT_MOUNTED_GUN_AIM = 0x36,    /* mans the mounted gun at an action spot of kind 6 (item ITEM_ID_MOUNTED_GUN_AMMO its ammo) */
+    PL_ACT_CANNON_FIRE = 0x37,        /* fires the carried item ITEM_ID_CANNON_AMMO at an action spot of kind 8 (likely a cannon) */
     PL_ACT_LEDGE_DROP = 0x38,         /* lets go of the ledge */
     PL_ACT_CROUCH_STAND_UP = 0x39,    /* stands up from the crouch */
     PL_ACT_LEDGE_PULL_UP = 0x3A,      /* climbs up from the ledge hang */
@@ -758,7 +761,7 @@ enum PlayerActionState {
     PL_ACT_FLEE_DASH_RESUME = 0x45,   /* the flee sprint after a dive */
     PL_ACT_DASH_RESUME = 0x46,        /* the sprint picked up mid-stride */
     PL_ACT_GATHER = 0x47,             /* gathers at a gather point, standing */
-    PL_ACT_MOUNTED_GUN_FIRE = 0x48,   /* fires the mounted gun (uses an item 0x29B) */
+    PL_ACT_MOUNTED_GUN_FIRE = 0x48,   /* fires the mounted gun (uses an ITEM_ID_MOUNTED_GUN_AMMO) */
     PL_ACT_WALK_SLOW = 0x49,          /* the slowest walk (the walk the stick gives) */
     PL_ACT_CARVE = 0x4A,              /* carves a monster (a mine point of type 2), standing */
     PL_ACT_SPIT_ROAST_FAIL = 0x4B,    /* the roast ends raw, rare or burnt */
@@ -777,17 +780,17 @@ enum PlayerActionState {
     PL_ACT_DRINK = 0x58,              /* consumes an item, the short motion (likely drinking) */
     PL_ACT_KNEEL_TO_PLACE_CROUCHED = 0x59, /* as PL_ACT_KNEEL_TO_PLACE, from the crouch */
     PL_ACT_EAT = 0x5A,                /* consumes an item, the long motion the eating skills speed up */
-    PL_ACT_TRADE = 0x5B,              /* trades with the trader (a monster of kind 0x0A) */
+    PL_ACT_TRADE = 0x5B,              /* trades with the trader (EM_KIND_TRADER) */
     PL_ACT_TAKE_REWARDS = 0x5C,       /* takes the quest's pending reward items (an action spot of kind 4) */
     PL_ACT_GATHER_CROUCHED = 0x5D,    /* gathers at a gather point from the crouch */
-    PL_ACT_HORN_PLAY = 0x5E,          /* plays item 0xAF (a horn: a hunting horn user breaks it less) */
+    PL_ACT_HORN_PLAY = 0x5E,          /* plays item ITEM_ID_HORN_PLAY (a horn: a hunting horn user breaks it less) */
     PL_ACT_HORN_END = 0x5F,           /* finishes it; the item may break */
     PL_ACT_CARVE_CROUCHED = 0x60,
     PL_ACT_SHARPEN = 0x61,            /* sharpens the weapon with a whetstone item */
-    PL_ACT_TEAM_ITEM_USE = 0x62,      /* uses a team item (0xB0-0xB3) */
+    PL_ACT_TEAM_ITEM_USE = 0x62,      /* uses a team item (ITEM_ID_TEAM_HEAL to ITEM_ID_TEAM_DEFENSE) */
     PL_ACT_TEAM_ITEM_END = 0x63,      /* finishes it: its effect on the team (Item_UseTeamPowder) */
     PL_ACT_FISH_REEL_BAITED = 0x64,   /* reels in nothing, the bait kept */
-    PL_ACT_BINOCULARS = 0x65,         /* looks through item 0xAD (the aim view), from standing */
+    PL_ACT_BINOCULARS = 0x65,         /* looks through item ITEM_ID_SCOPE_VIEW (the aim view), from standing */
     PL_ACT_BINOCULARS_CROUCHED = 0x66,
     PL_ACT_OFFER_ITEM = 0x67,         /* holds out an item to another player (offerRequest) */
     PL_ACT_TAKE_ITEM_WAIT = 0x68,     /* waits for the giver to hand it over */
@@ -801,13 +804,13 @@ enum PlayerActionState {
     PL_ACT_PLACE_LARGE_ITEM_SET = 0x70, /* puts it down */
     PL_ACT_APPLY_ITEM = 0x71,         /* applies the item consumed (Item_Use) */
     PL_ACT_RETURN_TO_CAMP = 0x72,     /* uses item 0x4E: back to the camp area */
-    PL_ACT_HORN_ITEM_PLAY = 0x73,     /* plays items 0x2B0-0x2B6 (as PL_ACT_HORN_PLAY) */
+    PL_ACT_HORN_ITEM_PLAY = 0x73,     /* plays items ITEM_ID_HORN_ITEM_A to ITEM_ID_HORN_ITEM_LONG_B (as PL_ACT_HORN_PLAY) */
     PL_ACT_BOW_WALK = 0x74,           /* walks with the bow drawn; the stop goes to the bow's state 7 */
     PL_ACT_GATHER_SPECIAL = 0x75,     /* gathers at the special mine point (type 5), standing */
     PL_ACT_GATHER_SPECIAL_CROUCHED = 0x76,
     PL_ACT_WALL_CLIMB_UP_FAST = 0x77, /* climbs up with the dash button: costs stamina */
     PL_ACT_WALL_CLIMB_DOWN_FAST = 0x78,
-    PL_ACT_SPOT_ITEM_STRIKE = 0x79,   /* uses item 0x2B7 at an action spot of kind 0xA: strikes each hostile monster */
+    PL_ACT_SPOT_ITEM_STRIKE = 0x79,   /* uses item ITEM_ID_SPOT_STRIKE_ITEM at an action spot of kind 0xA: strikes each hostile monster */
     PL_ACT_MOUNTED_GUN_REAIM = 0x7A,  /* aims the mounted gun again after a shot */
     PL_ACT_DELIVERY_BOX = 0x7B,       /* the delivery box's menu is open (an action spot of kind 7) */
     PL_ACT_GATHER_DROP = 0x7C,        /* gathers at a dropped mine point (type 0: EmMine_Drop), standing */
@@ -830,7 +833,7 @@ enum PlayerReactState {
     PL_REACT_GUARD_STAGGER = 0x01,    /* a guarded hit staggers the guard (great and long sword) */
     PL_REACT_BLOWN_BACK = 0x02,       /* flung backward onto the back (attack kind 2 from the front) */
     PL_REACT_GUARD_START = 0x03,      /* raises the guard (the guard button with the weapon) */
-    PL_REACT_ROAR_STRONG = 0x04,      /* attack kind 0x15 (likely the strongest roar: SKILL_ROAR_GUARD_ALL blocks it) */
+    PL_REACT_ROAR_STRONG = 0x04,      /* ATTACK_ROAR_STRONG (likely the strongest roar: SKILL_ROAR_GUARD_ALL blocks it) */
     PL_REACT_BLOWN_FORWARD = 0x05,    /* flung forward onto the face (attack kind 2 from behind) */
     PL_REACT_KNOCKDOWN_BACK = 0x06,   /* a heavy hit from behind */
     PL_REACT_TOSSED_BACK = 0x07,      /* thrown up and backward (attack kinds 3 and 23 from the front) */
@@ -841,21 +844,21 @@ enum PlayerReactState {
     PL_REACT_GUARD_HOLD = 0x0C,       /* back into the held guard */
     PL_REACT_FLINCH_BACK = 0x0D,      /* a light hit from behind: pushed forward */
     PL_REACT_TOSSED_FORWARD = 0x0E,   /* thrown up and forward (from behind) */
-    PL_REACT_ROAR = 0x0F,             /* attack kind 4 (likely a roar: skills 0x8F, 0x90 block it) */
+    PL_REACT_ROAR = 0x0F,             /* ATTACK_ROAR (likely a roar: SKILL_ROAR_GUARD_MOST and SKILL_ROAR_GUARD_ALL block it) */
     PL_REACT_WIND = 0x10,             /* attack kind 5 (likely wind pressure: SKILL_WIND_GUARD_ALL blocks it) */
     PL_REACT_FLINCH_CARRYING = 0x11,  /* a flinch that keeps the carried item (no entry seen) */
     PL_REACT_FLINCH_CARRYING2 = 0x12, /* the same */
     PL_REACT_STUN = 0x13,             /* stunned (status 5 full; StunStars_CreatePlayer) */
-    PL_REACT_14 = 0x14,               /* seen: motion 0x197 with the weapon sheathed; no entry seen */
+    PL_REACT_14 = 0x14,               /* seen: motion PL_MOT_ITEM_POSE with the weapon sheathed; no entry seen */
     PL_REACT_STATUS2 = 0x15,          /* status 2: lying down 240 frames; presses shorten it */
     PL_REACT_STATUS4 = 0x16,          /* status 4: down for recoverTimer frames */
     PL_REACT_GUARD_DRAW = 0x17,       /* draws the weapon straight into the guard (lance, sword and shield, gunlance) */
     PL_REACT_STATUS4_HIT = 0x18,      /* hit while in status 4: keeps recoverTimer */
-    PL_REACT_WIND_SHORT = 0x19,       /* attack kind 0xE (weaker wind: SKILL_WIND_GUARD_WEAK or SKILL_WIND_GUARD_ALL blocks it) */
-    PL_REACT_ROAR_SHORT = 0x1A,       /* attack kind 0xF (a weaker roar: SKILL_ROAR_GUARD_WEAK blocks it) */
+    PL_REACT_WIND_SHORT = 0x19,       /* ATTACK_WIND_WEAK (weaker wind: SKILL_WIND_GUARD_WEAK or SKILL_WIND_GUARD_ALL blocks it) */
+    PL_REACT_ROAR_SHORT = 0x1A,       /* ATTACK_ROAR_WEAK (a weaker roar: SKILL_ROAR_GUARD_WEAK blocks it) */
     PL_REACT_MASH_START = 0x1B,       /* enters the mash status (mashLeft 900) */
     PL_REACT_MASH_FREE = 0x1C,        /* breaks free of the mash status */
-    PL_REACT_QUAKE = 0x1D,            /* attack kind 0x14 (likely a tremor: SKILL_QUAKE_GUARD blocks it), 40 frames */
+    PL_REACT_QUAKE = 0x1D,            /* ATTACK_QUAKE (likely a tremor: SKILL_QUAKE_GUARD blocks it), 40 frames */
     PL_REACT_MASH_IDLE = 0x1E,        /* stands in the mash status */
     PL_REACT_MASH_WALK = 0x1F,        /* walks in the mash status */
     PL_REACT_MASH_RUN = 0x20,         /* runs in the mash status (the dash button) */
@@ -900,7 +903,7 @@ enum PlayerCarryState {
     PL_CARRY_LAND = 0x08,
     PL_CARRY_PICKED_UP = 0x09,    /* stands after picking it up: no input for 30 frames */
     PL_CARRY_DELIVER = 0x0A,      /* hands it in at the delivery spot */
-    PL_CARRY_HAND_OVER = 0x0B     /* gives it to a monster of kind 0x0A (the trader) */
+    PL_CARRY_HAND_OVER = 0x0B     /* gives it to EM_KIND_TRADER */
 };
 
 /* Group PL_GROUP_GESTURE: the gestures (Player.actRequest picks one from
@@ -909,21 +912,29 @@ enum PlayerGestureState {
     PL_GESTURE_LIE_DOWN = 0x00,   /* lies down (the fainted pose); the stick gets up */
     PL_GESTURE_GET_UP = 0x01,
     PL_GESTURE_SCOUT = 0x02,      /* faced to an area's point, it sets actDetectTimer (300 frames) */
-    PL_GESTURE_03 = 0x03,         /* seen: motion 0x26F looped; the stick ends it (PL_GESTURE_03_END) */
+    PL_GESTURE_03 = 0x03,         /* seen: motion PL_MOT_GESTURE_SIT looped; the stick ends it (PL_GESTURE_03_END) */
     PL_GESTURE_03_END = 0x04,
-    PL_GESTURE_05 = 0x05,         /* seen: motion 0x274 with effects */
-    PL_GESTURE_06 = 0x06,         /* seen: motion 0x278 */
-    PL_GESTURE_07 = 0x07,         /* seen: motion 0x26E */
-    PL_GESTURE_08 = 0x08,         /* seen: motion 0x273 */
+    PL_GESTURE_05 = 0x05,         /* seen: motion 628 with effects */
+    PL_GESTURE_06 = 0x06,         /* seen: motion 632 */
+    PL_GESTURE_07 = 0x07,         /* seen: motion 622 */
+    PL_GESTURE_08 = 0x08,         /* seen: motion 627 */
     PL_GESTURE_ONESHOT0 = 0x09,   /* the one-shot gestures: a motion, then idle (gGestureOneShots[0]) */
-    PL_GESTURE_0A = 0x0A,         /* seen: motion 0x271 */
-    PL_GESTURE_0B = 0x0B,         /* seen: motion 0x276 */
-    PL_GESTURE_0C = 0x0C,         /* seen: motion 0x272 */
+    PL_GESTURE_0A = 0x0A,         /* seen: motion 625 */
+    PL_GESTURE_0B = 0x0B,         /* seen: motion 630 */
+    PL_GESTURE_0C = 0x0C,         /* seen: motion 626 */
     PL_GESTURE_ONESHOT1 = 0x0D,
     PL_GESTURE_06_ALT = 0x0E,     /* as PL_GESTURE_06 */
     PL_GESTURE_ONESHOT3 = 0x0F,
-    PL_GESTURE_10 = 0x10          /* seen: motion 0x279 */
+    PL_GESTURE_10 = 0x10          /* seen: motion 633 */
 };
+
+/* A one-shot gesture's row: the field's gGestureOneShots
+ * (Player_StateGestureOneShot) and the town's gTownGestureOneShots
+ * (TownPc_GestureOneShot), one row per variant. */
+typedef struct GestureOneShot {
+    s16 motion;         /* 0x0: the motion it plays */
+    s16 blend;          /* 0x2: the blend of the return to idle once the motion ends */
+} GestureOneShot;
 
 /* The weapons' table rows, which the weapon states read. */
 
@@ -975,7 +986,7 @@ typedef struct HornAttack {
     u8 unkF;
 } HornAttack;
 
-/* A player's copy of its pad input (0x24 bytes at Player + 0x36C), filled
+/* A player's copy of its pad input (36 bytes at Player + 0x36C), filled
  * every frame by Player_CopyPadInput. */
 typedef struct PlayerInput {
     u16 held;               /* 0x00 */
@@ -989,15 +1000,15 @@ typedef struct PlayerInput {
     u16 changed;            /* 0x10 */
     u16 unk12;
     u16 stickDir;           /* 0x14: the sticks' directions as pad bits (gPadState's dir): the left
-                             * stick 0x3C00 (0x2000 up, 0x1000 down, 0x800/0x400 sideways), the
-                             * right stick 0x3C (0x20 up, 0x10 down): a flick of it is the attack input */
+                             * stick PAD_DPAD (PAD_UP up, PAD_DOWN down, PAD_LEFT/PAD_RIGHT sideways), the
+                             * right stick PL_RSTICK_ANY (PAD_RSTICK_UP up, PAD_RSTICK_DOWN down): a flick of it is the attack input */
     u16 prevStickDir;       /* 0x16 */
     u16 stickDirPressed;    /* 0x18: stickDir and not prevStickDir */
     u16 prevStickDirPressed; /* 0x1A */
-    u16 stickAngle;         /* 0x1C: the left stick's angle, 0x10000 a turn (gPadState's degL; the
+    u16 stickAngle;         /* 0x1C: the left stick's angle, ANGLE_TURN a turn (gPadState's degL; the
                              * hunting horn, qnet_sync adds the camera's yaw) */
     u16 rightStickAngle;    /* 0x1E: the right stick's angle (gPadState's degR, in gPadInput's
-                             * stickAngle[].right), 0 right, 0x4000 up: the attack stick */
+                             * stickAngle[].right), 0 right, a quarter turn up: the attack stick */
     u16 stickTilt;          /* 0x20: the left stick's tilt (gPadState's magL; PL_STICK_HELD and over counts as held) */
     u16 rightStickTilt;     /* 0x22: the right stick's tilt (gPadState's magR) */
 } PlayerInput;
@@ -1022,7 +1033,7 @@ typedef struct PlayerVt {
     void (*motionFxStep)(struct Player *p); /* 0xC: the motion's effects step (Player_Init, the town's update) */
 } PlayerVt;
 
-/* A player part's record (0xB0 bytes): Player.partRecs[i] points at the 32 of each player in
+/* A player part's record (176 bytes): Player.partRecs[i] points at the 32 of each player in
  * gPlayerRecs (Player_InitPartTable). The weapon and camera code reads m1 as the part's
  * matrix (its translation at m1[12..14]: CamScript_AtPoint). */
 typedef struct PlRec {
@@ -1034,7 +1045,7 @@ typedef struct PlRec {
 } PlRec;
 typedef char PlRec_size_check[(sizeof(PlRec) == 0xB0) ? 1 : -1];
 
-/* The state of a swinging equipment part's bone chain (0x20 bytes; four of them, one per chain
+/* The state of a swinging equipment part's bone chain (32 bytes; four of them, one per chain
  * of the effect list: Player.equipFx, the equipment preview's at gEquipPreview + 0x28).
  * EquipFx_ChainUpdate moves the chain's bones with it; FxBlock_Clear clears the four. */
 typedef struct EquipFxSwing {
@@ -1043,12 +1054,23 @@ typedef struct EquipFxSwing {
     f32 vel[2][3];              /* 0x04: per bone of the chain, its swing velocity (damped by gEquipFxDamps) */
     u8 pad1C[4];
 } EquipFxSwing;
+
+/* An entry of the swing chains' lists (gEquipFxListsHead[kind] and
+ * gEquipFxListsAltHead[kind], ended by key -1; Effect_RunList): the head
+ * armour's kind it is for, and its rows of gEquipFxChains (up to four,
+ * -1 for none). */
+typedef struct EquipFxList {
+    s32 key;
+    s16 *ids;
+} EquipFxList;
+extern EquipFxList *gEquipFxListsAltHead[2];
+extern EquipFxList *gEquipFxListsHead[2];
 typedef char EquipFxSwing_size_check[(sizeof(EquipFxSwing) == 0x20) ? 1 : -1];
 
 /* The head of the player's work area (Player.work at +0x438, where Em has its EmWork): the state
  * of Player_MotionFxStep, the last of the player's handlers (gPlayerHandlers), which plays the
  * sounds and effects of the hunter's motions (player_motion_fx.c). The lobby's TownPcWork extends it
- * past its 0x14 bytes. */
+ * past its 20 bytes. */
 typedef struct PlayerWork {
     u8 unk00;
     u8 state;                   /* 0x01: 0 on the first step (which clears teamFxTimer), then 1 */
@@ -1061,7 +1083,7 @@ typedef struct PlayerWork {
 typedef char PlayerWork_size_check[(sizeof(PlayerWork) == 0x14) ? 1 : -1];
 
 /*
- * A player (0x970 bytes); gPlayers holds one per player slot, right after
+ * A player (2416 bytes); gPlayers holds one per player slot, right after
  * the monsters (gEms), whose first fields have the same layout as Em's. The
  * struct is generated from include/player.spec (tools/gen_struct.py): add
  * fields there.
@@ -1073,7 +1095,7 @@ typedef struct Player {
     u8 isGunner;                /* 0x003: 1: a gunner (bowgun: ammo, no sharpness) */
     u8 unk004;                  /* 0x004: with step, stateVar0, stateVar1: cleared together (Player_ClearActionState) */
     u8 step;                    /* 0x005: as Em.step: the step within the state (counted up by the states), cleared on every state change (Player_ClearActionState) */
-    u8 stateVar0;               /* 0x006: as Em.stateVar0: per-state scratch byte (a counter to 5 in state 0/0x27), cleared on every state change */
+    u8 stateVar0;               /* 0x006: as Em.stateVar0: per-state scratch byte (a counter to 5 in PL_ACT_WALL_HOLD), cleared on every state change */
     u8 stateVar1;               /* 0x007: as Em.stateVar1: per-state scratch byte (a "hit once" flag with hitPending; a countdown in the lobby states) */
     s32 timer;                  /* 0x008: as Em.timer: per-state counter (a "hit once" flag in weapon_states.c, a countdown from 10 in the lobby states) */
     u16 index;                  /* 0x00C: the slot in gPlayers (== gScene.localPlayer, gNetUsers[index]; as Em.index) */
@@ -1095,14 +1117,14 @@ typedef struct Player {
     u8 playerMotions;           /* 0x01F: read when the object is an Em: with ownTask set, nonzero takes the player motion sets of slot index, not the monster ones (Player_SetPartAnim, Player_BeginLayerMotion) */
     f32 rotMtx[16];             /* 0x020: the rotation matrix from rot (Mtx_FromAnglesXYZ, Player_Reset; as Em.rotMtx) */
     f32 worldMtx[4][4];         /* 0x060: as Em.worldMtx (the hunters states turn vectors with it, Vec_Rotate) */
-    s32 rot[3];                 /* 0x0A0: rotation angles as integers, 0x10000 per turn; rot[1] the heading (as Em.rotX..rotZ) */
+    s32 rot[3];                 /* 0x0A0: rotation angles as integers, ANGLE_TURN per turn; rot[1] the heading (as Em.rotX..rotZ) */
     f32 pos[3];                 /* 0x0AC: position (as Em) */
     f32 scale[3];               /* 0x0B8: set to 1.0 by Player_Reset (as Em.scaleX..scaleZ) */
     u8 unk0C4[0x0D0 - 0x0C4];
-    struct PlRec *partRecs[32]; /* 0x0D0: the 32 records of 0xB0 bytes in the 0x1600-byte block at 0x5DE5D0 (Player_InitPartTable, CamScript_AtPoint) */
+    struct PlRec *partRecs[32]; /* 0x0D0: the 32 records of 176 bytes in the 5632-byte block at 0x5DE5D0 (Player_InitPartTable, CamScript_AtPoint) */
     u8 unk150[0x154 - 0x150];
     MotionLayer motion[4];      /* 0x154: motion layers (include/motion.h; as Em.motion): Player_SetLayerMotion starts one, Player_UpdateMotion steps it */
-    u16 yawCenter;              /* 0x294: as Em.yawCenter: the heading targetYaw is kept within 0x4000 of (Player_UpdateLean, Player_StateMountedGunAim) */
+    u16 yawCenter;              /* 0x294: as Em.yawCenter: the heading targetYaw is kept within a quarter turn of (Player_UpdateLean, Player_StateMountedGunAim) */
     u8 unk296[0x29A - 0x296];
     s16 msgTimer;               /* 0x29A: as Em.msgTimer (cleared by Player_StateFishReel) */
     u16 motionId[4];            /* 0x29C: motion layers (Player_SetLayerMotion): the motion id (as Em.motionId) */
@@ -1173,7 +1195,7 @@ typedef struct Player {
     u8 *hitTimers;              /* 0x420: the hit window timers in use: &hitDelay (Player_Reset), or the hitDelay of its attack object that hit (ObjAttach_LinkTarget) */
     f32 hitPos[3];              /* 0x424: where the last hit taken landed (ObjAttach_DamagePlayer) */
     u16 unk430;                 /* 0x430 */
-    s16 noFlinchTimer;          /* 0x432: the attack states set it (0x3C, 0x28, 2...), Player_TickTimers counts it down; while nonzero Player_IgnoresFlinch (pouch.c) returns 1 and Player_ReactToHit (player_hit.c) skips the flinch */
+    s16 noFlinchTimer;          /* 0x432: the attack states set it (60, 40, 2...), Player_TickTimers counts it down; while nonzero Player_IgnoresFlinch (pouch.c) returns 1 and Player_ReactToHit (player_hit.c) skips the flinch */
     u8 unk434;                  /* 0x434 */
     u8 unk435[0x437 - 0x435];
     u8 fieldCollide;            /* 0x437: 1: the player collides with the walls (as Em.fieldCollide): Player_RunState and TownPc_Spawn set 1; Player_StateBedLieDown..35, TownPc_State19 and Contest_Open clear it */
@@ -1193,7 +1215,7 @@ typedef struct Player {
     s16 modelFirst;             /* 0x4EA: the body's first model slot (as Em.modelFirst) */
     struct Model *model;        /* 0x4EC: the skeleton (as Em.model): select_chara.c sets it to Model_Get(gAreaSubModelId[slot]) */
     u8 unk4F0[0x4F4 - 0x4F0];
-    struct Model *weaponModel;  /* 0x4F4: the model: a 0x80-byte header of the pool at 0x6AE000 (Player_LoadWeaponModel) */
+    struct Model *weaponModel;  /* 0x4F4: the model: a 128-byte header of the pool at 0x6AE000 (Player_LoadWeaponModel) */
     s16 weaponModelSlotCount;   /* 0x4F8: model slots used by the weapon model (Player_AllocWeaponModel) */
     s16 weaponModelSlot;        /* 0x4FA: the first model slot of the weapon model (Player_AllocWeaponModel, Player_FreeWeaponModel) */
     struct Model *partModels[6];/* 0x4FC: parts 1-5 (the equipment): the model (Model_Get of its first slot; Player_LoadPartModels); [0] unused, the body's is model */
@@ -1201,13 +1223,13 @@ typedef struct Player {
     s16 partModelFirst[6];      /* 0x520: parts 1-5: the first model slot */
     struct DrawSlot *drawSlot;  /* 0x52C: its draw slot: an entry of the pool at 0x6A5AD0 (DrawSlot_Get), drawn by DrawCb_LocalPlayer (Player_InitAll) */
     s16 drawSlotId;             /* 0x530: its index, -1: none */
-    u8 painted;                 /* 0x532: the Em paint mark read through Player (as Em.painted): Player_TickPaint runs only for isEm objects; Player_Reset sets 0xFF (players: never); Map_MonsterLocated tests it */
+    u8 painted;                 /* 0x532: the Em paint mark read through Player (as Em.painted): Player_TickPaint runs only for isEm objects; Player_Reset sets 255 (players: never); Map_MonsterLocated tests it */
     u8 carry;                   /* 0x533: the carried item: its kind less one in the high nibble (PL_CARRY_KIND_MASK, from Item_CarryKind), the hold count in the low (PL_CARRY_HOLD_MASK, Player_UpdateCarryKind) */
     u8 ammoType;                /* 0x534: kind of the loaded ammo (ItemData.ammoKind) */
     u8 savedAmmoType;           /* 0x535: ammoType saved while the ammo menu is open (Player_BowgunAmmoSwitch) */
     u8 ammoMenuOpen;            /* 0x536: 1 while the ammo menu is open (Player_BowgunAmmoSwitch) */
     u8 spotCheckDelay;          /* 0x537: nonzero: no action spot check (Player_CheckActionSpot sets 20; Player_UpdateStatus counts it down) */
-    u16 startAngle;             /* 0x538: its heading: gStartAngle, the action spot angle + 0x4000 */
+    u16 startAngle;             /* 0x538: its heading: gStartAngle, the action spot angle + ANGLE_TURN / 4 */
     s16 paintTimer;             /* 0x53A: frames until painted is cleared (as Em.paintTimer; Player_TickPaint) */
     u8 unk53C[0x540 - 0x53C];
     u32 lightFadeColors[3];     /* 0x540: per light of light set 1: the colour it fades from, 0xFFRRGGBB (LightSet_FadeColors moves it a fifth of the way to the set's colour each draw and keeps the result; 0: the set's own colour). Player_ClearLightColors clears it; the character maker sets 0x01000000 (from black) */
@@ -1231,7 +1253,7 @@ typedef struct Player {
     u8 presetEquip;             /* 0x59A: nonzero: preset equipment, from the tables at 0x44AED0 (Player_InitForQuest) */
     u8 unk59B[0x59C - 0x59B];
     f32 rideDelta[3];           /* 0x59C: how far the monster carried the player this frame (Em_CarryRiders; Player_CheckRideSlip compares its length) */
-    EquipFxSwing equipFx[4];    /* 0x5A8: the swinging parts of the equipment (Players_RunEquipEffects, Effect_RunList); cleared by Player_ClearFxBlock */
+    EquipFxSwing equipFx[4];    /* 0x5A8: the swinging parts of the equipment (Player_RunEquipEffects, Effect_RunList); cleared by Player_ClearFxBlock */
     s8 attackDrug;              /* 0x628: attack bonus of the drugs (Item_Use: at least 3 or 5), kept in gScene.mealAttack (Player_RecomputeStats) */
     s8 attackBuff;              /* 0x629: the timed attack buff (10, 25...; Item_Use, Item_UseTeamPowder) */
     s16 attackBuffTimer;        /* 0x62A: duration of attackBuff */
@@ -1265,10 +1287,10 @@ typedef struct Player {
     s16 stamina;                /* 0x694 */
     u8 unk696[0x698 - 0x696];
     u32 wallHitDirs;            /* 0x698: as Em.wallHitDirs: Em_CollideField also runs for the players (Field_Update); Motion_VoiceAtFrame tests 0xE0000007 (a wall ahead) to pick the voice from gEmWallContacts */
-    u16 lean;                   /* 0x69C: the body lean while turning, a 16-bit turn kept within 0xF600..0xA00 (Player_UpdateAutoTurn, Actor_TurnToTarget); Player_TwistBoneToLook rolls a bone by it */
+    u16 lean;                   /* 0x69C: the body lean while turning, a 16-bit turn kept within 2560 of upright either way (Player_UpdateAutoTurn, Actor_TurnToTarget); Player_TwistBoneToLook rolls a bone by it */
     u8 unk69E[0x6A0 - 0x69E];
     f32 mapPos[3];              /* 0x6A0: the position with the area record offsets, y at the middle of its range, for the map (Player_UpdateAreaPos; Map_DrawArea) */
-    s16 dashDelay;              /* 0x6AC: frames before R1 with the stick dashes again (states 0/0x24, 2/0x20, 5/1): the states set 30, counted down (Player_UpdateStatus, TownPc_TickTimers) */
+    s16 dashDelay;              /* 0x6AC: frames before R1 with the stick dashes again (states PL_ACT_RUN_AFTER_DASH, PL_REACT_MASH_RUN, PL_CARRY_WALK): the states set 30, counted down (Player_UpdateStatus, TownPc_TickTimers) */
     u8 unk6AE[0x6AF - 0x6AE];
     u8 aimLockTimer;            /* 0x6AF: bowgun and bow: 5 or 10 frames after an aim change (Bow_UpdateAim); no shot while nonzero */
     u8 aimMode;                 /* 0x6B0: bowgun and bow: the aim mode (toggled; gScene.aimReverse applies in it) */
@@ -1313,7 +1335,7 @@ typedef struct Player {
     u8 unk73B[0x740 - 0x73B];
     f32 fadeAlpha;              /* 0x740: the local player's draw alpha in the field: eased a tenth of the way to CamCtl_GetPlayerFade's target each frame, 1.0 without one (Player_DrawLocal; Player_Reset sets 1.0) */
     s16 mashBuildup;            /* 0x744: the buildup toward the mash status: mashBuildupHit added per hit (Player_ReactToHit); Player_HasMashBuildup, Player_InMashStatus */
-    s16 mashLeft;               /* 0x746: the status of state 2/0x1E: pressed buttons take 10 (SKILL_MASH_FAST twice, SKILL_MASH_SLOW half: mashTimer); at 0 state 2/0x1C; synced in qnet_sync message 3 */
+    s16 mashLeft;               /* 0x746: the status of state 2/0x1E: pressed buttons take 10 (SKILL_MASH_FAST twice, SKILL_MASH_SLOW half: mashTimer); at 0 PL_REACT_MASH_FREE; synced in qnet_sync message 3 */
     s16 mashBuildupHit;         /* 0x748: the hit amount added to mashBuildup (Player_ReactToHit) */
     s16 tradeGiveCount;         /* 0x74A: the trader kind 0x0A: the count taken with tradeGiveItem, -1 or -99 (Pouch_Add; EmTrader_RunTalk) */
     u8 contactHit;              /* 0x74C: as Em.contactHit: 1 once one of its attacks with ATKF_REPORT_CONTACT hits (ObjAttach_DamagePlayer, ObjAttach_DamageEm); each attack's Create clears it (PlayerAttack_Create) */
@@ -1321,7 +1343,7 @@ typedef struct Player {
     f32 moveTo[3];              /* 0x754: a point to move to (Player_StartMoveTo, Player_MoveToSpawn, Contest_TakeSeat, HairMenu_MovePlayer) */
     f32 moveToStep[3];          /* 0x760: added to pos each frame while moveToFrames counts (Player_UpdateMoveTo, pouch.c) */
     s16 moveToFrames;           /* 0x76C: frames to reach moveTo (Player_StartMoveTo, Player_UpdateMoveTo) */
-    s16 lookYaw;                /* 0x76E: the head turn toward the nearest monster (Player_FindLookTarget; pouch.c reads it signed; the lobby unwinds it by 0x400 a frame through u16, TownPc_UnwindAngle76E) */
+    s16 lookYaw;                /* 0x76E: the head turn toward the nearest monster (Player_FindLookTarget; pouch.c reads it signed; the lobby unwinds it by ANGLE_TURN / 64 a frame through u16, TownPc_UnwindAngle76E) */
     u8 lookFound;               /* 0x770: 1: Player_FindLookTarget found a monster in range */
     u8 unk771;                  /* 0x771 */
     u8 inBattle;                /* 0x772: nonzero while a monster fights it (Player_UpdateInBattle; Bgm_IsBattle, Hud_DrawPlayerStatus) */
@@ -1340,7 +1362,7 @@ typedef struct Player {
     s8 fishTimer;               /* 0x7D9: fishing: frames (Lure_Update, Fish_StepBite), counted down by Player_UpdateStatus */
     s16 staminaMax;             /* 0x7DA: 75..450 */
     s16 sharpnessMax;           /* 0x7DC */
-    u8 itemUseDelay;            /* 0x7DE: counted down (Player_UpdateStatus); the item button (0x200) does nothing while nonzero (idle and move states) */
+    u8 itemUseDelay;            /* 0x7DE: counted down (Player_UpdateStatus); the item button (PAD_SQUARE) does nothing while nonzero (idle and move states) */
     u8 sharpnessLevel;          /* 0x7DF: the colour (Player_GetSharpnessLevel) */
     u16 pouchCursor;            /* 0x7E0: the selected pouch slot */
     u16 useItem;                /* 0x7E2: the item being used: the selected pouch item (Player_UseItem, Item_Use compare it with item ids); copied to gSpecialMinePoint (SpecialMine_Create) */
@@ -1357,7 +1379,7 @@ typedef struct Player {
     u8 menuCursor;              /* 0x81B: menu cursor (the supply box and delivery menus) */
     u8 actRequest;              /* 0x81C: the gesture requested (Player_RequestGesture); Player_StartGesture starts state 6/gGestureStates[it] */
     u8 weaponShown;             /* 0x81D: nonzero: the weapon model is drawn (Player_DrawLocal, Player_Draw call Player_DrawWeapon); Player_Reset and the hunter setups set 1, plsel's preset players 0, the town hunters while not free (TownPc_IsFree) */
-    u8 tradeMsgTimer;           /* 0x81E: the trader kind 0x0A sets 5, 10, 60 (EmTrader_RunTalk, EmTrader_ShowMessage); Player_UpdateStatus counts it down */
+    u8 tradeMsgTimer;           /* 0x81E: EM_KIND_TRADER sets 5, 10, 60 (EmTrader_RunTalk, EmTrader_ShowMessage); Player_UpdateStatus counts it down */
     u8 tradeCount;              /* 0x81F: the trader kind 0x0A: +1 per trade up to 7 (7 at once from 4 at random), decremented by the trader's later steps */
     u8 unk820[0x821 - 0x820];
     s8 aimWeight;               /* 0x821: bowgun: -100..100, the weight of the second motion layers (Bowgun_SetAimLayers) */
@@ -1367,46 +1389,46 @@ typedef struct Player {
     u8 cookResult;              /* 0x828: the cooking result: 0 raw, 1 rare, 2 done, 3 burnt, 4 gourmet (Player_StateSpitRoast) */
     u8 savedRoundsLoaded;       /* 0x829: roundsLoaded kept over the reload and the weapon change (restored from it), as savedClipSize and savedAmmoCount */
     u8 savedClipSize;           /* 0x82A: clipSize saved with savedCoatingSlot (Player_BowgunAmmoSwitch, Bow_StateFire) */
-    u8 voice;                   /* 0x82B: the voice: save data +0x20D8 and the hunter card (Player_SetupFromSave); gVoiceBanks[gender * 0x10 + it] (lobby), Chara_SetVoiceMotion */
+    u8 voice;                   /* 0x82B: the voice: save data +0x20D8 and the hunter card (Player_SetupFromSave); gVoiceBanks[gender * 16 + it] (lobby), Chara_SetVoiceMotion */
     s8 name[18];                /* 0x82C: the hunter name (SaveData name, Player_LoadName) */
     s16 gotItem;                /* 0x83E: the item to give the player (Pouch_GiveItem: Item_Use, Player_GatherAtSpot, Contest_GivePrize, PoogieMenu_Update) */
     u16 gotItemId;              /* 0x840: the item id that goes with gotItem (Pouch_GiveItem in TownPc_State63 and the fishing states; the lure's bite code switches on it) */
     u16 baited;                 /* 0x842: the lure keeps its bait: 1 from the cast (Player_StateFishCast, the town's cast); a fish goes for the lure only while it is set (Fish_StepSwim) and a nibble clears it one time in four (Fish_StepBite); with it the action button picks PL_ACT_FISH_REEL_BAITED over PL_ACT_FISH_REEL_EMPTY (in the town PL_TOWN_FISH_REEL_BAITED over PL_TOWN_FISH_REEL_EMPTY) */
     u8 drunk;                   /* 0x844: lobby: 1 while drunk: set by the tenth drink at a seat online (TownPc_CountDrink) and by the drink contest; the town's idle, walk and run take their drunk forms; sent in the state messages; talks and menus clear it */
     u8 bowgunReady;             /* 0x845: 1 while the bowgun attack input runs with rounds loaded (Bowgun_AttackInput), cleared at each frame start (Player_Update) and by Player_Reset; Player_IsAiming tests it */
-    s16 aimPitch;               /* 0x846: the aim pitch, 16-bit turn: the first-person camera (camera mode 1, Mtx_FromAngles16Pos) and Hud_DrawObjMarker use it with the heading rot[1]; up/down input adds +-0x400 clamped to +-0x2000 (45 deg; Player_AddAimPitch, gScene.aimReverse flips it); Player_AddAimPitchPct sets it from aimPitchPct */
+    s16 aimPitch;               /* 0x846: the aim pitch, 16-bit turn: the first-person camera (camera mode 1, Mtx_FromAngles16Pos) and Hud_DrawObjMarker use it with the heading rot[1]; up/down input adds +-ANGLE_TURN / 64 clamped to +-ANGLE_TURN / 8 (45 deg; Player_AddAimPitch, gScene.aimReverse flips it); Player_AddAimPitchPct sets it from aimPitchPct */
     u8 freeState;               /* 0x848: set to 1 each frame by the idle and move states, cleared at the frame start (Player_Update): items can be used (Player_IsFree, the pouch menu) */
     u8 menuPage;                /* 0x849: menu page */
-    u8 pouchHudFlags;           /* 0x84A: pouch HUD flags: 2 next, 4 previous item (Player_UpdateItemSelect), 1, 8, 0x10 (ItemHud_Update, Hud_DrawPouchBar) */
+    u8 pouchHudFlags;           /* 0x84A: pouch HUD flags: 2 next, 4 previous item (Player_UpdateItemSelect), 1, 8, 16 (ItemHud_Update, Hud_DrawPouchBar) */
     u8 menuDelay;               /* 0x84B: menu input delay */
     ItemStack delivered[4];     /* 0x84C: items delivered for the quest (Quest_CountDelivered) */
     u16 offerItem;              /* 0x85C: an item offered to another player (Player_TakeOfferedItem) */
     s16 offerCount;             /* 0x85E: its count */
-    u8 offerRequest;            /* 0x860: the pouch menu's offer sets it with offerTo/offerItem/offerCount; the idle states then enter state 0/0x67 */
+    u8 offerRequest;            /* 0x860: the pouch menu's offer sets it with offerTo/offerItem/offerCount; the idle states then enter PL_ACT_OFFER_ITEM */
     u8 offerTo;                 /* 0x861: the index of the player it is offered to */
     u8 offerState;              /* 0x862: PL_OFFER_*: the answer to an item offer (the giver holds the asker's index for a moment; QSYNC_PL_ITEM_ASK and QSYNC_PL_ITEM_ANSWER) */
-    u8 offerStarted;            /* 0x863: 1 in the frame an offer starts (offerRequest taken, state 0/0x67): the pouch menu closes (PouchMenu_Update); cleared by Player_Update */
+    u8 offerStarted;            /* 0x863: 1 in the frame an offer starts (offerRequest taken, PL_ACT_OFFER_ITEM): the pouch menu closes (PouchMenu_Update); cleared by Player_Update */
     s16 envTimer;               /* 0x864: frames to the next environment effect (30..180, Player_UpdateEnvironment) */
     u8 syncTimer;               /* 0x866: frames until the player state is sent again (QSync_SendPlayer sets it; counted down before each send) */
     u8 drinkCount;              /* 0x867: lobby: the drinks taken at a seat while not drunk (TownPc_CountDrink); at 10 (online) drunk is set; cleared with drunk */
     u8 skills[5];               /* 0x868: skill ids (PL_SKILL_SLOTS) */
     u8 unk86D[0x86E - 0x86D];
-    u8 questStatus;             /* 0x86E: the lobby: low bits the quest category (QuestFlags_GetCategory), 0x80 accepted and paid, 0x40 accepted (QuestDesk_Accept), 0x20 set out (Town_UpdateMode); cleared by QuestDesk_Drop; on the hunter card (HunterCard_Build) */
-    u8 teamItemMask;            /* 0x86F: set to 15 when a team item (0xB0-0xB3) is used (Item_UseTeamPowder); the bit of each player reached is cleared (player_motion_fx.c) */
-    u16 coolDrinkTimer;         /* 0x870: frames left of item 0x15's effect (18000; Item_Use); nonzero: Hud_HealthColor and Player_UpdateEnvironment skip the heat */
-    u16 hotDrinkTimer;          /* 0x872: frames left of item 0x16's effect (18000; Item_Use); nonzero: no cold in zones 2 and 4 (Player_UpdateHunger, Hud_StaminaColor) */
-    u16 regenTimer;             /* 0x874: frames left of items 0x0C, 0x3A-0x3D (Item_Use, 3600..14400): doubles the health recovery step (Player_UpdateStatus); Notice 0x16 at the end; status icon 0x1000 */
+    u8 questStatus;             /* 0x86E: the lobby: low bits the quest category (QuestFlags_GetCategory), QUEST_STATUS_PAID accepted and paid, QUEST_STATUS_TAKEN accepted (QuestDesk_Accept), QUEST_STATUS_SET_OUT set out (Town_UpdateMode); cleared by QuestDesk_Drop; on the hunter card (HunterCard_Build) */
+    u8 teamItemMask;            /* 0x86F: set to 15 when a team item (ITEM_ID_TEAM_HEAL to ITEM_ID_TEAM_DEFENSE) is used (Item_UseTeamPowder); the bit of each player reached is cleared (player_motion_fx.c) */
+    u16 coolDrinkTimer;         /* 0x870: frames left of item ITEM_ID_COOL_DRINK's effect (18000; Item_Use); nonzero: Hud_HealthColor and Player_UpdateEnvironment skip the heat */
+    u16 hotDrinkTimer;          /* 0x872: frames left of item ITEM_ID_HOT_DRINK's effect (18000; Item_Use); nonzero: no cold in zones 2 and 4 (Player_UpdateHunger, Hud_StaminaColor) */
+    u16 regenTimer;             /* 0x874: frames left of items ITEM_ID_REGEN and ITEM_ID_FOOD_REGEN_SHORT to ITEM_ID_FOOD_REGEN_LONG (Item_Use, 3600..14400): doubles the health recovery step (Player_UpdateStatus); Notice 22 at the end; status icon PL_STATUS_ICON_REGEN */
     u8 faints;                  /* 0x876: times fainted in the quest, up to 99 (Player_StateFaint; QuestMenu_DrawFaints) */
     u8 supplyTaken;             /* 0x877: nonzero once the supply box was taken from (SupplyBox_Take, QSync_OnSupply) */
     f32 resist[5];              /* 0x878: element resistances (fire, water, thunder, ice, dragon), -100..100 */
     s16 detectTimer;            /* 0x88C: frames left of an item effect (Item_Use) that Player_DetectLevel and the HUD glow test */
     u16 supplyBoxTimer;         /* 0x88E: 900 frames after a supply box take (SupplyBox_Take, SupplyBox_Update) */
     s16 recoverTimer;           /* 0x890: state 4/x: 150 frames (skill 1 halves, skill 3 doubles), mashing takes 1 more each 3 frames; the hunter gets up at 0 */
-    u8 offerNoticeTimer;        /* 0x892: 0x5A frames after the pouch-full notice for an offered item (no new take while nonzero) */
+    u8 offerNoticeTimer;        /* 0x892: 90 frames after the pouch-full notice for an offered item (no new take while nonzero) */
     s8 fallGrabCount;           /* 0x893: the ledge grabs out of a fall: Player_StateLedgeHang counts PL_ACT_LEDGE_GRAB after PL_ACT_FALL; Player_Update zeroes it in any other state; Player_StateLeapOrFall allows the grab while it is under 21 */
     u8 skillGroups[5];          /* 0x894: the skill group of each slot */
     s8 demonMode;               /* 0x899: dual swords: 1 in the demon mode (DualSwords_StateDemonToggle; PlayerAttack_Setup) */
-    s16 noFlinchItemTimer;      /* 0x89A: item 0x14 sets it with defenseBuffTimer (Item_Use); counted down; tested with noFlinchTimer and demonMode (Player_IgnoresFlinch) */
+    s16 noFlinchItemTimer;      /* 0x89A: item ITEM_ID_DEFENSE_BURST sets it with defenseBuffTimer (Item_Use); counted down; tested with noFlinchTimer and demonMode (Player_IgnoresFlinch) */
     u8 prevFreeState;           /* 0x89C: freeState of the last frame (Player_Update): the guard SKILL_AUTO_GUARD and the heavy bowgun shield guard only then */
     s8 skillPoints[5];          /* 0x89D */
     u8 attackPercent;           /* 0x8A2: the attack power in percent (great sword charge levels: 100..130) */
@@ -1415,7 +1437,7 @@ typedef struct Player {
     u8 lookPartId[6];           /* 0x8A8: per armour part: the model part id Look_MapPartId picked (Player_LoadLookModels), PL_LOOK_PART_NONE: none (Player_InitPartTable) */
     u16 weaponModelKind;        /* 0x8AE: the kind of the loaded model, PL_WEAPON_MODEL_NONE: none (Player_LoadWeaponModel) */
     u8 headAltModel;            /* 0x8B0: 1: the head armour has no model for the gender and part slot 6 is used (Armor_LacksSexModel; Player_LoadLookModels, Player_QueueLookFiles) */
-    u8 deliveryMenu;            /* 0x8B1: the delivery menu: 0xFF, 1, 0 (Player_RunDeliveryMenu, Player_StateBedMenu); blocks the pad input */
+    u8 deliveryMenu;            /* 0x8B1: the delivery menu: 255, 1, 0 (Player_RunDeliveryMenu, Player_StateBedMenu); blocks the pad input */
     u8 yesNoCursor;             /* 0x8B2: the delivery menu: the yes or no cursor (gYesNoTexts[it], DeliveryMenu.yesNo; Player_RunDeliveryMenu, Quest_DeliveryMenu) */
     u8 unk8B3;                  /* 0x8B3 */
     f32 motionSpeed;            /* 0x8B4: motion speed factor (1.0; 0.5..1.54 per state: Player_SetState and the weapon states); motionStep0/1 are 2.0 times it */
@@ -1430,7 +1452,7 @@ typedef struct Player {
     u8 hornSong;                /* 0x8C8: hunting horn: the song the last notes matched (HuntingHorn_CheckSongs) */
     u8 teamSkill;               /* 0x8C9: the team combo skill: Player_CheckTeamCombo sets it when the four hunters' armour styles make one of gArmorCombos; Player_HasSkill and Player_GetSkill count the local player's for every hunter, in any quest (gScene.inLobby 0), not in the lobby */
     u8 teamSkillGroup;          /* 0x8CA: its skill group */
-    u8 style;                   /* 0x8CB: the style (save symbolColor; Player_SetColorWord); 0xFF none; the lobby draws its icon (0xB cycles colours) */
+    u8 style;                   /* 0x8CB: the style (save symbolColor; Player_SetColorWord); 255 none; the lobby draws its icon (11 cycles colours) */
     s16 status6Hit;             /* 0x8CC: the hit status 6 amount: > 0 starts status6Timer unless SKILL_STATUS6_IMMUNE (Player_ReactToHit) */
     s16 status6Timer;           /* 0x8CE: status 6 frames left: 1800 at a hit (900 with SKILL_STATUS6_HALF, 3600 with SKILL_STATUS6_DOUBLE; Player_ReactToHit, Item_Use, ObjAttach_DamagePlayer), counted down (Player_UpdateStatus), cleared with the other statuses (Player_Reset, Player_StateBedLieDown); an icon (Player_UpdateStatusIcons) */
     s16 status7Hit;             /* 0x8D0: the hit status 7 amount: > 0 starts status7Timer unless SKILL_STATUS7_IMMUNE (Player_ReactToHit) */
@@ -1438,7 +1460,7 @@ typedef struct Player {
     u8 status8Hit;              /* 0x8D4: the hit status 8 amount: > 0 lowers staminaMax unless SKILL_STATUS7_IMMUNE (Player_ReactToHit) */
     u8 deliveryOpen;            /* 0x8D5: Hud_DeliveryOpen, gHudState->unk23; Quest_DeliveryMenu clears it when closing (pouch.c) */
     u8 songEffect[12];          /* 0x8D6: the level of each effect kind, PL_SONG_* (Player_HasSongEffect, Player_ClearSongEffects; only the hunting horn's songs set them) */
-    s16 songEffectTimer[12];    /* 0x8E2: per kind: frames left (0x708, 0xA8C, 0xE10; counted down by Player_UpdateStatus) */
+    s16 songEffectTimer[12];    /* 0x8E2: per kind: frames left (1800, 2700, 3600; counted down by Player_UpdateStatus) */
     s16 tradeCooldown;          /* 0x8FA: 9000 frames set at a trade when 0 (EmTrader_RunTalk), counted down by Player_UpdateStatus; the trader clears it */
     s16 hpMaxBase;              /* 0x8FC: hpMax without the song effect 3: set from hpMax, raised by Player_AddMaxHp unless temporary (to 150); restored to hpMax when effect 3 ends (Player_UpdateStatus) */
     u8 scoutSpotted;            /* 0x8FE: set once by Player_StateGestureScout, with actDetectTimer 300, when sub_main's Area_GetFlyerPos point is within about 33 degrees of the facing; Player_Reset clears it (seen; what it spots is not settled) */
@@ -1449,5 +1471,464 @@ typedef char Player_size_check[(sizeof(Player) == 0x970) ? 1 : -1];
 
 /* PLAYER_SLOTS slots: Player_ClearAll clears 10, and gPlayerSys follows them. */
 extern Player gPlayers[PLAYER_SLOTS];
+
+s32 Player_InSceneEvent(void);
+void Player_UpdateEnvironment(Player *pl);
+s32 Player_PouchHasSelectable(Player *pl);
+u8 Player_NoticePouchFull(s32 item);
+s32 Player_GetStickYaw(Player *pl, s32 i);
+void Player_FaceStick(Player *pl);
+u8 Player_StickMoveLevel(Player *pl, s32 unused);
+s16 Player_CheckRideSlip(Player *pl);
+s32 Player_WallClimbInput(Player *pl, s16 noTurn);
+void Player_StartSpotAction(Player *pl, s32 mode);
+void Player_HoldSpecialInput(Player *pl, u8 mode);
+void Player_TryGather(Player *pl, s32 mode);
+s32 Player_CrouchInput(Player *pl);
+void Player_GuardInput(Player *pl);
+s8 Player_TurnAlongWall(Player *pl, s16 side);
+s32 Player_TurnAlongWallSide(Player *pl, s16 side);
+void Player_UseItem(Player *pl, u8 mode);
+s32 Player_TakeOfferedItem(Player *pl);
+void Player_IdleActions(Player *pl, s32 arg);
+void Player_BowgunAim(Player *pl);
+void Player_UpdateLean(Player *pl, s32 mot);
+void Player_StateIdle(Player *pl, s32 unused);
+void Player_StateMove(Player *pl, s32 variant);
+void Player_StateDrawSheathe(Player *pl, u32 variant);
+void Player_StateLeapOrFall(Player *pl, s32 variant);
+void Player_StateClimbAirborne(Player *pl, s32 variant);
+void Player_StateCrouch(Player *pl, s32 variant);
+void Player_StateBedMenu(Player *pl, s32 unused);
+void Player_StateToIdle(Player *pl, s32 unused);
+void Player_StateThrowItem(Player *pl, s32 variant);
+void Player_StateLedgeHang(Player *pl, s32 variant);
+void Player_StateRideStagger(Player *pl, s32 variant);
+void Player_StatePlaceItem(Player *pl, s32 variant);
+void Player_StateKneelToPlace(Player *pl, s32 unused);
+void Player_StateRoll(Player *pl, s32 variant);
+void Player_StateStepUp(Player *pl, s32 unused);
+void Player_StateDash(Player *pl, s32 variant);
+void Player_StateFleeDash(Player *pl, s32 variant);
+void Player_StateOutOfBreath(Player *pl, s32 variant);
+void Player_StateTiredStop(Player *pl, s32 unused);
+void Player_StateHardLanding(Player *pl, s32 unused);
+void Player_StateWallHold(Player *pl, s32 unused);
+void Player_StateWallClimbUp(Player *player, s32 variant);
+void Player_StateWallClimbDown(Player *pl, s32 variant);
+void Player_StateWallDismount(Player *pl, s32 unused);
+void Player_StateWallGrab(Player *pl, s32 unused);
+void Player_StateRunStop(Player *pl, s32 unused);
+void Player_StateSetTrap(Player *pl, s32 unused);
+void Player_StateSetTrapDone(Player *pl, s32 unused);
+void Player_StateSideEvade(Player *pl, s32 variant);
+void Player_StateBedSleep(Player *pl, s32 variant);
+void Player_StateMountedGunAim(Player *pl, s32 variant);
+void Player_StateMountedGunFire(Player *pl, s32 variant);
+void Player_StateCrouchStop(Player *pl, s32 variant);
+void Player_StepBack(Player *pl, s32 fwd);
+void Player_UpdateWallSidle(Player *pl);
+void Player_StateDive(Player *pl, s32 unused);
+s32 Player_GatherAtSpot(Player *pl, u16 kind, u16 stat);
+void Player_StateGather(Player *pl, u32 variant);
+void Player_StateGatherCrouched(Player *pl, s32 variant);
+void Player_UpdateFishingInput(Player *pl);
+void Player_StateFishReel(Player *pl, s32 variant);
+void Player_StateFishReelEmpty(Player *pl, s32 variant);
+void Player_StateSpitRoast(Player *pl, s32 unused);
+void Player_StateTrade(Player *pl, s32 variant);
+void Player_StateInstrumentPlay(Player *pl, s32 variant);
+void Player_StateInstrumentEnd(Player *pl, s32 variant);
+void Player_StateSharpen(Player *pl, s32 unused);
+void Player_StateLanceHop(Player *pl, s32 variant);
+void Player_StateHornItemPlay(Player *pl, s32 variant);
+void Player_RunActionState(Player *pl);
+void Player_RunWeaponState(Player *pl);
+void Player_RunReactState(Player *pl);
+void Player_StateFaint(Player *pl, s32 variant);
+void Player_RunFaintState(Player *pl);
+void Player_StateCart(Player *pl, s32 variant);
+void Player_StateLeave(Player *pl, s32 unused);
+void Player_RunEventState(Player *pl);
+void Player_UpdateCarryKind(Player *pl);
+void Player_UpdateCarryInput(Player *pl, s32 caller);
+void Player_StateCarryWalk(Player *pl, s32 unused);
+void Player_StateCarryRun(Player *pl, s32 unused);
+void Player_StateCarryPutDown(Player *pl, s32 variant);
+void Player_StateCarryAirborne(Player *pl, s32 variant);
+void Player_RunCarryState(Player *pl);
+void Player_StateGestureLieDown(Player *pl, s32 unused);
+void Player_StateGestureGetUp(Player *pl, s32 unused);
+void Player_StateGestureScout(Player *pl, s32 variant);
+void Player_StateGesture03(Player *pl, s32 variant);
+void Player_StateGesture03End(Player *pl, s32 unused);
+void Player_StateGesture05(Player *pl, s32 variant);
+void Player_StateGesture06(Player *pl, s32 unused);
+void Player_StateGesture07(Player *pl, s32 unused);
+void Player_StateGesture08(Player *pl, s32 unused);
+void Player_StateGestureOneShot(Player *pl, s32 variant);
+void Player_StateGesture0A(Player *pl, s32 unused);
+void Player_StateGesture0B(Player *pl, s32 unused);
+void Player_StateGesture0C(Player *pl, s32 unused);
+void Player_StateGesture10(Player *pl, s32 unused);
+void Game_UpdatePlayers(void);
+void Player_Update(Player *pl);
+void Player_UpdateAutoTurn(Player *pl);
+void Player_FindLookTarget(Player *pl);
+void Player_CheckPointMessages(u8 *script);
+s16 Player_CountSpecialItems(Player *pl);
+void Player_CheckTeamCombo(Player *self);
+void Player_CheckTeamComboLost(Player *pl);
+void Player_SetEvadeFrames(Player *pl);
+s32 Player_Status6Active(Player *pl);
+s32 Player_Status7Active(Player *pl);
+
+void Player_InitForQuest(Player *pl);
+void Player_ClearAll(void);
+void PlayerSys_Update(void);
+void Player_InitAll(s16 mode);
+void Player_Init(Player *pl, u8 idx, PlayerVt *table);
+void Player_AddSpawnOffset(Player *pl, f32 *pos, u16 angle);
+s32 Player_GetHpSkillBonus(Player *pl);
+void Player_CalcSharpnessMax(Player *pl);
+void Player_Reset(Player *pl);
+void Player_UpdateStatus(Player *pl);
+void Player_TickPaint(Player *pl);
+void Player_TickTimers(Player *pl);
+void Player_UpdateHitStop(void *obj);
+void Player_UpdateMotionStep(Player *pl);
+void Pouch_SelectFirst(Player *pl);
+u8 Pouch_AddEx(Player *pl, u16 item, s16 n, u8 silent);
+s32 Item_IsOnePerPouch(u16 item);
+s16 Pouch_Count(Player *pl, u16 item);
+s16 Pouch_Room(Player *pl, u16 item);
+s16 Pouch_Space(Player *pl, u16 item);
+s16 Pouch_FindSlot(Player *pl, u16 item);
+s16 Pouch_CursorCount(Player *pl);
+s16 Pouch_CountSelectable(Player *pl);
+s16 Pouch_HasFreeSlot(Player *pl);
+s16 Pouch_ClearSlot(Player *pl, s16 slot);
+s32 Pouch_SetAtLeast(Player *pl, u16 mode, u16 item, s16 n);
+void Player_TwistBoneToLook(Player *pl, s16 bone);
+void Player_StartMoveTo(Player *pl, s16 frames);
+void Player_UpdateMoveTo(Player *pl);
+s16 Player_GetAreaPitModel(Player *pl);
+s32 Player_IgnoresFlinch(Player *pl);
+void Stats_CountItemUse(Player *pl);
+void Player_AddHp(Player *pl, s16 n);
+s32 Player_Damage(Player *pl, s16 damage, s16 lose);
+void Player_Heal(Player *pl, s16 n, s16 quiet);
+void Player_AddMaxHp(Player *pl, s16 n, u8 transient);
+u8 Player_GetSharpnessLevel(Player *pl);
+void Player_AddSharpness(Player *pl, s16 n);
+u16 Bowgun_NextAmmoSlot(Player *pl, u16 slot, u8 dir);
+void Bow_SetCoatingSlot(Player *pl);
+void Bow_ClearCoatingSlot(Player *pl);
+void Bowgun_LoadAmmo(Player *pl, s32 unused);
+u32 Bowgun_GetAmmoMask(Player *pl);
+s32 Player_GetSkillAmmoMask(Player *pl);
+u8 Bowgun_ClipSize(GunData *gun, u8 kind);
+void Player_TickWeaponTimer(Player *pl);
+void Player_AddStamina(Player *pl, s16 n);
+void Player_UseStamina(Player *pl, s32 n);
+void Player_AddMaxStamina(Player *pl, s16 n);
+void Player_UpdateHunger(Player *pl);
+void Player_RequestGesture(u8 gesture);
+void Player_StartGesture(Player *pl);
+
+void Player_UpdateNearMonster(Player *pl);
+void Player_SetPosture(Player *pl, u16 posture, s16 setFlag1, s16 setFlag2);
+s32 Player_IsLocal(void *obj);
+s32 Player_OnMountedGun(Player *pl);
+void Player_UpdateStatusIcons(Player *pl);
+void Player_CalcAttack(Player *pl);
+void Player_CalcAttackRemote(Player *pl);
+void Player_CalcDefense(Player *pl);
+void Player_CalcDefenseRemote(Player *pl);
+void Player_CalcResists(Player *pl);
+void Player_CalcResistsRemote(Player *pl);
+s8 Equip_GetSkillPoints(EquipItem *piece, u8 group);
+s8 Equip_TorsoUpBonus(EquipItem *piece);
+s8 Player_GetTorsoSkillPoints(Player *pl, u8 group);
+s8 Player_GetSkillPoints(Player *pl, u8 group);
+void Player_CalcSkills(Player *pl);
+s32 Player_HasSkill(Player *pl, u8 skill);
+s32 Player_CanGuard(Player *pl);
+void Player_StartMotionLayer(Player *pl, u16 motion, s32 blend, s16 frame, s32 layer);
+void Player_RunInputHook(Player *pl);
+s32 Player_StartJump(void *obj, s16 frames);
+void Player_Move(void *obj);
+void Player_MoveAccel(Player *pl);
+void Player_Integrate(void *obj);
+s32 Player_MoveFall(Player *pl);
+void Player_StopMove(void *obj);
+void Player_ClearVelocity(void *obj);
+void Player_ClearAccel(Player *pl);
+void Player_ClearAccel2(void *obj);
+void Player_UpdateMotionTime(Player *pl, s16 step);
+void Motion_InitTime(void *obj, s16 step);
+void Player_StartNextHit(Player *unused0, u8 unused1);
+s32 Player_FloorAheadAbove(Player *pl, f32 *out, f32 fwd, f32 rise, f32 range);
+s32 Player_FloorAheadBelow(Player *pl, u16 above, f32 fwd, f32 rise);
+s32 Obj_SameArea(void *obj, Player *other);
+u16 Player_GetGatherPoint(Player *pl, u16 *action, f32 *pos);
+
+void HuntingHorn_StateSwingLeft(Player *pl, s32 variant);
+void HuntingHorn_StateSwingRight(Player *pl, s32 unused);
+void HuntingHorn_StateSwingDown(Player *pl, s32 unused);
+void HuntingHorn_StateSwingDownNext(Player *pl, s32 variant);
+void HuntingHorn_StateBounce(Player *pl, s32 variant);
+void HuntingHorn_StatePlayAttack(Player *pl, s32 variant);
+void HuntingHorn_StateSlam(Player *pl, s32 unused);
+void HuntingHorn_RunState(Player *pl);
+s32 HuntingHorn_AttackInput(Player *pl);
+void HuntingHorn_CheckInput(Player *pl, u32 caller);
+void HuntingHorn_PlayInput(Player *pl, s32 stance);
+void HuntingHorn_DrawAttack(Player *pl);
+void HuntingHorn_StartPlaying(Player *pl, s32 sheathed);
+u8 HuntingHorn_PlayingNote(Player *pl);
+void HuntingHorn_PlaySong(Player *p, u8 song, u8 quiet);
+void HuntingHorn_SongFxAllies(Player *p);
+void HuntingHorn_SongFxSelf(Player *pl);
+void HuntingHorn_CheckSongs(Player *pl);
+void HuntingHorn_AddNote(Player *pl, u8 note);
+void HuntingHorn_ClearNotes(Player *pl);
+s16 HuntingHorn_PlayKind(Player *pl);
+u8 HuntingHorn_PlayingNoteColour(Player *pl);
+void Gunlance_StateThrust(Player *pl, s32 variant);
+void Gunlance_StateShell(Player *pl, s32 variant);
+void Gunlance_StateGuardThrust(Player *pl, s32 variant);
+void Gunlance_StateWyvernFire(Player *pl, s32 variant);
+void Gunlance_StateUpperThrust(Player *pl, s32 unused);
+void Gunlance_StateLunge(Player *pl, s32 variant);
+void Gunlance_StateBounce(Player *pl, s32 variant);
+void Gunlance_RunState(Player *pl);
+s32 Gunlance_AttackInput(Player *pl);
+s32 Gunlance_CheckInput(Player *pl, s32 caller);
+s32 Gunlance_GuardInput(Player *pl, s32 unused);
+void Gunlance_DrawAttack(Player *pl);
+s32 Bow_ArcVisible(void *obj, u16 ignoreButton);
+u8 Bow_ChargeLevel(Player *pl);
+void Bow_UpdateAim(Player *pl, s32 layers);
+void Bow_StateFire(Player *pl, s32 variant);
+void Bow_StateCharge(Player *pl, u32 variant);
+void Bow_StateStab(Player *pl, s32 variant);
+void Bow_StateAim(Player *pl, s32 variant);
+void Bow_StateChargeWalk(Player *pl, s32 unused);
+void Bow_StateEvade(Player *pl, s32 variant);
+void Bow_StateLoadCoating(Player *pl, s32 unused);
+void Bow_RunState(Player *pl);
+s32 Bow_AttackInput(Player *pl, s32 needPress);
+s32 Bow_CheckInput(Player *pl, s32 caller);
+void Bow_DrawAttack(Player *pl);
+void Bow_DrawToAim(Player *pl);
+void Bowgun_FireShot(Player *pl, s32 ammo, s32 bone, f32 scale);
+void BowgunShot_Create(Player *pl, u8 kind, s16 bone, f32 scale);
+
+void GunFx_Update(StageObj *obj);
+void GunFx_Setup(StageObj *obj);
+s32 GunFx_HermitaurSpraying(Em *em);
+void GunFx_Run(StageObj *obj);
+void GunFx_End(StageObj *obj);
+void GunFx_Free(StageObj *obj);
+void GunFx_Draw(DrawSlot *node);
+void GunFx_CreateShell(void *owner, u8 shellLevel);
+void GunFx_CreateReload(void *owner, u8 casingType);
+void GunFx_CreateType4(void *owner);
+void GunFx_CreateType5(void *owner);
+void GunFx_CreateType6(void *owner);
+void VersusBait_Setup(StageObj *obj);
+void VersusBait_Run(StageObj *obj);
+void VersusBait_End(StageObj *obj);
+void VersusBait_Free(StageObj *obj);
+void VersusBait_Draw(DrawSlot *node);
+void VersusBait_Create(Player *thrower, Em *em, u8 baitType, s32 unused, f32 *throwPoint);
+void VersusBait_Move(StageObj *obj);
+void TeostraBlastCharge_Setup(StageObj *obj);
+void TeostraBlastCharge_Run(StageObj *obj);
+s32 TeostraBlastCharge_AllGustsDone(StageObj *obj);
+void TeostraBlastCharge_End(StageObj *obj);
+void TeostraBlastCharge_FreePuffs(StageObj *obj);
+void TeostraBlastCharge_Free(StageObj *obj);
+void TeostraBlastCharge_Draw(DrawSlot *node);
+void TeostraBlastCharge_Create(Em *em);
+void PlayerFx_Setup(StageObj *obj);
+void PlayerFx_Run(StageObj *obj);
+void PlayerFx_End(StageObj *obj);
+void PlayerFx_Free(StageObj *obj);
+void PlayerFx_Draw(DrawSlot *node);
+void PlayerFx_PlayStartSound(StageObj *obj);
+s32 PlayerFx_OwnerGone(void *owner);
+void PlayerFx_CreateOnPlayerDefault(Player *player, u8 fxType, f32 scale);
+void PlayerFx_CreateOnPlayer(Player *player, u8 fxType, s32 variant, f32 scale);
+void PlayerFx_CreateAtDefault(f32 *pos, u8 fxType, f32 scale);
+void PlayerFx_CreateAt(f32 *src, u8 fxType, u8 variant, f32 scale);
+void PlayerFx_TickStatus6(Player *player);
+void PlayerFx_TickStatus7(Player *player);
+void BowArc_Setup(StageObj *obj);
+void BowArc_Run(StageObj *obj);
+void BowArc_End(StageObj *obj);
+void BowArc_Free(StageObj *obj);
+void BowArc_Draw(DrawSlot *node);
+void BowArc_Create(void *owner);
+
+void Player_ClearPartOverrides(Player *pl);
+void Player_ForceState(void *obj, s32 state, s32 sub);
+void Player_RequestState(Player *pl, u16 state, u8 sub, u16 flags);
+void Player_RequestStateSynced(Player *pl, u16 state, u8 sub, u16 flags);
+u32 Player_TestFlag(void *obj, u32 flag);
+void Player_SetFlag(void *obj, u32 flag);
+void Player_ClearFlag(void *obj, u32 flag);
+void Player_SetPostureOnly(Player *pl, u8 posture);
+s32 Player_TestFlags(void *obj, s32 mask);
+s32 Player_TestSetFlags(void *obj, s32 mask);
+void Player_SetAirIdle(Player *pl, s16 blend, s32 variant);
+void Player_StartIdleMotion(Player *pl, s32 blend, s32 startFrame);
+void Player_SetIdle(Player *pl, s32 blend, s32 startFrame, s32 quiet);
+void Player_ClearActionState(Player *pl);
+void Player_ReturnToIdle(Player *pl, s32 posture, s32 blend, s32 startFrame);
+void Player_ReturnToIdleKeepParts(Player *pl, s32 posture, s32 blend, s32 startFrame);
+void Player_UpdateInput(void);
+void Player_CopyPadInput(s32 playerNo);
+void Player_PlaySeAtSelf(u8 *obj, s32 seId);
+void GreatSword_StateSweepLeft(Player *pl, s32 variant);
+void GreatSword_StateSweepRight(Player *pl, s32 variant);
+void GreatSword_StateOverhead(Player *pl, u32 variant);
+void GreatSword_StateBounce(Player *pl, s32 unused);
+u8 GreatSword_ChargeLevel(Player *pl);
+void GreatSword_StateCharge(Player *pl, u32 variant);
+void GreatSword_SetChargeAttack(Player *pl);
+void GreatSword_StateChargeSlash(Player *pl, s32 variant);
+void GreatSword_RunState(Player *pl);
+s32 GreatSword_AttackInput(Player *pl);
+void GreatSword_CheckInput(Player *pl, s32 caller);
+void GreatSword_DrawAttack(Player *pl);
+void Bowgun_StateFire(Player *pl, s32 row, s32 variant);
+void Bowgun_StateReload(Player *pl, s32 unused);
+void Bowgun_StateDrawReload(Player *pl, s32 variant);
+void Bowgun_StateDryFire(Player *pl, s32 unused);
+void Bowgun_RunState(Player *pl);
+s32 Bowgun_AttackInput(Player *pl);
+void Bowgun_DrawAttack(Player *pl, s32 moving);
+void Hammer_StateDownAttack(Player *pl, s32 unused);
+void Hammer_StateCombo1(Player *pl, s32 variant);
+void Hammer_StateCombo2(Player *pl, s32 variant);
+void Hammer_StateCharge(Player *pl, s32 variant);
+void Hammer_StateChargeSpin(Player *pl, s32 unused);
+void Hammer_StateChargeRelease(Player *pl, s32 variant);
+void Hammer_StateChargeRelease2(Player *pl, s32 unused);
+void Hammer_StateFinisher(Player *pl, s32 variant);
+void Hammer_StateBounce(Player *pl, s32 unused);
+void Hammer_RunState(Player *pl);
+s32 Hammer_AttackInput(Player *pl);
+void Hammer_CheckInput(Player *pl, s32 caller);
+void Hammer_CheckChargeInput(Player *pl);
+void Hammer_DrawAttack(Player *pl);
+void Hammer_ChargeFromRoll(Player *pl);
+void Hammer_StartCharge(Player *pl);
+void Lance_StateThrust(Player *pl, s32 variant);
+void Lance_StateUpperThrust(Player *pl, s32 variant);
+void Lance_StateCharge(Player *pl, s32 variant);
+void Lance_StateChargeFinish(Player *pl, s32 unused);
+void Lance_StateBounce(Player *pl, s32 unused);
+void Lance_RunState(Player *pl);
+s32 Lance_AttackInput(Player *pl);
+void Lance_CheckInput(Player *pl, s32 variant);
+void Lance_GuardAttack(Player *pl, s32 thrust);
+void Lance_DrawAttack(Player *pl);
+s32 SwordShield_CheckHit(Player *pl);
+void SwordShield_StateCombo(Player *pl, s32 variant);
+void SwordShield_StateRisingSlash(Player *pl, s32 variant);
+void SwordShield_StateBounce(Player *pl, s32 unused);
+void SwordShield_RunState(Player *pl);
+s32 SwordShield_AttackInput(Player *pl);
+void SwordShield_CheckInput(Player *pl, s32 unused);
+void SwordShield_DrawAttack(Player *pl);
+void SwordShield_GuardSlash(Player *pl);
+void SwordShield_EvadeAttack(Player *pl);
+s32 DualSwords_CheckHit(Player *pl);
+void DualSwords_StateCombo(Player *pl, s32 variant);
+void DualSwords_StateSideSlash(Player *pl, s32 variant);
+void DualSwords_StateRisingSlash(Player *pl, s32 variant);
+void DualSwords_StateDemonToggle(Player *pl, s32 variant);
+void DualSwords_StateDemonSideSlash(Player *pl, s32 variant);
+void DualSwords_StateBounce(Player *pl, s32 unused);
+void DualSwords_RunState(Player *pl);
+void DualSwords_ComboInput(Player *pl, s32 sector, s32 linked);
+s32 DualSwords_AttackInput(Player *pl);
+void DualSwords_CheckInput(Player *pl, s32 variant);
+void DualSwords_DrawAttack(Player *pl);
+void DualSwords_EvadeAttack(Player *pl);
+void DualSwords_DemonToggle(Player *pl, s32 end);
+void LongSword_StateSlash(Player *pl, s32 variant, s32 stepForward);
+void LongSword_StateSlash2(Player *pl, s32 variant);
+void LongSword_StateFadeSlash(Player *pl, u32 variant);
+void LongSword_StateBounce(Player *pl, s32 unused);
+void LongSword_StateThrust(Player *pl, s32 unused);
+void LongSword_StateSpirit1(Player *pl, u32 variant);
+void LongSword_StateSpiritThrust(Player *pl, s32 unused);
+void LongSword_StateSpirit2(Player *pl, s32 variant);
+void LongSword_StateSpiritRising(Player *pl, s32 unused);
+void LongSword_StateRisingSlash(Player *pl, s32 variant);
+void LongSword_StateSpirit3(Player *pl, s32 variant);
+void LongSword_StateExtraSlash(Player *pl, s32 unused);
+void LongSword_RunState(Player *pl);
+s32 LongSword_AttackInput(Player *pl);
+s32 LongSword_ReadAttackKey(Player *pl);
+void LongSword_EvadeInput(Player *pl);
+u8 LongSword_ComboInput(Player *pl, u32 row, u8 key, u8 peek);
+void LongSword_DrawAttack(Player *pl);
+void LongSword_SpiritDraw(Player *pl);
+void Player_TurnAndSetState(Player *pl, u8 group, u8 state, s32 mode, u8 turn);
+s32 HuntingHorn_CheckHit(Player *pl);
+void Player_StickTurnMove(Player *pl, s16 maxTurn, f32 dist);
+void HuntingHorn_StatePlay(Player *pl, s32 stance, s32 variant);
+
+s32 Player_Status5Full(Player *pl);
+s32 Player_HasMashBuildup(Player *pl);
+s32 Player_InMashStatus(Player *pl);
+void Player_AddPoison(Player *pl, s16 amount);
+s32 Player_InBlownAway(Player *pl);
+void Player_Die(Player *pl);
+s32 Player_InGuardArc(u16 angle, u16 hitAngle);
+void Player_ReactToHit(Player *pl);
+
+void Player_DrawHeldProp(void *obj);
+void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha);
+u8 Player_PartFlags(Player *pl, u8 slot);
+u32 Color_Cycle8(void);
+void Player_SetLight(Player *pl, u8 slot, s32 setIndex, s32 matIndex, ModelMat *mat, f32 matAlpha);
+void Player_DrawLocal(Player *pl, s32 unused);
+void Player_DrawHeldItem(void *obj);
+void Player_Draw(Player *pl, s32 unused);
+void CharMake_DrawHunter(Player *pl, s32 unused);
+void EquipPreview_Reset(void);
+void EquipPreview_Draw(void);
+void Player_UpdateWorldMatrix(Player *pl);
+
+void PlayerSe_AtFrame(Player *pl, s32 frame, s32 seId);
+void Motion_SeAtFrame(Player *pl, s32 frame, s32 seId);
+void Motion_SeAtFrameLocal(Player *pl, s32 frame, s32 seId);
+void Player_SeAtFrame(Player *pl, s32 frame, s32 seId);
+void PlayerSe_WeaponAtFrame(Player *pl, s32 frame, s32 seId);
+void Motion_VoiceAtFrame(Player *pl, f32 frame, s32 voice);
+void PlayerSe_VoiceAtFrame(Player *pl, f32 frame, s32 voice);
+void PlayerSe_OnlineAtFrame(Player *pl, s32 frame, s32 seId);
+void PlayerSe_EquipAtFrame(Player *pl, f32 frame, s32 kind);
+void Player_MotionSounds(Player *pl, PlayerWork *work);
+void Player_NoHandler(Player *pl);
+void Player_MotionFxStep(Player *pl);
+void Player_MotionEffects(Player *pl, PlayerWork *work);
+
+void Player_LoadLookModels(Player *pl);
+s32 Player_QueueLookFiles(Player *pl);
+void Player_InitRecords(Player *pl);
+void Obj_ShowMeshInRange(u8 *obj, u8 kind, u8 sel);
+void FxBlock_Clear(EquipFxSwing *swing);
+void Player_ClearFxBlock(Player *pl);
+void Players_RunEquipEffects(void);
+s32 EquipFx_ChainUpdate(EquipFxSwing *swingsIn, EmBone *baseBoneIn, EmBone *pushBoneIn, EmBone *bonesIn, f32 **list, s16 countIn);
+void Player_RunEquipEffects(Player *pl);
+void Effect_RunFixedList(EquipFxSwing *swing, EmBone *baseBone, EmBone *pushBone, EmBone *bones);
 
 #endif /* PLAYER_H */

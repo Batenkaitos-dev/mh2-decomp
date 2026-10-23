@@ -25,24 +25,36 @@
 #include "em.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "kbd.h"
+#include "lobby_net.h"
+#include "window.h"
+#include "records_draw.h"
+#include "equip_shop.h"
+#include "font.h"
+#include "game_util.h"
+#include "hunter_card.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_steps.h"
+#include "lobby_util.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "music_actor.h"
+#include "my_house.h"
+#include "records_lists.h"
+#include "town_players.h"
+#include "libgcc.h"
 char *strcpy(char *, const char *);
 void *memset(void *, s32, u32);
 void *memcpy(void *, const void *, u32);
-s32 ItemBits_Test(u32 *bits, u16 n);
 
 extern s16 gMenuOffsetY;
 extern s16 gMenuOffsetX;
-void Equip_DrawPreviewHelp(u32 color, s8 k);
-s32 Equip_IsNoModelArmor(EquipItem *e);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 void Text_PrintfColored(char *s, ...);
-void EquipWindow_DrawLocal(EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other);
 void Text_Printf(char *s, ...);
 void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *text, s32 color);
 /* unit's own declaration: as the callers use it; with the definition's void (s16 x, s16 y, s16 page, s16 n, u8 alt), the calls in Records_DrawHunts compile differently */
 void Menu_DrawPageNum(s16 x, s16 y, s32 page, s32 pages, s32 a);
 void Text_PrintfStyled(s32, char *, ...);
@@ -50,8 +62,6 @@ extern char *gHornScorePages[];
 extern char *gOldHornScorePages[];
 extern u8 gMenuWork[];
 void Text_SetSize(s32 size);
-void Records_DrawMenu(RecordMenu *menu, s16 x, s16 y);
-u16 MonsterGroup_Sum(u16 *counts, u8 group, s32 unused);
 
 /* Counts per item category the items that exist and those the records
  * show obtained (tally[category][1] and [0]), and resets the category
@@ -70,20 +80,13 @@ void Records_TallyItems(RecordMenu *menu)
          * game's code keeps that one base for both counts, which the array
          * form doesn't give */
         tallyBase = (u8 *)menu + item->category * 8;
-        (*(s32 *)(tallyBase + 0x6E0))++; /* tally[category][1] */
+        (*(s32 *)(tallyBase + 1760))++; /* tally[category][1] */
         if (ItemBits_Test(menu->itemBits, i) == 1) {
-            (*(s32 *)(tallyBase + 0x6DC))++; /* tally[category][0] */
+            (*(s32 *)(tallyBase + 1756))++; /* tally[category][0] */
         }
     }
 }
 
-s32 Game_IsOnline(void);
-void LobbySe_Play(s32 se);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-void LobbyText_Open(s32);
-void TownMsg_SendRecordsAsk(u8 c);
-void Records_TallyWeapons(s32 *out);
-void Records_TallyArmor(s32 *arg);
 extern LobbyMenu *gLobbyMenu;
 
 /*
@@ -127,11 +130,11 @@ s32 Records_MenuInput(RecordMenu *menu, u16 pad)
                 case RECORD_KIND_GUIDES:
                     break;
                 }
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 return MENU_DONE;
             }
             menu->step++;
-            LobbyText_Open(LOBBY_TEXT_RECORDS_WAIT);
+            LobbyText_Open(LOBBY_TEXT_PLEASE_WAIT);
             gLobbyMenu->redraw = 1;
             switch (menu->kind[menu->menuSel]) {
             case RECORD_KIND_ITEMS:
@@ -148,7 +151,7 @@ s32 Records_MenuInput(RecordMenu *menu, u16 pad)
             case RECORD_KIND_GUIDES:
                 menu->step = 0;
                 gLobbyMenu->redraw = 0;
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 return MENU_DONE;
             case RECORD_KIND_WEAPONS:
             case RECORD_KIND_ARMOR:
@@ -183,7 +186,7 @@ s32 Records_MenuInput(RecordMenu *menu, u16 pad)
         break;
     case 3:
         menu->step = 0;
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         return MENU_DONE;
     }
     return MENU_RUNNING;
@@ -193,18 +196,10 @@ INCLUDE_RODATA("asm/lobby/nonmatchings/records_draw", gRecordsFmtString);
 INCLUDE_RODATA("asm/lobby/nonmatchings/records_draw", gRecordsFmtRowNumber);
 INCLUDE_RODATA("asm/lobby/nonmatchings/records_draw", gRecordsFmtEquipName);
 
-struct Em *Npc_Find(u8 kind);
 extern u8 gHouseAccess;
 extern char gHousePassword[];
 extern NetUser gNetUsers[];
-void HunterCard_Build(void *out);
-void Actor_SetState(void *, s32, s32);
-void Kbd_SetPos(s32 n, f32 f);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
 s8 Kbd_Run(char *dst, s16 held, s16 pressed);
-void Kbd_Cancel(void);
-s32 LobbyStep_HunterCard(void);
-void LobbyDialog_Grow(void);
 
 /*
  * The house access page (RECORD_KIND_HOUSE_ACCESS): its rows are closed,
@@ -248,7 +243,7 @@ s32 Records_HouseAccessInput(RecordMenu *menu, u16 pad)
             case HOUSE_ACCESS_PASSWORD:
                 menu->step++;
                 gFieldControl = 0;
-                Kbd_SetPos(0x3A, 80.0f);
+                Kbd_SetPos(58, 80.0f);
                 Chat_OpenKbd(0, 6, 8, menu->password);
                 break;
             default:
@@ -260,7 +255,7 @@ s32 Records_HouseAccessInput(RecordMenu *menu, u16 pad)
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
             menu->step = HOUSE_ACCESS_STEP_CHOOSE;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
             menu->sel = Menu_WrapUpDown(menu->sel, HOUSE_ACCESS_ROWS);
@@ -298,7 +293,7 @@ s32 Records_HouseAccessInput(RecordMenu *menu, u16 pad)
         switch (LobbyStep_HunterCard()) {
         case 0:
             menu->step = HOUSE_ACCESS_STEP_CHOOSE;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_DONE;
         }
         break;
@@ -306,7 +301,6 @@ s32 Records_HouseAccessInput(RecordMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-void Menu_DrawDecoFrame(s16 x, s16 y0, s16 w0, s16 h, s8 kind, s8 b);
 void Text_DrawShadowRgb(s16 x, s16 y, u32 c1, u32 c2, char *s);
 /* Draws the kinds menu framed at (x, y): one label per entry of kind,
  * spaced by their count, the one under the cursor with arrows. */
@@ -317,41 +311,41 @@ void Records_DrawMenu(RecordMenu *menu, s16 x, s16 y)
     s16 labelX;
     s16 rowStep;
 
-    Menu_DrawDecoFrame(x, y, 0x154, 0x114, 5, 0);
+    Menu_DrawDecoFrame(x, y, 340, 276, 5, 0);
     switch (menu->menuCount) {
     case 9:
-        rowStep = 0x1C;
-        y = y + 0x1E;
+        rowStep = 28;
+        y = y + 30;
         break;
     case 8:
-        rowStep = 0x1E;
-        y = y + 0x22;
+        rowStep = 30;
+        y = y + 34;
         break;
     case 7:
-        rowStep = 0x1E;
-        y = y + 0x36;
+        rowStep = 30;
+        y = y + 54;
         break;
     case 6:
-        rowStep = 0x1E;
-        y = y + 0x3C;
+        rowStep = 30;
+        y = y + 60;
         break;
     case 5:
-        rowStep = 0x24;
-        y = y + 0x46;
+        rowStep = 36;
+        y = y + 70;
         break;
     default:
-        rowStep = 0x28;
-        y = y + 0x46;
+        rowStep = 40;
+        y = y + 70;
         break;
     }
     Font_SetColor(0x807F7F7F);
-    x = x + 0xAA;
-    Font_SetSpacing(0x16, 0x16);
+    x = x + 170;
+    Font_SetSpacing(22, 22);
     for (i = 0; i < menu->menuCount; i++) {
         label = gRecordsMenuTexts[menu->kind[i]];
-        labelX = Text_CenterX(label, x, 0x18) + 10;
+        labelX = Text_CenterX(label, x, 24) + 10;
         if (i == menu->menuSel) {
-            Menu_DrawArrowsRev(labelX, y, 0x16, label, 0xFFB57510);
+            Menu_DrawArrowsRev(labelX, y, 22, label, 0xFFB57510);
             Text_DrawShadowRgb(labelX, y, 0xFF101010, 0xFF106060, label);
         } else {
             Font_SetColor(0xFF101010);
@@ -364,95 +358,94 @@ void Records_DrawMenu(RecordMenu *menu, s16 x, s16 y)
 
 extern char gRecordsFmtString[];
 s32 sprintf(char *buf, char *fmt, ...);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 /* Draws the items' first page: the kind's title bar, the item categories
  * with arrows on sel, and the prompt; the list starts a line lower while
  * eventMark is 0. */
 void Records_DrawItemCategories(RecordMenu *menu, s16 x, s16 y)
 {
-    char buf[0x80];
+    char buf[128];
     s32 i;
     s16 rowY = y;
     s16 textX;
     char **categoryName;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xA0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ITEMS], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 160, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ITEMS], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (menu->eventMark == 0) {
-        rowY += 0x14;
+        rowY += 20;
     }
     for (i = 1, categoryName = &gRecordsListTexts[RECORDS_LIST_ITEM_KINDS]; i < 9; i++, categoryName++) {
         sprintf(buf, gRecordsFmtString, *categoryName);
-        textX = Text_CenterX(buf, 0x1C2, 0x12);
-        rowY += 0x16;
+        textX = Text_CenterX(buf, 450, 18);
+        rowY += 22;
         Font_SetPos(textX, rowY);
         Text_PrintfColored(gRecordsFmtString, buf);
         if (menu->sel == i - 1) {
-            Menu_DrawArrowsRev(textX, rowY, 0x12, buf, 0xFF106060);
+            Menu_DrawArrowsRev(textX, rowY, 18, buf, 0xFF106060);
         }
     }
-    Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_ITEM_PROMPT]);
+    Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_ITEM_PROMPT]);
 }
 
 /* Draws the weapons' first page: the title bar, the five genres
  * (gEquipGroupTexts 0 to 4) with arrows on genre, and the prompt. */
 void Records_DrawWeaponGenres(RecordMenu *menu, s16 x, s16 y)
 {
-    char buf[0x80];
+    char buf[128];
     s32 i;
     s16 rowY = y;
     s16 textX;
     char **groupName;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0x78, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_WEAPONS], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x168, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 120, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_WEAPONS], 2, 1);
+    Icon_Draw(x, y, 340, 360, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
-    rowY += 0x1E;
+    Font_SetSpacing(20, 20);
+    rowY += 30;
     for (i = 0, groupName = gEquipGroupTexts; i < RECORDS_GENRE_COUNT; i++, groupName++) {
         sprintf(buf, gRecordsFmtString, *groupName);
-        textX = Text_CenterX(buf, 0x1C2, 0x12);
-        rowY += 0x22;
+        textX = Text_CenterX(buf, 450, 18);
+        rowY += 34;
         Font_SetPos(textX, rowY);
         Text_PrintfColored(gRecordsFmtString, buf);
         if (menu->genre == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x14, buf, 0xFF106060);
+            Menu_DrawArrowsRev(textX, rowY, 20, buf, 0xFF106060);
         }
     }
-    Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_WEAPON_GENRE_PROMPT]);
+    Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_WEAPON_GENRE_PROMPT]);
 }
 
 /* The same for the armour: the five types, whose labels follow the
  * weapon genres' in gEquipGroupTexts, and its own prompt. */
 void Records_DrawArmorTypes(RecordMenu *menu, s16 x, s16 y)
 {
-    char buf[0x80];
+    char buf[128];
     s32 i;
     s16 rowY = y;
     s16 textX;
     char **groupName;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0x78, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ARMOR], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x168, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 120, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ARMOR], 2, 1);
+    Icon_Draw(x, y, 340, 360, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
-    rowY += 0x1E;
+    Font_SetSpacing(20, 20);
+    rowY += 30;
     for (i = 0, groupName = gEquipGroupTexts; i < RECORDS_GENRE_COUNT; i++, groupName++) {
         sprintf(buf, gRecordsFmtString, groupName[RECORDS_GENRE_COUNT]);
-        textX = Text_CenterX(buf, 0x1C2, 0x12);
-        rowY += 0x22;
+        textX = Text_CenterX(buf, 450, 18);
+        rowY += 34;
         Font_SetPos(textX, rowY);
         Text_PrintfColored(gRecordsFmtString, buf);
         if (menu->genre == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x14, buf, 0xFF106060);
+            Menu_DrawArrowsRev(textX, rowY, 20, buf, 0xFF106060);
         }
     }
-    Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_ARMOR_GENRE_PROMPT]);
+    Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_ARMOR_GENRE_PROMPT]);
 }
 
 /* Draws the titles' first page: the title bar, the title tabs
@@ -460,38 +453,34 @@ void Records_DrawArmorTypes(RecordMenu *menu, s16 x, s16 y)
  * a line lower while eventMark is 0. */
 void Records_DrawTitleTabs(RecordMenu *menu, s16 x, s16 y)
 {
-    char buf[0x80];
+    char buf[128];
     s32 i;
     s16 rowY = y;
     s16 textX;
     char **groupName;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x10E, 0x12, 0x64, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_TITLES], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(270, 18, 100, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_TITLES], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
-    rowY += 0x14;
+    Font_SetSpacing(20, 20);
+    rowY += 20;
     if (menu->eventMark == 0) {
-        rowY += 0x14;
+        rowY += 20;
     }
     for (i = 0, groupName = gRecordsListTexts; i < 5; i++, groupName++) {
         sprintf(buf, gRecordsFmtString, *groupName);
-        textX = Text_CenterX(buf, 0x1C2, 0x12);
-        rowY += 0x18;
+        textX = Text_CenterX(buf, 450, 18);
+        rowY += 24;
         Font_SetPos(textX, rowY);
         Text_PrintfColored(gRecordsFmtString, buf);
         if (menu->sel == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x14, buf, 0xFF106060);
+            Menu_DrawArrowsRev(textX, rowY, 20, buf, 0xFF106060);
         }
     }
-    Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_TITLE_GENRE_PROMPT]);
+    Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_TITLE_GENRE_PROMPT]);
 }
 
-extern char *gHunterTitleDescs[];
-extern char *gYesNoTexts[];
-s8 MyHouse_LocalSlot(void);
-s32 Bits32_Test(u32 *bits, s32 n);
 void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2);
 void Win_Draw(s32 x, s32 y, s32 w, s32 h, s32 color, s32 color2, s16 kind);
 extern char gRecordsFmtRowNumber[];
@@ -512,39 +501,39 @@ void Records_DrawTitleList(RecordMenu *menu, s16 x, s16 y)
     u16 id;
     u16 cursorId;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x10E, 0x12, 0x64, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_TITLES], 2, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(270, 18, 100, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_TITLES], 2, 1);
     if (Game_IsOnline() == 0 || (u8)gLobby->memberSlot[gScene.localPlayer] == gScene.localPlayer + '0') {
         titleRec = &gHunterTitles[gSave.title];
     } else {
-        titleRec = &gHunterTitles[((u8 *)&gNetUsers[MyHouse_LocalSlot()])[0x2A]];
+        titleRec = &gHunterTitles[((u8 *)&gNetUsers[MyHouse_LocalSlot()])[42]];
     }
-    Font_SetSpacing(0x14, 0x14);
-    Menu_DrawLabelBar(0x178, 0x12, 0xE6, 0xFFB0B000, titleRec->text, 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
+    Font_SetSpacing(20, 20);
+    Menu_DrawLabelBar(376, 18, 230, 0xFFB0B000, titleRec->text, 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
-    Font_SetPos(x + 0x28, y + 0x1E);
+    Font_SetSpacing(20, 20);
+    Font_SetPos(x + 40, y + 30);
     Text_PrintfColored(gRecordsFmtString, gRecordsListTexts[menu->sel]);
     if (menu->rowCount == 0) {
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(Text_CenterX(gRecordsListTexts[RECORDS_LIST_NO_TITLE], x + 0xAA, 0x12), y + 0x78);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(Text_CenterX(gRecordsListTexts[RECORDS_LIST_NO_TITLE], x + 170, 18), y + 120);
         Font_SetColor(0x80301010);
         Text_PrintfColored(gRecordsFmtString, gRecordsListTexts[RECORDS_LIST_NO_TITLE]);
         return;
     }
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(x + 0xFA, y + 0xE, menu->page, menu->pages, 1);
-    Font_SetSpacing(0x12, 0x12);
-    rowY += 0x38;
+    Menu_DrawPageNum(x + 250, y + 14, menu->page, menu->pages, 1);
+    Font_SetSpacing(18, 18);
+    rowY += 56;
     i = 0;
     if (i < menu->rowCount) {
         do {
-        Font_SetPos((s16)(x + 0x78) - 0x2E, rowY);
+        Font_SetPos((s16)(x + 120) - 46, rowY);
         Text_PrintfColored(gRecordsFmtRowNumber, i + menu->page * 8 + 1);
         id = menu->ids[i];
         titleRec = &gHunterTitles[id];
-        Font_SetPos(x + 0x78, rowY);
+        Font_SetPos(x + 120, rowY);
         if (Bits32_Test(menu->titleBits, id) == 1) {
             Text_PrintfColored(gRecordsFmtString, titleRec->text);
         } else {
@@ -552,30 +541,27 @@ void Records_DrawTitleList(RecordMenu *menu, s16 x, s16 y)
         }
         if (menu->cursor == i) {
             cursorId = id;
-            Menu_DrawCursorRow(x + 0x32, rowY, 0xF0, 0, 0xC0106060, 0xFF106060);
+            Menu_DrawCursorRow(x + 50, rowY, 240, 0, 0xC0106060, 0xFF106060);
         }
-        rowY += 0x18;
+        rowY += 24;
         i++;
         } while (i < menu->rowCount);
     }
-    Win_Draw(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, 0);
+    Win_Draw(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, 0);
     if (menu->step == 2) {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_TITLE_CONFIRM]);
-        Font_SetPos(0x1A2, 0x192);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_TITLE_CONFIRM]);
+        Font_SetPos(418, 402);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
     } else if (menu->toggle == 0) {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_TITLE_PROMPT]);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_TITLE_PROMPT]);
     } else if (Bits32_Test(menu->titleBits, (u16)menu->ids[menu->cursor])) {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gHunterTitleDescs[cursorId]);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gHunterTitleDescs[cursorId]);
     } else {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsListTexts[RECORDS_LIST_UNKNOWN_TITLE]);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsListTexts[RECORDS_LIST_UNKNOWN_TITLE]);
     }
 }
 
 extern char *gItemNames[];
-void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
-void Item_DrawRarity(s16 x, s16 y, u8 rarity);
-void Deco_DrawDetails(u16 item, s16 x, s16 y, s8 c, u8 pal);
 
 /*
  * Draws an item category's page: the numbered rows (an obtained item
@@ -590,51 +576,51 @@ void Records_DrawItemList(RecordMenu *menu, s16 x, s16 y)
     u16 id;
     u16 cursorId;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xA0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ITEMS], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 160, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ITEMS], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
-    Font_SetPos(x + 0x28, y + 0x1E);
+    Font_SetSpacing(20, 20);
+    Font_SetPos(x + 40, y + 30);
     Text_PrintfColored(gRecordsFmtString, gRecordsListTexts[menu->sel + 9]);
     if (menu->rowCount == 0) {
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(Text_CenterX(gRecordsListTexts[RECORDS_LIST_NO_ITEM], x + 0xAA, 0x12), y + 0x78);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(Text_CenterX(gRecordsListTexts[RECORDS_LIST_NO_ITEM], x + 170, 18), y + 120);
         Font_SetColor(0x80301010);
         Text_PrintfColored(gRecordsFmtString, gRecordsListTexts[RECORDS_LIST_NO_ITEM]);
         return;
     }
-    Menu_DrawPageNum(x + 0xFA, y + 0xA, menu->page, menu->pages, 1);
-    Font_SetSpacing(0x12, 0x12);
-    rowY += 0x38;
+    Menu_DrawPageNum(x + 250, y + 10, menu->page, menu->pages, 1);
+    Font_SetSpacing(18, 18);
+    rowY += 56;
     i = 0;
     if (i < menu->rowCount) {
         do {
             id = menu->ids[i];
-            Font_SetPos((s16)(x + 0x8C) - 0x42, rowY);
+            Font_SetPos((s16)(x + 140) - 66, rowY);
             Text_PrintfColored(gRecordsFmtRowNumber, i + menu->page * 8 + 1);
             if (ItemBits_Test((u32 *)menu->itemBits, id) == 1) {
-                Font_SetPos(x + 0x8C, rowY);
+                Font_SetPos(x + 140, rowY);
                 Text_PrintfColored(gRecordsFmtString, gItemNames[id]);
-                Item_DrawIcon((s16)(x + 0x8C) - 0x1C, rowY, 0x14, id);
+                Item_DrawIcon((s16)(x + 140) - 28, rowY, 20, id);
             } else {
-                Font_SetPos((s16)(x + 0x8C) - 0x14, rowY);
+                Font_SetPos((s16)(x + 140) - 20, rowY);
                 Text_PrintfColored(gRecordsFmtString, gRecordsListTexts[RECORDS_LIST_UNKNOWN_ITEM]);
             }
             if (menu->cursor == i) {
                 cursorId = id;
-                Menu_DrawCursorRow(x + 0x32, rowY, 0xF0, 0, 0xC0106060, 0xFF106060);
+                Menu_DrawCursorRow(x + 50, rowY, 240, 0, 0xC0106060, 0xFF106060);
             }
-            rowY += 0x18;
+            rowY += 24;
             i++;
         } while (i < menu->rowCount);
     }
-    Win_Draw(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, 0);
+    Win_Draw(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, 0);
     if (ItemBits_Test((u32 *)menu->itemBits, cursorId) == 1) {
-        Font_SetSpacing(0x12, 0x12);
-        Item_DrawIcon(0x126, 0x166, 0x36, cursorId);
-        Item_DrawRarity(0x12E, 0x19C, gItemData[cursorId].rarity);
-        Deco_DrawDetails(cursorId, 0x16C, 0x166, menu->subCursor | 0x10, 0);
+        Font_SetSpacing(18, 18);
+        Item_DrawIcon(294, 358, 54, cursorId);
+        Item_DrawRarity(302, 412, gItemData[cursorId].rarity);
+        Deco_DrawDetails(cursorId, 364, 358, menu->subCursor | 0x10, 0);
     }
 }
 
@@ -648,20 +634,18 @@ void Records_DrawEquipDetail(RecordMenu *menu)
     Equip_DrawPreviewHelp(0xBDB59F6C, 0);
     if (Equip_IsNoModelArmor(&menu->items[menu->sel]) == 1) {
         note = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(0x17A, 0x9A);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(378, 154);
         Font_SetColor(0x807F212E);
         Text_PrintfColored(note);
     }
-    EquipWindow_DrawLocal(&menu->items[menu->sel], gMenuOffsetX + 0x136, gMenuOffsetY + 0xD8, menu->subCursor | 0x40, NULL);
+    EquipWindow_DrawLocal(&menu->items[menu->sel], gMenuOffsetX + 310, gMenuOffsetY + 216, menu->subCursor | 0x40, NULL);
 }
 
 extern char gRecordsFmtEquipName[];
-char *Equip_GetName(u8 type, u16 id);
 /* unit's own declaration: as the callers use it; with the definition's void (s32 x, s32 y, s32 w, s32 h, EquipItem *e), the calls in Records_DrawWeaponList and Records_DrawArmorList compile differently */
 void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e);
 void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void EquipShop_DrawLine(s16 x, s16 y, EquipItem *e);
 
 /*
  * Draws a weapon genre's page: the numbered rows (name and icon), the
@@ -680,53 +664,53 @@ void Records_DrawWeaponList(RecordMenu *menu, s16 x, s16 y)
     s32 baseX;
     s32 baseY;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0x78, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_WEAPONS], 2, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 120, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_WEAPONS], 2, 1);
     if (menu->toggle != 0) {
         Records_DrawEquipDetail(menu);
         return;
     }
-    Icon_Draw(x, y, 0x154, 0x168, 0xFFE0D8C8, 0);
+    Icon_Draw(x, y, 340, 360, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     baseX = x;
     baseY = (s32)y;
     centerX = x;
-    Font_SetPos(x + 0x28, y + 0x1E);
+    Font_SetPos(x + 40, y + 30);
     Text_PrintfColored(gRecordsFmtString, gEquipGroupTexts[menu->genre]);
     if (menu->rowCount == 0) {
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         emptyText = gRecordsMenuTexts[RECORDS_MENU_NO_WEAPON];
-        Font_SetPos(Text_CenterX(emptyText, centerX + 0xAA, 0x12), y + 0x78);
+        Font_SetPos(Text_CenterX(emptyText, centerX + 170, 18), y + 120);
         Font_SetColor(0x80301010);
         Text_PrintfColored(gRecordsFmtString, emptyText);
         return;
     }
-    Menu_DrawPageNum(x + 0xFA, y + 0xE, menu->page, menu->pages, 1);
-    Font_SetSpacing(0x12, 0x12);
-    rowY += 0x38;
+    Menu_DrawPageNum(x + 250, y + 14, menu->page, menu->pages, 1);
+    Font_SetSpacing(18, 18);
+    rowY += 56;
     i = 0;
     if (i < menu->rowCount) {
         do {
             item = menu->items[i];
-            Font_SetPos((s16)(x + 0x78) - 0x42, rowY);
+            Font_SetPos((s16)(x + 120) - 66, rowY);
             Text_PrintfColored(gRecordsFmtRowNumber, i + menu->page * 8 + 1);
-            Font_SetPos(x + 0x78, rowY);
+            Font_SetPos(x + 120, rowY);
             Text_PrintfColored(gRecordsFmtEquipName, Equip_GetName(item.type, item.id));
             Font_SetPos(x, rowY);
-            Lobby_DrawEquipIcon((s16)(x + 0x78) - 0x1C, rowY, 0x14, 0x14, &item);
+            Lobby_DrawEquipIcon((s16)(x + 120) - 28, rowY, 20, 20, &item);
             if (menu->sel == i) {
                 selItem = item;
-                Menu_DrawCursorRow(x + 0x1E, rowY, 0x10E, 0, 0xC0106060, 0xFF106060);
+                Menu_DrawCursorRow(x + 30, rowY, 270, 0, 0xC0106060, 0xFF106060);
             }
-            rowY += 0x18;
+            rowY += 24;
             i++;
         } while (i < menu->rowCount);
     }
-    Menu_DrawDashLine(baseX + 0x14, baseY + 0x104, 0x12C, 0xFF000000);
-    EquipShop_DrawLine(baseX + 0x10, baseY + 0x112, &selItem);
+    Menu_DrawDashLine(baseX + 20, baseY + 260, 300, 0xFF000000);
+    EquipShop_DrawLine(baseX + 16, baseY + 274, &selItem);
     Font_SetColor(0x80101010);
-    Font_SetPos(baseX + 0x10E, baseY + 0x13E);
+    Font_SetPos(baseX + 270, baseY + 318);
     Text_Printf(gGameMenuLabels[MENU_LABEL_DETAILS_GUIDE]);
 }
 
@@ -744,53 +728,53 @@ void Records_DrawArmorList(RecordMenu *menu, s16 x, s16 y)
     s32 baseX;
     s32 baseY;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0x78, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ARMOR], 2, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 120, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ARMOR], 2, 1);
     if (menu->toggle != 0) {
         Records_DrawEquipDetail(menu);
         return;
     }
-    Icon_Draw(x, y, 0x154, 0x168, 0xFFE0D8C8, 0);
+    Icon_Draw(x, y, 340, 360, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     baseX = x;
     baseY = (s32)y;
     centerX = x;
-    Font_SetPos(x + 0x28, y + 0x1E);
+    Font_SetPos(x + 40, y + 30);
     Text_PrintfColored(gRecordsFmtString, gEquipGroupTexts[menu->genre + RECORDS_GENRE_COUNT]);
     if (menu->rowCount == 0) {
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         emptyText = gRecordsMenuTexts[RECORDS_MENU_NO_ARMOR];
-        Font_SetPos(Text_CenterX(emptyText, centerX + 0xAA, 0x12), y + 0x78);
+        Font_SetPos(Text_CenterX(emptyText, centerX + 170, 18), y + 120);
         Font_SetColor(0x80301010);
         Text_PrintfColored(gRecordsFmtString, emptyText);
         return;
     }
-    Menu_DrawPageNum(x + 0xFA, y + 0xE, menu->page, menu->pages, 1);
-    Font_SetSpacing(0x12, 0x12);
-    rowY += 0x38;
+    Menu_DrawPageNum(x + 250, y + 14, menu->page, menu->pages, 1);
+    Font_SetSpacing(18, 18);
+    rowY += 56;
     i = 0;
     if (i < menu->rowCount) {
         do {
             item = menu->items[i];
-            Font_SetPos((s16)(x + 0x78) - 0x42, rowY);
+            Font_SetPos((s16)(x + 120) - 66, rowY);
             Text_PrintfColored(gRecordsFmtRowNumber, i + menu->page * 8 + 1);
-            Font_SetPos(x + 0x78, rowY);
+            Font_SetPos(x + 120, rowY);
             Text_PrintfColored(gRecordsFmtEquipName, Equip_GetName(item.type, item.id));
             Font_SetPos(x, rowY);
-            Lobby_DrawEquipIcon((s16)(x + 0x78) - 0x1C, rowY, 0x14, 0x14, &item);
+            Lobby_DrawEquipIcon((s16)(x + 120) - 28, rowY, 20, 20, &item);
             if (menu->sel == i) {
                 selItem = item;
-                Menu_DrawCursorRow(x + 0x1E, rowY, 0x10E, 0, 0xC0106060, 0xFF106060);
+                Menu_DrawCursorRow(x + 30, rowY, 270, 0, 0xC0106060, 0xFF106060);
             }
-            rowY += 0x18;
+            rowY += 24;
             i++;
         } while (i < menu->rowCount);
     }
-    Menu_DrawDashLine(baseX + 0x14, baseY + 0x104, 0x12C, 0xFF000000);
-    EquipShop_DrawLine(baseX + 0x10, baseY + 0x112, &selItem);
+    Menu_DrawDashLine(baseX + 20, baseY + 260, 300, 0xFF000000);
+    EquipShop_DrawLine(baseX + 16, baseY + 274, &selItem);
     Font_SetColor(0x80101010);
-    Font_SetPos(baseX + 0x10E, baseY + 0x13E);
+    Font_SetPos(baseX + 270, baseY + 318);
     Text_Printf(gGameMenuLabels[MENU_LABEL_DETAILS_GUIDE]);
 }
 
@@ -804,36 +788,36 @@ void Records_DrawHouseAccess(RecordMenu *menu, s16 x, s16 y)
     s16 rowY = y;
     s16 i;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xF0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HOUSE_ACCESS], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 240, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HOUSE_ACCESS], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
     for (i = 0; i < HOUSE_ACCESS_ROW_DONE; i++) {
         if (menu->houseAccess == i) {
             Font_SetColor(0x8000052C);
         } else {
             Font_SetColor(0x80101010);
         }
-        textX = Text_CenterX(gHouseAccessTexts[i], x + 0xAA, 0x16);
-        Font_SetPos(textX, rowY += 0x28);
+        textX = Text_CenterX(gHouseAccessTexts[i], x + 170, 22);
+        Font_SetPos(textX, rowY += 40);
         Text_PrintfColored(gHouseAccessTexts[i]);
         if (menu->sel == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x16, gHouseAccessTexts[i], 0xFF008080);
+            Menu_DrawArrowsRev(textX, rowY, 22, gHouseAccessTexts[i], 0xFF008080);
         }
     }
     Font_SetColor(0x80101010);
-    rowY += 0x28;
+    rowY += 40;
     if (menu->password[0] != 0) {
-        textX = Text_CenterX(menu->password, x + 0xAA, 0x16);
+        textX = Text_CenterX(menu->password, x + 170, 22);
         Font_SetPos(textX, rowY);
         Text_PrintfColored(gRecordsFmtString, menu->password);
-        Icon_Draw(textX - 0x1E, rowY - 2, 0x18, 0x18, -1, 0x59);
+        Icon_Draw(textX - 30, rowY - 2, 24, 24, -1, 89);
     }
-    textX = Text_CenterX(gHouseAccessTexts[HOUSE_ACCESS_ROW_DONE], x + 0xAA, 0x16);
-    Font_SetPos(textX, rowY += 0x28);
+    textX = Text_CenterX(gHouseAccessTexts[HOUSE_ACCESS_ROW_DONE], x + 170, 22);
+    Font_SetPos(textX, rowY += 40);
     Text_PrintfColored(gRecordsFmtString, gHouseAccessTexts[HOUSE_ACCESS_ROW_DONE]);
     if (menu->sel == HOUSE_ACCESS_ROW_DONE) {
-        Menu_DrawArrowsRev(textX, rowY, 0x16, gHouseAccessTexts[i], 0xFF008080);
+        Menu_DrawArrowsRev(textX, rowY, 22, gHouseAccessTexts[i], 0xFF008080);
     }
 }
 
@@ -846,20 +830,20 @@ void Records_DrawGuideCategories(RecordMenu *menu, s16 x, s16 y)
     RecordCat *cat;
     s32 textX;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xF0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTER_GUIDE], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 240, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTER_GUIDE], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
+    Font_SetSpacing(20, 20);
     Font_SetColor(0x80101010);
-    rowY += 0x1E;
-    textX = x + 0x32;
+    rowY += 30;
+    textX = x + 50;
     for (i = 0, cat = gRecordGuideCats; i < 4; i++, cat++) {
         Font_SetPos(textX, rowY);
         Text_Printf(cat->name);
         if (menu->sel == i) {
-            Menu_DrawArrowsRev(textX, rowY + 0xB, 0x16, "                      ", 0xFF106060);
+            Menu_DrawArrowsRev(textX, rowY + 11, 22, "                      ", 0xFF106060);
         }
-        rowY += 0x33;
+        rowY += 51;
     }
 }
 
@@ -872,22 +856,22 @@ void Records_DrawGuideEntries(RecordMenu *menu, s16 x, s16 y)
     s16 rowY = y;
     s16 i;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xF0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTER_GUIDE], 2, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 240, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTER_GUIDE], 2, 1);
     Font_SetColor(0x80101010);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
-    Menu_DrawPageNum(x + 0x104, rowY + 6, menu->page, menu->pages, 1);
-    Font_SetSpacing(0x12, 0x12);
-    rowY += 0x1E;
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
+    Menu_DrawPageNum(x + 260, rowY + 6, menu->page, menu->pages, 1);
+    Font_SetSpacing(18, 18);
+    rowY += 30;
     for (i = 0; i < menu->rowCount; i++) {
         entryName = ((RecordEntry *)menu->rows[i])->name;
-        textX = Text_CenterX(entryName, x + 0xAA, 0x12);
+        textX = Text_CenterX(entryName, x + 170, 18);
         Font_SetPos(textX, rowY);
         Text_Printf(entryName);
         if (menu->cursor == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x12, entryName, 0xFF106060);
+            Menu_DrawArrowsRev(textX, rowY, 18, entryName, 0xFF106060);
         }
-        rowY += 0x16;
+        rowY += 22;
     }
 }
 
@@ -897,14 +881,14 @@ void Records_DrawGuidePage(RecordMenu *menu, s16 x, s16 y)
 {
     char *pageText;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xF0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTER_GUIDE], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
-    Menu_DrawPageNum(x + 0x104, y + 6, menu->subCursor, ((RecordEntry *)menu->rows[menu->cursor])->pageCount, 1);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 240, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTER_GUIDE], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
+    Menu_DrawPageNum(x + 260, y + 6, menu->subCursor, ((RecordEntry *)menu->rows[menu->cursor])->pageCount, 1);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80000000);
     pageText = ((RecordEntry *)menu->rows[menu->cursor])->pages[menu->subCursor];
-    Font_SetPos(x + 0x1E, y + 0x1E);
+    Font_SetPos(x + 30, y + 30);
     Text_PrintfStyled(2, pageText);
 }
 
@@ -914,28 +898,21 @@ void Records_DrawHornScores(RecordMenu *menu, s16 x, s16 y)
 {
     char *pageText;
 
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     if (menu->kind[menu->menuSel] == RECORD_KIND_SCORES_A) {
         pageText = gHornScorePages[menu->page];
-        Menu_DrawLabelBar(0x118, 0x12, 0xF0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HORN_SCORES], 2, 1);
+        Menu_DrawLabelBar(280, 18, 240, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HORN_SCORES], 2, 1);
     } else {
         pageText = gOldHornScorePages[menu->page];
-        Menu_DrawLabelBar(0x118, 0x12, 0xF0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ANCIENT_SCORES], 2, 1);
+        Menu_DrawLabelBar(280, 18, 240, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_ANCIENT_SCORES], 2, 1);
     }
-    Icon_Draw(x, y, 0x154, 0x114, 0xFF706858, 0);
-    Menu_DrawPageNum(x + 0x104, y + 6, menu->page, menu->pages, 1);
-    Font_SetSpacing(0x12, 0x12);
+    Icon_Draw(x, y, 340, 276, 0xFF706858, 0);
+    Menu_DrawPageNum(x + 260, y + 6, menu->page, menu->pages, 1);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(x + 0x28, y + 0x1E);
+    Font_SetPos(x + 40, y + 30);
     Text_PrintfStyled(2, pageText);
 }
-
-void Menu_DrawDecoBox(s16 x, s16 y, s16 w, s16 h, s8 kind);
-void Records_DrawHunts(RecordMenu *menu, s16 x, s16 y);
-void Records_DrawTitleList(RecordMenu *menu, s16 x, s16 y);
-void Records_DrawItemList(RecordMenu *menu, s16 x, s16 y);
-void Records_DrawWeaponList(RecordMenu *menu, s16 x, s16 y);
-void Records_DrawArmorList(RecordMenu *menu, s16 x, s16 y);
 
 /*
  * The records menu's draw callback (layer 0): by RecordMenu.mode, the
@@ -953,37 +930,37 @@ void Records_Draw(MenuTask *task)
     case RECORDS_MODE_OPEN:
     case RECORDS_MODE_MENU:
         x = menu->win.pos;
-        Menu_DrawDecoBox(x, 0x3A, 0x154, 0x114, 5);
-        Records_DrawMenu(menu, x, 0x3A);
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_MAIN_PROMPT]);
+        Menu_DrawDecoBox(x, 58, 340, 276, 5);
+        Records_DrawMenu(menu, x, 58);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gRecordsMenuTexts[RECORDS_MENU_MAIN_PROMPT]);
         break;
     case RECORDS_MODE_TO_PAGE:
     case RECORDS_MODE_BACK:
         switch (menu->kind[menu->menuSel]) {
         case RECORD_KIND_ITEMS:
-            Records_DrawItemCategories(menu, 0x118, 0x3A);
+            Records_DrawItemCategories(menu, 280, 58);
             break;
         case RECORD_KIND_HOUSE_ACCESS:
-            Records_DrawHouseAccess(menu, 0x118, 0x3A);
+            Records_DrawHouseAccess(menu, 280, 58);
             break;
         case RECORD_KIND_TITLES:
-            Records_DrawTitleTabs(menu, 0x118, 0x3A);
+            Records_DrawTitleTabs(menu, 280, 58);
             break;
         case RECORD_KIND_GUIDES:
-            Records_DrawGuideCategories(menu, 0x118, 0x3A);
+            Records_DrawGuideCategories(menu, 280, 58);
             break;
         case RECORD_KIND_MONSTERS:
-            Records_DrawHunts(menu, 0x118, 0x3A);
+            Records_DrawHunts(menu, 280, 58);
             break;
         case RECORD_KIND_SCORES_A:
         case RECORD_KIND_SCORES_B:
-            Records_DrawHornScores(menu, 0x118, 0x3A);
+            Records_DrawHornScores(menu, 280, 58);
             break;
         case RECORD_KIND_WEAPONS:
-            Records_DrawWeaponGenres(menu, 0x118, 0x3A);
+            Records_DrawWeaponGenres(menu, 280, 58);
             break;
         case RECORD_KIND_ARMOR:
-            Records_DrawArmorTypes(menu, 0x118, 0x3A);
+            Records_DrawArmorTypes(menu, 280, 58);
             break;
         }
         break;
@@ -992,56 +969,56 @@ void Records_Draw(MenuTask *task)
         default:
             switch (menu->kind[menu->menuSel]) {
             case RECORD_KIND_WEAPONS:
-                Records_DrawWeaponGenres(menu, 0x118, 0x3A);
+                Records_DrawWeaponGenres(menu, 280, 58);
                 break;
             case RECORD_KIND_ARMOR:
-                Records_DrawArmorTypes(menu, 0x118, 0x3A);
+                Records_DrawArmorTypes(menu, 280, 58);
                 break;
             }
             break;
         case 2:
             switch (menu->kind[menu->menuSel]) {
             case RECORD_KIND_WEAPONS:
-                Records_DrawWeaponList(menu, 0x118, 0x3A);
+                Records_DrawWeaponList(menu, 280, 58);
                 break;
             case RECORD_KIND_ARMOR:
-                Records_DrawArmorList(menu, 0x118, 0x3A);
+                Records_DrawArmorList(menu, 280, 58);
                 break;
             }
             break;
         }
         break;
     case RECORDS_MODE_SCORES:
-        Records_DrawHornScores(menu, 0x118, 0x3A);
+        Records_DrawHornScores(menu, 280, 58);
         break;
     case RECORDS_MODE_MONSTERS:
-        Records_DrawHunts(menu, 0x118, 0x3A);
+        Records_DrawHunts(menu, 280, 58);
         break;
     case RECORDS_MODE_GUIDES:
         if (menu->step == 0) {
-            Records_DrawGuideCategories(menu, 0x118, 0x3A);
+            Records_DrawGuideCategories(menu, 280, 58);
         } else if (menu->step == 1) {
-            Records_DrawGuideEntries(menu, 0x118, 0x3A);
+            Records_DrawGuideEntries(menu, 280, 58);
         } else {
-            Records_DrawGuidePage(menu, 0x118, 0x3A);
+            Records_DrawGuidePage(menu, 280, 58);
         }
         break;
     case RECORDS_MODE_ITEMS:
         if (menu->step == 0) {
-            Records_DrawItemCategories(menu, 0x118, 0x3A);
+            Records_DrawItemCategories(menu, 280, 58);
         } else {
-            Records_DrawItemList(menu, 0x118, 0x3A);
+            Records_DrawItemList(menu, 280, 58);
         }
         break;
     case RECORDS_MODE_TITLES:
         if (menu->step == 0) {
-            Records_DrawTitleTabs(menu, 0x118, 0x3A);
+            Records_DrawTitleTabs(menu, 280, 58);
         } else {
-            Records_DrawTitleList(menu, 0x118, 0x3A);
+            Records_DrawTitleList(menu, 280, 58);
         }
         break;
     case RECORDS_MODE_HOUSE_ACCESS:
-        Records_DrawHouseAccess(menu, 0x118, 0x3A);
+        Records_DrawHouseAccess(menu, 280, 58);
         break;
     }
 }
@@ -1058,16 +1035,11 @@ void Records_DrawMenuLayer(MenuTask *task)
     case RECORDS_MODE_MENU:
     case RECORDS_MODE_TO_PAGE:
     case RECORDS_MODE_BACK:
-        Records_DrawMenu(menu, menu->win.pos, 0x3A);
+        Records_DrawMenu(menu, menu->win.pos, 58);
         break;
     }
 }
 
-extern char *gMonsterNames[];
-u16 MonsterGroup_Max(u16 *list, u8 group, u8 *out);
-u16 MonsterGroup_MinNonzero(u16 *list, u8 group, u8 *out);
-f32 Monster_SizeFromPercent(u8 kind, u16 x);
-f64 fptodp(f32 x);
 /* unit's own declaration: as the caller uses it; with the definition's s32 (u16 note, s16 x, s16 y, s32 size), the calls in Records_DrawHunts compile differently */
 s32 MonsterNote_DrawLargeCrown(u16 a, s16 x, s16 y, s16 n);
 /* unit's own declaration: as the caller uses it; with the definition's s32 (u16 note, s16 x, s16 y, s32 size), the calls in Records_DrawHunts compile differently */
@@ -1086,27 +1058,27 @@ void Records_DrawHunts(RecordMenu *menu, s16 x, s16 y)
     s16 page;
     s32 huntedKinds;
     s32 rowsDrawn;
-    char buf[0x80];
+    char buf[128];
     MonsterNoteDef *def;
     s32 colX;
     s32 count;
     s32 maxSize;
     s32 sizeY;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xA0, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTS], 2, 1);
-    Icon_Draw(x, y, 0x154, 0x114, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 160, 0xFFB0B000, gRecordsMenuTexts[RECORDS_MENU_HUNTS], 2, 1);
+    Icon_Draw(x, y, 340, 276, 0xFFE0D8C8, 0);
     Font_SetColor(0x80101010);
     huntedKinds = 0;
     def = gMonsterNoteDefs;
-    for (i = 0; i < 0x34; i++, def++) {
+    for (i = 0; i < 52; i++, def++) {
         if (MonsterGroup_Sum(menu->hunts, def->emType, 0) > 0) {
             huntedKinds++;
         }
     }
     if (huntedKinds == 0) {
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos((s16)(x + 0x14) + 0x32, (s16)(y + 0x16) + 0x64);
+        Font_SetSpacing(18, 18);
+        Font_SetPos((s16)(x + 20) + 50, (s16)(y + 22) + 100);
         Text_PrintfColored(gRecordsListTexts[RECORDS_LIST_NO_INFO]);
         return;
     }
@@ -1126,29 +1098,29 @@ void Records_DrawHunts(RecordMenu *menu, s16 x, s16 y)
             }
             i++;
             def++;
-        } while (i < 0x34);
+        } while (i < 52);
     }
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x + 0x11E, y + 4);
-    Menu_DrawPageNum(x + 0xF2, y + 2, page, menu->pages, 0);
-    rowY += 0x16;
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x + 286, y + 4);
+    Menu_DrawPageNum(x + 242, y + 2, page, menu->pages, 0);
+    rowY += 22;
     rowsDrawn = 0;
-    if (i < 0x34) {
-        colX = x + 0x14;
+    if (i < 52) {
+        colX = x + 20;
         do {
             count = MonsterGroup_Sum(menu->hunts, def->emType, 0);
             if (count > 0) {
-                Font_SetSpacing(0x12, 0x12);
+                Font_SetSpacing(18, 18);
                 Font_SetPos(colX, rowY);
                 Text_PrintfColored(gRecordsFmtString, gMonsterNames[def->emType]);
-                Font_SetPos((s16)colX + 0xB4, rowY);
+                Font_SetPos((s16)colX + 180, rowY);
                 sprintf(buf, gRecordsListTexts[RECORDS_LIST_HUNT_COUNT_FMT], count);
                 Text_PrintfColored(buf);
-                Font_SetSpacing(0x10, 0x10);
+                Font_SetSpacing(16, 16);
                 maxSize = MonsterGroup_Max(menu->sizeMax, def->emType, 0);
                 if (maxSize > 0) {
                     f32 size = Monster_SizeFromPercent(def->emType, maxSize);
-                    sizeY = rowY + 0x14;
+                    sizeY = rowY + 20;
                     Font_SetPos((s16)colX - 2, sizeY);
                     sprintf(buf, gRecordsListTexts[RECORDS_LIST_MAX_SIZE_FMT], fptodp(size));
                     Text_PrintfColored(buf);
@@ -1157,13 +1129,13 @@ void Records_DrawHunts(RecordMenu *menu, s16 x, s16 y)
                 count = MonsterGroup_MinNonzero(menu->sizeMin, def->emType, 0);
                 if (count > 0) {
                     f32 size = Monster_SizeFromPercent(def->emType, count);
-                    sizeY = rowY + 0x14;
-                    Font_SetPos((s16)colX + 0x9A, rowY + 0x14);
+                    sizeY = rowY + 20;
+                    Font_SetPos((s16)colX + 154, rowY + 20);
                     sprintf(buf, gRecordsListTexts[RECORDS_LIST_MIN_SIZE_FMT], fptodp(size));
                     Text_PrintfColored(buf);
-                    MonsterNote_DrawSmallCrown(def->note, (s16)colX + 0x9C, (s16)sizeY - 2, count);
+                    MonsterNote_DrawSmallCrown(def->note, (s16)colX + 156, (s16)sizeY - 2, count);
                 }
-                rowY += 0x28;
+                rowY += 40;
                 rowsDrawn++;
             }
             if (rowsDrawn >= 6) {
@@ -1171,7 +1143,7 @@ void Records_DrawHunts(RecordMenu *menu, s16 x, s16 y)
             }
             i++;
             def++;
-        } while (i < 0x34);
+        } while (i < 52);
     }
 }
 
@@ -1186,8 +1158,8 @@ s32 Records_CountHuntPages(u8 *save)
 
     huntedKinds = 0;
     def = gMonsterNoteDefs;
-    for (i = 0; i < 0x34; i++, def++) {
-        if (MonsterGroup_Sum((u16 *) (save + 0x2B0), def->emType, 0) > 0) {
+    for (i = 0; i < 52; i++, def++) {
+        if (MonsterGroup_Sum((u16 *) (save + 688), def->emType, 0) > 0) {
             huntedKinds++;
         }
     }
@@ -1204,15 +1176,6 @@ s32 Records_CountHuntPages(u8 *save)
 
 /* The file's data: the horn score pages and the guides (gRecordGuideCats, their
  * entries and the entries' text pages). */
-extern u32 gHornScorePage0[];
-extern u32 gHornScorePage1[];
-extern u32 gHornScorePage2[];
-extern u32 gHornScorePage3[];
-extern u32 gHornScorePage4[];
-extern u32 gOldHornScorePage0[];
-extern u32 gOldHornScorePage1[];
-extern u32 gOldHornScorePage2[];
-extern u32 gOldHornScorePage3[];
 extern char gRecordGuidePage0_0_0[];
 extern char gRecordGuidePage0_0_1[];
 extern char gRecordGuidePage0_0_2[];
@@ -1374,58 +1337,6 @@ extern char gRecordGuidePage3_21_0[];
 extern char gRecordGuidePage3_21_1[];
 extern char gRecordGuidePage3_22_0[];
 extern char gRecordGuidePage3_22_1[];
-extern u32 gRecordGuideEntryName0_0[];
-extern u32 gRecordGuideEntryName0_1[];
-extern u32 gRecordGuideEntryName0_2[];
-extern u32 gRecordGuideEntryName0_3[];
-extern u32 gRecordGuideEntryName0_4[];
-extern u32 gRecordGuideEntryName0_5[];
-extern u32 gRecordGuideEntryName0_6[];
-extern u32 gRecordGuideEntryName0_7[];
-extern u32 gRecordGuideEntryName0_8[];
-extern u32 gRecordGuideEntryName0_9[];
-extern u32 gRecordGuideEntryName0_10[];
-extern u32 gRecordGuideEntryName0_11[];
-extern u32 gRecordGuideEntryName0_12[];
-extern u32 gRecordGuideEntryName0_13[];
-extern u32 gRecordGuideEntryName0_14[];
-extern u32 gRecordGuideEntryName1_0[];
-extern u32 gRecordGuideEntryName1_1[];
-extern u32 gRecordGuideEntryName1_2[];
-extern u32 gRecordGuideEntryName1_3[];
-extern u32 gRecordGuideEntryName1_4[];
-extern u32 gRecordGuideEntryName1_5[];
-extern u32 gRecordGuideEntryName1_6[];
-extern u32 gRecordGuideEntryName1_7[];
-extern u32 gRecordGuideEntryName1_8[];
-extern u32 gRecordGuideEntryName1_9[];
-extern u32 gRecordGuideEntryName2_0[];
-extern u32 gRecordGuideEntryName2_1[];
-extern u32 gRecordGuideEntryName2_2[];
-extern u32 gRecordGuideEntryName2_3[];
-extern u32 gRecordGuideEntryName2_4[];
-extern u32 gRecordGuideEntryName2_5[];
-extern u32 gRecordGuideEntryName2_6[];
-extern u32 gRecordGuideEntryName2_7[];
-extern u32 gRecordGuideEntryName2_8[];
-extern u32 gRecordGuideEntryName2_9[];
-extern u32 gRecordGuideEntryName3_0[];
-extern u32 gRecordGuideEntryName3_1[];
-extern u32 gRecordGuideEntryName3_2[];
-extern u32 gRecordGuideEntryName3_4[];
-extern u32 gRecordGuideEntryName3_6[];
-extern u32 gRecordGuideEntryName3_8[];
-extern u32 gRecordGuideEntryName3_10[];
-extern u32 gRecordGuideEntryName3_12[];
-extern u32 gRecordGuideEntryName3_14[];
-extern u32 gRecordGuideEntryName3_16[];
-extern u32 gRecordGuideEntryName3_18[];
-extern u32 gRecordGuideEntryName3_20[];
-extern u32 gRecordGuideEntryName3_22[];
-extern u32 gRecordGuideCatName0[];
-extern u32 gRecordGuideCatName1[];
-extern u32 gRecordGuideCatName2[];
-extern u32 gRecordGuideCatName3[];
 char *gHornScorePages[8] = {
     (char *)gHornScorePage0, (char *)gHornScorePage1, (char *)gHornScorePage2, (char *)gHornScorePage3,
     (char *)gHornScorePage4, NULL, NULL, NULL,
@@ -1616,16 +1527,16 @@ char *gRecordGuidePages3_21[2] = {
 char *gRecordGuidePages3_22[2] = {
     gRecordGuidePage3_22_0, gRecordGuidePage3_22_1,
 };
-u32 gRecordGuideEntries0[48] = {
+RecordEntry gRecordGuideEntries0[16] = {
 #include "lobby/007DBBC0.inc"
 };
-u32 gRecordGuideEntries1[32] = {
+RecordEntry gRecordGuideEntries1[10] = {
 #include "lobby/007DBC80.inc"
 };
-u32 gRecordGuideEntries2[32] = {
+RecordEntry gRecordGuideEntries2[10] = {
 #include "lobby/007DBD00.inc"
 };
-u32 gRecordGuideEntries3[72] = {
+RecordEntry gRecordGuideEntries3[24] = {
 #include "lobby/007DBD80.inc"
 };
 RecordCat gRecordGuideCats[4] = {

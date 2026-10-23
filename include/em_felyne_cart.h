@@ -1,5 +1,6 @@
 #ifndef EM_FELYNE_CART_H
 #define EM_FELYNE_CART_H
+#include "em.h"
 
 /*
  * The Felyne cart's vocabulary (EM_KIND_FELYNE_CART): the cart the Felynes
@@ -16,6 +17,19 @@ enum EmFelyneCartMotion {
     CART_MOT_DROP = 0x03    /* dropping the player: Player_StateCart moves the player to PL_EVENT_CART_DROP when it starts */
 };
 
+/*
+ * Bones: a bone number indexes the cart's skeleton (Em.model->bones). The
+ * cart has no hit shapes of its own; the one bone the code explains is
+ * where the carried player rides. Bone 16 (CART_MOT_DROP's effect at frame
+ * 16) stays a number.
+ *
+ * Sounds: a sound number indexes the kind's own sound bank (Em_PlaySeOnFrame);
+ * none plays on the frame of something the code shows, so they stay numbers.
+ */
+enum EmFelyneCartBone {
+    CART_BONE_RIDER = 29    /* the carried player's position: Player_StateCart puts the player there every frame */
+};
+
 /* Group 0, EM_GROUP_IDLE (EmFelyneCart_RunIdleState). */
 enum EmFelyneCartIdleState {
     CART_IDLE_NONE = 0x00,
@@ -30,5 +44,13 @@ enum EmFelyneCartMoveState {
     CART_MOVE_TURN_AROUND = 0x02,   /* a turn of a little over half a circle in 53 frames */
     CART_MOVE_RUN_OFF = 0x03        /* 100 frames, fading out over the last 5, then gone */
 };
+
+extern void *EmFelyneCart_Callbacks[8];
+void EmFelyneCart_Init(Em *em);
+void EmFelyneCart_CarryPlayer(Em *em);
+void EmFelyneCart_TurnAround(Em *em);
+void EmFelyneCart_Update(Em *em);
+void EmFelyneCart_RunState(Em *em);
+void EmFelyneCart_MotionEffects(Em *em, EmWork *work);
 
 #endif

@@ -4,6 +4,7 @@
 #include "net_save.h"
 #include "window.h"
 #include "prim.h"
+#include "pad.h"
 
 /*
  * The yn overlay, the network settings: the types its memory card checks
@@ -37,7 +38,7 @@ typedef struct YnCardCheck {
 } YnCardCheck;
 
 /* One entry of a network configuration file, as Sony's netcnfif library
- * fills it (sceNetcnfifData_t, 0x1340 bytes). */
+ * fills it (sceNetcnfifData_t, 4928 bytes). */
 typedef struct NetcnfData {
     char attachIfc[0x100];      /* 0x000 */
     char attachDev[0x100];      /* 0x100 */
@@ -77,7 +78,7 @@ typedef struct NetcnfData {
     s32 p4[5];                  /* 0x132C */
 } NetcnfData;
 
-/* One entry of a configuration file's list (0x240 bytes). */
+/* One entry of a configuration file's list (576 bytes). */
 typedef struct NetcnfEntry {
     s32 type;
     s32 stat;
@@ -86,7 +87,7 @@ typedef struct NetcnfEntry {
     u8 unk208[0x38];
 } NetcnfEntry;
 
-/* The network configuration files read from a memory card (0x19D40 bytes, in
+/* The network configuration files read from a memory card (105792 bytes, in
  * the work area at +0x1180): the lists of the three entry types (0: the
  * combinations, 1: provider settings, 2: device settings), their entries,
  * and the netcnfif call state. YnNetcnf_SetType selects the type. */
@@ -111,7 +112,7 @@ typedef struct YnNetcnf {
 } YnNetcnf;
 
 
-/* A combination of the type 0 list with its device (0x14 bytes, 30 of them
+/* A combination of the type 0 list with its device (20 bytes, 30 of them
  * at +0x254 of the work area). */
 typedef struct YnCombo {
     s32 kind;                   /* Yn_GetDeviceKind: 1 or 2 when the device is known, else 0 */
@@ -130,7 +131,7 @@ typedef struct YnEntryKey {
     char https[0x100];          /* 0x108 */
 } YnEntryKey;
 
-/* A network device (0x1C bytes): sub_main's list of the attached ones
+/* A network device (28 bytes): sub_main's list of the attached ones
  * (gNetDevs, 35 entries; NetDev_ClearList fills it), gNetDevCur the one
  * in use. NetDev_Identify copies type, driver and the names from the known
  * devices' table (gNetDevNames) row whose ids match the IOP's answer. */
@@ -146,13 +147,13 @@ typedef struct NetDevice {
 extern NetDevice gNetDevs[35];
 
 
-/* A window frame, drawn by sub_main.s Window_DrawTextAlpha (0x14 bytes). */
+/* A window frame, drawn by sub_main.s Window_DrawTextAlpha (20 bytes). */
 typedef struct YnWindow {
     Window win;                 /* 0x00 */
     u32 unk10;                  /* 0x10: 0 in every entry */
 } YnWindow;
 
-/* A bar of button hints (Yn_DrawHelpBar, 0xE bytes). */
+/* A bar of button hints (Yn_DrawHelpBar, 14 bytes). */
 typedef struct YnHelpBar {
     s16 count;
     s16 width;
@@ -329,7 +330,7 @@ enum YnHelpBarKind {
 
 /* sub_main's network state gNetMode: include/net_mode.h (yn reads unk13, unk14, trySlot, error). */
 
-/* The overlay's work area (0x1AF00 bytes at 0xAD9C80, gYnWork points to it). */
+/* The overlay's work area (110336 bytes at 0xAD9C80, gYnWork points to it). */
 typedef struct YnWork {
     u32 texPal;                 /* 0x000: the texture handle | the palette handle << 16 (released by Yn_Quit's path) */
     u8 unk004[0x008 - 0x004];
@@ -353,7 +354,7 @@ typedef struct YnWork {
     u8 timer;                   /* 0x021 */
     u8 unk022[0x024 - 0x022];
     u8 scanStep;                /* 0x024: Yn_ScanCards' state (0-5) */
-    u8 triedSlots;              /* 0x025: slots tried by the connect scan (bit per slot; 0x80 after the first) */
+    u8 triedSlots;              /* 0x025: slots tried by the connect scan (bit per slot; YN_TRIED_FIRST after the first) */
     u8 changed;                 /* 0x026: 1: the chosen settings differ from the saved ones (gNetMode.ynResult = changed + 1) */
     u8 scanSlot;                /* 0x027: the slot Yn_ScanCards looks at */
     s32 msgTimer;               /* 0x028: 60 frames for the connect message */
@@ -365,9 +366,9 @@ typedef struct YnWork {
     u16 numBackup;              /* 0x03E: the value before the edit (put back on cancel) */
     u16 *numTarget;             /* 0x040: the number being edited (Yn_BeginNumberEdit) */
     u16 numStep;                /* 0x044: the digit being changed (1, 10, .. 10000) */
-    s8 unk46;                   /* 0x046: only written: 1 on the list, 0x10 on the proxy screen */
+    s8 unk46;                   /* 0x046: only written: 1 on the list, 16 on the proxy screen */
     s8 msgCloseMode;            /* 0x047: YN_MSG_CLOSE_CIRCLE: only PAD_CIRCLE closes the list's message; 2 or 4 (listDetail 2): either button */
-    s8 unk48;                   /* 0x048: only written: 1 on the list, 0x13 on the proxy screen */
+    s8 unk48;                   /* 0x048: only written: 1 on the list, 19 on the proxy screen */
     s8 screen;                  /* 0x049: index into gYnScreenItems / gYnScreenItemCounts */
     u8 msg;                     /* 0x04A: index into gYnMsgItems / gYnMsgItemCounts */
     s8 help;                    /* 0x04B: index into gYnHelpItems / gYnHelpItemCounts */
@@ -401,6 +402,88 @@ typedef struct YnWork {
 } YnWork;
 typedef char YnWork_size_check[(sizeof(YnWork) == 0x1AF00) ? 1 : -1];
 
+void YnCard_Reset(YnCardCheck *check);
+s32 YnCard_CheckSlots(YnCardCheck *check);
+s32 YnCard_CheckCurrentSlot(YnCardCheck *check);
+void YnCard_SetSlot(YnCardCheck *check, u8 slot);
+s32 YnCard_GetSlot(YnCardCheck *check);
+s32 YnCard_ListNetcnfDir(YnCardCheck *check);
+s32 YnCard_MapError(s32 err);
+void Yn_ResetStreams(void);
 extern YnWork *gYnWork;
+
+s32 Yn_Init(s32 arg);
+void Yn_Draw(void);
+void Yn_Quit(void);
+s32 Yn_ScanCards(void);
+s32 Yn_ScanCardsForConnect(void);
+s32 Yn_Connect(void);
+s32 Yn_UpdateEntryList(void);
+s32 Yn_IsCardGone(void);
+s32 Yn_IsCurrentCardGone(void);
+void Yn_PreDraw(void);
+void Yn_DrawScreen(void);
+void Yn_DrawItems(void);
+void Yn_DrawChoiceItems(s32 sel, s32 color);
+void Yn_DrawEntryList(void);
+void Yn_DrawPort(u16 *value, s16 x, s16 y);
+void Yn_DrawTextField(u8 *text, char *label, s16 x, s16 y, s32 w);
+void Yn_DrawMessage(void);
+void Yn_DrawMessageText(void);
+void Yn_DrawSlotMessage(s32 sel);
+void Yn_DrawEntryDetails(void);
+void Yn_AlignAddress(u8 *dst, u8 *src);
+void Yn_DrawHelp(void);
+void Yn_Print(s16 x, s16 y, char *text);
+void Yn_SetColor(s8 color);
+void Yn_SetFontSize(s32 w, s32 height);
+void Yn_SetGlyphSize(f32 scale);
+void Yn_SetTextMode(s8 mode);
+s32 Yn_GetTextMode(void);
+s16 Yn_CenterX(char *text, s32 w);
+s16 Yn_CenterXSjis(char *str, s32 w);
+void Yn_CopyForPrint(char *dst, u8 *src, s32 max);
+void Yn_StrCopy(char *dst, char *src);
+void Yn_UpdatePadRepeat(PadState *pad);
+void Yn_PreUpdate(void);
+void Yn_DrawTextLayer(void);
+void Yn_ExportSettings(NetcnfData *data);
+void Yn_ApplyEntry(NetcnfData *data);
+void Yn_LoadProxy(void);
+void Yn_DrawBackground(void);
+void Yn_DrawChoiceCursor(void);
+void Yn_DrawIcon(f32 scale, s32 id, s32 x, s32 y, s32 blink);
+void Yn_DrawProxy(void);
+void Yn_DrawHelpBar(s32 type);
+s32 YnNetcnf_LoadModules(YnNetcnf *n);
+s32 YnNetcnf_Open(YnNetcnf *n);
+s32 YnNetcnf_Close(YnNetcnf *n);
+char *YnNetcnf_FindUsrName(YnNetcnf *n, char *name);
+void Yn_ConfigToIfc(YnConfig *cfg, NetcnfData *data, char *name);
+void Yn_IfcToConfig(YnConfig *cfg, NetcnfData *data, char *name);
+void Yn_ConfigToDev(YnConfig *cfg, NetcnfData *data);
+void Yn_DevToConfig(YnConfig *cfg, NetcnfData *data);
+void Yn_BuildCombos(YnNetcnf *n, YnCombo *combo);
+s32 Yn_FindCombination(YnConfig *cfg, YnCombo *combo, s32 n);
+s32 Yn_CompareProxy(YnEntryKey *edited, YnEntryKey *inUse);
+s32 Yn_IsAddressSet(u8 *addr);
+void YnNetcnf_SetType(YnNetcnf *n, s32 type);
+s32 YnNetcnf_GetCount(YnNetcnf *n);
+s32 YnNetcnf_GetList(YnNetcnf *n);
+void YnNetcnf_LoadCombos(YnNetcnf *n);
+s32 YnNetcnf_IsEmpty(YnNetcnf *n);
+s32 YnNetcnf_CheckFile(YnNetcnf *n);
+s32 YnNetcnf_LoadFirst(YnNetcnf *n);
+void YnNetcnf_SetPath(YnNetcnf *n, s32 slot);
+void Yn_ParseAddress(u8 *str, u8 *addr);
+void Yn_FormatAddress(char *str, u8 *addr);
+void Yn_ResetNetDevices(void);
+s32 Yn_FindDevice(char *vendor, char *product);
+s32 Yn_GetDeviceKind(char *vendor, char *product);
+s32 Yn_SelectDevice(s32 i);
+void Yn_Utf8ToSjis(char *dstp, char *srcp);
+void Yn_SjisToUtf8(char *dstp, char *srcp);
+void Yn_UnloadModule(s32 id);
+void Yn_LoadModule(char *path, s32 argc, char *argv, void *buf, s32 tries);
 
 #endif /* YN_H */

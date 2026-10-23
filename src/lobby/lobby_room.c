@@ -7,7 +7,8 @@
  * server and makes its members the quest's players, and
  * LobbyRoom_SendLobbyLeave leaves the lobby server and sets the network
  * scene up to go on to the quest. LobbyStep_SetOut is the request step the
- * town runs when the party sets out.
+ * town runs when the party sets out, and LobbyPkt_QuestPaidSend tells the
+ * server the quest's fee was paid.
  *
  * When the room closes under the player (Lobby_HandleLeaveRequest),
  * LobbyRoom_BeginClose enters LOBBY_PHASE_ROOM_CLOSE, whose steps (a table
@@ -23,28 +24,25 @@
 #include "lobby_text.h"
 #include "scene.h"
 #include "quest.h"
+#include "save.h"
+#include "stream.h"
 #include "pad.h"
+#include "text.h"
+#include "lobby_room.h"
+#include "arena_cup.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_enter.h"
+#include "lobby_leave_menus.h"
+#include "lobby_util.h"
+#include "quest_order_terms.h"
+#include "screen_fade.h"
 
-s32 Lobby_HandleLeaveRequest(void);
 extern void (*gLobbyRoomSteps[])(void);
 extern LobbyMenu *gLobbyMenu;
-void Loading_SetMessage(u32 mode);
-void LobbyStream_FadeOut(s32 frames);
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-void Lobby_Disconnect(s32);
-void Lobby_ClearRequests(void);
-s32 LobbyReq_LobbyLeave(void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_SetOut(u8 on, void (*onReply)(NetMsg, NetMsg *));
-void LobbyRoom_LobbyLeaveDone(NetMsg msg, NetMsg *msgPtr);
-void LobbyStep_SetOutDone(NetMsg msg, NetMsg *msgPtr);
-void Game_ResetSubsystems(void);
 s32 LobbyNet_GetErrText(char *);
-void LobbyText_Open(s32 text);
-void LobbyDialog_OpenWait(void *text);
-void FadeA_Start(s32 fade);
-u16 LobbyPad_Get(s32 port);
-void LobbySe_Play(s32 se);
 extern s32 D_008F8C98;
 extern u8 gNetConnStep;
 extern u8 gNetConnEnd;
@@ -57,24 +55,44 @@ extern u8 gNetDropped;
 extern s32 gLobbyActive;
 extern s32 D_008F8CA0;
 extern u8 gNetPartySelf;
-s32 NetPartyTask_Start(void (*onDone)(NetMsg, NetMsg *));
-void LobbyRoom_PartyDone(NetMsg msg, NetMsg *msgPtr);
-s32 LobbyNet_GetParty(NetParty *dst);
-s32 ArenaCup_QuestTaken(void);
 extern u8 gNetQuestSeeds[];
 extern void (*jtbl_00819680[])(void);   /* the room close's steps */
-void LobbyMenu_Init(void);
-void Lobby_DrawBlackLine(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void Loading_Stop(void);
 extern NextQuest gNextQuest;
 extern u8 gPlayerIds[SCENE_PLAYERS][8];   /* the players' ids (sub_main) */
-extern u8 gMemberNames[SCENE_PLAYERS][0x11]; /* their names */
-extern u8 gPlayerCardTexts[10][0x100];          /* their texts */
+extern u8 gMemberNames[SCENE_PLAYERS][17]; /* their names */
+extern u8 gPlayerCardTexts[10][256];          /* their texts */
+extern ItemStack gPouchBackup[POUCH_SLOTS];
 
 #define LOADING_MSG_ROOM 4      /* Loading_SetMessage's message while the room phase runs */
 #define SIDE_ID_LEN 6           /* the bytes of a user id NextQuest.sideIds keeps */
 #define ROOM_STREAM_FADE 15     /* frames */
+
+/* Once the party is ready (Lobby_HandleLeaveRequest): enters
+ * LOBBY_PHASE_ROOM, cancels the file queue, clears the requests and the
+ * place, and keeps a copy of the pouch (gPouchBackup). */
+void Lobby_StartRoomPhase(void)
+{
+    s32 i;
+
+    gLobby->phase = LOBBY_PHASE_ROOM;
+    gLobby->phaseStep = 0;
+    gLobby->mode = 0;
+    gLobby->step = 0;
+    FileQueue_Cancel();
+    Lobby_ClearRequests();
+    Lobby_SetPlace(LOBBY_PLACE_NONE);
+    for (i = 0; i < POUCH_SLOTS; i++) {
+        gPouchBackup[i].item = gSave.pouch[i].item;
+        gPouchBackup[i].count = gSave.pouch[i].count;
+    }
+}
+
+/* Sends the quest-paid packet (LobbyPkt_QuestPaid) for Quest_SendPaid, once
+ * the quest was taken with its fee paid. */
+void LobbyPkt_QuestPaidSend(void)
+{
+    LobbyPkt_QuestPaid();
+}
 
 /* LOBBY_PHASE_ROOM: unless a leave starts (Lobby_HandleLeaveRequest), runs
  * the step of LobbyState.mode, shows the menu's layers and, while the phase
@@ -136,7 +154,7 @@ void LobbyRoom_FetchParty(void)
         for (i = 0; i < gLobby->partyCount; i++) {
             memset(&gLobby->players[i], 0, sizeof(NetUser));
             memcpy(gLobby->players[i].id, list.members[i].id, LOBBY_USER_ID_LEN);
-            memcpy(gLobby->players[i].name, list.members[i].name, 0x10);
+            memcpy(gLobby->players[i].name, list.members[i].name, 16);
             memcpy(gLobby->players[i].text, list.members[i].text, sizeof(list.members[i].text));
             memset(gPlayerIds[i], 0, LOBBY_USER_ID_LEN);
             memcpy(gPlayerIds[i], list.members[i].id, LOBBY_USER_ID_LEN);
@@ -346,12 +364,6 @@ void LobbyRoomClose_WaitButton(void)
         LobbySe_Play(LOBBY_SE_CONFIRM);
     }
 }
-
-u8 FadeA_GetState(void);
-s32 LobbyStep_Level2Leave(void);
-void Lobby_LoadTextures(void);
-void LobbyEnter_Begin(void);
-void Money_PayPending(u8 silent);
 
 /* Goes on once the fade out ends. */
 void LobbyRoomClose_WaitFade(void)

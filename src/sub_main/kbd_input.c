@@ -2,10 +2,9 @@
  * The software keyboard's input: the USB keyboard's keys (Kbd_ReadUsb,
  * Kbd_HandleKey and a handler per key), typing into the text or into the
  * kana being entered (Kbd_TypeHidKey, the romaji to kana table), the
- * cursors, and the kana-kanji conversion's segments and candidates
- * (gKbdCands, gKbdCandLines), and the drawing of the entry line. The
- * state is the KbdEntry at gKbd; the layouts are the key sets' tables
- * (gKbdSetLayouts).
+ * cursors, the keys that start, step or commit the kana-kanji conversion,
+ * and the drawing of the entry line. The state is the KbdEntry at gKbd;
+ * the layouts are the key sets' tables (gKbdSetLayouts).
  * The unit is built at optimization level 3, so that Kbd_ShiftFKey and
  * Kbd_CtrlFKey keep their key in the same register across Kbd_CtrlHeld
  * and Kbd_ShiftHeld, which Kbd_TypeHidKey calls too. Kbd_DrawCandidateBox
@@ -19,120 +18,44 @@
 
 #include "ee_stdarg.h"
 #include "sub_main/kbd_input.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "area.h"
+#include "camera.h"
+#include "hud.h"
+#include "player.h"
+#include "shake.h"
+#include "engine_math.h"
+#include "mem_util.h"
+#include "usb_kbd.h"
+#include "libusbkb.h"
 
 /* prototypes */
 void vsnprintf(char *buf, s32 size, const char *fmt, va_list ap); /* vsnprintf */
 void Font_Printf(const char *fmt, ...);
 extern s32 gTextOff;
 extern char D_0046CC10[]; /* "%s" */
-u8 *UsbKb_Poll(void);
 char *strcat(char *dst, char *src); /* strcat */
-s32 strcmp(char *a, char *b); /* strcmp */
-char *strcpy(char *dst, const char *src); /* strcpy */
 s32 strlen(char *s); /* strlen */
 char *strncat(char *dst, const char *src, u32 n); /* strncat */
 void strncpy(char *dst, const char *src, u32 n);
-void Vec_Copy(f32 *dst, f32 *src);
-s32 ConvCmd_PrevCand(char *a, char *b);
 s32 ConvCmd_NextCand(char *a, char *b);
 s32 ConvCmd_CommitAll(u8 *a);
-s32 ConvCmd_CommitSegment(s32 a, u8 *b, char *c, char *d, s16 *e);
 s32 ConvCmd_Open(void);
 s32 ConvCmd_GrowSegment(char *a, char *b);
-s32 ConvCmd_PrevSegment(char *a, char *b);
-s32 ConvCmd_NextSegment(char *a, char *b);
 s32 ConvCmd_SegmentForm2(char *a, char *b);
 s32 ConvCmd_SegmentForm1(char *a, char *b);
-void Kbd_TypeHidKey(void);
-void Kbd_FKeyRow(u8 key);
-void Kbd_OpenPhrases1(void);
-void Kbd_OpenPhrases2(void);
-void Kbd_CycleSegmentForm(s32 flag);
-void Str_CutAt(char *s, s32 n);
-void Kbd_MoveOffKey(s16 dir);
-s32 Kbd_ArrowsOnPage(void);
-void Kbd_CommitInput(void);
-void Kbd_DeleteChar(void);
-s32 Str_DropFront(char *s, s32 n);
-s32 Kbd_RomajiToKana(s32 kind, char *s);
-void Kbd_CommitKana(void);
-s32 Str_InsertClip(char *dst, char *src, s32 pos, s32 max);
-void Kbd_UpdateSymbolMode(void);
-s32 CaseCands_CopyFirst(s8 *dst, u8 count);
-s32 CaseCands_First(char *dst);
-void Kbd_SkipSameCands(void);
-s32 Sjis_CharSizeAt(char *s, s32 pos);
-s32 Wide_ToUpper(char *dst, char *src);
-s32 Wide_ToLower(char *dst, char *src);
-s32 Wide_Capitalize(char *dst, char *src);
-s32 Kbd_CountCands(void);
-void Kbd_StartConvert(void);
-void Kbd_Convert(void);
-void Kbd_CommitConversion(void);
-void Kbd_SetCandLine(s32 i);
-void Kbd_SetSymbolCand(s32 i, s32 j);
-void Kbd_TakeSymbolCand(void);
-void Kbd_ListCandidates(s32 start, s32 dir);
-void Kbd_InitCandList(void);
-void Kbd_PrevCand(void);
-void Kbd_NextCand(void);
-void Kbd_NextSegment(void);
-s32 Kbd_SetIsWide(void);
-void Kbd_SetPhrasePage(u8 arg0);
-s8 Kbd_LookupKey(void);
-void Kbd_ClearUnk34(s8);
-s32 Kbd_KeyRepeat(s16 held, s16 pressed);
-void Kbd_TypeKey(KbdKey *key);
-void Kbd_EnterChar(KbdKey *key);
-void Kbd_InsertPhrase(void);
-void Kbd_ToggleWidth(void);
-void Kbd_DeleteBack(s32);
-void Kbd_Submit(void);
-void Str_ToWide(s8 *src, s8 *dst);
-void Kbd_RefreshLayout(void);
-s32 Kana_AddDakuten(void);
-s32 Kana_AddHandakuten(void);
-s32 Kbd_FindKind(u8 kind, u8 *outA, u8 *outB);
-s32 Kbd_FindKindEx(u8 kind, u8 *outA, u8 *outB);
-void Kbd_UpdateMode(void);
-void Kbd_HomePageCursor(void);
-void Kbd_PickLayout(void);
-void Kbd_EnterGestures(void);
-s32 Kbd_CharIsSpecialKana(KbdKey *p);
-s32 Kbd_CharInSet5_Unk(KbdKey *p);
-void Kbd_SaveKanaInput(void);
-s32 Kbd_CharInSet4_Unk(KbdKey *p);
-s32 Kbd_CharInRows01(KbdKey *arg0);
-s32 Kbd_CharInRowsHigh(KbdKey *arg0);
-s32 Kbd_CharIsPlain(KbdKey *p);
-s32 CamFollow_IsBlownAway(void);
-f32 AreaGrid2_GetFloorY(f32 *pos); /* the ground height at pos */
-void Hud_SetCancel(void);
-void Kbd_EmptyInit(void);
-void Player_RequestGesture(u8 a);
-void Mem_Fill(void *dst, u8 c, s32 n);
 extern u8 gKbdDakutenSjis;
 extern u8 gKbdDakutenSjis_1;
 extern u8 gKbdHandakutenSjis;
 extern u8 gKbdHandakutenSjis_1;
-extern u8 gKbdSetModes[];
-extern u8 gKbdCands[];
-extern u8 gKbdCandText[];
-extern u8 gKbdSegText[];
-extern u8 gKbdCandLines[];
-extern s8 gKbdCandLinesCut[];
 extern char D_0046CC08[]; /* a full-width space */
 s32 strncmp(const char *a, const char *b, u32 n);
-extern s8 gCaseCands;
-extern s8 gCaseCandCount;
 extern u8 gKbdPhrasePage;
 extern u8 gKbdSavedKanaInput;
 extern u8 gKbdState;
 extern s8 D_005AEAD7;
 /* end of prototypes */
 
-typedef s8 Str256[0x100]; /* a text buffer */
-
+typedef s8 Str256[256]; /* a text buffer */
 
 /* The size of a key cursor box. */
 typedef struct BoxSize {
@@ -140,7 +63,6 @@ typedef struct BoxSize {
     s16 h;
 } BoxSize;
 extern BoxSize gKbdBoxSizes[];
-
 
 /* The cursor and grid tables of a layout variant. */
 typedef struct KeyPair {
@@ -151,2428 +73,2428 @@ typedef struct KeyPair {
 
 /* This file's read-only data. */
 #pragma rodata on
-char D_0046A930[0x8] = {
+char gRomajiKanaTbl_0_romaji[8] = {
 #include "sub_main/0046A930.inc"
 };
-char D_0046A938[0x8] = {
+char gRomajiKanaTbl_0_kana_0[8] = {
 #include "sub_main/0046A938.inc"
 };
-char D_0046A940[0x8] = {
+char gRomajiKanaTbl_0_kana_1[8] = {
 #include "sub_main/0046A940.inc"
 };
-char D_0046A948[0x8] = {
+char gRomajiKanaTbl_0_kana_2[8] = {
 #include "sub_main/0046A948.inc"
 };
-char D_0046A950[0x8] = {
+char gRomajiKanaTbl_1_romaji[8] = {
 #include "sub_main/0046A950.inc"
 };
-char D_0046A958[0x8] = {
+char D_0046A958[8] = {
 #include "sub_main/0046A958.inc"
 };
-char D_0046A960[0x8] = {
+char D_0046A960[8] = {
 #include "sub_main/0046A960.inc"
 };
-char D_0046A968[0x8] = {
+char D_0046A968[8] = {
 #include "sub_main/0046A968.inc"
 };
-char D_0046A970[0x8] = {
+char gRomajiKanaTbl_2_romaji[8] = {
 #include "sub_main/0046A970.inc"
 };
-char D_0046A978[0x8] = {
+char D_0046A978[8] = {
 #include "sub_main/0046A978.inc"
 };
-char D_0046A980[0x8] = {
+char D_0046A980[8] = {
 #include "sub_main/0046A980.inc"
 };
-char D_0046A988[0x8] = {
+char D_0046A988[8] = {
 #include "sub_main/0046A988.inc"
 };
-char D_0046A990[0x8] = {
+char gRomajiKanaTbl_3_romaji[8] = {
 #include "sub_main/0046A990.inc"
 };
-char D_0046A998[0x8] = {
+char gRomajiKanaTbl_3_kana_0[8] = {
 #include "sub_main/0046A998.inc"
 };
-char D_0046A9A0[0x8] = {
+char gRomajiKanaTbl_3_kana_1[8] = {
 #include "sub_main/0046A9A0.inc"
 };
-char D_0046A9A8[0x8] = {
+char gRomajiKanaTbl_3_kana_2[8] = {
 #include "sub_main/0046A9A8.inc"
 };
-char D_0046A9B0[0x8] = {
+char gRomajiKanaTbl_4_romaji[8] = {
 #include "sub_main/0046A9B0.inc"
 };
-char D_0046A9B8[0x8] = {
+char gRomajiKanaTbl_4_kana_0[8] = {
 #include "sub_main/0046A9B8.inc"
 };
-char D_0046A9C0[0x8] = {
+char gRomajiKanaTbl_4_kana_1[8] = {
 #include "sub_main/0046A9C0.inc"
 };
-char D_0046A9C8[0x8] = {
+char gRomajiKanaTbl_4_kana_2[8] = {
 #include "sub_main/0046A9C8.inc"
 };
-char D_0046A9D0[0x8] = {
+char gRomajiKanaTbl_5_romaji[8] = {
 #include "sub_main/0046A9D0.inc"
 };
-char D_0046A9D8[0x8] = {
+char gRomajiKanaTbl_6_romaji[8] = {
 #include "sub_main/0046A9D8.inc"
 };
-char D_0046A9E0[0x8] = {
+char gRomajiKanaTbl_7_romaji[8] = {
 #include "sub_main/0046A9E0.inc"
 };
-char D_0046A9E8[0x8] = {
+char D_0046A9E8[8] = {
 #include "sub_main/0046A9E8.inc"
 };
-char D_0046A9F0[0x8] = {
+char D_0046A9F0[8] = {
 #include "sub_main/0046A9F0.inc"
 };
-char D_0046A9F8[0x8] = {
+char D_0046A9F8[8] = {
 #include "sub_main/0046A9F8.inc"
 };
-char D_0046AA00[0x8] = {
+char gRomajiKanaTbl_8_romaji[8] = {
 #include "sub_main/0046AA00.inc"
 };
-char D_0046AA08[0x8] = {
+char D_0046AA08[8] = {
 #include "sub_main/0046AA08.inc"
 };
-char D_0046AA10[0x8] = {
+char D_0046AA10[8] = {
 #include "sub_main/0046AA10.inc"
 };
-char D_0046AA18[0x8] = {
+char D_0046AA18[8] = {
 #include "sub_main/0046AA18.inc"
 };
-char D_0046AA20[0x8] = {
+char gRomajiKanaTbl_9_romaji[8] = {
 #include "sub_main/0046AA20.inc"
 };
-char D_0046AA28[0x8] = {
+char D_0046AA28[8] = {
 #include "sub_main/0046AA28.inc"
 };
-char D_0046AA30[0x8] = {
+char D_0046AA30[8] = {
 #include "sub_main/0046AA30.inc"
 };
-char D_0046AA38[0x8] = {
+char D_0046AA38[8] = {
 #include "sub_main/0046AA38.inc"
 };
-char D_0046AA40[0x8] = {
+char gRomajiKanaTbl_10_romaji[8] = {
 #include "sub_main/0046AA40.inc"
 };
-char D_0046AA48[0x8] = {
+char D_0046AA48[8] = {
 #include "sub_main/0046AA48.inc"
 };
-char D_0046AA50[0x8] = {
+char D_0046AA50[8] = {
 #include "sub_main/0046AA50.inc"
 };
-char D_0046AA58[0x8] = {
+char D_0046AA58[8] = {
 #include "sub_main/0046AA58.inc"
 };
-char D_0046AA60[0x8] = {
+char gRomajiKanaTbl_11_romaji[8] = {
 #include "sub_main/0046AA60.inc"
 };
-char D_0046AA68[0x8] = {
+char D_0046AA68[8] = {
 #include "sub_main/0046AA68.inc"
 };
-char D_0046AA70[0x8] = {
+char D_0046AA70[8] = {
 #include "sub_main/0046AA70.inc"
 };
-char D_0046AA78[0x8] = {
+char D_0046AA78[8] = {
 #include "sub_main/0046AA78.inc"
 };
-char D_0046AA80[0x8] = {
+char gRomajiKanaTbl_12_romaji[8] = {
 #include "sub_main/0046AA80.inc"
 };
-char D_0046AA88[0x8] = {
+char gRomajiKanaTbl_13_romaji[8] = {
 #include "sub_main/0046AA88.inc"
 };
-char D_0046AA90[0x8] = {
+char gRomajiKanaTbl_14_romaji[8] = {
 #include "sub_main/0046AA90.inc"
 };
-char D_0046AA98[0x8] = {
+char gRomajiKanaTbl_15_romaji[8] = {
 #include "sub_main/0046AA98.inc"
 };
-char D_0046AAA0[0x8] = {
+char gRomajiKanaTbl_16_romaji[8] = {
 #include "sub_main/0046AAA0.inc"
 };
-char D_0046AAA8[0x8] = {
+char gRomajiKanaTbl_17_romaji[8] = {
 #include "sub_main/0046AAA8.inc"
 };
-char D_0046AAB0[0x8] = {
+char gRomajiKanaTbl_18_romaji[8] = {
 #include "sub_main/0046AAB0.inc"
 };
-char D_0046AAB8[0x8] = {
+char gRomajiKanaTbl_19_romaji[8] = {
 #include "sub_main/0046AAB8.inc"
 };
-char D_0046AAC0[0x8] = {
+char gRomajiKanaTbl_20_romaji[8] = {
 #include "sub_main/0046AAC0.inc"
 };
-char D_0046AAC8[0x8] = {
+char gRomajiKanaTbl_21_romaji[8] = {
 #include "sub_main/0046AAC8.inc"
 };
-char D_0046AAD0[0x8] = {
+char gRomajiKanaTbl_21_kana_0[8] = {
 #include "sub_main/0046AAD0.inc"
 };
-char D_0046AAD8[0x8] = {
+char gRomajiKanaTbl_21_kana_1[8] = {
 #include "sub_main/0046AAD8.inc"
 };
-char D_0046AAE0[0x8] = {
+char gRomajiKanaTbl_21_kana_2[8] = {
 #include "sub_main/0046AAE0.inc"
 };
-char D_0046AAE8[0x8] = {
+char gRomajiKanaTbl_22_romaji[8] = {
 #include "sub_main/0046AAE8.inc"
 };
-char D_0046AAF0[0x8] = {
+char D_0046AAF0[8] = {
 #include "sub_main/0046AAF0.inc"
 };
-char D_0046AAF8[0x8] = {
+char D_0046AAF8[8] = {
 #include "sub_main/0046AAF8.inc"
 };
-char D_0046AB00[0x8] = {
+char D_0046AB00[8] = {
 #include "sub_main/0046AB00.inc"
 };
-char D_0046AB08[0x8] = {
+char gRomajiKanaTbl_23_romaji[8] = {
 #include "sub_main/0046AB08.inc"
 };
-char D_0046AB10[0x8] = {
+char gRomajiKanaTbl_23_kana_0[8] = {
 #include "sub_main/0046AB10.inc"
 };
-char D_0046AB18[0x8] = {
+char gRomajiKanaTbl_23_kana_1[8] = {
 #include "sub_main/0046AB18.inc"
 };
-char D_0046AB20[0x8] = {
+char gRomajiKanaTbl_23_kana_2[8] = {
 #include "sub_main/0046AB20.inc"
 };
-char D_0046AB28[0x8] = {
+char gRomajiKanaTbl_24_romaji[8] = {
 #include "sub_main/0046AB28.inc"
 };
-char D_0046AB30[0x8] = {
+char D_0046AB30[8] = {
 #include "sub_main/0046AB30.inc"
 };
-char D_0046AB38[0x8] = {
+char D_0046AB38[8] = {
 #include "sub_main/0046AB38.inc"
 };
-char D_0046AB40[0x8] = {
+char D_0046AB40[8] = {
 #include "sub_main/0046AB40.inc"
 };
-char D_0046AB48[0x8] = {
+char gRomajiKanaTbl_25_romaji[8] = {
 #include "sub_main/0046AB48.inc"
 };
-char D_0046AB50[0x8] = {
+char gRomajiKanaTbl_25_kana_0[8] = {
 #include "sub_main/0046AB50.inc"
 };
-char D_0046AB58[0x8] = {
+char gRomajiKanaTbl_25_kana_1[8] = {
 #include "sub_main/0046AB58.inc"
 };
-char D_0046AB60[0x8] = {
+char gRomajiKanaTbl_25_kana_2[8] = {
 #include "sub_main/0046AB60.inc"
 };
-char D_0046AB68[0x8] = {
+char gRomajiKanaTbl_26_romaji[8] = {
 #include "sub_main/0046AB68.inc"
 };
-char D_0046AB70[0x8] = {
+char D_0046AB70[8] = {
 #include "sub_main/0046AB70.inc"
 };
-char D_0046AB78[0x8] = {
+char D_0046AB78[8] = {
 #include "sub_main/0046AB78.inc"
 };
-char D_0046AB80[0x8] = {
+char D_0046AB80[8] = {
 #include "sub_main/0046AB80.inc"
 };
-char D_0046AB88[0x8] = {
+char gRomajiKanaTbl_27_romaji[8] = {
 #include "sub_main/0046AB88.inc"
 };
-char D_0046AB90[0x8] = {
+char gRomajiKanaTbl_28_romaji[8] = {
 #include "sub_main/0046AB90.inc"
 };
-char D_0046AB98[0x8] = {
+char gRomajiKanaTbl_29_romaji[8] = {
 #include "sub_main/0046AB98.inc"
 };
-char D_0046ABA0[0x8] = {
+char gRomajiKanaTbl_30_romaji[8] = {
 #include "sub_main/0046ABA0.inc"
 };
-char D_0046ABA8[0x8] = {
+char gRomajiKanaTbl_30_kana_0[8] = {
 #include "sub_main/0046ABA8.inc"
 };
-char D_0046ABB0[0x8] = {
+char gRomajiKanaTbl_30_kana_1[8] = {
 #include "sub_main/0046ABB0.inc"
 };
-char D_0046ABB8[0x8] = {
+char gRomajiKanaTbl_30_kana_2[8] = {
 #include "sub_main/0046ABB8.inc"
 };
-char D_0046ABC0[0x8] = {
+char gRomajiKanaTbl_31_romaji[8] = {
 #include "sub_main/0046ABC0.inc"
 };
-char D_0046ABC8[0x8] = {
+char gRomajiKanaTbl_31_kana_0[8] = {
 #include "sub_main/0046ABC8.inc"
 };
-char D_0046ABD0[0x8] = {
+char gRomajiKanaTbl_31_kana_1[8] = {
 #include "sub_main/0046ABD0.inc"
 };
-char D_0046ABD8[0x8] = {
+char gRomajiKanaTbl_31_kana_2[8] = {
 #include "sub_main/0046ABD8.inc"
 };
-char D_0046ABE0[0x8] = {
+char gRomajiKanaTbl_32_romaji[8] = {
 #include "sub_main/0046ABE0.inc"
 };
-char D_0046ABE8[0x8] = {
+char gRomajiKanaTbl_32_kana_0[8] = {
 #include "sub_main/0046ABE8.inc"
 };
-char D_0046ABF0[0x8] = {
+char gRomajiKanaTbl_32_kana_1[8] = {
 #include "sub_main/0046ABF0.inc"
 };
-char D_0046ABF8[0x8] = {
+char gRomajiKanaTbl_32_kana_2[8] = {
 #include "sub_main/0046ABF8.inc"
 };
-char D_0046AC00[0x8] = {
+char gRomajiKanaTbl_33_romaji[8] = {
 #include "sub_main/0046AC00.inc"
 };
-char D_0046AC08[0x8] = {
+char gRomajiKanaTbl_33_kana_0[8] = {
 #include "sub_main/0046AC08.inc"
 };
-char D_0046AC10[0x8] = {
+char gRomajiKanaTbl_33_kana_1[8] = {
 #include "sub_main/0046AC10.inc"
 };
-char D_0046AC18[0x8] = {
+char gRomajiKanaTbl_33_kana_2[8] = {
 #include "sub_main/0046AC18.inc"
 };
-char D_0046AC20[0x8] = {
+char gRomajiKanaTbl_34_romaji[8] = {
 #include "sub_main/0046AC20.inc"
 };
-char D_0046AC28[0x8] = {
+char gRomajiKanaTbl_34_kana_0[8] = {
 #include "sub_main/0046AC28.inc"
 };
-char D_0046AC30[0x8] = {
+char gRomajiKanaTbl_34_kana_1[8] = {
 #include "sub_main/0046AC30.inc"
 };
-char D_0046AC38[0x8] = {
+char gRomajiKanaTbl_34_kana_2[8] = {
 #include "sub_main/0046AC38.inc"
 };
-char D_0046AC40[0x8] = {
+char gRomajiKanaTbl_35_romaji[8] = {
 #include "sub_main/0046AC40.inc"
 };
-char D_0046AC48[0x8] = {
+char gRomajiKanaTbl_35_kana_0[8] = {
 #include "sub_main/0046AC48.inc"
 };
-char D_0046AC50[0x8] = {
+char gRomajiKanaTbl_35_kana_1[8] = {
 #include "sub_main/0046AC50.inc"
 };
-char D_0046AC58[0x8] = {
+char gRomajiKanaTbl_35_kana_2[8] = {
 #include "sub_main/0046AC58.inc"
 };
-char D_0046AC60[0x8] = {
+char gRomajiKanaTbl_36_romaji[8] = {
 #include "sub_main/0046AC60.inc"
 };
-char D_0046AC68[0x8] = {
+char gRomajiKanaTbl_36_kana_0[8] = {
 #include "sub_main/0046AC68.inc"
 };
-char D_0046AC70[0x8] = {
+char gRomajiKanaTbl_36_kana_1[8] = {
 #include "sub_main/0046AC70.inc"
 };
-char D_0046AC78[0x8] = {
+char gRomajiKanaTbl_36_kana_2[8] = {
 #include "sub_main/0046AC78.inc"
 };
-char D_0046AC80[0x8] = {
+char gRomajiKanaTbl_37_romaji[8] = {
 #include "sub_main/0046AC80.inc"
 };
-char D_0046AC88[0x8] = {
+char gRomajiKanaTbl_37_kana_0[8] = {
 #include "sub_main/0046AC88.inc"
 };
-char D_0046AC90[0x8] = {
+char gRomajiKanaTbl_37_kana_1[8] = {
 #include "sub_main/0046AC90.inc"
 };
-char D_0046AC98[0x8] = {
+char gRomajiKanaTbl_37_kana_2[8] = {
 #include "sub_main/0046AC98.inc"
 };
-char D_0046ACA0[0x8] = {
+char gRomajiKanaTbl_38_romaji[8] = {
 #include "sub_main/0046ACA0.inc"
 };
-char D_0046ACA8[0x8] = {
+char gRomajiKanaTbl_38_kana_0[8] = {
 #include "sub_main/0046ACA8.inc"
 };
-char D_0046ACB0[0x8] = {
+char gRomajiKanaTbl_38_kana_1[8] = {
 #include "sub_main/0046ACB0.inc"
 };
-char D_0046ACB8[0x8] = {
+char gRomajiKanaTbl_38_kana_2[8] = {
 #include "sub_main/0046ACB8.inc"
 };
-char D_0046ACC0[0x8] = {
+char gRomajiKanaTbl_39_romaji[8] = {
 #include "sub_main/0046ACC0.inc"
 };
-char D_0046ACC8[0x8] = {
+char gRomajiKanaTbl_39_kana_0[8] = {
 #include "sub_main/0046ACC8.inc"
 };
-char D_0046ACD0[0x8] = {
+char gRomajiKanaTbl_39_kana_1[8] = {
 #include "sub_main/0046ACD0.inc"
 };
-char D_0046ACD8[0x8] = {
+char gRomajiKanaTbl_39_kana_2[8] = {
 #include "sub_main/0046ACD8.inc"
 };
-char D_0046ACE0[0x8] = {
+char gRomajiKanaTbl_40_romaji[8] = {
 #include "sub_main/0046ACE0.inc"
 };
-char D_0046ACE8[0x8] = {
+char gRomajiKanaTbl_40_kana_0[8] = {
 #include "sub_main/0046ACE8.inc"
 };
-char D_0046ACF0[0x8] = {
+char gRomajiKanaTbl_40_kana_1[8] = {
 #include "sub_main/0046ACF0.inc"
 };
-char D_0046ACF8[0x8] = {
+char gRomajiKanaTbl_40_kana_2[8] = {
 #include "sub_main/0046ACF8.inc"
 };
-char D_0046AD00[0x8] = {
+char gRomajiKanaTbl_41_romaji[8] = {
 #include "sub_main/0046AD00.inc"
 };
-char D_0046AD08[0x8] = {
+char gRomajiKanaTbl_41_kana_0[8] = {
 #include "sub_main/0046AD08.inc"
 };
-char D_0046AD10[0x8] = {
+char gRomajiKanaTbl_41_kana_1[8] = {
 #include "sub_main/0046AD10.inc"
 };
-char D_0046AD18[0x8] = {
+char gRomajiKanaTbl_41_kana_2[8] = {
 #include "sub_main/0046AD18.inc"
 };
-char D_0046AD20[0x8] = {
+char gRomajiKanaTbl_42_romaji[8] = {
 #include "sub_main/0046AD20.inc"
 };
-char D_0046AD28[0x8] = {
+char gRomajiKanaTbl_42_kana_0[8] = {
 #include "sub_main/0046AD28.inc"
 };
-char D_0046AD30[0x8] = {
+char gRomajiKanaTbl_42_kana_1[8] = {
 #include "sub_main/0046AD30.inc"
 };
-char D_0046AD38[0x8] = {
+char gRomajiKanaTbl_42_kana_2[8] = {
 #include "sub_main/0046AD38.inc"
 };
-char D_0046AD40[0x8] = {
+char gRomajiKanaTbl_43_romaji[8] = {
 #include "sub_main/0046AD40.inc"
 };
-char D_0046AD48[0x8] = {
+char gRomajiKanaTbl_43_kana_0[8] = {
 #include "sub_main/0046AD48.inc"
 };
-char D_0046AD50[0x8] = {
+char gRomajiKanaTbl_43_kana_1[8] = {
 #include "sub_main/0046AD50.inc"
 };
-char D_0046AD58[0x8] = {
+char gRomajiKanaTbl_43_kana_2[8] = {
 #include "sub_main/0046AD58.inc"
 };
-char D_0046AD60[0x8] = {
+char gRomajiKanaTbl_44_romaji[8] = {
 #include "sub_main/0046AD60.inc"
 };
-char D_0046AD68[0x8] = {
+char D_0046AD68[8] = {
 #include "sub_main/0046AD68.inc"
 };
-char D_0046AD70[0x8] = {
+char D_0046AD70[8] = {
 #include "sub_main/0046AD70.inc"
 };
-char D_0046AD78[0x8] = {
+char D_0046AD78[8] = {
 #include "sub_main/0046AD78.inc"
 };
-char D_0046AD80[0x8] = {
+char gRomajiKanaTbl_45_romaji[8] = {
 #include "sub_main/0046AD80.inc"
 };
-char D_0046AD88[0x8] = {
+char gRomajiKanaTbl_46_romaji[8] = {
 #include "sub_main/0046AD88.inc"
 };
-char D_0046AD90[0x8] = {
+char D_0046AD90[8] = {
 #include "sub_main/0046AD90.inc"
 };
-char D_0046AD98[0x8] = {
+char D_0046AD98[8] = {
 #include "sub_main/0046AD98.inc"
 };
-char D_0046ADA0[0x8] = {
+char D_0046ADA0[8] = {
 #include "sub_main/0046ADA0.inc"
 };
-char D_0046ADA8[0x8] = {
+char gRomajiKanaTbl_47_romaji[8] = {
 #include "sub_main/0046ADA8.inc"
 };
-char D_0046ADB0[0x8] = {
+char gRomajiKanaTbl_47_kana_0[8] = {
 #include "sub_main/0046ADB0.inc"
 };
-char D_0046ADB8[0x8] = {
+char gRomajiKanaTbl_47_kana_1[8] = {
 #include "sub_main/0046ADB8.inc"
 };
-char D_0046ADC0[0x8] = {
+char gRomajiKanaTbl_47_kana_2[8] = {
 #include "sub_main/0046ADC0.inc"
 };
-char D_0046ADC8[0x8] = {
+char gRomajiKanaTbl_48_romaji[8] = {
 #include "sub_main/0046ADC8.inc"
 };
-char D_0046ADD0[0x8] = {
+char gRomajiKanaTbl_49_romaji[8] = {
 #include "sub_main/0046ADD0.inc"
 };
-char D_0046ADD8[0x8] = {
+char gRomajiKanaTbl_50_romaji[8] = {
 #include "sub_main/0046ADD8.inc"
 };
-char D_0046ADE0[0x8] = {
+char gRomajiKanaTbl_50_kana_0[8] = {
 #include "sub_main/0046ADE0.inc"
 };
-char D_0046ADE8[0x8] = {
+char gRomajiKanaTbl_50_kana_1[8] = {
 #include "sub_main/0046ADE8.inc"
 };
-char D_0046ADF0[0x8] = {
+char gRomajiKanaTbl_50_kana_2[8] = {
 #include "sub_main/0046ADF0.inc"
 };
-char D_0046ADF8[0x8] = {
+char gRomajiKanaTbl_51_romaji[8] = {
 #include "sub_main/0046ADF8.inc"
 };
-char D_0046AE00[0x8] = {
+char gRomajiKanaTbl_51_kana_0[8] = {
 #include "sub_main/0046AE00.inc"
 };
-char D_0046AE08[0x8] = {
+char gRomajiKanaTbl_51_kana_1[8] = {
 #include "sub_main/0046AE08.inc"
 };
-char D_0046AE10[0x8] = {
+char gRomajiKanaTbl_51_kana_2[8] = {
 #include "sub_main/0046AE10.inc"
 };
-char D_0046AE18[0x8] = {
+char gRomajiKanaTbl_52_romaji[8] = {
 #include "sub_main/0046AE18.inc"
 };
-char D_0046AE20[0x8] = {
+char gRomajiKanaTbl_52_kana_0[8] = {
 #include "sub_main/0046AE20.inc"
 };
-char D_0046AE28[0x8] = {
+char gRomajiKanaTbl_52_kana_1[8] = {
 #include "sub_main/0046AE28.inc"
 };
-char D_0046AE30[0x8] = {
+char gRomajiKanaTbl_52_kana_2[8] = {
 #include "sub_main/0046AE30.inc"
 };
-char D_0046AE38[0x8] = {
+char gRomajiKanaTbl_53_romaji[8] = {
 #include "sub_main/0046AE38.inc"
 };
-char D_0046AE40[0x8] = {
+char gRomajiKanaTbl_53_kana_0[8] = {
 #include "sub_main/0046AE40.inc"
 };
-char D_0046AE48[0x8] = {
+char gRomajiKanaTbl_53_kana_1[8] = {
 #include "sub_main/0046AE48.inc"
 };
-char D_0046AE50[0x8] = {
+char gRomajiKanaTbl_53_kana_2[8] = {
 #include "sub_main/0046AE50.inc"
 };
-char D_0046AE58[0x8] = {
+char gRomajiKanaTbl_54_romaji[8] = {
 #include "sub_main/0046AE58.inc"
 };
-char D_0046AE60[0x8] = {
+char gRomajiKanaTbl_54_kana_0[8] = {
 #include "sub_main/0046AE60.inc"
 };
-char D_0046AE68[0x8] = {
+char gRomajiKanaTbl_54_kana_1[8] = {
 #include "sub_main/0046AE68.inc"
 };
-char D_0046AE70[0x8] = {
+char gRomajiKanaTbl_54_kana_2[8] = {
 #include "sub_main/0046AE70.inc"
 };
-char D_0046AE78[0x8] = {
+char gRomajiKanaTbl_55_romaji[8] = {
 #include "sub_main/0046AE78.inc"
 };
-char D_0046AE80[0x8] = {
+char gRomajiKanaTbl_55_kana_0[8] = {
 #include "sub_main/0046AE80.inc"
 };
-char D_0046AE88[0x8] = {
+char gRomajiKanaTbl_55_kana_1[8] = {
 #include "sub_main/0046AE88.inc"
 };
-char D_0046AE90[0x8] = {
+char gRomajiKanaTbl_55_kana_2[8] = {
 #include "sub_main/0046AE90.inc"
 };
-char D_0046AE98[0x8] = {
+char gRomajiKanaTbl_56_romaji[8] = {
 #include "sub_main/0046AE98.inc"
 };
-char D_0046AEA0[0x8] = {
+char gRomajiKanaTbl_56_kana_0[8] = {
 #include "sub_main/0046AEA0.inc"
 };
-char D_0046AEA8[0x8] = {
+char gRomajiKanaTbl_56_kana_1[8] = {
 #include "sub_main/0046AEA8.inc"
 };
-char D_0046AEB0[0x8] = {
+char gRomajiKanaTbl_56_kana_2[8] = {
 #include "sub_main/0046AEB0.inc"
 };
-char D_0046AEB8[0x8] = {
+char gRomajiKanaTbl_57_romaji[8] = {
 #include "sub_main/0046AEB8.inc"
 };
-char D_0046AEC0[0x8] = {
+char gRomajiKanaTbl_57_kana_0[8] = {
 #include "sub_main/0046AEC0.inc"
 };
-char D_0046AEC8[0x8] = {
+char gRomajiKanaTbl_57_kana_1[8] = {
 #include "sub_main/0046AEC8.inc"
 };
-char D_0046AED0[0x8] = {
+char gRomajiKanaTbl_57_kana_2[8] = {
 #include "sub_main/0046AED0.inc"
 };
-char D_0046AED8[0x8] = {
+char gRomajiKanaTbl_58_romaji[8] = {
 #include "sub_main/0046AED8.inc"
 };
-char D_0046AEE0[0x8] = {
+char gRomajiKanaTbl_58_kana_0[8] = {
 #include "sub_main/0046AEE0.inc"
 };
-char D_0046AEE8[0x8] = {
+char gRomajiKanaTbl_58_kana_1[8] = {
 #include "sub_main/0046AEE8.inc"
 };
-char D_0046AEF0[0x8] = {
+char gRomajiKanaTbl_58_kana_2[8] = {
 #include "sub_main/0046AEF0.inc"
 };
-char D_0046AEF8[0x8] = {
+char gRomajiKanaTbl_59_romaji[8] = {
 #include "sub_main/0046AEF8.inc"
 };
-char D_0046AF00[0x8] = {
+char gRomajiKanaTbl_59_kana_0[8] = {
 #include "sub_main/0046AF00.inc"
 };
-char D_0046AF08[0x8] = {
+char gRomajiKanaTbl_59_kana_1[8] = {
 #include "sub_main/0046AF08.inc"
 };
-char D_0046AF10[0x8] = {
+char gRomajiKanaTbl_59_kana_2[8] = {
 #include "sub_main/0046AF10.inc"
 };
-char D_0046AF18[0x8] = {
+char gRomajiKanaTbl_60_romaji[8] = {
 #include "sub_main/0046AF18.inc"
 };
-char D_0046AF20[0x8] = {
+char D_0046AF20[8] = {
 #include "sub_main/0046AF20.inc"
 };
-char D_0046AF28[0x8] = {
+char D_0046AF28[8] = {
 #include "sub_main/0046AF28.inc"
 };
-char D_0046AF30[0x8] = {
+char D_0046AF30[8] = {
 #include "sub_main/0046AF30.inc"
 };
-char D_0046AF38[0x8] = {
+char gRomajiKanaTbl_61_romaji[8] = {
 #include "sub_main/0046AF38.inc"
 };
-char D_0046AF40[0x8] = {
+char gRomajiKanaTbl_61_kana_0[8] = {
 #include "sub_main/0046AF40.inc"
 };
-char D_0046AF48[0x8] = {
+char gRomajiKanaTbl_61_kana_1[8] = {
 #include "sub_main/0046AF48.inc"
 };
-char D_0046AF50[0x8] = {
+char gRomajiKanaTbl_61_kana_2[8] = {
 #include "sub_main/0046AF50.inc"
 };
-char D_0046AF58[0x8] = {
+char gRomajiKanaTbl_62_romaji[8] = {
 #include "sub_main/0046AF58.inc"
 };
-char D_0046AF60[0x8] = {
+char D_0046AF60[8] = {
 #include "sub_main/0046AF60.inc"
 };
-char D_0046AF68[0x8] = {
+char D_0046AF68[8] = {
 #include "sub_main/0046AF68.inc"
 };
-char D_0046AF70[0x8] = {
+char D_0046AF70[8] = {
 #include "sub_main/0046AF70.inc"
 };
-char D_0046AF78[0x8] = {
+char gRomajiKanaTbl_63_romaji[8] = {
 #include "sub_main/0046AF78.inc"
 };
-char D_0046AF80[0x8] = {
+char gRomajiKanaTbl_63_kana_0[8] = {
 #include "sub_main/0046AF80.inc"
 };
-char D_0046AF88[0x8] = {
+char gRomajiKanaTbl_63_kana_1[8] = {
 #include "sub_main/0046AF88.inc"
 };
-char D_0046AF90[0x8] = {
+char gRomajiKanaTbl_63_kana_2[8] = {
 #include "sub_main/0046AF90.inc"
 };
-char D_0046AF98[0x8] = {
+char gRomajiKanaTbl_64_romaji[8] = {
 #include "sub_main/0046AF98.inc"
 };
-char D_0046AFA0[0x8] = {
+char gRomajiKanaTbl_65_romaji[8] = {
 #include "sub_main/0046AFA0.inc"
 };
-char D_0046AFA8[0x8] = {
+char gRomajiKanaTbl_66_romaji[8] = {
 #include "sub_main/0046AFA8.inc"
 };
-char D_0046AFB0[0x8] = {
+char gRomajiKanaTbl_66_kana_0[8] = {
 #include "sub_main/0046AFB0.inc"
 };
-char D_0046AFB8[0x8] = {
+char gRomajiKanaTbl_66_kana_1[8] = {
 #include "sub_main/0046AFB8.inc"
 };
-char D_0046AFC0[0x8] = {
+char gRomajiKanaTbl_66_kana_2[8] = {
 #include "sub_main/0046AFC0.inc"
 };
-char D_0046AFC8[0x8] = {
+char gRomajiKanaTbl_67_romaji[8] = {
 #include "sub_main/0046AFC8.inc"
 };
-char D_0046AFD0[0x8] = {
+char D_0046AFD0[8] = {
 #include "sub_main/0046AFD0.inc"
 };
-char D_0046AFD8[0x8] = {
+char D_0046AFD8[8] = {
 #include "sub_main/0046AFD8.inc"
 };
-char D_0046AFE0[0x8] = {
+char D_0046AFE0[8] = {
 #include "sub_main/0046AFE0.inc"
 };
-char D_0046AFE8[0x8] = {
+char gRomajiKanaTbl_68_romaji[8] = {
 #include "sub_main/0046AFE8.inc"
 };
-char D_0046AFF0[0x8] = {
+char gRomajiKanaTbl_68_kana_0[8] = {
 #include "sub_main/0046AFF0.inc"
 };
-char D_0046AFF8[0x8] = {
+char gRomajiKanaTbl_68_kana_1[8] = {
 #include "sub_main/0046AFF8.inc"
 };
-char D_0046B000[0x8] = {
+char gRomajiKanaTbl_68_kana_2[8] = {
 #include "sub_main/0046B000.inc"
 };
-char D_0046B008[0x8] = {
+char gRomajiKanaTbl_69_romaji[8] = {
 #include "sub_main/0046B008.inc"
 };
-char D_0046B010[0x8] = {
+char gRomajiKanaTbl_69_kana_0[8] = {
 #include "sub_main/0046B010.inc"
 };
-char D_0046B018[0x8] = {
+char gRomajiKanaTbl_69_kana_1[8] = {
 #include "sub_main/0046B018.inc"
 };
-char D_0046B020[0x8] = {
+char gRomajiKanaTbl_69_kana_2[8] = {
 #include "sub_main/0046B020.inc"
 };
-char D_0046B028[0x8] = {
+char gRomajiKanaTbl_70_romaji[8] = {
 #include "sub_main/0046B028.inc"
 };
-char D_0046B030[0x8] = {
+char gRomajiKanaTbl_70_kana_0[8] = {
 #include "sub_main/0046B030.inc"
 };
-char D_0046B038[0x8] = {
+char gRomajiKanaTbl_70_kana_1[8] = {
 #include "sub_main/0046B038.inc"
 };
-char D_0046B040[0x8] = {
+char gRomajiKanaTbl_70_kana_2[8] = {
 #include "sub_main/0046B040.inc"
 };
-char D_0046B048[0x8] = {
+char gRomajiKanaTbl_71_romaji[8] = {
 #include "sub_main/0046B048.inc"
 };
-char D_0046B050[0x8] = {
+char gRomajiKanaTbl_72_romaji[8] = {
 #include "sub_main/0046B050.inc"
 };
-char D_0046B058[0x8] = {
+char gRomajiKanaTbl_73_romaji[8] = {
 #include "sub_main/0046B058.inc"
 };
-char D_0046B060[0x8] = {
+char D_0046B060[8] = {
 #include "sub_main/0046B060.inc"
 };
-char D_0046B068[0x8] = {
+char D_0046B068[8] = {
 #include "sub_main/0046B068.inc"
 };
-char D_0046B070[0x8] = {
+char D_0046B070[8] = {
 #include "sub_main/0046B070.inc"
 };
-char D_0046B078[0x8] = {
+char gRomajiKanaTbl_74_romaji[8] = {
 #include "sub_main/0046B078.inc"
 };
-char D_0046B080[0x8] = {
+char gRomajiKanaTbl_74_kana_0[8] = {
 #include "sub_main/0046B080.inc"
 };
-char D_0046B088[0x8] = {
+char gRomajiKanaTbl_74_kana_1[8] = {
 #include "sub_main/0046B088.inc"
 };
-char D_0046B090[0x8] = {
+char gRomajiKanaTbl_74_kana_2[8] = {
 #include "sub_main/0046B090.inc"
 };
-char D_0046B098[0x8] = {
+char gRomajiKanaTbl_75_romaji[8] = {
 #include "sub_main/0046B098.inc"
 };
-char D_0046B0A0[0x8] = {
+char D_0046B0A0[8] = {
 #include "sub_main/0046B0A0.inc"
 };
-char D_0046B0A8[0x8] = {
+char D_0046B0A8[8] = {
 #include "sub_main/0046B0A8.inc"
 };
-char D_0046B0B0[0x8] = {
+char D_0046B0B0[8] = {
 #include "sub_main/0046B0B0.inc"
 };
-char D_0046B0B8[0x8] = {
+char gRomajiKanaTbl_76_romaji[8] = {
 #include "sub_main/0046B0B8.inc"
 };
-char D_0046B0C0[0x8] = {
+char D_0046B0C0[8] = {
 #include "sub_main/0046B0C0.inc"
 };
-char D_0046B0C8[0x8] = {
+char D_0046B0C8[8] = {
 #include "sub_main/0046B0C8.inc"
 };
-char D_0046B0D0[0x8] = {
+char D_0046B0D0[8] = {
 #include "sub_main/0046B0D0.inc"
 };
-char D_0046B0D8[0x8] = {
+char gRomajiKanaTbl_77_romaji[8] = {
 #include "sub_main/0046B0D8.inc"
 };
-char D_0046B0E0[0x8] = {
+char D_0046B0E0[8] = {
 #include "sub_main/0046B0E0.inc"
 };
-char D_0046B0E8[0x8] = {
+char D_0046B0E8[8] = {
 #include "sub_main/0046B0E8.inc"
 };
-char D_0046B0F0[0x8] = {
+char D_0046B0F0[8] = {
 #include "sub_main/0046B0F0.inc"
 };
-char D_0046B0F8[0x8] = {
+char gRomajiKanaTbl_78_romaji[8] = {
 #include "sub_main/0046B0F8.inc"
 };
-char D_0046B100[0x8] = {
+char gRomajiKanaTbl_79_romaji[8] = {
 #include "sub_main/0046B100.inc"
 };
-char D_0046B108[0x8] = {
+char gRomajiKanaTbl_80_romaji[8] = {
 #include "sub_main/0046B108.inc"
 };
-char D_0046B110[0x8] = {
+char gRomajiKanaTbl_81_romaji[8] = {
 #include "sub_main/0046B110.inc"
 };
-char D_0046B118[0x8] = {
+char gRomajiKanaTbl_82_romaji[8] = {
 #include "sub_main/0046B118.inc"
 };
-char D_0046B120[0x8] = {
+char D_0046B120[8] = {
 #include "sub_main/0046B120.inc"
 };
-char D_0046B128[0x8] = {
+char D_0046B128[8] = {
 #include "sub_main/0046B128.inc"
 };
-char D_0046B130[0x8] = {
+char D_0046B130[8] = {
 #include "sub_main/0046B130.inc"
 };
-char D_0046B138[0x8] = {
+char gRomajiKanaTbl_83_romaji[8] = {
 #include "sub_main/0046B138.inc"
 };
-char D_0046B140[0x8] = {
+char D_0046B140[8] = {
 #include "sub_main/0046B140.inc"
 };
-char D_0046B148[0x8] = {
+char D_0046B148[8] = {
 #include "sub_main/0046B148.inc"
 };
-char D_0046B150[0x8] = {
+char D_0046B150[8] = {
 #include "sub_main/0046B150.inc"
 };
-char D_0046B158[0x8] = {
+char gRomajiKanaTbl_84_romaji[8] = {
 #include "sub_main/0046B158.inc"
 };
-char D_0046B160[0x8] = {
+char D_0046B160[8] = {
 #include "sub_main/0046B160.inc"
 };
-char D_0046B168[0x8] = {
+char D_0046B168[8] = {
 #include "sub_main/0046B168.inc"
 };
-char D_0046B170[0x8] = {
+char D_0046B170[8] = {
 #include "sub_main/0046B170.inc"
 };
-char D_0046B178[0x8] = {
+char gRomajiKanaTbl_85_romaji[8] = {
 #include "sub_main/0046B178.inc"
 };
-char D_0046B180[0x8] = {
+char D_0046B180[8] = {
 #include "sub_main/0046B180.inc"
 };
-char D_0046B188[0x8] = {
+char D_0046B188[8] = {
 #include "sub_main/0046B188.inc"
 };
-char D_0046B190[0x8] = {
+char D_0046B190[8] = {
 #include "sub_main/0046B190.inc"
 };
-char D_0046B198[0x8] = {
+char gRomajiKanaTbl_86_romaji[8] = {
 #include "sub_main/0046B198.inc"
 };
-char D_0046B1A0[0x8] = {
+char D_0046B1A0[8] = {
 #include "sub_main/0046B1A0.inc"
 };
-char D_0046B1A8[0x8] = {
+char D_0046B1A8[8] = {
 #include "sub_main/0046B1A8.inc"
 };
-char D_0046B1B0[0x8] = {
+char D_0046B1B0[8] = {
 #include "sub_main/0046B1B0.inc"
 };
-char D_0046B1B8[0x8] = {
+char gRomajiKanaTbl_87_romaji[8] = {
 #include "sub_main/0046B1B8.inc"
 };
-char D_0046B1C0[0x8] = {
+char gRomajiKanaTbl_88_romaji[8] = {
 #include "sub_main/0046B1C0.inc"
 };
-char D_0046B1C8[0x8] = {
+char gRomajiKanaTbl_89_romaji[8] = {
 #include "sub_main/0046B1C8.inc"
 };
-char D_0046B1D0[0x8] = {
+char gRomajiKanaTbl_90_romaji[8] = {
 #include "sub_main/0046B1D0.inc"
 };
-char D_0046B1D8[0x8] = {
+char gRomajiKanaTbl_91_romaji[8] = {
 #include "sub_main/0046B1D8.inc"
 };
-char D_0046B1E0[0x8] = {
+char gRomajiKanaTbl_92_romaji[8] = {
 #include "sub_main/0046B1E0.inc"
 };
-char D_0046B1E8[0x8] = {
+char gRomajiKanaTbl_93_romaji[8] = {
 #include "sub_main/0046B1E8.inc"
 };
-char D_0046B1F0[0x8] = {
+char gRomajiKanaTbl_94_romaji[8] = {
 #include "sub_main/0046B1F0.inc"
 };
-char D_0046B1F8[0x8] = {
+char gRomajiKanaTbl_95_romaji[8] = {
 #include "sub_main/0046B1F8.inc"
 };
-char D_0046B200[0x8] = {
+char gRomajiKanaTbl_96_romaji[8] = {
 #include "sub_main/0046B200.inc"
 };
-char D_0046B208[0x8] = {
+char gRomajiKanaTbl_96_kana_0[8] = {
 #include "sub_main/0046B208.inc"
 };
-char D_0046B210[0x8] = {
+char gRomajiKanaTbl_96_kana_1[8] = {
 #include "sub_main/0046B210.inc"
 };
-char D_0046B218[0x8] = {
+char gRomajiKanaTbl_96_kana_2[8] = {
 #include "sub_main/0046B218.inc"
 };
-char D_0046B220[0x8] = {
+char gRomajiKanaTbl_97_romaji[8] = {
 #include "sub_main/0046B220.inc"
 };
-char D_0046B228[0x8] = {
+char D_0046B228[8] = {
 #include "sub_main/0046B228.inc"
 };
-char D_0046B230[0x8] = {
+char D_0046B230[8] = {
 #include "sub_main/0046B230.inc"
 };
-char D_0046B238[0x8] = {
+char D_0046B238[8] = {
 #include "sub_main/0046B238.inc"
 };
-char D_0046B240[0x8] = {
+char gRomajiKanaTbl_98_romaji[8] = {
 #include "sub_main/0046B240.inc"
 };
-char D_0046B248[0x8] = {
+char D_0046B248[8] = {
 #include "sub_main/0046B248.inc"
 };
-char D_0046B250[0x8] = {
+char D_0046B250[8] = {
 #include "sub_main/0046B250.inc"
 };
-char D_0046B258[0x8] = {
+char D_0046B258[8] = {
 #include "sub_main/0046B258.inc"
 };
-char D_0046B260[0x8] = {
+char gRomajiKanaTbl_99_romaji[8] = {
 #include "sub_main/0046B260.inc"
 };
-char D_0046B268[0x8] = {
+char gRomajiKanaTbl_99_kana_0[8] = {
 #include "sub_main/0046B268.inc"
 };
-char D_0046B270[0x8] = {
+char gRomajiKanaTbl_99_kana_1[8] = {
 #include "sub_main/0046B270.inc"
 };
-char D_0046B278[0x8] = {
+char gRomajiKanaTbl_99_kana_2[8] = {
 #include "sub_main/0046B278.inc"
 };
-char D_0046B280[0x8] = {
+char gRomajiKanaTbl_100_romaji[8] = {
 #include "sub_main/0046B280.inc"
 };
-char D_0046B288[0x8] = {
+char gRomajiKanaTbl_100_kana_0[8] = {
 #include "sub_main/0046B288.inc"
 };
-char D_0046B290[0x8] = {
+char gRomajiKanaTbl_100_kana_1[8] = {
 #include "sub_main/0046B290.inc"
 };
-char D_0046B298[0x8] = {
+char gRomajiKanaTbl_100_kana_2[8] = {
 #include "sub_main/0046B298.inc"
 };
-char D_0046B2A0[0x8] = {
+char gRomajiKanaTbl_101_romaji[8] = {
 #include "sub_main/0046B2A0.inc"
 };
-char D_0046B2A8[0x8] = {
+char gRomajiKanaTbl_102_romaji[8] = {
 #include "sub_main/0046B2A8.inc"
 };
-char D_0046B2B0[0x8] = {
+char gRomajiKanaTbl_103_romaji[8] = {
 #include "sub_main/0046B2B0.inc"
 };
-char gSmallTsuHira[0x8] = {
+char gSmallTsuHira[8] = {
 #include "sub_main/0046B2B8.inc"
 };
-char gSmallTsuKata[0x8] = {
+char gSmallTsuKata[8] = {
 #include "sub_main/0046B2C0.inc"
 };
-char gSmallTsuHalf[0x8] = {
+char gSmallTsuHalf[8] = {
 #include "sub_main/0046B2C8.inc"
 };
-char D_0046B2D0[0x8] = {
+char gRomajiKanaTbl_104_romaji[8] = {
 #include "sub_main/0046B2D0.inc"
 };
-char D_0046B2D8[0x8] = {
+char gRomajiKanaTbl_105_romaji[8] = {
 #include "sub_main/0046B2D8.inc"
 };
-char D_0046B2E0[0x8] = {
+char gRomajiKanaTbl_105_kana_0[8] = {
 #include "sub_main/0046B2E0.inc"
 };
-char D_0046B2E8[0x8] = {
+char gRomajiKanaTbl_105_kana_1[8] = {
 #include "sub_main/0046B2E8.inc"
 };
-char D_0046B2F0[0x8] = {
+char gRomajiKanaTbl_105_kana_2[8] = {
 #include "sub_main/0046B2F0.inc"
 };
-char D_0046B2F8[0x8] = {
+char gRomajiKanaTbl_106_romaji[8] = {
 #include "sub_main/0046B2F8.inc"
 };
-char D_0046B300[0x8] = {
+char gRomajiKanaTbl_106_kana_0[8] = {
 #include "sub_main/0046B300.inc"
 };
-char D_0046B308[0x8] = {
+char gRomajiKanaTbl_106_kana_1[8] = {
 #include "sub_main/0046B308.inc"
 };
-char D_0046B310[0x8] = {
+char gRomajiKanaTbl_106_kana_2[8] = {
 #include "sub_main/0046B310.inc"
 };
-char D_0046B318[0x8] = {
+char gRomajiKanaTbl_107_romaji[8] = {
 #include "sub_main/0046B318.inc"
 };
-char D_0046B320[0x8] = {
+char gRomajiKanaTbl_107_kana_0[8] = {
 #include "sub_main/0046B320.inc"
 };
-char D_0046B328[0x8] = {
+char gRomajiKanaTbl_107_kana_1[8] = {
 #include "sub_main/0046B328.inc"
 };
-char D_0046B330[0x8] = {
+char gRomajiKanaTbl_107_kana_2[8] = {
 #include "sub_main/0046B330.inc"
 };
-char D_0046B338[0x8] = {
+char gRomajiKanaTbl_108_romaji[8] = {
 #include "sub_main/0046B338.inc"
 };
-char D_0046B340[0x8] = {
+char gRomajiKanaTbl_108_kana_0[8] = {
 #include "sub_main/0046B340.inc"
 };
-char D_0046B348[0x8] = {
+char gRomajiKanaTbl_108_kana_1[8] = {
 #include "sub_main/0046B348.inc"
 };
-char D_0046B350[0x8] = {
+char gRomajiKanaTbl_108_kana_2[8] = {
 #include "sub_main/0046B350.inc"
 };
-char D_0046B358[0x8] = {
+char gRomajiKanaTbl_109_romaji[8] = {
 #include "sub_main/0046B358.inc"
 };
-char D_0046B360[0x8] = {
+char gRomajiKanaTbl_109_kana_0[8] = {
 #include "sub_main/0046B360.inc"
 };
-char D_0046B368[0x8] = {
+char gRomajiKanaTbl_109_kana_1[8] = {
 #include "sub_main/0046B368.inc"
 };
-char D_0046B370[0x8] = {
+char gRomajiKanaTbl_109_kana_2[8] = {
 #include "sub_main/0046B370.inc"
 };
-char D_0046B378[0x8] = {
+char gRomajiKanaTbl_110_romaji[8] = {
 #include "sub_main/0046B378.inc"
 };
-char D_0046B380[0x8] = {
+char D_0046B380[8] = {
 #include "sub_main/0046B380.inc"
 };
-char D_0046B388[0x8] = {
+char D_0046B388[8] = {
 #include "sub_main/0046B388.inc"
 };
-char D_0046B390[0x8] = {
+char D_0046B390[8] = {
 #include "sub_main/0046B390.inc"
 };
-char D_0046B398[0x8] = {
+char gRomajiKanaTbl_111_romaji[8] = {
 #include "sub_main/0046B398.inc"
 };
-char D_0046B3A0[0x8] = {
+char D_0046B3A0[8] = {
 #include "sub_main/0046B3A0.inc"
 };
-char D_0046B3A8[0x8] = {
+char D_0046B3A8[8] = {
 #include "sub_main/0046B3A8.inc"
 };
-char D_0046B3B0[0x8] = {
+char D_0046B3B0[8] = {
 #include "sub_main/0046B3B0.inc"
 };
-char D_0046B3B8[0x8] = {
+char gRomajiKanaTbl_112_romaji[8] = {
 #include "sub_main/0046B3B8.inc"
 };
-char D_0046B3C0[0x8] = {
+char D_0046B3C0[8] = {
 #include "sub_main/0046B3C0.inc"
 };
-char D_0046B3C8[0x8] = {
+char D_0046B3C8[8] = {
 #include "sub_main/0046B3C8.inc"
 };
-char D_0046B3D0[0x8] = {
+char D_0046B3D0[8] = {
 #include "sub_main/0046B3D0.inc"
 };
-char D_0046B3D8[0x8] = {
+char gRomajiKanaTbl_113_romaji[8] = {
 #include "sub_main/0046B3D8.inc"
 };
-char D_0046B3E0[0x8] = {
+char D_0046B3E0[8] = {
 #include "sub_main/0046B3E0.inc"
 };
-char D_0046B3E8[0x8] = {
+char D_0046B3E8[8] = {
 #include "sub_main/0046B3E8.inc"
 };
-char D_0046B3F0[0x8] = {
+char D_0046B3F0[8] = {
 #include "sub_main/0046B3F0.inc"
 };
-char D_0046B3F8[0x8] = {
+char gRomajiKanaTbl_114_romaji[8] = {
 #include "sub_main/0046B3F8.inc"
 };
-char D_0046B400[0x8] = {
+char D_0046B400[8] = {
 #include "sub_main/0046B400.inc"
 };
-char D_0046B408[0x8] = {
+char D_0046B408[8] = {
 #include "sub_main/0046B408.inc"
 };
-char D_0046B410[0x8] = {
+char D_0046B410[8] = {
 #include "sub_main/0046B410.inc"
 };
-char D_0046B418[0x8] = {
+char gRomajiKanaTbl_115_romaji[8] = {
 #include "sub_main/0046B418.inc"
 };
-char D_0046B420[0x8] = {
+char gRomajiKanaTbl_116_romaji[8] = {
 #include "sub_main/0046B420.inc"
 };
-char D_0046B428[0x8] = {
+char gRomajiKanaTbl_117_romaji[8] = {
 #include "sub_main/0046B428.inc"
 };
-char D_0046B430[0x8] = {
+char gRomajiKanaTbl_118_romaji[8] = {
 #include "sub_main/0046B430.inc"
 };
-char D_0046B438[0x8] = {
+char gRomajiKanaTbl_119_romaji[8] = {
 #include "sub_main/0046B438.inc"
 };
-char D_0046B440[0x8] = {
+char gRomajiKanaTbl_120_romaji[8] = {
 #include "sub_main/0046B440.inc"
 };
-char D_0046B448[0x8] = {
+char gRomajiKanaTbl_121_romaji[8] = {
 #include "sub_main/0046B448.inc"
 };
-char D_0046B450[0x8] = {
+char gRomajiKanaTbl_122_romaji[8] = {
 #include "sub_main/0046B450.inc"
 };
-char D_0046B458[0x8] = {
+char gRomajiKanaTbl_123_romaji[8] = {
 #include "sub_main/0046B458.inc"
 };
-char D_0046B460[0x8] = {
+char gRomajiKanaTbl_124_romaji[8] = {
 #include "sub_main/0046B460.inc"
 };
-char D_0046B468[0x8] = {
+char gRomajiKanaTbl_124_kana_0[8] = {
 #include "sub_main/0046B468.inc"
 };
-char D_0046B470[0x8] = {
+char gRomajiKanaTbl_124_kana_1[8] = {
 #include "sub_main/0046B470.inc"
 };
-char D_0046B478[0x8] = {
+char gRomajiKanaTbl_124_kana_2[8] = {
 #include "sub_main/0046B478.inc"
 };
-char D_0046B480[0x8] = {
+char gRomajiKanaTbl_125_romaji[8] = {
 #include "sub_main/0046B480.inc"
 };
-char D_0046B488[0x8] = {
+char gRomajiKanaTbl_125_kana_0[8] = {
 #include "sub_main/0046B488.inc"
 };
-char D_0046B490[0x8] = {
+char gRomajiKanaTbl_125_kana_1[8] = {
 #include "sub_main/0046B490.inc"
 };
-char D_0046B498[0x8] = {
+char gRomajiKanaTbl_125_kana_2[8] = {
 #include "sub_main/0046B498.inc"
 };
-char D_0046B4A0[0x8] = {
+char gRomajiKanaTbl_126_romaji[8] = {
 #include "sub_main/0046B4A0.inc"
 };
-char D_0046B4A8[0x8] = {
+char gRomajiKanaTbl_126_kana_0[8] = {
 #include "sub_main/0046B4A8.inc"
 };
-char D_0046B4B0[0x8] = {
+char gRomajiKanaTbl_126_kana_1[8] = {
 #include "sub_main/0046B4B0.inc"
 };
-char D_0046B4B8[0x8] = {
+char gRomajiKanaTbl_126_kana_2[8] = {
 #include "sub_main/0046B4B8.inc"
 };
-char D_0046B4C0[0x8] = {
+char gRomajiKanaTbl_127_romaji[8] = {
 #include "sub_main/0046B4C0.inc"
 };
-char D_0046B4C8[0x8] = {
+char gRomajiKanaTbl_127_kana_0[8] = {
 #include "sub_main/0046B4C8.inc"
 };
-char D_0046B4D0[0x8] = {
+char gRomajiKanaTbl_127_kana_1[8] = {
 #include "sub_main/0046B4D0.inc"
 };
-char D_0046B4D8[0x8] = {
+char gRomajiKanaTbl_127_kana_2[8] = {
 #include "sub_main/0046B4D8.inc"
 };
-char D_0046B4E0[0x8] = {
+char gRomajiKanaTbl_128_romaji[8] = {
 #include "sub_main/0046B4E0.inc"
 };
-char D_0046B4E8[0x8] = {
+char gRomajiKanaTbl_128_kana_0[8] = {
 #include "sub_main/0046B4E8.inc"
 };
-char D_0046B4F0[0x8] = {
+char gRomajiKanaTbl_128_kana_1[8] = {
 #include "sub_main/0046B4F0.inc"
 };
-char D_0046B4F8[0x8] = {
+char gRomajiKanaTbl_128_kana_2[8] = {
 #include "sub_main/0046B4F8.inc"
 };
-char D_0046B500[0x8] = {
+char gRomajiKanaTbl_129_romaji[8] = {
 #include "sub_main/0046B500.inc"
 };
-char D_0046B508[0x8] = {
+char gRomajiKanaTbl_129_kana_0[8] = {
 #include "sub_main/0046B508.inc"
 };
-char D_0046B510[0x8] = {
+char gRomajiKanaTbl_129_kana_1[8] = {
 #include "sub_main/0046B510.inc"
 };
-char D_0046B518[0x8] = {
+char gRomajiKanaTbl_129_kana_2[8] = {
 #include "sub_main/0046B518.inc"
 };
-char D_0046B520[0x8] = {
+char gRomajiKanaTbl_130_romaji[8] = {
 #include "sub_main/0046B520.inc"
 };
-char D_0046B528[0x8] = {
+char gRomajiKanaTbl_130_kana_0[8] = {
 #include "sub_main/0046B528.inc"
 };
-char D_0046B530[0x8] = {
+char gRomajiKanaTbl_130_kana_1[8] = {
 #include "sub_main/0046B530.inc"
 };
-char D_0046B538[0x8] = {
+char gRomajiKanaTbl_130_kana_2[8] = {
 #include "sub_main/0046B538.inc"
 };
-char D_0046B540[0x8] = {
+char gRomajiKanaTbl_131_romaji[8] = {
 #include "sub_main/0046B540.inc"
 };
-char D_0046B548[0x8] = {
+char gRomajiKanaTbl_131_kana_0[8] = {
 #include "sub_main/0046B548.inc"
 };
-char D_0046B550[0x8] = {
+char gRomajiKanaTbl_131_kana_1[8] = {
 #include "sub_main/0046B550.inc"
 };
-char D_0046B558[0x8] = {
+char gRomajiKanaTbl_131_kana_2[8] = {
 #include "sub_main/0046B558.inc"
 };
-char D_0046B560[0x8] = {
+char gRomajiKanaTbl_132_romaji[8] = {
 #include "sub_main/0046B560.inc"
 };
-char D_0046B568[0x8] = {
+char gRomajiKanaTbl_132_kana_0[8] = {
 #include "sub_main/0046B568.inc"
 };
-char D_0046B570[0x8] = {
+char gRomajiKanaTbl_132_kana_1[8] = {
 #include "sub_main/0046B570.inc"
 };
-char D_0046B578[0x8] = {
+char gRomajiKanaTbl_132_kana_2[8] = {
 #include "sub_main/0046B578.inc"
 };
-char D_0046B580[0x8] = {
+char gRomajiKanaTbl_133_romaji[8] = {
 #include "sub_main/0046B580.inc"
 };
-char D_0046B588[0x8] = {
+char gRomajiKanaTbl_133_kana_0[8] = {
 #include "sub_main/0046B588.inc"
 };
-char D_0046B590[0x8] = {
+char gRomajiKanaTbl_133_kana_1[8] = {
 #include "sub_main/0046B590.inc"
 };
-char D_0046B598[0x8] = {
+char gRomajiKanaTbl_133_kana_2[8] = {
 #include "sub_main/0046B598.inc"
 };
-char D_0046B5A0[0x8] = {
+char gRomajiKanaTbl_134_romaji[8] = {
 #include "sub_main/0046B5A0.inc"
 };
-char D_0046B5A8[0x8] = {
+char gRomajiKanaTbl_134_kana_0[8] = {
 #include "sub_main/0046B5A8.inc"
 };
-char D_0046B5B0[0x8] = {
+char gRomajiKanaTbl_134_kana_1[8] = {
 #include "sub_main/0046B5B0.inc"
 };
-char D_0046B5B8[0x8] = {
+char gRomajiKanaTbl_134_kana_2[8] = {
 #include "sub_main/0046B5B8.inc"
 };
-char D_0046B5C0[0x8] = {
+char gRomajiKanaTbl_135_romaji[8] = {
 #include "sub_main/0046B5C0.inc"
 };
-char D_0046B5C8[0x8] = {
+char gRomajiKanaTbl_135_kana_0[8] = {
 #include "sub_main/0046B5C8.inc"
 };
-char D_0046B5D0[0x8] = {
+char gRomajiKanaTbl_135_kana_1[8] = {
 #include "sub_main/0046B5D0.inc"
 };
-char D_0046B5D8[0x8] = {
+char gRomajiKanaTbl_135_kana_2[8] = {
 #include "sub_main/0046B5D8.inc"
 };
-char D_0046B5E0[0x8] = {
+char gRomajiKanaTbl_136_romaji[8] = {
 #include "sub_main/0046B5E0.inc"
 };
-char D_0046B5E8[0x8] = {
+char gRomajiKanaTbl_136_kana_0[8] = {
 #include "sub_main/0046B5E8.inc"
 };
-char D_0046B5F0[0x8] = {
+char gRomajiKanaTbl_136_kana_1[8] = {
 #include "sub_main/0046B5F0.inc"
 };
-char D_0046B5F8[0x8] = {
+char gRomajiKanaTbl_136_kana_2[8] = {
 #include "sub_main/0046B5F8.inc"
 };
-char D_0046B600[0x8] = {
+char gRomajiKanaTbl_137_romaji[8] = {
 #include "sub_main/0046B600.inc"
 };
-char D_0046B608[0x8] = {
+char gRomajiKanaTbl_137_kana_0[8] = {
 #include "sub_main/0046B608.inc"
 };
-char D_0046B610[0x8] = {
+char gRomajiKanaTbl_137_kana_1[8] = {
 #include "sub_main/0046B610.inc"
 };
-char D_0046B618[0x8] = {
+char gRomajiKanaTbl_137_kana_2[8] = {
 #include "sub_main/0046B618.inc"
 };
-char D_0046B620[0x8] = {
+char gRomajiKanaTbl_138_romaji[8] = {
 #include "sub_main/0046B620.inc"
 };
-char D_0046B628[0x8] = {
+char gRomajiKanaTbl_138_kana_0[8] = {
 #include "sub_main/0046B628.inc"
 };
-char D_0046B630[0x8] = {
+char gRomajiKanaTbl_138_kana_1[8] = {
 #include "sub_main/0046B630.inc"
 };
-char D_0046B638[0x8] = {
+char gRomajiKanaTbl_138_kana_2[8] = {
 #include "sub_main/0046B638.inc"
 };
-char D_0046B640[0x8] = {
+char gRomajiKanaTbl_139_romaji[8] = {
 #include "sub_main/0046B640.inc"
 };
-char D_0046B648[0x8] = {
+char gRomajiKanaTbl_139_kana_0[8] = {
 #include "sub_main/0046B648.inc"
 };
-char D_0046B650[0x8] = {
+char gRomajiKanaTbl_139_kana_1[8] = {
 #include "sub_main/0046B650.inc"
 };
-char D_0046B658[0x8] = {
+char gRomajiKanaTbl_139_kana_2[8] = {
 #include "sub_main/0046B658.inc"
 };
-char D_0046B660[0x8] = {
+char gRomajiKanaTbl_140_romaji[8] = {
 #include "sub_main/0046B660.inc"
 };
-char D_0046B668[0x8] = {
+char gRomajiKanaTbl_140_kana_0[8] = {
 #include "sub_main/0046B668.inc"
 };
-char D_0046B670[0x8] = {
+char gRomajiKanaTbl_140_kana_1[8] = {
 #include "sub_main/0046B670.inc"
 };
-char D_0046B678[0x8] = {
+char gRomajiKanaTbl_140_kana_2[8] = {
 #include "sub_main/0046B678.inc"
 };
-char D_0046B680[0x8] = {
+char gRomajiKanaTbl_141_romaji[8] = {
 #include "sub_main/0046B680.inc"
 };
-char D_0046B688[0x8] = {
+char gRomajiKanaTbl_141_kana_0[8] = {
 #include "sub_main/0046B688.inc"
 };
-char D_0046B690[0x8] = {
+char gRomajiKanaTbl_141_kana_1[8] = {
 #include "sub_main/0046B690.inc"
 };
-char D_0046B698[0x8] = {
+char gRomajiKanaTbl_141_kana_2[8] = {
 #include "sub_main/0046B698.inc"
 };
-char D_0046B6A0[0x8] = {
+char gRomajiKanaTbl_142_romaji[8] = {
 #include "sub_main/0046B6A0.inc"
 };
-char D_0046B6A8[0x8] = {
+char gRomajiKanaTbl_142_kana_0[8] = {
 #include "sub_main/0046B6A8.inc"
 };
-char D_0046B6B0[0x8] = {
+char gRomajiKanaTbl_142_kana_1[8] = {
 #include "sub_main/0046B6B0.inc"
 };
-char D_0046B6B8[0x8] = {
+char gRomajiKanaTbl_142_kana_2[8] = {
 #include "sub_main/0046B6B8.inc"
 };
-char D_0046B6C0[0x8] = {
+char gRomajiKanaTbl_143_romaji[8] = {
 #include "sub_main/0046B6C0.inc"
 };
-char D_0046B6C8[0x8] = {
+char gRomajiKanaTbl_143_kana_0[8] = {
 #include "sub_main/0046B6C8.inc"
 };
-char D_0046B6D0[0x8] = {
+char gRomajiKanaTbl_143_kana_1[8] = {
 #include "sub_main/0046B6D0.inc"
 };
-char D_0046B6D8[0x8] = {
+char gRomajiKanaTbl_143_kana_2[8] = {
 #include "sub_main/0046B6D8.inc"
 };
-char D_0046B6E0[0x8] = {
+char gRomajiKanaTbl_144_romaji[8] = {
 #include "sub_main/0046B6E0.inc"
 };
-char D_0046B6E8[0x8] = {
+char gRomajiKanaTbl_144_kana_0[8] = {
 #include "sub_main/0046B6E8.inc"
 };
-char D_0046B6F0[0x8] = {
+char gRomajiKanaTbl_144_kana_1[8] = {
 #include "sub_main/0046B6F0.inc"
 };
-char D_0046B6F8[0x8] = {
+char gRomajiKanaTbl_144_kana_2[8] = {
 #include "sub_main/0046B6F8.inc"
 };
-char D_0046B700[0x8] = {
+char gRomajiKanaTbl_145_romaji[8] = {
 #include "sub_main/0046B700.inc"
 };
-char D_0046B708[0x8] = {
+char gRomajiKanaTbl_145_kana_0[8] = {
 #include "sub_main/0046B708.inc"
 };
-char D_0046B710[0x8] = {
+char gRomajiKanaTbl_145_kana_1[8] = {
 #include "sub_main/0046B710.inc"
 };
-char D_0046B718[0x8] = {
+char gRomajiKanaTbl_145_kana_2[8] = {
 #include "sub_main/0046B718.inc"
 };
-char D_0046B720[0x8] = {
+char gRomajiKanaTbl_146_romaji[8] = {
 #include "sub_main/0046B720.inc"
 };
-char D_0046B728[0x8] = {
+char gRomajiKanaTbl_146_kana_0[8] = {
 #include "sub_main/0046B728.inc"
 };
-char D_0046B730[0x8] = {
+char gRomajiKanaTbl_146_kana_1[8] = {
 #include "sub_main/0046B730.inc"
 };
-char D_0046B738[0x8] = {
+char gRomajiKanaTbl_146_kana_2[8] = {
 #include "sub_main/0046B738.inc"
 };
-char D_0046B740[0x8] = {
+char gRomajiKanaTbl_147_romaji[8] = {
 #include "sub_main/0046B740.inc"
 };
-char D_0046B748[0x8] = {
+char gRomajiKanaTbl_147_kana_0[8] = {
 #include "sub_main/0046B748.inc"
 };
-char D_0046B750[0x8] = {
+char gRomajiKanaTbl_147_kana_1[8] = {
 #include "sub_main/0046B750.inc"
 };
-char D_0046B758[0x8] = {
+char gRomajiKanaTbl_147_kana_2[8] = {
 #include "sub_main/0046B758.inc"
 };
-char D_0046B760[0x8] = {
+char gRomajiKanaTbl_148_romaji[8] = {
 #include "sub_main/0046B760.inc"
 };
-char D_0046B768[0x8] = {
+char gRomajiKanaTbl_148_kana_0[8] = {
 #include "sub_main/0046B768.inc"
 };
-char D_0046B770[0x8] = {
+char gRomajiKanaTbl_148_kana_1[8] = {
 #include "sub_main/0046B770.inc"
 };
-char D_0046B778[0x8] = {
+char gRomajiKanaTbl_148_kana_2[8] = {
 #include "sub_main/0046B778.inc"
 };
-char D_0046B780[0x8] = {
+char gRomajiKanaTbl_149_romaji[8] = {
 #include "sub_main/0046B780.inc"
 };
-char D_0046B788[0x8] = {
+char gRomajiKanaTbl_149_kana_0[8] = {
 #include "sub_main/0046B788.inc"
 };
-char D_0046B790[0x8] = {
+char gRomajiKanaTbl_149_kana_1[8] = {
 #include "sub_main/0046B790.inc"
 };
-char D_0046B798[0x8] = {
+char gRomajiKanaTbl_149_kana_2[8] = {
 #include "sub_main/0046B798.inc"
 };
-char D_0046B7A0[0x8] = {
+char gRomajiKanaTbl_150_romaji[8] = {
 #include "sub_main/0046B7A0.inc"
 };
-char D_0046B7A8[0x8] = {
+char gRomajiKanaTbl_150_kana_0[8] = {
 #include "sub_main/0046B7A8.inc"
 };
-char D_0046B7B0[0x8] = {
+char gRomajiKanaTbl_150_kana_1[8] = {
 #include "sub_main/0046B7B0.inc"
 };
-char D_0046B7B8[0x8] = {
+char gRomajiKanaTbl_150_kana_2[8] = {
 #include "sub_main/0046B7B8.inc"
 };
-char D_0046B7C0[0x8] = {
+char gRomajiKanaTbl_151_romaji[8] = {
 #include "sub_main/0046B7C0.inc"
 };
-char D_0046B7C8[0x8] = {
+char gRomajiKanaTbl_151_kana_0[8] = {
 #include "sub_main/0046B7C8.inc"
 };
-char D_0046B7D0[0x8] = {
+char gRomajiKanaTbl_151_kana_1[8] = {
 #include "sub_main/0046B7D0.inc"
 };
-char D_0046B7D8[0x8] = {
+char gRomajiKanaTbl_151_kana_2[8] = {
 #include "sub_main/0046B7D8.inc"
 };
-char D_0046B7E0[0x8] = {
+char gRomajiKanaTbl_152_romaji[8] = {
 #include "sub_main/0046B7E0.inc"
 };
-char D_0046B7E8[0x8] = {
+char gRomajiKanaTbl_152_kana_0[8] = {
 #include "sub_main/0046B7E8.inc"
 };
-char D_0046B7F0[0x8] = {
+char gRomajiKanaTbl_152_kana_1[8] = {
 #include "sub_main/0046B7F0.inc"
 };
-char D_0046B7F8[0x8] = {
+char gRomajiKanaTbl_152_kana_2[8] = {
 #include "sub_main/0046B7F8.inc"
 };
-char D_0046B800[0x8] = {
+char gRomajiKanaTbl_153_romaji[8] = {
 #include "sub_main/0046B800.inc"
 };
-char D_0046B808[0x8] = {
+char gRomajiKanaTbl_153_kana_0[8] = {
 #include "sub_main/0046B808.inc"
 };
-char D_0046B810[0x8] = {
+char gRomajiKanaTbl_153_kana_1[8] = {
 #include "sub_main/0046B810.inc"
 };
-char D_0046B818[0x8] = {
+char gRomajiKanaTbl_153_kana_2[8] = {
 #include "sub_main/0046B818.inc"
 };
-char D_0046B820[0x8] = {
+char gRomajiKanaTbl_154_romaji[8] = {
 #include "sub_main/0046B820.inc"
 };
-char D_0046B828[0x8] = {
+char gRomajiKanaTbl_154_kana_0[8] = {
 #include "sub_main/0046B828.inc"
 };
-char D_0046B830[0x8] = {
+char gRomajiKanaTbl_154_kana_1[8] = {
 #include "sub_main/0046B830.inc"
 };
-char D_0046B838[0x8] = {
+char gRomajiKanaTbl_154_kana_2[8] = {
 #include "sub_main/0046B838.inc"
 };
-char D_0046B840[0x8] = {
+char gRomajiKanaTbl_155_romaji[8] = {
 #include "sub_main/0046B840.inc"
 };
-char D_0046B848[0x8] = {
+char D_0046B848[8] = {
 #include "sub_main/0046B848.inc"
 };
-char D_0046B850[0x8] = {
+char D_0046B850[8] = {
 #include "sub_main/0046B850.inc"
 };
-char D_0046B858[0x8] = {
+char D_0046B858[8] = {
 #include "sub_main/0046B858.inc"
 };
-char D_0046B860[0x8] = {
+char gRomajiKanaTbl_156_romaji[8] = {
 #include "sub_main/0046B860.inc"
 };
-char D_0046B868[0x8] = {
+char gRomajiKanaTbl_156_kana_0[8] = {
 #include "sub_main/0046B868.inc"
 };
-char D_0046B870[0x8] = {
+char gRomajiKanaTbl_156_kana_1[8] = {
 #include "sub_main/0046B870.inc"
 };
-char D_0046B878[0x8] = {
+char gRomajiKanaTbl_156_kana_2[8] = {
 #include "sub_main/0046B878.inc"
 };
-char D_0046B880[0x8] = {
+char gRomajiKanaTbl_157_romaji[8] = {
 #include "sub_main/0046B880.inc"
 };
-char D_0046B888[0x8] = {
+char gRomajiKanaTbl_157_kana_0[8] = {
 #include "sub_main/0046B888.inc"
 };
-char D_0046B890[0x8] = {
+char gRomajiKanaTbl_157_kana_1[8] = {
 #include "sub_main/0046B890.inc"
 };
-char D_0046B898[0x8] = {
+char gRomajiKanaTbl_157_kana_2[8] = {
 #include "sub_main/0046B898.inc"
 };
-char D_0046B8A0[0x8] = {
+char gRomajiKanaTbl_158_romaji[8] = {
 #include "sub_main/0046B8A0.inc"
 };
-char D_0046B8A8[0x8] = {
+char gRomajiKanaTbl_159_romaji[8] = {
 #include "sub_main/0046B8A8.inc"
 };
-char D_0046B8B0[0x8] = {
+char gRomajiKanaTbl_159_kana_0[8] = {
 #include "sub_main/0046B8B0.inc"
 };
-char D_0046B8B8[0x8] = {
+char gRomajiKanaTbl_159_kana_1[8] = {
 #include "sub_main/0046B8B8.inc"
 };
-char D_0046B8C0[0x8] = {
+char gRomajiKanaTbl_159_kana_2[8] = {
 #include "sub_main/0046B8C0.inc"
 };
-char D_0046B8C8[0x8] = {
+char gRomajiKanaTbl_160_romaji[8] = {
 #include "sub_main/0046B8C8.inc"
 };
-char D_0046B8D0[0x8] = {
+char gRomajiKanaTbl_160_kana_0[8] = {
 #include "sub_main/0046B8D0.inc"
 };
-char D_0046B8D8[0x8] = {
+char gRomajiKanaTbl_160_kana_1[8] = {
 #include "sub_main/0046B8D8.inc"
 };
-char D_0046B8E0[0x8] = {
+char gRomajiKanaTbl_160_kana_2[8] = {
 #include "sub_main/0046B8E0.inc"
 };
-char D_0046B8E8[0x8] = {
+char gRomajiKanaTbl_161_romaji[8] = {
 #include "sub_main/0046B8E8.inc"
 };
-char D_0046B8F0[0x8] = {
+char gRomajiKanaTbl_161_kana_0[8] = {
 #include "sub_main/0046B8F0.inc"
 };
-char D_0046B8F8[0x8] = {
+char gRomajiKanaTbl_161_kana_1[8] = {
 #include "sub_main/0046B8F8.inc"
 };
-char D_0046B900[0x8] = {
+char gRomajiKanaTbl_161_kana_2[8] = {
 #include "sub_main/0046B900.inc"
 };
-char D_0046B908[0x8] = {
+char gRomajiKanaTbl_162_romaji[8] = {
 #include "sub_main/0046B908.inc"
 };
-char D_0046B910[0x8] = {
+char gRomajiKanaTbl_162_kana_0[8] = {
 #include "sub_main/0046B910.inc"
 };
-char D_0046B918[0x8] = {
+char gRomajiKanaTbl_162_kana_1[8] = {
 #include "sub_main/0046B918.inc"
 };
-char D_0046B920[0x8] = {
+char gRomajiKanaTbl_162_kana_2[8] = {
 #include "sub_main/0046B920.inc"
 };
-char D_0046B928[0x8] = {
+char gRomajiKanaTbl_163_romaji[8] = {
 #include "sub_main/0046B928.inc"
 };
-char D_0046B930[0x8] = {
+char gRomajiKanaTbl_163_kana_0[8] = {
 #include "sub_main/0046B930.inc"
 };
-char D_0046B938[0x8] = {
+char gRomajiKanaTbl_163_kana_1[8] = {
 #include "sub_main/0046B938.inc"
 };
-char D_0046B940[0x8] = {
+char gRomajiKanaTbl_163_kana_2[8] = {
 #include "sub_main/0046B940.inc"
 };
-char D_0046B948[0x8] = {
+char gRomajiKanaTbl_164_romaji[8] = {
 #include "sub_main/0046B948.inc"
 };
-char D_0046B950[0x8] = {
+char gRomajiKanaTbl_164_kana_0[8] = {
 #include "sub_main/0046B950.inc"
 };
-char D_0046B958[0x8] = {
+char gRomajiKanaTbl_164_kana_1[8] = {
 #include "sub_main/0046B958.inc"
 };
-char D_0046B960[0x8] = {
+char gRomajiKanaTbl_164_kana_2[8] = {
 #include "sub_main/0046B960.inc"
 };
-char D_0046B968[0x8] = {
+char gRomajiKanaTbl_165_romaji[8] = {
 #include "sub_main/0046B968.inc"
 };
-char D_0046B970[0x8] = {
+char gRomajiKanaTbl_165_kana_0[8] = {
 #include "sub_main/0046B970.inc"
 };
-char D_0046B978[0x8] = {
+char gRomajiKanaTbl_165_kana_1[8] = {
 #include "sub_main/0046B978.inc"
 };
-char D_0046B980[0x8] = {
+char gRomajiKanaTbl_165_kana_2[8] = {
 #include "sub_main/0046B980.inc"
 };
-char D_0046B988[0x8] = {
+char gRomajiKanaTbl_166_romaji[8] = {
 #include "sub_main/0046B988.inc"
 };
-char D_0046B990[0x8] = {
+char gRomajiKanaTbl_166_kana_0[8] = {
 #include "sub_main/0046B990.inc"
 };
-char D_0046B998[0x8] = {
+char gRomajiKanaTbl_166_kana_1[8] = {
 #include "sub_main/0046B998.inc"
 };
-char D_0046B9A0[0x8] = {
+char gRomajiKanaTbl_166_kana_2[8] = {
 #include "sub_main/0046B9A0.inc"
 };
-char D_0046B9A8[0x8] = {
+char gRomajiKanaTbl_167_romaji[8] = {
 #include "sub_main/0046B9A8.inc"
 };
-char D_0046B9B0[0x8] = {
+char gRomajiKanaTbl_167_kana_0[8] = {
 #include "sub_main/0046B9B0.inc"
 };
-char D_0046B9B8[0x8] = {
+char gRomajiKanaTbl_167_kana_1[8] = {
 #include "sub_main/0046B9B8.inc"
 };
-char D_0046B9C0[0x8] = {
+char gRomajiKanaTbl_167_kana_2[8] = {
 #include "sub_main/0046B9C0.inc"
 };
-char D_0046B9C8[0x8] = {
+char gRomajiKanaTbl_168_romaji[8] = {
 #include "sub_main/0046B9C8.inc"
 };
-char D_0046B9D0[0x8] = {
+char gRomajiKanaTbl_168_kana_0[8] = {
 #include "sub_main/0046B9D0.inc"
 };
-char D_0046B9D8[0x8] = {
+char gRomajiKanaTbl_168_kana_1[8] = {
 #include "sub_main/0046B9D8.inc"
 };
-char D_0046B9E0[0x8] = {
+char gRomajiKanaTbl_168_kana_2[8] = {
 #include "sub_main/0046B9E0.inc"
 };
-char D_0046B9E8[0x8] = {
+char gRomajiKanaTbl_169_romaji[8] = {
 #include "sub_main/0046B9E8.inc"
 };
-char D_0046B9F0[0x8] = {
+char gRomajiKanaTbl_169_kana_0[8] = {
 #include "sub_main/0046B9F0.inc"
 };
-char D_0046B9F8[0x8] = {
+char gRomajiKanaTbl_169_kana_1[8] = {
 #include "sub_main/0046B9F8.inc"
 };
-char D_0046BA00[0x8] = {
+char gRomajiKanaTbl_169_kana_2[8] = {
 #include "sub_main/0046BA00.inc"
 };
-char D_0046BA08[0x8] = {
+char gRomajiKanaTbl_170_romaji[8] = {
 #include "sub_main/0046BA08.inc"
 };
-char D_0046BA10[0x8] = {
+char gRomajiKanaTbl_170_kana_0[8] = {
 #include "sub_main/0046BA10.inc"
 };
-char D_0046BA18[0x8] = {
+char gRomajiKanaTbl_170_kana_1[8] = {
 #include "sub_main/0046BA18.inc"
 };
-char D_0046BA20[0x8] = {
+char gRomajiKanaTbl_170_kana_2[8] = {
 #include "sub_main/0046BA20.inc"
 };
-char D_0046BA28[0x8] = {
+char gRomajiKanaTbl_171_romaji[8] = {
 #include "sub_main/0046BA28.inc"
 };
-char D_0046BA30[0x8] = {
+char gRomajiKanaTbl_171_kana_0[8] = {
 #include "sub_main/0046BA30.inc"
 };
-char D_0046BA38[0x8] = {
+char gRomajiKanaTbl_171_kana_1[8] = {
 #include "sub_main/0046BA38.inc"
 };
-char D_0046BA40[0x8] = {
+char gRomajiKanaTbl_171_kana_2[8] = {
 #include "sub_main/0046BA40.inc"
 };
-char D_0046BA48[0x8] = {
+char gRomajiKanaTbl_172_romaji[8] = {
 #include "sub_main/0046BA48.inc"
 };
-char D_0046BA50[0x8] = {
+char gRomajiKanaTbl_172_kana_0[8] = {
 #include "sub_main/0046BA50.inc"
 };
-char D_0046BA58[0x8] = {
+char gRomajiKanaTbl_172_kana_1[8] = {
 #include "sub_main/0046BA58.inc"
 };
-char D_0046BA60[0x8] = {
+char gRomajiKanaTbl_172_kana_2[8] = {
 #include "sub_main/0046BA60.inc"
 };
-char D_0046BA68[0x8] = {
+char gRomajiKanaTbl_173_romaji[8] = {
 #include "sub_main/0046BA68.inc"
 };
-char D_0046BA70[0x8] = {
+char gRomajiKanaTbl_173_kana_0[8] = {
 #include "sub_main/0046BA70.inc"
 };
-char D_0046BA78[0x8] = {
+char gRomajiKanaTbl_173_kana_1[8] = {
 #include "sub_main/0046BA78.inc"
 };
-char D_0046BA80[0x8] = {
+char gRomajiKanaTbl_173_kana_2[8] = {
 #include "sub_main/0046BA80.inc"
 };
-char D_0046BA88[0x8] = {
+char gRomajiKanaTbl_174_romaji[8] = {
 #include "sub_main/0046BA88.inc"
 };
-char D_0046BA90[0x8] = {
+char gRomajiKanaTbl_174_kana_0[8] = {
 #include "sub_main/0046BA90.inc"
 };
-char D_0046BA98[0x8] = {
+char gRomajiKanaTbl_174_kana_1[8] = {
 #include "sub_main/0046BA98.inc"
 };
-char D_0046BAA0[0x8] = {
+char gRomajiKanaTbl_174_kana_2[8] = {
 #include "sub_main/0046BAA0.inc"
 };
-char D_0046BAA8[0x8] = {
+char gRomajiKanaTbl_175_romaji[8] = {
 #include "sub_main/0046BAA8.inc"
 };
-char D_0046BAB0[0x8] = {
+char gRomajiKanaTbl_175_kana_0[8] = {
 #include "sub_main/0046BAB0.inc"
 };
-char D_0046BAB8[0x8] = {
+char gRomajiKanaTbl_175_kana_1[8] = {
 #include "sub_main/0046BAB8.inc"
 };
-char D_0046BAC0[0x8] = {
+char gRomajiKanaTbl_175_kana_2[8] = {
 #include "sub_main/0046BAC0.inc"
 };
-char D_0046BAC8[0x8] = {
+char gRomajiKanaTbl_176_romaji[8] = {
 #include "sub_main/0046BAC8.inc"
 };
-char D_0046BAD0[0x8] = {
+char gRomajiKanaTbl_176_kana_0[8] = {
 #include "sub_main/0046BAD0.inc"
 };
-char D_0046BAD8[0x8] = {
+char gRomajiKanaTbl_176_kana_1[8] = {
 #include "sub_main/0046BAD8.inc"
 };
-char D_0046BAE0[0x8] = {
+char gRomajiKanaTbl_176_kana_2[8] = {
 #include "sub_main/0046BAE0.inc"
 };
-char D_0046BAE8[0x8] = {
+char gRomajiKanaTbl_177_romaji[8] = {
 #include "sub_main/0046BAE8.inc"
 };
-char D_0046BAF0[0x8] = {
+char gRomajiKanaTbl_177_kana_0[8] = {
 #include "sub_main/0046BAF0.inc"
 };
-char D_0046BAF8[0x8] = {
+char gRomajiKanaTbl_177_kana_1[8] = {
 #include "sub_main/0046BAF8.inc"
 };
-char D_0046BB00[0x8] = {
+char gRomajiKanaTbl_177_kana_2[8] = {
 #include "sub_main/0046BB00.inc"
 };
-char D_0046BB08[0x8] = {
+char gRomajiKanaTbl_178_romaji[8] = {
 #include "sub_main/0046BB08.inc"
 };
-char D_0046BB10[0x8] = {
+char D_0046BB10[8] = {
 #include "sub_main/0046BB10.inc"
 };
-char D_0046BB18[0x8] = {
+char D_0046BB18[8] = {
 #include "sub_main/0046BB18.inc"
 };
-char D_0046BB20[0x8] = {
+char D_0046BB20[8] = {
 #include "sub_main/0046BB20.inc"
 };
-char D_0046BB28[0x8] = {
+char gRomajiKanaTbl_179_romaji[8] = {
 #include "sub_main/0046BB28.inc"
 };
-char D_0046BB30[0x8] = {
+char D_0046BB30[8] = {
 #include "sub_main/0046BB30.inc"
 };
-char D_0046BB38[0x8] = {
+char D_0046BB38[8] = {
 #include "sub_main/0046BB38.inc"
 };
-char D_0046BB40[0x8] = {
+char D_0046BB40[8] = {
 #include "sub_main/0046BB40.inc"
 };
-char D_0046BB48[0x8] = {
+char gRomajiKanaTbl_180_romaji[8] = {
 #include "sub_main/0046BB48.inc"
 };
-char D_0046BB50[0x8] = {
+char gRomajiKanaTbl_180_kana_0[8] = {
 #include "sub_main/0046BB50.inc"
 };
-char D_0046BB58[0x8] = {
+char gRomajiKanaTbl_180_kana_1[8] = {
 #include "sub_main/0046BB58.inc"
 };
-char D_0046BB60[0x8] = {
+char gRomajiKanaTbl_180_kana_2[8] = {
 #include "sub_main/0046BB60.inc"
 };
-char D_0046BB68[0x8] = {
+char gRomajiKanaTbl_181_romaji[8] = {
 #include "sub_main/0046BB68.inc"
 };
-char D_0046BB70[0x8] = {
+char gRomajiKanaTbl_182_romaji[8] = {
 #include "sub_main/0046BB70.inc"
 };
-char D_0046BB78[0x8] = {
+char gRomajiKanaTbl_183_romaji[8] = {
 #include "sub_main/0046BB78.inc"
 };
-char D_0046BB80[0x8] = {
+char gRomajiKanaTbl_183_kana_0[8] = {
 #include "sub_main/0046BB80.inc"
 };
-char D_0046BB88[0x8] = {
+char gRomajiKanaTbl_183_kana_1[8] = {
 #include "sub_main/0046BB88.inc"
 };
-char D_0046BB90[0x8] = {
+char gRomajiKanaTbl_183_kana_2[8] = {
 #include "sub_main/0046BB90.inc"
 };
-char D_0046BB98[0x8] = {
+char gRomajiKanaTbl_184_romaji[8] = {
 #include "sub_main/0046BB98.inc"
 };
-char D_0046BBA0[0x8] = {
+char gRomajiKanaTbl_184_kana_0[8] = {
 #include "sub_main/0046BBA0.inc"
 };
-char D_0046BBA8[0x8] = {
+char gRomajiKanaTbl_184_kana_1[8] = {
 #include "sub_main/0046BBA8.inc"
 };
-char D_0046BBB0[0x8] = {
+char gRomajiKanaTbl_184_kana_2[8] = {
 #include "sub_main/0046BBB0.inc"
 };
-char D_0046BBB8[0x8] = {
+char gRomajiKanaTbl_185_romaji[8] = {
 #include "sub_main/0046BBB8.inc"
 };
-char D_0046BBC0[0x8] = {
+char gRomajiKanaTbl_185_kana_0[8] = {
 #include "sub_main/0046BBC0.inc"
 };
-char D_0046BBC8[0x8] = {
+char gRomajiKanaTbl_185_kana_1[8] = {
 #include "sub_main/0046BBC8.inc"
 };
-char D_0046BBD0[0x8] = {
+char gRomajiKanaTbl_185_kana_2[8] = {
 #include "sub_main/0046BBD0.inc"
 };
-char D_0046BBD8[0x8] = {
+char gRomajiKanaTbl_186_romaji[8] = {
 #include "sub_main/0046BBD8.inc"
 };
-char D_0046BBE0[0x8] = {
+char gRomajiKanaTbl_186_kana_0[8] = {
 #include "sub_main/0046BBE0.inc"
 };
-char D_0046BBE8[0x8] = {
+char gRomajiKanaTbl_186_kana_1[8] = {
 #include "sub_main/0046BBE8.inc"
 };
-char D_0046BBF0[0x8] = {
+char gRomajiKanaTbl_186_kana_2[8] = {
 #include "sub_main/0046BBF0.inc"
 };
-char D_0046BBF8[0x8] = {
+char gRomajiKanaTbl_187_romaji[8] = {
 #include "sub_main/0046BBF8.inc"
 };
-char D_0046BC00[0x8] = {
+char gRomajiKanaTbl_187_kana_0[8] = {
 #include "sub_main/0046BC00.inc"
 };
-char D_0046BC08[0x8] = {
+char gRomajiKanaTbl_187_kana_1[8] = {
 #include "sub_main/0046BC08.inc"
 };
-char D_0046BC10[0x8] = {
+char gRomajiKanaTbl_187_kana_2[8] = {
 #include "sub_main/0046BC10.inc"
 };
-char D_0046BC18[0x8] = {
+char gRomajiKanaTbl_188_romaji[8] = {
 #include "sub_main/0046BC18.inc"
 };
-char D_0046BC20[0x8] = {
+char gRomajiKanaTbl_188_kana_0[8] = {
 #include "sub_main/0046BC20.inc"
 };
-char D_0046BC28[0x8] = {
+char gRomajiKanaTbl_188_kana_1[8] = {
 #include "sub_main/0046BC28.inc"
 };
-char D_0046BC30[0x8] = {
+char gRomajiKanaTbl_188_kana_2[8] = {
 #include "sub_main/0046BC30.inc"
 };
-char D_0046BC38[0x8] = {
+char gRomajiKanaTbl_189_romaji[8] = {
 #include "sub_main/0046BC38.inc"
 };
-char D_0046BC40[0x8] = {
+char D_0046BC40[8] = {
 #include "sub_main/0046BC40.inc"
 };
-char D_0046BC48[0x8] = {
+char D_0046BC48[8] = {
 #include "sub_main/0046BC48.inc"
 };
-char D_0046BC50[0x8] = {
+char D_0046BC50[8] = {
 #include "sub_main/0046BC50.inc"
 };
-char D_0046BC58[0x8] = {
+char gRomajiKanaTbl_190_romaji[8] = {
 #include "sub_main/0046BC58.inc"
 };
-char D_0046BC60[0x8] = {
+char D_0046BC60[8] = {
 #include "sub_main/0046BC60.inc"
 };
-char D_0046BC68[0x8] = {
+char gRomajiKanaTbl_190_kana_2[8] = {
 #include "sub_main/0046BC68.inc"
 };
-char D_0046BC70[0x8] = {
+char gRomajiKanaTbl_191_romaji[8] = {
 #include "sub_main/0046BC70.inc"
 };
-char D_0046BC78[0x8] = {
+char D_0046BC78[8] = {
 #include "sub_main/0046BC78.inc"
 };
-char D_0046BC80[0x8] = {
+char D_0046BC80[8] = {
 #include "sub_main/0046BC80.inc"
 };
-char D_0046BC88[0x8] = {
+char D_0046BC88[8] = {
 #include "sub_main/0046BC88.inc"
 };
-char D_0046BC90[0x8] = {
+char gRomajiKanaTbl_192_romaji[8] = {
 #include "sub_main/0046BC90.inc"
 };
-char D_0046BC98[0x8] = {
+char D_0046BC98[8] = {
 #include "sub_main/0046BC98.inc"
 };
-char D_0046BCA0[0x8] = {
+char D_0046BCA0[8] = {
 #include "sub_main/0046BCA0.inc"
 };
-char D_0046BCA8[0x8] = {
+char D_0046BCA8[8] = {
 #include "sub_main/0046BCA8.inc"
 };
-char D_0046BCB0[0x8] = {
+char gRomajiKanaTbl_193_romaji[8] = {
 #include "sub_main/0046BCB0.inc"
 };
-char D_0046BCB8[0x8] = {
+char gRomajiKanaTbl_193_kana_0[8] = {
 #include "sub_main/0046BCB8.inc"
 };
-char D_0046BCC0[0x8] = {
+char gRomajiKanaTbl_193_kana_1[8] = {
 #include "sub_main/0046BCC0.inc"
 };
-char D_0046BCC8[0x8] = {
+char gRomajiKanaTbl_193_kana_2[8] = {
 #include "sub_main/0046BCC8.inc"
 };
-char D_0046BCD0[0x8] = {
+char gRomajiKanaTbl_194_romaji[8] = {
 #include "sub_main/0046BCD0.inc"
 };
-char D_0046BCD8[0x8] = {
+char gRomajiKanaTbl_195_romaji[8] = {
 #include "sub_main/0046BCD8.inc"
 };
-char D_0046BCE0[0x8] = {
+char gRomajiKanaTbl_195_kana_0[8] = {
 #include "sub_main/0046BCE0.inc"
 };
-char D_0046BCE8[0x8] = {
+char gRomajiKanaTbl_195_kana_1[8] = {
 #include "sub_main/0046BCE8.inc"
 };
-char D_0046BCF0[0x8] = {
+char gRomajiKanaTbl_195_kana_2[8] = {
 #include "sub_main/0046BCF0.inc"
 };
-char D_0046BCF8[0x8] = {
+char gRomajiKanaTbl_196_romaji[8] = {
 #include "sub_main/0046BCF8.inc"
 };
-char D_0046BD00[0x8] = {
+char gRomajiKanaTbl_197_romaji[8] = {
 #include "sub_main/0046BD00.inc"
 };
-char D_0046BD08[0x8] = {
+char gRomajiKanaTbl_198_romaji[8] = {
 #include "sub_main/0046BD08.inc"
 };
-char D_0046BD10[0x8] = {
+char gRomajiKanaTbl_198_kana_0[8] = {
 #include "sub_main/0046BD10.inc"
 };
-char D_0046BD18[0x8] = {
+char gRomajiKanaTbl_198_kana_1[8] = {
 #include "sub_main/0046BD18.inc"
 };
-char D_0046BD20[0x8] = {
+char gRomajiKanaTbl_198_kana_2[8] = {
 #include "sub_main/0046BD20.inc"
 };
-char D_0046BD28[0x8] = {
+char gRomajiKanaTbl_199_romaji[8] = {
 #include "sub_main/0046BD28.inc"
 };
-char D_0046BD30[0x8] = {
+char gRomajiKanaTbl_199_kana_0[8] = {
 #include "sub_main/0046BD30.inc"
 };
-char D_0046BD38[0x8] = {
+char gRomajiKanaTbl_199_kana_1[8] = {
 #include "sub_main/0046BD38.inc"
 };
-char D_0046BD40[0x8] = {
+char gRomajiKanaTbl_199_kana_2[8] = {
 #include "sub_main/0046BD40.inc"
 };
-char D_0046BD48[0x8] = {
+char gRomajiKanaTbl_200_romaji[8] = {
 #include "sub_main/0046BD48.inc"
 };
-char D_0046BD50[0x8] = {
+char gRomajiKanaTbl_200_kana_0[8] = {
 #include "sub_main/0046BD50.inc"
 };
-char D_0046BD58[0x8] = {
+char gRomajiKanaTbl_200_kana_1[8] = {
 #include "sub_main/0046BD58.inc"
 };
-char D_0046BD60[0x8] = {
+char gRomajiKanaTbl_200_kana_2[8] = {
 #include "sub_main/0046BD60.inc"
 };
-char D_0046BD68[0x8] = {
+char gRomajiKanaTbl_201_romaji[8] = {
 #include "sub_main/0046BD68.inc"
 };
-char D_0046BD70[0x8] = {
+char gRomajiKanaTbl_201_kana_0[8] = {
 #include "sub_main/0046BD70.inc"
 };
-char D_0046BD78[0x8] = {
+char gRomajiKanaTbl_201_kana_1[8] = {
 #include "sub_main/0046BD78.inc"
 };
-char D_0046BD80[0x8] = {
+char gRomajiKanaTbl_201_kana_2[8] = {
 #include "sub_main/0046BD80.inc"
 };
-char D_0046BD88[0x8] = {
+char gRomajiKanaTbl_202_romaji[8] = {
 #include "sub_main/0046BD88.inc"
 };
-char D_0046BD90[0x8] = {
+char gRomajiKanaTbl_202_kana_0[8] = {
 #include "sub_main/0046BD90.inc"
 };
-char D_0046BD98[0x8] = {
+char gRomajiKanaTbl_202_kana_1[8] = {
 #include "sub_main/0046BD98.inc"
 };
-char D_0046BDA0[0x8] = {
+char gRomajiKanaTbl_202_kana_2[8] = {
 #include "sub_main/0046BDA0.inc"
 };
-char D_0046BDA8[0x8] = {
+char gRomajiKanaTbl_203_romaji[8] = {
 #include "sub_main/0046BDA8.inc"
 };
-char D_0046BDB0[0x8] = {
+char gRomajiKanaTbl_203_kana_0[8] = {
 #include "sub_main/0046BDB0.inc"
 };
-char D_0046BDB8[0x8] = {
+char gRomajiKanaTbl_203_kana_1[8] = {
 #include "sub_main/0046BDB8.inc"
 };
-char D_0046BDC0[0x8] = {
+char gRomajiKanaTbl_203_kana_2[8] = {
 #include "sub_main/0046BDC0.inc"
 };
-char D_0046BDC8[0x8] = {
+char gRomajiKanaTbl_204_romaji[8] = {
 #include "sub_main/0046BDC8.inc"
 };
-char D_0046BDD0[0x8] = {
+char gRomajiKanaTbl_204_kana_0[8] = {
 #include "sub_main/0046BDD0.inc"
 };
-char D_0046BDD8[0x8] = {
+char gRomajiKanaTbl_204_kana_1[8] = {
 #include "sub_main/0046BDD8.inc"
 };
-char D_0046BDE0[0x8] = {
+char gRomajiKanaTbl_204_kana_2[8] = {
 #include "sub_main/0046BDE0.inc"
 };
-char D_0046BDE8[0x8] = {
+char gRomajiKanaTbl_205_romaji[8] = {
 #include "sub_main/0046BDE8.inc"
 };
-char D_0046BDF0[0x8] = {
+char gRomajiKanaTbl_205_kana_0[8] = {
 #include "sub_main/0046BDF0.inc"
 };
-char D_0046BDF8[0x8] = {
+char gRomajiKanaTbl_205_kana_1[8] = {
 #include "sub_main/0046BDF8.inc"
 };
-char D_0046BE00[0x8] = {
+char gRomajiKanaTbl_205_kana_2[8] = {
 #include "sub_main/0046BE00.inc"
 };
-char D_0046BE08[0x8] = {
+char gRomajiKanaTbl_206_romaji[8] = {
 #include "sub_main/0046BE08.inc"
 };
-char D_0046BE10[0x8] = {
+char gRomajiKanaTbl_206_kana_0[8] = {
 #include "sub_main/0046BE10.inc"
 };
-char D_0046BE18[0x8] = {
+char gRomajiKanaTbl_206_kana_1[8] = {
 #include "sub_main/0046BE18.inc"
 };
-char D_0046BE20[0x8] = {
+char gRomajiKanaTbl_206_kana_2[8] = {
 #include "sub_main/0046BE20.inc"
 };
-char D_0046BE28[0x8] = {
+char gRomajiKanaTbl_207_romaji[8] = {
 #include "sub_main/0046BE28.inc"
 };
-char D_0046BE30[0x8] = {
+char gRomajiKanaTbl_207_kana_0[8] = {
 #include "sub_main/0046BE30.inc"
 };
-char D_0046BE38[0x8] = {
+char gRomajiKanaTbl_207_kana_1[8] = {
 #include "sub_main/0046BE38.inc"
 };
-char D_0046BE40[0x8] = {
+char gRomajiKanaTbl_207_kana_2[8] = {
 #include "sub_main/0046BE40.inc"
 };
-char D_0046BE48[0x8] = {
+char gRomajiKanaTbl_208_romaji[8] = {
 #include "sub_main/0046BE48.inc"
 };
-char D_0046BE50[0x8] = {
+char gRomajiKanaTbl_208_kana_0[8] = {
 #include "sub_main/0046BE50.inc"
 };
-char D_0046BE58[0x8] = {
+char gRomajiKanaTbl_208_kana_1[8] = {
 #include "sub_main/0046BE58.inc"
 };
-char D_0046BE60[0x8] = {
+char gRomajiKanaTbl_208_kana_2[8] = {
 #include "sub_main/0046BE60.inc"
 };
-char D_0046BE68[0x8] = {
+char gRomajiKanaTbl_209_romaji[8] = {
 #include "sub_main/0046BE68.inc"
 };
-char D_0046BE70[0x8] = {
+char gRomajiKanaTbl_209_kana_0[8] = {
 #include "sub_main/0046BE70.inc"
 };
-char D_0046BE78[0x8] = {
+char gRomajiKanaTbl_209_kana_1[8] = {
 #include "sub_main/0046BE78.inc"
 };
-char D_0046BE80[0x8] = {
+char gRomajiKanaTbl_209_kana_2[8] = {
 #include "sub_main/0046BE80.inc"
 };
-char D_0046BE88[0x8] = {
+char gRomajiKanaTbl_210_romaji[8] = {
 #include "sub_main/0046BE88.inc"
 };
-char D_0046BE90[0x8] = {
+char gRomajiKanaTbl_210_kana_0[8] = {
 #include "sub_main/0046BE90.inc"
 };
-char D_0046BE98[0x8] = {
+char gRomajiKanaTbl_210_kana_1[8] = {
 #include "sub_main/0046BE98.inc"
 };
-char D_0046BEA0[0x8] = {
+char gRomajiKanaTbl_210_kana_2[8] = {
 #include "sub_main/0046BEA0.inc"
 };
-char D_0046BEA8[0x8] = {
+char gRomajiKanaTbl_211_romaji[8] = {
 #include "sub_main/0046BEA8.inc"
 };
-char D_0046BEB0[0x8] = {
+char gRomajiKanaTbl_211_kana_0[8] = {
 #include "sub_main/0046BEB0.inc"
 };
-char D_0046BEB8[0x8] = {
+char gRomajiKanaTbl_211_kana_1[8] = {
 #include "sub_main/0046BEB8.inc"
 };
-char D_0046BEC0[0x8] = {
+char gRomajiKanaTbl_211_kana_2[8] = {
 #include "sub_main/0046BEC0.inc"
 };
-char D_0046BEC8[0x8] = {
+char gRomajiKanaTbl_212_romaji[8] = {
 #include "sub_main/0046BEC8.inc"
 };
-char D_0046BED0[0x8] = {
+char gRomajiKanaTbl_212_kana_0[8] = {
 #include "sub_main/0046BED0.inc"
 };
-char D_0046BED8[0x8] = {
+char gRomajiKanaTbl_212_kana_1[8] = {
 #include "sub_main/0046BED8.inc"
 };
-char D_0046BEE0[0x8] = {
+char gRomajiKanaTbl_212_kana_2[8] = {
 #include "sub_main/0046BEE0.inc"
 };
-char D_0046BEE8[0x8] = {
+char gRomajiKanaTbl_213_romaji[8] = {
 #include "sub_main/0046BEE8.inc"
 };
-char D_0046BEF0[0x8] = {
+char gRomajiKanaTbl_213_kana_0[8] = {
 #include "sub_main/0046BEF0.inc"
 };
-char D_0046BEF8[0x8] = {
+char gRomajiKanaTbl_213_kana_1[8] = {
 #include "sub_main/0046BEF8.inc"
 };
-char D_0046BF00[0x8] = {
+char gRomajiKanaTbl_213_kana_2[8] = {
 #include "sub_main/0046BF00.inc"
 };
-char D_0046BF08[0x8] = {
+char gRomajiKanaTbl_214_romaji[8] = {
 #include "sub_main/0046BF08.inc"
 };
-char D_0046BF10[0x8] = {
+char gRomajiKanaTbl_214_kana_0[8] = {
 #include "sub_main/0046BF10.inc"
 };
-char D_0046BF18[0x8] = {
+char gRomajiKanaTbl_214_kana_1[8] = {
 #include "sub_main/0046BF18.inc"
 };
-char D_0046BF20[0x8] = {
+char gRomajiKanaTbl_214_kana_2[8] = {
 #include "sub_main/0046BF20.inc"
 };
-char D_0046BF28[0x8] = {
+char gRomajiKanaTbl_215_romaji[8] = {
 #include "sub_main/0046BF28.inc"
 };
-char D_0046BF30[0x8] = {
+char gRomajiKanaTbl_215_kana_0[8] = {
 #include "sub_main/0046BF30.inc"
 };
-char D_0046BF38[0x8] = {
+char gRomajiKanaTbl_215_kana_1[8] = {
 #include "sub_main/0046BF38.inc"
 };
-char D_0046BF40[0x8] = {
+char gRomajiKanaTbl_215_kana_2[8] = {
 #include "sub_main/0046BF40.inc"
 };
-char D_0046BF48[0x8] = {
+char gRomajiKanaTbl_216_romaji[8] = {
 #include "sub_main/0046BF48.inc"
 };
-char D_0046BF50[0x8] = {
+char D_0046BF50[8] = {
 #include "sub_main/0046BF50.inc"
 };
-char D_0046BF58[0x8] = {
+char D_0046BF58[8] = {
 #include "sub_main/0046BF58.inc"
 };
-char D_0046BF60[0x8] = {
+char D_0046BF60[8] = {
 #include "sub_main/0046BF60.inc"
 };
-char D_0046BF68[0x8] = {
+char gRomajiKanaTbl_217_romaji[8] = {
 #include "sub_main/0046BF68.inc"
 };
-char D_0046BF70[0x8] = {
+char D_0046BF70[8] = {
 #include "sub_main/0046BF70.inc"
 };
-char D_0046BF78[0x8] = {
+char D_0046BF78[8] = {
 #include "sub_main/0046BF78.inc"
 };
-char D_0046BF80[0x8] = {
+char D_0046BF80[8] = {
 #include "sub_main/0046BF80.inc"
 };
-char D_0046BF88[0x8] = {
+char gRomajiKanaTbl_218_romaji[8] = {
 #include "sub_main/0046BF88.inc"
 };
-char D_0046BF90[0x8] = {
+char D_0046BF90[8] = {
 #include "sub_main/0046BF90.inc"
 };
-char D_0046BF98[0x8] = {
+char D_0046BF98[8] = {
 #include "sub_main/0046BF98.inc"
 };
-char D_0046BFA0[0x8] = {
+char D_0046BFA0[8] = {
 #include "sub_main/0046BFA0.inc"
 };
-char D_0046BFA8[0x8] = {
+char gRomajiKanaTbl_219_romaji[8] = {
 #include "sub_main/0046BFA8.inc"
 };
-char D_0046BFB0[0x8] = {
+char gRomajiKanaTbl_220_romaji[8] = {
 #include "sub_main/0046BFB0.inc"
 };
-char D_0046BFB8[0x8] = {
+char gRomajiKanaTbl_221_romaji[8] = {
 #include "sub_main/0046BFB8.inc"
 };
-char D_0046BFC0[0x8] = {
+char gRomajiKanaTbl_222_romaji[8] = {
 #include "sub_main/0046BFC0.inc"
 };
-char D_0046BFC8[0x8] = {
+char gRomajiKanaTbl_222_kana_0[8] = {
 #include "sub_main/0046BFC8.inc"
 };
-char D_0046BFD0[0x8] = {
+char gRomajiKanaTbl_222_kana_1[8] = {
 #include "sub_main/0046BFD0.inc"
 };
-char D_0046BFD8[0x8] = {
+char gRomajiKanaTbl_222_kana_2[8] = {
 #include "sub_main/0046BFD8.inc"
 };
-char D_0046BFE0[0x8] = {
+char gRomajiKanaTbl_223_romaji[8] = {
 #include "sub_main/0046BFE0.inc"
 };
-char D_0046BFE8[0x8] = {
+char gRomajiKanaTbl_223_kana_0[8] = {
 #include "sub_main/0046BFE8.inc"
 };
-char D_0046BFF0[0x8] = {
+char gRomajiKanaTbl_223_kana_1[8] = {
 #include "sub_main/0046BFF0.inc"
 };
-char D_0046BFF8[0x8] = {
+char gRomajiKanaTbl_223_kana_2[8] = {
 #include "sub_main/0046BFF8.inc"
 };
-char D_0046C000[0x8] = {
+char gRomajiKanaTbl_224_romaji[8] = {
 #include "sub_main/0046C000.inc"
 };
-char D_0046C008[0x8] = {
+char gRomajiKanaTbl_224_kana_0[8] = {
 #include "sub_main/0046C008.inc"
 };
-char D_0046C010[0x8] = {
+char gRomajiKanaTbl_224_kana_1[8] = {
 #include "sub_main/0046C010.inc"
 };
-char D_0046C018[0x8] = {
+char gRomajiKanaTbl_224_kana_2[8] = {
 #include "sub_main/0046C018.inc"
 };
-char D_0046C020[0x8] = {
+char gRomajiKanaTbl_225_romaji[8] = {
 #include "sub_main/0046C020.inc"
 };
-char D_0046C028[0x8] = {
+char gRomajiKanaTbl_225_kana_0[8] = {
 #include "sub_main/0046C028.inc"
 };
-char D_0046C030[0x8] = {
+char gRomajiKanaTbl_225_kana_1[8] = {
 #include "sub_main/0046C030.inc"
 };
-char D_0046C038[0x8] = {
+char gRomajiKanaTbl_225_kana_2[8] = {
 #include "sub_main/0046C038.inc"
 };
-char D_0046C040[0x8] = {
+char gRomajiKanaTbl_226_romaji[8] = {
 #include "sub_main/0046C040.inc"
 };
-char D_0046C048[0x8] = {
+char gRomajiKanaTbl_226_kana_0[8] = {
 #include "sub_main/0046C048.inc"
 };
-char D_0046C050[0x8] = {
+char gRomajiKanaTbl_226_kana_1[8] = {
 #include "sub_main/0046C050.inc"
 };
-char D_0046C058[0x8] = {
+char gRomajiKanaTbl_226_kana_2[8] = {
 #include "sub_main/0046C058.inc"
 };
-char D_0046C060[0x8] = {
+char gRomajiKanaTbl_227_romaji[8] = {
 #include "sub_main/0046C060.inc"
 };
-char D_0046C068[0x8] = {
+char gRomajiKanaTbl_227_kana_0[8] = {
 #include "sub_main/0046C068.inc"
 };
-char D_0046C070[0x8] = {
+char gRomajiKanaTbl_227_kana_1[8] = {
 #include "sub_main/0046C070.inc"
 };
-char D_0046C078[0x8] = {
+char gRomajiKanaTbl_227_kana_2[8] = {
 #include "sub_main/0046C078.inc"
 };
-char D_0046C080[0x8] = {
+char gRomajiKanaTbl_228_romaji[8] = {
 #include "sub_main/0046C080.inc"
 };
-char D_0046C088[0x8] = {
+char gRomajiKanaTbl_228_kana_0[8] = {
 #include "sub_main/0046C088.inc"
 };
-char D_0046C090[0x8] = {
+char gRomajiKanaTbl_228_kana_1[8] = {
 #include "sub_main/0046C090.inc"
 };
-char D_0046C098[0x8] = {
+char gRomajiKanaTbl_228_kana_2[8] = {
 #include "sub_main/0046C098.inc"
 };
-char D_0046C0A0[0x8] = {
+char gRomajiKanaTbl_229_romaji[8] = {
 #include "sub_main/0046C0A0.inc"
 };
-char D_0046C0A8[0x8] = {
+char gRomajiKanaTbl_229_kana_0[8] = {
 #include "sub_main/0046C0A8.inc"
 };
-char D_0046C0B0[0x8] = {
+char gRomajiKanaTbl_229_kana_1[8] = {
 #include "sub_main/0046C0B0.inc"
 };
-char D_0046C0B8[0x8] = {
+char gRomajiKanaTbl_229_kana_2[8] = {
 #include "sub_main/0046C0B8.inc"
 };
-char D_0046C0C0[0x8] = {
+char gRomajiKanaTbl_230_romaji[8] = {
 #include "sub_main/0046C0C0.inc"
 };
-char D_0046C0C8[0x8] = {
+char gRomajiKanaTbl_230_kana_0[8] = {
 #include "sub_main/0046C0C8.inc"
 };
-char D_0046C0D0[0x8] = {
+char gRomajiKanaTbl_230_kana_1[8] = {
 #include "sub_main/0046C0D0.inc"
 };
-char D_0046C0D8[0x8] = {
+char gRomajiKanaTbl_230_kana_2[8] = {
 #include "sub_main/0046C0D8.inc"
 };
-char D_0046C0E0[0x8] = {
+char gRomajiKanaTbl_231_romaji[8] = {
 #include "sub_main/0046C0E0.inc"
 };
-char D_0046C0E8[0x8] = {
+char gRomajiKanaTbl_231_kana_0[8] = {
 #include "sub_main/0046C0E8.inc"
 };
-char D_0046C0F0[0x8] = {
+char gRomajiKanaTbl_231_kana_1[8] = {
 #include "sub_main/0046C0F0.inc"
 };
-char D_0046C0F8[0x8] = {
+char gRomajiKanaTbl_231_kana_2[8] = {
 #include "sub_main/0046C0F8.inc"
 };
-char D_0046C100[0x8] = {
+char gRomajiKanaTbl_232_romaji[8] = {
 #include "sub_main/0046C100.inc"
 };
-char D_0046C108[0x8] = {
+char gRomajiKanaTbl_232_kana_0[8] = {
 #include "sub_main/0046C108.inc"
 };
-char D_0046C110[0x8] = {
+char gRomajiKanaTbl_232_kana_1[8] = {
 #include "sub_main/0046C110.inc"
 };
-char D_0046C118[0x8] = {
+char gRomajiKanaTbl_232_kana_2[8] = {
 #include "sub_main/0046C118.inc"
 };
-char D_0046C120[0x8] = {
+char gRomajiKanaTbl_233_romaji[8] = {
 #include "sub_main/0046C120.inc"
 };
-char D_0046C128[0x8] = {
+char D_0046C128[8] = {
 #include "sub_main/0046C128.inc"
 };
-char D_0046C130[0x8] = {
+char D_0046C130[8] = {
 #include "sub_main/0046C130.inc"
 };
-char D_0046C138[0x8] = {
+char gRomajiKanaTbl_233_kana_2[8] = {
 #include "sub_main/0046C138.inc"
 };
-char D_0046C140[0x8] = {
+char gRomajiKanaTbl_234_romaji[8] = {
 #include "sub_main/0046C140.inc"
 };
-char D_0046C148[0x8] = {
+char gRomajiKanaTbl_234_kana_2[8] = {
 #include "sub_main/0046C148.inc"
 };
-char D_0046C150[0x8] = {
+char gRomajiKanaTbl_235_romaji[8] = {
 #include "sub_main/0046C150.inc"
 };
-char D_0046C158[0x8] = {
+char gRomajiKanaTbl_235_kana_0[8] = {
 #include "sub_main/0046C158.inc"
 };
-char D_0046C160[0x8] = {
+char gRomajiKanaTbl_235_kana_1[8] = {
 #include "sub_main/0046C160.inc"
 };
-char D_0046C168[0x8] = {
+char gRomajiKanaTbl_235_kana_2[8] = {
 #include "sub_main/0046C168.inc"
 };
-char D_0046C170[0x8] = {
+char gRomajiKanaTbl_236_romaji[8] = {
 #include "sub_main/0046C170.inc"
 };
-char D_0046C178[0x8] = {
+char gRomajiKanaTbl_236_kana_0[8] = {
 #include "sub_main/0046C178.inc"
 };
-char D_0046C180[0x8] = {
+char gRomajiKanaTbl_236_kana_1[8] = {
 #include "sub_main/0046C180.inc"
 };
-char D_0046C188[0x8] = {
+char gRomajiKanaTbl_236_kana_2[8] = {
 #include "sub_main/0046C188.inc"
 };
-char D_0046C190[0x8] = {
+char gRomajiKanaTbl_237_romaji[8] = {
 #include "sub_main/0046C190.inc"
 };
-char D_0046C198[0x8] = {
+char gRomajiKanaTbl_237_kana_0[8] = {
 #include "sub_main/0046C198.inc"
 };
-char D_0046C1A0[0x8] = {
+char gRomajiKanaTbl_237_kana_1[8] = {
 #include "sub_main/0046C1A0.inc"
 };
-char D_0046C1A8[0x8] = {
+char gRomajiKanaTbl_237_kana_2[8] = {
 #include "sub_main/0046C1A8.inc"
 };
-char D_0046C1B0[0x8] = {
+char gRomajiKanaTbl_238_romaji[8] = {
 #include "sub_main/0046C1B0.inc"
 };
-char D_0046C1B8[0x8] = {
+char D_0046C1B8[8] = {
 #include "sub_main/0046C1B8.inc"
 };
-char D_0046C1C0[0x8] = {
+char D_0046C1C0[8] = {
 #include "sub_main/0046C1C0.inc"
 };
-char D_0046C1C8[0x8] = {
+char D_0046C1C8[8] = {
 #include "sub_main/0046C1C8.inc"
 };
-char D_0046C1D0[0x10] = {
+char gRomajiKanaTbl_239_romaji[16] = {
 #include "sub_main/0046C1D0.inc"
 };
-char D_0046C1E0[0x80] = {
+char gKbdHidWideStrs_0[128] = {
 #include "sub_main/0046C1E0.inc"
 };
-char D_0046C260[0x80] = {
+char gKbdHidWideStrs_1[128] = {
 #include "sub_main/0046C260.inc"
 };
-char D_0046C2E0[0x80] = {
+char gKbdHidWideStrs_2[128] = {
 #include "sub_main/0046C2E0.inc"
 };
-char D_0046C360[0x80] = {
+char gKbdHidWideStrs_3[128] = {
 #include "sub_main/0046C360.inc"
 };
-char D_0046C3E0[0x80] = {
+char gKbdHidWideStrs_4[128] = {
 #include "sub_main/0046C3E0.inc"
 };
-char D_0046C460[0x80] = {
+char gKbdHidWideStrs_5[128] = {
 #include "sub_main/0046C460.inc"
 };
-char D_0046C4E0[0x80] = {
+char gKbdHidWideStrs_6[128] = {
 #include "sub_main/0046C4E0.inc"
 };
-char D_0046C560[0x80] = {
+char gKbdHidWideStrs_7[128] = {
 #include "sub_main/0046C560.inc"
 };
-char D_0046C5E0[0x80] = {
+char gKbdHidWideStrs_8[128] = {
 #include "sub_main/0046C5E0.inc"
 };
-char D_0046C660[0x80] = {
+char gKbdHidWideStrs_9[128] = {
 #include "sub_main/0046C660.inc"
 };
-char D_0046C6E0[0x30] = {
+char gKbdHidKeypadWideStrs_0[48] = {
 #include "sub_main/0046C6E0.inc"
 };
-char D_0046C710[0x40] = {
+char gKbdHidChars_0[64] = {
 #include "sub_main/0046C710.inc"
 };
-char D_0046C750[0x40] = {
+char gKbdHidChars_1[64] = {
 #include "sub_main/0046C750.inc"
 };
-char D_0046C790[0x40] = {
+char gKbdHidChars_2[64] = {
 #include "sub_main/0046C790.inc"
 };
-char D_0046C7D0[0x50] = {
+char gKbdHidChars_3[80] = {
 #include "sub_main/0046C7D0.inc"
 };
-char D_0046C820[0x40] = {
+char gKbdHidChars_4[64] = {
 #include "sub_main/0046C820.inc"
 };
-char D_0046C860[0x40] = {
+char gKbdHidChars_5[64] = {
 #include "sub_main/0046C860.inc"
 };
-char D_0046C8A0[0x40] = {
+char gKbdHidNoRomaji_0[64] = {
 #include "sub_main/0046C8A0.inc"
 };
-char D_0046C8E0[0x18] = {
+char gKbdHidKeypadChars_0[24] = {
 #include "sub_main/0046C8E0.inc"
 };
 #pragma rodata off
@@ -2611,12 +2533,10 @@ void Kbd_ReadUsb(void)
     }
 }
 
-void Kbd_HandleKey(void);
-
 /*
  * Kbd_Run's USB step: curKey moves to prevKey and usbKey becomes curKey.
  * repeatTimer is cleared when its top bit is set; on a new key (nonzero
- * and not prevKey) it is set to 0x9E and the key is handled
+ * and not prevKey) it is set to 158 and the key is handled
  * (Kbd_HandleKey). Nothing else reads repeatTimer (seen). The game's code
  * places the clearing after the function's last block and jumps back;
  * the goto gives that layout.
@@ -2640,7 +2560,7 @@ back:
     if (kbd->curKey == kbd->prevKey) {
         return;
     }
-    kbd->repeatTimer = 0x9E;
+    kbd->repeatTimer = 158;
     Kbd_HandleKey();
     return;
 clear:
@@ -2648,41 +2568,16 @@ clear:
     goto back;
 }
 
-/* Kbd_HandleKey: dispatches the keyboard's current key (USB HID usage code, curKey). */
-void Kbd_Escape(void);
-void Kbd_Space(s32 arg0);
-void Kbd_Backspace(void);
-void Kbd_DakutenKey(void);
-void Kbd_HandakutenKey(void);
-void Kbd_CapsLock(void);
-void Kbd_FKey(u8 key);
-void Kbd_CursorHome(void);
-void Kbd_Delete(void);
-void Kbd_CursorEnd(void);
-void Kbd_CursorUp(void);
-void Kbd_CursorDown(void);
-void Kbd_KanaKey(void);
-void Kbd_HenkanKey(void);
-void Kbd_MuhenkanKey(void);
-void Kbd_ZenkakuKey(void);
-void Kbd_PageUp(void);
-void Kbd_PageDown(void);
-void Kbd_NextChatTarget(void);
-void Kbd_ClearActive(void);
-void Kbd_CursorRight(void);
-void Kbd_CursorLeft(void);
-void Kbd_Decide(void);
-
 /*
  * Handles a newly pressed USB key (curKey, a HID usage code). Puts the
  * cursor off the grid (offGrid 1) and leaves pad input (Kbd_ClearActive)
  * when the pad was active. Ignores the codes below USB_KEY_A, Print
- * Screen to Pause, Insert, Num Lock, 0x64..0x86 and 0x8C on. Enter and
+ * Screen to Pause, Insert, Num Lock, USB_KEY_NONUS_BACKSLASH to USB_KEY_KP_EQUAL_AS400, and USB_KEY_INTL6 on. Enter and
  * keypad Enter: Kbd_Decide. Escape, Backspace, Space (Kbd_Space(0)),
  * Caps Lock, Home, End, Delete, Page Up, Page Down and the arrows: their
- * Kbd_* handlers. Tab: Kbd_NextChatTarget. 0x2F and 0x30 (the '@' and
+ * Kbd_* handlers. Tab: Kbd_NextChatTarget. USB_KEY_LBRACKET and USB_KEY_RBRACKET (the '@' and
  * '[' keys of a Japanese keyboard): Kbd_DakutenKey, Kbd_HandakutenKey.
- * 0x35 (Hankaku/Zenkaku): Kbd_ZenkakuKey. F1-F12: Kbd_FKey. The
+ * USB_KEY_GRAVE (Hankaku/Zenkaku): Kbd_ZenkakuKey. F1-F12: Kbd_FKey. The
  * Katakana/Hiragana, Henkan and Muhenkan keys: Kbd_KanaKey,
  * Kbd_HenkanKey, Kbd_MuhenkanKey. Any other key is typed with
  * Kbd_TypeKey, which (active now being 0) calls Kbd_TypeHidKey.
@@ -2736,8 +2631,8 @@ void Kbd_HandleKey(void)
     case USB_KEY_CAPS_LOCK:
         Kbd_CapsLock();
         break;
-    case USB_KEY_F1: case 0x3B: case 0x3C: case 0x3D: case 0x3E: case USB_KEY_F6:
-    case USB_KEY_F7: case 0x41: case 0x42: case 0x43: case 0x44: case USB_KEY_F12:
+    case USB_KEY_F1: case USB_KEY_F2: case USB_KEY_F3: case USB_KEY_F4: case USB_KEY_F5: case USB_KEY_F6:
+    case USB_KEY_F7: case USB_KEY_F8: case USB_KEY_F9: case USB_KEY_F10: case USB_KEY_F11: case USB_KEY_F12:
         Kbd_FKey(key);
         break;
     case USB_KEY_HOME:
@@ -2776,20 +2671,8 @@ void Kbd_HandleKey(void)
     }
 }
 
-
-
 static s32 Kbd_ShiftHeld(void);
-s32 Kbd_KanaInput(void);
-s32 Kbd_ConvertRomaji(s32 kind);
-s32 Kbd_CharAllowed(s8 *arg0);
-s32 Str_InsertClip(char *dst, char *src, s32 pos, s32 max);
-s32 Kbd_KindIs8To10(void);
 extern u8 gKbdSetCharsets[];
-extern char *gKbdHidKeypadWideStrs[];
-extern char *gKbdHidNoRomaji[];
-extern char *gKbdHidChars[];
-extern char *gKbdHidWideStrs[];
-extern char *gKbdHidKeypadChars[];
 extern s32 gKbdShiftLetterPos;
 
 /*
@@ -2813,7 +2696,7 @@ extern s32 gKbdShiftLetterPos;
  * text, and only for the Space key with no kana pending.
  * gKbdShiftLetterPos becomes kanaPos + 1 when Shift is held, and 0 when
  * typing without Shift at kanaPos 0 or with the cursor at or before it.
- * The string is inserted at kanaPos (the kana kept to 0x48 bytes); a
+ * The string is inserted at kanaPos (the kana kept to 72 bytes); a
  * romaji-table key is then converted: in the half-width sets
  * Kbd_ConvertRomaji(2), committing the kana when it converts; else, only
  * while gKbdShiftLetterPos is 0, Kbd_ConvertRomaji with the mode (0 in
@@ -2863,7 +2746,7 @@ void Kbd_TypeHidKey(void)
         key = 1;
     }
     if (key == USB_KEY_BACKSLASH) {
-        key = 0x32;
+        key = 50;
     }
     shift = Kbd_ShiftHeld() != 0;
     kind = gKbdSetCharsets[gKbd->keySet];
@@ -2874,7 +2757,7 @@ void Kbd_TypeHidKey(void)
         }
         if (gKbd->keySet == 6 || gKbd->keySet == 14) {
             if (Kbd_KanaInput() == 0) {
-                if (gKbdHidNoRomaji[0][key] == 0x31) {
+                if (gKbdHidNoRomaji[0][key] == 49) {
                     Kbd_CommitKana();
                     kind = KBD_HID_ASCII;
                     narrowChar = gKbdHidChars[kind + shift * 3][key];
@@ -2902,10 +2785,10 @@ void Kbd_TypeHidKey(void)
         if (kind == 4) {
             isLetter = 1;
             isUpper = 0;
-            if (buf[0] >= 0x41 && buf[0] < 0x5B) {
+            if (buf[0] >= 65 && buf[0] < 91) {
                 isUpper = 1;
             }
-            if (isUpper == 0 && (buf[0] >= 0x61 && buf[0] < 0x7B) == 0) {
+            if (isUpper == 0 && (buf[0] >= 97 && buf[0] < 123) == 0) {
                 isLetter = 0;
             }
             if (isLetter) {
@@ -2939,7 +2822,7 @@ void Kbd_TypeHidKey(void)
                 gKbdShiftLetterPos = 0;
             }
         }
-        inserted = Str_InsertClip((char *)kbd->kana, buf, *pos, 0x48);
+        inserted = Str_InsertClip((char *)kbd->kana, buf, *pos, 72);
         gKbd->kanaPos = gKbd->kanaPos + inserted;
         if (kind == 4) {
             if (gKbd->keySet == 6 || gKbd->keySet == 14) {
@@ -2957,25 +2840,25 @@ void Kbd_TypeHidKey(void)
         goto done;
     }
     if (isKeypad) {
-        narrowChar = gKbdHidKeypadChars[0][key - 0x54];
+        narrowChar = gKbdHidKeypadChars[0][key - 84];
     } else {
         narrowChar = gKbdHidChars[kind + shift * 3][key];
     }
 check:
     acceptBits = gKbd->accept;
-    if ((acceptBits & KBD_ACCEPT_DIGITS) && (narrowChar < 0x30 || narrowChar > 0x39)) {
+    if ((acceptBits & KBD_ACCEPT_DIGITS) && (narrowChar < 48 || narrowChar > 57)) {
         return;
     }
-    if ((acceptBits & 0x20) && (narrowChar < 0x30 || narrowChar > 0x39) && narrowChar != 0x2D) {
+    if ((acceptBits & 0x20) && (narrowChar < 48 || narrowChar > 57) && narrowChar != 45) {
         return;
     }
-    if ((acceptBits & 0x40) && (narrowChar < 0x30 || narrowChar > 0x39) && (narrowChar < 0x41 || narrowChar > 0x5A)) {
+    if ((acceptBits & 0x40) && (narrowChar < 48 || narrowChar > 57) && (narrowChar < 65 || narrowChar > 90)) {
         return;
     }
-    if ((acceptBits & 0x80) && (narrowChar < 0x30 || narrowChar > 0x39) && narrowChar != 0x2D && narrowChar != 0x2A && narrowChar != 0x23) {
+    if ((acceptBits & 0x80) && (narrowChar < 48 || narrowChar > 57) && narrowChar != 45 && narrowChar != 42 && narrowChar != 35) {
         return;
     }
-    if ((acceptBits & 2) && narrowChar == 0x25) {
+    if ((acceptBits & 2) && narrowChar == 37) {
         return;
     }
     if (narrowChar != '[' && narrowChar != ']' && narrowChar != '\xA2' && narrowChar != '\xA3') {
@@ -3021,7 +2904,7 @@ check:
             if (narrowChar == ',') {
                 return;
             }
-            if (narrowChar < 0x20 || narrowChar > 0x7E) {
+            if (narrowChar < 32 || narrowChar > 126) {
                 return;
             }
         }
@@ -3041,7 +2924,6 @@ done:
         gKbd->state = SE_SYS_SELECT;
     }
 }
-
 
 /* Nonzero while an Alt key is held (usbMods & USB_MOD_ALT). */
 static s32 Kbd_AltHeld(void)
@@ -3079,10 +2961,6 @@ void Kbd_ToggleKanaInput(void)
     gKbd->kanaInput ^= 1;
     Kbd_SaveKanaInput();
 }
-
-void Kbd_ConvertOrCommit(void);
-void Kbd_PressKey(KbdKey *key);
-s32 Kbd_DoGesture(char *text, u16 *pos, s32 gesture);
 
 /*
  * The Enter and keypad Enter keys. In the symbol mode converts or
@@ -3153,11 +3031,11 @@ void Kbd_Decide(void)
             while ((s8)textBytes[i] != 0) {
                 cur = textBytes + i;
                 dropChar = 0;
-                isLead = (cur[0] >= 0x80 && cur[0] < 0xA0) || (cur[0] >= 0xE0 && cur[0] < 0x100);
+                isLead = (cur[0] >= 128 && cur[0] < 160) || (cur[0] >= 224 && cur[0] < 256);
                 if (isLead) {
-                    if (cur[1] >= 0x60 && cur[1] < 0x7A) {
+                    if (cur[1] >= 96 && cur[1] < 122) {
                         dropChar = 1;
-                    } else if (cur[1] >= 0x81 && cur[1] < 0x9B) {
+                    } else if (cur[1] >= 129 && cur[1] < 155) {
                         dropChar = 1;
                     }
                     if (dropChar) {
@@ -3169,9 +3047,9 @@ void Kbd_Decide(void)
                          * reached from gKbd + i: the game's code adds i to the
                          * pointer first. */
                         cur = (u8 *)gKbd + i;
-                        cur[0x4C] = 0;
+                        cur[76] = 0;
                         cur = (u8 *)gKbd + i;
-                        strcat((char *)cur + 0x4C, (char *)cur + charSize + 0x4C);
+                        strcat((char *)cur + 76, (char *)cur + charSize + 76);
                     } else {
                         i += 2;
                     }
@@ -3237,7 +3115,7 @@ void Kbd_Space(s32 fromPad)
             if (fromPad == 0) {
                 Kbd_TypeKey(gKbd->key);
                 if (gKbd->active == 1) {
-                    gKbd->state = 0x16;
+                    gKbd->state = 22;
                 }
             } else {
                 gKbd->state = SE_SYS_REFUSE;
@@ -3246,7 +3124,7 @@ void Kbd_Space(s32 fromPad)
             Kbd_Convert();
         }
     } else {
-        gKbd->state = 0x16;
+        gKbd->state = 22;
         if (Kbd_ShiftHeld() != 0) {
             Kbd_PrevCand();
             return;
@@ -3269,7 +3147,7 @@ void Kbd_Backspace(void)
 
     if (gKbd->keyFlags & 2) {
         gKbd->result = -1;
-        gKbd->state = 0x14;
+        gKbd->state = 20;
         return;
     }
     if (gKbd->converting != 0 || Kbd_CtrlHeld() == 0) {
@@ -3283,13 +3161,11 @@ void Kbd_Backspace(void)
         pos = &gKbd->textPos;
         *pos = *pos - Str_DropFront(gKbd->text, gKbd->textPos);
     }
-    gKbd->state = 0x16;
+    gKbd->state = 22;
 }
 
-void Kbd_KanaDakuten(void);
-
 /*
- * The dakuten key (USB 0x2F, the '@' key of a Japanese keyboard). Does
+ * The dakuten key (USB_KEY_LBRACKET, the '@' key of a Japanese keyboard). Does
  * nothing while converting. Under kana input adds a dakuten
  * (Kbd_KanaDakuten); otherwise the key is typed (Kbd_TypeKey).
  */
@@ -3304,10 +3180,8 @@ void Kbd_DakutenKey(void)
     }
 }
 
-void Kbd_KanaHandakuten(void);
-
 /*
- * The handakuten key (USB 0x30, the '[' key of a Japanese keyboard).
+ * The handakuten key (USB_KEY_RBRACKET, the '[' key of a Japanese keyboard).
  * Does nothing while converting. Under kana input adds a handakuten
  * (Kbd_KanaHandakuten); otherwise the key is typed (Kbd_TypeKey).
  */
@@ -3322,7 +3196,6 @@ void Kbd_HandakutenKey(void)
     }
 }
 
-void sceUsbKbSetLEDStatus(s32 a, s32 b);
 /*
  * The Caps Lock key. On the alphabet sets, with Shift held, switches the
  * case unless accept bit 0 is set or the other case's set is barred: the
@@ -3435,7 +3308,7 @@ void Kbd_ShiftFKey(u8 key)
         Kbd_UpdateSymbolMode();
         return;
     }
-    gKbd->state = 0x15;
+    gKbd->state = 21;
 }
 
 /*
@@ -3448,10 +3321,10 @@ void Kbd_CtrlFKey(u8 key)
     u8 cell;
 
     if (gKbd->converting != 0 || Kbd_ShiftHeld() != 0) {
-        gKbd->state = 0x15;
+        gKbd->state = 21;
         return;
     }
-    fkeyIdx = key - 0x3A;
+    fkeyIdx = key - 58;
     gKbd->keyFlags |= 2;
     if (Kbd_FindKind(KBD_MODE_PHRASE2, &gKbd->mode, &gKbd->keySet) == 0) {
         Kbd_SetPhrasePage(KBD_SET_PHRASE2);
@@ -3463,14 +3336,9 @@ void Kbd_CtrlFKey(u8 key)
         Kbd_UpdateSymbolMode();
         return;
     }
-    gKbd->state = 0x15;
+    gKbd->state = 21;
 }
 
-void Kbd_ToggleShift(void);
-void Kbd_CyclePhrase(void);
-void Kbd_CycleGesture(void);
-void Kbd_Confirm(void);
-void Kbd_ConvertForm2(void);
 extern s32 gKbdSettings;
 
 /* Declared with an s32 parameter, as this file's callers use it: they pass
@@ -3483,7 +3351,7 @@ s32 Kbd_ShiftPair(s32 i);
  * F1..F12 (key, USB_KEY_F1..USB_KEY_F12). With Alt: when key 6 of the
  * layout has a character, does gesture key - USB_KEY_F1
  * (Kbd_DoGesture). With Ctrl: Kbd_CtrlFKey. With Shift: Kbd_ShiftFKey,
- * when the kind has phrases (kindConf + 0x30) and the first phrase page
+ * when the kind has phrases (kindConf + 48) and the first phrase page
  * is not barred. Otherwise: F1, F2 the hiragana and katakana modes
  * (Kbd_FKeyRow); F3 and F8 half-width katakana (Kbd_FindKind, then
  * KBD_SET_HALF_SMALL_KATA and Kbd_ToggleShift), committing the kana; F4
@@ -3492,7 +3360,7 @@ s32 Kbd_ShiftPair(s32 i);
  * Kbd_Confirm; F7 Kbd_ConvertForm2; F9, F10 the phrase pages
  * (Kbd_OpenPhrases1, Kbd_OpenPhrases2); F11 the gestures page with the
  * cursor on column 5, row 0 (refused while converting, when barred, or
- * when the kind has no gestures, kindConf + 0x28); F12 cycles the
+ * when the kind has no gestures, kindConf + 40); F12 cycles the
  * gestures on the gestures page, else the phrases. The keys that switch
  * sets end a phrase cycle (KBD_KEYF_CYCLING). Refusals: SE_SYS_REFUSE.
  */
@@ -3505,12 +3373,12 @@ void Kbd_FKey(u8 key)
 
     if (Kbd_AltHeld() != 0) {
         if (gKbd->layout->keys[6].ch.code != 0) {
-            Kbd_DoGesture(gKbd->text, &gKbd->textPos, (u8)(key - 0x3A));
+            Kbd_DoGesture(gKbd->text, &gKbd->textPos, (u8)(key - 58));
         }
     } else if (Kbd_CtrlHeld() != 0) {
         Kbd_CtrlFKey(key);
     } else if (Kbd_ShiftHeld() != 0) {
-        if (*(s32 *)(gKbd->kindConf + 0x30) != 0
+        if (*(s32 *)(gKbd->kindConf + 48) != 0
             && !(gKbd->flags & KBD_SET_BIT(KBD_SET_PHRASE1))) {
             Kbd_ShiftFKey(key);
         }
@@ -3543,13 +3411,13 @@ void Kbd_FKey(u8 key)
                 Kbd_HomePageCursor();
                 Kbd_RefreshLayout();
                 Kbd_UpdateSymbolMode();
-                gKbd->state = 0x16;
+                gKbd->state = 22;
                 gKbd->col = x;
                 gKbd->row = y;
                 Kbd_LookupKey();
                 return;
             }
-            gKbd->state = 0x15;
+            gKbd->state = 21;
             return;
         case USB_KEY_F5:
             fromSet = (gKbdSettings & USB_LED_CAPS_LOCK) ? KBD_SET_ASCII_LOWER : KBD_SET_ASCII_UPPER;
@@ -3564,13 +3432,13 @@ void Kbd_FKey(u8 key)
                 Kbd_HomePageCursor();
                 Kbd_RefreshLayout();
                 Kbd_UpdateSymbolMode();
-                gKbd->state = 0x16;
+                gKbd->state = 22;
                 gKbd->col = x;
                 gKbd->row = y;
                 Kbd_LookupKey();
                 return;
             }
-            gKbd->state = 0x15;
+            gKbd->state = 21;
             return;
         case USB_KEY_F6:
             Kbd_Confirm();
@@ -3582,12 +3450,12 @@ void Kbd_FKey(u8 key)
             if (Kbd_FindKind(6, &gKbd->mode, &gKbd->keySet) == 0) {
                 Kbd_CommitKana();
                 gKbd->keyFlags &= ~2;
-                gKbd->keySet = 0xE;
+                gKbd->keySet = 14;
                 Kbd_ToggleShift();
-                gKbd->state = 0x16;
+                gKbd->state = 22;
                 return;
             }
-            gKbd->state = 0x15;
+            gKbd->state = 21;
             return;
         case USB_KEY_F9:
             gKbd->keyFlags &= ~2;
@@ -3601,8 +3469,8 @@ void Kbd_FKey(u8 key)
             return;
         case USB_KEY_F11:
             if (gKbd->converting != 0 || (gKbd->flags & KBD_SET_BIT(KBD_SET_GESTURE))
-                || *(s32 *)(gKbd->kindConf + 0x28) == 0) {
-                gKbd->state = 0x15;
+                || *(s32 *)(gKbd->kindConf + 40) == 0) {
+                gKbd->state = 21;
                 return;
             }
             gKbd->keyFlags &= ~2;
@@ -3613,7 +3481,7 @@ void Kbd_FKey(u8 key)
             gKbd->row = 0;
             Kbd_EnterGestures();
             Kbd_RefreshLayout();
-            gKbd->state = 0x16;
+            gKbd->state = 22;
             return;
         case USB_KEY_F12:
             switch (gKbd->keySet) {
@@ -3627,12 +3495,11 @@ void Kbd_FKey(u8 key)
                 return;
             }
         default:
-            gKbd->state = 0x15;
+            gKbd->state = 21;
             break;
         }
     }
 }
-
 
 /*
  * Switches to the mode of key - USB_KEY_F1 (F1 hiragana, F2 katakana;
@@ -3643,8 +3510,8 @@ void Kbd_FKey(u8 key)
  */
 void Kbd_FKeyRow(u8 key)
 {
-    if (Kbd_FindKind(key - 0x3A, &gKbd->mode, &gKbd->keySet) == 0) {
-        gKbd->state = 0x16;
+    if (Kbd_FindKind(key - 58, &gKbd->mode, &gKbd->keySet) == 0) {
+        gKbd->state = 22;
         gKbd->gestureMode = 0;
         gKbd->keyFlags &= (u8)~KBD_KEYF_CYCLING;
         Kbd_UpdateMode();
@@ -3655,7 +3522,7 @@ void Kbd_FKeyRow(u8 key)
             Kbd_Convert();
         }
     } else {
-        gKbd->state = 0x15;
+        gKbd->state = 21;
     }
 }
 
@@ -3674,7 +3541,7 @@ void Kbd_ClearText(void)
 
 /*
  * Opens the first phrase page (F9, the page key, Kbd_CyclePhrase). When
- * not converting, the kind has phrases (kindConf + 0x30) and
+ * not converting, the kind has phrases (kindConf + 48) and
  * Kbd_FindKind allows the page: records it (Kbd_SetPhrasePage), commits
  * the kana, clears gestureMode, updates the mode, the page cursor, the
  * layout and the symbol mode; SE_SYS_SELECT. When the page is barred,
@@ -3682,9 +3549,9 @@ void Kbd_ClearText(void)
  */
 void Kbd_OpenPhrases1(void)
 {
-    s32 state = 0x15;
+    s32 state = 21;
 
-    if (gKbd->converting == 0 && *(s32 *)(gKbd->kindConf + 0x30) != 0) {
+    if (gKbd->converting == 0 && *(s32 *)(gKbd->kindConf + 48) != 0) {
         if (Kbd_FindKind(4, &gKbd->mode, &gKbd->keySet) == 0) {
             Kbd_SetPhrasePage(4);
             Kbd_CommitKana();
@@ -3693,7 +3560,7 @@ void Kbd_OpenPhrases1(void)
             Kbd_HomePageCursor();
             Kbd_RefreshLayout();
             Kbd_UpdateSymbolMode();
-            state = 0x16;
+            state = 22;
         } else {
             gKbd->gestureMode = 0;
             gKbd->cyclePos = 0;
@@ -3705,9 +3572,9 @@ void Kbd_OpenPhrases1(void)
 /* As Kbd_OpenPhrases1, for the second phrase page (F10). */
 void Kbd_OpenPhrases2(void)
 {
-    s32 state = 0x15;
+    s32 state = 21;
 
-    if (gKbd->converting == 0 && *(s32 *)(gKbd->kindConf + 0x30) != 0) {
+    if (gKbd->converting == 0 && *(s32 *)(gKbd->kindConf + 48) != 0) {
         if (Kbd_FindKind(5, &gKbd->mode, &gKbd->keySet) == 0) {
             Kbd_SetPhrasePage(5);
             Kbd_CommitKana();
@@ -3716,7 +3583,7 @@ void Kbd_OpenPhrases2(void)
             Kbd_HomePageCursor();
             Kbd_RefreshLayout();
             Kbd_UpdateSymbolMode();
-            state = 0x16;
+            state = 22;
         } else {
             gKbd->gestureMode = 0;
             gKbd->cyclePos = 0;
@@ -3724,8 +3591,6 @@ void Kbd_OpenPhrases2(void)
     }
     gKbd->state = state;
 }
-
-s32 Kbd_KindIs8To10(void);
 
 /*
  * F6. Entry kinds 8-10 outside the symbol mode commit the input
@@ -3744,7 +3609,7 @@ s32 Kbd_KindIs8To10(void);
  */
 void Kbd_Confirm(void)
 {
-    s32 next = 0x15;
+    s32 next = 21;
     s32 count;
 
     if (Kbd_KindIs8To10() == 1) {
@@ -3785,7 +3650,7 @@ void Kbd_Confirm(void)
                 Kbd_InitCandList();
             }
         }
-        next = 0x16;
+        next = 22;
     } else if (gKbd->symbolMode == 0 && gKbd->caseCands == 0) {
         if (gKbd->candCount > 1) {
             ConvCmd_SegmentForm1(gKbd->cand, gKbd->convRest);
@@ -3797,7 +3662,7 @@ void Kbd_Confirm(void)
             gKbd->candCount = Kbd_CountCands();
             Kbd_InitCandList();
         }
-        next = 0x16;
+        next = 22;
     }
 end:
     gKbd->state = next;
@@ -3819,7 +3684,7 @@ end:
  */
 void Kbd_CycleSegmentForm(s32 useForm2)
 {
-    s32 state = 0x15;
+    s32 state = 21;
     s32 count;
 
     if (Kbd_KindIs8To10() == 1) {
@@ -3872,7 +3737,7 @@ done:
     gKbd->candCount = 1;
     Kbd_InitCandList();
     gKbd->converting = 2;
-    state = 0x16;
+    state = 22;
 end:
     gKbd->state = state;
 }
@@ -3888,7 +3753,7 @@ end:
  */
 void Kbd_ConvertForm2(void)
 {
-    s32 state = 0x15;
+    s32 state = 21;
     s32 count;
 
     if (Kbd_KindIs8To10() == 1) {
@@ -3922,13 +3787,11 @@ void Kbd_ConvertForm2(void)
         Kbd_SkipSameCands();
         gKbd->candCount = Kbd_CountCands();
         Kbd_InitCandList();
-        state = 0x16;
+        state = 22;
     }
 end:
     gKbd->state = state;
 }
-
-void Kbd_PrevSegment(void);
 
 /*
  * The Home key. Before conversion puts the cursor at the start of the
@@ -3954,7 +3817,7 @@ void Kbd_CursorHome(void)
             textPos = &gKbd->textPos;
             if (*textPos != 0) {
                 *textPos = 0;
-                state = 0x16;
+                state = 22;
             }
         }
     } else {
@@ -3982,7 +3845,7 @@ void Kbd_Delete(void)
         gKbd->state = SE_SYS_REFUSE;
         return;
     }
-    gKbd->state = 0x16;
+    gKbd->state = 22;
     if (Kbd_CtrlHeld() == 0) {
         Kbd_DeleteChar();
         return;
@@ -4026,13 +3889,13 @@ void Kbd_CursorEnd(void)
             pos = kbd->kanaPos;
             if ((u32)pos < (u32)strlen(kana)) {
                 gKbd->kanaPos = strlen((char *)kbd->kana);
-                state = 0x16;
+                state = 22;
             }
         } else {
             pos = kbd->textPos;
             if (pos < (u16)strlen(kbd->text)) {
                 gKbd->textPos = strlen(kbd->text);
-                state = 0x16;
+                state = 22;
             }
         }
     } else {
@@ -4122,7 +3985,6 @@ s32 Kbd_ArrowsOnPage(void)
     return 0;
 }
 
-
 /*
  * The Right arrow (the pad's handling calls it too). On a phrase or
  * gestures page (Kbd_ArrowsOnPage) moves the key cursor right
@@ -4160,7 +4022,7 @@ void Kbd_CursorRight(void)
                     gKbd->kanaPos = strlen((char *)gKbd->kana);
                 }
                 gKbd->blink = 0;
-                gKbd->state = 0x17;
+                gKbd->state = 23;
                 return;
             }
             kbd->state = KBD_SOUND_NONE;
@@ -4174,7 +4036,7 @@ void Kbd_CursorRight(void)
                 gKbd->textPos = strlen(gKbd->text);
             }
             gKbd->blink = 0;
-            gKbd->state = 0x17;
+            gKbd->state = 23;
             return;
         }
         kbd->state = -1;
@@ -4185,7 +4047,7 @@ void Kbd_CursorRight(void)
         return;
     }
     if (kbd->active == 0 && Kbd_ShiftHeld() == 0) {
-        gKbd->state = 0x17;
+        gKbd->state = 23;
         Kbd_NextSegment();
         return;
     }
@@ -4196,14 +4058,12 @@ void Kbd_CursorRight(void)
         Kbd_SkipSameCands();
         gKbd->candCount = Kbd_CountCands();
         Kbd_InitCandList();
-        gKbd->state = 0x17;
+        gKbd->state = 23;
     } else {
         gKbd->state = -1;
     }
 }
 
-
-s32 Sjis_PrevCharSize(u8 *s, s32 pos);
 s32 ConvCmd_ShrinkSegment(char *a, char *b);
 
 /*
@@ -4322,7 +4182,7 @@ void Kbd_CursorDown(void)
 }
 
 /*
- * The USB keyboard's katakana/hiragana key (HID 0x88). With Alt held,
+ * The USB keyboard's katakana/hiragana key (USB_KEY_KANA). With Alt held,
  * toggles kana input (Kbd_ToggleKanaInput). Otherwise, unless the
  * hiragana or the katakana set is barred (KbdEntry.flags), switches to
  * the hiragana mode, or with Shift held the katakana mode, through
@@ -4350,7 +4210,7 @@ void Kbd_KanaKey(void)
 }
 
 /*
- * The henkan (convert) key (HID 0x8A). For entry kinds 8-10 outside the
+ * The henkan (convert) key (USB_KEY_HENKAN). For entry kinds 8-10 outside the
  * symbol mode, commits the input (Kbd_CommitInput). Before conversion:
  * in the symbol mode, Kbd_Convert; else, with kana pending, starts the
  * conversion and lists the candidates (SE_SYS_SELECT). While converting
@@ -4383,7 +4243,7 @@ void Kbd_HenkanKey(void)
 }
 
 /*
- * The muhenkan key (HID 0x8B). With a full-width key set (Kbd_SetIsWide)
+ * The muhenkan key (USB_KEY_MUHENKAN). With a full-width key set (Kbd_SetIsWide)
  * and kana pending: SE_SYS_SELECT, clears KBD_KEYF_CYCLING and runs
  * Kbd_CycleSegmentForm with cyclePos as its flag. The first press (when
  * converting is not 2) sets cyclePos to 1; each press while converting
@@ -4408,9 +4268,6 @@ void Kbd_MuhenkanKey(void)
     }
 }
 
-void Kbd_CommitKana(void);
-void Kbd_NextCandidate(void);
-
 /*
  * With a full-width key set and kana pending: SE_SYS_SELECT, then commits
  * the kana into the text (Kbd_CommitKana), or while converting, runs
@@ -4427,8 +4284,6 @@ void Kbd_CommitInput(void)
         }
     }
 }
-
-s32 Sjis_CharSizeAt(char *s, s32 pos);
 
 /*
  * Deletes the character at the cursor (the Delete key without Ctrl; the
@@ -4466,7 +4321,7 @@ void Kbd_DeleteChar(void)
 }
 
 /*
- * The hankaku/zenkaku key (HID 0x35). Clears KBD_KEYF_CYCLING. Without
+ * The hankaku/zenkaku key (USB_KEY_GRAVE). Clears KBD_KEYF_CYCLING. Without
  * Alt, switches the width of the key set (Kbd_ToggleWidth). With Alt:
  * SE_SYS_REFUSE when both ASCII sets are barred; else toggles keyFlags
  * bit 1 (half-width): on, saves keySet in prevKeySet and switches to the
@@ -4522,10 +4377,6 @@ s32 Str_DropFront(char *str, s32 count)
     return count;
 }
 
-extern char gSmallTsuHira[];
-extern char gSmallTsuKata[];
-extern char gSmallTsuHalf[];
-
 /*
  * Converts typed romaji into kana in place in KbdEntry.kana. typed is the
  * romaji to try, two bytes per typed character (the first the letter),
@@ -4563,13 +4414,13 @@ s32 Kbd_RomajiToKana(s32 kind, char *typed)
     }
     out = buf;
     for (src = typed; *src != 0; src += 2, out++) {
-        lead = (((u8 *)src)[0] >= 0x80 && ((u8 *)src)[0] < 0xA0) || (((u8 *)src)[0] >= 0xE0 && ((u8 *)src)[0] < 0x100);
+        lead = (((u8 *)src)[0] >= 128 && ((u8 *)src)[0] < 160) || (((u8 *)src)[0] >= 224 && ((u8 *)src)[0] < 256);
         if (lead) {
             return 0;
         }
         *out = *src;
-        if (*out >= 0x41 && *out <= 0x5A) {
-            *out += 0x20;
+        if (*out >= 65 && *out <= 90) {
+            *out += 32;
         }
     }
     *out = 0;
@@ -4581,11 +4432,11 @@ s32 Kbd_RomajiToKana(s32 kind, char *typed)
             kbd = gKbd;
             kbd->kana[gKbd->kanaPos - len] = 0;
             tblStr = gRomajiKanaTbl[i].kana[kind];
-            for (j = 0x7E; gKbd->kanaPos < j; j--) {
+            for (j = 126; gKbd->kanaPos < j; j--) {
                 /* kana[j] = kana[j - 1] (kana is at 0x168): the game's
                  * code adds j to gKbd first. */
                 kbdBytes = (u8 *)gKbd + j;
-                kbdBytes[0x168] = kbdBytes[0x167];
+                kbdBytes[360] = kbdBytes[359];
             }
             strcat((char *)gKbd->kana, tblStr);
             strcat((char *)gKbd->kana, (char *)&gKbd->kana[gKbd->kanaPos + 1]);
@@ -4613,8 +4464,6 @@ s32 Kbd_RomajiToKana(s32 kind, char *typed)
     }
     return 0;
 }
-
-extern char *gKanaNChars[];
 
 /*
  * Converts the romaji just typed before the cursor in kana: copies up to
@@ -4665,7 +4514,7 @@ extern s8 gKbdKind8Chars;
  * 1 when entry kind 8 accepts the key string str (two bytes, as the key
  * string tables hold a key): a one-byte character (its second byte a
  * space) when it is printable ASCII other than a comma; a two-byte one
- * when it is among the 0x108 characters of gKbdKind8Chars. Else 0. The
+ * when it is among the 264 characters of gKbdKind8Chars. Else 0. The
  * table search is written as a goto loop.
  */
 s32 Kbd_CharAllowed(s8 *str)
@@ -4674,12 +4523,12 @@ s32 Kbd_CharAllowed(s8 *str)
     s8 *entry;
     u8 firstChar;
 
-    if (*(u8 *)((u8 *)str + 1) == 0x20) {
+    if (*(u8 *)((u8 *)str + 1) == 32) {
         firstChar = (u8) *(s8 *)((u8 *)str + 0);
-        if (firstChar == 0x2C) {
+        if (firstChar == 44) {
             return 0;
         }
-        if (((s32) firstChar >= 0x20) && ((s32) firstChar < 0x7F)) {
+        if (((s32) firstChar >= 32) && ((s32) firstChar < 127)) {
             return 1;
         }
         return 0;
@@ -4692,7 +4541,7 @@ loop_10:
     }
     i += 1;
     entry += 2;
-    if (i >= 0x108U) {
+    if (i >= 264U) {
         return 0;
     }
     goto loop_10;
@@ -4709,7 +4558,7 @@ loop_10:
  */
 void Kbd_CommitKana(void)
 {
-    char buf[0x100];
+    char buf[256];
     s32 added;
 
     if (gKbd->kana[0] == 0) {
@@ -4722,15 +4571,15 @@ void Kbd_CommitKana(void)
         if (gKbd->active == 1) {
             gKbd->offGrid = 0;
         }
-        memset(buf, 0, 0x100);
-        strncpy(buf, gKbd->convDone, 0xFF);
-        strncat(buf, gKbd->cand, 0xFF);
-        strncat(buf, gKbd->convRest, 0xFF);
+        memset(buf, 0, 256);
+        strncpy(buf, gKbd->convDone, 255);
+        strncat(buf, gKbd->cand, 255);
+        strncat(buf, gKbd->convRest, 255);
         Str_ToWide((s8 *)buf, (s8 *)gKbd->wide);
     }
     added = Str_InsertClip(gKbd->text, (char *)gKbd->wide, gKbd->textPos,
                       gKbd->maxLen);
-    memset(gKbd->kana, 0, 0xFF);
+    memset(gKbd->kana, 0, 255);
     gKbd->textPos = gKbd->textPos + added;
     gKbd->kanaPos = 0;
     gKbd->blink = 0;
@@ -4747,7 +4596,7 @@ void Kbd_CommitKana(void)
  */
 s32 Str_InsertClip(char *dst, char *src, s32 pos, s32 max)
 {
-    char tail[0x100];
+    char tail[256];
     s32 code;
     s32 dlen;
     char byte;
@@ -4761,7 +4610,7 @@ s32 Str_InsertClip(char *dst, char *src, s32 pos, s32 max)
         byte = src[k];
         while (byte != 0) {
             code = (u8)byte;
-            if ((code >= 0x80 && code <= 0x9F) || (code >= 0xE0 && code <= 0xFF)) {
+            if ((code >= 128 && code <= 159) || (code >= 224 && code <= 255)) {
                 k += 2;
             } else {
                 k += 1;
@@ -4774,7 +4623,7 @@ s32 Str_InsertClip(char *dst, char *src, s32 pos, s32 max)
         }
         src[len] = 0;
     }
-    strncpy(tail, dst + pos, 0xFF);
+    strncpy(tail, dst + pos, 255);
     dst[pos] = 0;
     strcat(dst, src);
     strcat(dst, tail);
@@ -4787,13 +4636,11 @@ s32 Kbd_KindIs8To10(void)
     u8 kind;
 
     kind = gKbd->kind;
-    if (((s32) kind >= 8) && ((s32) kind < 0xB)) {
+    if (((s32) kind >= 8) && ((s32) kind < 11)) {
         return 1;
     }
     return 0;
 }
-
-s32 Kbd_KindIs8To10(void);
 
 /*
  * Sets symbolMode: 5 (symbols are typed from the candidate list
@@ -4832,11 +4679,8 @@ void Kbd_ConvertOrCommit(void)
 }
 
 void Font_SetSpacing(u8 a, u8 b);
-void Text_SetColor(s16 color);
 void Font_SetPos(s32 x, s32 y); /* unit's own declaration: the definition has (s16, s16);
  * Kbd_DrawLine matches with s32, and is 457 words off with s16 */
-void Kbd_Printf(const char *fmt, ...);
-s32 Sjis_CharSizeAt(char *s, s32 pos);
 extern s16 gKbdChatTarget;
 extern char gKbdPrompt[];
 
@@ -4864,8 +4708,8 @@ void Kbd_DrawLine(f32 x, u32 yIn)
 {
     s32 width;
     s32 y = yIn;
-    char buf[0x30];
-    char conv[0x110];
+    char buf[48];
+    char conv[272];
     s32 *scrollRight;
     s32 cursorOff;
     s32 *scrollLeft;
@@ -4880,7 +4724,7 @@ void Kbd_DrawLine(f32 x, u32 yIn)
 
     charW = 10.0f;
     width = KBD_LINE_WIDTH;
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     if (gKbdChatTarget >= 0) {
         len = strlen(gKbdPrompt);
         if (len & 1) {
@@ -5012,879 +4856,8 @@ void Kbd_DrawLine(f32 x, u32 yIn)
         } else {
             Text_SetColor(gKbd->keyFlags - gKbd->keyFlags);
         }
-        Font_SetSpacing(4, 0x16);
+        Font_SetSpacing(4, 22);
         Font_SetPos(x + charW * (gKbd->textPos + gKbd->kanaPos - gKbd->firstShown), y);
         Kbd_Printf(TXT(0x0046C988) /* a full-width black square (a bar's cell) */);
-    }
-}
-
-/*
- * 0 when every two-byte character of str is a full-width capital, small
- * letter, digit or symbol (0x8141-0x81AC); 1 when str is empty or holds
- * any other character. Characters are read lead byte high.
- */
-s32 Str_NotWideAlnum(u8 *str)
-{
-    s32 bad = 1;
-    s32 len;
-    s32 i;
-    u16 code;
-
-    len = strlen((char *)str);
-    if (len == 0) {
-        return bad;
-    }
-    for (i = 0; i < len; i += 2, str += 2) {
-        code = (u16)(str[0] << 8) | str[1];
-        if ((code >= 0x8260 && code <= 0x8279) || (code >= 0x8281 && code <= 0x829A) || (code >= 0x824F && code <= 0x8258) ||
-            (code >= 0x8141 && code <= 0x81AC)) {
-            bad = 0;
-        } else {
-            return 1;
-        }
-    }
-    return bad;
-}
-
-s32 memcmp(char *a, char *b, s32 n); /* memcmp */
-void *memcpy(void *dst, const void *src, u32 n);
-
-/*
- * Fills gCaseCands (four strings of 0x100 bytes) with src first, then its
- * full-width upper-case, lower-case and capitalised forms that differ
- * from it (the capitalised one is dropped when it equals the upper-case
- * one); gCaseCandCount is their number. Copies src to out; returns 0.
- */
-s32 Kbd_MakeCaseCands(char *src, char *out)
-{
-    char orig[0x100];
-    char forms[3][0x100];
-    s32 i;
-    s32 count;
-    char *form;
-    s32 len;
-
-    memset(&gCaseCands, 0, 0x400);
-    memset(orig, 0, 0x100);
-    memset(forms, 0, 0x300);
-    len = strlen(src);
-    strncpy(orig, src, len);
-    Wide_ToUpper(forms[0], src);
-    Wide_ToLower(forms[1], src);
-    Wide_Capitalize(forms[2], src);
-    if (memcmp(forms[0], forms[2], len) == 0) {
-        memset(forms[2], 0, len);
-    }
-    memcpy(&gCaseCands, orig, len);
-    count = 0;
-    for (i = 0, form = forms[0]; i < 3; i++, form += 0x100) {
-        if (memcmp(form, orig, len) != 0 && *(u8 *)form != 0) {
-            strncpy((char *)(&gCaseCands + (count + 1) * 0x100), form, len);
-            count++;
-        }
-    }
-    gCaseCandCount = count + 1;
-    strncpy(out, orig, len);
-    return 0;
-}
-
-/* Returns gCaseCandCount, the number of case candidates. */
-s32 CaseCands_Count(void)
-{
-    return gCaseCandCount;
-}
-
-/*
- * Copies the first count strings of gCaseCands into the text of dst's
- * 0x101-byte candidate entries (gKbdCands); the id bytes are left as
- * they are. Returns 0.
- */
-s32 CaseCands_CopyFirst(s8 *dst, u8 count)
-{
-    s32 i;
-
-    for (i = 0; i < count; i++) {
-        strncpy((char *)(dst + i * 0x101 + 1), (const char *)(&gCaseCands + (i << 8)), 0xFFU);
-    }
-    return 0;
-}
-
-/*
- * Copies count strings of gCaseCands, from start on, into the text of
- * dst's 0x101-byte candidate entries; returns 0. Kbd_ListCandidates uses
- * it when listing forward.
- */
-s32 CaseCands_Copy(s8 *dst, u8 start, u8 count)
-{
-    s32 i;
-
-    for (i = 0; i < count; i++) {
-        strncpy((char *)(dst + i * 0x101 + 1), (const char *)(&gCaseCands + ((start + i) << 8)), 0xFFU);
-    }
-    return 0;
-}
-
-/*
- * The same as CaseCands_Copy; Kbd_ListCandidates uses it when listing
- * backward. Returns 0.
- */
-s32 CaseCands_Copy2(s8 *dst, u8 start, u8 count)
-{
-    s32 i;
-
-    for (i = 0; i < count; i++) {
-        strncpy((char *)(dst + i * 0x101 + 1), (const char *)(&gCaseCands + ((start + i) << 8)), 0xFFU);
-    }
-    return 0;
-}
-
-/*
- * Makes the typed text, the first case candidate, the only one: sets
- * gCaseCandCount to 1 and copies gCaseCands' first string into dst.
- * Returns 0.
- */
-s32 CaseCands_First(char *dst)
-{
-    gCaseCandCount = 1;
-    strncpy(dst, (const char *) &gCaseCands, 0xFFU);
-    return 0;
-}
-
-/*
- * Copies strlen(src) bytes of src to dst (no terminator is written) and
- * lowers the second byte by 0x21 for every two-byte character that is not
- * a full-width capital, digit or symbol, which makes full-width small
- * letters capitals. Returns 0.
- */
-s32 Wide_ToUpper(char *dst, char *src)
-{
-    s32 len;
-    s32 i;
-    u8 *cur;
-    u16 code;
-
-    len = strlen(src);
-    strncpy(dst, src, len);
-    i = 0;
-    if (i < len) {
-        cur = (u8 *)dst;
-        do {
-            code = (u16)(cur[0] << 8) | cur[1];
-            if (!(code >= 0x8260 && code <= 0x8279) && !(code >= 0x824F && code <= 0x8258) && !(code >= 0x8141 && code <= 0x81AC)) {
-                dst[i + 1] -= 0x21;
-            }
-            i += 2;
-            cur += 2;
-        } while (i < len);
-    }
-    return 0;
-}
-
-/*
- * The reverse of Wide_ToUpper: raises the second byte by 0x21 for every
- * two-byte character that is not a full-width small letter, digit or
- * symbol (capitals become small letters). Returns 0.
- */
-s32 Wide_ToLower(char *dst, char *src)
-{
-    s32 len;
-    s32 i;
-    u8 *cur;
-    u16 code;
-
-    len = strlen(src);
-    strncpy(dst, src, len);
-    i = 0;
-    if (i < len) {
-        cur = (u8 *)dst;
-        do {
-            code = (u16)(cur[0] << 8) | cur[1];
-            if (!(code >= 0x8281 && code <= 0x829A) && !(code >= 0x824F && code <= 0x8258) && !(code >= 0x8141 && code <= 0x81AC)) {
-                dst[i + 1] += 0x21;
-            }
-            i += 2;
-            cur += 2;
-        } while (i < len);
-    }
-    return 0;
-}
-
-/*
- * Wide_ToLower, then makes the first full-width small letter of dst a
- * capital. Returns 0.
- */
-s32 Wide_Capitalize(char *dst, char *src)
-{
-    s32 len;
-    s32 i;
-    u8 *cur;
-    u16 code;
-
-    Wide_ToLower(dst, src);
-    len = strlen(src);
-    i = 0;
-    if (i < len) {
-        cur = (u8 *)dst;
-        do {
-            code = (u16)(cur[0] << 8) | cur[1];
-            if (code >= 0x8281 && code < 0x829B) {
-                dst[i + 1] -= 0x21;
-                return 0;
-            }
-            i += 2;
-            cur += 2;
-        } while (i < len);
-    }
-    return 0;
-}
-
-/*
- * Clears the conversion state: KbdEntry from candIdx up to usbKey (0x514
- * bytes: the candidate fields, kana, wide, convDone, cand and convRest)
- * and the candidate lines gKbdCandLines.
- */
-void Kbd_ClearCands(void)
-{
-    memset(&gKbd->candIdx, 0, 0x514);
-    memset(gKbdCandLines, 0, KBD_CAND_PAGE * KBD_CAND_LINE_SIZE);
-}
-
-/*
- * Brings the converter back to the candidate cand shows on entry: after
- * ConvCmd_SegmentForm2, steps ConvCmd_NextCand (candId takes its result)
- * until cand holds that text again. Stops when candId is 0, and sets
- * candId to 0 when the walk returns to its first candidate without
- * meeting the text (at most 256 steps). Nothing in the symbol mode or
- * for case candidates.
- */
-void Kbd_SkipSameCands(void)
-{
-    char before[0x100];
-    char first[0x100];
-    s32 i;
-
-    if (gKbd->symbolMode != 0) {
-        return;
-    }
-    if (gKbd->caseCands != 0) {
-        return;
-    }
-    strncpy(before, gKbd->cand, 0xFF);
-    before[0xFE] = 0;
-    ConvCmd_SegmentForm2(gKbd->cand, gKbd->convRest);
-    gKbd->candId = ConvCmd_NextCand(gKbd->cand, gKbd->convRest);
-    strncpy(first, gKbd->cand, 0xFF);
-    if (strcmp(gKbd->cand, before) == 0) {
-        return;
-    }
-    if (gKbd->candId == 0) {
-        return;
-    }
-    for (i = 0; i < 0xFF; i++) {
-        gKbd->candId = ConvCmd_NextCand(gKbd->cand, gKbd->convRest);
-        if (strcmp(gKbd->cand, before) == 0) {
-            return;
-        }
-        if (gKbd->candId == 0) {
-            return;
-        }
-        if (strcmp(gKbd->cand, first) == 0) {
-            gKbd->candId = 0;
-            return;
-        }
-    }
-}
-
-/*
- * Returns the number of conversion candidates, at least 1. In the symbol
- * mode, 35 for entry kind 8, else 31; for case candidates,
- * CaseCands_Count. Otherwise steps ConvCmd_NextCand into local buffers,
- * counting, until the candidate is cand's text again (a full cycle) or
- * candId is 0, at most 256 steps; when the walk returns to its first
- * candidate without meeting cand's text, the count is 1 and candId 0.
- */
-s32 Kbd_CountCands(void)
-{
-    char before[0x100];
-    char first[0x100];
-    char cand[0x100];
-    char work[0x100];
-    s32 count;
-    s32 i;
-
-    if (gKbd->symbolMode != 0) {
-        if (gKbd->kind == KBD_KIND_CHECKED) {
-            count = 0x23;
-        } else {
-            count = 0x1F;
-        }
-    } else if (gKbd->caseCands != 0) {
-        return CaseCands_Count();
-    } else {
-        strncpy(before, gKbd->cand, 0xFF);
-        count = 0;
-        gKbd->candId = ConvCmd_NextCand(cand, work);
-        strncpy(first, cand, 0xFF);
-        count++;
-        if (strcmp(cand, before) != 0 && gKbd->candId != 0) {
-            for (i = 0; i < 0xFF; i++) {
-                gKbd->candId = ConvCmd_NextCand(cand, work);
-                count++;
-                if (strcmp(cand, before) == 0) {
-                    break;
-                }
-                if (gKbd->candId == 0) {
-                    break;
-                }
-                if (strcmp(cand, first) == 0) {
-                    count = 1;
-                    gKbd->candId = 0;
-                    break;
-                }
-            }
-        }
-    }
-    if (count == 0) {
-        count = 1;
-    }
-    return count;
-}
-
-s32 ConvCmd_Start(char *src, char *a, char *b);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C990);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C998);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9A8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9B0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9B8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9C8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9D8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9E0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9E8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046C9F8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA08);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA10);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA18);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA28);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA30);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA38);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA40);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA48);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA50);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA58);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA60);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA68);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA70);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA78);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA88);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA90);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CA98);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CAA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CAA8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CAB0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_input", D_0046CAB8);
-
-/*
- * Starts the conversion. In the symbol mode, kana becomes a space, cand
- * and convRest are emptied and the candidates counted. Otherwise, with
- * no kana pending (and not converting) plays SE_SYS_REFUSE and returns.
- * When the full-width kana is all full-width letters, digits or symbols
- * (Str_NotWideAlnum 0), the candidates are its case forms (caseCands 1,
- * Kbd_MakeCaseCands into cand). Else each typed n or N not followed by
- * y or Y becomes the kana N (gKanaNChars, picked by the pair's second
- * byte less 1), and ConvCmd_Start converts the full-width kana into cand
- * and convRest, its result candCount. Then the shown candidate is kept
- * (Kbd_SkipSameCands), convDone emptied, converting set to 1 and offGrid
- * to 1.
- */
-void Kbd_StartConvert(void)
-{
-    s8 *cur;
-
-    cur = (s8 *)gKbd->kana;
-    gKbd->caseCands = 0;
-    memset(gKbd->cand, 0, 0x100);
-    memset(gKbd->convRest, 0, 0x100);
-    if (gKbd->symbolMode != 0) {
-        strcpy((char *)gKbd->kana, " ");
-        gKbd->cand[0] = 0;
-        gKbd->convRest[0] = 0;
-        gKbd->candCount = Kbd_CountCands();
-    } else {
-        if (gKbd->converting == 0 && gKbd->kana[0] == 0) {
-            gKbd->state = SE_SYS_REFUSE;
-            return;
-        }
-        Str_ToWide((s8 *)gKbd->kana, (s8 *)gKbd->wide);
-        if (Str_NotWideAlnum(gKbd->wide) == 0) {
-            gKbd->caseCands = 1;
-            Kbd_MakeCaseCands((char *)gKbd->wide, gKbd->cand);
-        } else {
-            for (; *cur != 0; cur += 2) {
-                s8 next = cur[2];
-                if (*cur == 'N' || *cur == 'n') {
-                    if (next != 'Y' && next != 'y') {
-                        strncpy((char *)cur, gKanaNChars[cur[1] - 1], 2);
-                    }
-                }
-            }
-            Str_ToWide((s8 *)gKbd->kana, (s8 *)gKbd->wide);
-            gKbd->candCount = ConvCmd_Start((char *)gKbd->wide, gKbd->cand, gKbd->convRest);
-        }
-    }
-    Kbd_SkipSameCands();
-    gKbd->convDone[0] = 0;
-    gKbd->converting = 1;
-    gKbd->offGrid = 1;
-}
-
-/*
- * Outside the symbol mode and case candidates: with more than one
- * candidate, switches the segment to form 1 (ConvCmd_SegmentForm1),
- * keeps the shown candidate, counts and lists the candidates; with one
- * and candId 1, steps to the next candidate (ConvCmd_NextCand), counts
- * and lists them. Seen: Kbd_CommitInput calls it while converting.
- */
-void Kbd_NextCandidate(void)
-{
-    if ((gKbd->symbolMode == 0) && (gKbd->caseCands == 0)) {
-        if (gKbd->candCount > 1) {
-            ConvCmd_SegmentForm1(gKbd->cand, gKbd->convRest);
-            Kbd_SkipSameCands();
-            gKbd->candCount = Kbd_CountCands();
-            Kbd_InitCandList();
-            return;
-        }
-        if (gKbd->candId == 1) {
-            gKbd->candId = ConvCmd_NextCand(gKbd->cand, gKbd->convRest);
-            gKbd->candCount = Kbd_CountCands();
-            Kbd_InitCandList();
-        }
-    }
-}
-
-/*
- * For entry kinds 8-10 outside the symbol mode, submits the text
- * (Kbd_Submit). Otherwise SE_SYS_SELECT, starts the conversion
- * (Kbd_StartConvert), counts the candidates and lists them.
- */
-void Kbd_Convert(void)
-{
-    if ((Kbd_KindIs8To10() == 1) && (gKbd->symbolMode == 0)) {
-        Kbd_Submit();
-        return;
-    }
-    gKbd->state = SE_SYS_SELECT;
-    Kbd_StartConvert();
-    gKbd->candCount = Kbd_CountCands();
-    Kbd_InitCandList();
-}
-
-/*
- * While converting with a candidate in cand: inserts cand into the text
- * at textPos (Str_InsertClip, cut to maxLen), moves textPos past it,
- * clears kana and ends the conversion (converting 0, offGrid 0,
- * kanaPos 0).
- */
-void Kbd_CommitConversion(void)
-{
-    if (gKbd->cand[0] != 0 && gKbd->converting != 0) {
-        s32 added = Str_InsertClip(gKbd->text, gKbd->cand,
-                              gKbd->textPos, gKbd->maxLen);
-        gKbd->textPos = gKbd->textPos + added;
-        memset(gKbd->kana, 0, 0xFF);
-        gKbd->converting = 0;
-        gKbd->offGrid = 0;
-        gKbd->kanaPos = 0;
-    }
-}
-
-/*
- * Copies candidate entry i's text (gKbdCands) into candidate line i
- * (gKbdCandLines, 0x100 bytes each) when it is not empty. A text longer
- * than 10 bytes is cut there and ends in three dots; the byte after them
- * is also cleared through gKbdCandLinesCut (gKbdCandLines + 13).
- */
-void Kbd_SetCandLine(s32 i)
-{
-    s32 off = i << 8;
-    s32 entryOff = off + i;
-    u8 *line;
-
-    if ((s8)gKbdCandText[entryOff] != 0) {
-        line = gKbdCandLines + off;
-        strcpy((char *)line, (char *)gKbdCands + entryOff + 1);
-        if ((u32)strlen((char *)gKbdCandLines + off) > 10) {
-            strcpy((char *)line + 10, "...");
-            gKbdCandLinesCut[off] = 0;
-        }
-    }
-}
-
-extern char *gKbdSymbolCands[];
-
-/*
- * Sets candidate entry line of gKbdCands to symbol first + line: its id
- * byte is that index, its text gKbdSymbolCands[first + line].
- */
-void Kbd_SetSymbolCand(s32 line, s32 first)
-{
-    s32 symbol = line + first;
-    u8 *entry = gKbdCands + line * 257;
-
-    *entry = symbol;
-    strcpy((char *)entry + 1, gKbdSymbolCands[symbol]);
-}
-
-/*
- * Takes the symbol under the candidate cursor (entry candIdx % 3 of
- * gKbdCands) as cand, and copies it into kana too.
- */
-void Kbd_TakeSymbolCand(void)
-{
-    memset(gKbd->cand, 0, 0x100);
-    strncpy(gKbd->cand,
-                (char *)(gKbdCands + (gKbd->candIdx % 3) * 257) + 1, 0xFF);
-    strncpy((char *)gKbd->kana, gKbd->cand, 0xFF);
-}
-
-/*
- * Lists the candidate page that starts at candidate first: clears
- * gKbdCands' entries (0xFFFF bytes) and gKbdCandLines, then fills up to
- * 3 entries (candCount - first when fewer); dir 0 fills them forward,
- * else backward from the last. Symbols come from Kbd_SetSymbolCand (then
- * Kbd_TakeSymbolCand), case candidates from CaseCands_Copy or
- * CaseCands_Copy2, others from ConvCmd_NextCand (backward
- * ConvCmd_PrevCand) into each entry's id byte and text; the converter is
- * then stepped lines - 1 times the other way, so it rests on the page's
- * first entry (backward: its last). Sets the three lines; no sound when
- * there is only one candidate. The local copy of gKbd, through a cast,
- * keeps the game's code's registers.
- */
-void Kbd_ListCandidates(s32 first, s32 dir)
-{
-    char buf[0x100];
-    char rest[0x100];
-    s32 count;
-    s32 lines;
-    s32 j;
-    u8 *entry;
-    KbdEntry *kbd;
-    s32 i;
-
-    memset(gKbdCands, 0, 0xFFFF);
-    memset(gKbdCandLines, 0, KBD_CAND_PAGE * KBD_CAND_LINE_SIZE);
-    if (dir == 0) {
-        kbd = (KbdEntry *)gKbd; /* the cast keeps the original's registers */
-        count = kbd->candCount;
-        lines = count - first;
-        if (count >= first + 3) {
-            lines = 3;
-        }
-        if (kbd->symbolMode != 0) {
-            for (j = 0; j < lines; j++) {
-                Kbd_SetSymbolCand(j, first);
-            }
-            Kbd_TakeSymbolCand();
-        } else if (kbd->caseCands != 0) {
-            CaseCands_Copy((s8 *)gKbdCands, first & 0xFF, lines & 0xFF);
-        } else {
-            for (j = 0; j < lines; j++) {
-                entry = gKbdCands + j * 0x101;
-                *entry = ConvCmd_NextCand((char *)entry + 1, gKbd->convRest);
-            }
-            for (i = 0; i < lines - 1; i++) {
-                ConvCmd_PrevCand(buf, rest);
-            }
-        }
-        for (i = 0; i < 3; i++) {
-            Kbd_SetCandLine(i);
-        }
-    } else {
-        kbd = (KbdEntry *)gKbd; /* as above */
-        lines = kbd->candCount - first;
-        if (kbd->candCount >= first + 3) {
-            lines = 3;
-        }
-        if (kbd->symbolMode != 0) {
-            for (lines = lines - 1; lines >= 0; lines--) {
-                Kbd_SetSymbolCand(lines, first);
-            }
-            Kbd_TakeSymbolCand();
-        } else if (kbd->caseCands != 0) {
-            CaseCands_Copy2((s8 *)gKbdCands, first & 0xFF, lines & 0xFF);
-        } else {
-            for (i = lines - 1; i >= 0; i--) {
-                entry = gKbdCands + i * 0x101;
-                *entry = ConvCmd_PrevCand((char *)entry + 1, gKbd->convRest);
-            }
-            for (i = 0; i < lines - 1; i++) {
-                ConvCmd_NextCand(buf, rest);
-            }
-        }
-        for (i = 2; i >= 0; i--) {
-            Kbd_SetCandLine(i);
-        }
-    }
-    if (gKbd->candCount == 1) {
-        gKbd->state = KBD_SOUND_NONE;
-    }
-}
-
-
-/*
- * Builds the first candidate page: candIdx and candPage 0; nothing more
- * with no candidates. Clears gKbdCands and gKbdCandLines and fills up to
- * 3 entries: the symbols from 0 (then Kbd_TakeSymbolCand), the first
- * case candidates, or cand as entry 0 (its id byte candId when there is
- * more than one) and the next ones from ConvCmd_NextCand, after which
- * the converter is stepped back to entry 0. Then sets the three lines.
- */
-void Kbd_InitCandList(void)
-{
-    char candBuf[0x100];
-    char restBuf[0x100];
-    s32 extra;
-    s32 i;
-
-    gKbd->candIdx = 0;
-    gKbd->candPage = 0;
-    if (gKbd->candCount == 0) {
-        return;
-    }
-    memset(gKbdCands, 0, 0xFFFF);
-    memset(gKbdCandLines, 0, KBD_CAND_PAGE * KBD_CAND_LINE_SIZE);
-    extra = (gKbd->candCount > 3) ? 2 : gKbd->candCount - 1;
-    if (gKbd->symbolMode != 0) {
-        for (i = 0; i < extra + 1; i++) {
-            Kbd_SetSymbolCand(i, 0);
-        }
-        Kbd_TakeSymbolCand();
-    } else if (gKbd->caseCands != 0) {
-        CaseCands_CopyFirst((s8 *)gKbdCands, extra + 1);
-    } else {
-        strncpy((char *)gKbdCandText, gKbd->cand, 0xFF);
-        if (gKbd->candCount > 1) {
-            gKbdCands[0] = gKbd->candId;
-        }
-        for (i = 0; i < extra; i++) {
-            gKbdCands[(i + 1) * 0x101] = ConvCmd_NextCand((char *)gKbdCands + (i + 1) * 0x101 + 1, gKbd->convRest);
-        }
-        for (i = 0; i < extra; i++) {
-            ConvCmd_PrevCand(candBuf, restBuf);
-        }
-    }
-    for (i = 0; i < 3; i++) {
-        Kbd_SetCandLine(i);
-    }
-}
-
-/*
- * Shows the previous conversion candidate (only while converting is 1).
- * candIdx goes down: below 0 it wraps to the last candidate and that
- * page is listed (Kbd_ListCandidates, backward); below the page's start
- * the previous page is listed; else the converter steps back
- * (ConvCmd_PrevCand). cand and candId then come from entry candIdx % 3.
- * counter points at candIdx, then at candPage, through casts that keep
- * the game's code's registers.
- */
-void Kbd_PrevCand(void)
-{
-    char candBuf[0x100];
-    char restBuf[0x100];
-    s32 *counter;
-
-    if (gKbd->converting != 1) {
-        return;
-    }
-    gKbd->candIdx -= 1;
-    if (gKbd->candIdx < 0) {
-        counter = (s32 *)&gKbd->candIdx; /* the casts keep the original's registers */
-        *counter = gKbd->candCount - 1;
-        gKbd->candPage = (gKbd->candCount - 1) / 3;
-        Kbd_ListCandidates(gKbd->candPage * 3, 1);
-    } else {
-        counter = (s32 *)&gKbd->candPage;
-        if (gKbd->candIdx < *counter * 3) {
-            *counter = *counter - 1;
-            Kbd_ListCandidates(gKbd->candPage * 3, 1);
-        } else {
-            ConvCmd_PrevCand(candBuf, restBuf);
-        }
-    }
-    memset(gKbd->cand, 0, 0x100);
-    strcpy(gKbd->cand,
-                (char *)(gKbdCands + (gKbd->candIdx % 3) * 257) + 1);
-    gKbd->candId = gKbdCands[(gKbd->candIdx % 3) * 257];
-}
-
-/* Next conversion candidate. */
-/*
- * Shows the next conversion candidate (only while converting is 1).
- * candIdx goes up: past the last it wraps to 0 and the first page is
- * listed; past the page's end the next page is listed from candIdx; else
- * the converter steps on (ConvCmd_NextCand). cand and candId then come
- * from entry candIdx % 3. counter points at candIdx, then at candPage,
- * through casts that keep the game's code's registers.
- */
-void Kbd_NextCand(void)
-{
-    char candBuf[0x100];
-    char restBuf[0x100];
-    s32 *counter;
-
-    if (gKbd->converting != 1) {
-        return;
-    }
-    gKbd->candIdx += 1;
-    if (gKbd->candIdx > gKbd->candCount - 1) {
-        counter = (s32 *)&gKbd->candIdx; /* the casts keep the original's registers */
-        *counter = 0;
-        gKbd->candPage = 0;
-        Kbd_ListCandidates(0, 0);
-    } else {
-        counter = (s32 *)&gKbd->candPage;
-        if (*counter * 3 + 3 <= gKbd->candIdx) {
-            *counter = *counter + 1;
-            Kbd_ListCandidates(gKbd->candIdx, 0);
-        } else {
-            ConvCmd_NextCand(candBuf, restBuf);
-        }
-    }
-    memset(gKbd->cand, 0, 0x100);
-    strcpy(gKbd->cand,
-                (char *)(gKbdCands + (gKbd->candIdx % 3) * 257) + 1);
-    gKbd->candId = gKbdCands[(gKbd->candIdx % 3) * 257];
-}
-
-/*
- * Goes to the first candidate of the previous page by Kbd_PrevCand
- * steps; from the first page, to the first candidate of the last page.
- * SE_SYS_SCROLL when candIdx changed. Seen: USB Page Up, pad L2.
- */
-void Kbd_PageUp(void)
-{
-    s32 start;
-    s32 steps;
-    s32 lastPageCount;
-
-    start = gKbd->candIdx;
-    if (start < 3) {
-        lastPageCount = gKbd->candCount % 3;
-        if (lastPageCount == 0) {
-            steps = start % 3 + 3;
-        } else {
-            steps = start % 3 + lastPageCount;
-        }
-        for (; steps > 0; steps--) {
-            Kbd_PrevCand();
-        }
-    } else {
-        steps = start % 3 + 3;
-        for (; steps > 0; steps--) {
-            Kbd_PrevCand();
-        }
-    }
-    if (start != gKbd->candIdx) {
-        gKbd->state = SE_SYS_SCROLL;
-    }
-}
-
-/*
- * Goes to the first candidate of the next page by Kbd_NextCand steps.
- * When fewer than 3 candidates remain from candIdx, steps that many,
- * which wraps to candidate 0. SE_SYS_SCROLL when candIdx changed. Seen:
- * USB Page Down, pad R2.
- */
-void Kbd_PageDown(void)
-{
-    s32 start;
-    s32 steps;
-
-    start = gKbd->candIdx;
-    steps = gKbd->candCount - start;
-    if (steps < 3) {
-        for (; steps > 0; steps--) {
-            Kbd_NextCand();
-        }
-    } else {
-        steps = start % 3;
-        for (steps = 3 - steps; steps > 0; steps--) {
-            Kbd_NextCand();
-        }
-    }
-    if (start != gKbd->candIdx) {
-        gKbd->state = SE_SYS_SCROLL;
-    }
-}
-
-/*
- * Moves the conversion to the previous segment (while converting is 1,
- * outside the symbol mode); no sound when convDone is empty. Commits the
- * segment (ConvCmd_CommitSegment, its text into gKbdSegText), steps back
- * twice (ConvCmd_PrevSegment, the second result is candCount) and keeps
- * the shown candidate. When that count is not 0, cuts the new segment's
- * text (cand's length) off the end of convDone, counts and lists the
- * candidates, SE_SYS_SCROLL. count is reused for convDone's length.
- */
-void Kbd_PrevSegment(void)
-{
-    s16 len;
-    s32 count;
-
-    if (gKbd->converting == 1) {
-        if (gKbd->convDone[0] == 0) {
-            gKbd->state = KBD_SOUND_NONE;
-        } else if (gKbd->symbolMode == 0) {
-            ConvCmd_CommitSegment(gKbd->candId, gKbdSegText, gKbd->cand,
-                          gKbd->convRest, &len);
-            ConvCmd_PrevSegment(gKbd->cand, gKbd->convRest);
-            count = ConvCmd_PrevSegment(gKbd->cand, gKbd->convRest);
-            gKbd->candCount = count;
-            Kbd_SkipSameCands();
-            if (count != 0) {
-                count = strlen(gKbd->convDone);
-                gKbd->convDone[count - strlen(gKbd->cand)] = 0;
-                gKbd->candCount = Kbd_CountCands();
-                Kbd_InitCandList();
-                gKbd->state = SE_SYS_SCROLL;
-            }
-        }
-    }
-}
-
-/*
- * Moves the conversion to the next segment (while converting is 1,
- * outside the symbol mode); no sound when convRest is empty. Commits the
- * segment (ConvCmd_CommitSegment, its text into gKbdSegText), steps back
- * once (ConvCmd_PrevSegment) then on (ConvCmd_NextSegment, its result
- * candCount), keeps the shown candidate, counts the candidates, appends
- * gKbdSegText to convDone, lists them, SE_SYS_SCROLL.
- */
-void Kbd_NextSegment(void)
-{
-    s16 len;
-    char *yomi;
-
-    if (gKbd->converting == 1) {
-        yomi = gKbd->convRest;
-        if (*yomi == 0) {
-            gKbd->state = KBD_SOUND_NONE;
-        } else if (gKbd->symbolMode == 0) {
-            ConvCmd_CommitSegment(gKbd->candId, gKbdSegText, gKbd->cand, yomi, &len);
-            ConvCmd_PrevSegment(gKbd->cand, gKbd->convRest);
-            gKbd->candCount = ConvCmd_NextSegment(gKbd->cand, gKbd->convRest);
-            Kbd_SkipSameCands();
-            gKbd->candCount = Kbd_CountCands();
-            strcat(gKbd->convDone, (char *)gKbdSegText);
-            Kbd_InitCandList();
-            gKbd->state = SE_SYS_SCROLL;
-        }
     }
 }

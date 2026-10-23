@@ -8,6 +8,7 @@
  * the packet with Prim_SendPacket.
  */
 #include "common.h"
+#include "sprite.h"
 
 /* 64-bit GS register values. */
 #define GS_RGBAQ(r, g, b, a, q) \
@@ -16,8 +17,21 @@
 #define GS_UV(u, v) ((u64)(u) | ((u64)(v) << 16))
 #define GS_ST(s, t) ((u64)(s) | ((u64)(t) << 32))
 
+/* An RGBAQ value from a 0xAARRGGBB colour and Q's bits. */
+#define GS_RGBAQ_ARGB(c, q)     GS_RGBAQ(((c) >> 16) & 0xFF, ((c) >> 8) & 0xFF, (c) & 0xFF, ((c) >> 24) & 0xFF, q)
+
+/* The GS's drawing coordinates span 4096 pixels each way; the display
+ * is centred in them. */
+#define GS_COORD_RANGE 4096
+
+/* A primitive's packet head, copied from its template: the DMA tag, the
+ * GIF tag and the PRIM value (3 qwords); the register values follow it,
+ * PRIM_DATA_OFFSET bytes from its start. */
+#define PRIM_HEAD_QWC 3
+#define PRIM_DATA_OFFSET 40
+
 /* A line (Prim_DrawLine) or a filled rectangle (Prim_FillRect) in screen
- * coordinates, 0x0C bytes. */
+ * coordinates, 12 bytes. */
 typedef struct PrimLine {
     s16 x0;                     /* 0x00 */
     s16 y0;                     /* 0x02 */
@@ -26,7 +40,7 @@ typedef struct PrimLine {
     u32 color;                  /* 0x08: 0xAARRGGBB */
 } PrimLine;
 
-/* A rectangle with a colour per corner (Prim_FillGradRect), 0x18 bytes. */
+/* A rectangle with a colour per corner (Prim_FillGradRect), 24 bytes. */
 typedef struct PrimGradRect {
     s16 x0;                     /* 0x00 */
     s16 y0;                     /* 0x02 */
@@ -35,7 +49,7 @@ typedef struct PrimGradRect {
     u32 color[4];               /* 0x08: top left, top right, bottom left, bottom right */
 } PrimGradRect;
 
-/* A flat triangle (Prim_FillTri), 0x10 bytes. */
+/* A flat triangle (Prim_FillTri), 16 bytes. */
 typedef struct PrimTri {
     s16 x0;                     /* 0x00 */
     s16 y0;                     /* 0x02 */
@@ -46,7 +60,7 @@ typedef struct PrimTri {
     u32 color;                  /* 0x0C */
 } PrimTri;
 
-/* A textured triangle (Prim_DrawTexTri), texel coordinates, 0x1C bytes. */
+/* A textured triangle (Prim_DrawTexTri), texel coordinates, 28 bytes. */
 typedef struct PrimTexTri {
     s16 x0;                     /* 0x00 */
     s16 y0;                     /* 0x02 */
@@ -72,20 +86,20 @@ typedef struct PrimVtx {
     f32 q;                      /* 0x0C */
 } PrimVtx;
 
-/* A line (Prim_DrawLineF) or a filled rectangle (Prim_FillRectF), 0x24 bytes. */
+/* A line (Prim_DrawLineF) or a filled rectangle (Prim_FillRectF), 36 bytes. */
 typedef struct PrimLineF {
     PrimVtx v[2];               /* 0x00 */
     u32 color;                  /* 0x20 */
 } PrimLineF;
 
-/* A textured rectangle (Prim_DrawSpriteF), 0x34 bytes. */
+/* A textured rectangle (Prim_DrawSpriteF), 52 bytes. */
 typedef struct PrimSpriteF {
     PrimVtx v[2];               /* 0x00 */
     u32 color;                  /* 0x20 */
     f32 st[2][2];               /* 0x24 */
 } PrimSpriteF;
 
-/* A textured triangle with a colour per vertex (Prim_DrawTexTriF), 0x54 bytes. */
+/* A textured triangle with a colour per vertex (Prim_DrawTexTriF), 84 bytes. */
 typedef struct PrimTexTriF {
     PrimVtx v[3];               /* 0x00 */
     u32 color[3];               /* 0x30 */
@@ -109,5 +123,20 @@ typedef struct PrimTexTri3D {
     u32 color[3];               /* 0x24 */
     f32 st[3][2];               /* 0x30 */
 } PrimTexTri3D;
+
+s32 Prim_SendPacket(u32 *packet);
+s32 Prim_DrawLine(PrimLine *line);
+s32 Prim_FillRect(PrimLine *rect);
+s32 Prim_FillGradRect(PrimGradRect *rect);
+s32 Sprite_Draw(Sprite *sprite);
+s32 Prim_FillTri(PrimTri *tri);
+s32 Prim_DrawTexTri(PrimTexTri *tri);
+s32 Prim_DrawLineF(PrimLineF *line);
+s32 Prim_DrawTexTriF(PrimTexTriF *tri);
+s32 Prim_FillRectF(PrimLineF *rect);
+s32 Prim_DrawSpriteF(PrimSpriteF *sprite);
+s32 Prim_DrawRect3D(PrimRect3D *rect);
+s32 Prim_DrawSprite3D(PrimSprite3D *sprite);
+s32 Prim_DrawTexTri3D(PrimTexTri3D *tri);
 
 #endif /* PRIM_H */

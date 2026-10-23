@@ -2,7 +2,7 @@
  * Accessors for the loaded stage (map) data. When gQuest.stage is set, the
  * data came from a file and its tables hold offsets from the file's base
  * gStageFile; otherwise they hold plain pointers. Per-area tables are
- * indexed through Map_AreaIndex(map, area) (0xFFFF: no such area). The
+ * indexed through Map_AreaIndex(map, area) (AREA_INDEX_NONE: no such area). The
  * gathering tables (Gather_GetTable) and gathering points
  * (Gather_GetPoints) come from here.
  */
@@ -10,18 +10,18 @@
 #include "scene.h"
 #include "quest.h"
 #include "area.h"
+#include "save.h"
+#include "stage_data.h"
+#include "lobby_state.h"
+#include "fishing.h"
 
 extern u32 gStageFile;      /* base address of the stage file */
-extern IdOffset gLobbyStageData[];
-extern IdOffset gLobbySeasonalData[];
+extern LobbyStageData gLobbyStageData;
+extern LobbyFishTable *gLobbySeasonalData[];
 
 /* unit's own declaration: an s32 parameter as Stage_GetAreaRecord's call passes it; with the definition's u16 the call compiles differently */
 u16 Area_IdForCurrentTime(s32 area);
-u16 Map_AreaIndex(u16 map, u16 area);
 /* the calls cast to u8: this unit's code takes the value as u8 */
-s32 Quest_GetSeason(void);
-u8 Daytime_Get(void);
-s32 LobbyTime_IsAm(void);
 
 /*
  * The stage data of id `id`: in a quest, from the stage file's id/offset
@@ -45,7 +45,7 @@ void *Stage_FindData(u16 id)
             }
         }
     }
-    for (entry = gLobbyStageData;; entry++) {
+    for (entry = (IdOffset *)gLobbyStageData.areas;; entry++) {
         if (entry->id == 0) {
             return NULL;
         }

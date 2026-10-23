@@ -18,6 +18,9 @@
 #include "lobby_state.h"
 #include "lobby_net.h"
 #include "nethttp.h"
+#include "stream.h"
+#include "texture.h"
+#include "net_sockets.h"
 
 /* The lobby's globals this file uses (nethttp links with the lobby's names) */
 #define LOBBY_BROWSER_WORK gBrowserWork
@@ -30,50 +33,13 @@ extern LobbyHdr gLobbyRecvHdr;
 #define LOBBY_RECV_HDR gLobbyRecvHdr
 extern u8 gLobbyRecvData[];                            /* the lobby's: the reply's data */
 
-void HttpReq_Open(HttpReq *req);
-void HttpReq_ParseUrl(HttpReq *req);
-void HttpReq_CreateClient(HttpReq *req);
-void HttpReq_SetOptions(HttpReq *req);
-void HttpReq_Connect(HttpReq *req);
-void HttpReq_Send(HttpReq *req);
-void HttpReq_ReadBody(HttpReq *req);
-void HttpReq_CheckStatus(HttpReq *req);
-void HttpReq_Authenticate(HttpReq *req);
-void HttpReq_Close(HttpReq *req);
-void HttpReq_Done(HttpReq *req);
-void HttpReq_Abort(HttpReq *req);
-void HttpReq_Failed(HttpReq *req);
-void HttpLbs_Send(HttpReq *req);
-void HttpLbs_Wait(HttpReq *req);
-void HttpLbs_Done(HttpReq *req);
-void HttpLbs_Abort(HttpReq *req);
-void HttpLbs_Failed(HttpReq *req);
-void HttpAfs_Read(HttpReq *req);
-void HttpAfs_Next(HttpReq *req);
-void HttpAfs_Done(HttpReq *req);
-
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
 void *memmove(void *dst, const void *src, u32 n);
 u32 strlen(const void *s);
 s32 atoi(const char *s);
-void Net_InitSockets(void);
-void net_clear_host_cache(void);
-s32 NetIf_SetErrorCheck(s32 on);
-s32 NetIf_IsConnected(void);
 char *strncpy(char *dst, const char *src, u32 n);
-s32 Path_ToBackslashes(char *path);
-s32 File_GetSize(const char *name);
-s32 File_Read(const char *name, void *buf, s32 size);
 /* the calls cast to u8: this unit's code takes the value as u8 */
-s32 Url_GetScheme(const char *url);
-void Str_EucToSjis(u8 *s);
-s32 Brdata_Read(void *buf, s32 flid);
-void Brdata_LoadPartition(void *ptinfo);
-void Browser_InitHeap(void);
-void *Browser_Alloc(u32 size);
-void *Browser_Realloc(void *p, u32 size);
-void Browser_Free(void *p);
 
 /* libhttps (assembly) */
 void func_00900660(void);
@@ -111,12 +77,6 @@ void func_009067D0(char **p);
 s32 func_00906400(HttpResp *resp);
 s32 func_00906518(s32 h, s32 a1, HttpDigest *d, s32 a3);
 void Url_Copy(char *dst, const char *src);
-void Url_ClearBase(void);
-char *Url_Resolve(char *base, char *url);
-
-s32 Http_ReadBrdata(void *buf, s32 flid);
-void HttpReq_Step(HttpReq *req);
-s32 HttpReq_CheckSjis(HttpReq *req, u8 *s, s32 n);
 
 /* The file's .data. */
 /* how many of gHttpReq can be used (volatile: the loops over gHttpReq reload it
@@ -126,7 +86,7 @@ volatile u8 gHttpReqMax = {
 };
 s32 gHttpsSecureOption = {
 #include "nethttp/0094FFA0.inc"
-};            /* the value HttpReq_SetOptions gives libhttps' option 0xE, for https:// only */
+};            /* the value HttpReq_SetOptions gives libhttps' option 14, for https:// only */
 s32 gHttpCertSize[2] = {
 #include "nethttp/0094FFA8.inc"
 };  /* the sizes of the two CA certificates */
@@ -296,14 +256,14 @@ void HttpReq_OnSendDone(void *ctx, u8 status, u8 *out)
 }
 
 /*
- * Scans n bytes of text for a byte 0x81-0x8D or 0x8F-0xA0 (a Shift-JIS lead byte). Sets req->sjis to 1 and returns 1
+ * Scans n bytes of text for a Shift-JIS lead byte (character 0x81-0x8D or character 0x8F-0xA0). Sets req->sjis to 1 and returns 1
  * when it finds one, else sets req->sjis to 0 and returns 0. Seen: every caller converts the text with
  * Str_EucToSjis when it returns 0.
  */
 s32 HttpReq_CheckSjis(HttpReq *req, u8 *text, s32 n)
 {
     for (; n > 0; n--, text++) {
-        if ((*text >= 0x81 && *text <= 0x8D) || (*text >= 0x8F && *text <= 0xA0)) {
+        if ((*text >= 129 && *text <= 141) || (*text >= 143 && *text <= 160)) {
             req->sjis = 1;
             return 1;
         }
@@ -320,7 +280,7 @@ s32 HttpReq_CheckSjis(HttpReq *req, u8 *text, s32 n)
  */
 void HttpReq_Open(HttpReq *req)
 {
-    char path[0x100];
+    char path[256];
     s32 n;
     s32 i;
 
@@ -332,8 +292,8 @@ void HttpReq_Open(HttpReq *req)
     }
     switch ((u8)Url_GetScheme(req->url)) {
     case URL_FILE:
-        strncpy(path, req->url + 6, 0xFF);
-        path[0xFF] = 0;
+        strncpy(path, req->url + 6, 255);
+        path[255] = 0;
         Path_ToBackslashes(path);
         n = File_GetSize(path);
         if (n == 0) {
@@ -448,7 +408,7 @@ void HttpReq_ParseUrl(HttpReq *req)
             req->state = HTTP_ST_ABORT;
             break;
         }
-        req->uri = func_009006F8(req->url, 0x60);
+        req->uri = func_009006F8(req->url, 96);
         if (req->uri == 0) {
             req->err = HTTP_ERR_URL;
             req->errStep = HTTP_TEARDOWN_NONE;
@@ -506,7 +466,7 @@ void HttpReq_CreateClient(HttpReq *req)
 /*
  * Configures the client. Step 0: the parsed URI, the method (HTTPS_METHOD_GET or HTTPS_METHOD_POST; another method is HTTP_ERR_OPTIONS),
  * for POST the Content-Type header (hdr[2]) and postData or a zero Content-Length (hdr[3]), the client-name string and fixed
- * options, the two callbacks that write async, the proxy (and option 0xE, gHttpsSecureOption, for https://); clears auth. Step 1, where
+ * options, the two callbacks that write async, the proxy (and option 14, gHttpsSecureOption, for https://); clears auth. Step 1, where
  * HttpReq_Authenticate comes back: refererHdr and, with noCache, hdr[0] and hdr[1]; then HttpReq_Connect. Errors: HTTP_ERR_OPTIONS, errStep HTTP_TEARDOWN_CLIENT.
  */
 void HttpReq_SetOptions(HttpReq *req)
@@ -547,7 +507,7 @@ void HttpReq_SetOptions(HttpReq *req)
             return;
         }
         if (method == HTTPS_METHOD_POST) {
-            if (func_00901600(req->client, 0x13, "Content-Length") < 0) {
+            if (func_00901600(req->client, 19, "Content-Length") < 0) {
                 req->err = HTTP_ERR_OPTIONS;
                 req->errStep = HTTP_TEARDOWN_CLIENT;
                 req->state = HTTP_ST_ABORT;
@@ -593,7 +553,7 @@ void HttpReq_SetOptions(HttpReq *req)
             req->state = HTTP_ST_ABORT;
             return;
         }
-        if (func_00901600(req->client, 0x15, 60) < 0) {
+        if (func_00901600(req->client, 21, 60) < 0) {
             req->err = HTTP_ERR_OPTIONS;
             req->errStep = HTTP_TEARDOWN_CLIENT;
             req->state = HTTP_ST_ABORT;
@@ -623,7 +583,7 @@ void HttpReq_SetOptions(HttpReq *req)
             req->state = HTTP_ST_ABORT;
             return;
         }
-        if (func_00901600(req->client, 0x16, 0) < 0) {
+        if (func_00901600(req->client, 22, 0) < 0) {
             req->err = HTTP_ERR_OPTIONS;
             req->errStep = HTTP_TEARDOWN_CLIENT;
             req->state = HTTP_ST_ABORT;
@@ -652,7 +612,7 @@ void HttpReq_SetOptions(HttpReq *req)
                 }
             }
             /* the cast puts the global's load before req->client's, as in the game */
-            if (func_00901600(req->client, 0xE, (u32)gHttpsSecureOption) < 0) {
+            if (func_00901600(req->client, 14, (u32)gHttpsSecureOption) < 0) {
                 req->err = HTTP_ERR_OPTIONS;
                 req->errStep = HTTP_TEARDOWN_CLIENT;
                 req->state = HTTP_ST_ABORT;
@@ -1295,35 +1255,35 @@ void HttpReq_Abort(HttpReq *req)
         req->auth = 0;
         req->authInfo = 0;
         switch (func_00900550(req->client)) {
-        case -0x3F6:
-        case -0x3F2:
-        case -0x3EC:
-        case -0x3EA:
-        case -0x3E9:
+        case -1014:
+        case -1010:
+        case -1004:
+        case -1002:
+        case -1001:
             code = 1;
             break;
-        case -0x3F5:
-        case -0x3F0:
-        case -0x3EF:
-        case -0x3EB:
+        case -1013:
+        case -1008:
+        case -1007:
+        case -1003:
             code = 2;
             break;
-        case -0x3ED:
+        case -1005:
             code = 3;
             break;
-        case -0x3EE:
+        case -1006:
             code = 4;
             break;
-        case -0x3F1:
+        case -1009:
             code = 5;
             break;
-        case -0x3F3:
+        case -1011:
             code = 6;
             break;
-        case -0x3F4:
+        case -1012:
             code = 7;
             break;
-        case -0x3F7:
+        case -1015:
             code = 8;
             break;
         default:
@@ -1485,7 +1445,7 @@ void HttpLbs_Receive(void)
     u16 len;
 
     if (LOBBY_NET_RECV_LEFT >= 2) {
-        n = 0x1000;
+        n = 4096;
     } else {
         n = (u16)(LOBBY_RECV_HDR.size[0] << 8);
         n += LOBBY_RECV_HDR.size[1];

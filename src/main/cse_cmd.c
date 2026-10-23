@@ -98,11 +98,11 @@ s32 Cse_ReqSetMono(s32 enable)
 
 s32 Cse_ReqSetMasterVolume(s32 vol)
 {
-    return Cse_ReqSetVolume(0xFF, vol);
+    return Cse_ReqSetVolume(255, vol);
 }
 
 /*
- * Queues CSE_REQ_VOLUME: channel 0-15, or 0xFF for the master volume; vol
+ * Queues CSE_REQ_VOLUME: channel 0-15, or 255 for the master volume; vol
  * 0-127. Returns the request's sequence number.
  */
 s32 Cse_ReqSetVolume(s32 channel, s32 vol)
@@ -110,7 +110,7 @@ s32 Cse_ReqSetVolume(s32 channel, s32 vol)
     CseReqB req = {0};
 
     req.cmd = CSE_REQ_VOLUME;
-    req.a = (channel == 0xFF) ? channel : (channel & 0xF);
+    req.a = (channel == 255) ? channel : (channel & 0xF);
     req.b = vol & 0x7F;
     return MlRpcQueue_Set(CSE_FNO_COMM, &req, sizeof(req));
 }
@@ -292,8 +292,8 @@ s32 Cse_KeyOnProgram(CseParam *voiceParam, s32 prog)
 }
 
 /*
- * Checks and fixes a CseParam before it is sent: prio is masked to 0-0x7F
- * (or set to 0x7F with CSE_F_PRIO when unset) and key to 0-0x7F. Returns
+ * Checks and fixes a CseParam before it is sent: prio is masked to 0-127
+ * (or set to 127 with CSE_F_PRIO when unset) and key to 0-127. Returns
  * -1, printing the engine's message, when CSE_F_ID2 is set without
  * CSE_F_GLOBAL, CSE_F_PHYSICAL or CSE_F_BANK, or CSE_F_ID3 without
  * CSE_F_ID2; else 0.
@@ -304,7 +304,7 @@ s32 Cse_CheckParam(CseParam *voiceParam)
         voiceParam->prio &= 0x7F;
     } else {
         voiceParam->flags |= CSE_F_PRIO;
-        voiceParam->prio = 0x7F;
+        voiceParam->prio = 127;
     }
     if (voiceParam->flags & CSE_F_ID2) {
         if (!(voiceParam->flags & (CSE_F_GLOBAL | CSE_F_PHYSICAL | CSE_F_BANK))) {
@@ -396,7 +396,3 @@ u32 Cse_NextSeq(void)
     return seq;
 }
 
-/* CRI ADX error callback (ADXT_EntryErrFunc): ignores the object and the message. */
-void Adx_ErrorCallback(void *obj, char *msg)
-{
-}

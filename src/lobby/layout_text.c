@@ -1,5 +1,6 @@
-/* The HTML layout: lines, runs of text, <HR>, <INPUT>, <SELECT>, <IMG>,
- * image maps, fonts, <BODY>'s colours. */
+/* The HTML layout: lines (the pending run of text drawn, centred or
+ * placed on its line, an anchor's place, the next line), runs of text,
+ * <HR>, <INPUT>, <SELECT>, <IMG>, image maps, fonts, <BODY>'s colours. */
 #include "common.h"
 #include "html.h"
 #include "browser.h"
@@ -12,56 +13,10 @@ void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
 s32 strlen(const char *s);
 
-void Html_SetBgColor(u32 rgb);
-void Draw_Submit(u16 x, u16 y, u16 x2, u16 y2, u8 *src);
-void Draw_Reset(u16 x, u16 y, u16 x2, u16 y2, u8 *src);
-void Draw_InputImage(u16 x, u16 y, u16 x2, u16 y2, u8 *s1, u8 *s2, u8 *s3);
-void Draw_TextInput(u16 x, u16 y, u16 x2, u16 y2, u8 *name, u8 *value, u16 maxlen, u8 mode);
-void Draw_PasswordInput(u16 x, u16 y, u16 x2, u16 y2, u8 *name, u8 *value, u16 maxlen, u8 mode);
-void Draw_Radio(u16 x, u16 y, u8 checked, u8 *name, u8 *value, u8 a5);
-void Draw_Checkbox(u16 x, u16 y, u8 checked, u8 *name, u8 *value, u8 a5);
-void Draw_Hidden(u8 *s1, u8 *s2);
-void Draw_Title(u8 *title);
-void Draw_SelectBegin(u8 *action);
-void Draw_Image(u16 x, u16 y, u16 x2, u16 y2, u8 *value, u8 *text);
-void Draw_Option(u8 *name, char *value, u8 a2);
-void Draw_ImageMap(u16 x, u16 y, u16 right, u16 bottom, u8 *src, u8 *href, u8 *alt, u8 key);
 s32 strcmp(const char *a, const char *b); /* strcmp */
 
-extern u8 gCharClass[]; /* character classes */
 extern char gHtmlMapNoSrc[];
-void Draw_BodyBackground(u8 *name);
-void Html_SetCharWidths(u8 bold);
-void Html_NoteBottom(HtmlPen *pen);
 s32 Html_ParseColor(char *s);
-s32 Html_ParseFontSize(char *s);
-u16 Layout_CenterOffset(HtmlLine *line);
-void Layout_PlaceRun(HtmlLine *line);
-void Layout_NextLineEntry(HtmlLine **lp);
-void Layout_PenNewLine(HtmlPen *pen, HtmlLine **lp);
-u16 Layout_Wrap(HtmlLine **lp, u16 x);
-void Layout_Flush(u8 *text);
-u8 *Html_SkipSpaces(u8 *p);
-void Layout_BreakLine(HtmlLine **lp);
-void Layout_AddWideChar(u8 **p, HtmlPen *pen);
-void Layout_AddNbsp(u8 **p, HtmlPen *pen);
-void Layout_AddChar(u8 **p, HtmlPen *pen);
-s32 Layout_Text(u8 *text, HtmlLine **lp);
-void Layout_FlushRun(HtmlLine *line);
-void Layout_EndLine(HtmlLine **lp);
-void Layout_CellWrapBefore(u16 *px, u16 *py, u16 w, HtmlLine **lp);
-void Layout_CellInput(u16 w);
-void Layout_Input(u16 x, u16 y, u16 *runX, u16 *px, u16 w);
-void Layout_CellRule(s32 center);
-void Draw_Rule(u16 x, u16 y, u16 x2, u16 y2);
-void Layout_NextLine(void);
-void Layout_CellSelectEnd(void);
-void Layout_CellImage(void);
-void Layout_DrawImage(u16 x, u16 y, HtmlLine *line);
-void Draw_SelectEnd(u16 x, u16 y, u16 x2, u16 y2);
-void Layout_CellFlush(u8 *text);
-void Layout_CellFlushBreak(u8 *text);
-void Layout_CellFlushBlock(u8 *text);
 
 /* Raises *dst to value (inlined, as in the table handlers: the game's
  * callers keep dst in a register of its own for the store). */
@@ -70,6 +25,150 @@ static inline void Html_MaxU16(u16 *dst, s32 value)
     if (*dst < value) {
         *dst = value;
     }
+}
+
+/* Draws the pending run of text (gHtml->line) at (x, y) on its line, by
+ * what it is (HtmlState.link): plain, struck or underlined text, or a
+ * link with its target. */
+void Layout_DrawRun(u16 x, u16 y, HtmlLine *line)
+{
+    u8 bold;
+
+    if (strlen(gHtml->line) != 0 || gHtml->inFrame != 0) {
+        if (gHtml->tableDepth != 0) {
+            HtmlCell *cell = &gHtml->cells[gHtml->curCell];
+            bold = cell->bold;
+        } else {
+            bold = gHtml->bold;
+        }
+        switch (gHtml->link) {
+        case HTML_LINK_NONE:
+            gHtml->anchor[0] = 0;
+            if (gHtml->strike != 0) {
+                Draw_StruckText(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
+                              gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line,
+                              (u8 *) gHtml->anchor, bold);
+            } else if (gHtml->underline != 0) {
+                Draw_UnderlinedText(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
+                              gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line,
+                              (u8 *) gHtml->anchor, bold);
+            } else {
+                Draw_Text(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
+                              gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, bold);
+            }
+            break;
+        case HTML_LINK_LOCAL:
+            if (gHtml->strike != 0) {
+                Draw_StruckText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
+                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->anchor, bold);
+            } else if (gHtml->underline != 0) {
+                Draw_UnderlinedText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
+                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->anchor, bold);
+            } else {
+                Draw_LinkText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
+                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->anchor, bold);
+            }
+            break;
+        case HTML_LINK_URL:
+            if (gHtml->strike != 0) {
+                Draw_StruckText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
+                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->href, bold);
+            } else if (gHtml->underline != 0) {
+                Draw_UnderlinedText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
+                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->href, bold);
+            } else {
+                Draw_LinkText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
+                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->href, bold);
+            }
+            break;
+        case HTML_LINK_NAME:
+            Draw_Text(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
+                          gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, bold);
+            break;
+        }
+    }
+}
+
+/* The x offset that centres a line (in <CENTER>), else 0. */
+u16 Layout_CenterOffset(HtmlLine *line)
+{
+    s32 off;
+    s32 room;
+
+    off = 0;
+    if (gHtml->center != 0) {
+        room = gHtml->width - gHtml->indent;
+        if (line->w < room) {
+            off = (room - line->w) / 2;
+        }
+    }
+    return off;
+}
+
+/* <A NAME=...>: an anchor at the pen's position. */
+void Layout_Anchor(char *name)
+{
+    HtmlCell *cell;
+    HtmlLine *line;
+    u16 x;
+    u16 y;
+
+    if (gHtml->measure == HTML_PASS_DRAW) {
+        line = &gHtml->lines[gHtml->lineNo];
+        if (gHtml->tableDepth == 0) {
+            x = gHtml->pen.runX + (gHtml->indent + gHtml->pen.left);
+            x += Layout_CenterOffset(line);
+            y = gHtml->pen.h + gHtml->pen.runY;
+        } else {
+            cell = &gHtml->cells[gHtml->curCell];
+            x = gHtml->cellPen.runX + (cell->indent + gHtml->cellPen.left);
+            Layout_CellAlign(cell);
+            x += cell->alignX;
+            y = cell->valignY;
+            y += gHtml->cellPen.h + gHtml->cellPen.runY;
+        }
+        if (gHtml->inFrame == 0) {
+            Draw_Anchor(x, y + line->h - gHtml->charW, (u8 *) name);
+        }
+    }
+}
+
+/* Lays out the current run of text (line[]) at the pen. */
+void Layout_PlaceRun(HtmlLine *line)
+{
+    u16 x;
+
+    if (gHtml->measure == HTML_PASS_DRAW) {
+        x = gHtml->pen.runX + (gHtml->indent + gHtml->pen.left);
+        x += Layout_CenterOffset(line);
+        Layout_DrawRun(x, gHtml->pen.h + gHtml->pen.runY, line);
+    }
+}
+
+/* Goes to the next line (staying on the last of HTML_LINES). */
+void Layout_NextLine(void)
+{
+    u16 line;
+
+    line = gHtml->lineNo;
+    gHtml->lineNo = line + 1;
+    if (line >= HTML_LINES - 1) {
+        gHtml->lineNo = HTML_LINES - 1;
+    }
+}
+
+/* Goes to the next line, and *lp to its entry. */
+void Layout_NextLineEntry(HtmlLine **linePtr)
+{
+    u16 line;
+
+    line = gHtml->lineNo;
+    gHtml->lineNo = line + 1;
+    if (line >= HTML_LINES - 1) {
+        gHtml->lineNo = HTML_LINES - 1;
+        return;
+    }
+    (*linePtr)++;
 }
 
 /* <HR>: a rule of hrSize x hrWidth (the page's width when not given),
@@ -171,7 +270,7 @@ void Layout_WrapBefore(u16 *xPtr, u16 *yPtr, u16 w, HtmlLine **linePtr)
     }
 }
 
-/* The key code (1-4 or 0x11) an access key gives a link, an input or a
+/* The key code (1-4 or 17) an access key gives a link, an input or a
  * map area (the key a page comment set, HtmlState.accessKey), which it
  * clears. */
 u8 Html_MapKeyCode(u8 *key)
@@ -202,7 +301,7 @@ u8 Html_MapKeyCode(u8 *key)
         keyCode = 3;
         break;
     case 47:
-        keyCode = 0x11;
+        keyCode = 17;
         break;
     }
     *key = 0;
@@ -434,7 +533,7 @@ void Layout_DrawImage(u16 x, u16 y, HtmlLine *line)
             Draw_Image(x, y + line->h - gHtml->imgHeight, x + gHtml->imgWidth, y + line->h,
                           (u8 *) gHtml->imgSrc, (u8 *) gHtml->imgAlt);
             if ((u8)gHtml->imgUsemap[0] != 0) {
-                memcpy(gHtml->maps[gHtml->mapCount].usemap, gHtml->imgUsemap, 0x100);
+                memcpy(gHtml->maps[gHtml->mapCount].usemap, gHtml->imgUsemap, 256);
                 gHtml->maps[gHtml->mapCount].x = x;
                 gHtml->maps[gHtml->mapCount].y = y + line->h - gHtml->imgHeight;
                 gHtml->mapCount++;
@@ -765,7 +864,7 @@ void Layout_FlushBlock(u8 *text)
 void Html_ClearInputAttrs(void)
 {
     memset(&gHtml->input, 0, sizeof(HtmlInput));
-    gHtml->input.maxLength = 0x100;
+    gHtml->input.maxLength = 256;
     gHtml->input.width = gHtml->input.height = 30;
 }
 
@@ -871,10 +970,3 @@ void Html_SetTitle(u8 *text)
     *text = 0;
 }
 
-/* Clears <TABLE>'s attributes. */
-void Html_ClearTableAttrs(void)
-{
-    memset(&gHtml->tableAttr, 0, sizeof(HtmlTableAttr));
-    gHtml->tableAttr.borderColor = gHtml->tableAttr.bgColor = -1;
-    gHtml->tableAttr.cellSpacing = 2;
-}

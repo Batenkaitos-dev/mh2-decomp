@@ -1,10 +1,10 @@
 /*
- * Two kinds of objects of sub_main's object list (ObjAttach_Alloc allocates
- * them; ObjAttach.update runs them), each tied to a monster (an index into
- * gEms): VolcanoHazard and GunlanceBlast's Create. VolcanoHazard_Update is kind 0x25's
- * update: a switch on the object's state (+0x4), one handler per state.
- * The file holds the jump tables of BulldromeAttack_Run and
- * VolcanoHazard_Update.
+ * VolcanoHazard, a kind of ObjAttach (ATTACH_VOLCANO_HAZARD) with no owner:
+ * an attack that an area object (AreaObj_K19_Run) starts at one of the
+ * area's points, lasting a number of frames and hitting players only.
+ * VolcanoHazard_Update is its update: a switch on the object's state
+ * (ObjAttach.state), one handler per state. The file holds
+ * VolcanoHazard_Update's jump table.
  */
 #include "common.h"
 #include "scene.h"
@@ -13,98 +13,16 @@
 #include "objattach.h"
 #include "sprite.h"
 #include "capsule.h"
+#include "quest.h"
+#include "volcano_hazard.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "hit_setup.h"
+#include "obj.h"
 /* Declarations of the functions called below. */
-ObjAttach *ObjAttach_Alloc(s32 n);
-void GunlanceBlast_Update(ObjAttach *o);
-void Vec_Copy(f32 *out, f32 *in);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 
-void DrawSlot_Free(s32 i);
-void ObjAttach_Free(ObjAttach *p);
-
-void VolcanoHazard_Setup(ObjAttach *o);
-void VolcanoHazard_Run(ObjAttach *o);
-void VolcanoHazard_End(ObjAttach *o);
-void VolcanoHazard_Free(ObjAttach *o);
-
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartAttack(ObjAttach *, s32 a, void *b);
 extern void *VolcanoHazard_RowsPtr[];
 extern HitShape *VolcanoHazard_HitShapes[];
-/*
- * Types 3-5 keep the window open. Types 0 and 2 also keep it open, closing it
- * once the monster leaves EM_GROUP_ATTACK or Em.unk473 is 0
- * (EmKind38_ChangeState clears it). Type 1 follows the monster's yaw, its
- * power 35 while more than 99 or 43-50 window frames are left, else 25. The
- * attack ends when the motion changes, the window closes or the monster's
- * task leaves its run phase.
- */
-void BulldromeAttack_Run(ObjAttach *o)
-{
-    Em *em = &gEms[o->idx];
-
-    switch (o->type) {
-    case 0:
-    case 2:
-        o->hitFrames = 99;
-        if (em->stateGroup != EM_GROUP_ATTACK) {
-            o->hitPhase = 0;
-        }
-        if (em->unk473 == 0) {
-            o->hitPhase = 0;
-        }
-        break;
-    case 3:
-    case 4:
-    case 5:
-        o->hitFrames = 99;
-        break;
-    case 1:
-        o->yaw = em->rotY;
-        if (o->hitFrames > 99) {
-            o->power = 35;
-        } else if (o->hitFrames > 50) {
-            o->power = 25;
-        } else if (o->hitFrames > 42) {
-            o->power = 35;
-        } else {
-            o->power = 25;
-        }
-        break;
-    }
-    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0 || em->taskPhase >= 2) {
-        o->hitPhase = 0;
-        o->state = ATTACH_END;
-        return;
-    }
-}
-
-/*
- * Ends the attack: closes its hit window, hides it and frees its draw slot.
- * It is freed on the next update.
- */
-void BulldromeAttack_End(ObjAttach *o)
-{
-    o->hitPhase = 0;
-    o->state = ATTACH_FREE;
-    o->visible = 0;
-    if (o->drawSlotBuf != 0) {
-        DrawSlot_Free(o->drawSlot);
-    }
-}
-
-/* Frees the attack (ObjAttach_Free). */
-void BulldromeAttack_Free(ObjAttach *o)
-{
-    ObjAttach_Free(o);
-}
-
-/* Draws nothing. */
-void BulldromeAttack_Draw(ObjAttach *o)
-{
-}
-
-void VolcanoHazard_Update(ObjAttach *o);
 
 /*
  * Makes a VolcanoHazard of type at pos in the current area, with no owner,
@@ -198,7 +116,7 @@ void VolcanoHazard_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -222,39 +140,6 @@ void VolcanoHazard_Free(ObjAttach *o)
     ObjAttach_Free(o);
 }
 
-/*
- * Makes a GunlanceBlast of type for player pl: 1-3 the shell blast by
- * shelling type (Gunlance_ShellEffect), 4 the wyvern fire
- * (Gunlance_StateWyvernFire). It starts at pl's position with pl's angles,
- * motion and stateRand, and clears pl's hitPending and contactHit.
- */
-void GunlanceBlast_Create(Player *pl, s8 attackType)
-{
-    ObjAttach *o;
-
-    if ((o = ObjAttach_Alloc(1)) != NULL) {
-        o->kind = ATTACH_GUNLANCE_BLAST;
-        o->type = attackType;
-        o->update = GunlanceBlast_Update;
-        o->idx = pl->index;
-        o->isEm = pl->isEm;
-        o->ownerMotion = pl->motionId[0];
-        o->owner = pl;
-        o->yaw = pl->rot[1];
-        o->randBits = pl->stateRand;
-        o->stateVar0 = 0;
-        o->stateVar1 = 0;
-        o->rotX = pl->rot[0];
-        o->rotY = pl->rot[1];
-        o->rotZ = pl->rot[2];
-        Vec_Copy(o->pos, pl->pos);
-        o->side = pl->side;
-        o->unk080 = 0;
-        pl->hitPending = 0;
-        pl->contactHit = 0;
-    }
-}
-
 /* The file's data. */
 HitShape VolcanoHazard_HitShapes_0[2] = {
 #include "game/008AE7D0.inc"
@@ -262,7 +147,7 @@ HitShape VolcanoHazard_HitShapes_0[2] = {
 HitShape *VolcanoHazard_HitShapes[4] = {
     VolcanoHazard_HitShapes_0, 0, 0, 0,
 };
-u32 VolcanoHazard_Rows[12] = {
+AttackRow VolcanoHazard_Rows[2] = {
 #include "game/008AE830.inc"
 };
 void *VolcanoHazard_RowsPtr[1] = {

@@ -5,7 +5,7 @@
 #include "save.h"
 
 /*
- * The system data (gSysSave, 0x3C74 bytes): the options,
+ * The system data (gSysSave, 15476 bytes): the options,
  * the network options, the chat phrases and the flags saved in the system
  * file (SaveMenu_CopySystem, SysSave_Exchange), and a copy of the loaded
  * character (Save_LoadSlot).
@@ -25,12 +25,12 @@ typedef struct SysOptions {
     s8 screenY;                 /* 0x8 */
     s8 camControl;              /* 0x9: gScene.camControl */
     s8 camFollow;               /* 0xA: gScene.camFollow */
-    s8 brightness;              /* 0xB: SysSettings.brightness; reset to 0x80 */
-    s8 chatBeep;                /* 0xC: 0 beeps at every chat message; else only for messages to all or in AREA_HUB_0x83 (lobby Chat_Beep); HudState.unkA3 */
+    s8 brightness;              /* 0xB: SysSettings.brightness; reset to 128 */
+    s8 chatBeep;                /* 0xC: 0 beeps at every chat message; else only for messages to all or in AREA_ONLINE_VILLAGE (lobby Chat_Beep); HudState.unkA3 */
     u8 unk0D[3];
 } SysOptions;
 
-/* The chat phrases (SysSave.phrases): 24 of 0x2C bytes and a terminator;
+/* The chat phrases (SysSave.phrases): 24 of 44 bytes and a terminator;
  * the phrase menu shows each cut to PHRASE_NAME_LEN bytes (gPhraseEntries). */
 #define PHRASE_COUNT    24
 #define PHRASE_LEN      0x2D
@@ -51,7 +51,7 @@ typedef struct SysSave {
     u8 netOptions[16];          /* 0x010: the network options (the options screen's network page; the lobby's Lobby_GetNetOption0/1) */
     char phrases[PHRASE_COUNT][PHRASE_LEN];     /* 0x020: the chat phrases (Phrase_ResetDefaults copies the defaults; the phrase menu gPhraseEntries) */
     s32 bonusUnlocked;          /* 0x458: set by SysSave_UnlockBonus, or ORed in from the system file (SysSave_Exchange);
-                                 * unlocks the character editor's last hair style (option 0x11), and the lobby and select
+                                 * unlocks the character editor's last hair style (option 17), and the lobby and select
                                  * test it with event flag 0x7C */
     u8 lastSlot;                /* 0x45C: the character slot last saved or loaded (gChrEdit.slot) */
     u8 charSaved;               /* 0x45D: 3 once a character was saved (the PrepareSave states); kept in the system file (SysSave_Exchange); no reader seen */
@@ -69,7 +69,7 @@ typedef struct SysSave {
                                  * gLobbySaveBuf in the lobby, else gSaveBuf */
     s32 eventFlags[2][2];       /* 0x3C64: the system data's event flags, a bit each (EventFlag_Set, EventFlag_Test),
                                  * ORed with the card copy's (SysSave_Exchange) */
-} SysSave;                      /* 0x3C74 bytes */
+} SysSave;                      /* 15476 bytes */
 
 /* The system file's body as the card holds it (at CARD_FILE_BODY in the file; SysSave_Exchange):
  * the SysSave fields the file keeps. */

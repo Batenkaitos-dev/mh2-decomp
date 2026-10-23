@@ -426,13 +426,16 @@ class Emitter:
     def ref(self, name: str) -> str:
         return name if name in self.types.funcs and name not in self.types.vars else "&" + name
 
-    def word(self, v: int, cast: str, literal: bool = True) -> str | None:
-        """A 4-byte value as a name or (a pointer's) a literal, or None (a number)."""
+    def word(self, v: int, cast: str, literal: bool = True, inside: bool = True) -> str | None:
+        """A 4-byte value as a name or (a pointer's) a literal, or None (a number).
+        inside=False: only an object's or a function's own address is a name."""
         if v < 0x100000:
             return None
         name = self.by_addr.get(v)
         if name:
             return f"({cast}){self.ref(name)}"
+        if not inside:
+            return None
         i = bisect.bisect_right(self.spans, (v, 1 << 62, ""))
         for lo, size, name in reversed(self.spans[max(0, i - 64):i]):
             if lo <= v < lo + size:
@@ -465,7 +468,11 @@ class Emitter:
             return self.word(v, cast) or f"({cast}){v:#010x}"
         size, signed = t[1], t[2]
         if size == 4:
-            w = self.word(v, int_type(4, signed))
+            # an integer field: an object's or a function's own address is a name (a
+            # pointer the C keeps as a number, a stage header's offsets relocated on
+            # load); a value inside an object, or a literal's, is a number that only
+            # equals an address (camera coordinates, colours)
+            w = self.word(v, int_type(4, signed), literal=False, inside=False)
             if w:
                 return w
         if signed and v >= 1 << (8 * size - 1):

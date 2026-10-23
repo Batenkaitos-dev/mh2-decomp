@@ -24,20 +24,15 @@
 #include "em.h"
 #include "sound.h"
 #include "render_state.h"
+#include "bird_flock.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "lobby_world.h"
+#include "rand.h"
+#include "vec_math.h"
 /* Built at optimisation level 4: the compiler gives these functions the
  * game's code only at this level. */
 #pragma optimization_level 4
-
-void BirdFlock_Update(StageObj *obj);
-void BirdFlock_Init(StageObj *obj);
-void BirdFlock_Run(StageObj *obj);
-void BirdFlock_End(StageObj *obj);
-void BirdFlock_Free(StageObj *obj);
-void DrawSlot_Free(s32);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void FlockBird_Update(BirdFlock *flock, FlockBird *bird, s32 i);
-
-s32 Sound_PlaySeAtPosChecked(s32, s32, s32, void *, s32, s32);
 
 /* Plays sound soundId of the monsters' bank at the bird's position (pos is its
  * first field); param goes to the sound as it is. */
@@ -70,10 +65,6 @@ void BirdFlock_Update(StageObj *obj)
 }
 
 extern FlockBirdAnim gFlockBirdAnims[];
-
-f32 Math_Cos(f32 a);
-f32 Math_Sin(f32 a);
-u16 Rand_Next(s32 stream);
 
 /* Starts a bird's flight in to its (new) spot: its destination is 20 above
  * the spot, and it starts 8000 away from it in one of 8 directions at
@@ -205,9 +196,6 @@ retry:
     FlockBird_SetAnim(bird, FLOCK_BIRD_ANIM_SIT);
 }
 
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void BirdFlock_Draw(DrawSlot *slot);
 extern s32 gFlockBirdColors[];
 
 /* The flock's set-up: takes a draw slot (none free: the object is freed),
@@ -247,11 +235,6 @@ void BirdFlock_Init(StageObj *obj)
         }
     }
 }
-
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-f32 Math_Absf(f32 x);
-u16 Math_Heading(f32 x, f32 z, f32 a, f32 b);
-s32 LobbyWorld_GetSeason(void);
 
 /* Moves bird i a frame, by its state, then steps its animation.
  * - Sitting: every 30 frames it may turn to one of 16 directions; its wait
@@ -305,7 +288,7 @@ void FlockBird_Update(BirdFlock *flock, FlockBird *bird, s32 i)
                 frames = Vec_DistanceXZ((f32 *) &dest, (f32 *) &bird->pos);
                 frames = Math_Absf(frames) / Math_Absf(bird->vel.x);
                 if ((s32)frames <= 42) {
-                    FlockBird_PlaySe(FLOCK_BIRD_SE_CALL, bird, 0x13);
+                    FlockBird_PlaySe(FLOCK_BIRD_SE_CALL, bird, 19);
                     bird->called = 1;
                 }
             }
@@ -331,7 +314,7 @@ void FlockBird_Update(BirdFlock *flock, FlockBird *bird, s32 i)
                 bird->step++;
             } else {
                 bird->ang = Math_Heading(bird->dest.x, bird->dest.z, bird->pos.x, bird->pos.z);
-                bird->ang += 0x4000;
+                bird->ang += ANGLE_TURN / 4;
             }
             break;
         case 1:
@@ -366,7 +349,7 @@ void FlockBird_Update(BirdFlock *flock, FlockBird *bird, s32 i)
             bird->climb = 0.0f;
             bird->timer = 6;
             bird->step++;
-            FlockBird_PlaySe(FLOCK_BIRD_SE_TAKE_OFF, bird, 0x13);
+            FlockBird_PlaySe(FLOCK_BIRD_SE_TAKE_OFF, bird, 19);
         case 1:
             bird->timer--;
             bird->pos.y += bird->vel.z;
@@ -460,10 +443,6 @@ void BirdFlock_Free(StageObj *obj)
     StageObj_Free((StageObj *) obj);
 }
 
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-s32 Gs_SetState(u8, u32);
-s32 Effect_DrawModelAdd(void *list, f32 *v, void *base);
-
 /* The flock's draw (its draw slot's): each bird as its material set of the
  * common effect model with only its part's material shown (the set's first
  * material is left as it is), at the flock's scale, turned to its heading,
@@ -514,7 +493,7 @@ void BirdFlock_Draw(DrawSlot *slot)
     }
 }
 
-/* Spawns a flock (type 0 in AREA_HUB_0x83, 1 in AREA_HUB_0x89; the flock's
+/* Spawns a flock (type 0 in AREA_ONLINE_VILLAGE, 1 in AREA_HUB_0x89; the flock's
  * code doesn't read it). Does nothing when no stage object is free. */
 void BirdFlock_Spawn(s8 type)
 {
@@ -535,16 +514,16 @@ void BirdFlock_Spawn(s8 type)
 s32 gFlockBirdColors[4] = {
 #include "lobby/007DD170.inc"
 };
-u32 gFlockBirdFoldParts[4] = {
+FlockBirdPair gFlockBirdFoldParts[8] = {
 #include "lobby/007DD180.inc"
 };
-u32 gFlockBirdSpreadParts[4] = {
+FlockBirdPair gFlockBirdSpreadParts[8] = {
 #include "lobby/007DD190.inc"
 };
-u32 gFlockBirdFlyParts[4] = {
+FlockBirdPair gFlockBirdFlyParts[8] = {
 #include "lobby/007DD1A0.inc"
 };
-u32 gFlockBirdFlapParts[4] = {
+FlockBirdPair gFlockBirdFlapParts[8] = {
 #include "lobby/007DD1B0.inc"
 };
 FlockBirdAnim gFlockBirdAnims[6] = {

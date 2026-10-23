@@ -1,5 +1,5 @@
 /*
- * The town's pets: the Poogie, the care pet of AREA_HUB_0x83 and the house
+ * The town's pets: the Poogie, the care pet of AREA_ONLINE_VILLAGE and the house
  * pet (Pet_AreaKind tells which the area holds).
  *
  * Talking to a pet opens one of five modes, each keeping its state in
@@ -36,33 +36,46 @@
 #include "lobby/pets.h"   /* the texts this file uses (tools/content_gen.py) */
 #include "area.h"
 #include "lobby_vobj.h"
-s32 PoogieMenu_Feed(void);
+#include "npc_motion.h"
+#include "render_state.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "capsule.h"
+#include "kbd.h"
+#include "shake.h"
+#include "text.h"
+#include "pets.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "kitchen.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "mine_model_objects.h"
+#include "offer_menu.h"
+#include "rand.h"
+#include "talk.h"
+#include "town_area_change.h"
+#include "town_players.h"
+#include "word_filter.h"
+#include "libc.h"
+#include "lobby_net.h"
 extern u8 gMenuWork[];
 extern char *gPoogieCareLabels[];
-void Text_SetSize(s32 a);
 void Menu_DrawLabelList(s16 x, s8 **b, s16 n, s16 cur, u32 color);
-void PoogieMenu_DrawFeedList(s16 x, s16 y);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern s16 gPetDebugBars[4];
-s32 PoogieMenu_GetOutfits(u8 *owned);
-u8 PoogieMenu_WornOutfitRow(void);
-u8 Notice_PushItem(char *);
-void Actor_SetState(void *obj, s32 group, s32 state);
-void LobbySe_Play(s32 se);
-void CamFocus_Start(Em *obj);
-void LobbyMenu_SetDraw(void *draw0, void *draw1, void *draw2, void *draw3);
-void PoogieMenu_Draw(void);
 extern f32 gPoogieDigZones[];
-u8 Slab_Contains(f32 *pos, f32 *a, f32 *b, f32 height, f32 radius);
-void PoogieMenu_DrawPetFeed(void);
 extern u8 gNpcPresenceRates[];
-s32 LobbyTime_IsAm(void);
-s32 LobbyWorld_GetSeason(void);
-u16 Rand_Next(s32 stream);
 extern s16 gPetBars[];
 extern s16 gPetBarsCare[];
-u8 Pet_AreaKind(void);
 extern s32 gPoogieFeedLimits[];
 extern u8 gPoogieFeedLimitRates[];
 extern s32 gCareFeedLimits[];
@@ -76,37 +89,10 @@ extern u16 gSeasonFoodsBreeding[];
 extern u16 gSeasonFoodsWarm[];
 extern u16 gSeasonFoodsCold[];
 extern ListPanel gOutfitListBox;
-void Tex_Prepare(s32 n, s32 tex);
-void Tex_Bind(s32 a);
-void Gfx_SetTexFilter(s32 a);
-s32 Gs_SetState(u8, u32);
-void Gfx_SetBlend(s32 a, s32 b);
-s32 Shake_Update(u8);
-void *Shake_GetOffset(u8 id);
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void PoogieMenu_BuildOutfitList(void);
-s32 Save_TestEventFlag(s32 flag);
-s32 Kitchen_IsIngredient(u16 item);
-s32 Menu_CountPages(s16 n, s16 per);
-void *memset(void *d, s32 c, u32 n);
 extern PoogieOutfit gPoogieOutfits[];
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
-void Save_SetEventFlag(s32 flag);
 u8 SavePouch_Add(u16 item, s16 n);
-s16 Poogie_RollFeedLimit(u8 kind);
-s32 Game_IsOnline(void);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-u16 LobbyPad_Get(s32 a);
-s32 Talk_Update(void);
 struct Em;
-void Talk_Say(s32 msg, s8 a);
-void CamFocus_End(void);
 /* end of prototypes */
 
 INCLUDE_RODATA("asm/lobby/nonmatchings/pets", gPetChoicePetText);
@@ -116,8 +102,6 @@ INCLUDE_RODATA("asm/lobby/nonmatchings/pets", gPetChoiceOutfitText);
 extern u8 gPetFollows;
 extern u8 gPoogieHappy;
 extern u8 gPoogieFollowing;
-Em *Npc_Find(u8 kind);
-void Talk_Start(Em *npc, s8 quiet);
 /*
  * Opens the Poogie's naming (TOWN_MODE_POOGIE_PET): the town's talk
  * opens it for an unnamed Poogie that isn't busy. NPC_NAMING_TALKER starts
@@ -138,24 +122,13 @@ void PoogieNaming_Open(Em *poogie)
         naming->talk = NAMING_TALK_ASK;
         gPoogieHappy = 1;
         gPoogieFollowing = 0;
-        Actor_SetState(talker, 0, 0x2C); /* its talk with the player */
+        Actor_SetState(talker, 0, 44); /* its talk with the player */
         Talk_Start(talker, 1);
         LobbySe_Play(LOBBY_SE_TALK);
         CamFocus_Start(poogie);
     }
 }
 
-s8 Poogie_UpdatePetting(Em *task);
-void Jingle_Play(void *obj, s32 id);
-void CamFocus_End(void);
-s32 CamFocus_IsOn(void);
-void Actor_ReturnToIdle(void *pl, s32 a, s32 n, s32 m);
-void Kbd_SetPos(s32 n, f32 f);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
-s8 Kbd_RunFiltered(char *text, s16 held, s16 pressed);
-char *Talk_LineText(u16 id);
-char *Text_FillDollarFmt(char *fmt, char *name);
-void Kbd_Cancel(void);
 extern u8 gTownJingleOn;
 extern u8 gPoogieLeft;
 extern u16 gTalkLine;
@@ -241,8 +214,8 @@ void PoogieNaming_Update(void)
                 Talk_Say(5, 0);
                 naming->talk = NAMING_TALK_NAME_IT;
             } else if (naming->talk == NAMING_TALK_NAME_IT || naming->talk == NAMING_TALK_ASK_AGAIN) {
-                Kbd_SetPos(0x3A, 80.0f);
-                Chat_OpenKbd(0, 0xF, 8, save->poogieName);
+                Kbd_SetPos(58, 80.0f);
+                Chat_OpenKbd(0, 15, 8, save->poogieName);
                 gFieldControl = 0;
                 naming->step = NAMING_KEYBOARD;
             } else if (naming->talk == NAMING_TALK_NAMED) {
@@ -262,8 +235,8 @@ void PoogieNaming_Update(void)
                 Talk_Say(6, 0);
                 naming->talk = NAMING_TALK_REFUSED;
             } else if (naming->talk == NAMING_TALK_NAMED) {
-                Kbd_SetPos(0x3A, 80.0f);
-                Chat_OpenKbd(0, 0xF, 8, save->poogieName);
+                Kbd_SetPos(58, 80.0f);
+                Chat_OpenKbd(0, 15, 8, save->poogieName);
                 gFieldControl = 0;
                 naming->step = NAMING_KEYBOARD;
             }
@@ -281,8 +254,8 @@ void PoogieNaming_Update(void)
     case NAMING_KEYBOARD:
         if (Kbd_RunFiltered((char *)save->poogieName, *(s16 *)&gPadState[0].held, *(s16 *)&gPadState[0].pressed) != 0) {
             if ((s8)save->poogieName[0] == 0) {
-                Kbd_SetPos(0x3A, 80.0f);
-                Chat_OpenKbd(0, 0xF, 8, save->poogieName);
+                Kbd_SetPos(58, 80.0f);
+                Chat_OpenKbd(0, 15, 8, save->poogieName);
             } else {
                 naming->step = NAMING_TALK;
                 Talk_Say(7, 0); /* the line with the name */
@@ -323,7 +296,7 @@ void PoogieMenu_Open(Em *poogie)
     menu->outfitCount = 0;
     menu->petResult = -1; /* no petting yet */
     menu->win.state = 0;
-    menu->win.pos = 0x280;
+    menu->win.pos = 640;
     menu->cursor = 0;
     menu->chosenRow = 0;
     menu->showInfo = 0;
@@ -345,20 +318,7 @@ void PoogieMenu_Open(Em *poogie)
     LobbyMenu_SetDraw(PoogieMenu_Draw, 0, 0, 0);
 }
 
-void Bgm_FadeToVolume(s32 a);
-void Poogie_ResetPetting(void);
-void PoogieMenu_BuildFeedList(void);
-u8 PoogieMenu_RowsOnPage(PoogieMenu *menu);
-s32 PoogieMenu_ReactionDone(void);
-void Actor_SetMotionOnLayer(void *obj, s32 motion, s32 frames, s32 c, s32 i);
-void Poogie_NotifyMood(u8 kind);
-s32 Poogie_UpdatePettingDebug(Em *task);
-u8 PoogieMenu_OutfitAtCursor(void);
-s32 Debug_IsOn(s32 arg0);
-void Shake_Start(u8 id, u8 flags, f32 amp);
 s16 Pouch_GiveItem(Player *p, u16 item, s16 key, u8 flags);
-void Shake_Stop(void);
-void TownMsg_SendStateNow(Player *p);
 extern f32 gPoogieFinds[];
 extern u8 gPoogiePetStreak;
 
@@ -392,7 +352,7 @@ void PoogieMenu_Update(void)
                 w->offerMark = 0; /* the mark over it goes */
                 Actor_SetState(menu->pet, 0, PET_STATE_GREAT_JOY);
                 Jingle_Play(pl, PET_JINGLE_JOY);
-                Bgm_FadeToVolume(0xF);
+                Bgm_FadeToVolume(15);
                 menu->findStep++;
             }
             break;
@@ -413,7 +373,7 @@ void PoogieMenu_Update(void)
             /* a roll in [1, 101): the first find whose share reaches it */
             roll = 1.0f + 0.01f * ((u16)Rand_Next(1) % 10000);
             upTo = &gPoogieFinds[1];
-            for (i = 1; i <= 0x1F; i += 2) {
+            for (i = 1; i <= 31; i += 2) {
                 if (roll <= *upTo) {
                     item = (s32)gPoogieFinds[i - 1];
                     break;
@@ -472,7 +432,7 @@ void PoogieMenu_Update(void)
                     menu->step = PET_STEP_RUN;
                     menu->feedStep = PET_FEED_SLIDE;
                     menu->win.state = 0;
-                    menu->win.pos = 0x280;
+                    menu->win.pos = 640;
                     menu->cursor = 0;
                     break;
                 case PET_CHOICE_OUTFIT:
@@ -485,7 +445,7 @@ void PoogieMenu_Update(void)
             }
             if (pad & PAD_CROSS) {
                 menu->step = PET_STEP_SEND_OFF;
-                Actor_SetMotionOnLayer(menu->pet, 0x3E9, 0x18, 0, 0);
+                Actor_SetMotionOnLayer(menu->pet, EM_MOTION_ID(0, PET_MOT_IDLE), 24, 0, 0);
                 LobbySe_Play(LOBBY_SE_CANCEL);
             }
             break;
@@ -500,7 +460,7 @@ void PoogieMenu_Update(void)
                 if (menu->petResult == PETTING_RUNNING) {
                     break;
                 }
-                Actor_SetMotionOnLayer(menu->pet, 0x3E9, 0x18, 0, 0);
+                Actor_SetMotionOnLayer(menu->pet, EM_MOTION_ID(0, PET_MOT_IDLE), 24, 0, 0);
                 switch (menu->petResult) {
                 case PETTING_PLEASED:
                     gPetFollows = 1;
@@ -534,7 +494,7 @@ void PoogieMenu_Update(void)
             case PET_CHOICE_FEED:
                 switch (menu->feedStep) {
                 case PET_FEED_SLIDE:
-                    switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+                    switch (WinSlide_Step(&menu->win, 640, 280)) {
                     case MENU_DONE:
                         menu->inputDelay = 0;
                         menu->feedStep++;
@@ -617,7 +577,7 @@ void PoogieMenu_Update(void)
             break;
         case PET_STEP_ANGRY:
             LobbyMenu_SetDraw(0, 0, 0, 0);
-            if (Debug_IsOn(PET_DEBUG_BARS) && menu->pet->motionId[0] == 0x3FA /* the angry motion */
+            if (Debug_IsOn(PET_DEBUG_BARS) && menu->pet->motionId[0] == EM_MOTION_ID(0, PET_MOT_TACKLE)
                 && menu->pet->motion[0].playing <= 0) {
                 menu->step = PET_STEP_SEND_OFF;
                 w->petAct = PET_ACT_NONE;
@@ -717,7 +677,7 @@ void PoogieMenu_OpenOutside(Em *pet)
     menu->findStep = FIND_JOY;
     menu->petResult = -1; /* no petting yet */
     menu->win.state = 0;
-    menu->win.pos = 0x280;
+    menu->win.pos = 640;
     menu->cursor = 0;
     menu->chosenRow = 0;
     menu->showInfo = 0;
@@ -739,8 +699,6 @@ void PoogieMenu_OpenOutside(Em *pet)
     LobbyMenu_SetDraw(PoogieMenu_DrawPetFeed, 0, 0, 0);
 }
 
-s32 PoogieMenu_Feed(void);
-void PoogieDig_FindZone(f32 *pos, u8 *zone);
 extern s16 gPoogieDigTimer;
 extern u8 gPoogieDigTaken;
 extern u8 gPoogieDigSpotCount;
@@ -796,7 +754,7 @@ void PoogieMenu_UpdateOutside(void)
                 menu->step = PET_STEP_RUN;
                 menu->feedStep = PET_FEED_SLIDE;
                 menu->win.state = 0;
-                menu->win.pos = 0x280;
+                menu->win.pos = 640;
                 menu->cursor = 0;
                 menu->inputDelay = 0;
                 break;
@@ -805,7 +763,7 @@ void PoogieMenu_UpdateOutside(void)
         }
         if (pad & PAD_CROSS) {
             menu->step = PET_STEP_SEND_OFF;
-            Actor_SetMotionOnLayer(menu->pet, 0x3E9, 0x18, 0, 0);
+            Actor_SetMotionOnLayer(menu->pet, EM_MOTION_ID(0, PET_MOT_IDLE), 24, 0, 0);
             LobbySe_Play(LOBBY_SE_CANCEL);
         }
         break;
@@ -840,7 +798,7 @@ void PoogieMenu_UpdateOutside(void)
         case PET_CHOICE_FEED:
             switch (menu->feedStep) {
             case PET_FEED_SLIDE:
-                switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+                switch (WinSlide_Step(&menu->win, 640, 280)) {
                 case MENU_DONE:
                     menu->feedStep++;
                     break;
@@ -972,7 +930,7 @@ void PoogieMenu_UpdateOutside(void)
 
 /*
  * Opens the care pet's menu (TOWN_MODE_POOGIE_CARE; NPC_POOGIE_CARE in
- * AREA_HUB_0x83): pet or feed.
+ * AREA_ONLINE_VILLAGE): pet or feed.
  */
 void PoogieMenu_OpenCare(Em *pet)
 {
@@ -988,7 +946,7 @@ void PoogieMenu_OpenCare(Em *pet)
     menu->findStep = FIND_JOY;
     menu->petResult = -1; /* no petting yet */
     menu->win.state = 0;
-    menu->win.pos = 0x280;
+    menu->win.pos = 640;
     menu->cursor = 0;
     menu->chosenRow = 0;
     menu->showInfo = 0;
@@ -1000,8 +958,6 @@ void PoogieMenu_OpenCare(Em *pet)
     LobbyMenu_SetDraw(PoogieMenu_DrawPetFeed, 0, 0, 0);
 }
 
-s32 Poogie_IsSeasonFood(u16 item);
-extern u8 gPoogieDigState;
 extern u8 gCarePetLeft;
 extern u8 gPoogieDigSpotIdx;
 extern u8 gCarePetHappy;
@@ -1057,7 +1013,7 @@ void PoogieMenu_UpdateCare(void)
                 menu->step = PET_STEP_RUN;
                 menu->feedStep = PET_FEED_SLIDE;
                 menu->win.state = 0;
-                menu->win.pos = 0x280;
+                menu->win.pos = 640;
                 menu->cursor = 0;
                 menu->inputDelay = 0;
                 break;
@@ -1066,7 +1022,7 @@ void PoogieMenu_UpdateCare(void)
         }
         if (pad & PAD_CROSS) {
             menu->step = PET_STEP_CLOSE;
-            Actor_SetMotionOnLayer(menu->pet, 0x3E9, 0x18, 0, 0);
+            Actor_SetMotionOnLayer(menu->pet, EM_MOTION_ID(0, PET_MOT_IDLE), 24, 0, 0);
             LobbySe_Play(LOBBY_SE_CANCEL);
         }
         break;
@@ -1075,7 +1031,7 @@ void PoogieMenu_UpdateCare(void)
         case PET_CHOICE_PET:
             menu->petResult = Poogie_UpdatePetting(menu->pet);
             if (menu->petResult != PETTING_RUNNING) {
-                Actor_SetMotionOnLayer(menu->pet, 0x3E9, 0x18, 0, 0);
+                Actor_SetMotionOnLayer(menu->pet, EM_MOTION_ID(0, PET_MOT_IDLE), 24, 0, 0);
                 switch (menu->petResult) {
                 case PETTING_PLEASED:
                     points = gPetJoyPoints;
@@ -1107,7 +1063,7 @@ void PoogieMenu_UpdateCare(void)
         case PET_CHOICE_FEED:
             switch (menu->feedStep) {
             case PET_FEED_SLIDE:
-                switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+                switch (WinSlide_Step(&menu->win, 640, 280)) {
                 case MENU_DONE:
                     menu->feedStep++;
                     break;
@@ -1338,8 +1294,6 @@ void HousePet_Update(void)
 }
 
 extern char *gPoogieMenuLabels[];
-void PoogieMenu_DrawOutfitList(void);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 
 /*
  * Draws the Poogie's menu: the choice list, the outfit list or the feeding
@@ -1359,9 +1313,9 @@ void PoogieMenu_Draw(void)
         switch (menu->step) {
         case PET_STEP_CHOOSE:
             if (Game_IsOnline() == 0) {
-                Menu_DrawLabelList(0x1CC, (s8 **)gPoogieMenuLabels, 3, menu->choice, 0xFFB0B000); /* pet, feed, the outfit */
+                Menu_DrawLabelList(460, (s8 **)gPoogieMenuLabels, 3, menu->choice, 0xFFB0B000); /* pet, feed, the outfit */
             } else {
-                Menu_DrawLabelList(0x1CC, (s8 **)gPoogieMenuLabels, 2, menu->choice, 0xFFB0B000);
+                Menu_DrawLabelList(460, (s8 **)gPoogieMenuLabels, 2, menu->choice, 0xFFB0B000);
             }
             break;
         case PET_STEP_RUN:
@@ -1373,18 +1327,18 @@ void PoogieMenu_Draw(void)
                     x = menu->win.pos;
                     break;
                 case PET_FEED_LIST:
-                    x = 0x118;
+                    x = 280;
                     break;
                 }
                 if (menu->feedStep <= PET_FEED_LIST) {
-                    PoogieMenu_DrawFeedList(x, 0x34);
+                    PoogieMenu_DrawFeedList(x, 52);
                 }
             }
             break;
         case PET_STEP_DEBUG_BARS:
-            Font_SetSpacing(0x12, 0x12);
+            Font_SetSpacing(18, 18);
             Font_SetColor(0x807F7F28);
-            Font_SetPos(0x14, 0xB4);
+            Font_SetPos(20, 180);
             switch (menu->debugBar) {
             case PET_BAR_WAIT:
                 Text_PrintfColored(TXT(0x0082C990) /* the pet's mood bar label (green) */);
@@ -1400,16 +1354,16 @@ void PoogieMenu_Draw(void)
                 break;
             }
             /* the four bars in a row, a pixel a frame, the great joy drawn over the middle of the joy */
-            barX = 0x14;
+            barX = 20;
             waitLen = menu->bars[PET_BAR_WAIT];
-            greatX = waitLen + (menu->bars[PET_BAR_JOY] - menu->bars[PET_BAR_GREAT_JOY]) / 2 + 0x15;
-            Gfx_DrawLine(0x14, 0xC8, waitLen, 5, 0xFF36C018);
+            greatX = waitLen + (menu->bars[PET_BAR_JOY] - menu->bars[PET_BAR_GREAT_JOY]) / 2 + 21;
+            Gfx_DrawLine(20, 200, waitLen, 5, 0xFF36C018);
             barX += menu->bars[PET_BAR_WAIT] + 1;
-            Gfx_DrawLine(barX, 0xC8, menu->bars[PET_BAR_JOY], 5, 0xFF0000FF);
+            Gfx_DrawLine(barX, 200, menu->bars[PET_BAR_JOY], 5, 0xFF0000FF);
             barX += menu->bars[PET_BAR_JOY] + 1;
-            Gfx_DrawLine(greatX, 0xC8, menu->bars[PET_BAR_GREAT_JOY], 5, 0xFFFF0000);
-            Gfx_DrawLine(barX, 0xC8, menu->bars[PET_BAR_ANGER], 5, 0xFFAA00FF);
-            Font_SetPos(0x14, 0xD7);
+            Gfx_DrawLine(greatX, 200, menu->bars[PET_BAR_GREAT_JOY], 5, 0xFFFF0000);
+            Gfx_DrawLine(barX, 200, menu->bars[PET_BAR_ANGER], 5, 0xFFAA00FF);
+            Font_SetPos(20, 215);
             Text_PrintfColored(TXT(0x0082CA10) /* debug: the frame count */, menu->bars[menu->debugBar]);
             break;
         }
@@ -1425,7 +1379,7 @@ void PoogieMenu_DrawPetFeed(void)
     Text_SetSize(0);
     switch (menu->step) {
     case PET_STEP_CHOOSE:
-        Menu_DrawLabelList(0x1CC, (s8 **)gPoogieCareLabels, 2, menu->choice, 0xFFB0B000); /* pet, feed */
+        Menu_DrawLabelList(460, (s8 **)gPoogieCareLabels, 2, menu->choice, 0xFFB0B000); /* pet, feed */
         break;
     case PET_STEP_RUN:
         if (menu->choice == PET_CHOICE_FEED) {
@@ -1434,21 +1388,16 @@ void PoogieMenu_DrawPetFeed(void)
                 x = menu->win.pos;
                 break;
             case PET_FEED_LIST:
-                x = 0x118;
+                x = 280;
                 break;
             }
             if (menu->feedStep < PET_FEED_EAT) {
-                PoogieMenu_DrawFeedList(x, 0x34);
+                PoogieMenu_DrawFeedList(x, 52);
             }
         }
         break;
     }
 }
-
-s32 Motion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 Actor_HeadingDiff(void *obj, void *pos);
-void Actor_SetMotion(void *pl, s32 motion, s32 frames, s32 c);
-void ModelObj_SpawnOn(void *arg0, s32 arg1);
 
 /*
  * Runs a frame of the petting of pet: counts the frames held (Player.cookTimer)
@@ -1504,15 +1453,15 @@ s8 Poogie_UpdatePetting(Em *pet)
         switch (pl->cookResult) {
         case PET_RESULT_NONE:
         case PET_RESULT_LATE:
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             Jingle_Play(pl, PET_JINGLE_NOTHING);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_NOTHING;
         case PET_RESULT_JOY:
             Actor_SetState(pet, 0, PET_STATE_JOY);
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             Jingle_Play(pl, PET_JINGLE_JOY);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_PLEASED;
         case PET_RESULT_ANGER:
             Actor_SetState(pet, 0, PET_STATE_ANGRY);
@@ -1531,13 +1480,13 @@ s8 Poogie_UpdatePetting(Em *pet)
                 break;
             }
             Jingle_Play(pl, PET_JINGLE_ANGRY);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_ANGRY;
         case PET_RESULT_GREAT_JOY:
             Actor_SetState(pet, 0, PET_STATE_GREAT_JOY);
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             Jingle_Play(pl, PET_JINGLE_JOY);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_PLEASED;
         }
     }
@@ -1577,27 +1526,27 @@ s32 Poogie_UpdatePettingDebug(Em *pet)
         switch (pl->cookResult) {
         case PET_RESULT_NONE:
         case PET_RESULT_LATE:
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             Jingle_Play(pl, PET_JINGLE_NOTHING);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_NOTHING;
         case PET_RESULT_JOY:
             Actor_SetState(pet, 0, PET_STATE_JOY);
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             Jingle_Play(pl, PET_JINGLE_JOY);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_PLEASED;
         case PET_RESULT_ANGER:
             Actor_SetState(pet, 0, PET_STATE_ANGRY);
             Notice_PushItem(TXT(0x0082CA90) /* debug notice: the pet got angry */);
             Jingle_Play(pl, PET_JINGLE_ANGRY);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_ANGRY;
         case PET_RESULT_GREAT_JOY:
             Actor_SetState(pet, 0, PET_STATE_GREAT_JOY);
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             Jingle_Play(pl, PET_JINGLE_JOY);
-            Bgm_FadeToVolume(0xF);
+            Bgm_FadeToVolume(15);
             return PETTING_PLEASED;
         }
     }
@@ -1677,11 +1626,11 @@ void PoogieMenu_DrawOutfitList(void)
     PoogieMenu *menu = (PoogieMenu *)gMenuWork;
     s32 shake;
 
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
-    Gfx_SetTexFilter(1);
-    Gs_SetState(0x60, 0);
-    Gfx_SetBlend(4, 5);
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gs_SetState(RS_ALPHA_REF, 0);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Shake_Update(0);
     shake = (s32)Shake_GetOffset(0);
     gOutfitListBox.cursorColor = 0xA9182;
@@ -1715,11 +1664,8 @@ void PoogieMenu_BuildFeedList(void)
     }
 }
 
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 mode, s32 item, u16 extra, s8 attr, u32 color);
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, s32 c1, s32 c2, s32 k); /* unit's own declaration: the definition takes s32 x and y and an s16 kind; declared so, the call passes its arguments as the game's code does */
 void Menu_DrawPageArrows(s16 x, s16 y, s16 page, s16 n, u32 color);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Menu_DrawItemCountRow(s16 x, s16 y, u16 item, u32 color);
 
 /*
  * Draws the feeding window at (x, y): the page's items with the counts
@@ -1735,42 +1681,42 @@ void PoogieMenu_DrawFeedList(s16 x, s16 y)
     s32 selItem;
     u8 row;
 
-    Win_Draw(x, y, 0x154, 0x120, 0xBDB59F6C, 0x80202020, 2);
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x12E, 0x12, 0xC8, 0xFFB0B000, gListTitles[LIST_TITLE_INGREDIENT], 2, 1);
+    Win_Draw(x, y, 340, 288, 0xBDB59F6C, 0x80202020, 2);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(302, 18, 200, 0xFFB0B000, gListTitles[LIST_TITLE_INGREDIENT], 2, 1);
     if (menu->rows > 0) {
-        Menu_DrawPageArrows(left + 0xF0, y + 10, menu->page, menu->pages, 0xBDB59F6C);
+        Menu_DrawPageArrows(left + 240, y + 10, menu->page, menu->pages, 0xBDB59F6C);
     }
     Font_SetColor(0x807F7F7F);
     if (menu->rows <= 0) {
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(x + 0x14, y + 0x64);
+        Font_SetPos(x + 20, y + 100);
         Text_PrintfColored(TXT(0x0082CAC0) /* notice: no food in the item pouch */);
     } else {
-        x += 0x32;
-        y += 0x1E;
-        Font_SetSpacing(0x14, 0x14);
+        x += 50;
+        y += 30;
+        Font_SetSpacing(20, 20);
         for (i = 0; i < PET_FEED_ROWS; i++) {
             row = i + menu->page * PET_FEED_ROWS;
             if (row >= menu->rows) {
-                y += 0x16;
+                y += 22;
             } else {
                 item = menu->items[row];
                 if (i == menu->cursor) {
                     selItem = item;
-                    Menu_DrawLine(left + 10, y - 1, 0x140, 0x18, 0);
+                    Menu_DrawRowHighlight(left + 10, y - 1, 320, 24, 0);
                 }
                 Menu_DrawItemCountRow(x, y, item, 0x807F7F7F);
-                y += 0x16;
+                y += 22;
             }
         }
     }
     if (menu->rows > 0) {
-        Gfx_DrawLine(left + 0x14, y + 2, 0x12C, 2, 0xBDB59F6C);
-        ItemInfo_Draw(x - 0x28, y + 4, 0x154, menu->showInfo, selItem, 0, -1, 0x807F7F7F);
+        Gfx_DrawLine(left + 20, y + 2, 300, 2, 0xBDB59F6C);
+        ItemInfo_Draw(x - 40, y + 4, 340, menu->showInfo, selItem, 0, -1, 0x807F7F7F);
     } else {
-        Gfx_DrawLine(left + 0x14, y + 0xD0, 0x12C, 2, 0xBDB59F6C);
+        Gfx_DrawLine(left + 20, y + 208, 300, 2, 0xBDB59F6C);
     }
 }
 
@@ -1821,7 +1767,7 @@ s32 PoogieMenu_ReactionDone(void)
         }
         break;
     case 0:
-        if (pl->motionId[0] == 0x26B && pl->motion[0].playing <= 0) {
+        if (pl->motionId[0] == PL_MOT_PET_END && pl->motion[0].playing <= 0) {
             break;
         }
         return 0;
@@ -1888,7 +1834,7 @@ s32 PoogieMenu_Feed(void)
     case 1: /* it eats */
         if (menu->eatTimer-- <= 0) {
             SavePouch_Add(menu->items[menu->chosenRow + menu->page * PET_FEED_ROWS], -1);
-            Actor_SetMotion(pl, 0x26B, 4, 0); /* the player's petting ends */
+            Actor_SetMotion(pl, PL_MOT_PET_END, 4, 0);
             gLobby->petPoints[area] += menu->prices[menu->chosenRow + menu->page * PET_FEED_ROWS];
             if (gLobby->petPoints[area] >= gLobby->petPointsMax[area]) {
                 Poogie_NotifyMood(PET_NOTICE_COUNTER);
@@ -1900,7 +1846,7 @@ s32 PoogieMenu_Feed(void)
                 }
                 Actor_SetState(menu->pet, 0, PET_STATE_GREAT_JOY);
                 Jingle_Play(pl, PET_JINGLE_JOY);
-                Bgm_FadeToVolume(0xF);
+                Bgm_FadeToVolume(15);
             } else {
                 if ((gPoogieHappy == 1 && area != PET_AREA_CARE) || (gCarePetHappy == 1 && area == PET_AREA_CARE)) {
                     Poogie_NotifyMood(PET_NOTICE_DELIGHTED);
@@ -1910,7 +1856,7 @@ s32 PoogieMenu_Feed(void)
                     Actor_SetState(menu->pet, 0, PET_STATE_JOY);
                 }
                 Jingle_Play(pl, PET_JINGLE_JOY);
-                Bgm_FadeToVolume(0xF);
+                Bgm_FadeToVolume(15);
             }
             return MENU_DONE;
         }
@@ -2122,9 +2068,9 @@ s32 PoogieDig_OverLimit(u8 kind)
     for (i = 0; i < spots; i++) {
         /*
          * gDigSpotUses[i], reached from gPoogieDigZone, the start of the
-         * dig's variables: the game adds the offset (0x17) in the load.
+         * dig's variables: the game adds the offset 0x17 in the load.
          */
-        if (gPoogieDigZone[i + 0x17] > limits[i]) {
+        if (gPoogieDigZone[i + 23] > limits[i]) {
             return 1;
         }
     }
@@ -2239,7 +2185,7 @@ s32 Poogie_AtGreatJoyStart(void)
  * Rolls whether the care pet is in its area: a percent from
  * gNpcPresenceRates by the time of day (morning first) and the season.
  */
-s32 Npc_RollPresence(void)
+s32 Pet_RollPresence(void)
 {
     u8 rate;
     u8 season;
@@ -2272,7 +2218,7 @@ s16 Poogie_JoyFrames(void)
 {
     Player *pl = &gPlayers[gScene.localPlayer];
 
-    if (pl->motionId[0] == 0x26B) { /* the petting has ended */
+    if (pl->motionId[0] == PL_MOT_PET_END) {
         return 0;
     }
     switch ((u8)Pet_AreaKind()) {
@@ -2291,7 +2237,7 @@ u8 Pet_AreaKind(void)
     u8 kind;
     u16 area = gScene.area;
 
-    if (area == AREA_HUB_0x83) {
+    if (area == AREA_ONLINE_VILLAGE) {
         kind = PET_AREA_CARE;
     } else if (area == AREA_HUB_0x57 || area == AREA_HOUSE) {
         kind = PET_AREA_HOUSE;

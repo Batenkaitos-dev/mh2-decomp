@@ -15,15 +15,17 @@
 #include "lobby_vobj.h"
 #include "m2c_macros.h"
 #include "lobby_globals.h"
+#include "scene.h"
+#include "gallery_board.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "gallery_targets.h"
+#include "rand.h"
+#include "shooting_gallery.h"
+#include "vec_math.h"
 /* Built at optimisation level 4: the compiler gives these functions the
  * game's code only at this level. */
 #pragma optimization_level 4
-void DrawSlot_Free(s32);
-
-void GalleryBoard_Init(StageObj *o);
-void GalleryBoard_Run(StageObj *o);
-void GalleryBoard_End(StageObj *o);
-void GalleryBoard_Free(StageObj *o);
 
 /* The update of the board and its bursts: runs the object's state. */
 void GalleryBoard_Update(StageObj *obj)
@@ -47,17 +49,8 @@ void GalleryBoard_Update(StageObj *obj)
     }
 }
 
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-u16 Rand_Next(s32 stream);
-f32 Rand_Unit(void);
-u16 Math_Heading(f32 x, f32 z, f32 a, f32 b);
-void GalleryBoard_Draw(DrawSlot *);
 extern f32 gCamMatrix[];
 extern Vec3f gGalleryRowBases[];
-extern s8 gGalleryBurstDelaysA[];
-extern s8 gGalleryBurstDelaysB[];
 
 /* The init state. The board lays its 15 targets out in 3 rows of 5, the
  * rows' first spots from gGalleryRowBases and a step of 100 along the
@@ -164,7 +157,6 @@ void GalleryBoard_Init(StageObj *obj)
     }
 }
 
-u16 Math_Heading(f32 x, f32 z, f32 a, f32 b);
 /* Starts the board's next round: its targets flipped down and facing away
  * again, none downed, to flip up and stand for the course's frames. */
 void GalleryBoard_Reset(StageObj *obj)
@@ -183,12 +175,6 @@ void GalleryBoard_Reset(StageObj *obj)
         board->fallFrames[i] = 0;
     }
 }
-
-void Vec_Copy(f32 *dst, f32 *src);
-void Vec_Normalize(f32 *v);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-s32 Gallery_BeforeShooting(void);
-extern f32 gGalleryTargetSizes[];
 
 /* The run state. The board ends once the gallery leaves its shooting steps
  * (Gallery_BeforeShooting) and starts its next round once cleared. Each
@@ -243,7 +229,7 @@ void GalleryBoard_Run(StageObj *obj)
                 }
                 Vec_Copy(board->parts[i]->pos, &board->spots[board->spotOrder[i]].x);
                 board->parts[i]->pos[1] += gGalleryTargetSizes[gGalleryTargetKinds[kinds[i]].size] / 2.0f;
-                OT_AddByDepth(gDrawOt32, board->parts[i], 0x40, 0);
+                OT_AddByDepth(gDrawOt32, board->parts[i], 64, 0);
             }
         }
         switch (obj->var0) {
@@ -289,7 +275,7 @@ void GalleryBoard_Run(StageObj *obj)
         obj->pos[1] += 5.0f * camDir.y;
         obj->pos[2] += 5.0f * camDir.z;
         Vec_Copy(obj->node->pos, &obj->pos[0]);
-        OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+        OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
         break;
     case GALLERY_BURST_STILL1:
     case GALLERY_BURST_STILL2:
@@ -299,7 +285,7 @@ void GalleryBoard_Run(StageObj *obj)
                 obj->state = LOBBY_OBJ_END;
             } else {
                 Vec_Copy(obj->node->pos, &obj->pos[0]);
-                OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
             }
         }
         break;
@@ -312,7 +298,7 @@ void GalleryBoard_Run(StageObj *obj)
             } else {
                 board->facing[15] += board->turnStep;
                 Vec_Copy(obj->node->pos, &obj->pos[0]);
-                OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
             }
         }
         break;

@@ -18,10 +18,18 @@
  *   (NoticeBanner_*, TextNotice_Draw).
  * - Three kinds of object of the object pool (Obj), each run by a task function
  *   through its four states: the area props (kind 6, AreaProp_*), the sound
- *   objects (kind 0xC, SoundObj_*: a positioned sound, replayed or following a
- *   river) and the area atmosphere objects (kind 0xD, AreaAtmos_*: scrolled
- *   overlays drawn around the camera, whose layer tables are with the season
- *   banner's code).
+ *   objects (OBJ_KIND_SOUND, SoundObj_*: a positioned sound, replayed or following a
+ *   river) and the area atmosphere objects (OBJ_KIND_AREA_ATMOS, AreaAtmos_*: scrolled
+ *   overlays drawn around the camera).
+ * - At the end of the code, the atmosphere layers' helpers: the camera's line to the sky
+ *   (Vec_FromCamera, and Area_LineBlocked against the spheres of gAreaBlockSpheres;
+ *   Area_BoundaryZone for the two desert areas whose sky changes with the player's place),
+ *   and the layers' scroll (AtmosScroll_Update), alpha and speed (AreaAtmos_LayerAlpha,
+ *   AreaAtmos_LayerSpeed). Their tables end the file's data.
+ *
+ * One file: the data interleaves through it (the tables of the notices, the props, the sound
+ * objects and the atmosphere objects lie among one another and among the tables other files
+ * read), so no cut inside it keeps each side's data together.
  * - The data, much of it read by other files: the text tables of the quest, menu
  *   and notice messages, the areas' model animation and prop lists, the effect
  *   models by area (gAreaFxModels), the areas' object set-ups (gAreaInfo), fog and
@@ -45,452 +53,423 @@
 #include "scene.h"
 #include "sprite.h"
 #include "window.h"
+#include "light.h"
+#include "sound.h"
+#include "text.h"
+#include "camera.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "font.h"
+#include "gs_setup.h"
+#include "lobby_state.h"
+#include "lobby_world.h"
+#include "main.h"
+#include "rand.h"
+#include "vec_math.h"
+#include "gm_em.h"
+
+/* gm_sub's default stage data, which gDefaultStageHeader points to (its
+ * fields hold a stage file's offsets, relocated on load: they stay u32) */
+extern QuestInfo gDefaultQuestInfo[1];
+extern StartArea gDefaultStartAreas[4];
+extern ItemStack gDefaultSupply[4];
+extern DefaultStageEntry *gDefaultEmSpawns[4];
+extern DefaultStageEntry gDefaultStageEntry[2];
+extern u32 gDefaultStageInfo[2];
 
 /* The game's code of this file was built at optimization level 4; the colour helpers and
  * Sky_DrawGradient at level 3. */
 #pragma optimization_level 4
 
 /* prototypes */
-void Camera_RestoreFov(void);
-void Camera_SetFov(f32 fov);
-s32 Model_Draw(u32 model, s32 flags);
-void Obj_Free(Obj *p);
-void Draw_ApplyStates(u32 a);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void DrawSlot_Free(s32 id);
-void DrawSlotB_Free(s32 id);
-void NoticeBanner_Start(Obj *o);
-u32 NoticeBanner_Run(Obj *o);
-void NoticeBanner_End(Obj *o);
-void NoticeBanner_Free(Obj *o);
-void AreaProp_Start(Obj *o);
-void AreaProp_Run(Obj *o);
-void AreaProp_End(Obj *o);
-void AreaProp_Free(Obj *o);
-void SoundObj_Init(Obj *o);
-void SoundObj_Run(Obj *o);
-void SoundObj_End(Obj *o);
-void SoundObj_Free(Obj *o);
-void AreaAtmos_Setup(Obj *o);
-void AreaAtmos_Update(Obj *o);
-void AreaAtmos_End(Obj *o);
-void AreaAtmos_Free(Obj *o);
-s32 Gs_SetState(u8 a, u32 b);
 extern u8 gSkyDayTable[];
 extern u8 gSkyDayTableHubs[];
 extern u8 gSkyDayTableHouses[];
 extern f32 gCamDir[3];    /* the camera direction */
-f32 Math_Atan2(f32 y, f32 x);
-s32 Prim_FillGradRect(PrimGradRect *r);
 /* end of prototypes */
 
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-
-void AreaAnim_TranslateSpin(void *m, struct AnimSpin *arg, u8 flags);
-void AreaAnim_UvScroll(struct UvScroll *arg, u8 flags);
-void AreaAnim_UvWave(struct UvWave *arg);
-void AreaAnim_TranslateRotate(void *m, struct AnimRot *arg, u8 flags);
-void AreaAnim_Translate(void *m, f32 *pos);
-void AreaAnim_ScaleTranslateRotate(void *m, struct AnimRotScale *arg, u8 flags);
-void AreaAnim_TranslateXZ(void *m, f32 *p);
-void AreaAnim_UvScrollTranslate(void *m, struct AnimScrollPos *arg, u8 flags);
-void AreaAnim_UvScrollSpin(void *m, struct AnimScrollSpin *arg, u8 flags);
-void AreaAnim_UvScrollRotate(void *m, struct AnimScrollRot *arg, u8 flags);
-void AreaAnim_SpinScroll(void *m, struct AnimSpin2 *arg);
-void AreaAnim_UvStep(struct UvStep *arg);
-void Mtx_Identity(f32 *m);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_RotateZ(f32 *m, f32 a);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Vec_Copy(f32 *dst, f32 *src);
-f32 Math_Sin(f32 a);
 u8 Village_FacilityLevel(s32 k);
 
 /* The file's read-only data. */
 #pragma rodata on
-char D_00490B70[0x10] = {
+char gDefaultStageHeader_12_0[16] = {
 #include "sub_main/00490B70.inc"
 };
-char D_00490B80[0x20] = {
+char gDefaultStageHeader_12_1[32] = {
 #include "sub_main/00490B80.inc"
 };
-char D_00490BA0[0x10] = {
+char gDefaultStageHeader_12_2[16] = {
 #include "sub_main/00490BA0.inc"
 };
-char D_00490BB0[0x10] = {
+char gDefaultStageHeader_12_3[16] = {
 #include "sub_main/00490BB0.inc"
 };
-char D_00490BC0[0x10] = {
+char gDefaultStageHeader_12_4[16] = {
 #include "sub_main/00490BC0.inc"
 };
 #pragma explicit_zero_data on
-char gEmClassNames_0[0x10] = {
+char gEmClassNames_0[16] = {
 #include "sub_main/00490BD0.inc"
 };
 #pragma explicit_zero_data reset
-char D_00490BE0[0x20] = {
+char gReturn20sTownText_0[32] = {
 #include "sub_main/00490BE0.inc"
 };
-char D_00490C00[0x20] = {
+char gReturn20sTownText_1[32] = {
 #include "sub_main/00490C00.inc"
 };
-char D_00490C20[0x20] = {
+char gReturn1mTownText_0[32] = {
 #include "sub_main/00490C20.inc"
 };
-char D_00490C40[0x20] = {
+char gReturn1mTownText_1[32] = {
 #include "sub_main/00490C40.inc"
 };
-char D_00490C60[0x20] = {
+char gQuestClearText_0[32] = {
 #include "sub_main/00490C60.inc"
 };
-char D_00490C80[0x20] = {
+char gQuestClearText_1[32] = {
 #include "sub_main/00490C80.inc"
 };
-char D_00490CA0[0x18] = {
+char gTimeLeftMinFmt_0[24] = {
 #include "sub_main/00490CA0.inc"
 };
-char D_00490CB8[15] = {
+char gTimeLeftMinFmt_1[15] = {
 #include "sub_main/00490CB8.inc"
 };
-char D_00490CD0[0x20] = {
+char gQuestNoticeTexts_0[32] = {
 #include "sub_main/00490CD0.inc"
 };
-char D_00490CF0[0x18] = {
+char gQuestNoticeTexts_1[24] = {
 #include "sub_main/00490CF0.inc"
 };
-char D_00490D08[13] = {
+char gQuestNoticeTexts_2[13] = {
 #include "sub_main/00490D08.inc"
 };
-char D_00490D20[0x20] = {
+char gQuestNoticeTexts_3[32] = {
 #include "sub_main/00490D20.inc"
 };
-char D_00490D40[0x20] = {
+char gQuestNoticeTexts_4[32] = {
 #include "sub_main/00490D40.inc"
 };
-char D_00490D60[0x20] = {
+char gQuestNoticeTexts_5[32] = {
 #include "sub_main/00490D60.inc"
 };
-char D_00490D80[0x20] = {
+char gQuestNoticeTexts_6[32] = {
 #include "sub_main/00490D80.inc"
 };
-char D_00490DA0[0x20] = {
+char gQuestNoticeTexts_7[32] = {
 #include "sub_main/00490DA0.inc"
 };
-char D_00490DC0[0x20] = {
+char gSubBSupplyText_0[32] = {
 #include "sub_main/00490DC0.inc"
 };
-char D_00490DE0[0x20] = {
+char gSubBSupplyText_1[32] = {
 #include "sub_main/00490DE0.inc"
 };
-char D_00490E00[0x20] = {
+char gSubBSupplyText_2[32] = {
 #include "sub_main/00490E00.inc"
 };
-char D_00490E20[0x20] = {
+char gSubBSupplyText_3[32] = {
 #include "sub_main/00490E20.inc"
 };
-char D_00490E40[0x30] = {
+char gMustOrderAllText_0[48] = {
 #include "sub_main/00490E40.inc"
 };
-char D_00490E70[0x30] = {
+char gMustOrderAllText_1[48] = {
 #include "sub_main/00490E70.inc"
 };
-char D_00490EA0[0x20] = {
+char gReturn10sTownText_0[32] = {
 #include "sub_main/00490EA0.inc"
 };
-char D_00490EC0[0x20] = {
+char gReturn10sTownText_1[32] = {
 #include "sub_main/00490EC0.inc"
 };
-char D_00490EE0[0x10] = {
+char D_00490EE0[16] = {
 #include "sub_main/00490EE0.inc"
 };
-char D_00490EF0[0x30] = {
+char gDrillScoreTexts_1[48] = {
 #include "sub_main/00490EF0.inc"
 };
-char D_00490F20[0x20] = {
+char gDrillScoreTexts_2[32] = {
 #include "sub_main/00490F20.inc"
 };
-char D_00490F40[0x20] = {
+char gDrillScoreTexts_3[32] = {
 #include "sub_main/00490F40.inc"
 };
-char D_00490F60[0x30] = {
+char gDrillScoreTexts_11[48] = {
 #include "sub_main/00490F60.inc"
 };
-char D_00490F90[0x20] = {
+char gDrillScoreTexts_13[32] = {
 #include "sub_main/00490F90.inc"
 };
-char D_00490FB0[0x20] = {
+char gDrillScoreTexts_14[32] = {
 #include "sub_main/00490FB0.inc"
 };
-char D_00490FD0[0x20] = {
+char gDrillScoreTexts_15[32] = {
 #include "sub_main/00490FD0.inc"
 };
-char D_00490FF0[0x20] = {
+char gElderFledText_0[32] = {
 #include "sub_main/00490FF0.inc"
 };
-char D_00491010[0x8] = {
+char gEmClassNames_1[8] = {
 #include "sub_main/00491010.inc"
 };
-char D_00491018[0x8] = {
+char gEmClassNames_2[8] = {
 #include "sub_main/00491018.inc"
 };
-char D_00491020[0x8] = {
+char gEmClassNames_3[8] = {
 #include "sub_main/00491020.inc"
 };
-char D_00491028[0x8] = {
+char gEmClassNames_4[8] = {
 #include "sub_main/00491028.inc"
 };
-char D_00491030[0x8] = {
+char gEmClassNames_5[8] = {
 #include "sub_main/00491030.inc"
 };
-char D_00491038[0x8] = {
+char gEmClassNames_6[8] = {
 #include "sub_main/00491038.inc"
 };
-char D_00491040[0x8] = {
+char gEmClassNames_7[8] = {
 #include "sub_main/00491040.inc"
 };
-char D_00491048[0x8] = {
+char gEmClassNames_8[8] = {
 #include "sub_main/00491048.inc"
 };
-char D_00491050[0x8] = {
+char gEmClassNames_9[8] = {
 #include "sub_main/00491050.inc"
 };
-char D_00491058[15] = {
+char gMonsterNames_0[15] = {
 #include "sub_main/00491058.inc"
 };
-char D_00491068[0xC] = {
+char gMonsterNames_1[12] = {
 #include "sub_main/00491068.inc"
 };
 char D_00491078[13] = {
 #include "sub_main/00491078.inc"
 };
-char D_00491088[0x8] = {
+char gMonsterNames_3[8] = {
 #include "sub_main/00491088.inc"
 };
-char D_00491090[0x8] = {
+char gMonsterNames_4[8] = {
 #include "sub_main/00491090.inc"
 };
-char D_00491098[13] = {
+char gMonsterNames_5[13] = {
 #include "sub_main/00491098.inc"
 };
-char D_004910A8[13] = {
+char gMonsterNames_6[13] = {
 #include "sub_main/004910A8.inc"
 };
 char D_004910B8[15] = {
 #include "sub_main/004910B8.inc"
 };
-char D_004910C8[13] = {
+char gMonsterNames_8[13] = {
 #include "sub_main/004910C8.inc"
 };
-char D_004910D8[0xC] = {
+char gMonsterNames_9[12] = {
 #include "sub_main/004910D8.inc"
 };
-char D_004910E8[0x8] = {
+char gMonsterNames_10[8] = {
 #include "sub_main/004910E8.inc"
 };
-char D_004910F0[0x10] = {
+char gMonsterNames_11[16] = {
 #include "sub_main/004910F0.inc"
 };
-char D_00491100[0x10] = {
+char gMonsterNames_12[16] = {
 #include "sub_main/00491100.inc"
 };
-char D_00491110[0x10] = {
+char gMonsterNames_13[16] = {
 #include "sub_main/00491110.inc"
 };
-char D_00491120[0x10] = {
+char gMonsterNames_14[16] = {
 #include "sub_main/00491120.inc"
 };
-char D_00491130[0x10] = {
+char gMonsterNames_15[16] = {
 #include "sub_main/00491130.inc"
 };
-char D_00491140[0x10] = {
+char D_00491140[16] = {
 #include "sub_main/00491140.inc"
 };
-char D_00491150[0x10] = {
+char gMonsterNames_17[16] = {
 #include "sub_main/00491150.inc"
 };
-char D_00491160[0x10] = {
+char gMonsterNames_18[16] = {
 #include "sub_main/00491160.inc"
 };
-char D_00491170[0x10] = {
+char gMonsterNames_19[16] = {
 #include "sub_main/00491170.inc"
 };
-char D_00491180[0x10] = {
+char gMonsterNames_20[16] = {
 #include "sub_main/00491180.inc"
 };
-char D_00491190[0x10] = {
+char gMonsterNames_21[16] = {
 #include "sub_main/00491190.inc"
 };
-char D_004911A0[0x10] = {
+char gMonsterNames_22[16] = {
 #include "sub_main/004911A0.inc"
 };
-char D_004911B0[0x10] = {
+char gMonsterNames_23[16] = {
 #include "sub_main/004911B0.inc"
 };
-char D_004911C0[0x10] = {
+char gMonsterNames_24[16] = {
 #include "sub_main/004911C0.inc"
 };
-char D_004911D0[0x10] = {
+char gMonsterNames_25[16] = {
 #include "sub_main/004911D0.inc"
 };
-char D_004911E0[0x10] = {
+char gMonsterNames_26[16] = {
 #include "sub_main/004911E0.inc"
 };
-char D_004911F0[0x10] = {
+char gMonsterNames_27[16] = {
 #include "sub_main/004911F0.inc"
 };
-char D_00491200[0x10] = {
+char gMonsterNames_28[16] = {
 #include "sub_main/00491200.inc"
 };
-char D_00491210[0x8] = {
+char gMonsterNames_29[8] = {
 #include "sub_main/00491210.inc"
 };
-char D_00491218[0xC] = {
+char gMonsterNames_30[12] = {
 #include "sub_main/00491218.inc"
 };
-char D_00491228[13] = {
+char gMonsterNames_31[13] = {
 #include "sub_main/00491228.inc"
 };
-char D_00491238[0x8] = {
+char gMonsterNames_32[8] = {
 #include "sub_main/00491238.inc"
 };
-char D_00491240[0x8] = {
+char gMonsterNames_33[8] = {
 #include "sub_main/00491240.inc"
 };
-char D_00491248[0xC] = {
+char gMonsterNames_34[12] = {
 #include "sub_main/00491248.inc"
 };
-char D_00491260[0x20] = {
+char D_00491260[32] = {
 #include "sub_main/00491260.inc"
 };
-char D_00491280[0x20] = {
+char gMonsterNames_38[32] = {
 #include "sub_main/00491280.inc"
 };
-char D_004912A0[0x18] = {
+char gMonsterNames_39[24] = {
 #include "sub_main/004912A0.inc"
 };
-char D_004912B8[15] = {
+char gMonsterNames_40[15] = {
 #include "sub_main/004912B8.inc"
 };
-char D_004912D0[0x20] = {
+char D_004912D0[32] = {
 #include "sub_main/004912D0.inc"
 };
-char D_004912F0[0x20] = {
+char gMonsterNames_43[32] = {
 #include "sub_main/004912F0.inc"
 };
-char D_00491310[0x20] = {
+char gMonsterNames_44[32] = {
 #include "sub_main/00491310.inc"
 };
-char D_00491330[0x20] = {
+char gMonsterNames_45[32] = {
 #include "sub_main/00491330.inc"
 };
-char D_00491350[0x20] = {
+char gMonsterNames_46[32] = {
 #include "sub_main/00491350.inc"
 };
-char D_00491370[0x20] = {
+char gMonsterNames_47[32] = {
 #include "sub_main/00491370.inc"
 };
-char D_00491390[0x18] = {
+char gMonsterNames_48[24] = {
 #include "sub_main/00491390.inc"
 };
-char D_004913A8[13] = {
+char gMonsterNames_51[13] = {
 #include "sub_main/004913A8.inc"
 };
-char D_004913B8[0xC] = {
+char gMonsterNames_52[12] = {
 #include "sub_main/004913B8.inc"
 };
-char D_004913C8[0xC] = {
+char gMonsterNames_53[12] = {
 #include "sub_main/004913C8.inc"
 };
 char D_004913D8[15] = {
 #include "sub_main/004913D8.inc"
 };
-char D_004913E8[15] = {
+char gMonsterNames_55[15] = {
 #include "sub_main/004913E8.inc"
 };
-char D_004913F8[0xC] = {
+char gMonsterNames_56[12] = {
 #include "sub_main/004913F8.inc"
 };
-char D_00491408[13] = {
+char gMonsterNames_57[13] = {
 #include "sub_main/00491408.inc"
 };
-char D_00491418[0xC] = {
+char D_00491418[12] = {
 #include "sub_main/00491418.inc"
 };
-char D_00491428[0xC] = {
+char gMonsterNames_59[12] = {
 #include "sub_main/00491428.inc"
 };
-char D_00491438[0xC] = {
+char gMonsterNames_61[12] = {
 #include "sub_main/00491438.inc"
 };
-char D_00491448[0x8] = {
+char gMonsterNames_62[8] = {
 #include "sub_main/00491448.inc"
 };
-char D_00491450[0x10] = {
+char gMonsterNames_63[16] = {
 #include "sub_main/00491450.inc"
 };
-char D_00491460[0x20] = {
+char gMonsterNames_64[32] = {
 #include "sub_main/00491460.inc"
 };
-char D_00491480[0x18] = {
+char gMonsterNames_65[24] = {
 #include "sub_main/00491480.inc"
 };
-char D_00491498[0xC] = {
+char gMonsterNames_66[12] = {
 #include "sub_main/00491498.inc"
 };
-char D_004914B0[0x18] = {
+char gMonsterNames_67[24] = {
 #include "sub_main/004914B0.inc"
 };
-char D_004914C8[13] = {
+char gMonsterNames_68[13] = {
 #include "sub_main/004914C8.inc"
 };
-char D_004914D8[0xC] = {
+char gMonsterNames_69[12] = {
 #include "sub_main/004914D8.inc"
 };
-char D_004914E8[0x8] = {
+char gMonsterNames_70[8] = {
 #include "sub_main/004914E8.inc"
 };
-char D_004914F0[0x10] = {
+char gMonsterNames_73[16] = {
 #include "sub_main/004914F0.inc"
 };
-char D_00491500[0x10] = {
+char D_00491500[16] = {
 #include "sub_main/00491500.inc"
 };
-char D_00491510[0x8] = {
+char D_00491510[8] = {
 #include "sub_main/00491510.inc"
 };
-char D_00491518[0xC] = {
+char D_00491518[12] = {
 #include "sub_main/00491518.inc"
 };
 char D_00491528[13] = {
 #include "sub_main/00491528.inc"
 };
-char D_00491538[0xC] = {
+char D_00491538[12] = {
 #include "sub_main/00491538.inc"
 };
-char D_00491548[0xC] = {
+char D_00491548[12] = {
 #include "sub_main/00491548.inc"
 };
-char D_00491558[0xC] = {
+char D_00491558[12] = {
 #include "sub_main/00491558.inc"
 };
-char D_00491568[13] = {
+char gFieldMenuItemsOnline_8[13] = {
 #include "sub_main/00491568.inc"
 };
-char D_00491578[0xC] = {
+char D_00491578[12] = {
 #include "sub_main/00491578.inc"
 };
-char D_00491588[0xC] = {
+char D_00491588[12] = {
 #include "sub_main/00491588.inc"
 };
-char D_00491598[0xC] = {
+char D_00491598[12] = {
 #include "sub_main/00491598.inc"
 };
-char D_004915A8[0xC] = {
+char D_004915A8[12] = {
 #include "sub_main/004915A8.inc"
 };
 char D_004915B8[15] = {
@@ -499,733 +478,733 @@ char D_004915B8[15] = {
 char D_004915C8[13] = {
 #include "sub_main/004915C8.inc"
 };
-char D_004915D8[13] = {
+char gFieldMenuItemsOffline_36[13] = {
 #include "sub_main/004915D8.inc"
 };
-char D_004915E8[0xC] = {
+char gFieldMenuItemsOffline_43[12] = {
 #include "sub_main/004915E8.inc"
 };
-char D_004915F8[0x8] = {
+char gPouchMenuPanel2_6_0[8] = {
 #include "sub_main/004915F8.inc"
 };
-char D_00491600[0x8] = {
+char gPouchMenuPanel2_6_1[8] = {
 #include "sub_main/00491600.inc"
 };
-char D_00491608[0x8] = {
+char gDeliveryPanel_7_0[8] = {
 #include "sub_main/00491608.inc"
 };
-char D_00491610[0x10] = {
+char D_00491610[16] = {
 #include "sub_main/00491610.inc"
 };
-char D_00491620[0x20] = {
+char D_00491620[32] = {
 #include "sub_main/00491620.inc"
 };
-char D_00491640[0x20] = {
+char gYesNoTexts_1[32] = {
 #include "sub_main/00491640.inc"
 };
-char D_00491660[0x8] = {
+char D_00491660[8] = {
 #include "sub_main/00491660.inc"
 };
-char D_00491668[0x8] = {
+char D_00491668[8] = {
 #include "sub_main/00491668.inc"
 };
-char D_00491670[0x10] = {
+char D_00491670[16] = {
 #include "sub_main/00491670.inc"
 };
-char D_00491680[0x10] = {
+char gItemActionLabels_4[16] = {
 #include "sub_main/00491680.inc"
 };
-char D_00491690[0x10] = {
+char gItemActionLabels_5[16] = {
 #include "sub_main/00491690.inc"
 };
-char D_004916A0[0x10] = {
+char gItemActionLabels_6[16] = {
 #include "sub_main/004916A0.inc"
 };
-char D_004916B0[0x10] = {
+char D_004916B0[16] = {
 #include "sub_main/004916B0.inc"
 };
-char D_004916C0[0x10] = {
+char D_004916C0[16] = {
 #include "sub_main/004916C0.inc"
 };
-char D_004916D0[0x10] = {
+char D_004916D0[16] = {
 #include "sub_main/004916D0.inc"
 };
-char D_004916E0[0x10] = {
+char gStatusMenuColors_1_2[16] = {
 #include "sub_main/004916E0.inc"
 };
-char D_004916F0[0x20] = {
+char gStatusMenuColors_1_3[32] = {
 #include "sub_main/004916F0.inc"
 };
-char D_00491710[0x18] = {
+char gStatusMenuColors_1_4[24] = {
 #include "sub_main/00491710.inc"
 };
-char D_00491728[0xC] = {
+char D_00491728[12] = {
 #include "sub_main/00491728.inc"
 };
-char D_00491740[0x18] = {
+char D_00491740[24] = {
 #include "sub_main/00491740.inc"
 };
-char D_00491758[0xC] = {
+char gInfoMenuLabels_0[12] = {
 #include "sub_main/00491758.inc"
 };
-char D_00491768[13] = {
+char gInfoMenuLabels_3[13] = {
 #include "sub_main/00491768.inc"
 };
-char D_00491780[0x20] = {
+char gCockpitToggleTexts_0[32] = {
 #include "sub_main/00491780.inc"
 };
-char D_004917A0[0x10] = {
+char gCockpitToggleTexts_1[16] = {
 #include "sub_main/004917A0.inc"
 };
-char D_004917B0[0x20] = {
+char gQuestStatusTitle_0[32] = {
 #include "sub_main/004917B0.inc"
 };
-char D_004917D0[0x20] = {
+char gQuestStatusTitle_1[32] = {
 #include "sub_main/004917D0.inc"
 };
-char D_004917F0[0x30] = {
+char gQuestMenuRecordTitles_0[48] = {
 #include "sub_main/004917F0.inc"
 };
-char D_00491820[0x30] = {
+char gQuestMenuRecordTitles_1[48] = {
 #include "sub_main/00491820.inc"
 };
-char D_00491850[0x30] = {
+char gQuestMenuTitles_0[48] = {
 #include "sub_main/00491850.inc"
 };
-char D_00491880[0x28] = {
+char gQuestMenuTitles_1[40] = {
 #include "sub_main/00491880.inc"
 };
-char D_004918A8[0x8] = {
+char gQuestMenuStatusTexts_0[8] = {
 #include "sub_main/004918A8.inc"
 };
-char D_004918B0[0x10] = {
+char gQuestMenuStatusTexts_1[16] = {
 #include "sub_main/004918B0.inc"
 };
-char D_004918C0[0x10] = {
+char gQuestMenuTargetTexts_0[16] = {
 #include "sub_main/004918C0.inc"
 };
-char D_004918D0[0x10] = {
+char gQuestMenuTargetTexts_1[16] = {
 #include "sub_main/004918D0.inc"
 };
-char D_004918E0[0x10] = {
+char gDojoNoRecordText_0[16] = {
 #include "sub_main/004918E0.inc"
 };
-char D_004918F0[0x10] = {
+char gDojoNoRecordText_1[16] = {
 #include "sub_main/004918F0.inc"
 };
-char D_00491900[0x8] = {
+char D_00491900[8] = {
 #include "sub_main/00491900.inc"
 };
-char D_00491908[0xC] = {
+char gQuestInfoFormats_1[12] = {
 #include "sub_main/00491908.inc"
 };
-char D_00491918[0xC] = {
+char gQuestInfoFormats_2[12] = {
 #include "sub_main/00491918.inc"
 };
-char D_00491930[0x20] = {
+char gQuestInfoFormats_3[32] = {
 #include "sub_main/00491930.inc"
 };
-char D_00491950[0x20] = {
+char D_00491950[32] = {
 #include "sub_main/00491950.inc"
 };
-char D_00491970[0x18] = {
+char gQuestInfoFormats_5[24] = {
 #include "sub_main/00491970.inc"
 };
 char D_00491988[15] = {
 #include "sub_main/00491988.inc"
 };
-char D_00491998[0xC] = {
+char gQuestMenuItemLists_16[12] = {
 #include "sub_main/00491998.inc"
 };
-char D_004919B0[0x18] = {
+char gQuestMenuItemLists_21[24] = {
 #include "sub_main/004919B0.inc"
 };
-char D_004919C8[0xC] = {
+char D_004919C8[12] = {
 #include "sub_main/004919C8.inc"
 };
-char D_004919E0[0x20] = {
+char gQuestMenuItemLists_25[32] = {
 #include "sub_main/004919E0.inc"
 };
-char D_00491A00[0x18] = {
+char gQuestMenuItemLists_28[24] = {
 #include "sub_main/00491A00.inc"
 };
-char D_00491A18[0xC] = {
+char D_00491A18[12] = {
 #include "sub_main/00491A18.inc"
 };
-char D_00491A28[0xC] = {
+char D_00491A28[12] = {
 #include "sub_main/00491A28.inc"
 };
-char D_00491A38[0xC] = {
+char D_00491A38[12] = {
 #include "sub_main/00491A38.inc"
 };
-char D_00491A48[15] = {
+char gQuestMenuItemLists_40[15] = {
 #include "sub_main/00491A48.inc"
 };
-char D_00491A58[15] = {
+char gQuestMenuItemLists_41[15] = {
 #include "sub_main/00491A58.inc"
 };
-char D_00491A68[15] = {
+char gQuestMenuItemLists_42[15] = {
 #include "sub_main/00491A68.inc"
 };
-char D_00491A78[0xC] = {
+char D_00491A78[12] = {
 #include "sub_main/00491A78.inc"
 };
-char D_00491A88[0xC] = {
+char D_00491A88[12] = {
 #include "sub_main/00491A88.inc"
 };
-char D_00491A98[0xC] = {
+char D_00491A98[12] = {
 #include "sub_main/00491A98.inc"
 };
-char D_00491AA8[0xC] = {
+char D_00491AA8[12] = {
 #include "sub_main/00491AA8.inc"
 };
-char D_00491AB8[0xC] = {
+char D_00491AB8[12] = {
 #include "sub_main/00491AB8.inc"
 };
-char D_00491AD0[0x20] = {
+char gQuestMenuItemLists_72[32] = {
 #include "sub_main/00491AD0.inc"
 };
-char D_00491AF0[0x18] = {
+char gQuestMenuItemLists_73[24] = {
 #include "sub_main/00491AF0.inc"
 };
-char D_00491B08[13] = {
+char gQuestMenuItemLists_74[13] = {
 #include "sub_main/00491B08.inc"
 };
-char D_00491B18[13] = {
+char gQuestMenuItemLists_75[13] = {
 #include "sub_main/00491B18.inc"
 };
-char D_00491B28[13] = {
+char gQuestMenuItemLists_76[13] = {
 #include "sub_main/00491B28.inc"
 };
-char D_00491B38[15] = {
+char gQuestMenuItemLists_90[15] = {
 #include "sub_main/00491B38.inc"
 };
-char D_00491B48[15] = {
+char gQuestMenuItemLists_91[15] = {
 #include "sub_main/00491B48.inc"
 };
-char D_00491B60[0x20] = {
+char gQuestMenuItemLists_105[32] = {
 #include "sub_main/00491B60.inc"
 };
-char D_00491B80[0x18] = {
+char gQuestMenuItemLists_140[24] = {
 #include "sub_main/00491B80.inc"
 };
-char D_00491B98[0xC] = {
+char gQuestMenuItemLists_159[12] = {
 #include "sub_main/00491B98.inc"
 };
-char D_00491BB0[0x60] = {
+char gQuestTargetLabels_0[96] = {
 #include "sub_main/00491BB0.inc"
 };
-char D_00491C10[0x20] = {
+char gQuestTargetLabels_2[32] = {
 #include "sub_main/00491C10.inc"
 };
-char D_00491C30[0x10] = {
+char gChatTypeTexts_0[16] = {
 #include "sub_main/00491C30.inc"
 };
-char D_00491C40[0x20] = {
+char gCombineSelectFmt_0[32] = {
 #include "sub_main/00491C40.inc"
 };
-char D_00491C60[0x28] = {
+char gCombineInfoLabels_0[40] = {
 #include "sub_main/00491C60.inc"
 };
-char D_00491C88[0x8] = {
+char gCombineInfoLabels_1[8] = {
 #include "sub_main/00491C88.inc"
 };
-char D_00491C90[0x8] = {
+char gCombineRateFmt_0[8] = {
 #include "sub_main/00491C90.inc"
 };
-char D_00491C98[0x8] = {
+char gCombineRateFmt_1[8] = {
 #include "sub_main/00491C98.inc"
 };
-char D_00491CA0[0x10] = {
+char gCombineSelectingText_0[16] = {
 #include "sub_main/00491CA0.inc"
 };
-char D_00491CB0[0x30] = {
+char gCombineSelectingText_1[48] = {
 #include "sub_main/00491CB0.inc"
 };
-char D_00491CE0[0x28] = {
+char gCombineFailLabels_0[40] = {
 #include "sub_main/00491CE0.inc"
 };
-char D_00491D08[0xC] = {
+char gCombine2Text_0[12] = {
 #include "sub_main/00491D08.inc"
 };
-char D_00491D18[0xC] = {
+char gCombine2Text_1[12] = {
 #include "sub_main/00491D18.inc"
 };
-char D_00491D28[0xC] = {
+char D_00491D28[12] = {
 #include "sub_main/00491D28.inc"
 };
-char D_00491D38[0xC] = {
+char D_00491D38[12] = {
 #include "sub_main/00491D38.inc"
 };
-char D_00491D48[0xC] = {
+char gCombine3MaterialLabels_2[12] = {
 #include "sub_main/00491D48.inc"
 };
-char D_00491D58[13] = {
+char gCombineDoText_0[13] = {
 #include "sub_main/00491D58.inc"
 };
-char D_00491D68[0x8] = {
+char D_00491D68[8] = {
 #include "sub_main/00491D68.inc"
 };
-char D_00491D70[0x10] = {
+char gAmmoTensFmt_0[16] = {
 #include "sub_main/00491D70.inc"
 };
-char D_00491D80[0x20] = {
+char gItemFullText_0[32] = {
 #include "sub_main/00491D80.inc"
 };
-char D_00491DA0[0x20] = {
+char gItemFullText_1[32] = {
 #include "sub_main/00491DA0.inc"
 };
-char D_00491DC0[0x18] = {
+char gFieldMenuTitle_0[24] = {
 #include "sub_main/00491DC0.inc"
 };
-char D_00491DD8[15] = {
+char gPausedText_0[15] = {
 #include "sub_main/00491DD8.inc"
 };
-char D_00491DF0[0x18] = {
+char gPhraseEditFmt_0[24] = {
 #include "sub_main/00491DF0.inc"
 };
-char D_00491E08[13] = {
+char gChatMenuPanel_7_0[13] = {
 #include "sub_main/00491E08.inc"
 };
-char D_00491E20[0x20] = {
+char gSupplySelectText_0[32] = {
 #include "sub_main/00491E20.inc"
 };
-char D_00491E40[0x20] = {
+char gSupplySelectText_1[32] = {
 #include "sub_main/00491E40.inc"
 };
-char D_00491E60[0x28] = {
+char gSupplyCannotCarryText_0[40] = {
 #include "sub_main/00491E60.inc"
 };
-char D_00491E88[0x8] = {
+char gSupplyCountFmt_0[8] = {
 #include "sub_main/00491E88.inc"
 };
-char D_00491E90[0x20] = {
+char D_00491E90[32] = {
 #include "sub_main/00491E90.inc"
 };
-char D_00491EB0[0x20] = {
+char D_00491EB0[32] = {
 #include "sub_main/00491EB0.inc"
 };
-char D_00491ED0[0x20] = {
+char D_00491ED0[32] = {
 #include "sub_main/00491ED0.inc"
 };
-char D_00491EF0[0x20] = {
+char D_00491EF0[32] = {
 #include "sub_main/00491EF0.inc"
 };
-char D_00491F10[0x20] = {
+char D_00491F10[32] = {
 #include "sub_main/00491F10.inc"
 };
-char D_00491F30[0xC0] = {
+char gSubTargetHelpText_0[192] = {
 #include "sub_main/00491F30.inc"
 };
-char D_00491FF0[16] = {
+char gSubTargetHelpText_1[16] = {
 #include "sub_main/00491FF0.inc"
 };
-char D_00492000[0x90] = {
+char D_00492000[144] = {
 #include "sub_main/00492000.inc"
 };
-char D_00492090[0xD0] = {
+char gQuestMenuHelpTexts_0[208] = {
 #include "sub_main/00492090.inc"
 };
-char D_00492160[0xC8] = {
+char gQuestMenuHelpTexts_1[200] = {
 #include "sub_main/00492160.inc"
 };
-char D_00492228[13] = {
+char gDeliveryMenuTexts_0[13] = {
 #include "sub_main/00492228.inc"
 };
-char D_00492238[0xC] = {
+char gDeliveryMenuTexts_1[12] = {
 #include "sub_main/00492238.inc"
 };
-char D_00492248[0xC] = {
+char gDeliveryMenuTexts_2[12] = {
 #include "sub_main/00492248.inc"
 };
-char D_00492258[0xC] = {
+char gDeliveryMenuTexts_3[12] = {
 #include "sub_main/00492258.inc"
 };
-char D_00492268[0x8] = {
+char gDeliveryDoneText_0[8] = {
 #include "sub_main/00492268.inc"
 };
-char D_00492270[0x20] = {
+char gDeliveryDoneText_1[32] = {
 #include "sub_main/00492270.inc"
 };
-char D_00492290[0xB0] = {
+char gDeliveryHelpText_0[176] = {
 #include "sub_main/00492290.inc"
 };
-char D_00492340[0x28] = {
+char gCombineListFmt_0[40] = {
 #include "sub_main/00492340.inc"
 };
-char D_00492368[0x8] = {
+char gCombineListFmt_1[8] = {
 #include "sub_main/00492368.inc"
 };
-char D_00492370[0x20] = {
+char gItemListLineTexts_0[32] = {
 #include "sub_main/00492370.inc"
 };
-char D_00492390[0x20] = {
+char gItemListLineTexts_1[32] = {
 #include "sub_main/00492390.inc"
 };
-char D_004923B0[0x20] = {
+char gRecipeMaterialsFmt_0[32] = {
 #include "sub_main/004923B0.inc"
 };
-char D_004923D0[0x18] = {
+char gRecipeMaterialsFmt_1[24] = {
 #include "sub_main/004923D0.inc"
 };
-char D_004923E8[15] = {
+char gRecipeSwitchHint_0[15] = {
 #include "sub_main/004923E8.inc"
 };
-char D_004923F8[15] = {
+char gRecipeMaterialFmts_0[15] = {
 #include "sub_main/004923F8.inc"
 };
-char D_00492408[15] = {
+char gRecipeMaterialFmts_1[15] = {
 #include "sub_main/00492408.inc"
 };
-char D_00492418[15] = {
+char gRecipeMaterialFmts_2[15] = {
 #include "sub_main/00492418.inc"
 };
 u32 D_00492428[3] = {
 #include "sub_main/00492428.inc"
 };
-char D_00492438[0xC] = {
+char D_00492438[12] = {
 #include "sub_main/00492438.inc"
 };
-char D_00492448[0x8] = {
+char gRecipeRateLabels_0[8] = {
 #include "sub_main/00492448.inc"
 };
-char D_00492450[0x8] = {
+char gRecipeRateLabels_1[8] = {
 #include "sub_main/00492450.inc"
 };
-char D_00492458[0x8] = {
+char gRecipeRateLabels_2[8] = {
 #include "sub_main/00492458.inc"
 };
-char D_00492460[0x8] = {
+char gRecipeRateLabels_3[8] = {
 #include "sub_main/00492460.inc"
 };
-char D_00492468[0x8] = {
+char gRecipeRateLabels_4[8] = {
 #include "sub_main/00492468.inc"
 };
-char D_00492470[0x8] = {
+char gRecipeRateLabels_5[8] = {
 #include "sub_main/00492470.inc"
 };
-char D_00492478[0x8] = {
+char gRecipeYieldLabels_0[8] = {
 #include "sub_main/00492478.inc"
 };
-char D_00492480[0x8] = {
+char gRecipeYieldLabels_1[8] = {
 #include "sub_main/00492480.inc"
 };
-char D_00492488[0x8] = {
+char D_00492488[8] = {
 #include "sub_main/00492488.inc"
 };
-char D_00492490[0x8] = {
+char gRecipeYieldLabels_4[8] = {
 #include "sub_main/00492490.inc"
 };
-char D_00492498[0x8] = {
+char D_00492498[8] = {
 #include "sub_main/00492498.inc"
 };
-char D_004924A0[0x8] = {
+char gRecipeYieldLabels_6[8] = {
 #include "sub_main/004924A0.inc"
 };
-char D_004924A8[0x8] = {
+char gRecipeYieldLabels_8[8] = {
 #include "sub_main/004924A8.inc"
 };
-char D_004924B0[0x18] = {
+char gMonsterListTitle_0[24] = {
 #include "sub_main/004924B0.inc"
 };
-char D_004924C8[0x8] = {
+char gMonsterListTitle_1[8] = {
 #include "sub_main/004924C8.inc"
 };
-char D_004924D0[0x18] = {
+char gMonsterListTitle_2[24] = {
 #include "sub_main/004924D0.inc"
 };
-char D_004924E8[0x8] = {
+char gMonsterListTitle_3[8] = {
 #include "sub_main/004924E8.inc"
 };
-char D_004924F0[0x10] = {
+char gMonsterNoSizeText_0[16] = {
 #include "sub_main/004924F0.inc"
 };
-char D_00492500[0x20] = {
+char gMonsterNoSizeText_1[32] = {
 #include "sub_main/00492500.inc"
 };
-char D_00492520[0x20] = {
+char gArenaBaitNoBookText_0[32] = {
 #include "sub_main/00492520.inc"
 };
-char D_00492540[0x20] = {
+char gArenaBaitNoBookText_1[32] = {
 #include "sub_main/00492540.inc"
 };
-char D_00492560[0x20] = {
+char gMonsterNoteLabels_0[32] = {
 #include "sub_main/00492560.inc"
 };
-char D_00492580[0x20] = {
+char gMonsterNoteLabels_1[32] = {
 #include "sub_main/00492580.inc"
 };
-char D_004925A0[0x20] = {
+char gArenaBaitHint_0[32] = {
 #include "sub_main/004925A0.inc"
 };
-char D_004925C0[0x20] = {
+char gArenaBaitHint_1[32] = {
 #include "sub_main/004925C0.inc"
 };
-char D_004925E0[0x40] = {
+char gArenaBaitLabels_0[64] = {
 #include "sub_main/004925E0.inc"
 };
-char D_00492620[0x8] = {
+char D_00492620[8] = {
 #include "sub_main/00492620.inc"
 };
-char D_00492628[0x8] = {
+char gMonsterNoteValueFmt_0[8] = {
 #include "sub_main/00492628.inc"
 };
-char D_00492630[0xE0] = {
+char gEmDescTexts_0[224] = {
 #include "sub_main/00492630.inc"
 };
-char D_00492710[0x110] = {
+char gEmDescTexts_1[272] = {
 #include "sub_main/00492710.inc"
 };
-char D_00492820[0x100] = {
+char gEmDescTexts_2[256] = {
 #include "sub_main/00492820.inc"
 };
-char D_00492920[0xD0] = {
+char gEmDescTexts_3[208] = {
 #include "sub_main/00492920.inc"
 };
-char D_004929F0[0xF0] = {
+char gEmDescTexts_4[240] = {
 #include "sub_main/004929F0.inc"
 };
-char D_00492AE0[0xE0] = {
+char gEmDescTexts_5[224] = {
 #include "sub_main/00492AE0.inc"
 };
-char D_00492BC0[0xF0] = {
+char gEmDescTexts_6[240] = {
 #include "sub_main/00492BC0.inc"
 };
-char D_00492CB0[0x110] = {
+char gEmDescTexts_7[272] = {
 #include "sub_main/00492CB0.inc"
 };
-char D_00492DC0[0xF0] = {
+char gEmDescTexts_8[240] = {
 #include "sub_main/00492DC0.inc"
 };
-char D_00492EB0[0xC0] = {
+char gEmDescTexts_9[192] = {
 #include "sub_main/00492EB0.inc"
 };
-char D_00492F70[0xD0] = {
+char gEmDescTexts_10[208] = {
 #include "sub_main/00492F70.inc"
 };
-char D_00493040[0xD0] = {
+char gEmDescTexts_11[208] = {
 #include "sub_main/00493040.inc"
 };
-char D_00493110[0xE0] = {
+char gEmDescTexts_12[224] = {
 #include "sub_main/00493110.inc"
 };
-char D_004931F0[0xE0] = {
+char gEmDescTexts_13[224] = {
 #include "sub_main/004931F0.inc"
 };
-char D_004932D0[0xE0] = {
+char gEmDescTexts_14[224] = {
 #include "sub_main/004932D0.inc"
 };
-char D_004933B0[0xB0] = {
+char gEmDescTexts_15[176] = {
 #include "sub_main/004933B0.inc"
 };
-char D_00493460[0xA0] = {
+char gEmDescTexts_16[160] = {
 #include "sub_main/00493460.inc"
 };
-char D_00493500[0xC0] = {
+char gEmDescTexts_17[192] = {
 #include "sub_main/00493500.inc"
 };
-char D_004935C0[0xA0] = {
+char gEmDescTexts_18[160] = {
 #include "sub_main/004935C0.inc"
 };
-char D_00493660[0xD0] = {
+char gEmDescTexts_19[208] = {
 #include "sub_main/00493660.inc"
 };
-char D_00493730[0x100] = {
+char gEmDescTexts_20[256] = {
 #include "sub_main/00493730.inc"
 };
-char D_00493830[0xE0] = {
+char gEmDescTexts_21[224] = {
 #include "sub_main/00493830.inc"
 };
-char D_00493910[0xE0] = {
+char gEmDescTexts_22[224] = {
 #include "sub_main/00493910.inc"
 };
-char D_004939F0[0xF0] = {
+char gEmDescTexts_23[240] = {
 #include "sub_main/004939F0.inc"
 };
-char D_00493AE0[0x100] = {
+char gEmDescTexts_24[256] = {
 #include "sub_main/00493AE0.inc"
 };
-char D_00493BE0[0xD0] = {
+char gEmDescTexts_25[208] = {
 #include "sub_main/00493BE0.inc"
 };
-char D_00493CB0[0xC0] = {
+char gEmDescTexts_26[192] = {
 #include "sub_main/00493CB0.inc"
 };
-char D_00493D70[0xC0] = {
+char gEmDescTexts_27[192] = {
 #include "sub_main/00493D70.inc"
 };
-char D_00493E30[0xE0] = {
+char gEmDescTexts_28[224] = {
 #include "sub_main/00493E30.inc"
 };
-char D_00493F10[0xC0] = {
+char gEmDescTexts_29[192] = {
 #include "sub_main/00493F10.inc"
 };
-char D_00493FD0[0xC0] = {
+char gEmDescTexts_30[192] = {
 #include "sub_main/00493FD0.inc"
 };
-char D_00494090[0xC0] = {
+char gEmDescTexts_31[192] = {
 #include "sub_main/00494090.inc"
 };
-char D_00494150[0xD0] = {
+char gEmDescTexts_32[208] = {
 #include "sub_main/00494150.inc"
 };
-char D_00494220[0xF0] = {
+char gEmDescTexts_33[240] = {
 #include "sub_main/00494220.inc"
 };
-char D_00494310[0xB0] = {
+char gEmDescTexts_34[176] = {
 #include "sub_main/00494310.inc"
 };
-char D_004943C0[0xF0] = {
+char gEmDescTexts_35[240] = {
 #include "sub_main/004943C0.inc"
 };
-char D_004944B0[0x100] = {
+char gEmDescTexts_36[256] = {
 #include "sub_main/004944B0.inc"
 };
-char D_004945B0[0xF0] = {
+char gEmDescTexts_37[240] = {
 #include "sub_main/004945B0.inc"
 };
-char D_004946A0[0xE0] = {
+char gEmDescTexts_38[224] = {
 #include "sub_main/004946A0.inc"
 };
-char D_00494780[0xD0] = {
+char gEmDescTexts_39[208] = {
 #include "sub_main/00494780.inc"
 };
-char D_00494850[0x140] = {
+char gEmDescTexts_40[320] = {
 #include "sub_main/00494850.inc"
 };
-char D_00494990[0xD0] = {
+char gEmDescTexts_41[208] = {
 #include "sub_main/00494990.inc"
 };
-char D_00494A60[0xF0] = {
+char gEmDescTexts_42[240] = {
 #include "sub_main/00494A60.inc"
 };
-char D_00494B50[0xD0] = {
+char gEmDescTexts_43[208] = {
 #include "sub_main/00494B50.inc"
 };
-char D_00494C20[0xE0] = {
+char gEmDescTexts_44[224] = {
 #include "sub_main/00494C20.inc"
 };
-char D_00494D00[0xF0] = {
+char gEmDescTexts_45[240] = {
 #include "sub_main/00494D00.inc"
 };
-char D_00494DF0[0xE0] = {
+char gEmDescTexts_46[224] = {
 #include "sub_main/00494DF0.inc"
 };
-char D_00494ED0[0x100] = {
+char gEmDescTexts_47[256] = {
 #include "sub_main/00494ED0.inc"
 };
-char D_00494FD0[0x100] = {
+char gEmDescTexts_48[256] = {
 #include "sub_main/00494FD0.inc"
 };
-char D_004950D0[0xB0] = {
+char gEmDescTexts_49[176] = {
 #include "sub_main/004950D0.inc"
 };
-char D_00495180[0xF0] = {
+char gEmDescTexts_50[240] = {
 #include "sub_main/00495180.inc"
 };
-char D_00495270[0x80] = {
+char gEmDescTexts_51[128] = {
 #include "sub_main/00495270.inc"
 };
-char D_004952F0[0x10] = {
+char gHunterTitles_4[16] = {
 #include "sub_main/004952F0.inc"
 };
-char D_00495300[0x10] = {
+char gHunterTitles_5[16] = {
 #include "sub_main/00495300.inc"
 };
-char D_00495310[0x10] = {
+char gHunterTitles_6[16] = {
 #include "sub_main/00495310.inc"
 };
-char D_00495320[0x18] = {
+char gHunterTitles_7[24] = {
 #include "sub_main/00495320.inc"
 };
-char D_00495338[0xC] = {
+char gHunterTitles_8[12] = {
 #include "sub_main/00495338.inc"
 };
-char D_00495348[0xC] = {
+char gHunterTitles_9[12] = {
 #include "sub_main/00495348.inc"
 };
-char D_00495358[13] = {
+char gHunterTitles_125[13] = {
 #include "sub_main/00495358.inc"
 };
-char D_00495370[0x18] = {
+char gHunterTitles_10[24] = {
 #include "sub_main/00495370.inc"
 };
-char D_00495388[15] = {
+char gHunterTitles_11[15] = {
 #include "sub_main/00495388.inc"
 };
-char D_00495398[13] = {
+char gHunterTitles_12[13] = {
 #include "sub_main/00495398.inc"
 };
-char D_004953A8[15] = {
+char gHunterTitles_13[15] = {
 #include "sub_main/004953A8.inc"
 };
-char D_004953B8[13] = {
+char gHunterTitles_14[13] = {
 #include "sub_main/004953B8.inc"
 };
-char D_004953C8[13] = {
+char gHunterTitles_15[13] = {
 #include "sub_main/004953C8.inc"
 };
-char D_004953E0[0x20] = {
+char gHunterTitles_16[32] = {
 #include "sub_main/004953E0.inc"
 };
-char D_00495400[0x20] = {
+char gHunterTitles_17[32] = {
 #include "sub_main/00495400.inc"
 };
-char D_00495420[0x18] = {
+char gHunterTitles_18[24] = {
 #include "sub_main/00495420.inc"
 };
-char D_00495438[0xC] = {
+char gHunterTitles_19[12] = {
 #include "sub_main/00495438.inc"
 };
-char D_00495450[0x18] = {
+char gHunterTitles_20[24] = {
 #include "sub_main/00495450.inc"
 };
-char D_00495468[13] = {
+char gHunterTitles_21[13] = {
 #include "sub_main/00495468.inc"
 };
-char D_00495480[0x20] = {
+char gHunterTitles_22[32] = {
 #include "sub_main/00495480.inc"
 };
-char D_004954A0[0x20] = {
+char gHunterTitles_120[32] = {
 #include "sub_main/004954A0.inc"
 };
-char D_004954C0[0x20] = {
+char gHunterTitles_23[32] = {
 #include "sub_main/004954C0.inc"
 };
-char D_004954E0[0x20] = {
+char gHunterTitles_24[32] = {
 #include "sub_main/004954E0.inc"
 };
-char D_00495500[0x18] = {
+char gHunterTitles_25[24] = {
 #include "sub_main/00495500.inc"
 };
-char D_00495518[13] = {
+char gHunterTitles_26[13] = {
 #include "sub_main/00495518.inc"
 };
-char D_00495530[0x20] = {
+char gHunterTitles_28[32] = {
 #include "sub_main/00495530.inc"
 };
-char D_00495550[0x20] = {
+char gEquipStatusTitle_0[32] = {
 #include "sub_main/00495550.inc"
 };
-char D_00495570[0x18] = {
+char gOptionMenuTitle_0[24] = {
 #include "sub_main/00495570.inc"
 };
 char D_00495588[15] = {
 #include "sub_main/00495588.inc"
 };
-char D_00495598[0xC] = {
+char gFieldOptionLabels_1[12] = {
 #include "sub_main/00495598.inc"
 };
-char D_004955B0[0x18] = {
+char D_004955B0[24] = {
 #include "sub_main/004955B0.inc"
 };
 char D_004955C8[13] = {
 #include "sub_main/004955C8.inc"
 };
-char D_004955D8[0xC] = {
+char D_004955D8[12] = {
 #include "sub_main/004955D8.inc"
 };
-char D_004955E8[0xC] = {
+char D_004955E8[12] = {
 #include "sub_main/004955E8.inc"
 };
 char D_004955F8[13] = {
@@ -1234,1129 +1213,1129 @@ char D_004955F8[13] = {
 char D_00495608[15] = {
 #include "sub_main/00495608.inc"
 };
-char D_00495620[0x20] = {
+char D_00495620[32] = {
 #include "sub_main/00495620.inc"
 };
-char D_00495640[0x18] = {
+char gFieldOptionLabels_10[24] = {
 #include "sub_main/00495640.inc"
 };
-char D_00495658[0x8] = {
+char D_00495658[8] = {
 #include "sub_main/00495658.inc"
 };
-char D_00495660[0x8] = {
+char D_00495660[8] = {
 #include "sub_main/00495660.inc"
 };
-char D_00495668[0x8] = {
+char D_00495668[8] = {
 #include "sub_main/00495668.inc"
 };
-char D_00495670[0x10] = {
+char D_00495670[16] = {
 #include "sub_main/00495670.inc"
 };
-char D_00495680[0x10] = {
+char D_00495680[16] = {
 #include "sub_main/00495680.inc"
 };
-char D_00495690[0x8] = {
+char gFieldOptionValues_9[8] = {
 #include "sub_main/00495690.inc"
 };
-char D_00495698[0x8] = {
+char gFieldOptionValues_10[8] = {
 #include "sub_main/00495698.inc"
 };
-char D_004956A0[0x8] = {
+char gFieldOptionValues_18[8] = {
 #include "sub_main/004956A0.inc"
 };
-char D_004956A8[0x8] = {
+char gFieldOptionValues_19[8] = {
 #include "sub_main/004956A8.inc"
 };
-char D_004956B0[0x8] = {
+char gFieldOptionValues_20[8] = {
 #include "sub_main/004956B0.inc"
 };
-char D_004956B8[0x8] = {
+char gFieldOptionValues_21[8] = {
 #include "sub_main/004956B8.inc"
 };
-char D_004956C0[0x8] = {
+char gFieldOptionValues_22[8] = {
 #include "sub_main/004956C0.inc"
 };
-char D_004956C8[0x8] = {
+char gRarityFmt_0[8] = {
 #include "sub_main/004956C8.inc"
 };
-char D_004956D0[0x18] = {
+char D_004956D0[24] = {
 #include "sub_main/004956D0.inc"
 };
-char D_004956E8[0xC] = {
+char D_004956E8[12] = {
 #include "sub_main/004956E8.inc"
 };
-char D_004956F8[0xC] = {
+char D_004956F8[12] = {
 #include "sub_main/004956F8.inc"
 };
-char D_00495708[0xC] = {
+char gChatRecvText_0[12] = {
 #include "sub_main/00495708.inc"
 };
-char D_00495718[13] = {
+char gChatRecvText_1[13] = {
 #include "sub_main/00495718.inc"
 };
-char D_00495728[13] = {
+char gTalkEventTitle_0[13] = {
 #include "sub_main/00495728.inc"
 };
-char D_00495740[0x20] = {
+char gNoticeNoSelText_0[32] = {
 #include "sub_main/00495740.inc"
 };
-char D_00495760[0x8] = {
+char gNoticeNoSelText_1[8] = {
 #include "sub_main/00495760.inc"
 };
-char D_00495768[0xC] = {
+char gItemListTitles_1[12] = {
 #include "sub_main/00495768.inc"
 };
-char D_00495780[0x20] = {
+char gItemListTitleFmt_0[32] = {
 #include "sub_main/00495780.inc"
 };
-char D_004957A0[0x18] = {
+char D_004957A0[24] = {
 #include "sub_main/004957A0.inc"
 };
-char D_004957B8[0x8] = {
+char gInfinityText_0[8] = {
 #include "sub_main/004957B8.inc"
 };
-char D_004957C0[0x30] = {
+char gStatusHeadLabels_0[48] = {
 #include "sub_main/004957C0.inc"
 };
-char D_004957F0[0x30] = {
+char gStatusHeadLabels_1[48] = {
 #include "sub_main/004957F0.inc"
 };
-char D_00495820[0x30] = {
+char gStatusHeadLabels_2[48] = {
 #include "sub_main/00495820.inc"
 };
-char D_00495850[0x40] = {
+char gStatusHeadLabels_3[64] = {
 #include "sub_main/00495850.inc"
 };
-char D_00495890[0x20] = {
+char gSymbolColorLabel_0[32] = {
 #include "sub_main/00495890.inc"
 };
-char D_004958B0[0x20] = {
+char gSymbolColorLabel_1[32] = {
 #include "sub_main/004958B0.inc"
 };
-char D_004958D0[0x50] = {
+char gArenaRecordLabels_0[80] = {
 #include "sub_main/004958D0.inc"
 };
-char D_00495920[0x20] = {
+char gArenaRecordLabels_1[32] = {
 #include "sub_main/00495920.inc"
 };
-char D_00495940[0x10] = {
+char gArenaRecordFmt_0[16] = {
 #include "sub_main/00495940.inc"
 };
-char D_00495950[0x10] = {
+char gArenaRecordFmt_1[16] = {
 #include "sub_main/00495950.inc"
 };
-char D_00495960[0x20] = {
+char D_00495960[32] = {
 #include "sub_main/00495960.inc"
 };
-char D_00495980[0x20] = {
+char gStatusStatLabels_0[32] = {
 #include "sub_main/00495980.inc"
 };
-char D_004959A0[0x20] = {
+char gStatusStatLabels_1[32] = {
 #include "sub_main/004959A0.inc"
 };
-char D_004959C0[0x20] = {
+char gStatusStatLabels_2[32] = {
 #include "sub_main/004959C0.inc"
 };
-char D_004959E0[0x20] = {
+char gStatusStatLabels_3[32] = {
 #include "sub_main/004959E0.inc"
 };
-char D_00495A00[0x8] = {
+char gWeaponTypeNames_0[8] = {
 #include "sub_main/00495A00.inc"
 };
-char D_00495A08[15] = {
+char gWeaponTypeNames_1[15] = {
 #include "sub_main/00495A08.inc"
 };
-char D_00495A18[0xC] = {
+char gWeaponTypeNames_2[12] = {
 #include "sub_main/00495A18.inc"
 };
-char D_00495A28[0x8] = {
+char gWeaponTypeNames_3[8] = {
 #include "sub_main/00495A28.inc"
 };
-char D_00495A30[0x8] = {
+char gWeaponTypeNames_4[8] = {
 #include "sub_main/00495A30.inc"
 };
-char D_00495A38[15] = {
+char gWeaponTypeNames_5[15] = {
 #include "sub_main/00495A38.inc"
 };
-char D_00495A48[0x8] = {
+char gWeaponTypeNames_6[8] = {
 #include "sub_main/00495A48.inc"
 };
-char D_00495A50[0x8] = {
+char gWeaponTypeNames_7[8] = {
 #include "sub_main/00495A50.inc"
 };
-char D_00495A58[0x8] = {
+char gWeaponTypeNames_8[8] = {
 #include "sub_main/00495A58.inc"
 };
-char D_00495A60[0x10] = {
+char gWeaponTypeNames_9[16] = {
 #include "sub_main/00495A60.inc"
 };
-char D_00495A70[0x8] = {
+char gWeaponTypeNames_10[8] = {
 #include "sub_main/00495A70.inc"
 };
-char D_00495A78[13] = {
+char gStatusBoxTitles_0[13] = {
 #include "sub_main/00495A78.inc"
 };
 char D_00495A88[15] = {
 #include "sub_main/00495A88.inc"
 };
-char D_00495AA0[0x30] = {
+char gStatusPageFmt_0[48] = {
 #include "sub_main/00495AA0.inc"
 };
-char D_00495AD0[0x8] = {
+char D_00495AD0[8] = {
 #include "sub_main/00495AD0.inc"
 };
-char D_00495AD8[13] = {
+char gRankPointsFmt_0[13] = {
 #include "sub_main/00495AD8.inc"
 };
-char D_00495AE8[0x8] = {
+char gRankPointsFmt_1[8] = {
 #include "sub_main/00495AE8.inc"
 };
-char D_00495AF0[0x10] = {
+char gSkillNameFmt_0[16] = {
 #include "sub_main/00495AF0.inc"
 };
-char D_00495B00[0x10] = {
+char gSkillNameFmt_1[16] = {
 #include "sub_main/00495B00.inc"
 };
-char D_00495B10[0x20] = {
+char gSkillPartPtsFmt_0[32] = {
 #include "sub_main/00495B10.inc"
 };
-char D_00495B30[0x20] = {
+char gSkillPartPtsFmt_1[32] = {
 #include "sub_main/00495B30.inc"
 };
-char D_00495B50[0x20] = {
+char gSkillRowFmt_0[32] = {
 #include "sub_main/00495B50.inc"
 };
-char D_00495B70[0x10] = {
+char gSkillRowFmt_1[16] = {
 #include "sub_main/00495B70.inc"
 };
-char D_00495B80[0x28] = {
+char gSkillRowFmt_2[40] = {
 #include "sub_main/00495B80.inc"
 };
-char D_00495BA8[0xC] = {
+char D_00495BA8[12] = {
 #include "sub_main/00495BA8.inc"
 };
-char D_00495BC0[0x10] = {
+char D_00495BC0[16] = {
 #include "sub_main/00495BC0.inc"
 };
-char D_00495BD0[0x30] = {
+char D_00495BD0[48] = {
 #include "sub_main/00495BD0.inc"
 };
-char D_00495C00[0x28] = {
+char gSkillListHeader_0[40] = {
 #include "sub_main/00495C00.inc"
 };
-char D_00495C28[0x8] = {
+char gSkillPartMarks_0[8] = {
 #include "sub_main/00495C28.inc"
 };
-char D_00495C30[0x8] = {
+char gSkillPartMarks_1[8] = {
 #include "sub_main/00495C30.inc"
 };
 char D_00495C38[13] = {
 #include "sub_main/00495C38.inc"
 };
-char D_00495C48[0xC] = {
+char gUnknownEquipText_0[12] = {
 #include "sub_main/00495C48.inc"
 };
-char D_00495C58[0xC] = {
+char gUnknownEquipText_1[12] = {
 #include "sub_main/00495C58.inc"
 };
-char D_00495C70[0x18] = {
+char D_00495C70[24] = {
 #include "sub_main/00495C70.inc"
 };
-char D_00495C88[0xC] = {
+char D_00495C88[12] = {
 #include "sub_main/00495C88.inc"
 };
-char D_00495C98[0xC] = {
+char D_00495C98[12] = {
 #include "sub_main/00495C98.inc"
 };
-char D_00495CB0[0x18] = {
+char D_00495CB0[24] = {
 #include "sub_main/00495CB0.inc"
 };
-char D_00495CC8[0xC] = {
+char D_00495CC8[12] = {
 #include "sub_main/00495CC8.inc"
 };
 u32 D_00495CD8[3] = {
 #include "sub_main/00495CD8.inc"
 };
-char D_00495CE8[0xC] = {
+char D_00495CE8[12] = {
 #include "sub_main/00495CE8.inc"
 };
-char D_00495CF8[0xC] = {
+char D_00495CF8[12] = {
 #include "sub_main/00495CF8.inc"
 };
 u32 D_00495D08[3] = {
 #include "sub_main/00495D08.inc"
 };
-char D_00495D20[0x20] = {
+char D_00495D20[32] = {
 #include "sub_main/00495D20.inc"
 };
-char D_00495D40[0x20] = {
+char D_00495D40[32] = {
 #include "sub_main/00495D40.inc"
 };
-char D_00495D60[0x20] = {
+char D_00495D60[32] = {
 #include "sub_main/00495D60.inc"
 };
-char D_00495D80[0x10] = {
+char gArmorStatLabels_0[16] = {
 #include "sub_main/00495D80.inc"
 };
-char D_00495D90[0x8] = {
+char gGunReloadTexts_0[8] = {
 #include "sub_main/00495D90.inc"
 };
-char D_00495D98[0xC] = {
+char gGunReloadTexts_1[12] = {
 #include "sub_main/00495D98.inc"
 };
-char D_00495DA8[0x8] = {
+char D_00495DA8[8] = {
 #include "sub_main/00495DA8.inc"
 };
-char D_00495DB0[0x10] = {
+char gGunReloadTexts_3[16] = {
 #include "sub_main/00495DB0.inc"
 };
-char D_00495DC0[0x8] = {
+char gGunReloadTexts_4[8] = {
 #include "sub_main/00495DC0.inc"
 };
-char D_00495DC8[0x8] = {
+char gGunRecoilTexts_0[8] = {
 #include "sub_main/00495DC8.inc"
 };
-char D_00495DD0[0x8] = {
+char gGunRecoilTexts_1[8] = {
 #include "sub_main/00495DD0.inc"
 };
-char D_00495DD8[0x8] = {
+char gGunRecoilTexts_2[8] = {
 #include "sub_main/00495DD8.inc"
 };
-char D_00495DE0[0x8] = {
+char gGunRecoilTexts_3[8] = {
 #include "sub_main/00495DE0.inc"
 };
-char D_00495DE8[0x8] = {
+char gGunRecoilTexts_4[8] = {
 #include "sub_main/00495DE8.inc"
 };
-char D_00495DF0[0x8] = {
+char gGunRecoilTexts_5[8] = {
 #include "sub_main/00495DF0.inc"
 };
-char D_00495DF8[0x8] = {
+char gGunRecoilTexts_6[8] = {
 #include "sub_main/00495DF8.inc"
 };
-char D_00495E00[0x8] = {
+char gHunterClassTexts_0[8] = {
 #include "sub_main/00495E00.inc"
 };
-char D_00495E08[0xC] = {
+char gHunterClassTexts_1[12] = {
 #include "sub_main/00495E08.inc"
 };
-char D_00495E18[15] = {
+char gHunterClassTexts_2[15] = {
 #include "sub_main/00495E18.inc"
 };
-char D_00495E28[0xC] = {
+char gHunterClassTexts_3[12] = {
 #include "sub_main/00495E28.inc"
 };
-char D_00495E38[15] = {
+char gEquipNameFmt_0[15] = {
 #include "sub_main/00495E38.inc"
 };
-char D_00495E50[0x20] = {
+char gEquipNameFmt_1[32] = {
 #include "sub_main/00495E50.inc"
 };
-char D_00495E70[0x18] = {
+char gScopeFixedText_0[24] = {
 #include "sub_main/00495E70.inc"
 };
-char D_00495E88[13] = {
+char gScopeFixedText_1[13] = {
 #include "sub_main/00495E88.inc"
 };
-char D_00495E98[13] = {
+char gPowerBarrelText_0[13] = {
 #include "sub_main/00495E98.inc"
 };
-char D_00495EA8[13] = {
+char gPowerBarrelText_1[13] = {
 #include "sub_main/00495EA8.inc"
 };
-char D_00495EB8[13] = {
+char gShieldText_0[13] = {
 #include "sub_main/00495EB8.inc"
 };
-char D_00495EC8[0x8] = {
+char gShieldText_1[8] = {
 #include "sub_main/00495EC8.inc"
 };
-char D_00495ED0[0x28] = {
+char gAmmoHeaderText_0[40] = {
 #include "sub_main/00495ED0.inc"
 };
-char D_00495EF8[0x8] = {
+char D_00495EF8[8] = {
 #include "sub_main/00495EF8.inc"
 };
-char D_00495F00[0x10] = {
+char gAmmoHeaderText_2[16] = {
 #include "sub_main/00495F00.inc"
 };
-char D_00495F10[0x18] = {
+char gAmmoHeaderText_3[24] = {
 #include "sub_main/00495F10.inc"
 };
-char D_00495F28[13] = {
+char gAmmoHeaderText_4[13] = {
 #include "sub_main/00495F28.inc"
 };
-char D_00495F40[0x20] = {
+char gAmmoHeaderText_5[32] = {
 #include "sub_main/00495F40.inc"
 };
-char D_00495F60[0x18] = {
+char gAmmoNameFmt_0[24] = {
 #include "sub_main/00495F60.inc"
 };
-char D_00495F78[0xC] = {
+char gAmmoNameFmt_1[12] = {
 #include "sub_main/00495F78.inc"
 };
-char D_00495F90[0x20] = {
+char gAmmoLineFormats_0[32] = {
 #include "sub_main/00495F90.inc"
 };
-char D_00495FB0[0x30] = {
+char gAmmoLineFormats_1[48] = {
 #include "sub_main/00495FB0.inc"
 };
-char D_00495FE0[0x18] = {
+char gAmmoLineFormats_2[24] = {
 #include "sub_main/00495FE0.inc"
 };
-char D_00495FF8[0xC] = {
+char gAmmoLineFormats_3[12] = {
 #include "sub_main/00495FF8.inc"
 };
-char D_00496010[0x20] = {
+char gAmmoLineFormats_4[32] = {
 #include "sub_main/00496010.inc"
 };
-char D_00496030[0x30] = {
+char gAmmoLineFormats_5[48] = {
 #include "sub_main/00496030.inc"
 };
-char D_00496060[0x20] = {
+char gDecoDetailTitle_0[32] = {
 #include "sub_main/00496060.inc"
 };
-char D_00496080[0x18] = {
+char gDecoDetailTitle_1[24] = {
 #include "sub_main/00496080.inc"
 };
-char D_00496098[0xC] = {
+char gAffinityLabel_0[12] = {
 #include "sub_main/00496098.inc"
 };
-char D_004960A8[0x8] = {
+char gAffinityLabel_1[8] = {
 #include "sub_main/004960A8.inc"
 };
-char D_004960B0[0x10] = {
+char gAmmoNames_0[16] = {
 #include "sub_main/004960B0.inc"
 };
-char D_004960C0[0x10] = {
+char gAmmoNames_1[16] = {
 #include "sub_main/004960C0.inc"
 };
-char D_004960D0[0x10] = {
+char gAmmoNames_2[16] = {
 #include "sub_main/004960D0.inc"
 };
-char D_004960E0[0x10] = {
+char gAmmoNames_3[16] = {
 #include "sub_main/004960E0.inc"
 };
-char D_004960F0[0x10] = {
+char gAmmoNames_4[16] = {
 #include "sub_main/004960F0.inc"
 };
-char D_00496100[0x8] = {
+char gAmmoNames_5[8] = {
 #include "sub_main/00496100.inc"
 };
-char D_00496108[0x8] = {
+char gAmmoNames_6[8] = {
 #include "sub_main/00496108.inc"
 };
-char D_00496110[0x8] = {
+char gAmmoNames_7[8] = {
 #include "sub_main/00496110.inc"
 };
-char D_00496118[0x8] = {
+char gAmmoNames_8[8] = {
 #include "sub_main/00496118.inc"
 };
-char D_00496120[0x8] = {
+char gAmmoNames_9[8] = {
 #include "sub_main/00496120.inc"
 };
-char D_00496128[0x8] = {
+char gAmmoNames_10[8] = {
 #include "sub_main/00496128.inc"
 };
-char D_00496130[0x8] = {
+char gAmmoNames_11[8] = {
 #include "sub_main/00496130.inc"
 };
-char D_00496138[0x8] = {
+char gAmmoNames_12[8] = {
 #include "sub_main/00496138.inc"
 };
-char D_00496140[0x8] = {
+char gAmmoNames_13[8] = {
 #include "sub_main/00496140.inc"
 };
-char D_00496148[13] = {
+char gAmmoNames_14[13] = {
 #include "sub_main/00496148.inc"
 };
-char D_00496158[13] = {
+char gAmmoNames_15[13] = {
 #include "sub_main/00496158.inc"
 };
-char D_00496168[13] = {
+char gAmmoNames_16[13] = {
 #include "sub_main/00496168.inc"
 };
-char D_00496178[13] = {
+char gAmmoNames_17[13] = {
 #include "sub_main/00496178.inc"
 };
-char D_00496188[0x8] = {
+char gElementNames_0[8] = {
 #include "sub_main/00496188.inc"
 };
-char D_00496190[0x8] = {
+char gElementNames_1[8] = {
 #include "sub_main/00496190.inc"
 };
-char D_00496198[0x8] = {
+char gElementNames_2[8] = {
 #include "sub_main/00496198.inc"
 };
-char D_004961A0[0x8] = {
+char gElementNames_3[8] = {
 #include "sub_main/004961A0.inc"
 };
-char D_004961A8[0x8] = {
+char gElementNames_4[8] = {
 #include "sub_main/004961A8.inc"
 };
-char D_004961B0[0x8] = {
+char D_004961B0[8] = {
 #include "sub_main/004961B0.inc"
 };
-char D_004961B8[0x8] = {
+char D_004961B8[8] = {
 #include "sub_main/004961B8.inc"
 };
-char D_004961C0[0x10] = {
+char D_004961C0[16] = {
 #include "sub_main/004961C0.inc"
 };
-char D_004961D0[0x20] = {
+char gSkillPointsTitle_0[32] = {
 #include "sub_main/004961D0.inc"
 };
-char D_004961F0[0x18] = {
+char gSkillPointsTitle_1[24] = {
 #include "sub_main/004961F0.inc"
 };
-char D_00496208[15] = {
+char gNoSkillText_0[15] = {
 #include "sub_main/00496208.inc"
 };
-char D_00496218[15] = {
+char gDecoDetailLabels_0[15] = {
 #include "sub_main/00496218.inc"
 };
-char D_00496228[15] = {
+char gDecoDetailLabels_1[15] = {
 #include "sub_main/00496228.inc"
 };
-char D_00496238[15] = {
+char gDecoDetailLabels_2[15] = {
 #include "sub_main/00496238.inc"
 };
-char D_00496248[0x8] = {
+char gRangeClassTexts_0[8] = {
 #include "sub_main/00496248.inc"
 };
-char D_00496250[0x8] = {
+char gRangeClassTexts_1[8] = {
 #include "sub_main/00496250.inc"
 };
-char D_00496258[13] = {
+char gRangeClassTexts_2[13] = {
 #include "sub_main/00496258.inc"
 };
-char D_00496268[0xC] = {
+char gRangeClassTexts_3[12] = {
 #include "sub_main/00496268.inc"
 };
-char D_00496278[0x8] = {
+char gDecoSkillPtsFmt_0[8] = {
 #include "sub_main/00496278.inc"
 };
-char D_00496280[0x8] = {
+char gDecoSkillPtsFmt_1[8] = {
 #include "sub_main/00496280.inc"
 };
-char D_00496288[0xC] = {
+char gDecoSkillFmt_0[12] = {
 #include "sub_main/00496288.inc"
 };
-char D_00496298[0xC] = {
+char gShellTypeTexts_0[12] = {
 #include "sub_main/00496298.inc"
 };
-char D_004962A8[0xC] = {
+char gShellTypeTexts_1[12] = {
 #include "sub_main/004962A8.inc"
 };
-char D_004962B8[0xC] = {
+char gShellTypeTexts_2[12] = {
 #include "sub_main/004962B8.inc"
 };
-char D_004962C8[0x8] = {
+char gBowShotTexts_0[8] = {
 #include "sub_main/004962C8.inc"
 };
-char D_004962D0[0x8] = {
+char gBowShotTexts_1[8] = {
 #include "sub_main/004962D0.inc"
 };
-char D_004962D8[0x8] = {
+char gBowShotTexts_2[8] = {
 #include "sub_main/004962D8.inc"
 };
-char D_004962E0[0x8] = {
+char gBowShotTexts_3[8] = {
 #include "sub_main/004962E0.inc"
 };
-char D_004962E8[0x8] = {
+char gBowShotTexts_4[8] = {
 #include "sub_main/004962E8.inc"
 };
-char D_004962F0[0x8] = {
+char gBowShotTexts_5[8] = {
 #include "sub_main/004962F0.inc"
 };
-char D_004962F8[0x8] = {
+char gBowShotTexts_6[8] = {
 #include "sub_main/004962F8.inc"
 };
-char D_00496300[0x8] = {
+char gBowShotTexts_7[8] = {
 #include "sub_main/00496300.inc"
 };
-char D_00496308[0x8] = {
+char gBowShotTexts_8[8] = {
 #include "sub_main/00496308.inc"
 };
-char D_00496310[0x8] = {
+char gBowShotTexts_9[8] = {
 #include "sub_main/00496310.inc"
 };
-char D_00496318[0x8] = {
+char gBowShotTexts_10[8] = {
 #include "sub_main/00496318.inc"
 };
-char D_00496320[0x8] = {
+char gBowShotTexts_11[8] = {
 #include "sub_main/00496320.inc"
 };
-char D_00496328[0x8] = {
+char D_00496328[8] = {
 #include "sub_main/00496328.inc"
 };
-char D_00496330[0x8] = {
+char gTabPageFmt_1[8] = {
 #include "sub_main/00496330.inc"
 };
-char D_00496338[0x8] = {
+char gSortHintText_0[8] = {
 #include "sub_main/00496338.inc"
 };
-char D_00496340[0x8] = {
+char D_00496340[8] = {
 #include "sub_main/00496340.inc"
 };
-char D_00496348[0x8] = {
+char gSelectText_0[8] = {
 #include "sub_main/00496348.inc"
 };
-char D_00496350[0x10] = {
+char gDecoModeFmt_0[16] = {
 #include "sub_main/00496350.inc"
 };
-char D_00496360[0x18] = {
+char gCommentEditTitle_0[24] = {
 #include "sub_main/00496360.inc"
 };
-char D_00496378[0xC] = {
+char D_00496378[12] = {
 #include "sub_main/00496378.inc"
 };
-char D_00496388[15] = {
+char gChatTargetTexts_0[15] = {
 #include "sub_main/00496388.inc"
 };
-char D_00496398[0x8] = {
+char gChatTargetTexts_1[8] = {
 #include "sub_main/00496398.inc"
 };
-char D_004963A0[0x30] = {
+char gChatTargetTexts_2[48] = {
 #include "sub_main/004963A0.inc"
 };
-char D_004963D0[0x20] = {
+char gChatTargetTexts_3[32] = {
 #include "sub_main/004963D0.inc"
 };
-char D_004963F0[0x10] = {
+char gChatNgWordsA_0[16] = {
 #include "sub_main/004963F0.inc"
 };
-char D_00496400[0x10] = {
+char gChatNgWordsA_1[16] = {
 #include "sub_main/00496400.inc"
 };
-char D_00496410[0x10] = {
+char gChatNgWordsA_2[16] = {
 #include "sub_main/00496410.inc"
 };
-char D_00496420[0x10] = {
+char gChatNgWordsA_3[16] = {
 #include "sub_main/00496420.inc"
 };
-char D_00496430[0x10] = {
+char gChatNgWordsA_4[16] = {
 #include "sub_main/00496430.inc"
 };
-char D_00496440[0x10] = {
+char gChatNgWordsA_5[16] = {
 #include "sub_main/00496440.inc"
 };
-char D_00496450[0x10] = {
+char gChatNgWordsA_6[16] = {
 #include "sub_main/00496450.inc"
 };
-char D_00496460[0x10] = {
+char gChatNgWordsA_7[16] = {
 #include "sub_main/00496460.inc"
 };
-char D_00496470[0x10] = {
+char gChatNgWordsA_8[16] = {
 #include "sub_main/00496470.inc"
 };
-char D_00496480[0x10] = {
+char gChatNgWordsA_9[16] = {
 #include "sub_main/00496480.inc"
 };
-char D_00496490[0x10] = {
+char gChatNgWordsA_10[16] = {
 #include "sub_main/00496490.inc"
 };
-char D_004964A0[0x10] = {
+char gChatNgWordsA_11[16] = {
 #include "sub_main/004964A0.inc"
 };
-char D_004964B0[0x10] = {
+char gChatNgWordsA_12[16] = {
 #include "sub_main/004964B0.inc"
 };
-char D_004964C0[0x10] = {
+char gChatNgWordsA_13[16] = {
 #include "sub_main/004964C0.inc"
 };
-char D_004964D0[0x10] = {
+char gChatNgWordsA_14[16] = {
 #include "sub_main/004964D0.inc"
 };
-char D_004964E0[0x10] = {
+char gChatNgWordsA_15[16] = {
 #include "sub_main/004964E0.inc"
 };
-char D_004964F0[0x8] = {
+char gChatNgWordsA_16[8] = {
 #include "sub_main/004964F0.inc"
 };
-char D_004964F8[0x8] = {
+char gChatNgWordsA_17[8] = {
 #include "sub_main/004964F8.inc"
 };
-char D_00496500[0x8] = {
+char gChatNgWordsA_18[8] = {
 #include "sub_main/00496500.inc"
 };
-char D_00496508[0x8] = {
+char gChatNgWordsA_19[8] = {
 #include "sub_main/00496508.inc"
 };
-char D_00496510[0x8] = {
+char gChatNgWordsA_20[8] = {
 #include "sub_main/00496510.inc"
 };
-char D_00496518[0x8] = {
+char gChatNgWordsA_21[8] = {
 #include "sub_main/00496518.inc"
 };
-char D_00496520[0x8] = {
+char gChatNgWordsA_22[8] = {
 #include "sub_main/00496520.inc"
 };
-char D_00496528[0x8] = {
+char gChatNgWordsA_23[8] = {
 #include "sub_main/00496528.inc"
 };
-char D_00496530[0x8] = {
+char gChatNgWordsA_24[8] = {
 #include "sub_main/00496530.inc"
 };
-char D_00496538[0x8] = {
+char gChatNgWordsA_25[8] = {
 #include "sub_main/00496538.inc"
 };
-char D_00496540[0x8] = {
+char gChatNgWordsA_26[8] = {
 #include "sub_main/00496540.inc"
 };
-char D_00496548[0x8] = {
+char gChatNgWordsA_27[8] = {
 #include "sub_main/00496548.inc"
 };
-char D_00496550[0x8] = {
+char gChatNgWordsA_28[8] = {
 #include "sub_main/00496550.inc"
 };
-char D_00496558[0xC] = {
+char gChatNgWordsA_29[12] = {
 #include "sub_main/00496558.inc"
 };
-char D_00496568[0x8] = {
+char gChatNgWordsA_30[8] = {
 #include "sub_main/00496568.inc"
 };
-char D_00496570[0x8] = {
+char gChatNgWordsA_31[8] = {
 #include "sub_main/00496570.inc"
 };
-char D_00496578[0x8] = {
+char gChatNgWordsA_32[8] = {
 #include "sub_main/00496578.inc"
 };
-char D_00496580[0x8] = {
+char gChatNgWordsA_33[8] = {
 #include "sub_main/00496580.inc"
 };
-char D_00496588[0x8] = {
+char gChatNgWordsA_34[8] = {
 #include "sub_main/00496588.inc"
 };
-char D_00496590[0x8] = {
+char gChatNgWordsA_35[8] = {
 #include "sub_main/00496590.inc"
 };
-char D_00496598[0xC] = {
+char gChatNgWordsA_36[12] = {
 #include "sub_main/00496598.inc"
 };
-char D_004965A8[0x8] = {
+char gChatNgWordsA_37[8] = {
 #include "sub_main/004965A8.inc"
 };
-char D_004965B0[0x8] = {
+char gChatNgWordsA_38[8] = {
 #include "sub_main/004965B0.inc"
 };
-char D_004965B8[0x8] = {
+char gChatNgWordsA_39[8] = {
 #include "sub_main/004965B8.inc"
 };
-char D_004965C0[0x8] = {
+char gChatNgWordsA_40[8] = {
 #include "sub_main/004965C0.inc"
 };
-char D_004965C8[0x8] = {
+char gChatNgWordsA_41[8] = {
 #include "sub_main/004965C8.inc"
 };
-char D_004965D0[0x8] = {
+char gChatNgWordsA_42[8] = {
 #include "sub_main/004965D0.inc"
 };
-char D_004965D8[0x8] = {
+char gChatNgWordsB_0[8] = {
 #include "sub_main/004965D8.inc"
 };
-char D_004965E0[0x8] = {
+char gChatNgWordsB_1[8] = {
 #include "sub_main/004965E0.inc"
 };
-char D_004965E8[0x8] = {
+char gChatNgWordsB_2[8] = {
 #include "sub_main/004965E8.inc"
 };
-char D_004965F0[0x8] = {
+char gChatNgWordsB_3[8] = {
 #include "sub_main/004965F0.inc"
 };
-char D_004965F8[0x8] = {
+char gChatNgWordsB_4[8] = {
 #include "sub_main/004965F8.inc"
 };
-char D_00496600[0x8] = {
+char gChatNgWordsB_5[8] = {
 #include "sub_main/00496600.inc"
 };
-char D_00496608[0x8] = {
+char gChatNgWordsB_6[8] = {
 #include "sub_main/00496608.inc"
 };
-char D_00496610[0x8] = {
+char gChatNgWordsB_7[8] = {
 #include "sub_main/00496610.inc"
 };
-char D_00496618[0x8] = {
+char gChatNgWordsB_8[8] = {
 #include "sub_main/00496618.inc"
 };
-char D_00496620[0x8] = {
+char gChatNgWordsB_9[8] = {
 #include "sub_main/00496620.inc"
 };
-char D_00496628[0xC] = {
+char gChatNgWordsB_10[12] = {
 #include "sub_main/00496628.inc"
 };
-char D_00496638[0xC] = {
+char gChatNgWordsB_11[12] = {
 #include "sub_main/00496638.inc"
 };
-char D_00496648[0x8] = {
+char gChatNgWordsB_12[8] = {
 #include "sub_main/00496648.inc"
 };
-char D_00496650[0x8] = {
+char gChatNgWordsB_13[8] = {
 #include "sub_main/00496650.inc"
 };
-char D_00496658[0x8] = {
+char gChatNgWordsB_14[8] = {
 #include "sub_main/00496658.inc"
 };
-char D_00496660[0x8] = {
+char gChatNgWordsB_15[8] = {
 #include "sub_main/00496660.inc"
 };
-char D_00496668[0x8] = {
+char gChatNgWordsB_16[8] = {
 #include "sub_main/00496668.inc"
 };
-char D_00496670[0x8] = {
+char gChatNgWordsB_17[8] = {
 #include "sub_main/00496670.inc"
 };
-char D_00496678[0x8] = {
+char gChatNgWordsB_18[8] = {
 #include "sub_main/00496678.inc"
 };
-char D_00496680[0x8] = {
+char gChatNgWordsB_19[8] = {
 #include "sub_main/00496680.inc"
 };
-char D_00496688[0x8] = {
+char gChatNgWordsB_20[8] = {
 #include "sub_main/00496688.inc"
 };
-char D_00496690[0x8] = {
+char gChatNgWordsB_21[8] = {
 #include "sub_main/00496690.inc"
 };
-char D_00496698[0xC] = {
+char gChatNgWordsB_22[12] = {
 #include "sub_main/00496698.inc"
 };
-char D_004966A8[0xC] = {
+char gChatNgWordsB_23[12] = {
 #include "sub_main/004966A8.inc"
 };
-char D_004966B8[0x8] = {
+char gChatNgWordsB_24[8] = {
 #include "sub_main/004966B8.inc"
 };
-char D_004966C0[0x8] = {
+char gChatNgWordsB_25[8] = {
 #include "sub_main/004966C0.inc"
 };
-char D_004966C8[0x8] = {
+char gChatNgWordsB_26[8] = {
 #include "sub_main/004966C8.inc"
 };
-char D_004966D0[0x8] = {
+char gChatNgWordsB_27[8] = {
 #include "sub_main/004966D0.inc"
 };
-char D_004966D8[0x8] = {
+char gChatNgWordsB_28[8] = {
 #include "sub_main/004966D8.inc"
 };
-char D_004966E0[0x8] = {
+char gChatNgWordsB_29[8] = {
 #include "sub_main/004966E0.inc"
 };
-char D_004966E8[0x8] = {
+char gChatNgWordsB_30[8] = {
 #include "sub_main/004966E8.inc"
 };
-char D_004966F0[0x8] = {
+char gChatNgWordsB_31[8] = {
 #include "sub_main/004966F0.inc"
 };
-char D_004966F8[0x8] = {
+char gChatNgWordsB_32[8] = {
 #include "sub_main/004966F8.inc"
 };
-char D_00496700[0x10] = {
+char gChatNgWordsB_33[16] = {
 #include "sub_main/00496700.inc"
 };
-char D_00496710[0x10] = {
+char gChatNgWordsB_34[16] = {
 #include "sub_main/00496710.inc"
 };
-char D_00496720[0x8] = {
+char gChatNgWordsB_35[8] = {
 #include "sub_main/00496720.inc"
 };
-char D_00496728[0x8] = {
+char gChatNgWordsB_36[8] = {
 #include "sub_main/00496728.inc"
 };
-char D_00496730[0x8] = {
+char gChatNgWordsB_37[8] = {
 #include "sub_main/00496730.inc"
 };
-char D_00496738[0x8] = {
+char gChatNgWordsB_38[8] = {
 #include "sub_main/00496738.inc"
 };
-char D_00496740[0x8] = {
+char gChatNgWordsB_39[8] = {
 #include "sub_main/00496740.inc"
 };
-char D_00496748[0xC] = {
+char gChatNgWordsB_40[12] = {
 #include "sub_main/00496748.inc"
 };
-char D_00496758[0xC] = {
+char gChatNgWordsB_41[12] = {
 #include "sub_main/00496758.inc"
 };
-char D_00496768[0x8] = {
+char gChatNgWordsB_42[8] = {
 #include "sub_main/00496768.inc"
 };
-char D_00496770[0x8] = {
+char gChatNgWordsB_43[8] = {
 #include "sub_main/00496770.inc"
 };
-char D_00496778[0xC] = {
+char gChatNgWordsB_44[12] = {
 #include "sub_main/00496778.inc"
 };
-char D_00496788[0xC] = {
+char gChatNgWordsB_45[12] = {
 #include "sub_main/00496788.inc"
 };
-char D_00496798[0x8] = {
+char gChatNgWordsB_46[8] = {
 #include "sub_main/00496798.inc"
 };
-char D_004967A0[0x8] = {
+char gChatNgWordsB_47[8] = {
 #include "sub_main/004967A0.inc"
 };
-char D_004967A8[0x8] = {
+char gChatNgWordsB_48[8] = {
 #include "sub_main/004967A8.inc"
 };
-char D_004967B0[0x10] = {
+char gChatNgWordsB_49[16] = {
 #include "sub_main/004967B0.inc"
 };
-char D_004967C0[0x10] = {
+char gChatNgWordsB_50[16] = {
 #include "sub_main/004967C0.inc"
 };
-char D_004967D0[0x10] = {
+char gChatNgWordsB_51[16] = {
 #include "sub_main/004967D0.inc"
 };
-char D_004967E0[0x10] = {
+char gChatNgWordsB_52[16] = {
 #include "sub_main/004967E0.inc"
 };
-char D_004967F0[0x8] = {
+char gChatNgWordsB_53[8] = {
 #include "sub_main/004967F0.inc"
 };
-char D_004967F8[0x8] = {
+char gChatNgWordsB_54[8] = {
 #include "sub_main/004967F8.inc"
 };
-char D_00496800[0x8] = {
+char gChatNgWordsB_55[8] = {
 #include "sub_main/00496800.inc"
 };
-char D_00496808[0x8] = {
+char gChatNgWordsB_56[8] = {
 #include "sub_main/00496808.inc"
 };
-char D_00496810[0x8] = {
+char gChatNgWordsB_57[8] = {
 #include "sub_main/00496810.inc"
 };
-char D_00496818[0x8] = {
+char gChatNgWordsB_58[8] = {
 #include "sub_main/00496818.inc"
 };
-char D_00496820[0x10] = {
+char gChatNgWordsB_59[16] = {
 #include "sub_main/00496820.inc"
 };
-char D_00496830[0x10] = {
+char gChatNgWordsB_60[16] = {
 #include "sub_main/00496830.inc"
 };
-char D_00496840[0x10] = {
+char gChatNgWordsB_61[16] = {
 #include "sub_main/00496840.inc"
 };
-char D_00496850[0x10] = {
+char gChatNgWordsB_62[16] = {
 #include "sub_main/00496850.inc"
 };
-char D_00496860[0x10] = {
+char gChatNgWordsB_63[16] = {
 #include "sub_main/00496860.inc"
 };
-char D_00496870[0x10] = {
+char gChatNgWordsB_64[16] = {
 #include "sub_main/00496870.inc"
 };
-char D_00496880[0x10] = {
+char gChatNgWordsB_65[16] = {
 #include "sub_main/00496880.inc"
 };
-char D_00496890[0x10] = {
+char gChatNgWordsB_66[16] = {
 #include "sub_main/00496890.inc"
 };
-char D_004968A0[0x10] = {
+char gChatNgWordsB_67[16] = {
 #include "sub_main/004968A0.inc"
 };
-char D_004968B0[0x8] = {
+char gChatNgWordsB_68[8] = {
 #include "sub_main/004968B0.inc"
 };
-char D_004968B8[0xC] = {
+char gChatNgWordsB_69[12] = {
 #include "sub_main/004968B8.inc"
 };
-char D_004968C8[0xC] = {
+char gChatNgWordsB_70[12] = {
 #include "sub_main/004968C8.inc"
 };
-char D_004968D8[0xC] = {
+char gChatNgWordsB_71[12] = {
 #include "sub_main/004968D8.inc"
 };
-char D_004968E8[0xC] = {
+char gChatNgWordsB_72[12] = {
 #include "sub_main/004968E8.inc"
 };
-char D_004968F8[0x8] = {
+char gChatNgWordsB_73[8] = {
 #include "sub_main/004968F8.inc"
 };
-char D_00496900[0x8] = {
+char gChatNgWordsB_74[8] = {
 #include "sub_main/00496900.inc"
 };
-char D_00496908[0xC] = {
+char gChatNgWordsB_75[12] = {
 #include "sub_main/00496908.inc"
 };
-char D_00496918[0xC] = {
+char gChatNgWordsB_76[12] = {
 #include "sub_main/00496918.inc"
 };
-char D_00496928[0xC] = {
+char gChatNgWordsB_77[12] = {
 #include "sub_main/00496928.inc"
 };
-char D_00496938[0xC] = {
+char gChatNgWordsB_78[12] = {
 #include "sub_main/00496938.inc"
 };
-char D_00496948[0xC] = {
+char gChatNgWordsB_79[12] = {
 #include "sub_main/00496948.inc"
 };
-char D_00496958[0xC] = {
+char gChatNgWordsB_80[12] = {
 #include "sub_main/00496958.inc"
 };
-char D_00496968[0xC] = {
+char gChatNgWordsB_81[12] = {
 #include "sub_main/00496968.inc"
 };
-char D_00496978[0xC] = {
+char gChatNgWordsB_82[12] = {
 #include "sub_main/00496978.inc"
 };
-char D_00496988[13] = {
+char gChatNgWordsB_83[13] = {
 #include "sub_main/00496988.inc"
 };
-char D_00496998[13] = {
+char gChatNgWordsB_84[13] = {
 #include "sub_main/00496998.inc"
 };
-char D_004969A8[0xC] = {
+char gChatNgWordsB_85[12] = {
 #include "sub_main/004969A8.inc"
 };
-char D_004969B8[0xC] = {
+char gChatNgWordsB_86[12] = {
 #include "sub_main/004969B8.inc"
 };
-char D_004969C8[13] = {
+char gChatNgWordsB_87[13] = {
 #include "sub_main/004969C8.inc"
 };
-char D_004969D8[13] = {
+char gChatNgWordsB_88[13] = {
 #include "sub_main/004969D8.inc"
 };
 char D_004969E8[13] = {
 #include "sub_main/004969E8.inc"
 };
-char D_00496A00[0x20] = {
+char gMsgEventTexts_0[32] = {
 #include "sub_main/00496A00.inc"
 };
-char D_00496A20[0x18] = {
+char gMsgEventTexts_1[24] = {
 #include "sub_main/00496A20.inc"
 };
-char D_00496A38[13] = {
+char gMsgEventTexts_2[13] = {
 #include "sub_main/00496A38.inc"
 };
-char D_00496A50[0x20] = {
+char gNoticeBannerTexts_0[32] = {
 #include "sub_main/00496A50.inc"
 };
-char D_00496A70[0x18] = {
+char gNoticeBannerTexts_1[24] = {
 #include "sub_main/00496A70.inc"
 };
-char D_00496A88[13] = {
+char gNoticeBannerTexts_2[13] = {
 #include "sub_main/00496A88.inc"
 };
-char D_00496AA0[0x20] = {
+char gNoticeBannerTexts_3[32] = {
 #include "sub_main/00496AA0.inc"
 };
-char D_00496AC0[0x20] = {
+char gNoticeBannerTexts_4[32] = {
 #include "sub_main/00496AC0.inc"
 };
-char D_00496AE0[0x20] = {
+char gNoticeBannerTexts_5[32] = {
 #include "sub_main/00496AE0.inc"
 };
-char D_00496B00[0x20] = {
+char gNoticeBannerTexts_6[32] = {
 #include "sub_main/00496B00.inc"
 };
-char D_00496B20[0x20] = {
+char gNoticeBannerTexts_7[32] = {
 #include "sub_main/00496B20.inc"
 };
-char D_00496B40[0x20] = {
+char gNoticeBannerTexts_8[32] = {
 #include "sub_main/00496B40.inc"
 };
-char D_00496B60[0x20] = {
+char gNoticeBannerTexts_9[32] = {
 #include "sub_main/00496B60.inc"
 };
-char D_00496B80[0x20] = {
+char gNoticeBannerTexts_10[32] = {
 #include "sub_main/00496B80.inc"
 };
-char D_00496BA0[0x20] = {
+char gNoticeBannerTexts_11[32] = {
 #include "sub_main/00496BA0.inc"
 };
-char D_00496BC0[0x20] = {
+char gNoticeBannerTexts_12[32] = {
 #include "sub_main/00496BC0.inc"
 };
-char D_00496BE0[0x20] = {
+char gNoticeBannerTexts_13[32] = {
 #include "sub_main/00496BE0.inc"
 };
-char D_00496C00[0x20] = {
+char gNoticeBannerTexts_14[32] = {
 #include "sub_main/00496C00.inc"
 };
-char D_00496C20[0x30] = {
+char gNoticeBannerTexts_15[48] = {
 #include "sub_main/00496C20.inc"
 };
-char D_00496C50[0x20] = {
+char gNoticeBannerTexts_16[32] = {
 #include "sub_main/00496C50.inc"
 };
-char D_00496C70[0x20] = {
+char gNoticeBannerTexts_17[32] = {
 #include "sub_main/00496C70.inc"
 };
-char D_00496C90[0x20] = {
+char gNoticeBannerTexts_18[32] = {
 #include "sub_main/00496C90.inc"
 };
-char D_00496CB0[0x20] = {
+char gNoticeBannerTexts_19[32] = {
 #include "sub_main/00496CB0.inc"
 };
-char D_00496CD0[0x30] = {
+char gNoticeBannerTexts_20[48] = {
 #include "sub_main/00496CD0.inc"
 };
-char D_00496D00[0x20] = {
+char gNoticeBannerTexts_21[32] = {
 #include "sub_main/00496D00.inc"
 };
-char D_00496D20[0x20] = {
+char gNoticeBannerTexts_22[32] = {
 #include "sub_main/00496D20.inc"
 };
-char D_00496D40[0x20] = {
+char gNoticeBannerTexts_23[32] = {
 #include "sub_main/00496D40.inc"
 };
-char D_00496D60[0x20] = {
+char gNoticeBannerTexts_24[32] = {
 #include "sub_main/00496D60.inc"
 };
-char D_00496D80[0x20] = {
+char gNoticeAwardText_0[32] = {
 #include "sub_main/00496D80.inc"
 };
-char D_00496DA0[0x30] = {
+char gNoticeRateFlagText_0[48] = {
 #include "sub_main/00496DA0.inc"
 };
-char D_00496DD0[0x20] = {
+char D_00496DD0[32] = {
 #include "sub_main/00496DD0.inc"
 };
-char D_00496DF0[0x20] = {
+char D_00496DF0[32] = {
 #include "sub_main/00496DF0.inc"
 };
-char D_00496E10[0x20] = {
+char D_00496E10[32] = {
 #include "sub_main/00496E10.inc"
 };
-char D_00496E30[0x18] = {
+char D_00496E30[24] = {
 #include "sub_main/00496E30.inc"
 };
 char D_00496E48[15] = {
 #include "sub_main/00496E48.inc"
 };
-char D_00496E58[15] = {
+char gNoticeBannerItemTexts_0[15] = {
 #include "sub_main/00496E58.inc"
 };
-char D_00496E68[15] = {
+char gNoticeBannerItemTexts_1[15] = {
 #include "sub_main/00496E68.inc"
 };
-char D_00496E78[0xC] = {
+char gNoticeBannerItemTexts_2[12] = {
 #include "sub_main/00496E78.inc"
 };
-char D_00496E90[0x18] = {
+char D_00496E90[24] = {
 #include "sub_main/00496E90.inc"
 };
-char D_00496EA8[15] = {
+char gNoticeBannerItemTexts_4[15] = {
 #include "sub_main/00496EA8.inc"
 };
-char D_00496EB8[0x8] = {
+char gNoticeBannerItemTexts_5[8] = {
 #include "sub_main/00496EB8.inc"
 };
-char D_00496EC0[0x10] = {
+char gNoticeBannerItemTexts_6[16] = {
 #include "sub_main/00496EC0.inc"
 };
-char D_00496ED0[0x18] = {
+char gNoticeBannerItemTexts_7[24] = {
 #include "sub_main/00496ED0.inc"
 };
-char D_00496EE8[15] = {
+char gNoticeBannerItemTexts_8[15] = {
 #include "sub_main/00496EE8.inc"
 };
-char D_00496EF8[0xC] = {
+char D_00496EF8[12] = {
 #include "sub_main/00496EF8.inc"
 };
-char D_00496F10[0x18] = {
+char D_00496F10[24] = {
 #include "sub_main/00496F10.inc"
 };
 char D_00496F28[13] = {
@@ -2365,2305 +2344,2305 @@ char D_00496F28[13] = {
 char D_00496F38[13] = {
 #include "sub_main/00496F38.inc"
 };
-char D_00496F48[0xC] = {
+char D_00496F48[12] = {
 #include "sub_main/00496F48.inc"
 };
-char D_00496F60[0x20] = {
+char gNoticeBannerItemTexts_14[32] = {
 #include "sub_main/00496F60.inc"
 };
-char D_00496F80[0x28] = {
+char D_00496F80[40] = {
 #include "sub_main/00496F80.inc"
 };
-char D_00496FA8[0xC] = {
+char D_00496FA8[12] = {
 #include "sub_main/00496FA8.inc"
 };
-char D_00496FB8[13] = {
+char gNoticeBannerItemTexts_17[13] = {
 #include "sub_main/00496FB8.inc"
 };
-char D_00496FD0[0x20] = {
+char gNoticeBannerItemTexts_18[32] = {
 #include "sub_main/00496FD0.inc"
 };
-char D_00496FF0[0x20] = {
+char gNoticeBannerItemTexts_19[32] = {
 #include "sub_main/00496FF0.inc"
 };
-char D_00497010[0x20] = {
+char gNoticeBannerItemTexts_20[32] = {
 #include "sub_main/00497010.inc"
 };
-char D_00497030[0x18] = {
+char gNoticeBannerTextsItem_0[24] = {
 #include "sub_main/00497030.inc"
 };
-char D_00497048[0xC] = {
+char gNoticeBannerPlayerTexts_0[12] = {
 #include "sub_main/00497048.inc"
 };
-char D_00497060[0x20] = {
+char gNoticeBannerPlayerTexts_1[32] = {
 #include "sub_main/00497060.inc"
 };
-char D_00497080[0x20] = {
+char gNoticeBannerPlayerTexts_2[32] = {
 #include "sub_main/00497080.inc"
 };
-char D_004970A0[0x10] = {
+char gNoticeBannerPlayerTexts_3[16] = {
 #include "sub_main/004970A0.inc"
 };
-char D_004970B0[0x8] = {
+char gNoticeMadeTexts_0[8] = {
 #include "sub_main/004970B0.inc"
 };
-char D_004970B8[0xC] = {
+char gNoticeMadeTexts_1[12] = {
 #include "sub_main/004970B8.inc"
 };
-char D_004970D0[0x30] = {
+char gNoticeMadeTexts_4[48] = {
 #include "sub_main/004970D0.inc"
 };
-char D_00497100[0x20] = {
+char gNothingMoreText_0[32] = {
 #include "sub_main/00497100.inc"
 };
-char D_00497120[0x18] = {
+char D_00497120[24] = {
 #include "sub_main/00497120.inc"
 };
 char D_00497138[13] = {
 #include "sub_main/00497138.inc"
 };
-char D_00497150[0x20] = {
+char D_00497150[32] = {
 #include "sub_main/00497150.inc"
 };
-char D_00497170[0x20] = {
+char gSharpnessDownText_0[32] = {
 #include "sub_main/00497170.inc"
 };
-char D_00497190[0x20] = {
+char gSharpnessDownText_1[32] = {
 #include "sub_main/00497190.inc"
 };
-char D_004971B0[0x20] = {
+char gSharpnessFullText_0[32] = {
 #include "sub_main/004971B0.inc"
 };
-char D_004971D0[0x20] = {
+char gLoadingCaptions_0[32] = {
 #include "sub_main/004971D0.inc"
 };
-char D_004971F0[0x20] = {
+char gLoadingCaptions_1[32] = {
 #include "sub_main/004971F0.inc"
 };
-char D_00497210[0x20] = {
+char gLoadingCaptionsAlt_0[32] = {
 #include "sub_main/00497210.inc"
 };
-char D_00497230[0x20] = {
+char gLoadingCaptionsAlt_1[32] = {
 #include "sub_main/00497230.inc"
 };
-char D_00497250[0x50] = {
+char gEmTraderMsgs_0[80] = {
 #include "sub_main/00497250.inc"
 };
-char D_004972A0[0x60] = {
+char gEmTraderMsgs_1[96] = {
 #include "sub_main/004972A0.inc"
 };
-char D_00497300[0x40] = {
+char gEmTraderMsgs_2[64] = {
 #include "sub_main/00497300.inc"
 };
-char D_00497340[0x40] = {
+char gEmTraderMsgs_3[64] = {
 #include "sub_main/00497340.inc"
 };
-char D_00497380[0x60] = {
+char gEmTraderMsgs_4[96] = {
 #include "sub_main/00497380.inc"
 };
-char D_004973E0[0x60] = {
+char gEmTraderMsgs_5[96] = {
 #include "sub_main/004973E0.inc"
 };
-char D_00497440[0x70] = {
+char gEmTraderMsgs_6[112] = {
 #include "sub_main/00497440.inc"
 };
-char D_004974B0[0x30] = {
+char gEmTraderMsgs_7[48] = {
 #include "sub_main/004974B0.inc"
 };
-char D_004974E0[0x60] = {
+char gEmTraderMsgs_8[96] = {
 #include "sub_main/004974E0.inc"
 };
-char D_00497540[0x50] = {
+char gEmTraderMsgs_9[80] = {
 #include "sub_main/00497540.inc"
 };
-char D_00497590[0x40] = {
+char gEmTraderMsgs_10[64] = {
 #include "sub_main/00497590.inc"
 };
-char D_004975D0[0x40] = {
+char gEmTraderMsgs_11[64] = {
 #include "sub_main/004975D0.inc"
 };
-char D_00497610[0x70] = {
+char gEmTraderMsgs_12[112] = {
 #include "sub_main/00497610.inc"
 };
-char D_00497680[0x60] = {
+char gEmTraderMsgs_13[96] = {
 #include "sub_main/00497680.inc"
 };
-char D_004976E0[0x70] = {
+char gEmTraderMsgs_14[112] = {
 #include "sub_main/004976E0.inc"
 };
-char D_00497750[0x60] = {
+char gEmTraderMsgs_15[96] = {
 #include "sub_main/00497750.inc"
 };
-char D_004977B0[0x60] = {
+char gEmTraderMsgs_16[96] = {
 #include "sub_main/004977B0.inc"
 };
-char D_00497810[0x70] = {
+char gEmTraderMsgs_17[112] = {
 #include "sub_main/00497810.inc"
 };
-char D_00497880[0x40] = {
+char gEmTraderMsgs_18[64] = {
 #include "sub_main/00497880.inc"
 };
-char D_004978C0[0x40] = {
+char gEmTraderMsgs_19[64] = {
 #include "sub_main/004978C0.inc"
 };
-char D_00497900[0x70] = {
+char gEmTraderMsgs_20[112] = {
 #include "sub_main/00497900.inc"
 };
-char D_00497970[0x60] = {
+char gEmTraderMsgs_21[96] = {
 #include "sub_main/00497970.inc"
 };
-char D_004979D0[0x50] = {
+char gEmTraderMsgs_23[80] = {
 #include "sub_main/004979D0.inc"
 };
-char D_00497A20[0x40] = {
+char gEmTraderMsgs_24[64] = {
 #include "sub_main/00497A20.inc"
 };
-char D_00497A60[0x40] = {
+char gEmTraderMsgs_25[64] = {
 #include "sub_main/00497A60.inc"
 };
-char D_00497AA0[0x70] = {
+char gEmTraderMsgs_26[112] = {
 #include "sub_main/00497AA0.inc"
 };
-char D_00497B10[0x60] = {
+char gEmTraderMsgs_27[96] = {
 #include "sub_main/00497B10.inc"
 };
-char D_00497B70[0x50] = {
+char gEmTraderMsgs_28[80] = {
 #include "sub_main/00497B70.inc"
 };
-char D_00497BC0[0x70] = {
+char gEmTraderMsgs_29[112] = {
 #include "sub_main/00497BC0.inc"
 };
-char D_00497C30[0x60] = {
+char gEmTraderMsgs_30[96] = {
 #include "sub_main/00497C30.inc"
 };
-char D_00497C90[0x50] = {
+char gEmTraderMsgs_31[80] = {
 #include "sub_main/00497C90.inc"
 };
-char D_00497CE0[0x50] = {
+char gEmTraderMsgs_32[80] = {
 #include "sub_main/00497CE0.inc"
 };
-char D_00497D30[0x60] = {
+char gEmTraderMsgs_33[96] = {
 #include "sub_main/00497D30.inc"
 };
-char D_00497D90[0x50] = {
+char gEmTraderMsgs_34[80] = {
 #include "sub_main/00497D90.inc"
 };
-char D_00497DE0[0x60] = {
+char gEmTraderMsgs_35[96] = {
 #include "sub_main/00497DE0.inc"
 };
-char D_00497E40[0x50] = {
+char gEmTraderMsgs_36[80] = {
 #include "sub_main/00497E40.inc"
 };
-char D_00497E90[0x70] = {
+char gEmTraderMsgs_37[112] = {
 #include "sub_main/00497E90.inc"
 };
-char D_00497F00[0x80] = {
+char gEmTraderMsgs_38[128] = {
 #include "sub_main/00497F00.inc"
 };
-char D_00497F80[0x80] = {
+char gEmTraderMsgs_39[128] = {
 #include "sub_main/00497F80.inc"
 };
-char D_00498000[0x90] = {
+char gEmTraderMsgs_40[144] = {
 #include "sub_main/00498000.inc"
 };
-char D_00498090[0x90] = {
+char gEmTraderMsgs_41[144] = {
 #include "sub_main/00498090.inc"
 };
-char D_00498120[0x80] = {
+char gEmTraderMsgs_42[128] = {
 #include "sub_main/00498120.inc"
 };
-char D_004981A0[0x80] = {
+char gEmTraderMsgs_43[128] = {
 #include "sub_main/004981A0.inc"
 };
-char D_00498220[0xB0] = {
+char gEmTraderMsgs_44[176] = {
 #include "sub_main/00498220.inc"
 };
-char D_004982D0[0x70] = {
+char gEmTraderMsgs_45[112] = {
 #include "sub_main/004982D0.inc"
 };
-char D_00498340[0x80] = {
+char gEmTraderMsgs_46[128] = {
 #include "sub_main/00498340.inc"
 };
-char D_004983C0[0x70] = {
+char gEmTraderMsgs_47[112] = {
 #include "sub_main/004983C0.inc"
 };
-char D_00498430[0x70] = {
+char gEmTraderMsgs_48[112] = {
 #include "sub_main/00498430.inc"
 };
-char D_004984A0[0xA0] = {
+char gEmTraderMsgs_49[160] = {
 #include "sub_main/004984A0.inc"
 };
-char D_00498540[0x80] = {
+char gEmTraderMsgs_50[128] = {
 #include "sub_main/00498540.inc"
 };
-char D_004985C0[0x70] = {
+char gEmTraderMsgs_51[112] = {
 #include "sub_main/004985C0.inc"
 };
-char D_00498630[0xA0] = {
+char gEmTraderMsgs_52[160] = {
 #include "sub_main/00498630.inc"
 };
-char D_004986D0[0x80] = {
+char gEmTraderMsgs_53[128] = {
 #include "sub_main/004986D0.inc"
 };
-char D_00498750[0x70] = {
+char gEmTraderMsgs_54[112] = {
 #include "sub_main/00498750.inc"
 };
-char D_004987C0[0x90] = {
+char gEmTraderMsgs_55[144] = {
 #include "sub_main/004987C0.inc"
 };
-char D_00498850[0x70] = {
+char gEmTraderMsgs_56[112] = {
 #include "sub_main/00498850.inc"
 };
-char D_004988C0[0x70] = {
+char gEmTraderMsgs_57[112] = {
 #include "sub_main/004988C0.inc"
 };
-char D_00498930[0x70] = {
+char gEmTraderMsgs_58[112] = {
 #include "sub_main/00498930.inc"
 };
-char D_004989A0[0x60] = {
+char gEmTraderMsgs_59[96] = {
 #include "sub_main/004989A0.inc"
 };
-char D_00498A00[0x70] = {
+char gEmTraderMsgs_60[112] = {
 #include "sub_main/00498A00.inc"
 };
-char D_00498A70[0x70] = {
+char gEmTraderMsgs_61[112] = {
 #include "sub_main/00498A70.inc"
 };
-char D_00498AE0[0x80] = {
+char gEmTraderMsgs_62[128] = {
 #include "sub_main/00498AE0.inc"
 };
-char D_00498B60[0x70] = {
+char gEmTraderMsgs_63[112] = {
 #include "sub_main/00498B60.inc"
 };
-char D_00498BD0[0x60] = {
+char gEmTraderMsgs_64[96] = {
 #include "sub_main/00498BD0.inc"
 };
-char D_00498C30[0x60] = {
+char gEmTraderMsgs_65[96] = {
 #include "sub_main/00498C30.inc"
 };
-char D_00498C90[0x60] = {
+char gEmTraderMsgs_66[96] = {
 #include "sub_main/00498C90.inc"
 };
-char D_00498CF0[0x80] = {
+char gEmTraderMsgs_67[128] = {
 #include "sub_main/00498CF0.inc"
 };
-char D_00498D70[0x70] = {
+char gEmTraderMsgs_68[112] = {
 #include "sub_main/00498D70.inc"
 };
-char D_00498DE0[0x80] = {
+char gEmTraderMsgs_69[128] = {
 #include "sub_main/00498DE0.inc"
 };
-char D_00498E60[0x90] = {
+char gEmTraderMsgs_70[144] = {
 #include "sub_main/00498E60.inc"
 };
-char D_00498EF0[0x60] = {
+char gEmTraderMsgs_71[96] = {
 #include "sub_main/00498EF0.inc"
 };
-char D_00498F50[0x60] = {
+char gEmTraderMsgs_72[96] = {
 #include "sub_main/00498F50.inc"
 };
-char D_00498FB0[0x80] = {
+char gEmTraderMsgs_73[128] = {
 #include "sub_main/00498FB0.inc"
 };
-char D_00499030[0x70] = {
+char gEmTraderMsgs_74[112] = {
 #include "sub_main/00499030.inc"
 };
-char D_004990A0[0x90] = {
+char gEmTraderMsgs_75[144] = {
 #include "sub_main/004990A0.inc"
 };
-char D_00499130[0x70] = {
+char gEmTraderMsgs_76[112] = {
 #include "sub_main/00499130.inc"
 };
-char D_004991A0[0x70] = {
+char gEmTraderMsgs_77[112] = {
 #include "sub_main/004991A0.inc"
 };
-char D_00499210[0x90] = {
+char gEmTraderMsgs_78[144] = {
 #include "sub_main/00499210.inc"
 };
-char D_004992A0[0x70] = {
+char gEmTraderMsgs_79[112] = {
 #include "sub_main/004992A0.inc"
 };
-char D_00499310[0x80] = {
+char gEmTraderMsgs_80[128] = {
 #include "sub_main/00499310.inc"
 };
-char D_00499390[0x70] = {
+char gEmTraderMsgs_81[112] = {
 #include "sub_main/00499390.inc"
 };
-char D_00499400[0x80] = {
+char gEmTraderMsgs_82[128] = {
 #include "sub_main/00499400.inc"
 };
-char D_00499480[0x60] = {
+char gEmTraderMsgs_83[96] = {
 #include "sub_main/00499480.inc"
 };
-char D_004994E0[0x70] = {
+char gEmTraderMsgs_84[112] = {
 #include "sub_main/004994E0.inc"
 };
-char D_00499550[0x70] = {
+char gEmTraderMsgs_85[112] = {
 #include "sub_main/00499550.inc"
 };
-char D_004995C0[0x70] = {
+char gEmTraderMsgs_86[112] = {
 #include "sub_main/004995C0.inc"
 };
-char D_00499630[0x70] = {
+char gEmTraderMsgs_87[112] = {
 #include "sub_main/00499630.inc"
 };
-char D_004996A0[0x70] = {
+char gEmTraderMsgs_88[112] = {
 #include "sub_main/004996A0.inc"
 };
-char D_00499710[0x80] = {
+char gEmTraderMsgs_89[128] = {
 #include "sub_main/00499710.inc"
 };
-char D_00499790[0x50] = {
+char gEmTraderMsgs_90[80] = {
 #include "sub_main/00499790.inc"
 };
-char D_004997E0[0x90] = {
+char gEmTraderMsgs_91[144] = {
 #include "sub_main/004997E0.inc"
 };
-char D_00499870[0x70] = {
+char gEmTraderMsgs_92[112] = {
 #include "sub_main/00499870.inc"
 };
-char D_004998E0[0x60] = {
+char gEmTraderMsgs_93[96] = {
 #include "sub_main/004998E0.inc"
 };
-char D_00499940[0x20] = {
+char gEmTraderMsgs_94[32] = {
 #include "sub_main/00499940.inc"
 };
-char D_00499960[0x60] = {
+char gEmTraderMsgs_95[96] = {
 #include "sub_main/00499960.inc"
 };
-char D_004999C0[0x20] = {
+char gEmTraderMsgs_96[32] = {
 #include "sub_main/004999C0.inc"
 };
-char D_004999E0[0x70] = {
+char gEmTraderMsgs_97[112] = {
 #include "sub_main/004999E0.inc"
 };
-char D_00499A50[0x30] = {
+char gEmTraderMsgs_98[48] = {
 #include "sub_main/00499A50.inc"
 };
-char D_00499A80[0x40] = {
+char gEmTraderMsgs_99[64] = {
 #include "sub_main/00499A80.inc"
 };
-char D_00499AC0[0x40] = {
+char D_00499AC0[64] = {
 #include "sub_main/00499AC0.inc"
 };
-char D_00499B00[0x60] = {
+char gEmTraderMsgs_102[96] = {
 #include "sub_main/00499B00.inc"
 };
-char D_00499B60[0x70] = {
+char gEmTraderMsgs_103[112] = {
 #include "sub_main/00499B60.inc"
 };
-char D_00499BD0[0x80] = {
+char gEmTraderMsgs_104[128] = {
 #include "sub_main/00499BD0.inc"
 };
-char D_00499C50[0x78] = {
+char gEmTraderMsgs_105[120] = {
 #include "sub_main/00499C50.inc"
 };
-char D_00499CC8[0x8] = {
+char gStageNames_0[8] = {
 #include "sub_main/00499CC8.inc"
 };
-char D_00499CD0[0x8] = {
+char D_00499CD0[8] = {
 #include "sub_main/00499CD0.inc"
 };
-char D_00499CD8[0x8] = {
+char D_00499CD8[8] = {
 #include "sub_main/00499CD8.inc"
 };
-char D_00499CE0[0x8] = {
+char D_00499CE0[8] = {
 #include "sub_main/00499CE0.inc"
 };
-char D_00499CE8[0x8] = {
+char D_00499CE8[8] = {
 #include "sub_main/00499CE8.inc"
 };
-char D_00499CF0[0x8] = {
+char D_00499CF0[8] = {
 #include "sub_main/00499CF0.inc"
 };
-char D_00499CF8[0x8] = {
+char D_00499CF8[8] = {
 #include "sub_main/00499CF8.inc"
 };
-char D_00499D00[0x10] = {
+char gStageNames_7[16] = {
 #include "sub_main/00499D00.inc"
 };
-char D_00499D10[0x8] = {
+char gStageNames_8[8] = {
 #include "sub_main/00499D10.inc"
 };
-char D_00499D18[0xC] = {
+char D_00499D18[12] = {
 #include "sub_main/00499D18.inc"
 };
-char D_00499D28[0x8] = {
+char D_00499D28[8] = {
 #include "sub_main/00499D28.inc"
 };
-char D_00499D30[0x8] = {
+char D_00499D30[8] = {
 #include "sub_main/00499D30.inc"
 };
-char D_00499D38[0x8] = {
+char D_00499D38[8] = {
 #include "sub_main/00499D38.inc"
 };
-char D_00499D40[0x8] = {
+char D_00499D40[8] = {
 #include "sub_main/00499D40.inc"
 };
-char D_00499D48[0x8] = {
+char D_00499D48[8] = {
 #include "sub_main/00499D48.inc"
 };
-char D_00499D50[0x30] = {
+char D_00499D50[48] = {
 #include "sub_main/00499D50.inc"
 };
-char D_00499D80[0x30] = {
+char gPlselHelpOnline_0[48] = {
 #include "sub_main/00499D80.inc"
 };
-char D_00499DB0[0x8] = {
+char D_00499DB0[8] = {
 #include "sub_main/00499DB0.inc"
 };
-char D_00499DB8[0x8] = {
+char D_00499DB8[8] = {
 #include "sub_main/00499DB8.inc"
 };
-char D_00499DC0[0x10] = {
+char D_00499DC0[16] = {
 #include "sub_main/00499DC0.inc"
 };
-char D_00499DD0[0x8] = {
+char D_00499DD0[8] = {
 #include "sub_main/00499DD0.inc"
 };
-char D_00499DD8[0x8] = {
+char D_00499DD8[8] = {
 #include "sub_main/00499DD8.inc"
 };
-char D_00499DE0[0x8] = {
+char D_00499DE0[8] = {
 #include "sub_main/00499DE0.inc"
 };
-char D_00499DE8[0x8] = {
+char D_00499DE8[8] = {
 #include "sub_main/00499DE8.inc"
 };
-char D_00499DF0[0x8] = {
+char D_00499DF0[8] = {
 #include "sub_main/00499DF0.inc"
 };
-char D_00499DF8[0x8] = {
+char D_00499DF8[8] = {
 #include "sub_main/00499DF8.inc"
 };
-char D_00499E00[0x8] = {
+char D_00499E00[8] = {
 #include "sub_main/00499E00.inc"
 };
-char D_00499E08[0x8] = {
+char D_00499E08[8] = {
 #include "sub_main/00499E08.inc"
 };
-char D_00499E10[0x10] = {
+char D_00499E10[16] = {
 #include "sub_main/00499E10.inc"
 };
-char D_00499E20[0x20] = {
+char D_00499E20[32] = {
 #include "sub_main/00499E20.inc"
 };
-char D_00499E40[0x20] = {
+char D_00499E40[32] = {
 #include "sub_main/00499E40.inc"
 };
-char D_00499E60[0x20] = {
+char D_00499E60[32] = {
 #include "sub_main/00499E60.inc"
 };
-char D_00499E80[0x20] = {
+char gPlselStartPrompt_0[32] = {
 #include "sub_main/00499E80.inc"
 };
-char D_00499EA0[0x20] = {
+char D_00499EA0[32] = {
 #include "sub_main/00499EA0.inc"
 };
-char D_00499EC0[0x30] = {
+char D_00499EC0[48] = {
 #include "sub_main/00499EC0.inc"
 };
-char D_00499EF0[0x58] = {
+char gPlselPointRateFormat_0[88] = {
 #include "sub_main/00499EF0.inc"
 };
 char D_00499F48[13] = {
 #include "sub_main/00499F48.inc"
 };
-char D_00499F60[0x18] = {
+char D_00499F60[24] = {
 #include "sub_main/00499F60.inc"
 };
-char D_00499F78[0x8] = {
+char D_00499F78[8] = {
 #include "sub_main/00499F78.inc"
 };
-char D_00499F80[0x20] = {
+char gPlselWaitLine1_0[32] = {
 #include "sub_main/00499F80.inc"
 };
-char D_00499FA0[0x20] = {
+char gPlselWaitLine2_0[32] = {
 #include "sub_main/00499FA0.inc"
 };
-char D_00499FC0[0x10] = {
+char D_00499FC0[16] = {
 #include "sub_main/00499FC0.inc"
 };
-char D_00499FD0[0x10] = {
+char D_00499FD0[16] = {
 #include "sub_main/00499FD0.inc"
 };
-char D_00499FE0[0x40] = {
+char D_00499FE0[64] = {
 #include "sub_main/00499FE0.inc"
 };
-char D_0049A020[0x40] = {
+char D_0049A020[64] = {
 #include "sub_main/0049A020.inc"
 };
-char D_0049A060[0x38] = {
+char D_0049A060[56] = {
 #include "sub_main/0049A060.inc"
 };
-char D_0049A098[0x8] = {
+char D_0049A098[8] = {
 #include "sub_main/0049A098.inc"
 };
-char D_0049A0A0[0x20] = {
+char gQuestKindNames_1[32] = {
 #include "sub_main/0049A0A0.inc"
 };
-char D_0049A0C0[0x20] = {
+char gQuestKindNames_2[32] = {
 #include "sub_main/0049A0C0.inc"
 };
-char D_0049A0E0[0x20] = {
+char gQuestKindNames_3[32] = {
 #include "sub_main/0049A0E0.inc"
 };
-char D_0049A100[0x20] = {
+char gQuestKindNames_4[32] = {
 #include "sub_main/0049A100.inc"
 };
-char D_0049A120[0x20] = {
+char gQuestKindNames_5[32] = {
 #include "sub_main/0049A120.inc"
 };
-char D_0049A140[0x20] = {
+char gQuestKindNames_6[32] = {
 #include "sub_main/0049A140.inc"
 };
-char D_0049A160[0x20] = {
+char gQuestKindNames_7[32] = {
 #include "sub_main/0049A160.inc"
 };
-char D_0049A180[0x20] = {
+char gQuestKindNames_8[32] = {
 #include "sub_main/0049A180.inc"
 };
-char D_0049A1A0[0x20] = {
+char gQuestKindNames_9[32] = {
 #include "sub_main/0049A1A0.inc"
 };
-char D_0049A1C0[0x20] = {
+char gQuestKindNames_10[32] = {
 #include "sub_main/0049A1C0.inc"
 };
-char D_0049A1E0[0x20] = {
+char gQuestKindNames_11[32] = {
 #include "sub_main/0049A1E0.inc"
 };
-char D_0049A200[0x20] = {
+char gQuestKindNames_12[32] = {
 #include "sub_main/0049A200.inc"
 };
-char D_0049A220[0x20] = {
+char gQuestKindNames_13[32] = {
 #include "sub_main/0049A220.inc"
 };
-char D_0049A240[0x20] = {
+char gQuestKindNames_14[32] = {
 #include "sub_main/0049A240.inc"
 };
-char D_0049A260[0x20] = {
+char gQuestKindNames_15[32] = {
 #include "sub_main/0049A260.inc"
 };
-char D_0049A280[0x20] = {
+char gQuestKindNames_16[32] = {
 #include "sub_main/0049A280.inc"
 };
-char D_0049A2A0[0x20] = {
+char gQuestKindNames_17[32] = {
 #include "sub_main/0049A2A0.inc"
 };
-char D_0049A2C0[0x20] = {
+char gQuestKindNames_18[32] = {
 #include "sub_main/0049A2C0.inc"
 };
-char D_0049A2E0[0x20] = {
+char gQuestKindNames_19[32] = {
 #include "sub_main/0049A2E0.inc"
 };
-char D_0049A300[0x20] = {
+char gQuestKindNames_20[32] = {
 #include "sub_main/0049A300.inc"
 };
-char D_0049A320[0x20] = {
+char gQuestKindNames_21[32] = {
 #include "sub_main/0049A320.inc"
 };
-char D_0049A340[0x20] = {
+char gQuestKindNames_22[32] = {
 #include "sub_main/0049A340.inc"
 };
-char D_0049A360[0x20] = {
+char gQuestKindNames_23[32] = {
 #include "sub_main/0049A360.inc"
 };
-char D_0049A380[0x20] = {
+char gQuestKindNames_24[32] = {
 #include "sub_main/0049A380.inc"
 };
-char D_0049A3A0[0x20] = {
+char gQuestKindNames_25[32] = {
 #include "sub_main/0049A3A0.inc"
 };
-char D_0049A3C0[0x20] = {
+char gQuestKindNames_26[32] = {
 #include "sub_main/0049A3C0.inc"
 };
-char D_0049A3E0[0x20] = {
+char gQuestKindNames_27[32] = {
 #include "sub_main/0049A3E0.inc"
 };
-char D_0049A400[0x20] = {
+char gQuestKindNames_28[32] = {
 #include "sub_main/0049A400.inc"
 };
-char D_0049A420[0x30] = {
+char gQuestKindNames_29[48] = {
 #include "sub_main/0049A420.inc"
 };
-char D_0049A450[0x40] = {
+char gQuestKindNames_30[64] = {
 #include "sub_main/0049A450.inc"
 };
-char D_0049A490[0x40] = {
+char gQuestKindNames_31[64] = {
 #include "sub_main/0049A490.inc"
 };
-char D_0049A4D0[0x30] = {
+char gQuestKindNames_32[48] = {
 #include "sub_main/0049A4D0.inc"
 };
-char D_0049A500[0x30] = {
+char gQuestKindNames_33[48] = {
 #include "sub_main/0049A500.inc"
 };
-char D_0049A530[0x30] = {
+char gQuestKindNames_34[48] = {
 #include "sub_main/0049A530.inc"
 };
-char D_0049A560[0x40] = {
+char gQuestKindNames_35[64] = {
 #include "sub_main/0049A560.inc"
 };
-char D_0049A5A0[0x30] = {
+char gQuestKindNames_36[48] = {
 #include "sub_main/0049A5A0.inc"
 };
-char D_0049A5D0[0x40] = {
+char gQuestKindNames_37[64] = {
 #include "sub_main/0049A5D0.inc"
 };
-char D_0049A610[0x30] = {
+char gQuestKindNames_38[48] = {
 #include "sub_main/0049A610.inc"
 };
-char D_0049A640[0x40] = {
+char gQuestKindNames_39[64] = {
 #include "sub_main/0049A640.inc"
 };
-char D_0049A680[0x20] = {
+char gQuestKindNames_40[32] = {
 #include "sub_main/0049A680.inc"
 };
-char D_0049A6A0[0x20] = {
+char gQuestKindNames_41[32] = {
 #include "sub_main/0049A6A0.inc"
 };
-char D_0049A6C0[0x20] = {
+char gQuestKindNames_42[32] = {
 #include "sub_main/0049A6C0.inc"
 };
-char D_0049A6E0[0x20] = {
+char gQuestKindNames_43[32] = {
 #include "sub_main/0049A6E0.inc"
 };
-char D_0049A700[0x20] = {
+char gQuestKindNames_44[32] = {
 #include "sub_main/0049A700.inc"
 };
-char D_0049A720[0x20] = {
+char gQuestKindNames_45[32] = {
 #include "sub_main/0049A720.inc"
 };
-char D_0049A740[0x20] = {
+char gQuestKindNames_46[32] = {
 #include "sub_main/0049A740.inc"
 };
-char D_0049A760[0x20] = {
+char gQuestKindNames_47[32] = {
 #include "sub_main/0049A760.inc"
 };
-char D_0049A780[0x20] = {
+char gQuestKindNames_48[32] = {
 #include "sub_main/0049A780.inc"
 };
-char D_0049A7A0[0x20] = {
+char gQuestKindNames_49[32] = {
 #include "sub_main/0049A7A0.inc"
 };
-char D_0049A7C0[0x20] = {
+char gQuestKindNames_50[32] = {
 #include "sub_main/0049A7C0.inc"
 };
-char D_0049A7E0[0x10] = {
+char gQuestKindNames_51[16] = {
 #include "sub_main/0049A7E0.inc"
 };
-char D_0049A7F0[0x20] = {
+char gQuestKindNames_52[32] = {
 #include "sub_main/0049A7F0.inc"
 };
-char D_0049A810[0x20] = {
+char gQuestKindNames_53[32] = {
 #include "sub_main/0049A810.inc"
 };
-char D_0049A830[0x20] = {
+char gQuestKindNames_54[32] = {
 #include "sub_main/0049A830.inc"
 };
-char D_0049A850[0x20] = {
+char gQuestKindNames_55[32] = {
 #include "sub_main/0049A850.inc"
 };
-char D_0049A870[0x20] = {
+char gQuestKindNames_56[32] = {
 #include "sub_main/0049A870.inc"
 };
-char D_0049A890[0x20] = {
+char gQuestKindNames_57[32] = {
 #include "sub_main/0049A890.inc"
 };
-char D_0049A8B0[0x20] = {
+char gQuestKindNames_58[32] = {
 #include "sub_main/0049A8B0.inc"
 };
-char D_0049A8D0[0x40] = {
+char gQuestKindNames_59[64] = {
 #include "sub_main/0049A8D0.inc"
 };
-char D_0049A910[0x20] = {
+char gQuestKindNames_60[32] = {
 #include "sub_main/0049A910.inc"
 };
-char D_0049A930[0x20] = {
+char gQuestKindNames_61[32] = {
 #include "sub_main/0049A930.inc"
 };
-char D_0049A950[0x20] = {
+char gQuestKindNames_62[32] = {
 #include "sub_main/0049A950.inc"
 };
-char D_0049A970[0x30] = {
+char gQuestKindNames_63[48] = {
 #include "sub_main/0049A970.inc"
 };
-char D_0049A9A0[0x40] = {
+char gQuestKindNames_64[64] = {
 #include "sub_main/0049A9A0.inc"
 };
-char D_0049A9E0[0x20] = {
+char gQuestKindNames_65[32] = {
 #include "sub_main/0049A9E0.inc"
 };
-char D_0049AA00[0x20] = {
+char gQuestKindNames_66[32] = {
 #include "sub_main/0049AA00.inc"
 };
-char D_0049AA20[0x20] = {
+char gQuestKindNames_67[32] = {
 #include "sub_main/0049AA20.inc"
 };
-char D_0049AA40[0x20] = {
+char gQuestKindNames_68[32] = {
 #include "sub_main/0049AA40.inc"
 };
-char D_0049AA60[0x20] = {
+char gQuestKindNames_69[32] = {
 #include "sub_main/0049AA60.inc"
 };
-char D_0049AA80[0x20] = {
+char gQuestKindNames_70[32] = {
 #include "sub_main/0049AA80.inc"
 };
-char D_0049AAA0[0x20] = {
+char gQuestKindNames_71[32] = {
 #include "sub_main/0049AAA0.inc"
 };
-char D_0049AAC0[0x20] = {
+char gQuestKindNames_72[32] = {
 #include "sub_main/0049AAC0.inc"
 };
-char D_0049AAE0[0x20] = {
+char gQuestKindNames_73[32] = {
 #include "sub_main/0049AAE0.inc"
 };
-char D_0049AB00[0x20] = {
+char gQuestKindNames_74[32] = {
 #include "sub_main/0049AB00.inc"
 };
-char D_0049AB20[0x20] = {
+char gQuestKindNames_75[32] = {
 #include "sub_main/0049AB20.inc"
 };
-char D_0049AB40[0x20] = {
+char gQuestKindNames_76[32] = {
 #include "sub_main/0049AB40.inc"
 };
-char D_0049AB60[0x20] = {
+char gQuestKindNames_77[32] = {
 #include "sub_main/0049AB60.inc"
 };
-char D_0049AB80[0x20] = {
+char gQuestKindNames_78[32] = {
 #include "sub_main/0049AB80.inc"
 };
-char D_0049ABA0[0x30] = {
+char gQuestKindNames_79[48] = {
 #include "sub_main/0049ABA0.inc"
 };
-char D_0049ABD0[0x30] = {
+char gQuestKindNames_80[48] = {
 #include "sub_main/0049ABD0.inc"
 };
-char D_0049AC00[0x30] = {
+char gQuestKindNames_81[48] = {
 #include "sub_main/0049AC00.inc"
 };
-char D_0049AC30[0x20] = {
+char gQuestKindNames_82[32] = {
 #include "sub_main/0049AC30.inc"
 };
-char D_0049AC50[0x20] = {
+char gQuestKindNames_83[32] = {
 #include "sub_main/0049AC50.inc"
 };
-char D_0049AC70[0x20] = {
+char gQuestKindNames_84[32] = {
 #include "sub_main/0049AC70.inc"
 };
-char D_0049AC90[0x20] = {
+char gQuestKindNames_85[32] = {
 #include "sub_main/0049AC90.inc"
 };
-char D_0049ACB0[0x20] = {
+char gQuestKindNames_86[32] = {
 #include "sub_main/0049ACB0.inc"
 };
-char D_0049ACD0[0x20] = {
+char gQuestKindNames_87[32] = {
 #include "sub_main/0049ACD0.inc"
 };
-char D_0049ACF0[0x20] = {
+char gQuestKindNames_88[32] = {
 #include "sub_main/0049ACF0.inc"
 };
-char D_0049AD10[0x20] = {
+char gQuestKindNames_89[32] = {
 #include "sub_main/0049AD10.inc"
 };
-char D_0049AD30[0x20] = {
+char gQuestKindNames_90[32] = {
 #include "sub_main/0049AD30.inc"
 };
-char D_0049AD50[0x20] = {
+char gQuestKindNames_91[32] = {
 #include "sub_main/0049AD50.inc"
 };
-char D_0049AD70[0x20] = {
+char gQuestKindNames_92[32] = {
 #include "sub_main/0049AD70.inc"
 };
-char D_0049AD90[0x30] = {
+char gQuestKindNames_93[48] = {
 #include "sub_main/0049AD90.inc"
 };
-char D_0049ADC0[0x30] = {
+char gQuestKindNames_94[48] = {
 #include "sub_main/0049ADC0.inc"
 };
-char D_0049ADF0[0x10] = {
+char gSkillEffectNames_0[16] = {
 #include "sub_main/0049ADF0.inc"
 };
-char D_0049AE00[0x10] = {
+char gSkillEffectNames_1[16] = {
 #include "sub_main/0049AE00.inc"
 };
-char D_0049AE10[0x10] = {
+char gSkillEffectNames_2[16] = {
 #include "sub_main/0049AE10.inc"
 };
-char D_0049AE20[0x10] = {
+char gSkillEffectNames_3[16] = {
 #include "sub_main/0049AE20.inc"
 };
-char D_0049AE30[0x10] = {
+char gSkillEffectNames_4[16] = {
 #include "sub_main/0049AE30.inc"
 };
-char D_0049AE40[0x10] = {
+char gSkillEffectNames_5[16] = {
 #include "sub_main/0049AE40.inc"
 };
-char D_0049AE50[0x10] = {
+char gSkillEffectNames_6[16] = {
 #include "sub_main/0049AE50.inc"
 };
-char D_0049AE60[0x10] = {
+char gSkillEffectNames_7[16] = {
 #include "sub_main/0049AE60.inc"
 };
-char D_0049AE70[0x10] = {
+char gSkillEffectNames_8[16] = {
 #include "sub_main/0049AE70.inc"
 };
-char D_0049AE80[0x10] = {
+char gSkillEffectNames_9[16] = {
 #include "sub_main/0049AE80.inc"
 };
-char D_0049AE90[0x8] = {
+char gSkillEffectNames_10[8] = {
 #include "sub_main/0049AE90.inc"
 };
-char D_0049AE98[0x8] = {
+char gSkillEffectNames_11[8] = {
 #include "sub_main/0049AE98.inc"
 };
-char D_0049AEA0[0x8] = {
+char gSkillEffectNames_12[8] = {
 #include "sub_main/0049AEA0.inc"
 };
-char D_0049AEA8[0x8] = {
+char gSkillEffectNames_13[8] = {
 #include "sub_main/0049AEA8.inc"
 };
-char D_0049AEB0[0x8] = {
+char gSkillEffectNames_14[8] = {
 #include "sub_main/0049AEB0.inc"
 };
-char D_0049AEB8[0xC] = {
+char gSkillEffectNames_15[12] = {
 #include "sub_main/0049AEB8.inc"
 };
-char D_0049AEC8[0x8] = {
+char gSkillEffectNames_16[8] = {
 #include "sub_main/0049AEC8.inc"
 };
-char D_0049AED0[0x8] = {
+char gSkillEffectNames_17[8] = {
 #include "sub_main/0049AED0.inc"
 };
-char D_0049AED8[0x8] = {
+char gSkillEffectNames_18[8] = {
 #include "sub_main/0049AED8.inc"
 };
-char D_0049AEE0[0x8] = {
+char gSkillEffectNames_19[8] = {
 #include "sub_main/0049AEE0.inc"
 };
-char D_0049AEE8[0x8] = {
+char gSkillEffectNames_20[8] = {
 #include "sub_main/0049AEE8.inc"
 };
-char D_0049AEF0[0x8] = {
+char gSkillEffectNames_21[8] = {
 #include "sub_main/0049AEF0.inc"
 };
-char D_0049AEF8[0x8] = {
+char gSkillEffectNames_22[8] = {
 #include "sub_main/0049AEF8.inc"
 };
-char D_0049AF00[0x8] = {
+char gSkillEffectNames_23[8] = {
 #include "sub_main/0049AF00.inc"
 };
-char D_0049AF08[0x8] = {
+char gSkillEffectNames_24[8] = {
 #include "sub_main/0049AF08.inc"
 };
-char D_0049AF10[0x8] = {
+char gSkillEffectNames_25[8] = {
 #include "sub_main/0049AF10.inc"
 };
-char D_0049AF18[0x8] = {
+char gSkillEffectNames_26[8] = {
 #include "sub_main/0049AF18.inc"
 };
-char D_0049AF20[0x20] = {
+char gSkillEffectNames_27[32] = {
 #include "sub_main/0049AF20.inc"
 };
-char D_0049AF40[0x20] = {
+char gSkillEffectNames_28[32] = {
 #include "sub_main/0049AF40.inc"
 };
-char D_0049AF60[0x20] = {
+char gSkillEffectNames_29[32] = {
 #include "sub_main/0049AF60.inc"
 };
-char D_0049AF80[0x18] = {
+char gSkillEffectNames_30[24] = {
 #include "sub_main/0049AF80.inc"
 };
-char D_0049AF98[0x8] = {
+char gSkillEffectNames_31[8] = {
 #include "sub_main/0049AF98.inc"
 };
-char D_0049AFA0[0x10] = {
+char gSkillEffectNames_32[16] = {
 #include "sub_main/0049AFA0.inc"
 };
-char D_0049AFB0[0x10] = {
+char gSkillEffectNames_33[16] = {
 #include "sub_main/0049AFB0.inc"
 };
-char D_0049AFC0[0x10] = {
+char gSkillEffectNames_34[16] = {
 #include "sub_main/0049AFC0.inc"
 };
-char D_0049AFD0[0x8] = {
+char gSkillEffectNames_35[8] = {
 #include "sub_main/0049AFD0.inc"
 };
-char D_0049AFD8[0xC] = {
+char gSkillEffectNames_36[12] = {
 #include "sub_main/0049AFD8.inc"
 };
-char D_0049AFE8[0xC] = {
+char gSkillEffectNames_37[12] = {
 #include "sub_main/0049AFE8.inc"
 };
-char D_0049AFF8[15] = {
+char gSkillEffectNames_38[15] = {
 #include "sub_main/0049AFF8.inc"
 };
-char D_0049B008[13] = {
+char gSkillEffectNames_39[13] = {
 #include "sub_main/0049B008.inc"
 };
-char D_0049B018[13] = {
+char gSkillEffectNames_40[13] = {
 #include "sub_main/0049B018.inc"
 };
-char D_0049B028[13] = {
+char gSkillEffectNames_41[13] = {
 #include "sub_main/0049B028.inc"
 };
-char D_0049B038[13] = {
+char gSkillEffectNames_42[13] = {
 #include "sub_main/0049B038.inc"
 };
-char D_0049B048[13] = {
+char gSkillEffectNames_43[13] = {
 #include "sub_main/0049B048.inc"
 };
-char D_0049B058[13] = {
+char gSkillEffectNames_44[13] = {
 #include "sub_main/0049B058.inc"
 };
-char D_0049B068[0xC] = {
+char gSkillEffectNames_45[12] = {
 #include "sub_main/0049B068.inc"
 };
-char D_0049B078[0xC] = {
+char gSkillEffectNames_46[12] = {
 #include "sub_main/0049B078.inc"
 };
-char D_0049B088[0xC] = {
+char gSkillEffectNames_47[12] = {
 #include "sub_main/0049B088.inc"
 };
-char D_0049B098[0xC] = {
+char gSkillEffectNames_48[12] = {
 #include "sub_main/0049B098.inc"
 };
-char D_0049B0A8[0xC] = {
+char gSkillEffectNames_49[12] = {
 #include "sub_main/0049B0A8.inc"
 };
-char D_0049B0B8[0xC] = {
+char gSkillEffectNames_50[12] = {
 #include "sub_main/0049B0B8.inc"
 };
-char D_0049B0C8[0x8] = {
+char D_0049B0C8[8] = {
 #include "sub_main/0049B0C8.inc"
 };
-char D_0049B0D0[0x10] = {
+char gSkillEffectNames_52[16] = {
 #include "sub_main/0049B0D0.inc"
 };
-char D_0049B0E0[0x10] = {
+char gSkillEffectNames_53[16] = {
 #include "sub_main/0049B0E0.inc"
 };
-char D_0049B0F0[0x10] = {
+char gSkillEffectNames_54[16] = {
 #include "sub_main/0049B0F0.inc"
 };
-char D_0049B100[0x10] = {
+char gSkillEffectNames_55[16] = {
 #include "sub_main/0049B100.inc"
 };
-char D_0049B110[0x10] = {
+char gSkillEffectNames_56[16] = {
 #include "sub_main/0049B110.inc"
 };
-char D_0049B120[0x20] = {
+char gSkillEffectNames_57[32] = {
 #include "sub_main/0049B120.inc"
 };
-char D_0049B140[0x20] = {
+char gSkillEffectNames_58[32] = {
 #include "sub_main/0049B140.inc"
 };
-char D_0049B160[0x20] = {
+char gSkillEffectNames_59[32] = {
 #include "sub_main/0049B160.inc"
 };
-char D_0049B180[0x20] = {
+char gSkillEffectNames_60[32] = {
 #include "sub_main/0049B180.inc"
 };
-char D_0049B1A0[0x18] = {
+char gSkillEffectNames_61[24] = {
 #include "sub_main/0049B1A0.inc"
 };
-char D_0049B1B8[15] = {
+char gSkillEffectNames_62[15] = {
 #include "sub_main/0049B1B8.inc"
 };
-char D_0049B1D0[0x10] = {
+char gSkillEffectNames_63[16] = {
 #include "sub_main/0049B1D0.inc"
 };
-char D_0049B1E0[0x20] = {
+char gSkillEffectNames_64[32] = {
 #include "sub_main/0049B1E0.inc"
 };
-char D_0049B200[0x20] = {
+char gSkillEffectNames_65[32] = {
 #include "sub_main/0049B200.inc"
 };
-char D_0049B220[0x20] = {
+char gSkillEffectNames_66[32] = {
 #include "sub_main/0049B220.inc"
 };
-char D_0049B240[0x20] = {
+char gSkillEffectNames_67[32] = {
 #include "sub_main/0049B240.inc"
 };
-char D_0049B260[0x20] = {
+char gSkillEffectNames_68[32] = {
 #include "sub_main/0049B260.inc"
 };
-char D_0049B280[0x20] = {
+char gSkillEffectNames_69[32] = {
 #include "sub_main/0049B280.inc"
 };
-char D_0049B2A0[0x20] = {
+char gSkillEffectNames_70[32] = {
 #include "sub_main/0049B2A0.inc"
 };
-char D_0049B2C0[0x18] = {
+char gSkillEffectNames_71[24] = {
 #include "sub_main/0049B2C0.inc"
 };
-char D_0049B2D8[0x8] = {
+char gSkillEffectNames_72[8] = {
 #include "sub_main/0049B2D8.inc"
 };
-char D_0049B2E0[0x10] = {
+char gSkillEffectNames_73[16] = {
 #include "sub_main/0049B2E0.inc"
 };
-char D_0049B2F0[0x10] = {
+char gSkillEffectNames_74[16] = {
 #include "sub_main/0049B2F0.inc"
 };
-char D_0049B300[0x20] = {
+char gSkillEffectNames_75[32] = {
 #include "sub_main/0049B300.inc"
 };
-char D_0049B320[0x18] = {
+char gSkillEffectNames_76[24] = {
 #include "sub_main/0049B320.inc"
 };
-char D_0049B338[0xC] = {
+char gSkillEffectNames_77[12] = {
 #include "sub_main/0049B338.inc"
 };
-char D_0049B348[0xC] = {
+char gSkillEffectNames_78[12] = {
 #include "sub_main/0049B348.inc"
 };
-char D_0049B358[15] = {
+char gSkillEffectNames_79[15] = {
 #include "sub_main/0049B358.inc"
 };
-char D_0049B368[15] = {
+char gSkillEffectNames_80[15] = {
 #include "sub_main/0049B368.inc"
 };
-char D_0049B378[15] = {
+char gSkillEffectNames_81[15] = {
 #include "sub_main/0049B378.inc"
 };
-char D_0049B388[0x8] = {
+char gSkillEffectNames_82[8] = {
 #include "sub_main/0049B388.inc"
 };
-char D_0049B390[0x8] = {
+char gSkillEffectNames_83[8] = {
 #include "sub_main/0049B390.inc"
 };
-char D_0049B398[0x8] = {
+char gSkillEffectNames_84[8] = {
 #include "sub_main/0049B398.inc"
 };
-char D_0049B3A0[0x8] = {
+char gSkillEffectNames_85[8] = {
 #include "sub_main/0049B3A0.inc"
 };
-char D_0049B3A8[0x8] = {
+char gSkillEffectNames_86[8] = {
 #include "sub_main/0049B3A8.inc"
 };
-char D_0049B3B0[0x8] = {
+char gSkillEffectNames_87[8] = {
 #include "sub_main/0049B3B0.inc"
 };
-char D_0049B3B8[0xC] = {
+char gSkillEffectNames_88[12] = {
 #include "sub_main/0049B3B8.inc"
 };
-char D_0049B3C8[0xC] = {
+char gSkillEffectNames_89[12] = {
 #include "sub_main/0049B3C8.inc"
 };
-char D_0049B3D8[0x8] = {
+char gSkillEffectNames_90[8] = {
 #include "sub_main/0049B3D8.inc"
 };
-char D_0049B3E0[0x10] = {
+char gSkillEffectNames_91[16] = {
 #include "sub_main/0049B3E0.inc"
 };
-char D_0049B3F0[0x10] = {
+char D_0049B3F0[16] = {
 #include "sub_main/0049B3F0.inc"
 };
-char D_0049B400[0x10] = {
+char gSkillEffectNames_93[16] = {
 #include "sub_main/0049B400.inc"
 };
-char D_0049B410[0x10] = {
+char gSkillEffectNames_94[16] = {
 #include "sub_main/0049B410.inc"
 };
-char D_0049B420[0x10] = {
+char gSkillEffectNames_95[16] = {
 #include "sub_main/0049B420.inc"
 };
-char D_0049B430[0x10] = {
+char gSkillEffectNames_96[16] = {
 #include "sub_main/0049B430.inc"
 };
-char D_0049B440[0x10] = {
+char gSkillEffectNames_97[16] = {
 #include "sub_main/0049B440.inc"
 };
-char D_0049B450[0x10] = {
+char gSkillEffectNames_98[16] = {
 #include "sub_main/0049B450.inc"
 };
-char D_0049B460[0x10] = {
+char gSkillEffectNames_99[16] = {
 #include "sub_main/0049B460.inc"
 };
-char D_0049B470[0x10] = {
+char gSkillEffectNames_100[16] = {
 #include "sub_main/0049B470.inc"
 };
-char D_0049B480[0x10] = {
+char gSkillEffectNames_101[16] = {
 #include "sub_main/0049B480.inc"
 };
-char D_0049B490[0x10] = {
+char gSkillEffectNames_102[16] = {
 #include "sub_main/0049B490.inc"
 };
-char D_0049B4A0[0x10] = {
+char gSkillEffectNames_103[16] = {
 #include "sub_main/0049B4A0.inc"
 };
-char D_0049B4B0[0x10] = {
+char gSkillEffectNames_104[16] = {
 #include "sub_main/0049B4B0.inc"
 };
-char D_0049B4C0[0x10] = {
+char gSkillEffectNames_105[16] = {
 #include "sub_main/0049B4C0.inc"
 };
-char D_0049B4D0[0x10] = {
+char gSkillEffectNames_106[16] = {
 #include "sub_main/0049B4D0.inc"
 };
-char D_0049B4E0[0x10] = {
+char gSkillEffectNames_107[16] = {
 #include "sub_main/0049B4E0.inc"
 };
-char D_0049B4F0[0x10] = {
+char gSkillEffectNames_108[16] = {
 #include "sub_main/0049B4F0.inc"
 };
-char D_0049B500[0x10] = {
+char gSkillEffectNames_109[16] = {
 #include "sub_main/0049B500.inc"
 };
-char D_0049B510[0x10] = {
+char gSkillEffectNames_110[16] = {
 #include "sub_main/0049B510.inc"
 };
-char D_0049B520[0x10] = {
+char gSkillEffectNames_111[16] = {
 #include "sub_main/0049B520.inc"
 };
-char D_0049B530[0x10] = {
+char gSkillEffectNames_112[16] = {
 #include "sub_main/0049B530.inc"
 };
-char D_0049B540[0x10] = {
+char gSkillEffectNames_113[16] = {
 #include "sub_main/0049B540.inc"
 };
-char D_0049B550[0x10] = {
+char gSkillEffectNames_114[16] = {
 #include "sub_main/0049B550.inc"
 };
-char D_0049B560[0x10] = {
+char gSkillEffectNames_115[16] = {
 #include "sub_main/0049B560.inc"
 };
-char D_0049B570[0x10] = {
+char gSkillEffectNames_116[16] = {
 #include "sub_main/0049B570.inc"
 };
-char D_0049B580[0x10] = {
+char gSkillEffectNames_117[16] = {
 #include "sub_main/0049B580.inc"
 };
-char D_0049B590[0x10] = {
+char gSkillEffectNames_118[16] = {
 #include "sub_main/0049B590.inc"
 };
-char D_0049B5A0[0x10] = {
+char gSkillEffectNames_119[16] = {
 #include "sub_main/0049B5A0.inc"
 };
-char D_0049B5B0[0x10] = {
+char gSkillEffectNames_120[16] = {
 #include "sub_main/0049B5B0.inc"
 };
-char D_0049B5C0[0x10] = {
+char gSkillEffectNames_121[16] = {
 #include "sub_main/0049B5C0.inc"
 };
-char D_0049B5D0[0x10] = {
+char gSkillEffectNames_122[16] = {
 #include "sub_main/0049B5D0.inc"
 };
-char D_0049B5E0[0x10] = {
+char gSkillEffectNames_123[16] = {
 #include "sub_main/0049B5E0.inc"
 };
-char D_0049B5F0[0x10] = {
+char gSkillEffectNames_124[16] = {
 #include "sub_main/0049B5F0.inc"
 };
-char D_0049B600[0x10] = {
+char gSkillEffectNames_125[16] = {
 #include "sub_main/0049B600.inc"
 };
-char D_0049B610[0x10] = {
+char gSkillEffectNames_126[16] = {
 #include "sub_main/0049B610.inc"
 };
-char D_0049B620[0x10] = {
+char gSkillEffectNames_127[16] = {
 #include "sub_main/0049B620.inc"
 };
-char D_0049B630[0x10] = {
+char gSkillEffectNames_128[16] = {
 #include "sub_main/0049B630.inc"
 };
-char D_0049B640[0x10] = {
+char gSkillEffectNames_129[16] = {
 #include "sub_main/0049B640.inc"
 };
-char D_0049B650[0x10] = {
+char gSkillEffectNames_130[16] = {
 #include "sub_main/0049B650.inc"
 };
-char D_0049B660[0x10] = {
+char gSkillEffectNames_131[16] = {
 #include "sub_main/0049B660.inc"
 };
-char D_0049B670[0x10] = {
+char gSkillEffectNames_132[16] = {
 #include "sub_main/0049B670.inc"
 };
-char D_0049B680[0x10] = {
+char gSkillEffectNames_133[16] = {
 #include "sub_main/0049B680.inc"
 };
-char D_0049B690[0x10] = {
+char gSkillEffectNames_134[16] = {
 #include "sub_main/0049B690.inc"
 };
-char D_0049B6A0[0x10] = {
+char gSkillEffectNames_135[16] = {
 #include "sub_main/0049B6A0.inc"
 };
-char D_0049B6B0[0x10] = {
+char gSkillEffectNames_136[16] = {
 #include "sub_main/0049B6B0.inc"
 };
-char D_0049B6C0[0x10] = {
+char gSkillEffectNames_137[16] = {
 #include "sub_main/0049B6C0.inc"
 };
-char D_0049B6D0[0x10] = {
+char gSkillEffectNames_138[16] = {
 #include "sub_main/0049B6D0.inc"
 };
-char D_0049B6E0[0x10] = {
+char gSkillEffectNames_139[16] = {
 #include "sub_main/0049B6E0.inc"
 };
-char D_0049B6F0[0x10] = {
+char gSkillEffectNames_140[16] = {
 #include "sub_main/0049B6F0.inc"
 };
-char D_0049B700[0x10] = {
+char gSkillEffectNames_141[16] = {
 #include "sub_main/0049B700.inc"
 };
-char D_0049B710[0x10] = {
+char gSkillEffectNames_142[16] = {
 #include "sub_main/0049B710.inc"
 };
-char D_0049B720[0x10] = {
+char gSkillEffectNames_143[16] = {
 #include "sub_main/0049B720.inc"
 };
-char D_0049B730[0x10] = {
+char gSkillEffectNames_144[16] = {
 #include "sub_main/0049B730.inc"
 };
-char D_0049B740[0x10] = {
+char gSkillEffectNames_145[16] = {
 #include "sub_main/0049B740.inc"
 };
-char D_0049B750[0x10] = {
+char gSkillEffectNames_146[16] = {
 #include "sub_main/0049B750.inc"
 };
-char D_0049B760[0x8] = {
+char gSkillEffectNames_147[8] = {
 #include "sub_main/0049B760.inc"
 };
-char D_0049B768[0x8] = {
+char gSkillEffectNames_148[8] = {
 #include "sub_main/0049B768.inc"
 };
-char D_0049B770[0x8] = {
+char gSkillEffectNames_149[8] = {
 #include "sub_main/0049B770.inc"
 };
-char D_0049B778[0x8] = {
+char gSkillEffectNames_150[8] = {
 #include "sub_main/0049B778.inc"
 };
-char D_0049B780[0x18] = {
+char gSkillEffectNames_151[24] = {
 #include "sub_main/0049B780.inc"
 };
-char D_0049B798[15] = {
+char gSkillEffectNames_152[15] = {
 #include "sub_main/0049B798.inc"
 };
-char D_0049B7A8[13] = {
+char gSkillEffectNames_153[13] = {
 #include "sub_main/0049B7A8.inc"
 };
-char D_0049B7B8[15] = {
+char gSkillEffectNames_154[15] = {
 #include "sub_main/0049B7B8.inc"
 };
-char D_0049B7C8[15] = {
+char gSkillEffectNames_155[15] = {
 #include "sub_main/0049B7C8.inc"
 };
-char D_0049B7D8[0x8] = {
+char gSkillEffectNames_156[8] = {
 #include "sub_main/0049B7D8.inc"
 };
-char D_0049B7E0[0x8] = {
+char gSkillEffectNames_157[8] = {
 #include "sub_main/0049B7E0.inc"
 };
-char D_0049B7E8[0x8] = {
+char gSkillEffectNames_158[8] = {
 #include "sub_main/0049B7E8.inc"
 };
-char D_0049B7F0[0x8] = {
+char gSkillEffectNames_159[8] = {
 #include "sub_main/0049B7F0.inc"
 };
-char D_0049B7F8[0xC] = {
+char gSkillEffectNames_160[12] = {
 #include "sub_main/0049B7F8.inc"
 };
-char D_0049B808[0x8] = {
+char gSkillEffectNames_161[8] = {
 #include "sub_main/0049B808.inc"
 };
-char D_0049B810[0x10] = {
+char gSkillEffectNames_162[16] = {
 #include "sub_main/0049B810.inc"
 };
-char D_0049B820[0x20] = {
+char gSkillEffectNames_163[32] = {
 #include "sub_main/0049B820.inc"
 };
-char D_0049B840[0x18] = {
+char gSkillEffectNames_164[24] = {
 #include "sub_main/0049B840.inc"
 };
-char D_0049B858[14] = {
+char gSkillEffectNames_165[14] = {
 #include "sub_main/0049B858.inc"
 };
-char D_0049B868[15] = {
+char gSkillEffectNames_166[15] = {
 #include "sub_main/0049B868.inc"
 };
-char D_0049B878[15] = {
+char gSkillEffectNames_167[15] = {
 #include "sub_main/0049B878.inc"
 };
-char D_0049B888[14] = {
+char gSkillEffectNames_168[14] = {
 #include "sub_main/0049B888.inc"
 };
-char D_0049B898[15] = {
+char gSkillEffectNames_169[15] = {
 #include "sub_main/0049B898.inc"
 };
-char D_0049B8A8[13] = {
+char gSkillEffectNames_170[13] = {
 #include "sub_main/0049B8A8.inc"
 };
-char D_0049B8B8[0x8] = {
+char D_0049B8B8[8] = {
 #include "sub_main/0049B8B8.inc"
 };
-char D_0049B8C0[0x10] = {
+char D_0049B8C0[16] = {
 #include "sub_main/0049B8C0.inc"
 };
-char D_0049B8D0[0x10] = {
+char gSkillEffectNames_173[16] = {
 #include "sub_main/0049B8D0.inc"
 };
-char D_0049B8E0[0x10] = {
+char gSkillEffectNames_174[16] = {
 #include "sub_main/0049B8E0.inc"
 };
-char D_0049B8F0[0x10] = {
+char gSkillEffectNames_175[16] = {
 #include "sub_main/0049B8F0.inc"
 };
-char D_0049B900[0x10] = {
+char gSkillEffectNames_176[16] = {
 #include "sub_main/0049B900.inc"
 };
-char D_0049B910[0x10] = {
+char gSkillEffectNames_177[16] = {
 #include "sub_main/0049B910.inc"
 };
-char D_0049B920[0x10] = {
+char gSkillEffectNames_178[16] = {
 #include "sub_main/0049B920.inc"
 };
-char D_0049B930[0x10] = {
+char gSkillEffectNames_179[16] = {
 #include "sub_main/0049B930.inc"
 };
-char D_0049B940[0x20] = {
+char gSkillEffectNames_180[32] = {
 #include "sub_main/0049B940.inc"
 };
-char D_0049B960[0x18] = {
+char gSkillEffectNames_181[24] = {
 #include "sub_main/0049B960.inc"
 };
-char D_0049B978[0xC] = {
+char gSkillEffectNames_182[12] = {
 #include "sub_main/0049B978.inc"
 };
-char D_0049B988[0x8] = {
+char gSkillEffectNames_183[8] = {
 #include "sub_main/0049B988.inc"
 };
-char D_0049B990[0x10] = {
+char gSkillEffectNames_184[16] = {
 #include "sub_main/0049B990.inc"
 };
-char D_0049B9A0[0x10] = {
+char gSkillEffectNames_185[16] = {
 #include "sub_main/0049B9A0.inc"
 };
-char D_0049B9B0[0x10] = {
+char gSkillEffectNames_186[16] = {
 #include "sub_main/0049B9B0.inc"
 };
-char D_0049B9C0[0x10] = {
+char gSkillEffectNames_187[16] = {
 #include "sub_main/0049B9C0.inc"
 };
-char D_0049B9D0[0x8] = {
+char gSkillEffectNames_188[8] = {
 #include "sub_main/0049B9D0.inc"
 };
-char D_0049B9D8[13] = {
+char gSkillEffectNames_189[13] = {
 #include "sub_main/0049B9D8.inc"
 };
-char D_0049B9E8[13] = {
+char gSkillEffectNames_190[13] = {
 #include "sub_main/0049B9E8.inc"
 };
-char D_0049BA00[0x20] = {
+char gSkillEffectNames_191[32] = {
 #include "sub_main/0049BA00.inc"
 };
-char D_0049BA20[0x20] = {
+char gSkillEffectNames_192[32] = {
 #include "sub_main/0049BA20.inc"
 };
-char D_0049BA40[0x20] = {
+char gSkillEffectNames_193[32] = {
 #include "sub_main/0049BA40.inc"
 };
-char D_0049BA60[0x18] = {
+char gSkillEffectNames_194[24] = {
 #include "sub_main/0049BA60.inc"
 };
-char D_0049BA78[0x8] = {
+char D_0049BA78[8] = {
 #include "sub_main/0049BA78.inc"
 };
-char D_0049BA80[0x10] = {
+char gSkillEffectNames_196[16] = {
 #include "sub_main/0049BA80.inc"
 };
-char D_0049BA90[0x10] = {
+char gSkillEffectNames_197[16] = {
 #include "sub_main/0049BA90.inc"
 };
-char D_0049BAA0[0x10] = {
+char gSkillEffectNames_198[16] = {
 #include "sub_main/0049BAA0.inc"
 };
-char D_0049BAB0[0x10] = {
+char gSkillEffectNames_199[16] = {
 #include "sub_main/0049BAB0.inc"
 };
-char D_0049BAC0[0x10] = {
+char gSkillEffectNames_200[16] = {
 #include "sub_main/0049BAC0.inc"
 };
-char D_0049BAD0[0x8] = {
+char D_0049BAD0[8] = {
 #include "sub_main/0049BAD0.inc"
 };
-char D_0049BAD8[0x8] = {
+char gSkillNames_1[8] = {
 #include "sub_main/0049BAD8.inc"
 };
-char D_0049BAE0[0x8] = {
+char gSkillNames_2[8] = {
 #include "sub_main/0049BAE0.inc"
 };
-char D_0049BAE8[0x8] = {
+char gSkillNames_3[8] = {
 #include "sub_main/0049BAE8.inc"
 };
-char D_0049BAF0[0x10] = {
+char gSkillNames_4[16] = {
 #include "sub_main/0049BAF0.inc"
 };
-char D_0049BB00[0x10] = {
+char gSkillNames_5[16] = {
 #include "sub_main/0049BB00.inc"
 };
-char D_0049BB10[0x8] = {
+char gSkillNames_6[8] = {
 #include "sub_main/0049BB10.inc"
 };
-char D_0049BB18[0xC] = {
+char gSkillNames_7[12] = {
 #include "sub_main/0049BB18.inc"
 };
-char D_0049BB28[0xC] = {
+char gSkillNames_8[12] = {
 #include "sub_main/0049BB28.inc"
 };
-char D_0049BB38[0x8] = {
+char gSkillNames_9[8] = {
 #include "sub_main/0049BB38.inc"
 };
-char D_0049BB40[0x8] = {
+char gSkillNames_10[8] = {
 #include "sub_main/0049BB40.inc"
 };
-char D_0049BB48[0xC] = {
+char gSkillNames_11[12] = {
 #include "sub_main/0049BB48.inc"
 };
-char D_0049BB58[0xC] = {
+char gSkillNames_12[12] = {
 #include "sub_main/0049BB58.inc"
 };
-char D_0049BB68[0x8] = {
+char gSkillNames_13[8] = {
 #include "sub_main/0049BB68.inc"
 };
-char D_0049BB70[0x10] = {
+char gSkillNames_14[16] = {
 #include "sub_main/0049BB70.inc"
 };
-char D_0049BB80[0x8] = {
+char gSkillNames_15[8] = {
 #include "sub_main/0049BB80.inc"
 };
-char D_0049BB88[0xC] = {
+char D_0049BB88[12] = {
 #include "sub_main/0049BB88.inc"
 };
-char D_0049BB98[0x8] = {
+char gSkillNames_17[8] = {
 #include "sub_main/0049BB98.inc"
 };
-char D_0049BBA0[0x8] = {
+char gSkillNames_18[8] = {
 #include "sub_main/0049BBA0.inc"
 };
-char D_0049BBA8[0xC] = {
+char gSkillNames_19[12] = {
 #include "sub_main/0049BBA8.inc"
 };
-char D_0049BBB8[0xC] = {
+char gSkillNames_20[12] = {
 #include "sub_main/0049BBB8.inc"
 };
-char D_0049BBC8[0x8] = {
+char gSkillNames_21[8] = {
 #include "sub_main/0049BBC8.inc"
 };
-char D_0049BBD0[0x8] = {
+char gSkillNames_22[8] = {
 #include "sub_main/0049BBD0.inc"
 };
-char D_0049BBD8[0xC] = {
+char gSkillNames_23[12] = {
 #include "sub_main/0049BBD8.inc"
 };
-char D_0049BBE8[0xC] = {
+char gSkillNames_24[12] = {
 #include "sub_main/0049BBE8.inc"
 };
-char D_0049BBF8[0xC] = {
+char gSkillNames_26[12] = {
 #include "sub_main/0049BBF8.inc"
 };
-char D_0049BC08[0x8] = {
+char gSkillNames_27[8] = {
 #include "sub_main/0049BC08.inc"
 };
-char D_0049BC10[0x8] = {
+char gSkillNames_28[8] = {
 #include "sub_main/0049BC10.inc"
 };
-char D_0049BC18[0x8] = {
+char gSkillNames_29[8] = {
 #include "sub_main/0049BC18.inc"
 };
-char D_0049BC20[0x8] = {
+char gSkillNames_30[8] = {
 #include "sub_main/0049BC20.inc"
 };
-char D_0049BC28[0x8] = {
+char gSkillNames_31[8] = {
 #include "sub_main/0049BC28.inc"
 };
-char D_0049BC30[0x8] = {
+char gSkillNames_32[8] = {
 #include "sub_main/0049BC30.inc"
 };
-char D_0049BC38[0xC] = {
+char gSkillNames_33[12] = {
 #include "sub_main/0049BC38.inc"
 };
-char D_0049BC48[0x8] = {
+char gSkillNames_34[8] = {
 #include "sub_main/0049BC48.inc"
 };
-char D_0049BC50[0x8] = {
+char gSkillNames_35[8] = {
 #include "sub_main/0049BC50.inc"
 };
-char D_0049BC58[0xC] = {
+char gSkillNames_36[12] = {
 #include "sub_main/0049BC58.inc"
 };
-char D_0049BC68[0xC] = {
+char gSkillNames_37[12] = {
 #include "sub_main/0049BC68.inc"
 };
-char D_0049BC78[0xC] = {
+char gSkillNames_38[12] = {
 #include "sub_main/0049BC78.inc"
 };
-char D_0049BC88[0xC] = {
+char gSkillNames_39[12] = {
 #include "sub_main/0049BC88.inc"
 };
-char D_0049BC98[0x8] = {
+char gSkillNames_40[8] = {
 #include "sub_main/0049BC98.inc"
 };
-char D_0049BCA0[0x10] = {
+char gSkillNames_41[16] = {
 #include "sub_main/0049BCA0.inc"
 };
-char D_0049BCB0[0x10] = {
+char gSkillNames_42[16] = {
 #include "sub_main/0049BCB0.inc"
 };
-char D_0049BCC0[0x8] = {
+char gSkillNames_44[8] = {
 #include "sub_main/0049BCC0.inc"
 };
-char D_0049BCC8[0x8] = {
+char gSkillNames_45[8] = {
 #include "sub_main/0049BCC8.inc"
 };
-char D_0049BCD0[0x10] = {
+char gSkillNames_47[16] = {
 #include "sub_main/0049BCD0.inc"
 };
-char D_0049BCE0[0x8] = {
+char gSkillNames_48[8] = {
 #include "sub_main/0049BCE0.inc"
 };
-char D_0049BCE8[0xC] = {
+char gSkillNames_50[12] = {
 #include "sub_main/0049BCE8.inc"
 };
-char D_0049BCF8[0xC] = {
+char gSkillNames_51[12] = {
 #include "sub_main/0049BCF8.inc"
 };
-char D_0049BD08[0x8] = {
+char gSkillNames_52[8] = {
 #include "sub_main/0049BD08.inc"
 };
-char D_0049BD10[0x8] = {
+char gSkillNames_53[8] = {
 #include "sub_main/0049BD10.inc"
 };
-char D_0049BD18[0x8] = {
+char gSkillNames_54[8] = {
 #include "sub_main/0049BD18.inc"
 };
-char D_0049BD20[0x8] = {
+char gSkillNames_55[8] = {
 #include "sub_main/0049BD20.inc"
 };
-char D_0049BD28[0x8] = {
+char gSkillNames_56[8] = {
 #include "sub_main/0049BD28.inc"
 };
-char D_0049BD30[0x8] = {
+char gSkillNames_58[8] = {
 #include "sub_main/0049BD30.inc"
 };
-char D_0049BD38[0x8] = {
+char gSkillNames_59[8] = {
 #include "sub_main/0049BD38.inc"
 };
-char D_0049BD40[0x10] = {
+char gSkillNames_60[16] = {
 #include "sub_main/0049BD40.inc"
 };
-char D_0049BD50[0x10] = {
+char gSkillNames_63[16] = {
 #include "sub_main/0049BD50.inc"
 };
-char D_0049BD60[0x10] = {
+char gSkillNames_64[16] = {
 #include "sub_main/0049BD60.inc"
 };
-char D_0049BD70[0x8] = {
+char gSkillNames_65[8] = {
 #include "sub_main/0049BD70.inc"
 };
-char D_0049BD78[0xC] = {
+char gSkillNames_66[12] = {
 #include "sub_main/0049BD78.inc"
 };
-char D_0049BD88[0xC] = {
+char gSkillNames_67[12] = {
 #include "sub_main/0049BD88.inc"
 };
-char D_0049BD98[0xC] = {
+char gSkillNames_69[12] = {
 #include "sub_main/0049BD98.inc"
 };
-char D_0049BDA8[0xC] = {
+char gSkillNames_70[12] = {
 #include "sub_main/0049BDA8.inc"
 };
-char D_0049BDB8[0x8] = {
+char gSkillNames_71[8] = {
 #include "sub_main/0049BDB8.inc"
 };
-char D_0049BDC0[0x10] = {
+char gSkillNames_72[16] = {
 #include "sub_main/0049BDC0.inc"
 };
-char D_0049BDD0[0x8] = {
+char gSkillNames_73[8] = {
 #include "sub_main/0049BDD0.inc"
 };
-char D_0049BDD8[0xC] = {
+char gSkillNames_74[12] = {
 #include "sub_main/0049BDD8.inc"
 };
-char D_0049BDE8[0x8] = {
+char gSkillNames_75[8] = {
 #include "sub_main/0049BDE8.inc"
 };
-char D_0049BDF0[0x8] = {
+char gSkillNames_76[8] = {
 #include "sub_main/0049BDF0.inc"
 };
-char D_0049BDF8[0x8] = {
+char gSkillNames_78[8] = {
 #include "sub_main/0049BDF8.inc"
 };
-char D_0049BE00[0x8] = {
+char gSkillNames_79[8] = {
 #include "sub_main/0049BE00.inc"
 };
-char D_0049BE08[0x8] = {
+char gSkillNames_80[8] = {
 #include "sub_main/0049BE08.inc"
 };
-char D_0049BE10[0x8] = {
+char gSkillNames_82[8] = {
 #include "sub_main/0049BE10.inc"
 };
-char D_0049BE18[0x8] = {
+char gSkillNames_83[8] = {
 #include "sub_main/0049BE18.inc"
 };
-char D_0049BE20[0x10] = {
+char D_0049BE20[16] = {
 #include "sub_main/0049BE20.inc"
 };
-char D_0049BE30[0x40] = {
+char D_0049BE30[64] = {
 #include "sub_main/0049BE30.inc"
 };
-char D_0049BE70[0x20] = {
+char D_0049BE70[32] = {
 #include "sub_main/0049BE70.inc"
 };
-char D_0049BE90[0x30] = {
+char D_0049BE90[48] = {
 #include "sub_main/0049BE90.inc"
 };
-char D_0049BEC0[0x30] = {
+char D_0049BEC0[48] = {
 #include "sub_main/0049BEC0.inc"
 };
-char D_0049BEF0[0x20] = {
+char gHelpTexts_0_0[32] = {
 #include "sub_main/0049BEF0.inc"
 };
-char D_0049BF10[0x20] = {
+char gHelpTexts_0_1[32] = {
 #include "sub_main/0049BF10.inc"
 };
-char D_0049BF30[0x20] = {
+char gHelpTexts_0_2[32] = {
 #include "sub_main/0049BF30.inc"
 };
-char D_0049BF50[0x20] = {
+char gHelpTexts_0_3[32] = {
 #include "sub_main/0049BF50.inc"
 };
-char D_0049BF70[0x20] = {
+char gHelpTexts_0_4[32] = {
 #include "sub_main/0049BF70.inc"
 };
-char D_0049BF90[0x30] = {
+char gHelpTexts_0_5[48] = {
 #include "sub_main/0049BF90.inc"
 };
-char D_0049BFC0[0x30] = {
+char gHelpTexts_0_6[48] = {
 #include "sub_main/0049BFC0.inc"
 };
-char D_0049BFF0[0x30] = {
+char D_0049BFF0[48] = {
 #include "sub_main/0049BFF0.inc"
 };
-char D_0049C020[0x30] = {
+char gHelpTexts_0_8[48] = {
 #include "sub_main/0049C020.inc"
 };
-char D_0049C050[0x30] = {
+char gHelpTexts_0_9[48] = {
 #include "sub_main/0049C050.inc"
 };
-char D_0049C080[0x30] = {
+char gHelpTexts_0_10[48] = {
 #include "sub_main/0049C080.inc"
 };
-char D_0049C0B0[0x20] = {
+char D_0049C0B0[32] = {
 #include "sub_main/0049C0B0.inc"
 };
-char D_0049C0D0[0x20] = {
+char D_0049C0D0[32] = {
 #include "sub_main/0049C0D0.inc"
 };
-char D_0049C0F0[0x20] = {
+char gHelpTexts_3_0[32] = {
 #include "sub_main/0049C0F0.inc"
 };
-char D_0049C110[0x30] = {
+char gHelpTexts_3_1[48] = {
 #include "sub_main/0049C110.inc"
 };
-char D_0049C140[0x30] = {
+char D_0049C140[48] = {
 #include "sub_main/0049C140.inc"
 };
-char D_0049C170[0x20] = {
+char D_0049C170[32] = {
 #include "sub_main/0049C170.inc"
 };
-char D_0049C190[0x30] = {
+char D_0049C190[48] = {
 #include "sub_main/0049C190.inc"
 };
-char D_0049C1C0[0x20] = {
+char D_0049C1C0[32] = {
 #include "sub_main/0049C1C0.inc"
 };
-char D_0049C1E0[0x40] = {
+char D_0049C1E0[64] = {
 #include "sub_main/0049C1E0.inc"
 };
-char D_0049C220[0x40] = {
+char D_0049C220[64] = {
 #include "sub_main/0049C220.inc"
 };
-char D_0049C260[0x30] = {
+char D_0049C260[48] = {
 #include "sub_main/0049C260.inc"
 };
-char D_0049C290[0x40] = {
+char D_0049C290[64] = {
 #include "sub_main/0049C290.inc"
 };
-char D_0049C2D0[0x30] = {
+char D_0049C2D0[48] = {
 #include "sub_main/0049C2D0.inc"
 };
-char D_0049C300[0x30] = {
+char gHelpTexts_9_0[48] = {
 #include "sub_main/0049C300.inc"
 };
-char D_0049C330[0x30] = {
+char gHelpTexts_9_2[48] = {
 #include "sub_main/0049C330.inc"
 };
-char D_0049C360[0x40] = {
+char gHelpTexts_9_3[64] = {
 #include "sub_main/0049C360.inc"
 };
-char D_0049C3A0[0x40] = {
+char gHelpTexts_9_4[64] = {
 #include "sub_main/0049C3A0.inc"
 };
-char D_0049C3E0[0x40] = {
+char gHelpTexts_9_5[64] = {
 #include "sub_main/0049C3E0.inc"
 };
-char D_0049C420[0x40] = {
+char gHelpTexts_9_6[64] = {
 #include "sub_main/0049C420.inc"
 };
-char D_0049C460[0x30] = {
+char gHelpTexts_9_7[48] = {
 #include "sub_main/0049C460.inc"
 };
-char D_0049C490[0x30] = {
+char gHelpTexts_9_8[48] = {
 #include "sub_main/0049C490.inc"
 };
-char D_0049C4C0[0x30] = {
+char gHelpTexts_9_9[48] = {
 #include "sub_main/0049C4C0.inc"
 };
-char D_0049C4F0[0x30] = {
+char gHelpTexts_9_10[48] = {
 #include "sub_main/0049C4F0.inc"
 };
-char D_0049C520[0x20] = {
+char gHelpTexts_9_11[32] = {
 #include "sub_main/0049C520.inc"
 };
-char D_0049C540[0x30] = {
+char gHelpTexts_9_12[48] = {
 #include "sub_main/0049C540.inc"
 };
-char D_0049C570[0x70] = {
+char gHelpTexts_9_13[112] = {
 #include "sub_main/0049C570.inc"
 };
-char D_0049C5E0[0x20] = {
+char gHelpTexts_9_14[32] = {
 #include "sub_main/0049C5E0.inc"
 };
-char D_0049C600[0x70] = {
+char gHelpTexts_9_15[112] = {
 #include "sub_main/0049C600.inc"
 };
-char D_0049C670[0x20] = {
+char D_0049C670[32] = {
 #include "sub_main/0049C670.inc"
 };
-char D_0049C690[0x10] = {
+char D_0049C690[16] = {
 #include "sub_main/0049C690.inc"
 };
-char D_0049C6A0[0x30] = {
+char gHelpTexts_10_0[48] = {
 #include "sub_main/0049C6A0.inc"
 };
-char D_0049C6D0[0x40] = {
+char gHelpTexts_10_1[64] = {
 #include "sub_main/0049C6D0.inc"
 };
-char D_0049C710[0x30] = {
+char gHelpTexts_11_0[48] = {
 #include "sub_main/0049C710.inc"
 };
-char D_0049C740[0x20] = {
+char gHelpTexts_11_1[32] = {
 #include "sub_main/0049C740.inc"
 };
-char D_0049C760[0x40] = {
+char gHelpTexts_11_2[64] = {
 #include "sub_main/0049C760.inc"
 };
-char D_0049C7A0[0x30] = {
+char gHelpTexts_11_3[48] = {
 #include "sub_main/0049C7A0.inc"
 };
-char D_0049C7D0[0x20] = {
+char gHelpTexts_11_4[32] = {
 #include "sub_main/0049C7D0.inc"
 };
-char D_0049C7F0[0x40] = {
+char gHelpTexts_11_5[64] = {
 #include "sub_main/0049C7F0.inc"
 };
-char D_0049C830[0x30] = {
+char gHelpTexts_11_6[48] = {
 #include "sub_main/0049C830.inc"
 };
-char D_0049C860[0x30] = {
+char D_0049C860[48] = {
 #include "sub_main/0049C860.inc"
 };
-char D_0049C890[0x30] = {
+char D_0049C890[48] = {
 #include "sub_main/0049C890.inc"
 };
-char D_0049C8C0[0x30] = {
+char D_0049C8C0[48] = {
 #include "sub_main/0049C8C0.inc"
 };
-char D_0049C8F0[0x50] = {
+char gHelpTexts_12_0[80] = {
 #include "sub_main/0049C8F0.inc"
 };
-char D_0049C940[0x30] = {
+char gHelpTexts_12_1[48] = {
 #include "sub_main/0049C940.inc"
 };
-char D_0049C970[0x30] = {
+char gHelpTexts_12_2[48] = {
 #include "sub_main/0049C970.inc"
 };
-char D_0049C9A0[0x40] = {
+char gHelpTexts_12_3[64] = {
 #include "sub_main/0049C9A0.inc"
 };
-char D_0049C9E0[0x30] = {
+char gHelpTexts_12_4[48] = {
 #include "sub_main/0049C9E0.inc"
 };
-char D_0049CA10[0x60] = {
+char gHelpTexts_12_5[96] = {
 #include "sub_main/0049CA10.inc"
 };
-char D_0049CA70[0x18] = {
+char D_0049CA70[24] = {
 #include "sub_main/0049CA70.inc"
 };
 char D_0049CA88[15] = {
 #include "sub_main/0049CA88.inc"
 };
-char D_0049CA98[0xC] = {
+char gSymbolColorNames_0[12] = {
 #include "sub_main/0049CA98.inc"
 };
-char D_0049CAA8[0xC] = {
+char gSymbolColorNames_1[12] = {
 #include "sub_main/0049CAA8.inc"
 };
-char D_0049CAB8[0xC] = {
+char gSymbolColorNames_2[12] = {
 #include "sub_main/0049CAB8.inc"
 };
-char D_0049CAC8[0xC] = {
+char gSymbolColorNames_3[12] = {
 #include "sub_main/0049CAC8.inc"
 };
-char D_0049CAD8[0xC] = {
+char gSymbolColorNames_4[12] = {
 #include "sub_main/0049CAD8.inc"
 };
-char D_0049CAE8[0xC] = {
+char gSymbolColorNames_5[12] = {
 #include "sub_main/0049CAE8.inc"
 };
-char D_0049CAF8[0xC] = {
+char gSymbolColorNames_6[12] = {
 #include "sub_main/0049CAF8.inc"
 };
-char D_0049CB08[0xC] = {
+char gSymbolColorNames_7[12] = {
 #include "sub_main/0049CB08.inc"
 };
-char D_0049CB18[0xC] = {
+char gSymbolColorNames_8[12] = {
 #include "sub_main/0049CB18.inc"
 };
-char D_0049CB28[0xC] = {
+char gSymbolColorNames_9[12] = {
 #include "sub_main/0049CB28.inc"
 };
-char D_0049CB38[0xC] = {
+char gSymbolColorNames_10[12] = {
 #include "sub_main/0049CB38.inc"
 };
-char D_0049CB48[0xC] = {
+char gSymbolColorNames_11[12] = {
 #include "sub_main/0049CB48.inc"
 };
-char D_0049CB58[0x8] = {
+char gSeasonNames_0[8] = {
 #include "sub_main/0049CB58.inc"
 };
-char D_0049CB60[0x8] = {
+char gSeasonNames_1[8] = {
 #include "sub_main/0049CB60.inc"
 };
-char D_0049CB68[0x8] = {
+char gSeasonNames_2[8] = {
 #include "sub_main/0049CB68.inc"
 };
-char D_0049CB70[0x8] = {
+char gDaytimeNames_0[8] = {
 #include "sub_main/0049CB70.inc"
 };
-char D_0049CB78[0x8] = {
+char gDaytimeNames_1[8] = {
 #include "sub_main/0049CB78.inc"
 };
-char D_0049CB80[0x8] = {
+char gHunterTitles_1[8] = {
 #include "sub_main/0049CB80.inc"
 };
-char D_0049CB88[0x8] = {
+char gHunterTitles_2[8] = {
 #include "sub_main/0049CB88.inc"
 };
-char D_0049CB90[0x18] = {
+char gHunterTitles_3[24] = {
 #include "sub_main/0049CB90.inc"
 };
-char D_0049CBA8[0xC] = {
+char gHunterTitles_27[12] = {
 #include "sub_main/0049CBA8.inc"
 };
-char D_0049CBB8[0xC] = {
+char gHunterTitles_29[12] = {
 #include "sub_main/0049CBB8.inc"
 };
-char D_0049CBD0[0x20] = {
+char gHunterTitles_30[32] = {
 #include "sub_main/0049CBD0.inc"
 };
-char D_0049CBF0[0x18] = {
+char gHunterTitles_31[24] = {
 #include "sub_main/0049CBF0.inc"
 };
-char D_0049CC08[0xC] = {
+char gHunterTitles_32[12] = {
 #include "sub_main/0049CC08.inc"
 };
-char D_0049CC20[0x18] = {
+char gHunterTitles_34[24] = {
 #include "sub_main/0049CC20.inc"
 };
-char D_0049CC38[0x8] = {
+char gHunterTitles_35[8] = {
 #include "sub_main/0049CC38.inc"
 };
-char D_0049CC40[0x10] = {
+char gHunterTitles_36[16] = {
 #include "sub_main/0049CC40.inc"
 };
-char D_0049CC50[0x8] = {
+char gHunterTitles_37[8] = {
 #include "sub_main/0049CC50.inc"
 };
-char D_0049CC58[0xC] = {
+char gHunterTitles_38[12] = {
 #include "sub_main/0049CC58.inc"
 };
-char D_0049CC70[0x18] = {
+char gHunterTitles_39[24] = {
 #include "sub_main/0049CC70.inc"
 };
-char D_0049CC88[0xC] = {
+char gHunterTitles_40[12] = {
 #include "sub_main/0049CC88.inc"
 };
-char D_0049CCA0[0x20] = {
+char gHunterTitles_41[32] = {
 #include "sub_main/0049CCA0.inc"
 };
-char D_0049CCC0[0x20] = {
+char gHunterTitles_42[32] = {
 #include "sub_main/0049CCC0.inc"
 };
-char D_0049CCE0[0x20] = {
+char gHunterTitles_43[32] = {
 #include "sub_main/0049CCE0.inc"
 };
-char D_0049CD00[0x18] = {
+char gHunterTitles_44[24] = {
 #include "sub_main/0049CD00.inc"
 };
-char D_0049CD18[15] = {
+char gHunterTitles_45[15] = {
 #include "sub_main/0049CD18.inc"
 };
-char D_0049CD30[0x20] = {
+char gHunterTitles_46[32] = {
 #include "sub_main/0049CD30.inc"
 };
-char D_0049CD50[0x18] = {
+char gHunterTitles_47[24] = {
 #include "sub_main/0049CD50.inc"
 };
-char D_0049CD68[15] = {
+char gHunterTitles_48[15] = {
 #include "sub_main/0049CD68.inc"
 };
-char D_0049CD80[0x18] = {
+char gHunterTitles_49[24] = {
 #include "sub_main/0049CD80.inc"
 };
-char D_0049CD98[15] = {
+char gHunterTitles_50[15] = {
 #include "sub_main/0049CD98.inc"
 };
-char D_0049CDB0[0x20] = {
+char gHunterTitles_51[32] = {
 #include "sub_main/0049CDB0.inc"
 };
-char D_0049CDD0[0x20] = {
+char gHunterTitles_52[32] = {
 #include "sub_main/0049CDD0.inc"
 };
-char D_0049CDF0[0x20] = {
+char gHunterTitles_53[32] = {
 #include "sub_main/0049CDF0.inc"
 };
-char D_0049CE10[0x18] = {
+char gHunterTitles_54[24] = {
 #include "sub_main/0049CE10.inc"
 };
-char D_0049CE28[15] = {
+char gHunterTitles_55[15] = {
 #include "sub_main/0049CE28.inc"
 };
-char D_0049CE38[15] = {
+char gHunterTitles_56[15] = {
 #include "sub_main/0049CE38.inc"
 };
-char D_0049CE50[0x18] = {
+char gHunterTitles_57[24] = {
 #include "sub_main/0049CE50.inc"
 };
-char D_0049CE68[15] = {
+char gHunterTitles_58[15] = {
 #include "sub_main/0049CE68.inc"
 };
-char D_0049CE78[15] = {
+char gHunterTitles_59[15] = {
 #include "sub_main/0049CE78.inc"
 };
-char D_0049CE90[0x20] = {
+char gHunterTitles_60[32] = {
 #include "sub_main/0049CE90.inc"
 };
-char D_0049CEB0[0x20] = {
+char gHunterTitles_61[32] = {
 #include "sub_main/0049CEB0.inc"
 };
-char D_0049CED0[0x20] = {
+char gHunterTitles_62[32] = {
 #include "sub_main/0049CED0.inc"
 };
-char D_0049CEF0[0x18] = {
+char gHunterTitles_63[24] = {
 #include "sub_main/0049CEF0.inc"
 };
-char D_0049CF08[13] = {
+char gHunterTitles_64[13] = {
 #include "sub_main/0049CF08.inc"
 };
-char D_0049CF18[13] = {
+char gHunterTitles_65[13] = {
 #include "sub_main/0049CF18.inc"
 };
-char D_0049CF28[0xC] = {
+char gHunterTitles_66[12] = {
 #include "sub_main/0049CF28.inc"
 };
-char D_0049CF38[0xC] = {
+char gHunterTitles_67[12] = {
 #include "sub_main/0049CF38.inc"
 };
-char D_0049CF48[0xC] = {
+char gHunterTitles_68[12] = {
 #include "sub_main/0049CF48.inc"
 };
-char D_0049CF58[0xC] = {
+char gHunterTitles_69[12] = {
 #include "sub_main/0049CF58.inc"
 };
-char D_0049CF68[0xC] = {
+char gHunterTitles_70[12] = {
 #include "sub_main/0049CF68.inc"
 };
-char D_0049CF78[0xC] = {
+char gHunterTitles_71[12] = {
 #include "sub_main/0049CF78.inc"
 };
-char D_0049CF88[0xC] = {
+char gHunterTitles_72[12] = {
 #include "sub_main/0049CF88.inc"
 };
-char D_0049CF98[0xC] = {
+char gHunterTitles_73[12] = {
 #include "sub_main/0049CF98.inc"
 };
-char D_0049CFA8[0xC] = {
+char gHunterTitles_74[12] = {
 #include "sub_main/0049CFA8.inc"
 };
-char D_0049CFB8[0xC] = {
+char gHunterTitles_75[12] = {
 #include "sub_main/0049CFB8.inc"
 };
-char D_0049CFC8[0xC] = {
+char gHunterTitles_76[12] = {
 #include "sub_main/0049CFC8.inc"
 };
-char D_0049CFD8[0xC] = {
+char gHunterTitles_77[12] = {
 #include "sub_main/0049CFD8.inc"
 };
-char D_0049CFE8[0xC] = {
+char gHunterTitles_78[12] = {
 #include "sub_main/0049CFE8.inc"
 };
-char D_0049CFF8[0xC] = {
+char gHunterTitles_79[12] = {
 #include "sub_main/0049CFF8.inc"
 };
-char D_0049D008[0xC] = {
+char gHunterTitles_80[12] = {
 #include "sub_main/0049D008.inc"
 };
-char D_0049D018[0xC] = {
+char gHunterTitles_81[12] = {
 #include "sub_main/0049D018.inc"
 };
-char D_0049D028[0xC] = {
+char gHunterTitles_82[12] = {
 #include "sub_main/0049D028.inc"
 };
-char D_0049D038[0xC] = {
+char gHunterTitles_83[12] = {
 #include "sub_main/0049D038.inc"
 };
-char D_0049D048[0xC] = {
+char gHunterTitles_84[12] = {
 #include "sub_main/0049D048.inc"
 };
-char D_0049D058[0xC] = {
+char gHunterTitles_85[12] = {
 #include "sub_main/0049D058.inc"
 };
-char D_0049D068[0xC] = {
+char gHunterTitles_86[12] = {
 #include "sub_main/0049D068.inc"
 };
-char D_0049D078[0xC] = {
+char gHunterTitles_87[12] = {
 #include "sub_main/0049D078.inc"
 };
-char D_0049D088[0xC] = {
+char gHunterTitles_88[12] = {
 #include "sub_main/0049D088.inc"
 };
-char D_0049D098[0xC] = {
+char gHunterTitles_89[12] = {
 #include "sub_main/0049D098.inc"
 };
-char D_0049D0A8[0xC] = {
+char gHunterTitles_90[12] = {
 #include "sub_main/0049D0A8.inc"
 };
-char D_0049D0B8[0xC] = {
+char gHunterTitles_91[12] = {
 #include "sub_main/0049D0B8.inc"
 };
-char D_0049D0C8[0xC] = {
+char gHunterTitles_92[12] = {
 #include "sub_main/0049D0C8.inc"
 };
-char D_0049D0D8[0xC] = {
+char gHunterTitles_93[12] = {
 #include "sub_main/0049D0D8.inc"
 };
-char D_0049D0E8[0xC] = {
+char gHunterTitles_94[12] = {
 #include "sub_main/0049D0E8.inc"
 };
-char D_0049D0F8[0xC] = {
+char gHunterTitles_95[12] = {
 #include "sub_main/0049D0F8.inc"
 };
-char D_0049D108[0xC] = {
+char gHunterTitles_96[12] = {
 #include "sub_main/0049D108.inc"
 };
-char D_0049D118[0xC] = {
+char gHunterTitles_97[12] = {
 #include "sub_main/0049D118.inc"
 };
-char D_0049D128[0xC] = {
+char gHunterTitles_98[12] = {
 #include "sub_main/0049D128.inc"
 };
-char D_0049D138[13] = {
+char gHunterTitles_99[13] = {
 #include "sub_main/0049D138.inc"
 };
-char D_0049D148[13] = {
+char gHunterTitles_100[13] = {
 #include "sub_main/0049D148.inc"
 };
-char D_0049D158[15] = {
+char gHunterTitles_101[15] = {
 #include "sub_main/0049D158.inc"
 };
-char D_0049D170[0x18] = {
+char gHunterTitles_102[24] = {
 #include "sub_main/0049D170.inc"
 };
-char D_0049D188[15] = {
+char gHunterTitles_103[15] = {
 #include "sub_main/0049D188.inc"
 };
-char D_0049D1A0[0x18] = {
+char gHunterTitles_104[24] = {
 #include "sub_main/0049D1A0.inc"
 };
-char D_0049D1B8[0xC] = {
+char gHunterTitles_105[12] = {
 #include "sub_main/0049D1B8.inc"
 };
-char D_0049D1C8[0x8] = {
+char gHunterTitles_106[8] = {
 #include "sub_main/0049D1C8.inc"
 };
-char D_0049D1D0[0x10] = {
+char gHunterTitles_107[16] = {
 #include "sub_main/0049D1D0.inc"
 };
-char D_0049D1E0[0x18] = {
+char gHunterTitles_108[24] = {
 #include "sub_main/0049D1E0.inc"
 };
-char D_0049D1F8[13] = {
+char gHunterTitles_109[13] = {
 #include "sub_main/0049D1F8.inc"
 };
-char D_0049D208[0xC] = {
+char gHunterTitles_110[12] = {
 #include "sub_main/0049D208.inc"
 };
-char D_0049D218[13] = {
+char gHunterTitles_111[13] = {
 #include "sub_main/0049D218.inc"
 };
-char D_0049D228[15] = {
+char gHunterTitles_112[15] = {
 #include "sub_main/0049D228.inc"
 };
-char D_0049D238[0xC] = {
+char gHunterTitles_113[12] = {
 #include "sub_main/0049D238.inc"
 };
-char D_0049D250[0x20] = {
+char gHunterTitles_114[32] = {
 #include "sub_main/0049D250.inc"
 };
-char D_0049D270[0x18] = {
+char gHunterTitles_115[24] = {
 #include "sub_main/0049D270.inc"
 };
-char D_0049D288[0xC] = {
+char gHunterTitles_116[12] = {
 #include "sub_main/0049D288.inc"
 };
-char D_0049D298[0xC] = {
+char gHunterTitles_117[12] = {
 #include "sub_main/0049D298.inc"
 };
-char D_0049D2B0[0x18] = {
+char gHunterTitles_118[24] = {
 #include "sub_main/0049D2B0.inc"
 };
-char D_0049D2C8[13] = {
+char gHunterTitles_119[13] = {
 #include "sub_main/0049D2C8.inc"
 };
-char D_0049D2E0[0x20] = {
+char gHunterTitles_121[32] = {
 #include "sub_main/0049D2E0.inc"
 };
-char D_0049D300[0x18] = {
+char gHunterTitles_122[24] = {
 #include "sub_main/0049D300.inc"
 };
-char D_0049D318[0xC] = {
+char gHunterTitles_123[12] = {
 #include "sub_main/0049D318.inc"
 };
-char D_0049D328[15] = {
+char gHunterTitles_124[15] = {
 #include "sub_main/0049D328.inc"
 };
-char D_0049D340[0x20] = {
+char gHunterTitles_126[32] = {
 #include "sub_main/0049D340.inc"
 };
-char D_0049D360[0x18] = {
+char gHunterTitles_127[24] = {
 #include "sub_main/0049D360.inc"
 };
-char D_0049D378[13] = {
+char gHunterTitles_128[13] = {
 #include "sub_main/0049D378.inc"
 };
-char D_0049D388[0x8] = {
+char gHunterTitles_129[8] = {
 #include "sub_main/0049D388.inc"
 };
-char D_0049D390[0x10] = {
+char gHunterTitles_130[16] = {
 #include "sub_main/0049D390.inc"
 };
-char D_0049D3A0[0x10] = {
+char gHunterTitles_131[16] = {
 #include "sub_main/0049D3A0.inc"
 };
-char D_0049D3B0[0x10] = {
+char gHunterTitles_132[16] = {
 #include "sub_main/0049D3B0.inc"
 };
-char D_0049D3C0[0x10] = {
+char gHunterTitles_133[16] = {
 #include "sub_main/0049D3C0.inc"
 };
-char D_0049D3D0[0x10] = {
+char gHunterTitles_134[16] = {
 #include "sub_main/0049D3D0.inc"
 };
-char D_0049D3E0[0x10] = {
+char gHunterTitles_135[16] = {
 #include "sub_main/0049D3E0.inc"
 };
-char D_0049D3F0[0x20] = {
+char gHunterTitles_136[32] = {
 #include "sub_main/0049D3F0.inc"
 };
-char D_0049D410[0x18] = {
+char gHunterTitles_137[24] = {
 #include "sub_main/0049D410.inc"
 };
-char D_0049D428[0xC] = {
+char gHunterTitles_138[12] = {
 #include "sub_main/0049D428.inc"
 };
-char D_0049D438[0xC] = {
+char gHunterTitles_139[12] = {
 #include "sub_main/0049D438.inc"
 };
-char D_0049D448[0xC] = {
+char gHunterTitles_140[12] = {
 #include "sub_main/0049D448.inc"
 };
-char D_0049D460[0x20] = {
+char gHunterTitles_141[32] = {
 #include "sub_main/0049D460.inc"
 };
-char D_0049D480[0x10] = {
+char gHunterTitles_142[16] = {
 #include "sub_main/0049D480.inc"
 };
-char D_0049D490[0x10] = {
+char gHunterTitles_143[16] = {
 #include "sub_main/0049D490.inc"
 };
-char D_0049D4A0[0x18] = {
+char gHunterTitles_144[24] = {
 #include "sub_main/0049D4A0.inc"
 };
-char D_0049D4B8[15] = {
+char gHunterTitles_145[15] = {
 #include "sub_main/0049D4B8.inc"
 };
-char D_0049D4C8[0xC] = {
+char gHunterTitles_146[12] = {
 #include "sub_main/0049D4C8.inc"
 };
-char D_0049D4E0[0x20] = {
+char gHunterTitles_147[32] = {
 #include "sub_main/0049D4E0.inc"
 };
-char D_0049D500[0x20] = {
+char gPriceLegendTexts_0[32] = {
 #include "sub_main/0049D500.inc"
 };
-char D_0049D520[0x20] = {
+char gPriceLegendTexts_1[32] = {
 #include "sub_main/0049D520.inc"
 };
-char D_0049D540[0x20] = {
+char gPriceLegendTexts_2[32] = {
 #include "sub_main/0049D540.inc"
 };
-char D_0049D560[0x28] = {
+char D_0049D560[40] = {
 #include "sub_main/0049D560.inc"
 };
-char D_0049D588[0xC] = {
+char D_0049D588[12] = {
 #include "sub_main/0049D588.inc"
 };
-char D_0049D5A0[0x20] = {
+char D_0049D5A0[32] = {
 #include "sub_main/0049D5A0.inc"
 };
-char D_0049D5C0[0x20] = {
+char D_0049D5C0[32] = {
 #include "sub_main/0049D5C0.inc"
 };
-char D_0049D5E0[0x18] = {
+char D_0049D5E0[24] = {
 #include "sub_main/0049D5E0.inc"
 };
-char D_0049D5F8[0xC] = {
+char D_0049D5F8[12] = {
 #include "sub_main/0049D5F8.inc"
 };
-char D_0049D610[0x20] = {
+char D_0049D610[32] = {
 #include "sub_main/0049D610.inc"
 };
-char D_0049D630[0x20] = {
+char D_0049D630[32] = {
 #include "sub_main/0049D630.inc"
 };
-char D_0049D650[0x20] = {
+char D_0049D650[32] = {
 #include "sub_main/0049D650.inc"
 };
-char D_0049D670[0x20] = {
+char D_0049D670[32] = {
 #include "sub_main/0049D670.inc"
 };
-char D_0049D690[0x20] = {
+char D_0049D690[32] = {
 #include "sub_main/0049D690.inc"
 };
-char D_0049D6B0[0x20] = {
+char D_0049D6B0[32] = {
 #include "sub_main/0049D6B0.inc"
 };
-char D_0049D6D0[0x20] = {
+char D_0049D6D0[32] = {
 #include "sub_main/0049D6D0.inc"
 };
-char D_0049D6F0[0x18] = {
+char D_0049D6F0[24] = {
 #include "sub_main/0049D6F0.inc"
 };
 char D_0049D708[13] = {
@@ -4672,13 +4651,13 @@ char D_0049D708[13] = {
 char D_0049D718[15] = {
 #include "sub_main/0049D718.inc"
 };
-char D_0049D730[0x20] = {
+char D_0049D730[32] = {
 #include "sub_main/0049D730.inc"
 };
-char D_0049D750[0x18] = {
+char D_0049D750[24] = {
 #include "sub_main/0049D750.inc"
 };
-char D_0049D768[0xC] = {
+char D_0049D768[12] = {
 #include "sub_main/0049D768.inc"
 };
 char D_0049D778[13] = {
@@ -4687,268 +4666,268 @@ char D_0049D778[13] = {
 char D_0049D788[15] = {
 #include "sub_main/0049D788.inc"
 };
-char D_0049D7A0[0x18] = {
+char gAwardGalleryTitles_0[24] = {
 #include "sub_main/0049D7A0.inc"
 };
-char D_0049D7B8[13] = {
+char gAwardGalleryTitles_1[13] = {
 #include "sub_main/0049D7B8.inc"
 };
-char D_0049D7D0[0x18] = {
+char gAwardGalleryTitles_2[24] = {
 #include "sub_main/0049D7D0.inc"
 };
-char D_0049D7E8[0xC] = {
+char gAwardGalleryTitles_3[12] = {
 #include "sub_main/0049D7E8.inc"
 };
-char D_0049D7F8[15] = {
+char gAwardGalleryTitles_4[15] = {
 #include "sub_main/0049D7F8.inc"
 };
-char D_0049D810[0x18] = {
+char gAwardGalleryTitles_5[24] = {
 #include "sub_main/0049D810.inc"
 };
-char D_0049D828[13] = {
+char gAwardGalleryTitles_6[13] = {
 #include "sub_main/0049D828.inc"
 };
-char D_0049D838[15] = {
+char gAwardGalleryTitles_7[15] = {
 #include "sub_main/0049D838.inc"
 };
-char D_0049D848[0xC] = {
+char gAwardGalleryTitles_8[12] = {
 #include "sub_main/0049D848.inc"
 };
-char D_0049D860[0x20] = {
+char gAwardGalleryTitles_9[32] = {
 #include "sub_main/0049D860.inc"
 };
-char D_0049D880[0x18] = {
+char gAwardGalleryTitles_10[24] = {
 #include "sub_main/0049D880.inc"
 };
-char D_0049D898[0xC] = {
+char gAwardGalleryTitles_11[12] = {
 #include "sub_main/0049D898.inc"
 };
-char D_0049D8A8[0xC] = {
+char gAwardGalleryTitles_12[12] = {
 #include "sub_main/0049D8A8.inc"
 };
-char D_0049D8B8[0xC] = {
+char gAwardGalleryTitles_13[12] = {
 #include "sub_main/0049D8B8.inc"
 };
-char D_0049D8D0[0x18] = {
+char gAwardGalleryTitles_14[24] = {
 #include "sub_main/0049D8D0.inc"
 };
-char D_0049D8E8[0xC] = {
+char gAwardGalleryTitles_15[12] = {
 #include "sub_main/0049D8E8.inc"
 };
-char D_0049D8F8[13] = {
+char gAwardGalleryTitles_16[13] = {
 #include "sub_main/0049D8F8.inc"
 };
-char D_0049D908[0xC] = {
+char gAwardGalleryTitles_17[12] = {
 #include "sub_main/0049D908.inc"
 };
-char D_0049D918[13] = {
+char gAwardGalleryTitles_18[13] = {
 #include "sub_main/0049D918.inc"
 };
-char D_0049D928[0xC] = {
+char gAwardGalleryTitles_19[12] = {
 #include "sub_main/0049D928.inc"
 };
-char D_0049D938[0x8] = {
+char gAwardGalleryTitles_20[8] = {
 #include "sub_main/0049D938.inc"
 };
-char D_0049D940[0x10] = {
+char gAwardGalleryTitles_21[16] = {
 #include "sub_main/0049D940.inc"
 };
-char D_0049D950[0x10] = {
+char gAwardGalleryTitles_22[16] = {
 #include "sub_main/0049D950.inc"
 };
-char D_0049D960[0x10] = {
+char gAwardGalleryTitles_23[16] = {
 #include "sub_main/0049D960.inc"
 };
-char D_0049D970[0x10] = {
+char gAwardGalleryTitles_24[16] = {
 #include "sub_main/0049D970.inc"
 };
-char D_0049D980[0x10] = {
+char gAwardGalleryTitles_25[16] = {
 #include "sub_main/0049D980.inc"
 };
-char D_0049D990[0x10] = {
+char gAwardGalleryTitles_26[16] = {
 #include "sub_main/0049D990.inc"
 };
-char D_0049D9A0[0x10] = {
+char gAwardGalleryTitles_27[16] = {
 #include "sub_main/0049D9A0.inc"
 };
-char D_0049D9B0[0x10] = {
+char gAwardGalleryTitles_28[16] = {
 #include "sub_main/0049D9B0.inc"
 };
-char D_0049D9C0[0x10] = {
+char gAwardGalleryTitles_29[16] = {
 #include "sub_main/0049D9C0.inc"
 };
-char D_0049D9D0[0x10] = {
+char gAwardGalleryTitles_30[16] = {
 #include "sub_main/0049D9D0.inc"
 };
-char D_0049D9E0[0x10] = {
+char gAwardGalleryTitles_31[16] = {
 #include "sub_main/0049D9E0.inc"
 };
-char D_0049D9F0[0x10] = {
+char gAwardGalleryTitles_32[16] = {
 #include "sub_main/0049D9F0.inc"
 };
-char D_0049DA00[0x20] = {
+char gAwardDojoTitles_0[32] = {
 #include "sub_main/0049DA00.inc"
 };
-char D_0049DA20[0x20] = {
+char D_0049DA20[32] = {
 #include "sub_main/0049DA20.inc"
 };
-char D_0049DA40[0x20] = {
+char D_0049DA40[32] = {
 #include "sub_main/0049DA40.inc"
 };
-char D_0049DA60[0x20] = {
+char gAwardDojoTitles_3[32] = {
 #include "sub_main/0049DA60.inc"
 };
-char D_0049DA80[0x20] = {
+char gAwardDojoTitles_4[32] = {
 #include "sub_main/0049DA80.inc"
 };
-char D_0049DAA0[0x20] = {
+char gAwardDojoTitles_7[32] = {
 #include "sub_main/0049DAA0.inc"
 };
-char D_0049DAC0[0x20] = {
+char D_0049DAC0[32] = {
 #include "sub_main/0049DAC0.inc"
 };
-char D_0049DAE0[0x20] = {
+char D_0049DAE0[32] = {
 #include "sub_main/0049DAE0.inc"
 };
-char D_0049DB00[0x20] = {
+char gArenaEmReleasedText_0[32] = {
 #include "sub_main/0049DB00.inc"
 };
-char D_0049DB20[0x10] = {
+char D_0049DB20[16] = {
 #include "sub_main/0049DB20.inc"
 };
-char D_0049DB30[0x10] = {
+char D_0049DB30[16] = {
 #include "sub_main/0049DB30.inc"
 };
-char D_0049DB40[0x10] = {
+char D_0049DB40[16] = {
 #include "sub_main/0049DB40.inc"
 };
-char D_0049DB50[0x10] = {
+char D_0049DB50[16] = {
 #include "sub_main/0049DB50.inc"
 };
-char D_0049DB60[0x20] = {
+char D_0049DB60[32] = {
 #include "sub_main/0049DB60.inc"
 };
-char D_0049DB80[0x30] = {
+char gArenaEmPenHelp_1[48] = {
 #include "sub_main/0049DB80.inc"
 };
-char D_0049DBB0[0x40] = {
+char gArenaEmPenHelp_2[64] = {
 #include "sub_main/0049DBB0.inc"
 };
-char D_0049DBF0[0x30] = {
+char gArenaEmPenHelp_3[48] = {
 #include "sub_main/0049DBF0.inc"
 };
-char D_0049DC20[0x20] = {
+char gArenaEmPenHelp_4[32] = {
 #include "sub_main/0049DC20.inc"
 };
-char D_0049DC40[0x20] = {
+char gArenaEmPenHelp_5[32] = {
 #include "sub_main/0049DC40.inc"
 };
-char D_0049DC60[0x20] = {
+char gArenaEmPenHelp_6[32] = {
 #include "sub_main/0049DC60.inc"
 };
-char D_0049DC80[0x10] = {
+char gArenaEmTameNames_0[16] = {
 #include "sub_main/0049DC80.inc"
 };
-char D_0049DC90[0x10] = {
+char gArenaEmTameNames_1[16] = {
 #include "sub_main/0049DC90.inc"
 };
-char D_0049DCA0[0x10] = {
+char gArenaEmTameNames_2[16] = {
 #include "sub_main/0049DCA0.inc"
 };
-char D_0049DCB0[0x10] = {
+char gArenaEmTameNames_3[16] = {
 #include "sub_main/0049DCB0.inc"
 };
-char D_0049DCC0[0x10] = {
+char gArenaEmTameNames_4[16] = {
 #include "sub_main/0049DCC0.inc"
 };
-char D_0049DCD0[0x8] = {
+char D_0049DCD0[8] = {
 #include "sub_main/0049DCD0.inc"
 };
-char D_0049DCD8[0x8] = {
+char D_0049DCD8[8] = {
 #include "sub_main/0049DCD8.inc"
 };
-char D_0049DCE0[0x8] = {
+char D_0049DCE0[8] = {
 #include "sub_main/0049DCE0.inc"
 };
-char D_0049DCE8[0x8] = {
+char D_0049DCE8[8] = {
 #include "sub_main/0049DCE8.inc"
 };
-char D_0049DCF0[0x8] = {
+char gArenaEmRankNames_0[8] = {
 #include "sub_main/0049DCF0.inc"
 };
-char D_0049DCF8[0xC] = {
+char gArenaEmRankNames_1[12] = {
 #include "sub_main/0049DCF8.inc"
 };
-char D_0049DD08[0xC] = {
+char gArenaEmRankNames_2[12] = {
 #include "sub_main/0049DD08.inc"
 };
-char D_0049DD18[0x8] = {
+char gArenaEmRankNames_3[8] = {
 #include "sub_main/0049DD18.inc"
 };
-char D_0049DD20[0x10] = {
+char gArenaEmRankNames_5[16] = {
 #include "sub_main/0049DD20.inc"
 };
-char D_0049DD30[0x8] = {
+char gArenaEmRankNames_6[8] = {
 #include "sub_main/0049DD30.inc"
 };
-char D_0049DD38[0xC] = {
+char gArenaEmRankNames_7[12] = {
 #include "sub_main/0049DD38.inc"
 };
-char D_0049DD48[0xC] = {
+char gArenaEmRankNames_8[12] = {
 #include "sub_main/0049DD48.inc"
 };
-char D_0049DD58[0x8] = {
+char gArenaEmRankNames_9[8] = {
 #include "sub_main/0049DD58.inc"
 };
-char D_0049DD60[0x10] = {
+char D_0049DD60[16] = {
 #include "sub_main/0049DD60.inc"
 };
-char D_0049DD70[0x20] = {
+char D_0049DD70[32] = {
 #include "sub_main/0049DD70.inc"
 };
-char D_0049DD90[0x20] = {
+char D_0049DD90[32] = {
 #include "sub_main/0049DD90.inc"
 };
-char D_0049DDB0[0x20] = {
+char D_0049DDB0[32] = {
 #include "sub_main/0049DDB0.inc"
 };
-char D_0049DDD0[0x20] = {
+char gHornSongTexts_1[32] = {
 #include "sub_main/0049DDD0.inc"
 };
-char D_0049DDF0[0x20] = {
+char gHornSongTexts_0[32] = {
 #include "sub_main/0049DDF0.inc"
 };
-char D_0049DE10[0x20] = {
+char gHornSongTexts_2[32] = {
 #include "sub_main/0049DE10.inc"
 };
-char D_0049DE30[0x20] = {
+char D_0049DE30[32] = {
 #include "sub_main/0049DE30.inc"
 };
-char D_0049DE50[0x18] = {
+char gHornSongTexts_4[24] = {
 #include "sub_main/0049DE50.inc"
 };
 char D_0049DE68[15] = {
 #include "sub_main/0049DE68.inc"
 };
-char D_0049DE78[15] = {
+char gHornSongTexts_8[15] = {
 #include "sub_main/0049DE78.inc"
 };
 char D_0049DE88[15] = {
 #include "sub_main/0049DE88.inc"
 };
-char D_0049DE98[0xC] = {
+char gHornSongTexts_12[12] = {
 #include "sub_main/0049DE98.inc"
 };
-char D_0049DEA8[0xC] = {
+char D_0049DEA8[12] = {
 #include "sub_main/0049DEA8.inc"
 };
 char D_0049DEB8[15] = {
 #include "sub_main/0049DEB8.inc"
 };
-char D_0049DED0[0x20] = {
+char D_0049DED0[32] = {
 #include "sub_main/0049DED0.inc"
 };
-char D_0049DEF0[0x18] = {
+char D_0049DEF0[24] = {
 #include "sub_main/0049DEF0.inc"
 };
 char D_0049DF08[15] = {
@@ -4957,502 +4936,507 @@ char D_0049DF08[15] = {
 char D_0049DF18[15] = {
 #include "sub_main/0049DF18.inc"
 };
-char D_0049DF30[0x20] = {
+char gHornSongTexts_26[32] = {
 #include "sub_main/0049DF30.inc"
 };
-char D_0049DF50[0x20] = {
+char D_0049DF50[32] = {
 #include "sub_main/0049DF50.inc"
 };
-char D_0049DF70[0x20] = {
+char gHornSongTexts_28[32] = {
 #include "sub_main/0049DF70.inc"
 };
-char D_0049DF90[0x20] = {
+char gHornSongTexts_30[32] = {
 #include "sub_main/0049DF90.inc"
 };
-char D_0049DFB0[0x20] = {
+char D_0049DFB0[32] = {
 #include "sub_main/0049DFB0.inc"
 };
-char D_0049DFD0[0x20] = {
+char gHornSongTexts_32[32] = {
 #include "sub_main/0049DFD0.inc"
 };
-char D_0049DFF0[0x20] = {
+char gHornSongTexts_34[32] = {
 #include "sub_main/0049DFF0.inc"
 };
-char D_0049E010[0x20] = {
+char D_0049E010[32] = {
 #include "sub_main/0049E010.inc"
 };
-char D_0049E030[0x20] = {
+char gHornSongTexts_36[32] = {
 #include "sub_main/0049E030.inc"
 };
-char D_0049E050[0x20] = {
+char gHornSongTexts_38[32] = {
 #include "sub_main/0049E050.inc"
 };
-char D_0049E070[0x20] = {
+char D_0049E070[32] = {
 #include "sub_main/0049E070.inc"
 };
-char D_0049E090[0x20] = {
+char gHornSongTexts_40[32] = {
 #include "sub_main/0049E090.inc"
 };
-char D_0049E0B0[0x20] = {
+char gHornSongTexts_42[32] = {
 #include "sub_main/0049E0B0.inc"
 };
-char D_0049E0D0[0x20] = {
+char D_0049E0D0[32] = {
 #include "sub_main/0049E0D0.inc"
 };
-char D_0049E0F0[0x18] = {
+char gHornSongTexts_44[24] = {
 #include "sub_main/0049E0F0.inc"
 };
-char D_0049E108[0xC] = {
+char gHornSongTexts_46[12] = {
 #include "sub_main/0049E108.inc"
 };
-char D_0049E120[0x20] = {
+char gHornSongTexts_47[32] = {
 #include "sub_main/0049E120.inc"
 };
-char D_0049E140[0x20] = {
+char D_0049E140[32] = {
 #include "sub_main/0049E140.inc"
 };
-char D_0049E160[0x30] = {
+char D_0049E160[48] = {
 #include "sub_main/0049E160.inc"
 };
-char D_0049E190[0x30] = {
+char D_0049E190[48] = {
 #include "sub_main/0049E190.inc"
 };
-char D_0049E1C0[0x30] = {
+char D_0049E1C0[48] = {
 #include "sub_main/0049E1C0.inc"
 };
-char D_0049E1F0[0x20] = {
+char gHunterTitleDescs_0[32] = {
 #include "sub_main/0049E1F0.inc"
 };
-char D_0049E210[0x30] = {
+char gHunterTitleDescs_1[48] = {
 #include "sub_main/0049E210.inc"
 };
-char D_0049E240[0x30] = {
+char gHunterTitleDescs_2[48] = {
 #include "sub_main/0049E240.inc"
 };
-char D_0049E270[0x30] = {
+char gHunterTitleDescs_3[48] = {
 #include "sub_main/0049E270.inc"
 };
-char D_0049E2A0[0x30] = {
+char gHunterTitleDescs_4[48] = {
 #include "sub_main/0049E2A0.inc"
 };
-char D_0049E2D0[0x50] = {
+char gHunterTitleDescs_5[80] = {
 #include "sub_main/0049E2D0.inc"
 };
-char D_0049E320[0x30] = {
+char gHunterTitleDescs_6[48] = {
 #include "sub_main/0049E320.inc"
 };
-char D_0049E350[0x30] = {
+char gHunterTitleDescs_7[48] = {
 #include "sub_main/0049E350.inc"
 };
-char D_0049E380[0x50] = {
+char gHunterTitleDescs_8[80] = {
 #include "sub_main/0049E380.inc"
 };
-char D_0049E3D0[0x30] = {
+char gHunterTitleDescs_9[48] = {
 #include "sub_main/0049E3D0.inc"
 };
-char D_0049E400[0x30] = {
+char gHunterTitleDescs_10[48] = {
 #include "sub_main/0049E400.inc"
 };
-char D_0049E430[0x70] = {
+char gHunterTitleDescs_11[112] = {
 #include "sub_main/0049E430.inc"
 };
-char D_0049E4A0[0x30] = {
+char gHunterTitleDescs_12[48] = {
 #include "sub_main/0049E4A0.inc"
 };
-char D_0049E4D0[0x30] = {
+char gHunterTitleDescs_13[48] = {
 #include "sub_main/0049E4D0.inc"
 };
-char D_0049E500[0x30] = {
+char gHunterTitleDescs_14[48] = {
 #include "sub_main/0049E500.inc"
 };
-char D_0049E530[0x50] = {
+char gHunterTitleDescs_15[80] = {
 #include "sub_main/0049E530.inc"
 };
-char D_0049E580[0x30] = {
+char gHunterTitleDescs_16[48] = {
 #include "sub_main/0049E580.inc"
 };
-char D_0049E5B0[0x30] = {
+char gHunterTitleDescs_17[48] = {
 #include "sub_main/0049E5B0.inc"
 };
-char D_0049E5E0[0x30] = {
+char gHunterTitleDescs_18[48] = {
 #include "sub_main/0049E5E0.inc"
 };
-char D_0049E610[0x30] = {
+char gHunterTitleDescs_19[48] = {
 #include "sub_main/0049E610.inc"
 };
-char D_0049E640[0x50] = {
+char gHunterTitleDescs_20[80] = {
 #include "sub_main/0049E640.inc"
 };
-char D_0049E690[0x30] = {
+char gHunterTitleDescs_21[48] = {
 #include "sub_main/0049E690.inc"
 };
-char D_0049E6C0[0x30] = {
+char gHunterTitleDescs_22[48] = {
 #include "sub_main/0049E6C0.inc"
 };
-char D_0049E6F0[0x30] = {
+char gHunterTitleDescs_23[48] = {
 #include "sub_main/0049E6F0.inc"
 };
-char D_0049E720[0x30] = {
+char gHunterTitleDescs_24[48] = {
 #include "sub_main/0049E720.inc"
 };
-char D_0049E750[0x50] = {
+char gHunterTitleDescs_25[80] = {
 #include "sub_main/0049E750.inc"
 };
-char D_0049E7A0[0x50] = {
+char gHunterTitleDescs_26[80] = {
 #include "sub_main/0049E7A0.inc"
 };
-char D_0049E7F0[0x40] = {
+char gHunterTitleDescs_27[64] = {
 #include "sub_main/0049E7F0.inc"
 };
-char D_0049E830[0x40] = {
+char gHunterTitleDescs_28[64] = {
 #include "sub_main/0049E830.inc"
 };
-char D_0049E870[0x40] = {
+char gHunterTitleDescs_29[64] = {
 #include "sub_main/0049E870.inc"
 };
-char D_0049E8B0[0x40] = {
+char gHunterTitleDescs_30[64] = {
 #include "sub_main/0049E8B0.inc"
 };
-char D_0049E8F0[0x20] = {
+char gHunterTitleDescs_31[32] = {
 #include "sub_main/0049E8F0.inc"
 };
-char D_0049E910[0x30] = {
+char gHunterTitleDescs_32[48] = {
 #include "sub_main/0049E910.inc"
 };
-char D_0049E940[0x30] = {
+char gHunterTitleDescs_33[48] = {
 #include "sub_main/0049E940.inc"
 };
-char D_0049E970[0x40] = {
+char gHunterTitleDescs_34[64] = {
 #include "sub_main/0049E970.inc"
 };
-char D_0049E9B0[0x40] = {
+char gHunterTitleDescs_35[64] = {
 #include "sub_main/0049E9B0.inc"
 };
-char D_0049E9F0[0x30] = {
+char gHunterTitleDescs_36[48] = {
 #include "sub_main/0049E9F0.inc"
 };
-char D_0049EA20[0x20] = {
+char gHunterTitleDescs_37[32] = {
 #include "sub_main/0049EA20.inc"
 };
-char D_0049EA40[0x20] = {
+char gHunterTitleDescs_38[32] = {
 #include "sub_main/0049EA40.inc"
 };
-char D_0049EA60[0x20] = {
+char gHunterTitleDescs_39[32] = {
 #include "sub_main/0049EA60.inc"
 };
-char D_0049EA80[0x20] = {
+char gHunterTitleDescs_40[32] = {
 #include "sub_main/0049EA80.inc"
 };
-char D_0049EAA0[0x20] = {
+char gHunterTitleDescs_41[32] = {
 #include "sub_main/0049EAA0.inc"
 };
-char D_0049EAC0[0x20] = {
+char gHunterTitleDescs_42[32] = {
 #include "sub_main/0049EAC0.inc"
 };
-char D_0049EAE0[0x20] = {
+char gHunterTitleDescs_43[32] = {
 #include "sub_main/0049EAE0.inc"
 };
-char D_0049EB00[0x20] = {
+char gHunterTitleDescs_44[32] = {
 #include "sub_main/0049EB00.inc"
 };
-char D_0049EB20[0x20] = {
+char gHunterTitleDescs_45[32] = {
 #include "sub_main/0049EB20.inc"
 };
-char D_0049EB40[0x20] = {
+char gHunterTitleDescs_46[32] = {
 #include "sub_main/0049EB40.inc"
 };
-char D_0049EB60[0x20] = {
+char gHunterTitleDescs_47[32] = {
 #include "sub_main/0049EB60.inc"
 };
-char D_0049EB80[0x20] = {
+char gHunterTitleDescs_48[32] = {
 #include "sub_main/0049EB80.inc"
 };
-char D_0049EBA0[0x20] = {
+char gHunterTitleDescs_49[32] = {
 #include "sub_main/0049EBA0.inc"
 };
-char D_0049EBC0[0x20] = {
+char gHunterTitleDescs_50[32] = {
 #include "sub_main/0049EBC0.inc"
 };
-char D_0049EBE0[0x20] = {
+char gHunterTitleDescs_51[32] = {
 #include "sub_main/0049EBE0.inc"
 };
-char D_0049EC00[0x20] = {
+char gHunterTitleDescs_52[32] = {
 #include "sub_main/0049EC00.inc"
 };
-char D_0049EC20[0x20] = {
+char gHunterTitleDescs_53[32] = {
 #include "sub_main/0049EC20.inc"
 };
-char D_0049EC40[0x20] = {
+char gHunterTitleDescs_54[32] = {
 #include "sub_main/0049EC40.inc"
 };
-char D_0049EC60[0x20] = {
+char gHunterTitleDescs_55[32] = {
 #include "sub_main/0049EC60.inc"
 };
-char D_0049EC80[0x20] = {
+char gHunterTitleDescs_56[32] = {
 #include "sub_main/0049EC80.inc"
 };
-char D_0049ECA0[0x20] = {
+char gHunterTitleDescs_57[32] = {
 #include "sub_main/0049ECA0.inc"
 };
-char D_0049ECC0[0x20] = {
+char gHunterTitleDescs_58[32] = {
 #include "sub_main/0049ECC0.inc"
 };
-char D_0049ECE0[0x20] = {
+char gHunterTitleDescs_59[32] = {
 #include "sub_main/0049ECE0.inc"
 };
-char D_0049ED00[0x20] = {
+char gHunterTitleDescs_60[32] = {
 #include "sub_main/0049ED00.inc"
 };
-char D_0049ED20[0x20] = {
+char gHunterTitleDescs_61[32] = {
 #include "sub_main/0049ED20.inc"
 };
-char D_0049ED40[0x20] = {
+char gHunterTitleDescs_62[32] = {
 #include "sub_main/0049ED40.inc"
 };
-char D_0049ED60[0x20] = {
+char gHunterTitleDescs_63[32] = {
 #include "sub_main/0049ED60.inc"
 };
-char D_0049ED80[0x20] = {
+char gHunterTitleDescs_64[32] = {
 #include "sub_main/0049ED80.inc"
 };
-char D_0049EDA0[0x20] = {
+char gHunterTitleDescs_65[32] = {
 #include "sub_main/0049EDA0.inc"
 };
-char D_0049EDC0[0x20] = {
+char gHunterTitleDescs_66[32] = {
 #include "sub_main/0049EDC0.inc"
 };
-char D_0049EDE0[0x20] = {
+char gHunterTitleDescs_67[32] = {
 #include "sub_main/0049EDE0.inc"
 };
-char D_0049EE00[0x20] = {
+char gHunterTitleDescs_68[32] = {
 #include "sub_main/0049EE00.inc"
 };
-char D_0049EE20[0x20] = {
+char gHunterTitleDescs_69[32] = {
 #include "sub_main/0049EE20.inc"
 };
-char D_0049EE40[0x20] = {
+char gHunterTitleDescs_70[32] = {
 #include "sub_main/0049EE40.inc"
 };
-char D_0049EE60[0x20] = {
+char gHunterTitleDescs_71[32] = {
 #include "sub_main/0049EE60.inc"
 };
-char D_0049EE80[0x20] = {
+char gHunterTitleDescs_72[32] = {
 #include "sub_main/0049EE80.inc"
 };
-char D_0049EEA0[0x20] = {
+char gHunterTitleDescs_73[32] = {
 #include "sub_main/0049EEA0.inc"
 };
-char D_0049EEC0[0x20] = {
+char gHunterTitleDescs_74[32] = {
 #include "sub_main/0049EEC0.inc"
 };
-char D_0049EEE0[0x20] = {
+char gHunterTitleDescs_75[32] = {
 #include "sub_main/0049EEE0.inc"
 };
-char D_0049EF00[0x20] = {
+char gHunterTitleDescs_76[32] = {
 #include "sub_main/0049EF00.inc"
 };
-char D_0049EF20[0x20] = {
+char gHunterTitleDescs_77[32] = {
 #include "sub_main/0049EF20.inc"
 };
-char D_0049EF40[0x20] = {
+char gHunterTitleDescs_78[32] = {
 #include "sub_main/0049EF40.inc"
 };
-char D_0049EF60[0x20] = {
+char gHunterTitleDescs_79[32] = {
 #include "sub_main/0049EF60.inc"
 };
-char D_0049EF80[0x20] = {
+char gHunterTitleDescs_80[32] = {
 #include "sub_main/0049EF80.inc"
 };
-char D_0049EFA0[0x20] = {
+char gHunterTitleDescs_81[32] = {
 #include "sub_main/0049EFA0.inc"
 };
-char D_0049EFC0[0x20] = {
+char gHunterTitleDescs_82[32] = {
 #include "sub_main/0049EFC0.inc"
 };
-char D_0049EFE0[0x20] = {
+char gHunterTitleDescs_83[32] = {
 #include "sub_main/0049EFE0.inc"
 };
-char D_0049F000[0x20] = {
+char gHunterTitleDescs_84[32] = {
 #include "sub_main/0049F000.inc"
 };
-char D_0049F020[0x20] = {
+char gHunterTitleDescs_85[32] = {
 #include "sub_main/0049F020.inc"
 };
-char D_0049F040[0x20] = {
+char gHunterTitleDescs_86[32] = {
 #include "sub_main/0049F040.inc"
 };
-char D_0049F060[0x20] = {
+char gHunterTitleDescs_87[32] = {
 #include "sub_main/0049F060.inc"
 };
-char D_0049F080[0x20] = {
+char gHunterTitleDescs_88[32] = {
 #include "sub_main/0049F080.inc"
 };
-char D_0049F0A0[0x20] = {
+char gHunterTitleDescs_89[32] = {
 #include "sub_main/0049F0A0.inc"
 };
-char D_0049F0C0[0x20] = {
+char gHunterTitleDescs_90[32] = {
 #include "sub_main/0049F0C0.inc"
 };
-char D_0049F0E0[0x20] = {
+char gHunterTitleDescs_91[32] = {
 #include "sub_main/0049F0E0.inc"
 };
-char D_0049F100[0x20] = {
+char gHunterTitleDescs_92[32] = {
 #include "sub_main/0049F100.inc"
 };
-char D_0049F120[0x20] = {
+char gHunterTitleDescs_93[32] = {
 #include "sub_main/0049F120.inc"
 };
-char D_0049F140[0x20] = {
+char gHunterTitleDescs_94[32] = {
 #include "sub_main/0049F140.inc"
 };
-char D_0049F160[0x40] = {
+char gHunterTitleDescs_95[64] = {
 #include "sub_main/0049F160.inc"
 };
-char D_0049F1A0[0x30] = {
+char gHunterTitleDescs_96[48] = {
 #include "sub_main/0049F1A0.inc"
 };
-char D_0049F1D0[0x30] = {
+char gHunterTitleDescs_97[48] = {
 #include "sub_main/0049F1D0.inc"
 };
-char D_0049F200[0x30] = {
+char gHunterTitleDescs_98[48] = {
 #include "sub_main/0049F200.inc"
 };
-char D_0049F230[0x30] = {
+char gHunterTitleDescs_99[48] = {
 #include "sub_main/0049F230.inc"
 };
-char D_0049F260[0x30] = {
+char gHunterTitleDescs_100[48] = {
 #include "sub_main/0049F260.inc"
 };
-char D_0049F290[0x30] = {
+char gHunterTitleDescs_101[48] = {
 #include "sub_main/0049F290.inc"
 };
-char D_0049F2C0[0x40] = {
+char gHunterTitleDescs_102[64] = {
 #include "sub_main/0049F2C0.inc"
 };
-char D_0049F300[0x40] = {
+char gHunterTitleDescs_103[64] = {
 #include "sub_main/0049F300.inc"
 };
-char D_0049F340[0x40] = {
+char gHunterTitleDescs_104[64] = {
 #include "sub_main/0049F340.inc"
 };
-char D_0049F380[0x40] = {
+char gHunterTitleDescs_105[64] = {
 #include "sub_main/0049F380.inc"
 };
-char D_0049F3C0[0x30] = {
+char gHunterTitleDescs_106[48] = {
 #include "sub_main/0049F3C0.inc"
 };
-char D_0049F3F0[0x40] = {
+char gHunterTitleDescs_107[64] = {
 #include "sub_main/0049F3F0.inc"
 };
-char D_0049F430[0x40] = {
+char gHunterTitleDescs_108[64] = {
 #include "sub_main/0049F430.inc"
 };
-char D_0049F470[0x30] = {
+char gHunterTitleDescs_109[48] = {
 #include "sub_main/0049F470.inc"
 };
-char D_0049F4A0[0x50] = {
+char gHunterTitleDescs_110[80] = {
 #include "sub_main/0049F4A0.inc"
 };
-char D_0049F4F0[0x50] = {
+char gHunterTitleDescs_111[80] = {
 #include "sub_main/0049F4F0.inc"
 };
-char D_0049F540[0x30] = {
+char gHunterTitleDescs_112[48] = {
 #include "sub_main/0049F540.inc"
 };
-char D_0049F570[0x30] = {
+char gHunterTitleDescs_113[48] = {
 #include "sub_main/0049F570.inc"
 };
-char D_0049F5A0[0x40] = {
+char gHunterTitleDescs_114[64] = {
 #include "sub_main/0049F5A0.inc"
 };
-char D_0049F5E0[0x40] = {
+char gHunterTitleDescs_115[64] = {
 #include "sub_main/0049F5E0.inc"
 };
-char D_0049F620[0x60] = {
+char gHunterTitleDescs_116[96] = {
 #include "sub_main/0049F620.inc"
 };
-char D_0049F680[0x40] = {
+char gHunterTitleDescs_117[64] = {
 #include "sub_main/0049F680.inc"
 };
-char D_0049F6C0[0x40] = {
+char gHunterTitleDescs_118[64] = {
 #include "sub_main/0049F6C0.inc"
 };
-char D_0049F700[0x30] = {
+char gHunterTitleDescs_119[48] = {
 #include "sub_main/0049F700.inc"
 };
-char D_0049F730[0x30] = {
+char gHunterTitleDescs_120[48] = {
 #include "sub_main/0049F730.inc"
 };
-char D_0049F760[0x30] = {
+char gHunterTitleDescs_121[48] = {
 #include "sub_main/0049F760.inc"
 };
-char D_0049F790[0x30] = {
+char gHunterTitleDescs_122[48] = {
 #include "sub_main/0049F790.inc"
 };
-char D_0049F7C0[0x30] = {
+char gHunterTitleDescs_123[48] = {
 #include "sub_main/0049F7C0.inc"
 };
-char D_0049F7F0[0x30] = {
+char gHunterTitleDescs_124[48] = {
 #include "sub_main/0049F7F0.inc"
 };
-char D_0049F820[0x20] = {
+char gHunterTitleDescs_125[32] = {
 #include "sub_main/0049F820.inc"
 };
-char D_0049F840[0x30] = {
+char gHunterTitleDescs_126[48] = {
 #include "sub_main/0049F840.inc"
 };
-char D_0049F870[0x30] = {
+char gHunterTitleDescs_127[48] = {
 #include "sub_main/0049F870.inc"
 };
-char D_0049F8A0[0x30] = {
+char gHunterTitleDescs_128[48] = {
 #include "sub_main/0049F8A0.inc"
 };
-char D_0049F8D0[0x30] = {
+char gHunterTitleDescs_129[48] = {
 #include "sub_main/0049F8D0.inc"
 };
-char D_0049F900[0x30] = {
+char gHunterTitleDescs_130[48] = {
 #include "sub_main/0049F900.inc"
 };
-char D_0049F930[0x30] = {
+char gHunterTitleDescs_131[48] = {
 #include "sub_main/0049F930.inc"
 };
-char D_0049F960[0x30] = {
+char gHunterTitleDescs_132[48] = {
 #include "sub_main/0049F960.inc"
 };
-char D_0049F990[0x30] = {
+char gHunterTitleDescs_133[48] = {
 #include "sub_main/0049F990.inc"
 };
-char D_0049F9C0[0x30] = {
+char gHunterTitleDescs_134[48] = {
 #include "sub_main/0049F9C0.inc"
 };
-char D_0049F9F0[0x30] = {
+char gHunterTitleDescs_135[48] = {
 #include "sub_main/0049F9F0.inc"
 };
-char D_0049FA20[0x40] = {
+char gHunterTitleDescs_136[64] = {
 #include "sub_main/0049FA20.inc"
 };
-char D_0049FA60[0x20] = {
+char gHunterTitleDescs_137[32] = {
 #include "sub_main/0049FA60.inc"
 };
-char D_0049FA80[0x20] = {
+char gHunterTitleDescs_138[32] = {
 #include "sub_main/0049FA80.inc"
 };
-char D_0049FAA0[0x30] = {
+char gHunterTitleDescs_139[48] = {
 #include "sub_main/0049FAA0.inc"
 };
-char D_0049FAD0[0x30] = {
+char gHunterTitleDescs_140[48] = {
 #include "sub_main/0049FAD0.inc"
 };
-char D_0049FB00[0x30] = {
+char gHunterTitleDescs_141[48] = {
 #include "sub_main/0049FB00.inc"
 };
-char D_0049FB30[0x40] = {
+char gHunterTitleDescs_142[64] = {
 #include "sub_main/0049FB30.inc"
 };
-char D_0049FB70[0x28] = {
+char gHunterTitleDescs_143[40] = {
 #include "sub_main/0049FB70.inc"
 };
 #pragma rodata off
+extern f32 *gAreaBlockSpheres[];       /* per area: the spheres that block the camera's line, -1.0f ends */
+extern f32 gSnowLayerSpeedsState0[];
+extern f32 gSnowLayerSpeedsState1[];
+extern f32 gSnowLayerSpeedsState2[];
+extern s16 *gSwampLayerPeriodsByState[];
 
 /*
  * Draws one entry of a prop list (PropRec) from model set `set`. Its colour
@@ -5474,10 +5458,10 @@ void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef)
     f32 pos[3];
 
     if (prop->flags & AREA_DRAW_DAY) {
-        if (state->look[0] >= 0xFF) {
+        if (state->look[0] >= 255) {
             return;
         }
-        Gs_SetState(RS_COLOR2, ((0xFF - state->look[0]) << 24) | 0xFFFFFF);
+        Gs_SetState(RS_COLOR2, ((255 - state->look[0]) << 24) | 0xFFFFFF);
     } else if (prop->flags & AREA_DRAW_NIGHT) {
         if (state->look[0] <= 0) {
             return;
@@ -5555,12 +5539,12 @@ void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef)
             Mtx_Translation(mtx[0], param[0] + state->propOfs[0], param[1] + state->propOfs[1], param[2] + state->propOfs[2]);
             switch (state->propState) {
             case 1:
-                if (state->propTimer > 0x1E) {
-                    Mtx_RotateX(mtx[0], 6.2831855f * (-2.0f * Math_Sin(6.2831855f * ((state->propTimer - 0x1E) << 8) / 65536.0f)) / 360.0f);
+                if (state->propTimer > 30) {
+                    Mtx_RotateX(mtx[0], 6.2831855f * (-2.0f * Math_Sin(6.2831855f * ((state->propTimer - 30) << 8) / 65536.0f)) / 360.0f);
                 }
                 break;
             case 2:
-                if (state->propTimer < 0x100) {
+                if (state->propTimer < 256) {
                     Mtx_RotateX(mtx[0], 6.2831855f * (-2.0f * Math_Sin(6.2831855f * (state->propTimer << 8) / 65536.0f)) / 360.0f);
                 }
                 break;
@@ -5598,9 +5582,9 @@ void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef)
             f32 shade;
 
             if (state->look[0] == 0) {
-                blue = green = red = 0xFF;
-            } else if (state->look[0] == 0xFF) {
-                blue = green = red = 0x30;
+                blue = green = red = 255;
+            } else if (state->look[0] == 255) {
+                blue = green = red = 48;
             } else {
                 shade = 255.0f - 207.0f * ((u32)state->look[0] / 255.0f);
                 red = shade;
@@ -5615,19 +5599,19 @@ void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef)
         case PROP_ANIM_PULSE: {
             u8 alpha = 95.0f * (0.5f * (1.0f + Math_Sin(6.2831855f * (state->frame << 10) / 65536.0f)));
 
-            Gs_SetState(RS_COLOR2, ((u8)(alpha + 0xA0) << 24) | 0xFFFFFF);
+            Gs_SetState(RS_COLOR2, ((u8)(alpha + 160) << 24) | 0xFFFFFF);
             Gs_SetState(RS_MTX_SLOT(0), (s32)mtx);
             break;
         }
         case PROP_ANIM_SLIDE:
             Vec_Copy(pos, param);
             if (!(state->frame & 0x100)) {
-                if ((state->frame & 0xFF) < 0x80) {
+                if ((state->frame & 0xFF) < 128) {
                     pos[2] += 2600.0f * ((state->frame & 0x7F) / 128.0f);
                 } else {
                     pos[2] += 2600.0f;
                 }
-            } else if ((state->frame & 0xFF) < 0x80) {
+            } else if ((state->frame & 0xFF) < 128) {
                 pos[2] += 2600.0f * (1.0f - (state->frame & 0x7F) / 128.0f);
             }
             Mtx_SetTrans(mtx[0], pos[0], pos[1], pos[2]);
@@ -5685,7 +5669,7 @@ void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef)
             break;
         }
         case PROP_ANIM_DAY_SCROLL:
-            Gs_SetState(RS_COLOR2, ((0xFF - (state->look[0] >> 1)) << 24) | 0xFFFFFF);
+            Gs_SetState(RS_COLOR2, ((255 - (state->look[0] >> 1)) << 24) | 0xFFFFFF);
             AreaAnim_UvScrollTranslate(mtx[0], (struct AnimScrollPos *)param, prop->flags);
             param += 2;
             break;
@@ -5753,26 +5737,6 @@ void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef)
 extern AreaAnim *gAreaAnimTbls[];
 extern PropRec *gAreaProps[];
 extern AreaPropChoices gVillagePropChoices[];
-void LightSet_Apply(s32 a);
-s32 Tex_CountLoaded(s32 a);
-void Tex_Prepare(s32 a, s32 b);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_Identity(f32 *m);
-void AreaAnim_TranslateSpin(void *m, struct AnimSpin *arg, u8 flags);
-void AreaAnim_UvScroll(struct UvScroll *arg, u8 flags);
-void AreaAnim_UvWave(struct UvWave *arg);
-void AreaAnim_UvScrollSpin(void *m, struct AnimScrollSpin *arg, u8 flags);
-void AreaAnim_UvStep(struct UvStep *arg);
-void AreaAnim_Translate(void *m, f32 *pos);
-void AreaAnim_UvScrollTranslate(void *m, struct AnimScrollPos *arg, u8 flags);
-void AreaAnim_SpinScroll(void *m, struct AnimSpin2 *arg);
-f32 Math_Sin(f32 a);
-s32 Gs_ClearColor(u8 a, u32 b);
-u8 Village_FacilityLevel(s32 k);
-void Draw_SetDefaultState(void);
-void Area_DrawProp(PropRec *prop, Model *set, u8 *alphaRef);
 
 /*
  * Draws the area, each frame from Frame_Draw; nothing until the area is set
@@ -5812,10 +5776,10 @@ void Area_DrawModels(void)
         LightSet_Apply(0);
         set = state->model;
         if (set != NULL && set->active != 0) {
-            Tex_CountLoaded(0x108);
-            Tex_Prepare(0x10, 0x108);
-            Gs_SetState(RS_ALPHA_REF, 0x80);
-            alphaRef = 0x80;
+            Tex_CountLoaded(264);
+            Tex_Prepare(16, 264);
+            Gs_SetState(RS_ALPHA_REF, 128);
+            alphaRef = 128;
             Gs_SetState(RS_COLOR2, -1);
             lights = set->mats;
             entry = set->matSets;
@@ -5837,7 +5801,7 @@ void Area_DrawModels(void)
                                 Gs_SetState(RS_ZWRITE, 0);
                             }
                             if (anim->flags & AREA_DRAW_DAY) {
-                                Gs_SetState(RS_COLOR2, ((0xFF - state->look[0]) << 24) | 0xFFFFFF);
+                                Gs_SetState(RS_COLOR2, ((255 - state->look[0]) << 24) | 0xFFFFFF);
                             } else if (anim->flags & AREA_DRAW_NIGHT) {
                                 Gs_SetState(RS_COLOR2, (state->look[0] << 24) | 0xFFFFFF);
                             } else {
@@ -5904,9 +5868,9 @@ void Area_DrawModels(void)
                                     f32 shade;
 
                                     if (state->look[0] == 0) {
-                                        blue = green = red = 0xFF;
-                                    } else if (state->look[0] == 0xFF) {
-                                        blue = green = red = 0x30;
+                                        blue = green = red = 255;
+                                    } else if (state->look[0] == 255) {
+                                        blue = green = red = 48;
                                     } else {
                                         shade = 255.0f - 207.0f * ((u32)state->look[0] / 255.0f);
                                         red = shade;
@@ -5935,7 +5899,7 @@ void Area_DrawModels(void)
                                         mtx[2][1] *= 1.25f;
                                         mtx[2][2] *= 1.25f;
                                     }
-                                    Mtx_RotateY(mtx[0], (6.2831855f * (u32)*(u16 *)(arg + 0x10)) / 65536.0f);
+                                    Mtx_RotateY(mtx[0], (6.2831855f * (u32)*(u16 *)(arg + 16)) / 65536.0f);
                                     Gs_SetState(RS_MTX_SLOT(0), (s32)mtx);
                                     break;
                                 }
@@ -5944,7 +5908,7 @@ void Area_DrawModels(void)
                                     u8 green = 32.0f * pulse;
                                     u8 blue = 64.0f * pulse;
 
-                                    Gs_SetState(RS_COLOR2, (((u8)(green + 0xC0)) << 8) | 0xFFFF0000 | (u8)(blue + 0xA0));
+                                    Gs_SetState(RS_COLOR2, (((u8)(green + 192)) << 8) | 0xFFFF0000 | (u8)(blue + 160));
                                     break;
                                 }
                             }
@@ -5976,9 +5940,9 @@ next:
                         break;
                     }
                 } else {
-                    if (alphaRef != 0x80) {
-                        Gs_SetState(RS_ALPHA_REF, 0x80);
-                        alphaRef = 0x80;
+                    if (alphaRef != 128) {
+                        Gs_SetState(RS_ALPHA_REF, 128);
+                        alphaRef = 128;
                     }
                     Model_Draw(entry->id, 0);
                 }
@@ -5988,13 +5952,13 @@ next:
                     Gs_SetState(RS_ZTEST, RS_CMP_LEQUAL);
                 }
             }
-            alphaRef = 0x80;
-            Gs_SetState(RS_ALPHA_REF, 0x80);
+            alphaRef = 128;
+            Gs_SetState(RS_ALPHA_REF, 128);
             set = gAreaSubModels[0];
             if (set == NULL || set->active == 0) {
                 goto end;
             }
-            Tex_Prepare(0x10, 0x128);
+            Tex_Prepare(16, 296);
             prop = gAreaProps[state->area];
             deferCount = 0;
             if (prop != NULL) {
@@ -6175,7 +6139,7 @@ static f32 DayTable_GetTime(s16 step, f32 moment)
             time = gDayStepTimes[entry[3]] - moment;
         }
     } else if (index == 0) {
-        time = moment + gDayStepTimes[*(s32 *)(base + 0x1C)];
+        time = moment + gDayStepTimes[*(s32 *)(base + 28)];
     } else {
         time = moment + gDayStepTimes[entry[-3]];
     }
@@ -6186,9 +6150,6 @@ static f32 DayTable_GetTime(s16 step, f32 moment)
     }
     return time;
 }
-
-f32 LobbyTime_GetDayLen30(void);
-f32 LobbyTime_GetDayFrac(void);
 
 #pragma optimization_level 3
 /* A channel of colour c as a float (0-255): the byte at bit shift. */
@@ -6241,9 +6202,9 @@ void Sky_DrawGradient(void)
     u32 *nextBottom;
 
     Gs_SetState(RS_ALPHA_REF, 0);
-    rect.x1 = 0x280;
+    rect.x1 = 640;
     rect.x0 = 0;
-    rect.y1 = 0x1C0;
+    rect.y1 = 448;
     rect.y0 = 0;
     if (gScene.inLobby != 0) {
         /* nextColor holds the day's length first: with a variable of its own, the
@@ -6339,30 +6300,30 @@ void Sky_DrawBand(SkyBand *band, f32 *dir)
 
     rect.x0 = 0;
     rect.y0 = band->y;
-    rect.x1 = 0x280;
+    rect.x1 = 640;
     rect.y1 = band->h;
     camYaw = (s32)(0.5f + 65536.0f * Math_Atan2(-gCamDir[0], -gCamDir[2]) / 6.2831855f);
     yaw = (u16)(s32)(0.5f + 65536.0f * Math_Atan2(dir[0], dir[2]) / 6.2831855f) - camYaw;
-    if (yaw < 0x4000) {
+    if (yaw < (ANGLE_TURN / 4)) {
         frac = yaw / 16384.0f;
         rect.color[0] = Color_Lerp(band->c[0], band->c[2], frac);
         rect.color[1] = Color_Lerp(band->c[0], band->c[3], frac);
         rect.color[2] = Color_Lerp(band->c[4], band->c[6], frac);
         rect.color[3] = Color_Lerp(band->c[4], band->c[7], frac);
-    } else if (yaw < 0x8000) {
-        frac = (yaw - 0x4000) / 16384.0f;
+    } else if (yaw < (ANGLE_TURN / 2)) {
+        frac = (yaw - ANGLE_TURN / 4) / 16384.0f;
         rect.color[0] = Color_Lerp(band->c[2], band->c[1], frac);
         rect.color[1] = Color_Lerp(band->c[3], band->c[1], frac);
         rect.color[2] = Color_Lerp(band->c[6], band->c[5], frac);
         rect.color[3] = Color_Lerp(band->c[7], band->c[5], frac);
-    } else if (yaw < 0xC000) {
-        frac = (yaw - 0x8000) / 16384.0f;
+    } else if (yaw < (ANGLE_TURN * 3 / 4)) {
+        frac = (yaw - ANGLE_TURN / 2) / 16384.0f;
         rect.color[0] = Color_Lerp(band->c[1], band->c[3], frac);
         rect.color[1] = Color_Lerp(band->c[1], band->c[2], frac);
         rect.color[2] = Color_Lerp(band->c[5], band->c[7], frac);
         rect.color[3] = Color_Lerp(band->c[5], band->c[6], frac);
     } else {
-        frac = (yaw - 0xC000) / 16384.0f;
+        frac = (yaw - ANGLE_TURN * 3 / 4) / 16384.0f;
         rect.color[0] = Color_Lerp(band->c[3], band->c[0], frac);
         rect.color[1] = Color_Lerp(band->c[2], band->c[0], frac);
         rect.color[2] = Color_Lerp(band->c[7], band->c[4], frac);
@@ -6371,16 +6332,10 @@ void Sky_DrawBand(SkyBand *band, f32 *dir)
     Prim_FillGradRect(&rect);
 }
 
-void Sky_DrawGradient(void);
-void Sky_DrawBand(SkyBand *band, f32 *dir);
-void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetBlendOp(s32 a);
-s32 Prim_FillRect(PrimLine *rect);
-f32 Math_Sin(f32 x);
 extern s16 gAreaFade;
 extern s16 gAreaFadeTimer;
 
-/* Draws the area's sky: Sky_DrawGradient in AREA_HOUSE, AREA_HUB_0x57, AREA_HUB_0x83 to
+/* Draws the area's sky: Sky_DrawGradient in AREA_HOUSE, AREA_HUB_0x57, AREA_ONLINE_VILLAGE to
  * AREA_HUB_0x89 and AREA_ONLINE_HOUSE_0 to _2, else the sky band of the area state; then a
  * full-screen fade by gAreaFade (1: black, 2: fading with gAreaFadeTimer, else pulsing). */
 void Sky_Draw(void)
@@ -6401,7 +6356,7 @@ void Sky_Draw(void)
     switch (state->area) {
     case AREA_HOUSE:
     case AREA_HUB_0x57:
-    case AREA_HUB_0x83:
+    case AREA_ONLINE_VILLAGE:
     case AREA_HUB_0x84:
     case AREA_HUB_0x85:
     case AREA_TAVERN:
@@ -6420,24 +6375,24 @@ void Sky_Draw(void)
     }
     if (gAreaFade != 0) {
         rect.x0 = 0;       /* the whole screen, 640 x 448 */
-        rect.x1 = 0x280;
-        rect.y1 = 0x1C0;
+        rect.x1 = 640;
+        rect.y1 = 448;
         rect.y0 = 0;
         if (gAreaFade == 1) {
-            Gfx_SetBlend(4, 5);
-            alpha = 0xFF;
-            Gfx_SetBlend(1, 1);
-            Gfx_SetBlendOp(1);
+            Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+            alpha = 255;
+            Gfx_SetBlend(GFX_BLEND_ONE, GFX_BLEND_ONE);
+            Gfx_SetBlendOp(GFX_BLEND_OP_SUB);
         } else if (gAreaFade == 2) {
-            Gfx_SetBlend(4, 5);
-            alpha = 0xFF - (u8)(127.5f * gAreaFadeTimer);
+            Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+            alpha = 255 - (u8)(127.5f * gAreaFadeTimer);
             rect.color = alpha << 24;
             Prim_FillRect(&rect);
-            Gfx_SetBlend(1, 1);
-            Gfx_SetBlendOp(1);
+            Gfx_SetBlend(GFX_BLEND_ONE, GFX_BLEND_ONE);
+            Gfx_SetBlendOp(GFX_BLEND_OP_SUB);
         } else {
-            alpha = 255.0f * (1.0f + Math_Sin(6.2831855f * (gAreaFadeTimer * 0xB6 + 0xC000) / 65536.0f));
-            Gfx_SetBlend(4, 5);
+            alpha = 255.0f * (1.0f + Math_Sin(6.2831855f * (gAreaFadeTimer * 182 + 49152) / 65536.0f));
+            Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
         }
         if (gAreaFade == 1 || gAreaFade == 2) {
             rect.color = -1;
@@ -6446,11 +6401,11 @@ void Sky_Draw(void)
         }
         Prim_FillRect(&rect);
         if (gAreaFade == 1 || gAreaFade == 2) {
-            Gfx_SetBlendOp(0);
+            Gfx_SetBlendOp(GFX_BLEND_OP_ADD);
         }
     }
     Gs_SetState(RS_ZWRITE, 1);
-    Gs_SetState(RS_ALPHA_REF, 0x80);
+    Gs_SetState(RS_ALPHA_REF, 128);
 }
 
 /* Draws one entry of a model set with matrix mtx, with its lights from mats
@@ -6471,8 +6426,8 @@ extern f32 gCamMatrix[];
 extern f32 gCamYawMtx[];
 extern f32 gGlowPosHouse[][3];
 extern s16 gGlowEntryHouse[];
-extern f32 gGlowPosHub83[][3];
-extern s16 gGlowEntryHub83[];
+extern f32 gGlowPosOnlineVillage[][3];
+extern s16 gGlowEntryOnlineVillage[];
 extern f32 gGlowPosHub84[][3];
 extern s16 gGlowEntryHub84[];
 extern f32 gGlowPosHub85[][3];
@@ -6495,11 +6450,7 @@ extern f32 gGlowPosOnlineHouse1[][3];
 extern s16 gGlowEntryOnlineHouse1[];
 extern f32 gGlowPosOnlineHouse2[][3];
 extern s16 gGlowEntryOnlineHouse2[];
-void Mtx_Concat3x3(f32 *m, f32 *n);
-s32 Overlay_IsLoaded(s32 a);
-void Draw_SetDefaultState(void);
 u8 func_7D96D0(void); /* the lobby's: LobbyWorld.unk110, 0 while the lobby world is inactive */
-u32 LobbyWorld_GetFadeColor(s32 i);
 
 /*
  * Draws the lights of the town's hubs and houses, which glow at night: per
@@ -6538,7 +6489,7 @@ void Area_DrawGlowProps(void)
     switch (state->area) {
     case AREA_HOUSE:
     case AREA_HUB_0x57:
-    case AREA_HUB_0x83:
+    case AREA_ONLINE_VILLAGE:
     case AREA_HUB_0x84:
     case AREA_HUB_0x85:
     case AREA_TAVERN:
@@ -6594,14 +6545,14 @@ void Area_DrawGlowProps(void)
             }
         }
         break;
-    case AREA_HUB_0x83:
+    case AREA_ONLINE_VILLAGE:
         models = state->model;
         if (models != NULL && models->active != 0) {
             lights = models->mats;
             for (i = 0; i < 11; i++) {
                 Mtx_Identity(mtx[0]);
-                Mtx_SetTrans(mtx[0], gGlowPosHub83[i][0], gGlowPosHub83[i][1], gGlowPosHub83[i][2]);
-                switch (gGlowEntryHub83[i]) {
+                Mtx_SetTrans(mtx[0], gGlowPosOnlineVillage[i][0], gGlowPosOnlineVillage[i][1], gGlowPosOnlineVillage[i][2]);
+                switch (gGlowEntryOnlineVillage[i]) {
                 case 11:
                     Mtx_Concat3x3(mtx[0], gCamMatrix);
                 case 10:
@@ -6616,7 +6567,7 @@ void Area_DrawGlowProps(void)
                 default:
                     continue;
                 }
-                Area_DrawEntry(&models->matSets[gGlowEntryHub83[i]], mtx[0], lights);
+                Area_DrawEntry(&models->matSets[gGlowEntryOnlineVillage[i]], mtx[0], lights);
             }
         }
         break;
@@ -6892,7 +6843,7 @@ void Area_DrawGlowProps(void)
         break;
     }
     Gs_SetState(RS_ZWRITE, 1);
-    Gs_SetState(RS_ALPHA_REF, 0x80);
+    Gs_SetState(RS_ALPHA_REF, 128);
 }
 
 extern s8 gNoticeCount;           /* the notices queued */
@@ -6906,7 +6857,7 @@ void Notice_ResetQueue(void)
 {
     gNoticeCount = 0;
     gNoticeHead = 0;
-    gScene.bannerNotice = 0xFF;
+    gScene.bannerNotice = 255;
     gNoticeWait = 0;
     gScene.noticeId = 0;
     memset(gNoticeQueue, 0, sizeof(gNoticeQueue));
@@ -6927,9 +6878,6 @@ s32 Notice_IsQueued(u8 k)
     }
     return 0;
 }
-
-void NoticeBanner_Spawn(u8 kind, s16 textNo, s16 subject, u8 noticeId);
-void NoticeBanner_SpawnString(char *msg, u8 noticeId);
 
 /* Shows the first queued notice (60 frames apart, not while gScene.eventRunning is set, nor while
  * gQuest.inputLock is positive outside the town) once its delay has run out. */
@@ -6970,9 +6918,6 @@ void Notice_Update(void)
     gNoticeCount--;
 }
 
-Obj *Obj_Alloc(s32 n);
-void NoticeBanner_Task(Obj *o);
-
 /* Starts a banner (an object of kind 1) of notice kind `kind` (NOTICE_KIND_*) with
  * Notice_Push's text and subject, and marks notice noticeId as the one shown
  * (gScene.bannerNotice). */
@@ -6992,14 +6937,14 @@ void NoticeBanner_Spawn(u8 kind, s16 textNo, s16 subject, u8 noticeId)
 }
 
 /* Queues a notice of the given kind (NOTICE_KIND_*), with its text (a message or
- * phrase) and its subject (an item, a player or a count); returns its id, or 0xFF
+ * phrase) and its subject (an item, a player or a count); returns its id, or 255
  * when the queue is full. */
 u8 Notice_Push(u8 kind, s16 text, s16 subject)
 {
     s8 i;
 
     if (gNoticeCount >= NOTICE_QUEUE_LEN - 1) {
-        return 0xFF;
+        return 255;
     }
     gScene.noticeId = (gScene.noticeId + 1) & 0x7F;
     i = (gNoticeHead + gNoticeCount) % NOTICE_QUEUE_LEN;
@@ -7012,8 +6957,6 @@ u8 Notice_Push(u8 kind, s16 text, s16 subject)
     return gScene.noticeId;
 }
 
-Obj *Obj_Alloc(s32 n);
-void NoticeBanner_Task(Obj *o);
 
 /* Starts a NOTICE_KIND_STRING banner showing msg, and marks notice noticeId as the one shown. */
 void NoticeBanner_SpawnString(char *msg, u8 noticeId)
@@ -7033,13 +6976,13 @@ void NoticeBanner_SpawnString(char *msg, u8 noticeId)
     }
 }
 
-/* Queues an item notice; its id, or 0xFF when the queue is full. */
+/* Queues an item notice; its id, or 255 when the queue is full. */
 u8 Notice_PushItem(char *item)
 {
     s8 i;
 
     if (gNoticeCount >= NOTICE_QUEUE_LEN - 1) {
-        return 0xFF;
+        return 255;
     }
     gScene.noticeId = (gScene.noticeId + 1) & 0x7F;
     i = (gNoticeHead + gNoticeCount) % NOTICE_QUEUE_LEN;
@@ -7054,14 +6997,14 @@ u8 Notice_PushItem(char *item)
 char *strcpy(char *dst, const char *src);
 u32 strlen(const char *s);
 /* Queues a text notice (a copy, NOTICE_TEXT_LEN characters at most); returns its id,
- * or 0xFF when the queue is full. */
+ * or 255 when the queue is full. */
 u8 Notice_PushText(char *text)
 {
     s32 i;
     s32 k;
 
     if (gNoticeCount >= NOTICE_QUEUE_LEN - 1) {
-        return 0xFF;
+        return 255;
     }
     gScene.noticeId = (gScene.noticeId + 1) & 0x7F;
     i = (s8)((gNoticeHead + gNoticeCount) % NOTICE_QUEUE_LEN);
@@ -7107,13 +7050,6 @@ void NoticeBanner_Task(Obj *obj)
 }
 
 s32 sprintf(char *dst, char *fmt, ...);     /* sprintf */
-s32 Text_DisplayLength(char *s);
-s16 DrawSlotB_Alloc(void);
-DrawSlot *DrawSlotB_Get(s32 i);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void Obj_Free(Obj *p);
-void TextNotice_Draw(DrawSlot *slot);
-extern char *gNoticeBannerTexts[];
 extern char *gNoticeBannerItemTexts[];
 extern char *gNoticeBannerTextsItem[];
 extern char *gNoticeBannerPlayerTexts[];
@@ -7130,7 +7066,7 @@ extern char *gNoticeMadeCountText[];
 void NoticeBanner_Start(Obj *obj)
 {
     NoticeText *banner = obj->buf;
-    char line[0x80];
+    char line[128];
     s16 w;
     s32 i;
     s32 n;
@@ -7139,7 +7075,7 @@ void NoticeBanner_Start(Obj *obj)
     obj->visible = 1;
     obj->draw = NULL;
     obj->keep = 1;
-    Sound_PlaySeFlat(0, 0x10, 0);
+    Sound_PlaySeFlat(0, 16, 0);
     switch (obj->type) {
     case NOTICE_KIND_MESSAGE:
         sprintf(banner->text, "~C00%s", gNoticeBannerTexts[obj->var5]);
@@ -7162,7 +7098,7 @@ void NoticeBanner_Start(Obj *obj)
     }
     obj->var1 = 1;
     w = 0;
-    for (i = 0, n = 0; i < 0x80; i++) {
+    for (i = 0, n = 0; i < 128; i++) {
         if (banner->text[i] == '\n') {
             line[n] = 0;
             banner->width[obj->var1 - 1] = Text_DisplayLength(line);
@@ -7199,8 +7135,6 @@ void NoticeBanner_Start(Obj *obj)
     }
 }
 
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-
 /* A notice banner's run state: it slides down to y 224, stays for its time (shorter once more
  * notices wait), then slides up out of the screen and ends. */
 u32 NoticeBanner_Run(Obj *obj)
@@ -7216,7 +7150,7 @@ u32 NoticeBanner_Run(Obj *obj)
         obj->var3--;
         if (obj->var3 <= 0 || (obj->var3 <= 30 && gNoticeCount > 0)) {
             obj->fvar *= -1.0f;
-            gScene.bannerNotice = 0xFF;
+            gScene.bannerNotice = 255;
             obj->var0++;
         }
         break;
@@ -7226,7 +7160,7 @@ u32 NoticeBanner_Run(Obj *obj)
         }
         break;
     }
-    return OT_AddByDepth(gDrawOtText3, obj->ds, 0x10, 1);
+    return OT_AddByDepth(gDrawOtText3, obj->ds, 16, 1);
 }
 
 /* Hides the banner and frees its draw slot; the next state frees the object. */
@@ -7244,11 +7178,6 @@ void NoticeBanner_Free(Obj *obj)
 }
 
 struct Frame;
-void WindowFrame_Draw(struct Frame *b, s16 *off);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Text_SetSize(s32 size);
-void Text_Printf(const char *fmt, ...);
 
 /* Draws a notice banner (its draw slot's update): a window frame sized to its lines
  * (Obj.var1) and its widest line (pos[2]), then each line of its text, centred by its
@@ -7258,7 +7187,7 @@ void TextNotice_Draw(DrawSlot *slot)
     Obj *obj = slot->owner;
     NoticeText *banner = obj->buf;
     Frame box;
-    char line[0x80];
+    char line[128];
     s32 n;
     s32 pos;
     s32 i;
@@ -7272,11 +7201,11 @@ void TextNotice_Draw(DrawSlot *slot)
     box.color = 0xFF7F7052;
     box.color2 = 0xBD101010;
     WindowFrame_Draw(&box, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Text_SetSize(3);
     pos = 0;
     for (n = 0; n < obj->var1; n++) {
-        for (i = 0; pos < 0x80; pos++, i++) {
+        for (i = 0; pos < 128; pos++, i++) {
             if (banner->text[pos] == '\n') {
                 line[i] = 0;
                 pos++;
@@ -7290,10 +7219,8 @@ void TextNotice_Draw(DrawSlot *slot)
         Font_SetPos(320.0f - 10.0f * (banner->width[n] / 2.0f), (s16)obj->pos[1] + n * 20);
         Text_Printf("%s", line);
     }
-    Gs_SetState(RS_ALPHA_REF, 0x80);
+    Gs_SetState(RS_ALPHA_REF, 128);
 }
-
-void AreaProp_Task(Obj *o);
 
 /* Starts an area prop (an object of kind 6, AreaProp_Task) of type k: the type picks
  * its place and model in the area's tables. */
@@ -7331,7 +7258,7 @@ void AreaProp_Task(Obj *obj)
 }
 
 extern f32 gAreaPropPosHouse[];
-extern f32 gAreaPropPosHub83[][3];
+extern f32 gAreaPropPosOnlineVillage[][3];
 extern f32 gAreaPropPosHub84[][3];
 extern f32 gAreaPropPosHub85[][3];
 extern f32 gAreaPropPosElderHall[][3];
@@ -7339,9 +7266,6 @@ extern f32 gAreaPropPosHub89[][3];
 extern f32 gAreaPropPosHubAA[];
 extern f32 gAreaPropPosOnlineHouse1[];
 extern f32 gAreaPropPosOnlineHouse2[];
-u16 Rand_Next(s32 a);
-void Vec_Copy(f32 *dst, f32 *src);
-void AreaProp_Draw(DrawSlot *slot);
 
 /* Sets up an area prop (AreaProp_Spawn): placed by the area and its type from the
  * area's table (gAreaPropPos*), with its turn time in var3 in some areas (200 to 327
@@ -7362,8 +7286,8 @@ void AreaProp_Start(Obj *obj)
         obj->pos[1] = gAreaPropPosHouse[1];
         obj->pos[2] = gAreaPropPosHouse[2];
         break;
-    case AREA_HUB_0x83:
-        Vec_Copy(obj->pos, gAreaPropPosHub83[obj->type]);
+    case AREA_ONLINE_VILLAGE:
+        Vec_Copy(obj->pos, gAreaPropPosOnlineVillage[obj->type]);
         switch (obj->type) {
         case 6:
             obj->var3 = 800;
@@ -7418,14 +7342,6 @@ void AreaProp_Start(Obj *obj)
     }
 }
 
-s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
-void Vec_Scale(f32 *out, f32 *in, f32 s);
-void Vec_Copy(f32 *dst, f32 *src);
-void Mtx_GetTrans(f32 *out, f32 *m);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-extern f32 gCamMatrix[];
-
 /* The run state of an area prop: by area, it hides at a frame of the local player's
  * motion, turns its timers, or (AREA_TOWN_ARENA) fades in and out in front of the camera;
  * then its draw slot is added to the ordering table var4 picks (0 sorted, 1 the 32-deep,
@@ -7441,11 +7357,11 @@ void AreaProp_Run(Obj *obj)
     switch (gScene.area) {
     case AREA_HOUSE:
     case AREA_HUB_0x57:
-        if (pl->motionId[0] == 0x287 && Motion_PassedFrame(pl, 0, 232.0f)) {
+        if (pl->motionId[0] == 647 && Motion_PassedFrame(pl, 0, 232.0f)) {
             obj->visible = 0;
         }
         break;
-    case AREA_HUB_0x83:
+    case AREA_ONLINE_VILLAGE:
         switch (obj->type) {
         case 6:
             obj->var4 = 2;
@@ -7514,7 +7430,7 @@ void AreaProp_Run(Obj *obj)
         obj->var4 = 2;
         break;
     case AREA_HUB_0xAC:
-        if (pl->motionId[0] == 0xFA && Motion_PassedFrame(pl, 0, 154.0f)) {
+        if (pl->motionId[0] == 250 && Motion_PassedFrame(pl, 0, 154.0f)) {
             obj->visible = 0;
         }
         break;
@@ -7524,10 +7440,10 @@ void AreaProp_Run(Obj *obj)
     obj->ds->pos[2] = obj->pos[2];
     switch (obj->var4) {
     default:
-        OT_AddByDepth(gDrawOtSorted, obj->ds, 0x40, 0);
+        OT_AddByDepth(gDrawOtSorted, obj->ds, 64, 0);
         break;
     case 1:
-        OT_AddByDepth(gDrawOt32, obj->ds, 0x20, 0);
+        OT_AddByDepth(gDrawOt32, obj->ds, 32, 0);
         break;
     case 2:
         OT_AddByDepth(gDrawOt8, obj->ds, 8, 1);
@@ -7552,8 +7468,8 @@ void AreaProp_Free(Obj *obj)
     Obj_Free(obj);
 }
 
-/* The colour of the props darkened by night: white by day, grey 0x30 at full night
- * (gAreaState.look[0] 0xFF), else 255 - 207 * night / 255 in each channel. */
+/* The colour of the props darkened by night: white by day, grey 48 at full night
+ * (gAreaState.look[0] 255), else 255 - 207 * night / 255 in each channel. */
 u32 Area_NightTint(void)
 {
     AreaState *state = &gAreaState;
@@ -7561,9 +7477,9 @@ u32 Area_NightTint(void)
     f32 shade;
 
     if (gAreaState.look[0] == 0) {
-        b = g = r = 0xFF;
-    } else if (state->look[0] == 0xFF) {
-        b = g = r = 0x30;
+        b = g = r = 255;
+    } else if (state->look[0] == 255) {
+        b = g = r = 48;
     } else {
         shade = 255.0f - 207.0f * (state->look[0] / 255.0f);
         r = shade;
@@ -7574,24 +7490,13 @@ u32 Area_NightTint(void)
 }
 
 extern f32 gAreaPropRotHouse[];
-extern f32 gAreaPropScaleHub83[];
-extern s16 gAreaPropEntryHub83[];
+extern f32 gAreaPropScaleOnlineVillage[];
+extern s16 gAreaPropEntryOnlineVillage[];
 extern f32 gAreaPropScaleHub84[];
 extern s16 gAreaPropEntryHub84[];
 extern s16 gAreaPropEntryHub85[];
 extern f32 gAreaPropScaleElderHall[];
 extern s16 gAreaPropEntryElderHall[];
-void Mtx_Identity(f32 *m);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_RotateZ(f32 *m, f32 a);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Copy(f32 *dst, f32 *src);
-u8 Village_FacilityLevel(s32 k);
-void Draw_SetDefaultState(void);
 
 #define DEG2RAD(d) (6.2831855f * (d) / 360.0f)
 
@@ -7625,7 +7530,7 @@ void AreaProp_Draw(DrawSlot *slot)
         }
         Gs_SetState(RS_MTX_SLOT(0), (s32)mtx);
         entry = &set->matSets[1];
-        Gs_SetState(RS_ALPHA_REF, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         Gs_SetState(RS_COLOR2, -1);
         if (entry != NULL && entry->id != -1) {
             Draw_ApplyStates(entry->flags);
@@ -7634,15 +7539,15 @@ void AreaProp_Draw(DrawSlot *slot)
         Mtx_RotateXYZ(mtx, gAreaPropRotHouse[0], gAreaPropRotHouse[1], gAreaPropRotHouse[2]);
         entry = &set->matSets[obj->type];
         break;
-    case AREA_HUB_0x83:
+    case AREA_ONLINE_VILLAGE:
         set = state->model;
         if (set == NULL || set->active == 0) {
             goto end;
         }
         lights = set->mats;
-        entry = &set->matSets[gAreaPropEntryHub83[obj->type]];
+        entry = &set->matSets[gAreaPropEntryOnlineVillage[obj->type]];
         Gs_SetLightList(lights, entry);
-        Mtx_Scale(mtx, gAreaPropScaleHub83[obj->type], gAreaPropScaleHub83[obj->type], gAreaPropScaleHub83[obj->type]);
+        Mtx_Scale(mtx, gAreaPropScaleOnlineVillage[obj->type], gAreaPropScaleOnlineVillage[obj->type], gAreaPropScaleOnlineVillage[obj->type]);
         switch (obj->type) {
         case 6:
             Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
@@ -7655,7 +7560,7 @@ void AreaProp_Draw(DrawSlot *slot)
                 Draw_ApplyStates(entry->flags);
                 Model_Draw(entry->id, 0);
             }
-            entry = &set->matSets[gAreaPropEntryHub83[obj->type + 1]];
+            entry = &set->matSets[gAreaPropEntryOnlineVillage[obj->type + 1]];
             Gs_SetLightList(lights, entry);
             Gs_SetState(RS_COLOR2, -1);
             break;
@@ -7810,7 +7715,7 @@ void AreaProp_Draw(DrawSlot *slot)
         Gs_SetState(RS_ALPHA_REF, 0);
         break;
     case 1:
-        Gs_SetState(RS_ALPHA_REF, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         break;
     }
     if (entry != NULL && entry->id != -1) {
@@ -7823,10 +7728,7 @@ end:
     Gs_SetState(RS_ZTEST, RS_CMP_LEQUAL);
 }
 
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void SoundObj_Task(Obj *o);
-
-/* Starts a sound object (an object of kind 0xC, SoundObj_Task) at pos, playing sound
+/* Starts a sound object (an object of kind OBJ_KIND_SOUND, SoundObj_Task) at pos, playing sound
  * seId of bank with volume curve range (Sound_PlaySeAtPosChecked). mode is its
  * SoundObj_Run case, kept in var0: mode 0 plays the sound at once and lasts frames
  * frames (0xFFFF: until freed); in the other modes frames is the time between plays. */
@@ -7839,7 +7741,7 @@ void SoundObj_Start(s32 bank, s32 seId, s32 range, f32 *pos, s16 frames, u8 mode
     }
     obj = Obj_Alloc(0);
     if (obj != NULL) {
-        obj->kind = 0xC;
+        obj->kind = 12;
         obj->update = SoundObj_Task;
         obj->type = range;
         obj->var0 = mode;
@@ -7888,16 +7790,6 @@ void SoundObj_Init(Obj *obj)
     obj->var3 = obj->timer;
 }
 
-f32 Seg_NearestPointDist(f32 *out, f32 *a, f32 *b, f32 *p);
-void Vec_Diff(f32 *out, f32 *a, f32 *b);
-f32 Math_Absf(f32 x);
-f32 Vec_Dot(f32 *a, f32 *b);
-s32 Seg_ClipPlane(f32 *s, f32 *p, f32 *nrm, f32 *out);
-void Mtx_GetTrans(f32 *out, f32 *m);
-u16 Area_DayId(u16 a);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Vec_Copy(f32 *dst, f32 *src);
-u16 Rand_Next(s32 a);
 extern f32 gRiverPtsDay48[];
 extern f32 gRiverPtsDay4B[];
 extern f32 gRiverPtsDay6E[];
@@ -7905,7 +7797,6 @@ extern f32 gRiverPtsDay71[];
 extern f32 gRiverPtsDay72[];
 extern f32 gRiverPtsDay78[];
 extern f32 gRiverPtsDayA1[];
-extern f32 gCamMatrix[];
 
 
 /* The run state of a sound object (SoundObj_Start; its mode in var0, its bank and
@@ -8045,25 +7936,22 @@ Obj *AreaAtmos_Alloc(s32 type)
     default:
         return Obj_Alloc(0);
     case 8:
-    case 0xA:
-    case 0xB:
-    case 0xD:
-    case 0xE:
+    case 10:
+    case 11:
+    case 13:
+    case 14:
         return Obj_Alloc(1);
     }
 }
 
-Obj *AreaAtmos_Alloc(s32 k);
-void AreaAtmos_Task(Obj *);
-
-/* Starts an area atmosphere object (kind 0xD, AreaAtmos_Task) of the given type:
+/* Starts an area atmosphere object (OBJ_KIND_AREA_ATMOS, AreaAtmos_Task) of the given type:
  * Area_StartObjects starts the area's own (gAreaInfo). */
 void AreaAtmos_Spawn(s32 type)
 {
     Obj *obj = AreaAtmos_Alloc(type);
 
     if (obj != NULL) {
-        obj->kind = 0xD;
+        obj->kind = 13;
         obj->type = type;
         obj->update = AreaAtmos_Task;
     }
@@ -8092,10 +7980,6 @@ void AreaAtmos_Task(Obj *obj)
 }
 
 s16 Area_MonsterState(u16 area);
-f32 AreaAtmos_LayerSpeed(u8 i, s16 n);
-f32 AreaAtmos_LayerAlpha(u8 i, s16 n);
-s16 Area_BoundaryZone(Player *p);
-void AreaAtmos_Draw(DrawSlot *slot);
 extern s16 gAreaAtmosLayerCounts[];
 
 /* Sets up an area atmosphere object (state 0): its alpha (fvar) by the area and the
@@ -8269,18 +8153,6 @@ void AreaAtmos_Setup(Obj *obj)
     }
 }
 
-void Vec_FromCamera(f32 *out, f32 *v, f32 s);
-s32 Area_LineBlocked(f32 *pos);
-s32 Cyl_Contains(f32 *p, f32 *c, f32 r, f32 top, f32 bottom);
-f32 Math_Acos(f32 x);
-f32 Math_Asin(f32 x);
-f32 Math_Sqrtf(f32 x);
-f32 Math_Absf(f32 x);
-f32 Math_Floor(f32 x);
-f32 Vec_Length(f32 *v);
-f32 Vec_Dot(f32 *a, f32 *b);
-void Vec_Normalize(f32 *v);
-void AtmosScroll_Update(AtmosScroll *scroll, s16 n, s16 *speed, u16 mode);
 extern f32 gCamPos[3];
 extern s16 gAtmosScrollSpeeds[];
 extern s16 *gAtmosScrollSpeedsByState[];
@@ -8430,7 +8302,7 @@ void AreaAtmos_Update(Obj *obj)
             dz = 10180.0f - gCamPos[2];
             break;
         default:
-            lim = 0x400;
+            lim = 1024;
             break;
         }
         if (obj->timer >= lim) {
@@ -8564,7 +8436,7 @@ void AreaAtmos_Update(Obj *obj)
             lim = 200;
             break;
         default:
-            lim = 0x400;
+            lim = 1024;
             break;
         }
         if (obj->timer >= lim) {
@@ -8759,7 +8631,7 @@ void AreaAtmos_Update(Obj *obj)
             }
             return;
         case 1:
-            if (++obj->timer >= 0x100) {
+            if (++obj->timer >= 256) {
                 obj->timer = 0;
                 obj->var3 = (Rand_Next(1) & 0x3FF) + 1200;
                 obj->var0 = 0;
@@ -8798,7 +8670,7 @@ void AreaAtmos_Update(Obj *obj)
         break;
     case 15:
         Vec_Copy(drawPos, gCamPos);
-        lim = 0x80;
+        lim = 128;
         if (obj->timer >= lim) {
             obj->timer = 0;
         }
@@ -8844,10 +8716,6 @@ void CamFov_Restore(u8 *fov)
     }
 }
 
-extern s16 gAreaAtmosLayerCounts[];
-f32 Math_Sqrtf(f32 x);
-f32 Math_Acos(f32 x);
-void Mtx_Concat3x3(f32 *m, f32 *n);
 
 /*
  * Draws an area atmosphere object (its draw slot's update): its model, entry
@@ -8967,7 +8835,7 @@ void AreaAtmos_Draw(DrawSlot *slot)
             div = 500;
             break;
         default:
-            div = 0x400;
+            div = 1024;
             break;
         }
         Mtx_Translation(tm[0], (1.0f / div) * (obj->timer % (s16)div), 0.0f, 0.0f);
@@ -9038,7 +8906,7 @@ void AreaAtmos_Draw(DrawSlot *slot)
             div = 200;
             break;
         default:
-            div = 0x400;
+            div = 1024;
             break;
         }
         Mtx_Translation(tm[0], (1.0f / div) * (obj->timer % (s16)div), 0.0f, 0.0f);
@@ -9143,7 +9011,7 @@ void AreaAtmos_Draw(DrawSlot *slot)
             Draw_ApplyStates(entry->flags);
             Model_Draw(entry->id, 0);
         }
-        if (obj->timer > 0x80) {
+        if (obj->timer > 128) {
             goto done;
         }
         Mtx_Translation(tm[0], 0.0f, 1.0f - obj->timer / 128.0f, 0.0f);
@@ -9168,8 +9036,315 @@ done:
     CamFov_Restore((u8 *)&fov);
 }
 
+/* The point at s times the vector v from the camera's position. */
+void Vec_FromCamera(f32 *out, f32 *dir, f32 dist)
+{
+    f32 x, y, z;
+
+    x = dist * dir[0];
+    y = dist * dir[1];
+    z = dist * dir[2];
+    out[0] = gCamPos[0] + x;
+    out[1] = gCamPos[1] + y;
+    out[2] = gCamPos[2] + z;
+}
+
+/* 1 when the line from the camera to pos (a capsule of radius 5) meets one
+ * of the area's spheres in gAreaBlockSpheres (radius, x, y, z; -1 ends). */
+s32 Area_LineBlocked(f32 *pos)
+{
+    f32 center[3];
+    f32 pushOut[4];
+    HitCapsule cap;
+    u8 capsule[64];
+    f32 *sphere;
+    f32 sphereRadius;
+
+    Vec_Copy(cap.a, gCamPos);
+    Vec_Copy(cap.b, pos);
+    cap.radius = 5.0f;
+    Capsule_Copy(&cap, (Capsule *) capsule);
+    sphere = gAreaBlockSpheres[gScene.area];
+    if (sphere != NULL) {
+        for (sphereRadius = *sphere; sphereRadius != -1.0f; sphereRadius = *sphere) {
+            sphere++;
+            center[0] = *sphere++;
+            center[1] = *sphere++;
+            center[2] = *sphere++;
+            if (Capsule_PushSphere((Capsule *) capsule, center, pushOut, sphereRadius)) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/*
+ * Where the player stands in AREA_DESERT_1 and AREA_DESERT_5 (and their
+ * night areas): 0 inside the inner limits (x between two bounds; in
+ * AREA_DESERT_1, x below one bound and z above another), 1 beyond the
+ * outer ones, 2 in between. 0 in every other area.
+ */
+s16 Area_BoundaryZone(Player *pl)
+{
+    f32 outerMinX, outerMinZ, innerMinZ, outerMaxX, innerMaxX, innerMinX;
+    u8 shape;
+
+    switch (gScene.area) {
+    case AREA_DESERT_NIGHT_1:
+    case AREA_DESERT_1:
+        outerMaxX = 17800.0f;
+        outerMinZ = 2200.0f;
+        innerMaxX = 17200.0f;
+        innerMinZ = 2800.0f;
+        shape = 1;
+        break;
+    case AREA_DESERT_NIGHT_5:
+    case AREA_DESERT_5:
+        outerMinX = 4500.0f;
+        outerMaxX = 18000.0f;
+        innerMinX = 5100.0f;
+        innerMaxX = 17400.0f;
+        shape = 0;
+        break;
+    default:
+        return 0;
+    }
+    switch (shape) {
+    default:
+        if (pl->pos[0] > innerMinX && pl->pos[0] < innerMaxX) {
+            return 0;
+        }
+        if (pl->pos[0] < outerMinX || pl->pos[0] > outerMaxX) {
+            return 1;
+        }
+        break;
+    case 1:
+        if (pl->pos[0] < innerMaxX && pl->pos[2] > innerMinZ) {
+            return 0;
+        }
+        if (pl->pos[0] > outerMaxX || pl->pos[2] < outerMinZ) {
+            return 1;
+        }
+        break;
+    }
+    return 2;
+}
+
+/*
+ * Scrolls the n atmosphere layers of h with the camera: u by the camera's
+ * turn about y since the last frame, v by its rise. A layer whose speed
+ * is set also drifts by 1 / speed per frame, in u (mode 1) or v (mode 2).
+ * The coordinates wrap to 0..1.
+ */
+void AtmosScroll_Update(AtmosScroll *scroll, s16 count, s16 *speed, u16 mode)
+{
+    f32 camNow[3];
+    u16 camPitch;
+    u16 camYaw;
+    f32 uStep;
+    f32 vStep;
+    s16 i;
+
+    Mtx_GetTrans(camNow, gCamMatrix);
+    Vec_DirToAngles((f32 *) gCamDir, (s16 *) &camPitch, (s16 *) &camYaw);
+    uStep = (s16)(camYaw - scroll->yaw);
+    uStep *= 6.964391650399193e-05f;
+    vStep = camNow[1] - scroll->camPos[1];
+    vStep *= 0.001f;
+    scroll->pitch = camPitch;
+    scroll->yaw = camYaw;
+    Vec_Copy(scroll->camPos, camNow);
+    for (i = 0; i < count; i++) {
+        scroll->layer[i].u += uStep;
+        scroll->layer[i].v += vStep;
+        if (speed != NULL && speed[i] != 0) {
+            switch (mode) {
+            case 0:
+                break;
+            case 1:
+                scroll->layer[i].u += 1.0f / speed[i];
+                break;
+            case 2:
+                scroll->layer[i].v += 1.0f / speed[i];
+                break;
+            }
+        }
+        if (scroll->layer[i].u > 1.0f || scroll->layer[i].u < 0.0f) {
+            scroll->layer[i].u -= Math_Floor(scroll->layer[i].u);
+        }
+        if (scroll->layer[i].v > 1.0f || scroll->layer[i].v < 0.0f) {
+            scroll->layer[i].v -= Math_Floor(scroll->layer[i].v);
+        }
+    }
+}
+
+/* The alpha of atmosphere layer a in the area's state b (Area_MonsterState)
+ * for the jungle and fortress at night, the swamp, the snowy mountains and
+ * the swamp at night; 1.0 elsewhere. */
+f32 AreaAtmos_LayerAlpha(u8 layer, s16 state)
+{
+    switch (gScene.area) {
+    case AREA_JUNGLE_NIGHT_0:
+    case AREA_JUNGLE_NIGHT_1:
+    case AREA_JUNGLE_NIGHT_2:
+    case AREA_JUNGLE_NIGHT_3:
+    case AREA_JUNGLE_NIGHT_4:
+    case AREA_SWAMP_10:
+    case AREA_JUNGLE_NIGHT_5:
+    case AREA_JUNGLE_NIGHT_6:
+    case AREA_FORTRESS_NIGHT_4:
+    case AREA_FORTRESS_NIGHT_5:
+    case AREA_FORTRESS_NIGHT_1:
+    case AREA_FORTRESS_NIGHT_3:
+    case AREA_FORTRESS_NIGHT_2:
+    case AREA_FORTRESS_NIGHT_6:
+    case AREA_SWAMP_0:
+    case AREA_SWAMP_1:
+    case AREA_SWAMP_2:
+    case AREA_SWAMP_5:
+    case AREA_SWAMP_6:
+    case AREA_SWAMP_7:
+    case AREA_SWAMP_9:
+        switch (state) {
+        case 0:
+            switch (layer) {
+            case 0:
+            case 1:
+                return 0.0f;
+            }
+            break;
+        case 1:
+            switch (layer) {
+            case 0:
+                return 0.0f;
+            case 1:
+                return 0.45f;
+            }
+            break;
+        case 2:
+            switch (layer) {
+            case 1:
+                return 0.9f;
+            }
+            break;
+        }
+        break;
+    case AREA_SNOWY_MOUNTAINS_5:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_8:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
+        switch (state) {
+        case 0:
+            switch (layer) {
+            case 0:
+            case 1:
+                return 0.0f;
+            }
+            break;
+        case 1:
+            switch (layer) {
+            case 0:
+                return 0.1f;
+            case 1:
+                return 0.2f;
+            }
+            break;
+        case 2:
+            switch (layer) {
+            case 0:
+                return 1.0f;
+            case 1:
+                return 0.45f;
+            }
+            break;
+        }
+        break;
+    case AREA_SWAMP_NIGHT_0:
+    case AREA_SWAMP_NIGHT_10:
+    case AREA_SWAMP_NIGHT_1:
+    case AREA_SWAMP_NIGHT_2:
+    case AREA_SWAMP_NIGHT_5:
+    case AREA_SWAMP_NIGHT_6:
+    case AREA_SWAMP_NIGHT_7:
+    case AREA_SWAMP_NIGHT_9:
+        switch (state) {
+        case 0:
+            switch (layer) {
+            case 0:
+                return 0.0f;
+            case 1:
+                return 0.1f;
+            }
+            break;
+        case 1:
+            switch (layer) {
+            case 0:
+                return 0.1f;
+            case 1:
+                return 0.2f;
+            }
+            break;
+        case 2:
+            switch (layer) {
+            case 0:
+                return 0.5f;
+            case 1:
+                return 0.4f;
+            }
+            break;
+        }
+        break;
+    default:
+        return 1.0f;
+    }
+    return 1.0f;
+}
+
+/* The scroll speed of atmosphere layer a in the area's state b: the snowy
+ * mountains' from gSnowLayerSpeedsState0 to 2, the swamp's at night 1 /
+ * its period (gSwampLayerPeriodsByState; layer 0 doesn't move); 0
+ * elsewhere. */
+f32 AreaAtmos_LayerSpeed(u8 layer, s16 state)
+{
+    switch (gScene.area) {
+    case AREA_SNOWY_MOUNTAINS_5:
+    case AREA_SNOWY_MOUNTAINS_6:
+    case AREA_SNOWY_MOUNTAINS_8:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_5:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_6:
+    case AREA_SNOWY_MOUNTAINS_NIGHT_8:
+        switch (state) {
+        case 1:
+            return gSnowLayerSpeedsState1[layer];
+        default:
+        case 0:
+            return gSnowLayerSpeedsState0[layer];
+        case 2:
+            return gSnowLayerSpeedsState2[layer];
+        }
+    case AREA_SWAMP_NIGHT_0:
+    case AREA_SWAMP_NIGHT_10:
+    case AREA_SWAMP_NIGHT_1:
+    case AREA_SWAMP_NIGHT_2:
+    case AREA_SWAMP_NIGHT_5:
+    case AREA_SWAMP_NIGHT_6:
+    case AREA_SWAMP_NIGHT_7:
+    case AREA_SWAMP_NIGHT_9:
+        switch (layer) {
+        case 0:
+            return 0.0f;
+        default:
+        case 1:
+            return 1.0f / gSwampLayerPeriodsByState[state][layer];
+        }
+    }
+    return 0.0f;
+}
+
 /* The file's data. */
-extern u32 gDefaultStageHeader_3[];
 extern u32 D_006AE9A0[];
 extern u32 D_006AE9A8[];
 extern u32 D_006AE9B0[];
@@ -9233,31 +9408,31 @@ s16 *gAreaFxModels[200] = {
     D_0092AD60[28], D_0092AD60[29], D_0092AD60[30], D_0092AD60[31],
     D_0092AD60[32], NULL, NULL, NULL,
 };
-u32 gDefaultStageHeader_8[8] = {
+AreaRecord gDefaultAreaRecords[1] = {
 #include "sub_main/00441490.inc"
 };
 StageHeader gDefaultStageHeader = {
 #include "sub_main/004414B0.inc"
 };
-u32 D_00441530[4] = {
+AnimSpin gAreaAnimArg_1_0[1] = {
 #include "sub_main/00441530.inc"
 };
 AreaAnim gAreaAnimTbls_1[4] = {
 #include "sub_main/00441540.inc"
 };
-u32 D_00441560[4] = {
+AnimSpin gAreaAnimArg_2_0[1] = {
 #include "sub_main/00441560.inc"
 };
 AreaAnim gAreaAnimTbls_2[2] = {
 #include "sub_main/00441570.inc"
 };
-u32 D_00441580[4] = {
+AnimSpin gAreaAnimArg_4_0[1] = {
 #include "sub_main/00441580.inc"
 };
 AreaAnim gAreaAnimTbls_4[2] = {
 #include "sub_main/00441590.inc"
 };
-u32 D_004415A0[4] = {
+AnimSpin gAreaAnimArg_5_0[1] = {
 #include "sub_main/004415A0.inc"
 };
 AreaAnim gAreaAnimTbls_5[2] = {
@@ -9266,10 +9441,10 @@ AreaAnim gAreaAnimTbls_5[2] = {
 AreaAnim gAreaAnimTbls_7[4] = {
 #include "sub_main/004415C0.inc"
 };
-u32 D_004415E0[4] = {
+AnimSpin gAreaAnimArg_8_0[1] = {
 #include "sub_main/004415E0.inc"
 };
-u32 D_004415F0[4] = {
+UvScroll gAreaAnimArg_8_1[4] = {
 #include "sub_main/004415F0.inc"
 };
 AreaAnim gAreaAnimTbls_8[4] = {
@@ -9278,16 +9453,16 @@ AreaAnim gAreaAnimTbls_8[4] = {
 AreaAnim gAreaAnimTbls_9[2] = {
 #include "sub_main/00441620.inc"
 };
-u32 D_00441630[4] = {
+AnimSpin gAreaAnimArg_14_0[1] = {
 #include "sub_main/00441630.inc"
 };
-u32 D_00441640[4] = {
+AnimSpin gAreaAnimArg_14_1[1] = {
 #include "sub_main/00441640.inc"
 };
 AreaAnim gAreaAnimTbls_14[4] = {
 #include "sub_main/00441650.inc"
 };
-u32 D_00441670[8] = {
+UvWave gAreaAnimArg_21_0[2] = {
 #include "sub_main/00441670.inc"
 };
 AreaAnim gAreaAnimTbls_21[2] = {
@@ -9296,94 +9471,94 @@ AreaAnim gAreaAnimTbls_21[2] = {
 AreaAnim gAreaAnimTbls_24[4] = {
 #include "sub_main/004416A0.inc"
 };
-u32 D_004416C0[4] = {
+AnimSpin gAreaAnimArg_25_0[1] = {
 #include "sub_main/004416C0.inc"
 };
-AnimSpin D_004416D0[1] = {
+AnimSpin gAreaAnimArg_25_1_Spin[1] = {
 #include "sub_main/004416D0.inc"
 };
-UvScroll D_004416E0[2] = {
+UvScroll gAreaAnimArg_25_1_Uv[2] = {
 #include "sub_main/004416E0.inc"
 };
-AnimScrollSpin D_004416E8[1] = {
-    {D_004416E0, D_004416D0},
+AnimScrollSpin gAreaAnimArg_25_1[1] = {
+    {gAreaAnimArg_25_1_Uv, gAreaAnimArg_25_1_Spin},
 };
 AreaAnim gAreaAnimTbls_25[4] = {
 #include "sub_main/004416F0.inc"
 };
-u32 D_00441710[2] = {
+UvScroll gAreaAnimArg_27_1[2] = {
 #include "sub_main/00441710.inc"
 };
-u32 D_00441718[2] = {
+UvScroll gAreaAnimArg_27_3[2] = {
 #include "sub_main/00441718.inc"
 };
 AreaAnim gAreaAnimTbls_27[8] = {
 #include "sub_main/00441720.inc"
 };
-u32 D_00441760[4] = {
+AnimSpin gAreaAnimArg_31_0[1] = {
 #include "sub_main/00441760.inc"
 };
-u32 D_00441770[4] = {
+AnimSpin gAreaAnimArg_31_1[1] = {
 #include "sub_main/00441770.inc"
 };
 AreaAnim gAreaAnimTbls_31[4] = {
 #include "sub_main/00441780.inc"
 };
-u32 D_004417A0[4] = {
+AnimSpin gAreaAnimArg_32_0[1] = {
 #include "sub_main/004417A0.inc"
 };
 AreaAnim gAreaAnimTbls_32[4] = {
 #include "sub_main/004417B0.inc"
 };
-u32 D_004417D0[4] = {
+AnimSpin gAreaAnimArg_33_0[1] = {
 #include "sub_main/004417D0.inc"
 };
 AreaAnim gAreaAnimTbls_33[2] = {
 #include "sub_main/004417E0.inc"
 };
-u32 D_004417F0[8] = {
+UvWave gAreaAnimArg_34_0[2] = {
 #include "sub_main/004417F0.inc"
 };
 AreaAnim gAreaAnimTbls_34[2] = {
 #include "sub_main/00441810.inc"
 };
-u32 D_00441820[8] = {
+UvWave gAreaAnimArg_35_0[2] = {
 #include "sub_main/00441820.inc"
 };
 AreaAnim gAreaAnimTbls_35[2] = {
 #include "sub_main/00441840.inc"
 };
-u32 D_00441850[8] = {
+UvWave gAreaAnimArg_36_0[2] = {
 #include "sub_main/00441850.inc"
 };
 AreaAnim gAreaAnimTbls_36[2] = {
 #include "sub_main/00441870.inc"
 };
-u32 D_00441880[4] = {
+AnimSpin gAreaAnimArg_37_0[1] = {
 #include "sub_main/00441880.inc"
 };
-u32 D_00441890[4] = {
+UvScroll gAreaAnimArg_37_1[4] = {
 #include "sub_main/00441890.inc"
 };
 AreaAnim gAreaAnimTbls_37[4] = {
 #include "sub_main/004418A0.inc"
 };
-u32 D_004418C0[4] = {
+AnimSpin gAreaAnimArg_38_0[1] = {
 #include "sub_main/004418C0.inc"
 };
-u32 D_004418D0[4] = {
+UvScroll gAreaAnimArg_38_1[4] = {
 #include "sub_main/004418D0.inc"
 };
 AreaAnim gAreaAnimTbls_38[4] = {
 #include "sub_main/004418E0.inc"
 };
-u32 D_00441900[4] = {
+AnimSpin gAreaAnimArg_39_0[1] = {
 #include "sub_main/00441900.inc"
 };
-u32 D_00441910[4] = {
+UvScroll gAreaAnimArg_39_1[4] = {
 #include "sub_main/00441910.inc"
 };
-u32 D_00441920[4] = {
+UvStep gAreaAnimArg_39_2[2] = {
 #include "sub_main/00441920.inc"
 };
 AreaAnim gAreaAnimTbls_39[4] = {
@@ -9392,19 +9567,19 @@ AreaAnim gAreaAnimTbls_39[4] = {
 AreaAnim gAreaAnimTbls_40[2] = {
 #include "sub_main/00441950.inc"
 };
-u32 D_00441960[8] = {
+UvWave gAreaAnimArg_41_0[2] = {
 #include "sub_main/00441960.inc"
 };
 AreaAnim gAreaAnimTbls_41[2] = {
 #include "sub_main/00441980.inc"
 };
-u32 D_00441990[8] = {
+UvWave gAreaAnimArg_42_0[2] = {
 #include "sub_main/00441990.inc"
 };
 AreaAnim gAreaAnimTbls_42[2] = {
 #include "sub_main/004419B0.inc"
 };
-u32 D_004419C0[8] = {
+UvWave gAreaAnimArg_43_0[2] = {
 #include "sub_main/004419C0.inc"
 };
 AreaAnim gAreaAnimTbls_43[2] = {
@@ -9416,7 +9591,7 @@ AreaAnim gAreaAnimTbls_45[6] = {
 AreaAnim gAreaAnimTbls_46[3] = {
 #include "sub_main/00441A20.inc"
 };
-u32 D_00441A38[2] = {
+UvScroll gAreaAnimArg_47_2[2] = {
 #include "sub_main/00441A38.inc"
 };
 AreaAnim gAreaAnimTbls_47[4] = {
@@ -9440,40 +9615,40 @@ AreaAnim gAreaAnimTbls_52[4] = {
 AreaAnim gAreaAnimTbls_57[3] = {
 #include "sub_main/00441B10.inc"
 };
-u32 D_00441B28[2] = {
+UvScroll gAreaAnimArg_58_1[2] = {
 #include "sub_main/00441B28.inc"
 };
 AreaAnim gAreaAnimTbls_58[4] = {
 #include "sub_main/00441B30.inc"
 };
-u32 D_00441B50[2] = {
+UvScroll gAreaAnimArg_60_0[2] = {
 #include "sub_main/00441B50.inc"
 };
-u32 D_00441B58[2] = {
+UvScroll gAreaAnimArg_60_4[2] = {
 #include "sub_main/00441B58.inc"
 };
 AreaAnim gAreaAnimTbls_60[7] = {
 #include "sub_main/00441B60.inc"
 };
-u32 D_00441B98[2] = {
+UvScroll gAreaAnimArg_61_1[2] = {
 #include "sub_main/00441B98.inc"
 };
 AreaAnim gAreaAnimTbls_61[6] = {
 #include "sub_main/00441BA0.inc"
 };
-u32 D_00441BD0[2] = {
+UvScroll gAreaAnimArg_62_1[2] = {
 #include "sub_main/00441BD0.inc"
 };
-u32 D_00441BD8[2] = {
+UvScroll gAreaAnimArg_62_3[2] = {
 #include "sub_main/00441BD8.inc"
 };
 AreaAnim gAreaAnimTbls_62[8] = {
 #include "sub_main/00441BE0.inc"
 };
-u32 D_00441C20[2] = {
+UvScroll gAreaAnimArg_65_0[2] = {
 #include "sub_main/00441C20.inc"
 };
-u32 D_00441C28[2] = {
+UvScroll gAreaAnimArg_65_2[2] = {
 #include "sub_main/00441C28.inc"
 };
 AreaAnim gAreaAnimTbls_65[6] = {
@@ -9482,13 +9657,13 @@ AreaAnim gAreaAnimTbls_65[6] = {
 AreaAnim gAreaAnimTbls_66[4] = {
 #include "sub_main/00441C60.inc"
 };
-u32 D_00441C80[4] = {
+AnimSpin gAreaAnimArg_74_0[1] = {
 #include "sub_main/00441C80.inc"
 };
-u32 D_00441C90[2] = {
+UvScroll gAreaAnimArg_74_1[2] = {
 #include "sub_main/00441C90.inc"
 };
-u32 D_00441C98[2] = {
+UvScroll gAreaAnimArg_74_3[2] = {
 #include "sub_main/00441C98.inc"
 };
 AreaAnim gAreaAnimTbls_74[8] = {
@@ -9497,13 +9672,13 @@ AreaAnim gAreaAnimTbls_74[8] = {
 AreaAnim gAreaAnimTbls_75[2] = {
 #include "sub_main/00441CE0.inc"
 };
-u32 D_00441CF0[4] = {
+f32 gAreaAnimArg_84_0[1][3] = {
 #include "sub_main/00441CF0.inc"
 };
 AreaAnim gAreaAnimTbls_84[5] = {
 #include "sub_main/00441D00.inc"
 };
-u32 D_00441D28[2] = {
+UvScroll gAreaAnimArg_85_0[2] = {
 #include "sub_main/00441D28.inc"
 };
 AreaAnim gAreaAnimTbls_85[4] = {
@@ -9515,31 +9690,31 @@ AreaAnim gAreaAnimTbls_86[6] = {
 AreaAnim gAreaAnimTbls_87[6] = {
 #include "sub_main/00441D80.inc"
 };
-u32 D_00441DB0[4] = {
+AnimSpin gAreaAnimArg_88_0[1] = {
 #include "sub_main/00441DB0.inc"
 };
-u32 D_00441DC0[2] = {
+UvScroll gAreaAnimArg_88_1[2] = {
 #include "sub_main/00441DC0.inc"
 };
-u32 D_00441DC8[2] = {
+UvScroll gAreaAnimArg_88_3[2] = {
 #include "sub_main/00441DC8.inc"
 };
 AreaAnim gAreaAnimTbls_88[6] = {
 #include "sub_main/00441DD0.inc"
 };
-u32 D_00441E00[4] = {
+AnimSpin gAreaAnimArg_89_0[1] = {
 #include "sub_main/00441E00.inc"
 };
 AreaAnim gAreaAnimTbls_89[4] = {
 #include "sub_main/00441E10.inc"
 };
-u32 D_00441E30[4] = {
+AnimSpin gAreaAnimArg_90_0[1] = {
 #include "sub_main/00441E30.inc"
 };
 AreaAnim gAreaAnimTbls_90[4] = {
 #include "sub_main/00441E40.inc"
 };
-u32 D_00441E60[4] = {
+AnimSpin gAreaAnimArg_91_0[1] = {
 #include "sub_main/00441E60.inc"
 };
 AreaAnim gAreaAnimTbls_91[4] = {
@@ -9557,13 +9732,13 @@ AreaAnim gAreaAnimTbls_94[6] = {
 AreaAnim gAreaAnimTbls_6[2] = {
 #include "sub_main/00441F10.inc"
 };
-u32 D_00441F20[4] = {
+UvScroll gAreaAnimArg_96_0[4] = {
 #include "sub_main/00441F20.inc"
 };
 AreaAnim gAreaAnimTbls_96[4] = {
 #include "sub_main/00441F30.inc"
 };
-u32 D_00441F50[4] = {
+UvScroll gAreaAnimArg_97_0[4] = {
 #include "sub_main/00441F50.inc"
 };
 AreaAnim gAreaAnimTbls_97[6] = {
@@ -9575,13 +9750,13 @@ AreaAnim gAreaAnimTbls_98[2] = {
 AreaAnim gAreaAnimTbls_99[2] = {
 #include "sub_main/00441FA0.inc"
 };
-u32 D_00441FB0[2] = {
+UvScroll gAreaAnimArg_100_0[2] = {
 #include "sub_main/00441FB0.inc"
 };
-u32 D_00441FB8[2] = {
+UvScroll gAreaAnimArg_100_2[2] = {
 #include "sub_main/00441FB8.inc"
 };
-u32 D_00441FC0[4] = {
+UvScroll gAreaAnimArg_100_4[4] = {
 #include "sub_main/00441FC0.inc"
 };
 AreaAnim gAreaAnimTbls_100[8] = {
@@ -9593,16 +9768,16 @@ AreaAnim gAreaAnimTbls_105[4] = {
 AreaAnim gAreaAnimTbls_110[4] = {
 #include "sub_main/00442030.inc"
 };
-u32 D_00442050[4] = {
+AnimSpin gAreaAnimArg_111_0[1] = {
 #include "sub_main/00442050.inc"
 };
 AreaAnim gAreaAnimTbls_111[2] = {
 #include "sub_main/00442060.inc"
 };
-u32 D_00442070[4] = {
+AnimSpin gAreaAnimArg_3_0[1] = {
 #include "sub_main/00442070.inc"
 };
-u32 D_00442080[4] = {
+UvScroll gAreaAnimArg_3_1[4] = {
 #include "sub_main/00442080.inc"
 };
 AreaAnim gAreaAnimTbls_3[4] = {
@@ -9614,13 +9789,13 @@ AreaAnim gAreaAnimTbls_18[4] = {
 AreaAnim gAreaAnimTbls_19[2] = {
 #include "sub_main/004420D0.inc"
 };
-u32 D_004420E0[4] = {
+UvScroll gAreaAnimArg_22_0[4] = {
 #include "sub_main/004420E0.inc"
 };
 AreaAnim gAreaAnimTbls_22[4] = {
 #include "sub_main/004420F0.inc"
 };
-u32 D_00442110[4] = {
+UvScroll gAreaAnimArg_23_0[4] = {
 #include "sub_main/00442110.inc"
 };
 AreaAnim gAreaAnimTbls_23[4] = {
@@ -9632,7 +9807,7 @@ AreaAnim gAreaAnimTbls_120[4] = {
 AreaAnim gAreaAnimTbls_121[2] = {
 #include "sub_main/00442160.inc"
 };
-u32 D_00442170[4] = {
+UvScroll gAreaAnimArg_122_0[4] = {
 #include "sub_main/00442170.inc"
 };
 AreaAnim gAreaAnimTbls_122[6] = {
@@ -9641,22 +9816,22 @@ AreaAnim gAreaAnimTbls_122[6] = {
 AreaAnim gAreaAnimTbls_123[6] = {
 #include "sub_main/004421B0.inc"
 };
-u32 D_004421E0[2] = {
+UvScroll gAreaAnimArg_124_0[2] = {
 #include "sub_main/004421E0.inc"
 };
-u32 D_004421E8[2] = {
+UvScroll gAreaAnimArg_124_2[2] = {
 #include "sub_main/004421E8.inc"
 };
-u32 D_004421F0[2] = {
+UvScroll gAreaAnimArg_124_4[2] = {
 #include "sub_main/004421F0.inc"
 };
-u32 D_004421F8[2] = {
+UvScroll gAreaAnimArg_124_6[2] = {
 #include "sub_main/004421F8.inc"
 };
 AreaAnim gAreaAnimTbls_124[10] = {
 #include "sub_main/00442200.inc"
 };
-u32 D_00442250[4] = {
+UvScroll gAreaAnimArg_83_0[4] = {
 #include "sub_main/00442250.inc"
 };
 AreaAnim gAreaAnimTbls_83[2] = {
@@ -9665,37 +9840,37 @@ AreaAnim gAreaAnimTbls_83[2] = {
 AreaAnim gAreaAnimTbls_127[4] = {
 #include "sub_main/00442270.inc"
 };
-u32 D_00442290[2] = {
+UvScroll gAreaAnimArg_128_0[2] = {
 #include "sub_main/00442290.inc"
 };
-u32 D_00442298[2] = {
+UvScroll gAreaAnimArg_128_3[2] = {
 #include "sub_main/00442298.inc"
 };
 AreaAnim gAreaAnimTbls_128[10] = {
 #include "sub_main/004422A0.inc"
 };
-u32 D_004422F0[2] = {
+UvScroll gAreaAnimArg_129_1[2] = {
 #include "sub_main/004422F0.inc"
 };
-u32 D_004422F8[2] = {
+UvScroll gAreaAnimArg_129_3[2] = {
 #include "sub_main/004422F8.inc"
 };
 AreaAnim gAreaAnimTbls_129[8] = {
 #include "sub_main/00442300.inc"
 };
-u32 D_00442340[4] = {
+UvScroll gAreaAnimArg_131_0[4] = {
 #include "sub_main/00442340.inc"
 };
 AreaAnim gAreaAnimTbls_131[10] = {
 #include "sub_main/00442350.inc"
 };
-u32 D_004423A0[4] = {
+UvScroll gAreaAnimArg_132_0[4] = {
 #include "sub_main/004423A0.inc"
 };
 AreaAnim gAreaAnimTbls_132[14] = {
 #include "sub_main/004423B0.inc"
 };
-u32 D_00442420[20] = {
+AnimSpinTurn gAreaAnimArg_133_2[4] = {
 #include "sub_main/00442420.inc"
 };
 AreaAnim gAreaAnimTbls_133[8] = {
@@ -9707,7 +9882,7 @@ AreaAnim gAreaAnimTbls_134[4] = {
 AreaAnim gAreaAnimTbls_135[8] = {
 #include "sub_main/004424D0.inc"
 };
-u32 D_00442510[4] = {
+UvStep gAreaAnimArg_136_0[2] = {
 #include "sub_main/00442510.inc"
 };
 AreaAnim gAreaAnimTbls_136[8] = {
@@ -9716,13 +9891,13 @@ AreaAnim gAreaAnimTbls_136[8] = {
 AreaAnim gAreaAnimTbls_137[4] = {
 #include "sub_main/00442560.inc"
 };
-u32 D_00442580[2] = {
+UvScroll gAreaAnimArg_138_0[2] = {
 #include "sub_main/00442580.inc"
 };
-u32 D_00442588[2] = {
+UvScroll gAreaAnimArg_138_3[2] = {
 #include "sub_main/00442588.inc"
 };
-u32 D_00442590[4] = {
+UvScroll gAreaAnimArg_138_5[4] = {
 #include "sub_main/00442590.inc"
 };
 AreaAnim gAreaAnimTbls_138[8] = {
@@ -9731,13 +9906,13 @@ AreaAnim gAreaAnimTbls_138[8] = {
 AreaAnim gAreaAnimTbls_140[2] = {
 #include "sub_main/004425E0.inc"
 };
-u32 D_004425F0[4] = {
+UvScroll gAreaAnimArg_141_1[4] = {
 #include "sub_main/004425F0.inc"
 };
 AreaAnim gAreaAnimTbls_141[6] = {
 #include "sub_main/00442600.inc"
 };
-u32 D_00442630[4] = {
+AnimSpin gAreaAnimArg_142_0[1] = {
 #include "sub_main/00442630.inc"
 };
 AreaAnim gAreaAnimTbls_142[6] = {
@@ -9776,28 +9951,28 @@ AreaAnim gAreaAnimTbls_152[2] = {
 AreaAnim gAreaAnimTbls_67[3] = {
 #include "sub_main/00442760.inc"
 };
-u32 D_00442778[3] = {
+f32 gAreaAnimArg_68_0[1][3] = {
 #include "sub_main/00442778.inc"
 };
 AreaAnim gAreaAnimTbls_68[4] = {
 #include "sub_main/00442790.inc"
 };
-u32 D_004427B0[4] = {
+f32 gAreaAnimArg_69_0[1][3] = {
 #include "sub_main/004427B0.inc"
 };
 AreaAnim gAreaAnimTbls_69[6] = {
 #include "sub_main/004427C0.inc"
 };
-u32 D_004427F0[4] = {
+AnimSpin gAreaAnimArg_70_0[1] = {
 #include "sub_main/004427F0.inc"
 };
-u32 D_00442800[4] = {
+AnimSpin gAreaAnimArg_70_1[1] = {
 #include "sub_main/00442800.inc"
 };
 AreaAnim gAreaAnimTbls_70[3] = {
 #include "sub_main/00442810.inc"
 };
-u32 D_00442828[2] = {
+UvScroll gAreaAnimArg_71_0[2] = {
 #include "sub_main/00442828.inc"
 };
 AreaAnim gAreaAnimTbls_71[4] = {
@@ -9806,7 +9981,7 @@ AreaAnim gAreaAnimTbls_71[4] = {
 AreaAnim gAreaAnimTbls_158[2] = {
 #include "sub_main/00442850.inc"
 };
-u32 D_00442860[4] = {
+AnimSpin gAreaAnimArg_73_0[1] = {
 #include "sub_main/00442860.inc"
 };
 AreaAnim gAreaAnimTbls_73[4] = {
@@ -9815,98 +9990,98 @@ AreaAnim gAreaAnimTbls_73[4] = {
 AreaAnim gAreaAnimTbls_160[2] = {
 #include "sub_main/00442890.inc"
 };
-u32 D_004428A0[4] = {
+AnimSpin gAreaAnimArg_161_0[1] = {
 #include "sub_main/004428A0.inc"
 };
-u32 D_004428B0[4] = {
+UvScroll gAreaAnimArg_161_1[4] = {
 #include "sub_main/004428B0.inc"
 };
 AreaAnim gAreaAnimTbls_161[4] = {
 #include "sub_main/004428C0.inc"
 };
-u32 D_004428E0[4] = {
+UvScroll gAreaAnimArg_59_0[4] = {
 #include "sub_main/004428E0.inc"
 };
 AreaAnim gAreaAnimTbls_59[5] = {
 #include "sub_main/004428F0.inc"
 };
-u32 D_00442918[2] = {
+UvScroll gAreaAnimArg_163_0[2] = {
 #include "sub_main/00442918.inc"
 };
-u32 D_00442920[4] = {
+UvScroll gAreaAnimArg_163_4[4] = {
 #include "sub_main/00442920.inc"
 };
 AreaAnim gAreaAnimTbls_163[8] = {
 #include "sub_main/00442930.inc"
 };
-u32 D_00442970[4] = {
+AnimSpin gAreaAnimArg_164_0[1] = {
 #include "sub_main/00442970.inc"
 };
-u32 D_00442980[4] = {
+UvScroll gAreaAnimArg_164_2[4] = {
 #include "sub_main/00442980.inc"
 };
 AreaAnim gAreaAnimTbls_164[4] = {
 #include "sub_main/00442990.inc"
 };
-u32 D_004429B0[4] = {
+AnimSpin gAreaAnimArg_165_0[1] = {
 #include "sub_main/004429B0.inc"
 };
-u32 D_004429C0[2] = {
+UvScroll gAreaAnimArg_165_1[2] = {
 #include "sub_main/004429C0.inc"
 };
-u32 D_004429C8[2] = {
+UvScroll gAreaAnimArg_165_3[2] = {
 #include "sub_main/004429C8.inc"
 };
 AreaAnim gAreaAnimTbls_165[7] = {
 #include "sub_main/004429D0.inc"
 };
-u32 D_00442A08[2] = {
+UvScroll gAreaAnimArg_63_0[2] = {
 #include "sub_main/00442A08.inc"
 };
-u32 D_00442A10[4] = {
+UvScroll gAreaAnimArg_63_4[4] = {
 #include "sub_main/00442A10.inc"
 };
 AreaAnim gAreaAnimTbls_63[8] = {
 #include "sub_main/00442A20.inc"
 };
-u32 D_00442A60[4] = {
+AnimSpin gAreaAnimArg_64_0[1] = {
 #include "sub_main/00442A60.inc"
 };
-u32 D_00442A70[2] = {
+UvScroll gAreaAnimArg_64_1[2] = {
 #include "sub_main/00442A70.inc"
 };
-u32 D_00442A78[2] = {
+UvScroll gAreaAnimArg_64_3[2] = {
 #include "sub_main/00442A78.inc"
 };
 AreaAnim gAreaAnimTbls_64[8] = {
 #include "sub_main/00442A80.inc"
 };
-u32 D_00442AC0[2] = {
+UvScroll gAreaAnimArg_168_0[2] = {
 #include "sub_main/00442AC0.inc"
 };
-u32 D_00442AC8[2] = {
+UvScroll gAreaAnimArg_168_2[2] = {
 #include "sub_main/00442AC8.inc"
 };
-u32 D_00442AD0[4] = {
+UvScroll gAreaAnimArg_168_4[4] = {
 #include "sub_main/00442AD0.inc"
 };
 AreaAnim gAreaAnimTbls_168[8] = {
 #include "sub_main/00442AE0.inc"
 };
-u32 D_00442B20[4] = {
+AnimSpin gAreaAnimArg_169_0[1] = {
 #include "sub_main/00442B20.inc"
 };
-UvScroll D_00442B30[2] = {
+UvScroll gAreaAnimArg_169_1_Uv[2] = {
 #include "sub_main/00442B30.inc"
 };
-u32 D_00442B38[2] = {
+UvScroll gAreaAnimArg_169_3[2] = {
 #include "sub_main/00442B38.inc"
 };
-f32 D_00442B40[6] = {
+f32 gAreaAnimArg_169_1_Pos[6] = {
 #include "sub_main/00442B40.inc"
 };
-AnimScrollPos D_00442B58[1] = {
-    {D_00442B30, D_00442B40},
+AnimScrollPos gAreaAnimArg_169_1[1] = {
+    {gAreaAnimArg_169_1_Uv, gAreaAnimArg_169_1_Pos},
 };
 AreaAnim gAreaAnimTbls_169[8] = {
 #include "sub_main/00442B60.inc"
@@ -9929,22 +10104,22 @@ AreaAnim gAreaAnimTbls_174[2] = {
 AreaAnim gAreaAnimTbls_175[4] = {
 #include "sub_main/00442C30.inc"
 };
-u32 D_00442C50[4] = {
+AnimSpin gAreaAnimArg_177_0[1] = {
 #include "sub_main/00442C50.inc"
 };
-u32 D_00442C60[4] = {
+UvScroll gAreaAnimArg_177_1[4] = {
 #include "sub_main/00442C60.inc"
 };
 AreaAnim gAreaAnimTbls_177[4] = {
 #include "sub_main/00442C70.inc"
 };
-u32 D_00442C90[8] = {
+AnimSpin gAreaAnimArg_178_0[2] = {
 #include "sub_main/00442C90.inc"
 };
 AreaAnim gAreaAnimTbls_178[3] = {
 #include "sub_main/00442CB0.inc"
 };
-u32 D_00442CC8[2] = {
+UvScroll gAreaAnimArg_179_0[2] = {
 #include "sub_main/00442CC8.inc"
 };
 AreaAnim gAreaAnimTbls_179[14] = {
@@ -9953,16 +10128,16 @@ AreaAnim gAreaAnimTbls_179[14] = {
 AreaAnim gAreaAnimTbls_180[2] = {
 #include "sub_main/00442D40.inc"
 };
-u32 D_00442D50[4] = {
+AnimSpin gAreaAnimArg_181_1[1] = {
 #include "sub_main/00442D50.inc"
 };
-u32 D_00442D60[4] = {
+UvScroll gAreaAnimArg_181_2[4] = {
 #include "sub_main/00442D60.inc"
 };
 AreaAnim gAreaAnimTbls_181[6] = {
 #include "sub_main/00442D70.inc"
 };
-u32 D_00442DA0[8] = {
+AnimSpin gAreaAnimArg_182_1[2] = {
 #include "sub_main/00442DA0.inc"
 };
 AreaAnim gAreaAnimTbls_182[4] = {
@@ -9977,16 +10152,16 @@ AreaAnim gAreaAnimTbls_186[2] = {
 AreaAnim gAreaAnimTbls_190[2] = {
 #include "sub_main/00442E10.inc"
 };
-u32 D_00442E20[4] = {
+UvScroll gAreaAnimArg_191_1[4] = {
 #include "sub_main/00442E20.inc"
 };
 AreaAnim gAreaAnimTbls_191[3] = {
 #include "sub_main/00442E30.inc"
 };
-u32 D_00442E48[2] = {
+UvScroll gAreaAnimArg_192_1[2] = {
 #include "sub_main/00442E48.inc"
 };
-u32 D_00442E50[4] = {
+UvStep gAreaAnimArg_192_2[2] = {
 #include "sub_main/00442E50.inc"
 };
 AreaAnim gAreaAnimTbls_192[4] = {
@@ -10044,43 +10219,43 @@ AreaAnim *gAreaAnimTbls[200] = {
     gAreaAnimTbls_192, gAreaAnimTbls_40, gAreaAnimTbls_41, gAreaAnimTbls_42,
     gAreaAnimTbls_43, NULL, NULL, NULL,
 };
-u32 D_004431A0[2] = {
+UvScroll gAreaPropData_1_0[2] = {
 #include "sub_main/004431A0.inc"
 };
-u32 D_004431A8[2] = {
+UvScroll gAreaPropData_1_2[2] = {
 #include "sub_main/004431A8.inc"
 };
-extern f32 D_0092A730[];
-extern f32 D_0092A740[];
-extern f32 D_0092A770[];
-extern f32 D_0092A7B0[];
-extern f32 D_0092A7D0[];
-extern f32 D_0092A7F0[];
-extern f32 D_0092A810[];
-extern f32 D_0092A840[];
-extern f32 D_0092A860[];
-extern f32 D_0092A880[];
-extern f32 D_0092A8B0[];
-extern f32 D_0092A910[];
-extern f32 D_0092A940[];
-extern f32 D_0092A950[];
-extern f32 D_0092A9A0[];
-extern f32 D_0092A9C0[];
-extern f32 D_0092A9E0[];
-extern f32 D_0092AA30[];
-extern f32 D_0092AA80[];
-extern f32 D_0092AA90[];
-extern f32 D_0092AAB0[];
-extern f32 D_0092AAF0[];
-extern f32 D_0092AB10[];
-extern f32 D_0092AB30[];
-extern f32 D_0092AB50[];
-extern f32 D_0092AB90[];
-extern f32 D_0092ABD0[];
-extern f32 D_0092AC40[];
-extern f32 D_0092ACA0[];
-extern f32 D_0092ACF0[];
-extern f32 D_0092AD30[];
+extern AnimRot D_0092A730[];
+extern AnimRot D_0092A740[];
+extern AnimRot D_0092A770[];
+extern AnimRot D_0092A7B0[];
+extern AnimRot D_0092A7D0[];
+extern AnimRot D_0092A7F0[];
+extern AnimRot D_0092A810[];
+extern AnimRot D_0092A840[];
+extern AnimRot D_0092A860[];
+extern AnimRot D_0092A880[];
+extern AnimRot D_0092A8B0[];
+extern AnimRot D_0092A910[];
+extern AnimRot D_0092A940[];
+extern AnimRot D_0092A950[];
+extern f32 D_0092A9A0[][2];
+extern f32 D_0092A9C0[][2];
+extern AnimRot D_0092A9E0[];
+extern AnimRot D_0092AA30[];
+extern f32 D_0092AA80[][2];
+extern f32 D_0092AA90[][2];
+extern AnimRot D_0092AAB0[];
+extern AnimRot D_0092AAF0[];
+extern AnimRot D_0092AB10[];
+extern AnimRot D_0092AB30[];
+extern AnimRot D_0092AB50[];
+extern AnimRot D_0092AB90[];
+extern AnimRot D_0092ABD0[];
+extern AnimRot D_0092AC40[];
+extern AnimRot D_0092ACA0[];
+extern AnimRot D_0092ACF0[];
+extern AnimRot D_0092AD30[];
 extern AnimRot D_0092ABF0[];
 extern AnimRot D_0092AC00[];
 extern AnimRot D_0092AC10[];
@@ -10089,28 +10264,28 @@ extern AnimRot D_0092AC30[];
 PropRec gAreaProps_1[8] = {
 #include "sub_main/004431B0.inc"
 };
-u32 D_00443210[4] = {
+AnimSpin gAreaPropData_7_0[1] = {
 #include "sub_main/00443210.inc"
 };
-u32 D_00443220[4] = {
+AnimSpin gAreaPropData_7_1[1] = {
 #include "sub_main/00443220.inc"
 };
 PropRec gAreaProps_7[3] = {
 #include "sub_main/00443230.inc"
 };
-u32 D_00443258[2] = {
+UvScroll gAreaPropData_18_0[2] = {
 #include "sub_main/00443258.inc"
 };
 PropRec gAreaProps_18[4] = {
 #include "sub_main/00443260.inc"
 };
-u32 D_00443290[4] = {
+AnimSpin gAreaPropData_19_1[1] = {
 #include "sub_main/00443290.inc"
 };
 PropRec gAreaProps_19[4] = {
 #include "sub_main/004432A0.inc"
 };
-u32 D_004432D0[6] = {
+f32 gAreaPropData_20_0[2][3] = {
 #include "sub_main/004432D0.inc"
 };
 #pragma explicit_zero_data on
@@ -10124,10 +10299,10 @@ PropRec gAreaProps_20[4] = {
 PropRec gAreaProps_23[2] = {
 #include "sub_main/00443320.inc"
 };
-u32 D_00443338[2] = {
+UvScroll gAreaPropData_24_0[2] = {
 #include "sub_main/00443338.inc"
 };
-u32 D_00443340[4] = {
+UvScroll gAreaPropData_24_2[4] = {
 #include "sub_main/00443340.inc"
 };
 PropRec gAreaProps_24[4] = {
@@ -10148,52 +10323,52 @@ PropRec gAreaProps_36[2] = {
 PropRec gAreaProps_38[4] = {
 #include "sub_main/00443430.inc"
 };
-u32 D_00443460[4] = {
+AnimSpin gAreaPropData_39_0[1] = {
 #include "sub_main/00443460.inc"
 };
 PropRec gAreaProps_39[4] = {
 #include "sub_main/00443470.inc"
 };
-u32 D_004434A0[4] = {
+AnimRotScale gAreaPropData_43_0[1] = {
 #include "sub_main/004434A0.inc"
 };
 PropRec gAreaProps_43[4] = {
 #include "sub_main/004434B0.inc"
 };
-u32 D_004434E0[2] = {
+UvScroll gAreaPropData_45_0[2] = {
 #include "sub_main/004434E0.inc"
 };
-u32 D_004434E8[2] = {
+UvScroll gAreaPropData_45_2[2] = {
 #include "sub_main/004434E8.inc"
 };
 PropRec gAreaProps_45[5] = {
 #include "sub_main/004434F0.inc"
 };
-u32 D_00443530[2] = {
+UvScroll gAreaPropData_46_0[2] = {
 #include "sub_main/00443530.inc"
 };
-u32 D_00443538[2] = {
+UvScroll gAreaPropData_46_2[2] = {
 #include "sub_main/00443538.inc"
 };
 PropRec gAreaProps_46[5] = {
 #include "sub_main/00443540.inc"
 };
-u32 D_00443580[2] = {
+UvScroll gAreaPropData_47_0[2] = {
 #include "sub_main/00443580.inc"
 };
-u32 D_00443588[2] = {
+UvScroll gAreaPropData_47_2[2] = {
 #include "sub_main/00443588.inc"
 };
-u32 D_00443590[4] = {
+UvScroll gAreaPropData_47_4[4] = {
 #include "sub_main/00443590.inc"
 };
 PropRec gAreaProps_47[8] = {
 #include "sub_main/004435A0.inc"
 };
-u32 D_00443600[2] = {
+UvScroll gAreaPropData_48_2[2] = {
 #include "sub_main/00443600.inc"
 };
-u32 D_00443608[2] = {
+UvScroll gAreaPropData_48_4[2] = {
 #include "sub_main/00443608.inc"
 };
 PropRec gAreaProps_48[8] = {
@@ -10202,148 +10377,136 @@ PropRec gAreaProps_48[8] = {
 PropRec gAreaProps_49[4] = {
 #include "sub_main/00443670.inc"
 };
-u32 D_004436A0[2] = {
+UvScroll gAreaPropData_51_0[2] = {
 #include "sub_main/004436A0.inc"
 };
-u32 D_004436A8[2] = {
+UvScroll gAreaPropData_51_2[2] = {
 #include "sub_main/004436A8.inc"
 };
-u32 D_004436B0[4] = {
+UvScroll gAreaPropData_51_6[4] = {
 #include "sub_main/004436B0.inc"
 };
 PropRec gAreaProps_51[9] = {
 #include "sub_main/004436C0.inc"
 };
-u32 D_00443730[8] = {
+f32 gAreaPropData_52_4[2][3] = {
 #include "sub_main/00443730.inc"
 };
-u32 D_00443750[2] = {
+UvScroll gAreaPropData_52_0[4] = {
 #include "sub_main/00443750.inc"
 };
-u32 D_00443758[2] = {
-#include "sub_main/00443758.inc"
-};
-u32 D_00443760[4] = {
+AnimSpin2 gAreaPropData_52_6[1] = {
 #include "sub_main/00443760.inc"
 };
 PropRec gAreaProps_52[12] = {
 #include "sub_main/00443770.inc"
 };
-u32 D_00443800[2] = {
+UvScroll gAreaPropData_54_1[2] = {
 #include "sub_main/00443800.inc"
 };
-u32 D_00443808[2] = {
+UvScroll gAreaPropData_54_3[2] = {
 #include "sub_main/00443808.inc"
 };
-u32 gAreaProps_54[20] = {
+PropRec gAreaProps_54[6] = {
 #include "sub_main/00443810.inc"
 };
-u32 D_00443860[2] = {
+UvScroll gAreaPropData_55_1[4] = {
 #include "sub_main/00443860.inc"
 };
-u32 D_00443868[2] = {
-#include "sub_main/00443868.inc"
-};
-u32 D_00443870[4] = {
+UvScroll gAreaPropData_55_5[4] = {
 #include "sub_main/00443870.inc"
 };
 PropRec gAreaProps_55[8] = {
 #include "sub_main/00443880.inc"
 };
-u32 D_004438E0[2] = {
+UvScroll gAreaPropData_57_0[2] = {
 #include "sub_main/004438E0.inc"
 };
-u32 D_004438E8[2] = {
+UvScroll gAreaPropData_57_2[2] = {
 #include "sub_main/004438E8.inc"
 };
 PropRec gAreaProps_57[5] = {
 #include "sub_main/004438F0.inc"
 };
-u32 D_00443930[4] = {
+UvScroll gAreaPropData_60_0[4] = {
 #include "sub_main/00443930.inc"
 };
 PropRec gAreaProps_60[3] = {
 #include "sub_main/00443940.inc"
 };
-u32 D_00443968[2] = {
+UvScroll gAreaPropData_63_0[2] = {
 #include "sub_main/00443968.inc"
 };
 PropRec gAreaProps_63[3] = {
 #include "sub_main/00443970.inc"
 };
-u32 D_00443998[2] = {
+UvScroll gAreaPropData_65_0[2] = {
 #include "sub_main/00443998.inc"
 };
-u32 gAreaProps_65[8] = {
+PropRec gAreaProps_65[2] = {
 #include "sub_main/004439A0.inc"
 };
-u32 D_004439C0[2] = {
+UvScroll gAreaPropData_66_0[4] = {
 #include "sub_main/004439C0.inc"
-};
-u32 D_004439C8[2] = {
-#include "sub_main/004439C8.inc"
 };
 PropRec gAreaProps_66[5] = {
 #include "sub_main/004439D0.inc"
 };
-u32 gAreaProps_75[8] = {
+PropRec gAreaProps_75[2] = {
 #include "sub_main/00443A10.inc"
 };
-UvScroll D_00443A30[2] = {
+UvScroll gAreaPropData_84_0_Uv[4] = {
 #include "sub_main/00443A30.inc"
 };
-u32 D_00443A38[2] = {
-#include "sub_main/00443A38.inc"
-};
-f32 D_00443A40[8] = {
+f32 gAreaPropData_84_0_Pos[8] = {
 #include "sub_main/00443A40.inc"
 };
-AnimScrollPos D_00443A60[1] = {
-    {D_00443A30, D_00443A40},
+AnimScrollPos gAreaPropData_84_0[1] = {
+    {gAreaPropData_84_0_Uv, gAreaPropData_84_0_Pos},
 };
-AnimScrollPos D_00443A68[1] = {
-    {&D_00443A30[1], &D_00443A40[3]},
+AnimScrollPos gAreaPropData_84_1[1] = {
+    {&gAreaPropData_84_0_Uv[1], &gAreaPropData_84_0_Pos[3]},
 };
 PropRec gAreaProps_84[5] = {
 #include "sub_main/00443A70.inc"
 };
-u32 D_00443AB0[4] = {
+UvScroll gAreaPropData_92_0[4] = {
 #include "sub_main/00443AB0.inc"
 };
 PropRec gAreaProps_92[3] = {
 #include "sub_main/00443AC0.inc"
 };
-u32 D_00443AE8[2] = {
+UvScroll gAreaPropData_93_1[2] = {
 #include "sub_main/00443AE8.inc"
 };
 PropRec gAreaProps_93[4] = {
 #include "sub_main/00443AF0.inc"
 };
-UvScroll D_00443B20[2] = {
+UvScroll gAreaPropData_94_1[2] = {
 #include "sub_main/00443B20.inc"
 };
-f32 D_00443B28[3] = {
+f32 gAreaPropData_94_2_Pos[3] = {
 #include "sub_main/00443B28.inc"
 };
-AnimScrollPos D_00443B38[1] = {
-    {&D_00443B20[1], D_00443B28},
+AnimScrollPos gAreaPropData_94_2[1] = {
+    {&gAreaPropData_94_1[1], gAreaPropData_94_2_Pos},
 };
 PropRec gAreaProps_94[4] = {
 #include "sub_main/00443B40.inc"
 };
-u32 D_00443B70[2] = {
+UvScroll gAreaPropData_6_0[2] = {
 #include "sub_main/00443B70.inc"
 };
-u32 D_00443B78[2] = {
+UvScroll gAreaPropData_6_2[2] = {
 #include "sub_main/00443B78.inc"
 };
-u32 D_00443B80[4] = {
+UvScroll gAreaPropData_6_4[4] = {
 #include "sub_main/00443B80.inc"
 };
 PropRec gAreaProps_6[6] = {
 #include "sub_main/00443B90.inc"
 };
-u32 D_00443BD8[2] = {
+UvScroll gAreaPropData_96_0[2] = {
 #include "sub_main/00443BD8.inc"
 };
 PropRec gAreaProps_96[2] = {
@@ -10352,76 +10515,67 @@ PropRec gAreaProps_96[2] = {
 PropRec gAreaProps_97[2] = {
 #include "sub_main/00443C00.inc"
 };
-u32 D_00443C18[2] = {
+UvScroll gAreaPropData_98_0[2] = {
 #include "sub_main/00443C18.inc"
 };
-u32 D_00443C20[4] = {
+UvScroll gAreaPropData_98_2[4] = {
 #include "sub_main/00443C20.inc"
 };
 PropRec gAreaProps_98[4] = {
 #include "sub_main/00443C30.inc"
 };
-u32 D_00443C60[4] = {
+AnimSpin gAreaPropData_99_3[1] = {
 #include "sub_main/00443C60.inc"
 };
-u32 D_00443C70[2] = {
+UvScroll gAreaPropData_99_0[2] = {
 #include "sub_main/00443C70.inc"
 };
-u32 D_00443C78[2] = {
+UvScroll gAreaPropData_99_2[2] = {
 #include "sub_main/00443C78.inc"
 };
-u32 gAreaProps_99[20] = {
+PropRec gAreaProps_99[6] = {
 #include "sub_main/00443C80.inc"
 };
-u32 D_00443CD0[2] = {
+UvScroll gAreaPropData_15_1[4] = {
 #include "sub_main/00443CD0.inc"
 };
-u32 D_00443CD8[2] = {
-#include "sub_main/00443CD8.inc"
-};
-u32 gAreaProps_15[20] = {
+PropRec gAreaProps_15[6] = {
 #include "sub_main/00443CE0.inc"
 };
-u32 D_00443D30[2] = {
+UvScroll gAreaPropData_107_0[4] = {
 #include "sub_main/00443D30.inc"
-};
-u32 D_00443D38[2] = {
-#include "sub_main/00443D38.inc"
 };
 PropRec gAreaProps_107[5] = {
 #include "sub_main/00443D40.inc"
 };
-u32 D_00443D80[4] = {
+AnimSpin gAreaPropData_108_3[1] = {
 #include "sub_main/00443D80.inc"
 };
-u32 D_00443D90[2] = {
+UvScroll gAreaPropData_108_0[2] = {
 #include "sub_main/00443D90.inc"
 };
-u32 D_00443D98[2] = {
+UvScroll gAreaPropData_108_2[2] = {
 #include "sub_main/00443D98.inc"
 };
-u32 gAreaProps_108[20] = {
+PropRec gAreaProps_108[6] = {
 #include "sub_main/00443DA0.inc"
 };
-u32 D_00443DF0[2] = {
+UvScroll gAreaPropData_110_2[4] = {
 #include "sub_main/00443DF0.inc"
 };
-u32 D_00443DF8[2] = {
-#include "sub_main/00443DF8.inc"
-};
-u32 D_00443E00[4] = {
+UvScroll gAreaPropData_110_6[4] = {
 #include "sub_main/00443E00.inc"
 };
-u32 D_00443E10[4] = {
+AnimSpin gAreaPropData_110_1[1] = {
 #include "sub_main/00443E10.inc"
 };
-u32 D_00443E20[4] = {
+AnimSpin gAreaPropData_110_0[1] = {
 #include "sub_main/00443E20.inc"
 };
 PropRec gAreaProps_110[10] = {
 #include "sub_main/00443E30.inc"
 };
-u32 D_00443EB0[4] = {
+AnimSpin gAreaPropData_111_0[1] = {
 #include "sub_main/00443EB0.inc"
 };
 PropRec gAreaProps_111[2] = {
@@ -10430,91 +10584,91 @@ PropRec gAreaProps_111[2] = {
 PropRec gAreaProps_3[2] = {
 #include "sub_main/00443EE0.inc"
 };
-u32 D_00443F00[4] = {
+AnimSpin gAreaPropData_4_0[1] = {
 #include "sub_main/00443F00.inc"
 };
 PropRec gAreaProps_4[3] = {
 #include "sub_main/00443F10.inc"
 };
-u32 D_00443F38[2] = {
+UvScroll gAreaPropData_5_1[2] = {
 #include "sub_main/00443F38.inc"
 };
-u32 D_00443F40[4] = {
+AnimSpin gAreaPropData_5_0[1] = {
 #include "sub_main/00443F40.inc"
 };
 PropRec gAreaProps_5[3] = {
 #include "sub_main/00443F50.inc"
 };
-u32 D_00443F78[2] = {
+UvScroll gAreaPropData_115_0[2] = {
 #include "sub_main/00443F78.inc"
 };
-u32 D_00443F80[4] = {
+AnimSpin gAreaPropData_115_2[1] = {
 #include "sub_main/00443F80.inc"
 };
 PropRec gAreaProps_115[5] = {
 #include "sub_main/00443F90.inc"
 };
-u32 D_00443FD0[4] = {
+AnimSpin gAreaPropData_116_1[1] = {
 #include "sub_main/00443FD0.inc"
 };
 PropRec gAreaProps_116[3] = {
 #include "sub_main/00443FE0.inc"
 };
-u32 D_00444008[2] = {
+UvScroll gAreaPropData_22_1[2] = {
 #include "sub_main/00444008.inc"
 };
 PropRec gAreaProps_22[4] = {
 #include "sub_main/00444010.inc"
 };
-u32 D_00444040[4] = {
+AnimSpin gAreaPropData_118_0[1] = {
 #include "sub_main/00444040.inc"
 };
 PropRec gAreaProps_118[2] = {
 #include "sub_main/00444050.inc"
 };
-u32 D_00444068[3] = {
+f32 gAreaPropData_26_0[1][3] = {
 #include "sub_main/00444068.inc"
 };
 PropRec gAreaProps_26[2] = {
 #include "sub_main/00444080.inc"
 };
-u32 D_004440A0[4] = {
+AnimSpin gAreaPropData_120_0[1] = {
 #include "sub_main/004440A0.inc"
 };
 PropRec gAreaProps_120[4] = {
 #include "sub_main/004440B0.inc"
 };
-u32 D_004440E0[4] = {
+AnimSpin gAreaPropData_121_2[1] = {
 #include "sub_main/004440E0.inc"
 };
-u32 D_004440F0[4] = {
+UvScroll gAreaPropData_121_0[4] = {
 #include "sub_main/004440F0.inc"
 };
 PropRec gAreaProps_121[4] = {
 #include "sub_main/00444100.inc"
 };
-u32 D_00444130[4] = {
+UvScroll gAreaPropData_122_0[4] = {
 #include "sub_main/00444130.inc"
 };
 PropRec gAreaProps_122[2] = {
 #include "sub_main/00444140.inc"
 };
-u32 D_00444158[2] = {
+UvScroll gAreaPropData_123_0[2] = {
 #include "sub_main/00444158.inc"
 };
 PropRec gAreaProps_123[3] = {
 #include "sub_main/00444160.inc"
 };
-u32 D_00444188[2] = {
+UvScroll gAreaPropData_126_0[2] = {
 #include "sub_main/00444188.inc"
 };
 PropRec gAreaProps_126[4] = {
 #include "sub_main/00444190.inc"
 };
-u32 D_004441C0[2] = {
+UvScroll gAreaPropData_127_0[2] = {
 #include "sub_main/004441C0.inc"
 };
-u32 D_004441C8[2] = {
+UvScroll gAreaPropData_127_2[2] = {
 #include "sub_main/004441C8.inc"
 };
 PropRec gAreaProps_127[5] = {
@@ -10523,64 +10677,64 @@ PropRec gAreaProps_127[5] = {
 PropRec gAreaProps_131[8] = {
 #include "sub_main/00444210.inc"
 };
-UvScroll D_00444270[2] = {
+UvScroll gAreaPropData_136_0_Uv[2] = {
 #include "sub_main/00444270.inc"
 };
-f32 D_00444278[3] = {
+f32 gAreaPropData_136_0_Pos[3] = {
 #include "sub_main/00444278.inc"
 };
-u32 D_00444290[4] = {
+PropPlaceY gAreaPropData_136_1[1] = {
 #include "sub_main/00444290.inc"
 };
-u32 D_004442A0[4] = {
+PropPlaceY gAreaPropData_136_2[1] = {
 #include "sub_main/004442A0.inc"
 };
-u32 D_004442B0[4] = {
+PropPlaceY gAreaPropData_136_3[1] = {
 #include "sub_main/004442B0.inc"
 };
-u32 D_004442C0[4] = {
+PropPlaceY gAreaPropData_136_4[1] = {
 #include "sub_main/004442C0.inc"
 };
-u32 D_004442D0[8] = {
+PropPlaceY gAreaPropData_136_5[2] = {
 #include "sub_main/004442D0.inc"
 };
-u32 D_004442F0[8] = {
+PropPlaceY gAreaPropData_136_6[2] = {
 #include "sub_main/004442F0.inc"
 };
-AnimScrollPos D_00444310[1] = {
-    {D_00444270, D_00444278},
+AnimScrollPos gAreaPropData_136_0[1] = {
+    {gAreaPropData_136_0_Uv, gAreaPropData_136_0_Pos},
 };
 PropRec gAreaProps_136[8] = {
 #include "sub_main/00444320.inc"
 };
-u32 D_00444380[4] = {
+AnimSpin gAreaPropData_137_0[1] = {
 #include "sub_main/00444380.inc"
 };
-u32 D_00444390[24] = {
+AnimRot gAreaPropData_137_2[6] = {
 #include "sub_main/00444390.inc"
 };
-u32 D_004443F0[8] = {
+PropPlaceYZ gAreaPropData_137_3[1] = {
 #include "sub_main/004443F0.inc"
 };
 PropRec gAreaProps_137[6] = {
 #include "sub_main/00444410.inc"
 };
-u32 D_00444460[4] = {
+AnimSpin gAreaPropData_140_0[1] = {
 #include "sub_main/00444460.inc"
 };
-u32 D_00444470[4] = {
+AnimSpin gAreaPropData_140_1[1] = {
 #include "sub_main/00444470.inc"
 };
 PropRec gAreaProps_140[4] = {
 #include "sub_main/00444480.inc"
 };
-u32 D_004444B0[4] = {
+AnimSpin gAreaPropData_141_0[1] = {
 #include "sub_main/004444B0.inc"
 };
-u32 D_004444C0[4] = {
+AnimSpin2 gAreaPropData_141_1[1] = {
 #include "sub_main/004444C0.inc"
 };
-u32 D_004444D0[4] = {
+f32 gAreaPropData_141_2[1][3] = {
 #include "sub_main/004444D0.inc"
 };
 PropRec gAreaProps_141[4] = {
@@ -10589,95 +10743,95 @@ PropRec gAreaProps_141[4] = {
 PropRec gAreaProps_142[4] = {
 #include "sub_main/00444510.inc"
 };
-u32 D_00444540[4] = {
+AnimSpin gAreaPropData_143_3[1] = {
 #include "sub_main/00444540.inc"
 };
 PropRec gAreaProps_143[5] = {
 #include "sub_main/00444550.inc"
 };
-u32 D_00444590[4] = {
+AnimSpin gAreaPropData_145_0[1] = {
 #include "sub_main/00444590.inc"
 };
-f32 D_004445A0[6] = {
+f32 gAreaPropData_145_2[6] = {
 #include "sub_main/004445A0.inc"
 };
-UvScroll D_004445B8[2] = {
+UvScroll gAreaPropData_145_3_Uv[2] = {
 #include "sub_main/004445B8.inc"
 };
-AnimScrollPos D_004445C0[2] = {
-    {D_004445B8, &D_004445A0[3]},
+AnimScrollPos gAreaPropData_145_3[2] = {
+    {gAreaPropData_145_3_Uv, &gAreaPropData_145_2[3]},
     {NULL, NULL},
 };
-u32 D_004445D0[4] = {
+AnimSpin2 gAreaPropData_145_1[1] = {
 #include "sub_main/004445D0.inc"
 };
 PropRec gAreaProps_145[6] = {
 #include "sub_main/004445E0.inc"
 };
-u32 D_00444630[4] = {
+AnimSpin gAreaPropData_146_0[1] = {
 #include "sub_main/00444630.inc"
 };
-u32 D_00444640[8] = {
+f32 gAreaPropData_146_2[2][3] = {
 #include "sub_main/00444640.inc"
 };
-u32 D_00444660[4] = {
+AnimSpin2 gAreaPropData_146_1[1] = {
 #include "sub_main/00444660.inc"
 };
 PropRec gAreaProps_146[6] = {
 #include "sub_main/00444670.inc"
 };
-u32 D_004446C0[4] = {
+AnimSpin gAreaPropData_148_0[1] = {
 #include "sub_main/004446C0.inc"
 };
 PropRec gAreaProps_148[2] = {
 #include "sub_main/004446D0.inc"
 };
-u32 D_004446E8[2] = {
+UvScroll gAreaPropData_149_1[2] = {
 #include "sub_main/004446E8.inc"
 };
-u32 D_004446F0[4] = {
+AnimSpin gAreaPropData_149_0[1] = {
 #include "sub_main/004446F0.inc"
 };
 PropRec gAreaProps_149[3] = {
 #include "sub_main/00444700.inc"
 };
-u32 D_00444728[2] = {
+UvScroll gAreaPropData_158_0[2] = {
 #include "sub_main/00444728.inc"
 };
 PropRec gAreaProps_158[4] = {
 #include "sub_main/00444730.inc"
 };
-u32 D_00444760[4] = {
+UvScroll gAreaPropData_159_0[4] = {
 #include "sub_main/00444760.inc"
 };
 PropRec gAreaProps_159[2] = {
 #include "sub_main/00444770.inc"
 };
-UvScroll D_00444788[2] = {
+UvScroll gAreaPropData_160_0_Uv[2] = {
 #include "sub_main/00444788.inc"
 };
-AnimScrollRot D_00444790[2] = {
-    {D_00444788, D_0092ABF0},
-    {D_00444788, D_0092AC00},
+AnimScrollRot gAreaPropData_160_0[2] = {
+    {gAreaPropData_160_0_Uv, D_0092ABF0},
+    {gAreaPropData_160_0_Uv, D_0092AC00},
 };
-AnimScrollRot D_004447A0[3] = {
-    {&D_00444788[1], D_0092AC10},
-    {&D_00444788[1], D_0092AC20},
-    {&D_00444788[1], D_0092AC30},
+AnimScrollRot gAreaPropData_160_1[3] = {
+    {&gAreaPropData_160_0_Uv[1], D_0092AC10},
+    {&gAreaPropData_160_0_Uv[1], D_0092AC20},
+    {&gAreaPropData_160_0_Uv[1], D_0092AC30},
 };
 PropRec gAreaProps_160[5] = {
 #include "sub_main/004447C0.inc"
 };
-u32 D_00444800[2] = {
+UvScroll gAreaPropData_59_0[2] = {
 #include "sub_main/00444800.inc"
 };
-u32 D_00444808[2] = {
+UvScroll gAreaPropData_59_2[2] = {
 #include "sub_main/00444808.inc"
 };
 PropRec gAreaProps_59[4] = {
 #include "sub_main/00444810.inc"
 };
-u32 D_00444840[4] = {
+UvScroll gAreaPropData_163_0[4] = {
 #include "sub_main/00444840.inc"
 };
 PropRec gAreaProps_163[4] = {
@@ -10689,55 +10843,55 @@ PropRec gAreaProps_61[2] = {
 PropRec gAreaProps_62[2] = {
 #include "sub_main/004448A0.inc"
 };
-u32 D_004448B8[2] = {
+UvScroll gAreaPropData_166_0[2] = {
 #include "sub_main/004448B8.inc"
 };
 PropRec gAreaProps_166[3] = {
 #include "sub_main/004448C0.inc"
 };
-s16 D_004448E8[4] = {
+s16 gAreaPropData_170_0[4] = {
 #include "sub_main/004448E8.inc"
 };
 PropRec gAreaProps_170[4] = {
 #include "sub_main/004448F0.inc"
 };
-s16 D_00444920[8] = {
+s16 gAreaPropData_171_0[8] = {
 #include "sub_main/00444920.inc"
 };
 PropRec gAreaProps_171[4] = {
 #include "sub_main/00444930.inc"
 };
-s16 D_00444960[8] = {
+s16 gAreaPropData_172_0[8] = {
 #include "sub_main/00444960.inc"
 };
 PropRec gAreaProps_172[4] = {
 #include "sub_main/00444970.inc"
 };
-u8 D_004449A0[16] = {
+u8 gAreaPropData_173_2[16] = {
 #include "sub_main/004449A0.inc"
 };
-u32 D_004449B0[4] = {
+AnimSpin gAreaPropData_173_0[1] = {
 #include "sub_main/004449B0.inc"
 };
 PropRec gAreaProps_173[9] = {
 #include "sub_main/004449C0.inc"
 };
-u32 D_00444A30[4] = {
+AnimSpin gAreaPropData_174_0[1] = {
 #include "sub_main/00444A30.inc"
 };
-u32 D_00444A40[4] = {
+UvScroll gAreaPropData_174_6[4] = {
 #include "sub_main/00444A40.inc"
 };
 PropRec gAreaProps_174[12] = {
 #include "sub_main/00444A50.inc"
 };
-u32 D_00444AE0[4] = {
+AnimSpin gAreaPropData_175_0[1] = {
 #include "sub_main/00444AE0.inc"
 };
 PropRec gAreaProps_175[11] = {
 #include "sub_main/00444AF0.inc"
 };
-u32 D_00444B78[2] = {
+UvScroll gAreaPropData_176_0[2] = {
 #include "sub_main/00444B78.inc"
 };
 PropRec gAreaProps_176[2] = {
@@ -10750,7 +10904,7 @@ PropRec *gAreaProps[200] = {
     NULL, gAreaProps_1, NULL, gAreaProps_3,
     gAreaProps_4, gAreaProps_5, gAreaProps_6, gAreaProps_7,
     NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, (PropRec *)gAreaProps_15,
+    NULL, NULL, NULL, gAreaProps_15,
     NULL, NULL, gAreaProps_18, gAreaProps_19,
     gAreaProps_20, NULL, gAreaProps_22, gAreaProps_23,
     gAreaProps_24, NULL, gAreaProps_26, NULL,
@@ -10760,21 +10914,21 @@ PropRec *gAreaProps[200] = {
     NULL, NULL, NULL, gAreaProps_43,
     NULL, gAreaProps_45, gAreaProps_46, gAreaProps_47,
     gAreaProps_48, gAreaProps_49, NULL, gAreaProps_51,
-    gAreaProps_52, NULL, (PropRec *)gAreaProps_54, gAreaProps_55,
+    gAreaProps_52, NULL, gAreaProps_54, gAreaProps_55,
     NULL, gAreaProps_57, NULL, gAreaProps_59,
     gAreaProps_60, gAreaProps_61, gAreaProps_62, gAreaProps_63,
-    NULL, (PropRec *)gAreaProps_65, gAreaProps_66, NULL,
+    NULL, gAreaProps_65, gAreaProps_66, NULL,
     NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, (PropRec *)gAreaProps_75,
+    NULL, NULL, NULL, gAreaProps_75,
     NULL, NULL, NULL, NULL,
     gAreaProps_28, NULL, NULL, NULL,
     gAreaProps_84, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,
     gAreaProps_92, gAreaProps_93, gAreaProps_94, gAreaProps_6,
-    gAreaProps_96, gAreaProps_97, gAreaProps_98, (PropRec *)gAreaProps_99,
+    gAreaProps_96, gAreaProps_97, gAreaProps_98, gAreaProps_99,
     NULL, gAreaProps_92, gAreaProps_93, gAreaProps_94,
-    (PropRec *)gAreaProps_15, NULL, NULL, gAreaProps_107,
-    (PropRec *)gAreaProps_108, NULL, gAreaProps_110, gAreaProps_111,
+    gAreaProps_15, NULL, NULL, gAreaProps_107,
+    gAreaProps_108, NULL, gAreaProps_110, gAreaProps_111,
     gAreaProps_3, gAreaProps_4, gAreaProps_5, gAreaProps_115,
     gAreaProps_116, gAreaProps_22, gAreaProps_118, gAreaProps_26,
     gAreaProps_120, gAreaProps_121, gAreaProps_122, gAreaProps_123,
@@ -10798,70 +10952,70 @@ PropRec *gAreaProps[200] = {
     gAreaProps_192, NULL, NULL, NULL,
     gAreaProps_43, NULL, NULL, NULL,
 };
-u32 D_00444EE0[16] = {
+f32 gVillagePropData_0_6[5][3] = {
 #include "sub_main/00444EE0.inc"
 };
-PropRec D_00444F20[8] = {
+PropRec gVillagePropChoices_0_0[8] = {
 #include "sub_main/00444F20.inc"
 };
-u32 D_00444F80[4] = {
+AnimSpin gVillagePropData_3_4[1] = {
 #include "sub_main/00444F80.inc"
 };
-u32 D_00444F90[12] = {
+f32 gVillagePropData_3_5[4][3] = {
 #include "sub_main/00444F90.inc"
 };
-PropRec D_00444FC0[8] = {
+PropRec gVillagePropChoices_0_3[8] = {
 #include "sub_main/00444FC0.inc"
 };
-u32 D_00445020[12] = {
+f32 gVillagePropData_6_4[4][3] = {
 #include "sub_main/00445020.inc"
 };
-PropRec D_00445050[8] = {
+PropRec gVillagePropChoices_0_6[8] = {
 #include "sub_main/00445050.inc"
 };
-u32 D_004450B0[4] = {
+UvScroll gVillagePropData_1_3[4] = {
 #include "sub_main/004450B0.inc"
 };
-PropRec D_004450C0[8] = {
+PropRec gVillagePropChoices_0_1[8] = {
 #include "sub_main/004450C0.inc"
 };
-u32 D_00445120[8] = {
+f32 gVillagePropData_4_6[2][3] = {
 #include "sub_main/00445120.inc"
 };
-PropRec D_00445140[8] = {
+PropRec gVillagePropChoices_0_4[8] = {
 #include "sub_main/00445140.inc"
 };
-PropRec D_004451A0[5] = {
+PropRec gVillagePropChoices_0_7[5] = {
 #include "sub_main/004451A0.inc"
 };
-u32 D_004451E0[4] = {
+PropPlaceY gVillagePropData_2_4[1] = {
 #include "sub_main/004451E0.inc"
 };
-u32 D_004451F0[4] = {
+PropPlaceY gVillagePropData_5_6[1] = {
 #include "sub_main/004451F0.inc"
 };
-u32 D_00445200[4] = {
+PropPlaceY gVillagePropData_8_7[1] = {
 #include "sub_main/00445200.inc"
 };
-u32 D_00445210[4] = {
+AnimSpin gVillagePropData_5_10[1] = {
 #include "sub_main/00445210.inc"
 };
-PropRec D_00445220[9] = {
+PropRec gVillagePropChoices_0_2[9] = {
 #include "sub_main/00445220.inc"
 };
-u32 D_00445290[20] = {
+PropPlaceXYZ gVillagePropData_5_9[3] = {
 #include "sub_main/00445290.inc"
 };
-PropRec D_004452E0[12] = {
+PropRec gVillagePropChoices_0_5[12] = {
 #include "sub_main/004452E0.inc"
 };
-u32 D_00445370[32] = {
+f32 gVillagePropData_8_3[10][3] = {
 #include "sub_main/00445370.inc"
 };
-u32 D_004453F0[12] = {
+AnimRot gVillagePropData_8_10[3] = {
 #include "sub_main/004453F0.inc"
 };
-PropRec D_00445420[13] = {
+PropRec gVillagePropChoices_0_8[13] = {
 #include "sub_main/00445420.inc"
 };
 PropChoice gVillagePropChoices_0[10] = {
@@ -10871,146 +11025,146 @@ AreaPropChoices gVillagePropChoices[2] = {
 #include "sub_main/00445510.inc"
 };
 char *gDefaultStageHeader_12[8] = {
-    D_00490B70, D_00490B80, D_00490BA0, D_00490BB0,
-    D_00490BC0, gEmClassNames_0, NULL, NULL,
+    gDefaultStageHeader_12_0, gDefaultStageHeader_12_1, gDefaultStageHeader_12_2, gDefaultStageHeader_12_3,
+    gDefaultStageHeader_12_4, gEmClassNames_0, NULL, NULL,
 };
 char *gReturn20sTownText[2] = {
-    D_00490BE0, D_00490C00,
+    gReturn20sTownText_0, gReturn20sTownText_1,
 };
 char *gReturn1mTownText[2] = {
-    D_00490C20, D_00490C40,
+    gReturn1mTownText_0, gReturn1mTownText_1,
 };
 char *gQuestClearText[2] = {
-    D_00490C60, D_00490C80,
+    gQuestClearText_0, gQuestClearText_1,
 };
 char *gTimeLeftMinFmt[2] = {
-    D_00490CA0, D_00490CB8,
+    gTimeLeftMinFmt_0, gTimeLeftMinFmt_1,
 };
 char *gQuestNoticeTexts[8] = {
-    D_00490CD0, D_00490CF0, D_00490D08, D_00490D20,
-    D_00490D40, D_00490D60, D_00490D80, D_00490DA0,
+    gQuestNoticeTexts_0, gQuestNoticeTexts_1, gQuestNoticeTexts_2, gQuestNoticeTexts_3,
+    gQuestNoticeTexts_4, gQuestNoticeTexts_5, gQuestNoticeTexts_6, gQuestNoticeTexts_7,
 };
 char *gSubBSupplyText[4] = {
-    D_00490DC0, D_00490DE0, D_00490E00, D_00490E20,
+    gSubBSupplyText_0, gSubBSupplyText_1, gSubBSupplyText_2, gSubBSupplyText_3,
 };
 char *gMustOrderAllText[2] = {
-    D_00490E40, D_00490E70,
+    gMustOrderAllText_0, gMustOrderAllText_1,
 };
 char *gReturn10sTownText[2] = {
-    D_00490EA0, D_00490EC0,
+    gReturn10sTownText_0, gReturn10sTownText_1,
 };
 char *gDrillScoreTexts[16] = {
-    D_00490EE0, D_00490EF0, D_00490F20, D_00490F40,
+    D_00490EE0, gDrillScoreTexts_1, gDrillScoreTexts_2, gDrillScoreTexts_3,
     D_00490EE0, D_00490EE0, D_00490EE0, D_00490EE0,
-    D_00490EE0, D_00490EE0, D_00490EE0, D_00490F60,
-    D_00490EE0, D_00490F90, D_00490FB0, D_00490FD0,
+    D_00490EE0, D_00490EE0, D_00490EE0, gDrillScoreTexts_11,
+    D_00490EE0, gDrillScoreTexts_13, gDrillScoreTexts_14, gDrillScoreTexts_15,
 };
 char *gElderFledText[4] = {
-    D_00490FF0, NULL, NULL, NULL,
+    gElderFledText_0, NULL, NULL, NULL,
 };
 char *gEmClassNames[12] = {
-    gEmClassNames_0, D_00491010, D_00491018, D_00491020,
-    D_00491028, D_00491030, D_00491038, D_00491040,
-    D_00491048, D_00491050, NULL, NULL,
+    gEmClassNames_0, gEmClassNames_1, gEmClassNames_2, gEmClassNames_3,
+    gEmClassNames_4, gEmClassNames_5, gEmClassNames_6, gEmClassNames_7,
+    gEmClassNames_8, gEmClassNames_9, NULL, NULL,
 };
 char *gMonsterNames[76] = {
-    D_00491058, D_00491068, D_00491078, D_00491088,
-    D_00491090, D_00491098, D_004910A8, D_004910B8,
-    D_004910C8, D_004910D8, D_004910E8, D_004910F0,
-    D_00491100, D_00491110, D_00491120, D_00491130,
-    D_00491140, D_00491150, D_00491160, D_00491170,
-    D_00491180, D_00491190, D_004911A0, D_004911B0,
-    D_004911C0, D_004911D0, D_004911E0, D_004911F0,
-    D_00491200, D_00491210, D_00491218, D_00491228,
-    D_00491238, D_00491240, D_00491248, D_00491140,
-    D_00491078, D_00491260, D_00491280, D_004912A0,
-    D_004912B8, D_004912D0, D_00491260, D_004912F0,
-    D_00491310, D_00491330, D_00491350, D_00491370,
-    D_00491390, D_004912D0, D_004910B8, D_004913A8,
-    D_004913B8, D_004913C8, D_004913D8, D_004913E8,
-    D_004913F8, D_00491408, D_00491418, D_00491428,
-    D_004913D8, D_00491438, D_00491448, D_00491450,
-    D_00491460, D_00491480, D_00491498, D_004914B0,
-    D_004914C8, D_004914D8, D_004914E8, D_00491078,
-    D_00491418, D_004914F0, NULL, NULL,
+    gMonsterNames_0, gMonsterNames_1, D_00491078, gMonsterNames_3,
+    gMonsterNames_4, gMonsterNames_5, gMonsterNames_6, D_004910B8,
+    gMonsterNames_8, gMonsterNames_9, gMonsterNames_10, gMonsterNames_11,
+    gMonsterNames_12, gMonsterNames_13, gMonsterNames_14, gMonsterNames_15,
+    D_00491140, gMonsterNames_17, gMonsterNames_18, gMonsterNames_19,
+    gMonsterNames_20, gMonsterNames_21, gMonsterNames_22, gMonsterNames_23,
+    gMonsterNames_24, gMonsterNames_25, gMonsterNames_26, gMonsterNames_27,
+    gMonsterNames_28, gMonsterNames_29, gMonsterNames_30, gMonsterNames_31,
+    gMonsterNames_32, gMonsterNames_33, gMonsterNames_34, D_00491140,
+    D_00491078, D_00491260, gMonsterNames_38, gMonsterNames_39,
+    gMonsterNames_40, D_004912D0, D_00491260, gMonsterNames_43,
+    gMonsterNames_44, gMonsterNames_45, gMonsterNames_46, gMonsterNames_47,
+    gMonsterNames_48, D_004912D0, D_004910B8, gMonsterNames_51,
+    gMonsterNames_52, gMonsterNames_53, D_004913D8, gMonsterNames_55,
+    gMonsterNames_56, gMonsterNames_57, D_00491418, gMonsterNames_59,
+    D_004913D8, gMonsterNames_61, gMonsterNames_62, gMonsterNames_63,
+    gMonsterNames_64, gMonsterNames_65, gMonsterNames_66, gMonsterNames_67,
+    gMonsterNames_68, gMonsterNames_69, gMonsterNames_70, D_00491078,
+    D_00491418, gMonsterNames_73, NULL, NULL,
 };
 char *gFieldMenuItemsOnline[2][7] = {
     {D_00491500, D_00491510, D_00491518, D_00491528, D_00491538, D_00491548, D_00491558},
-    {D_00491500, D_00491568, D_00491518, D_00491528, D_00491538, D_00491548, D_00491558},
+    {D_00491500, gFieldMenuItemsOnline_8, D_00491518, D_00491528, D_00491538, D_00491548, D_00491558},
 };
 char *gFieldMenuItemsOffline[5][9] = {
     {D_00491500, D_00491510, D_00491518, D_00491528, D_00491538, D_00491578, D_00491558, D_00491588, D_00491598},
     {D_00491500, D_004915A8, D_004915B8, D_00491528, D_00491538, D_00491578, D_00491558, D_00491588, D_00491598},
     {D_00491500, D_00491510, D_00491518, D_00491528, D_00491538, D_00491578, D_00491558, D_004915C8, D_00491598},
     {D_00491500, D_004915A8, D_004915B8, D_00491528, D_00491538, D_00491578, D_00491558, D_004915C8, D_00491598},
-    {D_004915D8, D_00491510, D_004915B8, D_00491528, D_00491538, D_00491578, D_00491558, D_004915E8, D_00491598},
+    {gFieldMenuItemsOffline_36, D_00491510, D_004915B8, D_00491528, D_00491538, D_00491578, D_00491558, gFieldMenuItemsOffline_43, D_00491598},
 };
 char *gPouchMenuPanel2_6[2] = {
-    D_004915F8, D_00491600,
+    gPouchMenuPanel2_6_0, gPouchMenuPanel2_6_1,
 };
 char *gDeliveryPanel_7[2] = {
-    D_00491608, D_00491610,
+    gDeliveryPanel_7_0, D_00491610,
 };
 char *gYesNoTexts[2] = {
-    D_00491620, D_00491640,
+    D_00491620, gYesNoTexts_1,
 };
 char *gItemActionLabels[3][3] = {
     {D_00491660, D_00491668, D_00491670},
-    {D_00491660, D_00491680, D_00491690},
-    {D_004916A0, D_00491668, D_00491670},
+    {D_00491660, gItemActionLabels_4, gItemActionLabels_5},
+    {gItemActionLabels_6, D_00491668, D_00491670},
 };
 char *D_00445888[2] = {
     D_004916B0, D_00491660,
 };
 char *gStatusMenuColors_1[6] = {
-    D_004916C0, D_004916D0, D_004916E0, D_004916F0,
-    D_00491710, NULL,
+    D_004916C0, D_004916D0, gStatusMenuColors_1_2, gStatusMenuColors_1_3,
+    gStatusMenuColors_1_4, NULL,
 };
 char *gInfoMenuLabelsOffline[2] = {
     D_00491728, D_00491740,
 };
 char *gInfoMenuLabels[4] = {
-    D_00491758, D_00491728, D_00491740, D_00491768,
+    gInfoMenuLabels_0, D_00491728, D_00491740, gInfoMenuLabels_3,
 };
 char *gCockpitToggleTexts[4] = {
-    D_00491780, D_004917A0, NULL, NULL,
+    gCockpitToggleTexts_0, gCockpitToggleTexts_1, NULL, NULL,
 };
 char *gQuestStatusTitle[2] = {
-    D_004917B0, D_004917D0,
+    gQuestStatusTitle_0, gQuestStatusTitle_1,
 };
 char *gQuestMenuRecordTitles[2] = {
-    D_004917F0, D_00491820,
+    gQuestMenuRecordTitles_0, gQuestMenuRecordTitles_1,
 };
 char *gQuestMenuTitles[2] = {
-    D_00491850, D_00491880,
+    gQuestMenuTitles_0, gQuestMenuTitles_1,
 };
 char *gQuestMenuStatusTexts[2] = {
-    D_004918A8, D_004918B0,
+    gQuestMenuStatusTexts_0, gQuestMenuStatusTexts_1,
 };
 char *gQuestMenuTargetTexts[2] = {
-    D_004918C0, D_004918D0,
+    gQuestMenuTargetTexts_0, gQuestMenuTargetTexts_1,
 };
 char *gDojoNoRecordText[2] = {
-    D_004918E0, D_004918F0,
+    gDojoNoRecordText_0, gDojoNoRecordText_1,
 };
 char *gQuestInfoFormats[8] = {
-    D_00491900, D_00491908, D_00491918, D_00491930,
-    D_00491950, D_00491970, NULL, NULL,
+    D_00491900, gQuestInfoFormats_1, gQuestInfoFormats_2, gQuestInfoFormats_3,
+    D_00491950, gQuestInfoFormats_5, NULL, NULL,
 };
 char *gQuestMenuItemLists[10][17] = {
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491998},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_004919B0, gEmClassNames_0, D_004919C8, gEmClassNames_0, D_004919E0, gEmClassNames_0, gEmClassNames_0, D_00491A00, gEmClassNames_0, gEmClassNames_0, D_00491A18, NULL, NULL},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A28, D_00491A38, D_00491A48, D_00491A58, D_00491A68, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gQuestMenuItemLists_16},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gQuestMenuItemLists_21, gEmClassNames_0, D_004919C8, gEmClassNames_0, gQuestMenuItemLists_25, gEmClassNames_0, gEmClassNames_0, gQuestMenuItemLists_28, gEmClassNames_0, gEmClassNames_0, D_00491A18, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A28, D_00491A38, gQuestMenuItemLists_40, gQuestMenuItemLists_41, gQuestMenuItemLists_42, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
     {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A98, D_00491AA8, gEmClassNames_0, D_00491AB8, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491AD0, D_00491AF0, D_00491B08, D_00491B18, D_00491B28, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, D_00491A98, D_00491AA8, D_00491B38, D_00491B48, D_00491AB8, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, D_00491B60, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gQuestMenuItemLists_72, gQuestMenuItemLists_73, gQuestMenuItemLists_74, gQuestMenuItemLists_75, gQuestMenuItemLists_76, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, D_00491A98, D_00491AA8, gQuestMenuItemLists_90, gQuestMenuItemLists_91, D_00491AB8, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gQuestMenuItemLists_105, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL},
     {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A28, D_00491A38, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491B80, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_004919C8, gEmClassNames_0, D_00491A18, NULL, NULL, NULL, NULL, NULL},
-    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A28, D_00491A38, D_00491B98, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gQuestMenuItemLists_140, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_004919C8, gEmClassNames_0, D_00491A18, NULL, NULL, NULL, NULL, NULL},
+    {D_00491988, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A28, D_00491A38, gQuestMenuItemLists_159, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A78, gEmClassNames_0, gEmClassNames_0, gEmClassNames_0, D_00491A88, NULL, NULL},
 };
 char *gQuestTargetLabels[3] = {
-    D_00491BB0, D_00491950, D_00491C10,
+    gQuestTargetLabels_0, D_00491950, gQuestTargetLabels_2,
 };
 #pragma explicit_zero_data on
 u32 D_00445BD8[2] = {
@@ -11018,61 +11172,61 @@ u32 D_00445BD8[2] = {
 };
 #pragma explicit_zero_data reset
 char *gCombineSelectFmt[2] = {
-    D_00491C40, gEmClassNames_0,
+    gCombineSelectFmt_0, gEmClassNames_0,
 };
 char *gCombineInfoLabels[2] = {
-    D_00491C60, D_00491C88,
+    gCombineInfoLabels_0, gCombineInfoLabels_1,
 };
 char *gCombineRateFmt[2] = {
-    D_00491C90, D_00491C98,
+    gCombineRateFmt_0, gCombineRateFmt_1,
 };
 char *gCombineSelectingText[2] = {
-    D_00491CA0, D_00491CB0,
+    gCombineSelectingText_0, gCombineSelectingText_1,
 };
 char *gCombineFailLabels[2] = {
-    D_00491CE0, NULL,
+    gCombineFailLabels_0, NULL,
 };
 char *gCombine2Text[2] = {
-    D_00491D08, D_00491D18,
+    gCombine2Text_0, gCombine2Text_1,
 };
 char *gCombine2MaterialLabels[4] = {
     D_00491D28, D_00491D38, NULL, NULL,
 };
 char *gCombine3MaterialLabels[4] = {
-    D_00491D28, D_00491D38, D_00491D48, NULL,
+    D_00491D28, D_00491D38, gCombine3MaterialLabels_2, NULL,
 };
 char *gCombineDoText[2] = {
-    D_00491D58, D_00491610,
+    gCombineDoText_0, D_00491610,
 };
 char *gPouchInfiniteFmt[2] = {
     D_00491D68, NULL,
 };
 char *gAmmoTensFmt[2] = {
-    D_00491D70, NULL,
+    gAmmoTensFmt_0, NULL,
 };
 char *gItemFullText[2] = {
-    D_00491D80, D_00491DA0,
+    gItemFullText_0, gItemFullText_1,
 };
 char *gFieldMenuTitle[2] = {
-    D_00491DC0, NULL,
+    gFieldMenuTitle_0, NULL,
 };
 char *gPausedText[2] = {
-    D_00491DD8, NULL,
+    gPausedText_0, NULL,
 };
 char *gPhraseEditFmt[2] = {
-    D_00491DF0, NULL,
+    gPhraseEditFmt_0, NULL,
 };
 char *gChatMenuPanel_7[2] = {
-    D_00491E08, D_00491578,
+    gChatMenuPanel_7_0, D_00491578,
 };
 char *gSupplySelectText[2] = {
-    D_00491E20, D_00491E40,
+    gSupplySelectText_0, gSupplySelectText_1,
 };
 char *gSupplyCannotCarryText[2] = {
-    D_00491E60, D_00491D68,
+    gSupplyCannotCarryText_0, D_00491D68,
 };
 char *gSupplyCountFmt[4] = {
-    D_00491E88, NULL, NULL, NULL,
+    gSupplyCountFmt_0, NULL, NULL, NULL,
 };
 char *gTentMenuLabels[18] = {
     D_00491E90, D_00491EB0, D_00491ED0, D_00491E90,
@@ -11082,181 +11236,181 @@ char *gTentMenuLabels[18] = {
     D_00491F10, D_00491ED0,
 };
 char *gSubTargetHelpText[2] = {
-    D_00491F30, D_00491FF0,
+    gSubTargetHelpText_0, gSubTargetHelpText_1,
 };
 char *gQuestMenuHelpTexts[4] = {
-    D_00492090, D_00492160, NULL, NULL,
+    gQuestMenuHelpTexts_0, gQuestMenuHelpTexts_1, NULL, NULL,
 };
 char *gDeliveryMenuTexts[4] = {
-    D_00492228, D_00492238, D_00492248, D_00492258,
+    gDeliveryMenuTexts_0, gDeliveryMenuTexts_1, gDeliveryMenuTexts_2, gDeliveryMenuTexts_3,
 };
 char *gDeliveryDoneText[2] = {
-    D_00492268, D_00492270,
+    gDeliveryDoneText_0, gDeliveryDoneText_1,
 };
 char *gDeliveryHelpText[2] = {
-    D_00492290, NULL,
+    gDeliveryHelpText_0, NULL,
 };
 char *gCombineListFmt[2] = {
-    D_00492340, D_00492368,
+    gCombineListFmt_0, gCombineListFmt_1,
 };
 char *gItemListLineTexts[2] = {
-    D_00492370, D_00492390,
+    gItemListLineTexts_0, gItemListLineTexts_1,
 };
 char *gRecipeMaterialsFmt[2] = {
-    D_004923B0, D_004923D0,
+    gRecipeMaterialsFmt_0, gRecipeMaterialsFmt_1,
 };
 char *gRecipeSwitchHint[2] = {
-    D_004923E8, NULL,
+    gRecipeSwitchHint_0, NULL,
 };
 char *gRecipeMaterialFmts[4] = {
-    D_004923F8, D_00492408, D_00492418, NULL,
+    gRecipeMaterialFmts_0, gRecipeMaterialFmts_1, gRecipeMaterialFmts_2, NULL,
 };
-char gRecipeRateLines[0x10] = {
+char gRecipeRateLines[16] = {
 #include "sub_main/00445D40.inc"
 };
 char *gRecipeRateLabels[8] = {
-    D_00492448, D_00492450, D_00492458, D_00492460,
-    D_00492468, D_00492470, NULL, NULL,
+    gRecipeRateLabels_0, gRecipeRateLabels_1, gRecipeRateLabels_2, gRecipeRateLabels_3,
+    gRecipeRateLabels_4, gRecipeRateLabels_5, NULL, NULL,
 };
 char *gRecipeYieldLabels[12] = {
-    D_00492478, D_00492480, D_00492488, D_00492488,
-    D_00492490, D_00492498, D_004924A0, D_00492498,
-    D_004924A8, NULL, NULL, NULL,
+    gRecipeYieldLabels_0, gRecipeYieldLabels_1, D_00492488, D_00492488,
+    gRecipeYieldLabels_4, D_00492498, gRecipeYieldLabels_6, D_00492498,
+    gRecipeYieldLabels_8, NULL, NULL, NULL,
 };
 char *gMonsterListTitle[4] = {
-    D_004924B0, D_004924C8, D_004924D0, D_004924E8,
+    gMonsterListTitle_0, gMonsterListTitle_1, gMonsterListTitle_2, gMonsterListTitle_3,
 };
 char *gMonsterNoSizeText[2] = {
-    D_004924F0, D_00492500,
+    gMonsterNoSizeText_0, gMonsterNoSizeText_1,
 };
 char *gArenaBaitNoBookText[2] = {
-    D_00492520, D_00492540,
+    gArenaBaitNoBookText_0, gArenaBaitNoBookText_1,
 };
 char *gMonsterNoteLabels[2] = {
-    D_00492560, D_00492580,
+    gMonsterNoteLabels_0, gMonsterNoteLabels_1,
 };
 char *gArenaBaitHint[2] = {
-    D_004925A0, D_004925C0,
+    gArenaBaitHint_0, gArenaBaitHint_1,
 };
 char *gArenaBaitLabels[2] = {
-    D_004925E0, D_00492620,
+    gArenaBaitLabels_0, D_00492620,
 };
 char *gMonsterNoteValueFmt[2] = {
-    D_00492628, NULL,
+    gMonsterNoteValueFmt_0, NULL,
 };
 char *gEmDescTexts[52] = {
-    D_00492630, D_00492710, D_00492820, D_00492920,
-    D_004929F0, D_00492AE0, D_00492BC0, D_00492CB0,
-    D_00492DC0, D_00492EB0, D_00492F70, D_00493040,
-    D_00493110, D_004931F0, D_004932D0, D_004933B0,
-    D_00493460, D_00493500, D_004935C0, D_00493660,
-    D_00493730, D_00493830, D_00493910, D_004939F0,
-    D_00493AE0, D_00493BE0, D_00493CB0, D_00493D70,
-    D_00493E30, D_00493F10, D_00493FD0, D_00494090,
-    D_00494150, D_00494220, D_00494310, D_004943C0,
-    D_004944B0, D_004945B0, D_004946A0, D_00494780,
-    D_00494850, D_00494990, D_00494A60, D_00494B50,
-    D_00494C20, D_00494D00, D_00494DF0, D_00494ED0,
-    D_00494FD0, D_004950D0, D_00495180, D_00495270,
+    gEmDescTexts_0, gEmDescTexts_1, gEmDescTexts_2, gEmDescTexts_3,
+    gEmDescTexts_4, gEmDescTexts_5, gEmDescTexts_6, gEmDescTexts_7,
+    gEmDescTexts_8, gEmDescTexts_9, gEmDescTexts_10, gEmDescTexts_11,
+    gEmDescTexts_12, gEmDescTexts_13, gEmDescTexts_14, gEmDescTexts_15,
+    gEmDescTexts_16, gEmDescTexts_17, gEmDescTexts_18, gEmDescTexts_19,
+    gEmDescTexts_20, gEmDescTexts_21, gEmDescTexts_22, gEmDescTexts_23,
+    gEmDescTexts_24, gEmDescTexts_25, gEmDescTexts_26, gEmDescTexts_27,
+    gEmDescTexts_28, gEmDescTexts_29, gEmDescTexts_30, gEmDescTexts_31,
+    gEmDescTexts_32, gEmDescTexts_33, gEmDescTexts_34, gEmDescTexts_35,
+    gEmDescTexts_36, gEmDescTexts_37, gEmDescTexts_38, gEmDescTexts_39,
+    gEmDescTexts_40, gEmDescTexts_41, gEmDescTexts_42, gEmDescTexts_43,
+    gEmDescTexts_44, gEmDescTexts_45, gEmDescTexts_46, gEmDescTexts_47,
+    gEmDescTexts_48, gEmDescTexts_49, gEmDescTexts_50, gEmDescTexts_51,
 };
 char *gEquipStatusTitle[2] = {
-    D_00495550, NULL,
+    gEquipStatusTitle_0, NULL,
 };
 char *gOptionMenuTitle[2] = {
-    D_00495570, NULL,
+    gOptionMenuTitle_0, NULL,
 };
 char *gFieldOptionLabels[2][9] = {
-    {D_00495588, D_00495598, D_004955B0, D_004955C8, D_004955D8, D_004955E8, D_004955F8, D_00495608, D_00495620},
-    {D_00495588, D_00495640, D_004955B0, D_004955C8, D_004955D8, D_004955E8, D_004955F8, D_00495608, D_00495620},
+    {D_00495588, gFieldOptionLabels_1, D_004955B0, D_004955C8, D_004955D8, D_004955E8, D_004955F8, D_00495608, D_00495620},
+    {D_00495588, gFieldOptionLabels_10, D_004955B0, D_004955C8, D_004955D8, D_004955E8, D_004955F8, D_00495608, D_00495620},
 };
 char *gFieldOptionValues[9][3] = {
     {D_00495658, D_00495660, gEmClassNames_0},
     {D_00495658, D_00495660, gEmClassNames_0},
     {D_00495668, D_00495670, D_00495680},
-    {D_00495690, D_00495698, gEmClassNames_0},
+    {gFieldOptionValues_9, gFieldOptionValues_10, gEmClassNames_0},
     {D_00495668, D_00495670, D_00495680},
     {D_00495660, D_00495658, gEmClassNames_0},
-    {D_004956A0, D_004956A8, D_004956B0},
-    {D_004956B8, D_004956C0, gEmClassNames_0},
+    {gFieldOptionValues_18, gFieldOptionValues_19, gFieldOptionValues_20},
+    {gFieldOptionValues_21, gFieldOptionValues_22, gEmClassNames_0},
     {D_00495658, D_00495660, gEmClassNames_0},
 };
 char *gRarityFmt[8] = {
-    D_004956C8, NULL, D_00491548, D_00491C30,
+    gRarityFmt_0, NULL, D_00491548, gChatTypeTexts_0,
     D_004956D0, D_004956E8, D_004956F8, NULL,
 };
 char *gChatRecvText[4] = {
-    D_00495708, D_00495718, NULL, NULL,
+    gChatRecvText_0, gChatRecvText_1, NULL, NULL,
 };
 char *gTalkEventTitle[2] = {
-    D_00495728, D_00491620,
+    gTalkEventTitle_0, D_00491620,
 };
 char *gNoticeNoSelText[2] = {
-    D_00495740, D_00495760,
+    gNoticeNoSelText_0, gNoticeNoSelText_1,
 };
 char *gItemListTitles[2] = {
-    D_00491500, D_00495768,
+    D_00491500, gItemListTitles_1,
 };
 char *gItemListTitleFmt[2] = {
-    D_00495780, D_004957A0,
+    gItemListTitleFmt_0, D_004957A0,
 };
 char *gInfinityText[4] = {
-    D_004957B8, NULL, NULL, NULL,
+    gInfinityText_0, NULL, NULL, NULL,
 };
 char *gStatusHeadLabels[4] = {
-    D_004957C0, D_004957F0, D_00495820, D_00495850,
+    gStatusHeadLabels_0, gStatusHeadLabels_1, gStatusHeadLabels_2, gStatusHeadLabels_3,
 };
 char *gSymbolColorLabel[2] = {
-    D_00495890, D_004958B0,
+    gSymbolColorLabel_0, gSymbolColorLabel_1,
 };
 char *gArenaRecordLabels[2] = {
-    D_004958D0, D_00495920,
+    gArenaRecordLabels_0, gArenaRecordLabels_1,
 };
 char *gArenaRecordFmt[4] = {
-    D_00495940, D_00495950, NULL, NULL,
+    gArenaRecordFmt_0, gArenaRecordFmt_1, NULL, NULL,
 };
 char *gStatusStatLabels[8] = {
-    D_00495960, D_00495980, D_004959A0, D_004959C0,
-    D_004959E0, NULL, NULL, NULL,
+    D_00495960, gStatusStatLabels_0, gStatusStatLabels_1, gStatusStatLabels_2,
+    gStatusStatLabels_3, NULL, NULL, NULL,
 };
 char *gWeaponTypeNames[12] = {
-    D_00495A00, D_00495A08, D_00495A18, D_00495A28,
-    D_00495A30, D_00495A38, D_00495A48, D_00495A50,
-    D_00495A58, D_00495A60, D_00495A70, NULL,
+    gWeaponTypeNames_0, gWeaponTypeNames_1, gWeaponTypeNames_2, gWeaponTypeNames_3,
+    gWeaponTypeNames_4, gWeaponTypeNames_5, gWeaponTypeNames_6, gWeaponTypeNames_7,
+    gWeaponTypeNames_8, gWeaponTypeNames_9, gWeaponTypeNames_10, NULL,
 };
 char *gStatusBoxTitles[8] = {
-    D_00495A78, gEmClassNames_0, D_00495A88, D_00495A88,
+    gStatusBoxTitles_0, gEmClassNames_0, D_00495A88, D_00495A88,
     D_00495A88, D_00495A88, D_00495A88, D_00495A88,
 };
 char *gStatusPageFmt[2] = {
-    D_00495AA0, D_00495AD0,
+    gStatusPageFmt_0, D_00495AD0,
 };
 char *gRankPointsFmt[2] = {
-    D_00495AD8, D_00495AE8,
+    gRankPointsFmt_0, gRankPointsFmt_1,
 };
 char *gSkillNameFmt[2] = {
-    D_00495AF0, D_00495B00,
+    gSkillNameFmt_0, gSkillNameFmt_1,
 };
 char *gSkillPartPtsFmt[2] = {
-    D_00495B10, D_00495B30,
+    gSkillPartPtsFmt_0, gSkillPartPtsFmt_1,
 };
 char *gSkillRowFmt[6] = {
-    D_00495B50, D_00495B70, D_00495B80, D_00495BA8,
+    gSkillRowFmt_0, gSkillRowFmt_1, gSkillRowFmt_2, D_00495BA8,
     D_00495BC0, D_00495BD0,
 };
 char *gPointsFmt[2] = {
     D_00491900, NULL,
 };
 char *gSkillListHeader[2] = {
-    D_00495C00, NULL,
+    gSkillListHeader_0, NULL,
 };
 char *gSkillPartMarks[2] = {
-    D_00495C28, D_00495C30,
+    gSkillPartMarks_0, gSkillPartMarks_1,
 };
 char *gEquipWeaponFmt[2] = {
     D_00495C38, D_00495C38,
 };
 char *gUnknownEquipText[2] = {
-    D_00495C48, D_00495C58,
+    gUnknownEquipText_0, gUnknownEquipText_1,
 };
 char *gHunterTypeLabels[4] = {
     D_00495C70, D_00495C88, D_00495C98, NULL,
@@ -11264,224 +11418,224 @@ char *gHunterTypeLabels[4] = {
 char *gEquipTypeLabels[4] = {
     D_00495CB0, D_00495C88, D_00495C98, NULL,
 };
-char gBladeDetailLabels[0x10] = {
+char gBladeDetailLabels[16] = {
 #include "sub_main/00446100.inc"
 };
-u32 gBowgunDetailLabels[6] = {
+char *gBowgunDetailLabels[6] = {
 #include "sub_main/00446110.inc"
 };
 char *gBowDetailLabels[2] = {
     D_00495CC8, NULL,
 };
 char *gArmorStatLabels[8] = {
-    D_00495D20, D_00495D40, D_00495D60, D_00495D80,
+    D_00495D20, D_00495D40, D_00495D60, gArmorStatLabels_0,
     NULL, NULL, NULL, NULL,
 };
 char *gGunReloadTexts[8] = {
-    D_00495D90, D_00495D98, D_00495DA8, D_00495DB0,
-    D_00495DC0, NULL, NULL, NULL,
+    gGunReloadTexts_0, gGunReloadTexts_1, D_00495DA8, gGunReloadTexts_3,
+    gGunReloadTexts_4, NULL, NULL, NULL,
 };
 char *gGunRecoilTexts[8] = {
-    D_00495DC8, D_00495DD0, D_00495DD8, D_00495DE0,
-    D_00495DE8, D_00495DF0, D_00495DF8, NULL,
+    gGunRecoilTexts_0, gGunRecoilTexts_1, gGunRecoilTexts_2, gGunRecoilTexts_3,
+    gGunRecoilTexts_4, gGunRecoilTexts_5, gGunRecoilTexts_6, NULL,
 };
 char *gHunterClassTexts[4] = {
-    D_00495E00, D_00495E08, D_00495E18, D_00495E28,
+    gHunterClassTexts_0, gHunterClassTexts_1, gHunterClassTexts_2, gHunterClassTexts_3,
 };
 char *gEquipNameFmt[2] = {
-    D_00495E38, D_00495E50,
+    gEquipNameFmt_0, gEquipNameFmt_1,
 };
 char *gScopeFixedText[2] = {
-    D_00495E70, D_00495E88,
+    gScopeFixedText_0, gScopeFixedText_1,
 };
 char *gPowerBarrelText[2] = {
-    D_00495E98, D_00495EA8,
+    gPowerBarrelText_0, gPowerBarrelText_1,
 };
 char *gShieldText[2] = {
-    D_00495EB8, D_00495EC8,
+    gShieldText_0, gShieldText_1,
 };
 char *gAmmoHeaderText[6] = {
-    D_00495ED0, D_00495EF8, D_00495F00, D_00495F10,
-    D_00495F28, D_00495F40,
+    gAmmoHeaderText_0, D_00495EF8, gAmmoHeaderText_2, gAmmoHeaderText_3,
+    gAmmoHeaderText_4, gAmmoHeaderText_5,
 };
 char *gAmmoNameFmt[2] = {
-    D_00495F60, D_00495F78,
+    gAmmoNameFmt_0, gAmmoNameFmt_1,
 };
 char *gAmmoLineFormats[6] = {
-    D_00495F90, D_00495FB0, D_00495FE0, D_00495FF8,
-    D_00496010, D_00496030,
+    gAmmoLineFormats_0, gAmmoLineFormats_1, gAmmoLineFormats_2, gAmmoLineFormats_3,
+    gAmmoLineFormats_4, gAmmoLineFormats_5,
 };
 char *gDecoDetailTitle[2] = {
-    D_00496060, D_00496080,
+    gDecoDetailTitle_0, gDecoDetailTitle_1,
 };
 char *gAffinityLabel[4] = {
-    D_00496098, D_004960A8, NULL, NULL,
+    gAffinityLabel_0, gAffinityLabel_1, NULL, NULL,
 };
 char *gAmmoNames[20] = {
-    D_004960B0, D_004960C0, D_004960D0, D_004960E0,
-    D_004960F0, D_00496100, D_00496108, D_00496110,
-    D_00496118, D_00496120, D_00496128, D_00496130,
-    D_00496138, D_00496140, D_00496148, D_00496158,
-    D_00496168, D_00496178, NULL, NULL,
+    gAmmoNames_0, gAmmoNames_1, gAmmoNames_2, gAmmoNames_3,
+    gAmmoNames_4, gAmmoNames_5, gAmmoNames_6, gAmmoNames_7,
+    gAmmoNames_8, gAmmoNames_9, gAmmoNames_10, gAmmoNames_11,
+    gAmmoNames_12, gAmmoNames_13, gAmmoNames_14, gAmmoNames_15,
+    gAmmoNames_16, gAmmoNames_17, NULL, NULL,
 };
 char *gElementNames[8] = {
-    D_00496188, D_00496190, D_00496198, D_004961A0,
-    D_004961A8, D_004961B0, D_004961B8, D_004961C0,
+    gElementNames_0, gElementNames_1, gElementNames_2, gElementNames_3,
+    gElementNames_4, D_004961B0, D_004961B8, D_004961C0,
 };
 char *gSkillPointsTitle[2] = {
-    D_004961D0, D_004961F0,
+    gSkillPointsTitle_0, gSkillPointsTitle_1,
 };
 char *gNoSkillText[2] = {
-    D_00496208, NULL,
+    gNoSkillText_0, NULL,
 };
 char *gDecoDetailLabels[4] = {
-    D_00496218, D_00496228, D_00496238, NULL,
+    gDecoDetailLabels_0, gDecoDetailLabels_1, gDecoDetailLabels_2, NULL,
 };
 char *gRangeClassTexts[4] = {
-    D_00496248, D_00496250, D_00496258, D_00496268,
+    gRangeClassTexts_0, gRangeClassTexts_1, gRangeClassTexts_2, gRangeClassTexts_3,
 };
 char *gDecoSkillPtsFmt[2] = {
-    D_00496278, D_00496280,
+    gDecoSkillPtsFmt_0, gDecoSkillPtsFmt_1,
 };
 char *gDecoSkillFmt[2] = {
-    D_00496288, NULL,
+    gDecoSkillFmt_0, NULL,
 };
 char *gShellTypeTexts[4] = {
-    D_00496298, D_004962A8, D_004962B8, NULL,
+    gShellTypeTexts_0, gShellTypeTexts_1, gShellTypeTexts_2, NULL,
 };
 char *gBowShotTexts[12] = {
-    D_004962C8, D_004962D0, D_004962D8, D_004962E0,
-    D_004962E8, D_004962F0, D_004962F8, D_00496300,
-    D_00496308, D_00496310, D_00496318, D_00496320,
+    gBowShotTexts_0, gBowShotTexts_1, gBowShotTexts_2, gBowShotTexts_3,
+    gBowShotTexts_4, gBowShotTexts_5, gBowShotTexts_6, gBowShotTexts_7,
+    gBowShotTexts_8, gBowShotTexts_9, gBowShotTexts_10, gBowShotTexts_11,
 };
 char *gTabPageFmt[2] = {
-    D_00496328, D_00496330,
+    D_00496328, gTabPageFmt_1,
 };
 char *gSortHintText[2] = {
-    D_00496338, D_00496340,
+    gSortHintText_0, D_00496340,
 };
 char *gSelectText[2] = {
-    D_00496348, D_00492620,
+    gSelectText_0, D_00492620,
 };
 char *gDecoModeFmt[2] = {
-    D_00496350, NULL,
+    gDecoModeFmt_0, NULL,
 };
 char *gCommentEditTitle[2] = {
-    D_00496360, NULL,
+    gCommentEditTitle_0, NULL,
 };
 char *gCommentEditText[2] = {
     D_00496378, NULL,
 };
 char *gChatTargetTexts[4] = {
-    D_00496388, D_00496398, D_004963A0, D_004963D0,
+    gChatTargetTexts_0, gChatTargetTexts_1, gChatTargetTexts_2, gChatTargetTexts_3,
 };
 char *gChatNgWordsA[44] = {
-    D_004963F0, D_00496400, D_00496410, D_00496420,
-    D_00496430, D_00496440, D_00496450, D_00496460,
-    D_00496470, D_00496480, D_00496490, D_004964A0,
-    D_004964B0, D_004964C0, D_004964D0, D_004964E0,
-    D_004964F0, D_004964F8, D_00496500, D_00496508,
-    D_00496510, D_00496518, D_00496520, D_00496528,
-    D_00496530, D_00496538, D_00496540, D_00496548,
-    D_00496550, D_00496558, D_00496568, D_00496570,
-    D_00496578, D_00496580, D_00496588, D_00496590,
-    D_00496598, D_004965A8, D_004965B0, D_004965B8,
-    D_004965C0, D_004965C8, D_004965D0, NULL,
+    gChatNgWordsA_0, gChatNgWordsA_1, gChatNgWordsA_2, gChatNgWordsA_3,
+    gChatNgWordsA_4, gChatNgWordsA_5, gChatNgWordsA_6, gChatNgWordsA_7,
+    gChatNgWordsA_8, gChatNgWordsA_9, gChatNgWordsA_10, gChatNgWordsA_11,
+    gChatNgWordsA_12, gChatNgWordsA_13, gChatNgWordsA_14, gChatNgWordsA_15,
+    gChatNgWordsA_16, gChatNgWordsA_17, gChatNgWordsA_18, gChatNgWordsA_19,
+    gChatNgWordsA_20, gChatNgWordsA_21, gChatNgWordsA_22, gChatNgWordsA_23,
+    gChatNgWordsA_24, gChatNgWordsA_25, gChatNgWordsA_26, gChatNgWordsA_27,
+    gChatNgWordsA_28, gChatNgWordsA_29, gChatNgWordsA_30, gChatNgWordsA_31,
+    gChatNgWordsA_32, gChatNgWordsA_33, gChatNgWordsA_34, gChatNgWordsA_35,
+    gChatNgWordsA_36, gChatNgWordsA_37, gChatNgWordsA_38, gChatNgWordsA_39,
+    gChatNgWordsA_40, gChatNgWordsA_41, gChatNgWordsA_42, NULL,
 };
 char *gChatNgWordsB[92] = {
-    D_004965D8, D_004965E0, D_004965E8, D_004965F0,
-    D_004965F8, D_00496600, D_00496608, D_00496610,
-    D_00496618, D_00496620, D_00496628, D_00496638,
-    D_00496648, D_00496650, D_00496658, D_00496660,
-    D_00496668, D_00496670, D_00496678, D_00496680,
-    D_00496688, D_00496690, D_00496698, D_004966A8,
-    D_004966B8, D_004966C0, D_004966C8, D_004966D0,
-    D_004966D8, D_004966E0, D_004966E8, D_004966F0,
-    D_004966F8, D_00496700, D_00496710, D_00496720,
-    D_00496728, D_00496730, D_00496738, D_00496740,
-    D_00496748, D_00496758, D_00496768, D_00496770,
-    D_00496778, D_00496788, D_00496798, D_004967A0,
-    D_004967A8, D_004967B0, D_004967C0, D_004967D0,
-    D_004967E0, D_004967F0, D_004967F8, D_00496800,
-    D_00496808, D_00496810, D_00496818, D_00496820,
-    D_00496830, D_00496840, D_00496850, D_00496860,
-    D_00496870, D_00496880, D_00496890, D_004968A0,
-    D_004968B0, D_004968B8, D_004968C8, D_004968D8,
-    D_004968E8, D_004968F8, D_00496900, D_00496908,
-    D_00496918, D_00496928, D_00496938, D_00496948,
-    D_00496958, D_00496968, D_00496978, D_00496988,
-    D_00496998, D_004969A8, D_004969B8, D_004969C8,
-    D_004969D8, NULL, NULL, NULL,
+    gChatNgWordsB_0, gChatNgWordsB_1, gChatNgWordsB_2, gChatNgWordsB_3,
+    gChatNgWordsB_4, gChatNgWordsB_5, gChatNgWordsB_6, gChatNgWordsB_7,
+    gChatNgWordsB_8, gChatNgWordsB_9, gChatNgWordsB_10, gChatNgWordsB_11,
+    gChatNgWordsB_12, gChatNgWordsB_13, gChatNgWordsB_14, gChatNgWordsB_15,
+    gChatNgWordsB_16, gChatNgWordsB_17, gChatNgWordsB_18, gChatNgWordsB_19,
+    gChatNgWordsB_20, gChatNgWordsB_21, gChatNgWordsB_22, gChatNgWordsB_23,
+    gChatNgWordsB_24, gChatNgWordsB_25, gChatNgWordsB_26, gChatNgWordsB_27,
+    gChatNgWordsB_28, gChatNgWordsB_29, gChatNgWordsB_30, gChatNgWordsB_31,
+    gChatNgWordsB_32, gChatNgWordsB_33, gChatNgWordsB_34, gChatNgWordsB_35,
+    gChatNgWordsB_36, gChatNgWordsB_37, gChatNgWordsB_38, gChatNgWordsB_39,
+    gChatNgWordsB_40, gChatNgWordsB_41, gChatNgWordsB_42, gChatNgWordsB_43,
+    gChatNgWordsB_44, gChatNgWordsB_45, gChatNgWordsB_46, gChatNgWordsB_47,
+    gChatNgWordsB_48, gChatNgWordsB_49, gChatNgWordsB_50, gChatNgWordsB_51,
+    gChatNgWordsB_52, gChatNgWordsB_53, gChatNgWordsB_54, gChatNgWordsB_55,
+    gChatNgWordsB_56, gChatNgWordsB_57, gChatNgWordsB_58, gChatNgWordsB_59,
+    gChatNgWordsB_60, gChatNgWordsB_61, gChatNgWordsB_62, gChatNgWordsB_63,
+    gChatNgWordsB_64, gChatNgWordsB_65, gChatNgWordsB_66, gChatNgWordsB_67,
+    gChatNgWordsB_68, gChatNgWordsB_69, gChatNgWordsB_70, gChatNgWordsB_71,
+    gChatNgWordsB_72, gChatNgWordsB_73, gChatNgWordsB_74, gChatNgWordsB_75,
+    gChatNgWordsB_76, gChatNgWordsB_77, gChatNgWordsB_78, gChatNgWordsB_79,
+    gChatNgWordsB_80, gChatNgWordsB_81, gChatNgWordsB_82, gChatNgWordsB_83,
+    gChatNgWordsB_84, gChatNgWordsB_85, gChatNgWordsB_86, gChatNgWordsB_87,
+    gChatNgWordsB_88, NULL, NULL, NULL,
 };
 char gDefaultPhrases[24][45] = {
 #include "sub_main/00446560.inc"
 };
 char *gMsgEventTexts[8] = {
-    D_004969E8, D_00496A00, D_00496A20, D_00496A38,
+    D_004969E8, gMsgEventTexts_0, gMsgEventTexts_1, gMsgEventTexts_2,
     D_00492620, D_00496328, NULL, NULL,
 };
 char *gNoticeBannerTexts[32] = {
-    D_00496A50, D_00496A70, D_00496A88, D_00496AA0,
-    D_00496AC0, D_00496AE0, D_00496B00, D_00496B20,
-    D_00496B40, D_00496B60, D_00496B80, D_00496BA0,
-    D_00496BC0, D_00496BE0, D_00496C00, D_00496C20,
-    D_00496C50, D_00496C70, D_00496C90, D_00496CB0,
-    D_00496CD0, D_00496D00, D_00496D20, D_00496D40,
-    D_00496D60, D_00496D80, D_00496DA0, D_00496DD0,
+    gNoticeBannerTexts_0, gNoticeBannerTexts_1, gNoticeBannerTexts_2, gNoticeBannerTexts_3,
+    gNoticeBannerTexts_4, gNoticeBannerTexts_5, gNoticeBannerTexts_6, gNoticeBannerTexts_7,
+    gNoticeBannerTexts_8, gNoticeBannerTexts_9, gNoticeBannerTexts_10, gNoticeBannerTexts_11,
+    gNoticeBannerTexts_12, gNoticeBannerTexts_13, gNoticeBannerTexts_14, gNoticeBannerTexts_15,
+    gNoticeBannerTexts_16, gNoticeBannerTexts_17, gNoticeBannerTexts_18, gNoticeBannerTexts_19,
+    gNoticeBannerTexts_20, gNoticeBannerTexts_21, gNoticeBannerTexts_22, gNoticeBannerTexts_23,
+    gNoticeBannerTexts_24, gNoticeAwardText_0, gNoticeRateFlagText_0, D_00496DD0,
     D_00496DF0, D_00496E10, D_00496E30, D_00496E48,
 };
 char *gNoticeBannerItemTexts[24] = {
-    D_00496E58, D_00496E68, D_00496E78, D_00496E90,
-    D_00496EA8, D_00496EB8, D_00496EC0, D_00496ED0,
-    D_00496EE8, D_00496EF8, D_00496F10, D_00496F28,
-    D_00496F38, D_00496F48, D_00496F60, D_00496F80,
-    D_00496FA8, D_00496FB8, D_00496FD0, D_00496FF0,
-    D_00497010, NULL, NULL, NULL,
+    gNoticeBannerItemTexts_0, gNoticeBannerItemTexts_1, gNoticeBannerItemTexts_2, D_00496E90,
+    gNoticeBannerItemTexts_4, gNoticeBannerItemTexts_5, gNoticeBannerItemTexts_6, gNoticeBannerItemTexts_7,
+    gNoticeBannerItemTexts_8, D_00496EF8, D_00496F10, D_00496F28,
+    D_00496F38, D_00496F48, gNoticeBannerItemTexts_14, D_00496F80,
+    D_00496FA8, gNoticeBannerItemTexts_17, gNoticeBannerItemTexts_18, gNoticeBannerItemTexts_19,
+    gNoticeBannerItemTexts_20, NULL, NULL, NULL,
 };
 char *gNoticeBannerTextsItem[12] = {
-    D_00497030, D_00496EF8, D_00496F10, D_00496F28,
+    gNoticeBannerTextsItem_0, D_00496EF8, D_00496F10, D_00496F28,
     D_00496F48, D_00496F80, D_00496FA8, D_00496E90,
     D_00496F38, NULL, NULL, NULL,
 };
 char *gNoticeBannerPlayerTexts[4] = {
-    D_00497048, D_00497060, D_00497080, D_004970A0,
+    gNoticeBannerPlayerTexts_0, gNoticeBannerPlayerTexts_1, gNoticeBannerPlayerTexts_2, gNoticeBannerPlayerTexts_3,
 };
 char *gNoticeMadeTexts[10] = {
-    D_004970B0, D_004970B8, NULL, NULL,
-    D_004970D0, D_00497100, D_00497120, D_00497138,
+    gNoticeMadeTexts_0, gNoticeMadeTexts_1, NULL, NULL,
+    gNoticeMadeTexts_4, gNothingMoreText_0, D_00497120, D_00497138,
     D_00497120, D_00497150,
 };
 char *gSharpnessDownText[2] = {
-    D_00497170, D_00497190,
+    gSharpnessDownText_0, gSharpnessDownText_1,
 };
 char *gSharpnessFullText[2] = {
-    D_004971B0, NULL,
+    gSharpnessFullText_0, NULL,
 };
 char *gLoadingCaptions[2] = {
-    D_004971D0, D_004971F0,
+    gLoadingCaptions_0, gLoadingCaptions_1,
 };
 char *gLoadingCaptionsAlt[4] = {
-    D_00497210, D_00497230, NULL, NULL,
+    gLoadingCaptionsAlt_0, gLoadingCaptionsAlt_1, NULL, NULL,
 };
 EmTraderMsg gEmTraderMsgs[106] = {
 #include "sub_main/00446B30.inc"
 };
 char *gStageNames[80] = {
-    D_00499CC8, D_00499CD0, D_00499CD8, D_00499CE0,
-    D_00499CE8, D_00499CF0, D_00499CF8, D_00499D00,
-    D_00499D10, D_00499D18, D_00499D28, D_00499D30,
+    gStageNames_0, D_00499CD0, D_00499CD8, D_00499CE0,
+    D_00499CE8, D_00499CF0, D_00499CF8, gStageNames_7,
+    gStageNames_8, D_00499D18, D_00499D28, D_00499D30,
     D_00499D38, D_00499D40, D_00499D40, D_00499D40,
     D_00499CD8, D_00499CE0, D_00499CE8, D_00499CF0,
     D_00499CF8, D_00499D30, D_00499D38, D_00499CD0,
     D_00499D18, D_00499D28, NULL, NULL,
-    D_00499D48, D_00499D48, D_00499D50, D_00499D80,
+    D_00499D48, D_00499D48, D_00499D50, gPlselHelpOnline_0,
     D_00499D48, D_00499D48, D_00499D48, D_00499DB0,
     D_00499DB8, D_00499DC0, D_00499DD0, D_00499DD8,
     D_00499DE0, D_00499DE8, D_00499DF0, D_00499DF8,
     D_00499E00, D_00499E08, D_00499E10, D_00499E20,
-    D_00499E40, D_00499E60, D_00499E80, D_00499EA0,
-    D_00499EC0, D_00499EF0, D_00499F48, D_00499F60,
-    D_00491900, D_00499F78, D_00499F80, D_00499FA0,
+    D_00499E40, D_00499E60, gPlselStartPrompt_0, D_00499EA0,
+    D_00499EC0, gPlselPointRateFormat_0, D_00499F48, D_00499F60,
+    D_00491900, D_00499F78, gPlselWaitLine1_0, gPlselWaitLine2_0,
     D_00491500, D_004916C0, D_004916D0, D_00491528,
     D_00499FC0, NULL, NULL, NULL,
     D_00491500, D_004916C0, D_004916D0, D_00491528,
@@ -11489,117 +11643,117 @@ char *gStageNames[80] = {
     D_00499FE0, D_0049A020, D_0049A060, NULL,
 };
 char *gQuestKindNames[96] = {
-    D_0049A098, D_0049A0A0, D_0049A0C0, D_0049A0E0,
-    D_0049A100, D_0049A120, D_0049A140, D_0049A160,
-    D_0049A180, D_0049A1A0, D_0049A1C0, D_0049A1E0,
-    D_0049A200, D_0049A220, D_0049A240, D_0049A260,
-    D_0049A280, D_0049A2A0, D_0049A2C0, D_0049A2E0,
-    D_0049A300, D_0049A320, D_0049A340, D_0049A360,
-    D_0049A380, D_0049A3A0, D_0049A3C0, D_0049A3E0,
-    D_0049A400, D_0049A420, D_0049A450, D_0049A490,
-    D_0049A4D0, D_0049A500, D_0049A530, D_0049A560,
-    D_0049A5A0, D_0049A5D0, D_0049A610, D_0049A640,
-    D_0049A680, D_0049A6A0, D_0049A6C0, D_0049A6E0,
-    D_0049A700, D_0049A720, D_0049A740, D_0049A760,
-    D_0049A780, D_0049A7A0, D_0049A7C0, D_0049A7E0,
-    D_0049A7F0, D_0049A810, D_0049A830, D_0049A850,
-    D_0049A870, D_0049A890, D_0049A8B0, D_0049A8D0,
-    D_0049A910, D_0049A930, D_0049A950, D_0049A970,
-    D_0049A9A0, D_0049A9E0, D_0049AA00, D_0049AA20,
-    D_0049AA40, D_0049AA60, D_0049AA80, D_0049AAA0,
-    D_0049AAC0, D_0049AAE0, D_0049AB00, D_0049AB20,
-    D_0049AB40, D_0049AB60, D_0049AB80, D_0049ABA0,
-    D_0049ABD0, D_0049AC00, D_0049AC30, D_0049AC50,
-    D_0049AC70, D_0049AC90, D_0049ACB0, D_0049ACD0,
-    D_0049ACF0, D_0049AD10, D_0049AD30, D_0049AD50,
-    D_0049AD70, D_0049AD90, D_0049ADC0, NULL,
+    D_0049A098, gQuestKindNames_1, gQuestKindNames_2, gQuestKindNames_3,
+    gQuestKindNames_4, gQuestKindNames_5, gQuestKindNames_6, gQuestKindNames_7,
+    gQuestKindNames_8, gQuestKindNames_9, gQuestKindNames_10, gQuestKindNames_11,
+    gQuestKindNames_12, gQuestKindNames_13, gQuestKindNames_14, gQuestKindNames_15,
+    gQuestKindNames_16, gQuestKindNames_17, gQuestKindNames_18, gQuestKindNames_19,
+    gQuestKindNames_20, gQuestKindNames_21, gQuestKindNames_22, gQuestKindNames_23,
+    gQuestKindNames_24, gQuestKindNames_25, gQuestKindNames_26, gQuestKindNames_27,
+    gQuestKindNames_28, gQuestKindNames_29, gQuestKindNames_30, gQuestKindNames_31,
+    gQuestKindNames_32, gQuestKindNames_33, gQuestKindNames_34, gQuestKindNames_35,
+    gQuestKindNames_36, gQuestKindNames_37, gQuestKindNames_38, gQuestKindNames_39,
+    gQuestKindNames_40, gQuestKindNames_41, gQuestKindNames_42, gQuestKindNames_43,
+    gQuestKindNames_44, gQuestKindNames_45, gQuestKindNames_46, gQuestKindNames_47,
+    gQuestKindNames_48, gQuestKindNames_49, gQuestKindNames_50, gQuestKindNames_51,
+    gQuestKindNames_52, gQuestKindNames_53, gQuestKindNames_54, gQuestKindNames_55,
+    gQuestKindNames_56, gQuestKindNames_57, gQuestKindNames_58, gQuestKindNames_59,
+    gQuestKindNames_60, gQuestKindNames_61, gQuestKindNames_62, gQuestKindNames_63,
+    gQuestKindNames_64, gQuestKindNames_65, gQuestKindNames_66, gQuestKindNames_67,
+    gQuestKindNames_68, gQuestKindNames_69, gQuestKindNames_70, gQuestKindNames_71,
+    gQuestKindNames_72, gQuestKindNames_73, gQuestKindNames_74, gQuestKindNames_75,
+    gQuestKindNames_76, gQuestKindNames_77, gQuestKindNames_78, gQuestKindNames_79,
+    gQuestKindNames_80, gQuestKindNames_81, gQuestKindNames_82, gQuestKindNames_83,
+    gQuestKindNames_84, gQuestKindNames_85, gQuestKindNames_86, gQuestKindNames_87,
+    gQuestKindNames_88, gQuestKindNames_89, gQuestKindNames_90, gQuestKindNames_91,
+    gQuestKindNames_92, gQuestKindNames_93, gQuestKindNames_94, NULL,
 };
 char *gSkillEffectNames[204] = {
-    D_0049ADF0, D_0049AE00, D_0049AE10, D_0049AE20,
-    D_0049AE30, D_0049AE40, D_0049AE50, D_0049AE60,
-    D_0049AE70, D_0049AE80, D_0049AE90, D_0049AE98,
-    D_0049AEA0, D_0049AEA8, D_0049AEB0, D_0049AEB8,
-    D_0049AEC8, D_0049AED0, D_0049AED8, D_0049AEE0,
-    D_0049AEE8, D_0049AEF0, D_0049AEF8, D_0049AF00,
-    D_0049AF08, D_0049AF10, D_0049AF18, D_0049AF20,
-    D_0049AF40, D_0049AF60, D_0049AF80, D_0049AF98,
-    D_0049AFA0, D_0049AFB0, D_0049AFC0, D_0049AFD0,
-    D_0049AFD8, D_0049AFE8, D_0049AFF8, D_0049B008,
-    D_0049B018, D_0049B028, D_0049B038, D_0049B048,
-    D_0049B058, D_0049B068, D_0049B078, D_0049B088,
-    D_0049B098, D_0049B0A8, D_0049B0B8, D_0049B0C8,
-    D_0049B0D0, D_0049B0E0, D_0049B0F0, D_0049B100,
-    D_0049B110, D_0049B120, D_0049B140, D_0049B160,
-    D_0049B180, D_0049B1A0, D_0049B1B8, D_0049B1D0,
-    D_0049B1E0, D_0049B200, D_0049B220, D_0049B240,
-    D_0049B260, D_0049B280, D_0049B2A0, D_0049B2C0,
-    D_0049B2D8, D_0049B2E0, D_0049B2F0, D_0049B300,
-    D_0049B320, D_0049B338, D_0049B348, D_0049B358,
-    D_0049B368, D_0049B378, D_0049B388, D_0049B390,
-    D_0049B398, D_0049B3A0, D_0049B3A8, D_0049B3B0,
-    D_0049B3B8, D_0049B3C8, D_0049B3D8, D_0049B3E0,
-    D_0049B3F0, D_0049B400, D_0049B410, D_0049B420,
-    D_0049B430, D_0049B440, D_0049B450, D_0049B460,
-    D_0049B470, D_0049B480, D_0049B490, D_0049B4A0,
-    D_0049B4B0, D_0049B4C0, D_0049B4D0, D_0049B4E0,
-    D_0049B4F0, D_0049B500, D_0049B510, D_0049B520,
-    D_0049B530, D_0049B540, D_0049B550, D_0049B560,
-    D_0049B570, D_0049B580, D_0049B590, D_0049B5A0,
-    D_0049B5B0, D_0049B5C0, D_0049B5D0, D_0049B5E0,
-    D_0049B5F0, D_0049B600, D_0049B610, D_0049B620,
-    D_0049B630, D_0049B640, D_0049B650, D_0049B660,
-    D_0049B670, D_0049B680, D_0049B690, D_0049B6A0,
-    D_0049B6B0, D_0049B6C0, D_0049B6D0, D_0049B6E0,
-    D_0049B6F0, D_0049B700, D_0049B710, D_0049B720,
-    D_0049B730, D_0049B740, D_0049B750, D_0049B760,
-    D_0049B768, D_0049B770, D_0049B778, D_0049B780,
-    D_0049B798, D_0049B7A8, D_0049B7B8, D_0049B7C8,
-    D_0049B7D8, D_0049B7E0, D_0049B7E8, D_0049B7F0,
-    D_0049B7F8, D_0049B808, D_0049B810, D_0049B820,
-    D_0049B840, D_0049B858, D_0049B868, D_0049B878,
-    D_0049B888, D_0049B898, D_0049B8A8, D_0049B8B8,
-    D_0049B8C0, D_0049B8D0, D_0049B8E0, D_0049B8F0,
-    D_0049B900, D_0049B910, D_0049B920, D_0049B930,
-    D_0049B940, D_0049B960, D_0049B978, D_0049B988,
-    D_0049B990, D_0049B9A0, D_0049B9B0, D_0049B9C0,
-    D_0049B9D0, D_0049B9D8, D_0049B9E8, D_0049BA00,
-    D_0049BA20, D_0049BA40, D_0049BA60, D_0049BA78,
-    D_0049BA80, D_0049BA90, D_0049BAA0, D_0049BAB0,
-    D_0049BAC0, D_0049BAD0, NULL, NULL,
+    gSkillEffectNames_0, gSkillEffectNames_1, gSkillEffectNames_2, gSkillEffectNames_3,
+    gSkillEffectNames_4, gSkillEffectNames_5, gSkillEffectNames_6, gSkillEffectNames_7,
+    gSkillEffectNames_8, gSkillEffectNames_9, gSkillEffectNames_10, gSkillEffectNames_11,
+    gSkillEffectNames_12, gSkillEffectNames_13, gSkillEffectNames_14, gSkillEffectNames_15,
+    gSkillEffectNames_16, gSkillEffectNames_17, gSkillEffectNames_18, gSkillEffectNames_19,
+    gSkillEffectNames_20, gSkillEffectNames_21, gSkillEffectNames_22, gSkillEffectNames_23,
+    gSkillEffectNames_24, gSkillEffectNames_25, gSkillEffectNames_26, gSkillEffectNames_27,
+    gSkillEffectNames_28, gSkillEffectNames_29, gSkillEffectNames_30, gSkillEffectNames_31,
+    gSkillEffectNames_32, gSkillEffectNames_33, gSkillEffectNames_34, gSkillEffectNames_35,
+    gSkillEffectNames_36, gSkillEffectNames_37, gSkillEffectNames_38, gSkillEffectNames_39,
+    gSkillEffectNames_40, gSkillEffectNames_41, gSkillEffectNames_42, gSkillEffectNames_43,
+    gSkillEffectNames_44, gSkillEffectNames_45, gSkillEffectNames_46, gSkillEffectNames_47,
+    gSkillEffectNames_48, gSkillEffectNames_49, gSkillEffectNames_50, D_0049B0C8,
+    gSkillEffectNames_52, gSkillEffectNames_53, gSkillEffectNames_54, gSkillEffectNames_55,
+    gSkillEffectNames_56, gSkillEffectNames_57, gSkillEffectNames_58, gSkillEffectNames_59,
+    gSkillEffectNames_60, gSkillEffectNames_61, gSkillEffectNames_62, gSkillEffectNames_63,
+    gSkillEffectNames_64, gSkillEffectNames_65, gSkillEffectNames_66, gSkillEffectNames_67,
+    gSkillEffectNames_68, gSkillEffectNames_69, gSkillEffectNames_70, gSkillEffectNames_71,
+    gSkillEffectNames_72, gSkillEffectNames_73, gSkillEffectNames_74, gSkillEffectNames_75,
+    gSkillEffectNames_76, gSkillEffectNames_77, gSkillEffectNames_78, gSkillEffectNames_79,
+    gSkillEffectNames_80, gSkillEffectNames_81, gSkillEffectNames_82, gSkillEffectNames_83,
+    gSkillEffectNames_84, gSkillEffectNames_85, gSkillEffectNames_86, gSkillEffectNames_87,
+    gSkillEffectNames_88, gSkillEffectNames_89, gSkillEffectNames_90, gSkillEffectNames_91,
+    D_0049B3F0, gSkillEffectNames_93, gSkillEffectNames_94, gSkillEffectNames_95,
+    gSkillEffectNames_96, gSkillEffectNames_97, gSkillEffectNames_98, gSkillEffectNames_99,
+    gSkillEffectNames_100, gSkillEffectNames_101, gSkillEffectNames_102, gSkillEffectNames_103,
+    gSkillEffectNames_104, gSkillEffectNames_105, gSkillEffectNames_106, gSkillEffectNames_107,
+    gSkillEffectNames_108, gSkillEffectNames_109, gSkillEffectNames_110, gSkillEffectNames_111,
+    gSkillEffectNames_112, gSkillEffectNames_113, gSkillEffectNames_114, gSkillEffectNames_115,
+    gSkillEffectNames_116, gSkillEffectNames_117, gSkillEffectNames_118, gSkillEffectNames_119,
+    gSkillEffectNames_120, gSkillEffectNames_121, gSkillEffectNames_122, gSkillEffectNames_123,
+    gSkillEffectNames_124, gSkillEffectNames_125, gSkillEffectNames_126, gSkillEffectNames_127,
+    gSkillEffectNames_128, gSkillEffectNames_129, gSkillEffectNames_130, gSkillEffectNames_131,
+    gSkillEffectNames_132, gSkillEffectNames_133, gSkillEffectNames_134, gSkillEffectNames_135,
+    gSkillEffectNames_136, gSkillEffectNames_137, gSkillEffectNames_138, gSkillEffectNames_139,
+    gSkillEffectNames_140, gSkillEffectNames_141, gSkillEffectNames_142, gSkillEffectNames_143,
+    gSkillEffectNames_144, gSkillEffectNames_145, gSkillEffectNames_146, gSkillEffectNames_147,
+    gSkillEffectNames_148, gSkillEffectNames_149, gSkillEffectNames_150, gSkillEffectNames_151,
+    gSkillEffectNames_152, gSkillEffectNames_153, gSkillEffectNames_154, gSkillEffectNames_155,
+    gSkillEffectNames_156, gSkillEffectNames_157, gSkillEffectNames_158, gSkillEffectNames_159,
+    gSkillEffectNames_160, gSkillEffectNames_161, gSkillEffectNames_162, gSkillEffectNames_163,
+    gSkillEffectNames_164, gSkillEffectNames_165, gSkillEffectNames_166, gSkillEffectNames_167,
+    gSkillEffectNames_168, gSkillEffectNames_169, gSkillEffectNames_170, D_0049B8B8,
+    D_0049B8C0, gSkillEffectNames_173, gSkillEffectNames_174, gSkillEffectNames_175,
+    gSkillEffectNames_176, gSkillEffectNames_177, gSkillEffectNames_178, gSkillEffectNames_179,
+    gSkillEffectNames_180, gSkillEffectNames_181, gSkillEffectNames_182, gSkillEffectNames_183,
+    gSkillEffectNames_184, gSkillEffectNames_185, gSkillEffectNames_186, gSkillEffectNames_187,
+    gSkillEffectNames_188, gSkillEffectNames_189, gSkillEffectNames_190, gSkillEffectNames_191,
+    gSkillEffectNames_192, gSkillEffectNames_193, gSkillEffectNames_194, D_0049BA78,
+    gSkillEffectNames_196, gSkillEffectNames_197, gSkillEffectNames_198, gSkillEffectNames_199,
+    gSkillEffectNames_200, D_0049BAD0, NULL, NULL,
 };
 char *gSkillNames[88] = {
-    D_0049A098, D_0049BAD8, D_0049BAE0, D_0049BAE8,
-    D_0049BAF0, D_0049BB00, D_0049BB10, D_0049BB18,
-    D_0049BB28, D_0049BB38, D_0049BB40, D_0049BB48,
-    D_0049BB58, D_0049BB68, D_0049BB70, D_0049BB80,
-    D_0049BB88, D_0049BB98, D_0049BBA0, D_0049BBA8,
-    D_0049BBB8, D_0049BBC8, D_0049BBD0, D_0049BBD8,
-    D_0049BBE8, D_004961C0, D_0049BBF8, D_0049BC08,
-    D_0049BC10, D_0049BC18, D_0049BC20, D_0049BC28,
-    D_0049BC30, D_0049BC38, D_0049BC48, D_0049BC50,
-    D_0049BC58, D_0049BC68, D_0049BC78, D_0049BC88,
-    D_0049BC98, D_0049BCA0, D_0049BCB0, D_0049B8C0,
-    D_0049BCC0, D_0049BCC8, D_004961B0, D_0049BCD0,
-    D_0049BCE0, D_0049B3F0, D_0049BCE8, D_0049BCF8,
-    D_0049BD08, D_0049BD10, D_0049BD18, D_0049BD20,
-    D_0049BD28, D_004961B8, D_0049BD30, D_0049BD38,
-    D_0049BD40, D_0049B8B8, D_0049B0C8, D_0049BD50,
-    D_0049BD60, D_0049BD70, D_0049BD78, D_0049BD88,
-    D_00495EF8, D_0049BD98, D_0049BDA8, D_0049BDB8,
-    D_0049BDC0, D_0049BDD0, D_0049BDD8, D_0049BDE8,
-    D_0049BDF0, D_0049BA78, D_0049BDF8, D_0049BE00,
-    D_0049BE08, D_0049BAD0, D_0049BE10, D_0049BE18,
+    D_0049A098, gSkillNames_1, gSkillNames_2, gSkillNames_3,
+    gSkillNames_4, gSkillNames_5, gSkillNames_6, gSkillNames_7,
+    gSkillNames_8, gSkillNames_9, gSkillNames_10, gSkillNames_11,
+    gSkillNames_12, gSkillNames_13, gSkillNames_14, gSkillNames_15,
+    D_0049BB88, gSkillNames_17, gSkillNames_18, gSkillNames_19,
+    gSkillNames_20, gSkillNames_21, gSkillNames_22, gSkillNames_23,
+    gSkillNames_24, D_004961C0, gSkillNames_26, gSkillNames_27,
+    gSkillNames_28, gSkillNames_29, gSkillNames_30, gSkillNames_31,
+    gSkillNames_32, gSkillNames_33, gSkillNames_34, gSkillNames_35,
+    gSkillNames_36, gSkillNames_37, gSkillNames_38, gSkillNames_39,
+    gSkillNames_40, gSkillNames_41, gSkillNames_42, D_0049B8C0,
+    gSkillNames_44, gSkillNames_45, D_004961B0, gSkillNames_47,
+    gSkillNames_48, D_0049B3F0, gSkillNames_50, gSkillNames_51,
+    gSkillNames_52, gSkillNames_53, gSkillNames_54, gSkillNames_55,
+    gSkillNames_56, D_004961B8, gSkillNames_58, gSkillNames_59,
+    gSkillNames_60, D_0049B8B8, D_0049B0C8, gSkillNames_63,
+    gSkillNames_64, gSkillNames_65, gSkillNames_66, gSkillNames_67,
+    D_00495EF8, gSkillNames_69, gSkillNames_70, gSkillNames_71,
+    gSkillNames_72, gSkillNames_73, gSkillNames_74, gSkillNames_75,
+    gSkillNames_76, D_0049BA78, gSkillNames_78, gSkillNames_79,
+    gSkillNames_80, D_0049BAD0, gSkillNames_82, gSkillNames_83,
     D_0049BE20, NULL, NULL, NULL,
 };
 char *gHelpTexts_0[16] = {
     D_0049BE30, D_0049BE70, D_0049BE90, D_0049BEC0,
-    D_0049BEF0, D_0049BF10, D_0049BF30, D_0049BF50,
-    D_0049BF70, D_0049BF90, D_0049BFC0, D_0049BFF0,
-    D_0049C020, D_0049C050, D_0049C080, NULL,
+    gHelpTexts_0_0, gHelpTexts_0_1, gHelpTexts_0_2, gHelpTexts_0_3,
+    gHelpTexts_0_4, gHelpTexts_0_5, gHelpTexts_0_6, D_0049BFF0,
+    gHelpTexts_0_8, gHelpTexts_0_9, gHelpTexts_0_10, NULL,
 };
 char *D_00447610[2] = {D_0049C0B0, D_0049C0D0};
 char *gHelpTexts_3[2] = {
-    D_0049C0F0, D_0049C110,
+    gHelpTexts_3_0, gHelpTexts_3_1,
 };
 char *D_00447620[4] = {D_0049C140, D_0049C170, D_0049C190, D_0049C1C0};
 char *D_00447630[8] = {
@@ -11607,39 +11761,39 @@ char *D_00447630[8] = {
     D_0049C290, D_0049C2D0, NULL, NULL,
 };
 char *gHelpTexts_9[16] = {
-    D_0049C300, D_0049BFF0, D_0049C330, D_0049C360,
-    D_0049C3A0, D_0049C3E0, D_0049C420, D_0049C460,
-    D_0049C490, D_0049C4C0, D_0049C4F0, D_0049C520,
-    D_0049C540, D_0049C570, D_0049C5E0, D_0049C600,
+    gHelpTexts_9_0, D_0049BFF0, gHelpTexts_9_2, gHelpTexts_9_3,
+    gHelpTexts_9_4, gHelpTexts_9_5, gHelpTexts_9_6, gHelpTexts_9_7,
+    gHelpTexts_9_8, gHelpTexts_9_9, gHelpTexts_9_10, gHelpTexts_9_11,
+    gHelpTexts_9_12, gHelpTexts_9_13, gHelpTexts_9_14, gHelpTexts_9_15,
 };
 char *gHelpTexts_10[8] = {
     D_0049C670, D_0049C0D0, D_0049C0B0, D_0049C690,
-    D_0049C6A0, D_0049C6D0, NULL, NULL,
+    gHelpTexts_10_0, gHelpTexts_10_1, NULL, NULL,
 };
 char *gHelpTexts_11[8] = {
-    D_0049C710, D_0049C740, D_0049C760, D_0049C7A0,
-    D_0049C7D0, D_0049C7F0, D_0049C830, NULL,
+    gHelpTexts_11_0, gHelpTexts_11_1, gHelpTexts_11_2, gHelpTexts_11_3,
+    gHelpTexts_11_4, gHelpTexts_11_5, gHelpTexts_11_6, NULL,
 };
 char *gHelpTexts_12[12] = {
-    D_0049C860, D_0049C890, D_0049C8C0, D_0049C8F0,
-    D_0049C940, D_0049C970, D_0049C9A0, D_0049C9E0,
-    D_0049CA10, NULL, D_0049CA70, D_0049CA88,
+    D_0049C860, D_0049C890, D_0049C8C0, gHelpTexts_12_0,
+    gHelpTexts_12_1, gHelpTexts_12_2, gHelpTexts_12_3, gHelpTexts_12_4,
+    gHelpTexts_12_5, NULL, D_0049CA70, D_0049CA88,
 };
 char *gSymbolColorNames[12] = {
-    D_0049CA98, D_0049CAA8, D_0049CAB8, D_0049CAC8,
-    D_0049CAD8, D_0049CAE8, D_0049CAF8, D_0049CB08,
-    D_0049CB18, D_0049CB28, D_0049CB38, D_0049CB48,
+    gSymbolColorNames_0, gSymbolColorNames_1, gSymbolColorNames_2, gSymbolColorNames_3,
+    gSymbolColorNames_4, gSymbolColorNames_5, gSymbolColorNames_6, gSymbolColorNames_7,
+    gSymbolColorNames_8, gSymbolColorNames_9, gSymbolColorNames_10, gSymbolColorNames_11,
 };
 /* The seasons, then day and night (gDaytimeNames, an alias at + 0xC: as an object of its own
  * MWCC would 8-align it). */
 char *gSeasonNames[5] = {
-    D_0049CB58, D_0049CB60, D_0049CB68, D_0049CB70, D_0049CB78,
+    gSeasonNames_0, gSeasonNames_1, gSeasonNames_2, gDaytimeNames_0, gDaytimeNames_1,
 };
 HunterTitle gHunterTitles[148] = {
 #include "sub_main/00447750.inc"
 };
 char *gPriceLegendTexts[4] = {
-    D_0049D500, D_0049D520, D_0049D540, NULL,
+    gPriceLegendTexts_0, gPriceLegendTexts_1, gPriceLegendTexts_2, NULL,
 };
 char *D_00447C00[4] = {
     D_0049D560, D_0049D588, D_0049D5A0, NULL,
@@ -11679,24 +11833,24 @@ char **gAwardNoticeLines[10] = {
 };
 char *gAwardGalleryTitles[37] = {
     D_0049D750, D_0049D768, D_0049D778, D_0049D788,
-    D_0049D7A0, D_0049D7B8, D_0049D7D0, D_0049D7E8,
-    D_0049D7F8, D_0049D810, D_0049D828, D_0049D838,
-    D_0049D848, D_0049D860, D_0049D880, D_0049D898,
-    D_0049D8A8, D_0049D8B8, D_0049D8D0, D_0049D8E8,
-    D_0049D8F8, D_0049D908, D_0049D918, D_0049D928,
-    D_0049D938, D_0049D940, D_0049D950, D_0049D960,
-    D_0049D970, D_0049D980, D_0049D990, D_0049D9A0,
-    D_0049D9B0, D_0049D9C0, D_0049D9D0, D_0049D9E0,
-    D_0049D9F0,
+    gAwardGalleryTitles_0, gAwardGalleryTitles_1, gAwardGalleryTitles_2, gAwardGalleryTitles_3,
+    gAwardGalleryTitles_4, gAwardGalleryTitles_5, gAwardGalleryTitles_6, gAwardGalleryTitles_7,
+    gAwardGalleryTitles_8, gAwardGalleryTitles_9, gAwardGalleryTitles_10, gAwardGalleryTitles_11,
+    gAwardGalleryTitles_12, gAwardGalleryTitles_13, gAwardGalleryTitles_14, gAwardGalleryTitles_15,
+    gAwardGalleryTitles_16, gAwardGalleryTitles_17, gAwardGalleryTitles_18, gAwardGalleryTitles_19,
+    gAwardGalleryTitles_20, gAwardGalleryTitles_21, gAwardGalleryTitles_22, gAwardGalleryTitles_23,
+    gAwardGalleryTitles_24, gAwardGalleryTitles_25, gAwardGalleryTitles_26, gAwardGalleryTitles_27,
+    gAwardGalleryTitles_28, gAwardGalleryTitles_29, gAwardGalleryTitles_30, gAwardGalleryTitles_31,
+    gAwardGalleryTitles_32,
 };
 char *gAwardDojoTitles[8] = {
-    D_0049DA00, D_0049DA20, D_0049DA40, D_0049DA60,
-    D_0049DA80, D_0049DA20, D_0049DA40, D_0049DAA0,
+    gAwardDojoTitles_0, D_0049DA20, D_0049DA40, gAwardDojoTitles_3,
+    gAwardDojoTitles_4, D_0049DA20, D_0049DA40, gAwardDojoTitles_7,
 };
 char *gArenaEmPenMenuTexts[2] = {
     D_0049DAC0, D_0049DAE0,
 };
-char *gArenaEmReleasedText = D_0049DB00;
+char *gArenaEmReleasedText = gArenaEmReleasedText_0;
 char *gArenaEmLineFmts[4] = {
     D_0049DB20, D_0049DB30, D_0049DB40, D_0049DB50,
 };
@@ -11704,184 +11858,184 @@ char *gArenaEmLineFmts[4] = {
  * [0] none) are not 8-aligned, so neither can start an object of its own. */
 char *gArenaEmBlankLine[10] = {
     D_0049DB60, D_004957A0, NULL, NULL,
-    D_0049DB80, D_0049DBB0, D_0049DBF0, D_0049DC20,
-    D_0049DC40, D_0049DC60,
+    gArenaEmPenHelp_1, gArenaEmPenHelp_2, gArenaEmPenHelp_3, gArenaEmPenHelp_4,
+    gArenaEmPenHelp_5, gArenaEmPenHelp_6,
 };
 char *gArenaEmTameNames[5] = {
-    D_0049DC80, D_0049DC90, D_0049DCA0, D_0049DCB0,
-    D_0049DCC0,
+    gArenaEmTameNames_0, gArenaEmTameNames_1, gArenaEmTameNames_2, gArenaEmTameNames_3,
+    gArenaEmTameNames_4,
 };
 char *gArenaEmCondNames[5] = {
     D_0049DCD0, D_0049DCD8, D_00495DA8, D_0049DCE0,
     D_0049DCE8,
 };
 char *gArenaEmRankNames[10] = {
-    D_0049DCF0, D_0049DCF8, D_0049DD08, D_0049DD18,
-    D_00495DA8, D_0049DD20, D_0049DD30, D_0049DD38,
-    D_0049DD48, D_0049DD58,
+    gArenaEmRankNames_0, gArenaEmRankNames_1, gArenaEmRankNames_2, gArenaEmRankNames_3,
+    D_00495DA8, gArenaEmRankNames_5, gArenaEmRankNames_6, gArenaEmRankNames_7,
+    gArenaEmRankNames_8, gArenaEmRankNames_9,
 };
 char *gHornSongTexts[53] = {
     D_0049DD60, D_0049DD70, D_0049DD90, D_0049DDB0,
-    D_0049DDD0, D_0049DDF0, D_0049DDD0, D_0049DE10,
-    D_0049DE30, D_0049DE50, D_0049DE30, D_0049DE68,
-    D_0049DE68, D_0049DE78, D_0049DE68, D_0049DE88,
-    D_0049DE88, D_0049DE98, D_0049DEA8, D_0049DEA8,
+    gHornSongTexts_1, gHornSongTexts_0, gHornSongTexts_1, gHornSongTexts_2,
+    D_0049DE30, gHornSongTexts_4, D_0049DE30, D_0049DE68,
+    D_0049DE68, gHornSongTexts_8, D_0049DE68, D_0049DE88,
+    D_0049DE88, gHornSongTexts_12, D_0049DEA8, D_0049DEA8,
     D_0049DEB8, D_0049DEB8, D_0049DEB8, D_0049DED0,
     D_0049DED0, D_0049DEF0, D_0049DEF0, D_0049DF08,
-    D_0049DF08, D_0049DF18, D_0049DF18, D_0049DF30,
-    D_0049DF50, D_0049DF70, D_0049DF50, D_0049DF90,
-    D_0049DFB0, D_0049DFD0, D_0049DFB0, D_0049DFF0,
-    D_0049E010, D_0049E030, D_0049E010, D_0049E050,
-    D_0049E070, D_0049E090, D_0049E070, D_0049E0B0,
-    D_0049E0D0, D_0049E0F0, D_0049E0D0, D_0049E108,
-    D_0049E120,
+    D_0049DF08, D_0049DF18, D_0049DF18, gHornSongTexts_26,
+    D_0049DF50, gHornSongTexts_28, D_0049DF50, gHornSongTexts_30,
+    D_0049DFB0, gHornSongTexts_32, D_0049DFB0, gHornSongTexts_34,
+    D_0049E010, gHornSongTexts_36, D_0049E010, gHornSongTexts_38,
+    D_0049E070, gHornSongTexts_40, D_0049E070, gHornSongTexts_42,
+    D_0049E0D0, gHornSongTexts_44, D_0049E0D0, gHornSongTexts_46,
+    gHornSongTexts_47,
 };
 char *gHunterTitleDescs[149] = {
     D_0049E140, D_0049E160, D_0049E190, D_0049E1C0,
-    D_0049E1F0, D_0049E210, D_0049E240, D_0049E270,
-    D_0049E2A0, D_0049E2D0, D_0049E320, D_0049E350,
-    D_0049E380, D_0049E3D0, D_0049E400, D_0049E430,
-    D_0049E4A0, D_0049E4D0, D_0049E500, D_0049E530,
-    D_0049E580, D_0049E5B0, D_0049E5E0, D_0049E610,
-    D_0049E640, D_0049E690, D_0049E6C0, D_0049E6F0,
-    D_0049E720, D_0049E750, D_0049E7A0, D_0049E7F0,
-    D_0049E830, D_0049E870, D_0049E8B0, D_0049E8F0,
-    D_0049E910, D_0049E940, D_0049E970, D_0049E9B0,
-    D_0049E9F0, D_0049EA20, D_0049EA40, D_0049EA60,
-    D_0049EA80, D_0049EAA0, D_0049EAC0, D_0049EAE0,
-    D_0049EB00, D_0049EB20, D_0049EB40, D_0049EB60,
-    D_0049EB80, D_0049EBA0, D_0049EBC0, D_0049EBE0,
-    D_0049EC00, D_0049EC20, D_0049EC40, D_0049EC60,
-    D_0049EC80, D_0049ECA0, D_0049ECC0, D_0049ECE0,
-    D_0049ED00, D_0049ED20, D_0049ED40, D_0049ED60,
-    D_0049ED80, D_0049EDA0, D_0049EDC0, D_0049EDE0,
-    D_0049EE00, D_0049EE20, D_0049EE40, D_0049EE60,
-    D_0049EE80, D_0049EEA0, D_0049EEC0, D_0049EEE0,
-    D_0049EF00, D_0049EF20, D_0049EF40, D_0049EF60,
-    D_0049EF80, D_0049EFA0, D_0049EFC0, D_0049EFE0,
-    D_0049F000, D_0049F020, D_0049F040, D_0049F060,
-    D_0049F080, D_0049F0A0, D_0049F0C0, D_0049F0E0,
-    D_0049F100, D_0049F120, D_0049F140, D_0049F160,
-    D_0049F1A0, D_0049F1D0, D_0049F200, D_0049F230,
-    D_0049F260, D_0049F290, D_0049F2C0, D_0049F300,
-    D_0049F340, D_0049F380, D_0049F3C0, D_0049F3F0,
-    D_0049F430, D_0049F470, D_0049F4A0, D_0049F4F0,
-    D_0049F540, D_0049F570, D_0049F5A0, D_0049F5E0,
-    D_0049F620, D_0049F680, D_0049F6C0, D_0049F700,
-    D_0049F730, D_0049F760, D_0049F790, D_0049F7C0,
-    D_0049F7F0, D_0049F820, D_0049F840, D_0049F870,
-    D_0049F8A0, D_0049F8D0, D_0049F900, D_0049F930,
-    D_0049F960, D_0049F990, D_0049F9C0, D_0049F9F0,
-    D_0049FA20, D_0049FA60, D_0049FA80, D_0049FAA0,
-    D_0049FAD0, D_0049FB00, D_0049FB30, D_0049FB70,
+    gHunterTitleDescs_0, gHunterTitleDescs_1, gHunterTitleDescs_2, gHunterTitleDescs_3,
+    gHunterTitleDescs_4, gHunterTitleDescs_5, gHunterTitleDescs_6, gHunterTitleDescs_7,
+    gHunterTitleDescs_8, gHunterTitleDescs_9, gHunterTitleDescs_10, gHunterTitleDescs_11,
+    gHunterTitleDescs_12, gHunterTitleDescs_13, gHunterTitleDescs_14, gHunterTitleDescs_15,
+    gHunterTitleDescs_16, gHunterTitleDescs_17, gHunterTitleDescs_18, gHunterTitleDescs_19,
+    gHunterTitleDescs_20, gHunterTitleDescs_21, gHunterTitleDescs_22, gHunterTitleDescs_23,
+    gHunterTitleDescs_24, gHunterTitleDescs_25, gHunterTitleDescs_26, gHunterTitleDescs_27,
+    gHunterTitleDescs_28, gHunterTitleDescs_29, gHunterTitleDescs_30, gHunterTitleDescs_31,
+    gHunterTitleDescs_32, gHunterTitleDescs_33, gHunterTitleDescs_34, gHunterTitleDescs_35,
+    gHunterTitleDescs_36, gHunterTitleDescs_37, gHunterTitleDescs_38, gHunterTitleDescs_39,
+    gHunterTitleDescs_40, gHunterTitleDescs_41, gHunterTitleDescs_42, gHunterTitleDescs_43,
+    gHunterTitleDescs_44, gHunterTitleDescs_45, gHunterTitleDescs_46, gHunterTitleDescs_47,
+    gHunterTitleDescs_48, gHunterTitleDescs_49, gHunterTitleDescs_50, gHunterTitleDescs_51,
+    gHunterTitleDescs_52, gHunterTitleDescs_53, gHunterTitleDescs_54, gHunterTitleDescs_55,
+    gHunterTitleDescs_56, gHunterTitleDescs_57, gHunterTitleDescs_58, gHunterTitleDescs_59,
+    gHunterTitleDescs_60, gHunterTitleDescs_61, gHunterTitleDescs_62, gHunterTitleDescs_63,
+    gHunterTitleDescs_64, gHunterTitleDescs_65, gHunterTitleDescs_66, gHunterTitleDescs_67,
+    gHunterTitleDescs_68, gHunterTitleDescs_69, gHunterTitleDescs_70, gHunterTitleDescs_71,
+    gHunterTitleDescs_72, gHunterTitleDescs_73, gHunterTitleDescs_74, gHunterTitleDescs_75,
+    gHunterTitleDescs_76, gHunterTitleDescs_77, gHunterTitleDescs_78, gHunterTitleDescs_79,
+    gHunterTitleDescs_80, gHunterTitleDescs_81, gHunterTitleDescs_82, gHunterTitleDescs_83,
+    gHunterTitleDescs_84, gHunterTitleDescs_85, gHunterTitleDescs_86, gHunterTitleDescs_87,
+    gHunterTitleDescs_88, gHunterTitleDescs_89, gHunterTitleDescs_90, gHunterTitleDescs_91,
+    gHunterTitleDescs_92, gHunterTitleDescs_93, gHunterTitleDescs_94, gHunterTitleDescs_95,
+    gHunterTitleDescs_96, gHunterTitleDescs_97, gHunterTitleDescs_98, gHunterTitleDescs_99,
+    gHunterTitleDescs_100, gHunterTitleDescs_101, gHunterTitleDescs_102, gHunterTitleDescs_103,
+    gHunterTitleDescs_104, gHunterTitleDescs_105, gHunterTitleDescs_106, gHunterTitleDescs_107,
+    gHunterTitleDescs_108, gHunterTitleDescs_109, gHunterTitleDescs_110, gHunterTitleDescs_111,
+    gHunterTitleDescs_112, gHunterTitleDescs_113, gHunterTitleDescs_114, gHunterTitleDescs_115,
+    gHunterTitleDescs_116, gHunterTitleDescs_117, gHunterTitleDescs_118, gHunterTitleDescs_119,
+    gHunterTitleDescs_120, gHunterTitleDescs_121, gHunterTitleDescs_122, gHunterTitleDescs_123,
+    gHunterTitleDescs_124, gHunterTitleDescs_125, gHunterTitleDescs_126, gHunterTitleDescs_127,
+    gHunterTitleDescs_128, gHunterTitleDescs_129, gHunterTitleDescs_130, gHunterTitleDescs_131,
+    gHunterTitleDescs_132, gHunterTitleDescs_133, gHunterTitleDescs_134, gHunterTitleDescs_135,
+    gHunterTitleDescs_136, gHunterTitleDescs_137, gHunterTitleDescs_138, gHunterTitleDescs_139,
+    gHunterTitleDescs_140, gHunterTitleDescs_141, gHunterTitleDescs_142, gHunterTitleDescs_143,
     gEmClassNames_0,
 };
 char D_00448198[15] = {
 #include "sub_main/00448198.inc"
 };
-char D_004481B0[0x30] = {
+char D_004481B0[48] = {
 #include "sub_main/004481B0.inc"
 };
-char D_004481E0[0x20] = {
+char D_004481E0[32] = {
 #include "sub_main/004481E0.inc"
 };
-char D_00448200[0x10] = {
+char gHelpTexts_1_0[16] = {
 #include "sub_main/00448200.inc"
 };
-char D_00448210[0x20] = {
+char gHelpTexts_1_1[32] = {
 #include "sub_main/00448210.inc"
 };
-char D_00448230[0x20] = {
+char gHelpTexts_1_2[32] = {
 #include "sub_main/00448230.inc"
 };
-char D_00448250[0x30] = {
+char gHelpTexts_1_3[48] = {
 #include "sub_main/00448250.inc"
 };
-char D_00448280[0x20] = {
+char gHelpTexts_1_4[32] = {
 #include "sub_main/00448280.inc"
 };
-char D_004482A0[0x20] = {
+char gHelpTexts_1_5[32] = {
 #include "sub_main/004482A0.inc"
 };
-char D_004482C0[0x10] = {
+char D_004482C0[16] = {
 #include "sub_main/004482C0.inc"
 };
-char D_004482D0[0x20] = {
+char gHelpTexts_1_9[32] = {
 #include "sub_main/004482D0.inc"
 };
-char D_004482F0[0x30] = {
+char gHelpTexts_1_10[48] = {
 #include "sub_main/004482F0.inc"
 };
-char D_00448320[0x20] = {
+char gHelpTexts_1_11[32] = {
 #include "sub_main/00448320.inc"
 };
-char D_00448340[0x20] = {
+char gHelpTexts_1_12[32] = {
 #include "sub_main/00448340.inc"
 };
-char D_00448360[0x20] = {
+char gHelpTexts_1_13[32] = {
 #include "sub_main/00448360.inc"
 };
-char D_00448380[0x40] = {
+char gHelpTexts_1_18[64] = {
 #include "sub_main/00448380.inc"
 };
-char D_004483C0[0x20] = {
+char gHelpTexts_1_19[32] = {
 #include "sub_main/004483C0.inc"
 };
-char D_004483E0[0x30] = {
+char gHelpTexts_1_20[48] = {
 #include "sub_main/004483E0.inc"
 };
 f32 gDayStepTimes[4] = {
 #include "sub_main/00448410.inc"
 };
-char gAmbSePosHub84[0x10] = {
+f32 gAmbSePosHub84[1][3] = {
 #include "sub_main/00448420.inc"
 };
-u32 gAmbSeIdsHub84[2] = {
+s32 gAmbSeIdsHub84[1] = {
 #include "sub_main/00448430.inc"
 };
-u32 gAmbSePeriodsHub84[2] = {
+s16 gAmbSePeriodsHub84[1] = {
 #include "sub_main/00448438.inc"
 };
-u32 gAmbSeKindsHub84[2] = {
+s16 gAmbSeKindsHub84[1] = {
 #include "sub_main/00448440.inc"
 };
-u32 gAmbSeSlotsHub84[2] = {
+s16 gAmbSeSlotsHub84[1] = {
 #include "sub_main/00448448.inc"
 };
-u32 gAmbSePosElderHall[6] = {
+f32 gAmbSePosElderHall[2][3] = {
 #include "sub_main/00448450.inc"
 };
-char gAmbSeIdsElderHall[0x8] = {
+s32 gAmbSeIdsElderHall[2] = {
 #include "sub_main/00448468.inc"
 };
-char gAmbSePeriodsElderHall[0x8] = {
+s16 gAmbSePeriodsElderHall[2] = {
 #include "sub_main/00448470.inc"
 };
-u32 gAmbSeKindsElderHall[2] = {
+s16 gAmbSeKindsElderHall[2] = {
 #include "sub_main/00448478.inc"
 };
-u32 gAmbSeSlotsElderHall[4] = {
+s16 gAmbSeSlotsElderHall[2] = {
 #include "sub_main/00448480.inc"
 };
-u32 gAmbSePosHub89[12] = {
+f32 gAmbSePosHub89[4][3] = {
 #include "sub_main/00448490.inc"
 };
-u32 gAmbSeIdsHub89[4] = {
+s32 gAmbSeIdsHub89[4] = {
 #include "sub_main/004484C0.inc"
 };
-u32 gAmbSePeriodsHub89[2] = {
+s16 gAmbSePeriodsHub89[4] = {
 #include "sub_main/004484D0.inc"
 };
-u32 gAmbSeKindsHub89[2] = {
+s16 gAmbSeKindsHub89[4] = {
 #include "sub_main/004484D8.inc"
 };
-u32 gAmbSeSlotsHub89[2] = {
+s16 gAmbSeSlotsHub89[4] = {
 #include "sub_main/004484E0.inc"
 };
-u32 gAmbSeFlagsHub89[2] = {
+u16 gAmbSeFlagsHub89[4] = {
 #include "sub_main/004484E8.inc"
 };
-u32 gHub85EffectPos[48] = {
+f32 gHub85EffectPos[16][3] = {
 #include "sub_main/004484F0.inc"
 };
 FogParam gFogDefault = {
@@ -11890,7 +12044,7 @@ FogParam gFogDefault = {
 FogParam gFogHouse = {
 #include "sub_main/004485C0.inc"
 };
-u32 gAreaInfo[200] = {
+AreaInfo gAreaInfo[200] = {
 #include "sub_main/004485D0.inc"
 };
 u8 gSkyDayTable[96] = {
@@ -11908,10 +12062,10 @@ f32 gGlowPosHouse[12][3] = {
 s16 gGlowEntryHouse[16] = {
 #include "sub_main/00448AA0.inc"
 };
-f32 gGlowPosHub83[12][3] = {
+f32 gGlowPosOnlineVillage[12][3] = {
 #include "sub_main/00448AC0.inc"
 };
-s16 gGlowEntryHub83[16] = {
+s16 gGlowEntryOnlineVillage[16] = {
 #include "sub_main/00448B50.inc"
 };
 f32 gGlowPosHub84[14][3] = {
@@ -11986,13 +12140,13 @@ f32 gAreaPropPosHouse[8] = {
 f32 gAreaPropRotHouse[8] = {
 #include "sub_main/00449230.inc"
 };
-f32 gAreaPropPosHub83[8][3] = {
+f32 gAreaPropPosOnlineVillage[8][3] = {
 #include "sub_main/00449250.inc"
 };
-f32 gAreaPropScaleHub83[8] = {
+f32 gAreaPropScaleOnlineVillage[8] = {
 #include "sub_main/004492B0.inc"
 };
-s16 gAreaPropEntryHub83[8] = {
+s16 gAreaPropEntryOnlineVillage[8] = {
 #include "sub_main/004492D0.inc"
 };
 f32 gAreaPropPosHub84[6][3] = {
@@ -12045,4 +12199,154 @@ f32 gRiverPtsDay78[12] = {
 };
 f32 gRiverPtsDayA1[12] = {
 #include "sub_main/00449500.inc"
+};
+
+/* The camera's blocking spheres, and the atmosphere layers' speeds and periods. */
+f32 gAreaBlockSpheres_33[36] = {
+#include "sub_main/00449530.inc"
+};
+f32 gAreaBlockSpheres_38[28] = {
+#include "sub_main/004495C0.inc"
+};
+f32 gAreaBlockSpheres_40[12] = {
+#include "sub_main/00449630.inc"
+};
+f32 gAreaBlockSpheres_45[16] = {
+#include "sub_main/00449660.inc"
+};
+f32 gAreaBlockSpheres_49[20] = {
+#include "sub_main/004496A0.inc"
+};
+f32 gAreaBlockSpheres_57[8] = {
+#include "sub_main/004496F0.inc"
+};
+f32 gAreaBlockSpheres_66[28] = {
+#include "sub_main/00449710.inc"
+};
+f32 gAreaBlockSpheres_91[24] = {
+#include "sub_main/00449780.inc"
+};
+f32 gAreaBlockSpheres_110[20] = {
+#include "sub_main/004497E0.inc"
+};
+f32 gAreaBlockSpheres_113[20] = {
+#include "sub_main/00449830.inc"
+};
+f32 gAreaBlockSpheres_114[16] = {
+#include "sub_main/00449880.inc"
+};
+f32 gAreaBlockSpheres_26[8] = {
+#include "sub_main/004498C0.inc"
+};
+f32 gAreaBlockSpheres_141[8] = {
+#include "sub_main/004498E0.inc"
+};
+f32 gAreaBlockSpheres_142[12] = {
+#include "sub_main/00449900.inc"
+};
+f32 gAreaBlockSpheres_143[20] = {
+#include "sub_main/00449930.inc"
+};
+f32 gAreaBlockSpheres_145[24] = {
+#include "sub_main/00449980.inc"
+};
+f32 gAreaBlockSpheres_185[52] = {
+#include "sub_main/004499E0.inc"
+};
+f32 gAreaBlockSpheres_190[28] = {
+#include "sub_main/00449AB0.inc"
+};
+f32 gAreaBlockSpheres_191[36] = {
+#include "sub_main/00449B20.inc"
+};
+f32 *gAreaBlockSpheres[200] = {
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, gAreaBlockSpheres_26, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, gAreaBlockSpheres_33, NULL, NULL,
+    NULL, NULL, gAreaBlockSpheres_38, NULL,
+    gAreaBlockSpheres_40, NULL, NULL, NULL,
+    NULL, gAreaBlockSpheres_45, NULL, NULL,
+    NULL, gAreaBlockSpheres_49, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, gAreaBlockSpheres_57, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, gAreaBlockSpheres_66, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, gAreaBlockSpheres_91,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, gAreaBlockSpheres_110, NULL,
+    NULL, gAreaBlockSpheres_113, gAreaBlockSpheres_114, NULL,
+    NULL, NULL, NULL, gAreaBlockSpheres_26,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, gAreaBlockSpheres_141, gAreaBlockSpheres_142, gAreaBlockSpheres_143,
+    NULL, gAreaBlockSpheres_145, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, gAreaBlockSpheres_185, NULL, NULL,
+    NULL, NULL, gAreaBlockSpheres_190, gAreaBlockSpheres_191,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+};
+f32 gSnowLayerSpeedsState0[4] = {
+#include "sub_main/00449ED0.inc"
+};
+f32 gSnowLayerSpeedsState1[4] = {
+#include "sub_main/00449EE0.inc"
+};
+f32 gSnowLayerSpeedsState2[4] = {
+#include "sub_main/00449EF0.inc"
+};
+s16 gAtmosScrollSpeeds[4] = {
+#include "sub_main/00449F00.inc"
+};
+s16 gAtmosScrollSpeedsState0[4] = {
+#include "sub_main/00449F08.inc"
+};
+s16 gAtmosScrollSpeedsState1[4] = {
+#include "sub_main/00449F10.inc"
+};
+s16 gAtmosScrollSpeedsState2[4] = {
+#include "sub_main/00449F18.inc"
+};
+s16 *gAtmosScrollSpeedsByState[4] = {
+    gAtmosScrollSpeedsState0, gAtmosScrollSpeedsState1, gAtmosScrollSpeedsState2, NULL,
+};
+s16 gSwampLayerPeriodsState0[4] = {
+#include "sub_main/00449F30.inc"
+};
+s16 gSwampLayerPeriodsState1[4] = {
+#include "sub_main/00449F38.inc"
+};
+s16 gSwampLayerPeriodsState2[4] = {
+#include "sub_main/00449F40.inc"
+};
+s16 *gSwampLayerPeriodsByState[3] = {
+    gSwampLayerPeriodsState0, gSwampLayerPeriodsState1, gSwampLayerPeriodsState2,
+};
+s16 gAreaAtmosLayerCounts[16] = {
+#include "sub_main/00449F60.inc"
 };

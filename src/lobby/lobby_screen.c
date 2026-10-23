@@ -41,49 +41,53 @@
 #include "lobby_menu.h"
 #include "shadow.h"
 #include "lobby_text.h"
-void *memset(void *, s32, u32);
-void Text_SetSize(s32);
+#include "area_draw.h"
+#include "capsule.h"
+#include "hud.h"
+#include "lobby_net.h"
+#include "lobby_npc.h"
+#include "stream.h"
+#include "text.h"
+#include "lobby_screen.h"
+#include "arm_wrestling.h"
+#include "draw_helpers.h"
+#include "elder_forecast.h"
+#include "game_util.h"
+#include "hunter_card.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_frame.h"
+#include "lobby_steps.h"
+#include "lobby_world.h"
+#include "market.h"
+#include "mem_util.h"
+#include "menu_util.h"
+#include "my_house.h"
+#include "net_scene.h"
+#include "pets.h"
+#include "quest_offers.h"
+#include "quest_order_terms.h"
+#include "rand.h"
+#include "ship_mine_menus.h"
+#include "town_area_change.h"
+#include "town_frame.h"
+#include "town_members.h"
+#include "town_players.h"
+#include "village_progress.h"
+#include "screen_fade.h"
+#include "libc.h"
+#include "libkernl.h"
 
-void Lobby_CountPlayTime(void);
 extern void (*gLobbySceneSteps[])(void);
-void Loading_Start(void);
-void Money_PayPending(u8 silent);
-void Lobby_ReceiveWhileWaiting(void);
-void TownPc_LoadAllModels(void);
-void Hud_LoadTextures(void);
-void Quest_LoadCommonModels(void);
-void Quest_SetupStub(void);
-void Shadow_Spawn(void *obj, s16 type);
-void Loading_Stop(void);
-void Loading_SetMessage(u32 mode);
 /* unit's own declaration: the second parameter is a u8 here, as LobbyScreen_LoadArea passes it; with the definition's s32, that call compiles differently */
 u8 Town_EnterArea(u16 area, u8 newDrawSlots);
-void Town_SpawnNpcs(u16 a);
 
-void Actor_SetPosture(void *a, u16 mode, s32 b, s32 c);
-void Actor_SetState(void *obj, s32 group, s32 state);
-s32 Area_IsOnlineHouse(s32);
-void Town_FreeArea(void);
-void LobbyText_Open(s32);
-s32 HunterCard_SendChanged(void);
-void LobbyBgm_Stop(void);
-void LobbyBgm_StopAll(void);
-void Stream_Pause(s32, s32);
-void Stream_FadeOut(s32, s32);
-u8 FadeA_GetState(void);
-void FadeA_Start(s32);
-s32 Bgm_IsNpcTunePlaying(void);
-void Bgm_StopEvent(void *obj);
-void Bgm_StopEventFade(Player *p);
-s32 Game_IsOnline(void);
-void Notice_ResetQueue(void);
 extern s32 gTownMenuOpen;
 extern s8 gLobbyScreenMode;
 extern s8 gLobbyScreenStep;
 extern s8 gLobbyScreenSubStep;
 extern u8 gLobbyTextDirty;
 extern LobbyMenu *gLobbyMenu;
-s32 LobbyScreen_EnterSeq(s32);
 extern s32 gTownMode;
 extern u8 gMenuInputLock;
 
@@ -100,11 +104,6 @@ void LobbyScene_Run(void)
     gLobbySceneSteps[gLobbyScreenMode]();
 }
 
-void LobbyTime_Tick(void);
-u16 LobbyPad_Read(s8 port);
-void LobbyMenu_QueueLayers(void);
-void Hud_StartQuest(void);
-void LobbyMenu_SetDraw(void *draw0, void *draw1, void *draw2, void *draw3);
 extern void (*gLobbyScreenModes[])(LobbyState *p);   /* the lobby screen's modes (gLobbyScreenMode) */
 
 #define LOBBY_TEXT_SIZE 6   /* the lobby's text size (Text_SetSize), set each frame */
@@ -149,23 +148,9 @@ s32 LobbyScreen_Run(void)
     return 0;
 }
 
-void Village_UpdateProgress(s32 a);
-void Poogie_DailyReset(void);
 extern s8 gContestPrizeGiven;
 extern s16 gPetDebugBars[4];
-void Save_ClearNewMarks(void);
-void Rate_RaiseRandom(void);
-s32 Rate_UpdateDue(void);
-void Rate_UpdatePrices(void);
-void Rate_TakeSnapshot(void);
-void Rotation_Update(s32 kind);
-s8 Contest_RollLevel(void);
 extern s8 gContestLevel;
-s32 LobbyWorld_GetSeason(void);
-s32 LobbyTime_IsPm(void);
-void ElderForecast_Roll(void);
-void QuestList_Rebuild(void);
-void *memcpy(void *dst, const void *src, u32 n);
 
 /*
  * Resets the town's day on entering the lobby screen: the meal's
@@ -242,25 +227,15 @@ void LobbyScreen_InitLists(void)
     }
 }
 
-void FileQueue_Cancel(void);
-void Game_ResetSubsystems(void);
-void CamReq_Reset(void);
-void Bgm_Init(void);
-u16 Rand_Next(s32 stream);
 extern u16 gLobbyEnterRoll;
 extern u16 gLobbyEnterRand;
-void Rate_ClearSnapshot(void);
 void Season_Set(s32 a);
 extern u32 gTownDay;
 extern u32 gTownSeason;
 extern u32 gTownSeasonDays[3];
 extern u32 gTownDayTicks;
 extern s32 gLobbyTime;
-void LobbyTime_SetClock(u32 time);
-void LobbyWorld_CatchUp(void);
 extern u8 gMyName[];                   /* the player's name */
-void Player_LoadFromSave(Player *p);
-void HunterCard_Build(void *out);
 
 extern u8 *gStageFile;
 /*
@@ -334,7 +309,7 @@ void LobbyScreen_Enter(s32 mode)
         memcpy(gMyName, gSave.name, LOBBY_USER_NAME_LEN + 1);
         memcpy(gMyUserId, "", LOBBY_USER_ID_LEN);
     } else {
-        memset(gStageFile, 0, 0x8000);    /* the stage file's buffer, 32 KB */
+        memset(gStageFile, 0, 32768);    /* the stage file's buffer, 32 KB */
     }
     Player_LoadFromSave(&gPlayers[gScene.localPlayer]);
     memcpy(gNetUsers[gScene.localPlayer].name, gMyName, LOBBY_USER_NAME_LEN);
@@ -380,9 +355,6 @@ void LobbyScreen_LoadModels(void)
 extern u8 gTownActionDelay;
 extern u8 gMemberNamesOff;
 extern u8 gTownCamEndOnClose;
-void Quest_Clear(void);
-void *Hud_Init(void);
-void LobbyBgm_ClearState(void);
 
 /*
  * Resets the town's state for the player entering it: the player's action
@@ -452,7 +424,6 @@ void LobbyScreen_LoadArea(s32 mode)
     gLobby->unk3968 = 1;
 }
 
-extern LobbyStartPos gLobbyStartPos;
 extern u8 gTownSpawnSet;
 /*
  * The players' positions and moveTo points as rows of gPlayers' stride:
@@ -468,21 +439,6 @@ typedef struct PlayerVecRow {
 extern PlayerVecRow gPlayerPosRows[];
 extern PlayerVecRow gPlayerMoveToRows[];
 extern s32 gLobbyStartPosIdx;
-void HunterCard_Apply(s8 idx, void *src);
-void TownPc_Spawn(u8 i, NetUser *u, char *name);
-void Town_PlaceLocalPlayer(s32 area);
-void CamCtl_Init(void);
-void Town_SetDrawSky(s8 a);
-void Town_StartAreaMusic(s32 a);
-void TownPc_SyncMembers(void);
-void TownMsg_SendNameNotice(void);
-void TownMsg_SendSyncAsk(void);
-void TownMsg_SendArea(u16 area);
-void TownMsg_SendPlace(Player *obj);
-void CamCtl_Update(s32 a);
-s32 LobbyScreen_LoadBanks(void);
-void Loading_Request(void);
-s32 LobbyArea_StartEvent(void);
 
 /*
  * Enters the lobby screen in `mode` (enum LobbyEnterMode), a step a call
@@ -582,14 +538,14 @@ s32 LobbyScreen_EnterSeq(s32 mode)
             gPlayers[slot].startPos[1] = -30.0f;
             gPlayers[slot].startPos[2] = 10434.0f;
             gPlayers[slot].startAngle = 0;
-            gPlayers[slot].nextArea = AREA_HUB_0x83;
+            gPlayers[slot].nextArea = AREA_ONLINE_VILLAGE;
             gTownSpawnSet = 1;
             break;
         }
         case LOBBY_ENTER_VILLAGE:
         case LOBBY_ENTER_VILLAGE_STAY:
             gTownSpawnSet = 0;
-            gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x83;
+            gPlayers[gScene.localPlayer].nextArea = AREA_ONLINE_VILLAGE;
             break;
         case LOBBY_ENTER_TOWN:
             gTownSpawnSet = 0;
@@ -597,7 +553,7 @@ s32 LobbyScreen_EnterSeq(s32 mode)
             break;
         default:
             gTownSpawnSet = 0;
-            gPlayers[gScene.localPlayer].nextArea = AREA_HUB_0x83;
+            gPlayers[gScene.localPlayer].nextArea = AREA_ONLINE_VILLAGE;
             break;
         }
         switch (mode) {
@@ -693,18 +649,9 @@ s32 LobbyScreen_EnterSeq(s32 mode)
     return LOBBY_STEP_BUSY;
 }
 
-s32 Save_TestEventFlag(s32 flag);
-void Save_SetEventFlag(s32 flag);
 u8 Village_FacilityLevel(s32 kind);
 /* unit's own declaration: declared s32 here; with the definition's s16 return, the tests of its result in LobbyArea_StartEvent compile differently */
 s32 Village_MilestoneState(s32 timer);
-s32 MyHouse_IsOwner(void);
-void CamReq_LobbyEvent(void);
-void CamReq_TownTour(s32 n);
-void Bgm_PlayTownTune(s32 a, s32 b);
-void EventFlag_Set(s32 n);
-void Jingle_Play(void *obj, s32 id);
-extern s32 gLobbyStartPosIdx;
 
 /* Places the player at an area's start: its position, its moveTo point
  * (so it doesn't walk off) and its facing. */
@@ -723,7 +670,7 @@ static inline void Player_SetStart(Player *pl, f32 x, f32 y, f32 z, s32 angle)
  * started, else 0. With LOBBY_START_POS_AREA the player is first put at
  * the area's own start (AREA_HUB_0x57, AREA_HUB_0x89).
  * - AREA_HUB_0x57: its first entry's scene (CAM_REQ_LOBBY_EVENT).
- * - AREA_HUB_0xAA, 0xAB and 0xAC: their first visit's tour, with its tune.
+ * - AREA_HUB_0xAA, AREA_HUB_0xAB and AREA_HUB_0xAC: their first visit's tour, with its tune.
  * - AREA_HUB_0x89, the village: the first tour not yet played of a
  *   facility that has reached its level (the tavern, the smithy and the
  *   port, at levels 1 and 2; each one is also added to the gallery), then
@@ -739,7 +686,7 @@ s32 LobbyArea_StartEvent(void)
     switch (gScene.area) {
     case AREA_HUB_0x57:
         if (gLobbyStartPosIdx == LOBBY_START_POS_AREA) {
-            Player_SetStart(pl, 10615.0f, 0.0f, 14774.0f, 0x8000);
+            Player_SetStart(pl, 10615.0f, 0.0f, 14774.0f, 32768);
         }
         if (Save_TestEventFlag(EVENT_FLAG_HUB_0x57_SCENE) == 0) {
             Save_SetEventFlag(EVENT_FLAG_HUB_0x57_SCENE);
@@ -776,7 +723,7 @@ s32 LobbyArea_StartEvent(void)
         break;
     case AREA_HUB_0x89:
         if (gLobbyStartPosIdx == LOBBY_START_POS_AREA) {
-            Player_SetStart(pl, 7623.0f, -56.0f, 10173.9f, 0x40B6);
+            Player_SetStart(pl, 7623.0f, -56.0f, 10173.9f, 16566);
         }
         if (Save_TestEventFlag(EVENT_FLAG_TOUR_TAVERN_1) == 0 && Village_FacilityLevel(VILLAGE_FACILITY_TAVERN) > 0) {
             Save_SetEventFlag(EVENT_FLAG_TOUR_TAVERN_1);
@@ -864,13 +811,6 @@ s32 LobbyArea_StartEvent(void)
     return 0;
 }
 
-void Stream_Stop(s32 ch);
-void Stream_Reset(void);
-void LobbyBgm_Shutdown(void);
-void TownPc_Remove(Player *p);
-void Mem_Fill(void *dst, u8 c, s32 n);
-void TownPc_InitAll(s32 a);
-
 /*
  * Leaves the lobby screen before the entry `mode` (enum LobbyEnterMode)
  * that follows. For LOBBY_ENTER_VILLAGE_RETURN and LOBBY_ENTER_TOWN the
@@ -891,8 +831,8 @@ s32 LobbyScreen_FadeOut(s32 mode)
         switch (mode) {
         case LOBBY_ENTER_TOWN:
         case LOBBY_ENTER_VILLAGE_RETURN:
-            Stream_FadeOut(BGM_CH_MUSIC, 0x10);
-            gLobby->countdown = 0x10;
+            Stream_FadeOut(BGM_CH_MUSIC, 16);
+            gLobby->countdown = 16;
             FadeA_Start(FADE_OUT_BLACK);
             break;
         }
@@ -926,23 +866,13 @@ s32 LobbyScreen_FadeOut(s32 mode)
     return LOBBY_STEP_BUSY;
 }
 
-void Loading_Request(void);
-s32 Sound_StopBank(s32 slot);
-void FlushCache(s32 kind);
-void Sound_QueueBank(u32 id, void *buf);
-s32 FileQueue_IsBusy(void);
 struct SndFile;
 s32 Sound_LoadBank(struct SndFile *f, u32 slot);
-s32 Sound_CheckTransfer(void);
-void NetMenu_Open(u8 mode);
 /* unit's own declaration: declared s32 here, and the caller keeps the low byte; with the definition's u8 return, LobbyScreen_LoadBanks compiles differently */
 s32 NetMenu_Update(void);
-void Stream_SetVol(s32 ch, s32 vol);
-void Stream_FadeToMax(s32 ch, s16 frames);
 extern s8 gVoiceBanks[];                   /* the voice banks: 16 voices per sex */
 extern s16 gAreaSeBanks[];                  /* an area's own bank, by area */
 extern s16 gLobbyCommonSeBank;
-void Lobby_DrawBlackLine(void);
 
 /*
  * Loads the lobby screen's sound banks, each in three sub-steps
@@ -990,7 +920,7 @@ s32 LobbyScreen_LoadBanks(void)
         Loading_Request();
         gLobbyScreenSubStep++;
         Sound_StopBank(SE_SLOT_PLAYER(0));
-        bank = SND_BANK_FILE(gVoiceBanks[gPlayers[gScene.localPlayer].gender * 0x10 + gPlayers[gScene.localPlayer].voice] + SND_BANK_VOICES);
+        bank = SND_BANK_FILE(gVoiceBanks[gPlayers[gScene.localPlayer].gender * 16 + gPlayers[gScene.localPlayer].voice] + SND_BANK_VOICES);
         FlushCache(0);
         Sound_QueueBank(bank, buf);
         break;
@@ -1052,11 +982,11 @@ s32 LobbyScreen_LoadBanks(void)
     case 11:
         if (Sound_CheckTransfer() == 0) {
             if (Game_IsOnline() == 1 || gSysSettings.offline == 0) {
-                gLobbyScreenSubStep = 0xE;
+                gLobbyScreenSubStep = 14;
             } else {
                 gLobbyScreenSubStep++;
                 Stream_FadeOut(BGM_CH_MUSIC, BGM_FADE_FRAMES);
-                gLobby->countdown = 0xF;
+                gLobby->countdown = 15;
                 NetMenu_Open(NETMENU_MODE_SAVE_ASK);
                 LobbyMenu_SetDraw(Lobby_DrawBlackLine, 0, 0, 0);
             }
@@ -1153,15 +1083,6 @@ void LobbyScreen_Start(void)
         break;
     }
 }
-
-void Town_SetNpcArea(u16 area);
-void TownPc_SyncMembers(void);
-void Bgm_PlayAreaMusic(u16);
-s32 LobbyBgm_GetTrack(void);
-void LobbyBgm_Replay(void);
-void CamCtl_Update(s32 a);
-s32 LobbyArea_StartEvent(void);
-s32 LobbyScreen_LoadBanks(void);
 
 /*
  * The lobby screen's mode LOBBY_SCREEN_ENTER_AREA, after LEAVE_AREA: loads
@@ -1280,7 +1201,7 @@ void LobbyScreen_LeaveArea(void)
         gLobbyScreenStep += 1;
         /* falls through */
     case 1:
-        Stream_FadeOut(BGM_CH_MUSIC, 0x10);
+        Stream_FadeOut(BGM_CH_MUSIC, 16);
         if (Bgm_IsNpcTunePlaying() == 1) {
             Bgm_StopEvent(pl);
         } else if (gScene.area == AREA_TOWN_ARENA) {
@@ -1307,20 +1228,13 @@ void LobbyScreen_LeaveArea(void)
     }
 }
 
-void Town_Frame(void);
-void Jingle_Play(void *obj, s32 id);
-s32 CamReq_State(void);
-void CamReq_Cancel(void);
-s32 Poogie_PlaceByPlayer(void);
-Em *Npc_Find(u8 kind);
-
 /*
  * The lobby screen's mode LOBBY_SCREEN_TOUR: a scene or camera tour runs
  * with the player hidden, under TOWN_MODE_SCENE; in the online houses a
  * tune plays near the end of its 480 frames (16 s). Once the camera's
  * request has ended, the screen fades out. The player is put back where it
  * stood before the tour (gLobbyStartPos entry 0) when the tour set a
- * start position, and the NPC of kind 0x14 placed by it (Poogie_PlaceByPlayer). After 5 frames
+ * start position, and the NPC of kind 20 placed by it (Poogie_PlaceByPlayer). After 5 frames
  * the screen fades in and the town runs again (LOBBY_SCREEN_TOWN).
  */
 void LobbyScreen_RunTour(void)
@@ -1347,7 +1261,7 @@ void LobbyScreen_RunTour(void)
         case AREA_ONLINE_HOUSE_1:
         case AREA_ONLINE_HOUSE_2:
             if (--gLobbyMenu->timer == 1) {
-                Jingle_Play(&gPlayers[gScene.localPlayer], 0xB);
+                Jingle_Play(&gPlayers[gScene.localPlayer], 11);
             }
             break;
         }
@@ -1374,7 +1288,7 @@ void LobbyScreen_RunTour(void)
             pl->visible = 1;
             CamReq_Cancel();
             if (Poogie_PlaceByPlayer() == 1) {
-                Actor_SetState(Npc_Find(0x14), 0, 0x58);
+                Actor_SetState(Npc_Find(20), 0, 88);
             }
         }
         break;
@@ -1392,8 +1306,6 @@ void LobbyScreen_RunTour(void)
         break;
     }
 }
-
-s32 ShipMenu_IsTouring(void);
 
 /*
  * Which tour runs, for the village port's ship (Area_Update): 2 during
@@ -1444,10 +1356,6 @@ s32 LobbyScreen_RunStep(void)
 
 /* The file's data: the start positions, then the screen's three tables of
  * steps by mode (enum LobbyScreenMode). */
-void LobbyScreen_EnterArea(void);
-void LobbyScreen_Start(void);
-void LobbyScreen_LeaveArea(void);
-void LobbyScreen_RunTour(void);
 LobbyStartPos gLobbyStartPos = {
 #include "lobby/008195A0.inc"
 };

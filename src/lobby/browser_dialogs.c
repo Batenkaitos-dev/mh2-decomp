@@ -1,20 +1,18 @@
 /*
- * The page's frame and the browser's dialog objects. Browser_OpenDialog
- * asks for a dialog box; Page_SetKind keeps what a portal page is to the
- * game (enum PageKind) and opens the dialog it asks for; Page_Extend and
- * Page_SetMargins set the page's size and margins.
- *
- * Then, per dialog object (the page's background image, the page itself,
- * the scroll bars, the status line, the menu of three, the software
- * keyboard, the pointer and focus, and the dialog box), in the order of
- * their object lists (BLAYER_*): a function that draws its list, a create
- * function (its list, position and size), an update function (its state,
- * BrowserObj.state, from the work area's BDLG_* field for it) and a draw
- * function. The software keyboard's dialog writes the registration form's
- * boxes into the registration record (gRegRecord).
+ * The browser's dialog objects. Per dialog object (the page's background
+ * image, the page itself, the scroll bars, the status line, the menu of
+ * three, the software keyboard, the pointer and focus, and the dialog
+ * box), in the order of their object lists (BLAYER_*): a function that
+ * draws its list, a create function (its list, position and size), an
+ * update function (its state, BrowserObj.state, from the work area's
+ * BDLG_* field for it) and a draw function. The software keyboard's dialog
+ * writes the registration form's boxes into the registration record
+ * (gRegRecord).
  *
  * Last, the login the portal's dialogs keep: Browser_KeepLogin picks it by
  * the dialog's answer, and Browser_SaveLogin saves it in the network file.
+ * The network mode's card save calls the two after them: the error message
+ * box (Browser_SetErrorState) and an empty hook.
  * The objects are BrowserObj; the work area is BrowserWork (browser.h).
  */
 #include "common.h"
@@ -25,16 +23,20 @@
 #include "lobby_globals.h"
 #include "pad.h"
 #include "lobby/browser_dialogs.h"   /* the texts this file draws */
+#include "bgm.h"
+#include "chat_box.h"
+#include "kbd.h"
+#include "text.h"
+#include "font.h"
+#include "net_file_save.h"
+#include "net_mode.h"
 
 /* The game's code for this file was built at the compiler's optimization
- * level 4: Page_SetKind compiles as the game's only at that level. */
+ * level 4: DlgPage_Draw, DlgInput_Draw, DlgPointer_Draw and
+ * Browser_SaveLogin compile as the game's only at that level. */
 #pragma optimization_level 4
 
-void PageObj_DrawLayer(s32 layer);
-void Browser_OpenDialog(s8 kind, s8 arg);
 s32 strcmp(const char *a, const char *b);
-BrowserObj *PageObj_Alloc(s32 layer, s32 atTail);
-void Font_SetSpacing(u8 penStep, u8 lineStep);
 s8 Kbd_Run(char *text, s16 held, s16 pressed); /* runs the software keyboard one frame; nonzero once the text is entered */
 void Chat_OpenKbd(s32 flags, u8 layout, u16 maxChars, void *text); /* opens the software keyboard */ /* unit's own declaration: the layout is declared u8 here (the definition takes s32): only so does Browser_OpenKeyboard pass it as the game's code does */
 void Kbd_SetPos(s32 posY, f32 posX);
@@ -42,191 +44,6 @@ u32 strlen(const char *s);
 char *strcpy(char *dst, const char *src);
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
-s32 LobbyCard_RunNetSave(void);  /* saves the network file: 0 busy, 1 done, -1 failed */
-void Dialog_ResetBoxState(void);
-void Browser_DrawOverlay(void);
-void PageObj_Free(BrowserObj *obj);
-void TextObj_Reset(void);
-char *Browser_GetText(u32 group, s32 i);
-void BrowserDlg_DrawWindow(f32 x0, f32 y0, f32 x1, f32 y1);
-void Page_DrawThinFrame(s32 color, f32 x0, f32 y0, f32 x1, f32 y1); /* a one-pixel frame */
-void Page_DrawTextLine(u8 unused, u32 color, u8 bold, u8 size, f32 x, f32 y, char *text);
-void Page_DrawWidget(u8 kind, f32 x, f32 y, f32 w, f32 h, s32 color); /* one of the PAGE_WIDGET_* pieces */
-char *BrowserHist_CurUrl(void); /* the URL of the history's current entry */
-void Draw_RectClipped(s32 color, f32 left, f32 top, f32 right, f32 bottom);
-void Page_DrawObjBack(BrowserObj *obj);
-void Page_DrawObj(BrowserObj *obj);
-void Page_DrawDropList(s32 sel);
-void Browser_SetRenderState(s32 state, u32 value);
-void Gfx_SetTexFilter(s32 mode);
-u32 PageTex_Get(s8 i);
-s32 func_007D21E0(void);                    /* nonzero while the net mode's texture slot 9 is in use: the loading mark is then the lobby's waving title */
-void LobbyLogin_DrawWaveTitle(s32 unused0);   /* the lobby's; its definition takes no argument */
-void Prim_DrawSprite(u32 color, u32 tex, s16 x, s16 y, s16 w, s16 h, s16 u1, s16 v1, s16 u2, s16 v2);
-void BrowserDlg_DrawMsgBox(BrowserObj *obj);
-void BrowserDlg_DrawYesNo(BrowserObj *obj);
-void BrowserDlg_DrawOk(BrowserObj *obj);
-void BrowserDlg_DrawCrsTop(BrowserObj *obj);
-void Page_DrawFocus(BrowserObj *obj);
-void Page_DrawFrame(s32 color, s32 thickness, f32 x0, f32 y0, f32 x1, f32 y1);
-void Page_DrawMark(u8 kind, f32 x, f32 y);   /* the pointer: PAGE_WIDGET_POINTER or _POINTER_ACTIVE */
-void Kbd_Cancel(void);
-void Chat_DrawKbdBox(s32 color);
-void Font_SetHalfWidth(s32 unused);
-void Font_DrawAllPages(void);
-char *Browser_RunKeyboard(void);
-/* A page texture as a sprite; the parameters are ordered so that the two
- * zeros the callers pass land where the game passes them. */
-void Page_DrawImage(u16 texSlot, f32 x, f32 y, f32 w, f32 h, s32 srcW, s32 srcH);
-
-
-void DlgBackImg_Update(BrowserObj *obj);
-void DlgBackImg_Draw(BrowserObj *obj);
-void DlgPage_Update(BrowserObj *obj);
-void DlgPage_Draw(BrowserObj *obj);
-void DlgVScroll_Update(BrowserObj *obj);
-void DlgVScroll_Draw(BrowserObj *obj);
-void DlgHScroll_Update(BrowserObj *obj);
-void DlgHScroll_Draw(BrowserObj *obj);
-void DlgStatus_Update(BrowserObj *obj);
-void DlgStatus_Draw(BrowserObj *obj);
-void DlgMenu_Update(BrowserObj *obj);
-void DlgMenu_Draw(BrowserObj *obj);
-void DlgInput_Update(BrowserObj *obj);
-void DlgInput_Draw(BrowserObj *obj);
-void DlgPointer_Update(BrowserObj *obj);
-void DlgPointer_Draw(BrowserObj *obj);
-void DlgBox_Update(BrowserObj *obj);
-void DlgBox_Draw(BrowserObj *obj);
-
-/*
- * Opens the dialog box of the given kind (BrowserWork.dlgBoxKind) in its
- * asking mode (BDLG_MODE_CHOICE), with arg as its first choice (dlgCursor), and
- * clears the last question asked.
- */
-void Browser_OpenDialog(s8 kind, s8 arg)
-{
-    gBrowserWork->dlgBoxKind = kind;
-    gBrowserWork->dlgPointerState = BDLG_POINTER_HIDDEN;
-    gBrowserSub->dlgCursor = arg;
-    gBrowserSub->dlgMode = BDLG_MODE_CHOICE;
-    gBrowserWork->dlgQuestion = 0;
-}
-
-/*
- * Keeps what the page is to the game (BrowserState.pageKind, enum PageKind;
- * the HTML parser passes it from the page's keyword) and opens the dialog
- * the page asks for: on the menu reached from the top page with a login id
- * other than the one kept, or after a sign-up or a password change, the
- * message box that asks what of the login to keep; on the sign-up top with
- * a login id kept, the yes-or-no box; on PAGE_KIND_MMBB_KEICAN, the box that
- * keeps or clears the kept login. fromTop marks that the top page (or the
- * password form) came first.
- */
-void Page_SetKind(s8 kind)
-{
-    gBrowserState->pageKind = kind;
-    switch (kind) {
-    case PAGE_KIND_TOP:
-        gBrowserState->fromTop = 1;
-        break;
-    case PAGE_KIND_MENU:
-        gBrowserState->menuReached = 1;
-        if (gBrowserState->fromTop != 0) {
-            if (strcmp((char *)gBrowserState->loginId, gBrowserState->formLoginId) != 0) {
-                Browser_OpenDialog(BDLG_KIND_MESSAGE, 1);
-            } else {
-                gBrowserState->fromTop = 0;
-            }
-        }
-        break;
-    case PAGE_KIND_SIGNUP_TOP:
-        if ((u8)gBrowserState->loginId[0] != 0 && gBrowserState->fromTop != 0) {
-            gBrowserState->fromTop = 0;
-            Browser_OpenDialog(BDLG_KIND_YES_NO, 2);
-        }
-        break;
-    case PAGE_KIND_SIGNUP_DONE:
-        gBrowserState->menuReached = 1;
-        Browser_OpenDialog(BDLG_KIND_MESSAGE, 1);
-        gBrowserState->fromTop = 0;
-        break;
-    case PAGE_KIND_PASSWORD_FORM:
-        gBrowserState->fromTop = 1;
-        break;
-    case PAGE_KIND_PASSWORD_DONE:
-        Browser_OpenDialog(BDLG_KIND_MESSAGE, 1);
-        gBrowserState->fromTop = 0;
-        break;
-    case PAGE_KIND_MMBB_KEICAN:
-        Browser_OpenDialog(BDLG_KIND_CLEAR_LOGIN, 1);
-        break;
-    case PAGE_KIND_MMBB_CANCAN:
-        break;
-    }
-}
-
-/* Extends the page to reach (x, y) at least: its size, the scroll
- * bars' scale, and whether it scrolls. */
-void Page_Extend(s32 x, s32 y)
-{
-    if (gBrowserState->pageH < y) {
-        gBrowserState->pageH = y;
-        gBrowserState->vThumbLen = 0x20490 / gBrowserState->pageH;
-        if (gBrowserState->pageH > PAGE_VIEW_H) {
-            gBrowserState->vScroll = 1;
-        }
-    }
-    if (x >= gBrowserState->pageW) {
-        gBrowserState->pageW = x;
-        gBrowserState->hThumbLen = 0x4EB40 / gBrowserState->pageW;
-        if (gBrowserState->pageW > PAGE_VIEW_W) {
-            gBrowserState->hScroll = 1;
-        }
-    }
-}
-
-/* Returns 1 on a data page (a session, server-list or result <CSV> block:
- * pageMode CSV_KIND_SESSION, _SERVERS or _RESULT), which draws no form
- * fields, else 0. */
-s32 Page_IsDataPage(void)
-{
-    switch (gBrowserState->pageMode) {
-    case CSV_KIND_SESSION:
-    case CSV_KIND_SERVERS:
-    case CSV_KIND_RESULT:
-        return 1;
-    }
-    return 0;
-}
-
-/* Sets the page's margins from its style flags (the status bar's and the
- * vertical scroll bar's). The callers pass three arguments (one caller
- * two), which it does not read. */
-void Page_SetMargins(u8 unused0, s32 unused1, s32 unused2)
-{
-    s32 flags = gBrowserState->style;
-    s32 hasStatusBar = (flags & PAGE_STYLE_STATUS_BAR) >> 2;
-
-    if (hasStatusBar != 0 && ((flags & PAGE_STYLE_VSCROLL) >> 1) != 0) {
-        gBrowserState->marginTop = 0x10;
-        gBrowserState->marginBottom = 0x10;
-        gBrowserState->marginLeft = 0x14;
-        gBrowserState->marginRight = 0x14;
-        return;
-    }
-    if (hasStatusBar != 0 && ((flags & PAGE_STYLE_VSCROLL) >> 1) == 0) {
-        gBrowserState->marginBottom = 0x1A;
-        gBrowserState->marginTop = 0x1A;
-        gBrowserState->marginRight = 0x1E;
-        gBrowserState->marginLeft = 0x1E;
-    } else {
-        gBrowserState->marginBottom = 0x22;
-        gBrowserState->marginTop = 0x22;
-        gBrowserState->marginRight = 0x1C;
-        gBrowserState->marginLeft = 0x1C;
-    }
-}
 
 /* Draws layer 0's objects: the page's background image. */
 void DlgBackImg_DrawAll(void)
@@ -314,7 +131,7 @@ void DlgBackImg_Update(BrowserObj *obj)
 
 /* Tiles the background image over the screen from the page's top-left
  * margin, scrolled with the page unless the image is fixed (field); at most
- * 0x200 tiles. */
+ * 512 tiles. */
 void DlgBackImg_Draw(BrowserObj *obj)
 {
     u16 tileCount;
@@ -348,7 +165,7 @@ void DlgBackImg_Draw(BrowserObj *obj)
         }
         while (x < 640.0f) {
             tileCount++;
-            if (tileCount > 0x200) {
+            if (tileCount > 512) {
                 return;
             }
             Page_DrawImage(obj->tex, x, y, obj->w, obj->h, 0, 0);
@@ -481,12 +298,12 @@ void DlgVScroll_Create(s32 mode)
             obj->active = 1;
             obj->update = DlgVScroll_Update;
             obj->draw = DlgVScroll_Draw;
-            obj->x = 0x270 - gBrowserState->marginRight;
+            obj->x = 624 - gBrowserState->marginRight;
             obj->y = gBrowserState->marginTop;
             obj->unk4C = 0;
             obj->unk50 = 0;
             obj->w = 16.0f;
-            obj->h = 380.0f;
+            obj->h = PAGE_VIEW_H;
             obj->state = BOBJ_STATE_HIDDEN;
             obj->glowDir = 0;
             obj->blink = 0;
@@ -558,7 +375,7 @@ void DlgVScroll_Draw(BrowserObj *obj)
             arrowSize = 16.0f;
             Page_DrawWidget(PAGE_WIDGET_ARROW_UP_PRESSED, obj->x, obj->y, arrowSize, arrowSize, 0);
         }
-        Page_DrawWidget(PAGE_WIDGET_VTRACK, obj->x, 16.0f + obj->y, 16.0f, 380.0f, 0);
+        Page_DrawWidget(PAGE_WIDGET_VTRACK, obj->x, 16.0f + obj->y, 16.0f, PAGE_VIEW_H, 0);
         if (gBrowserState->vScroll != 0) {
             gBrowserState->vThumbY = gBrowserState->marginTop + (gBrowserState->y * 348 / gBrowserState->pageH + 16);
             Page_DrawWidget(PAGE_WIDGET_VTHUMB, obj->x, gBrowserState->vThumbY, arrowSize, gBrowserState->vThumbLen, 0);
@@ -591,10 +408,10 @@ void DlgHScroll_Create(s32 mode)
             obj->update = DlgHScroll_Update;
             obj->draw = DlgHScroll_Draw;
             obj->x = gBrowserState->marginLeft;
-            obj->y = 0x19C - gBrowserState->marginBottom;
+            obj->y = 412 - gBrowserState->marginBottom;
             obj->unk4C = 0;
             obj->unk50 = 0;
-            obj->w = 584.0f;
+            obj->w = PAGE_VIEW_W;
             obj->h = 16.0f;
             obj->state = BOBJ_STATE_HIDDEN;
             obj->glowDir = 0;
@@ -659,7 +476,7 @@ void DlgHScroll_Draw(BrowserObj *obj)
         return;
     }
     if (gBrowserState->plain == 0 && ((gBrowserState->style & PAGE_STYLE_VSCROLL) >> 1) != 0) {
-        Gfx_SetTexFilter(0);
+        Gfx_SetTexFilter(GFX_TEX_NEAREST);
         if (obj->state != BOBJ_STATE_FIRST_PRESSED) {
             arrowSize = 16.0f;
             Page_DrawWidget(PAGE_WIDGET_ARROW_LEFT, obj->x, obj->y, arrowSize, arrowSize, 0);
@@ -667,7 +484,7 @@ void DlgHScroll_Draw(BrowserObj *obj)
             arrowSize = 16.0f;
             Page_DrawWidget(PAGE_WIDGET_ARROW_LEFT_PRESSED, obj->x, obj->y, arrowSize, arrowSize, 0);
         }
-        Page_DrawWidget(PAGE_WIDGET_HTRACK, 16.0f + obj->x, obj->y, 584.0f, 16.0f, 0);
+        Page_DrawWidget(PAGE_WIDGET_HTRACK, 16.0f + obj->x, obj->y, PAGE_VIEW_W, 16.0f, 0);
         if (gBrowserState->hScroll != 0) {
             gBrowserState->hThumbX = gBrowserState->marginRight + (gBrowserState->x * 552 / gBrowserState->pageW + 16);
             Page_DrawWidget(PAGE_WIDGET_HTHUMB, gBrowserState->hThumbX, obj->y, gBrowserState->hThumbLen, arrowSize, 0);
@@ -700,10 +517,10 @@ void DlgStatus_Create(s32 mode)
             obj->update = DlgStatus_Update;
             obj->draw = DlgStatus_Draw;
             obj->x = gBrowserState->marginLeft;
-            obj->y = 0x1AC - gBrowserState->marginBottom;
+            obj->y = 428 - gBrowserState->marginBottom;
             obj->unk4C = 0;
             obj->unk50 = 0;
-            obj->w = 0x280 - gBrowserState->marginLeft - gBrowserState->marginRight;
+            obj->w = 640 - gBrowserState->marginLeft - gBrowserState->marginRight;
             obj->h = 20.0f;
             obj->state = BOBJ_STATE_HIDDEN;
             obj->glowDir = 0;
@@ -767,16 +584,16 @@ void DlgStatus_Draw(BrowserObj *obj)
                 switch (obj->state) {
                 case BDLG_STATUS_TITLE:
                     if (titleObj->s1 != NULL) {
-                        Page_DrawTextLine(0x15, BROWSER_BLACK, 0, 0x14, obj->x, obj->y, titleObj->s1);
+                        Page_DrawTextLine(21, BROWSER_BLACK, 0, 20, obj->x, obj->y, titleObj->s1);
                     }
                     break;
                 case BDLG_STATUS_URL:
-                    Page_DrawTextLine(0x15, BROWSER_BLACK, 0, 0x10, 2.0f + obj->x, 2.0f + obj->y, Browser_GetText(BTEXT_STATUS, 0));
-                    Page_DrawTextLine(0x15, BROWSER_BLACK, 0, 0x10, 72.0f + (2.0f + obj->x), 2.0f + obj->y,
+                    Page_DrawTextLine(21, BROWSER_BLACK, 0, 16, 2.0f + obj->x, 2.0f + obj->y, Browser_GetText(BTEXT_STATUS, 0));
+                    Page_DrawTextLine(21, BROWSER_BLACK, 0, 16, 72.0f + (2.0f + obj->x), 2.0f + obj->y,
                                       BrowserHist_CurUrl());
                     break;
                 case BDLG_STATUS_TARGET:
-                    Page_DrawTextLine(0x15, BROWSER_BLACK, 0, 0x10, 2.0f + obj->x, 2.0f + obj->y, titleObj->s2);
+                    Page_DrawTextLine(21, BROWSER_BLACK, 0, 16, 2.0f + obj->x, 2.0f + obj->y, titleObj->s2);
                     break;
                 }
             }
@@ -885,10 +702,10 @@ void DlgMenu_Draw(BrowserObj *obj)
  * copy: "" when text is too long), at most max characters. */
 void Browser_OpenKeyboard(char *text, s16 max, s32 mode)
 {
-    if (max > 0xFFu) {
-        max = 0xFF;
+    if (max > 255u) {
+        max = 255;
     }
-    if (strlen(text) > 0xFF) {
+    if (strlen(text) > 255) {
         strcpy(gBrowserWork->kbdText, "");
     } else {
         strcpy(gBrowserWork->kbdText, text);
@@ -901,7 +718,7 @@ void Browser_OpenKeyboard(char *text, s16 max, s32 mode)
  * entered, else NULL. */
 char *Browser_RunKeyboard(void)
 {
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     if (Kbd_Run(gBrowserWork->kbdText, gBrowserWork->padHeld, *(s16 *)&gPadState[0].pressed) != 0) {
         return gBrowserWork->kbdText;
     }
@@ -1167,7 +984,7 @@ void DlgPointer_Draw(BrowserObj *obj)
     if ((gBrowserState->style & PAGE_STYLE_POINTER) == 0) {
         if (gBrowserWork->focus == 0) {
             gBrowserSub->cursorX = gBrowserState->marginLeft * 2;
-            gBrowserSub->cursorY = 0x19E;
+            gBrowserSub->cursorY = 414;
         } else {
             if (gBrowserWork->cursorOnLink != 0) {
                 obj->blink = 0;
@@ -1176,7 +993,7 @@ void DlgPointer_Draw(BrowserObj *obj)
             if (obj->blink <= 0) {
                 obj->glow = 15;
             }
-            if (obj->blink >= 0xFF) {
+            if (obj->blink >= 255) {
                 obj->glow = -15;
             }
             obj->blink += obj->glow;
@@ -1204,7 +1021,7 @@ void DlgPointer_Draw(BrowserObj *obj)
     switch (gBrowserWork->dlgBoxKind) {
     case BDLG_KIND_NONE:
     case BDLG_KIND_LOADING:
-        if (gBrowserWork->dlgMenuState == BDLG_MENU_HIDDEN && 0x19C - gBrowserState->marginBottom > gBrowserSub->cursorY &&
+        if (gBrowserWork->dlgMenuState == BDLG_MENU_HIDDEN && 412 - gBrowserState->marginBottom > gBrowserSub->cursorY &&
             gBrowserWork->obj[gBrowserSub->activeObj] != NULL && gBrowserWork->obj[gBrowserSub->activeObj]->kind != PAGE_OBJ_SELECT) {
             for (i = 0; i < PAGE_OBJ_COUNT; i++) {
                 if (gBrowserWork->obj[i] == NULL) {
@@ -1261,7 +1078,7 @@ void DlgPointer_Draw(BrowserObj *obj)
                     if (obj->blink <= 0) {
                         obj->glow = 15;
                     }
-                    if (obj->blink >= 0xFF) {
+                    if (obj->blink >= 255) {
                         obj->glow = -15;
                     }
                     obj->blink += obj->glow;
@@ -1370,8 +1187,8 @@ void DlgBox_Update(BrowserObj *obj)
         break;
     case BDLG_KIND_LOADING_SMALL:
         obj->state = BDLG_BOX_LOADING_SMALL;
-        obj->x = 0x1F0 - gBrowserState->marginLeft;
-        obj->y = 0x16C - gBrowserState->marginBottom;
+        obj->x = 496 - gBrowserState->marginLeft;
+        obj->y = 364 - gBrowserState->marginBottom;
         obj->w = 128.0f;
         obj->h = 64.0f;
         break;
@@ -1475,7 +1292,7 @@ void DlgBox_Draw(BrowserObj *obj)
                 }
                 break;
             }
-            if (func_007D21E0() == 0) {
+            if (NetMode_WaveTitleTex() == 0) {
                 glowLevel = obj->glow;
                 Prim_DrawSprite(glowLevel | (((glowLevel << 16) | 0xFF000000) | (glowLevel << 8)), PageTex_Get(0), 336, 362, 224, 32, 0, 224, 256, 256);
             } else {
@@ -1494,7 +1311,7 @@ void DlgBox_Draw(BrowserObj *obj)
         BrowserDlg_DrawOk(obj);
         break;
     case BDLG_BOX_EXIT:
-        BrowserDlg_DrawCrsTop(obj);
+        BrowserDlg_DrawPortalTop(obj);
         break;
     case BOBJ_STATE_FREE:
         PageObj_Free(obj);
@@ -1599,4 +1416,16 @@ void Browser_SaveLogin(void)
         Dialog_ResetBoxState();
         break;
     }
+}
+
+/* Opens the error message box (dialog kind 4) for the given error. */
+void Browser_SetErrorState(s32 kind)
+{
+    gBrowserWork->dlgBoxKind = BDLG_KIND_MESSAGE;
+    gBrowserWork->errorKind = kind;
+}
+
+/* Does nothing; the network mode's card save calls it at one step. */
+void Browser_EmptyHook(void)
+{
 }

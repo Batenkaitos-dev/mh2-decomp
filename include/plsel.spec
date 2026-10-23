@@ -79,9 +79,9 @@ size 0x3B88
 0x1F18 PlselList{6756} rewList // the rewards list
 0x397C s32 noticeCount // entries of notices
 0x3980 s32 noticePage // the notices page shown (three a page)
-0x3984 u16 notices[0x39] // notices to show: unlocks (Plsel_QueueFlagUnlocks), 0x3nn, 0x400, 0x500
+0x3984 u16 notices[0x39] // notices to show, each a kind (high byte) and an index (low byte): unlocks (Plsel_QueueFlagUnlocks), kind 3 (a training quest's index), kinds 4 and 5
 0x39F8 s32 itemLines // item lines (Plsel_TallyRewards)
-0x39FC s32 awardCount // entries of awards (at most 0x20)
+0x39FC s32 awardCount // entries of awards (at most 32)
 0x3A00 u16 awards[0x20] // awards to show (Plsel_QueueAward)
 0x3A40 u16 questLargest[0x50] // largest size of the quest, per kind then per group
 0x3AE0 u16 questSmallest[0x50] // smallest size of the quest

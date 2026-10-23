@@ -11,6 +11,13 @@
  * (EmKushala_MotionSounds, MotionSoundsTesca). The state functions take the
  * monster and its work area (EmKushalaWork, the family's view of EmWork);
  * Em.step is the step within the current state.
+ *
+ * Motions are written EM_MOTION_ID(layer, KUSH_MOT_*) where they are
+ * compared with a layer's motion id, and by name where they are played;
+ * bones (KUSH_BONE_*) and sounds (KUSH_SE_*) by name where the code shows
+ * what they are. The other motion, bone and sound numbers stay numbers.
+ * Lunastra and Teostra have the same skeleton numbering (their attack hit
+ * shapes and sounds use the same bones) but their own sound bank.
  */
 #include "common.h"
 #include "scene.h"
@@ -21,1014 +28,895 @@
 #include "stageobj.h"
 #include "objattach.h"
 #include "area.h"
+#include "shadow.h"
+#include "capsule.h"
+#include "save.h"
+#include "sound.h"
+#include "cam_shake.h"
+#include "elder_attacks.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "shakalaka_teostra_bulldrome.h"
+#include "stage_data.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+#include "camera.h"
+#include "em_script.h"
+#include "hud.h"
 /* The functions this file calls */
-void EmKushala_MotionSounds(void *arg0, EmWork *work);
-void EmKushala_MotionSoundsTesca(Em *em, EmWork *work);
 
 /* prototypes */
-void EmKushala_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 StageObj *MonsterFx_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
-void ElementBurst_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
-void EmKushala_RunIdleState(Em *em, EmWork *work);
-void EmKushala_RunMoveState(Em *em, EmWork *work);
-void EmKushala_EatNeedStart(Em *em, EmWork *work, s32 variant);
-void EmKushala_Roar(Em *em, EmWork *work);
-void EmKushala_RoarB(Em *em, EmWork *work);
-void EmKushala_TurnAlert(Em *em, EmWork *work);
-void EmKushala_Run(Em *em, EmWork *work, s32 variant);
-void EmKushala_SideDash(Em *em, EmWork *work, s32 variant);
-void EmKushala_HoverTurn(Em *em, EmWork *work);
-void EmKushala_BreathAttack(Em *em, EmWork *work, s32 variant);
-void EmKushala_BlastRingFort(Em *em, EmWork *work);
-void EmKushala_RunAttackState(Em *em, EmWork *work);
-void EmKushala_StartCurves(Em *em, u8 kind);
-u8 EmKushala_UpdateCurves(Em *em);
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-void Em_EndStatus5(Em *em);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-f32 Math_Sin(f32 x);
-void Player_ClearFlag(void *, u32 flag);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 /* unit's own declaration: the last two arguments are declared s32; with the definition's u16 the compiler masks them to 16 bits before the jump to it, which EmKushala_CreateBreathAtBone doesn't do */
 void KushalaBreath_CreateAtBone(Em *, s32, u8, u8, s32, s32);
-void KushalaAttack_Create(Em *, s32);
-void EmEffectAttack_CreateChain(Em *, s32, s32, s32, s32);
-void TeostraAttack_Create(Em *, s32);
 /* unit's own declaration: the kind is declared s32; with the definition's u8 the compiler masks it to a byte before the call, which EmKushala_BlastRing doesn't do */
 void TeostraBlastRing_Create(Em *, s32);
-void Em_SelectSightRow(Em *em, u8 idx);
-void Em_MoveRotated(Em *em, void *src);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
-void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: the arguments are declared s32; with the definition's s16 the compiler narrows them before the call, which EmKushala_Rest doesn't do */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
-void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
-void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void Em_TargetPlayerInRange(Em *);
-s32 EmKushala_WindActive(Em *);
-void EmKushala_Init(Em *);
-void EmKushala_ToIdle(Em *);
-void EmKushala_Land(Em *, EmWork *, s32);
-void EmKushala_LeaveArea(Em *, EmWork *);
-void EmKushala_EnterAreaAndLand(Em *, EmWork *);
-void EmKushala_CrossArea(Em *, EmWork *);
-void EmKushala_RiseToHeight(Em *, EmWork *, s32);
-void EmKushala_StepForward(Em *, EmWork *);
-void EmKushala_Leave(Em *, EmWork *);
-void EmKushala_LeaveFromAir(Em *, EmWork *);
-void EmKushala_SceneWalkIn(Em *);
-void EmKushala_SceneRise(Em *, EmWork *);
-void EmKushala_Captured(Em *);
-void EmKushala_SceneDescend(Em *, EmWork *);
-void EmKushala_SceneFlyIn(Em *, EmWork *);
-void EmKushala_SceneWake(Em *);
-void EmKushala_Die(Em *, EmWork *);
-void EmKushala_DieFalling(Em *, EmWork *);
-s32 EmKushala_StateHasWindRing(Em *);
-void EmKushala_MotionEffects(Em *, EmWork *);
-void EmKushala_CreateAttack(Em *em, s32 arg1);
-void EmKushala_SpawnBlastBurst(Em *);
 void AlertMark_Create(void *arg, s16 v, u8 k);
-void EmRangedAttack_CreateAtBoneTimed(Em *, s32, s32, s32, s32, s32, s32);
 /* unit's own declaration: the arguments are declared s32; with the definition's s16 the compiler narrows them before the call, which EmKushala_SpawnK14NearGround doesn't do */
 void DustCloud_Create(Em *em, s32, s32, f32);
 /* unit's own declaration: the arguments are declared s32; with the definition's u8 and s16 the compiler narrows them before the call, which EmKushala_Stun doesn't do */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
 StageObj *MonsterFx_CreateOnEm(Em *em, u8 k, f32 scale);
-/* unit's own declaration: the third argument is declared s16 and the fourth u16, as the callers pass them: with the definition's u16 and s16 the yaw 0xF1C8 of EmKushala_BreathAttack would be passed sign-extended */
+/* unit's own declaration: the third argument is declared s16 and the fourth u16, as the callers pass them: with the definition's u16 and s16 the yaw 61896 of EmKushala_BreathAttack would be passed sign-extended */
 void MonsterFx_CreateOnEmAngled(Em *em, s8, s16, u16, f32);
-void TeostraBlastCharge_Create(Em *em);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void Vec_RotateY(f32 *v, f32 angle);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Player_ClearAccel2(void *);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
-u8 Player_InCurrentArea(void *obj);
-void Shadow_Spawn(void *obj, s16 type);
-void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
 /* unit's own declaration: the bone is declared s32; with the definition's s16 the compiler narrows it before the call, which the ground-effect functions don't do */
 void Em_BonePos(void *obj, s32 a, f32 *out);
 extern EmFlyParam EmKushala_FlyParam;
 extern EmFlyParam EmKushala_FlyParam2;
 extern EmTurnParams EmKushala_TurnParams[1];
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-void Em_ClearPoison(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_BeginStatus1(Em *em);
-void QuestEm_Captured(Em *em);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void HitSpark_SpawnAt(f32 *pos, s32 a, u16 b);
-void HitSplash_CreateAtScaled(f32 *pos, u8 k, f32 scale);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern u16 EmKushala_IdleTbl[];
-void QuestEm_Hunted(Em *em);
-s32 Save_TestEventFlag(s32);
 u16 Area_IdForCurrentTime(u16);
-void EmMine_Remove(Em *em);
-s32 EmMine_Update(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-void CamShake_ReqAIf(Em *obj, s32 i);
-void Em_ApplyPartBreaks(Em *em);
-void Em_FlagPartBreak(Em *em, s32 arg1);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
 typedef struct { f32 x, y; } EmKPair;
 extern s32 EmKushala_BreathTimers[][2];
 extern s32 EmKushala_BreathCounts[][2];
 void FallingDebris_Create(Em *em, u8 k);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void PartFx_SpawnAt(f32 *pos, s32 a, f32 scale);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Quest_TriggerEvent(Em *em);
-extern f32 gAreaGroundY[];
-u16 Area_DayId(u16 id);
-void Hud_TriggerGlow(Em *em);
-void Em_EnterNextArea(Em *);
-void Em_ComputeGoal(Em *em, f32 *target);
-s32 Area_ContainsPos(s32, f32 *);
-void Em_AreaExitPoint(Em *em, f32 *out);
-AreaRecord *Stage_GetAreaRecord(u16 x);
 struct EmIdEntry;
 f32 *Em_AreaEntryValue(Em *em, struct EmIdEntry *entry);
-void GmEm_ResetSize(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus2Timer(Em *em);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void Em_SetPartScaled(Em *em, s32 bit);
-void QuestEm_LoadPersistentHp(Em *em);
-u8 Quest_FindSpecialMonster(u8 id);
 s32 Em_PartBroken(Em *em, s32 arg1);
 void EmTail_Create(Em *);
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_EndStatus5(Em *em);
-s32 EmKushala_WindActiveTesca(Em *);
-void EmKushala_BreakParts(Em *em, s32 apply);
-void EmKushala_RunState(Em *em, s32 arg1);
-void Em_RaisePlayerAreaTriggerLax(Em *em);
-u16 Map_DayId(u16);
-void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_DecayNeed2(Em *em);
-void Em_DecayNeed1(Em *em);
-void Em_DecayNeed3(Em *em);
-void Em_SetStatus1Timer(Em *em);
-void Em_CheckRageByHp(Em *em, s16 n);
-s32 Em_DamageResultIsReaction(Em *em, s32 arg1);
-void CamReq_ForMonster(Em *em);
-s32 Quest_GetOutcome(s32 withLoss);
-void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 /* end of prototypes */
 
+/*
+ * Kushala Daora's and the rusted form's motion sounds (EmKushala_MotionEffects
+ * calls it each frame for those kinds): per motion on layer 0
+ * (work->fxMotion), the sounds to play at bones on given frames.
+ */
 void EmKushala_MotionSounds(void *em, EmWork *work)
 {
     s16 motion;
 
     motion = work->fxMotion;
     switch (motion) {
-    case 0x3EA:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB2, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x96, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC4, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_WALK):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 78, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 178, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 150, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 196, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x3ED:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x42, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_LEFT):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 66, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x3EE:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x42, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_RIGHT):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 66, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x3EF:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 3, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SMALL):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 3, KUSH_BONE_FOOT_D);
         break;
-    case 0x3F0:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x15, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x15, 0x11);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 3, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_RIGHT):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 21, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 21, 17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 3, KUSH_BONE_FOOT_D);
         break;
-    case 0x3F1:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x15, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x15, 0x11);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_LEFT):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 21, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 21, 17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x3F2:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0x27, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x14, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_TAKE_OFF):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 39, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 20, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 22, KUSH_BONE_BODY);
         break;
-    case 0x3F3:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 11, KUSH_BONE_WING_B);
         break;
-    case 0x3F4:
-    case 0x404:
-    case 0x405:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x17, 0x19, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x19, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x41, 0x19, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_FLY_FAST):
+    case EM_MOTION_ID(0, KUSH_MOT_BANK_A):
+    case EM_MOTION_ID(0, KUSH_MOT_BANK_B):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 13, 26, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 25, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 23, 25, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 25, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 25, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 65, 25, KUSH_BONE_WING_A);
         break;
-    case 0x3F5:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x28, 0x4C, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0x1C, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0x1D, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x1D, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_DASH_START):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 40, 76, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, 28, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, 29, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 29, KUSH_BONE_WING_A);
         break;
-    case 0x3F6:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x15, 0x11);
+    case EM_MOTION_ID(0, KUSH_MOT_DASH_END):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 21, 17);
         break;
-    case 0x3F7:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE_ACTION_B):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 14, KUSH_BONE_WING_B);
         break;
-    case 0x3F8:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x19, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_FLY_CLIMB):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 26, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 25, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 25, KUSH_BONE_WING_A);
         break;
-    case 0x3F9:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x36, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x42, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7C, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x92, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xAE, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC4, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_LAND):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 54, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 66, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 124, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 142, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 146, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 138, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 174, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 196, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 194, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 184, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 76, 22, KUSH_BONE_BODY);
         break;
-    case 0x3FA:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x14, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_TURN):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 20, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 13, KUSH_BONE_WING_B);
         break;
-    case 0x3FB:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x14, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_SIDE_DASH_A):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 20, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, KUSH_BONE_BODY);
         break;
-    case 0x3FC:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x14, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_SIDE_DASH_B):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 20, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, KUSH_BONE_BODY);
         break;
-    case 0x3FD:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 5, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_START):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 38, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 5, KUSH_BONE_FOOT_B);
         break;
-    case 0x3FE:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x28, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x15, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_B):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 40, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 21, KUSH_BONE_FOOT_B);
         break;
-    case 0x3FF:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x15, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_C):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 21, KUSH_BONE_FOOT_B);
         break;
-    case 0x400:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_STOP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x401:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0x23, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0xF, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_REAR_UP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 35, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 15, KUSH_BONE_WING_B);
         break;
-    case 0x402:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_STOMP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 22, KUSH_BONE_BODY);
         break;
-    case 0x403:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_LIFT_TO_HOVER):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 13, KUSH_BONE_WING_B);
         break;
-    case 0x406:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_WING_FLAP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 14, KUSH_BONE_WING_B);
         break;
-    case 0x407:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0xA, 0x47, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_ALERT):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 10, 71, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 112, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 14, KUSH_BONE_WING_A);
         break;
-    case 0x408:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x20, 0x26);
-        Em_PlaySeTypeAtBoneInFrames((Em *) em, 0x3C, 0xBE, 0x4A, 0x26, 7, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x60, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x64, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xBC, 8, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, 9, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC0, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF2, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF8, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF6, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xBA, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_ROAR):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 32, 38);
+        Em_PlaySeTypeAtBoneInFrames((Em *) em, 60, 190, 74, 38, 7, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 96, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 100, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 188, 8, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 184, 9, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 192, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 242, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 248, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 246, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 186, 22, KUSH_BONE_BODY);
         break;
-    case 0x40A:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xCA, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB4, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE_ACTION_A):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 138, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 158, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 202, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 180, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x40B:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x36, 0x3A, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x64, 0x39, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_EAT_START):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 54, 58, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 100, 57, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x40C:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 1, 0x1A);
+    case EM_MOTION_ID(0, KUSH_MOT_EAT):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 59, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 1, KUSH_BONE_FOOT_A);
         break;
-    case 0x40D:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x2F, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0x2F, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x60, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x36, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_LIMP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 47, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 84, 47, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 96, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 54, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 88, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 18, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 22, KUSH_BONE_BODY);
         break;
-    case 0x40E:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x56, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7C, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_REST):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 86, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, 59, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 106, 16, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 124, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 14, KUSH_BONE_WING_A);
         break;
-    case 0x40F:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x63, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x17, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_REST_END):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 99, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 110, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, 23, KUSH_BONE_BODY);
         break;
-    case 0x416:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x20, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x40, 0x4C, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, 0x18, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0, 0x1F);
+    case EM_MOTION_ID(0, KUSH_MOT_STRIKE_BREATH):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 32, 38);
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 64, 76, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, KUSH_SE_BREATH, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 138, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, 0, KUSH_BONE_FOOT_C);
         break;
-    case 0x419:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, 0xB, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_WINDUP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 32, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 112, 11, KUSH_BONE_WING_A);
         break;
-    case 0x41A:
-        Em_PlaySeTypeAtBoneInFrames((Em *) em, 0x16, 0x11C, 0x49, 0x26, 7, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_STREAM):
+        Em_PlaySeTypeAtBoneInFrames((Em *) em, 22, 284, 73, 38, 7, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 11, KUSH_BONE_WING_A);
         break;
-    case 0x41B:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x16, 0x4C, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x18, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 22, 76, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, KUSH_SE_BREATH, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 14, KUSH_BONE_WING_A);
         break;
-    case 0x410:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_STREAM_END):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 14, KUSH_BONE_WING_A);
         break;
-    case 0x415:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_FINISH):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 14, KUSH_BONE_WING_A);
         break;
-    case 0x41C:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x25, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x36, 0x23, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x3C, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 9, 0x1F);
+    case EM_MOTION_ID(0, KUSH_MOT_LUNGE):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 37, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 54, 35, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 46, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 60, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 9, KUSH_BONE_FOOT_C);
         break;
-    case 0x41D:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0x27, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x15, 0x11);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 9, 0x11);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_ACTION_A):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 38, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, 39, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 46, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 21, 17);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 9, 17);
         break;
-    case 0x41E:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x47, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, 0x23, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xA, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, 0xF, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_ACTION_B):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 71, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, 35, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 10, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 10, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 46, 15, KUSH_BONE_WING_A);
         break;
-    case 0x41F:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0x27, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7E, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x15, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x15, 0x11);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SWEEP_A):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 39, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 126, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 21, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 118, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 112, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, 21, 17);
         break;
-    case 0x420:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x28, 0x27, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7E, 9, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 5, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, 0x15, 0x11);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SWEEP_B):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 40, 39, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 126, 9, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 21, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 21, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 118, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 112, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, 21, 17);
         break;
-    case 0x421:
-    case 0x422:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 0x28, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x14, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2A, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_SWEEP_A):
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_SWEEP_B):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 38, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 40, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 20, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 42, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 46, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 22, KUSH_BONE_BODY);
         break;
-    case 0x425:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x23, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_FLINCH):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 83, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 35, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 88, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x426:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 7, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5C, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x52, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 0x16, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_TOPPLE_RECOVER):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 84, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 7, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 92, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 82, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 22, KUSH_BONE_BODY);
         break;
-    case 0x427:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6E, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x72, 0xB, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_FLINCH_HOVER):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 83, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 110, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 114, 11, KUSH_BONE_WING_B);
         break;
-    case 0x428:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 6, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0xC, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_FALL):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 6, 84, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 12, KUSH_BONE_WING_B);
         break;
-    case 0x429:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 6, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 9, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0x17, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_FALL_LAND):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 6, 83, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 9, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 23, KUSH_BONE_BODY);
         break;
-    case 0x42A:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x18, 0x57, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, 0x10, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x17, 0x26);
+    case EM_MOTION_ID(0, KUSH_MOT_DOWN):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 24, 87, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, 16, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 23, 38);
         break;
-    case 0x42B:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x56, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_DOWN_GET_UP):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 18, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 90, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 86, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x42C:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDA, 0x2F, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x11A, 0x2E, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16E, 0x2C, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x60, 0x17, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC0, 0x16, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x11A, 0x17, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2C, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 3, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x190, 0x10, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x19C, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1B6, 7, 0x25);
+    case EM_MOTION_ID(0, KUSH_MOT_DIE):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 85, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 218, 47, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 282, 46, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 366, 44, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 96, 23, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 192, 22, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 282, 23, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 44, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 400, 16, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 412, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 438, 7, KUSH_BONE_BREATH);
         break;
-    case 0x42D:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0xC, 0x58, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0x12, 0x1A);
+    case EM_MOTION_ID(0, KUSH_MOT_STATUS4):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 12, 88, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 22, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 18, KUSH_BONE_FOOT_A);
         break;
-    case 0x42E:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 0x1E, 0x4F, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_SHAKE_OFF):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 30, 79, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 22, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, 13, KUSH_BONE_WING_B);
         break;
-    case 0x42F:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x56, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0x17, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10A, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x10, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_COLLAPSE):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 86, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 23, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 266, 59, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, 18, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 18, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 160, 16, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 184, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, 14, KUSH_BONE_WING_B);
         break;
-    case 0x431:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x2E, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, 0x17, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6E, 0x12, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x86, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x96, 5, 0x25);
+    case EM_MOTION_ID(0, KUSH_MOT_TOPPLE):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 85, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 46, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, 23, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 88, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 110, 18, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 134, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 150, 5, KUSH_BONE_BREATH);
         break;
-    case 0x432:
-        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, 0x16, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 7, 2);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 5, 0x25);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_PART_BREAK):
+        Em_PlaySeTypeAtBoneOnFrame((Em *) em, 4, 83, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, 22, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 76, 5, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 13, KUSH_BONE_WING_B);
         break;
-    case 0x433:
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x17, 0x26);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x56, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 4, 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5E, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 0, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_PART_BREAK_TURN):
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 50, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 23, 38);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 86, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 90, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 122, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 138, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 84, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 94, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 138, 0, KUSH_BONE_FOOT_B);
         
-    case 0x3E9:
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE):
     default:
         break;
     }
 }
 
+/*
+ * EmKushala_MotionSounds for Lunastra and Teostra: the same motions and
+ * bones, with the sounds of their own bank.
+ */
 void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
 {
     s16 motion;
 
     motion = work->fxMotion;
     switch (motion) {
-    case 0x3EA:
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_WALK):
+        Em_PlaySeAtBoneOnFrame(em, 36, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 78, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 132, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 178, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 62, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 150, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 196, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x3ED:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_LEFT):
+        Em_PlaySeAtBoneOnFrame(em, 8, 50, 38);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 40, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 66, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 22, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 36, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 64, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 72, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x3EE:
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_RIGHT):
+        Em_PlaySeAtBoneOnFrame(em, 8, 50, 38);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 40, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 66, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 22, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 36, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 64, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 72, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x3EF:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 3, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SMALL):
+        Em_PlaySeAtBoneOnFrame(em, 4, 60, 38);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 34, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 3, KUSH_BONE_FOOT_D);
         break;
-    case 0x3F0:
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3C, 2, 0x3C, 2), 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_RIGHT):
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(60, 2, 60, 2), 38);
+        Em_PlaySeAtBoneOnFrame(em, 56, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 54, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 20, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 48, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 80, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 54, 14, KUSH_BONE_WING_B);
         break;
-    case 0x3F1:
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3C, 2, 0x3C, 2), 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_LEFT):
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(60, 2, 60, 2), 38);
+        Em_PlaySeAtBoneOnFrame(em, 56, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 54, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 20, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 48, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 80, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 54, 14, KUSH_BONE_WING_B);
         break;
-    case 0x3F2:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x26, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x14, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_TAKE_OFF):
+        Em_PlaySeAtBoneOnFrame(em, 4, 60, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 38, 91, 38);
+        Em_PlaySeAtBoneOnFrame(em, 44, 20, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 14, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 26, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 15, KUSH_BONE_WING_B);
         break;
-    case 0x3F3:
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER):
+        Em_PlaySeAtBoneOnFrame(em, 2, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 11, KUSH_BONE_WING_B);
         break;
-    case 0x3F4:
-    case 0x404:
-    case 0x405:
-        Em_PlaySeAtBoneOnFrame(em, 0xD, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x17, 0x19, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x19, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x41, 0x19, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_FLY_FAST):
+    case EM_MOTION_ID(0, KUSH_MOT_BANK_A):
+    case EM_MOTION_ID(0, KUSH_MOT_BANK_B):
+        Em_PlaySeAtBoneOnFrame(em, 13, 26, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 18, 25, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 23, 25, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 44, 25, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 58, 25, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 65, 25, KUSH_BONE_WING_A);
         break;
-    case 0x3F5:
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x28, 0x4B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1C, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x1D, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x1D, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_DASH_START):
+        Em_PlaySeTypeAtBoneOnFrame(em, 40, 75, 38);
+        Em_PlaySeAtBoneOnFrame(em, 2, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 28, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 52, 29, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 29, KUSH_BONE_WING_A);
         break;
-    case 0x3F6:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x51, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xB, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_DASH_END):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 81, 38);
+        Em_PlaySeAtBoneOnFrame(em, 12, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 16, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 11, KUSH_BONE_WING_B);
         break;
-    case 0x3F7:
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x3E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE_ACTION_B):
+        Em_PlaySeAtBoneOnFrame(em, 28, 49, 38);
+        Em_PlaySeAtBoneOnFrame(em, 48, 62, 38);
+        Em_PlaySeAtBoneOnFrame(em, 40, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 44, 14, KUSH_BONE_WING_B);
         break;
-    case 0x3F8:
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x1A, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x19, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x19, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_FLY_CLIMB):
+        Em_PlaySeAtBoneOnFrame(em, 38, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 42, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 2, 26, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 6, 25, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 8, 25, KUSH_BONE_WING_A);
         break;
-    case 0x3F9:
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xAE, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 74, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 2, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 54, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 58, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 66, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 72, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 68, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 124, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 142, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 146, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 138, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 174, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 196, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 194, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 184, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x3FA:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x51, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x14, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_TURN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 81, 38);
+        Em_PlaySeAtBoneOnFrame(em, 8, 20, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, KUSH_BONE_WING_B);
         break;
-    case 0x3FD:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 5, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_START):
+        Em_PlaySeAtBoneOnFrame(em, 10, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 32, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 50, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 22, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 56, 5, KUSH_BONE_FOOT_B);
         break;
-    case 0x3FE:
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x15, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_B):
+        Em_PlaySeAtBoneOnFrame(em, 26, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 32, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 2, 21, KUSH_BONE_FOOT_B);
         break;
-    case 0x3FF:
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x15, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_C):
+        Em_PlaySeAtBoneOnFrame(em, 20, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 34, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 2, 21, KUSH_BONE_FOOT_B);
         break;
-    case 0x400:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_STOP):
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 40, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 44, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x401:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_REAR_UP):
+        Em_PlaySeAtBoneOnFrame(em, 4, 54, 38);
+        Em_PlaySeAtBoneOnFrame(em, 16, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 30, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 40, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 44, 15, KUSH_BONE_WING_B);
         break;
-    case 0x402:
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xC, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_STOMP):
+        Em_PlaySeAtBoneOnFrame(em, 28, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 26, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 30, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 22, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 24, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 32, 12, KUSH_BONE_WING_B);
         break;
-    case 0x403:
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_LIFT_TO_HOVER):
+        Em_PlaySeAtBoneOnFrame(em, 14, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 13, KUSH_BONE_WING_B);
         break;
-    case 0x406:
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x3D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_WING_FLAP):
+        Em_PlaySeAtBoneOnFrame(em, 32, 61, 38);
+        Em_PlaySeAtBoneOnFrame(em, 36, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 42, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 24, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 36, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 14, KUSH_BONE_WING_B);
         break;
-    case 0x407:
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x33, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_ALERT):
+        Em_PlaySeAtBoneOnFrame(em, 10, 51, 38);
+        Em_PlaySeAtBoneOnFrame(em, 100, 50, 38);
+        Em_PlaySeAtBoneOnFrame(em, 20, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 112, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 14, KUSH_BONE_WING_A);
         break;
-    case 0x408:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x25, 0x26);
-        Em_PlaySeTypeAtBoneInFrames(em, 0x38, 0xAA, 0x4A, 0x26, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xBC, 8, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xC0, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xF2, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xF8, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_ROAR):
+        Em_PlaySeAtBoneOnFrame(em, 4, 37, 38);
+        Em_PlaySeTypeAtBoneInFrames(em, 56, 170, 74, 38, 7, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 10, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 96, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 100, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 188, 8, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 184, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 192, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 242, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 248, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 18, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 22, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 246, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x40A:
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x29, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x3E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x36, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xCA, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 4, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE_ACTION_A):
+        Em_PlaySeAtBoneOnFrame(em, 18, 41, 38);
+        Em_PlaySeAtBoneOnFrame(em, 34, 62, 38);
+        Em_PlaySeAtBoneOnFrame(em, 120, 54, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 18, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 22, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 158, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 202, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 16, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 30, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 180, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 132, 4, KUSH_BONE_FOOT_B);
         break;
-    case 0x40B:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x39, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x3A, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x23, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_EAT_START):
+        Em_PlaySeAtBoneOnFrame(em, 4, 60, 38);
+        Em_PlaySeAtBoneOnFrame(em, 50, 57, 38);
+        Em_PlaySeAtBoneOnFrame(em, 100, 58, 38);
+        Em_PlaySeAtBoneOnFrame(em, 130, 59, 38);
+        Em_PlaySeAtBoneOnFrame(em, 168, 35, 38);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 26, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x40C:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1A);
+    case EM_MOTION_ID(0, KUSH_MOT_EAT):
+        Em_PlaySeAtBoneOnFrame(em, 4, 50, 38);
+        Em_PlaySeAtBoneOnFrame(em, 20, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 26, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 1, KUSH_BONE_FOOT_A);
         break;
-    case 0x40D:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x55, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x54, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 3, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_LIMP):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 85, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 84, 85, 38);
+        Em_PlaySeAtBoneOnFrame(em, 18, 18, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 72, 18, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 128, 18, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 64, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 96, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 54, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 3, KUSH_BONE_FOOT_D);
         break;
-    case 0x40E:
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, 0x36, 0x26);
+    case EM_MOTION_ID(0, KUSH_MOT_REST):
+        Em_PlaySeAtBoneOnFrame(em, 80, 38, 38);
+        Em_PlaySeAtBoneOnFrame(em, 224, 54, 38);
         if (em->stateGroup == 6) {
             if (em->state != 7) {
                 goto block_49;
@@ -1037,336 +925,336 @@ void EmKushala_MotionSoundsTesca(Em *em, EmWork *work)
             break;
         }
 block_49:
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xE, 0x2E);
+        Em_PlaySeAtBoneOnFrame(em, 32, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 106, 16, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 124, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 128, 14, KUSH_BONE_WING_A);
         break;
-    case 0x40F:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x3E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_REST_END):
+        Em_PlaySeAtBoneOnFrame(em, 4, 50, 38);
+        Em_PlaySeAtBoneOnFrame(em, 68, 59, 38);
+        Em_PlaySeAtBoneOnFrame(em, 88, 62, 38);
+        Em_PlaySeAtBoneOnFrame(em, 74, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 110, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 132, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 98, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 128, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 48, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 14, KUSH_BONE_WING_A);
         break;
-    case 0x411:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 8, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x14, 2);
+    case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 91, 38);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 8, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 22, 20, KUSH_BONE_BODY);
         break;
-    case 0x409:
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xA, 0x51, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 9, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C_END):
+        Em_PlaySeTypeAtBoneOnFrame(em, 10, 81, 38);
+        Em_PlaySeAtBoneOnFrame(em, 4, 21, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 14, 9, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 16, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 70, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 20, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 60, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x412:
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xA, 0x4F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x15, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_B):
+        Em_PlaySeTypeAtBoneOnFrame(em, 10, 79, 38);
+        Em_PlaySeAtBoneOnFrame(em, 110, 49, 38);
+        Em_PlaySeAtBoneOnFrame(em, 6, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 21, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 126, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 132, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 14, KUSH_BONE_WING_A);
         break;
-    case 0x413:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4D, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xB8, 0x5E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x15, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0x15, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xE4, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_A):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 77, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 184, 94, 38);
+        Em_PlaySeAtBoneOnFrame(em, 120, 21, 17);
+        Em_PlaySeAtBoneOnFrame(em, 152, 21, 17);
+        Em_PlaySeAtBoneOnFrame(em, 18, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 38, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 212, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 228, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 40, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x417:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x32, 0x48, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x62, 0x49, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x41, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 1, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_CHAIN):
+        Em_PlaySeAtBoneOnFrame(em, 4, 60, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 50, 72, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 98, 73, 38);
+        Em_PlaySeAtBoneOnFrame(em, 108, 65, 38);
+        Em_PlaySeAtBoneOnFrame(em, 54, 18, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 100, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 104, 1, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 26, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 60, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x418:
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x51, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x33, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_CHAIN_END):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 81, 38);
+        Em_PlaySeAtBoneOnFrame(em, 62, 51, 38);
+        Em_PlaySeAtBoneOnFrame(em, 18, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, KUSH_BONE_WING_A);
         break;
-    case 0x419:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0xB, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_WINDUP):
+        Em_PlaySeAtBoneOnFrame(em, 4, 32, 38);
+        Em_PlaySeAtBoneOnFrame(em, 2, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 6, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 108, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 112, 11, KUSH_BONE_WING_A);
         break;
-    case 0x41A:
-        Em_PlaySeTypeAtBoneInFrames(em, 0x16, 0x11C, 0x49, 0x26, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x41, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xCA, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xCE, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10C, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x110, 0xB, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_STREAM):
+        Em_PlaySeTypeAtBoneInFrames(em, 22, 284, 73, 38, 7, 0);
+        Em_PlaySeAtBoneOnFrame(em, 22, 65, 38);
+        Em_PlaySeAtBoneOnFrame(em, 2, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 6, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 76, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 80, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 140, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 144, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 202, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 206, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 268, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 272, 11, KUSH_BONE_WING_A);
         break;
-    case 0x410:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x2E);
+    case EM_MOTION_ID(0, KUSH_MOT_BREATH_STREAM_END):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 91, 38);
+        Em_PlaySeAtBoneOnFrame(em, 18, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, KUSH_BONE_WING_A);
         break;
-    case 0x41D:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x29, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x15, 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 9, 0x11);
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER_ACTION_A):
+        Em_PlaySeAtBoneOnFrame(em, 4, 54, 38);
+        Em_PlaySeAtBoneOnFrame(em, 46, 41, 38);
+        Em_PlaySeAtBoneOnFrame(em, 2, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 6, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 42, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 46, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 46, 21, 17);
+        Em_PlaySeAtBoneOnFrame(em, 56, 9, 17);
         break;
-    case 0x41F:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x27, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x3C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x15, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SWEEP_A):
+        Em_PlaySeAtBoneOnFrame(em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame(em, 40, 39, 38);
+        Em_PlaySeAtBoneOnFrame(em, 90, 60, 38);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 126, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 21, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 118, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 18, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 60, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 112, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 70, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 128, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x420:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x31, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x27, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x3C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 5, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 5, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 3, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SWEEP_B):
+        Em_PlaySeAtBoneOnFrame(em, 4, 49, 38);
+        Em_PlaySeAtBoneOnFrame(em, 40, 39, 38);
+        Em_PlaySeAtBoneOnFrame(em, 90, 60, 38);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 126, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 48, 21, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 118, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 60, 5, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 112, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 5, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 128, 3, KUSH_BONE_FOOT_D);
         break;
-    case 0x423:
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x4D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x3E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x32, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x24, 2);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x3E, Sound_RandomSe(0x43, 1, 0x44, 1), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x46, Sound_RandomSe(0x45, 2, 0x43, 1), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x4A, Sound_RandomSe(0x44, 4, 0x45, 2), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x4E, Sound_RandomSe(0x43, 2, 0x44, 2), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x58, Sound_RandomSe(0x45, 2, 0x43, 1), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x5E, Sound_RandomSe(0x43, 4, 0x44, 1), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x6C, Sound_RandomSe(0x45, 2, 0x43, 2), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x74, Sound_RandomSe(0x44, 3, 0x44, 2), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, Sound_RandomSe(0x45, 3, 0x45, 4), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x84, Sound_RandomSe(0x43, 3, 0x44, 3), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x90, Sound_RandomSe(0x43, 4, 0x45, 2), 0x2E, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x44, Sound_RandomSe(0x45, 1, 0x43, 1), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x4A, Sound_RandomSe(0x45, 1, 0x43, 1), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x54, Sound_RandomSe(0x44, 1, 0x43, 3), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x5A, Sound_RandomSe(0x45, 2, 0x43, 2), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x62, Sound_RandomSe(0x45, 1, 0x44, 1), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x6C, Sound_RandomSe(0x43, 1, 0x43, 2), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x70, Sound_RandomSe(0x45, 2, 0x43, 2), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x76, Sound_RandomSe(0x45, 2, 0x44, 2), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, Sound_RandomSe(0x45, 4, 0x43, 3), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x84, Sound_RandomSe(0x45, 2, 0x45, 4), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x92, Sound_RandomSe(0x43, 4, 0x44, 2), 0x32, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x44, 1, 0x45, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x48, Sound_RandomSe(0x45, 1, 0x44, 1), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x50, Sound_RandomSe(0x44, 1, 0x45, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x5A, Sound_RandomSe(0x44, 2, 0x44, 1), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x62, Sound_RandomSe(0x43, 4, 0x45, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x68, Sound_RandomSe(0x44, 2, 0x44, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x6E, Sound_RandomSe(0x43, 2, 0x45, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x78, Sound_RandomSe(0x44, 2, 0x44, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x86, Sound_RandomSe(0x43, 3, 0x45, 4), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8C, Sound_RandomSe(0x44, 4, 0x43, 2), 0x11, 4);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x94, Sound_RandomSe(0x43, 3, 0x45, 4), 0x11, 4);
+    case EM_MOTION_ID(0, KUSH_MOT_BLAST_CHARGE):
+        Em_PlaySeAtBoneOnFrame(em, 2, 32, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 77, 38);
+        Em_PlaySeAtBoneOnFrame(em, 80, 62, 38);
+        Em_PlaySeAtBoneOnFrame(em, 60, 50, 38);
+        Em_PlaySeAtBoneOnFrame(em, 4, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 100, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 104, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 36, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneVolOnFrame(em, 62, Sound_RandomSe(67, 1, 68, 1), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 70, Sound_RandomSe(69, 2, 67, 1), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 74, Sound_RandomSe(68, 4, 69, 2), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 78, Sound_RandomSe(67, 2, 68, 2), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 88, Sound_RandomSe(69, 2, 67, 1), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 94, Sound_RandomSe(67, 4, 68, 1), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 108, Sound_RandomSe(69, 2, 67, 2), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 116, Sound_RandomSe(68, 3, 68, 2), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, Sound_RandomSe(69, 3, 69, 4), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 132, Sound_RandomSe(67, 3, 68, 3), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 144, Sound_RandomSe(67, 4, 69, 2), KUSH_BONE_WING_A, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 68, Sound_RandomSe(69, 1, 67, 1), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 74, Sound_RandomSe(69, 1, 67, 1), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 84, Sound_RandomSe(68, 1, 67, 3), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 90, Sound_RandomSe(69, 2, 67, 2), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 98, Sound_RandomSe(69, 1, 68, 1), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 108, Sound_RandomSe(67, 1, 67, 2), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 112, Sound_RandomSe(69, 2, 67, 2), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 118, Sound_RandomSe(69, 2, 68, 2), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, Sound_RandomSe(69, 4, 67, 3), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 132, Sound_RandomSe(69, 2, 69, 4), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 146, Sound_RandomSe(67, 4, 68, 2), KUSH_BONE_WING_B, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(68, 1, 69, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 72, Sound_RandomSe(69, 1, 68, 1), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 80, Sound_RandomSe(68, 1, 69, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 90, Sound_RandomSe(68, 2, 68, 1), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 98, Sound_RandomSe(67, 4, 69, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 104, Sound_RandomSe(68, 2, 68, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 110, Sound_RandomSe(67, 2, 69, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 120, Sound_RandomSe(68, 2, 68, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 134, Sound_RandomSe(67, 3, 69, 4), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 140, Sound_RandomSe(68, 4, 67, 2), 17, 4);
+        Em_PlaySeAtBoneVolOnFrame(em, 148, Sound_RandomSe(67, 3, 69, 4), 17, 4);
         break;
-    case 0x424:
-        Em_PlaySeTypeAtBoneInFrames(em, 0x58, 0x104, 0x50, 0x26, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x33, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x3A, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x3F, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, 0x3C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xE2, 1, 0x1F);
+    case EM_MOTION_ID(0, KUSH_MOT_BLAST):
+        Em_PlaySeTypeAtBoneInFrames(em, 88, 260, 80, 38, 7, 0);
+        Em_PlaySeAtBoneOnFrame(em, 2, 51, 38);
+        Em_PlaySeAtBoneOnFrame(em, 24, 58, 38);
+        Em_PlaySeAtBoneOnFrame(em, 30, 63, 38);
+        Em_PlaySeAtBoneOnFrame(em, 196, 60, 38);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 15, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 44, 15, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 210, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 226, 1, KUSH_BONE_FOOT_C);
         break;
-    case 0x425:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x23, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 4, 8);
+    case EM_MOTION_ID(0, KUSH_MOT_FLINCH):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 83, 38);
+        Em_PlaySeAtBoneOnFrame(em, 56, 35, 38);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 22, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 4, KUSH_BONE_FOOT_D);
         break;
-    case 0x426:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x29, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 7, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_TOPPLE_RECOVER):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 84, 38);
+        Em_PlaySeAtBoneOnFrame(em, 62, 41, 38);
+        Em_PlaySeAtBoneOnFrame(em, 28, 7, 38);
+        Em_PlaySeAtBoneOnFrame(em, 14, 2, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 98, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 92, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 82, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 104, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 14, KUSH_BONE_WING_B);
         break;
-    case 0x427:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xB, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xB, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 0xB, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_FLINCH_HOVER):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 83, 38);
+        Em_PlaySeAtBoneOnFrame(em, 14, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 11, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 110, 11, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 114, 11, KUSH_BONE_WING_B);
         break;
-    case 0x428:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_FALL):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, 38);
+        Em_PlaySeAtBoneOnFrame(em, 6, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 10, 12, KUSH_BONE_WING_B);
         break;
-    case 0x429:
-        Em_PlaySeAtBoneOnFrame(em, 8, 9, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xF, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_FALL_LAND):
+        Em_PlaySeAtBoneOnFrame(em, 8, 9, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 24, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 26, 15, KUSH_BONE_WING_B);
         break;
-    case 0x42A:
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x57, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x17, 0x26);
+    case EM_MOTION_ID(0, KUSH_MOT_DOWN):
+        Em_PlaySeTypeAtBoneOnFrame(em, 24, 87, 38);
+        Em_PlaySeAtBoneOnFrame(em, 38, 16, 38);
+        Em_PlaySeAtBoneOnFrame(em, 26, 23, 38);
         break;
-    case 0x42B:
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x29, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 2, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 3, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_DOWN_GET_UP):
+        Em_PlaySeAtBoneOnFrame(em, 16, 41, 38);
+        Em_PlaySeAtBoneOnFrame(em, 2, 18, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 90, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 58, 2, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 86, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 98, 3, KUSH_BONE_FOOT_B);
         break;
-    case 0x42C:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x30, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x2D, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x11A, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 3, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x190, 0x10, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x19C, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x1B6, 7, 0x25);
+    case EM_MOTION_ID(0, KUSH_MOT_DIE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 87, 38);
+        Em_PlaySeAtBoneOnFrame(em, 68, 48, 38);
+        Em_PlaySeAtBoneOnFrame(em, 170, 59, 38);
+        Em_PlaySeAtBoneOnFrame(em, 238, 45, 38);
+        Em_PlaySeAtBoneOnFrame(em, 282, 38, 38);
+        Em_PlaySeAtBoneOnFrame(em, 30, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 44, 1, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 3, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 28, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 400, 16, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 412, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 438, 7, KUSH_BONE_BREATH);
         break;
-    case 0x42D:
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xC, 0x58, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x12, 0x1A);
+    case EM_MOTION_ID(0, KUSH_MOT_STATUS4):
+        Em_PlaySeTypeAtBoneOnFrame(em, 12, 88, 38);
+        Em_PlaySeAtBoneOnFrame(em, 26, 18, KUSH_BONE_FOOT_A);
         break;
-    case 0x42E:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x51, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x33, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x3B, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_SHAKE_OFF):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 81, 38);
+        Em_PlaySeAtBoneOnFrame(em, 24, 51, 38);
+        Em_PlaySeAtBoneOnFrame(em, 64, 59, 38);
+        Em_PlaySeAtBoneOnFrame(em, 22, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, KUSH_BONE_WING_B);
         break;
-    case 0x42F:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x55, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x3C, 0x26);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x3E, 0x4E, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, 0x36, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x12, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x10, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 7, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xE, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_COLLAPSE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 85, 38);
+        Em_PlaySeAtBoneOnFrame(em, 78, 60, 38);
+        Em_PlaySeTypeAtBoneOnFrame(em, 62, 78, 38);
+        Em_PlaySeAtBoneOnFrame(em, 270, 54, 38);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 156, 18, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 58, 18, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 160, 16, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 184, 7, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 48, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, 14, KUSH_BONE_WING_B);
         break;
-    case 0x431:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x26, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x2A, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xC, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0xC, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 3, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x12, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 5, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 9, 0x25);
+    case EM_MOTION_ID(0, KUSH_MOT_TOPPLE):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 84, 38);
+        Em_PlaySeAtBoneOnFrame(em, 44, 38, 38);
+        Em_PlaySeAtBoneOnFrame(em, 72, 42, 38);
+        Em_PlaySeAtBoneOnFrame(em, 16, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 13, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 64, 12, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 68, 12, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 3, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 110, 18, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 134, 5, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 150, 9, KUSH_BONE_BREATH);
         break;
-    case 0x432:
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 5, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 9, 0x25);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xD, 0x32);
+    case EM_MOTION_ID(0, KUSH_MOT_PART_BREAK):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 84, 38);
+        Em_PlaySeAtBoneOnFrame(em, 56, 5, KUSH_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 76, 9, KUSH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 13, KUSH_BONE_WING_B);
         break;
-    case 0x433:
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x3C, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x33, 0x26);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xE, 0x2E);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0xE, 0x32);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0, 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 4, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 4, 0xD);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0, 0xD);
+    case EM_MOTION_ID(0, KUSH_MOT_PART_BREAK_TURN):
+        Em_PlaySeAtBoneOnFrame(em, 4, 60, 38);
+        Em_PlaySeAtBoneOnFrame(em, 52, 51, 38);
+        Em_PlaySeAtBoneOnFrame(em, 4, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 86, 14, KUSH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 90, 14, KUSH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 122, 0, KUSH_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 138, 0, KUSH_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 84, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 128, 4, KUSH_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 94, 4, KUSH_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 138, 0, KUSH_BONE_FOOT_B);
         break;
-    case 0x3E9:
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE):
         break;
     }
 }
@@ -1380,18 +1268,19 @@ void EmKushala_Setup(Em *em)
 }
 
 /*
- * Callback-table slots 0 and 1: creates the monster's stage object and
- * effect, then its aura object (StageObj_K1C kind 0xC for Kushala Daora,
- * 0x1D for Lunastra and Teostra).
+ * Callback-table slots 0 and 1: creates the alert mark (AlertMark_Create)
+ * and the monster's shadow (SHADOW_MODEL), then its aura object
+ * (MonsterFx_CreateOnEm type 12 for Kushala Daora, 29 for Lunastra and
+ * Teostra).
  */
 void EmKushala_SpawnEffects(Em *em)
 {
-    AlertMark_Create(em, 0x22, 0);
-    Shadow_Spawn((Player *) em, 0);
+    AlertMark_Create(em, 34, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
     if (em->type == EM_KIND_KUSHALA_DAORA || em->type == EM_KIND_RUSTED_KUSHALA_DAORA) {
-        MonsterFx_CreateOnEm(em, 0xC, em->scaleX);
+        MonsterFx_CreateOnEm(em, 12, em->scaleX);
     } else if (em->type == EM_KIND_LUNASTRA || em->type == EM_KIND_TEOSTRA) {
-        MonsterFx_CreateOnEm(em, 0x1D, em->scaleX);
+        MonsterFx_CreateOnEm(em, 29, em->scaleX);
     }
 }
 
@@ -1409,7 +1298,7 @@ void EmKushala_Init(Em *em)
     Em_SetPartScaled(em, 3);
     Em_SetPartScaled(em, 4);
     if (gQuest.stage == 0) {
-        em->rotY = 0x8000;
+        em->rotY = ANGLE_TURN / 2;
         switch (gScene.area) {
         case 0:
             em->posX = 8000.0f + 1500.0f * (u32) em->slotNo;
@@ -1435,7 +1324,7 @@ void EmKushala_Init(Em *em)
             em->posX = 10000.0f + 1500.0f * (u32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
-            em->rotY = 0x4000;
+            em->rotY = ANGLE_TURN / 4;
             break;
         case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (u32) em->slotNo;
@@ -1446,7 +1335,7 @@ void EmKushala_Init(Em *em)
             em->posX = 8500.0f;
             em->posY = 0.0f;
             em->posZ = 10000.0f;
-            em->rotY = 0x5000;
+            em->rotY = ANGLE_TURN * 5 / 16;
             break;
         case AREA_FOREST_HILLS_5:
             em->posX = 10500.0f + 1500.0f * (u32) em->slotNo;
@@ -1463,7 +1352,7 @@ void EmKushala_Init(Em *em)
     Em_SetMotionRow(em, KUSH_MOT_IDLE, 0, 0);
     em->stance = EM_STANCE_GROUND;
     w->windFrames = 0;
-    if ((Quest_FindSpecialMonster(em->type) & 0xFF) == 0xFF) {
+    if ((Quest_FindSpecialMonster(em->type) & 0xFF) == 255) {
         switch (gQuest.stage) {
         case QUEST_ID_KUSHALA_SNOW_SCENE:
         case QUEST_ID_LUNASTRA_TEOSTRA_TOWER_SCENE:
@@ -1480,13 +1369,13 @@ void EmKushala_Init(Em *em)
     em->scriptPending = 1;
     em->blind = 0;
     em->unk_InitFlag = 1;
-    em->aimAngle = 0x4000;
+    em->aimAngle = ANGLE_TURN / 4;
     em->spawnParam = 0;
     w->windOn = 0;
     w->pitchStep = 0x100;
-    w->turnSpeed = 0x200;
+    w->turnSpeed = 512;
     w->rollSpeed = 0x100;
-    w->moveAngBY = 0x2000;
+    w->moveAngBY = ANGLE_TURN / 8;
     w->moveAngBX = 0;
     w->unk01B = 0;
     em->meshShown[1] = 0;
@@ -1518,7 +1407,7 @@ void EmKushala_Start(Em *em)
                 em->posX = 7146.0f;
                 em->posY = 200.0f;
                 em->posZ = 11034.0f;
-                em->rotY = 0x5800;
+                em->rotY = ANGLE_TURN * 11 / 32;
             }
             break;
         }
@@ -1530,7 +1419,7 @@ void EmKushala_Start(Em *em)
                 em->posX = 11600.0f;
                 em->posY = -20.0f;
                 em->posZ = 13000.0f;
-                em->rotY = 0x6800;
+                em->rotY = ANGLE_TURN * 13 / 32;
             }
             break;
         case QUEST_ID_LUNASTRA_TEOSTRA_VOLCANO_7_SCENE_1:
@@ -1718,13 +1607,13 @@ void EmKushala_Stand(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         if (em->motionId[0] != EM_MOTION_ID(0, KUSH_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, KUSH_MOT_IDLE), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, KUSH_MOT_IDLE), 10, 0, 0);
         }
         if (em->motionId[1] != EM_MOTION_ID(1, KUSH_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, KUSH_MOT_IDLE), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, KUSH_MOT_IDLE), 10, 0, 1);
         }
         if (em->motionId[2] != EM_MOTION_ID(2, KUSH_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, KUSH_MOT_IDLE), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, KUSH_MOT_IDLE), 10, 0, 2);
         }
         break;
     case 1:
@@ -1826,7 +1715,7 @@ void EmKushala_EatNeedStart(Em *em, EmWork *work, s32 variant)
     case 1:
         if ((EmMotion_PassedFrameScaled(em, 56.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0)) && variant == 0 && ((s32)Player_InCurrentArea(em) & 0xFF)) {
             FallingDebris_Create(em, 1);
-            Mtx_Copy(boneMtx, (f32 *)Em_Bone(em, 0x25));
+            Mtx_Copy(boneMtx, (f32 *)Em_Bone(em, KUSH_BONE_BREATH));
             ofs[0] = 0.0f;
             ofs[1] = -45.0f;
             ofs[2] = 165.0f;
@@ -1836,7 +1725,7 @@ void EmKushala_EatNeedStart(Em *em, EmWork *work, s32 variant)
             pos[1] += ofs[1];
             pos[2] += ofs[2];
             HitSpark_SpawnForOwner(em, 0, 9, 0, pos, 1.0f);
-            PartFx_SpawnAt(pos, 0x14, 4.0f);
+            PartFx_SpawnAt(pos, 20, 4.0f);
         }
         if (em->motion[0].playing == 0 && --em->timer <= 0) {
             em->step++;
@@ -1963,7 +1852,7 @@ void EmKushala_Rest(Em *em)
         em->lookAtTarget = 0;
         Em_SetMotion(em, KUSH_MOT_REST, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = 0x2328;
+        em->timer = 9000;
         break;
     case 1:
         type = em->type;
@@ -2173,7 +2062,7 @@ void EmKushala_Roar(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_ALERT)) {
-            Em_SetMotion(em, KUSH_MOT_ROAR, 0xA, 0x1E);
+            Em_SetMotion(em, KUSH_MOT_ROAR, 10, 30);
         } else {
             Em_SetMotion(em, KUSH_MOT_ROAR, 0, 0);
         }
@@ -2330,7 +2219,7 @@ void EmKushala_Settle(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_GROUND;
-        Em_SetMotion(em, KUSH_MOT_LAND, 0, 0x92);
+        Em_SetMotion(em, KUSH_MOT_LAND, 0, 146);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2357,7 +2246,7 @@ void EmKushala_RoarB(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_ALERT)) {
-            Em_SetMotion(em, KUSH_MOT_ROAR, 0xA, 0x1E);
+            Em_SetMotion(em, KUSH_MOT_ROAR, 10, 30);
         } else {
             Em_SetMotion(em, KUSH_MOT_ROAR, 0, 0);
         }
@@ -2400,7 +2289,7 @@ void EmKushala_Walk(Em *em)
         Em_SetMotion(em, KUSH_MOT_WALK, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             EmKushala_EndState(em, 0, 0);
         }
@@ -2422,10 +2311,10 @@ void EmKushala_Limp(Em *em)
         Em_SetMotion(em, KUSH_MOT_LIMP, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             if (em->combat == 0) {
                 em->step++;
-                Em_SetMotion(em, KUSH_MOT_LAND, 0, 0x92);
+                Em_SetMotion(em, KUSH_MOT_LAND, 0, 146);
                 break;
             }
             EmKushala_EndState(em, 0, 0);
@@ -2475,7 +2364,7 @@ void EmKushala_TurnAlert(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         work->turnSpeed = (em->aimAngle - em->rotY) & 0xFFFF;
-        if (work->turnSpeed <= 0x238E || work->turnSpeed >= 0xDC72) {
+        if (work->turnSpeed <= 9102 || work->turnSpeed >= 0xDC72) {
             Em_SetMotion(em, KUSH_MOT_TURN_SMALL, 0, 0);
         } else if (work->turnSpeed >= 0x8000) {
             Em_SetMotion(em, KUSH_MOT_TURN_BIG_LEFT, 0, 0);
@@ -2488,9 +2377,9 @@ void EmKushala_TurnAlert(Em *em, EmWork *work)
         break;
     case 1:
         switch (em->motionId[0]) {
-        case 0x3EF:
-        case 0x3F1:
-        case 0x3F0:
+        case EM_MOTION_ID(0, KUSH_MOT_TURN_SMALL):
+        case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_LEFT):
+        case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_RIGHT):
             if (EmMotion_InFrameRange(em, 0, 16.0f, 54.0f)) {
                 em->rotY = (em->rotY + work->turnSpeed / 19) & 0xFFFF;
             }
@@ -2521,7 +2410,7 @@ void EmKushala_WalkB(Em *em)
         }
         
     case 2:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step = 3;
             Em_SetMotion(em, KUSH_MOT_RUN_STOP, 0, 0);
         }
@@ -2552,19 +2441,19 @@ void EmKushala_Run(Em *em, EmWork *work, s32 variant)
     case 1:
         switch (variant) {
         case 1:
-            em->rotY += 0x5B;
+            em->rotY += 91;
             break;
         case 2:
-            em->rotY += 0xE3;
+            em->rotY += 227;
             break;
         case 3:
-            em->rotY -= 0x5B;
+            em->rotY -= 91;
             break;
         case 4:
-            em->rotY -= 0xE3;
+            em->rotY -= 227;
             break;
         }
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             Em_SetMotion(em, KUSH_MOT_RUN_STOP, 0, 0);
             break;
@@ -2643,7 +2532,7 @@ void EmKushala_LiftToHover(Em *em)
     case 2:
         if (em->motion[1].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0x1C);
+            Em_SetMotion(em, KUSH_MOT_HOVER, 0, 28);
         }
         break;
     case 3:
@@ -2736,12 +2625,12 @@ void EmKushala_SideDash(Em *em, EmWork *work, s32 variant)
             em->posX += out[0];
             em->posZ += out[2];
             if (variant == 0) {
-                targetYaw = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0xC000) & 0xFFFF;
+                targetYaw = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + ANGLE_TURN * 3 / 4) & 0xFFFF;
             } else {
-                targetYaw = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0x4000) & 0xFFFF;
+                targetYaw = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + ANGLE_TURN / 4) & 0xFFFF;
             }
             yawDiff = ((targetYaw & 0xFFFF) - em->rotY) & 0xFFFF;
-            if (yawDiff <= 0x8000) {
+            if (yawDiff <= ANGLE_TURN / 2) {
                 if (yawDiff <= 0x173) {
                     em->rotY += yawDiff;
                 } else {
@@ -2782,7 +2671,7 @@ void EmKushala_HoverForward(Em *em, EmWork *work, s32 variant)
         em->velZ = 30.0f;
         Player_ClearAccel2(em);
         if (variant == 1) {
-            em->speedBonus = 0x32;
+            em->speedBonus = 50;
         }
         break;
     case 1:
@@ -2798,7 +2687,7 @@ void EmKushala_HoverForward(Em *em, EmWork *work, s32 variant)
         Em_MoveRotated(em, &work->moveAngX);
         em->goalDist -= em->velZ;
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x40, flags);
+            Em_TurnToGoal(em, 64, flags);
         }
         if (em->goalDist <= 0.0f) {
             em->step++;
@@ -2832,7 +2721,7 @@ void EmKushala_HoverDash(Em *em, EmWork *work)
         em->goalDist -= em->velZ;
         if ((em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_START)) && (EmMotion_PassedFrameScaled(em, 58.0f, 0U) != 0)) {
             EmKushala_CreateAttack(em, 9);
-            EmKushala_CreateAttack(em, 0x1A);
+            EmKushala_CreateAttack(em, 26);
         }
         if (em->motion[0].playing == 0) {
             if (em->goalDist <= 0.0f) {
@@ -2855,7 +2744,7 @@ void EmKushala_HoverDash(Em *em, EmWork *work)
         work->moveAngZ = 0;
         Em_MoveRotated(em, &work->moveAngX);
         em->goalDist -= em->velZ;
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             Em_SetMotion(em, KUSH_MOT_DASH_END, 0, 0);
             EmKushala_StartCurves(em, 2U);
@@ -2889,12 +2778,12 @@ void EmKushala_HoverTurn(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         work->turnSpeed = (em->aimAngle - em->rotY) & 0xFFFF;
-        if (work->turnSpeed <= 0x4000 || work->turnSpeed >= 0xC000) {
+        if (work->turnSpeed <= 16384 || work->turnSpeed >= 0xC000) {
             Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
-            em->timer = 0x1F;
+            em->timer = 31;
         } else {
             Em_SetMotion(em, KUSH_MOT_HOVER_TURN, 0, 0);
-            em->timer = 0x1B;
+            em->timer = 27;
         }
         if (work->turnSpeed >= 0x8000) {
             work->turnSpeed -= 0x10000;
@@ -3165,7 +3054,7 @@ void EmKushala_DriftToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -3205,7 +3094,7 @@ void EmKushala_DriftToGoalPitched(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -3275,11 +3164,11 @@ void EmKushala_TurnToGoal(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
         Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
-        work->turnSpeed = 0x180;
+        work->turnSpeed = 384;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
         work->flyGuard = 0;
-        em->timer = 0x96;
+        em->timer = 150;
         break;
     case 1:
         done = Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 1) & 0xFF;
@@ -3328,7 +3217,7 @@ void EmKushala_LeaveArea(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x4E1, &EmKushala_FlyParam);
+        Em_UpdateFlight(em, 1249, &EmKushala_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3383,7 +3272,7 @@ void EmKushala_EnterAreaAndLand(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, KUSH_MOT_FLY_FAST, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
@@ -3395,7 +3284,7 @@ void EmKushala_EnterAreaAndLand(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE5, &EmKushala_FlyParam);
+        Em_UpdateFlight(em, 229, &EmKushala_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3411,7 +3300,7 @@ void EmKushala_EnterAreaAndLand(Em *em, EmWork *work)
     case 2:
         EmKushala_UpdateCurves(em);
         if (em->rotX != 0) {
-            if (em->rotX < 0x8000) {
+            if (em->rotX < (ANGLE_TURN / 2)) {
                 em->rotX -= work->pitchStep;
             } else {
                 em->rotX += work->pitchStep;
@@ -3419,7 +3308,7 @@ void EmKushala_EnterAreaAndLand(Em *em, EmWork *work)
             em->rotX = (u16) em->rotX;
         }
         if (em->rotZ != 0) {
-            if (em->rotZ < 0x8000) {
+            if (em->rotZ < (ANGLE_TURN / 2)) {
                 em->rotZ -= work->rollSpeed;
             } else {
                 em->rotZ += work->rollSpeed;
@@ -3459,7 +3348,7 @@ void EmKushala_CrossArea(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, KUSH_MOT_FLY_FAST, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
@@ -3481,7 +3370,7 @@ void EmKushala_CrossArea(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE5, &EmKushala_FlyParam);
+        Em_UpdateFlight(em, 229, &EmKushala_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3495,7 +3384,7 @@ void EmKushala_CrossArea(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmKushala_FlyParam);
+        Em_UpdateFlight(em, 225, &EmKushala_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3573,7 +3462,7 @@ void EmKushala_DashToGoal(Em *em, EmWork *work)
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x121, &EmKushala_FlyParam2);
+        Em_UpdateFlight(em, 289, &EmKushala_FlyParam2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3614,7 +3503,7 @@ void EmKushala_BrakeDash(Em *em, EmWork *work)
         EmKushala_UpdateCurves(em);
         rotX = em->rotX;
         if (rotX != 0) {
-            if (rotX < 0x8000) {
+            if (rotX < (ANGLE_TURN / 2)) {
                 em->rotX = rotX - work->pitchStep;
             } else {
                 em->rotX = rotX + work->pitchStep;
@@ -3623,7 +3512,7 @@ void EmKushala_BrakeDash(Em *em, EmWork *work)
         }
         rotZ = em->rotZ;
         if (rotZ != 0) {
-            if (rotZ < 0x8000) {
+            if (rotZ < (ANGLE_TURN / 2)) {
                 em->rotZ = rotZ - work->rollSpeed;
             } else {
                 em->rotZ = rotZ + work->rollSpeed;
@@ -3684,12 +3573,12 @@ void EmKushala_DashCircuit(Em *em, EmWork *work)
                 em->curGoalNo &= 3;
                 Em_ComputeGoal2(em, em->goal);
                 em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f);
-                Em_SetStateRand(em, 2, 0xD);
+                Em_SetStateRand(em, 2, 13);
             }
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmKushala_FlyParam);
+        Em_UpdateFlight(em, 225, &EmKushala_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3716,7 +3605,7 @@ void EmKushala_RiseToHeight(Em *em, EmWork *work, s32 variant)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         Player_ClearVelocity(em);
@@ -3821,7 +3710,7 @@ void EmKushala_TurnSweepB(Em *em)
 
 /*
  * KUSH_ATK_STRIKE_BREATH: an attack at frame 60; Kushala Daora adds a gust
- * (stage object and attack at frame 74, a breath from bone 0x25 at frame
+ * (stage object and attack at frame 74, a breath from KUSH_BONE_BREATH at frame
  * 78).
  */
 void EmKushala_StrikeBreath(Em *em)
@@ -3839,11 +3728,11 @@ void EmKushala_StrikeBreath(Em *em)
         type = em->type;
         if ((type == EM_KIND_KUSHALA_DAORA) || (type == EM_KIND_RUSTED_KUSHALA_DAORA)) {
             if (EmMotion_PassedFrameScaled(em, 74.0f, 0U) != 0) {
-                MonsterFx_CreateOnEmAngled(em, 0xA, 0, 0, 1.0f);
-                EmKushala_CreateAttack(em, 0x1B);
+                MonsterFx_CreateOnEmAngled(em, 10, 0, 0, 1.0f);
+                EmKushala_CreateAttack(em, 27);
             }
             if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-                EmKushala_CreateBreathAtBone(em, 0x25, 0, 0, 0, 0);
+                EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 0, 0, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -3921,11 +3810,11 @@ void EmKushala_BlastRing(Em *em, EmWork *work, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, KUSH_MOT_BLAST_CHARGE, 0, 0);
-        em->timer = 0x5A;
+        em->timer = 90;
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0U) != 0) {
@@ -3980,7 +3869,7 @@ void EmKushala_TescaActionC(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, KUSH_MOT_TESCA_ACTION_C, 0, 0);
@@ -4110,7 +3999,7 @@ void EmKushala_LungeBlast(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0xC8;
+        em->timer = 200;
         Em_SetMotion(em, KUSH_MOT_LUNGE, 0, 0);
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_FAMILY;
@@ -4235,28 +4124,28 @@ void EmKushala_BreathAttack(Em *em, EmWork *work, s32 variant)
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) && (em->type == EM_KIND_KUSHALA_DAORA || em->type == EM_KIND_RUSTED_KUSHALA_DAORA)) {
             switch (variant & 0xF) {
             case 0:
-                MonsterFx_CreateOnEmAngled(em, 0xA, 0x2000, 0, 1.0f);
-                EmKushala_CreateBreathAtBone(em, 0x25, 2, 1, 0x2000, 0);
+                MonsterFx_CreateOnEmAngled(em, 10, 8192, 0, 1.0f);
+                EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 2, 1, 8192, 0);
                 break;
             case 1:
                 switch (em->timer) {
                 case 3:
-                    MonsterFx_CreateOnEmAngled(em, 0x12, 0x1555, 0xF1C8, 1.0f);
-                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x1555, 0xF1C8);
+                    MonsterFx_CreateOnEmAngled(em, 18, 5461, 61896, 1.0f);
+                    EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 1, 0, 5461, 61896);
                     break;
                 case 2:
-                    MonsterFx_CreateOnEmAngled(em, 0x12, 0x11C7, 0, 1.0f);
-                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x11C7, 0);
+                    MonsterFx_CreateOnEmAngled(em, 18, 4551, 0, 1.0f);
+                    EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 1, 0, 4551, 0);
                     break;
                 case 1:
-                    MonsterFx_CreateOnEmAngled(em, 0x12, 0x1555, 0xE39, 1.0f);
-                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x1555, 0xE39);
+                    MonsterFx_CreateOnEmAngled(em, 18, 5461, 3641, 1.0f);
+                    EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 1, 0, 5461, 3641);
                     break;
                 }
                 break;
             case 2:
-                MonsterFx_CreateOnEmAngled(em, 0xA, 0x2000, 0, 1.0f);
-                EmKushala_CreateBreathAtBone(em, 0x25, 2, 2, 0x2000, 0);
+                MonsterFx_CreateOnEmAngled(em, 10, 8192, 0, 1.0f);
+                EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 2, 2, 8192, 0);
                 break;
             case 3:
                 switch (em->timer) {
@@ -4271,14 +4160,14 @@ void EmKushala_BreathAttack(Em *em, EmWork *work, s32 variant)
                     }
                 case 1:
                 case 2:
-                    MonsterFx_CreateOnEmAngled(em, 0xA, 0x11C7, 0, 1.0f);
-                    EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x11C7, 0);
+                    MonsterFx_CreateOnEmAngled(em, 10, 4551, 0, 1.0f);
+                    EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 1, 0, 4551, 0);
                     break;
                 }
                 break;
             case 4:
-                MonsterFx_CreateOnEmAngled(em, 0xA, 0x11C7, 0, 1.0f);
-                EmKushala_CreateBreathAtBone(em, 0x25, 1, 0, 0x11C7, 0);
+                MonsterFx_CreateOnEmAngled(em, 10, 4551, 0, 1.0f);
+                EmKushala_CreateBreathAtBone(em, KUSH_BONE_BREATH, 1, 0, 4551, 0);
                 break;
             }
         }
@@ -4357,7 +4246,7 @@ void EmKushala_BlastRingFort(Em *em, EmWork *work)
             if (em->combat == 1) {
                 EmKushala_EndState(em, 0, 0);
             } else {
-                Em_SetMotion(em, KUSH_MOT_LAND, 0, 0x92);
+                Em_SetMotion(em, KUSH_MOT_LAND, 0, 146);
             }
         }
         break;
@@ -4459,7 +4348,7 @@ void EmKushala_KnockDown(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_DOWN, 0, 0x18);
+            Em_SetMotion(em, KUSH_MOT_DOWN, 0, 24);
             em->timer = 2;
         }
         break;
@@ -4797,12 +4686,12 @@ void EmKushala_Stun(Em *em)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, KUSH_MOT_TOPPLE, 0, 0);
-        StunStars_CreateEm(em, 1, 0x25, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, 37, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_DOWN, 0, 0x18);
+            Em_SetMotion(em, KUSH_MOT_DOWN, 0, 24);
         }
         break;
     case 2:
@@ -4832,9 +4721,9 @@ void EmKushala_HoldRise(Em *em)
     case 0:
         em->step++;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, KUSH_MOT_REAR_UP, 0, 0x28);
+        Em_SetMotion(em, KUSH_MOT_REAR_UP, 0, 40);
         em->stance = EM_STANCE_GROUND;
-        em->holdTimer = 0x32;
+        em->holdTimer = 50;
         Em_RestartScript(em);
         break;
     case 1:
@@ -4847,7 +4736,7 @@ void EmKushala_HoldRise(Em *em)
     case 2:
         if (em->motion[1].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0x1C);
+            Em_SetMotion(em, KUSH_MOT_HOVER, 0, 28);
         }
         break;
     case 3:
@@ -4870,8 +4759,8 @@ void EmKushala_HoldSettle(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, KUSH_MOT_REAR_UP, 0, 0x28);
-        em->holdTimer = 0x32;
+        Em_SetMotion(em, KUSH_MOT_REAR_UP, 0, 40);
+        em->holdTimer = 50;
         Em_RestartScript(em);
         break;
     case 1:
@@ -4935,7 +4824,7 @@ void EmKushala_Leave(Em *em, EmWork *work)
         EmKushala_UpdateCurves(em);
         if (em->motion[0].playing == 0) {
             em->step++;
-            work->turnSpeed = 0x100;
+            work->turnSpeed = 256;
             Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
             work->flyGuard = 0;
             Player_ClearVelocity(em);
@@ -4976,7 +4865,7 @@ void EmKushala_LeaveFromAir(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, KUSH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         Player_ClearVelocity(em);
@@ -5047,7 +4936,7 @@ void EmKushala_SceneWalkIn(Em *em)
             em->posX = 12338.0f;
             em->posY = 291.0f;
             em->posZ = 11023.0f;
-            em->rotY = 0xB000;
+            em->rotY = ANGLE_TURN * 11 / 16;
             em->goal[0] = 9100.0f;
             em->goal[1] = 310.0f;
             em->goal[2] = 9683.0f;
@@ -5064,7 +4953,7 @@ void EmKushala_SceneWalkIn(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, KUSH_MOT_ROAR, 0, 0);
-            em->rotY = 0x3000;
+            em->rotY = ANGLE_TURN * 3 / 16;
         }
         break;
     case 5:
@@ -5106,7 +4995,7 @@ void EmKushala_SceneRise(Em *em, EmWork *work)
         em->posX = 9947.0f;
         em->posY = -3000.0f;
         em->posZ = 8326.0f;
-        em->rotY = 0x8000;
+        em->rotY = ANGLE_TURN / 2;
         em->goal[0] = 9947.0f;
         em->goal[1] = 0.0f;
         em->goal[2] = 8326.0f;
@@ -5124,7 +5013,7 @@ void EmKushala_SceneRise(Em *em, EmWork *work)
             em->posX = 9749.0f;
             em->posY = 0.0f;
             em->posZ = 8665.0f;
-            em->rotY = 0x8000;
+            em->rotY = ANGLE_TURN / 2;
         }
         break;
     case 3:
@@ -5134,19 +5023,19 @@ void EmKushala_SceneRise(Em *em, EmWork *work)
             em->posX = 9855.0f;
             em->posY = 0.0f;
             em->posZ = 4996.0f;
-            em->rotY = 0x8000;
+            em->rotY = ANGLE_TURN / 2;
         }
         break;
     case 4:
         if (EmMotion_ReachedFrame(em, 0, 146.0f)) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_BLAST, 0, 0x64);
+            Em_SetMotion(em, KUSH_MOT_BLAST, 0, 100);
         }
         break;
     case 5:
         if (EmMotion_ReachedFrame(em, 0, 170.0f)) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_BLAST, 0, 0x64);
+            Em_SetMotion(em, KUSH_MOT_BLAST, 0, 100);
         }
         break;
     case 6:
@@ -5196,7 +5085,7 @@ void EmKushala_Captured(Em *em)
     pos[1] = 10.0f;
     pos[2] = 140.0f;
     pos[0] = 0.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, 34, pos, 1.6f);
 }
 
 /*
@@ -5318,7 +5207,7 @@ void EmKushala_SceneFlyIn(Em *em, EmWork *work)
         em->posX = 7146.0f;
         em->posY = 2000.0f;
         em->posZ = 11034.0f;
-        em->rotY = 0x5800;
+        em->rotY = ANGLE_TURN * 11 / 32;
         em->goal[0] = 9740.0f;
         em->goal[1] = 2000.0f;
         em->goal[2] = 9360.0f;
@@ -5338,7 +5227,7 @@ void EmKushala_SceneFlyIn(Em *em, EmWork *work)
             em->posX = 9740.0f;
             em->posY = 2000.0f;
             em->posZ = 9360.0f;
-            em->rotY = 0x3000;
+            em->rotY = ANGLE_TURN * 3 / 16;
             em->goal[0] = 13806.0f;
             em->goal[1] = 2000.0f;
             em->goal[2] = 11045.0f;
@@ -5354,7 +5243,7 @@ void EmKushala_SceneFlyIn(Em *em, EmWork *work)
             em->posX = 13917.0f;
             em->posY = 2000.0f;
             em->posZ = 10375.0f;
-            em->rotY = 0xB000;
+            em->rotY = ANGLE_TURN * 11 / 16;
             Player_ClearVelocity(em);
             em->velY = -10.0f;
         }
@@ -5367,7 +5256,7 @@ void EmKushala_SceneFlyIn(Em *em, EmWork *work)
             em->posX = 13917.0f;
             em->posY = 2000.0f;
             em->posZ = 10375.0f;
-            em->rotY = 0xB000;
+            em->rotY = ANGLE_TURN * 11 / 16;
             Player_ClearVelocity(em);
             em->velY = -10.0f;
         }
@@ -5381,7 +5270,7 @@ void EmKushala_SceneFlyIn(Em *em, EmWork *work)
             em->posX = 13690.0f;
             em->posY = 200.0f;
             em->posZ = 10845.0f;
-            em->rotY = 0xB000;
+            em->rotY = ANGLE_TURN * 11 / 16;
         }
         break;
     case 6:
@@ -5447,7 +5336,7 @@ void EmKushala_SceneWake(Em *em)
         em->posX = 11600.0f;
         em->posY = -20.0f;
         em->posZ = 13000.0f;
-        em->rotY = 0x6800;
+        em->rotY = ANGLE_TURN * 13 / 32;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -5469,7 +5358,7 @@ void EmKushala_SceneWake(Em *em)
             em->posX = 10018.0f;
             em->posY = 0.0f;
             em->posZ = 11470.0f;
-            em->rotY = 0xB000;
+            em->rotY = ANGLE_TURN * 11 / 16;
         }
         break;
     case 4:
@@ -5478,7 +5367,7 @@ void EmKushala_SceneWake(Em *em)
         }
         if (em->motion[0].playing == 0 && --em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, KUSH_MOT_BLAST, 0, 0x64);
+            Em_SetMotion(em, KUSH_MOT_BLAST, 0, 100);
         }
         break;
     case 5:
@@ -5520,7 +5409,7 @@ void EmKushala_Die(Em *em, EmWork *work)
             CamShake_ReqAIf(em, 2);
         }
         if (em->motion[0].playing == 0) {
-            em->timer = 0x708;
+            em->timer = 1800;
             em->step++;
             EmMine_Create(em, 0);
             em->fieldCollide = 0;
@@ -5616,7 +5505,7 @@ void EmKushala_DieFalling(Em *em, EmWork *work)
             em->alpha = (f32) savedTimer / 150.0f;
         }
         break;
-    case 0x63:
+    case 99:
         if (em->motion[0].playing == 0) {
             em->stance = EM_STANCE_GROUND;
             EmKushala_EndState(em, 0, 0);
@@ -6123,7 +6012,7 @@ void EmKushala_Update(Em *em)
         }
     }
     k = Map_DayId(gScene.map);
-    if (em->noAlert != 1 && em->rage == 0 && k != 8 && k != 9 && k != 0xA) {
+    if (em->noAlert != 1 && em->rage == 0 && k != 8 && k != 9 && k != 10) {
         if (em->type == EM_KIND_KUSHALA_DAORA || em->type == EM_KIND_RUSTED_KUSHALA_DAORA) {
             switch (k) {
             case MAP_JUNGLE:
@@ -6167,9 +6056,9 @@ void EmKushala_Update(Em *em)
     case EM_DMG_DEAD:
         switch (gQuest.stage) {
         case QUEST_ID_KUSHALA_JUNGLE_SCENE:
-        case 0x138B:
+        case 5003:
         case QUEST_ID_LUNASTRA_TEOSTRA_VOLCANO_8_SCENE:
-        case 0x138E:
+        case 5006:
             if (em->stateGroup != EM_GROUP_EVENT && em->stateGroup != EM_GROUP_DEFEAT) {
                 em->scriptPending = 0;
                 if (em->stance == EM_STANCE_AIR) {
@@ -6243,11 +6132,11 @@ void EmKushala_Update(Em *em)
             em->scriptPending = 0;
             Em_CheckRageByHp(em, em->rageThreshold);
             break;
-        case 0xB:
+        case 11:
             EmKushala_ChangeState(em, EM_GROUP_IDLE, KUSH_IDLE_STATUS2_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
-        case 0x15:
+        case 21:
             EmKushala_ChangeState(em, EM_GROUP_IDLE, KUSH_IDLE_STATUS1_END, EM_SYNC_OWNER);
             em->scriptPending = 0;
             break;
@@ -6430,7 +6319,7 @@ s32 EmKushala_StateHasWindRing(Em *em)
         switch (em->state) {
         case 2:
         case 3:
-        case 0x13:
+        case 19:
             return 1;
         }
         break;
@@ -6439,20 +6328,20 @@ s32 EmKushala_StateHasWindRing(Em *em)
         case 3:
         case 5:
         case 8:
-        case 0x17:
-        case 0x19:
-        case 0x1B:
-        case 0x1C:
-        case 0x1D:
+        case 23:
+        case 25:
+        case 27:
+        case 28:
+        case 29:
             return 1;
         }
         break;
     case 3:
         switch (em->state) {
         case 2:
-        case 0xF:
-        case 0x10:
-        case 0x11:
+        case 15:
+        case 16:
+        case 17:
             return 1;
         }
         break;
@@ -6519,25 +6408,25 @@ static void EmKushala_MotionEffectsNop(Em *em)
 void EmKushala_SpawnRageAura(Em *em, s16 motion)
 {
     switch (motion) {
-    case 0x3E9:
-    case 0x3EA:
-    case 0x3EB:
-    case 0x3ED:
-    case 0x3EE:
-    case 0x3EF:
-    case 0x3F3:
-    case 0x3F7:
-    case 0x400:
-    case 0x402:
-    case 0x406:
-    case 0x407:
-    case 0x40A:
-    case 0x40D:
-    case 0x413:
-    case 0x42E:
-    case 0x433:
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE):
+    case EM_MOTION_ID(0, KUSH_MOT_WALK):
+    case EM_MOTION_ID(0, 3):
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_LEFT):
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_RIGHT):
+    case EM_MOTION_ID(0, KUSH_MOT_TURN_SMALL):
+    case EM_MOTION_ID(0, KUSH_MOT_HOVER):
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE_ACTION_B):
+    case EM_MOTION_ID(0, KUSH_MOT_RUN_STOP):
+    case EM_MOTION_ID(0, KUSH_MOT_STOMP):
+    case EM_MOTION_ID(0, KUSH_MOT_WING_FLAP):
+    case EM_MOTION_ID(0, KUSH_MOT_ALERT):
+    case EM_MOTION_ID(0, KUSH_MOT_IDLE_ACTION_A):
+    case EM_MOTION_ID(0, KUSH_MOT_LIMP):
+    case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_A):
+    case EM_MOTION_ID(0, KUSH_MOT_SHAKE_OFF):
+    case EM_MOTION_ID(0, KUSH_MOT_PART_BREAK_TURN):
         if (em->rage != 0 && gScene.frame % 45 == 0) {
-            MonsterFx_CreateOnEm(em, 0xD, 2.0f * em->scaleX);
+            MonsterFx_CreateOnEm(em, 13, 2.0f * em->scaleX);
         }
         break;
     }
@@ -6568,19 +6457,19 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
     switch (work->fxMotion) {
     case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_RIGHT):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 0x1F, 3, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_FOOT_C, 3, 8.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 25.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 0x19, 3, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_LEG_A, 3, 8.0f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_TURN_BIG_LEFT):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 0x19, 3, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_LEG_A, 3, 8.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 25.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 0x1F, 3, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_FOOT_C, 3, 8.0f * em->scaleX);
             break;
         }
         break;
@@ -6613,7 +6502,7 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             EmKushala_SpawnDustNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
-            EmKushala_SpawnDustNearGround(em, 1, 0xC, 0, 12.0f * em->scaleX);
+            EmKushala_SpawnDustNearGround(em, 1, 12, 0, 12.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
             EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 2);
@@ -6640,34 +6529,34 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, KUSH_MOT_RUN_START):
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 8, 3, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_FOOT_D, 3, 8.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 0xD, 3, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_FOOT_B, 3, 8.0f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_RUN_B):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 2, 0x1A, 1.5f * em->scaleX);
+            DustCloud_Create((Em *) em, 2, 26, 1.5f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_RUN_C):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 2, 0x1A, 1.5f * em->scaleX);
+            DustCloud_Create((Em *) em, 2, 26, 1.5f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_REAR_UP):
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 2, 0x1B, 2.0f * em->scaleX);
+            DustCloud_Create((Em *) em, 2, 27, 2.0f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_STOMP):
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0xB);
+            EmKushala_CreateAttack(em, 11);
         }
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 7, 10.0f * em->scaleX);
@@ -6683,21 +6572,21 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, KUSH_MOT_ROAR):
         if ((em->type == EM_KIND_KUSHALA_DAORA) || (em->type == EM_KIND_RUSTED_KUSHALA_DAORA)) {
             if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-                EmKushala_CreateAttack(em, 0x1C);
+                EmKushala_CreateAttack(em, 28);
                 ElementBurst_CreateOnEm(em, 5, 3, 1.0f);
             }
             if ((EmKushala_WindActive(em) == 1) && (EmMotion_PassedFrameScaled(em, 186.0f, 0) != 0)) {
-                MonsterFx_CreateOnEm(em, 0x10, em->scaleX);
+                MonsterFx_CreateOnEm(em, 16, em->scaleX);
                 EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 4);
                 break;
             }
         } else {
             if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-                EmKushala_CreateAttack(em, 0x1C);
+                EmKushala_CreateAttack(em, 28);
                 ElementBurst_CreateOnEm(em, 5, 3, 1.0f);
             }
             if ((EmKushala_WindActiveTesca(em) == 1) && (EmMotion_PassedFrameScaled(em, 186.0f, 0) != 0)) {
-                MonsterFx_CreateOnEm(em, 0x10, em->scaleX);
+                MonsterFx_CreateOnEm(em, 16, em->scaleX);
                 EmImpactAttack_CreateAt(em, (f32 *) &em->posX, 4);
                 break;
             }
@@ -6716,7 +6605,7 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             puffOfsA[0] = 30.0f;
             puffOfsA[1] = 30.0f;
             puffOfsA[2] = 200.0f;
-            Em_SpawnLyingPuffs(em, 0x25, puffOfsA, 1.6f);
+            Em_SpawnLyingPuffs(em, KUSH_BONE_BREATH, puffOfsA, 1.6f);
             break;
         }
         break;
@@ -6729,13 +6618,13 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C):
         if ((em->type == EM_KIND_LUNASTRA) || (em->type == EM_KIND_TEOSTRA)) {
             if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-                EmKushala_SpawnK14NearGround(em, 1, 0x1D, 0, em->scaleX);
+                EmKushala_SpawnK14NearGround(em, 1, 29, 0, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-                EmKushala_SpawnK14NearGround(em, 1, 0x19, 0, em->scaleX);
+                EmKushala_SpawnK14NearGround(em, 1, 25, 0, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
-                EmKushala_CreateAttack(em, 0x1D);
+                EmKushala_CreateAttack(em, 29);
                 break;
             }
         }
@@ -6743,10 +6632,10 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_B):
         if ((em->type == EM_KIND_LUNASTRA) || (em->type == EM_KIND_TEOSTRA)) {
             if (EmMotion_PassedFrameScaled(em, 40.0f, 0) != 0) {
-                DustCloud_Create((Em *) em, 2, 0x1E, 1.5f * em->scaleX);
+                DustCloud_Create((Em *) em, 2, 30, 1.5f * em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
-                EmKushala_CreateAttack(em, 0x1E);
+                EmKushala_CreateAttack(em, 30);
                 break;
             }
         }
@@ -6757,15 +6646,15 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
                 EmKushala_CreateAttack(em, 5);
             }
             if (EmMotion_PassedFrameScaled(em, 124.0f, 0) != 0) {
-                DustCloud_Create((Em *) em, 2, 0x20, 2.0f * em->scaleX);
+                DustCloud_Create((Em *) em, 2, 32, 2.0f * em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
-                EmKushala_SpawnGroundEffect(em, 0x12, 0xC, 8.0f * em->scaleX);
+                EmKushala_SpawnGroundEffect(em, 18, 12, 8.0f * em->scaleX);
                 break;
             }
         }
         break;
-    case EM_MOTION_ID(0, 0x2C):
+    case EM_MOTION_ID(0, 44):
         if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
             EmKushala_CreateAttack(em, 5);
             break;
@@ -6779,13 +6668,13 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, KUSH_MOT_STRIKE_BREATH):
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0xC);
+            EmKushala_CreateAttack(em, 12);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_BREATH_CHAIN):
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x11);
+            EmKushala_CreateAttack(em, 17);
             break;
         }
         break;
@@ -6801,13 +6690,13 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
                 u8 map = gScene.map;
 
                 if (map == MAP_SNOWY_MOUNTAINS || map == MAP_SNOWY_MOUNTAINS_NIGHT) {
-                    EmRangedAttack_CreateAtBoneTimed(em, 0x25, 0x12, 1, 0x2000, 0, (s32) (131.0f * em->motionSpeed));
+                    EmRangedAttack_CreateAtBoneTimed(em, KUSH_BONE_BREATH, EMRANGED_KUSHALA_BREATH, 1, 8192, 0, (s32) (131.0f * em->motionSpeed));
                 } else {
-                    EmRangedAttack_CreateAtBoneTimed(em, 0x25, 0x12, 0, 0x2000, 0, (s32) (131.0f * em->motionSpeed));
+                    EmRangedAttack_CreateAtBoneTimed(em, KUSH_BONE_BREATH, EMRANGED_KUSHALA_BREATH, 0, 8192, 0, (s32) (131.0f * em->motionSpeed));
                 }
             }
         } else if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            EmEffectAttack_CreateChain(em, EMFX_BREATH_CHAIN, 0, 0x2000, 0);
+            EmEffectAttack_CreateChain(em, EMFX_BREATH_CHAIN, 0, 8192, 0);
             break;
         }
         break;
@@ -6825,7 +6714,7 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             burstPos[0] = em->posX + aheadOfs[0];
             burstPos[1] = em->floorY;
             burstPos[2] = em->posZ + aheadOfs[2];
-            MonsterFx_CreateAtYaw(burstPos, (u16) em->rotY, 0x11, 1.2f);
+            MonsterFx_CreateAtYaw(burstPos, (u16) em->rotY, 17, 1.2f);
             Explosion_CreateOwned((Player *)em, burstPos, EXPLOSION_KUSHALA_GROUND_BLAST);
             break;
         }
@@ -6835,13 +6724,13 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             EmKushala_CreateAttack(em, 2);
         }
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 1, 0xC, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, 1, 12, 8.0f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_HOVER_ACTION_B):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x12);
+            EmKushala_CreateAttack(em, 18);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             EmKushala_SpawnK14NearGround(em, 1, 0, 0, em->scaleX);
@@ -6856,13 +6745,13 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             EmKushala_CreateAttack(em, 3);
         }
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0xD);
+            EmKushala_CreateAttack(em, 13);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 8, 4, 6.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_FOOT_D, 4, 6.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 2, 0x1E, 1.5f * em->scaleX);
+            DustCloud_Create((Em *) em, 2, 30, 1.5f * em->scaleX);
             break;
         }
         break;
@@ -6871,49 +6760,49 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             EmKushala_CreateAttack(em, 4);
         }
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0xF);
+            EmKushala_CreateAttack(em, 15);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 0xD, 4, 6.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, KUSH_BONE_FOOT_B, 4, 6.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 3, 0x1C, 1.5f * em->scaleX);
+            DustCloud_Create((Em *) em, 3, 28, 1.5f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_HOVER_SWEEP_A):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x13);
+            EmKushala_CreateAttack(em, 19);
         }
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x14);
+            EmKushala_CreateAttack(em, 20);
         }
         if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x15);
+            EmKushala_CreateAttack(em, 21);
         }
         if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
             EmKushala_SpawnGroundEffect(em, 1, 7, 10.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 3, 0x1F, 1.5f * em->scaleX);
+            DustCloud_Create((Em *) em, 3, 31, 1.5f * em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_HOVER_SWEEP_B):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x16);
+            EmKushala_CreateAttack(em, 22);
         }
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x17);
+            EmKushala_CreateAttack(em, 23);
         }
         if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            EmKushala_CreateAttack(em, 0x18);
+            EmKushala_CreateAttack(em, 24);
         }
         if (EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) {
             EmKushala_SpawnDustNearGround(em, 1, 7, 0, 10.0f * em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 2, 0x1F, 1.5f * em->scaleX);
+            DustCloud_Create((Em *) em, 2, 31, 1.5f * em->scaleX);
             break;
         }
         break;
@@ -6931,13 +6820,13 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, KUSH_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
-            EmKushala_SpawnK14NearGround(em, 0xB, 0, 0, em->scaleX);
+            EmKushala_SpawnK14NearGround(em, 11, 0, 0, em->scaleX);
             break;
         }
         break;
     case EM_MOTION_ID(0, KUSH_MOT_DOWN):
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            EmKushala_SpawnGroundEffect(em, 1, 0xC, 8.0f * em->scaleX);
+            EmKushala_SpawnGroundEffect(em, 1, 12, 8.0f * em->scaleX);
             break;
         }
         break;
@@ -6955,7 +6844,7 @@ void EmKushala_MotionEffects(Em *em, EmWork *work)
             puffOfsB[0] = -30.0f;
             puffOfsB[1] = 30.0f;
             puffOfsB[2] = 200.0f;
-            Em_SpawnLyingPuffs(em, 0x25, puffOfsB, 1.6f);
+            Em_SpawnLyingPuffs(em, KUSH_BONE_BREATH, puffOfsB, 1.6f);
             break;
         }
         break;
@@ -7013,7 +6902,7 @@ void EmKushala_CreateAttack(Em *em, s32 kind)
 
 /*
  * The blast's flash: when a player is in the area, an effect and a stage
- * object in front of bone 0x27.
+ * object in front of KUSH_BONE_BLAST.
  */
 void EmKushala_SpawnBlastBurst(Em *em)
 {
@@ -7022,7 +6911,7 @@ void EmKushala_SpawnBlastBurst(Em *em)
     void *bone;
 
     if ((s32)Player_InCurrentArea(em) & 0xFF) {
-        bone = Em_Bone(em, 0x27);
+        bone = Em_Bone(em, KUSH_BONE_BLAST);
         Mtx_GetTrans(pos, bone);
         ofs[0] = 0.0f;
         ofs[1] = -25.0f;
@@ -7075,7 +6964,6 @@ u16 EmKushala_IdleTbl[24] = {
 EmTurnParams EmKushala_TurnParams[1] = {
 #include "game/008CA1F0.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
 s32 EmKushala_BreathTimers[6][2] = {
 #include "game/008CA210.inc"
 };

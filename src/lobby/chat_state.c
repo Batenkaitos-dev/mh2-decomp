@@ -2,7 +2,7 @@
  * The game menu's chat state page, the chat page's last entry
  * (CHAT_ENTRY_STATE): where the chat goes, to the lobby's chat
  * (CHAT_SEND_LOBBY) or to the chosen hunters (CHAT_SEND_TARGETS), kept in
- * gChatWindowSel and copied to gChatSendTo. In AREA_HUB_0x83 only the first
+ * gChatWindowSel and copied to gChatSendTo. In AREA_ONLINE_VILLAGE only the first
  * is offered and the window is drawn dimmed. ChatPage_OpenState opens it,
  * ChatPage_UpdateState takes the buttons and ChatPage_DrawState draws it;
  * the chat page's own list and the hunter page come just before it.
@@ -20,13 +20,16 @@
 #include "hud.h"
 #include "sound.h"
 #include "lobby_labels.h"
-
-void Shake_Start(u8 id, u8 flags, f32 amp);
-s32 ChatMenu_CanSetState(void);
+#include "bgm.h"
+#include "shake.h"
+#include "text.h"
+#include "chat_state.h"
+#include "font.h"
+#include "item_shop.h"
 
 /* The chat page's open handler for the chat state page: puts the cursor on
  * the current state (gChatWindowSel), shows its help line (the first
- * state's in AREA_HUB_0x83), slides the window in and returns 0; 1
+ * state's in AREA_ONLINE_VILLAGE), slides the window in and returns 0; 1
  * (refused) when ChatMenu_CanSetState says no, which it never does. */
 s32 ChatPage_OpenState(void)
 {
@@ -36,7 +39,7 @@ s32 ChatPage_OpenState(void)
     gSubMenuWork->windowSel = gChatWindowSel;
     gHelpPage = HELP_PAGE_CHAT;
     gHelpShow = 0;
-    if (gScene.area != AREA_HUB_0x83) {
+    if (gScene.area != AREA_ONLINE_VILLAGE) {
         gHelpLine = gSubMenuWork->windowSel + 5;
     } else {
         gHelpLine = 5;
@@ -45,14 +48,11 @@ s32 ChatPage_OpenState(void)
     return 0;
 }
 
-s32 Shake_Update(u8 id);
-u8 Shake_Flags(u8 id);
 /* unit's own declaration: the buttons are declared s32 (the definition takes a u16): ChatPage_UpdateState passes its s32 btn as it is, where with u16 the compiler would cut it to 16 bits first, unlike the game's code */
 s32 Menu_CursorUpDown(u8 *cur, s32 buttons, u8 count);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 
 /* The chat state page's input: up and down choose a state (not in
- * AREA_HUB_0x83), PAD_CIRCLE makes it current (gChatWindowSel, and
+ * AREA_ONLINE_VILLAGE), PAD_CIRCLE makes it current (gChatWindowSel, and
  * gChatSendTo the same). PAD_START slides the window out and, once it is
  * out, returns PAD_START (the game menu closes); while the window slides
  * in, the D-pad and PAD_CROSS are ignored and the help line hidden.
@@ -77,7 +77,7 @@ s32 ChatPage_UpdateState(s32 btn)
         gHelpShow = 0;
         btn = (u16)(btn & (0xFFFF & ~(PAD_DPAD | PAD_CROSS))); /* no D-pad or cancel while the window slides in */
     }
-    if (gScene.area != AREA_HUB_0x83) {
+    if (gScene.area != AREA_ONLINE_VILLAGE) {
         Menu_CursorUpDown(&gSubMenuWork->windowSel, btn, 2);
         cur = &gSubMenuWork->windowSel;
         gHelpLine = *cur + 5;
@@ -93,23 +93,16 @@ s32 ChatPage_UpdateState(s32 btn)
     return btn;
 }
 
-void Gfx_DrawMarker(s16 x, s16 y, s16 w, s16 h, s32 flags);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
 struct ShakeOffset;
-s32 Shake_CopyOffset(u8 id, struct ShakeOffset *out);
-void Text_PrintfStyled(s32 a, const char *fmt, ...);
-void Text_PrintfColored(const char *, ...);
 extern ListPanel gChatStatePanel;
 extern ListPanel gChatStatePanelDim;
-extern char *gChatStateTexts[];
 
 /* The chat state page's draw: the window (its title, the cursor on
  * GameMenu.windowSel) and the two states' names, the current one
  * (gChatWindowSel) in the first text style, the markers' colours telling
- * which is current; in AREA_HUB_0x83 the dimmed window with the first
+ * which is current; in AREA_ONLINE_VILLAGE the dimmed window with the first
  * state alone. The window moves with its slide (Shake_CopyOffset). */
 void ChatPage_DrawState(void)
 {
@@ -118,9 +111,9 @@ void ChatPage_DrawState(void)
     s32 bottomColor;
 
     Shake_CopyOffset(SHAKE_CHAT_STATE, (struct ShakeOffset *) pos);
-    if (gScene.area != AREA_HUB_0x83) {
+    if (gScene.area != AREA_ONLINE_VILLAGE) {
         ListPanel_Draw(&gChatStatePanel, pos, gChatPageTexts[CHAT_PAGE_TEXT_STATE_HEAD], gSubMenuWork->windowSel);
-        Font_SetPos(pos[0] + 0x1A9, 0x55);
+        Font_SetPos(pos[0] + 425, 85);
         if (gChatWindowSel == CHAT_SEND_LOBBY) {
             Text_PrintfStyled(4, "~C00%s\n~C10%s", gChatStateTexts[0], gChatStateTexts[1]);
             topColor = 0;
@@ -130,18 +123,18 @@ void ChatPage_DrawState(void)
             topColor = 2;
             bottomColor = 1;
         }
-        Gfx_DrawMarker(pos[0] + 0x18E, 0x55, 0x14, 0x12, topColor);
-        Gfx_DrawMarker(pos[0] + 0x18E, 0x6B, 0x14, 0x12, bottomColor);
+        Gfx_DrawMarker(pos[0] + 398, 85, 20, 18, topColor);
+        Gfx_DrawMarker(pos[0] + 398, 107, 20, 18, bottomColor);
     } else {
         ListPanel_Draw(&gChatStatePanelDim, pos, gChatPageTexts[CHAT_PAGE_TEXT_STATE_HEAD], -1);
-        Gfx_DrawMarker(pos[0] + 0x18E, 0x55, 0x14, 0x12, 0);
+        Gfx_DrawMarker(pos[0] + 398, 85, 20, 18, 0);
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(pos[0] + 0x1A9, 0x55);
+        Font_SetPos(pos[0] + 425, 85);
         Text_PrintfColored(gChatStateTexts[0]);
     }
 }
 
-/* The chat state page's windows: the usual one, and AREA_HUB_0x83's
+/* The chat state page's windows: the usual one, and AREA_ONLINE_VILLAGE's
  * dimmed one. */
 ListPanel gChatStatePanel = {
 #include "lobby/007F1FD0.inc"

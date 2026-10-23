@@ -9,6 +9,11 @@
  *   accepts. The keyboard's other unit holds the rest: the USB keys, the
  *   text line and the conversion. Kbd_EnterChar and Kbd_CharIsSpecialKana share one
  *   full-width space; its "%s" is another copy than Kbd_DrawCandidateBox's.
+ * The drawing (Kbd_DrawCursorBox to Kbd_Draw) lies among the key handlers,
+ * and their tables interleave in the data: the key tables and page binds
+ * that Kbd_BindStartKeys reads lie between Kbd_Draw's box sizes and
+ * glyphs and its pulse and key-position tables, so the drawing can't
+ * stand as a file of its own.
  * The data part holds the romaji to kana table (gRomajiKanaTbl): pointers
  * to the romaji and kana strings, declared by address below.
  */
@@ -26,6 +31,16 @@
 
 #include "ee_stdarg.h"
 #include "model.h"
+#include "render_state.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "hud.h"
+#include "prim.h"
+#include "shake.h"
+#include "text.h"
+#include "engine_math.h"
+#include "font.h"
+#include "libusbkb.h"
 void vsnprintf(char *buf, s32 size, const char *fmt, va_list ap); /* vsnprintf */
 void Font_Printf(const char *fmt, ...);
 extern s32 gTextOff;
@@ -35,50 +50,10 @@ char *strcpy(char *dst, const char *src); /* strcpy */
 s32 strlen(char *s); /* strlen */
 void strncpy(char *dst, const char *src, u32 n);
 s32 ConvCmd_Open(void);
-void Kbd_TypeHidKey(void);
-void Kbd_OpenPhrases1(void);
-void Kbd_OpenPhrases2(void);
-s32 Str_InsertClip(char *dst, char *src, s32 pos, s32 max);
-void Kbd_UpdateSymbolMode(void);
-void Kbd_Convert(void);
-void Kbd_PrevCand(void);
-void Kbd_NextCand(void);
-s32 Kbd_SetIsWide(void);
-void Kbd_SetPhrasePage(u8 arg0);
-s8 Kbd_LookupKey(void);
-void Kbd_ClearUnk34(s8);
-s32 Kbd_KeyRepeat(s16 held, s16 pressed);
-void Kbd_TypeKey(KbdKey *key);
-void Kbd_EnterChar(KbdKey *key);
-void Kbd_InsertPhrase(void);
-void Kbd_ToggleWidth(void);
-void Kbd_DeleteBack(s32);
-void Kbd_Submit(void);
-void Str_ToWide(s8 *src, s8 *dst);
-void Kbd_RefreshLayout(void);
-s32 Kana_AddDakuten(void);
-s32 Kana_AddHandakuten(void);
-s32 Kbd_FindKind(u8 kind, u8 *outA, u8 *outB);
-s32 Kbd_FindKindEx(u8 kind, u8 *outA, u8 *outB);
-void Kbd_UpdateMode(void);
-void Kbd_HomePageCursor(void);
-void Kbd_PickLayout(void);
-void Kbd_EnterGestures(void);
-s32 Kbd_CharIsSpecialKana(KbdKey *p);
-s32 Kbd_CharInSet5_Unk(KbdKey *p);
-void Kbd_SaveKanaInput(void);
-s32 Kbd_CharInSet4_Unk(KbdKey *p);
-s32 Kbd_CharInRows01(KbdKey *arg0);
-s32 Kbd_CharInRowsHigh(KbdKey *arg0);
-s32 Kbd_CharIsPlain(KbdKey *p);
-void Hud_SetCancel(void);
-void Kbd_EmptyInit(void);
-void Player_RequestGesture(u8 a);
 extern u8 gKbdDakutenSjis[];
 extern u8 gKbdDakutenSjis_1;
 extern u8 gKbdHandakutenSjis[];
 extern u8 gKbdHandakutenSjis_1;
-extern u8 gKbdSetModes[];
 extern char D_0046CC08[]; /* a full-width space */
 s32 strncmp(const char *a, const char *b, u32 n);
 extern u8 gKbdPhrasePage;
@@ -95,33 +70,13 @@ typedef struct KeyPair {
     s8 *grid;
     KbdKey key;         /* the key that switches to this page (Kbd_BindStartKeys puts it at keys 4-6) */
 } KeyPair;
-void Kbd_NextChatTarget(void);
-void Kbd_ClearActive(void);
-void Kbd_CursorRight(void);
-void Kbd_CursorLeft(void);
-void Kbd_ConvertOrCommit(void);
-void Kbd_PressKey(KbdKey *key);
-s32 Kbd_DoGesture(char *text, u16 *pos, s32 gesture);
-void Kbd_KanaDakuten(void);
-void Kbd_KanaHandakuten(void);
-void Kbd_ToggleShift(void);
-void Kbd_CyclePhrase(void);
-void Kbd_CycleGesture(void);
 extern s32 gKbdSettings;
 s32 Kbd_ShiftPair(u8 i);
-s32 Sjis_PrevCharSize(u8 *s, s32 pos);
-void Kbd_CommitKana(void);
-s32 Sjis_CharSizeAt(char *s, s32 pos);
-s32 Kbd_KindIs8To10(void);
 typedef struct Rect16 {
     s16 x, y, w, h;
     s32 color;
 } Rect16;
 struct PrimLine;
-s32 Prim_FillRect(struct PrimLine *r);
-void Kbd_Printf(const char *fmt, ...);
-void Kbd_ClearText(void);
-void Kbd_ClearCands(void);
 
 /* The size of the character that ends at byte pos of s (moving the cursor back). */
 s32 Sjis_PrevCharSize(u8 *str, s32 pos)
@@ -131,7 +86,7 @@ s32 Sjis_PrevCharSize(u8 *str, s32 pos)
     s32 len = 0;
 
     while (*str != 0 && len < pos) {
-        size = ((*str >= 0x80 && *str < 0xA0) || (*str >= 0xE0 && *str < 0x100)) ? 2 : 1;
+        size = ((*str >= 128 && *str < 160) || (*str >= 224 && *str < 256)) ? 2 : 1;
         len += size;
         for (i = 0; i < size; i++) {
             str++;
@@ -154,7 +109,7 @@ s32 Sjis_CharSizeAt(char *str, s32 pos)
     i = 0;
     scan = (u8 *)str;
     while (*scan != 0 && i < pos) {
-        size = ((*scan >= 0x80 && *scan < 0xA0) || (*scan >= 0xE0 && *scan < 0x100)) ? 2 : 1;
+        size = ((*scan >= 128 && *scan < 160) || (*scan >= 224 && *scan < 256)) ? 2 : 1;
         i += size;
         scan += size;
     }
@@ -162,7 +117,7 @@ s32 Sjis_CharSizeAt(char *str, s32 pos)
         return -1;
     }
     lead = str[pos];
-    return ((lead >= 0x80 && lead <= 0x9F) || (lead >= 0xE0 && lead < 0x100)) ? 2 : 1;
+    return ((lead >= 128 && lead <= 159) || (lead >= 224 && lead < 256)) ? 2 : 1;
 }
 
 /* Starts the kana-kanji converter for a new entry (ConvCmd_Open). */
@@ -270,7 +225,6 @@ s32 Kbd_DoGesture(char *text, u16 *pos, s32 gesture)
     return 0;
 }
 
-extern s32 gKbdSettings;
 extern u8 gKbdSavedKind;
 extern u8 gKbdSavedKeySet;
 
@@ -392,10 +346,10 @@ static s32 Sjis_IsSingleByte(u8 byte)
     s32 code;
 
     code = byte & 0xFF;
-    if ((code >= 0x80) && (code < 0xA0)) {
+    if ((code >= 128) && (code < 160)) {
         return 0;
     }
-    if ((code >= 0xE0) && (code < 0x100)) {
+    if ((code >= 224) && (code < 256)) {
         return 0;
     }
     return 1;
@@ -403,25 +357,15 @@ static s32 Sjis_IsSingleByte(u8 byte)
 
 /* Kbd_Open: opens the software keyboard: mode kind (the gKbdKindConfs entry), layout,
  * at most max bytes, starting from text (none: empty). */
-extern u8 gKbdKindConfs[][0x38];
+extern KbdKindConf gKbdKindConfs[];
 extern u8 gKbdDelay;
 extern u8 gKbdReplayKey;
-s32 Kbd_GetStartActive(void);
-void Kbd_SetActive(void);
-void Kbd_SetOpen(void);
-void Kbd_ClearOpen(void);
-void Kbd_ClearCands(void);
-void Kbd_OpenConv(void);
-void Kbd_BindStartKeys(void);
 /* Called once with an argument it does not take (see Portability in the h1 notes). */
 extern KbdLayout gKbdSetLayouts[20];
-void Kbd_BindLayouts(s32 unused);
-void Kbd_SetLayout(u8 k);
 extern u8 gKbdKindIs0;
 extern u8 gKbdOpenKey;
 extern s8 gKbdPrompt[];
 extern s16 gKbdChatTarget;
-void sceUsbKbSetRepeat(s32 a, s32 b, s32 c);
 
 void *memset(void *dst, s32 c, u32 n);
 /*
@@ -431,7 +375,7 @@ void *memset(void *dst, s32 c, u32 n);
  *   reaches the gestures page.
  * - layout is the entry kind (Kbd_SetLayout): the barred sets, the starting
  *   set and the characters accepted.
- * - max is the text's maximum length (at most 0xFF); text is the starting
+ * - max is the text's maximum length (at most 255); text is the starting
  *   text (NULL: empty), cut so that no two-byte character is split.
  * A USB key held at the open, other than the Enter keys, Escape and
  * Backspace, is replayed as a new key once the one-frame delay ends
@@ -451,11 +395,11 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
     } else {
         gKbdKindIs0 = 0;
     }
-    gKbd->kindConf = gKbdKindConfs[kind];
+    gKbd->kindConf = (u8 *)&gKbdKindConfs[kind];
     Kbd_ClearOpen();
     Kbd_ClearActive();
-    if (max > 0xFF) {
-        max = 0xFF;
+    if (max > 255) {
+        max = 255;
     }
     gKbd->maxLen = max;
     gKbdDelay = 1;
@@ -494,8 +438,8 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
         gKbd->textPos = 0;
         gKbd->text[0] = 0;
     } else {
-        memset(gKbd->text, 0, 0x100);
-        strncpy(gKbd->text, text, 0xFF);
+        memset(gKbd->text, 0, 256);
+        strncpy(gKbd->text, text, 255);
         end = (u8 *)&gKbd->text[254];
         scan = (u8 *)gKbd->text;
         for (;;) {
@@ -546,43 +490,43 @@ void Kbd_Open(s32 kind, u8 layout, u16 max, char *text)
 }
 
 extern s32 gKbdLayoutFlags[];
-extern u8 gKbdKeySets[][2];
+extern KbdKindKeys gKbdKeySets[];
 
 /*
  * Sets up entry kind entryKind: the barred key sets (gKbdLayoutFlags, plus
  * both phrase pages when the kind has no phrases); the starting key set
- * (gKbdKeySets[entryKind][0]: kinds 0, 0xC, 0xD and 0xE keep a current
- * two-byte set, kind 3 an allowed one and kind 0xB any; the set
+ * (gKbdKeySets[entryKind].keySet: kinds 0, 12, 13 and 14 keep a current
+ * two-byte set, kind 3 an allowed one and kind 11 any; the set
  * Kbd_SaveKeySet saved for the kind wins; with Caps Lock on an alphabet set
- * swaps case); and the characters accepted (gKbdKeySets[entryKind][1]).
+ * swaps case); and the characters accepted (gKbdKeySets[entryKind].accept).
  * Then updates the mode, the cursor and the symbol mode.
  */
 void Kbd_SetLayout(u8 entryKind)
 {
     gKbd->kind = entryKind;
     gKbd->flags = gKbdLayoutFlags[entryKind];
-    if (*(s32 *)(gKbd->kindConf + 0x30) == 0) {
+    if (*(s32 *)(gKbd->kindConf + 48) == 0) {
         gKbd->flags |= KBD_SET_BIT(KBD_SET_PHRASE1);
         gKbd->flags |= KBD_SET_BIT(KBD_SET_PHRASE2);
     }
     switch (entryKind) {
     case 0:
-    case 0xE:
-    case 0xC:
-    case 0xD:
+    case 14:
+    case 12:
+    case 13:
         if (Kbd_SetIsWide() == 0) {
-            gKbd->keySet = gKbdKeySets[entryKind][0];
+            gKbd->keySet = gKbdKeySets[entryKind].keySet;
         }
         break;
     case 3:
         if (gKbd->flags & (1 << gKbd->keySet)) {
-            gKbd->keySet = gKbdKeySets[entryKind][0];
+            gKbd->keySet = gKbdKeySets[entryKind].keySet;
         }
         break;
-    case 0xB:
+    case 11:
         break;
     default:
-        gKbd->keySet = gKbdKeySets[entryKind][0];
+        gKbd->keySet = gKbdKeySets[entryKind].keySet;
         break;
     }
     if (gKbdSavedKind == gKbd->kind) {
@@ -600,7 +544,7 @@ void Kbd_SetLayout(u8 entryKind)
             break;
         }
     }
-    gKbd->accept = gKbdKeySets[entryKind][1];
+    gKbd->accept = gKbdKeySets[entryKind].accept;
     Kbd_UpdateMode();
     Kbd_HomePageCursor();
     Kbd_UpdateSymbolMode();
@@ -675,18 +619,6 @@ void Kbd_PressCmdKey(KbdKey *key)
     }
 }
 
-void Kbd_Update(void);
-void Kbd_Space(s32);
-void Kbd_PageUp(void);
-void Kbd_PageDown(void);
-void Kbd_PrevSegment(void);
-void Kbd_NextSegment(void);
-void Kbd_NextPhrasePage(void);
-void sceUsbKbClearRbuf(s32);
-void Kbd_MoveCursor(s16 keys, s16 held);
-void Kbd_NextRow(s32 back);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-
 /*
  * The keyboard's frame; callers pass gPadState[0]'s held and pressed
  * buttons. After the gKbdDelay frames it replays gKbdReplayKey, handles the
@@ -698,7 +630,7 @@ void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
  * L1 switches the mode, R2 cycles the phrases or gestures and R3 the chat
  * target; while converting, L1 and R1 move between segments and L2 and R2
  * page the candidates. On a submit the text is copied to dst and the key
- * set saved. Entry kind 0xB then clears the text and stays open. Plays the
+ * set saved. Entry kind 11 then clears the text and stays open. Plays the
  * frame's sound (KbdEntry.state). Returns KBD_RESULT_SUBMIT,
  * KBD_RESULT_CANCEL, or 0 while the keyboard is open.
  */
@@ -821,7 +753,7 @@ s8 Kbd_Run(char *dst, s16 held, s16 pressed)
             strcpy(dst, gKbd->text);
             Kbd_SaveKeySet();
         }
-        if (gKbd->kind == 0xB) {
+        if (gKbd->kind == 11) {
             gKbd->blink = 0;
             gKbd->kanaPos = 0;
             gKbd->firstShown = 0;
@@ -950,9 +882,6 @@ INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CAE0);
 INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CBB0);
 INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CC08);
 
-s32 Kbd_CharBlocked(KbdKey *p);
-s32 Kbd_DakutenKeyKind(KbdKey *arg0);
-s32 Kana_SwapBeforeCursor(s8 *table);
 extern void *gKanaDakutenTable; /* conversion tables for Kana_SwapBeforeCursor */
 extern void *gKanaHandakutenTable;
 
@@ -961,7 +890,7 @@ extern void *gKanaHandakutenTable;
  * commits any pending kana and inserts the character into the text at
  * textPos (up to maxLen). On a two-byte set a full-width space goes into the
  * text when no kana is pending; any other character goes into the kana at
- * kanaPos (up to 0x48 bytes), where a dakuten or handakuten key on the kana
+ * kanaPos (up to 72 bytes), where a dakuten or handakuten key on the kana
  * sets first tries to mark the kana before the cursor. While converting, a
  * two-byte key commits the conversion and types nothing.
  */
@@ -1030,7 +959,7 @@ skip:
             Kbd_KeyRepeat(0, 0);
         } else {
             added = Str_InsertClip((char *)gKbd->kana, buf,
-                gKbd->kanaPos, 0x48);
+                gKbd->kanaPos, 72);
             gKbd->kanaPos = gKbd->kanaPos + added;
         }
     }
@@ -1051,7 +980,7 @@ void Kbd_CyclePhrase(void)
     u8 *colPtr;
 
     if (gKbd->converting != 0 || ((flags = gKbd->flags) & KBD_SET_BIT(KBD_SET_PHRASE1)) ||
-        (flags & KBD_SET_BIT(KBD_SET_PHRASE2)) || *(s32 *)(gKbd->kindConf + 0x30) == 0) {
+        (flags & KBD_SET_BIT(KBD_SET_PHRASE2)) || *(s32 *)(gKbd->kindConf + 48) == 0) {
         gKbd->state = SE_SYS_REFUSE;
         return;
     }
@@ -1097,7 +1026,7 @@ void Kbd_CycleGesture(void)
     u8 *colPtr;
 
     if (gKbd->converting != 0 || (gKbd->flags & KBD_SET_BIT(KBD_SET_GESTURE)) ||
-        *(s32 *)(gKbd->kindConf + 0x28) == 0) {
+        *(s32 *)(gKbd->kindConf + 40) == 0) {
         gKbd->state = SE_SYS_REFUSE;
         return;
     }
@@ -1129,9 +1058,6 @@ void Kbd_CycleGesture(void)
     gKbd->state = SE_SYS_SELECT;
 }
 
-extern s16 gKbdChatTarget;
-extern s8 gKbdPrompt[];
-s32 Chat_NextTarget(s8 *out, s32 next);
 
 /*
  * R3 (and the USB Tab key): steps to the next chat target and shows its
@@ -1168,7 +1094,7 @@ extern u8 D_00418739[];
  */
 void Kbd_InsertPhrase(void)
 {
-    char buf[0x100];
+    char buf[256];
     s32 added;
 
     if (gKbd->row == D_00418739[0]) {
@@ -1181,11 +1107,11 @@ void Kbd_InsertPhrase(void)
     if (gKbd->keyFlags & KBD_KEYF_CYCLING) {
         Kbd_ClearText();
     }
-    if (*(char **)(gKbd->keyInfo + 0xC) == NULL) {
+    if (*(char **)(gKbd->keyInfo + 12) == NULL) {
         gKbd->state = SE_SYS_REFUSE;
         return;
     }
-    strcpy(buf, *(char **)(gKbd->keyInfo + 0xC));
+    strcpy(buf, *(char **)(gKbd->keyInfo + 12));
     added = Str_InsertClip(gKbd->text, buf, gKbd->textPos,
                       gKbd->maxLen);
     gKbd->textPos = gKbd->textPos + added;
@@ -1238,7 +1164,7 @@ void Kbd_ToggleWidth(void)
 
 /*
  * Backspace (CROSS, the backspace key, the USB Backspace key). With nothing
- * typed (entry kinds 0xC and 0xD excepted) or during a cycle it cancels the
+ * typed (entry kinds 12 and 13 excepted) or during a cycle it cancels the
  * keyboard (KBD_RESULT_CANCEL). Otherwise it deletes the character before
  * the cursor: two bytes of the pending kana, or one character of the text.
  * While converting it leaves the conversion instead. The parameter is not
@@ -1254,7 +1180,7 @@ void Kbd_DeleteBack(s32 unused)
     s32 cursor;
     char *text;
 
-    if (gKbd->kind != 0xC && gKbd->kind != 0xD &&
+    if (gKbd->kind != 12 && gKbd->kind != 13 &&
         gKbd->kana[0] == 0 && (u8)gKbd->text[0] == 0) {
         gKbd->result = KBD_RESULT_CANCEL;
         gKbd->state = SE_SYS_CANCEL;
@@ -1346,8 +1272,6 @@ void Kbd_Submit(void)
     }
 }
 
-s32 Kbd_FindKind(u8 row, u8 *out1F, u8 *out1E);
-
 /*
  * L1: switches to the next (back: previous) of the four character modes
  * that Kbd_FindKind allows; from a phrase or gestures page it starts at
@@ -1435,17 +1359,17 @@ void Kbd_BindLayouts(s32 unused)
     KbdLayout *layout;
 
     layout = &gKbdSetLayouts[KBD_SET_GESTURE];
-    layout->cursors = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 0x28)].cursors;
-    layout->grid = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 0x28)].grid;
-    layout->extra = *(u8 **)(gKbd->kindConf + 0x2C);
+    layout->cursors = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 40)].cursors;
+    layout->grid = gKbdGestureBinds[*(s32 *)(gKbd->kindConf + 40)].grid;
+    layout->extra = *(u8 **)(gKbd->kindConf + 44);
     layout = &gKbdSetLayouts[KBD_SET_PHRASE1];
-    layout->cursors = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 0x30)].cursors;
-    layout->grid = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 0x30)].grid;
-    layout->extra = *(u8 **)(gKbd->kindConf + 0x34);
+    layout->cursors = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 48)].cursors;
+    layout->grid = gKbdPhrase1Binds[*(s32 *)(gKbd->kindConf + 48)].grid;
+    layout->extra = *(u8 **)(gKbd->kindConf + 52);
     layout = &gKbdSetLayouts[KBD_SET_PHRASE2];
-    layout->cursors = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 0x30)].cursors;
-    layout->grid = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 0x30)].grid;
-    layout->extra = *(u8 **)(gKbd->kindConf + 0x34);
+    layout->cursors = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 48)].cursors;
+    layout->grid = gKbdPhrase2Binds[*(s32 *)(gKbd->kindConf + 48)].grid;
+    layout->extra = *(u8 **)(gKbd->kindConf + 52);
 }
 
 extern KbdKey gKbdKeysHira_4[];
@@ -1502,13 +1426,13 @@ void Kbd_BindStartKeys(void)
 
     gKbdKeysHira_4[0] = gKbdKeysSmallHira_4[0] = gKbdKeysKata_4[0] = gKbdKeysHalfKata_4[0] = gKbdKeysSmallKata_4[0] = gKbdKeysHalfSmallKata_4[0] = gKbdKeysWideUpper_4[0] =
         gKbdKeysWideLower_4[0] = gKbdKeysAsciiUpper_4[0] = gKbdKeysAsciiLower_4[0] = gKbdKeysSymbol_4[0] = gKbdKeysGesture_4[0] = gKbdKeysPhrase2_4[0] =
-            gKbdPhrase1Binds[*(s32 *)(*(u8 **)((u8 *)k + 0x10) + 0x30)].key;
+            gKbdPhrase1Binds[*(s32 *)(*(u8 **)((u8 *)k + 16) + 48)].key;
     gKbdKeysHira_5 = gKbdKeysSmallHira_5 = gKbdKeysKata_5 = gKbdKeysHalfKata_5 = gKbdKeysSmallKata_5 = gKbdKeysHalfSmallKata_5 = gKbdKeysWideUpper_5 =
         gKbdKeysWideLower_5 = gKbdKeysAsciiUpper_5 = gKbdKeysAsciiLower_5 = gKbdKeysSymbol_5 = gKbdKeysGesture_5 = gKbdKeysPhrase1_5 =
-            gKbdPhrase2Binds[*(s32 *)(*(u8 **)((u8 *)k + 0x10) + 0x30)].key;
+            gKbdPhrase2Binds[*(s32 *)(*(u8 **)((u8 *)k + 16) + 48)].key;
     gKbdKeysHira_6 = gKbdKeysSmallHira_6 = gKbdKeysKata_6 = gKbdKeysSmallKata_6 = gKbdKeysHalfKata_6 = gKbdKeysHalfSmallKata_6 = gKbdKeysWideUpper_6 =
         gKbdKeysWideLower_6 = gKbdKeysAsciiUpper_6 = gKbdKeysAsciiLower_6 = gKbdKeysSymbol_6 = gKbdKeysPhrase1_6 = gKbdKeysPhrase2_6 =
-            gKbdGestureBinds[*(s32 *)(*(u8 **)((u8 *)k + 0x10) + 0x28)].key;
+            gKbdGestureBinds[*(s32 *)(*(u8 **)((u8 *)k + 16) + 40)].key;
 }
 
 /*
@@ -1553,13 +1477,13 @@ void Str_ToWide(s8 *src, s8 *dst)
 
     while ((character = *src++) != 0) {
         if (character >= 'A' && character <= 'Z') {
-            dst[0] = 0x82;
-            dst[1] = character + 0x1F;
+            dst[0] = 130;
+            dst[1] = character + 31;
             src++;
             dst += 2;
         } else if (character >= 'a' && character <= 'z') {
-            dst[0] = 0x82;
-            dst[1] = character + 0x20;
+            dst[0] = 130;
+            dst[1] = character + 32;
             src++;
             dst += 2;
         } else {
@@ -1571,8 +1495,6 @@ void Str_ToWide(s8 *src, s8 *dst)
     }
     *dst = 0;
 }
-
-void Kbd_FillRect(s32 color, s16 x, s16 y, s16 w, s16 h);
 
 /*
  * Fills the box of the key under the cursor with color; (dx, dy) is the
@@ -1660,8 +1582,6 @@ void Kbd_FillRect(s32 color, s16 x, s16 y, s16 right, s16 bottom)
     Prim_FillRect((struct PrimLine *)&rect);
 }
 
-s32 Sprite_Draw(Sprite *s);
-
 /*
  * Draws width x height pixels at (x, y), tinted color, from the texel
  * rectangle (texLeft, texTop)-(texRight, texBottom) of the bound texture.
@@ -1682,8 +1602,6 @@ void Kbd_DrawSprite(u32 color, s16 x, s16 y, s16 width, s16 height, s16 texLeft,
     Sprite_Draw(&sprite);
 }
 
-extern u8 gKbdOpenKey;
-extern u8 gKbdKindIs0;
 
 /*
  * 1 when the whole keyboard is drawn: while it takes the input or shows a
@@ -1733,20 +1651,8 @@ extern u32 gKbdLinePulseAmp[];
 extern s8 gKbdPhraseKeyOrder[];
 extern s32 gKbdInactive;
 extern s32 gKbdCursorHideFrames;
-f32 Math_Sin(f32 x);
-void Text_FlushPages(void);
-void Text_DrawCurrentPage(void);
-void Text_SetColor(s16 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Kbd_BindGlyphTex(void);
-void Gfx_SetBlendAlphaAdd(s32 a);
-void Gfx_SetTexFilter(s32 a);
-s32 Kbd_ArrowsOnPage(void);
 void Kbd_DrawLine(f32 x, s16 y); /* unit's own declaration: the definition takes a u32 y;
  * Kbd_Draw's call matches with s16 y */
-void Kbd_DrawCandidateBox(f32 x, s16 y);
-void Kbd_DrawSpecialKey(s16 dy, s32 color, f32 dx);
 
 #define KBD_COLW(i) (((u32 *)gKbd->kindConf)[i])
 #define KBD_COLOR(i) (((KbdColor *)gKbd->kindConf)[i])
@@ -1823,7 +1729,7 @@ void Kbd_Draw(u8 unused)
         box++;
     }
     Kbd_BindGlyphTex();
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     curLayout = gKbd->layout;
     if (curLayout->extra != 0 && gKbd->gestureMode == 0) {
         s8 cur;
@@ -1850,7 +1756,7 @@ void Kbd_Draw(u8 unused)
             }
         }
     }
-    Gfx_SetTexFilter(0);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     if ((gKbdInactive == 0 || gKbd->layout->extra != 0) && gKbdCursorHideFrames == 0 &&
         (gKbd->offGrid == 0 || Kbd_ArrowsOnPage() == 1)) {
         kbdKey = gKbd->key;
@@ -1874,7 +1780,7 @@ void Kbd_Draw(u8 unused)
         Kbd_DrawSpecialKey(y, color, x);
     }
     Gfx_SetBlendAlphaAdd(0);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     curLayout = gKbd->layout;
     box = curLayout->cursors;
     kbdKey = curLayout->keys;
@@ -1894,7 +1800,7 @@ void Kbd_Draw(u8 unused)
                     break;
                 }
                 if (Kbd_CharBlocked(kbdKey) == 1) {
-                    code = 0xC5;
+                    code = 197;
                     color = KBD_COLW(4);
                     glyphIdx = 0;
                 } else {
@@ -1956,7 +1862,7 @@ void Kbd_Draw(u8 unused)
             s16 pad;
 
             if (Kbd_CharBlocked(kbdKey) == 1) {
-                code = 0xC5;
+                code = 197;
                 color = KBD_COLW(4);
                 glyphIdx = 0;
             } else {
@@ -1984,13 +1890,11 @@ void Kbd_Draw(u8 unused)
                            ((code & 0xF) << 4) - 1 + glyphW, (code & 0xF0) + 16);
         }
     }
-    Gfx_SetTexFilter(0);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     Kbd_DrawLine(2.0f + (14.0f + x) / gKbd->drawScale, y + 0);
     Kbd_DrawCandidateBox(2.0f + (14.0f + x) / gKbd->drawScale, y - 1);
     Text_DrawCurrentPage();
 }
-
-void Kbd_ToggleShift(void);
 
 /*
  * Runs a switch key (KBD_ACT_SWITCH; its kind in ch.b[1]). When
@@ -2085,7 +1989,6 @@ s32 Kbd_DakutenKeyKind(KbdKey *kbdKey)
     return 0;
 }
 
-s32 Kana_SwapBeforeCursor(s8 *table);
 extern void *gKanaDakutenTable;
 
 s32 Kana_AddDakuten(void)
@@ -2093,7 +1996,6 @@ s32 Kana_AddDakuten(void)
     return Kana_SwapBeforeCursor(gKanaDakutenTable);
 }
 
-extern void *gKanaHandakutenTable;
 
 s32 Kana_AddHandakuten(void)
 {
@@ -2104,11 +2006,6 @@ s8 Kbd_IsOpen(void)
 {
     return gKbd->open;
 }
-
-void Kbd_ClearOpen(void);
-void Kbd_ClearActive(void);
-void Kbd_SaveKeySet(void);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 
 /*
  * When the keyboard is open: closes it with KBD_RESULT_CANCEL and saves the
@@ -2245,13 +2142,13 @@ s32 Kbd_FindKind(u8 firstSet, u8 *outMode, u8 *outKeySet)
         thirdAlt = firstSet;
         break;
     case KBD_MODE_GESTURE:
-        if (*(s32 *)(gKbd->kindConf + 0x28) == 0) {
+        if (*(s32 *)(gKbd->kindConf + 40) == 0) {
             return 1;
         }
         goto one;
     case KBD_MODE_PHRASE1:
     case KBD_MODE_PHRASE2:
-        if (*(s32 *)(gKbd->kindConf + 0x30) == 0) {
+        if (*(s32 *)(gKbd->kindConf + 48) == 0) {
             return 1;
         }
     default:
@@ -2383,7 +2280,6 @@ void Kbd_ToggleShift(void)
     gKbd->state = SE_SYS_REFUSE;
 }
 
-extern u8 gKbdKindIs0;
 
 /*
  * Steps through the phrase and gestures pages: from another set, the first
@@ -2482,7 +2378,7 @@ void Kbd_PickLayout(void)
         break;
     case 8:
     case 9:
-    case 0xA:
+    case 10:
         set = &gKbd->keySet;
         switch (*set) {
         case KBD_SET_WIDE_UPPER:
@@ -2532,7 +2428,7 @@ void Kbd_PickLayout(void)
  */
 void Kbd_EnterGestures(void)
 {
-    Kbd_SetPhrasePage(0xDU);
+    Kbd_SetPhrasePage(13U);
     Kbd_CommitKana();
     if (Kbd_CheckGestureText(gKbd->text, &gKbd->textPos) < 0) {
         gKbd->gestureMode = (u8) (gKbd->gestureMode | KBD_GESTURE_KANA);
@@ -2562,17 +2458,17 @@ s32 Kbd_CharIsSpecialKana(KbdKey *key)
 
     if (gKbd->keySet == KBD_SET_HIRA || gKbd->keySet == KBD_SET_KATA) {
         switch (key->glyph) {
-        case 0x98:
-        case 0x99:
-        case 0xA8:
-        case 0xB5:
-        case 0xB6:
-        case 0xB7:
-        case 0xB8:
-        case 0xB9:
-        case 0xE0:
-        case 0xE1:
-        case 0xF3:
+        case 152:
+        case 153:
+        case 168:
+        case 181:
+        case 182:
+        case 183:
+        case 184:
+        case 185:
+        case 224:
+        case 225:
+        case 243:
             found = 1;
             break;
         }
@@ -2590,7 +2486,7 @@ s32 Kbd_CharIsSpecialKana(KbdKey *key)
  * character; a switch key Kbd_FindKindEx refuses; for entry kinds 8-10 the
  * convert key and Kbd_CharIsSpecialKana's characters; for the other kinds
  * any key but backspace and submit whose character the kind refuses (kind
- * 0xF Kbd_CharInSet5_Unk's, 1, 2 and 5 Kbd_CharInSet4_Unk's, 7 all but
+ * 15 Kbd_CharInSet5_Unk's, 1, 2 and 5 Kbd_CharInSet4_Unk's, 7 all but
  * digits, the hash and the asterisk, 6 all but digits and letters).
  */
 s32 Kbd_CharBlocked(KbdKey *key)
@@ -2609,9 +2505,9 @@ s32 Kbd_CharBlocked(KbdKey *key)
         } else if (Kbd_CharIsSpecialKana(key) != 0) {
             blocked = 1;
         }
-    } else if (key->glyph != 0xD1 && key->glyph != 0x7D) {
+    } else if (key->glyph != 209 && key->glyph != 125) {
         switch (gKbd->kind) {
-        case 0xF:
+        case 15:
             if (Kbd_CharInSet5_Unk(key) != 0) {
                 blocked = 1;
             }
@@ -2640,18 +2536,18 @@ s32 Kbd_CharBlocked(KbdKey *key)
 
 /*
  * 1 when the key's glyph is the percent sign, a corner bracket, the middle
- * dot or the apostrophe (refused by entry kind 0xF), else 0.
+ * dot or the apostrophe (refused by entry kind 15), else 0.
  */
 s32 Kbd_CharInSet5_Unk(KbdKey *key)
 {
     s32 found = 0;
 
     switch (key->glyph) {
-    case 0xE3:
-    case 0xB5:
-    case 0xB6:
-    case 0xB9:
-    case 0xF1:
+    case 227:
+    case 181:
+    case 182:
+    case 185:
+    case 241:
         found = 1;
         break;
     }
@@ -2667,17 +2563,17 @@ s32 Kbd_CharInSet4_Unk(KbdKey *key)
     s32 found = 0;
 
     switch (key->glyph) {
-    case 0xE3:
-    case 0xB5:
-    case 0xB6:
-    case 0xB9:
+    case 227:
+    case 181:
+    case 182:
+    case 185:
         found = 1;
         break;
     }
     return found;
 }
 
-/* 1 when the key's glyph is a digit (glyph cells 0x00-0x04, 0x10-0x14). */
+/* 1 when the key's glyph is a digit (glyph cells 0-4, 16-20). */
 s32 Kbd_CharInRows01(KbdKey *key)
 {
     u8 glyphCode;
@@ -2686,34 +2582,34 @@ s32 Kbd_CharInRows01(KbdKey *key)
     if (((s32) glyphCode >= 0) && ((s32) glyphCode < 5)) {
         return 1;
     }
-    if (((s32) glyphCode >= 0x10) && ((s32) glyphCode < 0x15)) {
+    if (((s32) glyphCode >= 16) && ((s32) glyphCode < 21)) {
         return 1;
     }
     return 0;
 }
 
-/* 1 when the key's glyph is a letter (glyph cells 0x20-0x64 and 0x70). */
+/* 1 when the key's glyph is a letter (glyph cells 32-100 and 112). */
 s32 Kbd_CharInRowsHigh(KbdKey *key)
 {
     s32 glyphCode;
 
     glyphCode = key->glyph;
-    if (((s32) glyphCode >= 0x20) && ((s32) glyphCode < 0x25)) {
+    if (((s32) glyphCode >= 32) && ((s32) glyphCode < 37)) {
         return 1;
     }
-    if (((s32) glyphCode >= 0x30) && ((s32) glyphCode < 0x35)) {
+    if (((s32) glyphCode >= 48) && ((s32) glyphCode < 53)) {
         return 1;
     }
-    if (((s32) glyphCode >= 0x40) && ((s32) glyphCode < 0x45)) {
+    if (((s32) glyphCode >= 64) && ((s32) glyphCode < 69)) {
         return 1;
     }
-    if (((s32) glyphCode >= 0x50) && ((s32) glyphCode < 0x55)) {
+    if (((s32) glyphCode >= 80) && ((s32) glyphCode < 85)) {
         return 1;
     }
-    if (((s32) glyphCode >= 0x60) && ((s32) glyphCode < 0x65)) {
+    if (((s32) glyphCode >= 96) && ((s32) glyphCode < 101)) {
         return 1;
     }
-    if (glyphCode == 0x70) {
+    if (glyphCode == 112) {
         return 1;
     }
     return 0;
@@ -2726,9 +2622,9 @@ s32 Kbd_CharInRowsHigh(KbdKey *key)
 s32 Kbd_CharIsPlain(KbdKey *key)
 {
     switch (key->glyph) {
-    case 0xE2:
-    case 0xC5:
-    case 0xF0:
+    case 226:
+    case 197:
+    case 240:
         return 0;
     }
     if (Kbd_CharInRows01(key) != 1) {
@@ -2747,826 +2643,18 @@ void Kbd_SaveKanaInput(void)
 /* printf to the screen (Font_Printf with "%s"), unless gTextOff. */
 void Kbd_Printf(const char *fmt, ...)
 {
-    char buf[0x400];
+    char buf[1024];
     va_list args;
 
     if (gTextOff == 0) {
         va_start(args, fmt);
-        vsnprintf(buf, 0x3FF, fmt, args);
-        buf[0x3FF] = 0;
+        vsnprintf(buf, 1023, fmt, args);
+        buf[1023] = 0;
         Font_Printf(D_0046CC10, buf);
     }
 }
 
 /* This file's initialised data. */
-extern char D_0046A930[];
-extern char D_0046A938[];
-extern char D_0046A940[];
-extern char D_0046A948[];
-extern char D_0046A950[];
-extern char D_0046A958[];
-extern char D_0046A960[];
-extern char D_0046A968[];
-extern char D_0046A970[];
-extern char D_0046A978[];
-extern char D_0046A980[];
-extern char D_0046A988[];
-extern char D_0046A990[];
-extern char D_0046A998[];
-extern char D_0046A9A0[];
-extern char D_0046A9A8[];
-extern char D_0046A9B0[];
-extern char D_0046A9B8[];
-extern char D_0046A9C0[];
-extern char D_0046A9C8[];
-extern char D_0046A9D0[];
-extern char D_0046A9D8[];
-extern char D_0046A9E0[];
-extern char D_0046A9E8[];
-extern char D_0046A9F0[];
-extern char D_0046A9F8[];
-extern char D_0046AA00[];
-extern char D_0046AA08[];
-extern char D_0046AA10[];
-extern char D_0046AA18[];
-extern char D_0046AA20[];
-extern char D_0046AA28[];
-extern char D_0046AA30[];
-extern char D_0046AA38[];
-extern char D_0046AA40[];
-extern char D_0046AA48[];
-extern char D_0046AA50[];
-extern char D_0046AA58[];
-extern char D_0046AA60[];
-extern char D_0046AA68[];
-extern char D_0046AA70[];
-extern char D_0046AA78[];
-extern char D_0046AA80[];
-extern char D_0046AA88[];
-extern char D_0046AA90[];
-extern char D_0046AA98[];
-extern char D_0046AAA0[];
-extern char D_0046AAA8[];
-extern char D_0046AAB0[];
-extern char D_0046AAB8[];
-extern char D_0046AAC0[];
-extern char D_0046AAC8[];
-extern char D_0046AAD0[];
-extern char D_0046AAD8[];
-extern char D_0046AAE0[];
-extern char D_0046AAE8[];
-extern char D_0046AAF0[];
-extern char D_0046AAF8[];
-extern char D_0046AB00[];
-extern char D_0046AB08[];
-extern char D_0046AB10[];
-extern char D_0046AB18[];
-extern char D_0046AB20[];
-extern char D_0046AB28[];
-extern char D_0046AB30[];
-extern char D_0046AB38[];
-extern char D_0046AB40[];
-extern char D_0046AB48[];
-extern char D_0046AB50[];
-extern char D_0046AB58[];
-extern char D_0046AB60[];
-extern char D_0046AB68[];
-extern char D_0046AB70[];
-extern char D_0046AB78[];
-extern char D_0046AB80[];
-extern char D_0046AB88[];
-extern char D_0046AB90[];
-extern char D_0046AB98[];
-extern char D_0046ABA0[];
-extern char D_0046ABA8[];
-extern char D_0046ABB0[];
-extern char D_0046ABB8[];
-extern char D_0046ABC0[];
-extern char D_0046ABC8[];
-extern char D_0046ABD0[];
-extern char D_0046ABD8[];
-extern char D_0046ABE0[];
-extern char D_0046ABE8[];
-extern char D_0046ABF0[];
-extern char D_0046ABF8[];
-extern char D_0046AC00[];
-extern char D_0046AC08[];
-extern char D_0046AC10[];
-extern char D_0046AC18[];
-extern char D_0046AC20[];
-extern char D_0046AC28[];
-extern char D_0046AC30[];
-extern char D_0046AC38[];
-extern char D_0046AC40[];
-extern char D_0046AC48[];
-extern char D_0046AC50[];
-extern char D_0046AC58[];
-extern char D_0046AC60[];
-extern char D_0046AC68[];
-extern char D_0046AC70[];
-extern char D_0046AC78[];
-extern char D_0046AC80[];
-extern char D_0046AC88[];
-extern char D_0046AC90[];
-extern char D_0046AC98[];
-extern char D_0046ACA0[];
-extern char D_0046ACA8[];
-extern char D_0046ACB0[];
-extern char D_0046ACB8[];
-extern char D_0046ACC0[];
-extern char D_0046ACC8[];
-extern char D_0046ACD0[];
-extern char D_0046ACD8[];
-extern char D_0046ACE0[];
-extern char D_0046ACE8[];
-extern char D_0046ACF0[];
-extern char D_0046ACF8[];
-extern char D_0046AD00[];
-extern char D_0046AD08[];
-extern char D_0046AD10[];
-extern char D_0046AD18[];
-extern char D_0046AD20[];
-extern char D_0046AD28[];
-extern char D_0046AD30[];
-extern char D_0046AD38[];
-extern char D_0046AD40[];
-extern char D_0046AD48[];
-extern char D_0046AD50[];
-extern char D_0046AD58[];
-extern char D_0046AD60[];
-extern char D_0046AD68[];
-extern char D_0046AD70[];
-extern char D_0046AD78[];
-extern char D_0046AD80[];
-extern char D_0046AD88[];
-extern char D_0046AD90[];
-extern char D_0046AD98[];
-extern char D_0046ADA0[];
-extern char D_0046ADA8[];
-extern char D_0046ADB0[];
-extern char D_0046ADB8[];
-extern char D_0046ADC0[];
-extern char D_0046ADC8[];
-extern char D_0046ADD0[];
-extern char D_0046ADD8[];
-extern char D_0046ADE0[];
-extern char D_0046ADE8[];
-extern char D_0046ADF0[];
-extern char D_0046ADF8[];
-extern char D_0046AE00[];
-extern char D_0046AE08[];
-extern char D_0046AE10[];
-extern char D_0046AE18[];
-extern char D_0046AE20[];
-extern char D_0046AE28[];
-extern char D_0046AE30[];
-extern char D_0046AE38[];
-extern char D_0046AE40[];
-extern char D_0046AE48[];
-extern char D_0046AE50[];
-extern char D_0046AE58[];
-extern char D_0046AE60[];
-extern char D_0046AE68[];
-extern char D_0046AE70[];
-extern char D_0046AE78[];
-extern char D_0046AE80[];
-extern char D_0046AE88[];
-extern char D_0046AE90[];
-extern char D_0046AE98[];
-extern char D_0046AEA0[];
-extern char D_0046AEA8[];
-extern char D_0046AEB0[];
-extern char D_0046AEB8[];
-extern char D_0046AEC0[];
-extern char D_0046AEC8[];
-extern char D_0046AED0[];
-extern char D_0046AED8[];
-extern char D_0046AEE0[];
-extern char D_0046AEE8[];
-extern char D_0046AEF0[];
-extern char D_0046AEF8[];
-extern char D_0046AF00[];
-extern char D_0046AF08[];
-extern char D_0046AF10[];
-extern char D_0046AF18[];
-extern char D_0046AF20[];
-extern char D_0046AF28[];
-extern char D_0046AF30[];
-extern char D_0046AF38[];
-extern char D_0046AF40[];
-extern char D_0046AF48[];
-extern char D_0046AF50[];
-extern char D_0046AF58[];
-extern char D_0046AF60[];
-extern char D_0046AF68[];
-extern char D_0046AF70[];
-extern char D_0046AF78[];
-extern char D_0046AF80[];
-extern char D_0046AF88[];
-extern char D_0046AF90[];
-extern char D_0046AF98[];
-extern char D_0046AFA0[];
-extern char D_0046AFA8[];
-extern char D_0046AFB0[];
-extern char D_0046AFB8[];
-extern char D_0046AFC0[];
-extern char D_0046AFC8[];
-extern char D_0046AFD0[];
-extern char D_0046AFD8[];
-extern char D_0046AFE0[];
-extern char D_0046AFE8[];
-extern char D_0046AFF0[];
-extern char D_0046AFF8[];
-extern char D_0046B000[];
-extern char D_0046B008[];
-extern char D_0046B010[];
-extern char D_0046B018[];
-extern char D_0046B020[];
-extern char D_0046B028[];
-extern char D_0046B030[];
-extern char D_0046B038[];
-extern char D_0046B040[];
-extern char D_0046B048[];
-extern char D_0046B050[];
-extern char D_0046B058[];
-extern char D_0046B060[];
-extern char D_0046B068[];
-extern char D_0046B070[];
-extern char D_0046B078[];
-extern char D_0046B080[];
-extern char D_0046B088[];
-extern char D_0046B090[];
-extern char D_0046B098[];
-extern char D_0046B0A0[];
-extern char D_0046B0A8[];
-extern char D_0046B0B0[];
-extern char D_0046B0B8[];
-extern char D_0046B0C0[];
-extern char D_0046B0C8[];
-extern char D_0046B0D0[];
-extern char D_0046B0D8[];
-extern char D_0046B0E0[];
-extern char D_0046B0E8[];
-extern char D_0046B0F0[];
-extern char D_0046B0F8[];
-extern char D_0046B100[];
-extern char D_0046B108[];
-extern char D_0046B110[];
-extern char D_0046B118[];
-extern char D_0046B120[];
-extern char D_0046B128[];
-extern char D_0046B130[];
-extern char D_0046B138[];
-extern char D_0046B140[];
-extern char D_0046B148[];
-extern char D_0046B150[];
-extern char D_0046B158[];
-extern char D_0046B160[];
-extern char D_0046B168[];
-extern char D_0046B170[];
-extern char D_0046B178[];
-extern char D_0046B180[];
-extern char D_0046B188[];
-extern char D_0046B190[];
-extern char D_0046B198[];
-extern char D_0046B1A0[];
-extern char D_0046B1A8[];
-extern char D_0046B1B0[];
-extern char D_0046B1B8[];
-extern char D_0046B1C0[];
-extern char D_0046B1C8[];
-extern char D_0046B1D0[];
-extern char D_0046B1D8[];
-extern char D_0046B1E0[];
-extern char D_0046B1E8[];
-extern char D_0046B1F0[];
-extern char D_0046B1F8[];
-extern char D_0046B200[];
-extern char D_0046B208[];
-extern char D_0046B210[];
-extern char D_0046B218[];
-extern char D_0046B220[];
-extern char D_0046B228[];
-extern char D_0046B230[];
-extern char D_0046B238[];
-extern char D_0046B240[];
-extern char D_0046B248[];
-extern char D_0046B250[];
-extern char D_0046B258[];
-extern char D_0046B260[];
-extern char D_0046B268[];
-extern char D_0046B270[];
-extern char D_0046B278[];
-extern char D_0046B280[];
-extern char D_0046B288[];
-extern char D_0046B290[];
-extern char D_0046B298[];
-extern char D_0046B2A0[];
-extern char D_0046B2A8[];
-extern char D_0046B2B0[];
-extern char gSmallTsuHira[];
-extern char gSmallTsuKata[];
-extern char gSmallTsuHalf[];
-extern char D_0046B2D0[];
-extern char D_0046B2D8[];
-extern char D_0046B2E0[];
-extern char D_0046B2E8[];
-extern char D_0046B2F0[];
-extern char D_0046B2F8[];
-extern char D_0046B300[];
-extern char D_0046B308[];
-extern char D_0046B310[];
-extern char D_0046B318[];
-extern char D_0046B320[];
-extern char D_0046B328[];
-extern char D_0046B330[];
-extern char D_0046B338[];
-extern char D_0046B340[];
-extern char D_0046B348[];
-extern char D_0046B350[];
-extern char D_0046B358[];
-extern char D_0046B360[];
-extern char D_0046B368[];
-extern char D_0046B370[];
-extern char D_0046B378[];
-extern char D_0046B380[];
-extern char D_0046B388[];
-extern char D_0046B390[];
-extern char D_0046B398[];
-extern char D_0046B3A0[];
-extern char D_0046B3A8[];
-extern char D_0046B3B0[];
-extern char D_0046B3B8[];
-extern char D_0046B3C0[];
-extern char D_0046B3C8[];
-extern char D_0046B3D0[];
-extern char D_0046B3D8[];
-extern char D_0046B3E0[];
-extern char D_0046B3E8[];
-extern char D_0046B3F0[];
-extern char D_0046B3F8[];
-extern char D_0046B400[];
-extern char D_0046B408[];
-extern char D_0046B410[];
-extern char D_0046B418[];
-extern char D_0046B420[];
-extern char D_0046B428[];
-extern char D_0046B430[];
-extern char D_0046B438[];
-extern char D_0046B440[];
-extern char D_0046B448[];
-extern char D_0046B450[];
-extern char D_0046B458[];
-extern char D_0046B460[];
-extern char D_0046B468[];
-extern char D_0046B470[];
-extern char D_0046B478[];
-extern char D_0046B480[];
-extern char D_0046B488[];
-extern char D_0046B490[];
-extern char D_0046B498[];
-extern char D_0046B4A0[];
-extern char D_0046B4A8[];
-extern char D_0046B4B0[];
-extern char D_0046B4B8[];
-extern char D_0046B4C0[];
-extern char D_0046B4C8[];
-extern char D_0046B4D0[];
-extern char D_0046B4D8[];
-extern char D_0046B4E0[];
-extern char D_0046B4E8[];
-extern char D_0046B4F0[];
-extern char D_0046B4F8[];
-extern char D_0046B500[];
-extern char D_0046B508[];
-extern char D_0046B510[];
-extern char D_0046B518[];
-extern char D_0046B520[];
-extern char D_0046B528[];
-extern char D_0046B530[];
-extern char D_0046B538[];
-extern char D_0046B540[];
-extern char D_0046B548[];
-extern char D_0046B550[];
-extern char D_0046B558[];
-extern char D_0046B560[];
-extern char D_0046B568[];
-extern char D_0046B570[];
-extern char D_0046B578[];
-extern char D_0046B580[];
-extern char D_0046B588[];
-extern char D_0046B590[];
-extern char D_0046B598[];
-extern char D_0046B5A0[];
-extern char D_0046B5A8[];
-extern char D_0046B5B0[];
-extern char D_0046B5B8[];
-extern char D_0046B5C0[];
-extern char D_0046B5C8[];
-extern char D_0046B5D0[];
-extern char D_0046B5D8[];
-extern char D_0046B5E0[];
-extern char D_0046B5E8[];
-extern char D_0046B5F0[];
-extern char D_0046B5F8[];
-extern char D_0046B600[];
-extern char D_0046B608[];
-extern char D_0046B610[];
-extern char D_0046B618[];
-extern char D_0046B620[];
-extern char D_0046B628[];
-extern char D_0046B630[];
-extern char D_0046B638[];
-extern char D_0046B640[];
-extern char D_0046B648[];
-extern char D_0046B650[];
-extern char D_0046B658[];
-extern char D_0046B660[];
-extern char D_0046B668[];
-extern char D_0046B670[];
-extern char D_0046B678[];
-extern char D_0046B680[];
-extern char D_0046B688[];
-extern char D_0046B690[];
-extern char D_0046B698[];
-extern char D_0046B6A0[];
-extern char D_0046B6A8[];
-extern char D_0046B6B0[];
-extern char D_0046B6B8[];
-extern char D_0046B6C0[];
-extern char D_0046B6C8[];
-extern char D_0046B6D0[];
-extern char D_0046B6D8[];
-extern char D_0046B6E0[];
-extern char D_0046B6E8[];
-extern char D_0046B6F0[];
-extern char D_0046B6F8[];
-extern char D_0046B700[];
-extern char D_0046B708[];
-extern char D_0046B710[];
-extern char D_0046B718[];
-extern char D_0046B720[];
-extern char D_0046B728[];
-extern char D_0046B730[];
-extern char D_0046B738[];
-extern char D_0046B740[];
-extern char D_0046B748[];
-extern char D_0046B750[];
-extern char D_0046B758[];
-extern char D_0046B760[];
-extern char D_0046B768[];
-extern char D_0046B770[];
-extern char D_0046B778[];
-extern char D_0046B780[];
-extern char D_0046B788[];
-extern char D_0046B790[];
-extern char D_0046B798[];
-extern char D_0046B7A0[];
-extern char D_0046B7A8[];
-extern char D_0046B7B0[];
-extern char D_0046B7B8[];
-extern char D_0046B7C0[];
-extern char D_0046B7C8[];
-extern char D_0046B7D0[];
-extern char D_0046B7D8[];
-extern char D_0046B7E0[];
-extern char D_0046B7E8[];
-extern char D_0046B7F0[];
-extern char D_0046B7F8[];
-extern char D_0046B800[];
-extern char D_0046B808[];
-extern char D_0046B810[];
-extern char D_0046B818[];
-extern char D_0046B820[];
-extern char D_0046B828[];
-extern char D_0046B830[];
-extern char D_0046B838[];
-extern char D_0046B840[];
-extern char D_0046B848[];
-extern char D_0046B850[];
-extern char D_0046B858[];
-extern char D_0046B860[];
-extern char D_0046B868[];
-extern char D_0046B870[];
-extern char D_0046B878[];
-extern char D_0046B880[];
-extern char D_0046B888[];
-extern char D_0046B890[];
-extern char D_0046B898[];
-extern char D_0046B8A0[];
-extern char D_0046B8A8[];
-extern char D_0046B8B0[];
-extern char D_0046B8B8[];
-extern char D_0046B8C0[];
-extern char D_0046B8C8[];
-extern char D_0046B8D0[];
-extern char D_0046B8D8[];
-extern char D_0046B8E0[];
-extern char D_0046B8E8[];
-extern char D_0046B8F0[];
-extern char D_0046B8F8[];
-extern char D_0046B900[];
-extern char D_0046B908[];
-extern char D_0046B910[];
-extern char D_0046B918[];
-extern char D_0046B920[];
-extern char D_0046B928[];
-extern char D_0046B930[];
-extern char D_0046B938[];
-extern char D_0046B940[];
-extern char D_0046B948[];
-extern char D_0046B950[];
-extern char D_0046B958[];
-extern char D_0046B960[];
-extern char D_0046B968[];
-extern char D_0046B970[];
-extern char D_0046B978[];
-extern char D_0046B980[];
-extern char D_0046B988[];
-extern char D_0046B990[];
-extern char D_0046B998[];
-extern char D_0046B9A0[];
-extern char D_0046B9A8[];
-extern char D_0046B9B0[];
-extern char D_0046B9B8[];
-extern char D_0046B9C0[];
-extern char D_0046B9C8[];
-extern char D_0046B9D0[];
-extern char D_0046B9D8[];
-extern char D_0046B9E0[];
-extern char D_0046B9E8[];
-extern char D_0046B9F0[];
-extern char D_0046B9F8[];
-extern char D_0046BA00[];
-extern char D_0046BA08[];
-extern char D_0046BA10[];
-extern char D_0046BA18[];
-extern char D_0046BA20[];
-extern char D_0046BA28[];
-extern char D_0046BA30[];
-extern char D_0046BA38[];
-extern char D_0046BA40[];
-extern char D_0046BA48[];
-extern char D_0046BA50[];
-extern char D_0046BA58[];
-extern char D_0046BA60[];
-extern char D_0046BA68[];
-extern char D_0046BA70[];
-extern char D_0046BA78[];
-extern char D_0046BA80[];
-extern char D_0046BA88[];
-extern char D_0046BA90[];
-extern char D_0046BA98[];
-extern char D_0046BAA0[];
-extern char D_0046BAA8[];
-extern char D_0046BAB0[];
-extern char D_0046BAB8[];
-extern char D_0046BAC0[];
-extern char D_0046BAC8[];
-extern char D_0046BAD0[];
-extern char D_0046BAD8[];
-extern char D_0046BAE0[];
-extern char D_0046BAE8[];
-extern char D_0046BAF0[];
-extern char D_0046BAF8[];
-extern char D_0046BB00[];
-extern char D_0046BB08[];
-extern char D_0046BB10[];
-extern char D_0046BB18[];
-extern char D_0046BB20[];
-extern char D_0046BB28[];
-extern char D_0046BB30[];
-extern char D_0046BB38[];
-extern char D_0046BB40[];
-extern char D_0046BB48[];
-extern char D_0046BB50[];
-extern char D_0046BB58[];
-extern char D_0046BB60[];
-extern char D_0046BB68[];
-extern char D_0046BB70[];
-extern char D_0046BB78[];
-extern char D_0046BB80[];
-extern char D_0046BB88[];
-extern char D_0046BB90[];
-extern char D_0046BB98[];
-extern char D_0046BBA0[];
-extern char D_0046BBA8[];
-extern char D_0046BBB0[];
-extern char D_0046BBB8[];
-extern char D_0046BBC0[];
-extern char D_0046BBC8[];
-extern char D_0046BBD0[];
-extern char D_0046BBD8[];
-extern char D_0046BBE0[];
-extern char D_0046BBE8[];
-extern char D_0046BBF0[];
-extern char D_0046BBF8[];
-extern char D_0046BC00[];
-extern char D_0046BC08[];
-extern char D_0046BC10[];
-extern char D_0046BC18[];
-extern char D_0046BC20[];
-extern char D_0046BC28[];
-extern char D_0046BC30[];
-extern char D_0046BC38[];
-extern char D_0046BC40[];
-extern char D_0046BC48[];
-extern char D_0046BC50[];
-extern char D_0046BC58[];
-extern char D_0046BC60[];
-extern char D_0046BC68[];
-extern char D_0046BC70[];
-extern char D_0046BC78[];
-extern char D_0046BC80[];
-extern char D_0046BC88[];
-extern char D_0046BC90[];
-extern char D_0046BC98[];
-extern char D_0046BCA0[];
-extern char D_0046BCA8[];
-extern char D_0046BCB0[];
-extern char D_0046BCB8[];
-extern char D_0046BCC0[];
-extern char D_0046BCC8[];
-extern char D_0046BCD0[];
-extern char D_0046BCD8[];
-extern char D_0046BCE0[];
-extern char D_0046BCE8[];
-extern char D_0046BCF0[];
-extern char D_0046BCF8[];
-extern char D_0046BD00[];
-extern char D_0046BD08[];
-extern char D_0046BD10[];
-extern char D_0046BD18[];
-extern char D_0046BD20[];
-extern char D_0046BD28[];
-extern char D_0046BD30[];
-extern char D_0046BD38[];
-extern char D_0046BD40[];
-extern char D_0046BD48[];
-extern char D_0046BD50[];
-extern char D_0046BD58[];
-extern char D_0046BD60[];
-extern char D_0046BD68[];
-extern char D_0046BD70[];
-extern char D_0046BD78[];
-extern char D_0046BD80[];
-extern char D_0046BD88[];
-extern char D_0046BD90[];
-extern char D_0046BD98[];
-extern char D_0046BDA0[];
-extern char D_0046BDA8[];
-extern char D_0046BDB0[];
-extern char D_0046BDB8[];
-extern char D_0046BDC0[];
-extern char D_0046BDC8[];
-extern char D_0046BDD0[];
-extern char D_0046BDD8[];
-extern char D_0046BDE0[];
-extern char D_0046BDE8[];
-extern char D_0046BDF0[];
-extern char D_0046BDF8[];
-extern char D_0046BE00[];
-extern char D_0046BE08[];
-extern char D_0046BE10[];
-extern char D_0046BE18[];
-extern char D_0046BE20[];
-extern char D_0046BE28[];
-extern char D_0046BE30[];
-extern char D_0046BE38[];
-extern char D_0046BE40[];
-extern char D_0046BE48[];
-extern char D_0046BE50[];
-extern char D_0046BE58[];
-extern char D_0046BE60[];
-extern char D_0046BE68[];
-extern char D_0046BE70[];
-extern char D_0046BE78[];
-extern char D_0046BE80[];
-extern char D_0046BE88[];
-extern char D_0046BE90[];
-extern char D_0046BE98[];
-extern char D_0046BEA0[];
-extern char D_0046BEA8[];
-extern char D_0046BEB0[];
-extern char D_0046BEB8[];
-extern char D_0046BEC0[];
-extern char D_0046BEC8[];
-extern char D_0046BED0[];
-extern char D_0046BED8[];
-extern char D_0046BEE0[];
-extern char D_0046BEE8[];
-extern char D_0046BEF0[];
-extern char D_0046BEF8[];
-extern char D_0046BF00[];
-extern char D_0046BF08[];
-extern char D_0046BF10[];
-extern char D_0046BF18[];
-extern char D_0046BF20[];
-extern char D_0046BF28[];
-extern char D_0046BF30[];
-extern char D_0046BF38[];
-extern char D_0046BF40[];
-extern char D_0046BF48[];
-extern char D_0046BF50[];
-extern char D_0046BF58[];
-extern char D_0046BF60[];
-extern char D_0046BF68[];
-extern char D_0046BF70[];
-extern char D_0046BF78[];
-extern char D_0046BF80[];
-extern char D_0046BF88[];
-extern char D_0046BF90[];
-extern char D_0046BF98[];
-extern char D_0046BFA0[];
-extern char D_0046BFA8[];
-extern char D_0046BFB0[];
-extern char D_0046BFB8[];
-extern char D_0046BFC0[];
-extern char D_0046BFC8[];
-extern char D_0046BFD0[];
-extern char D_0046BFD8[];
-extern char D_0046BFE0[];
-extern char D_0046BFE8[];
-extern char D_0046BFF0[];
-extern char D_0046BFF8[];
-extern char D_0046C000[];
-extern char D_0046C008[];
-extern char D_0046C010[];
-extern char D_0046C018[];
-extern char D_0046C020[];
-extern char D_0046C028[];
-extern char D_0046C030[];
-extern char D_0046C038[];
-extern char D_0046C040[];
-extern char D_0046C048[];
-extern char D_0046C050[];
-extern char D_0046C058[];
-extern char D_0046C060[];
-extern char D_0046C068[];
-extern char D_0046C070[];
-extern char D_0046C078[];
-extern char D_0046C080[];
-extern char D_0046C088[];
-extern char D_0046C090[];
-extern char D_0046C098[];
-extern char D_0046C0A0[];
-extern char D_0046C0A8[];
-extern char D_0046C0B0[];
-extern char D_0046C0B8[];
-extern char D_0046C0C0[];
-extern char D_0046C0C8[];
-extern char D_0046C0D0[];
-extern char D_0046C0D8[];
-extern char D_0046C0E0[];
-extern char D_0046C0E8[];
-extern char D_0046C0F0[];
-extern char D_0046C0F8[];
-extern char D_0046C100[];
-extern char D_0046C108[];
-extern char D_0046C110[];
-extern char D_0046C118[];
-extern char D_0046C120[];
-extern char D_0046C128[];
-extern char D_0046C130[];
-extern char D_0046C138[];
-extern char D_0046C140[];
-extern char D_0046C148[];
-extern char D_0046C150[];
-extern char D_0046C158[];
-extern char D_0046C160[];
-extern char D_0046C168[];
-extern char D_0046C170[];
-extern char D_0046C178[];
-extern char D_0046C180[];
-extern char D_0046C188[];
-extern char D_0046C190[];
-extern char D_0046C198[];
-extern char D_0046C1A0[];
-extern char D_0046C1A8[];
-extern char D_0046C1B0[];
-extern char D_0046C1B8[];
-extern char D_0046C1C0[];
-extern char D_0046C1C8[];
-extern char D_0046C1D0[];
-extern char D_0046C1E0[];
-extern char D_0046C260[];
-extern char D_0046C2E0[];
-extern char D_0046C360[];
-extern char D_0046C3E0[];
-extern char D_0046C460[];
-extern char D_0046C4E0[];
-extern char D_0046C560[];
-extern char D_0046C5E0[];
-extern char D_0046C660[];
-extern char D_0046C6E0[];
-extern char D_0046C710[];
-extern char D_0046C750[];
-extern char D_0046C790[];
-extern char D_0046C7D0[];
-extern char D_0046C820[];
-extern char D_0046C860[];
-extern char D_0046C8A0[];
-extern char D_0046C8E0[];
 extern char D_0046C990[];
 extern char D_0046C998[];
 extern char D_0046C9A0[];
@@ -3608,269 +2696,269 @@ extern char D_0046CAB8[];
 extern u32 D_0046CAE0[];
 extern u32 D_0046CBB0[];
 RomajiEntry gRomajiKanaTbl[240] = {
-    {D_0046A930, {D_0046A938, D_0046A940, D_0046A948}},
-    {D_0046A950, {D_0046A958, D_0046A960, D_0046A968}},
-    {D_0046A970, {D_0046A978, D_0046A980, D_0046A988}},
-    {D_0046A990, {D_0046A998, D_0046A9A0, D_0046A9A8}},
-    {D_0046A9B0, {D_0046A9B8, D_0046A9C0, D_0046A9C8}},
-    {D_0046A9D0, {D_0046A958, D_0046A960, D_0046A968}},
-    {D_0046A9D8, {D_0046A978, D_0046A980, D_0046A988}},
-    {D_0046A9E0, {D_0046A9E8, D_0046A9F0, D_0046A9F8}},
-    {D_0046AA00, {D_0046AA08, D_0046AA10, D_0046AA18}},
-    {D_0046AA20, {D_0046AA28, D_0046AA30, D_0046AA38}},
-    {D_0046AA40, {D_0046AA48, D_0046AA50, D_0046AA58}},
-    {D_0046AA60, {D_0046AA68, D_0046AA70, D_0046AA78}},
-    {D_0046AA80, {D_0046A9E8, D_0046A9F0, D_0046A9F8}},
-    {D_0046AA88, {D_0046AA08, D_0046AA10, D_0046AA18}},
-    {D_0046AA90, {D_0046AA28, D_0046AA30, D_0046AA38}},
-    {D_0046AA98, {D_0046AA48, D_0046AA50, D_0046AA58}},
-    {D_0046AAA0, {D_0046AA68, D_0046AA70, D_0046AA78}},
-    {D_0046AAA8, {D_0046AA08, D_0046AA10, D_0046AA18}},
-    {D_0046AAB0, {D_0046AA48, D_0046AA50, D_0046AA58}},
-    {D_0046AAB8, {D_0046AA08, D_0046AA10, D_0046AA18}},
-    {D_0046AAC0, {D_0046AA48, D_0046AA50, D_0046AA58}},
-    {D_0046AAC8, {D_0046AAD0, D_0046AAD8, D_0046AAE0}},
-    {D_0046AAE8, {D_0046AAF0, D_0046AAF8, D_0046AB00}},
-    {D_0046AB08, {D_0046AB10, D_0046AB18, D_0046AB20}},
-    {D_0046AB28, {D_0046AB30, D_0046AB38, D_0046AB40}},
-    {D_0046AB48, {D_0046AB50, D_0046AB58, D_0046AB60}},
-    {D_0046AB68, {D_0046AB70, D_0046AB78, D_0046AB80}},
-    {D_0046AB88, {D_0046AAF0, D_0046AAF8, D_0046AB00}},
-    {D_0046AB90, {D_0046AB30, D_0046AB38, D_0046AB40}},
-    {D_0046AB98, {D_0046AB70, D_0046AB78, D_0046AB80}},
-    {D_0046ABA0, {D_0046ABA8, D_0046ABB0, D_0046ABB8}},
-    {D_0046ABC0, {D_0046ABC8, D_0046ABD0, D_0046ABD8}},
-    {D_0046ABE0, {D_0046ABE8, D_0046ABF0, D_0046ABF8}},
-    {D_0046AC00, {D_0046AC08, D_0046AC10, D_0046AC18}},
-    {D_0046AC20, {D_0046AC28, D_0046AC30, D_0046AC38}},
-    {D_0046AC40, {D_0046AC48, D_0046AC50, D_0046AC58}},
-    {D_0046AC60, {D_0046AC68, D_0046AC70, D_0046AC78}},
-    {D_0046AC80, {D_0046AC88, D_0046AC90, D_0046AC98}},
-    {D_0046ACA0, {D_0046ACA8, D_0046ACB0, D_0046ACB8}},
-    {D_0046ACC0, {D_0046ACC8, D_0046ACD0, D_0046ACD8}},
-    {D_0046ACE0, {D_0046ACE8, D_0046ACF0, D_0046ACF8}},
-    {D_0046AD00, {D_0046AD08, D_0046AD10, D_0046AD18}},
-    {D_0046AD20, {D_0046AD28, D_0046AD30, D_0046AD38}},
-    {D_0046AD40, {D_0046AD48, D_0046AD50, D_0046AD58}},
-    {D_0046AD60, {D_0046AD68, D_0046AD70, D_0046AD78}},
-    {D_0046AD80, {D_0046AB30, D_0046AB38, D_0046AB40}},
-    {D_0046AD88, {D_0046AD90, D_0046AD98, D_0046ADA0}},
-    {D_0046ADA8, {D_0046ADB0, D_0046ADB8, D_0046ADC0}},
-    {D_0046ADC8, {D_0046AD68, D_0046AD70, D_0046AD78}},
-    {D_0046ADD0, {D_0046AD90, D_0046AD98, D_0046ADA0}},
-    {D_0046ADD8, {D_0046ADE0, D_0046ADE8, D_0046ADF0}},
-    {D_0046ADF8, {D_0046AE00, D_0046AE08, D_0046AE10}},
-    {D_0046AE18, {D_0046AE20, D_0046AE28, D_0046AE30}},
-    {D_0046AE38, {D_0046AE40, D_0046AE48, D_0046AE50}},
-    {D_0046AE58, {D_0046AE60, D_0046AE68, D_0046AE70}},
-    {D_0046AE78, {D_0046AE80, D_0046AE88, D_0046AE90}},
-    {D_0046AE98, {D_0046AEA0, D_0046AEA8, D_0046AEB0}},
-    {D_0046AEB8, {D_0046AEC0, D_0046AEC8, D_0046AED0}},
-    {D_0046AED8, {D_0046AEE0, D_0046AEE8, D_0046AEF0}},
-    {D_0046AEF8, {D_0046AF00, D_0046AF08, D_0046AF10}},
-    {D_0046AF18, {D_0046AF20, D_0046AF28, D_0046AF30}},
-    {D_0046AF38, {D_0046AF40, D_0046AF48, D_0046AF50}},
-    {D_0046AF58, {D_0046AF60, D_0046AF68, D_0046AF70}},
-    {D_0046AF78, {D_0046AF80, D_0046AF88, D_0046AF90}},
-    {D_0046AF98, {D_0046AF20, D_0046AF28, D_0046AF30}},
-    {D_0046AFA0, {D_0046AF60, D_0046AF68, D_0046AF70}},
-    {D_0046AFA8, {D_0046AFB0, D_0046AFB8, D_0046AFC0}},
-    {D_0046AFC8, {D_0046AFD0, D_0046AFD8, D_0046AFE0}},
-    {D_0046AFE8, {D_0046AFF0, D_0046AFF8, D_0046B000}},
-    {D_0046B008, {D_0046B010, D_0046B018, D_0046B020}},
-    {D_0046B028, {D_0046B030, D_0046B038, D_0046B040}},
-    {D_0046B048, {D_0046AFD0, D_0046AFD8, D_0046AFE0}},
-    {D_0046B050, {D_0046AF20, D_0046AF28, D_0046AF30}},
-    {D_0046B058, {D_0046B060, D_0046B068, D_0046B070}},
-    {D_0046B078, {D_0046B080, D_0046B088, D_0046B090}},
-    {D_0046B098, {D_0046B0A0, D_0046B0A8, D_0046B0B0}},
-    {D_0046B0B8, {D_0046B0C0, D_0046B0C8, D_0046B0D0}},
-    {D_0046B0D8, {D_0046B0E0, D_0046B0E8, D_0046B0F0}},
-    {D_0046B0F8, {D_0046B060, D_0046B068, D_0046B070}},
-    {D_0046B100, {D_0046B0A0, D_0046B0A8, D_0046B0B0}},
-    {D_0046B108, {D_0046B0C0, D_0046B0C8, D_0046B0D0}},
-    {D_0046B110, {D_0046B0E0, D_0046B0E8, D_0046B0F0}},
-    {D_0046B118, {D_0046B120, D_0046B128, D_0046B130}},
-    {D_0046B138, {D_0046B140, D_0046B148, D_0046B150}},
-    {D_0046B158, {D_0046B160, D_0046B168, D_0046B170}},
-    {D_0046B178, {D_0046B180, D_0046B188, D_0046B190}},
-    {D_0046B198, {D_0046B1A0, D_0046B1A8, D_0046B1B0}},
-    {D_0046B1B8, {D_0046B120, D_0046B128, D_0046B130}},
-    {D_0046B1C0, {D_0046B160, D_0046B168, D_0046B170}},
-    {D_0046B1C8, {D_0046B180, D_0046B188, D_0046B190}},
-    {D_0046B1D0, {D_0046B1A0, D_0046B1A8, D_0046B1B0}},
-    {D_0046B1D8, {D_0046B120, D_0046B128, D_0046B130}},
-    {D_0046B1E0, {D_0046B140, D_0046B148, D_0046B150}},
-    {D_0046B1E8, {D_0046B160, D_0046B168, D_0046B170}},
-    {D_0046B1F0, {D_0046B180, D_0046B188, D_0046B190}},
-    {D_0046B1F8, {D_0046B1A0, D_0046B1A8, D_0046B1B0}},
-    {D_0046B200, {D_0046B208, D_0046B210, D_0046B218}},
-    {D_0046B220, {D_0046B228, D_0046B230, D_0046B238}},
-    {D_0046B240, {D_0046B248, D_0046B250, D_0046B258}},
-    {D_0046B260, {D_0046B268, D_0046B270, D_0046B278}},
-    {D_0046B280, {D_0046B288, D_0046B290, D_0046B298}},
-    {D_0046B2A0, {D_0046B228, D_0046B230, D_0046B238}},
-    {D_0046B2A8, {D_0046B248, D_0046B250, D_0046B258}},
-    {D_0046B2B0, {gSmallTsuHira, gSmallTsuKata, gSmallTsuHalf}},
-    {D_0046B2D0, {gSmallTsuHira, gSmallTsuKata, gSmallTsuHalf}},
-    {D_0046B2D8, {D_0046B2E0, D_0046B2E8, D_0046B2F0}},
-    {D_0046B2F8, {D_0046B300, D_0046B308, D_0046B310}},
-    {D_0046B318, {D_0046B320, D_0046B328, D_0046B330}},
-    {D_0046B338, {D_0046B340, D_0046B348, D_0046B350}},
-    {D_0046B358, {D_0046B360, D_0046B368, D_0046B370}},
-    {D_0046B378, {D_0046B380, D_0046B388, D_0046B390}},
-    {D_0046B398, {D_0046B3A0, D_0046B3A8, D_0046B3B0}},
-    {D_0046B3B8, {D_0046B3C0, D_0046B3C8, D_0046B3D0}},
-    {D_0046B3D8, {D_0046B3E0, D_0046B3E8, D_0046B3F0}},
-    {D_0046B3F8, {D_0046B400, D_0046B408, D_0046B410}},
-    {D_0046B418, {D_0046B380, D_0046B388, D_0046B390}},
-    {D_0046B420, {D_0046B3C0, D_0046B3C8, D_0046B3D0}},
-    {D_0046B428, {D_0046B3E0, D_0046B3E8, D_0046B3F0}},
-    {D_0046B430, {D_0046B400, D_0046B408, D_0046B410}},
-    {D_0046B438, {D_0046B380, D_0046B388, D_0046B390}},
-    {D_0046B440, {D_0046B3A0, D_0046B3A8, D_0046B3B0}},
-    {D_0046B448, {D_0046B3C0, D_0046B3C8, D_0046B3D0}},
-    {D_0046B450, {D_0046B3E0, D_0046B3E8, D_0046B3F0}},
-    {D_0046B458, {D_0046B400, D_0046B408, D_0046B410}},
-    {D_0046B460, {D_0046B468, D_0046B470, D_0046B478}},
-    {D_0046B480, {D_0046B488, D_0046B490, D_0046B498}},
-    {D_0046B4A0, {D_0046B4A8, D_0046B4B0, D_0046B4B8}},
-    {D_0046B4C0, {D_0046B4C8, D_0046B4D0, D_0046B4D8}},
-    {D_0046B4E0, {D_0046B4E8, D_0046B4F0, D_0046B4F8}},
-    {D_0046B500, {D_0046B508, D_0046B510, D_0046B518}},
-    {D_0046B520, {D_0046B528, D_0046B530, D_0046B538}},
-    {D_0046B540, {D_0046B548, D_0046B550, D_0046B558}},
-    {D_0046B560, {D_0046B568, D_0046B570, D_0046B578}},
-    {D_0046B580, {D_0046B588, D_0046B590, D_0046B598}},
-    {D_0046B5A0, {D_0046B5A8, D_0046B5B0, D_0046B5B8}},
-    {D_0046B5C0, {D_0046B5C8, D_0046B5D0, D_0046B5D8}},
-    {D_0046B5E0, {D_0046B5E8, D_0046B5F0, D_0046B5F8}},
-    {D_0046B600, {D_0046B608, D_0046B610, D_0046B618}},
-    {D_0046B620, {D_0046B628, D_0046B630, D_0046B638}},
-    {D_0046B640, {D_0046B648, D_0046B650, D_0046B658}},
-    {D_0046B660, {D_0046B668, D_0046B670, D_0046B678}},
-    {D_0046B680, {D_0046B688, D_0046B690, D_0046B698}},
-    {D_0046B6A0, {D_0046B6A8, D_0046B6B0, D_0046B6B8}},
-    {D_0046B6C0, {D_0046B6C8, D_0046B6D0, D_0046B6D8}},
-    {D_0046B6E0, {D_0046B6E8, D_0046B6F0, D_0046B6F8}},
-    {D_0046B700, {D_0046B708, D_0046B710, D_0046B718}},
-    {D_0046B720, {D_0046B728, D_0046B730, D_0046B738}},
-    {D_0046B740, {D_0046B748, D_0046B750, D_0046B758}},
-    {D_0046B760, {D_0046B768, D_0046B770, D_0046B778}},
-    {D_0046B780, {D_0046B788, D_0046B790, D_0046B798}},
-    {D_0046B7A0, {D_0046B7A8, D_0046B7B0, D_0046B7B8}},
-    {D_0046B7C0, {D_0046B7C8, D_0046B7D0, D_0046B7D8}},
-    {D_0046B7E0, {D_0046B7E8, D_0046B7F0, D_0046B7F8}},
-    {D_0046B800, {D_0046B808, D_0046B810, D_0046B818}},
-    {D_0046B820, {D_0046B828, D_0046B830, D_0046B838}},
-    {D_0046B840, {D_0046B848, D_0046B850, D_0046B858}},
-    {D_0046B860, {D_0046B868, D_0046B870, D_0046B878}},
-    {D_0046B880, {D_0046B888, D_0046B890, D_0046B898}},
-    {D_0046B8A0, {D_0046B848, D_0046B850, D_0046B858}},
-    {D_0046B8A8, {D_0046B8B0, D_0046B8B8, D_0046B8C0}},
-    {D_0046B8C8, {D_0046B8D0, D_0046B8D8, D_0046B8E0}},
-    {D_0046B8E8, {D_0046B8F0, D_0046B8F8, D_0046B900}},
-    {D_0046B908, {D_0046B910, D_0046B918, D_0046B920}},
-    {D_0046B928, {D_0046B930, D_0046B938, D_0046B940}},
-    {D_0046B948, {D_0046B950, D_0046B958, D_0046B960}},
-    {D_0046B968, {D_0046B970, D_0046B978, D_0046B980}},
-    {D_0046B988, {D_0046B990, D_0046B998, D_0046B9A0}},
-    {D_0046B9A8, {D_0046B9B0, D_0046B9B8, D_0046B9C0}},
-    {D_0046B9C8, {D_0046B9D0, D_0046B9D8, D_0046B9E0}},
-    {D_0046B9E8, {D_0046B9F0, D_0046B9F8, D_0046BA00}},
-    {D_0046BA08, {D_0046BA10, D_0046BA18, D_0046BA20}},
-    {D_0046BA28, {D_0046BA30, D_0046BA38, D_0046BA40}},
-    {D_0046BA48, {D_0046BA50, D_0046BA58, D_0046BA60}},
-    {D_0046BA68, {D_0046BA70, D_0046BA78, D_0046BA80}},
-    {D_0046BA88, {D_0046BA90, D_0046BA98, D_0046BAA0}},
-    {D_0046BAA8, {D_0046BAB0, D_0046BAB8, D_0046BAC0}},
-    {D_0046BAC8, {D_0046BAD0, D_0046BAD8, D_0046BAE0}},
-    {D_0046BAE8, {D_0046BAF0, D_0046BAF8, D_0046BB00}},
-    {D_0046BB08, {D_0046BB10, D_0046BB18, D_0046BB20}},
-    {D_0046BB28, {D_0046BB30, D_0046BB38, D_0046BB40}},
-    {D_0046BB48, {D_0046BB50, D_0046BB58, D_0046BB60}},
-    {D_0046BB68, {D_0046BB10, D_0046BB18, D_0046BB20}},
-    {D_0046BB70, {D_0046BB30, D_0046BB38, D_0046BB40}},
-    {D_0046BB78, {D_0046BB80, D_0046BB88, D_0046BB90}},
-    {D_0046BB98, {D_0046BBA0, D_0046BBA8, D_0046BBB0}},
-    {D_0046BBB8, {D_0046BBC0, D_0046BBC8, D_0046BBD0}},
-    {D_0046BBD8, {D_0046BBE0, D_0046BBE8, D_0046BBF0}},
-    {D_0046BBF8, {D_0046BC00, D_0046BC08, D_0046BC10}},
-    {D_0046BC18, {D_0046BC20, D_0046BC28, D_0046BC30}},
-    {D_0046BC38, {D_0046BC40, D_0046BC48, D_0046BC50}},
-    {D_0046BC58, {D_0046BC60, D_0046BC60, D_0046BC68}},
-    {D_0046BC70, {D_0046BC78, D_0046BC80, D_0046BC88}},
-    {D_0046BC90, {D_0046BC98, D_0046BCA0, D_0046BCA8}},
-    {D_0046BCB0, {D_0046BCB8, D_0046BCC0, D_0046BCC8}},
-    {D_0046BCD0, {D_0046BC40, D_0046BC48, D_0046BC50}},
-    {D_0046BCD8, {D_0046BCE0, D_0046BCE8, D_0046BCF0}},
-    {D_0046BCF8, {D_0046BC78, D_0046BC80, D_0046BC88}},
-    {D_0046BD00, {D_0046BC98, D_0046BCA0, D_0046BCA8}},
-    {D_0046BD08, {D_0046BD10, D_0046BD18, D_0046BD20}},
-    {D_0046BD28, {D_0046BD30, D_0046BD38, D_0046BD40}},
-    {D_0046BD48, {D_0046BD50, D_0046BD58, D_0046BD60}},
-    {D_0046BD68, {D_0046BD70, D_0046BD78, D_0046BD80}},
-    {D_0046BD88, {D_0046BD90, D_0046BD98, D_0046BDA0}},
-    {D_0046BDA8, {D_0046BDB0, D_0046BDB8, D_0046BDC0}},
-    {D_0046BDC8, {D_0046BDD0, D_0046BDD8, D_0046BDE0}},
-    {D_0046BDE8, {D_0046BDF0, D_0046BDF8, D_0046BE00}},
-    {D_0046BE08, {D_0046BE10, D_0046BE18, D_0046BE20}},
-    {D_0046BE28, {D_0046BE30, D_0046BE38, D_0046BE40}},
-    {D_0046BE48, {D_0046BE50, D_0046BE58, D_0046BE60}},
-    {D_0046BE68, {D_0046BE70, D_0046BE78, D_0046BE80}},
-    {D_0046BE88, {D_0046BE90, D_0046BE98, D_0046BEA0}},
-    {D_0046BEA8, {D_0046BEB0, D_0046BEB8, D_0046BEC0}},
-    {D_0046BEC8, {D_0046BED0, D_0046BED8, D_0046BEE0}},
-    {D_0046BEE8, {D_0046BEF0, D_0046BEF8, D_0046BF00}},
-    {D_0046BF08, {D_0046BF10, D_0046BF18, D_0046BF20}},
-    {D_0046BF28, {D_0046BF30, D_0046BF38, D_0046BF40}},
-    {D_0046BF48, {D_0046BF50, D_0046BF58, D_0046BF60}},
-    {D_0046BF68, {D_0046BF70, D_0046BF78, D_0046BF80}},
-    {D_0046BF88, {D_0046BF90, D_0046BF98, D_0046BFA0}},
-    {D_0046BFA8, {D_0046BF50, D_0046BF58, D_0046BF60}},
-    {D_0046BFB0, {D_0046BF70, D_0046BF78, D_0046BF80}},
-    {D_0046BFB8, {D_0046BF90, D_0046BF98, D_0046BFA0}},
-    {D_0046BFC0, {D_0046BFC8, D_0046BFD0, D_0046BFD8}},
-    {D_0046BFE0, {D_0046BFE8, D_0046BFF0, D_0046BFF8}},
-    {D_0046C000, {D_0046C008, D_0046C010, D_0046C018}},
-    {D_0046C020, {D_0046C028, D_0046C030, D_0046C038}},
-    {D_0046C040, {D_0046C048, D_0046C050, D_0046C058}},
-    {D_0046C060, {D_0046C068, D_0046C070, D_0046C078}},
-    {D_0046C080, {D_0046C088, D_0046C090, D_0046C098}},
-    {D_0046C0A0, {D_0046C0A8, D_0046C0B0, D_0046C0B8}},
-    {D_0046C0C0, {D_0046C0C8, D_0046C0D0, D_0046C0D8}},
-    {D_0046C0E0, {D_0046C0E8, D_0046C0F0, D_0046C0F8}},
-    {D_0046C100, {D_0046C108, D_0046C110, D_0046C118}},
-    {D_0046C120, {D_0046C128, D_0046C130, D_0046C138}},
-    {D_0046C140, {D_0046C128, D_0046C130, D_0046C148}},
-    {D_0046C150, {D_0046C158, D_0046C160, D_0046C168}},
-    {D_0046C170, {D_0046C178, D_0046C180, D_0046C188}},
-    {D_0046C190, {D_0046C198, D_0046C1A0, D_0046C1A8}},
-    {D_0046C1B0, {D_0046C1B8, D_0046C1C0, D_0046C1C8}},
-    {D_0046C1D0, {D_0046C1B8, D_0046C1C0, D_0046C1C8}},
+    {gRomajiKanaTbl_0_romaji, {gRomajiKanaTbl_0_kana_0, gRomajiKanaTbl_0_kana_1, gRomajiKanaTbl_0_kana_2}},
+    {gRomajiKanaTbl_1_romaji, {D_0046A958, D_0046A960, D_0046A968}},
+    {gRomajiKanaTbl_2_romaji, {D_0046A978, D_0046A980, D_0046A988}},
+    {gRomajiKanaTbl_3_romaji, {gRomajiKanaTbl_3_kana_0, gRomajiKanaTbl_3_kana_1, gRomajiKanaTbl_3_kana_2}},
+    {gRomajiKanaTbl_4_romaji, {gRomajiKanaTbl_4_kana_0, gRomajiKanaTbl_4_kana_1, gRomajiKanaTbl_4_kana_2}},
+    {gRomajiKanaTbl_5_romaji, {D_0046A958, D_0046A960, D_0046A968}},
+    {gRomajiKanaTbl_6_romaji, {D_0046A978, D_0046A980, D_0046A988}},
+    {gRomajiKanaTbl_7_romaji, {D_0046A9E8, D_0046A9F0, D_0046A9F8}},
+    {gRomajiKanaTbl_8_romaji, {D_0046AA08, D_0046AA10, D_0046AA18}},
+    {gRomajiKanaTbl_9_romaji, {D_0046AA28, D_0046AA30, D_0046AA38}},
+    {gRomajiKanaTbl_10_romaji, {D_0046AA48, D_0046AA50, D_0046AA58}},
+    {gRomajiKanaTbl_11_romaji, {D_0046AA68, D_0046AA70, D_0046AA78}},
+    {gRomajiKanaTbl_12_romaji, {D_0046A9E8, D_0046A9F0, D_0046A9F8}},
+    {gRomajiKanaTbl_13_romaji, {D_0046AA08, D_0046AA10, D_0046AA18}},
+    {gRomajiKanaTbl_14_romaji, {D_0046AA28, D_0046AA30, D_0046AA38}},
+    {gRomajiKanaTbl_15_romaji, {D_0046AA48, D_0046AA50, D_0046AA58}},
+    {gRomajiKanaTbl_16_romaji, {D_0046AA68, D_0046AA70, D_0046AA78}},
+    {gRomajiKanaTbl_17_romaji, {D_0046AA08, D_0046AA10, D_0046AA18}},
+    {gRomajiKanaTbl_18_romaji, {D_0046AA48, D_0046AA50, D_0046AA58}},
+    {gRomajiKanaTbl_19_romaji, {D_0046AA08, D_0046AA10, D_0046AA18}},
+    {gRomajiKanaTbl_20_romaji, {D_0046AA48, D_0046AA50, D_0046AA58}},
+    {gRomajiKanaTbl_21_romaji, {gRomajiKanaTbl_21_kana_0, gRomajiKanaTbl_21_kana_1, gRomajiKanaTbl_21_kana_2}},
+    {gRomajiKanaTbl_22_romaji, {D_0046AAF0, D_0046AAF8, D_0046AB00}},
+    {gRomajiKanaTbl_23_romaji, {gRomajiKanaTbl_23_kana_0, gRomajiKanaTbl_23_kana_1, gRomajiKanaTbl_23_kana_2}},
+    {gRomajiKanaTbl_24_romaji, {D_0046AB30, D_0046AB38, D_0046AB40}},
+    {gRomajiKanaTbl_25_romaji, {gRomajiKanaTbl_25_kana_0, gRomajiKanaTbl_25_kana_1, gRomajiKanaTbl_25_kana_2}},
+    {gRomajiKanaTbl_26_romaji, {D_0046AB70, D_0046AB78, D_0046AB80}},
+    {gRomajiKanaTbl_27_romaji, {D_0046AAF0, D_0046AAF8, D_0046AB00}},
+    {gRomajiKanaTbl_28_romaji, {D_0046AB30, D_0046AB38, D_0046AB40}},
+    {gRomajiKanaTbl_29_romaji, {D_0046AB70, D_0046AB78, D_0046AB80}},
+    {gRomajiKanaTbl_30_romaji, {gRomajiKanaTbl_30_kana_0, gRomajiKanaTbl_30_kana_1, gRomajiKanaTbl_30_kana_2}},
+    {gRomajiKanaTbl_31_romaji, {gRomajiKanaTbl_31_kana_0, gRomajiKanaTbl_31_kana_1, gRomajiKanaTbl_31_kana_2}},
+    {gRomajiKanaTbl_32_romaji, {gRomajiKanaTbl_32_kana_0, gRomajiKanaTbl_32_kana_1, gRomajiKanaTbl_32_kana_2}},
+    {gRomajiKanaTbl_33_romaji, {gRomajiKanaTbl_33_kana_0, gRomajiKanaTbl_33_kana_1, gRomajiKanaTbl_33_kana_2}},
+    {gRomajiKanaTbl_34_romaji, {gRomajiKanaTbl_34_kana_0, gRomajiKanaTbl_34_kana_1, gRomajiKanaTbl_34_kana_2}},
+    {gRomajiKanaTbl_35_romaji, {gRomajiKanaTbl_35_kana_0, gRomajiKanaTbl_35_kana_1, gRomajiKanaTbl_35_kana_2}},
+    {gRomajiKanaTbl_36_romaji, {gRomajiKanaTbl_36_kana_0, gRomajiKanaTbl_36_kana_1, gRomajiKanaTbl_36_kana_2}},
+    {gRomajiKanaTbl_37_romaji, {gRomajiKanaTbl_37_kana_0, gRomajiKanaTbl_37_kana_1, gRomajiKanaTbl_37_kana_2}},
+    {gRomajiKanaTbl_38_romaji, {gRomajiKanaTbl_38_kana_0, gRomajiKanaTbl_38_kana_1, gRomajiKanaTbl_38_kana_2}},
+    {gRomajiKanaTbl_39_romaji, {gRomajiKanaTbl_39_kana_0, gRomajiKanaTbl_39_kana_1, gRomajiKanaTbl_39_kana_2}},
+    {gRomajiKanaTbl_40_romaji, {gRomajiKanaTbl_40_kana_0, gRomajiKanaTbl_40_kana_1, gRomajiKanaTbl_40_kana_2}},
+    {gRomajiKanaTbl_41_romaji, {gRomajiKanaTbl_41_kana_0, gRomajiKanaTbl_41_kana_1, gRomajiKanaTbl_41_kana_2}},
+    {gRomajiKanaTbl_42_romaji, {gRomajiKanaTbl_42_kana_0, gRomajiKanaTbl_42_kana_1, gRomajiKanaTbl_42_kana_2}},
+    {gRomajiKanaTbl_43_romaji, {gRomajiKanaTbl_43_kana_0, gRomajiKanaTbl_43_kana_1, gRomajiKanaTbl_43_kana_2}},
+    {gRomajiKanaTbl_44_romaji, {D_0046AD68, D_0046AD70, D_0046AD78}},
+    {gRomajiKanaTbl_45_romaji, {D_0046AB30, D_0046AB38, D_0046AB40}},
+    {gRomajiKanaTbl_46_romaji, {D_0046AD90, D_0046AD98, D_0046ADA0}},
+    {gRomajiKanaTbl_47_romaji, {gRomajiKanaTbl_47_kana_0, gRomajiKanaTbl_47_kana_1, gRomajiKanaTbl_47_kana_2}},
+    {gRomajiKanaTbl_48_romaji, {D_0046AD68, D_0046AD70, D_0046AD78}},
+    {gRomajiKanaTbl_49_romaji, {D_0046AD90, D_0046AD98, D_0046ADA0}},
+    {gRomajiKanaTbl_50_romaji, {gRomajiKanaTbl_50_kana_0, gRomajiKanaTbl_50_kana_1, gRomajiKanaTbl_50_kana_2}},
+    {gRomajiKanaTbl_51_romaji, {gRomajiKanaTbl_51_kana_0, gRomajiKanaTbl_51_kana_1, gRomajiKanaTbl_51_kana_2}},
+    {gRomajiKanaTbl_52_romaji, {gRomajiKanaTbl_52_kana_0, gRomajiKanaTbl_52_kana_1, gRomajiKanaTbl_52_kana_2}},
+    {gRomajiKanaTbl_53_romaji, {gRomajiKanaTbl_53_kana_0, gRomajiKanaTbl_53_kana_1, gRomajiKanaTbl_53_kana_2}},
+    {gRomajiKanaTbl_54_romaji, {gRomajiKanaTbl_54_kana_0, gRomajiKanaTbl_54_kana_1, gRomajiKanaTbl_54_kana_2}},
+    {gRomajiKanaTbl_55_romaji, {gRomajiKanaTbl_55_kana_0, gRomajiKanaTbl_55_kana_1, gRomajiKanaTbl_55_kana_2}},
+    {gRomajiKanaTbl_56_romaji, {gRomajiKanaTbl_56_kana_0, gRomajiKanaTbl_56_kana_1, gRomajiKanaTbl_56_kana_2}},
+    {gRomajiKanaTbl_57_romaji, {gRomajiKanaTbl_57_kana_0, gRomajiKanaTbl_57_kana_1, gRomajiKanaTbl_57_kana_2}},
+    {gRomajiKanaTbl_58_romaji, {gRomajiKanaTbl_58_kana_0, gRomajiKanaTbl_58_kana_1, gRomajiKanaTbl_58_kana_2}},
+    {gRomajiKanaTbl_59_romaji, {gRomajiKanaTbl_59_kana_0, gRomajiKanaTbl_59_kana_1, gRomajiKanaTbl_59_kana_2}},
+    {gRomajiKanaTbl_60_romaji, {D_0046AF20, D_0046AF28, D_0046AF30}},
+    {gRomajiKanaTbl_61_romaji, {gRomajiKanaTbl_61_kana_0, gRomajiKanaTbl_61_kana_1, gRomajiKanaTbl_61_kana_2}},
+    {gRomajiKanaTbl_62_romaji, {D_0046AF60, D_0046AF68, D_0046AF70}},
+    {gRomajiKanaTbl_63_romaji, {gRomajiKanaTbl_63_kana_0, gRomajiKanaTbl_63_kana_1, gRomajiKanaTbl_63_kana_2}},
+    {gRomajiKanaTbl_64_romaji, {D_0046AF20, D_0046AF28, D_0046AF30}},
+    {gRomajiKanaTbl_65_romaji, {D_0046AF60, D_0046AF68, D_0046AF70}},
+    {gRomajiKanaTbl_66_romaji, {gRomajiKanaTbl_66_kana_0, gRomajiKanaTbl_66_kana_1, gRomajiKanaTbl_66_kana_2}},
+    {gRomajiKanaTbl_67_romaji, {D_0046AFD0, D_0046AFD8, D_0046AFE0}},
+    {gRomajiKanaTbl_68_romaji, {gRomajiKanaTbl_68_kana_0, gRomajiKanaTbl_68_kana_1, gRomajiKanaTbl_68_kana_2}},
+    {gRomajiKanaTbl_69_romaji, {gRomajiKanaTbl_69_kana_0, gRomajiKanaTbl_69_kana_1, gRomajiKanaTbl_69_kana_2}},
+    {gRomajiKanaTbl_70_romaji, {gRomajiKanaTbl_70_kana_0, gRomajiKanaTbl_70_kana_1, gRomajiKanaTbl_70_kana_2}},
+    {gRomajiKanaTbl_71_romaji, {D_0046AFD0, D_0046AFD8, D_0046AFE0}},
+    {gRomajiKanaTbl_72_romaji, {D_0046AF20, D_0046AF28, D_0046AF30}},
+    {gRomajiKanaTbl_73_romaji, {D_0046B060, D_0046B068, D_0046B070}},
+    {gRomajiKanaTbl_74_romaji, {gRomajiKanaTbl_74_kana_0, gRomajiKanaTbl_74_kana_1, gRomajiKanaTbl_74_kana_2}},
+    {gRomajiKanaTbl_75_romaji, {D_0046B0A0, D_0046B0A8, D_0046B0B0}},
+    {gRomajiKanaTbl_76_romaji, {D_0046B0C0, D_0046B0C8, D_0046B0D0}},
+    {gRomajiKanaTbl_77_romaji, {D_0046B0E0, D_0046B0E8, D_0046B0F0}},
+    {gRomajiKanaTbl_78_romaji, {D_0046B060, D_0046B068, D_0046B070}},
+    {gRomajiKanaTbl_79_romaji, {D_0046B0A0, D_0046B0A8, D_0046B0B0}},
+    {gRomajiKanaTbl_80_romaji, {D_0046B0C0, D_0046B0C8, D_0046B0D0}},
+    {gRomajiKanaTbl_81_romaji, {D_0046B0E0, D_0046B0E8, D_0046B0F0}},
+    {gRomajiKanaTbl_82_romaji, {D_0046B120, D_0046B128, D_0046B130}},
+    {gRomajiKanaTbl_83_romaji, {D_0046B140, D_0046B148, D_0046B150}},
+    {gRomajiKanaTbl_84_romaji, {D_0046B160, D_0046B168, D_0046B170}},
+    {gRomajiKanaTbl_85_romaji, {D_0046B180, D_0046B188, D_0046B190}},
+    {gRomajiKanaTbl_86_romaji, {D_0046B1A0, D_0046B1A8, D_0046B1B0}},
+    {gRomajiKanaTbl_87_romaji, {D_0046B120, D_0046B128, D_0046B130}},
+    {gRomajiKanaTbl_88_romaji, {D_0046B160, D_0046B168, D_0046B170}},
+    {gRomajiKanaTbl_89_romaji, {D_0046B180, D_0046B188, D_0046B190}},
+    {gRomajiKanaTbl_90_romaji, {D_0046B1A0, D_0046B1A8, D_0046B1B0}},
+    {gRomajiKanaTbl_91_romaji, {D_0046B120, D_0046B128, D_0046B130}},
+    {gRomajiKanaTbl_92_romaji, {D_0046B140, D_0046B148, D_0046B150}},
+    {gRomajiKanaTbl_93_romaji, {D_0046B160, D_0046B168, D_0046B170}},
+    {gRomajiKanaTbl_94_romaji, {D_0046B180, D_0046B188, D_0046B190}},
+    {gRomajiKanaTbl_95_romaji, {D_0046B1A0, D_0046B1A8, D_0046B1B0}},
+    {gRomajiKanaTbl_96_romaji, {gRomajiKanaTbl_96_kana_0, gRomajiKanaTbl_96_kana_1, gRomajiKanaTbl_96_kana_2}},
+    {gRomajiKanaTbl_97_romaji, {D_0046B228, D_0046B230, D_0046B238}},
+    {gRomajiKanaTbl_98_romaji, {D_0046B248, D_0046B250, D_0046B258}},
+    {gRomajiKanaTbl_99_romaji, {gRomajiKanaTbl_99_kana_0, gRomajiKanaTbl_99_kana_1, gRomajiKanaTbl_99_kana_2}},
+    {gRomajiKanaTbl_100_romaji, {gRomajiKanaTbl_100_kana_0, gRomajiKanaTbl_100_kana_1, gRomajiKanaTbl_100_kana_2}},
+    {gRomajiKanaTbl_101_romaji, {D_0046B228, D_0046B230, D_0046B238}},
+    {gRomajiKanaTbl_102_romaji, {D_0046B248, D_0046B250, D_0046B258}},
+    {gRomajiKanaTbl_103_romaji, {gSmallTsuHira, gSmallTsuKata, gSmallTsuHalf}},
+    {gRomajiKanaTbl_104_romaji, {gSmallTsuHira, gSmallTsuKata, gSmallTsuHalf}},
+    {gRomajiKanaTbl_105_romaji, {gRomajiKanaTbl_105_kana_0, gRomajiKanaTbl_105_kana_1, gRomajiKanaTbl_105_kana_2}},
+    {gRomajiKanaTbl_106_romaji, {gRomajiKanaTbl_106_kana_0, gRomajiKanaTbl_106_kana_1, gRomajiKanaTbl_106_kana_2}},
+    {gRomajiKanaTbl_107_romaji, {gRomajiKanaTbl_107_kana_0, gRomajiKanaTbl_107_kana_1, gRomajiKanaTbl_107_kana_2}},
+    {gRomajiKanaTbl_108_romaji, {gRomajiKanaTbl_108_kana_0, gRomajiKanaTbl_108_kana_1, gRomajiKanaTbl_108_kana_2}},
+    {gRomajiKanaTbl_109_romaji, {gRomajiKanaTbl_109_kana_0, gRomajiKanaTbl_109_kana_1, gRomajiKanaTbl_109_kana_2}},
+    {gRomajiKanaTbl_110_romaji, {D_0046B380, D_0046B388, D_0046B390}},
+    {gRomajiKanaTbl_111_romaji, {D_0046B3A0, D_0046B3A8, D_0046B3B0}},
+    {gRomajiKanaTbl_112_romaji, {D_0046B3C0, D_0046B3C8, D_0046B3D0}},
+    {gRomajiKanaTbl_113_romaji, {D_0046B3E0, D_0046B3E8, D_0046B3F0}},
+    {gRomajiKanaTbl_114_romaji, {D_0046B400, D_0046B408, D_0046B410}},
+    {gRomajiKanaTbl_115_romaji, {D_0046B380, D_0046B388, D_0046B390}},
+    {gRomajiKanaTbl_116_romaji, {D_0046B3C0, D_0046B3C8, D_0046B3D0}},
+    {gRomajiKanaTbl_117_romaji, {D_0046B3E0, D_0046B3E8, D_0046B3F0}},
+    {gRomajiKanaTbl_118_romaji, {D_0046B400, D_0046B408, D_0046B410}},
+    {gRomajiKanaTbl_119_romaji, {D_0046B380, D_0046B388, D_0046B390}},
+    {gRomajiKanaTbl_120_romaji, {D_0046B3A0, D_0046B3A8, D_0046B3B0}},
+    {gRomajiKanaTbl_121_romaji, {D_0046B3C0, D_0046B3C8, D_0046B3D0}},
+    {gRomajiKanaTbl_122_romaji, {D_0046B3E0, D_0046B3E8, D_0046B3F0}},
+    {gRomajiKanaTbl_123_romaji, {D_0046B400, D_0046B408, D_0046B410}},
+    {gRomajiKanaTbl_124_romaji, {gRomajiKanaTbl_124_kana_0, gRomajiKanaTbl_124_kana_1, gRomajiKanaTbl_124_kana_2}},
+    {gRomajiKanaTbl_125_romaji, {gRomajiKanaTbl_125_kana_0, gRomajiKanaTbl_125_kana_1, gRomajiKanaTbl_125_kana_2}},
+    {gRomajiKanaTbl_126_romaji, {gRomajiKanaTbl_126_kana_0, gRomajiKanaTbl_126_kana_1, gRomajiKanaTbl_126_kana_2}},
+    {gRomajiKanaTbl_127_romaji, {gRomajiKanaTbl_127_kana_0, gRomajiKanaTbl_127_kana_1, gRomajiKanaTbl_127_kana_2}},
+    {gRomajiKanaTbl_128_romaji, {gRomajiKanaTbl_128_kana_0, gRomajiKanaTbl_128_kana_1, gRomajiKanaTbl_128_kana_2}},
+    {gRomajiKanaTbl_129_romaji, {gRomajiKanaTbl_129_kana_0, gRomajiKanaTbl_129_kana_1, gRomajiKanaTbl_129_kana_2}},
+    {gRomajiKanaTbl_130_romaji, {gRomajiKanaTbl_130_kana_0, gRomajiKanaTbl_130_kana_1, gRomajiKanaTbl_130_kana_2}},
+    {gRomajiKanaTbl_131_romaji, {gRomajiKanaTbl_131_kana_0, gRomajiKanaTbl_131_kana_1, gRomajiKanaTbl_131_kana_2}},
+    {gRomajiKanaTbl_132_romaji, {gRomajiKanaTbl_132_kana_0, gRomajiKanaTbl_132_kana_1, gRomajiKanaTbl_132_kana_2}},
+    {gRomajiKanaTbl_133_romaji, {gRomajiKanaTbl_133_kana_0, gRomajiKanaTbl_133_kana_1, gRomajiKanaTbl_133_kana_2}},
+    {gRomajiKanaTbl_134_romaji, {gRomajiKanaTbl_134_kana_0, gRomajiKanaTbl_134_kana_1, gRomajiKanaTbl_134_kana_2}},
+    {gRomajiKanaTbl_135_romaji, {gRomajiKanaTbl_135_kana_0, gRomajiKanaTbl_135_kana_1, gRomajiKanaTbl_135_kana_2}},
+    {gRomajiKanaTbl_136_romaji, {gRomajiKanaTbl_136_kana_0, gRomajiKanaTbl_136_kana_1, gRomajiKanaTbl_136_kana_2}},
+    {gRomajiKanaTbl_137_romaji, {gRomajiKanaTbl_137_kana_0, gRomajiKanaTbl_137_kana_1, gRomajiKanaTbl_137_kana_2}},
+    {gRomajiKanaTbl_138_romaji, {gRomajiKanaTbl_138_kana_0, gRomajiKanaTbl_138_kana_1, gRomajiKanaTbl_138_kana_2}},
+    {gRomajiKanaTbl_139_romaji, {gRomajiKanaTbl_139_kana_0, gRomajiKanaTbl_139_kana_1, gRomajiKanaTbl_139_kana_2}},
+    {gRomajiKanaTbl_140_romaji, {gRomajiKanaTbl_140_kana_0, gRomajiKanaTbl_140_kana_1, gRomajiKanaTbl_140_kana_2}},
+    {gRomajiKanaTbl_141_romaji, {gRomajiKanaTbl_141_kana_0, gRomajiKanaTbl_141_kana_1, gRomajiKanaTbl_141_kana_2}},
+    {gRomajiKanaTbl_142_romaji, {gRomajiKanaTbl_142_kana_0, gRomajiKanaTbl_142_kana_1, gRomajiKanaTbl_142_kana_2}},
+    {gRomajiKanaTbl_143_romaji, {gRomajiKanaTbl_143_kana_0, gRomajiKanaTbl_143_kana_1, gRomajiKanaTbl_143_kana_2}},
+    {gRomajiKanaTbl_144_romaji, {gRomajiKanaTbl_144_kana_0, gRomajiKanaTbl_144_kana_1, gRomajiKanaTbl_144_kana_2}},
+    {gRomajiKanaTbl_145_romaji, {gRomajiKanaTbl_145_kana_0, gRomajiKanaTbl_145_kana_1, gRomajiKanaTbl_145_kana_2}},
+    {gRomajiKanaTbl_146_romaji, {gRomajiKanaTbl_146_kana_0, gRomajiKanaTbl_146_kana_1, gRomajiKanaTbl_146_kana_2}},
+    {gRomajiKanaTbl_147_romaji, {gRomajiKanaTbl_147_kana_0, gRomajiKanaTbl_147_kana_1, gRomajiKanaTbl_147_kana_2}},
+    {gRomajiKanaTbl_148_romaji, {gRomajiKanaTbl_148_kana_0, gRomajiKanaTbl_148_kana_1, gRomajiKanaTbl_148_kana_2}},
+    {gRomajiKanaTbl_149_romaji, {gRomajiKanaTbl_149_kana_0, gRomajiKanaTbl_149_kana_1, gRomajiKanaTbl_149_kana_2}},
+    {gRomajiKanaTbl_150_romaji, {gRomajiKanaTbl_150_kana_0, gRomajiKanaTbl_150_kana_1, gRomajiKanaTbl_150_kana_2}},
+    {gRomajiKanaTbl_151_romaji, {gRomajiKanaTbl_151_kana_0, gRomajiKanaTbl_151_kana_1, gRomajiKanaTbl_151_kana_2}},
+    {gRomajiKanaTbl_152_romaji, {gRomajiKanaTbl_152_kana_0, gRomajiKanaTbl_152_kana_1, gRomajiKanaTbl_152_kana_2}},
+    {gRomajiKanaTbl_153_romaji, {gRomajiKanaTbl_153_kana_0, gRomajiKanaTbl_153_kana_1, gRomajiKanaTbl_153_kana_2}},
+    {gRomajiKanaTbl_154_romaji, {gRomajiKanaTbl_154_kana_0, gRomajiKanaTbl_154_kana_1, gRomajiKanaTbl_154_kana_2}},
+    {gRomajiKanaTbl_155_romaji, {D_0046B848, D_0046B850, D_0046B858}},
+    {gRomajiKanaTbl_156_romaji, {gRomajiKanaTbl_156_kana_0, gRomajiKanaTbl_156_kana_1, gRomajiKanaTbl_156_kana_2}},
+    {gRomajiKanaTbl_157_romaji, {gRomajiKanaTbl_157_kana_0, gRomajiKanaTbl_157_kana_1, gRomajiKanaTbl_157_kana_2}},
+    {gRomajiKanaTbl_158_romaji, {D_0046B848, D_0046B850, D_0046B858}},
+    {gRomajiKanaTbl_159_romaji, {gRomajiKanaTbl_159_kana_0, gRomajiKanaTbl_159_kana_1, gRomajiKanaTbl_159_kana_2}},
+    {gRomajiKanaTbl_160_romaji, {gRomajiKanaTbl_160_kana_0, gRomajiKanaTbl_160_kana_1, gRomajiKanaTbl_160_kana_2}},
+    {gRomajiKanaTbl_161_romaji, {gRomajiKanaTbl_161_kana_0, gRomajiKanaTbl_161_kana_1, gRomajiKanaTbl_161_kana_2}},
+    {gRomajiKanaTbl_162_romaji, {gRomajiKanaTbl_162_kana_0, gRomajiKanaTbl_162_kana_1, gRomajiKanaTbl_162_kana_2}},
+    {gRomajiKanaTbl_163_romaji, {gRomajiKanaTbl_163_kana_0, gRomajiKanaTbl_163_kana_1, gRomajiKanaTbl_163_kana_2}},
+    {gRomajiKanaTbl_164_romaji, {gRomajiKanaTbl_164_kana_0, gRomajiKanaTbl_164_kana_1, gRomajiKanaTbl_164_kana_2}},
+    {gRomajiKanaTbl_165_romaji, {gRomajiKanaTbl_165_kana_0, gRomajiKanaTbl_165_kana_1, gRomajiKanaTbl_165_kana_2}},
+    {gRomajiKanaTbl_166_romaji, {gRomajiKanaTbl_166_kana_0, gRomajiKanaTbl_166_kana_1, gRomajiKanaTbl_166_kana_2}},
+    {gRomajiKanaTbl_167_romaji, {gRomajiKanaTbl_167_kana_0, gRomajiKanaTbl_167_kana_1, gRomajiKanaTbl_167_kana_2}},
+    {gRomajiKanaTbl_168_romaji, {gRomajiKanaTbl_168_kana_0, gRomajiKanaTbl_168_kana_1, gRomajiKanaTbl_168_kana_2}},
+    {gRomajiKanaTbl_169_romaji, {gRomajiKanaTbl_169_kana_0, gRomajiKanaTbl_169_kana_1, gRomajiKanaTbl_169_kana_2}},
+    {gRomajiKanaTbl_170_romaji, {gRomajiKanaTbl_170_kana_0, gRomajiKanaTbl_170_kana_1, gRomajiKanaTbl_170_kana_2}},
+    {gRomajiKanaTbl_171_romaji, {gRomajiKanaTbl_171_kana_0, gRomajiKanaTbl_171_kana_1, gRomajiKanaTbl_171_kana_2}},
+    {gRomajiKanaTbl_172_romaji, {gRomajiKanaTbl_172_kana_0, gRomajiKanaTbl_172_kana_1, gRomajiKanaTbl_172_kana_2}},
+    {gRomajiKanaTbl_173_romaji, {gRomajiKanaTbl_173_kana_0, gRomajiKanaTbl_173_kana_1, gRomajiKanaTbl_173_kana_2}},
+    {gRomajiKanaTbl_174_romaji, {gRomajiKanaTbl_174_kana_0, gRomajiKanaTbl_174_kana_1, gRomajiKanaTbl_174_kana_2}},
+    {gRomajiKanaTbl_175_romaji, {gRomajiKanaTbl_175_kana_0, gRomajiKanaTbl_175_kana_1, gRomajiKanaTbl_175_kana_2}},
+    {gRomajiKanaTbl_176_romaji, {gRomajiKanaTbl_176_kana_0, gRomajiKanaTbl_176_kana_1, gRomajiKanaTbl_176_kana_2}},
+    {gRomajiKanaTbl_177_romaji, {gRomajiKanaTbl_177_kana_0, gRomajiKanaTbl_177_kana_1, gRomajiKanaTbl_177_kana_2}},
+    {gRomajiKanaTbl_178_romaji, {D_0046BB10, D_0046BB18, D_0046BB20}},
+    {gRomajiKanaTbl_179_romaji, {D_0046BB30, D_0046BB38, D_0046BB40}},
+    {gRomajiKanaTbl_180_romaji, {gRomajiKanaTbl_180_kana_0, gRomajiKanaTbl_180_kana_1, gRomajiKanaTbl_180_kana_2}},
+    {gRomajiKanaTbl_181_romaji, {D_0046BB10, D_0046BB18, D_0046BB20}},
+    {gRomajiKanaTbl_182_romaji, {D_0046BB30, D_0046BB38, D_0046BB40}},
+    {gRomajiKanaTbl_183_romaji, {gRomajiKanaTbl_183_kana_0, gRomajiKanaTbl_183_kana_1, gRomajiKanaTbl_183_kana_2}},
+    {gRomajiKanaTbl_184_romaji, {gRomajiKanaTbl_184_kana_0, gRomajiKanaTbl_184_kana_1, gRomajiKanaTbl_184_kana_2}},
+    {gRomajiKanaTbl_185_romaji, {gRomajiKanaTbl_185_kana_0, gRomajiKanaTbl_185_kana_1, gRomajiKanaTbl_185_kana_2}},
+    {gRomajiKanaTbl_186_romaji, {gRomajiKanaTbl_186_kana_0, gRomajiKanaTbl_186_kana_1, gRomajiKanaTbl_186_kana_2}},
+    {gRomajiKanaTbl_187_romaji, {gRomajiKanaTbl_187_kana_0, gRomajiKanaTbl_187_kana_1, gRomajiKanaTbl_187_kana_2}},
+    {gRomajiKanaTbl_188_romaji, {gRomajiKanaTbl_188_kana_0, gRomajiKanaTbl_188_kana_1, gRomajiKanaTbl_188_kana_2}},
+    {gRomajiKanaTbl_189_romaji, {D_0046BC40, D_0046BC48, D_0046BC50}},
+    {gRomajiKanaTbl_190_romaji, {D_0046BC60, D_0046BC60, gRomajiKanaTbl_190_kana_2}},
+    {gRomajiKanaTbl_191_romaji, {D_0046BC78, D_0046BC80, D_0046BC88}},
+    {gRomajiKanaTbl_192_romaji, {D_0046BC98, D_0046BCA0, D_0046BCA8}},
+    {gRomajiKanaTbl_193_romaji, {gRomajiKanaTbl_193_kana_0, gRomajiKanaTbl_193_kana_1, gRomajiKanaTbl_193_kana_2}},
+    {gRomajiKanaTbl_194_romaji, {D_0046BC40, D_0046BC48, D_0046BC50}},
+    {gRomajiKanaTbl_195_romaji, {gRomajiKanaTbl_195_kana_0, gRomajiKanaTbl_195_kana_1, gRomajiKanaTbl_195_kana_2}},
+    {gRomajiKanaTbl_196_romaji, {D_0046BC78, D_0046BC80, D_0046BC88}},
+    {gRomajiKanaTbl_197_romaji, {D_0046BC98, D_0046BCA0, D_0046BCA8}},
+    {gRomajiKanaTbl_198_romaji, {gRomajiKanaTbl_198_kana_0, gRomajiKanaTbl_198_kana_1, gRomajiKanaTbl_198_kana_2}},
+    {gRomajiKanaTbl_199_romaji, {gRomajiKanaTbl_199_kana_0, gRomajiKanaTbl_199_kana_1, gRomajiKanaTbl_199_kana_2}},
+    {gRomajiKanaTbl_200_romaji, {gRomajiKanaTbl_200_kana_0, gRomajiKanaTbl_200_kana_1, gRomajiKanaTbl_200_kana_2}},
+    {gRomajiKanaTbl_201_romaji, {gRomajiKanaTbl_201_kana_0, gRomajiKanaTbl_201_kana_1, gRomajiKanaTbl_201_kana_2}},
+    {gRomajiKanaTbl_202_romaji, {gRomajiKanaTbl_202_kana_0, gRomajiKanaTbl_202_kana_1, gRomajiKanaTbl_202_kana_2}},
+    {gRomajiKanaTbl_203_romaji, {gRomajiKanaTbl_203_kana_0, gRomajiKanaTbl_203_kana_1, gRomajiKanaTbl_203_kana_2}},
+    {gRomajiKanaTbl_204_romaji, {gRomajiKanaTbl_204_kana_0, gRomajiKanaTbl_204_kana_1, gRomajiKanaTbl_204_kana_2}},
+    {gRomajiKanaTbl_205_romaji, {gRomajiKanaTbl_205_kana_0, gRomajiKanaTbl_205_kana_1, gRomajiKanaTbl_205_kana_2}},
+    {gRomajiKanaTbl_206_romaji, {gRomajiKanaTbl_206_kana_0, gRomajiKanaTbl_206_kana_1, gRomajiKanaTbl_206_kana_2}},
+    {gRomajiKanaTbl_207_romaji, {gRomajiKanaTbl_207_kana_0, gRomajiKanaTbl_207_kana_1, gRomajiKanaTbl_207_kana_2}},
+    {gRomajiKanaTbl_208_romaji, {gRomajiKanaTbl_208_kana_0, gRomajiKanaTbl_208_kana_1, gRomajiKanaTbl_208_kana_2}},
+    {gRomajiKanaTbl_209_romaji, {gRomajiKanaTbl_209_kana_0, gRomajiKanaTbl_209_kana_1, gRomajiKanaTbl_209_kana_2}},
+    {gRomajiKanaTbl_210_romaji, {gRomajiKanaTbl_210_kana_0, gRomajiKanaTbl_210_kana_1, gRomajiKanaTbl_210_kana_2}},
+    {gRomajiKanaTbl_211_romaji, {gRomajiKanaTbl_211_kana_0, gRomajiKanaTbl_211_kana_1, gRomajiKanaTbl_211_kana_2}},
+    {gRomajiKanaTbl_212_romaji, {gRomajiKanaTbl_212_kana_0, gRomajiKanaTbl_212_kana_1, gRomajiKanaTbl_212_kana_2}},
+    {gRomajiKanaTbl_213_romaji, {gRomajiKanaTbl_213_kana_0, gRomajiKanaTbl_213_kana_1, gRomajiKanaTbl_213_kana_2}},
+    {gRomajiKanaTbl_214_romaji, {gRomajiKanaTbl_214_kana_0, gRomajiKanaTbl_214_kana_1, gRomajiKanaTbl_214_kana_2}},
+    {gRomajiKanaTbl_215_romaji, {gRomajiKanaTbl_215_kana_0, gRomajiKanaTbl_215_kana_1, gRomajiKanaTbl_215_kana_2}},
+    {gRomajiKanaTbl_216_romaji, {D_0046BF50, D_0046BF58, D_0046BF60}},
+    {gRomajiKanaTbl_217_romaji, {D_0046BF70, D_0046BF78, D_0046BF80}},
+    {gRomajiKanaTbl_218_romaji, {D_0046BF90, D_0046BF98, D_0046BFA0}},
+    {gRomajiKanaTbl_219_romaji, {D_0046BF50, D_0046BF58, D_0046BF60}},
+    {gRomajiKanaTbl_220_romaji, {D_0046BF70, D_0046BF78, D_0046BF80}},
+    {gRomajiKanaTbl_221_romaji, {D_0046BF90, D_0046BF98, D_0046BFA0}},
+    {gRomajiKanaTbl_222_romaji, {gRomajiKanaTbl_222_kana_0, gRomajiKanaTbl_222_kana_1, gRomajiKanaTbl_222_kana_2}},
+    {gRomajiKanaTbl_223_romaji, {gRomajiKanaTbl_223_kana_0, gRomajiKanaTbl_223_kana_1, gRomajiKanaTbl_223_kana_2}},
+    {gRomajiKanaTbl_224_romaji, {gRomajiKanaTbl_224_kana_0, gRomajiKanaTbl_224_kana_1, gRomajiKanaTbl_224_kana_2}},
+    {gRomajiKanaTbl_225_romaji, {gRomajiKanaTbl_225_kana_0, gRomajiKanaTbl_225_kana_1, gRomajiKanaTbl_225_kana_2}},
+    {gRomajiKanaTbl_226_romaji, {gRomajiKanaTbl_226_kana_0, gRomajiKanaTbl_226_kana_1, gRomajiKanaTbl_226_kana_2}},
+    {gRomajiKanaTbl_227_romaji, {gRomajiKanaTbl_227_kana_0, gRomajiKanaTbl_227_kana_1, gRomajiKanaTbl_227_kana_2}},
+    {gRomajiKanaTbl_228_romaji, {gRomajiKanaTbl_228_kana_0, gRomajiKanaTbl_228_kana_1, gRomajiKanaTbl_228_kana_2}},
+    {gRomajiKanaTbl_229_romaji, {gRomajiKanaTbl_229_kana_0, gRomajiKanaTbl_229_kana_1, gRomajiKanaTbl_229_kana_2}},
+    {gRomajiKanaTbl_230_romaji, {gRomajiKanaTbl_230_kana_0, gRomajiKanaTbl_230_kana_1, gRomajiKanaTbl_230_kana_2}},
+    {gRomajiKanaTbl_231_romaji, {gRomajiKanaTbl_231_kana_0, gRomajiKanaTbl_231_kana_1, gRomajiKanaTbl_231_kana_2}},
+    {gRomajiKanaTbl_232_romaji, {gRomajiKanaTbl_232_kana_0, gRomajiKanaTbl_232_kana_1, gRomajiKanaTbl_232_kana_2}},
+    {gRomajiKanaTbl_233_romaji, {D_0046C128, D_0046C130, gRomajiKanaTbl_233_kana_2}},
+    {gRomajiKanaTbl_234_romaji, {D_0046C128, D_0046C130, gRomajiKanaTbl_234_kana_2}},
+    {gRomajiKanaTbl_235_romaji, {gRomajiKanaTbl_235_kana_0, gRomajiKanaTbl_235_kana_1, gRomajiKanaTbl_235_kana_2}},
+    {gRomajiKanaTbl_236_romaji, {gRomajiKanaTbl_236_kana_0, gRomajiKanaTbl_236_kana_1, gRomajiKanaTbl_236_kana_2}},
+    {gRomajiKanaTbl_237_romaji, {gRomajiKanaTbl_237_kana_0, gRomajiKanaTbl_237_kana_1, gRomajiKanaTbl_237_kana_2}},
+    {gRomajiKanaTbl_238_romaji, {D_0046C1B8, D_0046C1C0, D_0046C1C8}},
+    {gRomajiKanaTbl_239_romaji, {D_0046C1B8, D_0046C1C0, D_0046C1C8}},
 };
 char *gKbdHidWideStrs[10] = {
-    D_0046C1E0, D_0046C260, D_0046C2E0, D_0046C360,
-    D_0046C3E0, D_0046C460, D_0046C4E0, D_0046C560,
-    D_0046C5E0, D_0046C660,
+    gKbdHidWideStrs_0, gKbdHidWideStrs_1, gKbdHidWideStrs_2, gKbdHidWideStrs_3,
+    gKbdHidWideStrs_4, gKbdHidWideStrs_5, gKbdHidWideStrs_6, gKbdHidWideStrs_7,
+    gKbdHidWideStrs_8, gKbdHidWideStrs_9,
 };
 char *gKbdHidKeypadWideStrs[2] = {
-    D_0046C6E0, NULL,
+    gKbdHidKeypadWideStrs_0, NULL,
 };
 char *gKbdHidChars[6] = {
-    D_0046C710, D_0046C750, D_0046C790, D_0046C7D0,
-    D_0046C820, D_0046C860,
+    gKbdHidChars_0, gKbdHidChars_1, gKbdHidChars_2, gKbdHidChars_3,
+    gKbdHidChars_4, gKbdHidChars_5,
 };
 char *gKbdHidNoRomaji[2] = {
-    D_0046C8A0, NULL,
+    gKbdHidNoRomaji_0, NULL,
 };
 char *gKbdHidKeypadChars[4] = {
-    D_0046C8E0, NULL, NULL, NULL,
+    gKbdHidKeypadChars_0, NULL, NULL, NULL,
 };
-u32 gKbdSetCharsets[8] = {
+u8 gKbdSetCharsets[32] = {
 #include "sub_main/00416440.inc"
 };
-u32 gKbdKind8Chars[134] = {
+char gKbdKind8Chars[536] = {
 #include "sub_main/00416460.inc"
 };
 char *gKanaNChars[3] = {
@@ -3890,16 +2978,17 @@ char *gKbdSymbolCands[36] = {
 Tbl17 gKbdSetIsWide = {
 #include "sub_main/00416720.inc"
 };
-u8 gKbdKindConfs[5][56] = {
+extern PhraseEntry gKbdGestureEntries[12];
+KbdKindConf gKbdKindConfs[5] = {
 #include "sub_main/00416740.inc"
 };
-u32 D_00416860[48] = {
+PhraseEntry gKbdGestureEntries[12] = {
 #include "sub_main/00416860.inc"
 };
 PhraseEntry gPhraseEntries[PHRASE_COUNT] = {
 #include "sub_main/00416920.inc"
 };
-u8 gKbdKeySets[16][2] = {
+KbdKindKeys gKbdKeySets[16] = {
 #include "sub_main/00416AA0.inc"
 };
 s32 gKbdLayoutFlags[16] = {
@@ -3911,16 +3000,16 @@ s8 gKbdWidthPairs[32] = {
 BoxSize gKbdBoxSizes[4] = {
 #include "sub_main/00416B20.inc"
 };
-u32 D_00416B40[148] = {
+KbdKeyPos gKbdSetCursors[74] = {
 #include "sub_main/00416B40.inc"
 };
-u32 D_00416D90[52] = {
+KbdKeyPos gKbdBindCursors[26] = {
 #include "sub_main/00416D90.inc"
 };
-u32 D_00416E60[24] = {
+s8 gKbdSetGrid[21][4] = {
 #include "sub_main/00416E60.inc"
 };
-u32 D_00416EC0[24] = {
+s8 gKbdBindGrid[21][4] = {
 #include "sub_main/00416EC0.inc"
 };
 KbdGlyph gKbdGlyphs[8] = {

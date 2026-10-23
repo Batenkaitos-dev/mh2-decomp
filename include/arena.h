@@ -35,4 +35,14 @@ typedef struct Arena {
 
 typedef char Arena_size_check[(sizeof(Arena) == 0x28) ? 1 : -1];
 
+s32 Path_ToBackslashes(char *path);
+void Net_DebugLog(s32 level, s32 id, s32 flags, char *format, ...);
+u16 Swap16(s32 x);
+void Arena_Lock(Arena *arena);
+void Arena_Unlock(Arena *arena);
+void Arena_Init(Arena *arena); /* sub_main: set up a heap */
+void *Arena_Alloc(Arena *arena, s32 size);
+void Arena_Free(Arena *arena, void *addr);
+void *Arena_Realloc(Arena *arena, void *addr, s32 size);
+
 #endif

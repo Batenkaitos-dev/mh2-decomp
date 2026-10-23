@@ -1,18 +1,22 @@
 /*
- * The fishing, and two effects that sit beside it in sub_main's code. All are effect
- * objects of the stage object list (FxObj, SparkEmitter: include/fxobj.h).
- * - Effect08_*: allocate and start the spark emitters (kind 8), which SparkFx_Update
- *   runs.
- * - The fish (kind 0x17, FishWork): Effect17_SpawnArea starts them at the area's fishing
+ * The fishing, and the countdown effect that sits beside it in sub_main's code. Both are
+ * effect objects of the stage object list (FxObj: include/fxobj.h).
+ * - The fish (kind 23, FishWork): Effect17_SpawnArea starts them at the area's fishing
  *   spots (FishSpot). Each swims around its home, goes for a local player's lure, nibbles,
  *   bites (Player.fishTimer) and, once struck, follows the lure out. Its record (FishKind)
  *   comes from gFishKindsQuest, or gFishKindsLobby in the town.
  * - The lure (STAGEOBJ_KIND_LURE, LureWork): Lure_Spawn starts it from the cast; it follows the
  *   player's fishing motions (PL_MOT_FISH_*) and draws the line from the rod tip.
- * - The countdown (kind 0x2C, Effect2C_Spawn): black bars and the 3, 2, 1 of its last
+ * - The countdown (kind 44, Effect2C_Spawn): black bars and the 3, 2, 1 of its last
  *   90 frames (versus, the town's games).
  * The .data holds the fishing tables, the town's stage data and the player select and
  * item box text tables, whose texts make up most of the .rodata.
+ *
+ * One file: no code here reads the town's stage data or the text tables, but the stage
+ * data lies among the fishing tables, and the texts lie before the countdown's own
+ * .rodata (a short literal, then Countdown_Draw's jump table). That
+ * .rodata doesn't start on the 16-byte boundary a file of its own would start at, so
+ * neither the countdown nor the texts can be cut out.
  */
 #include "common.h"
 #include "stageobj.h"
@@ -26,104 +30,22 @@
 #include "render_state.h"
 #include "sound.h"
 #include "fishing.h"
+#include "card.h"
+#include "quest.h"
+#include "text.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "font.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "vibration.h"
+#include "vec_math.h"
+#include "spark_fx.h"
 
-u16 Rand_Next(s32 a);
-void Text_SetSize(s32 size);
-struct StageObj *StageObj_AllocTail(s32 n);
-void StageObj_Free(struct StageObj *p);
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-void DrawSlot_Free(s32 id);
-void * Stage_FindData(u16 id);
-void Fish_Start(FxObj *o);
 struct FxObj;
 struct DrawSlot;
-void Fish_Update(struct FxObj *o);
-void Fish_End(FxObj *o);
-void Fish_Free(FxObj *o);
-void Lure_Start(struct FxObj *o);
-void Lure_Update(struct FxObj *o);
-void Lure_End(FxObj *o);
-void Lure_Free(FxObj *o);
-void CountdownFx_Start(FxObj *o);
-void CountdownFx_Run(FxObj *o);
-void CountdownFx_End(FxObj *o);
-void CountdownFx_Free(FxObj *o);
-void Countdown_Draw(s16 t);
-void Letterbox_Draw(s8);
-s32 Gs_SetState(u8 reg, u32 v);
-s16 Effect_MapTexId(s16 id);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void Draw_ApplyStates(u32 f);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-void Vec_Copy(f32 *dst, f32 *src);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Lure_Draw(struct DrawSlot *slot);
-void Vec_RotateY(f32 *v, f32 angle);
-void Vib_StartLocal(void *player, s32 i);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-s32 Prim_FillTri(PrimTri *t);
-void Vec_Normalize(f32 *v);
-void Mtx_Identity(f32 *m);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void SparkFx_Update(SparkEmitter *e);
 
-SparkEmitter *Effect08_Alloc(s32 unused)
-{
-    return (SparkEmitter *)StageObj_AllocTail(0x1);
-}
-
-void Vec_Copy(f32 *dst, f32 *src);
-
-/* Starts an effect object of kind 8 (update SparkFx_Update) at pos, with +3 = k, +7 = b and the scale. */
-void Effect08_Spawn(f32 *pos, s32 sparkType, s32 tintKind, f32 scale)
-{
-    SparkEmitter *emitter = Effect08_Alloc(sparkType);
-
-    if (emitter != NULL) {
-        emitter->kind = 8;
-        emitter->update = SparkFx_Update;
-        emitter->owner = NULL;
-        emitter->type = sparkType;
-        emitter->tint = tintKind;
-        emitter->scale = scale;
-        Vec_Copy(emitter->pos, pos);
-    }
-}
-
-s32 Obj_InCurrentArea(void *em);
-
-/* Effect08_Spawn at monster em's position (height y), when em is in the current area; em is the emitter's owner. */
-void Effect08_SpawnAtEm(Em *em, s32 sparkType, s32 tintKind, f32 scale, f32 y)
-{
-    SparkEmitter *emitter;
-
-    if ((u8)Obj_InCurrentArea(em)) {
-        if ((emitter = Effect08_Alloc(sparkType)) != NULL) {
-            emitter->kind = 8;
-            emitter->update = SparkFx_Update;
-            emitter->owner = em;
-            emitter->type = sparkType;
-            emitter->tint = tintKind;
-            emitter->scale = scale;
-            Vec_Copy(emitter->pos, &em->posX);
-            emitter->pos[1] = y;
-        }
-    }
-}
-
-/* A fish's update (kind 0x17): runs its state, Fish_Start, Fish_Update, Fish_End or Fish_Free. */
+/* A fish's update (kind 23): runs its state, Fish_Start, Fish_Update, Fish_End or Fish_Free. */
 void Fish_Run(FxObj *fish)
 {
     u8 state;
@@ -144,8 +66,6 @@ void Fish_Run(FxObj *fish)
         break;
     }
 }
-
-void Fish_Draw(DrawSlot *slot);
 
 /* Next state: takes a draw slot (slotId, slot) that draws with Fish_Draw, then Fish_Update. */
 void Fish_Start(FxObj *fish)
@@ -206,11 +126,9 @@ s32 Fish_BaitMatches_Unk(Player *pl, s8 fishKind)
 }
 
 extern FxObj gStageObjs[];
-s32 Player_IsLocal(void *obj);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
 
 /* A local player's lure (STAGEOBJ_KIND_LURE, in LURE_STEP_BITE, not claimed) that the fish may bite: within its
- * radius of home, allowed for its kind (Fish_BaitMatches_Unk) and in front (+-0x3000 of its heading).
+ * radius of home, allowed for its kind (Fish_BaitMatches_Unk) and in front (within ANGLE_TURN * 3 / 16 of its heading).
  * Mode 0 aims the fish at it; otherwise the fish claims it (its claimed) once within 30. NULL when none. */
 FxObj *Fish_FindLure(FxObj *fish, FishWork *w, s32 mode)
 {
@@ -223,7 +141,7 @@ FxObj *Fish_FindLure(FxObj *fish, FishWork *w, s32 mode)
             && Player_IsLocal(lure->owner) == 1 && Fish_BaitMatches_Unk(lure->owner, w->kind)
             && Vec_DistanceXZ(w->home, lure->pos) < w->radius) {
             lureHeading = Fx_HeadingTo(fish->pos, lure->pos);
-            if ((u16)(lureHeading - w->angles[1] + 0x3000) <= 0x5FFF) {
+            if ((u16)(lureHeading - w->angles[1] + ANGLE_TURN * 3 / 16) <= 0x5FFF) {
                 if (mode == 0) {
                     w->heading = lureHeading;
                     return lure;
@@ -249,10 +167,6 @@ static FishKind *Fish_GetKind(s8 i)
     }
     return &gFishKindsLobby[i];
 }
-
-s8 Fish_PickKind(FxObj *o);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 
 /* FISH_STEP_SPAWN: picks the fish's kind (Fish_PickKind; none: the object ends), places it at a
  * random point within half its radius of home, then grows from 0.1 to its kind's size
@@ -293,7 +207,7 @@ void Fish_StepSpawn(FxObj *fish, FishWork *w)
         w->angles[2] = 0;
         w->angles[0] = 0;
         w->heading = w->angles[1] = (Rand_Next(1) & 0xF) << 12;
-        w->turn = 0x20;
+        w->turn = 32;
         w->wiggle = 0;
         w->scale[0] = w->scale[1] = w->scale[2] = 0.1f;
         w->angles[0] = 0;
@@ -314,8 +228,6 @@ void Fish_StepSpawn(FxObj *fish, FishWork *w)
     }
 }
 
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 
 /* FISH_STEP_SWIM: turns toward a heading (a lure's, or a random one back toward home), then
  * swims forward at a slowing speed; on a lure whose player's baited is set, FISH_STEP_BITE. */
@@ -331,13 +243,13 @@ void Fish_StepSwim(FxObj *fish, FishWork *w)
         if (--fish->timer <= 0 || w->angles[1] - w->heading == 0) {
             fish->phase++;
             fish->scale = 3.0f;
-            w->wiggle = 0x100;
+            w->wiggle = 256;
             if (Fish_FindLure(fish, w, 0) == NULL) {
                 homeHeading = Fx_HeadingTo(fish->pos, w->home);
-                w->heading = homeHeading - 0x4000 + ((Rand_Next(1) & 0xF) << 11);
+                w->heading = homeHeading - (ANGLE_TURN / 4) + ((Rand_Next(1) & 0xF) << 11);
             }
         }
-        w->turn += (0x20 - w->turn) / 8;
+        w->turn += (32 - w->turn) / 8;
         Angle_TurnToward(&w->angles[1], &w->heading, w->turn);
         break;
     case 1:
@@ -361,15 +273,13 @@ void Fish_StepSwim(FxObj *fish, FishWork *w)
             fish->timer = (Rand_Next(1) & 0x1F) + 10;
             w->wiggle = 0;
         }
-        w->turn += (0x100 - w->turn) / 8;
+        w->turn += (256 - w->turn) / 8;
         Angle_TurnToward(&w->angles[1], &w->heading, w->turn);
         break;
     }
 }
 
 s16 Player_IsState(void *obj, u8 a, u8 b);
-s32 Player_HasSkill(Player *p, u8 skill);
-f32 Lure_GetWaterHeight(FxObj *lure);
 extern u16 gFishBiteJitter[];
 
 /* FISH_STEP_BITE: at the lure. It nibbles (up to its kind's count, none with ITEM_ID_FISH_BAIT_G), darting
@@ -461,7 +371,7 @@ void Fish_StepBite(FxObj *fish, FishWork *w)
                 vec[0] = lure->pos[0];
                 *vecY = 10.0f + Lure_GetWaterHeight(lure);
                 *vecZ = lure->pos[2];
-                Effect08_Spawn(vec, 7, 0, 0.5f);
+                SparkFx_Spawn(vec, 7, 0, 0.5f);
                 Vib_StartLocal(lure->owner, 4);
             }
             fish->phase++;
@@ -518,8 +428,6 @@ void Fish_StepBite(FxObj *fish, FishWork *w)
     Angle_TurnToward(&w->angles[1], &w->heading, 0x100);
 }
 
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-void Vib_StartLocal(void *player, s32 i);
 
 /* FISH_STEP_HOOKED: it follows the lure (turning toward it, a vibration every 10 frames)
  * until the lure's LURE_STEP_PULL_OUT (then bright); FISH_STEP_WAIT when the lure is gone. */
@@ -538,7 +446,7 @@ void Fish_StepHooked(FxObj *fish, FishWork *w)
         fish->timer = 10;
     case 1:
         w->heading = Fx_HeadingTo(fish->pos, lure->pos);
-        Angle_TurnToward(&w->angles[1], &w->heading, 0x800);
+        Angle_TurnToward(&w->angles[1], &w->heading, ANGLE_TURN / 32);
         fish->pos[0] = lure->pos[0];
         fish->pos[2] = lure->pos[2];
         if (--fish->timer <= 0) {
@@ -552,7 +460,7 @@ void Fish_StepHooked(FxObj *fish, FishWork *w)
         }
         break;
     case 2:
-        w->angles[0] = -0x4000;
+        w->angles[0] = -(ANGLE_TURN / 4);
         Vec_Copy(fish->pos, lure->pos);
         break;
     }
@@ -560,7 +468,6 @@ void Fish_StepHooked(FxObj *fish, FishWork *w)
 
 extern s8 gFishWaitSecs[];
 
-extern s8 gFishWaitSecs[];
 
 /* FISH_STEP_WAIT: waits 30 to 30 x gFishWaitSecs[] frames at home (velocity
  * zero), then starts again at FISH_STEP_SPAWN. */
@@ -584,16 +491,6 @@ void Fish_StepWait(FxObj *fish, FishWork *w)
         break;
     }
 }
-
-void Fish_StepSpawn(FxObj *o, FishWork *w);
-void Fish_StepSwim(FxObj *o, FishWork *w);
-void Fish_StepBite(FxObj *o, FishWork *w);
-void Fish_StepHooked(FxObj *o, FishWork *w);
-void Fish_StepWait(FxObj *o, FishWork *w);
-void Vec_Sub(f32 *out, f32 *a, f32 *b);
-f32 Vec_Length(f32 *v);
-void Vec_Normalize(f32 *v);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 
 /* A fish's update: its step, kept within radius of home (horizontally), then drawn. */
 void Fish_Update(FxObj *fish)
@@ -635,7 +532,7 @@ void Fish_Update(FxObj *fish)
         fish->slot->pos[0] = fish->pos[0];
         fish->slot->pos[1] = fish->pos[1];
         fish->slot->pos[2] = fish->pos[2];
-        OT_AddByDepth(gDrawOt32, fish->slot, 0x20, 0);
+        OT_AddByDepth(gDrawOt32, fish->slot, 32, 0);
     }
 }
 
@@ -651,7 +548,6 @@ void Fish_Free(FxObj *fish)
 }
 
 extern u8 gFishColors[][3];
-void Mtx_RotateZXY(f32 *m, f32 x, f32 y, f32 z);
 
 /* Draws a fish (the draw slot's update): its kind's model scaled, turned and placed, in its
  * kind's color (gFishColors), at half brightness unless its bright is set. */
@@ -670,7 +566,7 @@ void Fish_Draw(DrawSlot *slot)
     if (set == NULL || set->active == 0) {
         return;
     }
-    Gs_SetState(RS_ALPHA_REF, 0x80);
+    Gs_SetState(RS_ALPHA_REF, 128);
     matSet = &set->matSets[rec->model];
     base = set->mats;
     Mtx_Scale(mtx, w->scale[0], w->scale[1], w->scale[2]);
@@ -679,7 +575,7 @@ void Fish_Draw(DrawSlot *slot)
     Mtx_SetTrans(mtx, fish->pos[0], fish->pos[1], fish->pos[2]);
     Gs_SetState(RS_COLOR2, -1);
     if (matSet != NULL && matSet->id != -1) {
-        Gs_SetState(RS_ALPHA_REF, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
         if (w->bright == 0) {
             brightness = 0.5f;
@@ -706,12 +602,12 @@ s8 Fish_PickKind(FxObj *fish)
     u8 sum;
 
     total = 0;
-    for (entry = w->table; entry->weight != 0xFF; entry++) {
+    for (entry = w->table; entry->weight != 255; entry++) {
         total += entry->weight;
     }
     sum = Rand_Next(0) % total;
     roll = sum;
-    for (sum = 0, entry = w->table; entry->weight != 0xFF; entry++) {
+    for (sum = 0, entry = w->table; entry->weight != 255; entry++) {
         sum += entry->weight;
         if (roll < sum) {
             return entry->kind;
@@ -720,10 +616,7 @@ s8 Fish_PickKind(FxObj *fish)
     return 0;
 }
 
-void Fish_Run(FxObj *o);
-struct StageObj *StageObj_Alloc(s32 n);
-
-/* Starts an effect object of kind 0x17 (update Fish_Run) from record src: x, y, z to it and to its work's home, the fourth value to its radius. */
+/* Starts an effect object of kind 23 (update Fish_Run) from record src: x, y, z to it and to its work's home, the fourth value to its radius. */
 void Effect17_Spawn(s32 spotKind, f32 *src, FishTableEntry *table)
 {
     FxObj *fish = (FxObj *)StageObj_Alloc(1);
@@ -731,7 +624,7 @@ void Effect17_Spawn(s32 spotKind, f32 *src, FishTableEntry *table)
     if (fish != NULL) {
         FishWork *w = fish->work;
 
-        fish->kind = 0x17;
+        fish->kind = 23;
         fish->update = Fish_Run;
         fish->draw = NULL;
         fish->type = spotKind;
@@ -742,9 +635,6 @@ void Effect17_Spawn(s32 spotKind, f32 *src, FishTableEntry *table)
         w->table = table;
     }
 }
-
-void *Stage_GetSeasonalData(s32 i, s32 *out);
-void Effect17_Spawn(s32 k, f32 *src, FishTableEntry *table);
 
 
 /* Starts the fish of an area: for each of its fishing spots (Stage_FindData(area), up to a
@@ -788,9 +678,6 @@ f32 Stage_GetDataPoint(s32 area, f32 *pos)
     return data[3];
 }
 
-struct StageObj *StageObj_Alloc(s32 n);
-void Lure_Run(FxObj *o);
-
 /* Starts player pl's lure (STAGEOBJ_KIND_LURE, update Lure_Run) of type lureType (1 for
  * ITEM_ID_FISH_BAIT_LURE_ALT, else 0); its colour is the player's (index & 3, gLureColors).
  * Nothing when no object is free. The cast states call it. */
@@ -830,11 +717,7 @@ void Lure_Run(FxObj *lure)
     }
 }
 
-u16 Area_DayId(u16 a);
-f32 Rand_Unit(void);
-f32 Rand_Signed(void);
-
-/* The lure's first state: at the rod (bone 0xE of the player), a random throw velocity turned to
+/* The lure's first state: at the rod (bone 14 of the player), a random throw velocity turned to
  * the player's heading, its scale (0.3 for variant 1), the water height of the area (waterY), and a
  * draw slot drawn by Lure_Draw (none: the lure ends). */
 void Lure_Start(FxObj *lure)
@@ -964,8 +847,6 @@ void Lure_ApplyVelocity(FxObj *lure, LureWork *w)
     w->vel[1] += w->gravity;
 }
 
-void Effect08_Spawn(f32 *pos, s32 k, s32 b, f32 scale);
-
 /* Effects of kind 8 above pos (at height y + 15): variant 7, or 3 and 0 (k 1), or 4 and 1 (k 2) 5 higher. */
 void Fx_SpawnSplash(f32 *pos, f32 y, f32 scale, u8 pattern)
 {
@@ -977,32 +858,20 @@ void Fx_SpawnSplash(f32 *pos, f32 y, f32 scale, u8 pattern)
     at[2] = pos[2];
     switch (pattern) {
     default:
-        Effect08_Spawn(at, 7, 0, scale);
+        SparkFx_Spawn(at, 7, 0, scale);
         break;
     case 1:
-        Effect08_Spawn(at, 3, 0, scale);
+        SparkFx_Spawn(at, 3, 0, scale);
         *atY += 5.0f;
-        Effect08_Spawn(at, 0, 0, scale);
+        SparkFx_Spawn(at, 0, 0, scale);
         break;
     case 2:
-        Effect08_Spawn(at, 4, 0, scale);
+        SparkFx_Spawn(at, 4, 0, scale);
         *atY += 5.0f;
-        Effect08_Spawn(at, 1, 0, scale);
+        SparkFx_Spawn(at, 1, 0, scale);
         break;
     }
 }
-
-void Vec_RotateY(f32 *v, f32 angle);
-void Vec_Scale(f32 *out, f32 *v, f32 s);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
-void Vec_Sub(f32 *out, f32 *a, f32 *b);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Lure_Cast(FxObj *o, LureWork *w);
-void Fishing_PlaySe(FxObj *o, f32 *pos, s16 k);
-u32 Player_TestFlag(void *obj, u32 flag);
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
-s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame);
-void Fish_StepState_Unk(FxObj *o, LureWork *w);
 
 /* The lure while it is out, by its step (LURE_STEP_FLY to LURE_STEP_IN_HAND); then kept
  * within 100 of its target, drawn, and ended when the player leaves the area or drops the rod. */
@@ -1077,9 +946,9 @@ void Lure_Update(FxObj *lure)
             w->vel[2] = lure->pos[2] - pl->pos[2];
             Vec_Normalize(w->vel);
             switch (pl->gotItemId) {
-            case 0xEE:
-            case 0xEF:
-            case 0xEC:
+            case 238:
+            case 239:
+            case 236:
                 Vec_Scale(w->vel, w->vel, 1.0f);
                 w->strongPull = 0;
                 break;
@@ -1088,7 +957,7 @@ void Lure_Update(FxObj *lure)
                 w->strongPull = 1;
                 break;
             }
-            Vec_RotateY(w->vel, (6.2831855f * (f32)((Rand_Next(1) & 0x3F) - 0x20)) / 65536.0f);
+            Vec_RotateY(w->vel, (6.2831855f * (f32)((Rand_Next(1) & 0x3F) - 32)) / 65536.0f);
             break;
         case PL_MOT_FISH_CATCH:
             lure->ownerIndex &= ~LURE_PULLED_UNDER;
@@ -1114,11 +983,11 @@ void Lure_Update(FxObj *lure)
         Vec_Copy(vec, w->vel);
         if (w->strongPull == 0) {
             Vec_Scale(vec, vec, 0.2f);
-            Vec_RotateY(vec, (6.2831855f * (f32)((Rand_Next(1) & 0x7FFF) - 0x4000)) / 65536.0f);
+            Vec_RotateY(vec, (6.2831855f * (f32)((Rand_Next(1) & 0x7FFF) - 16384)) / 65536.0f);
             size = 1.5f;
         } else {
             Vec_Scale(vec, vec, 0.5f);
-            Vec_RotateY(vec, (6.2831855f * (f32)((Rand_Next(1) & 0x3FFF) - 0x2000)) / 65536.0f);
+            Vec_RotateY(vec, (6.2831855f * (f32)((Rand_Next(1) & 0x3FFF) - 8192)) / 65536.0f);
             size = 3.0f;
         }
         Vec_Add(w->vel, w->vel, vec);
@@ -1250,7 +1119,7 @@ void Lure_Update(FxObj *lure)
         lure->state++;
         return;
     }
-    OT_AddByDepth(gDrawOt32, lure->slot, 0x20, 0);
+    OT_AddByDepth(gDrawOt32, lure->slot, 32, 0);
 }
 
 void Lure_End(FxObj *lure)
@@ -1266,15 +1135,9 @@ void Lure_Free(FxObj *lure)
 
 extern u32 gLureColors[];
 extern u32 gLureColorPulled;
-f32 Math_Atan2(f32 y, f32 x);
-f32 Math_Sqrtf(f32 x);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateZ(f32 *m, f32 a);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Player_GetRodTip(f32 *out, Player *p);
 
 /* Draws a lure (the draw slot's update): its model (entry 24 of model set 0 for variant 1, else
- * the one Effect_MapTexId(0x71) picks), turned and placed at the slot; while the line is out
+ * the one Effect_MapTexId(113) picks), turned and placed at the slot; while the line is out
  * (line), the line model from the rod tip (Player_GetRodTip) to the lure. */
 void Lure_Draw(DrawSlot *slot)
 {
@@ -1301,7 +1164,7 @@ void Lure_Draw(DrawSlot *slot)
             matSet = &set->matSets[24];
             break;
         default:
-            matSet = &set->matSets[Effect_MapTexId(0x71)];
+            matSet = &set->matSets[Effect_MapTexId(113)];
             break;
         }
         Mtx_RotateY(mtx, 6.2831855f * lure->angle / 65536.0f);
@@ -1316,7 +1179,7 @@ void Lure_Draw(DrawSlot *slot)
         Draw_ApplyStates(matSet->flags);
         Model_Draw(matSet->id, 0);
         if (w->line) {
-            line = &set->matSets[Effect_MapTexId(0x7F)];
+            line = &set->matSets[Effect_MapTexId(127)];
             Player_GetRodTip(rodTip, lure->owner);
             Vec_Sub(tipToLure, slot->pos, rodTip);
             tipToLureY = &tipToLure[1];
@@ -1349,8 +1212,6 @@ static void Lure_SetLaunchVel(f32 *vel, f32 startY, f32 targetY, f32 gravity, f3
     vel[1] = (f32) (((targetY - startY) / frames) - (0.5f * gravity * frames));
 }
 
-void Vec_RotateY(f32 *v, f32 angle);
-void Vec_Scale(f32 *out, f32 *v, f32 s);
 
 /* Casts the lure: its target in front of the player (20, 150, 100 turned by his angle), and a
  * velocity reaching it in 35 frames (mode 0) or 27 (mode 1) under the gravity. */
@@ -1435,13 +1296,9 @@ void Fish_StepState_Unk(FxObj *lure, LureWork *w)
     }
 }
 
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
-struct EmBone *Em_GetBone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_Identity(f32 *m);
 extern f32 gRodTipOffsets[][3];
 
-/* The tip of the player's rod: bone 0x12 plus (-9.2, -1.7, 12) in its frame, plus the offset
+/* The tip of the player's rod: bone 18 plus (-9.2, -1.7, 12) in its frame, plus the offset
  * gRodTipOffsets[k] of the cast's bend k, which the casting motions (PL_MOT_FISH_REEL .. PL_MOT_FISH_PULLED_DOWN) set by frame. */
 void Player_GetRodTip(f32 *out, Player *pl)
 {
@@ -1523,21 +1380,21 @@ void Player_GetRodTip(f32 *out, Player *pl)
     out[2] = *bendOffsetZ + (handMtx[14] + *gripOffsetZ);
 }
 
-/* Plays a fishing sound at pos from the common bank: 0x2E for sound 0 (the lure's splashes),
- * 0x70 for sound 1 (the catch lands). The lure is not used. */
+/* Plays a fishing sound at pos from the common bank: 46 for sound 0 (the lure's splashes),
+ * 112 for sound 1 (the catch lands). The lure is not used. */
 void Fishing_PlaySe(FxObj *lure, f32 *pos, s16 sound)
 {
     switch (sound) {
     case 0:
-        Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, 0x2E, 0, pos, 1, 0);
+        Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, 46, 0, pos, 1, 0);
         break;
     case 1:
-        Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, 0x70, 0, pos, 1, 0);
+        Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, 112, 0, pos, 1, 0);
         break;
     }
 }
 
-/* The countdown's update (kind 0x2C): runs its state, CountdownFx_Start, CountdownFx_Run,
+/* The countdown's update (kind 44): runs its state, CountdownFx_Start, CountdownFx_Run,
  * CountdownFx_End or CountdownFx_Free. */
 void CountdownFx_Update(FxObj *countdown)
 {
@@ -1560,8 +1417,6 @@ void CountdownFx_Update(FxObj *countdown)
     }
 }
 
-void CountdownFx_Draw(DrawSlot *arg0);
-
 /* Starts the effect: state 1 with a draw slot drawn by CountdownFx_Draw (then CountdownFx_Run), or StageObj_Free when no slot is free. */
 void CountdownFx_Start(FxObj *countdown)
 {
@@ -1582,9 +1437,6 @@ void CountdownFx_Start(FxObj *countdown)
     }
     StageObj_Free((struct StageObj *) countdown);
 }
-
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 
 /* The countdown's run state, every frame: its time (angle) counts down; the bars (timer) grow
  * over 5 frames, stay until the time is below -8, then shrink; at 0 it plays the end sound
@@ -1610,7 +1462,7 @@ void CountdownFx_Run(FxObj *countdown)
     case 2:
         if (--countdown->timer <= 0) {
             if (gScene.inLobby != 1) {
-                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1F, 0);
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 31, 0);
             }
             countdown->state = 2;
         }
@@ -1647,15 +1499,13 @@ void CountdownFx_Draw(DrawSlot *slot)
     }
 }
 
-void CountdownFx_Update(FxObj *o);
-
-/* Starts an effect object of kind 0x2C (update CountdownFx_Update) with n frames on its clock (angle). */
+/* Starts an effect object of kind 44 (update CountdownFx_Update) with n frames on its clock (angle). */
 void Effect2C_Spawn(s16 frames)
 {
     FxObj *countdown = (FxObj *)StageObj_Alloc(0);
 
     if (countdown != NULL) {
-        countdown->kind = 0x2C;
+        countdown->kind = 44;
         countdown->type = 0;
         countdown->update = CountdownFx_Update;
         countdown->angle = frames;
@@ -1797,12 +1647,6 @@ INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1878);
 INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1888);
 INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1890);
 
-f32 Math_Absf(f32 x);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void Font_SetSpacing(u8 a, u8 b);
-void Countdown_DrawDigit(u8 n, u32 color, f32 scale);
-void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
-
 
 /* The countdown's last seconds: the number (3, 2, 1) with its sound at the start of each second,
  * drawn larger and fading while the second passes. */
@@ -1824,9 +1668,9 @@ void Countdown_Draw(s16 framesLeft)
         sinceShown = Math_Absf(framesLeft - 90);
         if (sinceShown == 6) {
             if (gScene.inLobby != 1) {
-                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1C, 0);
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 28, 0);
             } else {
-                Sound_PlaySeFlat(6, 0x55, 0);
+                Sound_PlaySeFlat(6, 85, 0);
             }
         }
         break;
@@ -1834,9 +1678,9 @@ void Countdown_Draw(s16 framesLeft)
         sinceShown = Math_Absf(framesLeft - 60);
         if (sinceShown == 6) {
             if (gScene.inLobby != 1) {
-                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1D, 0);
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 29, 0);
             } else {
-                Sound_PlaySeFlat(6, 0x56, 0);
+                Sound_PlaySeFlat(6, 86, 0);
             }
         }
         break;
@@ -1844,9 +1688,9 @@ void Countdown_Draw(s16 framesLeft)
         sinceShown = Math_Absf(framesLeft - 30);
         if (sinceShown == 6) {
             if (gScene.inLobby != 1) {
-                Sound_PlaySeFlat(SE_SLOT_SCENE, 0x1E, 0);
+                Sound_PlaySeFlat(SE_SLOT_SCENE, 30, 0);
             } else {
-                Sound_PlaySeFlat(6, 0x57, 0);
+                Sound_PlaySeFlat(6, 87, 0);
             }
         }
         break;
@@ -1870,23 +1714,23 @@ void Countdown_Draw(s16 framesLeft)
     switch (stage) {
     case 0:
         scale = 8.0f;
-        alpha = 0x4B;
+        alpha = 75;
         break;
     case 1:
         scale = 3.0f;
-        alpha = 0x80;
+        alpha = 128;
         break;
     case 2:
         scale = 1.0f;
-        alpha = 0x99;
+        alpha = 153;
         break;
     case 3:
         scale = 1.1f;
-        alpha = 0xAF;
+        alpha = 175;
         break;
     case 4:
         scale = 0.8f;
-        alpha = 0x32;
+        alpha = 50;
         break;
     case 5:
     default:
@@ -1899,8 +1743,8 @@ void Countdown_Draw(s16 framesLeft)
         Countdown_DrawDigit(sec, color, scale);
     }
     if (stage < 5) {
-        Font_SetSpacing(0x20, 0x30);
-        Text_PrintfAt(0x138, 0x186, 0, "%i", sec);
+        Font_SetSpacing(32, 48);
+        Text_PrintfAt(312, 390, 0, "%i", sec);
     }
 }
 
@@ -1980,31 +1824,31 @@ void Letterbox_Draw(s8 size)
     }
     tri0.x0 = 0;
     tri0.y0 = 0;
-    tri0.x1 = 0x280;
+    tri0.x1 = 640;
     tri0.y1 = barHeight;
-    tri0.x2 = 0x280;
+    tri0.x2 = 640;
     tri0.y2 = 0;
     tri0.color = 0xFF000000;
     tri1.x0 = 0;
     tri1.y0 = 0;
-    tri1.x1 = 0x280;
+    tri1.x1 = 640;
     tri1.y1 = barHeight;
     tri1.x2 = 0;
     tri1.y2 = barHeight;
     tri1.color = 0xFF000000;
     tri2.x0 = 0;
     tri2.y0 = 448.0f - barHeight;
-    tri2.x1 = 0x280;
-    tri2.y1 = 0x1C0;
-    tri2.x2 = 0x280;
+    tri2.x1 = 640;
+    tri2.y1 = 448;
+    tri2.x2 = 640;
     tri2.y2 = 448.0f - barHeight;
     tri2.color = 0xFF000000;
     tri3.x0 = 0;
     tri3.y0 = 448.0f - barHeight;
-    tri3.x1 = 0x280;
-    tri3.y1 = 0x1C0;
+    tri3.x1 = 640;
+    tri3.y1 = 448;
     tri3.x2 = 0;
-    tri3.y2 = 0x1C0;
+    tri3.y2 = 448;
     tri3.color = 0xFF000000;
     Prim_FillTri(&tri0);
     Prim_FillTri(&tri1);
@@ -2037,23 +1881,23 @@ FishKind gFishKindsQuest[24] = {
 FishKind gFishKindsLobby[24] = {
 #include "sub_main/00469AC0.inc"
 };
-u32 gLobbyStageData_1[12] = {
+FishSpot gLobbyStageData_1[2] = {
 #include "sub_main/00469CA0.inc"
 };
-u32 gLobbyStageData_3[12] = {
+FishSpot gLobbyStageData_3[2] = {
 #include "sub_main/00469CD0.inc"
 };
-u32 gLobbyStageData[12] = {
+LobbyStageData gLobbyStageData = {
 #include "sub_main/00469D00.inc"
 };
-u32 gLobbySeasonalData_0[12] = {
+LobbyFishTable gLobbySeasonalData_0[6] = {
 #include "sub_main/00469D30.inc"
 };
-u32 gLobbySeasonalData_2[12] = {
+LobbyFishTable gLobbySeasonalData_2[6] = {
 #include "sub_main/00469D60.inc"
 };
-u32 gLobbySeasonalData[4] = {
-    (u32)gLobbySeasonalData_0, (u32)gLobbySeasonalData_0, (u32)gLobbySeasonalData_2, (u32)gLobbySeasonalData_2,
+LobbyFishTable *gLobbySeasonalData[4] = {
+    gLobbySeasonalData_0, gLobbySeasonalData_0, gLobbySeasonalData_2, gLobbySeasonalData_2,
 };
 u16 gFishBiteJitter[4] = {
 #include "sub_main/00469DA0.inc"

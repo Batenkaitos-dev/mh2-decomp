@@ -14,7 +14,8 @@
  * functions take the monster and its work area (EmWork; EmHermitaurWork
  * below names this family's own bytes); Em.step is the step within the
  * current state. EmHermitaur_ChangeState does each state's entry work.
- * The states and motions are named in em_hermitaur.h: the crabs dig in and
+ * The states, motions, bones and sounds are named in em_hermitaur.h (a bone
+ * or sound no code explains stays a number): the crabs dig in and
  * move under the ground, the Shogun also climbs to the ceiling and changes
  * its shell, the Daimyo guards with its shell (Em.hermitTimer).
  *
@@ -25,193 +26,70 @@
 #include "common.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_hermitaur.h"
 #include "player.h"
 #include "objattach.h"
 #include "scene.h"
 #include "area.h"
+#include "capsule.h"
+#include "save.h"
+#include "sound.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "monster_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* prototypes of callees */
 void EmRangedAttack_CreateAtBone(Em *em, s32 a, s32 b, s32 c, s32 d, s32 e);
-u8 Player_InCurrentArea(void *obj);
 
 /* prototypes */
-void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s16 n), the calls in EmHermitaur_Feed compile differently */
 void Em_AddHp(Em *em, s32 n);
-void Em_BeginStatus1(Em *em);
-void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-void QuestEm_Captured(Em *em);
-void QuestEm_Leave(Em *em);
-void HermitaurAttack_Create(Em *em, s32 kind);
-void EmEffectAttack_CreateTimed(Em *em, s32 a1, s32 a2, s32 a3, s32 a4, s16 v);
-void Em_SelectSightRow(Em *em, u8 idx);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_ClearLowHpNeed(Em *em);
-void Em_ClearNeed1State(Em *em);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_SetHitReactMode(Em *em, u8 a);
 /* unit's own declaration: declared here as the callers use it; with the definition's s32 (Em *em, s16 n, s16 max, s16 interval), the calls in EmHermitaur_LieDown compile differently */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
-void Em_ClearPoison(Em *em);
-void Em_SetHold2(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmHermitaur_Init(Em *em, s16 kind);
-void EmHermitaur_TurnInPlace(Em *, EmWork *, s32);
-void EmHermitaur_Walk(Em *, EmWork *, s32);
-void EmHermitaur_WalkAlert(Em *, EmWork *, s32, s32);
-void EmHermitaur_Sidestep(Em *, EmWork *, s32);
-void EmHermitaur_TurnInPlaceAlert(Em *, EmWork *, s32);
-void EmHermitaur_BuriedTurnToGoal(Em *, EmWork *, s32);
-void EmHermitaur_BuriedMoveToGoal(Em *, EmWork *, s32);
-void EmHermitaur_CeilingTurn(Em *, s32, s32);
-void EmHermitaur_Die(Em *, EmWork *);
-void EmHermitaur_Reappear(Em *em, EmWork *work);
-void EmHermitaur_DaimyoIntro(Em *em);
-void EmHermitaur_ShogunIntro(Em *em);
-void EmHermitaur_VsEatBait(Em *, EmWork *);
-void EmHermitaur_VsPoseA(Em *, EmWork *);
-void EmHermitaur_VsPoseC(Em *, EmWork *);
-void EmHermitaur_EndToIdle(Em *em);
-void EmHermitaur_EndToIdleAlert(Em *em);
-void EmHermitaur_EndToBuried(Em *em);
-void EmHermitaur_EndToCeiling(Em *em);
-void EmHermitaur_MotionEffects(Em *, EmWork *);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale), the calls in EmHermitaur_Stun compile differently */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
-void GunFx_CreateType5(void *owner);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 Motion_ReachedFrame(void *, s32, f32);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-s32 Versus_BothDefeated(void);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-u16 Area_DayId(u16 id);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (void *obj, s16 bone, f32 *out), the calls in EmHermitaur_SpawnGroundEffect compile differently */
 void Em_BonePos(void *obj, s32 a, f32 *out);
-void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
-void Versus_RouteEmByTeam(Em *em);
-s32 Versus_DefeatCamera(Em *pl);
 extern Vec3f EmHermitaur_CarveThrowPt __attribute__((aligned(8)));
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
 void Em_EndAllStatus(Em *em);
-void Em_BreakPart(Em *em, s32 part);
-void Em_ResetPartHp(Em *em, u32 i);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmHermitaur_ChangeState compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-s8 QuestEm_Appear(Em *em);
-u16 Rand_Next(s32 stream);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_StartRage(Em *em);
-void Em_StartPendingRage(Em *em);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_RefillNeed3(Em *em);
-void Em_ResetNotice(Em *em);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_TargetPlayerInRange(Em *);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-void Versus_MarkDefeat(Em *);
-void EmHermitaur_KnockDown(Em *em, EmWork *work, s16 variant);
-void EmHermitaur_WaterJet(Em *em, EmWork *work);
-void EmHermitaur_Guard(Em *em, EmWork *work, s32 variant);
-void EmHermitaur_BurrowToAmbush(Em *em, EmWork *work);
-void EmHermitaur_AmbushWait(Em *em, EmWork *work);
-void EmHermitaur_UnderThrustSeries(Em *em, EmWork *work, s32 arg2);
-void EmHermitaur_CeilingJet(Em *em, EmWork *work, s32 arg2);
-void EmHermitaur_TurnToGoal(Em *em, EmWork *work, s32 arg2);
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-void CamShake_ReqAIf(Em *obj, s32 i);
 extern EmTurnParams EmHermitaur_TurnParams[1];
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-s32 Motion_PassedFrame(void *, s32 layer, f32 frame);
-s32 Em_UpdateCombatTimer(Em *em);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 struct AreaTri;
 u8 AreaGrid2_GetCeiling(f32 *pos, f32 *y, struct AreaTri *info);
-s32 EmHermitaur_AreaHasCeiling(u16 arg0);
-void Em_RaisePlayerAreaTriggerLax(Em *em);
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-u16 Map_DayId(u16 area);
-void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_DecayNeed1Only(Em *em);
-void Em_DecayNeed1(Em *em);
-void Em_CheckRageByHp(Em *em, s16 n);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetKindTimer(Em *em);
-s32 Save_TestEventFlag(s32 flag);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void EmHermitaur_RunState(Em *em);
-void MonsterFx_CreateOnEmVariant(Em *em, u8 k, u8 c, f32 scale);
 void *EmEffectAttack_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Em_MotionDelta(Em *em, f32 *out);
-f32 Math_Absf(f32 x);
-void Vec_Copy(f32 *out, f32 *in);
 extern f32 EmHermitaur_ThrustOffsets[];
-void GmEm_ResetSize(Em *em);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void Em_InitParts(Em *em);
 u16 Area_IdForCurrentTime(u16);
-void EmHermitaur_MotionSounds(Em *em, EmWork *work);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void EmHermitaur_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale);
-void EmHermitaur_MotionEffectsDefault(Em *em);
 /* end of prototypes */
 
 /* Hermitaur's own meanings of the work area's bytes (EmWork, include/em.h, has the shared ones). */
 typedef struct EmHermitaurWork {
     u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 */
-    u8 unk001[0x030 - 0x001];
+    u8 unk001[48 - 1];
     f32 distLeft;               /* 0x030: ChangeState: the distance to the goal (Vec_DistanceXZ, or 1000); the states take the steps from it */
     u16 goalAngle;              /* 0x034: Math_AngleXZ to the goal (EmHermitaur_TurnInPlace, EmHermitaur_TurnInPlaceAlert, EmHermitaur_BuriedTurnToGoal) */
-    u8 unk036[0x037 - 0x036];
+    u8 unk036[55 - 54];
     u8 steerToGoal;             /* 0x037: ChangeState: 1 when the move has a goal, 0 when wandering; the walks and the buried move steer to the goal only while it is set */
-    u8 unk038[0x039 - 0x038];
+    u8 unk038[57 - 56];
     u8 lowHp;                   /* 0x039: Update: 1 while hp is under 20% of the maximum, else 0 (no reader) */
-    s16 rageFxTimer;            /* 0x03A: Update: 8 (calm) or 5 (enraged) when the Shogun's rage changes, counted down, a sound at 2; EmHermitaur_RageFxRatio */
+    s16 rageFxTimer;            /* 0x03A: Update: 8 (calm) or 5 (enraged) when the Shogun's rage changes, counted down; HERM_SE_RAGE_CLAW at the start and again at 2; EmHermitaur_RageFxRatio */
     f32 thrustOrigin[3];        /* 0x03C: EmHermitaur_UnderThrustSeries: where the series started */
-    u8 unk048[0x04C - 0x048];   /* 0x048: Update passes it as AreaGrid2_GetCeiling's triangle */
-    s16 guardClankTimer;        /* 0x04C: Update: 30 when a guarded hit clanks, counted down (no reader) */
+    u8 unk048[76 - 72];   /* 0x048: Update passes it as AreaGrid2_GetCeiling's triangle */
+    s16 guardClankTimer;        /* 0x04C: Update: 30 when a hit lands on the guard (HERM_SE_GUARD_HIT), counted down (no reader) */
     u8 lastRage;                /* 0x04E: Update: the rage it last saw */
     u8 shellBreakCount;         /* 0x04F: the Shogun: +1 each time its shell (part 2) breaks; Setup and EmHermitaur_ScriptQuery compare it with 2 */
     u8 lastPartState;           /* 0x050: Init and Update: parts[2].state as last seen */
-    u8 unk051[0x100 - 0x051];
+    u8 unk051[256 - 81];
 } EmHermitaurWork;
 typedef char EmHermitaurWork_size_check[(sizeof(EmHermitaurWork) == sizeof(EmWork)) ? 1 : -1];
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 
 /*
  * Plays the sounds of the current motion (work->fxMotion) at bones on given
@@ -227,1356 +105,1356 @@ void EmHermitaur_MotionSounds(Em *em, EmWork *work)
     if ((type == EM_KIND_DAIMYO_HERMITAUR) || (type == EM_KIND_SHOGUN_CEANATAUR)) {
                 switch (work->fxMotion) {
         case EM_MOTION_ID(0, HERM_MOT_IDLE):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x22, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x5A, Sound_RandomSe(0x3D, 6, 0x3E, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x96, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0xDE, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x13A, Sound_RandomSe(0x3D, 6, 0x3E, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 4, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x122, 5, 0x15);
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 34, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 90, Sound_RandomSe(61, 6, 62, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 150, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 222, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 314, Sound_RandomSe(61, 6, 62, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 168, 4, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 290, 5, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK):
-            Em_PlaySeAtBoneVolOnFrame(em, 0x16, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x3E, 4, 0x3C, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0xF, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x1E);
+            Em_PlaySeAtBoneVolOnFrame(em, 22, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(62, 4, 60, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(15, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 42, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 92, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK_BACK):
-            Em_PlaySeAtBoneVolOnFrame(em, 0x14, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x48, Sound_RandomSe(0x3E, 4, 0x3C, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0xF, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 8, 1, 0x1E);
+            Em_PlaySeAtBoneVolOnFrame(em, 20, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 72, Sound_RandomSe(62, 4, 60, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(15, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 60, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 8, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_RIGHT):
-            Em_PlaySeAtBoneVolOnFrame(em, 0x12, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0xF, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x4E, 1, 0x1E);
+            Em_PlaySeAtBoneVolOnFrame(em, 18, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(15, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 28, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 40, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 72, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 62, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 78, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_LEFT):
-            Em_PlaySeAtBoneVolOnFrame(em, 0x12, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0xF, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x4E, 1, 0x15);
+            Em_PlaySeAtBoneVolOnFrame(em, 18, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(15, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 28, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 40, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 72, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 62, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 78, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_RIGHT_ALERT):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x2E, Sound_RandomSe(0x3D, 6, 0x3F, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 2, 8, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 8, 9, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x15);
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(63, 4, 64, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 46, Sound_RandomSe(61, 6, 63, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 2, 8, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 8, 9, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 26, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 44, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 56, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 30, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_LEFT_ALERT):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x2E, Sound_RandomSe(0x3D, 6, 0x3F, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 2, 8, 6);
-            Em_PlaySeAtBoneOnFrame(em, 8, 9, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x1E);
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(63, 4, 64, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 46, Sound_RandomSe(61, 6, 63, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 2, 8, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 8, 9, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 26, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 44, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 56, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 30, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 54, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_CEIL_HANG):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x22, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x5A, Sound_RandomSe(0x3D, 6, 0x3E, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x96, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0xDE, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x13A, Sound_RandomSe(0x3D, 6, 0x3E, 2), 0xE, 0xA);
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 34, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 90, Sound_RandomSe(61, 6, 62, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 150, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 222, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 314, Sound_RandomSe(61, 6, 62, 2), 14, 10);
             break;
         case EM_MOTION_ID(0, HERM_MOT_LEAP):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x24, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xB, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x70, 0x12, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x20, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x52, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x62, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x32, 1, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 44, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 110, 36, 14);
+                Em_PlaySeAtBoneOnFrame(em, 110, 11, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 112, 18, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 32, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 74, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 36, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 82, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 98, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 50, 1, HERM_BONE_LEG_A2);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x24, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xB, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x12, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x20, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 48, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 94, 36, 14);
+                Em_PlaySeAtBoneOnFrame(em, 92, 11, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 90, 18, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 32, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 58, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 48, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 36, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 24, 1, HERM_BONE_LEG_A2);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_LEAP_LAND):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneVolOnFrame(em, 8, 0x65, 2, 0x16);
-                Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x74, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x9E, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x84, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0xAE, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0xC2, 0x14, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0xC4, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0x11, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x9E, 0xE, 2);
+                Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(60, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 110, Sound_RandomSe(60, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(60, 4, 61, 4), 14);
+                Em_PlaySeAtBoneVolOnFrame(em, 8, 101, HERM_BONE_BODY, 22);
+                Em_PlaySeAtBoneOnFrame(em, 6, 19, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 116, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 158, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 132, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 174, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 194, 20, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 196, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 62, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 88, 17, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 158, 14, HERM_BONE_BODY);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x36, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 2);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 2);
-                Em_PlaySeAtBoneOnFrame(em, 8, 0x1B, 2);
-                Em_PlaySeAtBoneVolOnFrame(em, 0xA, 0x65, 2, 0x16);
-                Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xB6, 4, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0xA6, 5, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x94, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0xC4, 5, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x62, 0x15, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x82, 4, 6);
+                Em_PlaySeAtBoneOnFrame(em, 54, Sound_RandomSe(60, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 6, 19, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 4, 18, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 8, 27, HERM_BONE_BODY);
+                Em_PlaySeAtBoneVolOnFrame(em, 10, 101, HERM_BONE_BODY, 22);
+                Em_PlaySeAtBoneOnFrame(em, 136, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 182, 4, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 166, 5, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 148, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 196, 5, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 98, 21, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 130, 4, HERM_BONE_CLAW_A);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_CEIL_CRAWL):
-            Em_PlaySeAtBoneVolOnFrame(em, 0x16, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x3E, 4, 0x3C, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xA, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x22, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 0, 0x11);
+            Em_PlaySeAtBoneVolOnFrame(em, 22, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(62, 4, 60, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 10, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 34, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 66, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 62, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 0, HERM_BONE_LEG_A1);
             break;
-        case EM_MOTION_ID(0, 0xD):
-            Em_PlaySeAtBoneVolOnFrame(em, 8, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x48, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x6A, 1, 0x15);
+        case EM_MOTION_ID(0, 13):
+            Em_PlaySeAtBoneVolOnFrame(em, 8, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 72, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 30, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 86, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 46, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 72, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 96, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 30, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 52, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 106, 1, HERM_BONE_LEG_A2);
             break;
-        case EM_MOTION_ID(0, 0xE):
-            Em_PlaySeAtBoneVolOnFrame(em, 8, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x48, Sound_RandomSe(0x3E, 6, 0x3C, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, Sound_RandomSe(0x10, 4, 0x11, 4), 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x6A, 1, 0x1E);
+        case EM_MOTION_ID(0, 14):
+            Em_PlaySeAtBoneVolOnFrame(em, 8, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 72, Sound_RandomSe(62, 6, 60, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 30, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 86, Sound_RandomSe(16, 4, 17, 4), HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 46, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 72, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 96, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 30, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 52, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 106, 1, HERM_BONE_LEG_B2);
             break;
-        case EM_MOTION_ID(0, 0xF):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3C, 3, 0x3D, 3), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1E);
+        case EM_MOTION_ID(0, 15):
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(60, 3, 61, 3), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 10, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 52, 1, HERM_BONE_LEG_B2);
             break;
-        case EM_MOTION_ID(0, 0x10):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3C, 3, 0x3D, 3), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x15);
+        case EM_MOTION_ID(0, 16):
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(60, 3, 61, 3), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 10, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 52, 1, HERM_BONE_LEG_A2);
             break;
-        case EM_MOTION_ID(0, 0x12):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, 0x1E, 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 9, 0xA);
+        case EM_MOTION_ID(0, 18):
+            Em_PlaySeAtBoneVolOnFrame(em, 4, 30, 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 4, 17, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 9, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_C):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneVolOnFrame(em, 4, 0x1F, 0xE, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x11, 0xA);
+                Em_PlaySeAtBoneVolOnFrame(em, 4, 31, 14, 10);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 20, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 24, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 58, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 110, 17, HERM_BONE_CLAW_B);
             } else {
-                Em_PlaySeAtBoneVolOnFrame(em, 4, 0x1F, 0xE, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 9, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x11, 0xA);
+                Em_PlaySeAtBoneVolOnFrame(em, 4, 31, 14, 10);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 20, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 58, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 88, 9, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 110, 17, HERM_BONE_CLAW_B);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_SIDESTEP_A):
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 6, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 6, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 24, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 2, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_B):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x66, 5, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x44, 1, 0x1E);
+                Em_PlaySeAtBoneOnFrame(em, 4, 32, 14);
+                Em_PlaySeAtBoneOnFrame(em, 88, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 22, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 26, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 40, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 84, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 60, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 46, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 102, 5, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 22, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 68, 1, HERM_BONE_LEG_B2);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 9, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 8, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x74, 9, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x66, 5, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x44, 1, 0x1E);
+                Em_PlaySeAtBoneOnFrame(em, 4, 32, 14);
+                Em_PlaySeAtBoneOnFrame(em, 88, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 22, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 26, 9, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 88, 8, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 116, 9, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 40, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 84, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 60, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 46, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 102, 5, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 22, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 68, 1, HERM_BONE_LEG_B2);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_SIDESTEP_B):
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 6, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x11);
+            Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 6, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 24, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 2, HERM_BONE_LEG_A1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_B_MIRROR):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x66, 5, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x44, 1, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 4, 32, 14);
+                Em_PlaySeAtBoneOnFrame(em, 88, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 22, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 26, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 40, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 84, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 60, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 46, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 102, 5, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 22, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 68, 1, HERM_BONE_LEG_A2);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 9, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 8, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x74, 9, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x28, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x66, 5, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x44, 1, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 4, 32, 14);
+                Em_PlaySeAtBoneOnFrame(em, 88, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 22, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 26, 9, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 88, 8, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 116, 9, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 40, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 84, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 60, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 46, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 102, 5, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 22, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 68, 1, HERM_BONE_LEG_A2);
             }
             break;
-        case EM_MOTION_ID(0, 0x18):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 9, 6);
+        case EM_MOTION_ID(0, 24):
+            Em_PlaySeAtBoneOnFrame(em, 4, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 17, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 9, HERM_BONE_CLAW_A);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_C_MIRROR):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneVolOnFrame(em, 4, 0x1F, 0xE, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x11, 6);
+                Em_PlaySeAtBoneVolOnFrame(em, 4, 31, 14, 10);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 20, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 24, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 58, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 110, 17, HERM_BONE_CLAW_A);
             } else {
-                Em_PlaySeAtBoneVolOnFrame(em, 4, 0x1F, 0xE, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 9, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x11, 6);
+                Em_PlaySeAtBoneVolOnFrame(em, 4, 31, 14, 10);
+                Em_PlaySeAtBoneOnFrame(em, 12, 12, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 20, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 58, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 88, 9, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 110, 17, HERM_BONE_CLAW_A);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_LIE):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x8C, Sound_RandomSe(0x43, 6, 0x42, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0xBC, Sound_RandomSe(0x42, 6, 0x43, 2), 0xE, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 4, 33, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 140, Sound_RandomSe(67, 6, 66, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 188, Sound_RandomSe(66, 6, 67, 2), 14, 10);
             break;
         case EM_MOTION_ID(0, HERM_MOT_GET_UP):
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x22, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x66, 0xD, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x7E, 8, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x80, 9, 6);
+            Em_PlaySeAtBoneOnFrame(em, 12, 34, 14);
+            Em_PlaySeAtBoneOnFrame(em, 58, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 102, 13, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 126, 8, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 128, 9, HERM_BONE_CLAW_A);
             break;
         case EM_MOTION_ID(0, HERM_MOT_LIE_DOWN):
-            Em_PlaySeAtBoneVolOnFrame(em, 0xA, Sound_RandomSe(0x42, 6, 0x43, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x21, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x62, 0xE, 2);
+            Em_PlaySeAtBoneVolOnFrame(em, 10, Sound_RandomSe(66, 6, 67, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 78, 33, 14);
+            Em_PlaySeAtBoneOnFrame(em, 16, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 98, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_EMERGE):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x1B, 2);
-                Em_PlaySeAtBoneOnFrame(em, 2, 0x1A, 2);
-                Em_PlaySeAtBoneVolOnFrame(em, 4, 0x65, 2, 0x16);
-                Em_PlaySeAtBoneOnFrame(em, 0x10, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x5C, 6, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x64, 4, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x88, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x90, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x86, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x9C, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0xB4, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x9E, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x52, 0x19, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x1A, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x76, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x82, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x1D, 6);
+                Em_PlaySeAtBoneOnFrame(em, 94, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 4, 27, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 2, 26, HERM_BONE_BODY);
+                Em_PlaySeAtBoneVolOnFrame(em, 4, 101, HERM_BONE_BODY, 22);
+                Em_PlaySeAtBoneOnFrame(em, 16, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 28, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 26, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 34, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 92, 6, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 100, 4, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 136, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 144, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 134, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 156, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 180, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 42, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 66, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 88, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 158, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 82, 25, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 122, 26, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 118, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 130, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 122, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 138, 29, HERM_BONE_CLAW_A);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x7E, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 2);
-                Em_PlaySeAtBoneVolOnFrame(em, 2, 0x65, 2, 0x16);
-                Em_PlaySeAtBoneOnFrame(em, 8, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x9E, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x52, 0x19, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x19, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x62, 7, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x76, 6, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0xA8, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 126, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 10, 26, HERM_BONE_BODY);
+                Em_PlaySeAtBoneVolOnFrame(em, 2, 101, HERM_BONE_BODY, 22);
+                Em_PlaySeAtBoneOnFrame(em, 8, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 42, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 66, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 88, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 158, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 82, 25, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 122, 25, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 98, 7, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 118, 6, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 168, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 198, 0, HERM_BONE_LEG_B1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_CEIL_JET):
-            Em_PlaySeAtBoneOnFrame(em, 6, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 6, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x68, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x78, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x88, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 0xF, 2);
+            Em_PlaySeAtBoneOnFrame(em, 6, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 6, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 46, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 72, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 90, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 104, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 120, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 136, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 154, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 168, 15, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_BACK_ATTACK_WALK):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x1E);
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(63, 4, 64, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 2, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 18, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 36, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 16, 3, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WATER_JET_END):
-            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x11, 2);
+            Em_PlaySeAtBoneVolOnFrame(em, 4, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 36, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 42, 17, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WATER_JET):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x24, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 9, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x11);
+            Em_PlaySeAtBoneOnFrame(em, 4, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 78, 36, 14);
+            Em_PlaySeAtBoneOnFrame(em, 80, 24, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 15, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 42, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 18, 9, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 24, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 18, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 36, 0, HERM_BONE_LEG_A1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_GUARD):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 8, 0x35, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x2B, 0xE);
-                Em_PlaySeAtBoneVolOnFrame(em, 0x96, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xC, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x42, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x46, 0x12, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x20, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 8, 53, 14);
+                Em_PlaySeAtBoneOnFrame(em, 60, 43, 14);
+                Em_PlaySeAtBoneVolOnFrame(em, 150, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+                Em_PlaySeAtBoneOnFrame(em, 4, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 126, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 62, 12, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 66, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 70, 18, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 12, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 46, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 32, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 24, 3, HERM_BONE_LEG_A2);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x36, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x38, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 9, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 8, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x32, 6, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x42, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x11);
+                Em_PlaySeAtBoneOnFrame(em, 4, 54, 14);
+                Em_PlaySeAtBoneOnFrame(em, 56, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 50, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 48, 9, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 48, 8, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 12, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 50, 6, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 66, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 36, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 56, 6, HERM_BONE_LEG_A1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_GUARD_END):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 8, 0x35, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x2B, 0xE);
-                Em_PlaySeAtBoneVolOnFrame(em, 0x96, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xC, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x42, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x46, 0x12, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x20, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0x1E);
+                Em_PlaySeAtBoneOnFrame(em, 8, 53, 14);
+                Em_PlaySeAtBoneOnFrame(em, 60, 43, 14);
+                Em_PlaySeAtBoneVolOnFrame(em, 150, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+                Em_PlaySeAtBoneOnFrame(em, 4, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 126, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 62, 12, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 66, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 70, 18, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 12, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 46, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 32, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 24, 3, HERM_BONE_LEG_B2);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 8, 0x35, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x2A, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x50, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x76, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x8C, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x82, 2, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x96, 0, 0x11);
+                Em_PlaySeAtBoneOnFrame(em, 8, 53, 14);
+                Em_PlaySeAtBoneOnFrame(em, 138, 42, 14);
+                Em_PlaySeAtBoneOnFrame(em, 4, 21, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 80, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 118, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 140, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 130, 2, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 150, 0, HERM_BONE_LEG_A1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_A):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 2, 0x2B, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x34, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1D, 6);
+                Em_PlaySeAtBoneOnFrame(em, 2, 43, 14);
+                Em_PlaySeAtBoneOnFrame(em, 44, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 4, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 44, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 52, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 50, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 56, 29, HERM_BONE_CLAW_A);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 2, 0x2B, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x16, 0xA);
+                Em_PlaySeAtBoneOnFrame(em, 2, 43, 14);
+                Em_PlaySeAtBoneOnFrame(em, 44, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 4, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 44, 22, HERM_BONE_CLAW_B);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_WINDUP_STRIKE):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0x20, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x14, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x2B, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x64, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x82, 0, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 20, 32, 14);
+                Em_PlaySeAtBoneOnFrame(em, 12, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 22, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 20, 13, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 30, 13, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 28, 20, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 60, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 60, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 43, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 100, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 130, 0, HERM_BONE_LEG_B1);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0x20, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x14, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x5E, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x7E, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x86, 1, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 20, 32, 14);
+                Em_PlaySeAtBoneOnFrame(em, 12, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 22, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 20, 13, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 30, 13, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 28, 20, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 60, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 60, 16, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 94, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 108, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 126, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 134, 1, HERM_BONE_LEG_A2);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_WINDUP):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x29, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x26, 5, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 41, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 44, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 38, 5, HERM_BONE_LEG_A2);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x29, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x15);
+                Em_PlaySeAtBoneOnFrame(em, 41, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 44, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 12, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 12, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 46, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_A2);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK_ALERT):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x12, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x24, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0xE, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(60, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 18, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 36, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 14, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 2, 2, HERM_BONE_LEG_B1);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x3D, 4, 0x3E, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x40, 2, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(60, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(61, 4, 62, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 28, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 58, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 24, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 64, 2, HERM_BONE_LEG_B1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK_BACK_ALERT):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x1E, Sound_RandomSe(0x40, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x2A, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 4, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x24, 2, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(63, 4, 64, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 30, Sound_RandomSe(64, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 2, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 42, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 4, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 36, 2, HERM_BONE_LEG_B1);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x40, 4, 0x3D, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 2, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x18, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 4, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x16, 2, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(63, 4, 64, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(64, 4, 61, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 2, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 24, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 4, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 22, 2, HERM_BONE_LEG_B1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_SPIN_A):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xC, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x52, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x4E, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x34, 2, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 3, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 26, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 74, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 78, 12, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 84, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 82, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 48, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 78, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 52, 2, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 60, 3, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 76, 2, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 84, 3, HERM_BONE_LEG_B1);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x50, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xD, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x4E, 2, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x34, 2, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 3, 0x1A);
+                Em_PlaySeAtBoneOnFrame(em, 26, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 74, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 80, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 106, 13, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 48, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 78, 2, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 52, 2, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 60, 3, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 76, 2, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 84, 3, HERM_BONE_LEG_B1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_UNDER_THRUST):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 6, 0x1A, 2);
-                Em_PlaySeAtBoneOnFrame(em, 6, 0x1B, 2);
-                Em_PlaySeAtBoneVolOnFrame(em, 8, 0x65, 2, 0x16);
-                Em_PlaySeAtBoneOnFrame(em, 0xE, 0x12, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 0x19, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x1A, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x12, 0x16, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x20, 0x16, 0xA);
+                Em_PlaySeAtBoneOnFrame(em, 6, 26, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 6, 27, HERM_BONE_BODY);
+                Em_PlaySeAtBoneVolOnFrame(em, 8, 101, HERM_BONE_BODY, 22);
+                Em_PlaySeAtBoneOnFrame(em, 14, 18, 14);
+                Em_PlaySeAtBoneOnFrame(em, 48, 25, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 60, 26, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 18, 22, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 32, 22, HERM_BONE_CLAW_B);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 6, 0x1A, 2);
-                Em_PlaySeAtBoneOnFrame(em, 6, 0x1B, 2);
-                Em_PlaySeAtBoneVolOnFrame(em, 8, 0x65, 2, 0x16);
-                Em_PlaySeAtBoneOnFrame(em, 0xE, 0x12, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 0x19, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x1A, 2);
+                Em_PlaySeAtBoneOnFrame(em, 6, 26, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 6, 27, HERM_BONE_BODY);
+                Em_PlaySeAtBoneVolOnFrame(em, 8, 101, HERM_BONE_BODY, 22);
+                Em_PlaySeAtBoneOnFrame(em, 14, 18, 14);
+                Em_PlaySeAtBoneOnFrame(em, 48, 25, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 60, 26, HERM_BONE_BODY);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_SPIN_B):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xC, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x52, 0x1D, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x4E, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x34, 2, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 3, 0x11);
+                Em_PlaySeAtBoneOnFrame(em, 26, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 74, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 78, 12, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 84, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 82, 29, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 48, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 78, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 52, 2, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 60, 3, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 76, 2, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 84, 3, HERM_BONE_LEG_A1);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2C, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x1F, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x50, 0x16, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xD, 0xA);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x4E, 2, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x34, 2, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x4C, 2, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x54, 3, 0x11);
+                Em_PlaySeAtBoneOnFrame(em, 26, 44, 14);
+                Em_PlaySeAtBoneOnFrame(em, 74, 31, 14);
+                Em_PlaySeAtBoneOnFrame(em, 80, 22, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 106, 13, HERM_BONE_CLAW_B);
+                Em_PlaySeAtBoneOnFrame(em, 48, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 78, 2, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 52, 2, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 60, 3, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 76, 2, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 84, 3, HERM_BONE_LEG_A1);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_SHELL_SWAP):
-            Em_PlaySeAtBoneVolOnFrame(em, 0x46, 0x1E, 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0xAC, 0x22, 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x19, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x22, 0x19, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1A, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0xAC, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x90, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xAE, 0x14, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB2, 0xF, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB6, 0x11, 2);
+            Em_PlaySeAtBoneVolOnFrame(em, 70, 30, 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 172, 34, 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 26, 25, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 34, 25, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 56, 26, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 168, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 172, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 76, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 144, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 174, 20, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 176, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 178, 15, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 180, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 182, 17, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_IDLE_ALERT):
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x37, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x72, 0x38, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xA6, 0x38, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x70, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x5E, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x80, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x86, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xBE, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xB8, 0xD, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 74, 55, 14);
+            Em_PlaySeAtBoneOnFrame(em, 114, 56, 14);
+            Em_PlaySeAtBoneOnFrame(em, 166, 56, 14);
+            Em_PlaySeAtBoneOnFrame(em, 76, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 112, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 30, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 38, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 86, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 94, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 128, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 134, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 190, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 184, 13, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_THREAT):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x98, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0xDE, Sound_RandomSe(0x3D, 2, 0x3E, 6), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xF, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 9, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x6A, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x6C, 8, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x6E, 9, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0xD4, 0, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 4, 42, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 152, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 222, Sound_RandomSe(61, 2, 62, 6), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 26, 15, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 48, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 26, 9, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 28, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 106, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 108, 8, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 110, 9, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 166, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 212, 0, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_IDLE_ACTION_A):
         case EM_MOTION_ID(0, HERM_MOT_IDLE_ACTION_B):
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x58, 0x36, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x10C, 0x37, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x98, Sound_RandomSe(0x3C, 6, 0x3D, 2), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0xDE, Sound_RandomSe(0x3D, 2, 0x3E, 6), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x11A, Sound_RandomSe(0x3C, 2, 0x3D, 6), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x10E, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 40, 15, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 88, 54, 14);
+            Em_PlaySeAtBoneOnFrame(em, 268, 55, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 152, Sound_RandomSe(60, 6, 61, 2), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 222, Sound_RandomSe(61, 2, 62, 6), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 282, Sound_RandomSe(60, 2, 61, 6), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 92, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 270, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_EAT):
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x38, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x40, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x72, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x194, 0x17, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1D6, 0x17, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x206, 0x17, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x1F4, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x21C, Sound_RandomSe(0x40, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x244, Sound_RandomSe(0x3F, 4, 0x40, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x26C, Sound_RandomSe(0x40, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x1D, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xE4, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x174, 0x15, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x176, 0x11, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C0, 0x11, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E0, 0x11, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x10A, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x296, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C0, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0xC0, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0xDC, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A8, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2CE, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x2B2, 0x10, 2);
+            Em_PlaySeAtBoneOnFrame(em, 30, 56, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(64, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 114, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 404, 23, 14);
+            Em_PlaySeAtBoneOnFrame(em, 470, 23, 14);
+            Em_PlaySeAtBoneOnFrame(em, 518, 23, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 500, Sound_RandomSe(63, 4, 64, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 540, Sound_RandomSe(64, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 580, Sound_RandomSe(63, 4, 64, 4), 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 620, Sound_RandomSe(64, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 286, 29, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 228, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 252, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 372, 21, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 374, 17, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 448, 17, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 480, 17, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 168, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 266, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 662, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 704, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 192, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 220, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 680, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 718, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 690, 16, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_BURROW):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 0x19, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0x19, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0x19, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 0x19, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x19, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x19, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x68, 0x19, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x82, 0x1A, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x1A, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 6, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 7, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x5A, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x82, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 32, 25, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 36, 25, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 54, 25, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 66, 25, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 80, 25, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 90, 25, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 104, 25, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 130, 26, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 160, 26, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 24, 6, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 48, 7, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 38, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 56, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 26, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 48, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 70, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 90, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 110, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 130, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_CEIL_GRAB):
-            Em_PlaySeAtBoneVolOnFrame(em, 0xE, 0x35, 0xE, 0xA);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x40, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 4, 5, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 6, 7, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 4, 4, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 6, 6, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0x10, 2);
+            Em_PlaySeAtBoneVolOnFrame(em, 14, 53, 14, 10);
+            Em_PlaySeAtBoneVolOnFrame(em, 64, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 4, 5, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 6, 7, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 4, 4, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 6, 6, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 18, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 20, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 40, 16, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_CEIL_DROP):
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0x2C, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x2C, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x6C, 0xA, 2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 44, 14);
+            Em_PlaySeAtBoneOnFrame(em, 108, 44, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 56, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 82, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 108, 10, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FLINCH):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x26, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x6E, Sound_RandomSe(0x42, 4, 0x43, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xE, 7, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x15, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 38, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 110, Sound_RandomSe(66, 4, 67, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 14, 7, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 58, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 74, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 42, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 96, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 46, 21, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 56, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 26, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 26, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 54, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FLINCH_CLAW):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x25, 0xE);
-            Em_PlaySeAtBoneVolOnFrame(em, 0x76, Sound_RandomSe(0x3C, 4, 0x3D, 4), 0xE, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 0x10, 2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 37, 14);
+            Em_PlaySeAtBoneVolOnFrame(em, 118, Sound_RandomSe(60, 4, 61, 4), 14, 10);
+            Em_PlaySeAtBoneOnFrame(em, 56, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 46, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 28, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 84, 16, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_KNOCK_DOWN):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x26, 4, 0x27, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0x1D, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(38, 4, 39, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 28, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 36, 29, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 50, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DOWN):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x31, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 2, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0xF, 6);
+            Em_PlaySeAtBoneOnFrame(em, 4, 49, 14);
+            Em_PlaySeAtBoneOnFrame(em, 12, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 2, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 38, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 4, 15, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 54, 15, HERM_BONE_CLAW_A);
             break;
         case EM_MOTION_ID(0, HERM_MOT_HELD):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x33, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x82, 0x34, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x82, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x94, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB6, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xCA, 0x11, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 14, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 16, 51, 14);
+            Em_PlaySeAtBoneOnFrame(em, 130, 52, 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 60, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 86, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 110, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 130, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 148, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 182, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 202, 17, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FALL):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x26, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 38, 14);
+            Em_PlaySeAtBoneOnFrame(em, 36, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FALL_LAND):
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x26, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 46, 38, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 24, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 46, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DIE):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x28, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x88, 0x21, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x44, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x12, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xAE, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x45, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0xEE, 0xF, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x12C, 0xF, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x16C, 0x11, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 2, 40, 14);
+            Em_PlaySeAtBoneOnFrame(em, 136, 33, 14);
+            Em_PlaySeAtBoneOnFrame(em, 68, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 158, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 168, 18, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 174, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 58, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 69, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 238, 15, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 300, 15, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 364, 17, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_SPIN_FLINCH):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x25, 4, 0x27, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x40, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x72, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1D, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x62, 0x15, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x15, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x4C, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x5A, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x64, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x76, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x8E, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x96, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0xCC, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x62, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x7C, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x86, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x94, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x9C, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0xC0, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0xDA, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0xC0, 9, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xC2, 0xD, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(37, 4, 39, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 64, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 92, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 114, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 166, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 70, 29, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 74, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 98, 21, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 108, 21, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 54, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 76, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 90, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 100, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 118, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 126, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 142, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 150, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 182, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 204, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 82, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 48, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 84, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 98, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 104, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 124, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 134, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 148, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 156, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 192, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 218, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 192, 9, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 194, 13, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DOWN_GET_UP):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x42, 6, 0x43, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, Sound_RandomSe(0x43, 2, 0x43, 6), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 6, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 7, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 0x10, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 0x14, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(66, 6, 67, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 66, Sound_RandomSe(67, 2, 67, 6), 14);
+            Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 42, 6, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 7, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 26, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 56, 16, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 66, 20, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 60, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_KNOCK_DOWN_B):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x26, 4, 0x27, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0x1D, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(38, 4, 39, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 28, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 36, 29, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 50, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DOWN_B):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x31, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 2, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0xF, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 4, 49, 14);
+            Em_PlaySeAtBoneOnFrame(em, 12, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 2, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 38, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 4, 15, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 54, 15, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DOWN_B_GET_UP):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x42, 6, 0x43, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, Sound_RandomSe(0x42, 2, 0x43, 6), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 6, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 7, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 0x10, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 0x14, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(66, 6, 67, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 66, Sound_RandomSe(66, 2, 67, 6), 14);
+            Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 42, 6, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 7, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 26, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 56, 16, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 66, 20, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 60, 14, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_RECOIL):
             if (type == EM_KIND_SHOGUN_CEANATAUR) {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x26, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x50, 0x31, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0xC6, 0x37, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x7E, 0, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x9C, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x3C, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x5E, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x86, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0xAE, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x12, 0xF, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x58, 0x11, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0xAE, 0xE, 2);
+                Em_PlaySeAtBoneOnFrame(em, 4, 38, 14);
+                Em_PlaySeAtBoneOnFrame(em, 80, 49, 14);
+                Em_PlaySeAtBoneOnFrame(em, 198, 55, 14);
+                Em_PlaySeAtBoneOnFrame(em, 48, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 88, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 126, 0, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 156, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 60, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 94, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 134, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 174, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 18, 15, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 58, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 88, 17, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 174, 14, HERM_BONE_BODY);
             } else {
-                Em_PlaySeAtBoneOnFrame(em, 4, 0x26, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x50, 0x31, 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0xC6, Sound_RandomSe(0x3C, 4, 0x3E, 4), 0xE);
-                Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x12, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xE, 2);
-                Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x44, 5, 0x1E);
-                Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x1A);
-                Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x11);
-                Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x15);
-                Em_PlaySeAtBoneOnFrame(em, 0x76, 0x1D, 6);
-                Em_PlaySeAtBoneOnFrame(em, 0x80, 0x1D, 0xA);
+                Em_PlaySeAtBoneOnFrame(em, 4, 38, 14);
+                Em_PlaySeAtBoneOnFrame(em, 80, 49, 14);
+                Em_PlaySeAtBoneOnFrame(em, 198, Sound_RandomSe(60, 4, 62, 4), 14);
+                Em_PlaySeAtBoneOnFrame(em, 122, 18, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 58, 14, HERM_BONE_BODY);
+                Em_PlaySeAtBoneOnFrame(em, 18, 1, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 68, 5, HERM_BONE_LEG_B2);
+                Em_PlaySeAtBoneOnFrame(em, 96, 0, HERM_BONE_LEG_B1);
+                Em_PlaySeAtBoneOnFrame(em, 48, 6, HERM_BONE_LEG_A1);
+                Em_PlaySeAtBoneOnFrame(em, 116, 1, HERM_BONE_LEG_A2);
+                Em_PlaySeAtBoneOnFrame(em, 118, 29, HERM_BONE_CLAW_A);
+                Em_PlaySeAtBoneOnFrame(em, 128, 29, HERM_BONE_CLAW_B);
             }
             break;
         case EM_MOTION_ID(0, HERM_MOT_RECOIL_END):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x22, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, Sound_RandomSe(0x3C, 4, 0x3E, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x15, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x5A, 0xF, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x10, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 4, 34, 14);
+            Em_PlaySeAtBoneOnFrame(em, 66, Sound_RandomSe(60, 4, 62, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 28, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 92, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 4, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 16, 21, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 90, 15, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 94, 16, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FLINCH_END):
-            Em_PlaySeAtBoneOnFrame(em, 0xE, 0x37, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 2);
+            Em_PlaySeAtBoneOnFrame(em, 14, 55, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 4, 14, HERM_BONE_BODY);
             break;
         }
     } else {
                 switch (work->fxMotion) {
         case EM_MOTION_ID(0, HERM_MOT_IDLE):
-            Em_PlaySeAtBoneOnFrame(em, 0xE, Sound_RandomSe(0xA, 2, 0xB, 3), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, Sound_RandomSe(0xB, 2, 0xC, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x78, Sound_RandomSe(0xC, 3, 0xA, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xB4, Sound_RandomSe(0xA, 3, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xF0, Sound_RandomSe(0xB, 2, 0xC, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 4, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x122, 5, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 14, Sound_RandomSe(10, 2, 11, 3), 14);
+            Em_PlaySeAtBoneOnFrame(em, 60, Sound_RandomSe(11, 2, 12, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 120, Sound_RandomSe(12, 3, 10, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 180, Sound_RandomSe(10, 3, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 240, Sound_RandomSe(11, 2, 12, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 168, 4, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 290, 5, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 2, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, Sound_RandomSe(0xB, 2, 0xC, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, Sound_RandomSe(0xC, 2, 0xA, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 1, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 2, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 38, Sound_RandomSe(11, 2, 12, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 70, Sound_RandomSe(12, 2, 10, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 92, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK_BACK):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 2, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, Sound_RandomSe(0xB, 2, 0xC, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, Sound_RandomSe(0xC, 2, 0xA, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x62, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0x1E);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 2, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 38, Sound_RandomSe(11, 2, 12, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 70, Sound_RandomSe(12, 2, 10, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 98, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 48, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 12, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_RIGHT):
-            Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 80, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 28, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 40, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 72, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 0, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_LEFT):
-            Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0x11);
+            Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 80, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 28, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 40, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 72, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 0, HERM_BONE_LEG_A1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_RIGHT_ALERT):
-            Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 2, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 44, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 56, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 30, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 62, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_TURN_LEFT_ALERT):
-            Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x1E);
+            Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 2, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 12, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 44, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 56, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 18, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 30, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 62, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_LEAP):
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x10, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x32, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0xE, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 1, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 92, 16, 14);
+            Em_PlaySeAtBoneOnFrame(em, 50, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 80, 14, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 20, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 44, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 44, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 20, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_LEAP_LAND):
-            Em_PlaySeAtBoneOnFrame(em, 0x36, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 6, 0x12, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xA, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x88, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x14, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x14, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 4, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x48, 5, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x7C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x8A, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 4, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 5, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x8A, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x7A, 2, 0x1E);
+            Em_PlaySeAtBoneOnFrame(em, 54, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 6, 18, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 10, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 10, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 136, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 74, 20, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 78, 20, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 82, 4, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 72, 5, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 124, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 138, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 80, 4, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 84, 5, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 138, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 122, 2, HERM_BONE_LEG_B2);
             break;
-        case EM_MOTION_ID(0, 0xF):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 2, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x25, Sound_RandomSe(0xB, 2, 0xC, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, Sound_RandomSe(0xC, 2, 0xA, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x1A);
+        case EM_MOTION_ID(0, 15):
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 2, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 37, Sound_RandomSe(11, 2, 12, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 70, Sound_RandomSe(12, 2, 10, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_B1);
             break;
-        case EM_MOTION_ID(0, 0x10):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 2, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x25, Sound_RandomSe(0xB, 2, 0xC, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, Sound_RandomSe(0xC, 2, 0xA, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x11);
+        case EM_MOTION_ID(0, 16):
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 2, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 37, Sound_RandomSe(11, 2, 12, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 70, Sound_RandomSe(12, 2, 10, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 52, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_A1);
             break;
-        case EM_MOTION_ID(0, 0x12):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 0x1A);
+        case EM_MOTION_ID(0, 18):
+            Em_PlaySeAtBoneOnFrame(em, 4, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 17, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 13, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_C):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x24, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x16, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x44, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0x17, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 4, 36, 14);
+            Em_PlaySeAtBoneOnFrame(em, 16, 22, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 68, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 20, 23, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_SIDESTEP_A):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 3, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 6, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 3, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 20, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 6, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_B):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0x17, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x16, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x64, 1, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 4, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 24, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 20, 23, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 16, 22, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 58, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 66, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 86, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 100, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_SIDESTEP_B):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 2, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 6, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x11);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 2, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 20, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 6, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_LEG_A1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_B_MIRROR):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x18, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x16, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x64, 1, 0x1E);
+            Em_PlaySeAtBoneOnFrame(em, 4, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 24, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 4, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 20, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 16, 22, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 58, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 66, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 86, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 100, 1, HERM_BONE_LEG_B2);
             break;
-        case EM_MOTION_ID(0, 0x18):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 0x1A);
+        case EM_MOTION_ID(0, 24):
+            Em_PlaySeAtBoneOnFrame(em, 4, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 17, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 13, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_C_MIRROR):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x24, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x16, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x44, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0x17, 6);
+            Em_PlaySeAtBoneOnFrame(em, 4, 36, 14);
+            Em_PlaySeAtBoneOnFrame(em, 16, 22, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 68, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 20, 23, HERM_BONE_CLAW_A);
             break;
         case EM_MOTION_ID(0, HERM_MOT_LIE):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x25, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x25, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xE0, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
+            Em_PlaySeAtBoneOnFrame(em, 4, 37, 14);
+            Em_PlaySeAtBoneOnFrame(em, 74, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 154, 37, 14);
+            Em_PlaySeAtBoneOnFrame(em, 224, Sound_RandomSe(10, 4, 11, 4), 14);
             break;
         case EM_MOTION_ID(0, HERM_MOT_GET_UP):
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0x24, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x66, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xD, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 74, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 54, 36, 14);
+            Em_PlaySeAtBoneOnFrame(em, 60, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 102, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 122, 13, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_LIE_DOWN):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x21, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x66, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x8E, 6, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xC, 0xE);
+            Em_PlaySeAtBoneOnFrame(em, 4, 33, 14);
+            Em_PlaySeAtBoneOnFrame(em, 60, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 102, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 142, 6, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 142, 12, 14);
             break;
         case EM_MOTION_ID(0, HERM_MOT_EMERGE):
-            Em_PlaySeAtBoneOnFrame(em, 6, 0x16, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xA, 0x16, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x5C, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x86, 0, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x19, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1A, 2);
+            Em_PlaySeAtBoneOnFrame(em, 6, 22, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 10, 22, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 26, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 58, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 82, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 82, 0, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 92, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 134, 0, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 25, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 64, 26, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WATER_JET_END):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 6, 0xB, 2), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x11, 2);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 6, 11, 2), 14);
+            Em_PlaySeAtBoneOnFrame(em, 36, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 42, 17, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WATER_JET):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0, 0x11);
+            Em_PlaySeAtBoneOnFrame(em, 4, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 15, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 18, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 36, 0, HERM_BONE_LEG_A1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_STRIKE_A):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x24, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 6, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x16, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 2, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 44, 36, 14);
+            Em_PlaySeAtBoneOnFrame(em, 4, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 6, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 44, 22, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WINDUP_STRIKE):
-            Em_PlaySeAtBoneOnFrame(em, 6, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 0x16, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x12, 0x14, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x64, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 6, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 12, 22, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 22, 22, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 20, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 30, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 18, 20, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 60, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 60, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 28, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 100, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 122, 0, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WINDUP):
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1F, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 1, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 44, 31, 14);
+            Em_PlaySeAtBoneOnFrame(em, 44, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 12, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 46, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 32, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK_ALERT):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x1E);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 30, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 56, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 26, 1, HERM_BONE_LEG_B2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_WALK_BACK_ALERT):
-            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 2, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 2, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 22, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 22, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 42, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 62, 0, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_SPIN_A):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x16, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x4C, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 2, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 4, 31, 14);
+            Em_PlaySeAtBoneOnFrame(em, 70, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 80, 22, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 82, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 48, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 76, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 84, 2, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_SPIN_B):
-            Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x16, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0x17, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x30, 2, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x54, 2, 0x11);
+            Em_PlaySeAtBoneOnFrame(em, 4, 31, 14);
+            Em_PlaySeAtBoneOnFrame(em, 70, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 80, 22, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 82, 23, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 48, 2, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 62, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 76, 3, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 84, 2, HERM_BONE_LEG_A1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_IDLE_ALERT):
-            Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x72, 0x1E, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x56, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x5E, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x80, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x86, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xBE, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xB8, 0xD, 0xA);
+            Em_PlaySeAtBoneOnFrame(em, 74, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 114, 30, 14);
+            Em_PlaySeAtBoneOnFrame(em, 30, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 38, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 86, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 94, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 128, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 134, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 190, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 184, 13, HERM_BONE_CLAW_B);
             break;
         case EM_MOTION_ID(0, HERM_MOT_THREAT):
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1F, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x14, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x6A, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0xD4, 0, 0x1A);
+            Em_PlaySeAtBoneOnFrame(em, 12, 31, 14);
+            Em_PlaySeAtBoneOnFrame(em, 16, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 20, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 122, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 126, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 106, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 166, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 212, 0, HERM_BONE_LEG_B1);
             break;
         case EM_MOTION_ID(0, HERM_MOT_IDLE_ACTION_A):
             break;
         case EM_MOTION_ID(0, HERM_MOT_EAT):
-            Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x24, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x72, Sound_RandomSe(0xB, 4, 0xA, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x194, 0x17, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1D6, 0x17, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x206, 0x17, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1F4, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x21C, Sound_RandomSe(0xB, 4, 0xA, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x244, Sound_RandomSe(0xA, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x26C, Sound_RandomSe(0xC, 4, 0xA, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xE4, 0xD, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x17, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x174, 0x14, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x176, 5, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x1C0, 0x11, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x1E0, 0x11, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x10A, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x296, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C0, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0xC0, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0xDC, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2A8, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x2CE, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x2B2, 0x10, 2);
+            Em_PlaySeAtBoneOnFrame(em, 30, 36, 14);
+            Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 114, Sound_RandomSe(11, 4, 10, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 404, 23, 14);
+            Em_PlaySeAtBoneOnFrame(em, 470, 23, 14);
+            Em_PlaySeAtBoneOnFrame(em, 518, 23, 14);
+            Em_PlaySeAtBoneOnFrame(em, 500, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 540, Sound_RandomSe(11, 4, 10, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 580, Sound_RandomSe(10, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 620, Sound_RandomSe(12, 4, 10, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 286, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 228, 13, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 252, 23, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 372, 20, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 374, 5, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 448, 17, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 480, 17, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 168, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 266, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 662, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 704, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 192, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 220, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 680, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 718, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 690, 16, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_BURROW):
-            Em_PlaySeAtBoneOnFrame(em, 0xC, 0x23, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x24, 0x17, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x36, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x42, 0x17, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x17, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x68, 0x17, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x38, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x60, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x68, 0x15, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x78, 0x1A, 2);
+            Em_PlaySeAtBoneOnFrame(em, 12, 35, 14);
+            Em_PlaySeAtBoneOnFrame(em, 26, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 36, 23, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 54, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 66, 23, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 80, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 90, 23, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 104, 23, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 38, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 56, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 96, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 104, 21, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 120, 26, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FLINCH):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x78, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x5E, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x15);
-            Em_PlaySeAtBoneOnFrame(em, 0x4C, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x13, 0xA);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
+            Em_PlaySeAtBoneOnFrame(em, 2, 32, 14);
+            Em_PlaySeAtBoneOnFrame(em, 120, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 94, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 14, 1, HERM_BONE_LEG_A2);
+            Em_PlaySeAtBoneOnFrame(em, 76, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 40, 0, HERM_BONE_LEG_B1);
+            Em_PlaySeAtBoneOnFrame(em, 58, 19, HERM_BONE_CLAW_B);
+            Em_PlaySeAtBoneOnFrame(em, 32, 13, HERM_BONE_CLAW_A);
             break;
         case EM_MOTION_ID(0, HERM_MOT_FLINCH_CLAW):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x21, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x2E, 2, 0x11);
-            Em_PlaySeAtBoneOnFrame(em, 0x58, 3, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x34, 0x11, 2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 33, 14);
+            Em_PlaySeAtBoneOnFrame(em, 46, 2, HERM_BONE_LEG_A1);
+            Em_PlaySeAtBoneOnFrame(em, 88, 3, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 52, 17, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_HELD):
-            Em_PlaySeAtBoneOnFrame(em, 0x10, 0x26, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x78, 0x26, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x28, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xD, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x84, 0xD, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x11, 2);
+            Em_PlaySeAtBoneOnFrame(em, 16, 38, 14);
+            Em_PlaySeAtBoneOnFrame(em, 120, 38, 14);
+            Em_PlaySeAtBoneOnFrame(em, 40, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 62, 13, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 110, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 132, 13, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 180, 17, HERM_BONE_BODY);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DIE):
-            Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(0xA, 4, 0xB, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x10E, Sound_RandomSe(0xB, 4, 0xC, 4), 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x12, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x13, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x10, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x11, 2);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 1, 0x1E);
-            Em_PlaySeAtBoneOnFrame(em, 0x45, 1, 0x15);
+            Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(10, 4, 11, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 270, Sound_RandomSe(11, 4, 12, 4), 14);
+            Em_PlaySeAtBoneOnFrame(em, 2, 34, 14);
+            Em_PlaySeAtBoneOnFrame(em, 168, 18, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 176, 19, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 190, 16, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 192, 17, HERM_BONE_BODY);
+            Em_PlaySeAtBoneOnFrame(em, 58, 1, HERM_BONE_LEG_B2);
+            Em_PlaySeAtBoneOnFrame(em, 69, 1, HERM_BONE_LEG_A2);
             break;
         case EM_MOTION_ID(0, HERM_MOT_DOWN_GET_UP):
             break;
         case EM_MOTION_ID(0, HERM_MOT_FLINCH_END):
-            Em_PlaySeAtBoneOnFrame(em, 2, 0x1F, 0xE);
-            Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x10, 2);
+            Em_PlaySeAtBoneOnFrame(em, 2, 31, 14);
+            Em_PlaySeAtBoneOnFrame(em, 32, 13, HERM_BONE_CLAW_A);
+            Em_PlaySeAtBoneOnFrame(em, 192, 16, HERM_BONE_BODY);
         default:
             break;
         }
@@ -1593,7 +1471,7 @@ void EmHermitaur_Setup(Em *em)
     EmHermitaurWork *w = (EmHermitaurWork *)&em->work;
 
     if ((em->type == EM_KIND_SHOGUN_CEANATAUR) && ((s32) em->parts[2].state >= 2) && ((s32) w->shellBreakCount < 2)) {
-        em->areaTimer2 = 0x708;
+        em->areaTimer2 = 1800;
     }
 }
 
@@ -1697,7 +1575,7 @@ void EmHermitaur_Init(Em *em, s16 keepState)
  */
 void EmHermitaur_Reinit(Em *em)
 {
-    EmHermitaur_Init(em, 0x1);
+    EmHermitaur_Init(em, 1);
 }
 
 /*
@@ -1753,13 +1631,13 @@ void EmHermitaur_Update(Em *em)
                 w->rageFxTimer = 8;
             } else {
                 w->rageFxTimer = 5;
-                Em_BonePos(em, 0xA, pos);
-                Em_PlaySeChecked(em, 0x2E, 0, pos, 6, 0);
+                Em_BonePos(em, HERM_BONE_CLAW_B, pos);
+                Em_PlaySeChecked(em, HERM_SE_RAGE_CLAW, 0, pos, 6, 0);
             }
         } else if (w->rageFxTimer > 0) {
             if (em->rage != 0 && w->rageFxTimer == 2) {
-                Em_BonePos(em, 6, pos);
-                Em_PlaySeChecked(em, 0x2E, 0, pos, 6, 0);
+                Em_BonePos(em, HERM_BONE_CLAW_A, pos);
+                Em_PlaySeChecked(em, HERM_SE_RAGE_CLAW, 0, pos, 6, 0);
             }
             w->rageFxTimer -= 1;
         }
@@ -1768,7 +1646,7 @@ void EmHermitaur_Update(Em *em)
     if (em->type != EM_KIND_HERMITAUR && em->type != EM_KIND_CEANATAUR) {
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (gScene.area == em->area) {
-                em->hasCeiling = AreaGrid2_GetCeiling(&em->posX, &em->surfaceY, (struct AreaTri *) ((u8 *)w + 0x48));
+                em->hasCeiling = AreaGrid2_GetCeiling(&em->posX, &em->surfaceY, (struct AreaTri *) ((u8 *)w + 72));
             } else if (EmHermitaur_AreaHasCeiling(em->area) == 1) {
                 em->hasCeiling = 1;
                 em->surfaceY = 1500.0f;
@@ -1817,7 +1695,7 @@ void EmHermitaur_Update(Em *em)
                 Em_CheckRageByHp(em, em->rageThreshold);
             } else {
                 em->rage = 1;
-                em->rageTimer = 0x708;
+                em->rageTimer = 1800;
             }
         }
         break;
@@ -1858,7 +1736,7 @@ void EmHermitaur_Update(Em *em)
         break;
     case EM_DMG_HIT_LYING:
         switch (em->state) {
-        case 0xE:
+        case 14:
             EmHermitaur_ChangeState(em, EM_GROUP_IDLE, HERM_IDLE_STATUS1_END, EM_SYNC_OWNER);
             break;
         default:
@@ -1883,7 +1761,7 @@ void EmHermitaur_Update(Em *em)
             EmHermitaur_ChangeState(em, EM_GROUP_REACT, HERM_REACT_GUARD_RECOIL, EM_SYNC_OWNER);
             break;
         }
-        if ((u8) dmg == 0xF) {
+        if ((u8) dmg == 15) {
             break;
         }
     case EM_DMG_PART_FLINCH:
@@ -2004,14 +1882,14 @@ void EmHermitaur_Update(Em *em)
         break;
     case EM_DMG_HIT:
         if (em->type == EM_KIND_DAIMYO_HERMITAUR && (s8) em->hermitTimer != 0) {
-            Em_PlaySeChecked(em, 0x2D, 0, &em->posX, 6, 0);
+            Em_PlaySeChecked(em, HERM_SE_GUARD_HIT, 0, &em->posX, 6, 0);
             w->guardClankTimer = 30;
         }
         break;
     case EM_DMG_STATUS5:
         if (em->stateGroup != EM_GROUP_REACT || (em->state != HERM_REACT_FALL && em->state != HERM_REACT_STUN_B && em->state != HERM_REACT_STUN_A)) {
             Em_SetStatus5Timer(em);
-            if (em->hitAngle - em->rotY > 0x8000) {
+            if (em->hitAngle - em->rotY > (ANGLE_TURN / 2)) {
                 EmHermitaur_ChangeState(em, EM_GROUP_REACT, HERM_REACT_STUN_A, EM_SYNC_OWNER);
             } else {
                 EmHermitaur_ChangeState(em, EM_GROUP_REACT, HERM_REACT_STUN_B, EM_SYNC_OWNER);
@@ -2065,7 +1943,7 @@ void EmHermitaur_Update(Em *em)
             w->lastPartState = em->parts[2].state;
             if (em->parts[2].state == 2) {
                 if (w->shellBreakCount == 0) {
-                    em->areaTimer2 = 0x708;
+                    em->areaTimer2 = 1800;
                 }
                 w->shellBreakCount++;
                 em->fxFlags |= 1;
@@ -2258,7 +2136,7 @@ void EmHermitaur_TurnToGoalOnce(Em *em)
 
 /*
  * blind 2, HERM_MOT_LIE_DOWN then HERM_MOT_LIE until em->timer runs out;
- * variant 1 sets the timer to 0x1518 frames, regains up to half the hp and
+ * variant 1 sets the timer to 5400 frames, regains up to half the hp and
  * clears the low-hp need at the end. Then to the matching end state (0:
  * HERM_IDLE_STATUS2_END, 1: HERM_IDLE_REST_END, 2: HERM_IDLE_STATUS1_END).
  */
@@ -2271,7 +2149,7 @@ void EmHermitaur_LieDown(Em *em, s32 work, s32 variant)
         em->step++;
         Em_SetMotion(em, HERM_MOT_LIE_DOWN, 0, 0);
         if (variant == 1) {
-            em->timer = 0x1518;
+            em->timer = 5400;
         }
         break;
     case 1:
@@ -2282,7 +2160,7 @@ void EmHermitaur_LieDown(Em *em, s32 work, s32 variant)
         break;
     case 2:
         if (variant == 1) {
-            Em_RegenHp(em, 1, (s32) (0.5f * (f32) em->hpMax), 0xA);
+            Em_RegenHp(em, 1, (s32) (0.5f * (f32) em->hpMax), 10);
         }
         if (--em->timer <= 0) {
             em->step++;
@@ -2375,7 +2253,7 @@ void EmHermitaur_Wait(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, HERM_MOT_IDLE, 0, 0);
-        em->timer = 0x1E;
+        em->timer = 30;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -2398,7 +2276,7 @@ void EmHermitaur_WaitAlert(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, HERM_MOT_IDLE_ALERT, 0, 0);
-        em->timer = 0x1E;
+        em->timer = 30;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -2546,8 +2424,8 @@ void EmHermitaur_RunIdleState(Em *em, EmWork *work)
 }
 
 /*
- * Turns to the goal angle plus 0/0x8000/0x4000/0xC000 (variant 0-3) with
- * HERM_MOT_TURN_RIGHT/_LEFT, 0x8000 per 80 frames between motion frames 8
+ * Turns to the goal angle plus 0, ANGLE_TURN / 2, ANGLE_TURN / 4 or ANGLE_TURN * 3 / 4 (variant 0-3) with
+ * HERM_MOT_TURN_RIGHT/_LEFT, ANGLE_TURN / 2 per 80 frames between motion frames 8
  * and 88, restarting the motion until within a step; then
  * EmHermitaur_EndToIdle.
  */
@@ -2567,13 +2445,13 @@ void EmHermitaur_TurnInPlace(Em *em, EmWork *work, s32 variant)
             hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal);
             break;
         case 1:
-            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + 0x8000;
+            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 2;
             break;
         case 2:
-            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + 0x4000;
+            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 4;
             break;
         case 3:
-            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + 0xC000;
+            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN * 3 / 4;
             break;
         }
         if (((hermWork->goalAngle - em->rotY) & 0xFFFF) >= 0x8000U) {
@@ -2593,7 +2471,7 @@ void EmHermitaur_TurnInPlace(Em *em, EmWork *work, s32 variant)
                     EmHermitaur_EndToIdle(em);
                 } else {
                     Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-                    if (angleDiff >= 0x8000) {
+                    if (angleDiff >= ANGLE_TURN / 2) {
                         Em_SetMotion(em, HERM_MOT_TURN_RIGHT, 6, 0);
                     } else {
                         Em_SetMotion(em, HERM_MOT_TURN_LEFT, 6, 0);
@@ -2601,7 +2479,7 @@ void EmHermitaur_TurnInPlace(Em *em, EmWork *work, s32 variant)
                 }
             } else if ((u16) (angleDiff + turnStep) < turnStep * 2) {
                 em->rotY = hermWork->goalAngle;
-            } else if (angleDiff < 0x8000) {
+            } else if (angleDiff < (ANGLE_TURN / 2)) {
                 em->rotY = (u16) (em->rotY + turnStep);
             } else {
                 em->rotY = (u16) (em->rotY - turnStep);
@@ -2636,15 +2514,15 @@ void EmHermitaur_Walk(Em *em, EmWork *work, s32 variant)
     case 1:
         if (((EmHermitaurWork *)work)->steerToGoal != 0) {
             if (em->type == EM_KIND_HERMITAUR || em->type == EM_KIND_CEANATAUR) {
-                turnStep = 0x400;
+                turnStep = 1024;
             } else {
-                turnStep = 0x40;
+                turnStep = 64;
             }
             angleDiff = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
             if (variant != 0) {
-                angleDiff += 0x8000;
+                angleDiff += ANGLE_TURN / 2;
             }
-            if (angleDiff <= 0x8000) {
+            if (angleDiff <= ANGLE_TURN / 2) {
                 if (angleDiff < turnStep) {
                     em->rotY += angleDiff;
                 } else {
@@ -2678,7 +2556,7 @@ void EmHermitaur_Walk(Em *em, EmWork *work, s32 variant)
 /*
  * direction 0 plays HERM_MOT_WALK_ALERT; 1 plays HERM_MOT_WALK_BACK_ALERT
  * and creates HermitaurAttack 9; 2 plays HERM_MOT_BACK_ATTACK_WALK and
- * creates HermitaurAttack 0x1B. speedBonus: 10 for the big kinds, and for
+ * creates HermitaurAttack 27. speedBonus: 10 for the big kinds, and for
  * Hermitaur/Ceanataur 200 when fast is 1, else 100. Steers and ends as
  * EmHermitaur_Walk does, except that only direction 1 counts its root motion
  * backward.
@@ -2702,7 +2580,7 @@ void EmHermitaur_WalkAlert(Em *em, EmWork *work, s32 direction, s32 fast)
             break;
         case 2:
             Em_SetMotion(em, HERM_MOT_BACK_ATTACK_WALK, 0, 0);
-            HermitaurAttack_Create(em, 0x1B);
+            HermitaurAttack_Create(em, 27);
             break;
         }
         if (fast == 1) {
@@ -2720,15 +2598,15 @@ void EmHermitaur_WalkAlert(Em *em, EmWork *work, s32 direction, s32 fast)
     case 1:
         if (((EmHermitaurWork *)work)->steerToGoal != 0) {
             if (em->type == EM_KIND_HERMITAUR || em->type == EM_KIND_CEANATAUR) {
-                turnStep = 0x400;
+                turnStep = 1024;
             } else {
-                turnStep = 0x40;
+                turnStep = 64;
             }
             angleDiff = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
             if (direction != 0) {
-                angleDiff += 0x8000;
+                angleDiff += ANGLE_TURN / 2;
             }
-            if (angleDiff <= 0x8000) {
+            if (angleDiff <= ANGLE_TURN / 2) {
                 if (angleDiff < turnStep) {
                     em->rotY += angleDiff;
                 } else {
@@ -2798,17 +2676,17 @@ void EmHermitaur_Sidestep(Em *em, EmWork *work, s32 variant)
     case 1:
         if (((EmHermitaurWork *)work)->steerToGoal != 0) {
             if (em->type == EM_KIND_HERMITAUR || em->type == EM_KIND_CEANATAUR) {
-                turnStep = 0x400;
+                turnStep = 1024;
             } else {
-                turnStep = 0x40;
+                turnStep = 64;
             }
             if (variant == 0 || variant == 2) {
-                faceAngle = Math_AngleXZ(&em->posX, em->goal) + 0x4000;
+                faceAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 4;
             } else {
-                faceAngle = Math_AngleXZ(&em->posX, em->goal) + 0xC000;
+                faceAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN * 3 / 4;
             }
             angleDiff = faceAngle - em->rotY;
-            if (angleDiff <= 0x8000) {
+            if (angleDiff <= ANGLE_TURN / 2) {
                 if (angleDiff < turnStep) {
                     em->rotY += angleDiff;
                 } else {
@@ -2841,7 +2719,7 @@ void EmHermitaur_Sidestep(Em *em, EmWork *work, s32 variant)
 
 /*
  * As EmHermitaur_TurnInPlace with HERM_MOT_TURN_RIGHT_ALERT/_LEFT_ALERT,
- * 0x8000 per 58 frames between motion frames 6 and 64.
+ * ANGLE_TURN / 2 per 58 frames between motion frames 6 and 64.
  */
 void EmHermitaur_TurnInPlaceAlert(Em *em, EmWork *work, s32 variant)
 {
@@ -2859,13 +2737,13 @@ void EmHermitaur_TurnInPlaceAlert(Em *em, EmWork *work, s32 variant)
             hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal);
             break;
         case 1:
-            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + 0x8000;
+            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 2;
             break;
         case 2:
-            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + 0x4000;
+            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 4;
             break;
         case 3:
-            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + 0xC000;
+            hermWork->goalAngle = Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN * 3 / 4;
             break;
         }
         if (((hermWork->goalAngle - em->rotY) & 0xFFFF) >= 0x8000U) {
@@ -2885,7 +2763,7 @@ void EmHermitaur_TurnInPlaceAlert(Em *em, EmWork *work, s32 variant)
                     EmHermitaur_EndToIdle(em);
                 } else {
                     Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
-                    if (angleDiff >= 0x8000) {
+                    if (angleDiff >= ANGLE_TURN / 2) {
                         Em_SetMotion(em, HERM_MOT_TURN_RIGHT_ALERT, 4, 0);
                     } else {
                         Em_SetMotion(em, HERM_MOT_TURN_LEFT_ALERT, 4, 0);
@@ -2893,7 +2771,7 @@ void EmHermitaur_TurnInPlaceAlert(Em *em, EmWork *work, s32 variant)
                 }
             } else if ((u16) (angleDiff + turnStep) < turnStep * 2) {
                 em->rotY = hermWork->goalAngle;
-            } else if (angleDiff < 0x8000) {
+            } else if (angleDiff < (ANGLE_TURN / 2)) {
                 em->rotY = (u16) (em->rotY + turnStep);
             } else {
                 em->rotY = (u16) (em->rotY - turnStep);
@@ -3022,7 +2900,7 @@ void EmHermitaur_Burrow(Em *em, s32 work, s32 variant)
 }
 
 /*
- * Buried (stateArmor, no shadow, HERM_MOT_BURIED); turns 0x400 a frame to
+ * Buried (stateArmor, no shadow, HERM_MOT_BURIED); turns 1024 a frame to
  * the goal angle, then EmHermitaur_EndToBuried.
  */
 void EmHermitaur_BuriedTurnToGoal(Em *em, EmWork *work, s32 variant)
@@ -3065,7 +2943,7 @@ void EmHermitaur_BuriedTurnToGoal(Em *em, EmWork *work, s32 variant)
 }
 
 /*
- * Buried, HERM_MOT_BURIED; steers 0x40 a frame and moves 80 a frame forward
+ * Buried, HERM_MOT_BURIED; steers 64 a frame and moves 80 a frame forward
  * until distLeft is used up, then EmHermitaur_EndToBuried. Variant 1 also
  * drops field collision and makes it unhittable and senseless for 5 frames.
  */
@@ -3096,16 +2974,16 @@ void EmHermitaur_BuriedMoveToGoal(Em *em, EmWork *work, s32 variant)
     case 1:
         if (((EmHermitaurWork *)work)->steerToGoal != 0) {
             angleDiff = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if (angleDiff <= 0x8000) {
-                if (angleDiff < 0x40) {
+            if (angleDiff <= ANGLE_TURN / 2) {
+                if (angleDiff < 64) {
                     em->rotY += angleDiff;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else if (angleDiff > 0xFFC0) {
                 em->rotY += angleDiff;
             } else {
-                em->rotY -= 0x40;
+                em->rotY -= 64;
             }
         }
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
@@ -3146,7 +3024,7 @@ void EmHermitaur_BuriedWait(Em *em, s32 work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, HERM_MOT_BURIED, 0, 0);
-        em->timer = 0x5A;
+        em->timer = 90;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -3233,7 +3111,7 @@ void EmHermitaur_CeilingHang(Em *em, s32 work, s32 variant)
 /*
  * EM_STANCE_AIR, HERM_MOT_CEIL_DROP on the ceiling, velY -50 with accelY -5
  * set but unused until frame 108. At frame 108 it moves down 400, leaves the
- * ceiling and creates HermitaurAttack 0x21, then falls to floorY, takes
+ * ceiling and creates HermitaurAttack 33, then falls to floorY, takes
  * EM_STANCE_GROUND, plays HERM_MOT_LEAP_LAND and ends with
  * EmHermitaur_EndToIdle.
  */
@@ -3258,7 +3136,7 @@ void EmHermitaur_CeilingDrop(Em *em, s32 work, s32 variant)
             em->step++;
             em->posY -= 400.0f;
             em->ceilingTimer = 0;
-            HermitaurAttack_Create(em, 0x21);
+            HermitaurAttack_Create(em, 33);
         }
         break;
     case 2:
@@ -3311,7 +3189,7 @@ void EmHermitaur_CeilingTurn(Em *em, s32 work, s32 variant)
 }
 
 /*
- * On the ceiling, HERM_MOT_CEIL_CRAWL to the goal (Em_StepToGoal 0x40),
+ * On the ceiling, HERM_MOT_CEIL_CRAWL to the goal (Em_StepToGoal 64),
  * then EmHermitaur_EndToCeiling; variant 1 sets motionSpeed 50; with shell
  * variant 0 and part 2 unbroken it starts the timed EMFX_SHOGUN_JET effect.
  */
@@ -3329,11 +3207,11 @@ void EmHermitaur_CeilingCrawl(Em *em, s32 work, s32 variant)
             em->motionSpeed = 50.0f;
         }
         if ((em->variant == 0) && ((s32) em->parts[2].state < 2)) {
-            EmEffectAttack_CreateTimed(em, EMFX_SHOGUN_JET, 0, 0, 0x8000, 0x64);
+            EmEffectAttack_CreateTimed(em, EMFX_SHOGUN_JET, 0, 0, 32768, 100);
         }
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             EmHermitaur_EndToCeiling(em);
         }
@@ -3430,7 +3308,7 @@ void EmHermitaur_RunDigState(Em *em, s32 work)
 }
 
 /*
- * Plays HERM_MOT_STRIKE_A once (its hit, HermitaurAttack row 1, or 0x11 for
+ * Plays HERM_MOT_STRIKE_A once (its hit, HermitaurAttack row 1, or 17 for
  * Shogun, comes from MotionEffects at frame 44), then
  * EmHermitaur_EndToIdle.
  */
@@ -3453,7 +3331,7 @@ void EmHermitaur_StrikeA(Em *em)
 /*
  * Loops HERM_MOT_WINDUP (speedBonus 50) 1, 5 or 10 times by variant (passes
  * of frame 56 counted in timer), then HERM_MOT_WINDUP_STRIKE (MotionEffects
- * makes HermitaurAttack kind 2, 3 for the Daimyo, 0x12 for the Shogun, at
+ * makes HermitaurAttack kind 2, 3 for the Daimyo, 18 for the Shogun, at
  * frame 18 and a ground effect at 32) and EmHermitaur_EndToIdle.
  */
 void EmHermitaur_WindUpStrike(Em *em, s32 work, s32 variant)
@@ -3465,7 +3343,7 @@ void EmHermitaur_WindUpStrike(Em *em, s32 work, s32 variant)
         em->step++;
         Em_SetMotion(em, HERM_MOT_WINDUP, 0, 0);
         variantByte = variant & 0xFF;
-        em->speedBonus = 0x32;
+        em->speedBonus = 50;
         switch (variantByte) {
         case 0:
             em->timer = 1;
@@ -3474,7 +3352,7 @@ void EmHermitaur_WindUpStrike(Em *em, s32 work, s32 variant)
             em->timer = 5;
             break;
         case 2:
-            em->timer = 0xA;
+            em->timer = 10;
         }
         break;
     case 1:
@@ -3498,8 +3376,9 @@ void EmHermitaur_WindUpStrike(Em *em, s32 work, s32 variant)
 /*
  * Daimyo and Ceanataur only, others EmHermitaur_EndToIdle:
  * HERM_MOT_WATER_JET, at frame 82 the jet (Daimyo EMFX_DAIMYO_JET,
- * Ceanataur a ranged attack at bone 0x1F), hit row 0xC/0x20 after frame 86,
- * then HERM_MOT_WATER_JET_END and EmHermitaur_EndToIdle.
+ * Ceanataur EMRANGED_HERMITAUR_SHOT at HERM_BONE_BREATH), attack row 12
+ * (Daimyo) or 32 after frame 86, then HERM_MOT_WATER_JET_END and
+ * EmHermitaur_EndToIdle.
  */
 void EmHermitaur_WaterJet(Em *em, EmWork *work)
 {
@@ -3518,18 +3397,18 @@ void EmHermitaur_WaterJet(Em *em, EmWork *work)
             if (Motion_ReachedFrame(em, 0, 82.0f) != 0) {
                 em->step++;
                 if (em->type == EM_KIND_DAIMYO_HERMITAUR) {
-                    EmEffectAttack_Create(em, EMFX_DAIMYO_JET, 0, 0x38E, 0);
+                    EmEffectAttack_Create(em, EMFX_DAIMYO_JET, 0, 910, 0);
                     break;
                 }
-                EmRangedAttack_CreateAtBone(em, 0x1F, 0x16, 0, 0xF8E5, 0);
+                EmRangedAttack_CreateAtBone(em, HERM_BONE_BREATH, EMRANGED_HERMITAUR_SHOT, 0, 63717, 0);
             }
             break;
         case 2:
             if (Motion_PassedFrame(em, 0, 86.0f) != 0) {
                 if (em->type == EM_KIND_DAIMYO_HERMITAUR) {
-                    HermitaurAttack_Create(em, 0xC);
+                    HermitaurAttack_Create(em, 12);
                 } else {
-                    HermitaurAttack_Create(em, 0x20);
+                    HermitaurAttack_Create(em, 32);
                 }
             }
             if (em->motion[0].playing == 0) {
@@ -3558,7 +3437,7 @@ void EmHermitaur_Guard(Em *em, EmWork *work, s32 variant)
     if (em->type != EM_KIND_DAIMYO_HERMITAUR) {
         EmHermitaur_EndToIdle(em);
     } else {
-        em->hermitTimer = 0xA;
+        em->hermitTimer = 10;
         if ((s32) em->parts[5].state >= 2 && (s32) em->parts[6].state >= 2) {
             em->hitzoneSet = 1;
         } else {
@@ -3569,10 +3448,10 @@ void EmHermitaur_Guard(Em *em, EmWork *work, s32 variant)
             em->step++;
             Em_SetMotion(em, HERM_MOT_GUARD, 0, 0);
             if (variant == 0) {
-                em->timer = 0x168;
+                em->timer = 360;
                 break;
             }
-            em->timer = 0xB4;
+            em->timer = 180;
             break;
         case 1:
             if (--em->timer <= 0) {
@@ -3667,7 +3546,7 @@ void EmHermitaur_BurrowToAmbush(Em *em, EmWork *work)
 }
 
 /*
- * Guarded; HERM_MOT_UNDER_THRUST with HermitaurAttack kind 0xA (not for the
+ * Guarded; HERM_MOT_UNDER_THRUST with HermitaurAttack kind 10 (not for the
  * Shogun, whose hits come from MotionEffects), shadow hidden, stateArmor
  * cleared. Variant 0 goes on to HERM_ATK_EMERGE (at frame 46; the Shogun at
  * the motion end); variant 1 returns underground (EmHermitaur_EndToBuried)
@@ -3683,7 +3562,7 @@ void EmHermitaur_UnderThrust(Em *em, s32 work, s32 variant)
         em->step++;
         Em_SetMotion(em, HERM_MOT_UNDER_THRUST, 0, 0);
         if (em->type != EM_KIND_SHOGUN_CEANATAUR) {
-            HermitaurAttack_Create(em, 0xA);
+            HermitaurAttack_Create(em, 10);
         }
         em->hideShadowHold = 2;
         em->hideShadow = 2;
@@ -3765,7 +3644,7 @@ void EmHermitaur_Emerge(Em *em)
  * airborne (EM_STANCE_AIR), lifted 500*scaleX with velY 120/140/160 by
  * variant and accelY -10, falling with Em_MoveRotatedAccel. Below floorY+200
  * it lands on the floor (EM_STANCE_GROUND, HERM_MOT_LEAP_LAND);
- * HermitaurAttack kind 0xB is made once (stateVar0) on landing or at frame
+ * HermitaurAttack kind 11 is made once (stateVar0) on landing or at frame
  * 154; EmHermitaur_EndToIdle when the landing ends.
  */
 void EmHermitaur_LeapPress(Em *em, s32 work, s32 variant)
@@ -3816,14 +3695,14 @@ void EmHermitaur_LeapPress(Em *em, s32 work, s32 variant)
                 hitDone = em->stateVar0;
                 if (hitDone == 0) {
                     em->stateVar0 = hitDone + 1;
-                    HermitaurAttack_Create(em, 0xB);
+                    HermitaurAttack_Create(em, 11);
                     break;
                 }
             } else if (EmMotion_PassedFrameScaled(em, 154.0f, 0U) != 0) {
                 hitDone2 = em->stateVar0;
                 if (hitDone2 == 0) {
                     em->stateVar0 = hitDone2 + 1;
-                    HermitaurAttack_Create(em, 0xB);
+                    HermitaurAttack_Create(em, 11);
                     break;
                 }
             }
@@ -3947,7 +3826,7 @@ void EmHermitaur_AmbushWait(Em *em, EmWork *work)
 
 /*
  * Saves its position in the work area and repeats HERM_MOT_UNDER_THRUST
- * (HermitaurAttack kind 0xA except for the Shogun; shadow hidden). After
+ * (HermitaurAttack kind 10 except for the Shogun; shadow hidden). After
  * each thrust it goes back to the saved point, jumps by an offset from
  * EmHermitaur_ThrustOffsets (row = variant, pair = stateVar0) turned by
  * rotY, moves the same offset again over 4 frames (velX/velZ), shakes the
@@ -3971,7 +3850,7 @@ void EmHermitaur_UnderThrustSeries(Em *em, EmWork *work, s32 variant)
         Vec_Copy((f32 *) &work->pitchStep, &em->posX);
         Em_SetMotion(em, HERM_MOT_UNDER_THRUST, 0, 0);
         if (em->type != EM_KIND_SHOGUN_CEANATAUR) {
-            HermitaurAttack_Create(em, 0xA);
+            HermitaurAttack_Create(em, 10);
         }
         em->hideShadowHold = 2;
         em->hideShadow = 2;
@@ -4016,7 +3895,7 @@ void EmHermitaur_UnderThrustSeries(Em *em, EmWork *work, s32 variant)
             em->step = 1;
             Em_SetMotion(em, HERM_MOT_UNDER_THRUST, 0, 0);
             if (em->type != EM_KIND_SHOGUN_CEANATAUR) {
-                HermitaurAttack_Create(em, 0xA);
+                HermitaurAttack_Create(em, 10);
             }
             em->hideShadowHold = 2;
             em->hideShadow = 2;
@@ -4027,7 +3906,7 @@ void EmHermitaur_UnderThrustSeries(Em *em, EmWork *work, s32 variant)
 
 /*
  * Shogun only (others EmHermitaur_EndToIdle), on the ceiling (EM_STANCE_AIR,
- * posY = surfaceY, ceilingTimer 5): HERM_MOT_CEIL_JET with MonsterFx 0x22
+ * posY = surfaceY, ceilingTimer 5): HERM_MOT_CEIL_JET with MonsterFx 34
  * (variant 0 every 8 frames before frame 16 and from 210, variant 1 every 12
  * frames in frames 16-40 and 164-210) and EMFX_SHOGUN_JET at frame 50 if the
  * shell variant is 0 and part 2 is unbroken; then EmHermitaur_EndToCeiling.
@@ -4049,15 +3928,15 @@ void EmHermitaur_CeilingJet(Em *em, EmWork *work, s32 variant)
     case 1:
         if (!EmMotion_ReachedFrame(em, 0, 16.0f) || EmMotion_ReachedFrame(em, 0, 210.0f)) {
             if (!(gScene.frame & 7)) {
-                MonsterFx_CreateOnEmVariant(em, 0x22, 0, 1.0f);
+                MonsterFx_CreateOnEmVariant(em, 34, 0, 1.0f);
             }
         } else if (!EmMotion_ReachedFrame(em, 0, 40.0f) || EmMotion_ReachedFrame(em, 0, 164.0f)) {
             if (gScene.frame % 12 == 0) {
-                MonsterFx_CreateOnEmVariant(em, 0x22, 1, 1.0f);
+                MonsterFx_CreateOnEmVariant(em, 34, 1, 1.0f);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) && em->variant == 0 && em->parts[2].state < 2) {
-            EmEffectAttack_Create(em, EMFX_SHOGUN_JET, 0, 0, 0x8000);
+            EmEffectAttack_Create(em, EMFX_SHOGUN_JET, 0, 0, 32768);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4070,7 +3949,7 @@ void EmHermitaur_CeilingJet(Em *em, EmWork *work, s32 variant)
 /*
  * Shogun only: plays HERM_MOT_GUARD or HERM_MOT_GUARD_END (its turns) by
  * the side of the goal, turning rotY toward goalAngle up to frame 44 at
- * 0x8000/44 per frame (times motionSpeed); EmHermitaur_EndToIdle at the
+ * ANGLE_TURN / 2 / 44 per frame (times motionSpeed); EmHermitaur_EndToIdle at the
  * motion end. Variant unused.
  */
 void EmHermitaur_TurnToGoal(Em *em, EmWork *work, s32 variant)
@@ -4105,7 +3984,7 @@ void EmHermitaur_TurnToGoal(Em *em, EmWork *work, s32 variant)
                 if (!EmMotion_ReachedFrame(em, 0, 44.0f)) {
                     if ((u16) (angleToGoal + turnStep) < turnStep * 2) {
                         em->rotY = hermWork->goalAngle;
-                    } else if (angleToGoal < 0x8000) {
+                    } else if (angleToGoal < (ANGLE_TURN / 2)) {
                         em->rotY = (u16) (em->rotY + turnStep);
                     } else {
                         em->rotY = (u16) (em->rotY - turnStep);
@@ -4124,7 +4003,7 @@ void EmHermitaur_TurnToGoal(Em *em, EmWork *work, s32 variant)
 /*
  * Shogun only: HERM_MOT_SPIN_A (variant 0, rotY -0x666 a frame) or
  * HERM_MOT_SPIN_B (variant 1, +0x666) over frames 46-86, a full turn; hits
- * 0x1E/0x1F from MotionEffects at 76; then EmHermitaur_EndToIdle.
+ * 30/31 from MotionEffects at 76; then EmHermitaur_EndToIdle.
  */
 void EmHermitaur_SpinStrike(Em *em, s32 work, s32 variant)
 {
@@ -4424,7 +4303,7 @@ void EmHermitaur_GuardRecoil(Em *em)
         break;
     case 1:
         em->timer++;
-        if (em->timer >= 0xB4) {
+        if (em->timer >= 180) {
             em->step++;
             Em_SetMotion(em, HERM_MOT_RECOIL_END, 0, 0);
         }
@@ -4454,7 +4333,7 @@ void EmHermitaur_WindFlinch(Em *em)
         break;
     case 1:
         em->timer++;
-        if (em->timer >= 0x14A) {
+        if (em->timer >= 330) {
             em->step++;
             Em_SetMotion(em, HERM_MOT_FLINCH_END, 0, 0);
         }
@@ -4488,7 +4367,7 @@ void EmHermitaur_Hold2(Em *em)
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 40.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, HERM_MOT_HELD, 0xC, 0);
+            Em_SetMotion(em, HERM_MOT_HELD, 12, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
@@ -4508,7 +4387,7 @@ void EmHermitaur_Hold2(Em *em)
 
 /*
  * Stun: the knock-down motions of side A (variant 0) or B (variant 1) with
- * stun stars at bone 0x25 for timer + half the motion; lies until timer
+ * stun stars at HERM_BONE_STUN_STARS for timer + half the motion; lies until timer
  * runs out, gets up, then HERM_IDLE_STUN_SHAKE_OFF.
  */
 void EmHermitaur_Stun(Em *em, s32 work, s32 variant)
@@ -4524,7 +4403,7 @@ void EmHermitaur_Stun(Em *em, s32 work, s32 variant)
         } else {
             Em_SetMotion(em, HERM_MOT_KNOCK_DOWN_B, 0, 0);
         }
-        StunStars_CreateEm(em, 1, 0x25, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, HERM_BONE_STUN_STARS, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -4808,8 +4687,8 @@ void EmHermitaur_RunDefeatState(Em *em, EmWork *work)
 
     type = em->type;
     if ((type == EM_KIND_HERMITAUR) || (type == EM_KIND_CEANATAUR)) {
-        em->noHitTimer = 0xA;
-        em->noPushTimer = 0xA;
+        em->noHitTimer = 10;
+        em->noPushTimer = 10;
     }
     switch (em->state) {
     case HERM_DEFEAT_DIE:
@@ -5084,7 +4963,7 @@ void EmHermitaur_Captured(Em *em)
     case 0:
         em->step++;
         Em_SetMotion(em, HERM_MOT_LIE_DOWN, 0, 0);
-        em->timer = 0x708;
+        em->timer = 1800;
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
         break;
@@ -5099,7 +4978,7 @@ void EmHermitaur_Captured(Em *em)
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
                 break;
             }
         }
@@ -5343,7 +5222,7 @@ void EmHermitaur_VsEnd(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x5A;
+        em->timer = 90;
         if (em->motionId[0] != EM_MOTION_ID(0, HERM_MOT_IDLE)) {
             Em_SetMotion(em, HERM_MOT_IDLE, 0, 0);
         }
@@ -5919,7 +5798,7 @@ void EmHermitaur_SpawnEffects(Em *em)
 {
     u8 type;
 
-    Shadow_Spawn((Player *) &em->active, 0);
+    Shadow_Spawn((Player *) &em->active, SHADOW_MODEL);
     type = em->type;
     if ((type == EM_KIND_DAIMYO_HERMITAUR) || (type == EM_KIND_SHOGUN_CEANATAUR)) {
         GunFx_CreateType5(em);
@@ -5932,7 +5811,7 @@ void EmHermitaur_TableNop(void)
 }
 
 /*
- * When the monster is in the current area, spawns ground effect 0x0D of the
+ * When the monster is in the current area, spawns ground effect 13 of the
  * given kind at a bone's position dropped to floorY, scaled by scaleX.
  */
 void EmHermitaur_SpawnGroundEffect(Em *em, s32 bone, s32 effectKind, f32 scale)
@@ -5977,26 +5856,26 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, HERM_MOT_LEAP):
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 112.0f, 0)) {
-                DustCloud_Create(em, 0xB, 0x15, em->scaleX);
+                DustCloud_Create(em, 11, 21, em->scaleX);
             }
         } else if (EmMotion_PassedFrameScaled(em, 98.0f, 0)) {
-            DustCloud_Create(em, 0x13, 0x15, em->scaleX);
+            DustCloud_Create(em, 19, 21, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_LEAP_LAND):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 1, 0x28, 2.0f * em->scaleX);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_LANDING, 40, 2.0f * em->scaleX);
             EmImpactAttack_CreateAt(em, &em->posX, 5);
             EmImpactAttack_CreateAt(em, &em->posX, 6);
         }
         if (em->type == EM_KIND_SHOGUN_CEANATAUR && EmMotion_PassedFrameScaled(em, 190.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 6, 4, 6.0f);
-            EmHermitaur_SpawnGroundEffect(em, 0xA, 4, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_CLAW_A, 4, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_CLAW_B, 4, 6.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0xF):
-    case EM_MOTION_ID(0, 0x10):
-    case EM_MOTION_ID(0, 0x12):
+    case EM_MOTION_ID(0, 15):
+    case EM_MOTION_ID(0, 16):
+    case EM_MOTION_ID(0, 18):
         break;
     case EM_MOTION_ID(0, HERM_MOT_STRIKE_C):
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
@@ -6006,15 +5885,15 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
                 HermitaurAttack_Create(em, 4);
                 break;
             case EM_KIND_SHOGUN_CEANATAUR:
-                HermitaurAttack_Create(em, 0x17);
+                HermitaurAttack_Create(em, 23);
                 break;
             case EM_KIND_DAIMYO_HERMITAUR:
-                HermitaurAttack_Create(em, 0xD);
+                HermitaurAttack_Create(em, 13);
                 break;
             }
         }
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
-            DustCloud_Create(em, 2, 0x23, em->scaleX);
+            DustCloud_Create(em, 2, 35, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_SIDESTEP_A):
@@ -6027,15 +5906,15 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
                 HermitaurAttack_Create(em, 6);
                 break;
             case EM_KIND_SHOGUN_CEANATAUR:
-                HermitaurAttack_Create(em, 0x15);
+                HermitaurAttack_Create(em, 21);
                 break;
             case EM_KIND_DAIMYO_HERMITAUR:
-                HermitaurAttack_Create(em, 0xF);
+                HermitaurAttack_Create(em, 15);
                 break;
             }
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0)) {
-            DustCloud_Create(em, 2, 0x23, em->scaleX);
+            DustCloud_Create(em, 2, 35, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_SIDESTEP_B):
@@ -6048,18 +5927,18 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
                 HermitaurAttack_Create(em, 7);
                 break;
             case EM_KIND_SHOGUN_CEANATAUR:
-                HermitaurAttack_Create(em, 0x16);
+                HermitaurAttack_Create(em, 22);
                 break;
             case EM_KIND_DAIMYO_HERMITAUR:
-                HermitaurAttack_Create(em, 0x10);
+                HermitaurAttack_Create(em, 16);
                 break;
             }
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0)) {
-            DustCloud_Create(em, 3, 0x24, em->scaleX);
+            DustCloud_Create(em, 3, 36, em->scaleX);
         }
         break;
-    case EM_MOTION_ID(0, 0x18):
+    case EM_MOTION_ID(0, 24):
         break;
     case EM_MOTION_ID(0, HERM_MOT_STRIKE_C_MIRROR):
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
@@ -6069,27 +5948,27 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
                 HermitaurAttack_Create(em, 5);
                 break;
             case EM_KIND_SHOGUN_CEANATAUR:
-                HermitaurAttack_Create(em, 0x18);
+                HermitaurAttack_Create(em, 24);
                 break;
             case EM_KIND_DAIMYO_HERMITAUR:
-                HermitaurAttack_Create(em, 0xE);
+                HermitaurAttack_Create(em, 14);
                 break;
             }
         }
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
-            DustCloud_Create(em, 3, 0x24, em->scaleX);
+            DustCloud_Create(em, 3, 36, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_LIE):
         puffOfs[0] = 0.0f;
         puffOfs[1] = 20.0f;
         puffOfs[2] = 50.0f;
-        Em_SpawnLyingPuffs(em, 0x1F, puffOfs, 1.6f);
+        Em_SpawnLyingPuffs(em, HERM_BONE_BREATH, puffOfs, 1.6f);
         break;
     case EM_MOTION_ID(0, HERM_MOT_EMERGE):
         if (em->type == EM_KIND_HERMITAUR || em->type == EM_KIND_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 92.0f, 0)) {
-                EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
+                EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_B, 7, 6.0f);
             }
             if (EmMotion_PassedFrameScaled(em, 16.0f, 0)) {
                 HermitaurAttack_Create(em, 8);
@@ -6102,23 +5981,23 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         }
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 18.0f, 0)) {
-                HermitaurAttack_Create(em, 0x13);
+                HermitaurAttack_Create(em, 19);
             }
             if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
-                HermitaurAttack_Create(em, 0x14);
+                HermitaurAttack_Create(em, 20);
             }
             if (EmMotion_PassedFrameScaled(em, 110.0f, 0)) {
-                HermitaurAttack_Create(em, 0x1C);
+                HermitaurAttack_Create(em, 28);
             }
             if (EmMotion_PassedFrameScaled(em, 128.0f, 0)) {
-                HermitaurAttack_Create(em, 0x1D);
+                HermitaurAttack_Create(em, 29);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_B, 7, 6.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
-            DustCloud_Create(em, 0xB, 0x18, em->scaleX);
+            DustCloud_Create(em, 11, 24, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_BURIED):
@@ -6133,37 +6012,37 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, HERM_MOT_GUARD):
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 72.0f, 0)) {
-                DustCloud_Create(em, 2, 0x23, em->scaleX);
+                DustCloud_Create(em, 2, 35, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
-                HermitaurAttack_Create(em, 0x19);
+                HermitaurAttack_Create(em, 25);
             }
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_GUARD_END):
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 72.0f, 0)) {
-                DustCloud_Create(em, 3, 0x24, em->scaleX);
+                DustCloud_Create(em, 3, 36, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
-                HermitaurAttack_Create(em, 0x1A);
+                HermitaurAttack_Create(em, 26);
             }
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_STRIKE_A):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0)) {
             if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
-                HermitaurAttack_Create(em, 0x11);
+                HermitaurAttack_Create(em, 17);
             } else {
                 HermitaurAttack_Create(em, 1);
             }
         }
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 48.0f, 0)) {
-                DustCloud_Create(em, 2, 0x16, em->scaleX);
+                DustCloud_Create(em, 2, 22, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 56.0f, 0)) {
-                DustCloud_Create(em, 3, 0x17, em->scaleX);
+                DustCloud_Create(em, 3, 23, em->scaleX);
             }
         }
         break;
@@ -6175,7 +6054,7 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
                 HermitaurAttack_Create(em, 2);
                 break;
             case EM_KIND_SHOGUN_CEANATAUR:
-                HermitaurAttack_Create(em, 0x12);
+                HermitaurAttack_Create(em, 18);
                 break;
             case EM_KIND_DAIMYO_HERMITAUR:
                 HermitaurAttack_Create(em, 3);
@@ -6183,7 +6062,7 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
             }
         }
         if (EmMotion_PassedFrameScaled(em, 32.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_A, 7, 6.0f);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_WINDUP):
@@ -6192,15 +6071,15 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, HERM_MOT_SPIN_A):
         if (EmMotion_PassedFrameScaled(em, 76.0f, 0)) {
-            HermitaurAttack_Create(em, 0x1E);
+            HermitaurAttack_Create(em, 30);
         }
         if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
-            DustCloud_Create(em, 3, 0x24, em->scaleX);
+            DustCloud_Create(em, 3, 36, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_UNDER_THRUST):
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_A, 7, 6.0f);
         }
         if (!EmMotion_ReachedFrame(em, 0, 16.0f)) {
             em->hideShadowHold = 2;
@@ -6211,24 +6090,24 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         }
         if (em->type == EM_KIND_SHOGUN_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 18.0f, 0)) {
-                HermitaurAttack_Create(em, 0x13);
+                HermitaurAttack_Create(em, 19);
             }
             if (EmMotion_PassedFrameScaled(em, 22.0f, 0)) {
-                HermitaurAttack_Create(em, 0x14);
+                HermitaurAttack_Create(em, 20);
             }
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_SPIN_B):
         if (EmMotion_PassedFrameScaled(em, 76.0f, 0)) {
-            HermitaurAttack_Create(em, 0x1F);
+            HermitaurAttack_Create(em, 31);
         }
         if (EmMotion_PassedFrameScaled(em, 84.0f, 0)) {
-            DustCloud_Create(em, 2, 0x23, em->scaleX);
+            DustCloud_Create(em, 2, 35, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_SHELL_SWAP):
         if (em->type == EM_KIND_SHOGUN_CEANATAUR && EmMotion_PassedFrameScaled(em, 50.0f, 0)) {
-            DustCloud_Create(em, 0xB, 0x25, 0.5f * em->scaleX);
+            DustCloud_Create(em, 11, 37, 0.5f * em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_IDLE_ALERT):
@@ -6236,10 +6115,10 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, HERM_MOT_BURROW):
         if (EmMotion_PassedFrameScaled(em, 34.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_A, 7, 6.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 64.0f, 0)) {
-            DustCloud_Create(em, 0xB, 0x15, em->scaleX);
+            DustCloud_Create(em, 11, 21, em->scaleX);
         }
         if (EmMotion_ReachedFrame(em, 0, 130.0f)) {
             em->hideShadowHold = 2;
@@ -6252,12 +6131,12 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, HERM_MOT_KNOCK_DOWN):
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xB, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_A, 7, 6.0f);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0)) {
-            DustCloud_Create(em, 0xB, 0x15, em->scaleX);
+            DustCloud_Create(em, 11, 21, em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_DIE):
@@ -6267,18 +6146,18 @@ void EmHermitaur_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, HERM_MOT_SPIN_FLINCH):
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_B, 7, 6.0f);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_KNOCK_DOWN_B):
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0)) {
-            EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
+            EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_B, 7, 6.0f);
         }
         break;
     case EM_MOTION_ID(0, HERM_MOT_RECOIL):
         if (em->type == EM_KIND_DAIMYO_HERMITAUR || em->type == EM_KIND_HERMITAUR || em->type == EM_KIND_CEANATAUR) {
             if (EmMotion_PassedFrameScaled(em, 122.0f, 0)) {
-                EmHermitaur_SpawnGroundEffect(em, 0xC, 7, 6.0f);
+                EmHermitaur_SpawnGroundEffect(em, HERM_BONE_SIDE_B, 7, 6.0f);
             }
         }
         break;

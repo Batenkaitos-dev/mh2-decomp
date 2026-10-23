@@ -1,14 +1,15 @@
 /*
  * The third-level entry records (gLobbyNet.recs2) and the entry's users.
- * It opens with 660C's reply (the end of task 7's settings) and the
- * notifications of users entering and leaving an entry (6503, 6502).
+ * It opens with the notifications of users entering and leaving an
+ * entry (6503, 6502).
  * NetLevel2RecsTask (task 6) fetches the records in three stages: stage 0
  * asks 6603 for the count and 6607 for each record's sub-entry count;
  * stage 1 asks 6601, 6602 and 660F what may be sent; stage 2 asks 6604,
  * 6606 and 6605 for each record, then 6608 and 660E for each sub-entry.
  * Each field's request follows, with its packet and reply; then 6405 (an
  * entry's byte), 640A (the users of an entry), 6409, 6412-6414, 6415 (the
- * entry's four bytes) and the notification 6505 (a kick).
+ * entry's four bytes) and the notification 6505 (a kick); at the end,
+ * the records' getter, 6507's reply and 6418 (an entry's kind).
  * Network code: it stays byte for byte, as the whole build does.
  */
 #include "common.h"
@@ -21,77 +22,8 @@
 #include "pad.h"
 #include "m2c_macros.h"
 
-void NetLevel2RecsTask_Run(s32 task);
-void NetLevel2RecsTask_State0(NetTask *t);
-void NetLevel2RecsTask_State1(NetTask *t);
-void NetLevel2RecsTask_State2(NetTask *t);
-void NetLevel2RecsTask_Done(NetTask *t);
-void NetLevel2RecsTask_Failed(NetTask *t);
-void NetLevel2RecsTask_S0Step0(NetTask *t);
-void NetLevel2RecsTask_S0Step1(NetTask *t);
-void NetLevel2RecsTask_S0Step2(NetTask *t);
-void NetLevel2RecsTask_S0Step3(NetTask *t);
-void NetLevel2RecsTask_S0Step4(NetTask *t);
-void NetLevel2RecsTask_S0Step5(NetTask *t);
-void NetLevel2RecsTask_S1Step0(NetTask *t);
-void NetLevel2RecsTask_S1Step1(NetTask *t);
-void NetLevel2RecsTask_S1Step2(NetTask *t);
-void NetLevel2RecsTask_S1Step3(NetTask *t);
-void NetLevel2RecsTask_S1Step4(NetTask *t);
-void NetLevel2RecsTask_S1Step5(NetTask *t);
-void NetLevel2RecsTask_S1Step6(NetTask *t);
-void NetLevel2RecsTask_S2Step0(NetTask *t);
-void NetLevel2RecsTask_S2Step1(NetTask *t);
-void NetLevel2RecsTask_S2Step2(NetTask *t);
-void NetLevel2RecsTask_S2Step3(NetTask *t);
-void NetLevel2RecsTask_S2Step4(NetTask *t);
-void NetLevel2RecsTask_S2Step5(NetTask *t);
-void LobbyNotify_UserInOut(u8 kind);
 char *strcpy(char *, const char *);
-s32 NetReq_CountFree(void);
-u8 *LobbyMsg_ReadU8(void *dst);
-u8 *LobbyMsg_ReadU16U8(void *a, void *b);
-void LobbyMsg_ReadUsers(u8 *n, NetUserRec *users);
-s32 LobbyReq_Level2RecName(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2RecChoiceCount(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2RecDefault(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2RecEditable(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2RecChoiceName(u16 id, u8 i, u8 j, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2RecChoiceValues(u16 id, u8 i, u8 j, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2TextEditable(u16 id, void (*onReply)(NetMsg, NetMsg *));
-void NetLevel2RecsTask_OnReply(NetMsg m, NetMsg *pm);
-void NetLevel2RecsTask_OnRecReply(NetMsg m, NetMsg *pm);
-s32 LobbyReq_Level2RecCount(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyPkt_Level2RecCount(u16 id);
-s32 LobbyReq_Level2NameEditable(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyPkt_Level2NameEditable(u16 id);
-s32 LobbyReq_Level2PassEditable(s32 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyPkt_Level2PassEditable(u16 id);
-s32 LobbyPkt_Level2Locked(u16 id);
-s32 LobbyPkt_Level2Users(u16 id);
-void LobbyReply_Level2Users_Users(void);
-u8 *LobbyMsg_ReadU8Str(void *a, void *b);
-u8 *LobbyMsg_ReadU8U8(void *a, void *b);
-u8 *LobbyMsg_ReadU16U16(void *a, void *b);
-u8 *LobbyMsg_ReadU8U8Str(void *a, void *b, void *c);
 s32 memcmp(void *a, void *b, u32 n);  /* memcmp */
-s32 LobbyPkt_Level2RecName(u16 id, u8 i);
-s32 LobbyPkt_Level2RecChoiceCount(u16 id, u8 i);
-s32 LobbyPkt_Level2RecDefault(u16 id, u8 i);
-s32 LobbyPkt_Level2RecEditable(u16 id, u8 i);
-s32 LobbyPkt_Level2RecChoiceName(u16 id, u8 i, u8 j);
-s32 LobbyPkt_Level2RecChoiceValues(u16 id, u8 i, u8 j);
-void LobbyMsg_ReadU8U8Rest(u8 *i, u8 *j, u8 **p);
-s32 LobbyPkt_Level2Members(u16 id);
-s32 LobbyPkt_Level2TextEditable(u16 id);
-void LobbyMsg_ReadErrText(void);
-s32 LobbyPkt_Level2Quest(u16 id, u8 *c);
-
-/* the reply to 660C */
-void LobbyReply_Level2SettingsEnd(void)
-{
-    Lobby_RouteMessage(NET_ROUTE_NONE);
-}
 
 /* the user who entered or left last */
 s32 LobbyNet_GetUserInOut(NetUser *dst)
@@ -468,7 +400,7 @@ void NetLevel2RecsTask_S2Step2(NetTask *task)
     s32 k;
 
     for (i = 0; i < gLobbyNet.recs2.n; i++) {
-        if ((gLobbyNet.recs2.rec[i].flags & 0xF) != 0xB) {
+        if ((gLobbyNet.recs2.rec[i].flags & 0xF) != 11) {
             ok = 0;
             break;
         }
@@ -477,7 +409,7 @@ void NetLevel2RecsTask_S2Step2(NetTask *task)
         task->step++;
         task->idx = 0;
         for (k = 0; k < 32; k++) {
-            memset(gLobbyNet.recs2.rec[k].subFlags, 0, 0x20);
+            memset(gLobbyNet.recs2.rec[k].subFlags, 0, 32);
         }
     }
 }
@@ -690,7 +622,7 @@ s32 LobbyPkt_Level2Locked(u16 id)
     return seq;
 }
 
-/* the reply to 6405 and its notification: u16 id, u8; route 0x22 */
+/* the reply to 6405 and its notification: u16 id, u8; route NET_ROUTE_LEVEL2_LOCKED */
 void LobbyReply_Level2Locked(void)
 {
     u8 value;
@@ -724,7 +656,7 @@ s32 NetList2_GetUser(u16 i, char *id, char *name, u8 *text)
 {
     strcpy(id, gLobbyNet.users2[i].u.id);
     strcpy(name, gLobbyNet.users2[i].u.name);
-    memcpy(text, gLobbyNet.users2[i].u.text, 0x100);
+    memcpy(text, gLobbyNet.users2[i].u.text, 256);
     return 0;
 }
 
@@ -788,7 +720,7 @@ s32 LobbyPkt_Level2RecName(u16 id, u8 i)
 /* the reply to 6604: u8 record, string name */
 void LobbyReply_Level2RecName(void)
 {
-    char name[0x4C];
+    char name[76];
     u8 i;
 
     if (gLobbyNet.replyErr == 0) {
@@ -951,7 +883,7 @@ void LobbyReply_Level2RecChoiceName(void)
 {
     u8 i;
     u8 j;
-    char name[0x4C];
+    char name[76];
 
     if (gLobbyNet.replyErr == 0) {
         LobbyMsg_ReadU8U8Str(&i, &j, name);
@@ -1053,7 +985,7 @@ s32 NetList2_GetMembers(s32 id, u16 *memberCount, u16 *extra)
     return 0;
 }
 
-/* the reply to 6412 and its notification: u16 id, u16, u16; route 0x26 */
+/* the reply to 6412 and its notification: u16 id, u16, u16; route NET_ROUTE_LEVEL2_MEMBERS */
 void LobbyReply_Level2Members(void)
 {
     u16 id;
@@ -1126,7 +1058,7 @@ void LobbyReply_6413(void)
 }
 
 /* the notification 6414: u16 entry, blob id, u8: one user of the entry the
- * player is in; route 0x27 */
+ * player is in; route NET_ROUTE_6414 */
 void LobbyNotify_6414(void)
 {
     u16 id;
@@ -1215,11 +1147,60 @@ void LobbyReply_Level2Quest(void)
     Lobby_RouteMessage(NET_ROUTE_NONE);
 }
 
-/* the notification 6505: an error text; route 0xA */
+/* the notification 6505: an error text; route NET_ROUTE_LEVEL2_KICK */
 void LobbyNotify_Level2Kick(void)
 {
     if (gLobbyNet.replyErr == 0) {
         LobbyMsg_ReadErrText();
     }
     Lobby_RouteMessage(NET_ROUTE_LEVEL2_KICK);
+}
+
+/* Copies the third level's records (gLobbyNet.recs2) out; returns 0. */
+s32 NetLevel2RecsTask_GetRecs(s32 unused, NetRecs2 *dst)
+{
+    *dst = gLobbyNet.recs2;
+    return 0;
+}
+
+/*
+ * The reply to 6507, a command the client never sends: completes its request.
+ */
+void LobbyReply_6507(void)
+{
+    Lobby_RouteMessage(NET_ROUTE_NONE);
+}
+
+/*
+ * Asks for the kind of level-2 entry id (6418); onReply gets the answer.
+ * Returns the request's slot, -1 if none is free.
+ */
+s32 LobbyReq_Level2Kind(u16 id, void (*onReply)(NetMsg, NetMsg *))
+{
+    s32 i;
+
+    i = NetReq_Alloc(1, NULL, onReply);
+    if (i != -1) {
+        gLobbyNet.req[i].seq = LobbyPkt_EntryKind(2, id);
+        return i;
+    }
+    return -1;
+}
+
+/*
+ * The reply to 6418, or the same as a notification: u16 id, u8 kind, stored
+ * in the level-2 list's entry.
+ */
+void LobbyReply_Level2Kind(void)
+{
+    u8 entryKind;
+    u16 id;
+
+    if (gLobbyNet.replyErr == 0) {
+        LobbyMsg_ReadU16U8b2(&id, &entryKind);
+        gLobbyNet.list2[id - 1].id = id;
+        gLobbyNet.list2[id - 1].kind = entryKind;
+        gLobbyNet.list2[id - 1].flags |= NET_ENTRY_KIND;
+    }
+    Lobby_RouteMessage(NET_ROUTE_LEVEL2_KIND);
 }

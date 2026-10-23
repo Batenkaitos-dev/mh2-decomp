@@ -35,7 +35,7 @@
 #define PRIM_FILTER         0x08    /* filtered texture (Gfx_SetTexFilter) */
 #define PRIM_IS_3D          0x01    /* the world kinds: their y grows upward */
 
-/* A sprite to queue (Sprite_Queue), 0x4C bytes. */
+/* A sprite to queue (Sprite_Queue), 76 bytes. */
 typedef struct SprDef {
     s32 tex;                    /* 0x00: the texture slot */
     f32 pos[3];                 /* 0x04: the anchor (SPR_ALIGN_*), z the depth */
@@ -75,7 +75,7 @@ typedef struct PrimTri3DView {
     f32 st[3][2];               /* 0x30 */
 } PrimTri3DView;
 
-/* A queued primitive, 0x50 bytes (gPrims). */
+/* A queued primitive, 80 bytes (gPrims). */
 typedef struct Prim {
     u8 flags;                   /* 0x00: PRIM_* */
     u8 additive;                /* 0x01: nonzero: added to the screen; else alpha blended */
@@ -94,5 +94,15 @@ typedef struct Prim {
 
 extern Prim *gPrims;            /* PRIM_QUEUE_MAX primitives (gSysSettings.prims) */
 extern s16 gPrimCount;          /* the primitives queued this frame */
+
+void Sprite_Queue(SprDef *spr);
+void Prim_DrawAll(void);
+void Prim_Draw(Prim *prim);
+void TexRect_DrawRotated(TexRect *rect, s32 angle);
+void TexRect_DrawRotatedAt(TexRect *rect, s16 centerX, s16 centerY, u32 angle);
+void TexRect_DrawRotated2(TexRect *rect, s16 centerX, s16 centerY, s16 pivotX, s16 pivotY, u32 angle, u32 pivotAngle);
+void TexRect_Draw(TexRect *rect, s8 mode);
+void Gfx_DrawLine(s16 x, s16 y, s16 width, s16 height, s32 color);
+void Gfx_DrawRectFrame(s16 x, s16 y, s16 width, s16 height, s32 color);
 
 #endif /* SPRITE_QUEUE_H */

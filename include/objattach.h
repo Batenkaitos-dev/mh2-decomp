@@ -2,6 +2,9 @@
 #define OBJATTACH_H
 
 #include "common.h"
+#include "em.h"
+#include "player.h"
+#include "sprite.h"
 
 /* The attack kinds (ObjAttach.attackKind, the hit target's lastAttackKind):
  * how a player reacts to the hit (Player_ReactToHit). The kinds from
@@ -13,8 +16,8 @@
 enum AttackKind {
     ATTACK_BLOW = 2,         /* blows the player away (PL_REACT_BLOWN_BACK, _FORWARD) */
     ATTACK_TOSS = 3,         /* tosses the player up (PL_REACT_TOSSED_BACK, _FORWARD) */
-    ATTACK_ROAR = 4,         /* likely a roar: PL_REACT_ROAR; skills 0x8F, 0x90 and song effect 4 (PL_SONG_ROAR_GUARD) block it */
-    ATTACK_WIND = 5,         /* likely wind pressure: PL_REACT_WIND; skill 0x5B blocks it */
+    ATTACK_ROAR = 4,         /* likely a roar: PL_REACT_ROAR; skills SKILL_ROAR_GUARD_MOST, SKILL_ROAR_GUARD_ALL and song effect 4 (PL_SONG_ROAR_GUARD) block it */
+    ATTACK_WIND = 5,         /* likely wind pressure: PL_REACT_WIND; skill SKILL_WIND_GUARD_ALL blocks it */
     ATTACK_TRAP_A = 6,       /* every monster family reacts to it as to a trap; it hits only shapes with HITSHAPE_TRAP_HIT */
     ATTACK_PAINT = 7,        /* paints the monster hit (Em.painted) */
     ATTACK_HEAL = 8,         /* heals: the power is taken off the damage (ObjAttach_DamageEm, ObjAttach_DamagePlayer); the only kind that hits allies */
@@ -23,13 +26,13 @@ enum AttackKind {
     ATTACK_GIVE_ATTACK_UP = 0xB,   /* sets the player's attackDrug to 3 (ObjAttach_DamagePlayer) */
     ATTACK_GIVE_DEFENSE_UP = 0xC,  /* sets the player's defenseDrug to 6 */
     ATTACK_CURE_POISON = 0xD,      /* clears the player's poison */
-    ATTACK_WIND_WEAK = 0xE,  /* PL_REACT_WIND_SHORT; skill 0x5A or 0x5B blocks it */
-    ATTACK_ROAR_WEAK = 0xF,  /* PL_REACT_ROAR_SHORT; skill 0x8E blocks it */
+    ATTACK_WIND_WEAK = 0xE,  /* PL_REACT_WIND_SHORT; skill SKILL_WIND_GUARD_WEAK or SKILL_WIND_GUARD_ALL blocks it */
+    ATTACK_ROAR_WEAK = 0xF,  /* PL_REACT_ROAR_SHORT; skill SKILL_ROAR_GUARD_WEAK blocks it */
     ATTACK_CALM = 0x10,      /* ends the monster's rage (Em_EndRage, ObjAttach_DamageEm) */
     ATTACK_QUAKE_LONG = 0x12, /* PL_REACT_QUAKE_LONG */
     ATTACK_HOLD = 0x13,      /* the monster families' second hold reaction; hits only shapes with HITSHAPE2_HOLD_HIT */
-    ATTACK_QUAKE = 0x14,     /* likely a tremor: PL_REACT_QUAKE; skill 0xC3 blocks it */
-    ATTACK_ROAR_STRONG = 0x15, /* PL_REACT_ROAR_STRONG; only skill 0x90 blocks it */
+    ATTACK_QUAKE = 0x14,     /* likely a tremor: PL_REACT_QUAKE; skill SKILL_QUAKE_GUARD blocks it */
+    ATTACK_ROAR_STRONG = 0x15, /* PL_REACT_ROAR_STRONG; only skill SKILL_ROAR_GUARD_ALL blocks it */
     ATTACK_INHALE = 0x16,    /* pulls the player in (PL_REACT_INHALED) */
     ATTACK_TOSS_HIGH = 0x17, /* as ATTACK_TOSS (seen: the same reactions) */
     ATTACK_CURE_STATUS6 = 0x18 /* clears the player's status6Timer */
@@ -42,7 +45,7 @@ enum ObjAttachKind {
     ATTACH_PLAYER_ATTACK = 0,      /* PlayerAttack: a player's weapon hit */
     ATTACH_RATHALOS_ATTACK = 1,    /* RathalosAttack: Rathalos's and Rathian's body attacks */
     ATTACH_EM_CONTACT_ATTACK = 2,  /* EmContactAttack: Kirin's, Melynx's, Anteka's and Mosswine's (ATKF_REPORT_CONTACT);
-                                    * also BulldromeAttack: Bulldrome's charge and spin, monster kind 0x38's dash */
+                                    * also BulldromeAttack: Bulldrome's charge and spin, monster kind 56's dash */
     ATTACH_ITEM_ATTACK = 3,        /* ItemAttack: an item a player throws or places (bombs, thrown items) */
     ATTACH_FATALIS_ATTACK = 4,     /* FatalisAttack */
     ATTACH_LAOSHAN_ATTACK = 5,     /* LaoShanAttack */
@@ -70,7 +73,7 @@ enum ObjAttachKind {
     ATTACH_HERMITAUR_ATTACK = 26,  /* HermitaurAttack; also RemobraAttack (Remobra's) */
     ATTACH_BLANGONGA_ATTACK = 27,  /* BlangongaAttack: the Blangonga family's */
     ATTACH_BOOMERANG = 28,         /* Boomerang: a thrown item that curves out and flies back to the thrower */
-    ATTACH_KUSHALA_BREATH = 29,    /* KushalaBreath: likely Kushala Daora's breath, from bone 0x25: skims the floor, aimed or diving; bursts in an Explosion */
+    ATTACH_KUSHALA_BREATH = 29,    /* KushalaBreath: likely Kushala Daora's breath, from KUSH_BONE_BREATH: skims the floor, aimed or diving; bursts in an Explosion */
     ATTACH_KUSHALA_ATTACK = 30,    /* KushalaAttack: Kushala Daora's body hit zones; also TeostraAttack (Lunastra's and Teostra's) */
     ATTACH_GIANT_ATTACK = 31,      /* ShenGaorenAttack (its body and stomps) and YamaTsukamiAttack */
     ATTACH_EM_EFFECT_ATTACK = 33,  /* EmEffectAttack: a monster's beam, breath, gas or shot drawn as parts (16 types, one per monster's attack) */
@@ -86,6 +89,18 @@ enum ItemAttackMode {
     ITEM_THROWN = 0,    /* thrown from the hand: flies and lands (ItemAttack_RunThrown) */
     ITEM_PLACED = 1,    /* put down at the feet: a fuse, then it bursts (ItemAttack_RunPlaced) */
     ITEM_HOPPING = 2    /* put down, then jumps up and bursts (ItemAttack_RunHopping) */
+};
+
+/* ItemAttack's types (ItemAttack_Create's type), named so far by the item
+ * that makes them (Player_StateThrowItem, Item_UseTool). */
+enum ItemAttackType {
+    ITEMATK_LOBBED_A = 12,              /* ITEM_ID_LOBBED_A: lobbed (ItemAttack_LobSpeeds), tumbles keeping its yaw, falls faster after 15 frames */
+    ITEMATK_LOBBED_B = 13,              /* ITEM_ID_LOBBED_B, as ITEMATK_LOBBED_A */
+    ITEMATK_LOBBED_C = 14,              /* ITEM_ID_LOBBED_C, as ITEMATK_LOBBED_A */
+    ITEMATK_LOBBED_D = 15,              /* ITEM_ID_LOBBED_D, as ITEMATK_LOBBED_A */
+    ITEMATK_SMALL_BARREL_BOMB_B = 16,   /* ITEM_ID_SMALL_BARREL_BOMB_B: placed, a larger burst after its 75-frame fuse */
+    ITEMATK_LOBBED_NO_VERSUS = 21,      /* ITEM_ID_LOBBED_NO_VERSUS, as ITEMATK_LOBBED_A */
+    ITEMATK_NO_BOMB_AREA_ITEM = 22      /* ITEM_ID_NO_BOMB_AREA_ITEM: placed, two drawn parts (ItemAttack_InitParts) and its own effects */
 };
 
 /* PlacedItem's ObjAttach.type: what was set on the ground (PlacedItem_Create;
@@ -111,7 +126,7 @@ enum StageShotType {
     STAGESHOT_AREA_DROP = 5,        /* CastleGate_Run: the hit under its dropping object; hits monsters only */
     STAGESHOT_FALLING_OBJECT = 6,   /* the objects Blangonga and Rajang bring down (EmBlangonga_DropFallingObjects); also hits players */
     STAGESHOT_ARENA_STRIKE = 7,     /* Player_StateSpotStrike: rises under a monster in the Great Arena */
-    STAGESHOT_AREA_PAIR = 8         /* AreaWeapon_Run: two objects facing back (0x8000) */
+    STAGESHOT_AREA_PAIR = 8         /* AreaWeapon_Run: two objects facing back (half a turn) */
 };
 
 /* Boomerang's ObjAttach.type: how it was thrown (Player_StateThrowItem). */
@@ -127,7 +142,7 @@ enum BoomerangType {
 enum EmRangedAttackType {
     EMRANGED_FIREBALL = 0,              /* Rathalos's and Garuga's fireball; variants 1 and 2 the big one */
     EMRANGED_PLESIOTH_STREAM = 1,       /* Plesioth's water stream, held at its bone */
-    EMRANGED_KUTKU_FIREBALL_SIDE = 2,   /* the two fireballs beside Kut-Ku's main one */
+    EMRANGED_GYPCEROS_SHOT = 2,         /* the Gypceros kinds' shot (variant 1 EM_KIND_PURPLE_GYPCEROS, 0 EM_KIND_GYPCEROS), made where the Kut-Ku kinds make EMRANGED_KUTKU_FIREBALL */
     EMRANGED_KUTKU_FIREBALL = 3,        /* Kut-Ku's fireball */
     EMRANGED_GRAVIOS_BEAM = 4,          /* Gravios's beam, held at its bone */
     EMRANGED_KHEZU_CEILING_SHOT = 5,    /* Khezu's shot from the ceiling: falls, sparks on the floor */
@@ -170,13 +185,13 @@ enum EmEffectAttackType {
     EMFX_FATALIS_SWEEP_BLAST = 12,  /* EM_KIND_FATALIS_C's sweep blasts, at spots, after a ground mark */
     EMFX_FATALIS_FIREBALL = 13,     /* EM_KIND_FATALIS_C's fireball: an Explosion on the floor */
     EMFX_FATALIS_BLAST = 14,        /* EM_KIND_FATALIS_C's blasts at fixed spots, after a ground mark */
-    EMFX_BREATH_CHAIN = 15          /* a chain of links from bone 0x25: likely Lunastra's and Teostra's fire breath */
+    EMFX_BREATH_CHAIN = 15          /* a chain of links from KUSH_BONE_BREATH: likely Lunastra's and Teostra's fire breath */
 };
 
 /* Explosion's ObjAttach.type (Explosion_Create and its variants): the hit
  * zone a burst leaves. Named by their makers. A bomb's or burst's second
  * part, made by Explosion_Spawn, hits the monsters only (ATKF_NO_PLAYER).
- * Types 6, 0x23, 0x25 and 0x26 have no maker in the code. */
+ * Types 6, 35, 37 and 38 have no maker in the code. */
 enum ExplosionType {
     EXPLOSION_BOMB = 0x00,                      /* the small barrel bomb, the launched and thrown bombs, the Melynx's bombs */
     EXPLOSION_FIREBALL = 0x01,                  /* a fireball's impact (EmRangedAttack type 0) */
@@ -188,21 +203,21 @@ enum ExplosionType {
     EXPLOSION_BOWGUN_BURST_LV1 = 0x08,          /* a bowgun shot of hit kind 3 bursting after it hit */
     EXPLOSION_BURST_EM_PART = 0x09,             /* the second part of the bombs and bowgun bursts */
     EXPLOSION_LARGE_BARREL_BOMB_EM_PART = 0x0A, /* the second part of EXPLOSION_LARGE_BARREL_BOMB */
-    EXPLOSION_KUTKU_FIREBALL_SIDE = 0x0B,       /* EmRangedAttack type 2 */
-    EXPLOSION_KUTKU_FIREBALL = 0x0C,            /* EmRangedAttack type 3 */
+    EXPLOSION_GYPCEROS_SHOT = 0x0B,             /* EMRANGED_GYPCEROS_SHOT */
+    EXPLOSION_KUTKU_FIREBALL = 0x0C,            /* EMRANGED_KUTKU_FIREBALL */
     EXPLOSION_THROWN_BURST = 0x0D,              /* a thrown item bursting 16 frames after the throw */
     EXPLOSION_BOWGUN_BURST_LV2 = 0x0E,          /* as LV1, hit kind 4 */
     EXPLOSION_BOWGUN_BURST_LV3 = 0x0F,          /* as LV1, hit kind 5 */
     EXPLOSION_DROME_DEFEAT = 0x10,              /* a drome's defeat burst */
-    EXPLOSION_CEPHADROME_SHOT = 0x11,           /* EmRangedAttack type 7 */
-    EXPLOSION_FATALIS_FIREBALL = 0x12,          /* EmRangedAttack types 0xB and 0xC */
+    EXPLOSION_CEPHADROME_SHOT = 0x11,           /* EMRANGED_CEPHADROME_SHOT */
+    EXPLOSION_FATALIS_FIREBALL = 0x12,          /* EMRANGED_FATALIS_FIREBALL and EMRANGED_FATALIS_SWEEP */
     EXPLOSION_THROWN_CLOUD_A = 0x13,            /* a thrown item's cloud on the floor (one item each, A to C): 80 frames */
     EXPLOSION_SMALL_BARREL_BOMB_B = 0x14,       /* ITEM_ID_SMALL_BARREL_BOMB_B placed */
     EXPLOSION_SMALL_BARREL_BOMB_B_EM_PART = 0x15, /* its second part */
     EXPLOSION_LARGE_BARREL_BOMB_B = 0x16,       /* PLACED_LARGE_BARREL_BOMB_B */
     EXPLOSION_LARGE_BARREL_BOMB_B_EM_PART = 0x17, /* its second part */
-    EXPLOSION_KUTKU_FIREBALL_SIDE_B = 0x18,     /* EmRangedAttack type 2, the second variant */
-    EXPLOSION_GRAVIOS_SHOT = 0x19,              /* EmRangedAttack type 0xD */
+    EXPLOSION_GYPCEROS_SHOT_B = 0x18,           /* EMRANGED_GYPCEROS_SHOT, variant 1 (EM_KIND_PURPLE_GYPCEROS) */
+    EXPLOSION_GRAVIOS_SHOT = 0x19,              /* EMRANGED_GRAVIOS_SHOT */
     EXPLOSION_THROWN_CLOUD_B = 0x1A,
     EXPLOSION_THROWN_PLAYERS_ONLY = 0x1B,       /* a thrown item with a side set: hits the players only (ATKF_NO_EM) */
     EXPLOSION_KUSHALA_BREATH = 0x1C,            /* KushalaBreath's impact, by its size */
@@ -227,7 +242,7 @@ enum ObjAttachState {
     ATTACH_HIT = 3,             /* it hit a monster or a player this frame (ObjAttach_DamageEm, ObjAttach_DamagePlayer) */
     ATTACH_DEFLECTED = 5,       /* deflected: by a monster's wind (ATKF_WIND_DEFLECTS) or a hard part (ATKF_SHELL_DEFLECTS) */
     ATTACH_FREE = 6,            /* freed on the next update (ObjAttach_Free) */
-    ATTACH_DEFLECTED_AURA = 9   /* deflected by the wind of monster kinds 0x40 and 0x41 (ATKF_WIND_DEFLECTS) */
+    ATTACH_DEFLECTED_AURA = 9   /* deflected by the wind of EM_KIND_LUNASTRA and EM_KIND_TEOSTRA (ATKF_WIND_DEFLECTS) */
 };
 
 /* ObjAttach.attackFlags: set at set up (Player_TestSetFlags), tested by the
@@ -271,7 +286,7 @@ enum ObjAttachState {
 #define ATTACH_OWNER_NONE 0xFF
 
 /*
- * An object of sub_main's second object pool (0x40 objects of 0xD4 bytes,
+ * An object of sub_main's second object pool (64 objects of 212 bytes,
  * gObjAttachPool; ObjAttach_Alloc, ObjAttach_Free), attached to a player or a
  * monster: the game overlay's effects and the like. The struct is generated
  * from include/objattach.spec (tools/gen_struct.py): add fields there.
@@ -287,8 +302,8 @@ typedef struct ObjAttach {
     u8 type;                    /* 0x003: the variant within the kind (the creator's argument; the updates switch on it) */
     u8 state;                   /* 0x004: the object's state, enum ObjAttachState (each family's Update switches on it) */
     u8 step;                    /* 0x005: as Em.step: the step within the update (switch on it, counted up; 0 at set up) */
-    u8 stateVar0;               /* 0x006: as Em.stateVar0: per-kind scratch byte (switch on it, counters, 0xFF none) */
-    u8 stateVar1;               /* 0x007: as Em.stateVar1: a second per-kind scratch byte (0xFF/0xFE marks, counters) */
+    u8 stateVar0;               /* 0x006: as Em.stateVar0: per-kind scratch byte (switch on it, counters, 255 none) */
+    u8 stateVar1;               /* 0x007: as Em.stateVar1: a second per-kind scratch byte (255/254 marks, counters) */
     u8 ownerIndex;              /* 0x008: the owner's index (ObjHead.index), set with the attack row (ObjAttach_LoadOwnedRow); 0xFF: an attack with no owner (ObjAttach_LoadRow) */
     u8 keep;                    /* 0x009: not freed by ObjAttach_FreeUnkept */
     u8 idx;                     /* 0x00A: the index of the player or monster it follows (gEms, gPlayers) */
@@ -314,9 +329,9 @@ typedef struct ObjAttach {
     f32 gravity;                /* 0x058: added to velY each frame (BowgunShot, EmEffectAttack: EmEffectAttack_Gravities[type], -1.0 / -1.5) */
     f32 homingSpeed;            /* 0x05C: homing: added to the speed, grown each frame (attack_families.c); zeroed at creation by the other kinds */
     u8 hitDelay;                /* 0x060: frames before the hit window opens: the Setup functions compute it from the owner motion frames (PlayerAttack_Setup: k - motionFrame / 2 - 1); ObjAttach_UpdateTimers counts it down in hitPhase 1 */
-    u8 hitFrames;               /* 0x061: frames the hit window stays open (99: long; FatalisAttack 0x3C): ObjAttach_UpdateTimers counts it in hitPhase 2 */
+    u8 hitFrames;               /* 0x061: frames the hit window stays open (99: long; FatalisAttack row 60): ObjAttach_UpdateTimers counts it in hitPhase 2 */
     u8 power;                   /* 0x062: the attack power: ObjAttach_DamageEm (dmgf = it), ObjAttach_DamagePlayer (it * atk); BowgunShot_CalcPower, BowArrow_ApplyPower set it */
-    u8 attackKind;              /* 0x063: the attack kind, copied to the target lastAttackKind (ObjAttach_DamageEm/DamagePlayer): 7 paints (Em.painted), 8 and 0x10 special cases, 0xA hits only state-3 players (ObjAttach_HitTarget); ObjAttach_HitObjects/HitAll switch on it */
+    u8 attackKind;              /* 0x063: the attack kind (enum AttackKind), copied to the target lastAttackKind (ObjAttach_DamageEm/DamagePlayer): ATTACK_PAINT paints (Em.painted), ATTACK_HEAL and ATTACK_CALM are special cases, ATTACK_REVIVE hits only state-3 players (ObjAttach_HitTarget); ObjAttach_HitObjects/HitAll switch on it */
     u8 unk064[0x065 - 0x064];
     u8 attrs;                   /* 0x065: attribute bits ORed into the target hitAttrs (ObjAttach_DamageEm, ObjAttach_DamagePlayer): 0x80 cannot be guarded; 1 tested by ObjAttach_HitAll, 0x10 by ObjAttach_DamagePlayer */
     s8 hitYawOfs;               /* 0x066: degrees added to the object's yaw for the target's hitAngle, unless attrs 0x10 (ObjAttach_SetHitHeading) */
@@ -324,16 +339,16 @@ typedef struct ObjAttach {
     u8 hitForce;                /* 0x068: copied to the target's hitForce (ObjAttach_DamagePlayer, ObjAttach_DamageEm) */
     u8 hitMarks;                /* 0x069: mark bits ORed into the target's partFlags: 1 a critical hit (with flag 0x40), 2, 8; on a player 4 fire, 0x10 water, 0x40 thunder, 0x20 ice, 0x80 dragon pick the resistance (ObjAttach_DamagePlayer) */
     u8 hitListNo;               /* 0x06A: the index into the kind tables hitList is taken from (hitList = BlangongaAttack_HitShapes[it] and the like, Setup functions) */
-    u8 hitSe;                   /* 0x06B: the hit sound kind: 0xFF none; on a player 1 SE 0x20, others 0x21 (ObjAttach_DamagePlayer); on a monster by kind (ObjAttach_DamageEm) */
-    u16 elementFlags;           /* 0x06C: the element bits: 0x10 fire, 0x20 water, 0x40 thunder, 0x80 ice, 0x200 dragon take elementPower (ObjAttach_DamageEm); the status bits 1 status 2, 2 poison, 4 status 4, 8 status 1, 0x100 mash buildup add elementPower to the target's hit amounts, 0x400, 0x1000 and 0x800 set status 6, 7 and 8 (Em_ApplyHitStatus); ObjAttach_HitEffects picks the hit effect from them; BowArrow_ApplyCoating sets them */
+    u8 hitSe;                   /* 0x06B: the hit sound kind: 255 none; on a player 1 sound 32, others 33 (ObjAttach_DamagePlayer); on a monster by kind (ObjAttach_DamageEm) */
+    u16 elementFlags;           /* 0x06C: the element bits (ELEMF_*): ELEMF_FIRE, ELEMF_WATER, ELEMF_THUNDER, ELEMF_ICE and ELEMF_DRAGON take elementPower (ObjAttach_DamageEm); the status bits ELEMF_EM_STATUS2, ELEMF_POISON, ELEMF_EM_STATUS4, ELEMF_EM_STATUS1 and ELEMF_MASH add elementPower to the target's hit amounts, ELEMF_STATUS6, ELEMF_STATUS7 and ELEMF_STATUS8 set status 6, 7 and 8 (Em_ApplyHitStatus); ObjAttach_HitEffects picks the hit effect from them; BowArrow_ApplyCoating sets them */
     u8 elementPower;            /* 0x06E: the element value for elementFlags (ObjAttach_DamageEm: fire = it, ...) */
-    u8 hitFx;                   /* 0x06F: low 6 bits: the hit effect kind (HitSplash_CreateByHitFx, HitSpark_Spawn in ObjAttach_HitEffects); 0x80 a critical hit, 0x40 a critical miss (the debug prints of ObjAttach_DamageEm) */
+    u8 hitFx;                   /* 0x06F: low 6 bits: the hit effect kind (HitSplash_CreateByHitFx, HitSpark_Spawn in ObjAttach_HitEffects); HITFX_CRITICAL a critical hit, HITFX_WEAK a weak hit (the debug prints of ObjAttach_DamageEm) */
     u8 hitStop;                 /* 0x070: the hit stop: the hitter hitStopAdd (times 3 in some cases) and hitSlowTimer, the target hitStopAdd (ObjAttach_DamageEm, ObjAttach_DamagePlayer) */
     u8 swordGaugeAdd;           /* 0x071: long sword: the spirit gauge gained by the hit, times gSwordGaugeHitFactors[hitKind] (LongSword_AddGauge in ObjAttach_DamageEm) */
     u8 multiHit;                /* 0x072: low 4 bits: the hits left; high 4 bits: the delay before the next (ObjAttach_NextMultiHit reopens the hit window with a new hitId) */
     u8 nextRow;                 /* 0x073: the attack row loaded when the hit window closes, 0: none (ObjAttach_UpdateTimers runs ObjAttach_LoadOwnedRow with it and reopens the window); AttackRow's nextRow */
     u8 stun;                    /* 0x074: the stun amount: the target status5Hit (ObjAttach_DamageEm), stun (ObjAttach_DamagePlayer) */
-    u8 mvFramesA;               /* 0x075: frames of the first motion-value phase, counted down while the window is open (0xFF: held); ObjAttach_DamageEm picks motion-value kind 0 at 0xFF, 1 while it runs */
+    u8 mvFramesA;               /* 0x075: frames of the first motion-value phase, counted down while the window is open (255: held); ObjAttach_DamageEm picks motion-value kind 0 at 255, 1 while it runs */
     u8 mvFramesB;               /* 0x076: frames of the second phase, counted down once mvFramesA is 0; ObjAttach_DamageEm picks kind 2 while it runs (3 on a shape of zone 1) */
     u8 unk077[0x078 - 0x077];
     u16 attackFlags;            /* 0x078: ATKF_* bits, set by the Setup functions (Player_TestSetFlags) and tested by the hit and damage functions (Player_TestFlags); cleared by ObjAttach_Free */
@@ -359,14 +374,14 @@ typedef struct ObjAttach {
     struct DrawSlot *drawSlotBuf;/* 0x0BC: the draw slot of drawSlot (DrawSlot_Get/DrawSlotB_Get(drawSlot)), NULL: none; drawn at its pos (EmImpactAttack_Run) */
     s16 drawSlot;               /* 0x0C0: the draw slot, -1: none (DrawSlot_Alloc/DrawSlotB_Alloc in the Setup functions) */
     u8 unk0C2[0x0C4 - 0x0C2];
-    void *hitBy;                /* 0x0C4: set when another object hit it: gPlayers or gEms by the hitter's isEm, at its own idx (the game's indexing), NULL when the hitter's ownerIndex is 0xFF (ObjAttach_HitObjects) */
+    void *hitBy;                /* 0x0C4: set when another object hit it: gPlayers or gEms by the hitter's isEm, at its own idx (the game's indexing), NULL when the hitter's ownerIndex is ATTACH_OWNER_NONE (ObjAttach_HitObjects) */
     f32 hitScale;               /* 0x0C8: the hit capsule scale: Capsule_FromPoints(pos, pos2, hitList, .., it) (1.0 for the object hit) */
     u16 yaw;                    /* 0x0CC: its yaw (the owner's rotation Y, Em/Player +0xA4, when made; +0x8000 turns it round) */
     u16 area;                   /* 0x0CE: the area it is in (the owner's +0x680); compared with the current area, gScene.unk014 */
     u8 hitKind;                 /* 0x0D0: the hitter's hitKind at the hit (ObjAttach_DamageEm), 0 on a player (ObjAttach_DamagePlayer); ObjAttach_HitEffects picks the effect by it */
     u8 side;                    /* 0x0D1: the owner side (Em/Player side, PlayerAttack_Create, Explosion_Create; copied to spawned objects): ObjAttach_DamagePlayer Side_Match(t->side, it) */
-    u8 powerPct;                /* 0x0D2: nonzero: power is scaled by this percentage on a hit (ObjAttach_DamageEm, ObjAttach_DamagePlayer); the Explosion family sets 0xFA */
-    u8 hitSpan;                 /* 0x0D3: LaoShanAttack type 0x47 (Lao-Shan's): twice its hitFrames (LaoShanAttack_CreateSpan's last argument; LaoShanAttack_Setup halves it); 0 from the other LaoShanAttack creators */
+    u8 powerPct;                /* 0x0D2: nonzero: power is scaled by this percentage on a hit (ObjAttach_DamageEm, ObjAttach_DamagePlayer); the Explosion family sets 250 */
+    u8 hitSpan;                 /* 0x0D3: LaoShanAttack type 71 (Lao-Shan's): twice its hitFrames (LaoShanAttack_CreateSpan's last argument; LaoShanAttack_Setup halves it); 0 from the other LaoShanAttack creators */
 } ObjAttach;
 typedef char ObjAttach_size_check[(sizeof(ObjAttach) == 0xD4) ? 1 : -1];
 
@@ -444,7 +459,7 @@ typedef struct BowgunShotBuf {
     f32 scale;                  /* 0x1C: the charge scale (BowgunShot_Create's; BowgunShot_Scatter passes it on): the power is attackFactor times it */
     u8 *levelRow;               /* 0x20: the bowgun's level row of gGunLevelRows (24 bytes: f32 values at +4 to +0x14) */
     u8 level;                   /* 0x24: the bowgun's level (low 4 bits; GUN_OPT_SILENCER adds gSilencerShotSpeeds, GUN_OPT_BARREL gBarrelHeavyShotSpeeds or gBarrelLightShotSpeeds) */
-    u8 skills;                  /* 0x25: BowgunShot_InitSkills: 1, 2, 4, 8 power skills; 0x10 range x2, 0x20 range x0.5 */
+    u8 skills;                  /* 0x25: BowgunShot_InitSkills: 1, 2, 4 the SKILL_AMMO_POWER_* skills, 8 SKILL_STATUS_PLUS; 0x10 SKILL_SPREAD_DOUBLE, 0x20 SKILL_SPREAD_HALF (the random deviation x2, x0.5) */
     u8 crit;                    /* 0x26: 1 a critical (Player_GetWeaponStat 8, by chance), 2 a weak hit */
     u8 isLightBowgun;           /* 0x27: 0 when the bowgun's Equip_GetClass is 1, else 1 */
     BowgunShotGlow glow;        /* 0x28 */
@@ -458,7 +473,7 @@ typedef struct BowgunShotBuf {
 typedef struct TeostraBlastRingBuf {
     u8 phase;                   /* 0x00: 0, 1, 2 (TeostraBlastRing_PhaseFrames[phase] frames each); TeostraBlastRing_Draw's model and colour keys */
     u8 pad01[2];
-    u8 seDone;                  /* 0x03: 1 once phase 0's end played its sound (Em_PlaySeChecked 0x24) */
+    u8 seDone;                  /* 0x03: 1 once phase 0's end played its sound (Em_PlaySeChecked, sound 36) */
     s16 rotZ;                   /* 0x04: the model's turn about z (random at set up and when phase 2 starts) */
     s16 spin;                   /* 0x06: rotZ's step per frame in phase 2 */
     f32 rise;                   /* 0x08: pos[1]'s step per frame in phase 2 */
@@ -466,5 +481,329 @@ typedef struct TeostraBlastRingBuf {
     f32 origin[3];              /* 0x10: where it was made (the owner's bone 1 for the first piece); the next piece spawns there */
 } TeostraBlastRingBuf;
 typedef char TeostraBlastRingBuf_size_check[(sizeof(TeostraBlastRingBuf) == 0x1C) ? 1 : -1];
+
+void Explosion_Init(ObjAttach *o);
+void Explosion_CreateAt(f32 *pos, s32 explType, u16 area, u8 bombBoost);
+void Explosion_Create(Player *owner, f32 *pos, s32 explType);
+void Explosion_CreateInArea(Player *owner, f32 *pos, s32 explType, u16 area);
+void Explosion_Spawn(ObjAttach *src);
+void Explosion_Update(ObjAttach *o);
+void Explosion_Setup(ObjAttach *o);
+void Explosion_Run(ObjAttach *o);
+void Explosion_Hit(ObjAttach *o);
+void Explosion_End(ObjAttach *o);
+void Explosion_Free(ObjAttach *o);
+void Explosion_BoostPower(ObjAttach *o);
+void PlacedItem_Create(f32 *pos, u8 placedType, u16 area, Player *pl);
+void PlacedItem_Update(ObjAttach *o);
+extern void *Explosion_RowsPtr;
+extern u8 Explosion_TakesOwnerSide[48];
+void PlacedItem_InitTrapParts(ObjAttach *o);
+void PlacedItem_Setup(ObjAttach *o);
+u8 PlacedItem_RunTrap(ObjAttach *o);
+void PlacedItem_FollowBone(ObjAttach *o);
+void PlacedItem_Run(ObjAttach *o);
+void PlacedItem_Hit(ObjAttach *o);
+void PlacedItem_End(ObjAttach *o);
+void PlacedItem_Free(ObjAttach *o);
+void PlacedItem_DrawMain(DrawSlot *slot);
+void PlacedItem_Draw(DrawSlot *slot);
+void VespoidAttack_Create(Em *em, s8 kind);
+void VespoidAttack_Update(ObjAttach *o);
+void VespoidAttack_Setup(ObjAttach *o);
+void VespoidAttack_Run(ObjAttach *o);
+void VespoidAttack_End(ObjAttach *o);
+void VespoidAttack_Free(ObjAttach *o);
+void VespoidAttack_Draw(ObjAttach *o);
+void PitfallTrap_Create(Player *pl, s8 kind);
+void PitfallTrap_Update(ObjAttach *o);
+void PitfallTrap_Setup(ObjAttach *o);
+void PitfallTrap_Run(ObjAttach *o);
+void PitfallTrap_End(ObjAttach *o);
+void PitfallTrap_Free(ObjAttach *o);
+void PitfallTrap_DrawModel(ModelMatSet *set, f32 *mtx);
+void PitfallTrap_Draw(DrawSlot *slot);
+void PitfallTrap_PlaySound(ObjAttach *o, s16 kind);
+void VelocipreyAttack_Create(Em *em, s8 kind);
+void VelocipreyAttack_Update(ObjAttach *o);
+void VelocipreyAttack_Setup(ObjAttach *o);
+void VelocipreyAttack_Run(ObjAttach *o);
+void VelocipreyAttack_End(ObjAttach *o);
+void VelocipreyAttack_Free(ObjAttach *o);
+void EmBomb_Create(Em *em, s8 kind);
+void EmBomb_Follow(ObjAttach *o, Em *em);
+void EmBomb_Update(ObjAttach *o);
+void EmBomb_InitTimers(ObjAttach *o);
+void EmBomb_RunHeld(ObjAttach *o);
+void EmBomb_RunMelynxThrown(ObjAttach *o);
+void EmBomb_RunShakalakaThrown(ObjAttach *o);
+void EmBomb_Setup(ObjAttach *o);
+void EmBomb_Run(ObjAttach *o);
+void EmBomb_End(ObjAttach *o);
+void EmBomb_Free(ObjAttach *o);
+void EmBomb_Draw(DrawSlot *slot);
+void DromeAttack_Create(Em *em, s8 kind);
+void DromeAttack_Update(ObjAttach *o);
+void DromeAttack_Setup(ObjAttach *o);
+void DromeAttack_Run(ObjAttach *o);
+void DromeAttack_End(ObjAttach *o);
+void DromeAttack_Free(ObjAttach *o);
+void KhezuAttack_Create(Em *em, s8 kind);
+void KhezuAttack_Update(ObjAttach *o);
+void KhezuAttack_Setup(ObjAttach *o);
+void KhezuAttack_Run(ObjAttach *o);
+void KhezuAttack_End(ObjAttach *o);
+void KhezuAttack_Free(ObjAttach *o);
+void KutkuAttack_Create(Em *em, s8 kind);
+void KutkuAttack_CreateFlash(Em *em, s8 kind);
+void KutkuAttack_Update(ObjAttach *o);
+void KutkuAttack_Setup(ObjAttach *o);
+void KutkuAttack_Run(ObjAttach *o);
+void KutkuAttack_End(ObjAttach *o);
+void KutkuAttack_Free(ObjAttach *o);
+void DiablosAttack_Create(Em *em, s8 kind);
+void DiablosAttack_Update(ObjAttach *o);
+void DiablosAttack_Setup(ObjAttach *o);
+void DiablosAttack_Run(ObjAttach *o);
+void DiablosAttack_End(ObjAttach *o);
+void DiablosAttack_Free(ObjAttach *o);
+void GraviosAttack_Create(Em *em, s8 kind);
+void GraviosAttack_Update(ObjAttach *o);
+void GraviosAttack_Setup(ObjAttach *o);
+void GraviosAttack_Run(ObjAttach *o);
+void GraviosAttack_End(ObjAttach *o);
+void GraviosAttack_Free(ObjAttach *o);
+void PlesiothAttack_Create(Em *em, s8 kind);
+void PlesiothAttack_Update(ObjAttach *o);
+void PlesiothAttack_Setup(ObjAttach *o);
+void PlesiothAttack_Run(ObjAttach *o);
+void PlesiothAttack_End(ObjAttach *o);
+void PlesiothAttack_Free(ObjAttach *o);
+void CephadromeAttack_Create(Em *em, s32 kind);
+void CephadromeAttack_Update(ObjAttach *o);
+void CephadromeAttack_Setup(ObjAttach *o);
+void CephadromeAttack_Run(ObjAttach *o);
+void CephadromeAttack_End(ObjAttach *o);
+void CephadromeAttack_Free(ObjAttach *o);
+void StageShot_CreateForPlayer(Player *pl, u8 kind);
+void StageShot_CreateAtSpot(Em *em, s32 kind, s32 spot);
+void StageShot_Update(ObjAttach *o);
+void StageShot_Setup(ObjAttach *o);
+void StageShot_Run(ObjAttach *o);
+void StageShot_Hit(ObjAttach *o);
+void StageShot_End(ObjAttach *o);
+void StageShot_Free(ObjAttach *o);
+void StageShot_Draw(DrawSlot *slot);
+void StageShot_PlaySound(ObjAttach *o, s16 event);
+s32 StageShot_FindSpot(f32 *from, f32 *pos, u16 *ang);
+void StageShot_CamShake(ObjAttach *o);
+void EmBlangonga_DropFallingObjects(Em *em);
+void CephalosAttack_Create(Em *em, s32 kind);
+void CephalosAttack_Update(ObjAttach *o);
+void CephalosAttack_Setup(ObjAttach *o);
+void CephalosAttack_Run(ObjAttach *o);
+void CephalosAttack_End(ObjAttach *o);
+void CephalosAttack_Free(ObjAttach *o);
+void Bow_FireArrows(Player *pl, s32 unused);
+void BowArrow_Fire(Player *pl, s16 shot);
+void BowArrow_Update(ObjAttach *o);
+void BowArrow_Setup(ObjAttach *o);
+void BowArrow_Move(ObjAttach *o);
+void BowArrow_Run(ObjAttach *o);
+void BowArrow_End(ObjAttach *o);
+void BowArrow_Free(ObjAttach *o);
+void BowArrow_Hit(ObjAttach *o);
+void BowArrow_Deflect(ObjAttach *o);
+void BowArrow_Fall(ObjAttach *o);
+u8 BowArrow_BounceStep(ObjAttach *o);
+void BowArrow_Draw(DrawSlot *slot);
+void Player_WeaponElementFlags(void *pl, u16 *flags, s8 *level);
+void BowArrow_ApplyCoating(ObjAttach *o, u8 coating, u8 stab);
+void BowArrow_ApplyPower(ObjAttach *o);
+s8 BowArrow_StepEvents(ObjAttach *o);
+void BowArrow_ApplyEvent(ObjAttach *o);
+u16 BowArrow_MulAddShift(u16 randBits, u16 ownerMotion, s32 mul, s32 shift);
+f32 BowArrow_BitsToFrac(u16 randBits, s32 bits);
+f32 BowArrow_BitsToSignedFrac(u16 value, u16 bits);
+void BowArrow_FlightParams(s16 idx, s32 *vel, f32 *gravity, s16 *straightFrames);
+void GarugaAttack_Create(Em *em, s8 kind);
+void GarugaAttack_CreateForEffects(Em *em, s8 kind);
+void GarugaAttack_Update(ObjAttach *o);
+void GarugaAttack_Setup(ObjAttach *o);
+void GarugaAttack_Run(ObjAttach *o);
+void GarugaAttack_End(ObjAttach *o);
+void GarugaAttack_Free(ObjAttach *o);
+void HermitaurAttack_Create(Em *em, s32 kind);
+void HermitaurAttack_Update(ObjAttach *o);
+void HermitaurAttack_Setup(ObjAttach *o);
+void HermitaurAttack_Run(ObjAttach *o);
+void HermitaurAttack_End(ObjAttach *o);
+void HermitaurAttack_Free(ObjAttach *o);
+void BlangongaAttack_Create(Em *em, s32 kind);
+void BlangongaAttack_Update(ObjAttach *o);
+void BlangongaAttack_Setup(ObjAttach *o);
+void BlangongaAttack_Run(ObjAttach *o);
+void BlangongaAttack_End(ObjAttach *o);
+void BlangongaAttack_Free(ObjAttach *o);
+void Boomerang_Create(Em *thrower, u8 kind, u8 returns);
+void Boomerang_Update(ObjAttach *o);
+void Boomerang_Setup(ObjAttach *o);
+void Boomerang_Hit(ObjAttach *o);
+void Boomerang_Run(ObjAttach *o);
+void Boomerang_End(ObjAttach *o);
+void Boomerang_Free(ObjAttach *o);
+void Boomerang_Draw(DrawSlot *drawSlot);
+
+void BowgunShot_Scatter(ObjAttach *obj, u8 *params, f32 power);
+void BowgunShot_Init(ObjAttach *obj);
+void BowgunShot_Fly(ObjAttach *shot);
+void BowgunShot_Hit(ObjAttach *shot);
+void BowgunShot_Deflect(ObjAttach *shot);
+void BowgunShot_Fall(ObjAttach *shot);
+u8 BowgunShot_BounceStep(ObjAttach *shot);
+void BowgunShot_DrawModel(DrawSlot *slot);
+void BowgunShot_Update(ObjAttach *shot);
+void BowgunShot_Setup(ObjAttach *shot);
+void BowgunShot_Run(ObjAttach *shot);
+void BowgunShot_End(ObjAttach *shot);
+void BowgunShot_Free(ObjAttach *shot);
+void BowgunShot_Draw(DrawSlot *slot);
+void BowgunShot_InitWeapon(BowgunShotBuf *buf, Player *pl);
+void BowgunShot_InitSkills(BowgunShotBuf *buf, Player *pl);
+void BowgunShot_CalcPower(ObjAttach *shot);
+s32 BowgunShot_UpdatePowerStage(ObjAttach *shot);
+void BowgunShot_ApplyStage(ObjAttach *shot);
+void BowgunShot_DrawStreak(ObjAttach *shot);
+u16 BowgunShot_StepRandBits(u16 randBits, u16 step, s32 mul, s32 shift);
+f32 BowgunShot_BitsToFrac(u16 randBits, s32 bits);
+f32 BowgunShot_BitsToSignedFrac(u16 value, u16 bits);
+void BowgunShot_BoneLaunchPos(f32 *out, Player *pl, s32 *angles, s16 bone);
+void BowgunShot_PlaySe(ObjAttach *shot, s16 kind);
+void BowgunShot_GlowAlloc(ObjAttach *shot);
+void BowgunShot_GlowRun(ObjAttach *shot);
+void BowgunShot_GlowFree(ObjAttach *shot);
+void BowgunShot_GlowDraw(DrawSlot *slot);
+void EmImpactAttack_Update(ObjAttach *impact);
+void EmImpactAttack_Setup(ObjAttach *impact);
+void EmImpactAttack_Run(ObjAttach *impact);
+void EmImpactAttack_End(ObjAttach *impact);
+void EmImpactAttack_Free(ObjAttach *impact);
+void EmRangedAttack_CreateAtBoneTimed(Em *em, s32 bone, s32 atkType, s32 variant, s32 pitch, s32 yawOfs, s32 frames);
+void EmRangedAttack_Update(ObjAttach *atk);
+void EmRangedAttack_StartAttackRow(ObjAttach *atk, s32 owner);
+void EmRangedAttack_Setup(ObjAttach *atk);
+void EmRangedAttack_Run(ObjAttach *atk);
+void EmRangedAttack_Hit(ObjAttach *atk);
+void EmRangedAttack_End(ObjAttach *atk);
+void EmRangedAttack_Free(ObjAttach *atk);
+void EmRangedAttack_DrawParts(DrawSlot *slot);
+void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos);
+void EmRangedAttack_AttachToBone(ObjAttach *atk, u8 *buf);
+void EmRangedAttack_FloorCrossing(ObjAttach *atk, ObjAttach *bufView, f32 *out);
+void EmRangedAttack_Billboard(f32 *dst, void *pos);
+void EmRangedAttack_KirinNextStrike(ObjAttach *atk, u8 *buf);
+void EmRangedAttack_KeepStrikePos(u8 *atk, u8 *buf);
+extern void *EmRangedAttack_RowsPtr;
+extern s16 EmRangedAttack_RowBase[32];
+extern f32 EmRangedAttack_BoneOfs[76];
+extern f32 EmRangedAttack_RemobraSpitScales[4];
+
+void EmEffectAttack_CreateShengaoren(Em *em, s32 attackType, u16 area, s32 pitch, s32 yaw);
+void EmEffectAttack_CreateTimed(Em *em, s32 type, s32 variant, s32 pitch, s32 yaw, s16 frames);
+void *EmEffectAttack_CreateDescentBlast(Em *em, s16 type, s16 spot, s32 pitch, s32 yaw);
+void EmEffectAttack_CreateChain(Em *em, s32 attackType, s32 variant, s32 pitch, s32 yaw);
+void EmEffectAttack_Update(ObjAttach *o);
+void EmEffectAttack_InitParts(ObjAttach *o);
+void EmEffectAttack_Setup(ObjAttach *o);
+s32 EmEffectAttack_RunChain(ObjAttach *o);
+void EmEffectAttack_Run(ObjAttach *o);
+void EmEffectAttack_Hit(ObjAttach *o);
+void EmEffectAttack_End(ObjAttach *o);
+void EmEffectAttack_Free(ObjAttach *o);
+void EmEffectAttack_DrawPart(DrawSlot *d);
+void EmEffectAttack_Impact(ObjAttach *o, s16 sunk, f32 *pos);
+void EmEffectAttack_PlaceAtBone(ObjAttach *o, u16 *ang);
+f32 EmEffectAttack_ChainGrowth(ObjAttach *o);
+extern void *EmEffectAttack_RowsPtr;
+extern s16 EmEffectAttack_YamaInhaleDelays[8];
+extern s16 EmEffectAttack_DaimyoJetFrames[8];
+extern s16 EmEffectAttack_DaimyoJetDelays[8];
+extern u8 EmEffectAttack_CongalalaGasKinds[12];
+extern u16 EmEffectAttack_CongalalaGasStarts[16];
+extern u16 EmEffectAttack_FatalisBlastVariantRolls[4];
+extern s16 EmEffectAttack_FatalisBlastFrames[6];
+extern void *EmEffectAttack_ScaleKeys[40];
+extern struct ColorKey *EmEffectAttack_ColorKeys[48];
+extern s16 EmEffectAttack_PartCounts[16];
+extern s16 EmEffectAttack_ScaleKeyBase[16];
+extern s16 EmEffectAttack_ColorKeyBase[16];
+extern u16 *EmEffectAttack_PartModels[16];
+extern s16 EmEffectAttack_MotionBase[16];
+extern f32 EmEffectAttack_Speeds[16];
+extern f32 EmEffectAttack_Gravities[16];
+extern u8 EmEffectAttack_Bones[16];
+extern f32 EmEffectAttack_BoneOfs[48];
+
+void GunlanceBlast_Create(Player *pl, s8 attackType);
+void GunlanceBlast_Update(ObjAttach *blast);
+void GunlanceBlast_PlaceOnWeapon(ObjAttach *blast, Player *pl);
+void GunlanceBlast_Setup(ObjAttach *blast);
+void GunlanceBlast_Run(ObjAttach *blast);
+void GunlanceBlast_End(ObjAttach *blast);
+void GunlanceBlast_Free(ObjAttach *blast);
+void TeostraBlastRing_Update(ObjAttach *burst);
+void TeostraBlastRing_Setup(ObjAttach *burst);
+void TeostraBlastRing_Run(ObjAttach *burst);
+void TeostraBlastRing_End(ObjAttach *burst);
+void TeostraBlastRing_Free(ObjAttach *burst);
+void TeostraBlastRing_Draw(DrawSlot *drawSlot);
+f32 TeostraBlastRing_ScatterFromBits(u16 bits, u16 bitPos);
+void ChameleosAttack_Create(Em *em, s32 attackType);
+void ChameleosAttack_Update(ObjAttach *attack);
+void ChameleosAttack_Setup(ObjAttach *attack);
+void ChameleosAttack_Run(ObjAttach *attack);
+void ChameleosAttack_End(ObjAttach *attack);
+void ChameleosAttack_Free(ObjAttach *attack);
+void RemobraAttack_Create(Em *em, u8 attackType);
+void RemobraAttack_Update(ObjAttach *attack);
+void RemobraAttack_Setup(ObjAttach *attack);
+void RemobraAttack_Run(ObjAttach *attack);
+void RemobraAttack_End(ObjAttach *attack);
+void RemobraAttack_Free(ObjAttach *attack);
+
+/*
+ * An attack row (24 bytes): a family's attack table (the X_Rows that
+ * X_RowsPtr points to) holds one per attack, and ObjAttach_LoadRow and
+ * ObjAttach_LoadOwnedRow (sub_main's hit_setup.c) copy the row picked by
+ * the creator's type word by word over ObjAttach's fields from hitDelay
+ * (0x060) to 0x077. Each field is the ObjAttach field of its name
+ * (ObjAttach's comments above say what the code does with it).
+ */
+typedef struct AttackRow {
+    u8 hitDelay;                /* 0x00: ObjAttach 0x060 */
+    u8 hitFrames;               /* 0x01 */
+    u8 power;                   /* 0x02 */
+    u8 attackKind;              /* 0x03: enum AttackKind */
+    u8 unk04;                   /* 0x04: ObjAttach unk064 */
+    u8 attrs;                   /* 0x05 */
+    s8 hitYawOfs;               /* 0x06 */
+    u8 unk07;                   /* 0x07: ObjAttach unk067 */
+    u8 hitForce;                /* 0x08 */
+    u8 hitMarks;                /* 0x09 */
+    u8 hitListNo;               /* 0x0A */
+    u8 hitSe;                   /* 0x0B */
+    u16 elementFlags;           /* 0x0C: ELEMF_* bits */
+    u8 elementPower;            /* 0x0E */
+    u8 hitFx;                   /* 0x0F */
+    u8 hitStop;                 /* 0x10 */
+    u8 swordGaugeAdd;           /* 0x11 */
+    u8 multiHit;                /* 0x12 */
+    u8 nextRow;                 /* 0x13: the row loaded when the hit window closes, 0: none */
+    u8 stun;                    /* 0x14 */
+    u8 mvFramesA;               /* 0x15: a frame count, halved like hitDelay; 255 kept */
+    u8 mvFramesB;               /* 0x16: a frame count, halved like hitDelay */
+    u8 unk17;                   /* 0x17: ObjAttach unk077 */
+} AttackRow;
+typedef char AttackRow_size_check[(sizeof(AttackRow) == 0x18) ? 1 : -1];
 
 #endif /* OBJATTACH_H */

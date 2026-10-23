@@ -4,7 +4,8 @@
  * trader's.
  *
  * A Plesioth runs a state machine (include/em_plesioth.h names the states
- * and motions; include/em.h the groups). It lives in water and on land:
+ * and motions, the bones (PLES_BONE_*) and the sounds the code shows
+ * (PLES_SE_*); include/em.h the groups). It lives in water and on land:
  * EM_STANCE_UNDER under water, where the group of the flying families
  * (EM_GROUP_FLY) holds its swimming states, and EM_STANCE_GROUND ashore.
  * EmPlesioth_Update moves it between the two by the water's depth
@@ -25,173 +26,45 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_plesioth.h"
+#include "objattach.h"
 #include "em_cephadrome.h"
 #include "player.h"
 #include "area.h"
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
+#include "camera.h"
+#include "capsule.h"
+#include "fishing.h"
+#include "sound.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "vibration.h"
+#include "spark_fx.h"
+#include "vec_math.h"
+#include "em_script.h"
 
-void EmPlesioth_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus1(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmApceros_ChangeState, EmPlesioth_ChangeState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-void QuestEm_Captured(Em *em);
-void QuestEm_Hunted(Em *em);
-u16 Rand_Next(s32 stream);
-void EmRangedAttack_CreateAtBoneTimed(Em *, s32, s32, s32, s32, s32, s32);
-void Em_MoveRotated(Em *em, void *src);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
-void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_SetTrapTimeGoal(Em *em);
-void Em_ApplyAreaValues(Em *em);
-void Em_ClearPoison(Em *em);
-void Em_SetHold2(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void EmPlesioth_Init(Em *);
-void EmPlesioth_SetStance(Em *, u8, u8);
-void EmPlesioth_LeapOutOfWater(Em *, EmWork *);
-void EmPlesioth_Captured(Em *, EmWork *);
-void EmPlesioth_EntranceScene(Em *, EmWork *);
-void EmPlesioth_Die(Em *, EmWork *);
-void EmPlesioth_DieHeld(Em *, EmWork *);
-void EmPlesioth_DieUnder(Em *, EmWork *);
-void EmPlesioth_DieAshore(Em *, EmWork *);
-void EmPlesioth_RunIdleState(Em *em, EmWork *work);
-void EmPlesioth_RunSwimState(Em *, EmWork *);
-void EmPlesioth_RunReactState(Em *em, EmWork *work);
-void EmPlesioth_MotionEffects(Em *, EmWork *);
-void EmPlesioth_UpdateFins(Em *em, EmWork *work);
-void EmPlesioth_SpawnWakeEvery4(Em *em, f32 scale);
-void EmPlesioth_SpawnSurfaceSplash(Em *em, f32 scale);
-void EmPlesioth_SpawnWakeEvery8(Em *em, f32 scale);
-void EmPlesioth_StartCurves(Em *em, u8 kind);
-u8 EmPlesioth_UpdateCurves(Em *);
-s32 EmPlesioth_OverDeepWater(Em *em, u8 arg1);
-void AlertMark_Create(void *owner, s16 v, u8 k);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale), the calls in EmPlesioth_HeldStatus compile differently */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void CamShake_ReqAIf(Em *obj, s32 i);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Player_ClearAccel2(void *obj);
-void Motion_InitTime(void *p, s16 step);
-u8 Player_InCurrentArea(void *obj);
-void Shadow_Spawn(void *obj, s16 type);
-void Effect08_Spawn(f32 *pos, s32 k, s32 b, f32 scale);
 extern EmTurnParams EmPlesioth_TurnParams[3];
-void Em_TargetPlayerInRange(Em *);
-void Versus_MarkDefeat(Em *);
-s8 QuestEm_Appear(Em *em);
-void Em_ResetToBasePose(Em *em);
-void Em_BreakPart(Em *em, s32 part);
 void Em_EndAllStatus(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_CheckRageByHp(Em *em, s16 n);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-void Em_SetTargetAngle(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_StartRage(Em *em);
-void Em_StartPendingRage(Em *em);
-void Em_ResetNotice(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void EmPlesioth_SetMoveState(Em *em, u16 state, u8 mode);
-void EmPlesioth_SetSwimState(Em *em, u16 state, u8 mode);
-void EmPlesioth_SetAttackState(Em *em, u16 state, u8 mode);
-u8 EmPlesioth_NextAreaPoint(Em *em, f32 *out);
-void EmPlesioth_SetIdleState(Em *em, u16 state, u8 mode);
-void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_AddNeed2(Em *em, s32 n);
-void Em_ClearNeed1State(Em *em);
-void Em_ClearNeed2State(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's s16 (void *obj, u8 state, u8 sub), the calls in EmTrader_TurnToYaw and EmPlesioth_WaitForBait compile differently */
 s32 Player_IsState(void *obj, s32 group, s32 state);
-void MinePoint_Remove(s32);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-void Em_SetPartScaled(Em *em, s32 bit);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void EmTail_Create(Em *);
-void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant);
-void EmPlesioth_KnockDown(Em *em, EmWork *work, s16 variant);
-void EmPlesioth_FallFromAir(Em *em, EmWork *work);
-void EmPlesioth_FallBlinded(Em *em, EmWork *work);
-void EmPlesioth_PulledAshore(Em *em, EmWork *work);
-void EmPlesioth_Status1Under(Em *em, EmWork *work);
-void EmPlesioth_LandFlop(Em *em, EmWork *work, u8 variant);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
 extern EmCurveKey *EmPlesioth_VelYCurves[];
 extern EmCurveKey *EmPlesioth_SpeedCurves[];
 extern u16 EmPlesioth_FinFoldTarget[];
-s32 Obj_SameArea(void *obj, Player *b);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 struct EmIdEntry;
 f32 *Em_AreaEntryValue(Em *em, struct EmIdEntry *entry);
-s32 Em_UpdateCombatTimer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-u16 Area_DayId(u16 id);
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-void Em_SetTrapTime(Em *em, u8 *p);
-void Em_SetStatus1Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetKindTimer(Em *em);
-void EmCephadrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmPlesioth_RunState(Em *em, EmWork *work);
-s32 Player_IsLocal(void *obj);
-s32 Lure_PlayerHasMonsterBait(void *pl);
-void Vib_StartLocal(void *port, s32 i);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void CamReq_PlesiothScene(void *arg);
 extern s16 gEmCombatInit[];
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
-void PlesiothAttack_Create(Em *em, s8 kind);
-void EmPlesioth_MotionSounds(Em *em, EmWork *work);
-void EmPlesioth_SetFinMode(Em *em, EmWork *work, s32 mode);
-void EmPlesioth_SpawnLandingDust(Em *em);
 /* end of prototypes */
 
 /*
@@ -206,430 +79,430 @@ void EmPlesioth_MotionSounds(Em *em, EmWork *work)
     prevMotion = work->prevMotion;
     switch (prevMotion) {
     case EM_MOTION_ID(0, PLES_MOT_IDLE):
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, Sound_RandomSe(0x21, 2, 0x21, 2), 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x19A, Sound_RandomSe(0x21, 2, 0x21, 2), 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 64, 32, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, Sound_RandomSe(33, 2, 33, 2), PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 410, Sound_RandomSe(33, 2, 33, 2), PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 52, PLES_SE_STEP, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, PLES_SE_STEP, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_RUN):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x56, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 6, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 10, 86, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 6, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, 6, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 6, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 100, 6, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_TURN_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 26, PLES_SE_STEP, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, PLES_SE_STEP, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_TURN_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 26, PLES_SE_STEP, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, PLES_SE_STEP, PLES_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIMP):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x59, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 6, 89, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 6, 4, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 0, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 18, PLES_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0xB):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
+    case EM_MOTION_ID(0, 11):
+        Em_PlaySeAtBoneOnFrame(em, 14, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 18, 11, 12);
+        Em_PlaySeAtBoneOnFrame(em, 70, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 66, 11, 12);
+        Em_PlaySeAtBoneOnFrame(em, 122, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 126, 11, 12);
         break;
-    case EM_MOTION_ID(0, 0x12):
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 8, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
+    case EM_MOTION_ID(0, 18):
+        Em_PlaySeAtBoneOnFrame(em, 40, 8, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, 6);
+        Em_PlaySeAtBoneOnFrame(em, 30, 13, 12);
+        Em_PlaySeAtBoneOnFrame(em, 82, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 86, 11, 12);
+        Em_PlaySeAtBoneOnFrame(em, 136, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 140, 11, 12);
+        Em_PlaySeAtBoneOnFrame(em, 182, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 186, 11, 12);
         break;
-    case EM_MOTION_ID(0, 0x13):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 9, 0);
+    case EM_MOTION_ID(0, PLES_MOT_TOUCH_DOWN):
+        Em_PlaySeAtBoneOnFrame(em, 2, 11, 6);
+        Em_PlaySeAtBoneOnFrame(em, 6, 11, 12);
+        Em_PlaySeAtBoneOnFrame(em, 12, 4, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, PLES_SE_STEP, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 14, 9, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_IDLE_ACTION):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 31, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 108, 34, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 170, 32, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 214, 34, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 276, 31, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_REST):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x55, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0x55, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16C, 0x55, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 2, 85, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 182, 85, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 364, 85, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_REST_START):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 87, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 0, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 142, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_REST_END):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x55, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 31, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 85, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 126, 3, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 182, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_STATUS_LIE):
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 36, 87, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LAND_ATTACK_A):
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 36, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 56, 34, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 0, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 21, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 60, 12, 12);
+        Em_PlaySeAtBoneOnFrame(em, 12, 12, 6);
+        Em_PlaySeAtBoneOnFrame(em, 166, 0, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_STATUS_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 32, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 12, 12, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 46, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, PLES_SE_STEP, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_STATUS_COLLAPSE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 4, 87, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 72, 22, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 164, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 144, 3, 12);
+        Em_PlaySeAtBoneOnFrame(em, 136, 14, 6);
+        Em_PlaySeAtBoneOnFrame(em, 178, 4, PLES_BONE_BREATH);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SPIN):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x23, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 8, 35, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, 6);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, PLES_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 42, 0, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 72, PLES_SE_STEP, PLES_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, PLES_MOT_BREATH):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x13, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBB, 0x13, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 2, 18, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 80, 24, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 40, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 74, 81, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 76, 13, 6);
+        Em_PlaySeAtBoneOnFrame(em, 72, 13, 12);
+        Em_PlaySeAtBoneOnFrame(em, 180, 19, 6);
+        Em_PlaySeAtBoneOnFrame(em, 187, 19, 12);
+        Em_PlaySeAtBoneOnFrame(em, 240, 18, PLES_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x30):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x14);
+    case EM_MOTION_ID(0, 48):
+        Em_PlaySeAtBoneOnFrame(em, 2, 34, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 34, 34, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 64, 34, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 114, 32, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, PLES_SE_STEP, PLES_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 83, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 72, 19, PLES_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 6, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 17, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 148, 3, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 12, 6);
+        Em_PlaySeAtBoneOnFrame(em, 56, 13, 12);
+        Em_PlaySeAtBoneOnFrame(em, 194, 3, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH_BLIND):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 83, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 30, 6, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 46, 4, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 106, 3, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 172, 3, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 90, 21, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SHAKE_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 79, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 86, 31, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, 12);
+        Em_PlaySeAtBoneOnFrame(em, 98, 19, PLES_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 126, 3, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH_C):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 76, 31, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH_D):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 68, 32, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 120, 3, PLES_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, PLES_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x43):
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x55, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
+    case EM_MOTION_ID(0, 67):
+        Em_PlaySeAtBoneOnFrame(em, 70, 85, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 23, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_DIE):
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x30, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2E, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 26, 84, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 46, 8, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 20, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 48, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 26, 46, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FALL_A):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, PLES_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 17, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_A):
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x1D, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1C, 0);
+        Em_PlaySeAtBoneOnFrame(em, 32, 29, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 68, 28, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_GET_UP_A):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 32, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 56, 0, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, PLES_SE_STEP, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FALL_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, PLES_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 17, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x1D, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1C, 0);
+        Em_PlaySeAtBoneOnFrame(em, 32, 29, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 68, 28, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_STAND_STILL):
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x5A, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 16, 90, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_TRAPPED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 16, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 39, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_TRAP_STRUGGLE):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 22, 18, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 72, 18, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 12, 12);
+        Em_PlaySeAtBoneOnFrame(em, 48, 19, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 80, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_TRAPPED_LIE):
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 34, 22, 6);
+        Em_PlaySeAtBoneOnFrame(em, 38, 22, 12);
+        Em_PlaySeAtBoneOnFrame(em, 98, 4, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 108, 3, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 43, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_WAKE_IN_TRAP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 22, 12);
+        Em_PlaySeAtBoneOnFrame(em, 108, 3, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 80, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 32, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_START):
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, PLES_SE_STEP, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM):
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_FAST):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x15, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 36, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, 21, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 21, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 23, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_RISE):
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x56, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 86, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 21, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 34, 48, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_DIVE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x15, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x30, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 21, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 48, PLES_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 48, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_TURN_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_TURN_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LEAP_ATTACK):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x56, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 86, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 48, 48, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_DEAD_FLOAT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 83, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 122, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SURFACE_BREATH_C):
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x1A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x51, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 116, 26, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 40, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 88, 81, PLES_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x71):
+    case EM_MOTION_ID(0, 113):
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_CIRCLE_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_CIRCLE_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SURFACE_BREATH_A):
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x51, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 116, 24, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 40, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 88, 81, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SURFACE_BREATH_B):
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x51, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 116, 24, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 40, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 88, 81, PLES_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x76):
+    case EM_MOTION_ID(0, 118):
         break;
     case EM_MOTION_ID(0, PLES_MOT_LEAP):
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 20, 39, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, 6);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, 12);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LEAP_CROUCH):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x33, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0);
+        Em_PlaySeAtBoneOnFrame(em, 8, 51, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 18, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 21, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLOP_A):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 8, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 14, 16, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 56, 8, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 56, 18, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 32, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_BEACHED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x35, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x35, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 53, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 53, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 1);
+        Em_PlaySeAtBoneOnFrame(em, 24, 18, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 24, 21, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 54, 0, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 4, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, 1);
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLOP_B):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x33, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x1D, 0);
+        Em_PlaySeAtBoneOnFrame(em, 8, 51, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 18, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 21, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 54, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 60, 29, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_TUMBLE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x30, 0x2A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 83, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 90, 48, PLES_BONE_TAIL_B);
         break;
     case EM_MOTION_ID(0, PLES_MOT_DIE_LYING):
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x2E, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 26, 84, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 46, 8, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 20, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 46, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_FLAP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 9, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 44, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 16, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 9, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_FLAP_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 9, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 82, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 16, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 9, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_STATUS_FLOAT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x16, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 134, 23, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 134, 22, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_RECOVER):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x15, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, 22, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 110, 21, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_HOOKED):
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x16, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 36, 23, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 18, 22, PLES_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 70, 22, PLES_BONE_BREATH);
         break;
     case EM_MOTION_ID(0, PLES_MOT_RUN_STOP):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0);
+        Em_PlaySeAtBoneOnFrame(em, 10, 6, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 31, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 18, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 21, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_SURFACED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x30, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 52, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 48, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_BOTTOMED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x30, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 52, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 48, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LAND_ATTACK_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 18, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 3, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 110, 4, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 216, PLES_SE_STEP, PLES_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 264, 3, PLES_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 50, 21, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 56, 9, PLES_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 31, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 84, 22, PLES_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SIDE_LIE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0x55, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 87, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 290, 85, PLES_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, PLES_MOT_STATUS4_LYING):
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 26, 83, PLES_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 120, 82, PLES_BONE_HEAD);
         
         break;
     }
@@ -644,13 +517,14 @@ void EmPlesioth_Setup(Em *em)
 }
 
 /*
- * Callbacks slots 0 and 1: creates the alert mark (AlertMark_Create type
- * 0x22) and attached effect 0, as EmRathalos_SpawnEffects.
+ * Callbacks slots 0 and 1: creates the alert mark at PLES_BONE_BREATH
+ * (AlertMark_Create) and the monster's shadow (SHADOW_MODEL), as
+ * EmRathalos_SpawnEffects.
  */
 void EmPlesioth_SpawnEffects(void *em)
 {
-    AlertMark_Create(em, 0x22, 0);
-    Shadow_Spawn((Player *) em, 0);
+    AlertMark_Create(em, PLES_BONE_BREATH, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /*
@@ -680,11 +554,11 @@ void EmPlesioth_Init(Em *em)
     em->noAlert = 0;
     em->painted = 0;
     *(f32 *) &em->surfaceDepth = 670.0f;
-    w->unk00A = 0x4000;
-    w->unk028 = 0x100;
-    w->unk02C = 0x200;
-    w->unk030 = 0x100;
-    w->unk018 = 0x2000;
+    w->unk00A = 16384;
+    w->unk028 = 256;
+    w->unk02C = 512;
+    w->unk030 = 256;
+    w->unk018 = 8192;
     w->unk014 = 0;
     w->unk034 = 0;
     w->unk035 = 0;
@@ -725,8 +599,8 @@ void EmPlesioth_Init(Em *em)
 
 /*
  * Starts a Plesioth (the per-kind start in gm_em): Init, in the quest-less
- * stage (gQuest.stage 0) a fixed spot 1500 apart per slot facing 0x8000;
- * then under water (EM_STANCE_UNDER) in PLES_SWIM_IDLE.
+ * stage (gQuest.stage 0) a fixed spot 1500 apart per slot facing
+ * ANGLE_TURN / 2; then under water (EM_STANCE_UNDER) in PLES_SWIM_IDLE.
  */
 void EmPlesioth_Start(Em *em)
 {
@@ -735,7 +609,7 @@ void EmPlesioth_Start(Em *em)
 
     EmPlesioth_Init(em);
     if (gQuest.stage == 0) {
-        em->rotY = 0x8000;
+        em->rotY = ANGLE_TURN / 2;
         slotNo = em->slotNo;
         fslot = (f32) (u32) slotNo;
         em->posX = 5000.0f + (1500.0f * fslot);
@@ -804,10 +678,10 @@ void EmPlesioth_SetStance(Em *em, u8 mode, u8 flag)
 }
 
 /*
- * Returns 1 when no other active, visible monster in the area of player p
- * has taken a bait (Em.hooked) or is being pulled out of the water (group 4
- * state 0xF, State4_0F); 0 otherwise. Used by PLES_SWIM_BAIT_WAIT before
- * letting the monster bite.
+ * Returns 1 when no other active, visible monster in the area of player p has
+ * taken a bait (Em.hooked) or is being pulled out of the water
+ * (EM_GROUP_REACT state 15, the Plesioth's PLES_REACT_PULLED_ASHORE); 0
+ * otherwise. Used by PLES_SWIM_BAIT_WAIT before letting the monster bite.
  */
 s32 EmPlesioth_NoOtherHookedInArea(Em *em, Player *player)
 {
@@ -816,7 +690,7 @@ s32 EmPlesioth_NoOtherHookedInArea(Em *em, Player *player)
 
     for (other = gEms, i = 0; i < 20; i++, other++) {
         if (other != em && other->active && other->visible && (Obj_SameArea(other, player) & 0xFF)) {
-            if (other->hooked != 0 || (other->stateGroup == EM_GROUP_REACT && other->state == 0xF)) {
+            if (other->hooked != 0 || (other->stateGroup == EM_GROUP_REACT && other->state == 15)) {
                 return 0;
             }
         }
@@ -836,13 +710,13 @@ void EmPlesioth_IdleStand(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         if (em->motionId[0] != EM_MOTION_ID(0, PLES_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, PLES_MOT_IDLE), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, PLES_MOT_IDLE), 10, 0, 0);
         }
         if (em->motionId[1] != EM_MOTION_ID(0, PLES_MOT_SWIM_START)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, PLES_MOT_IDLE), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, PLES_MOT_IDLE), 10, 0, 1);
         }
         if (em->motionId[2] != EM_MOTION_ID(1, PLES_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, PLES_MOT_IDLE), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, PLES_MOT_IDLE), 10, 0, 2);
         }
         break;
     case 1:
@@ -885,8 +759,8 @@ void EmPlesioth_Idle(Em *em, EmWork *work)
 }
 
 /*
- * PLES_IDLE_ACTION: plays motion 0x19, then the idle motion once, then ends
- * on land.
+ * PLES_IDLE_ACTION: plays PLES_MOT_IDLE_ACTION, then the idle motion once,
+ * then ends on land.
  */
 void EmPlesioth_IdleAction(Em *em, EmWork *work)
 {
@@ -900,7 +774,7 @@ void EmPlesioth_IdleAction(Em *em, EmWork *work)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, PLES_MOT_IDLE, 0, 0x5C);
+            Em_SetMotion(em, PLES_MOT_IDLE, 0, 92);
         }
         break;
     case 2:
@@ -913,10 +787,10 @@ void EmPlesioth_IdleAction(Em *em, EmWork *work)
 }
 
 /*
- * PLES_IDLE_LAND_FLOP_A (variant 0, motion 0x79) and PLES_IDLE_LAND_FLOP_B
- * (variant 1, motion 0x7B): after a leap onto land, flops down, lies
- * beached on its side (EM_STANCE_FAMILY, motion 0x7A), gets back up (motion
- * 0x7C, stance ground) and ends on land.
+ * PLES_IDLE_LAND_FLOP_A (variant 0, PLES_MOT_FLOP_A) and PLES_IDLE_LAND_FLOP_B
+ * (variant 1, PLES_MOT_FLOP_B): after a leap onto land, flops down, lies
+ * beached on its side (EM_STANCE_FAMILY, PLES_MOT_BEACHED), gets back up
+ * (PLES_MOT_GET_UP, stance ground) and ends on land.
  */
 void EmPlesioth_LandFlop(Em *em, EmWork *work, u8 variant)
 {
@@ -960,9 +834,9 @@ void EmPlesioth_LandFlop(Em *em, EmWork *work, u8 variant)
 /*
  * PLES_IDLE_STATUS2_COLLAPSE (variant 0) and PLES_IDLE_STATUS1_COLLAPSE_B
  * (variant 1): lying, unseeing and woken by a hit (EM_HIT_REACT_WAKE),
- * collapses (0x26) and lies (0x22) until the status timer ends, then
- * PLES_IDLE_STATUS2_END or PLES_IDLE_STATUS1_END_B. The second parameter is
- * the unused work pointer.
+ * collapses (PLES_MOT_STATUS_COLLAPSE) and lies (PLES_MOT_STATUS_LIE) until
+ * the status timer ends, then PLES_IDLE_STATUS2_END or
+ * PLES_IDLE_STATUS1_END_B. The second parameter is the unused work pointer.
  */
 void EmPlesioth_StatusCollapse(Em *em, s32 work, s32 variant)
 {
@@ -1004,9 +878,9 @@ void EmPlesioth_StatusCollapse(Em *em, s32 work, s32 variant)
 }
 
 /*
- * PLES_IDLE_STATUS2_END, PLES_IDLE_STATUS1_END, PLES_IDLE_STATUS1_END_B:
- * gets up from lying under a status (motion 0x25, blind meanwhile), then
- * PLES_IDLE_SHAKE_OFF.
+ * PLES_IDLE_STATUS2_END, PLES_IDLE_STATUS1_END, PLES_IDLE_STATUS1_END_B: gets
+ * up from lying under a status (PLES_MOT_STATUS_GET_UP, blind meanwhile),
+ * then PLES_IDLE_SHAKE_OFF.
  */
 void EmPlesioth_StatusGetUp(Em *em)
 {
@@ -1035,8 +909,8 @@ void EmPlesioth_StatusGetUp(Em *em)
 
 /*
  * PLES_IDLE_SHAKE_OFF, PLES_IDLE_STATUS4_SHAKE_OFF,
- * PLES_IDLE_HOLD2_SHAKE_OFF, PLES_IDLE_STUN_SHAKE_OFF: plays motion 0x3E
- * once, then ends on land.
+ * PLES_IDLE_HOLD2_SHAKE_OFF, PLES_IDLE_STUN_SHAKE_OFF: plays
+ * PLES_MOT_SHAKE_OFF once, then ends on land.
  */
 void EmPlesioth_ShakeOff(Em *em)
 {
@@ -1056,10 +930,10 @@ void EmPlesioth_ShakeOff(Em *em)
 }
 
 /*
- * PLES_IDLE_STATUS2_TRAPPED: under status 2 while held (holdTimer kept at
- * 5) after the pitfall trap hit it directly: lies in motion 0x61 with lying
- * puffs and a sound every 135 frames until the timer ends, then react state
- * 0x13 (which ends status 2).
+ * PLES_IDLE_STATUS2_TRAPPED: under status 2 while held (holdTimer kept at 5)
+ * after the pitfall trap hit it directly: lies in PLES_MOT_TRAPPED_LIE with
+ * lying puffs and a sound every 135 frames until the timer ends, then
+ * PLES_REACT_STATUS2_TRAPPED_END (which ends status 2).
  */
 void EmPlesioth_Status2Trapped(Em *em, EmWork *work)
 {
@@ -1090,15 +964,15 @@ void EmPlesioth_Status2Trapped(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, pos, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
     }
 }
 
 /*
  * PLES_IDLE_STATUS1_TRAPPED: as PLES_IDLE_STATUS2_TRAPPED under status 1,
- * ending in react state 0x14 (which ends status 1).
+ * ending in PLES_REACT_STATUS1_TRAPPED_END (which ends status 1).
  */
 void EmPlesioth_Status1Trapped(Em *em, EmWork *work)
 {
@@ -1129,16 +1003,16 @@ void EmPlesioth_Status1Trapped(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, pos, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
     }
 }
 
 /*
- * PLES_IDLE_STATUS1_COLLAPSE: status 1 standing on land (EM_DMG_CAPTURED,
- * not held): collapses (0x26), lies (0x22) until the timer ends, then
- * PLES_IDLE_STATUS1_END.
+ * PLES_IDLE_STATUS1_COLLAPSE: status 1 standing on land (EM_DMG_CAPTURED, not
+ * held): collapses (PLES_MOT_STATUS_COLLAPSE), lies (PLES_MOT_STATUS_LIE)
+ * until the timer ends, then PLES_IDLE_STATUS1_END.
  */
 void EmPlesioth_Status1Collapse(Em *em)
 {
@@ -1173,8 +1047,9 @@ void EmPlesioth_Status1Collapse(Em *em)
 
 /*
  * PLES_IDLE_STATUS2_COLLAPSE_BEACHED: status 2 while beached (stance
- * EM_STANCE_FAMILY): collapses onto its side (0x4B, then 0x80) and lies
- * (0x89) until the timer ends, then PLES_IDLE_STATUS2_END_BEACHED.
+ * EM_STANCE_FAMILY): collapses onto its side (PLES_MOT_LIE_DOWN, then
+ * PLES_MOT_LIE_FLAP) and lies (PLES_MOT_SIDE_LIE) until the timer ends, then
+ * PLES_IDLE_STATUS2_END_BEACHED.
  */
 void EmPlesioth_Status2CollapseBeached(Em *em)
 {
@@ -1215,7 +1090,7 @@ void EmPlesioth_Status2CollapseBeached(Em *em)
 
 /*
  * PLES_IDLE_STATUS2_END_BEACHED, PLES_IDLE_STATUS1_END_BEACHED: gets up
- * from its side (motion 0x7C, stance ground, blind meanwhile), then
+ * from its side (PLES_MOT_GET_UP, stance ground, blind meanwhile), then
  * PLES_IDLE_SHAKE_OFF.
  */
 void EmPlesioth_StatusGetUpBeached(Em *em)
@@ -1285,10 +1160,10 @@ void EmPlesioth_Status1CollapseBeached(Em *em)
 }
 
 /*
- * PLES_IDLE_REST: lies down (0x20) and rests (0x1F) for 1800 frames,
- * regaining 1 hp a frame; at the end full hp and the low-hp need cleared
- * (Em_ClearLowHpNeed); then PLES_IDLE_REST_END (a hit wakes it there
- * early).
+ * PLES_IDLE_REST: lies down (PLES_MOT_REST_START) and rests (PLES_MOT_REST)
+ * for 1800 frames, regaining 1 hp a frame; at the end full hp and the low-hp
+ * need cleared (Em_ClearLowHpNeed); then PLES_IDLE_REST_END (a hit wakes it
+ * there early).
  */
 void EmPlesioth_Rest(Em *em)
 {
@@ -1303,7 +1178,7 @@ void EmPlesioth_Rest(Em *em)
         EmPlesioth_SetStance(em, 0, 1);
         em->lookAtTarget = 0;
         Em_SetMotion(em, PLES_MOT_REST_START, 0, 0);
-        em->timer = 0x708;
+        em->timer = 1800;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1335,8 +1210,8 @@ void EmPlesioth_Rest(Em *em)
 }
 
 /*
- * PLES_IDLE_REST_END: gets up from the rest (motion 0x21, blind meanwhile),
- * then PLES_IDLE_SHAKE_OFF.
+ * PLES_IDLE_REST_END: gets up from the rest (PLES_MOT_REST_END, blind
+ * meanwhile), then PLES_IDLE_SHAKE_OFF.
  */
 void EmPlesioth_RestEnd(Em *em)
 {
@@ -1364,8 +1239,8 @@ void EmPlesioth_RestEnd(Em *em)
 }
 
 /*
- * PLES_MOVE_WALK: walks (motion 3) to the goal (Em_StepToGoal), or for the
- * state timer when there is none, then ends on land.
+ * PLES_MOVE_WALK: walks (PLES_MOT_WALK) to the goal (Em_StepToGoal), or for
+ * the state timer when there is none, then ends on land.
  */
 void EmPlesioth_Walk(Em *em, EmWork *work)
 {
@@ -1378,7 +1253,7 @@ void EmPlesioth_Walk(Em *em, EmWork *work)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmPlesioth_EndGroundState(em);
                 break;
@@ -1394,8 +1269,8 @@ void EmPlesioth_Walk(Em *em, EmWork *work)
 }
 
 /*
- * PLES_MOVE_RUN: runs (motion 4) to 300 short of the goal (or for the
- * timer), plays the stop (0x85) and ends on land.
+ * PLES_MOVE_RUN: runs (PLES_MOT_RUN) to 300 short of the goal (or for the
+ * timer), plays the stop (PLES_MOT_RUN_STOP) and ends on land.
  */
 void EmPlesioth_RunAndStop(Em *em, EmWork *work)
 {
@@ -1408,7 +1283,7 @@ void EmPlesioth_RunAndStop(Em *em, EmWork *work)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 Em_SetMotion(em, PLES_MOT_RUN_STOP, 0, 0);
                 break;
@@ -1455,7 +1330,7 @@ void EmPlesioth_TurnToTarget(Em *em, EmWork *work)
 }
 
 /*
- * PLES_MOVE_LIMP: limps (motion 0xA) to the goal or for the timer, then
+ * PLES_MOVE_LIMP: limps (PLES_MOT_LIMP) to the goal or for the timer, then
  * ends on land; PLES_MOVE_WALK becomes this below a fifth of max hp.
  */
 void EmPlesioth_Limp(Em *em, EmWork *work)
@@ -1469,7 +1344,7 @@ void EmPlesioth_Limp(Em *em, EmWork *work)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmPlesioth_EndGroundState(em);
                 break;
@@ -1485,9 +1360,9 @@ void EmPlesioth_Limp(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_IDLE, PLES_SWIM_IDLE_B: hovers under water (motion 0x64, stance
- * under water) once, then EndSwimState (back here with the script asked);
- * the start state and the state every swim action falls back to.
+ * PLES_SWIM_IDLE, PLES_SWIM_IDLE_B: hovers under water (PLES_MOT_SWIM_IDLE,
+ * stance under water) once, then EndSwimState (back here with the script
+ * asked); the start state and the state every swim action falls back to.
  */
 void EmPlesioth_SwimIdle(Em *em)
 {
@@ -1559,9 +1434,9 @@ void EmPlesioth_SwimTurn(Em *em)
 }
 
 /*
- * PLES_SWIM_FORWARD: swims toward the goal pitched up or down to it (0x65
- * accelerating to 50, then 0x66), ending at the goal or once goalDist is
- * used up.
+ * PLES_SWIM_FORWARD: swims toward the goal pitched up or down to it
+ * (PLES_MOT_SWIM_START accelerating to 50, then PLES_MOT_SWIM), ending at the
+ * goal or once goalDist is used up.
  */
 void EmPlesioth_SwimForward(Em *em, EmWork *work)
 {
@@ -1584,7 +1459,7 @@ void EmPlesioth_SwimForward(Em *em, EmWork *work)
         if (!(em->velZ < 50.0f)) {
             em->velZ = 50.0f;
         }
-        if (Em_StepToGoal(em, 0x40, 2) == 1) {
+        if (Em_StepToGoal(em, 64, 2) == 1) {
             EmPlesioth_EndSwimState(em);
         }
         if (em->motion[0].playing == 0) {
@@ -1609,8 +1484,9 @@ void EmPlesioth_SwimForward(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_DASH: fast swim (0x67) toward the goal from motion frame 30 at
- * up to 100, with the surface wake effects 2 and 4, ending at the goal.
+ * PLES_SWIM_DASH: fast swim (PLES_MOT_SWIM_FAST) toward the goal from motion
+ * frame 30 at up to 100, with the surface wake effects 2 and 4, ending at the
+ * goal.
  */
 void EmPlesioth_SwimDash(Em *em, EmWork *work)
 {
@@ -1633,7 +1509,7 @@ void EmPlesioth_SwimDash(Em *em, EmWork *work)
             if (!(em->velZ < 100.0f)) {
                 em->velZ = 100.0f;
             }
-            if (Em_StepToGoal(em, 0x40, 2) == 1) {
+            if (Em_StepToGoal(em, 64, 2) == 1) {
                 em->step++;
                 EmPlesioth_EndSwimState(em);
             }
@@ -1645,9 +1521,9 @@ void EmPlesioth_SwimDash(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_CURVE: plays motion 0x6E moved by curve set 0 (StartCurves,
- * UpdateCurves) and ends in the water; SetGroup2State turns this state into
- * PLES_SWIM_DIVE, so it never runs through ChangeState.
+ * PLES_SWIM_CURVE: plays PLES_MOT_SWIM_CURVE moved by curve set 0
+ * (StartCurves, UpdateCurves) and ends in the water; SetGroup2State turns
+ * this state into PLES_SWIM_DIVE, so it never runs through ChangeState.
  */
 void EmPlesioth_SwimCurve(Em *em)
 {
@@ -1669,8 +1545,9 @@ void EmPlesioth_SwimCurve(Em *em)
 }
 
 /*
- * PLES_SWIM_RISE: rises (0x68) straight up to the water surface, splashes
- * (surface effect 5), plays the surfacing end (0x86) and ends in the water.
+ * PLES_SWIM_RISE: rises (PLES_MOT_SWIM_RISE) straight up to the water
+ * surface, splashes (surface effect 5), plays the surfacing end
+ * (PLES_MOT_SWIM_SURFACED) and ends in the water.
  */
 void EmPlesioth_SwimRise(Em *em, EmWork *work)
 {
@@ -1714,8 +1591,8 @@ void EmPlesioth_SwimRise(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_DIVE: sinks (0x69) down to the floor, plays the bottom end
- * (0x87) and ends in the water.
+ * PLES_SWIM_DIVE: sinks (PLES_MOT_SWIM_DIVE) down to the floor, plays the
+ * bottom end (PLES_MOT_SWIM_BOTTOMED) and ends in the water.
  */
 void EmPlesioth_SwimDive(Em *em, EmWork *work)
 {
@@ -1786,9 +1663,9 @@ void EmPlesioth_SwimRoundTurn(Em *em)
 }
 
 /*
- * PLES_SWIM_ROUND_NEXT: fast swim (0x67) around the four area points in
- * rising order (curGoalNo + 1), each leg ended within 300 or by a timer,
- * with surface wakes; ends in the water after roundLegsLeft legs (4).
+ * PLES_SWIM_ROUND_NEXT: fast swim (PLES_MOT_SWIM_FAST) around the four area
+ * points in rising order (curGoalNo + 1), each leg ended within 300 or by a
+ * timer, with surface wakes; ends in the water after roundLegsLeft legs (4).
  */
 void EmPlesioth_SwimRoundNext(Em *em, EmWork *work)
 {
@@ -1823,7 +1700,7 @@ void EmPlesioth_SwimRoundNext(Em *em, EmWork *work)
                 Em_SetStateRand(em, EM_GROUP_FLY, PLES_SWIM_ROUND_NEXT);
             }
         }
-        Em_TurnToGoal(em, 0x200, 0);
+        Em_TurnToGoal(em, 512, 0);
         Em_GetPitchToGoal(em, (s32 *) &work->moveAngBX, 0.0f, 0.0f);
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
@@ -1868,7 +1745,7 @@ void EmPlesioth_SwimRoundPrev(Em *em, EmWork *work)
                 Em_SetStateRand(em, EM_GROUP_FLY, PLES_SWIM_ROUND_PREV);
             }
         }
-        Em_TurnToGoal(em, 0x200, 0);
+        Em_TurnToGoal(em, 512, 0);
         Em_GetPitchToGoal(em, (s32 *) &work->moveAngBX, 0.0f, 0.0f);
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
@@ -1880,9 +1757,9 @@ void EmPlesioth_SwimRoundPrev(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_CIRCLE_RIGHT: swims a circle for 132 frames at speed 40 (motion
- * 0x72), the heading rising 0x1F0 a frame (the right side in the turn
- * tables), then ends in the water.
+ * PLES_SWIM_CIRCLE_RIGHT: swims a circle for 132 frames at speed 40
+ * (PLES_MOT_SWIM_CIRCLE_RIGHT), the heading rising 0x1F0 a frame (the right
+ * side in the turn tables), then ends in the water.
  */
 void EmPlesioth_SwimCircleRight(Em *em, EmWork *work)
 {
@@ -1892,7 +1769,7 @@ void EmPlesioth_SwimCircleRight(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         EmPlesioth_SetStance(em, 4, 0);
         Em_SetMotion(em, PLES_MOT_SWIM_CIRCLE_RIGHT, 0, 0);
-        em->timer = 0x84;
+        em->timer = 132;
         Player_ClearVelocity(em);
         em->velZ = 40.0f;
         break;
@@ -1912,8 +1789,8 @@ void EmPlesioth_SwimCircleRight(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_CIRCLE_LEFT: as SwimCircleRight with motion 0x73 and the
- * heading falling (left).
+ * PLES_SWIM_CIRCLE_LEFT: as SwimCircleRight with PLES_MOT_SWIM_CIRCLE_LEFT
+ * and the heading falling (left).
  */
 void EmPlesioth_SwimCircleLeft(Em *em, EmWork *work)
 {
@@ -1923,7 +1800,7 @@ void EmPlesioth_SwimCircleLeft(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         EmPlesioth_SetStance(em, 4, 0);
         Em_SetMotion(em, PLES_MOT_SWIM_CIRCLE_LEFT, 0, 0);
-        em->timer = 0x84;
+        em->timer = 132;
         Player_ClearVelocity(em);
         em->velZ = 40.0f;
         break;
@@ -1943,15 +1820,15 @@ void EmPlesioth_SwimCircleLeft(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_LEAP: leaps out of the water (0x77; airborne, splash on
- * leaving), lower in Jungle area 4; falling back over deep water it
- * re-enters with a splash and glides 1000 forward (0x67), over land it
+ * PLES_SWIM_LEAP: leaps out of the water (PLES_MOT_LEAP; airborne, splash on
+ * leaving), lower in Jungle area 4; falling back over deep water it re-enters
+ * with a splash and glides 1000 forward (PLES_MOT_SWIM_FAST), over land it
  * lands on the floor and goes to PLES_IDLE_LAND_FLOP_A.
  */
 void EmPlesioth_LeapFromWater(Em *em, EmWork *work)
 {
     switch (em->step) {
-    case 0x0:
+    case 0:
         em->step++;
         em->lookAtTarget = 0;
         EmPlesioth_SetStance(em, 4, 0);
@@ -1966,7 +1843,7 @@ void EmPlesioth_LeapFromWater(Em *em, EmWork *work)
         work->moveAngBX = 0;
         work->moveAngBZ = 0;
         break;
-    case 0x1:
+    case 1:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         if (!(em->posY < em->surfaceY)) {
@@ -1983,22 +1860,22 @@ void EmPlesioth_LeapFromWater(Em *em, EmWork *work)
                     em->stance = EM_STANCE_UNDER;
                     em->velY = 0.0f;
                     em->accelY = 0.0f;
-                    Em_SetMotion(em, PLES_MOT_SWIM_FAST, 0xA, 0);
+                    Em_SetMotion(em, PLES_MOT_SWIM_FAST, 10, 0);
                     em->goalDist = 1000.0f;
-                    em->timer = 0x3C;
+                    em->timer = 60;
                     em->accelZ = (em->goalDist - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
                     EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
                     break;
                 }
             } else if (em->posY < em->floorY) {
-                em->step = 0x63;
+                em->step = 99;
                 em->posY = em->floorY;
                 EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
         }
         break;
-    case 0x2:
+    case 2:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         em->goalDist -= em->velZ;
@@ -2006,7 +1883,7 @@ void EmPlesioth_LeapFromWater(Em *em, EmWork *work)
             EmPlesioth_EndSwimState(em);
         }
         break;
-    case 0x63:
+    case 99:
         if (em->remote == 0) {
             em->posY = em->floorY;
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
@@ -2016,8 +1893,8 @@ void EmPlesioth_LeapFromWater(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_SURFACE_FLOP: at the surface, plays the flop (0x79) with a
- * splash and ends in the water from motion frame 10.
+ * PLES_SWIM_SURFACE_FLOP: at the surface, plays the flop (PLES_MOT_FLOP_A)
+ * with a splash and ends in the water from motion frame 10.
  */
 void EmPlesioth_SurfaceFlop(Em *em)
 {
@@ -2042,14 +1919,15 @@ void EmPlesioth_SurfaceFlop(Em *em)
 
 /*
  * PLES_SWIM_LEAP_IN (variant 0) and PLES_SWIM_LEAP_IN_TO_GOAL (variant 1):
- * from land, crouches (0x78) and leaps (0x77): variant 0 a fixed leap and a
- * 1000 glide after entering, variant 1 faces the goal and lands on it in 60
- * frames; over land it lands in PLES_IDLE_LAND_FLOP_A.
+ * from land, crouches (PLES_MOT_LEAP_CROUCH) and leaps (PLES_MOT_LEAP):
+ * variant 0 a fixed leap and a 1000 glide after entering, variant 1 faces the
+ * goal and lands on it in 60 frames; over land it lands in
+ * PLES_IDLE_LAND_FLOP_A.
  */
 void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant)
 {
     switch (em->step) {
-    case 0x0:
+    case 0:
         em->step++;
         em->lookAtTarget = 0;
         EmPlesioth_SetStance(em, 0, 0);
@@ -2061,7 +1939,7 @@ void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant)
             break;
         }
         break;
-    case 0x1:
+    case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
@@ -2079,7 +1957,7 @@ void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant)
             }
         }
         break;
-    case 0x2:
+    case 2:
         work->moveAngBX = 0;
         work->moveAngBY = em->rotY;
         work->moveAngBZ = 0;
@@ -2095,24 +1973,24 @@ void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant)
                     em->stance = EM_STANCE_UNDER;
                     em->velY = 0.0f;
                     em->accelY = 0.0f;
-                    Em_SetMotion(em, PLES_MOT_SWIM_FAST, 0xA, 0);
+                    Em_SetMotion(em, PLES_MOT_SWIM_FAST, 10, 0);
                     if (variant != 1) {
                         em->goalDist = 1000.0f;
                     } else {
                         em->goalDist = 0.0f;
                     }
-                    em->timer = 0x3C;
+                    em->timer = 60;
                     em->accelZ = (em->goalDist - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
                     EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
                 }
             } else if (em->posY < em->floorY) {
-                em->step = 0x63;
+                em->step = 99;
                 em->posY = em->floorY;
                 EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
             }
         }
         break;
-    case 0x3:
+    case 3:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         em->goalDist -= em->velZ;
@@ -2120,7 +1998,7 @@ void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant)
             EmPlesioth_EndSwimState(em);
         }
         break;
-    case 0x63:
+    case 99:
         if (em->remote == 0) {
             em->posY = em->floorY;
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
@@ -2130,11 +2008,11 @@ void EmPlesioth_LeapIntoWater(Em *em, EmWork *work, u8 variant)
 }
 
 /*
- * PLES_SWIM_BAIT_WAIT: hovers (0x64) for 120 frames by the target; if the
- * local target holds a monster bait (no other monster hooked in the area)
- * the line shakes (fishTimer, vibration); when that player reels
- * (PL_ACT_FISH_REEL) in the same area out of combat, takes the bait
- * (hooked, hookedBy) and goes to PLES_SWIM_HOOKED, else ends in the water.
+ * PLES_SWIM_BAIT_WAIT: hovers (PLES_MOT_SWIM_IDLE) for 120 frames by the
+ * target; if the local target holds a monster bait (no other monster hooked
+ * in the area) the line shakes (fishTimer, vibration); when that player reels
+ * (PL_ACT_FISH_REEL) in the same area out of combat, takes the bait (hooked,
+ * hookedBy) and goes to PLES_SWIM_HOOKED, else ends in the water.
  */
 void EmPlesioth_WaitForBait(Em *em, EmWork *work)
 {
@@ -2155,7 +2033,7 @@ void EmPlesioth_WaitForBait(Em *em, EmWork *work)
         }
         break;
     case 1:
-        if (em->remote == 0 && em->combat == 0 && target->active && Player_IsLocal(target) == 1 && (s16) Player_IsState(target, 0, 0x53) && Obj_SameArea(em, target) && Lure_PlayerHasMonsterBait(target) == 1) {
+        if (em->remote == 0 && em->combat == 0 && target->active && Player_IsLocal(target) == 1 && (s16) Player_IsState(target, 0, 83) && Obj_SameArea(em, target) && Lure_PlayerHasMonsterBait(target) == 1) {
             if (EmPlesioth_NoOtherHookedInArea(em, target)) {
                 em->step++;
                 em->hooked = 1;
@@ -2173,10 +2051,10 @@ void EmPlesioth_WaitForBait(Em *em, EmWork *work)
 }
 
 /*
- * PLES_SWIM_HOOKED: on the line (0x84, guarded, no reactions), is pulled in
- * 195 frames to 700 ahead of the reeling player, with splashes, vibration
- * and the Plesioth camera scene for that player; then react state 0xF
- * (pulled out of the water).
+ * PLES_SWIM_HOOKED: on the line (PLES_MOT_HOOKED, guarded, no reactions), is
+ * pulled in 195 frames to 700 ahead of the reeling player, with splashes,
+ * vibration and the Plesioth camera scene for that player; then
+ * PLES_REACT_PULLED_ASHORE (pulled out of the water).
  */
 void EmPlesioth_HookedPulled(Em *em, EmWork *work)
 {
@@ -2245,9 +2123,9 @@ void EmPlesioth_HookedPulled(Em *em, EmWork *work)
 
 /*
  * PLES_SWIM_STATUS2_COLLAPSE: status 2 under water: restarts the script,
- * jolts up through the surface (0x7E) and falls back, floats (0x82) with
- * lying puffs and a sound every 135 frames until the timer ends, then
- * PLES_SWIM_STATUS2_END; a hit wakes it early.
+ * jolts up through the surface (PLES_MOT_TUMBLE) and falls back, floats
+ * (PLES_MOT_SWIM_STATUS_FLOAT) with lying puffs and a sound every 135 frames
+ * until the timer ends, then PLES_SWIM_STATUS2_END; a hit wakes it early.
  */
 void EmPlesioth_SwimStatus2Collapse(Em *em, EmWork *work)
 {
@@ -2311,9 +2189,9 @@ void EmPlesioth_SwimStatus2Collapse(Em *em, EmWork *work)
         puffOfs[0] = -150.0f;
         puffOfs[1] = 50.0f;
         puffOfs[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfs, 1.6f);
         if (em->timer % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
         }
         break;
     case 5:
@@ -2323,9 +2201,9 @@ void EmPlesioth_SwimStatus2Collapse(Em *em, EmWork *work)
         puffOfs2[0] = -150.0f;
         puffOfs2[1] = 50.0f;
         puffOfs2[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs2, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfs2, 1.6f);
         if (em->timer % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
         }
         break;
     }
@@ -2394,9 +2272,9 @@ void EmPlesioth_SwimStatus1Collapse(Em *em, EmWork *work)
         puffOfs[0] = -150.0f;
         puffOfs[1] = 50.0f;
         puffOfs[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfs, 1.6f);
         if (em->timer % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
         }
         break;
     case 5:
@@ -2406,17 +2284,17 @@ void EmPlesioth_SwimStatus1Collapse(Em *em, EmWork *work)
         puffOfs2[0] = -150.0f;
         puffOfs2[1] = 50.0f;
         puffOfs2[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs2, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfs2, 1.6f);
         if (em->timer % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
         }
         break;
     }
 }
 
 /*
- * PLES_SWIM_STATUS4_RECOVER: recovers in the water (0x83) after status 4
- * under water (State4_12), then ends in the water.
+ * PLES_SWIM_STATUS4_RECOVER: recovers in the water (PLES_MOT_SWIM_RECOVER)
+ * after status 4 under water (State4_12), then ends in the water.
  */
 void EmPlesioth_SwimStatus4Recover(Em *em)
 {
@@ -2443,10 +2321,10 @@ void EmPlesioth_SwimToIdle(Em *em)
 }
 
 /*
- * PLES_SWIM_TRAP_ESCAPE: when the trap time runs out (State4_08,
- * State4_0D): on land, releases the hold (holdTimer, trapHit 0, no
- * reactions), falls onto its side (0x4B, 0x80), gets up (0x7C) and ends on
- * land.
+ * PLES_SWIM_TRAP_ESCAPE: when the trap time runs out (State4_08, State4_0D):
+ * on land, releases the hold (holdTimer, trapHit 0, no reactions), falls onto
+ * its side (PLES_MOT_LIE_DOWN, PLES_MOT_LIE_FLAP), gets up (PLES_MOT_GET_UP)
+ * and ends on land.
  */
 void EmPlesioth_TrapEscape(Em *em)
 {
@@ -2482,7 +2360,7 @@ void EmPlesioth_TrapEscape(Em *em)
 
 /*
  * PLES_SWIM_STATUS2_END, PLES_SWIM_STATUS1_END: recovers in the water
- * (0x83, blind meanwhile), then ends in the water.
+ * (PLES_MOT_SWIM_RECOVER, blind meanwhile), then ends in the water.
  */
 void EmPlesioth_SwimStatusRecover(Em *em)
 {
@@ -2530,8 +2408,8 @@ void EmPlesioth_LandAttackA(Em *em, EmWork *work)
 
 /*
  * PLES_ATK_BREATH: on land plays PLES_MOT_BREATH and at frame 78 fires the
- * ranged attack from bone 0x22 (EmRangedAttack_CreateAtBoneTimed, yaw
- * 0xF1C8, the yaw Kushala uses for its breath); back to land idle.
+ * ranged attack from PLES_BONE_BREATH (EmRangedAttack_CreateAtBoneTimed, yaw
+ * 61896, the yaw Kushala uses for its breath); back to land idle.
  * SetGroup3State sets EmPlesiothWork.unk013 to 1 on entry.
  */
 void EmPlesioth_Breath(Em *em, EmWork *work)
@@ -2545,7 +2423,7 @@ void EmPlesioth_Breath(Em *em, EmWork *work)
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, 1, 0, 0x444, 0xF1C8, (s32) (11.0f * em->motionSpeed));
+            EmRangedAttack_CreateAtBoneTimed(em, PLES_BONE_BREATH, EMRANGED_PLESIOTH_STREAM, 0, 1092, 61896, (s32) (11.0f * em->motionSpeed));
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2557,7 +2435,7 @@ void EmPlesioth_Breath(Em *em, EmWork *work)
 
 /*
  * PLES_ATK_SPIN: on land plays PLES_MOT_SPIN twice while turning rotY by
- * -0x200 a frame (attack row 0x10 at frame 30, dust when enraged), then
+ * -0x200 a frame (attack row 16 at frame 30, dust when enraged), then
  * back to land idle.
  */
 void EmPlesioth_SpinAttack(Em *em, EmWork *work)
@@ -2590,7 +2468,7 @@ void EmPlesioth_SpinAttack(Em *em, EmWork *work)
 /*
  * PLES_ATK_SURFACE_BREATH_A: under water (stance 4) plays
  * PLES_MOT_SURFACE_BREATH_A: a splash at the surface at frame 30
- * (SpawnSurfaceEffect5), the ranged attack from bone 0x22 at frame 114;
+ * (SpawnSurfaceEffect5), the ranged attack from PLES_BONE_BREATH at frame 114;
  * then back to swimming (EmPlesioth_EndSwimState).
  */
 void EmPlesioth_SurfaceBreathA(Em *em, EmWork *work)
@@ -2604,7 +2482,7 @@ void EmPlesioth_SurfaceBreathA(Em *em, EmWork *work)
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 114.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, 1, 0, 0x4FA, 0, (s32) (46.0f * em->motionSpeed));
+            EmRangedAttack_CreateAtBoneTimed(em, PLES_BONE_BREATH, EMRANGED_PLESIOTH_STREAM, 0, 1274, 0, (s32) (46.0f * em->motionSpeed));
         }
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
             EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
@@ -2633,7 +2511,7 @@ void EmPlesioth_SurfaceBreathB(Em *em, EmWork *work)
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 114.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, 1, 0, 0x4FA, 0, (s32) (46.0f * em->motionSpeed));
+            EmRangedAttack_CreateAtBoneTimed(em, PLES_BONE_BREATH, EMRANGED_PLESIOTH_STREAM, 0, 1274, 0, (s32) (46.0f * em->motionSpeed));
         }
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
             EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
@@ -2649,7 +2527,7 @@ void EmPlesioth_SurfaceBreathB(Em *em, EmWork *work)
 /*
  * PLES_ATK_SURFACE_BREATH_C: as SurfaceBreathA with motion
  * PLES_MOT_SURFACE_BREATH_C, the ranged attack at frame 118 with other
- * arguments (1, 1, 0x71C instead of 1, 0, 0x4FA); back to swimming.
+ * arguments (1, 1820, 0 instead of 0, 1274, 0); back to swimming.
  */
 void EmPlesioth_SurfaceBreathC(Em *em, EmWork *work)
 {
@@ -2662,7 +2540,7 @@ void EmPlesioth_SurfaceBreathC(Em *em, EmWork *work)
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 118.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, 1, 1, 0x71C, 0, (s32) (30.0f * em->motionSpeed));
+            EmRangedAttack_CreateAtBoneTimed(em, PLES_BONE_BREATH, EMRANGED_PLESIOTH_STREAM, 1, 1820, 0, (s32) (30.0f * em->motionSpeed));
         }
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0U) != 0) {
             EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
@@ -2677,11 +2555,11 @@ void EmPlesioth_SurfaceBreathC(Em *em, EmWork *work)
 
 /*
  * PLES_ATK_LEAP: from under water leaps forward and up (velZ and velY 100,
- * gravity -5, PLES_MOT_LEAP, attack row 0xE at frame 10), airborne (stance
+ * gravity -5, PLES_MOT_LEAP, attack row 14 at frame 10), airborne (stance
  * 2) above the surface; on falling back into the water plays
  * PLES_MOT_SWIM_FAST, slides 1000 forward (decelerating over 60 frames) and
  * returns to swimming; if it comes down on land (after 300 frames, or the
- * motion ends before it leaves the water) it goes to land idle state 0/4
+ * motion ends before it leaves the water) it goes to PLES_IDLE_LAND_FLOP_A
  * (the flop on landing).
  */
 void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
@@ -2689,7 +2567,7 @@ void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
     f32 floorY;
 
     switch (em->step) {
-    case 0x0:
+    case 0:
         em->step++;
         em->lookAtTarget = 0;
         Em_SetMotion(em, PLES_MOT_LEAP_ATTACK, 0, 0);
@@ -2700,9 +2578,9 @@ void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
         em->accelY = -5.0f;
         work->moveAngBX = 0;
         work->moveAngBZ = 0;
-        em->timer = 0x12C;
+        em->timer = 300;
         break;
-    case 0x1:
+    case 1:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         if (!(em->posY < em->surfaceY)) {
@@ -2710,11 +2588,11 @@ void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
             em->stance = EM_STANCE_AIR;
         }
         if (em->motion[0].playing == 0) {
-            em->step = 0x63;
+            em->step = 99;
             EmPlesioth_EndSwimState(em);
         }
         break;
-    case 0x2:
+    case 2:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         floorY = em->floorY;
@@ -2728,20 +2606,20 @@ void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
             em->posY = em->surfaceY;
             em->velY = 0.0f;
             em->accelY = 0.0f;
-            Em_SetMotion(em, PLES_MOT_SWIM_FAST, 0xA, 0);
+            Em_SetMotion(em, PLES_MOT_SWIM_FAST, 10, 0);
             em->goalDist = 1000.0f;
-            em->timer = 0x3C;
+            em->timer = 60;
             em->accelZ = (em->goalDist - em->timer * em->velZ) / ((em->timer * em->timer) / 2);
             EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
             break;
         }
         if (--em->timer <= 0) {
-            em->step = 0x63;
+            em->step = 99;
             em->posY = em->floorY;
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
         }
         break;
-    case 0x3:
+    case 3:
         work->moveAngBY = em->rotY;
         Em_MoveRotatedAccel(em, (s32 *) &work->moveAngBX);
         em->goalDist -= em->velZ;
@@ -2750,7 +2628,7 @@ void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
             EmPlesioth_EndSwimState(em);
         }
         break;
-    case 0x63:
+    case 99:
         if (em->remote == 0) {
             em->posY = em->floorY;
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE_LAND_FLOP_A, EM_SYNC_OWNER_FLAGGED);
@@ -2761,7 +2639,7 @@ void EmPlesioth_LeapOutOfWater(Em *em, EmWork *work)
 
 /*
  * PLES_ATK_LAND_B: on land plays PLES_MOT_LAND_ATTACK_B once (attack row
- * 0x16 at frame 54), then back to land idle.
+ * 22 at frame 54), then back to land idle.
  */
 void EmPlesioth_LandAttackB(Em *em, EmWork *work)
 {
@@ -2784,7 +2662,7 @@ void EmPlesioth_LandAttackB(Em *em, EmWork *work)
 /*
  * PLES_REACT_FLINCH: a flinch of parts 0 and 7 on land
  * (EM_DMG_PART_FLINCH), or EM_DMG_HIT_MODE3 out of the air: plays
- * PLES_MOT_FLINCH (restarting motion 1 when layers 1 and 2 stop) and
+ * PLES_MOT_FLINCH (restarting PLES_MOT_IDLE when layers 1 and 2 stop) and
  * returns to land idle.
  */
 void EmPlesioth_Flinch(Em *em)
@@ -2915,11 +2793,12 @@ void EmPlesioth_FlinchLying(Em *em)
 
 /*
  * PLES_REACT_KNOCK_DOWN (variant 1), PLES_REACT_KNOCK_DOWN_PART3 (0),
- * PLES_REACT_STUN_A (3), PLES_REACT_STUN_B (2): falls over, lies and gets
- * up; odd variants use FALL_A, LIE_A, LIE_FLAP, GET_UP_A, even ones FALL_B,
- * LIE_DOWN, LIE_FLAP_B, GET_UP. The stun variants show stun stars at bone
- * 0x22, lie until em->timer runs out and end in land idle state 0/0x16
- * (which ends the stun); the others end in land idle.
+ * PLES_REACT_STUN_A (3), PLES_REACT_STUN_B (2): falls over, lies and gets up;
+ * odd variants use FALL_A, LIE_A, LIE_FLAP, GET_UP_A, even ones FALL_B,
+ * LIE_DOWN, LIE_FLAP_B, GET_UP. The stun variants show stun stars at
+ * PLES_BONE_BREATH, lie until em->timer runs out and end in
+ * PLES_IDLE_STUN_SHAKE_OFF (which ends the stun); the others end in land
+ * idle.
  */
 void EmPlesioth_KnockDown(Em *em, EmWork *work, s16 variant)
 {
@@ -2928,18 +2807,18 @@ void EmPlesioth_KnockDown(Em *em, EmWork *work, s16 variant)
         em->step++;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 0x4A : 0x45), 0, 0);
+        Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 74 : 69), 0, 0);
         switch (variant) {
         case 2:
         case 3:
-            StunStars_CreateEm(em, 1, 0x22, em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
+            StunStars_CreateEm(em, 1, PLES_BONE_BREATH, em->timer + em->motion[0].frameCount / 2.0f, 150.0f, 3.0f);
             break;
         }
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 0x4B : 0x46), 0, 0);
+            Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 75 : 70), 0, 0);
             em->stateVar1 = 0;
         }
         break;
@@ -2959,14 +2838,14 @@ void EmPlesioth_KnockDown(Em *em, EmWork *work, s16 variant)
         }
         if (em->stateVar1) {
             em->step++;
-            Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 0x81 : 0x80), 0, 0);
+            Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 129 : 128), 0, 0);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 0;
-            Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 0x7C : 0x47), 0, 0);
+            Em_SetMotion(em, (s16) ((variant & 1) == 0 ? 124 : 71), 0, 0);
         }
         break;
     case 4:
@@ -3090,10 +2969,10 @@ void EmPlesioth_Status4Lying(Em *em)
 }
 
 /*
- * PLES_REACT_STATUS4_HELD_END (8, ends status 4 on entry) and
- * PLES_REACT_STUN_HELD_END (0x1B, ends the stun): held (holdTimer 5 each
+ * PLES_REACT_STATUS4_HELD_END (ends status 4 on entry) and
+ * PLES_REACT_STUN_HELD_END (ends the stun): held (holdTimer 5 each
  * frame), loops PLES_MOT_TRAP_STRUGGLE until trapTimer runs out, then swim
- * state 2/0x17 (the escape from the trap, on land).
+ * state PLES_SWIM_TRAP_ESCAPE (the escape from the trap, on land).
  */
 void EmPlesioth_HeldStatusStruggle(Em *em)
 {
@@ -3201,7 +3080,7 @@ void EmPlesioth_FlinchBlinded(Em *em)
 /*
  * PLES_REACT_STATUS4: status 4 on land (stance 0); begins status 4 on
  * entry: PLES_MOT_STAND_STILL with the status 4 effect until em->timer runs
- * out, then land idle state 0/0x14 (which ends status 4).
+ * out, then land idle state PLES_IDLE_STATUS4_SHAKE_OFF (which ends status 4).
  */
 void EmPlesioth_Status4(Em *em)
 {
@@ -3245,7 +3124,7 @@ void EmPlesioth_Trapped(Em *em)
         Em_RestartScript(em);
         Em_SetMotion(em, PLES_MOT_TRAPPED, 0, 0);
         em->noReact = 1;
-        em->holdTimer = 0x32;
+        em->holdTimer = 50;
         em->blind = 0;
         break;
     case 1:
@@ -3270,8 +3149,8 @@ void EmPlesioth_Trapped(Em *em)
 
 /*
  * PLES_REACT_TRAPPED_STRUGGLE: held, loops PLES_MOT_TRAP_STRUGGLE until
- * trapTimer runs out, then swim state 2/0x17 (escape from the trap). Same
- * code as HeldStatusStruggle.
+ * trapTimer runs out, then swim state PLES_SWIM_TRAP_ESCAPE (escape from the
+ * trap). Same code as HeldStatusStruggle.
  */
 void EmPlesioth_TrappedStruggle(Em *em)
 {
@@ -3305,10 +3184,10 @@ void EmPlesioth_TrappedStruggle(Em *em)
 /*
  * PLES_REACT_STATUS4_HELD (variant 0, status 4 while held; begins status 4)
  * and PLES_REACT_STUN_HELD (variant 1, the stun while held, begins it, stun
- * stars at bone 0x22): held, lies with PLES_MOT_LIE_HELD until em->timer
- * runs out, sets the trap time goal, then PLES_REACT_STATUS4_HELD_END or
- * PLES_REACT_STUN_HELD_END. The second argument is unused (RunGroup4 passes
- * work).
+ * stars at PLES_BONE_BREATH): held, lies with PLES_MOT_TRAPPED_LIE until
+ * em->timer runs out, sets the trap time goal, then
+ * PLES_REACT_STATUS4_HELD_END or PLES_REACT_STUN_HELD_END. The second
+ * argument is unused (RunGroup4 passes work).
  */
 void EmPlesioth_HeldStatus(Em *em, s32 work, s32 variant)
 {
@@ -3327,7 +3206,7 @@ void EmPlesioth_HeldStatus(Em *em, s32 work, s32 variant)
         em->noReact = 1;
         Em_RestartScript(em);
         if (variantByte == 1) {
-            StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+            StunStars_CreateEm(em, 1, PLES_BONE_BREATH, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         }
         break;
     case 1:
@@ -3360,7 +3239,7 @@ void EmPlesioth_HeldStatus(Em *em, s32 work, s32 variant)
  * PLES_REACT_PULLED_ASHORE: after the bait reel (State2_12): ChangeState
  * breaks part 2 and aims at goal 1; jumps out of the water in a 30-frame
  * arc to the goal (PLES_MOT_TUMBLE, clears Em.hooked, enters combat), lands
- * (PLES_MOT_LAND_FLOP), makes a mine point and loses 100 hp (dying there
+ * (PLES_MOT_FLOP_A), makes a mine point and loses 100 hp (dying there
  * goes to PLES_DEFEAT_DIE_ASHORE), lies 300 frames, flaps, gets up, checks
  * rage and returns to land idle.
  */
@@ -3413,7 +3292,7 @@ void EmPlesioth_PulledAshore(Em *em, EmWork *work)
             em->hp -= 100;
             if (em->remote == 0 && em->hp <= 0) {
                 em->hp = 0;
-                em->step = 0x63;
+                em->step = 99;
                 EmPlesioth_ChangeState(em, EM_GROUP_DEFEAT, PLES_DEFEAT_DIE_ASHORE, EM_SYNC_OWNER);
                 break;
             }
@@ -3450,7 +3329,7 @@ void EmPlesioth_PulledAshore(Em *em, EmWork *work)
 }
 
 /*
- * PLES_REACT_LAND: came down on land from a fall: PLES_MOT_LAND_FLOP,
+ * PLES_REACT_LAND: came down on land from a fall: PLES_MOT_FLOP_A,
  * PLES_MOT_GET_UP, then land idle.
  */
 void EmPlesioth_LandAfterFall(Em *em)
@@ -3460,7 +3339,7 @@ void EmPlesioth_LandAfterFall(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         EmPlesioth_SetStance(em, 0, 0);
-        Em_SetMotion(em, PLES_MOT_FLOP_A, 0xC, 0);
+        Em_SetMotion(em, PLES_MOT_FLOP_A, 12, 0);
         Em_RestartScript(em);
         break;
     case 1:
@@ -3555,10 +3434,10 @@ void EmPlesioth_ThrownOutOfWater(Em *em, EmWork *work)
 }
 
 /*
- * PLES_REACT_STATUS4_UNDER: status 4 under water: thrown up out of the
- * water like ThrownOutOfWater, falls back and floats at the surface
- * (PLES_MOT_FLOAT) with the status 4 effect until em->timer runs out, then
- * swim state 2/0x15 (which ends status 4).
+ * PLES_REACT_STATUS4_UNDER: status 4 under water: thrown up out of the water
+ * like ThrownOutOfWater, falls back and floats at the surface
+ * (PLES_MOT_SWIM_STATUS_FLOAT) with the status 4 effect until em->timer runs
+ * out, then swim state PLES_SWIM_STATUS4_RECOVER (which ends status 4).
  */
 void EmPlesioth_Status4Under(Em *em, EmWork *work)
 {
@@ -3624,11 +3503,11 @@ void EmPlesioth_Status4Under(Em *em, EmWork *work)
 }
 
 /*
- * PLES_REACT_STATUS2_TRAPPED_END (0x13, ends status 2) and
- * PLES_REACT_STATUS1_TRAPPED_END (0x14, ends status 1): from the
- * lying-in-trap idle states 0/8 and 0/0xA (their timer, or
- * EM_DMG_HIT_LYING): held and blinded, plays PLES_MOT_WAKE_IN_TRAP, sets
- * the trap time goal, then PLES_REACT_TRAPPED_STRUGGLE.
+ * PLES_REACT_STATUS2_TRAPPED_END (ends status 2) and
+ * PLES_REACT_STATUS1_TRAPPED_END (ends status 1): from the lying-in-trap idle
+ * states PLES_IDLE_STATUS2_TRAPPED and PLES_IDLE_STATUS1_TRAPPED (their
+ * timer, or EM_DMG_HIT_LYING): held and blinded, plays PLES_MOT_WAKE_IN_TRAP,
+ * sets the trap time goal, then PLES_REACT_TRAPPED_STRUGGLE.
  */
 void EmPlesioth_WakeInTrap(Em *em)
 {
@@ -3684,9 +3563,10 @@ void EmPlesioth_Status4LyingEnd(Em *em)
 /*
  * PLES_REACT_STATUS1_UNDER: result 7 (EM_DMG_CAPTURED) outside a hold while
  * under water; begins status 1 on entry: thrown up out of the water, falls
- * back and floats at the surface (PLES_MOT_FLOAT) blinded, with lying puffs
- * and sound 0x57 every 135 frames, until em->timer runs out or
- * EM_DMG_HIT_LYING, then swim state 2/0x19 (which ends status 1).
+ * back and floats at the surface (PLES_MOT_SWIM_STATUS_FLOAT) blinded, with
+ * lying puffs and sound 87 every 135 frames, until em->timer runs out or
+ * EM_DMG_HIT_LYING, then swim state PLES_SWIM_STATUS1_END (which ends status
+ * 1).
  */
 void EmPlesioth_Status1Under(Em *em, EmWork *work)
 {
@@ -3747,9 +3627,9 @@ void EmPlesioth_Status1Under(Em *em, EmWork *work)
         puffOfs[0] = -150.0f;
         puffOfs[1] = 50.0f;
         puffOfs[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfs, 1.6f);
         if (em->timer % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
         }
         break;
     case 5:
@@ -3759,9 +3639,9 @@ void EmPlesioth_Status1Under(Em *em, EmWork *work)
         puffOfs2[0] = -150.0f;
         puffOfs2[1] = 50.0f;
         puffOfs2[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs2, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfs2, 1.6f);
         if (em->timer % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
         }
         break;
     }
@@ -3771,7 +3651,7 @@ void EmPlesioth_Status1Under(Em *em, EmWork *work)
  * PLES_REACT_HOLD2: EM_DMG_ATTACK13; ends all statuses on entry; the second
  * hold every frame (Em_SetHold2): PLES_MOT_FLINCH without root motion up to
  * frame 52, then PLES_MOT_STAND_STILL until em->timer runs out, then land
- * idle state 0/0x15 (which clears holdTimer2).
+ * idle state PLES_IDLE_HOLD2_SHAKE_OFF (which clears holdTimer2).
  */
 void EmPlesioth_Hold2(Em *em)
 {
@@ -3788,7 +3668,7 @@ void EmPlesioth_Hold2(Em *em)
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, PLES_MOT_STAND_STILL, 0xC, 0);
+            Em_SetMotion(em, PLES_MOT_STAND_STILL, 12, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
@@ -3809,7 +3689,7 @@ void EmPlesioth_Hold2(Em *em)
 /*
  * PLES_EVENT_CAPTURED: captured in a hold (result 7 with holdTimer set;
  * ChangeState begins status 1): Em_SetCaptured(em, 0) every frame, lies
- * (PLES_MOT_LIE_HELD) with lying puffs and sound 0x57 every 135 frames,
+ * (PLES_MOT_TRAPPED_LIE) with lying puffs and sound 87 every 135 frames,
  * reports the capture (QuestEm_Captured), waits em->timer once
  * QuestEm_CanAppear, fades out over 150 frames, then PLES_DEFEAT_GONE.
  */
@@ -3856,17 +3736,17 @@ void EmPlesioth_Captured(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, pos, 1.6f);
     if (++em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, PLES_BONE_HEAD);
     }
 }
 
 /*
  * PLES_EVENT_ENTRANCE: a scripted entrance at fixed positions: floats
- * (PLES_MOT_FLOAT), PLES_MOT_SURFACE_WAKE, then swims a fixed route of
- * goals (SWIM, SWIM_FAST, two circling turns with SWIM_TURN, a leap with
- * PLES_MOT_LEAP), waits 210 frames, does a surface breath
+ * (PLES_MOT_SWIM_STATUS_FLOAT), PLES_MOT_SWIM_RECOVER, then swims a fixed
+ * route of goals (SWIM, SWIM_FAST, two circling turns with SWIM_TURN, a leap
+ * with PLES_MOT_LEAP), waits 210 frames, does a surface breath
  * (PLES_MOT_SURFACE_BREATH_B, ranged attack at frame 114) and returns to
  * swimming. Keeps senseDelay and noHitTimer at 5. No C code enters it.
  */
@@ -3983,7 +3863,7 @@ void EmPlesioth_EntranceScene(Em *em, EmWork *work)
             em->goal[1] = -550.0f;
             em->goal[2] = 8560.0f;
             em->rotX = 0;
-            em->rotY = Math_AngleXZ(&em->posX, em->goal) - 0x3000;
+            em->rotY = Math_AngleXZ(&em->posX, em->goal) - ANGLE_TURN * 3 / 16;
             em->rotZ = 0;
             Em_SetMotion(em, PLES_MOT_SWIM_CIRCLE_RIGHT, 0, 0);
             work->moveAngBX = 0;
@@ -4010,7 +3890,7 @@ void EmPlesioth_EntranceScene(Em *em, EmWork *work)
             em->goal[1] = -550.0f;
             em->goal[2] = 8900.0f;
             em->rotX = 0;
-            em->rotY = Math_AngleXZ(&em->posX, em->goal) - 0x3000;
+            em->rotY = Math_AngleXZ(&em->posX, em->goal) - ANGLE_TURN * 3 / 16;
             em->rotZ = 0;
             Em_SetMotion(em, PLES_MOT_SWIM_CIRCLE_RIGHT, 0, 0);
             work->moveAngBX = 0;
@@ -4090,7 +3970,7 @@ void EmPlesioth_EntranceScene(Em *em, EmWork *work)
         break;
     case 12:
         if (EmMotion_PassedFrameScaled(em, 114.0f, 0)) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, 1, 0, 0x71C, 0, (s32) (46.0f * em->motionSpeed));
+            EmRangedAttack_CreateAtBoneTimed(em, PLES_BONE_BREATH, EMRANGED_PLESIOTH_STREAM, 0, 1820, 0, (s32) (46.0f * em->motionSpeed));
         }
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0)) {
             EmPlesioth_SpawnSurfaceSplash(em, 8.0f);
@@ -4110,8 +3990,8 @@ void EmPlesioth_EntranceScene(Em *em, EmWork *work)
 
 /*
  * PLES_EVENT_CAPTURED_HOLD2: captured in the second hold (result 7 with
- * holdTimer2 set): Em_SetCaptured(em, 1), reports the capture, begins
- * status 1, collapses (PLES_MOT_COLLAPSE) and lies (PLES_MOT_LIE_STATUS);
+ * holdTimer2 set): Em_SetCaptured(em, 1), reports the capture, begins status
+ * 1, collapses (PLES_MOT_STATUS_COLLAPSE) and lies (PLES_MOT_STATUS_LIE);
  * 1800 frames after QuestEm_CanAppear fades out over 150 frames, then
  * PLES_DEFEAT_GONE.
  */
@@ -4125,7 +4005,7 @@ void EmPlesioth_CapturedHold2(Em *em, EmWork *work)
     case 0:
         em->step++;
         QuestEm_Captured(em);
-        em->timer = 0x708;
+        em->timer = 1800;
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
         em->stance = EM_STANCE_GROUND;
@@ -4143,7 +4023,7 @@ void EmPlesioth_CapturedHold2(Em *em, EmWork *work)
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
                 break;
             }
         }
@@ -4221,7 +4101,7 @@ void EmPlesioth_Die(Em *em, EmWork *work)
 }
 
 /*
- * PLES_DEFEAT_DIE_HELD: killed while held: as Die with PLES_MOT_LIE_HELD
+ * PLES_DEFEAT_DIE_HELD: killed while held: as Die with PLES_MOT_TRAPPED_LIE
  * and a 450-frame mine point.
  */
 void EmPlesioth_DieHeld(Em *em, EmWork *work)
@@ -4831,12 +4711,13 @@ void EmPlesioth_RunEventState(Em *em, EmWork *work)
 
 /*
  * The family's frame: a local monster in task phase 1 stays put while no
- * hunter is in its area (Em_HoldPosNoPlayers; on land except in idle state
- * 1, under water except in swim state 0); otherwise, in the hunters' area,
- * a monster on land over deep water starts swimming (swim state 0) and one
- * under water off deep water goes ashore (idle state 1). Then the combat
- * timer, the reaction Em_UpdateDamage's result picks, the pending script, the current state (twice when a state was requested),
- * and under water posY is kept between floorY and surfaceY.
+ * hunter is in its area (Em_HoldPosNoPlayers; on land except in PLES_IDLE,
+ * under water except in PLES_SWIM_IDLE); otherwise, in the hunters' area, a
+ * monster on land over deep water starts swimming (PLES_SWIM_IDLE) and one
+ * under water off deep water goes ashore (PLES_IDLE). Then the combat
+ * timer, the reaction Em_UpdateDamage's result picks, the pending script, the
+ * current state (twice when a state was requested), and under water posY is
+ * kept between floorY and surfaceY.
  */
 void EmPlesioth_Update(Em *em)
 {
@@ -4898,7 +4779,7 @@ void EmPlesioth_Update(Em *em)
             EmPlesioth_ChangeState(em, EM_GROUP_REACT, PLES_REACT_STUN_HELD, EM_SYNC_OWNER);
         } else if ((em->stateGroup != EM_GROUP_REACT || em->state != PLES_REACT_STUN_A) && (em->stateGroup != EM_GROUP_REACT || em->state != PLES_REACT_STUN_B) && (em->stateGroup != EM_GROUP_REACT || em->state != PLES_REACT_FALL)) {
             Em_SetStatus5Timer(em);
-            if ((u16) (em->hitAngle - em->rotY) > 0x8000) {
+            if ((u16) (em->hitAngle - em->rotY) > (ANGLE_TURN / 2)) {
                 EmPlesioth_ChangeState(em, EM_GROUP_REACT, PLES_REACT_STUN_A, EM_SYNC_OWNER);
             } else {
                 EmPlesioth_ChangeState(em, EM_GROUP_REACT, PLES_REACT_STUN_B, EM_SYNC_OWNER);
@@ -5178,8 +5059,8 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
         EmPlesioth_SetFinMode(em, work, 3);
         break;
     case EM_MOTION_ID(0, PLES_MOT_WALK):
-        EmPlesioth_CamShakeOnFrame((s32) em, 0x34, 1);
-        EmPlesioth_CamShakeOnFrame((s32) em, 0x74, 1);
+        EmPlesioth_CamShakeOnFrame((s32) em, 52, 1);
+        EmPlesioth_CamShakeOnFrame((s32) em, 116, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             PlesiothAttack_Create(em, 2);
         }
@@ -5194,19 +5075,19 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_RUN):
         EmPlesioth_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x13);
+            PlesiothAttack_Create(em, 19);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) || EmMotion_PassedFrameScaled(em, 56.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0)) {
-            PlesiothAttack_Create(em, 0x14);
+            PlesiothAttack_Create(em, 20);
         }
         if ((EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0)) {
-            PlesiothAttack_Create(em, 0x15);
+            PlesiothAttack_Create(em, 21);
         }
         if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0x1A, 3, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_STEP_B, 3, 4.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0x14, 3, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_STEP_A, 3, 4.0f);
             break;
         }
         break;
@@ -5219,7 +5100,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
             PlesiothAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 26, 1, 1.0f);
             break;
         }
         break;
@@ -5232,27 +5113,27 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
             PlesiothAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 0, 1.0f);
+            DustCloud_Create(em, 26, 0, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIMP):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x11);
+            PlesiothAttack_Create(em, 17);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x12);
+            PlesiothAttack_Create(em, 18);
         }
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x12);
+            PlesiothAttack_Create(em, 18);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0xB):
+    case EM_MOTION_ID(0, 11):
         EmPlesioth_SetFinMode(em, work, 1);
         break;
-    case EM_MOTION_ID(0, 0x12):
+    case EM_MOTION_ID(0, 18):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 102.0f, 0) || EmMotion_PassedFrameScaled(em, 156.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
@@ -5260,10 +5141,10 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
             }
         }
         break;
-    case EM_MOTION_ID(0, 0x13):
+    case EM_MOTION_ID(0, PLES_MOT_TOUCH_DOWN):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0xD);
+            PlesiothAttack_Create(em, 13);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmPlesioth_SpawnLandingDust(em);
@@ -5277,7 +5158,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
         puffOfsA[0] = 0.0f;
         puffOfsA[1] = 10.0f;
         puffOfsA[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfsA, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfsA, 1.6f);
         break;
     case EM_MOTION_ID(0, PLES_MOT_REST_START):
     case EM_MOTION_ID(0, PLES_MOT_REST_END):
@@ -5287,7 +5168,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
         puffOfsB[0] = 0.0f;
         puffOfsB[1] = 10.0f;
         puffOfsB[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfsB, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfsB, 1.6f);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LAND_ATTACK_A):
         EmPlesioth_SetFinMode(em, work, 3);
@@ -5302,55 +5183,55 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_STATUS_COLLAPSE):
         EmPlesioth_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0xF);
+            PlesiothAttack_Create(em, 15);
         }
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 6, 4.0f);
         }
         puffOfsC[0] = 0.0f;
         puffOfsC[1] = 10.0f;
         puffOfsC[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfsC, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfsC, 1.6f);
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 6, 4.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_SPIN):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x10);
+            PlesiothAttack_Create(em, 16);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 26, 1, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_BREATH):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x19);
+            PlesiothAttack_Create(em, 25);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, 48):
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 27, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_FOOT_A, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            DustCloud_Create(em, 1, 0x80, 0.5f);
+            DustCloud_Create(em, 1, 128, 0.5f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_FLINCH_BLIND):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_STEP_B, 7, 1.0f);
             break;
         }
         break;
@@ -5366,7 +5247,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_FLINCH_B):
         EmPlesioth_SetFinMode(em, work, 1);
         break;
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, 67):
         EmPlesioth_SetFinMode(em, work, 1);
         break;
     case EM_MOTION_ID(0, PLES_MOT_DIE):
@@ -5379,14 +5260,14 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_FALL_A):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            DustCloud_Create(em, 0x12, 0x80, 1.0f);
+            DustCloud_Create(em, 18, 128, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_A):
         EmPlesioth_SetFinMode(em, work, 3);
         if ((EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 6, 4.0f);
             break;
         }
         break;
@@ -5396,14 +5277,14 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_FALL_B):
         EmPlesioth_SetFinMode(em, work, 1);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            DustCloud_Create(em, 0x12, 0x81, 1.0f);
+            DustCloud_Create(em, 18, 129, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_DOWN):
         EmPlesioth_SetFinMode(em, work, 3);
         if ((EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 6, 4.0f);
             break;
         }
         break;
@@ -5413,14 +5294,14 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_TRAPPED):
         EmPlesioth_SetFinMode(em, work, 1);
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 4.0f, 60.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_TRAP_STRUGGLE):
         EmPlesioth_SetFinMode(em, work, 1);
         if (em->rage != 0 && (EmMotion_InFrameRange(em, 0, 12.0f, 24.0f) || EmMotion_InFrameRange(em, 0, 46.0f, 90.0f)) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_TRAPPED_LIE):
@@ -5450,7 +5331,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_LEAP_ATTACK):
         EmPlesioth_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0xE);
+            PlesiothAttack_Create(em, 14);
             break;
         }
         break;
@@ -5460,7 +5341,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_SURFACE_BREATH_C):
         EmPlesioth_SetFinMode(em, work, 0);
         break;
-    case EM_MOTION_ID(0, 0x71):
+    case EM_MOTION_ID(0, 113):
         EmPlesioth_SetFinMode(em, work, 0);
         break;
     case EM_MOTION_ID(0, PLES_MOT_SWIM_CIRCLE_RIGHT):
@@ -5475,13 +5356,13 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_SURFACE_BREATH_B):
         EmPlesioth_SetFinMode(em, work, 0);
         break;
-    case EM_MOTION_ID(0, 0x76):
+    case EM_MOTION_ID(0, 118):
         EmPlesioth_SetFinMode(em, work, 0);
         break;
     case EM_MOTION_ID(0, PLES_MOT_LEAP):
         EmPlesioth_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x18);
+            PlesiothAttack_Create(em, 24);
             break;
         }
         break;
@@ -5491,20 +5372,20 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_FLOP_A):
         EmPlesioth_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            DustCloud_Create(em, 0, 0x89, 0.7f);
+            DustCloud_Create(em, 0, 137, 0.7f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_BEACHED):
         EmPlesioth_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x17);
+            PlesiothAttack_Create(em, 23);
         }
         if ((EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0)) {
             PartFx_SpawnForEmScaled(em, 6, 3, 8.0f + (0.0005f * (f32) (Rand_Next(1) & 0x3FF)));
         }
         if ((EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0xC, 3, 8.0f + (0.0005f * (f32) (Rand_Next(1) & 0x3FF)));
+            PartFx_SpawnForEmScaled(em, 12, 3, 8.0f + (0.0005f * (f32) (Rand_Next(1) & 0x3FF)));
             break;
         }
         break;
@@ -5524,14 +5405,14 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_LIE_FLAP):
         EmPlesioth_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 6, 4.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, PLES_MOT_LIE_FLAP_B):
         EmPlesioth_SetFinMode(em, work, 3);
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 4.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 6, 4.0f);
             break;
         }
         break;
@@ -5547,7 +5428,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_RUN_STOP):
         EmPlesioth_SetFinMode(em, work, 0);
         if ((EmMotion_PassedFrameScaled(em, 6.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 3, 7.0f);
+            PartFx_SpawnForEmScaled(em, PLES_BONE_BODY, 3, 7.0f);
             break;
         }
         break;
@@ -5560,7 +5441,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, PLES_MOT_LAND_ATTACK_B):
         EmPlesioth_SetFinMode(em, work, 0);
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
-            PlesiothAttack_Create(em, 0x16);
+            PlesiothAttack_Create(em, 22);
             break;
         }
         break;
@@ -5568,7 +5449,7 @@ void EmPlesioth_MotionEffects(Em *em, EmWork *work)
         puffOfsD[0] = 0.0f;
         puffOfsD[1] = 10.0f;
         puffOfsD[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfsD, 1.6f);
+        Em_SpawnLyingPuffs(em, PLES_BONE_BREATH, puffOfsD, 1.6f);
         break;
     case EM_MOTION_ID(0, PLES_MOT_STATUS4_LYING):
         break;
@@ -5608,7 +5489,7 @@ static void EmPlesioth_UpdateFinFold(Em *em, EmWork *work, s32 i)
             fins->finRot[i].fold = 0;
             *foldState = 0;
         } else {
-            fins->finRot[i].fold += (u16) ((0x10000 - fins->finRot[i].fold) / fins->finCount[i]);
+            fins->finRot[i].fold += (u16) ((ANGLE_TURN - fins->finRot[i].fold) / fins->finCount[i]);
         }
         break;
     case 2:
@@ -5789,18 +5670,18 @@ void EmPlesioth_SetFinMode(Em *em, EmWork *work, s32 mode)
 }
 
 /*
- * Creates the ground effect of kind 0x14 type 0xB (DustCloud_Create) on
- * frame 16 of motion 19 (as EmRathalos_SpawnLandingDust).
+ * Creates the dust cloud of type 11 (DustCloud_Create) on
+ * frame 16 of PLES_MOT_TOUCH_DOWN (as EmRathalos_SpawnLandingDust).
  */
 void EmPlesioth_SpawnLandingDust(Em *em)
 {
-    DustCloud_Create((Em *) em, 0xB, 0, 1.0f);
+    DustCloud_Create((Em *) em, 11, 0, 1.0f);
 }
 
 /*
  * While the monster is in the hunters' area and within 100 below the water
- * surface, every 4th frame spawns Effect08 type 2 at the surface above it
- * with sound 0x1B; the swimming states call it every frame.
+ * surface, every 4th frame spawns SparkFx type 2 at the surface above it
+ * with PLES_SE_WAKE; the swimming states call it every frame.
  */
 void EmPlesioth_SpawnWakeEvery4(Em *em, f32 scale)
 {
@@ -5811,15 +5692,15 @@ void EmPlesioth_SpawnWakeEvery4(Em *em, f32 scale)
         surfaceY = em->surfaceY;
         if (!(em->posY < (surfaceY - 100.0f))) {
             Vec_Set(pos, em->posX, 10.0f + (surfaceY + *(f32 *)&em->surfaceDepth), em->posZ);
-            Effect08_Spawn(pos, 2, 0, scale);
-            Em_PlaySeAtBone(em, 0x1B, 6);
+            SparkFx_Spawn(pos, 2, 0, scale);
+            Em_PlaySeAtBone(em, PLES_SE_WAKE, 6);
         }
     }
 }
 
 /*
- * In the hunters' area spawns Effect08 type 5 at the water surface above
- * the monster with sound 0x1E: the splash where it breaks the surface
+ * In the hunters' area spawns SparkFx type 5 at the water surface above
+ * the monster with PLES_SE_SPLASH: the splash where it breaks the surface
  * (leaping out, diving back in, pulled by a bait).
  */
 void EmPlesioth_SpawnSurfaceSplash(Em *em, f32 scale)
@@ -5828,13 +5709,13 @@ void EmPlesioth_SpawnSurfaceSplash(Em *em, f32 scale)
 
     if (gScene.area == em->area) {
         Vec_Set(pos, em->posX, 10.0f + (em->surfaceY + *(f32 *)&em->surfaceDepth), em->posZ);
-        Effect08_Spawn(pos, 5, 0, scale);
-        Em_PlaySeAtBone(em, 0x1E, 6);
+        SparkFx_Spawn(pos, 5, 0, scale);
+        Em_PlaySeAtBone(em, PLES_SE_SPLASH, 6);
     }
 }
 
 /*
- * As SpawnWakeEvery4 with Effect08 type 4, every 8th frame and without a
+ * As SpawnWakeEvery4 with SparkFx type 4, every 8th frame and without a
  * sound; called beside it in the swim states.
  */
 void EmPlesioth_SpawnWakeEvery8(Em *em, f32 scale)
@@ -5846,7 +5727,7 @@ void EmPlesioth_SpawnWakeEvery8(Em *em, f32 scale)
         surfaceY = em->surfaceY;
         if (!(em->posY < (surfaceY - 100.0f))) {
             Vec_Set(pos, em->posX, 10.0f + (surfaceY + *(f32 *)&em->surfaceDepth), em->posZ);
-            Effect08_Spawn(pos, 4, 0, scale);
+            SparkFx_Spawn(pos, 4, 0, scale);
         }
     }
 }
@@ -5908,11 +5789,11 @@ void EmPlesioth_SetIdleState(Em *em, u16 state, u8 mode)
 }
 
 /*
- * Enters move state `state` on the ground: state 0 (the walk, speed set 0)
- * runs as state 3 (the weak walk, speed set 6) below a fifth of hpMax;
- * without a goal both get a timer of 90-149 frames (state 3 at most 300);
- * state 1 sets goalDist (the goal's distance less 300, or 1000 without a
- * goal).
+ * Enters move state `state` on the ground: PLES_MOVE_WALK (speed set 0)
+ * runs as PLES_MOVE_LIMP (speed set 6) below a fifth of hpMax; without a
+ * goal both get a timer of 90-149 frames (PLES_MOVE_LIMP at most 300);
+ * PLES_MOVE_RUN sets goalDist (the goal's distance less 300, or 1000
+ * without a goal).
  */
 void EmPlesioth_SetMoveState(Em *em, u16 state, u8 mode)
 {
@@ -5963,11 +5844,16 @@ void EmPlesioth_SetMoveState(Em *em, u16 state, u8 mode)
 
 /*
  * Enters swim state `state`: a local monster off deep water (OverDeepWater
- * 0) goes to idle state 1 instead (all but 16, 23, 26, 27); begins status 2
- * in 19, status 1 in 20, ends status 4 in 21, status 2 in 24, status 1 in
- * 25; state 6 runs as 8; 10 and 11 (circling the area's four points) set
- * circleLegs 4 and the nearest point as goal, run as 11 when the next point
- * is behind, as 9 when the goal is not within 45 degrees ahead.
+ * 0) goes to PLES_IDLE instead (all but PLES_SWIM_LEAP_IN,
+ * PLES_SWIM_TRAP_ESCAPE, PLES_SWIM_LEAP_IN_TO_GOAL and PLES_SWIM_IDLE_B);
+ * the status states begin or end their status (PLES_SWIM_STATUS2_COLLAPSE
+ * begins status 2, PLES_SWIM_STATUS1_COLLAPSE status 1;
+ * PLES_SWIM_STATUS4_RECOVER ends status 4, PLES_SWIM_STATUS2_END status 2,
+ * PLES_SWIM_STATUS1_END status 1); PLES_SWIM_CURVE runs as PLES_SWIM_DIVE;
+ * PLES_SWIM_ROUND_NEXT and _PREV (circling the area's four points) set
+ * circleLegs 4 and the nearest point as goal, run as PLES_SWIM_ROUND_PREV
+ * when the next point is behind, as PLES_SWIM_ROUND_TURN when the goal is
+ * not within 45 degrees ahead.
  */
 void EmPlesioth_SetSwimState(Em *em, u16 state, u8 mode)
 {
@@ -6018,23 +5904,23 @@ void EmPlesioth_SetSwimState(Em *em, u16 state, u8 mode)
             return;
         }
         break;
-    case 4:
-    case 5:
+    case PLES_SWIM_FORWARD:
+    case PLES_SWIM_DASH:
         if (em->remote == 0 && EmPlesioth_OverDeepWater(em, 0) == 0) {
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE, EM_SYNC_SEND);
             return;
         }
         Em_SetSpeedScaled(em, 0, 1000.0f, 500.0f);
         break;
-    case 6:
+    case PLES_SWIM_CURVE:
         if (em->remote == 0 && EmPlesioth_OverDeepWater(em, 0) == 0) {
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE, EM_SYNC_SEND);
             return;
         }
         state = PLES_SWIM_DIVE;
         break;
-    case 10:
-    case 11:
+    case PLES_SWIM_ROUND_NEXT:
+    case PLES_SWIM_ROUND_PREV:
         if (em->remote == 0 && EmPlesioth_OverDeepWater(em, 0) == 0) {
             EmPlesioth_ChangeState(em, EM_GROUP_IDLE, PLES_IDLE, EM_SYNC_SEND);
             return;
@@ -6046,9 +5932,9 @@ void EmPlesioth_SetSwimState(Em *em, u16 state, u8 mode)
             em->goalArg = 2;
             Em_ComputeGoal(em, em->goal);
             relYaw = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if ((0 <= relYaw && relYaw <= 0x2000) || (relYaw >= 0xE000 && relYaw <= 0xFFFF)) {
+            if ((0 <= relYaw && relYaw <= ANGLE_TURN / 8) || (relYaw >= (ANGLE_TURN * 7 / 8) && relYaw <= 0xFFFF)) {
                 relYaw = (u16) (Math_AngleXZ(&em->posX, nextPoint) - em->rotY);
-                if (relYaw >= 0x4000 && relYaw <= 0xC000 && state == PLES_SWIM_ROUND_NEXT) {
+                if (relYaw >= (ANGLE_TURN / 4) && relYaw <= (ANGLE_TURN * 3 / 4) && state == PLES_SWIM_ROUND_NEXT) {
                     state = PLES_SWIM_ROUND_PREV;
                 }
                 em->timer = 1.5f * (Vec_DistanceXZ(&em->posX, em->goal) / 0.5f) / 50.0f;
@@ -6069,9 +5955,9 @@ void EmPlesioth_SetSwimState(Em *em, u16 state, u8 mode)
 }
 
 /*
- * Enters attack state `state`: the under-water attacks 3-6 of a local
- * monster off deep water go to idle state 1 instead; state 1 sets work byte
- * 0x13.
+ * Enters attack state `state`: the surface breaths and the leap
+ * (PLES_ATK_SURFACE_BREATH_A to PLES_ATK_LEAP) of a local monster off deep
+ * water go to PLES_IDLE instead; PLES_ATK_BREATH sets w->unk013 to 1.
  */
 void EmPlesioth_SetAttackState(Em *em, u16 state, u8 mode)
 {
@@ -6192,7 +6078,7 @@ void EmPlesioth_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 /*
  * Starts curve set `kind` of the movement curves: kinds 0-2 the vertical
  * and forward speed curves from frame 0, kind 3 only the vertical one from
- * frame 0x26; clears the velocity.
+ * frame 38; clears the velocity.
  */
 void EmPlesioth_StartCurves(Em *em, u8 kind)
 {
@@ -6220,7 +6106,7 @@ void EmPlesioth_StartCurves(Em *em, u8 kind)
         break;
     case 3:
         w->curveVelY = 1;
-        w->curveFrame = 0x26;
+        w->curveFrame = 38;
         break;
     }
     Player_ClearVelocity(em);
@@ -6423,31 +6309,31 @@ s32 EmPlesioth_OverDeepWater(Em *em, u8 floorOnly)
 EmTurnParams EmPlesioth_TurnParams[3] = {
 #include "game/008C6070.inc"
 };
-u32 EmPlesioth_FinKeys2_0[8] = {
+EmFinKey EmPlesioth_FinKeys2_0[8] = {
 #include "game/008C60D0.inc"
 };
-u32 EmPlesioth_FinKeys2_1[8] = {
+EmFinKey EmPlesioth_FinKeys2_1[8] = {
 #include "game/008C60F0.inc"
 };
-u32 EmPlesioth_FinKeys2_2[8] = {
+EmFinKey EmPlesioth_FinKeys2_2[8] = {
 #include "game/008C6110.inc"
 };
-u32 EmPlesioth_FinKeys2_3[8] = {
+EmFinKey EmPlesioth_FinKeys2_3[8] = {
 #include "game/008C6130.inc"
 };
 EmFinKey *EmPlesioth_FinKeys2[4] = {
     (EmFinKey *)EmPlesioth_FinKeys2_0, (EmFinKey *)EmPlesioth_FinKeys2_1, (EmFinKey *)EmPlesioth_FinKeys2_2, (EmFinKey *)EmPlesioth_FinKeys2_3,
 };
-u32 EmPlesioth_FinKeys1_0[12] = {
+EmFinKey EmPlesioth_FinKeys1_0[12] = {
 #include "game/008C6160.inc"
 };
-u32 EmPlesioth_FinKeys1_1[12] = {
+EmFinKey EmPlesioth_FinKeys1_1[12] = {
 #include "game/008C6190.inc"
 };
-u32 EmPlesioth_FinKeys1_2[8] = {
+EmFinKey EmPlesioth_FinKeys1_2[8] = {
 #include "game/008C61C0.inc"
 };
-u32 EmPlesioth_FinKeys1_3[8] = {
+EmFinKey EmPlesioth_FinKeys1_3[8] = {
 #include "game/008C61E0.inc"
 };
 EmFinKey *EmPlesioth_FinKeys1[4] = {
@@ -6465,7 +6351,6 @@ s16 EmPlesioth_FinRewait1[4] = {
 s16 EmPlesioth_FinRewait2[4] = {
 #include "game/008C6228.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
 u16 EmPlesioth_FinFoldTarget[8] = {
 #include "game/008C6230.inc"
 };

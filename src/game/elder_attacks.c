@@ -1,6 +1,6 @@
 /*
- * Attack-object families: Boomerang's End, Free and Draw, KushalaBreath
- * (Kushala Daora's breath, which leaves an Explosion by its size),
+ * Attack-object families: KushalaBreath (Kushala Daora's breath, which
+ * leaves an Explosion by its size),
  * KushalaAttack, ShenGaorenAttack and YamaTsukamiAttack (those monsters'
  * body attacks).
  * Each family is a kind of ObjAttach (enum
@@ -12,6 +12,7 @@
  */
 #include "common.h"
 #include "em.h"
+#include "em_kushala.h"
 #include "objattach.h"
 #include "player.h"
 #include "scene.h"
@@ -19,125 +20,51 @@
 #include "sprite.h"
 #include "capsule.h"
 #include "area.h"
+#include "render_state.h"
+#include "camera.h"
+#include "card.h"
+#include "quest.h"
+#include "sound.h"
+#include "elder_attacks.h"
+#include "draw_slots.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "hit_effects.h"
+#include "hit_setup.h"
+#include "monster_effects.h"
+#include "rand.h"
+#include "shakalaka_teostra_bulldrome.h"
+#include "vec_math.h"
 /* Declarations of the functions called below. */
-void DrawSlotB_Free(s32);
 
 /* prototypes */
-extern s16 EmEffectAttack_ScaleKeyBase[];
-extern s16 EmEffectAttack_ColorKeyBase[];
-extern void *EmEffectAttack_ScaleKeys[];
-extern void *EmEffectAttack_ColorKeys[];
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
 void EmEffectAttack_RandLinkSpin(struct EmEffectAttackLink *e);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void Mtx_Copy(f32 *dst, f32 *src);
-f32 Math_Atan2(f32 y, f32 x);
-s32 Em_PlaySeAtPos(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void CamShake_SetA(s32 kind, f32 *pos);
-void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-void DustCloud_CreateAt(f32 *pos, u8 k, u8 c, f32 scale);
-void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-extern s16 EmEffectAttack_YamaInhaleDelays[];
 extern s16 EmEffectAttack_CongalalaBreathDelays[];
-extern s16 EmEffectAttack_DaimyoJetDelays[];
-extern u16 EmEffectAttack_FatalisBlastVariantRolls[];
-extern s16 EmEffectAttack_FatalisBlastFrames[];
-u16 Vec_Heading(f32 *a, f32 *b);
-u16 Vec_Elevation(f32 *a, f32 *b);
-extern u16 *EmEffectAttack_PartModels[];
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-f32 AreaGrid2_GetFloorY(f32 *pos);
-void KushalaBreath_Draw(DrawSlot *d);
 extern u8 KushalaBreath_Offsets[];
 extern f32 KushalaBreath_TrailOfs[];
 extern s8 KushalaBreath_FirstRow[];
 extern void *KushalaBreath_RowsPtr;
 extern HitShape *KushalaBreath_HitShapes[];
-u16 Map_DayId(u16 area);
-void Effect_GetColor(s32 area, u8 *r, u8 *g, u8 *b, u8 *a);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
 extern f32 gCamMatrix[];
-s16 EmSlot_FindKind(s16 k);
-u16 Area_DayId(u16 id);
-void EmEffectAttack_InitParts(ObjAttach *o);
 extern HitShape *EmEffectAttack_HitShapes[];
-extern f32 EmEffectAttack_Speeds[];
-extern f32 EmEffectAttack_Gravities[];
 extern f32 EmEffectAttack_FatalisSweepSpots[][3];
 extern f32 EmEffectAttack_FatalisBlastSpots[][3];
 extern f32 EmEffectAttack_ShenDropSpotsFortress5[][3];
 extern f32 EmEffectAttack_ShenDropSpotsTown2[][3];
 extern f32 EmEffectAttack_ShenDropSpotsTown3[][3];
 extern f32 EmEffectAttack_ShenDropSpotsTown0[][3];
-void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw);
-f32 EmEffectAttack_ChainGrowth(ObjAttach *o);
-void Mtx_Identity(f32 *m);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_RotateZ(f32 *m, f32 a);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-f32 Math_Atan(f32 x);
-f32 Math_Sqrtf(f32 x);
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-s32 Gs_SetState(u8 reg, u32 v);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void Draw_ApplyStates(u32);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 void Key_LerpVec2(f32 *k, volatile f32 *out, f32 t);
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
 extern void *KushalaBreath_AlphaKeys[];
 extern void *KushalaBreath_ScaleKeys[];
 extern f32 KushalaBreath_SizeScale[];
-s16 DrawSlot_Alloc(void);
-s16 DrawSlotB_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-DrawSlot *DrawSlotB_Get(s32 i);
-void EmEffectAttack_DrawPart(DrawSlot *d);
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 extern f32 KushalaBreath_LaunchOfs[];
-void KushalaBreath_Update(ObjAttach *o);
-void ShenGaorenAttack_Update(ObjAttach *o);
-void YamaTsukamiAttack_Update(ObjAttach *o);
-void BulldromeAttack_Update(ObjAttach *o);
-extern u8 EmEffectAttack_CongalalaGasKinds[];
-extern u16 EmEffectAttack_CongalalaGasStarts[];
-f32 Rand_Unit(void);
-void Vec_RotateX(f32 *v, f32 angle);
-extern s16 EmEffectAttack_DaimyoJetFrames[];
-void Vec_RotateY(f32 *v, f32 angle);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_Add(f32 *, f32 *, f32 *);
-extern u8 EmEffectAttack_Bones[];
-extern f32 EmEffectAttack_BoneOfs[];
 extern f32 EmEffectAttack_BoneOfsY[];
 extern f32 EmEffectAttack_BoneOfsZ[];
-void ShakalakaAttack_Draw(ObjAttach *o);
-void BulldromeAttack_Draw(ObjAttach *o);
-extern HitShape *ShakalakaAttack_HitShapes[];
-extern void *ShakalakaAttack_RowsPtr;
-extern HitShape *BulldromeAttack_HitShapes[];
-extern void *BulldromeAttack_RowsPtr;
-StageObj *MonsterFx_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
 /* unit's own declaration: the kind declared u8, as KushalaBreath_Impact passes it; with the definition's s32 the call compiles differently */
 void Explosion_CreateOwned(Player *owner, f32 *pos, u8 kind);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-extern s16 EmEffectAttack_MotionBase[];
-extern void *EmEffectAttack_RowsPtr;
 /*
- * One part of an EmEffectAttack (0x3C bytes): the parts follow the
+ * One part of an EmEffectAttack (60 bytes): the parts follow the
  * buffer's 12-byte header.
  */
 typedef struct EmEffectAttackPart {
@@ -161,166 +88,17 @@ typedef struct EmEffectAttackPart {
     u8 aux;         /* 0x3B: by type: the texture's second cell, or the fade frames */
 } EmEffectAttackPart;
 void EmEffectAttack_StartCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p);
-f32 Rand_Signed(void);
 u16 Area_IdForCurrentTime(u16);
-ObjAttach *ObjAttach_Alloc(s32 n);
-void ObjAttach_Free(ObjAttach *p);
-u16 Rand_Next(s32 stream);
-void KushalaBreath_Run(ObjAttach *o);
-void KushalaBreath_End(ObjAttach *o);
-void KushalaBreath_Free(ObjAttach *o);
-void KushalaAttack_Setup(ObjAttach *o);
-void KushalaAttack_End(ObjAttach *o);
-void KushalaAttack_Free(ObjAttach *o);
-void ShenGaorenAttack_Setup(ObjAttach *o);
-void ShenGaorenAttack_Run(ObjAttach *o);
-void ShenGaorenAttack_End(ObjAttach *o);
-void ShenGaorenAttack_Free(ObjAttach *o);
-void YamaTsukamiAttack_Setup(ObjAttach *o);
-void YamaTsukamiAttack_Run(ObjAttach *o);
-void YamaTsukamiAttack_End(ObjAttach *o);
-void YamaTsukamiAttack_Free(ObjAttach *o);
-void EmEffectAttack_Run(ObjAttach *o);
-void EmEffectAttack_Hit(ObjAttach *o);
-void EmEffectAttack_End(ObjAttach *o);
-void EmEffectAttack_Free(ObjAttach *o);
-void ShakalakaAttack_End(ObjAttach *o);
-void ShakalakaAttack_Free(ObjAttach *o);
-void TeostraAttack_Setup(ObjAttach *o);
-void TeostraAttack_End(ObjAttach *o);
-void TeostraAttack_Free(ObjAttach *o);
-void BulldromeAttack_Run(ObjAttach *o);
-void BulldromeAttack_End(ObjAttach *o);
-void BulldromeAttack_Free(ObjAttach *o);
-void DrawSlot_Free(s32);
-extern s16 EmEffectAttack_PartCounts[];
-extern s16 EmEffectAttack_PartCounts[];
 extern s16 KushalaBreath_PartCounts[];
-void EmEffectAttack_Update(ObjAttach *o);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void Vec_Copy(f32 *out, f32 *in);
-void KushalaAttack_Update(ObjAttach *o);
-void ShakalakaAttack_Update(ObjAttach *o);
-void TeostraAttack_Update(ObjAttach *o);
-u8 Player_InCurrentArea(void *obj);
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *, s32 a, s32 b, void *c);
 extern HitShape *KushalaAttack_HitShapes[];
 extern void *KushalaAttack_RowsPtr;
 extern HitShape *ShenGaorenAttack_HitShapes[];
 extern void *ShenGaorenAttack_RowsPtr;
 extern HitShape *YamaTsukamiAttack_HitShapes[];
 extern void *YamaTsukamiAttack_RowsPtr;
-extern HitShape *TeostraAttack_HitShapes[];
-extern void *TeostraAttack_RowsPtr;
-f32 Math_Absf(f32 x);
-void ShakalakaAttack_Setup(ObjAttach *o);
-void BulldromeAttack_Setup(ObjAttach *o);
 void *EmEffectAttack_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
-void ShakalakaAttack_Run(ObjAttach *o);
-void KushalaAttack_Run(ObjAttach *o);
-void TeostraAttack_Run(ObjAttach *o);
 void EmEffectAttack_UpdateLink(ObjAttach *o, struct EmEffectAttackLink *e, struct EmEffectAttackLink *prev, void *bone, f32 *dir, s16 f);
-void EmEffectAttack_Setup(ObjAttach *o);
-void KushalaBreath_Setup(ObjAttach *o);
 /* end of prototypes */
-
-/*
- * Ends the boomerang: closes its hit window, hides it and frees its draw
- * slot. It is freed on the next update (ATTACH_FREE).
- */
-void Boomerang_End(ObjAttach *o)
-{
-    o->hitPhase = 0;
-    o->state = ATTACH_FREE;
-    o->visible = 0;
-    if (o->drawSlotBuf != NULL) {
-        DrawSlot_Free((s32) o->drawSlot);
-    }
-}
-
-/* Frees the boomerang (ObjAttach_Free). */
-void Boomerang_Free(ObjAttach *o)
-{
-    ObjAttach_Free(o);
-}
-
-/*
- * Draws the boomerang (mesh set 152 of gCommonModels[0]) at its draw slot
- * when it is in the current area. The mesh is pitched along its velocity,
- * headed from pos toward pos2, then turned by rotY and spun by rotZ. rotZ
- * stays 0 once a type-1 boomerang has landed (BoomerangBuf.grounded,
- * with the other families).
- */
-void Boomerang_Draw(DrawSlot *drawSlot)
-{
-    f32 dirMtx[16];
-    f32 mtx[16];
-    ObjAttach *o;
-    u8 *boomBuf;
-    Model *mdl;
-    ModelMat *materials;
-    ModelMatSet *matSet;
-    f32 pitch;
-    u16 heading;
-
-    mdl = gCommonModels[0];
-    o = drawSlot->owner;
-    boomBuf = o->buf;
-    if (o->area == gScene.area && mdl != NULL && mdl->active != 0) {
-        if (boomBuf[0x2C] == 1) {
-            o->rotZ = 0;
-        }
-        matSet = &mdl->matSets[152];
-        materials = mdl->mats;
-        Mtx_Identity(dirMtx);
-        pitch = -1.0f * Math_Atan(o->velY / Math_Sqrtf(o->velZ * o->velZ + o->velX * o->velX));
-        heading = Math_Heading(o->pos[0], o->pos[2], o->pos2[0], o->pos2[2]) + 0x4000;
-        Mtx_RotateX(dirMtx, pitch);
-        Mtx_RotateY(dirMtx, (6.2831855f * heading) / 65536.0f);
-        Mtx_Identity(mtx);
-        Mtx_Scale(mtx, 1.0f, 1.0f, 1.0f);
-        Mtx_SetTrans(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
-        Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
-        Mtx_RotateZ(mtx, (6.2831855f * o->rotZ) / 65536.0f);
-        Mtx_Concat3x3(mtx, dirMtx);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, -1);
-        Gs_SetLightList(materials, matSet);
-        if (matSet != NULL && matSet->id != -1) {
-            Draw_ApplyStates(matSet->flags);
-            Model_Draw(matSet->id, 0);
-        }
-        Draw_SetDefaultState();
-    }
-}
-
-/* KushalaBreath's object buffer (o->buf) and its particles (KushalaBreath_PartCounts[type] of them). */
-typedef struct KushalaBreathPart {
-    f32 pos[3];                 /* 0x00 */
-    f32 scale[3];               /* 0x0C: Key_LerpVec2/3 of KushalaBreath_ScaleKeys, scaled by the buffer's size */
-    f32 vel[3];                 /* 0x18 */
-    DrawSlot *ds;               /* 0x24: its draw slot (part = its index) */
-    f32 unk28;                  /* 0x28 */
-    u16 rot[3];                 /* 0x2C: X, Y, Z (kind 2); Z spins (KushalaBreath_SpinPart) */
-    s16 timer;                  /* 0x32: starts at or below 0; reset at 0, moves while positive */
-    s16 slot;                   /* 0x34 */
-    s8 kind;                    /* 0x36: 0, 1 (on the floor) or 2 */
-    u8 active;                  /* 0x37 */
-    u8 alpha;                   /* 0x38: 255 * Key_LerpFloat of KushalaBreath_AlphaKeys */
-    u8 flags;                   /* 0x39: 4: spins forward (KushalaBreath_SpinPart), 2: the second model (kind 1) */
-    u8 pad3A[2];
-} KushalaBreathPart;
-
-typedef struct KushalaBreathBuf {
-    f32 vec[3];                 /* 0x00: Key_LerpVec3's value, scaled by KushalaBreath_SizeScale[size] */
-    f32 height;                 /* 0x0C */
-    u16 ang;                    /* 0x10 */
-    s16 spin;                   /* 0x12: the bone at creation; then the Z spin (+0x71C a frame) */
-    u8 size;                    /* 0x14: index into KushalaBreath_SizeScale */
-    u8 pad15[3];
-    KushalaBreathPart part[1];           /* 0x18 */
-} KushalaBreathBuf;
 
 /*
  * Makes a KushalaBreath of type at bone of em, if a player is in em's area.
@@ -591,13 +369,10 @@ extern f32 KushalaBreath_SprayJitter[];
 extern f32 KushalaBreath_DebrisOfs[];
 extern f32 KushalaBreath_DebrisJitter[];
 void ObjAttach_Move(ObjAttach *);
-void KushalaBreath_SpinPart(ObjAttach *o, KushalaBreathPart *p, u16 n);
-void KushalaBreath_DrawPart(ObjAttach *o, KushalaBreathPart *p);
-void KushalaBreath_Impact(ObjAttach *o, s32 arg1, f32 *pos);
 
 /* KushalaBreath's frame (state 1): moves it; past its lifetime (KushalaBreath_Life[type] frames) ends it
  * (KushalaBreath_Impact at the floor for types 0-2); else types 0 and 2 spawn type 3 children and play
- * sound 0x3E, types 0-2 follow the floor (ending when they leave it), and each live particle is
+ * sound 62, types 0-2 follow the floor (ending when they leave it), and each live particle is
  * reset at its timer's 0 (position, spin, velocity by kind), moved and drawn. */
 void KushalaBreath_Run(ObjAttach *o)
 {
@@ -661,7 +436,7 @@ void KushalaBreath_Run(ObjAttach *o)
             KushalaBreath_SpawnTrail(o, 3, 0);
         }
         if (o->area == gScene.area && o->ownerMotion % 5 == 0) {
-            Em_PlaySeChecked(o->owner, 0x3E, 0, o->pos, 0x18, 0);
+            Em_PlaySeChecked(o->owner, 62, 0, o->pos, 24, 0);
         }
         goto run;
     case 2:
@@ -679,12 +454,12 @@ void KushalaBreath_Run(ObjAttach *o)
                 }
             }
             if (o->area == gScene.area && o->ownerMotion % 5 == 0) {
-                Em_PlaySeChecked(o->owner, 0x3E, 0, o->pos, 0x18, 0);
+                Em_PlaySeChecked(o->owner, 62, 0, o->pos, 24, 0);
             }
         }
     default:
     run:
-        breathBuf->spin += 0x71C;
+        breathBuf->spin += 1820;
         floor = AreaGrid2_GetFloorY(o->pos);
         Key_LerpVec3(KushalaBreath_ScaleKeys[0], breathBuf->vec, o->ownerMotion % 4);
         breathBuf->vec[0] *= KushalaBreath_SizeScale[breathBuf->size];
@@ -775,7 +550,7 @@ void KushalaBreath_Run(ObjAttach *o)
         }
         if (o->drawSlotBuf != NULL) {
             Vec_Copy(o->drawSlotBuf->pos, o->pos);
-            OT_AddByDepth(gDrawOtSorted, o->drawSlotBuf, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, o->drawSlotBuf, 64, 0);
         }
         particle = breathBuf->part;
         for (i = 0; i < count; i++, particle++) {
@@ -829,12 +604,12 @@ void KushalaBreath_Run(ObjAttach *o)
                         particle->pos[0] += particle->vel[0];
                         particle->pos[1] += particle->vel[1];
                         particle->pos[2] += particle->vel[2];
-                        KushalaBreath_SpinPart(o, particle, 0x444);
+                        KushalaBreath_SpinPart(o, particle, 1092);
                     }
                     break;
                 case 0:
                     if (particle->timer < 9) {
-                        KushalaBreath_SpinPart(o, particle, 0x444);
+                        KushalaBreath_SpinPart(o, particle, 1092);
                     }
                     break;
                 case 2:
@@ -952,7 +727,7 @@ void KushalaBreath_DrawPart(ObjAttach *o, KushalaBreathPart *particle)
     case 2:
         if (particle->ds != NULL) {
             Vec_Copy(particle->ds->pos, particle->pos);
-            OT_AddByDepth(gDrawOtSorted, particle->ds, 0x40U, 0);
+            OT_AddByDepth(gDrawOtSorted, particle->ds, 64U, 0);
         }
         break;
     case 1:
@@ -1037,7 +812,7 @@ void KushalaBreath_Draw(DrawSlot *drawSlot)
         return;
     }
     tex = bank->mats;
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     if (drawSlot->part == -1) {
         matSetNo = 0;
         Mtx_Scale(mtx, breathBuf->vec[0], breathBuf->vec[1], breathBuf->vec[2]);
@@ -1050,7 +825,7 @@ void KushalaBreath_Draw(DrawSlot *drawSlot)
         }
         Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
         Mtx_Translation(uvMtx, 0.0f, 0.0625f * (o->ownerMotion % 16), 0.0f);
-        Gs_SetState(0x19, (s32) uvMtx);
+        Gs_SetState(RS_UV_MTX, (s32) uvMtx);
         flags |= 2;
         col = -1;
     } else {
@@ -1099,7 +874,7 @@ void KushalaBreath_Draw(DrawSlot *drawSlot)
                 Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
                 break;
             }
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             break;
         case 1:
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -1113,17 +888,19 @@ void KushalaBreath_Draw(DrawSlot *drawSlot)
 }
 
 /*
- * Bursts the breath at pos (types 0-2 only): its burst sound (0x3C), a
- * StageObj_K1C effect (kind 0xF; 0x11 for type 1) and an Explosion owned by
- * the monster. The Explosion's kind follows the size: 0x1C small, 0x1D large,
- * 0x1F and 0x20 their snowy-mountain versions (for type 1, 0x1F at size 1).
+ * Bursts the breath at pos (types 0-2 only): its burst sound (60), a
+ * MonsterFx effect (MonsterFx_CreateAtYaw, kind 15; 17 for type 1) and an
+ * Explosion owned by the monster. The Explosion's kind follows the size:
+ * EXPLOSION_KUSHALA_BREATH small, EXPLOSION_KUSHALA_BREATH_BIG large,
+ * EXPLOSION_KUSHALA_BREATH_B and EXPLOSION_KUSHALA_BREATH_B_BIG their
+ * snowy-mountain versions (for type 1, EXPLOSION_KUSHALA_BREATH_B at size 1).
  */
 void KushalaBreath_Impact(ObjAttach *o, s32 unused, f32 *pos)
 {
-    u16 explosionKind = 0x1D;
+    u16 explosionKind = EXPLOSION_KUSHALA_BREATH_BIG;
     KushalaBreathBuf *buf = (KushalaBreathBuf *) o->buf;
     f32 scale = 1.0f;
-    u8 fxKind = 0xF;
+    u8 fxKind = 15;
 
     switch (o->type) {
     case 0:
@@ -1141,35 +918,35 @@ void KushalaBreath_Impact(ObjAttach *o, s32 unused, f32 *pos)
         case 1:
         default:
             scale = 0.7f;
-            explosionKind = 0x1C;
+            explosionKind = EXPLOSION_KUSHALA_BREATH;
             break;
         case 2:
             scale = 1.0f;
-            explosionKind = 0x1D;
+            explosionKind = EXPLOSION_KUSHALA_BREATH_BIG;
             break;
         case 3:
         case 4:
             scale = 0.7f;
-            explosionKind = 0x1F;
+            explosionKind = EXPLOSION_KUSHALA_BREATH_B;
             break;
         case 5:
             scale = 1.0f;
-            explosionKind = 0x20;
+            explosionKind = EXPLOSION_KUSHALA_BREATH_B_BIG;
             break;
         }
         break;
     case 1:
         scale = 0.7f;
-        fxKind = 0x11;
+        fxKind = 17;
         if (buf->size != 1) {
-            explosionKind = 0x1C;
+            explosionKind = EXPLOSION_KUSHALA_BREATH;
         } else {
-            explosionKind = 0x1F;
+            explosionKind = EXPLOSION_KUSHALA_BREATH_B;
         }
         break;
     }
     if (o->area == gScene.area) {
-        Em_PlaySeChecked(o->owner, 0x3C, 0, pos, 6, 0);
+        Em_PlaySeChecked(o->owner, 60, 0, pos, 6, 0);
         MonsterFx_CreateAtYaw(pos, o->rotY, fxKind, scale);
         Explosion_CreateOwned(o->owner, pos, explosionKind);
     }
@@ -1272,10 +1049,12 @@ void KushalaAttack_Setup(ObjAttach *o)
 
 /*
  * Keeps the window open for types 8 and 25. Types 9 and 26 hold it until
- * motion 0x3F6 starts, then stay 31 or 1 more frames; type 29 waits for
- * motion 0x409, then stays 32 more. The attack ends when the window closes or
- * the motion leaves its own: 0x3FD-0x3FF (type 8), 0x3F4-0x3F6 (9, 26), 0x409
- * or 0x411 (29), else ownerMotion.
+ * KUSH_MOT_DASH_END starts, then stay 31 or 1 more frames; type 29 waits for
+ * KUSH_MOT_TESCA_ACTION_C_END, then stays 32 more. The attack ends when the
+ * window closes or the motion leaves its own: KUSH_MOT_RUN_START to
+ * KUSH_MOT_RUN_C (type 8), KUSH_MOT_FLY_FAST to KUSH_MOT_DASH_END (9, 26),
+ * KUSH_MOT_TESCA_ACTION_C_END or KUSH_MOT_TESCA_ACTION_C (29), else
+ * ownerMotion.
  */
 void KushalaAttack_Run(ObjAttach *o)
 {
@@ -1288,7 +1067,7 @@ void KushalaAttack_Run(ObjAttach *o)
     case 9:
         switch (o->step) {
         case 0:
-            if (em->motionId[0] == 0x3F6) {
+            if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_END)) {
                 o->step++;
                 o->hitFrames = 31;
             } else {
@@ -1305,7 +1084,7 @@ void KushalaAttack_Run(ObjAttach *o)
     case 26:
         switch (o->step) {
         case 0:
-            if (em->motionId[0] == 0x3F6) {
+            if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_END)) {
                 o->step++;
                 o->hitFrames = 1;
             } else {
@@ -1319,7 +1098,7 @@ void KushalaAttack_Run(ObjAttach *o)
     case 29:
         switch (o->step) {
         case 0:
-            if (em->motionId[0] == 0x409) {
+            if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C_END)) {
                 o->step++;
                 o->hitFrames = 32;
             } else {
@@ -1333,20 +1112,20 @@ void KushalaAttack_Run(ObjAttach *o)
     }
     switch (o->type) {
     case 8:
-        if (!(em->motionId[0] == 0x3FD || em->motionId[0] == 0x3FE || em->motionId[0] == 0x3FF) || o->hitPhase == 0) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_RUN_START) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_RUN_B) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_RUN_C)) || o->hitPhase == 0) {
             o->hitPhase = 0;
             o->state = ATTACH_END;
         }
         break;
     case 9:
     case 26:
-        if (!(em->motionId[0] == 0x3F4 || em->motionId[0] == 0x3F5 || em->motionId[0] == 0x3F6) || o->hitPhase == 0) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_FLY_FAST) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_START) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_END)) || o->hitPhase == 0) {
             o->hitPhase = 0;
             o->state = ATTACH_END;
         }
         break;
     case 29:
-        if (!(em->motionId[0] == 0x411 || em->motionId[0] == 0x409) || o->hitPhase == 0) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C_END)) || o->hitPhase == 0) {
             o->hitPhase = 0;
             o->state = ATTACH_END;
         }
@@ -1360,7 +1139,7 @@ void KushalaAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -1386,7 +1165,7 @@ void KushalaAttack_Free(ObjAttach *o)
 
 /*
  * Makes a ShenGaorenAttack of type at em's position, if a player is in em's
- * area. Types 0x12-0x17 are the stomps under the legs
+ * area. Types 18-23 are the stomps under the legs
  * (EmShenGaoren_SpawnGroundEffect); the rest come from
  * EmShenGaoren_MotionEffects.
  */
@@ -1496,7 +1275,7 @@ void ShenGaorenAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -1639,7 +1418,7 @@ void YamaTsukamiAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -1686,42 +1465,42 @@ HitShape *KushalaBreath_HitShapes[8] = {
     KushalaBreath_HitShapes_0, KushalaBreath_HitShapes_1, KushalaBreath_HitShapes_2, KushalaBreath_HitShapes_3,
     KushalaBreath_HitShapes_4, KushalaBreath_HitShapes_5, 0, 0,
 };
-u32 KushalaBreath_Rows[66] = {
+AttackRow KushalaBreath_Rows[11] = {
 #include "game/008A8900.inc"
 };
 void *KushalaBreath_RowsPtr = (void *)KushalaBreath_Rows;
 s8 KushalaBreath_FirstRow[16] = {
 #include "game/008A8A10.inc"
 };
-u32 KushalaBreath_VecKeys_0[16] = {
+Vec3Key KushalaBreath_ScaleKeys_0[4] = {
 #include "game/008A8A20.inc"
 };
-u32 KushalaBreath_VecKeys_1[8] = {
+f32 KushalaBreath_ScaleKeys_1[8] = {
 #include "game/008A8A60.inc"
 };
-u32 KushalaBreath_VecKeys_2[8] = {
+f32 KushalaBreath_ScaleKeys_2[8] = {
 #include "game/008A8A80.inc"
 };
-u32 KushalaBreath_VecKeys_3[8] = {
+f32 KushalaBreath_ScaleKeys_3[8] = {
 #include "game/008A8AA0.inc"
 };
-u32 KushalaBreath_VecKeys_4[16] = {
+f32 KushalaBreath_ScaleKeys_4[16] = {
 #include "game/008A8AC0.inc"
 };
-u32 KushalaBreath_VecKeys_5[12] = {
+Vec3Key KushalaBreath_ScaleKeys_5[3] = {
 #include "game/008A8B00.inc"
 };
 void *KushalaBreath_ScaleKeys[8] = {
-    (void *)KushalaBreath_VecKeys_0, (void *)KushalaBreath_VecKeys_1, (void *)KushalaBreath_VecKeys_2, (void *)KushalaBreath_VecKeys_3,
-    (void *)KushalaBreath_VecKeys_4, (void *)KushalaBreath_VecKeys_5, NULL, NULL,
+    (void *)KushalaBreath_ScaleKeys_0, (void *)KushalaBreath_ScaleKeys_1, (void *)KushalaBreath_ScaleKeys_2, (void *)KushalaBreath_ScaleKeys_3,
+    (void *)KushalaBreath_ScaleKeys_4, (void *)KushalaBreath_ScaleKeys_5, NULL, NULL,
 };
-u32 KushalaBreath_AlphaKeys_0[8] = {
+FloatKey KushalaBreath_AlphaKeys_0[3] = {
 #include "game/008A8B50.inc"
 };
-u32 KushalaBreath_AlphaKeys_1[8] = {
+FloatKey KushalaBreath_AlphaKeys_1[3] = {
 #include "game/008A8B70.inc"
 };
-u32 KushalaBreath_AlphaKeys_2[6] = {
+FloatKey KushalaBreath_AlphaKeys_2[3] = {
 #include "game/008A8B90.inc"
 };
 void *KushalaBreath_AlphaKeys[3] = {
@@ -1803,7 +1582,7 @@ HitShape *KushalaAttack_HitShapes[20] = {
     KushalaAttack_HitShapes_12, KushalaAttack_HitShapes_13, KushalaAttack_HitShapes_14, KushalaAttack_HitShapes_15,
     KushalaAttack_HitShapes_16, 0, 0, 0,
 };
-u32 KushalaAttack_Rows[186] = {
+AttackRow KushalaAttack_Rows[31] = {
 #include "game/008A9970.inc"
 };
 void *KushalaAttack_RowsPtr = (void *)KushalaAttack_Rows;
@@ -1855,7 +1634,7 @@ HitShape *ShenGaorenAttack_HitShapes[16] = {
     ShenGaorenAttack_HitShapes_8, ShenGaorenAttack_HitShapes_9, ShenGaorenAttack_HitShapes_10, ShenGaorenAttack_HitShapes_11,
     ShenGaorenAttack_HitShapes_12, ShenGaorenAttack_HitShapes_13, 0, 0,
 };
-u32 ShenGaorenAttack_Rows[156] = {
+AttackRow ShenGaorenAttack_Rows[26] = {
 #include "game/008AA470.inc"
 };
 void *ShenGaorenAttack_RowsPtr = (void *)ShenGaorenAttack_Rows;
@@ -1904,7 +1683,7 @@ HitShape *YamaTsukamiAttack_HitShapes[16] = {
     YamaTsukamiAttack_HitShapes_8, YamaTsukamiAttack_HitShapes_9, YamaTsukamiAttack_HitShapes_10, YamaTsukamiAttack_HitShapes_11,
     YamaTsukamiAttack_HitShapes_12, 0, 0, 0,
 };
-u32 YamaTsukamiAttack_Rows[138] = {
+AttackRow YamaTsukamiAttack_Rows[23] = {
 #include "game/008AB3D0.inc"
 };
 void *YamaTsukamiAttack_RowsPtr = (void *)YamaTsukamiAttack_Rows;

@@ -10,9 +10,10 @@
 #include "lobby_globals.h"
 #include "save.h"
 #include "lobby_menu.h"
+#include "place_info_draw.h"
+#include "font.h"
+#include "game_util.h"
 
-void Font_SetSpacing(u8 a, u8 b);
-s32 Game_IsOnline(void);
 /* unit's own declaration: as the caller uses it; with the definition's s16 (s16 x, s16 y, s32 h), the call in PlaceInfo_DrawAt compiles differently */
 s32 PlaceInfo_DrawPlace(s32, s32, s32);
 /* unit's own declaration: as the caller uses it; with the definition's void (s16 x, s16 y), the call in PlaceInfo_DrawAt compiles differently */
@@ -26,7 +27,7 @@ void PlaceInfo_DrawVillage(s32, s32);
  * version with its facilities. */
 void PlaceInfo_DrawAt(s32 x, s32 y)
 {
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (Game_IsOnline() == 1) {
         PlaceInfo_DrawOnline(x, y);
         return;
@@ -44,5 +45,5 @@ extern MenuWork gMenuWork;
  * slide position, PlaceInfoMenu.win.pos. */
 void PlaceInfo_Draw(void)
 {
-    PlaceInfo_DrawAt(gMenuWork.win.pos, 0x3A);
+    PlaceInfo_DrawAt(gMenuWork.win.pos, 58);
 }

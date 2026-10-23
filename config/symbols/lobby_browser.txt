@@ -1,6 +1,7 @@
-// Symbols for overlay 4, lobby.bin: the KDDI "MMBB" portal's HTML browser
-// and its libraries (0x729AC0-0x757600: HTML parsing and layout, images,
-// zlib 1.1.4's inflate). Format: name = 0xADDRESS; // attributes
+// The lobby overlay (overlay 4, lobby.bin), its web browser for the KDDI
+// MMBB portal and the browser's libraries, 0x729AC0-0x757600: the browser,
+// HTML parsing and layout, the PNG and BMP decoders and zlib 1.1.4's
+// inflate. Format: name = 0xADDRESS; // attributes
 // Sorted by address within each part.
 
 // --- 0x729AC0-0x744D70: the browser (pages, input, links, forms, drawing) ---
@@ -184,11 +185,11 @@ Page_CheckImages = 0x00738610; // type:func
 Browser_Timers = 0x007388A0; // type:func
 Page_CreateFrame = 0x00738A00; // type:func
 Browser_RunEnd = 0x00738A60; // type:func
-PortalEnd_Step0 = 0x00738AB0; // type:func
-PortalEnd_Step1 = 0x00738CC0; // type:func
-PortalEnd_Step2 = 0x00738D90; // type:func
-PortalEnd_Step3 = 0x00738E10; // type:func
-PortalEnd_Step4 = 0x00738F10; // type:func
+PortalEnd_Start = 0x00738AB0; // type:func
+PortalEnd_DrawLast = 0x00738CC0; // type:func
+PortalEnd_FreeObjs = 0x00738D90; // type:func
+PortalEnd_Finish = 0x00738E10; // type:func
+PortalEnd_WaitPost = 0x00738F10; // type:func
 Dialog_Run = 0x00739070; // type:func
 Dialog_Reset = 0x007390A0; // type:func
 Dialog_RunStep = 0x00739100; // type:func
@@ -199,6 +200,7 @@ Page_PointTo = 0x0073A4B0; // type:func
 Dialog_Register = 0x0073A8A0; // type:func
 Dialog_Ok = 0x0073A9E0; // type:func
 Dialog_Exit = 0x0073AA80; // type:func
+Dialog_NoStep = 0x0073ACE0; // type:func
 PageObj_Activate = 0x0073ACF0; // type:func
 Select_Close = 0x0073AF60; // type:func
 Select_Down = 0x0073AFE0; // type:func
@@ -218,11 +220,12 @@ Form_Reset = 0x0073FB40; // type:func
 Form_Submit = 0x0073FC80; // type:func
 Portal_HandleData = 0x007409A0; // type:func
 Portal_SetIds = 0x00740C30; // type:func
+Dialog_Stopped = 0x00740D10; // type:func
 Browser_Reload = 0x00740D20; // type:func
 Browser_OpenPage = 0x00740D70; // type:func
 Browser_ShowPage = 0x00740E30; // type:func
 Browser_Fail = 0x00740E80; // type:func
-Browser_ShowList = 0x00740EE0; // type:func
+Browser_OpenLeaveDialog = 0x00740EE0; // type:func
 Browser_SetStep = 0x00740F60; // type:func
 Browser_Go = 0x00741010; // type:func
 Browser_ScrollBy = 0x00741080; // type:func
@@ -508,7 +511,7 @@ Bmp_CreatePalette = 0x00753430; // type:func
 Bmp_CreateTexture = 0x00753810; // type:func
 adler32 = 0x007539B0; // type:func
 
-// --- 0x753B50-0x757600: zlib 1.1.4's inflate (unk_753B50.c, unk_753C10.c, unk_756FD0.c) ---
+// --- 0x753B50-0x757600: zlib 1.1.4's inflate, under zlib's own names ---
 inflate_blocks_reset = 0x00753B50; // type:func
 inflate_blocks_new = 0x00753C10; // type:func
 inflate_blocks = 0x00753D20; // type:func
@@ -528,7 +531,7 @@ inflate_trees_dynamic = 0x00756DB0; // type:func
 inflate_trees_fixed = 0x00756FD0; // type:func
 inflate_flush = 0x00757010; // type:func
 
-// --- Data ---
+// --- Data: the inflate's fixed tables and bit masks ---
 fixed_bl = 0x007F0700;
 fixed_bd = 0x007F0708;
 fixed_tl = 0x007F0710;
@@ -537,10 +540,9 @@ inflate_mask = 0x007F1810;
 // the anchor name format, with a stray newline in its 8 bytes (Draw_Anchor includes it whole)
 gAnchorNameFormat = 0x00838EE8; // size:0x8 force_not_migration:True
 
-// --- Round 14 names (decomp-b14-nlobby) ---
-// frees the browser work, reloads gm_sub
+// The close of the browser: frees the browser work and reloads gm_sub.
 LobbyKddi_CloseBrowser = 0x007328A0; // type:func
 
-// Round 23 (ndata-h1)
+// The page dialog's state resets.
 Dialog_ResetBoxState = 0x00739DE0; // type:func clears fromTop and dlgMode, dlgBoxKind and dlgPointerState 1
 Dialog_ResetMsgState = 0x007399A0; // type:func clears dlgMenuState and dlgMode, dlgPointerState 1

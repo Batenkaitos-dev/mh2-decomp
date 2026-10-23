@@ -37,279 +37,261 @@
 #include "lobby_text.h"
 #include "area.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "text.h"
+#include "dojo_menu.h"
+#include "draw_helpers.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_leave_menus.h"
+#include "lobby_queries.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "quest_desk.h"
+#include "quest_desk_draw.h"
+#include "quest_offers.h"
+#include "quest_order_terms.h"
+#include "rand.h"
+#include "talk.h"
+#include "libc.h"
 
 extern u8 gMenuWork[];
-void Text_SetSize(s32 a);
 void Menu_DrawLabelList(s16 x, s8 **b, s16 n, s16 cur, u32 color);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-void LobbySe_Play(s32 se);
-void LobbyMenu_SetDraw(void *draw0, void *draw1, void *draw2, void *draw3);
-s32 Cond_Check(u16 id);
-s32 LobbyWorld_GetSeason(void);
-u16 Rand_Next(s32 stream);
-s32 Menu_CountPages(s16 n, s16 per);
-void *memset(void *d, s32 c, u32 n);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 Dojo_OfflineDrillsCleared(void);
-s32 Dojo_OfflineChainCleared(void);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
 extern u16 gDojoTrainingQuests1[];
 extern u16 gDojoTrainingQuests2[];
 extern u16 gDojoTrainingQuests2Full[];
 extern u16 gDojoTrainingQuests3[];
-void CamFocus_SetAside(s8 a);
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
 u8 Village_FacilityLevel(s32 k);
-s32 SavePouch_Space(u16 item);
-s32 ItemBox_Room(u16 item);
-s32 Save_IsQuestCleared(u16 id);
 extern s16 gDojoRulesPagesOn[];
 extern s16 gDojoRulesPagesOff[];
-s32 Game_IsOnline(void);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Menu_DrawDecoFrame(s16 x, s16 y, s16 w, s16 h, s8 k, s8 c);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *s, s32 color);
-void Text_DrawShadowRgb(s16 x, s16 y, u32 c1, u32 c2, char *s);
-void Text_PrintfColored(const char *fmt, ...);
 extern char *gDojoBasicsPages[];
-void Text_Printf(const char *fmt, ...);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 h, s16 *offs, s16 sel, s8 kind, s32 b);
 
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Talk_Update(void);
-s32 Dojo_IsOpen(void);
-void DojoMenu_Close(void);
-s32 DojoMenu_TrainingInput(u16 pad);
-s32 DojoMenu_DrillsInput(u16 pad);
 struct Em;
-void OfferMenu_Open(struct Em *t);
 extern s8 gQuestMinMembers;
-void Talk_Say(s32 msg, s8 a);
-void DojoMenu_StartTraining(DojoMenu *m);
-s32 DojoMenu_ChoiceInput(u16 pad);
-void CamFocus_End(void);
-void LobbyMenu_Init(void);
 
 /* The pages of the rules (online and offline) and of the basics, reached
  * through gDojoRulesTextsOn, gDojoRulesTextsOff and gDojoBasicsPages. */
 #pragma rodata on
-char gDojoRulesTextsOn_0[0x180] = {
+char gDojoRulesTextsOn_0[384] = {
 #include "lobby/008261A0.inc"
 };
-char gDojoRulesTextsOn_1[0x170] = {
+char gDojoRulesTextsOn_1[368] = {
 #include "lobby/00826320.inc"
 };
-char gDojoRulesTextsOn_2[0x170] = {
+char gDojoRulesTextsOn_2[368] = {
 #include "lobby/00826490.inc"
 };
-char gDojoRulesTextsOn_3[0x180] = {
+char gDojoRulesTextsOn_3[384] = {
 #include "lobby/00826600.inc"
 };
-char gDojoRulesTextsOn_4[0x190] = {
+char gDojoRulesTextsOn_4[400] = {
 #include "lobby/00826780.inc"
 };
-char gDojoRulesTextsOn_5[0x190] = {
+char gDojoRulesTextsOn_5[400] = {
 #include "lobby/00826910.inc"
 };
-char gDojoRulesTextsOn_6[0x1A0] = {
+char gDojoRulesTextsOn_6[416] = {
 #include "lobby/00826AA0.inc"
 };
-char gDojoRulesTextsOn_7[0x1B0] = {
+char gDojoRulesTextsOn_7[432] = {
 #include "lobby/00826C40.inc"
 };
-char gDojoRulesTextsOn_8[0x160] = {
+char gDojoRulesTextsOn_8[352] = {
 #include "lobby/00826DF0.inc"
 };
-char gDojoRulesTextsOn_9[0x180] = {
+char gDojoRulesTextsOn_9[384] = {
 #include "lobby/00826F50.inc"
 };
-char gDojoRulesTextsOn_10[0x170] = {
+char gDojoRulesTextsOn_10[368] = {
 #include "lobby/008270D0.inc"
 };
-char gDojoRulesTextsOn_11[0x180] = {
+char gDojoRulesTextsOn_11[384] = {
 #include "lobby/00827240.inc"
 };
-char gDojoRulesTextsOn_12[0x1A0] = {
+char gDojoRulesTextsOn_12[416] = {
 #include "lobby/008273C0.inc"
 };
-char gDojoRulesTextsOn_13[0x150] = {
+char gDojoRulesTextsOn_13[336] = {
 #include "lobby/00827560.inc"
 };
-char gDojoRulesTextsOn_14[0x160] = {
+char gDojoRulesTextsOn_14[352] = {
 #include "lobby/008276B0.inc"
 };
-char gDojoRulesTextsOn_15[0x180] = {
+char gDojoRulesTextsOn_15[384] = {
 #include "lobby/00827810.inc"
 };
-char gDojoRulesTextsOn_16[0x1D0] = {
+char gDojoRulesTextsOn_16[464] = {
 #include "lobby/00827990.inc"
 };
-char gDojoRulesTextsOn_17[0x190] = {
+char gDojoRulesTextsOn_17[400] = {
 #include "lobby/00827B60.inc"
 };
-char gDojoRulesTextsOn_18[0x190] = {
+char gDojoRulesTextsOn_18[400] = {
 #include "lobby/00827CF0.inc"
 };
-char gDojoRulesTextsOn_19[0x180] = {
+char gDojoRulesTextsOn_19[384] = {
 #include "lobby/00827E80.inc"
 };
-char gDojoRulesTextsOn_20[0x170] = {
+char gDojoRulesTextsOn_20[368] = {
 #include "lobby/00828000.inc"
 };
-char gDojoRulesTextsOn_21[0x170] = {
+char gDojoRulesTextsOn_21[368] = {
 #include "lobby/00828170.inc"
 };
-char gDojoRulesTextsOn_22[0x190] = {
+char gDojoRulesTextsOn_22[400] = {
 #include "lobby/008282E0.inc"
 };
-char gDojoRulesTextsOn_23[0x180] = {
+char gDojoRulesTextsOn_23[384] = {
 #include "lobby/00828470.inc"
 };
-char gDojoRulesTextsOn_24[0x180] = {
+char gDojoRulesTextsOn_24[384] = {
 #include "lobby/008285F0.inc"
 };
-char gDojoRulesTextsOn_25[0x190] = {
+char gDojoRulesTextsOn_25[400] = {
 #include "lobby/00828770.inc"
 };
-char gDojoRulesTextsOn_26[0x130] = {
+char gDojoRulesTextsOn_26[304] = {
 #include "lobby/00828900.inc"
 };
-char gDojoRulesTextsOn_27[0x1A0] = {
+char gDojoRulesTextsOn_27[416] = {
 #include "lobby/00828A30.inc"
 };
-char gDojoRulesTextsOn_28[0x1A0] = {
+char gDojoRulesTextsOn_28[416] = {
 #include "lobby/00828BD0.inc"
 };
-char gDojoRulesTextsOn_29[0x190] = {
+char gDojoRulesTextsOn_29[400] = {
 #include "lobby/00828D70.inc"
 };
-char gDojoRulesTextsOff_0[0x180] = {
+char gDojoRulesTextsOff_0[384] = {
 #include "lobby/00828F00.inc"
 };
-char gDojoRulesTextsOff_1[0x190] = {
+char gDojoRulesTextsOff_1[400] = {
 #include "lobby/00829080.inc"
 };
-char gDojoRulesTextsOff_2[0x1A0] = {
+char gDojoRulesTextsOff_2[416] = {
 #include "lobby/00829210.inc"
 };
-char gDojoRulesTextsOff_3[0x190] = {
+char gDojoRulesTextsOff_3[400] = {
 #include "lobby/008293B0.inc"
 };
-char gDojoRulesTextsOff_4[0x1A0] = {
+char gDojoRulesTextsOff_4[416] = {
 #include "lobby/00829540.inc"
 };
-char gDojoRulesTextsOff_5[0x1A0] = {
+char gDojoRulesTextsOff_5[416] = {
 #include "lobby/008296E0.inc"
 };
-char gDojoRulesTextsOff_6[0x1A0] = {
+char gDojoRulesTextsOff_6[416] = {
 #include "lobby/00829880.inc"
 };
-char gDojoRulesTextsOff_7[0x1C0] = {
+char gDojoRulesTextsOff_7[448] = {
 #include "lobby/00829A20.inc"
 };
-char gDojoRulesTextsOff_8[0x190] = {
+char gDojoRulesTextsOff_8[400] = {
 #include "lobby/00829BE0.inc"
 };
-char gDojoRulesTextsOff_9[0x1A0] = {
+char gDojoRulesTextsOff_9[416] = {
 #include "lobby/00829D70.inc"
 };
-char gDojoRulesTextsOff_10[0x170] = {
+char gDojoRulesTextsOff_10[368] = {
 #include "lobby/00829F10.inc"
 };
-char gDojoRulesTextsOff_11[0x180] = {
+char gDojoRulesTextsOff_11[384] = {
 #include "lobby/0082A080.inc"
 };
-char gDojoRulesTextsOff_12[0x1A0] = {
+char gDojoRulesTextsOff_12[416] = {
 #include "lobby/0082A200.inc"
 };
-char gDojoRulesTextsOff_13[0x1A0] = {
+char gDojoRulesTextsOff_13[416] = {
 #include "lobby/0082A3A0.inc"
 };
-char gDojoRulesTextsOff_14[0x1A0] = {
+char gDojoRulesTextsOff_14[416] = {
 #include "lobby/0082A540.inc"
 };
-char gDojoRulesTextsOff_15[0x1B0] = {
+char gDojoRulesTextsOff_15[432] = {
 #include "lobby/0082A6E0.inc"
 };
-char gDojoRulesTextsOff_16[0x180] = {
+char gDojoRulesTextsOff_16[384] = {
 #include "lobby/0082A890.inc"
 };
-char gDojoRulesTextsOff_17[0x160] = {
+char gDojoRulesTextsOff_17[352] = {
 #include "lobby/0082AA10.inc"
 };
-char gDojoRulesTextsOff_18[0x160] = {
+char gDojoRulesTextsOff_18[352] = {
 #include "lobby/0082AB70.inc"
 };
-char gDojoRulesTextsOff_19[0x180] = {
+char gDojoRulesTextsOff_19[384] = {
 #include "lobby/0082ACD0.inc"
 };
-char gDojoRulesTextsOff_20[0x180] = {
+char gDojoRulesTextsOff_20[384] = {
 #include "lobby/0082AE50.inc"
 };
-char gDojoRulesTextsOff_21[0x1A0] = {
+char gDojoRulesTextsOff_21[416] = {
 #include "lobby/0082AFD0.inc"
 };
-char gDojoRulesTextsOff_22[0x180] = {
+char gDojoRulesTextsOff_22[384] = {
 #include "lobby/0082B170.inc"
 };
-char gDojoRulesTextsOff_23[0x190] = {
+char gDojoRulesTextsOff_23[400] = {
 #include "lobby/0082B2F0.inc"
 };
-char gDojoRulesTextsOff_24[0x140] = {
+char gDojoRulesTextsOff_24[320] = {
 #include "lobby/0082B480.inc"
 };
-char gDojoRulesTextsOff_25[0x1A0] = {
+char gDojoRulesTextsOff_25[416] = {
 #include "lobby/0082B5C0.inc"
 };
-char gDojoRulesTextsOff_26[0x1A0] = {
+char gDojoRulesTextsOff_26[416] = {
 #include "lobby/0082B760.inc"
 };
-char gDojoRulesTextsOff_27[0x190] = {
+char gDojoRulesTextsOff_27[400] = {
 #include "lobby/0082B900.inc"
 };
-char gDojoBasicsPages_0[0x130] = {
+char gDojoBasicsPages_0[304] = {
 #include "lobby/0082BA90.inc"
 };
-char gDojoBasicsPages_1[0x130] = {
+char gDojoBasicsPages_1[304] = {
 #include "lobby/0082BBC0.inc"
 };
-char gDojoBasicsPages_2[0x150] = {
+char gDojoBasicsPages_2[336] = {
 #include "lobby/0082BCF0.inc"
 };
-char gDojoBasicsPages_3[0x150] = {
+char gDojoBasicsPages_3[336] = {
 #include "lobby/0082BE40.inc"
 };
-char gDojoBasicsPages_4[0x130] = {
+char gDojoBasicsPages_4[304] = {
 #include "lobby/0082BF90.inc"
 };
-char gDojoBasicsPages_5[0x120] = {
+char gDojoBasicsPages_5[288] = {
 #include "lobby/0082C0C0.inc"
 };
-char gDojoBasicsPages_6[0x160] = {
+char gDojoBasicsPages_6[352] = {
 #include "lobby/0082C1E0.inc"
 };
-char gDojoBasicsPages_7[0x140] = {
+char gDojoBasicsPages_7[320] = {
 #include "lobby/0082C340.inc"
 };
-char gDojoBasicsPages_8[0x130] = {
+char gDojoBasicsPages_8[304] = {
 #include "lobby/0082C480.inc"
 };
-char gDojoBasicsPages_9[0x150] = {
+char gDojoBasicsPages_9[336] = {
 #include "lobby/0082C5B0.inc"
 };
 #pragma rodata off
 
 #pragma optimization_level 4
-s32 LobbyTime_IsPm(void);
-s16 OfferMenu_BuildList(struct Em *t, s32 b);
-void DojoMenu_DrawPanels(MenuTask *task);
-void DojoMenu_Draw(MenuTask *task);
 /* Opens the dojo's menu at the instructor (TOWN_MODE_DOJO): clears gMenuWork,
  * sets the draw callbacks, has the instructor greet the hunter and notes the
  * season and the time of day the drills are matched against. Online the menu
@@ -333,7 +315,7 @@ void DojoMenu_Open(struct Em *instructor)
         dojo->mode = DOJO_MODE_DRILLS;
         dojo->cat = 0;
         dojo->choices[0] = DOJO_CHOICE_DRILLS;
-        WinSlide_Step(&dojo->win, 0x280, 0x104);
+        WinSlide_Step(&dojo->win, 640, 260);
         CamFocus_SetAside(1);
         LobbySe_Play(LOBBY_SE_WINDOW_IN);
     } else {
@@ -376,8 +358,8 @@ s32 Dojo_IsOpen(void)
 /* Runs the dojo's menu each frame, by its mode: after the greeting, offline
  * the first choice and online the drills; the drills or the training menu;
  * then the instructor's last words and DojoMenu_Close. A drill taken ends
- * with the instructor's line 0xA when the room needs no least members, else
- * line 0xB; leaving says line 1. */
+ * with the instructor's line 10 when the room needs no least members, else
+ * line 11; leaving says line 1. */
 void DojoMenu_Update(void)
 {
     DojoMenu *dojo = (DojoMenu *)gMenuWork;
@@ -397,7 +379,7 @@ void DojoMenu_Update(void)
                 }
                 dojo->mode = DOJO_MODE_DRILLS;
                 dojo->cat = 0;
-                WinSlide_Step(&dojo->win, 0x280, 0x104);
+                WinSlide_Step(&dojo->win, 640, 260);
                 Talk_Say(2, 0);
                 CamFocus_SetAside(1);
                 break;
@@ -414,7 +396,7 @@ void DojoMenu_Update(void)
             case DOJO_CHOICE_DRILLS:
                 dojo->mode++;
                 dojo->cat = 0;
-                WinSlide_Step(&dojo->win, 0x280, 0x104);
+                WinSlide_Step(&dojo->win, 640, 260);
                 CamFocus_SetAside(1);
                 LobbySe_Play(LOBBY_SE_WINDOW_IN);
                 break;
@@ -425,7 +407,7 @@ void DojoMenu_Update(void)
                 break;
             case DOJO_CHOICE_OFFERS:
                 OfferMenu_Open(dojo->npc);
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 break;
             }
             break;
@@ -440,9 +422,9 @@ void DojoMenu_Update(void)
         case MENU_DONE:
             dojo->mode = DOJO_MODE_BYE;
             if (gQuestMinMembers == 0) {
-                Talk_Say(0xA, 0);
+                Talk_Say(10, 0);
             } else {
-                Talk_Say(0xB, 0);
+                Talk_Say(11, 0);
             }
             break;
         case MENU_CANCEL:
@@ -487,7 +469,7 @@ void DojoMenu_Update(void)
 void DojoMenu_StartTraining(DojoMenu *dojo)
 {
     dojo->cat = 0;
-    WinSlide_Step(&dojo->win, 0x280, 0x104);
+    WinSlide_Step(&dojo->win, 640, 260);
     CamFocus_SetAside(1);
     if (Cond_Check(3) != 0) {
         dojo->cats = 4;
@@ -495,11 +477,6 @@ void DojoMenu_StartTraining(DojoMenu *dojo)
         dojo->cats = 3;
     }
 }
-
-s32 DojoMenu_QuestInput(u16 pad);
-s32 DojoMenu_TrainingCategoryInput(DojoMenu *m, u16 pad);
-s32 DojoMenu_BasicsInput(DojoMenu *m, u16 pad);
-void DojoMenu_LoadTrainingQuests(DojoMenu *m);
 
 /* The training menu, by its step: the categories (the basics' pages or a
  * list of training quests), the window's slides, the quest sheet and the
@@ -511,7 +488,7 @@ s32 DojoMenu_TrainingInput(u16 pad)
 
     switch (dojo->step) {
     case TRAINING_STEP_SLIDE_IN:
-        switch (WinSlide_Step(&dojo->win, 0x280, 0x104)) {
+        switch (WinSlide_Step(&dojo->win, 640, 260)) {
         case MENU_DONE:
             dojo->step++;
             break;
@@ -555,7 +532,7 @@ s32 DojoMenu_TrainingInput(u16 pad)
         case MENU_CANCEL:
             dojo->step = TRAINING_STEP_SLIDE_BACK;
             dojo->next = TRAINING_STEP_CATEGORY;
-            WinSlide_Step(&dojo->win, 0x280, 0x104);
+            WinSlide_Step(&dojo->win, 640, 260);
             break;
         }
         break;
@@ -569,14 +546,14 @@ s32 DojoMenu_TrainingInput(u16 pad)
         }
         break;
     case TRAINING_STEP_SLIDE_OUT:
-        switch (WinSlide_Step(&dojo->win, 0x104, 0x280)) {
+        switch (WinSlide_Step(&dojo->win, 260, 640)) {
         case MENU_DONE:
             dojo->step = dojo->next;
             break;
         }
         break;
     case TRAINING_STEP_SLIDE_BACK:
-        switch (WinSlide_Step(&dojo->win, 0x280, 0x104)) {
+        switch (WinSlide_Step(&dojo->win, 640, 260)) {
         case MENU_DONE:
             dojo->step = dojo->next;
             break;
@@ -628,10 +605,10 @@ s32 DojoMenu_BasicsInput(DojoMenu *dojo, u16 pad)
 {
     if (!(pad & PAD_CIRCLE)) {
         if (pad & PAD_CROSS) {
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         }
-        dojo->page = Menu_WrapUpDownSe(dojo->page, DOJO_BASICS_PAGES, LOBBY_SE_WINDOW_OUT);
+        dojo->page = Menu_WrapUpDownSe(dojo->page, DOJO_BASICS_PAGES, LOBBY_SE_WINDOW_SLIDE);
     }
     return MENU_RUNNING;
 }
@@ -641,7 +618,7 @@ s32 DojoMenu_BasicsInput(DojoMenu *dojo, u16 pad)
 s32 DojoMenu_TrainingCategoryInput(DojoMenu *dojo, u16 pad)
 {
     if (pad & PAD_CIRCLE) {
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         return MENU_DONE;
     }
     if (pad & PAD_CROSS) {
@@ -668,14 +645,6 @@ s32 DojoMenu_ChoiceInput(u16 pad)
     dojo->choiceCursor = Menu_WrapUpDown(dojo->choiceCursor, dojo->choiceCount);
     return MENU_RUNNING;
 }
-
-s32 DojoMenu_DrillsCategoryInput(u16 pad);
-s32 DojoMenu_DrillKindInput(u16 pad);
-s32 PointShop_Input(u16 pad);
-s32 DojoMenu_RulesInput(u16 pad);
-void PointShop_LoadPage(s16 page);
-void DojoMenu_ListHuntDrills(void);
-void DojoMenu_ListArenaDrills(void);
 
 /* The drills menu, by its step: the categories (the drills, the point
  * exchange, the rules), the drills' kind (hunts or arena), the instructor's
@@ -765,13 +734,13 @@ s32 DojoMenu_DrillsInput(u16 pad)
         switch (Talk_Update()) {
         case MENU_DONE:
             dojo->step++;
-            WinSlide_Step(&dojo->win, 0x104, 0x280);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            WinSlide_Step(&dojo->win, 260, 640);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         }
         break;
     case DRILLS_STEP_SLIDE_OUT:
-        switch (WinSlide_Step(&dojo->win, 0x104, 0x280)) {
+        switch (WinSlide_Step(&dojo->win, 260, 640)) {
         case MENU_DONE:
             dojo->step = dojo->next;
             break;
@@ -785,14 +754,14 @@ s32 DojoMenu_DrillsInput(u16 pad)
         case MENU_CANCEL:
             dojo->step = DRILLS_STEP_BACK_FROM_QUESTS;
             dojo->next = DRILLS_STEP_KIND;
-            WinSlide_Step(&dojo->win, 0x280, 0x104);
+            WinSlide_Step(&dojo->win, 640, 260);
             break;
         }
         break;
     case DRILLS_STEP_BACK_FROM_SHOP:
     case DRILLS_STEP_BACK_FROM_RULES:
     case DRILLS_STEP_BACK_FROM_QUESTS:
-        switch (WinSlide_Step(&dojo->win, 0x280, 0x104)) {
+        switch (WinSlide_Step(&dojo->win, 640, 260)) {
         case MENU_DONE:
             dojo->step = dojo->next;
             if (dojo->next == DRILLS_STEP_CATEGORY) {
@@ -836,12 +805,12 @@ s32 DojoMenu_RulesInput(u16 pad)
 
     if (!(pad & PAD_CIRCLE)) {
         if (pad & PAD_CROSS) {
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         }
         if (pad & (PAD_UP | PAD_DOWN)) {
             oldTopic = dojo->page;
-            dojo->page = Menu_WrapUpDownSe(oldTopic, dojo->pages, LOBBY_SE_WINDOW_OUT);
+            dojo->page = Menu_WrapUpDownSe(oldTopic, dojo->pages, LOBBY_SE_WINDOW_SLIDE);
             if (oldTopic != dojo->page) {
                 dojo->rulesPage = 0;
                 if (Game_IsOnline() == 1) {
@@ -936,8 +905,6 @@ s32 Dojo_OnlineChainCleared(void)
 }
 
 extern PointShopLine *gPointShopStocks[];
-s32 Dojo_OfflineAllCleared(void);
-s32 Dojo_OnlineChainCleared(void);
 /* Loads page PAGE of the point exchange: picks the stock by the game's mode
  * and progress (POINT_SHOP_*), copies the page's lines to the menu and
  * counts the pages; the cursor goes to the first line. */
@@ -1001,12 +968,6 @@ s32 PointShop_CanBuy(s16 row, s16 count)
     return 1;
 }
 
-s32 PointShop_CanBuy(s16 i, s16 n);
-s8 Items_Give(s32 item, s32 n);
-s32 Menu_YesNoInput(void);
-void Menu_SetYesNo(s8 a);
-s32 Menu_PushNoticeOnce(s32);
-
 /* The point exchange, by its step: the list (circle takes a line the hunter
  * can pay for, square shows or hides the item's description, left and right
  * turn the page), how many (up and down by one, left back to one, right the
@@ -1032,7 +993,7 @@ s32 PointShop_Input(u16 pad)
                 LobbySe_Play(LOBBY_SE_REFUSE);
             }
         } else if (pad & PAD_CROSS) {
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else if (pad & PAD_SQUARE) {
             dojo->showInfo ^= 1;
@@ -1098,7 +1059,7 @@ s32 PointShop_Input(u16 pad)
                 entry = &dojo->shopLines[dojo->shopCursor];
                 gSave.points -= entry->price * dojo->shopQty;
                 if (Items_Give(entry->item, dojo->shopQty) != 0) {
-                    Menu_PushNoticeOnce(0xF);   /* some of them went to the item box */
+                    Menu_PushNoticeOnce(15);   /* some of them went to the item box */
                 }
                 dojo->shopQty = 1;
                 break;
@@ -1112,18 +1073,9 @@ s32 PointShop_Input(u16 pad)
     return MENU_RUNNING;
 }
 
-QuestInfo *Quest_GetInfoAny(u16 id);
-s32 Quest_CheckOrderTerms(u8 id, u8 flag);
-void LobbyText_Open(s32);
-void LobbyDialog_Grow(void);
 extern LobbyMenu *gLobbyMenu;
 extern s16 gQuestStampRand;
-s32 Win_Shake(WinShake *win);
-void QuestRoom_ResetSettings(void);
-void QuestDesk_Accept(u16 id, s16 money, s32 pay);
 void Dojo_SetBestTime(s32 a, s32 value);
-void Dojo_SetBestScore(s32 a, s32 value);
-s32 DojoMenu_PostOnline(u16 pad);
 
 /* The quest sheet of the drills or of the training, by its step. Circle
  * picks a quest: the instructor refuses it while a quest is taken, the
@@ -1143,7 +1095,7 @@ s32 DojoMenu_QuestInput(u16 pad)
             quest = Quest_GetInfoAny(dojo->list[dojo->questCursor]);
             if (gLobby->questTaken != 0) {
                 dojo->state = DOJO_QUEST_TAKEN;
-                Talk_Say(0xF, 0);
+                Talk_Say(15, 0);
             } else if (Quest_CheckOrderTerms(quest->terms, 0) == 0) {
                 dojo->state = DOJO_QUEST_TERMS;
                 LobbyText_Open(LOBBY_TEXT_ORDER_TERMS);
@@ -1156,16 +1108,16 @@ s32 DojoMenu_QuestInput(u16 pad)
             dojo->questPicked = 1;
             LobbySe_Play(LOBBY_SE_CONFIRM);
         } else if (pad & PAD_CROSS) {
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else if (pad & (PAD_LEFT | PAD_RIGHT)) {
             dojo->page = Menu_WrapLeftRight(dojo->page, dojo->pages);
         } else if ((gPadState[0].held & PAD_SELECT && pad & PAD_START) || (pad & PAD_SELECT && gPadState[0].held & PAD_START)) {
             dojo->state = DOJO_QUEST_RESET;
-            LobbyText_Open(0x95);   /* the question to clear the best score and time */
+            LobbyText_Open(149);   /* the question to clear the best score and time */
             Menu_SetYesNo(1);
         } else {
-            dojo->questCursor = Menu_WrapUpDownSe(dojo->questCursor, dojo->questCount, LOBBY_SE_WINDOW_OUT);
+            dojo->questCursor = Menu_WrapUpDownSe(dojo->questCursor, dojo->questCount, LOBBY_SE_WINDOW_SLIDE);
         }
         break;
     case DOJO_QUEST_TALK:
@@ -1242,15 +1194,6 @@ s32 DojoMenu_QuestInput(u16 pad)
     return MENU_RUNNING;
 }
 
-s32 LobbyLevel2_FetchList(void);
-s32 LobbyLevel2_EnterFree(s32 v);
-s32 LobbyLevel2_FetchRecords(void);
-s32 LobbyLevel2_SendSettings(void);
-s32 LobbyLevel2_SendQuestAccept(u32 v);
-s32 LobbyLevel2_SendQuestPost(MsgQuestPost *d);
-s32 LobbyStep_Level2Leave(void);
-void LobbyDialog_OpenWait(void *text);
-s32 DojoMenu_SettingsInput(u16 pad);
 extern u32 gQuestPostArg;
 extern u16 gLobbyQuestId;
 
@@ -1295,7 +1238,7 @@ s32 DojoMenu_PostOnline(u16 pad)
         switch (LobbyLevel2_FetchRecords()) {
         case LOBBY_STEP_DONE:
             dojo->postStep++;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         case LOBBY_STEP_FAILED:
             dojo->postStep = DOJO_POST_ERROR;
@@ -1352,7 +1295,7 @@ s32 DojoMenu_PostOnline(u16 pad)
             gLobby->questPaid = 1;
             QuestDesk_Accept(dojo->list[dojo->questCursor], 0, 1);
             /* clears the next quest's versus fields, teams to timeLimit */
-            memset(gNextQuest.teams, 0, 0x5C);
+            memset(gNextQuest.teams, 0, 92);
             gSysSettings.fieldControl = 0;
             return MENU_DONE;
         case LOBBY_STEP_FAILED:
@@ -1390,8 +1333,6 @@ s32 DojoMenu_PostOnline(u16 pad)
 INCLUDE_RODATA("asm/lobby/nonmatchings/dojo_menu", gDojoTextFmt);
 
 extern LobbyRecs gLobbyRecs;
-void LobbyMenu_Init(void);
-s32 LobbyMenu_KbdEntry(void *p);
 
 /* The posting's room settings: up and down move over the lines (skipping
  * the password while it is off), left and right change the least members or
@@ -1451,9 +1392,6 @@ s32 DojoMenu_SettingsInput(u16 pad)
     }
     return MENU_RUNNING;
 }
-
-QuestInfo *Quest_GetDiscInfo(u16 id);
-s32 Quest_MatchesSeasonTime(u16 id, s32 a, s32 b);
 
 /* 1 when quest ID is a drill open now: a drill (QUEST_FLAG_DRILL) for the
  * season and the time of day the menu opened in, and open by progress. The
@@ -1555,8 +1493,6 @@ s32 DojoMenu_IsDrillOpen(u16 id)
 }
 
 extern u16 *gQuestIdLists[];
-s32 DojoMenu_IsDrillOpen(u16 id);
-s32 QuestId_IsStandard(s32 id);
 /* Lists the open drills (up to DOJO_LIST_MAX) of every quest list whose map
  * isn't one of the arenas: offline the standard quests, online the others
  * (QuestId_IsStandard). */
@@ -1642,7 +1578,7 @@ s32 DojoMenu_DrillsCategoryInput(u16 pad)
 
     switch (dojo->state) {
     case DRILLS_CATS_SLIDE_IN:
-        switch (WinSlide_Step(&dojo->win, 0x280, 0x104)) {
+        switch (WinSlide_Step(&dojo->win, 640, 260)) {
         case MENU_DONE:
             dojo->state++;
             break;
@@ -1685,8 +1621,8 @@ s32 DojoMenu_DrillKindInput(u16 pad)
 /* Draws the drills menu's window at X, Y: the categories or the kinds, with
  * the cursor, for the menu's step (its next step while the window slides,
  * when BYNEXT is 1).
- * Each case moves x and y in place (`x = x + 0xAA`): the game's code keeps
- * the parameters in their registers into the cases, which `x += 0xAA` or
+ * Each case moves x and y in place (`x = x + 170`): the game's code keeps
+ * the parameters in their registers into the cases, which `x += 170` or
  * separate locals don't give. */
 void DojoMenu_DrawDrillsMenu(s16 x, s16 y, s8 byNext)
 {
@@ -1696,7 +1632,7 @@ void DojoMenu_DrawDrillsMenu(s16 x, s16 y, s8 byNext)
     s16 labelX;
     s8 screen;
 
-    Menu_DrawDecoFrame(x, y, 0x154, 0x168, 5, 0);
+    Menu_DrawDecoFrame(x, y, 340, 360, 5, 0);
     Font_SetColor(0x807F7F7F);
     if (byNext == 0) {
         screen = dojo->step;
@@ -1705,53 +1641,46 @@ void DojoMenu_DrawDrillsMenu(s16 x, s16 y, s8 byNext)
     }
     switch (screen) {
     case DRILLS_STEP_CATEGORY:
-        x = x + 0xAA;
-        y = y + 0x64;
-        Font_SetSpacing(0x18, 0x18);
+        x = x + 170;
+        y = y + 100;
+        Font_SetSpacing(24, 24);
         for (i = 0; i < 3; i++) {
             label = gDojoMenuTexts[DOJO_TEXT_DRILL_MENU + i]; /* the categories' labels */
-            labelX = Text_CenterX(label, x, 0x18);
+            labelX = Text_CenterX(label, x, 24);
             if (i == dojo->cat) {
-                Menu_DrawArrowsRev(labelX, y, 0x18, label, 0xFFB57510);
+                Menu_DrawArrowsRev(labelX, y, 24, label, 0xFFB57510);
                 Text_DrawShadowRgb(labelX, y, 0xFF101010, 0xFF106060, label);
             } else {
                 Font_SetColor(0xFF101010);
                 Font_SetPos(labelX, y);
                 Text_PrintfColored(label);
             }
-            y += 0x46;
+            y += 70;
         }
         break;
     case DRILLS_STEP_KIND:
     case DRILLS_STEP_TALK:
-        x = x + 0xAA;
-        y = y + 0x6E;
-        Font_SetSpacing(0x1A, 0x1A);
+        x = x + 170;
+        y = y + 110;
+        Font_SetSpacing(26, 26);
         for (i = 0; i < 2; i++) {
             label = gDojoMenuTexts[DOJO_TEXT_DRILL_KINDS + i]; /* the kinds' labels */
-            labelX = Text_CenterX(label, x, 0x1A);
+            labelX = Text_CenterX(label, x, 26);
             if (i == dojo->drillKind) {
-                Menu_DrawArrowsRev(labelX, y, 0x1A, label, 0xFFB57510);
+                Menu_DrawArrowsRev(labelX, y, 26, label, 0xFFB57510);
                 Text_DrawShadowRgb(labelX, y, 0xFF101010, 0xFF106060, label);
             } else {
                 Font_SetColor(0xFF101010);
                 Font_SetPos(labelX, y);
                 Text_PrintfColored(label);
             }
-            y += 0x64;
+            y += 100;
         }
         break;
     }
 }
 
-char *Quest_GetText(u16 id, s32 k);
 u16 Map_Group(u16 id);
-extern char *gStageNames[];
-s32 Dojo_GetBestScore(u16 id);
-s32 Dojo_GetBestTime(u16 id);
-s32 sprintf(char *buf, const char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
-char *Time_FormatMinSecInHour(u32);
 extern char gDojoTextFmt[];
 
 /* Draws the third page of a drill's sheet: its title, client, map, the best
@@ -1761,17 +1690,17 @@ void DojoMenu_DrawDrillDetails(s16 x, s16 y, QuestInfo *quest)
 {
     s16 top = y;
     s32 id = quest->id;
-    char num[0x40];
-    char wide[0x40];
+    char num[64];
+    char wide[64];
 
-    Font_SetPos(x, y += 0x14);
+    Font_SetPos(x, y += 20);
     Text_PrintfColored(gDojoTextFmt, Quest_GetText(id, QUEST_TEXT_TITLE));
-    Font_SetPos(x + 0x7E, y += 0x2A);
+    Font_SetPos(x + 126, y += 42);
     Text_PrintfColored(gDojoTextFmt, Quest_GetText(id, QUEST_TEXT_CLIENT));
-    Font_SetPos(x + 0x7E, y += 0x18);
+    Font_SetPos(x + 126, y += 24);
     /* the map is read as a halfword, as the game's code loads it */
     Text_PrintfColored(gStageNames[Map_Group(*(u16 *)&quest->map)]);
-    Font_SetPos(x + 0x7E, y += 0x18);
+    Font_SetPos(x + 126, y += 24);
     if (Save_IsQuestCleared(id) == 0 || Dojo_GetBestScore(id) == 0) {
         sprintf(wide, gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_NO_VALUE]);
     } else {
@@ -1779,7 +1708,7 @@ void DojoMenu_DrawDrillDetails(s16 x, s16 y, QuestInfo *quest)
         Sjis_Widen(num, wide);
     }
     Text_PrintfColored(gDojoTextFmt, wide);
-    Font_SetPos(x + 0x7E, y += 0x18);
+    Font_SetPos(x + 126, y += 24);
     if (Save_IsQuestCleared(id) == 0 || Dojo_GetBestTime(id) / 30 == 0) {
         sprintf(wide, gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_NO_VALUE]);
     } else {
@@ -1787,26 +1716,23 @@ void DojoMenu_DrawDrillDetails(s16 x, s16 y, QuestInfo *quest)
         Sjis_Widen(num, wide);
     }
     Text_PrintfColored(gDojoTextFmt, wide);
-    Font_SetPos(x, y + 0x2A);
+    Font_SetPos(x, y + 42);
     Text_PrintfColored(gDojoTextFmt, Quest_GetText(id, QUEST_TEXT_DETAILS));
     Font_SetColor(QUEST_SHEET_LABEL_INK);
-    x = x - 0xA;
-    y = top + 0x14;
-    y += 0x2A;
+    x = x - 10;
+    y = top + 20;
+    y += 42;
     Font_SetPos(x, y);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_CLIENT]);
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_DESTINATION]);
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_HIGH_SCORE]);
-    Font_SetPos(x, y += 0x18);
+    Font_SetPos(x, y += 24);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_CLEAR_TIME]);
-    Font_SetPos(x, y + 0x18);
+    Font_SetPos(x, y + 24);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_CLIENT_DETAILS]);
 }
-
-void Menu_DrawArrows(s16 x, s16 y, s16 size, char *text, s32 color);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 color);
 
 /* Draws the posting's room settings sheet: the least members, the password
  * on or off, the password's box and the decide line, with the cursor. */
@@ -1823,62 +1749,55 @@ void DojoMenu_DrawSettings(s16 x, s16 y)
 
     Quest_GetDiscInfo(dojo->list[dojo->questCursor]);
     top = y;
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     /* the drill kinds' titles follow the exchange's first three texts */
-    Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_DRILL_KINDS + dojo->drillKind], 2, 1);
-    Menu_DrawQuestSheet(x, y, 0x140, 0x168, NULL, 1, -1, -1);
-    Font_SetSpacing(0x12, 0x12);
+    Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_DRILL_KINDS + dojo->drillKind], 2, 1);
+    Menu_DrawQuestSheet(x, y, 320, 360, NULL, 1, -1, -1);
+    Font_SetSpacing(18, 18);
     Font_SetColor(QUEST_SHEET_INK);
-    y += 0x28;
+    y += 40;
     left = x;
-    valueX = left + 0xD8;
-    Font_SetPos(valueX, y += 0x2A);
+    valueX = left + 216;
+    Font_SetPos(valueX, y += 42);
     Text_PrintfColored(gDojoTextFmt, gMemberCountTexts[gLobbyRecs.rec[0].cur]);
     if (dojo->settingsCursor == ROOM_SETTING_MEMBERS) {
-        Menu_DrawArrows(valueX, y, 0x12, gMemberCountTexts[gLobbyRecs.rec[0].cur], 0xFF106060);
+        Menu_DrawArrows(valueX, y, 18, gMemberCountTexts[gLobbyRecs.rec[0].cur], 0xFF106060);
     }
-    Font_SetPos(valueX, y += 0x2A);
+    Font_SetPos(valueX, y += 42);
     Text_PrintfColored(gNoneSetTexts[gLobbyRecs.usePass]);
     if (dojo->settingsCursor == ROOM_SETTING_PASS_ON) {
-        Menu_DrawArrows(valueX, y, 0x12, gNoneSetTexts[gLobbyRecs.usePass], 0xFF106060);
+        Menu_DrawArrows(valueX, y, 18, gNoneSetTexts[gLobbyRecs.usePass], 0xFF106060);
     }
-    Font_SetPos(Text_CenterX(gLobbyRecs.pass, left + 0xA0, 0x12), y += 0x2A);
+    Font_SetPos(Text_CenterX(gLobbyRecs.pass, left + 160, 18), y += 42);
     Text_PrintfColored(gDojoTextFmt, gLobbyRecs.pass);
     if (dojo->settingsCursor == ROOM_SETTING_PASSWORD) {
-        passX = left + 0x64;
-        Menu_DrawArrowsRev(passX, y, 0x12, "             ", 0xFF106060);
-        Gfx_DrawRectFrame(passX, (s16)y - 1, 0x78, 0x14, 0xFF106060);
-        Gfx_DrawRectFrame(left + 0x63, (s16)y - 2, 0x7A, 0x16, 0xFF106060);
+        passX = left + 100;
+        Menu_DrawArrowsRev(passX, y, 18, "             ", 0xFF106060);
+        Gfx_DrawRectFrame(passX, (s16)y - 1, 120, 20, 0xFF106060);
+        Gfx_DrawRectFrame(left + 99, (s16)y - 2, 122, 22, 0xFF106060);
     } else {
-        Gfx_DrawRectFrame(left + 0x64, (s16)y - 1, 0x78, 0x14, 0xFF606060);
-        Gfx_DrawRectFrame(left + 0x63, (s16)y - 2, 0x7A, 0x16, 0xFF606060);
+        Gfx_DrawRectFrame(left + 100, (s16)y - 1, 120, 20, 0xFF606060);
+        Gfx_DrawRectFrame(left + 99, (s16)y - 2, 122, 22, 0xFF606060);
     }
     Font_SetColor(QUEST_SHEET_LABEL_INK);
-    labelY = top + 0x28;
+    labelY = top + 40;
     y = labelY;
-    labelX = left + 0x28;
-    Font_SetPos(Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_RECRUIT], 0x1B8, 0x12), labelY);
+    labelX = left + 40;
+    Font_SetPos(Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_RECRUIT], 440, 18), labelY);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_RECRUIT]);
-    Font_SetPos(labelX, y += 0x2A);
+    Font_SetPos(labelX, y += 42);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_MEMBERS]);
-    Font_SetPos(labelX, y += 0x2A);
+    Font_SetPos(labelX, y += 42);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_PASSWORD]);
-    decideX = Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 0x1B8, 0x12);
-    Font_SetPos(decideX, y += 0x78);
+    decideX = Text_CenterX(gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 440, 18);
+    Font_SetPos(decideX, y += 120);
     Text_PrintfColored(gDojoTextFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE]);
     if (dojo->settingsCursor == ROOM_SETTING_DECIDE) {
-        Menu_DrawArrowsRev(decideX, y, 0x12, gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 0xFF106060);
+        Menu_DrawArrowsRev(decideX, y, 18, gQuestSheetTexts[QUEST_SHEET_TEXT_DECIDE], 0xFF106060);
     }
 }
 
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 extern s8 gMapGroupMapIds[][2];
-void Quest_DrawOverview(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawTerms(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawClearMark(s16 x, s16 y);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
-u16 Map_Group(u16 id);
 
 /* Draws the quest sheet of the listed quests: a tab per quest (the
  * selected one marked), the sheet's page (the details are the drill's
@@ -1891,12 +1810,12 @@ void DojoMenu_DrawQuestPage(s16 x, s16 y)
     s16 tabs[DOJO_LIST_MAX];
     s16 i;
 
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     if (quest->flags & QUEST_FLAG_TRAINING) {
-        Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_TRAINING + dojo->cat], 2, 0xFF);
+        Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_TRAINING + dojo->cat], 2, 255);
     } else {
         /* the drill kinds' titles follow the exchange's first three texts */
-        Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_DRILL_KINDS + dojo->drillKind], 2, 0xFF);
+        Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_DRILL_KINDS + dojo->drillKind], 2, 255);
     }
     memset(tabs, 0, sizeof(tabs));
     for (i = 0; i < DOJO_LIST_MAX; i++) {
@@ -1909,46 +1828,36 @@ void DojoMenu_DrawQuestPage(s16 x, s16 y)
         }
     }
     /* the map is read as a halfword, as the game's code loads it */
-    Menu_DrawQuestSheet(x, y, 0x154, 0x168, tabs, dojo->questCursor, gMapGroupMapIds[Map_Group(*(u16 *)&quest->map)][0], -1);
+    Menu_DrawQuestSheet(x, y, 340, 360, tabs, dojo->questCursor, gMapGroupMapIds[Map_Group(*(u16 *)&quest->map)][0], -1);
     Font_SetColor(QUEST_SHEET_INK);
     if (dojo->questPicked == 0) {
-        Menu_DrawPageNum(0x21C, y + 0xE, dojo->page, QUEST_SHEET_PAGES, 1);
+        Menu_DrawPageNum(540, y + 14, dojo->page, QUEST_SHEET_PAGES, 1);
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (dojo->page) {
     case QUEST_SHEET_OVERVIEW:
-        Quest_DrawOverview((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, quest);
+        Quest_DrawOverview((s16)(x + 40) + 10, (s16)(y + 14) + 4, quest);
         break;
     case QUEST_SHEET_TERMS:
-        Quest_DrawTerms((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, quest);
+        Quest_DrawTerms((s16)(x + 40) + 10, (s16)(y + 14) + 4, quest);
         break;
     case QUEST_SHEET_DETAILS:
         if (quest->flags & QUEST_FLAG_TRAINING) {
-            Quest_DrawDetails((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, quest);
+            Quest_DrawDetails((s16)(x + 40) + 10, (s16)(y + 14) + 4, quest);
         } else {
-            DojoMenu_DrawDrillDetails((s16)(x + 0x28) + 10, (s16)(y + 0xE) + 4, quest);
+            DojoMenu_DrawDrillDetails((s16)(x + 40) + 10, (s16)(y + 14) + 4, quest);
         }
         break;
     }
     if (Save_IsQuestCleared(quest->id)) {
-        Quest_DrawClearMark(x + 0x28, y + 0xE);
+        Quest_DrawClearMark(x + 40, y + 14);
     }
     if (dojo->stamped) {
-        Menu_DrawStamp(x + 0x28, y + 0xE, 0x154, 0x168, (u16)gQuestStampRand, dojo->shake.timer);
+        Menu_DrawStamp(x + 40, y + 14, 340, 360, (u16)gQuestStampRand, dojo->shake.timer);
     }
 }
 
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 mode, s32 item, u16 extra, s8 attr, u32 color);
 extern char *gItemNames[];
-extern char *gYesNoTexts[];
-void Menu_DrawPoints(s16 x, s16 y);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode);
-char *Text_FillDollar(char *fmt, s32 n);
 
 /* Draws the point exchange: the points held, the page, the lines (greyed
  * when the hunter can't pay for one), the cursor, the item's description,
@@ -1959,60 +1868,60 @@ void PointShop_Draw(s16 x, s16 y)
     s16 rowY = y;
     s16 i;
     s16 nudge;
-    char buf[0x10];
-    char wide[0x20];
+    char buf[16];
+    char wide[32];
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_POINT_EXCHANGE], 2, 1);
-    Menu_DrawPoints(0x1E0, 0x10);
-    Icon_Draw(x, y, 0x154, 0x168, 0xFFE0D8C8, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_POINT_EXCHANGE], 2, 1);
+    Menu_DrawPoints(480, 16);
+    Icon_Draw(x, y, 340, 360, 0xFFE0D8C8, 0);
     Font_SetColor(QUEST_SHEET_INK);
-    Menu_DrawPageNum(0x1FE, rowY + 0xE, dojo->page, dojo->pages, 1);
-    Font_SetSpacing(0x14, 0x14);
-    rowY += 0x24;
+    Menu_DrawPageNum(510, rowY + 14, dojo->page, dojo->pages, 1);
+    Font_SetSpacing(20, 20);
+    rowY += 36;
     for (i = 0; i < dojo->shopCount; i++) {
         if (PointShop_CanBuy(i, 1) == 1) {
             Font_SetColor(QUEST_SHEET_INK);
         } else {
             Font_SetColor(0x80404040);
         }
-        Font_SetPos(x + 0x2E, rowY);
+        Font_SetPos(x + 46, rowY);
         Text_PrintfColored(gDojoTextFmt, gItemNames[dojo->shopLines[i].item]);
-        Font_SetPos(x + 0xF0, rowY);
+        Font_SetPos(x + 240, rowY);
         Text_PrintfColored("%5dP", dojo->shopLines[i].price);
-        Item_DrawIcon(x + 0x12, rowY, 0x14, dojo->shopLines[i].item);
+        Item_DrawIcon(x + 18, rowY, 20, dojo->shopLines[i].item);
         if (i == dojo->shopCursor) {
             if (gFrameTick & 0x10) nudge = 4; else nudge = 10;
-            Icon_Draw(x + 0x2E, rowY + 0xE, 0xFA, 8, 0xA03030A0, 0x6F);
-            Menu_DrawCursorIcon(x - 4 - nudge, rowY - 2, 0x18, 0xBDB59F6C);
+            Icon_Draw(x + 46, rowY + 14, 250, 8, 0xA03030A0, 111);
+            Menu_DrawCursorIcon(x - 4 - nudge, rowY - 2, 24, 0xBDB59F6C);
         }
-        rowY += 0x18;
+        rowY += 24;
     }
-    Menu_DrawDashLine(x + 0x14, 0x106, 0x12C, 0xFF000000);
+    Menu_DrawDashLine(x + 20, 262, 300, 0xFF000000);
     Font_SetColor(QUEST_SHEET_INK);
-    ItemInfo_Draw(x + 0xA, 0x10A, 0x12C, dojo->showInfo, dojo->shopLines[dojo->shopCursor].item, 0, -1, 0x80101010);
-    Font_SetSpacing(0x12, 0x12);
+    ItemInfo_Draw(x + 10, 266, 300, dojo->showInfo, dojo->shopLines[dojo->shopCursor].item, 0, -1, 0x80101010);
+    Font_SetSpacing(18, 18);
     switch (dojo->state) {
     case DOJO_SHOP_LIST:
-        Win_DrawText(0x104, 0x16A, 0x154, 0x50, 0xBDB59F6C, 0xC0101010, gDojoMenuTexts[DOJO_TEXT_EXCHANGE_HELP]);
+        Win_DrawText(260, 362, 340, 80, 0xBDB59F6C, 0xC0101010, gDojoMenuTexts[DOJO_TEXT_EXCHANGE_HELP]);
         break;
     case DOJO_SHOP_COUNT:
-        Win_DrawText(0x104, 0x16A, 0x154, 0x50, 0xBDB59F6C, 0xC0101010, gDojoMenuTexts[DOJO_TEXT_EXCHANGE_COUNT_ASK]);
-        Font_SetPos(0x1DF, 0x18E);
+        Win_DrawText(260, 362, 340, 80, 0xBDB59F6C, 0xC0101010, gDojoMenuTexts[DOJO_TEXT_EXCHANGE_COUNT_ASK]);
+        Font_SetPos(479, 398);
         sprintf(buf, "%02d", dojo->shopQty);
         Sjis_Widen(buf, wide);
         Text_PrintfColored(wide);
         if (PointShop_CanBuy(dojo->shopCursor, dojo->shopQty + 1) == 1 && dojo->shopQty < POINT_SHOP_MAX_QTY) {
-            Icon_DrawMode(0x1E0, 0x178, 0x24, 0x16, 0xFF00FF00, 0x29, 2);
+            Icon_DrawMode(480, 376, 36, 22, 0xFF00FF00, 41, 2);
         }
         if (dojo->shopQty > 1) {
-            Icon_DrawMode(0x1E1, 0x1A0, 0x24, 0x16, 0xFF00FF00, 0x28, 2);
+            Icon_DrawMode(481, 416, 36, 22, 0xFF00FF00, 40, 2);
         }
         break;
     case DOJO_SHOP_CONFIRM:
-        Win_DrawText(0x104, 0x16A, 0x154, 0x50, 0xBDB59F6C, 0xC0101010,
+        Win_DrawText(260, 362, 340, 80, 0xBDB59F6C, 0xC0101010,
                       Text_FillDollar(gDojoMenuTexts[DOJO_TEXT_EXCHANGE_COUNT_HELP], dojo->shopLines[dojo->shopCursor].price * dojo->shopQty));
-        Font_SetPos(0x186, 0x19C);
+        Font_SetPos(390, 412);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
@@ -2020,8 +1929,6 @@ void PointShop_Draw(s16 x, s16 y)
 
 extern char *gDojoRulesTextsOn[];
 extern char *gDojoRulesTextsOff[];
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-s16 DojoMenu_RulesFirstPage(s16 n);
 /* Draws the rules' sheet: a tab per topic, the topic's page number and the
  * page's text (the online or the offline rules). */
 void DojoMenu_DrawRules(s16 x, s16 y)
@@ -2033,18 +1940,18 @@ void DojoMenu_DrawRules(s16 x, s16 y)
     char *text;
 
     for (i = 0; i < dojo->pages; i++) {
-        tabs[i] = 0x10;
+        tabs[i] = 16;
         if (dojo->page == i) {
             tabs[i] = -tabs[i];
         }
     }
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_RULES], 2, 1);
-    Menu_DrawQuestSheet(x, y, 0x154, 0x168, tabs, dojo->page, -1, -2);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_RULES], 2, 1);
+    Menu_DrawQuestSheet(x, y, 340, 360, tabs, dojo->page, -1, -2);
     Font_SetColor(QUEST_SHEET_INK);
-    Menu_DrawPageNum(x + 0x104, y + 0x14, dojo->rulesPage, dojo->rulesPages, 1);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x + 0x28, y + 0x32);
+    Menu_DrawPageNum(x + 260, y + 20, dojo->rulesPage, dojo->rulesPages, 1);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x + 40, y + 50);
     pageIndex = dojo->rulesPage + DojoMenu_RulesFirstPage(dojo->page);
     if (Game_IsOnline() == 1) {
         text = gDojoRulesTextsOn[pageIndex];
@@ -2082,23 +1989,23 @@ void DojoMenu_DrawTrainingCategories(DojoMenu *dojo, s16 x, s16 y)
     s32 i;
     s16 labelX;
 
-    Menu_DrawDecoFrame(x, y, 0x154, 0x168, 5, 0);
+    Menu_DrawDecoFrame(x, y, 340, 360, 5, 0);
     Font_SetColor(0x807F7F7F);
-    x = x + 0xAA;
-    y = y + 0x64;
-    Font_SetSpacing(0x18, 0x18);
+    x = x + 170;
+    y = y + 100;
+    Font_SetSpacing(24, 24);
     for (i = 0; i < dojo->cats; i++) {
         label = gDojoMenuTexts[DOJO_TEXT_TRAINING + i]; /* the training categories' labels */
-        labelX = Text_CenterX(label, x, 0x18);
+        labelX = Text_CenterX(label, x, 24);
         if (i == dojo->cat) {
-            Menu_DrawArrowsRev(labelX, y, 0x18, label, 0xFFB57510);
+            Menu_DrawArrowsRev(labelX, y, 24, label, 0xFFB57510);
             Text_DrawShadowRgb(labelX, y, 0xFF101010, 0xFF106060, label);
         } else {
             Font_SetColor(0xFF101010);
             Font_SetPos(labelX, y);
             Text_PrintfColored(label);
         }
-        y += 0x3C;
+        y += 60;
     }
 }
 
@@ -2109,26 +2016,19 @@ void DojoMenu_DrawBasics(DojoMenu *dojo, s16 x, s16 y)
     s16 i;
 
     for (i = 0; i < DOJO_BASICS_PAGES; i++) {
-        tabs[i] = 0x10;
+        tabs[i] = 16;
         if (dojo->page == i) {
             tabs[i] = -tabs[i];
         }
     }
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0x104, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_TRAINING], 2, 1);
-    Menu_DrawQuestSheet(x, y, 0x154, 0x168, tabs, dojo->page, -1, -2);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 260, 0xFFB0B000, gDojoMenuTexts[DOJO_TEXT_TRAINING], 2, 1);
+    Menu_DrawQuestSheet(x, y, 340, 360, tabs, dojo->page, -1, -2);
     Font_SetColor(QUEST_SHEET_INK);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x + 0x28, y + 0x28);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x + 40, y + 40);
     Text_Printf(gDojoBasicsPages[dojo->page]);
 }
-
-void DojoMenu_DrawQuestPage(s16 x, s16 y);
-void PointShop_Draw(s16 x, s16 y);
-void DojoMenu_DrawSettings(s16 x, s16 y);
-void DojoMenu_DrawRules(s16 x, s16 y);
-void DojoMenu_DrawBasics(DojoMenu *m, s16 x, s16 y);
-void Menu_DrawDecoBox(s16 x, s16 y, s16 w, s16 h, s8 kind);
 
 /* The menu's first draw callback: the first choice's lines, and the drills'
  * or the training's sheet for the step (the quest sheet shaking with
@@ -2139,15 +2039,15 @@ void DojoMenu_DrawPanels(MenuTask *task)
     DojoMenu *dojo = (DojoMenu *)gMenuWork;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
     switch (dojo->mode) {
     case DOJO_MODE_CHOICE:
         /* the lines start at the drills' label when the drills are offered */
         if (Cond_Check(10) == 1) {
-            Menu_DrawLabelList(0x190, (s8 **)&gDojoMenuTexts[DOJO_TEXT_FIRST_CHOICE], dojo->choiceCount, dojo->choiceCursor, 0xFFB0B000);
+            Menu_DrawLabelList(400, (s8 **)&gDojoMenuTexts[DOJO_TEXT_FIRST_CHOICE], dojo->choiceCount, dojo->choiceCursor, 0xFFB0B000);
         } else {
-            Menu_DrawLabelList(0x190, (s8 **)&gDojoMenuTexts[1], dojo->choiceCount, dojo->choiceCursor, 0xFFB0B000);
+            Menu_DrawLabelList(400, (s8 **)&gDojoMenuTexts[1], dojo->choiceCount, dojo->choiceCursor, 0xFFB0B000);
         }
         break;
     case DOJO_MODE_DRILLS:
@@ -2155,36 +2055,36 @@ void DojoMenu_DrawPanels(MenuTask *task)
         case DRILLS_STEP_CATEGORY:
         case DRILLS_STEP_KIND:
         case DRILLS_STEP_TALK:
-            Menu_DrawDecoBox(dojo->win.pos, 0x3A, 0x154, 0x168, 5);
+            Menu_DrawDecoBox(dojo->win.pos, 58, 340, 360, 5);
             break;
         case DRILLS_STEP_SLIDE_OUT:
         case DRILLS_STEP_BACK_FROM_SHOP:
             if (dojo->next == DRILLS_STEP_QUESTS) {
-                DojoMenu_DrawQuestPage(dojo->shake.dx + 0x104, dojo->shake.dy + 0x3A);
+                DojoMenu_DrawQuestPage(dojo->shake.dx + 260, dojo->shake.dy + 58);
             } else if (dojo->next == DRILLS_STEP_RULES) {
-                DojoMenu_DrawRules(0x104, 0x3A);
+                DojoMenu_DrawRules(260, 58);
             } else {
-                PointShop_Draw(0x104, 0x3A);
+                PointShop_Draw(260, 58);
             }
             break;
         case DRILLS_STEP_BACK_FROM_RULES:
-            DojoMenu_DrawRules(0x104, 0x3A);
+            DojoMenu_DrawRules(260, 58);
             break;
         case DRILLS_STEP_BACK_FROM_QUESTS:
-            DojoMenu_DrawQuestPage(dojo->shake.dx + 0x104, dojo->shake.dy + 0x3A);
+            DojoMenu_DrawQuestPage(dojo->shake.dx + 260, dojo->shake.dy + 58);
             break;
         case DRILLS_STEP_QUESTS:
             if (dojo->state == DOJO_QUEST_POST && dojo->postStep == DOJO_POST_SETTINGS) {
-                DojoMenu_DrawSettings(dojo->shake.dx + 0x118, dojo->shake.dy + 0x3A);
+                DojoMenu_DrawSettings(dojo->shake.dx + 280, dojo->shake.dy + 58);
             } else {
-                DojoMenu_DrawQuestPage(dojo->shake.dx + 0x104, dojo->shake.dy + 0x3A);
+                DojoMenu_DrawQuestPage(dojo->shake.dx + 260, dojo->shake.dy + 58);
             }
             break;
         case DRILLS_STEP_SHOP:
-            PointShop_Draw(0x104, 0x3A);
+            PointShop_Draw(260, 58);
             break;
         case DRILLS_STEP_RULES:
-            DojoMenu_DrawRules(0x104, 0x3A);
+            DojoMenu_DrawRules(260, 58);
             break;
         }
         break;
@@ -2193,36 +2093,35 @@ void DojoMenu_DrawPanels(MenuTask *task)
         case TRAINING_STEP_SLIDE_IN:
         case TRAINING_STEP_CATEGORY:
         case TRAINING_STEP_TALK:
-            Menu_DrawDecoBox(dojo->win.pos, 0x3A, 0x154, 0x168, 5);
+            Menu_DrawDecoBox(dojo->win.pos, 58, 340, 360, 5);
             break;
         case TRAINING_STEP_SLIDE_OUT:
         case TRAINING_STEP_SLIDE_BACK:
             switch (dojo->cat) {
             case TRAINING_CAT_BASICS:
-                DojoMenu_DrawBasics(dojo, 0x104, 0x3A);
+                DojoMenu_DrawBasics(dojo, 260, 58);
                 break;
             default:
-                DojoMenu_DrawQuestPage(dojo->shake.dx + 0x104, dojo->shake.dy + 0x3A);
+                DojoMenu_DrawQuestPage(dojo->shake.dx + 260, dojo->shake.dy + 58);
                 break;
             }
             break;
         case TRAINING_STEP_BASICS:
-            DojoMenu_DrawBasics(dojo, 0x104, 0x3A);
+            DojoMenu_DrawBasics(dojo, 260, 58);
             break;
         case TRAINING_STEP_QUESTS:
-            DojoMenu_DrawQuestPage(dojo->shake.dx + 0x104, dojo->shake.dy + 0x3A);
+            DojoMenu_DrawQuestPage(dojo->shake.dx + 260, dojo->shake.dy + 58);
             break;
         }
         break;
     case DOJO_MODE_BYE:
         if (gLobby->questPaid && dojo->questAccepted) {
-            DojoMenu_DrawQuestPage(dojo->shake.dx + 0x104, dojo->shake.dy + 0x3A);
+            DojoMenu_DrawQuestPage(dojo->shake.dx + 260, dojo->shake.dy + 58);
         }
         break;
     }
 }
 
-void DojoMenu_DrawDrillsMenu(s16 x, s16 y, s8 k);
 /* The menu's second draw callback: the title bar and the drills' or the
  * training's menu window. */
 void DojoMenu_Draw(MenuTask *task)
@@ -2230,7 +2129,7 @@ void DojoMenu_Draw(MenuTask *task)
     DojoMenu *dojo = (DojoMenu *)gMenuWork;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
     switch (dojo->mode) {
     case DOJO_MODE_CHOICE:
@@ -2241,14 +2140,14 @@ void DojoMenu_Draw(MenuTask *task)
         case DRILLS_STEP_BACK_FROM_SHOP:
         case DRILLS_STEP_BACK_FROM_RULES:
         case DRILLS_STEP_BACK_FROM_QUESTS:
-            DojoMenu_DrawDrillsMenu(dojo->win.pos, 0x3A, 1);
+            DojoMenu_DrawDrillsMenu(dojo->win.pos, 58, 1);
             break;
         case DRILLS_STEP_CATEGORY:
         case DRILLS_STEP_KIND:
         case DRILLS_STEP_TALK:
-            Font_SetSpacing(0x16, 0x16);
-            Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gTownLabels[TOWN_LABEL_HUNTER_DOJO], 2, 0xFF);
-            DojoMenu_DrawDrillsMenu(dojo->win.pos, 0x3A, 0);
+            Font_SetSpacing(22, 22);
+            Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gTownLabels[TOWN_LABEL_HUNTER_DOJO], 2, 255);
+            DojoMenu_DrawDrillsMenu(dojo->win.pos, 58, 0);
             break;
         }
         break;
@@ -2257,11 +2156,11 @@ void DojoMenu_Draw(MenuTask *task)
         case TRAINING_STEP_SLIDE_IN:
         case TRAINING_STEP_CATEGORY:
         case TRAINING_STEP_TALK:
-            Font_SetSpacing(0x16, 0x16);
-            Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFFB0B000, gTownLabels[TOWN_LABEL_HUNTER_DOJO], 2, 0xFF);
+            Font_SetSpacing(22, 22);
+            Menu_DrawLabelBar(280, 18, 180, 0xFFB0B000, gTownLabels[TOWN_LABEL_HUNTER_DOJO], 2, 255);
         case TRAINING_STEP_SLIDE_OUT:
         case TRAINING_STEP_SLIDE_BACK:
-            DojoMenu_DrawTrainingCategories(dojo, dojo->win.pos, 0x3A);
+            DojoMenu_DrawTrainingCategories(dojo, dojo->win.pos, 58);
             break;
         }
         break;

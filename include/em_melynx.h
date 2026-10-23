@@ -1,5 +1,6 @@
 #ifndef EM_MELYNX_H
 #define EM_MELYNX_H
+#include "em.h"
 
 /*
  * The Melynx family (EM_KIND_MELYNX; the per-kind hooks also send kind 9
@@ -20,54 +21,73 @@
  * effects name stay numbers.
  */
 enum EmMelynxMotion {
-    MELYNX_MOT_IDLE = 0x01,                 /* the standing loop: MELYNX_IDLE_WAIT, IDLE_STAND, ... */
+    MELYNX_MOT_IDLE = 0x01,                 /* the standing loop: MELYNX_IDLE_WAIT, IDLE_STAND, EVENT_APPEAR (Reset plays its row) */
     MELYNX_MOT_IDLE_ACTION_A = 0x02,        /* MELYNX_IDLE_ACTION_A */
     MELYNX_MOT_IDLE_ACTION_B = 0x03,        /* MELYNX_IDLE_ACTION_B */
     MELYNX_MOT_IDLE_ACTION_C = 0x04,        /* MELYNX_IDLE_ACTION_C */
     MELYNX_MOT_IDLE_ACTION_D = 0x05,        /* MELYNX_IDLE_ACTION_D, held 120 frames */
-    MELYNX_MOT_WALK = 0x0B,                 /* MELYNX_MOVE_WALK, WALK_LONG, WANDER, WALK_HOME, and the ... */
+    MELYNX_MOT_WALK = 0x0B,                 /* MELYNX_MOVE_WALK, WALK_LONG, WANDER, WALK_HOME, and the turn in place (MOVE_TURN) */
     MELYNX_MOT_RUN_A = 0x0C,                /* MELYNX_MOVE_CHASE, MOVE_RUN_A */
     MELYNX_MOT_FALL = 0x0D,                 /* MELYNX_FLY_FALL */
     MELYNX_MOT_POSTURE_MOVE = 0x0E,         /* MELYNX_MOVE_POSTURE: moving in the posture */
-    MELYNX_MOT_RUN_B = 0x0F,                /* MELYNX_MOVE_RUN_B, MOVE_WANDER_RUN, the steal runs ... */
+    MELYNX_MOT_RUN_B = 0x0F,                /* MELYNX_MOVE_RUN_B, MOVE_WANDER_RUN, the steal runs (ATK_STEAL, STEAL_CHASE) */
     MELYNX_MOT_DASH = 0x10,                 /* MELYNX_MOVE_CHARGE (with contact attack 4), MOVE_DASH */
-    MELYNX_MOT_BURROW = 0x11,               /* MELYNX_IDLE_BURROW_AWAY and the hunted states: burrows ... */
+    MELYNX_MOT_BURROW = 0x11,               /* MELYNX_IDLE_BURROW_AWAY and the hunted states: burrows (dust clouds and part effects at bone 2 in EmMelynx_MotionEffects) */
     MELYNX_MOT_POUNCE_START = 0x15,         /* MELYNX_ATK_POUNCE: the crouch before the leap */
-    MELYNX_MOT_LEAP = 0x16,                 /* MELYNX_ATK_POUNCE, ATK_LEAP: in the air with contact attack ... */
-    MELYNX_MOT_SNATCH = 0x17,               /* after an attack connects: a pounce that hit, a steal that ... */
-    MELYNX_MOT_LEAP_LAND = 0x18,            /* the landing of a missed pounce, and every landing of ... */
+    MELYNX_MOT_LEAP = 0x16,                 /* MELYNX_ATK_POUNCE, ATK_LEAP: in the air with contact attack 1 */
+    MELYNX_MOT_SNATCH = 0x17,               /* after an attack connects: a pounce that hit, a steal that touched a player */
+    MELYNX_MOT_LEAP_LAND = 0x18,            /* the landing of a missed pounce, and every landing of MELYNX_ATK_LEAP */
     MELYNX_MOT_DIZZY = 0x1F,                /* reeling: MELYNX_IDLE_DIZZY, REACT_DAZE, REACT_STUN */
     MELYNX_MOT_POSTURE_LOOP = 0x20,         /* MELYNX_IDLE_POSTURE, held 150 frames */
-    MELYNX_MOT_POSTURE_START = 0x21,        /* MELYNX_MOVE_POSTURE: taking the posture (moves on at frame ... */
+    MELYNX_MOT_POSTURE_START = 0x21,        /* MELYNX_MOVE_POSTURE: taking the posture (moves on at frame 46) */
     MELYNX_MOT_POSTURE_END = 0x22,          /* leaving the posture: MELYNX_IDLE_POSTURE, MOVE_POSTURE */
     MELYNX_MOT_IDLE_ACTION_G = 0x23,        /* MELYNX_IDLE_ACTION_G */
-    MELYNX_MOT_BOMB_TAKE_OUT = 0x24,        /* MELYNX_IDLE_HOLD_BOMB, HOLD_BIG_BOMB, ATK_THROW_BOMB(_FAR): ... */
+    MELYNX_MOT_BOMB_TAKE_OUT = 0x24,        /* MELYNX_IDLE_HOLD_BOMB, HOLD_BIG_BOMB, ATK_THROW_BOMB(_FAR): the bomb made 20 frames after it starts (a timer) */
     MELYNX_MOT_IDLE_ACTION_E = 0x25,        /* MELYNX_IDLE_ACTION_E */
     MELYNX_MOT_IDLE_ACTION_F = 0x26,        /* MELYNX_IDLE_ACTION_F, held 60 to 123 frames */
     MELYNX_MOT_FLINCH = 0x3C,               /* MELYNX_REACT_FLINCH, REACT_STATUS4, DEFEAT_FLINCH */
-    MELYNX_MOT_KNOCK_BACK = 0x3D,           /* MELYNX_REACT_KNOCK_BACK, DEFEAT_KNOCK_BACK: thrown back ... */
+    MELYNX_MOT_KNOCK_BACK = 0x3D,           /* MELYNX_REACT_KNOCK_BACK, DEFEAT_KNOCK_BACK: thrown back through the air */
     MELYNX_MOT_LIE = 0x3E,                  /* lying after the knock-back (90 frames */
-    MELYNX_MOT_GET_UP = 0x3F,               /* getting up: after the knock-back, IDLE_DIZZY, STATUS2_END, ... */
-    MELYNX_MOT_FLINCH_END = 0x40,           /* the recovery after MELYNX_MOT_FLINCH (REACT_FLINCH, ... */
-    MELYNX_MOT_STATUS4_START = 0x41,        /* MELYNX_REACT_STATUS4, from frame 120 of the flinch, 58 ... */
+    MELYNX_MOT_GET_UP = 0x3F,               /* getting up: after the knock-back, IDLE_DIZZY, STATUS2_END, STUN_END, REACT_DAZE */
+    MELYNX_MOT_FLINCH_END = 0x40,           /* the recovery after MELYNX_MOT_FLINCH (REACT_FLINCH, REACT_STATUS4, DEFEAT_FLINCH) */
+    MELYNX_MOT_STATUS4_START = 0x41,        /* MELYNX_REACT_STATUS4, from frame 120 of the flinch, 58 frames */
     MELYNX_MOT_STATUS4_LOOP = 0x42,         /* MELYNX_REACT_STATUS4 until its timer ends */
     MELYNX_MOT_STATUS2_LIE = 0x43,          /* MELYNX_IDLE_STATUS2_LIE */
     MELYNX_MOT_BOMB_THROW = 0x4A            /* MELYNX_ATK_THROW_BOMB(_FAR): lets go of the bomb at frame 48 */
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the effect helpers read the position from). The family's
+ * code passes one bone, named by what its contact attacks show: the charge's
+ * and the steal's sphere (EmContactAttack kinds 4, 2 and 7: rows 5, 3 and
+ * 8, radius 50 on bone 2) is the body's. The pounce's sphere (kind 1: row 2,
+ * radius 30 on bone 9) is in the attack's data only.
+ *
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeOnFrame plays it at the monster).
+ * None is named: none plays on the frame of an event it goes with (the
+ * bomb is let go at frame 48 of MELYNX_MOT_BOMB_THROW, its sounds play at
+ * 52 and 54; the burrow's dust and part effects fall 0 to 2 frames from
+ * sounds that also play in other motions).
+ */
+enum EmMelynxBone {
+    MELYNX_BONE_BODY = 2            /* the contact attacks' body sphere; MELYNX_MOT_BURROW's part effects start here */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmMelynx_RunIdleState). */
 enum EmMelynxIdleState {
     MELYNX_IDLE_WAIT = 0x00,                /* stands 5 to 20 frames, script picks next */
     MELYNX_IDLE_STAND = 0x01,               /* stands one idle cycle */
-    MELYNX_IDLE_ACTION_A = 0x02,            /* idle action, motion 2 */
-    MELYNX_IDLE_ACTION_B = 0x03,            /* idle action, motion 3 */
-    MELYNX_IDLE_ACTION_C = 0x04,            /* idle action, motion 4 */
-    MELYNX_IDLE_ACTION_D = 0x05,            /* motion 5 for 120 frames */
+    MELYNX_IDLE_ACTION_A = 0x02,            /* idle action, MELYNX_MOT_IDLE_ACTION_A */
+    MELYNX_IDLE_ACTION_B = 0x03,            /* idle action, MELYNX_MOT_IDLE_ACTION_B */
+    MELYNX_IDLE_ACTION_C = 0x04,            /* idle action, MELYNX_MOT_IDLE_ACTION_C */
+    MELYNX_IDLE_ACTION_D = 0x05,            /* MELYNX_MOT_IDLE_ACTION_D for 120 frames */
     MELYNX_IDLE_DIZZY = 0x06,               /* reels under stun stars 60 frames, gets up */
-    MELYNX_IDLE_ACTION_E = 0x07,            /* idle action, motion 0x25 */
-    MELYNX_IDLE_ACTION_F = 0x08,            /* motion 0x26 for 60 to 123 frames */
+    MELYNX_IDLE_ACTION_E = 0x07,            /* idle action, MELYNX_MOT_IDLE_ACTION_E */
+    MELYNX_IDLE_ACTION_F = 0x08,            /* MELYNX_MOT_IDLE_ACTION_F for 60 to 123 frames */
     MELYNX_IDLE_POSTURE = 0x09,             /* holds the posture 150 frames */
-    MELYNX_IDLE_ACTION_G = 0x0A,            /* idle action, motion 0x23, sight back */
+    MELYNX_IDLE_ACTION_G = 0x0A,            /* idle action, MELYNX_MOT_IDLE_ACTION_G, sight back */
     MELYNX_IDLE_HOLD_BOMB = 0x0B,           /* takes out and holds a bomb (type 0) */
     MELYNX_IDLE_STATUS2_LIE = 0x0C,         /* lies under status 2 (EM_DMG_STATUS2) */
     MELYNX_IDLE_STATUS2_END = 0x0D,         /* ends status 2, gets up */
@@ -83,8 +103,8 @@ enum EmMelynxMoveState {
     MELYNX_MOVE_WALK_LONG = 0x02,           /* walks to the goal, 600 frames, goal kept */
     MELYNX_MOVE_CHARGE = 0x04,              /* dash with contact attack 4 */
     MELYNX_MOVE_TURN = 0x05,                /* turns in place to the goal */
-    MELYNX_MOVE_RUN_A = 0x06,               /* runs to the goal (motion 0xC) */
-    MELYNX_MOVE_RUN_B = 0x07,               /* runs to the goal (motion 0xF) */
+    MELYNX_MOVE_RUN_A = 0x06,               /* runs to the goal (MELYNX_MOT_RUN_A) */
+    MELYNX_MOVE_RUN_B = 0x07,               /* runs to the goal (MELYNX_MOT_RUN_B) */
     MELYNX_MOVE_WANDER = 0x08,              /* walks to a random heading */
     MELYNX_MOVE_DASH = 0x09,                /* dash without attack, 100 frames */
     MELYNX_MOVE_WANDER_RUN = 0x0A,          /* runs to a random heading, 120 frames */
@@ -127,5 +147,29 @@ enum EmMelynxDefeatState {
 enum EmMelynxEventState {
     MELYNX_EVENT_APPEAR = 0x00              /* one hidden frame, then shown */
 };
+
+extern void *EmMelynx_Callbacks[8];
+void EmMelynx_Reset(Em *em);
+void EmMelynx_Start(Em *em);
+void EmMelynx_DeductReward(Em *em);
+void EmMelynx_CapTimerOffTarget(Em *em);
+void EmMelynx_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+s32 EmMelynx_BombState(Em *em);
+void EmMelynx_ReturnItem(Em *em, EmMelynxWork *work);
+void EmMelynx_Status2Lie(Em *em);
+void EmMelynx_BurrowAway(Em *em);
+void EmMelynx_ChaseGoal(Em *em);
+void EmMelynx_WalkLong(Em *em);
+void EmMelynx_RunToGoalA(Em *em);
+void EmMelynx_RunToGoalB(Em *em);
+void EmMelynx_WalkToGoal(Em *em);
+void EmMelynx_StealAttack(Em *em);
+void EmMelynx_KnockBack(Em *em);
+void EmMelynx_Status4(Em *em);
+void EmMelynx_HuntedKnockBack(Em *em);
+void EmMelynx_HuntedFlinch(Em *em);
+void EmMelynx_Update(Em *em);
+void EmMelynx_RunState(Em *em);
+void EmMelynx_MotionEffects(Em *em, EmWork *work);
 
 #endif

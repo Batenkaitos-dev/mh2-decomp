@@ -1,9 +1,10 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libmc, "PsIIlibmc   3031" (.data 0x199730), text 0x1246A8-0x1267F8; asm piece sdk/libmc
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libmc (version 3031, by its id string
+// in .data at 0x199730), text 0x1246A8-0x1267F8; asm piece sdk/libmc.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 
-// Sony libmc: the Sony API names, from the card steps that call them (sub_main card_task.c:
-// Card_WriteFile, Card_ReadFile, Card_MkDir, Card_Delete, Card_Format ...)
+// The memory card calls, named from the card steps that make them
+// (Card_WriteFile, Card_ReadFile, Card_MkDir, Card_Delete, Card_Format ...).
 sceMcInit = 0x001246A8; // type:func
 sceMcOpen = 0x00124C00; // type:func
 sceMcClose = 0x00124D68; // type:func

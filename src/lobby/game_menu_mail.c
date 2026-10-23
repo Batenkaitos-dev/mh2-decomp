@@ -18,27 +18,23 @@
 #include "lobby_globals.h"
 #include "lobby_state.h"
 #include "window.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "mail_block_list.h"
+#include "mail_menu.h"
+#include "menu_util.h"
+#include "short_mail.h"
 
+
+/* The objects of other files and modules this file's tables point to */
+extern char * gMailboxMenuTexts[4];
 /* prototypes */
-void GameMenu_DrawList(s8 dim);
 struct ListPanel;
 /* unit's own declaration: the cursor is declared s32 (the definition takes an s16): declared s16, GameMenu_DrawMail's call builds differently from the game's code */
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s32 sel);
 extern ListPanel gMailPanel;
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LobbySe_Play(s32);
 extern LobbyMenu *gLobbyMenu;
 /* end of prototypes */
-
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void GameMenu_Back(void);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-void MailMenu_Open(void);
-void ShortMail_Open(void *id, void *name, u32 flags);
-void BlockList_Open(void);
-s32 MailMenu_Update(u16 pad);
-s32 ShortMail_Step(u16 pad);
-s32 BlockList_Update(u16 pad);
 
 /* The game menu's open handler for the mail page: its own list at its first
  * entry, with its help line. Returns 0. */
@@ -177,7 +173,6 @@ void GameMenu_DrawMail(void)
 }
 
 /* The mail page's list window. */
-extern char *gMailboxMenuTexts[];
 ListPanel gMailPanel = {
 #include "lobby/007F2070.inc"
 };

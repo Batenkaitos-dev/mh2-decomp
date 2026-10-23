@@ -9,9 +9,9 @@
  * - The character select menu (IdMenu_*, gIdMenuScreens): the account's
  *   three characters, each with its id and name (LobbyState.charaIds,
  *   charaNames), one of which the player picks, or quits.
- * The request steps follow the lobby's pattern (LobbyStep_* in
- * lobby_steps.c's opening comment): a tag in LobbyState.awaitReply, the
- * reply timer, and a reply handler that moves the step on.
+ * The request steps work as the lobby's other LobbyStep_* do: a tag in
+ * LobbyState.awaitReply, the reply timer, and a reply handler that moves
+ * the step on.
  */
 #include "common.h"
 #include "texture.h"
@@ -27,68 +27,38 @@
 #include "player.h"
 #include "pad.h"
 #include "lobby_labels.h"
-void Font_SetSpacing(u8 a, u8 b);
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "lobby_leave_menus.h"
+#include "draw_helpers.h"
+#include "equip_shop.h"
+#include "font.h"
+#include "hunter_card.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_room.h"
+#include "lobby_steps.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "lobby_village.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "quest_order_terms.h"
+#include "screen_fade.h"
+#include "libc.h"
 
-void EquipPreview_Hide(u8 hide);
-void EquipPreview_Free(void);
-s32 LobbyReq_Level2Leave(void (*onReply)(NetMsg, NetMsg *));
-void LobbyStep_Level2LeaveDone(NetMsg m, NetMsg *pm);
-s32 HunterCard_SendChanged(void);
-void HunterCard_Build(void *out);
 extern NetUser gNetUsers[10];
-u16 LobbyPad_Get(s32 a);
-void Menu_SetYesNo(s8 a);
-s32 Menu_YesNoInput(void);
-void FadeA_Start(s32 a);
-u8 FadeA_GetState(void);
 
 extern MailEntry gShortMailMsg;
-s32 LobbyReq_ShortMailSend(void *id, char *s, void (*onReply)(NetMsg, NetMsg *));
-void LobbySe_Play(s32 se);
-void LobbyText_Open(s32 msg);
-void LobbyDialog_Grow(void);
-void LobbyStep_ShortMailSendDone(NetMsg m, NetMsg *pm);
-void *memcpy(void *dst, const void *src, u32 n);
 
-/* the redraw hook's argument: only the text size is read */
-typedef struct TextBox {
-    u8 pad[0x18];
-    s32 size;
-} TextBox;
-void Lobby_Disconnect(s32);
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-s32 LobbyReq_SetOut(u8 arg0, void (*onReply)(NetMsg, NetMsg *));
-void LobbyStep_SetOutLeaveDone(NetMsg m, NetMsg *pm);
 extern s8 gIdMenuResult;
 extern void (*gIdMenuScreens[])(void);
-void IdMenu_Draw(void);
-void *memset(void *dst, s32 c, u32 n);
-char *strcpy(char *dst, const char *src);
-s32 sprintf(char *dst, const char *fmt, ...);  /* sprintf */
-void Sjis_Widen(char *src, char *dst);
 void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-void IdMenu_Redraw(TextBox *t);
-void LobbyTitle_Set(s32 a);
-void LobbyHelp_Set(s32 a);
-s32 memcmp(void *a, void *b, s32 n);
 void Text_SetSize(s32 size);
-void LobbyDialog_Draw(void);
-s16 LobbyDialog_GetGrow(void);
-void LobbyMenu_DrawNameId(s16 y, char *name, char *id);
 
 s32 LobbyNet_GetErrText(char *a);
-void Money_PayPending(u8 silent);
-void LobbyDialog_OpenWait(void *text);
-void LobbyMenu_Init(void);
-void Lobby_ClearRequests(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-s32 Lobby_GetPlace(void);
-void Lobby_StartRoomPhase(void);
-void LobbyRoom_BeginClose(u8 arg0);
-void LobbyVillage_BeginLeave(void);
-void LobbyTown_BeginLeave(void);
-void CamFocus_End(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern LobbyMenu *gLobbyMenu;
@@ -381,7 +351,7 @@ s32 IdMenu_Run(void)
 }
 
 #define ID_MENU_CHARAS 3     /* the characters the menu lists */
-#define CHARA_NAME_SIZE 0x11  /* each name's bytes in LobbyState.charaNames */
+#define CHARA_NAME_SIZE 17    /* each name's bytes in LobbyState.charaNames */
 
 /*
  * The menu's first screen: sets its redraw hook, title and help, and puts
@@ -399,7 +369,7 @@ void IdMenu_Start(void)
     LobbyHelp_Set(1);
     gLobbyMenu->cursor = 0;
     for (i = 0, off = 0; i < ID_MENU_CHARAS; i++, off += CHARA_NAME_SIZE) {
-        if (memcmp(gLobby->charaNames + off, (u8 *)gSave.name, 0x10) == 0) {
+        if (memcmp(gLobby->charaNames + off, (u8 *)gSave.name, 16) == 0) {
             gLobbyMenu->cursor = i;
             return;
         }
@@ -438,7 +408,7 @@ void IdMenu_Choose(void)
             LobbySe_Play(LOBBY_SE_SCROLL);
         } else if (buttons & PAD_CIRCLE) {
             *stepPtr += 1;
-            gLobbyMenu->timer = 0x28;
+            gLobbyMenu->timer = 40;
             LobbySe_Play(LOBBY_SE_CONFIRM_ALT);
         } else if (buttons & PAD_CROSS) {
             *stepPtr = 2;
@@ -511,11 +481,11 @@ void IdMenu_Quit(void)
 }
 
 /* A character's id line: character idx's id (LobbyState.charaIds, widened;
- * gLobbyWords[LOBBY_WORD_UNREGISTERED] when it is empty) at x + 0x3C after its label
+ * gLobbyWords[LOBBY_WORD_UNREGISTERED] when it is empty) at x + 60 after its label
  * (gLobbyLabelTexts[LOBBY_LABEL_ID]), highlighted (colour 4) on the cursor's line. */
 void IdMenu_DrawId(s16 x, s16 y, u8 cur, u8 idx, u8 unused)
 {
-    char buf[0x1E];
+    char buf[30];
     s8 color;
     LobbyState *lobby;
 
@@ -526,48 +496,37 @@ void IdMenu_DrawId(s16 x, s16 y, u8 cur, u8 idx, u8 unused)
     } else {
         Sjis_Widen(lobby->charaIds[idx], buf);
     }
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     color = (cur != idx) ? 0 : 4;
-    Text_DrawShadow(x + 0x3C, y, 1, color, buf);
+    Text_DrawShadow(x + 60, y, 1, color, buf);
     Text_DrawShadow(x, y, 1, color, gLobbyLabelTexts[LOBBY_LABEL_ID]);
 }
 
-/* The same for character idx's name (LobbyState.charaNames, 0x11 bytes
+/* The same for character idx's name (LobbyState.charaNames, 17 bytes
  * each) after its label (gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL]); an empty one is printed as
  * gLobbyWords[LOBBY_WORD_UNREGISTERED], in the narrower spacing. cur and idx are compared as
  * ints: the compiler narrows idx again there, as the game's code does. */
 void IdMenu_DrawText(s16 x, s16 y, u8 cur, u8 idx, u8 unused)
 {
-    char buf[0x1E];
+    char buf[30];
     s8 color;
 
     memset(buf, 0, sizeof(buf));
     if (((char *)gLobby->charaNames)[idx * CHARA_NAME_SIZE] == 0) {
-        Font_SetSpacing(0x14, 0x14);
+        Font_SetSpacing(20, 20);
         sprintf(buf, gLobbyWords[LOBBY_WORD_UNREGISTERED]);
     } else {
-        Font_SetSpacing(0x18, 0x14);
+        Font_SetSpacing(24, 20);
         strcpy(buf, (char *)&gLobby->charaNames[idx * CHARA_NAME_SIZE]);
     }
     color = ((s32)cur != (s32)idx) ? 0 : 4;
-    Text_DrawShadow(x + 0x3C, y, 1, color, buf);
-    Font_SetSpacing(0x14, 0x14);
+    Text_DrawShadow(x + 60, y, 1, color, buf);
+    Font_SetSpacing(20, 20);
     Text_DrawShadow(x, y, 1, color, gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL]);
 }
 
-void Icon_DrawPreset(s32 a);
 void Win_Draw(s32 x, s32 y, s32 w, s32 h, s32 color, s32 color2, s16 kind);
-u32 Color_Pulse(void);
-void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 col);
-void LobbyHelp_Draw(void);
-void LobbyTitle_Draw(void);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32 a);
-s32 Sprite_Draw(Sprite *s);
-void Font_SetPos(s16 x, s16 y);
 void Text_Printf(char *fmt, ...);
 
 /* Draws the character select menu: the hunter's name box, the three
@@ -581,41 +540,41 @@ void IdMenu_Draw(void)
 
     LobbyPad_Get(0);
     Icon_DrawPreset(2);
-    Font_SetSpacing(0x14, 0x14);
-    Win_Draw(0x1E, 0x44, 0x10E, 0x42, 0xBDB59F6C, 0x80505000, 2);
-    Text_DrawShadow(0x2A, 0x4F, 1, 5, gIdMenuTexts[ID_MENU_TEXT_NAME]);
-    Text_DrawShadow(0x2A, 0x65, 1, 0, (char *)gSave.name);
-    Icon_DrawMode(0x96, 0x84, 0x18, 0x18, Color_Pulse(), 0x29, 3);
-    y = 0x9C;
-    Win_Draw(0x1E, y, 0x10E, 0xBE, 0xBDB59F6C, 0x80502020, 3);
+    Font_SetSpacing(20, 20);
+    Win_Draw(30, 68, 270, 66, 0xBDB59F6C, 0x80505000, 2);
+    Text_DrawShadow(42, 79, 1, 5, gIdMenuTexts[ID_MENU_TEXT_NAME]);
+    Text_DrawShadow(42, 101, 1, 0, (char *)gSave.name);
+    Icon_DrawMode(150, 132, 24, 24, Color_Pulse(), 41, 3);
+    y = 156;
+    Win_Draw(30, y, 270, 190, 0xBDB59F6C, 0x80502020, 3);
     for (i = 0; i < 3; i++) {
         if (i != 0) {
-            Gfx_DrawRectFrame(0x32, y + 5, 0xE6, 2, 0xBDB59F6C);
+            Gfx_DrawRectFrame(50, y + 5, 230, 2, 0xBDB59F6C);
         }
         if (i == gLobbyMenu->cursor) {
-            Menu_DrawGlowBar(0xA5, y + 8, 0x10E, 0x3A, 0x70208080);
+            Menu_DrawGlowBar(165, y + 8, 270, 58, 0x70208080);
         }
-        IdMenu_DrawId(0x28, y + 0x25, gLobbyMenu->cursor, i, i);
-        IdMenu_DrawText(0x28, y + 0xF, gLobbyMenu->cursor, i, i);
-        y += 0x3A;
+        IdMenu_DrawId(40, y + 37, gLobbyMenu->cursor, i, i);
+        IdMenu_DrawText(40, y + 15, gLobbyMenu->cursor, i, i);
+        y += 58;
     }
     LobbyHelp_Draw();
     LobbyTitle_Draw();
     if (gLobby->errText[0] != 0) {
-        Icon_Draw(0x14A, 0x44, 0x122, 0x112, 0xFFC0C0C0, 0);
+        Icon_Draw(330, 68, 290, 274, 0xFFC0C0C0, 0);
         Tex_Prepare(1, TEX_SLOT_PICTURES);
         Tex_Bind(TEX_SLOT_PICTURES);
-        spr.y = 0xFA;
-        spr.x = 0x1BC;
-        spr.u0 = 0x7E;
-        spr.w = 0x40;
-        spr.v0 = 0xD2;
-        spr.h = 0x40;
-        spr.u1 = 0xA7;
-        spr.v1 = 0xFB;
+        spr.y = 250;
+        spr.x = 444;
+        spr.u0 = 126;
+        spr.w = 64;
+        spr.v0 = 210;
+        spr.h = 64;
+        spr.u1 = 167;
+        spr.v1 = 251;
         spr.color = -1;
         Sprite_Draw(&spr);
-        Font_SetPos(0x168, 0x50);
+        Font_SetPos(360, 80);
         Text_Printf(gLobby->errText);
     }
 }
@@ -623,14 +582,14 @@ void IdMenu_Draw(void)
 /* The menu's redraw hook: when LobbyMenu.redraw is set, draws the message
  * dialog and, on the confirm screen with no dialog growing, the hunter's
  * name with the id of the character under the cursor. */
-void IdMenu_Redraw(TextBox *box)
+void IdMenu_Redraw(MenuTask *layer)
 {
-    Text_SetSize(box->size);
+    Text_SetSize(layer->textSize);
     if (gLobbyMenu->redraw != 0) {
         LobbyDialog_Draw();
         if (gLobbyMenu->screen == 2 && LobbyDialog_GetGrow() == -1) {
             if (gLobby->charaIds[gLobbyMenu->cursor][0] != 0) {
-                LobbyMenu_DrawNameId(0x86, (char *)gSave.name, (char *) gLobby->charaIds[gLobbyMenu->cursor]);
+                LobbyMenu_DrawNameId(134, (char *)gSave.name, (char *) gLobby->charaIds[gLobbyMenu->cursor]);
             }
         }
         gLobbyMenu->redraw = 0;
@@ -638,8 +597,6 @@ void IdMenu_Redraw(TextBox *box)
 }
 
 /* The character select menu's screens. */
-void IdMenu_Choose(void);
-void IdMenu_Quit(void);
 void (*gIdMenuScreens[4])(void) = {
     IdMenu_Start, IdMenu_Choose, IdMenu_Quit, NULL,
 };

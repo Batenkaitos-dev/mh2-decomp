@@ -25,22 +25,29 @@
 #include "lobby_menu.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "text.h"
+#include "ingredient_list.h"
+#include "font.h"
+#include "item_shop.h"
+#include "kitchen.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "talk.h"
+#include "libc.h"
 #pragma optimization_level 4
-void CamFocus_SetAside(s8 aside);
 
 extern u8 gMenuWork[];
 
-void CamFocus_End(void);
-void LobbySe_Play(s32);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-void IngredientList_Draw(MenuTask *task);
-void Talk_Say(s32, s8);
 extern u16 gLobbyEnterRand;
 extern s8 gMenuInputLock;
-void *memset(void *dst, s32 c, u32 n);
 
 /* Opens the ingredient list at the house's cook: the menu work cleared,
  * its draw set, the input held for 6 frames, and the cook says one of
@@ -69,15 +76,6 @@ void IngredientList_Close(void)
     LobbySe_Play(LOBBY_SE_CANCEL);
 }
 
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Talk_Update(void);
-void Talk_Say(s32 a, s8 b);
-s32 WinSlide_Step(WinSlide *win, s16 from, s16 to);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-void IngredientList_BuildPage(KitchenMenu *menu, s16 page);
-
 /* The list's frame, by its step: the greeting, the line before the list
  * (cancel there goes to the goodbye), the window sliding in with the
  * first page, the list, the window sliding out, and the goodbye before
@@ -104,7 +102,7 @@ void IngredientList_Update(void)
         switch (Talk_Update()) {
         case MENU_DONE:
             menu->step++;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             IngredientList_BuildPage(menu, 0);
             CamFocus_SetAside(1);
             break;
@@ -115,7 +113,7 @@ void IngredientList_Update(void)
         }
         break;
     case INGREDIENT_STEP_OPEN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case 0:
             menu->step++;
             break;
@@ -127,7 +125,7 @@ void IngredientList_Update(void)
              * order of tests */
         } else if (pad & PAD_CROSS) {
             menu->step++;
-            WinSlide_Step(&menu->win, 0x118, 0x280);
+            WinSlide_Step(&menu->win, 280, 640);
             CamFocus_SetAside(0);
             LobbySe_Play(LOBBY_SE_CANCEL);
         } else if (pad & PAD_SQUARE) {
@@ -145,7 +143,7 @@ void IngredientList_Update(void)
         }
         break;
     case INGREDIENT_STEP_SHUT:
-        switch (WinSlide_Step(&menu->win, 0x118, 0x280)) {
+        switch (WinSlide_Step(&menu->win, 280, 640)) {
         case 0:
             menu->step++;
             Talk_Say(COOK_TALK_BYE, 0);
@@ -162,10 +160,6 @@ void IngredientList_Update(void)
         break;
     }
 }
-
-extern KitchenIngredient *gKitchenIngredients[];
-s32 Items_HaveEnough(u16 item, s32 n);
-s32 Menu_CountPages(s16 n, s16 per);
 
 /* Fills the menu with page `page` of the ingredients the player holds
  * (each item of each gKitchenIngredients group with at least one held),
@@ -202,17 +196,8 @@ void IngredientList_BuildPage(KitchenMenu *menu, s16 page)
     }
 }
 
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 a3, s32 item, u16 t1, s8 t2, u32 color);
-void Text_PrintfColored(const char *fmt, ...);
-void Menu_DrawItemCountRow(s16 x, s16 y, u16 item, u32 color);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k); /* unit's own declaration: the definition takes s32 x and y and an s16 kind; declared as the calls here pass them, since with the definition's types IngredientList_DrawWindow's call compiles differently */
 void Menu_DrawPageArrows(s16 x, s16 y, s16 page, s16 n, u32 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16, s16);
-void Font_SetColor(s32 color);
 
 /* Draws the list's window at (x, y): the title bar, the page arrows, a row
  * per ingredient with how many are held (dimmed when fewer than one for
@@ -228,21 +213,21 @@ void IngredientList_DrawWindow(KitchenMenu *menu, s16 x, s16 y)
     u16 item;
     u16 selItem;
 
-    Win_Draw(x, y, 0x14A, 0x126, 0xBDB59F6C, 0xBB402010, 8);
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xC8, 0xFFB0B000, gTownLabels[TOWN_LABEL_INGREDIENT_LIST], 2, 1);
+    Win_Draw(x, y, 330, 294, 0xBDB59F6C, 0xBB402010, 8);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 200, 0xFFB0B000, gTownLabels[TOWN_LABEL_INGREDIENT_LIST], 2, 1);
     if (menu->count == 0) {
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(Text_CenterX(gTownLabels[TOWN_LABEL_NO_INGREDIENTS], x + 0xA5, 0x12), rowY + 0x64);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(Text_CenterX(gTownLabels[TOWN_LABEL_NO_INGREDIENTS], x + 165, 18), rowY + 100);
         Font_SetColor(0x802B7F7F);
         Text_PrintfColored(gTownLabels[TOWN_LABEL_NO_INGREDIENTS]);
-        Gfx_DrawLine(x + 0x14, (s16)(rowY + 0xBE) + 2, 0x122, 2, 0xBDB59F6C);
+        Gfx_DrawLine(x + 20, (s16)(rowY + 190) + 2, 290, 2, 0xBDB59F6C);
         return;
     }
-    Menu_DrawPageArrows(x + 0xF0, rowY + 0xA, menu->page, menu->pages, 0xBDB59F6C);
+    Menu_DrawPageArrows(x + 240, rowY + 10, menu->page, menu->pages, 0xBDB59F6C);
     Font_SetColor(0x807F7F7F);
-    rowY += 0x1E;
-    Font_SetSpacing(0x14, 0x14);
+    rowY += 30;
+    Font_SetSpacing(20, 20);
     for (i = 0; i < menu->count; i++) {
         item = menu->items[i];
         if (gTownMode == TOWN_MODE_KITCHEN) {
@@ -250,24 +235,22 @@ void IngredientList_DrawWindow(KitchenMenu *menu, s16 x, s16 y)
             case KITCHEN_STEP_PICK_FIRST:
             case KITCHEN_STEP_PICK_SECOND:
                 if (menu->firstPick == menu->items[i] || menu->secondPick == item) {
-                    Menu_DrawLine(x + 0xA, rowY - 1, 0x136, 0x18, 1);
+                    Menu_DrawRowHighlight(x + 10, rowY - 1, 310, 24, 1);
                 }
                 break;
             }
         }
         if (i == menu->cursor) {
             selItem = item;
-            Menu_DrawLine(x + 0xA, rowY - 1, 0x136, 0x18, 0);
+            Menu_DrawRowHighlight(x + 10, rowY - 1, 310, 24, 0);
         }
-        Menu_DrawItemCountRow(x + 0x32, rowY, item, Items_HaveEnough(item, menu->diners) != 0 ? 0x807F7F7F : 0x80404040);
-        rowY += 0x16;
+        Menu_DrawItemCountRow(x + 50, rowY, item, Items_HaveEnough(item, menu->diners) != 0 ? 0x807F7F7F : 0x80404040);
+        rowY += 22;
     }
-    rowY = y + 0xBE;
-    Gfx_DrawLine(x + 0x14, rowY + 2, 0x122, 2, 0xBDB59F6C);
-    ItemInfo_Draw((s16)(x + 0x32) - 0x32, rowY + 4, 0x14A, menu->showInfo, selItem, 0, -1, 0x807F7F7F);
+    rowY = y + 190;
+    Gfx_DrawLine(x + 20, rowY + 2, 290, 2, 0xBDB59F6C);
+    ItemInfo_Draw((s16)(x + 50) - 50, rowY + 4, 330, menu->showInfo, selItem, 0, -1, 0x807F7F7F);
 }
-
-void Text_SetSize(s32 a);
 
 /* The list's draw callback: the window, except while the cook talks. */
 void IngredientList_Draw(MenuTask *task)
@@ -281,7 +264,7 @@ void IngredientList_Draw(MenuTask *task)
         return;
     default:
         Text_SetSize(task->textSize);
-        IngredientList_DrawWindow(menu, menu->win.pos, 0x3A);
+        IngredientList_DrawWindow(menu, menu->win.pos, 58);
         break;
     }
 }

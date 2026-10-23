@@ -21,13 +21,13 @@ rule), so it is left out:
 - main's .data below 0x1BA110 and .rodata below 0x1C7B10 are the SDK's and
   CRI's: the lowest object that Capcom's code (0x179590 up, from dma) loads
   is at 0x1BA110 in .data (the libraries' highest is 0x1BA090) and
-  0x1C7B70 in .rodata (the libraries' highest 0x1C7AD8; dma.c owns the
+  0x1C7B70 in .rodata (the libraries' highest 0x1C7AD8; dma_packets.c owns the
   .rodata from 0x1C7B10).
 - sub_main's .data 0x403170-0x405178 (but for Capcom's decoration table,
   0x403DF0-0x4045C0, deco_table.c) and .rodata 0x46A3C0-0x46A450 are
   ACCESS's kana-kanji engine's (the pieces named access/);
 - sub_main's .data 0x4054D0-0x4154E0 is the DNAS authentication data and
-  its passphrase (INCLUDE_DATA objects of net_front.c).
+  its passphrase (INCLUDE_DATA objects of net_sockets.c).
 lbguild is Capcom's data with no code, test an all-zero stub: they are
 listed but not in the total.
 
@@ -53,7 +53,7 @@ UNCOUNTED = {"lbguild", "test"}
 LIBRARY_RANGES = {
     "main": [(".data", 0x195C00, 0x1BA110), (".rodata", 0x1BCE80, 0x1C7B10)],
     "yn": [(".data", 0xAD1180, 0xAD11A0), (".rodata", 0xAD2280, 0xAD2770)],
-    # the DNAS authentication data (64K) and its passphrase, which net_front.c passes to the
+    # the DNAS authentication data (64K) and its passphrase, which net_sockets.c passes to the
     # DNAS library: INCLUDE_DATA objects, taken from the user's original at build time
     # ACCESS's kana-kanji engine (pieces named access/)
     "sub_main": [(".data", 0x403170, 0x403DF0), (".data", 0x4045C0, 0x405178),

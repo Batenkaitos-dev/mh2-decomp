@@ -42,63 +42,31 @@
 #include "area.h"
 #include "lobby_npc.h"
 #include "chat_log.h"
+#include "area_draw.h"
+#include "window.h"
+#include "arena_menu.h"
+#include "arm_wrestling.h"
+#include "engine_math.h"
+#include "hunter_card.h"
+#include "kitchen_guest.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_world.h"
+#include "mem_util.h"
+#include "member_list.h"
+#include "menu_steps.h"
+#include "records_lists.h"
+#include "song_menu.h"
+#include "town_members.h"
+#include "town_player_activities.h"
+#include "town_player_states.h"
+#include "town_players.h"
+#include "libc.h"
 
 /* unit's own declaration: declared with a u16 area (the definition takes s32): with the s32, TownMsg_OnArea passes its u16 area without the zero-extension the game's code has */
 s32 Area_IsOnlineHouse(u16 area);
-void KitchenGuest_Open(void);
-void KitchenGuest_SendCook(s32 arg0);
-void KitchenGuest_OnMealEnd(void);
-void KitchenGuest_OnMealChosen(struct KitchenMeal *meal);
-s32 Lobby_GetPlace(void);
-u8 Lobby_FindMember(u8 *id);
-void TownMsg_OnMove(u8 pl, void *data, u8 cmd);
-void TownMsg_OnActor(u8 pl, void *data);
-void TownMsg_OnArea(u8 pl, u8 *msg);
-void TownMsg_OnPoogiePos(u8, void *);
-void TownMsg_OnKitchen(s8 idx, u8 *data);
-void TownMsg_SendRecords(void *to, u8 kind);
-void Records_RecvEquipBits(void *id, s32 idx, void *data);
-void Records_RecvEquipTally(void *id, void *data);
-void Records_RecvItemBits(void *id, void *data);
-void Records_RecvTitleBits(void *id, void *data);
-void Records_RecvMonsterRecords(void *id, u8 *data, s8 kind);
-void TownMsg_OnSongAsk(void *arg0, void *arg1);
-void TownMsg_OnSongAnswer(s8 *arg0);
-s32 LobbyBgm_IsActive(void);
-void LobbyBgm_Play(s32 id, s32 pos, s32 arg2);
-void ArenaMenu_Open(void);
-void LobbyText_Open(s32);
-void TownMsg_OnArenaTeam(u8 *data);
-void TownMsg_OnContestSeatAsk(void *id, u8 *msg);
-void TownMsg_OnContestSeatAnswer(s8 idx, u8 *msg);
-void TownMsg_OnContestSeatTaken(u8 *arg0, u8 *arg1);
-void Contest_Open(void *p);
-void Contest_RecvStart(void *arg0);
-void Contest_RecvPower(void *src);
-void Contest_RecvResult(s8 idx, void *data);
-void TownMsg_OnSeatAsk(void *arg0, u8 *arg1);
-void TownMsg_OnHouseSeatAsk(char *id, u8 *msg);
-void TownMsg_OnSeatAnswer(s8, u8 *);
-void TownMsg_OnHouseSeatAnswer(s8, u8 *);
-void ActSpot_Release(s32 slot);
-void TownMsg_OnHouseSeatFree(s8 *msg);
-s32 LobbyMember_InMyParty(s32 idx);
-void NetQuest_SetInfo(u8 *);
-void NetQuest_SetRareRoll(s8);
-s32 Season_Get(void);
-s32 LobbyTime_IsPm(void);
+void NextQuest_SetFlyer(s8);
 s32 MyHouse_IsOwner(void);
-void Actor_ReturnToIdle(void *obj, s32 a1, s32 n, s32 m);
-void TownMsg_OnSeatTaken(u8 *a0);
-void TownMsg_OnHouseSeatTaken(u8 *msg);
-void TownMsg_OnHouseVisit(s8 idx, u8 *msg);
-void TownMsg_OnSober(s8 idx);
-void TownMsg_OnOffer(s8 idx, void *src);
-void TownMsg_OnOfferTake(void *to, void *src);
-void TownMsg_OnOfferResult(void *src);
-void TownMsg_OnSyncAsk(u8 *arg0);
-void Lobby_ShowMemberName(s8 idx, void *data);
-void *memcpy(void *dst, const void *src, u32 n);
 extern s32 gTownMode;
 extern u8 gTownSeats[];
 
@@ -122,7 +90,7 @@ void TownMsg_Recv(void *from, u8 *pkt)
     u16 yaw;
     s32 bgm[2];
     s32 pos;
-    u8 buf[0x1A];
+    u8 buf[26];
     u16 unused;
     Player *pl;
     u8 self;
@@ -131,7 +99,7 @@ void TownMsg_Recv(void *from, u8 *pkt)
     data = pkt + 1;
     if (Lobby_GetPlace() != 0) {
         idx = Lobby_FindMember(from);
-        if (idx == 0xFF) { /* not a member */
+        if (idx == 255) { /* not a member */
             return;
         }
     } else {
@@ -245,7 +213,7 @@ void TownMsg_Recv(void *from, u8 *pkt)
             break;
         default:
             gTownMode = TOWN_MODE_QUEST_PARTY;
-            LobbyText_Open(0x8D);
+            LobbyText_Open(141);
             break;
         }
         break;
@@ -281,7 +249,7 @@ void TownMsg_Recv(void *from, u8 *pkt)
         break;
     case TOWN_MSG_CONTEST_OPEN:
         idx = Lobby_FindMember(data);
-        if (idx != 0xFF && gTownMode != TOWN_MODE_CONTEST) {
+        if (idx != 255 && gTownMode != TOWN_MODE_CONTEST) {
             self = gPlayers[gScene.localPlayer].state;
             if (self == TOWN_PC_CONTEST_SEAT_A || self == TOWN_PC_CONTEST_SEAT_B) {
                 Contest_Open(&gPlayers[idx]);
@@ -318,9 +286,9 @@ void TownMsg_Recv(void *from, u8 *pkt)
     case TOWN_MSG_QUEST_INFO:
         if (LobbyMember_InMyParty(idx) == 1) {
             memcpy(buf, data, sizeof(buf));
-            NetQuest_SetInfo(buf);
-            NetQuest_SetRareRoll(buf[0x19]);
-            gSeasonFlags = buf[0x18];
+            NextQuest_SetHuntGoals(buf);
+            NextQuest_SetFlyer(buf[25]);
+            gSeasonFlags = buf[24];
             gLobbyLastSeason = Season_Get();
             gLobbyLastPm = LobbyTime_IsPm();
         }
@@ -399,7 +367,6 @@ void TownMsg_OnKitchen(s8 idx, u8 *data)
     }
 }
 
-void *memcpy(void *dst, const void *src, u32 n);
 
 /* TOWN_MSG_ARENA_TEAM: the second side's monsters and its item, into
  * gNextQuest. */
@@ -412,42 +379,13 @@ void TownMsg_OnArenaTeam(u8 *data)
 
 extern NetUser gNetUsers[];
 
-void *memcpy(void *dst, const void *src, u32 n);
 /* unit's own declaration: the count is declared s32 (the definition takes an s16): with the s16, TownMsg_OnOfferResult would narrow the count before the call, which the game's code doesn't */
 u8 SavePouch_Add(u16 item, s32 n);
-u8 Notice_Push(u8, s16, s16);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-u8 Lobby_FindMember(u8 *arg0);
-void Chat_AddReceived(u8 arg0, s8 *arg1);
-void ChatLog_Receive(ChatMsg *msg);
-Em *Npc_Find(u8 kind);
-void Actor_SetStateNow(struct Player *obj, u8 state, u8 sub, u16 flags);
-s32 memcmp(void *, void *, s32);
-s32 Lobby_GetPlace(void);
-void Chat_SystemMsg(s32 msg, char *arg);
 extern u8 gSongRequesterId[];
-s32 LobbyBgm_IsActive(void);
-void TownMsg_SendSongAnswer(void *src, s32 x, u8 c);
 extern u8 gMyUserId[];
-void SongMenu_OnBusy(void);
-void SongMenu_OnAccepted(void);
-void TownMsg_SendBgm(s32 arg0);
 
-void TownPc_StartMoveTo(struct Player *obj, s16 n);
-f32 Math_Atan2(f32 y, f32 x);
-f32 Vec_Length(f32 *v);
-s32 TownPc_IsSeatedState(u8 arg0, u8 arg1);
-s32 Area_IsTownHall(s32 arg0);
-void Mem_Copy(void *, void *, s32);
 extern s16 gTownMoveFrames;
-
-typedef struct PosMsg {
-    s16 x;
-    s16 z;
-    u8 area;
-} PosMsg;
-
-extern u16 gMsgAreaIds[];
 
 
 /* TOWN_MSG_NAME_NOTICE: in a town place, the chat's system line that member
@@ -513,12 +451,9 @@ void TownMsg_OnOffer(s8 idx, void *src)
         pl->offerTo = Lobby_FindMember(offer.id);
         pl->offerItem = offer.item;
         pl->offerCount = offer.count;
-        Actor_SetStateNow(pl, TOWN_PC_GROUP_ACTION, TOWN_PC_OFFER_ITEM, 0x10);
+        Actor_SetStateNow(pl, TOWN_PC_GROUP_ACTION, TOWN_PC_OFFER_ITEM, 16);
     }
 }
-
-s16 Pouch_Count(Player *p, u16 item);
-void TownMsg_SendOfferResult(void *to, u8 c);
 
 /* TOWN_MSG_OFFER_TAKE, from the member taking the player's offer (an
  * OfferMsg): when the player still holds out that item and count to that
@@ -565,11 +500,7 @@ void TownMsg_OnOfferResult(void *src)
     }
 }
 
-void HunterCard_Apply(s8 idx, void *src);
-void TownPc_Spawn(u8 pl, NetUser *u, char *name);
-void TownPc_FreeChangedModels(Player *a0);
-
-/* A member's hunter card received (rec, the 0x100 bytes of NetUser.text):
+/* A member's hunter card received (rec, the 256 bytes of NetUser.text):
  * when its weapon or armour changed, HunterCard_Apply and TownPc_Spawn make
  * the member's model again (after TownPc_FreeChangedModels when it was
  * loaded, returning 1); else only HunterCard_Apply. The card is then kept
@@ -606,46 +537,40 @@ s32 LobbyMember_SetRecord(s8 idx, NetUser *user, u8 *rec)
     return ret;
 }
 
-/* A chat message received (its kind at byte 0x120): 2, a member's line
+/* A chat message received (its kind at offset 0x120): 2, a member's line
  * (Chat_AddReceived, by the sender's member index); 1, a line for the chat
  * log (ChatLog_Receive). */
 void Chat_Receive(u8 *msg)
 {
     u8 idx;
 
-    if (msg[0x120] == 2) {
+    if (msg[288] == 2) {
         idx = Lobby_FindMember(msg);
         Chat_AddReceived(idx, (s8 *)msg);
-    } else if (msg[0x120] == 1) {
+    } else if (msg[288] == 1) {
         ChatLog_Receive((ChatMsg *)msg);
     }
 }
 
 /* The member index (0 to LOBBY_MEMBER_COUNT - 1) of the user whose id is
- * given, by its first NET_USER_ID_MATCH bytes; 0xFF for none or an empty id. */
+ * given, by its first NET_USER_ID_MATCH bytes; 255 for none or an empty id. */
 u8 Lobby_FindMember(u8 *id)
 {
     u8 i;
 
     if (*(s8 *)id == 0) {
-        return 0xFF;
+        return 255;
     }
     for (i = 0; i < LOBBY_MEMBER_COUNT; i++) {
         if (memcmp(gNetUsers[i].id, id, NET_USER_ID_MATCH) == 0) {
             return i;
         }
     }
-    return 0xFF;
+    return 255;
 }
 
 extern u8 gPoogieLeft;
-extern s32 gTownMode;
 extern M2C_UNK D_008C0148;
-void ActSpot_Take(u8 slot);
-void ActSpot_Release(s32 slot);
-s32 TownPc_IsLeaveSeatState(s32 a, s32 b);
-void *memset(void *d, s32 c, u32 n);
-void Actor_SetState(void *, s32, s32);
 typedef struct ActMsg {
     /* 0x0 */ s16 x;
     /* 0x2 */ s16 z;
@@ -719,9 +644,9 @@ void TownMsg_OnActor(u8 pl, void *data)
 void TownMsg_OnMove(u8 pl, void *data, u8 cmd)
 {
     Player *member = &gPlayers[pl];
-    PosMsg msg;
+    TownPosMsg msg;
     f32 delta[3];
-    PosMsg *posMsg;
+    TownPosMsg *posMsg;
 
     Mem_Copy(&msg, data, 5); /* the message's 5 bytes: x, z and the area index */
     if (member->netActive != 0) {
@@ -776,10 +701,6 @@ void TownMsg_OnPoogiePos(u8 unused, void *data)
     }
 }
 
-void TownMsg_SendPoogiePos(Em *pl, void *to);
-void Actor_SetPosture(void *a, u16 mode, s32 b, s32 c);
-void Actor_SetMotion(void *obj, s32 motion, s32 frames, s32 c);
-
 /* TOWN_MSG_AREA: the area a member moved to (an index
  * into gMsgAreaIds) and its id: its group slot, its area, and the name
  * shown when it comes back to the town (area 0). */
@@ -827,9 +748,6 @@ void TownMsg_OnArea(u8 pl, u8 *msg)
     }
 }
 
-extern u8 gTownSeats[];
-void TownMsg_SendContestSeatAnswer(char *name, u8 a, u8 b);
-void TownMsg_SendContestOpen(void *a, void *b);
 
 /* TOWN_MSG_CONTEST_SEAT_ASK, heeded by the town host: contest seat msg[0]
  * of gTownSeats ('0' + the member index) is given to the asker
@@ -855,10 +773,6 @@ void TownMsg_OnContestSeatAsk(void *id, u8 *msg)
     }
 }
 
-void Actor_ReturnToIdle(void *, s32, s32, s32);
-void Contest_TakeSeat(void);
-void TownMsg_SendContestSeatFree(struct Player *arg0);
-extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
 /* TOWN_MSG_CONTEST_SEAT_ANSWER (msg: yes or no, the seat, the asker's id):
@@ -876,7 +790,7 @@ void TownMsg_OnContestSeatAnswer(s8 idx, u8 *msg)
             gTownMode = 0;
             gTownMenuOpen = 0;
             gFieldControl = 1;
-            Actor_ReturnToIdle(&gPlayers[(u8)self], 0, 0x14, 0);
+            Actor_ReturnToIdle(&gPlayers[(u8)self], 0, 20, 0);
         }
         return;
     }
@@ -902,11 +816,6 @@ void TownMsg_OnContestSeatTaken(u8 *id, u8 *data)
     gTownSeats[idx] = Lobby_FindMember(id) + '0';
 }
 
-void TownMsg_SendSeatAnswer(char *name, u8 a, u8 b);
-void ActSpot_Take(u8);
-s32 ActSpot_IsFree(u32 n);
-s32 memcmp(void *, void *, s32);
-
 /* TOWN_MSG_SEAT_ASK, heeded by the town host: table seat data[0] is
  * taken for the asker (TownMsg_SendSeatAnswer answers 1), or refused when taken
  * (0). */
@@ -925,11 +834,6 @@ void TownMsg_OnSeatAsk(void *name, u8 *data)
     }
 }
 
-void TownPc_TakeSeat(void);
-void TownMsg_SendHouseSeatFree(void *pl);
-void TownMsg_SendSeatFree(Player *pl);
-
-void TownMsg_SendHouseSeatAnswer(char *name, u8 a, u8 b);
 extern u8 gHouseAccess;
 
 /* TOWN_MSG_HOUSE_SEAT_ASK, heeded by the house's owner: house seat msg[0]
@@ -1019,15 +923,15 @@ static inline s32 BitMask(s32 n)
 /* TOWN_MSG_HOUSE_SEAT_FREE: msg[0] is a house seat, msg + 1 the sender's
  * id. When the sender is in the local player's house
  * (LobbyState.memberSlot holds '0' + the index of the house's owner), the
- * seat's bit in LobbyState.houseSeatBits is cleared. memberSlot (offset
- * 0x1538) is read through a byte pointer to the whole state: read
+ * seat's bit in LobbyState.houseSeatBits is cleared. memberSlot
+ * (offset 0x1538) is read through a byte pointer to the whole state: read
  * through the field, the compiler keeps the state's address in other
  * registers than the game's code does. */
 void TownMsg_OnHouseSeatFree(s8 *msg)
 {
     u8 *p = (u8 *)gLobby;
 
-    if ((p + 0x1538)[(u8)Lobby_FindMember((u8 *)msg + 1)] == (s8)(gScene.localPlayer + '0')) {
+    if ((p + 5432)[(u8)Lobby_FindMember((u8 *)msg + 1)] == (s8)(gScene.localPlayer + '0')) {
         gLobby->houseSeatBits = BitMask(msg[0]) & gLobby->houseSeatBits;
     }
 }
@@ -1044,7 +948,7 @@ void TownMsg_OnHouseSeatTaken(u8 *msg)
 {
     u8 *p = (u8 *)gLobby;
 
-    if ((p + 0x1538)[(u8)Lobby_FindMember(msg + 1)] == (s8)(gScene.localPlayer + '0')) {
+    if ((p + 5432)[(u8)Lobby_FindMember(msg + 1)] == (s8)(gScene.localPlayer + '0')) {
         gLobby->houseSeatBits = Bit(msg[0]) | gLobby->houseSeatBits;
     }
 }
@@ -1071,13 +975,6 @@ s32 Area_HasTownPcs(u16 area)
     }
 }
 
-s32 TownPc_IsInContest(Player *p);
-void TownMsg_SendBgmTo(s32 unused, void *to);
-void TownMsg_SendActor(Player *a, void *to);
-void TownMsg_SendAreaTo(void *to, u16 id);
-void TownMsg_SendContestSeatTaken(void);
-void TownMsg_SendOffer(Player *p, void *x);
-s32 LobbyBgm_GetTrack(void);
 extern s8 gLobbyScreenMode;
 
 /* TOWN_MSG_SYNC_ASK: a newcomer asks for the local player's place. While

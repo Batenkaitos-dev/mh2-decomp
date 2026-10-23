@@ -1,66 +1,93 @@
 /*
- * The bones. A model's skeleton is a tree of EmBones
- * (model.h): built from a skeleton (Bone_InitTree), given a motion's bone animations
- * part by part (Bone_SetPartAnim; the AnimSet of motion.h), posed (Bone_PoseTree),
- * blended (Bone_BlendTree), and turned into world and skin matrices for the matrix slots
- * (Bone_UpdateWorld*, Bone_StoreMatrices). The motion code (Player_UpdateMotion and its layers) calls these.
- * Then Vu1_SelectProgram, which picks a model's VU1 program, and the programs'
- * descriptors (data). Where the unit starts exactly is not known: after
- * Math_SinCos's last caller, by Bone_BlendPart's start.
+ * The bones, and the memory handles that hold their data. First the
+ * handles: Anim_SetData makes a motion's animation data current,
+ * Skeleton_CopyData and AnimSet_CopyToHandle copy a built skeleton or an
+ * animation set into a new handle, and Model_FreeBlock and Mem_FreeRet1
+ * free one. Then the bones: a model's skeleton is a tree of EmBones
+ * (model.h), built from a skeleton (Bone_InitTree), given a motion's bone
+ * animations part by part (Bone_SetPartAnim; the AnimSet of motion.h),
+ * posed (Bone_PoseTree), blended (Bone_BlendTree), and turned into world
+ * and skin matrices for the matrix slots (Bone_UpdateWorld*,
+ * Bone_StoreMatrices). The motion code (Player_UpdateMotion and its
+ * layers) calls these. Where the unit starts is not known: the file
+ * starts after the maths, at the first function that handles animation
+ * data.
  */
 #include "common.h"
-#include "em.h"
-#include "player.h"
-#include "image.h"
-#include "dma.h"
-#include "texture.h"
-#include "padio.h"
 #include "model.h"
 #include "motion.h"
+#include "anim_curve.h"
+#include "engine_math.h"
+#include "mem_util.h"
 
 /* Optimization level 4, like the unit before it (these functions build the same at either level). */
 #pragma optimization_level 4
 
-s32 Bone_GetAnimMove(f32 *out, EmBone *b, f32 t0, f32 t1);
-void * Mem_GetAddr(void *handle);
 extern s32 gAnimData;
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
 s32 Bone_SetPartAnim(EmBone *b, s32 h, s32 id);
-f32 Motion_GetLength(s32 h);
-s32 Anim_GetLoopTime(s32 h, f32 *out);
 s32 Bone_PosePart(f32 t, EmBone *b, s32 id);
 s32 Bone_BlendPart(f32 wa, f32 wb, EmBone *a, EmBone *b, s32 id);
-void Vu1_SelectProgram(ModelEntry *e, MeshDesc *hdr);
 extern MtxSlot gMtxSlots[];
-asm void Mtx_Identity(f32 *m);
-asm void Mtx_Mul(f32 *dst, f32 *a, f32 *b);
 extern u8 gMtxIdentity[];
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Mtx_Concat(f32 *m, f32 *a);
-f32 Anim_EvalCurve(f32 t, AnimCurve *c, s16 *cur);
-asm void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-asm void Mtx_Inverse(f32 *dst, f32 *src);
-asm void Mtx_Blend(f32 *dst, f32 *a, f32 *b, f32 wa, f32 wb);
-void Anim_SetData(s32 arg0);
 
-
-EmBone *Bone_FindPart(EmBone *b, s32 id);
-s32 Bone_BlendTree(EmBone *a, EmBone *b, f32 wa, f32 wb, s32 id);
-s32 Bone_PoseTree(f32 t, EmBone *b, s32 id);
-s32 Mtx_FromTransform(f32 *m, f32 *t);
 s32 Anim_EvalPose(AnimHeader *hdr, f32 *base, f32 *pose, s16 *keys, f32 t);
 s32 Anim_EvalPoseMatrix(AnimHeader *hdr, f32 *base, f32 *pose, f32 *m, s16 *keys, f32 t);
-s32 Bone_InitTree(EmBone *bones, s32 h, s32 unused, s32 mode);
-void Bone_UpdateWorldScaled(EmBone *b, f32 *m, f32 sx, f32 sy, f32 sz);
-void Bone_UpdateWorldScaledUpTo(EmBone *b, f32 *m, u8 maxId, f32 sx, f32 sy, f32 sz);
-void Bone_LinkTree(EmBone *parts, EmBone *b, EmBone *parent);
-void Bone_InitRestPoseUnit(EmBone *b);
-s32 Bone_InitRestPose(EmBone *b, f32 sx, f32 sy, f32 sz, f32 *m);
-void Bone_InitRestPoseAltUnit(EmBone *b);
-s32 Bone_InitRestPoseAlt(EmBone *b, f32 sx, f32 sy, f32 sz, f32 *m);
-s32 Bone_PoseMatrixScaled(f32 *m, f32 *pose, f32 sx, f32 sy, f32 sz);
-s32 Bone_PoseMatrix(f32 *m, f32 *pose, f32 sx, f32 sy, f32 sz);
-s32 Bone_ReadDef(EmBone *bone, SkelHeader *skel, s32 boneIdx);
+
+/* Makes the animation data in memory handle `handle` current (its keys too). */
+void Anim_SetData(s32 handle)
+{
+    gAnimData = (s32) (Mem_GetAddr((void *) handle));
+    Anim_SetCurveKeys((u8 *) gAnimData);
+}
+
+/* A copy of a built skeleton (the block skel's header points at, its size
+ * bytes; model.h's SkelHeader) in a new memory handle, which it returns
+ * (Model_InitSkeleton). The header's block (+8) and size (+0xC) are read
+ * as bytes: read through SkelHeader, the code differs. */
+void *Skeleton_CopyData(u8 *skel)
+{
+    u8 *src = *(u8 **)(skel + 8);
+    void *handle = Mem_Alloc(*(s32 *)(src + 12), 4);
+    u8 *dst = Mem_GetAddr(handle);
+    u32 i;
+    u8 *from = src;
+
+    for (i = 0; i < *(u32 *)(src + 12); i++) {
+        *dst++ = *from++;
+    }
+    return handle;
+}
+
+/* A copy of a converted animation set (set->base, whose first object is the set itself,
+ * with the block's size; copied by words) in a new memory handle, which it returns. The
+ * set is read as bytes, like Skeleton_CopyData's. */
+void *AnimSet_CopyToHandle(u8 *set)
+{
+    u8 *src = *(u8 **)(set + 20);
+    void *handle = Mem_Alloc(*(s32 *)(src + 24), 4);
+    u32 *dst = Mem_GetAddr(handle);
+    u32 i;
+    u32 *from = (u32 *)src;
+
+    for (i = 0; i < *(u32 *)(src + 24) / 4; i++) {
+        *dst++ = *from++;
+    }
+    return handle;
+}
+
+/* Frees a memory handle; returns 1. Mem_FreeRet1 is the same. */
+s32 Model_FreeBlock(void *block)
+{
+    Mem_Free(block);
+    return 1;
+}
+
+/* Frees a memory handle (a motion of gMotions); returns 1. */
+s32 Mem_FreeRet1(void *block)
+{
+    Mem_Free(block);
+    return 1;
+}
 
 /* out = how far bone's animation moves it from fromTime to toTime (the difference of the two
  * poses' translations). Returns 1. */
@@ -223,7 +250,6 @@ void MtxSlot_LoadList(s16 *list, MtxSlot *table)
 }
 
 extern s32 gBonePartAnim;
-s32 Bone_SetAnimTree(EmBone *b, s32 *ofs, s32 id);
 
 /*
  * Gives part id of tree the motion (a memory handle holding an AnimSet): the part's
@@ -741,900 +767,7 @@ s32 Anim_EvalPose(AnimHeader *boneAnim, f32 *base, f32 *pose, s16 *keyHints, f32
     return 1;
 }
 
-/* The VU1 programs' descriptors (60 of them). */
-extern s32 gVu1ProgInfo00[];
-extern s32 gVu1ProgInfo01[];
-extern s32 gVu1ProgInfo02[];
-extern s32 gVu1ProgInfo03[];
-extern s32 gVu1ProgInfo04[];
-extern s32 gVu1ProgInfo05[];
-extern s32 gVu1ProgInfo06[];
-extern s32 gVu1ProgInfo07[];
-extern s32 gVu1ProgInfo08[];
-extern s32 gVu1ProgInfo09[];
-extern s32 gVu1ProgInfo10[];
-extern s32 gVu1ProgInfo11[];
-extern s32 gVu1ProgInfo12[];
-extern s32 gVu1ProgInfo13[];
-extern s32 gVu1ProgInfo14[];
-extern s32 gVu1ProgInfo15[];
-extern s32 gVu1ProgInfo16[];
-extern s32 gVu1ProgInfo17[];
-extern s32 gVu1ProgInfo18[];
-extern s32 gVu1ProgInfo19[];
-extern s32 gVu1ProgInfo20[];
-extern s32 gVu1ProgInfo21[];
-extern s32 gVu1ProgInfo22[];
-extern s32 gVu1ProgInfo23[];
-extern s32 gVu1ProgInfo24[];
-extern s32 gVu1ProgInfo25[];
-extern s32 gVu1ProgInfo26[];
-extern s32 gVu1ProgInfo27[];
-extern s32 gVu1ProgInfo28[];
-extern s32 gVu1ProgInfo29[];
-extern s32 gVu1ProgInfo30[];
-extern s32 gVu1ProgInfo31[];
-extern s32 gVu1ProgInfo32[];
-extern s32 gVu1ProgInfo33[];
-extern s32 gVu1ProgInfo34[];
-extern s32 gVu1ProgInfo35[];
-extern s32 gVu1ProgInfo36[];
-extern s32 gVu1ProgInfo37[];
-extern s32 gVu1ProgInfo38[];
-extern s32 gVu1ProgInfo39[];
-extern s32 gVu1ProgInfo40[];
-extern s32 gVu1ProgInfo41[];
-extern s32 gVu1ProgInfo42[];
-extern s32 gVu1ProgInfo43[];
-extern s32 gVu1ProgInfo44[];
-extern s32 gVu1ProgInfo45[];
-extern s32 gVu1ProgInfo46[];
-extern s32 gVu1ProgInfo47[];
-extern s32 gVu1ProgInfo48[];
-extern s32 gVu1ProgInfo49[];
-extern s32 gVu1ProgInfo50[];
-extern s32 gVu1ProgInfo51[];
-extern s32 gVu1ProgInfo52[];
-extern s32 gVu1ProgInfo53[];
-extern s32 gVu1ProgInfo54[];
-extern s32 gVu1ProgInfo55[];
-extern s32 gVu1ProgInfo56[];
-extern s32 gVu1ProgInfo57[];
-extern s32 gVu1ProgInfo58[];
-extern s32 gVu1ProgInfo59[];
-/*
- * Picks entry's VU1 program: entry->prog (0..59) and its descriptor entry->progInfo
- * (gVu1ProgInfo00 ...), from the render flags the data was built with (entry->renderFlags,
- * whose top byte, render state 0x5D's, must be 0) and the mesh key (MESH_KEY_*); -1 and
- * NULL when no program fits. mesh is not read. The render keys are bits of gRenderFlags2,
- * set by render states without names yet (render_state.h): 0x2 by state 0x15, 0x20 and 0x40
- * by state 0, 0x80 by RS_SCISSOR, 0x200 by state 1, 0x4000 by state 0x62, 0x8000 by state
- * 0x12, 0x20000 by state 0x66. The top byte is tested by a one-case switch, as the game's
- * code does (a branch over a jump to the end).
- */
-void Vu1_SelectProgram(ModelEntry *entry, MeshDesc *mesh)
-{
-    u32 flags;
-    u32 renderKey;
-    s32 meshKey;
-
-    entry->prog = -1;
-    entry->progInfo = NULL;
-    flags = entry->renderFlags;
-    meshKey = entry->used | entry->vtxFormat;
-    renderKey = flags & 0xFFFFFF;
-    switch (flags & 0xFF000000) {
-    case 0:
-            switch (renderKey) {
-            case 0x202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 0;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo00;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 1;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo01;
-                    break;
-                }
-                break;
-            case 0x20202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 2;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo02;
-                    break;
-                }
-                break;
-            case 0x222:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 3;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo03;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 4;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo04;
-                    break;
-                }
-                break;
-            case 0x20020:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 5;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo05;
-                    break;
-                }
-                break;
-            case 0x80:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 6;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo06;
-                    break;
-                }
-                break;
-            case 0x20080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 7;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo07;
-                    break;
-                }
-                break;
-            case 0x200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 8;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo08;
-                    break;
-                }
-                break;
-            case 0x20200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 9;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo09;
-                    break;
-                }
-                break;
-            case 0x0:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 10;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo10;
-                    break;
-                }
-                break;
-            case 0x2:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 11;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo11;
-                    break;
-                }
-                break;
-            case 0x20000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 12;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo12;
-                    break;
-                }
-                break;
-            case 0x20002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 13;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo13;
-                    break;
-                }
-                break;
-            case 0x8222:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 14;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo14;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 15;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo15;
-                    break;
-                }
-                break;
-            case 0x2A2:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 16;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo16;
-                    break;
-                }
-                break;
-            case 0x282:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 17;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo17;
-                    break;
-                }
-                break;
-            case 0x8202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 18;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo18;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 19;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo19;
-                    break;
-                }
-                break;
-            case 0x28202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 20;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo20;
-                    break;
-                }
-                break;
-            case 0x8200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 21;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo21;
-                    break;
-                }
-                break;
-            case 0x8000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 22;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo22;
-                    break;
-                }
-                break;
-            case 0x8002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 23;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo23;
-                    break;
-                }
-                break;
-            case 0x28200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 24;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo24;
-                    break;
-                }
-                break;
-            case 0x28000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 25;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo25;
-                    break;
-                }
-                break;
-            case 0x28002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 26;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo26;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 27;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo27;
-                    break;
-                }
-                break;
-            case 0x4202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 28;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo28;
-                    break;
-                }
-                break;
-            case 0x24202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 29;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo29;
-                    break;
-                }
-                break;
-            case 0x4200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 30;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo30;
-                    break;
-                }
-                break;
-            case 0x24200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 31;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo31;
-                    break;
-                }
-                break;
-            case 0x4002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 32;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo32;
-                    break;
-                }
-                break;
-            case 0x24002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 33;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo33;
-                    break;
-                }
-                break;
-            case 0x4000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 34;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo34;
-                    break;
-                }
-                break;
-            case 0x24000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 35;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo35;
-                    break;
-                }
-                break;
-            case 0xC202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 36;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo36;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 37;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo37;
-                    break;
-                }
-                break;
-            case 0x2C202:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 38;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo38;
-                    break;
-                }
-                break;
-            case 0xC200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 39;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo39;
-                    break;
-                }
-                break;
-            case 0x2C200:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 40;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo40;
-                    break;
-                }
-                break;
-            case 0xC002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 41;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo41;
-                    break;
-                }
-                break;
-            case 0x2C002:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 42;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo42;
-                    break;
-                }
-                break;
-            case 0xC000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 43;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo43;
-                    break;
-                }
-                break;
-            case 0x2C000:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 44;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo44;
-                    break;
-                }
-                break;
-            case 0x28080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 45;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo45;
-                    break;
-                }
-                break;
-            case 0x2C080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 46;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo46;
-                    break;
-                }
-                break;
-            case 0x2C280:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 47;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo47;
-                    break;
-                }
-                break;
-            case 0x28022:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 48;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo48;
-                    break;
-                }
-                break;
-            case 0x4222:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 49;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo49;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 50;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo50;
-                    break;
-                }
-                break;
-            case 0x24020:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 51;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo51;
-                    break;
-                case MESH_KEY_SKINNED_MATS:
-                case MESH_KEY_SKINNED:
-                    entry->prog = 52;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo52;
-                    break;
-                }
-                break;
-            case 0x200A0:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 53;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo53;
-                    break;
-                }
-                break;
-            case 0x28020:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 54;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo54;
-                    break;
-                }
-                break;
-            case 0x8080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 55;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo55;
-                    break;
-                }
-                break;
-            case 0x4080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 56;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo56;
-                    break;
-                }
-                break;
-            case 0xC080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 57;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo57;
-                    break;
-                }
-                break;
-            case 0x24080:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 58;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo58;
-                    break;
-                }
-                break;
-            case 0x280A0:
-                switch (meshKey) {
-                case MESH_KEY_RIGID:
-                case MESH_KEY_RIGID_MATS:
-                    entry->prog = 59;
-                    entry->progInfo = (Vu1ProgInfo *)gVu1ProgInfo59;
-                    break;
-                }
-                break;
-            }
-        break;
-    }
-}
-
 /* This file's initialised data. */
-u8 *Vu1Pkt_D(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DEP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DV(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DVE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DVEP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_DVP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_E(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_L(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LD(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LDE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LDV(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LDVE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LDVEP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LV(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_LVE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_P(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_Plain(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_SDV(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_SL(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_SLD(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_SLDE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_SVE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_V(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_VE(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_VEP(ModelEntry *entry, u32 start, u8 *next);
-u8 *Vu1Pkt_VP(ModelEntry *entry, u32 start, u8 *next);
 s32 gBonePartAnim = {
 #include "sub_main/00402570.inc"
-};
-/* The VU1 programs (src/sub_main/vu1_microcode.vsm) the descriptors load. */
-extern u32 Vu1Prog00[];
-extern u32 Vu1Prog01[];
-extern u32 Vu1Prog02[];
-extern u32 Vu1Prog03[];
-extern u32 Vu1Prog04[];
-extern u32 Vu1Prog05[];
-extern u32 Vu1Prog06[];
-extern u32 Vu1Prog07[];
-extern u32 Vu1Prog08[];
-extern u32 Vu1Prog09[];
-extern u32 Vu1Prog10[];
-extern u32 Vu1Prog11[];
-extern u32 Vu1Prog12[];
-extern u32 Vu1Prog13[];
-extern u32 Vu1Prog14[];
-extern u32 Vu1Prog15[];
-extern u32 Vu1Prog16[];
-extern u32 Vu1Prog17[];
-extern u32 Vu1Prog18[];
-extern u32 Vu1Prog19[];
-extern u32 Vu1Prog20[];
-extern u32 Vu1Prog21[];
-extern u32 Vu1Prog22[];
-extern u32 Vu1Prog23[];
-extern u32 Vu1Prog24[];
-extern u32 Vu1Prog25[];
-extern u32 Vu1Prog26[];
-extern u32 Vu1Prog27[];
-extern u32 Vu1Prog28[];
-extern u32 Vu1Prog29[];
-extern u32 Vu1Prog30[];
-extern u32 Vu1Prog31[];
-extern u32 Vu1Prog32[];
-extern u32 Vu1Prog33[];
-extern u32 Vu1Prog34[];
-extern u32 Vu1Prog35[];
-extern u32 Vu1Prog36[];
-extern u32 Vu1Prog37[];
-extern u32 Vu1Prog38[];
-extern u32 Vu1Prog39[];
-extern u32 Vu1Prog40[];
-extern u32 Vu1Prog41[];
-extern u32 Vu1Prog42[];
-extern u32 Vu1Prog43[];
-extern u32 Vu1Prog44[];
-extern u32 Vu1Prog45[];
-extern u32 Vu1Prog46[];
-extern u32 Vu1Prog47[];
-extern u32 Vu1Prog48[];
-extern u32 Vu1Prog49[];
-extern u32 Vu1Prog50[];
-extern u32 Vu1Prog51[];
-extern u32 Vu1Prog52[];
-extern u32 Vu1Prog53[];
-extern u32 Vu1Prog54[];
-extern u32 Vu1Prog55[];
-extern u32 Vu1Prog56[];
-extern u32 Vu1Prog57[];
-extern u32 Vu1Prog58[];
-extern u32 Vu1Prog59[];
-s32 gVu1ProgInfo00[12] = {
-#include "sub_main/00402580.inc"
-};
-u32 D_004025B0[4] = {
-#include "sub_main/004025B0.inc"
-};
-s32 gVu1ProgInfo01[12] = {
-#include "sub_main/004025C0.inc"
-};
-s32 gVu1ProgInfo02[12] = {
-#include "sub_main/004025F0.inc"
-};
-s32 gVu1ProgInfo03[12] = {
-#include "sub_main/00402620.inc"
-};
-u32 D_00402650[4] = {
-#include "sub_main/00402650.inc"
-};
-s32 gVu1ProgInfo04[12] = {
-#include "sub_main/00402660.inc"
-};
-s32 gVu1ProgInfo05[12] = {
-#include "sub_main/00402690.inc"
-};
-s32 gVu1ProgInfo06[12] = {
-#include "sub_main/004026C0.inc"
-};
-s32 gVu1ProgInfo07[12] = {
-#include "sub_main/004026F0.inc"
-};
-s32 gVu1ProgInfo08[12] = {
-#include "sub_main/00402720.inc"
-};
-s32 gVu1ProgInfo09[12] = {
-#include "sub_main/00402750.inc"
-};
-s32 gVu1ProgInfo10[12] = {
-#include "sub_main/00402780.inc"
-};
-s32 gVu1ProgInfo11[12] = {
-#include "sub_main/004027B0.inc"
-};
-s32 gVu1ProgInfo12[12] = {
-#include "sub_main/004027E0.inc"
-};
-s32 gVu1ProgInfo13[12] = {
-#include "sub_main/00402810.inc"
-};
-s32 gVu1ProgInfo14[12] = {
-#include "sub_main/00402840.inc"
-};
-u32 D_00402870[4] = {
-#include "sub_main/00402870.inc"
-};
-s32 gVu1ProgInfo15[12] = {
-#include "sub_main/00402880.inc"
-};
-s32 gVu1ProgInfo16[12] = {
-#include "sub_main/004028B0.inc"
-};
-s32 gVu1ProgInfo17[12] = {
-#include "sub_main/004028E0.inc"
-};
-s32 gVu1ProgInfo18[12] = {
-#include "sub_main/00402910.inc"
-};
-u32 D_00402940[4] = {
-#include "sub_main/00402940.inc"
-};
-s32 gVu1ProgInfo19[12] = {
-#include "sub_main/00402950.inc"
-};
-s32 gVu1ProgInfo20[12] = {
-#include "sub_main/00402980.inc"
-};
-s32 gVu1ProgInfo21[12] = {
-#include "sub_main/004029B0.inc"
-};
-s32 gVu1ProgInfo22[12] = {
-#include "sub_main/004029E0.inc"
-};
-s32 gVu1ProgInfo23[12] = {
-#include "sub_main/00402A10.inc"
-};
-s32 gVu1ProgInfo24[12] = {
-#include "sub_main/00402A40.inc"
-};
-s32 gVu1ProgInfo25[12] = {
-#include "sub_main/00402A70.inc"
-};
-s32 gVu1ProgInfo26[12] = {
-#include "sub_main/00402AA0.inc"
-};
-u32 D_00402AD0[4] = {
-#include "sub_main/00402AD0.inc"
-};
-s32 gVu1ProgInfo27[12] = {
-#include "sub_main/00402AE0.inc"
-};
-s32 gVu1ProgInfo28[12] = {
-#include "sub_main/00402B10.inc"
-};
-s32 gVu1ProgInfo29[12] = {
-#include "sub_main/00402B40.inc"
-};
-s32 gVu1ProgInfo30[12] = {
-#include "sub_main/00402B70.inc"
-};
-s32 gVu1ProgInfo31[12] = {
-#include "sub_main/00402BA0.inc"
-};
-s32 gVu1ProgInfo32[12] = {
-#include "sub_main/00402BD0.inc"
-};
-s32 gVu1ProgInfo33[12] = {
-#include "sub_main/00402C00.inc"
-};
-s32 gVu1ProgInfo34[12] = {
-#include "sub_main/00402C30.inc"
-};
-s32 gVu1ProgInfo35[12] = {
-#include "sub_main/00402C60.inc"
-};
-s32 gVu1ProgInfo36[12] = {
-#include "sub_main/00402C90.inc"
-};
-u32 D_00402CC0[4] = {
-#include "sub_main/00402CC0.inc"
-};
-s32 gVu1ProgInfo37[12] = {
-#include "sub_main/00402CD0.inc"
-};
-s32 gVu1ProgInfo38[12] = {
-#include "sub_main/00402D00.inc"
-};
-s32 gVu1ProgInfo39[12] = {
-#include "sub_main/00402D30.inc"
-};
-s32 gVu1ProgInfo40[12] = {
-#include "sub_main/00402D60.inc"
-};
-s32 gVu1ProgInfo41[12] = {
-#include "sub_main/00402D90.inc"
-};
-s32 gVu1ProgInfo42[12] = {
-#include "sub_main/00402DC0.inc"
-};
-s32 gVu1ProgInfo43[12] = {
-#include "sub_main/00402DF0.inc"
-};
-s32 gVu1ProgInfo44[12] = {
-#include "sub_main/00402E20.inc"
-};
-s32 gVu1ProgInfo45[12] = {
-#include "sub_main/00402E50.inc"
-};
-s32 gVu1ProgInfo46[12] = {
-#include "sub_main/00402E80.inc"
-};
-s32 gVu1ProgInfo47[12] = {
-#include "sub_main/00402EB0.inc"
-};
-s32 gVu1ProgInfo48[12] = {
-#include "sub_main/00402EE0.inc"
-};
-s32 gVu1ProgInfo49[12] = {
-#include "sub_main/00402F10.inc"
-};
-u32 D_00402F40[4] = {
-#include "sub_main/00402F40.inc"
-};
-s32 gVu1ProgInfo50[12] = {
-#include "sub_main/00402F50.inc"
-};
-s32 gVu1ProgInfo51[12] = {
-#include "sub_main/00402F80.inc"
-};
-u32 D_00402FB0[4] = {
-#include "sub_main/00402FB0.inc"
-};
-s32 gVu1ProgInfo52[12] = {
-#include "sub_main/00402FC0.inc"
-};
-s32 gVu1ProgInfo53[12] = {
-#include "sub_main/00402FF0.inc"
-};
-s32 gVu1ProgInfo54[12] = {
-#include "sub_main/00403020.inc"
-};
-s32 gVu1ProgInfo55[12] = {
-#include "sub_main/00403050.inc"
-};
-s32 gVu1ProgInfo56[12] = {
-#include "sub_main/00403080.inc"
-};
-s32 gVu1ProgInfo57[12] = {
-#include "sub_main/004030B0.inc"
-};
-s32 gVu1ProgInfo58[12] = {
-#include "sub_main/004030E0.inc"
-};
-s32 gVu1ProgInfo59[12] = {
-#include "sub_main/00403110.inc"
 };

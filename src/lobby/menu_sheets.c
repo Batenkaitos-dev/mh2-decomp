@@ -15,6 +15,13 @@
 
 #include "lobby_menu.h"
 #include "lobby_globals.h"
+#include "model.h"
+#include "text.h"
+#include "menu_sheets.h"
+#include "name_tags.h"
+#include "quest_desk_draw.h"
+#include "libc.h"
+#include "sprite_queue.h"
 
 void Icon_DrawRotatedAt(s16 x, s16 y, s16 w, s16 h, u32 color, s32 angle, s32 i, s16 cx, s16 cy);
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, s32 color, s32 spr); /* unit's own declaration: an s32 colour where the function takes a u32; the three arrow helpers pass their s32 colour through and only build as the game's code does with this declaration */
@@ -26,29 +33,26 @@ typedef struct TabPlace {
     s16 w;
 } TabPlace;
 extern TabPlace gLabelIconOffsets[];
-extern u32 gLabelIconsPos[];
 
 /* Draws the tabs down the side of a sheet whose left is x and top is y. tabs[] holds up to 12
- * rows, 0 ending it; each row above 0 is drawn as tab sprite 15 + row, 0x1C pixels high, one
- * under the other from y + 0x14, at gLabelIconOffsets' x offset and width for its row, in
+ * rows, 0 ending it; each row above 0 is drawn as tab sprite 15 + row, 28 pixels high, one
+ * under the other from y + 20, at gLabelIconOffsets' x offset and width for its row, in
  * colour gLabelIconsPos[value] (99 takes entry 0), turned by angle about (pivotX, pivotY). */
 void Menu_DrawLabelsPos(s16 x, s16 y, s32 angle, s16 pivotX, s16 pivotY, s16 *tabs)
 {
     s16 i;
 
-    y += 0x14;
+    y += 20;
     for (i = 0; i < 12; i++) {
         if (tabs[i] == 0) {
             break;
         }
         if (tabs[i] > 0) {
-            Icon_DrawRotatedAt(x + gLabelIconOffsets[i].x, y, gLabelIconOffsets[i].w, 0x1C, (tabs[i] == 99) ? gLabelIconsPos[0] : gLabelIconsPos[tabs[i]], angle, i % 12 + 15, pivotX, pivotY);
+            Icon_DrawRotatedAt(x + gLabelIconOffsets[i].x, y, gLabelIconOffsets[i].w, 28, (tabs[i] == 99) ? gLabelIconsPos[0] : gLabelIconsPos[tabs[i]], angle, i % 12 + 15, pivotX, pivotY);
         }
-        y += 0x1C;
+        y += 28;
     }
 }
-
-extern u32 gLabelIconsNeg[];
 
 /* As Menu_DrawLabelsPos for the rows below 0: row value -n takes colour gLabelIconsNeg[n]
  * (-99 takes entry 0). A sheet draws these on top of itself, turned with it. */
@@ -56,26 +60,26 @@ void Menu_DrawLabelsNeg(s16 x, s16 y, s32 angle, s16 pivotX, s16 pivotY, s16 *ta
 {
     s16 i;
 
-    y += 0x14;
+    y += 20;
     for (i = 0; i < 12; i++) {
         if (tabs[i] == 0) {
             break;
         }
         if (tabs[i] < 0) {
-            Icon_DrawRotatedAt(x + gLabelIconOffsets[i].x, y, gLabelIconOffsets[i].w, 0x1C, (tabs[i] * -1 == 99) ? gLabelIconsNeg[0] : gLabelIconsNeg[tabs[i] * -1], angle, i % 12 + 15, pivotX, pivotY);
+            Icon_DrawRotatedAt(x + gLabelIconOffsets[i].x, y, gLabelIconOffsets[i].w, 28, (tabs[i] * -1 == 99) ? gLabelIconsNeg[0] : gLabelIconsNeg[tabs[i] * -1], angle, i % 12 + 15, pivotX, pivotY);
         }
-        y += 0x1C;
+        y += 28;
     }
 }
 
 extern s32 *gDecoFrameColors[];
 
 /* Draws a decorated frame at (left, top), width wide and height high: the frame in
- * frameColor (sprites 7 the left edge, 3 the middle, 0xB the right edge), the mark at its
- * centre in markColor, and two bands (sprite 0x1B and its end 0x1C) 0x78 pixels above and
+ * frameColor (sprites 7 the left edge, 3 the middle, 11 the right edge), the mark at its
+ * centre in markColor, and two bands (sprite 27 and its end 28) 120 pixels above and
  * below the centre. Kind 3 takes both colours from gDecoFrameColors[emblem] and draws the two
- * halves of emblem `emblem` (sprites 0x7A + 2 * emblem and the next) as the mark; kinds 2, 4
- * and 5 have fixed colours and draw the round mark (sprite 0x1F). Nothing is turned. */
+ * halves of emblem `emblem` (sprites 122 + 2 * emblem and the next) as the mark; kinds 2, 4
+ * and 5 have fixed colours and draw the round mark (sprite 31). Nothing is turned. */
 void Menu_DrawDecoFrame(s16 left, s16 top, s16 width, s16 height, s8 kind, s8 emblem)
 {
     s32 w;
@@ -119,28 +123,26 @@ void Menu_DrawDecoFrame(s16 left, s16 top, s16 width, s16 height, s8 kind, s8 em
         break;
     }
     innerX = (s16)(x + 10);
-    Icon_DrawRotatedAt(innerX + 0x10, y + 3, w - 0x20, height, frameColor, angle, 3, centerX, centerY);
-    Icon_DrawRotatedAt(x + 10, y + 3, 0x10, height, frameColor, angle, 7, centerX, centerY);
-    Icon_DrawRotatedAt(innerX + w - 0x10, y + 3, 0x10, height, frameColor, angle, 0xB, centerX, centerY);
+    Icon_DrawRotatedAt(innerX + 16, y + 3, w - 32, height, frameColor, angle, 3, centerX, centerY);
+    Icon_DrawRotatedAt(x + 10, y + 3, 16, height, frameColor, angle, 7, centerX, centerY);
+    Icon_DrawRotatedAt(innerX + w - 16, y + 3, 16, height, frameColor, angle, 11, centerX, centerY);
     if (kind == 3) {
         midY = centerY;
-        emblemY = midY - 0x30;
+        emblemY = midY - 48;
         emblemSprite = emblem * 2;
-        Icon_DrawRotatedAt(centerX - 0x38, emblemY, 0x38, 0x70, markColor, angle, emblemSprite + 0x7A, centerX, centerY);
-        Icon_DrawRotatedAt(centerX, emblemY, 0x38, 0x70, markColor, angle, emblemSprite + 0x7B, centerX, centerY);
+        Icon_DrawRotatedAt(centerX - 56, emblemY, 56, 112, markColor, angle, emblemSprite + 122, centerX, centerY);
+        Icon_DrawRotatedAt(centerX, emblemY, 56, 112, markColor, angle, emblemSprite + 123, centerX, centerY);
     } else {
         midY = centerY;
-        Icon_DrawRotatedAt(centerX - 0x38, midY - 0x38, 0x70, 0x70, markColor, angle, 0x1F, centerX, centerY);
+        Icon_DrawRotatedAt(centerX - 56, midY - 56, 112, 112, markColor, angle, 31, centerX, centerY);
     }
-    bandTopY = midY - 0x78;
-    Icon_DrawRotatedAt(x + 0x14, bandTopY, 0x100, 0x20, markColor, angle, 0x1B, centerX, centerY);
-    bandBottomY = midY + 0x78;
-    Icon_DrawRotatedAt(x + 0x14, bandBottomY, 0x100, 0x20, markColor, angle, 0x1B, centerX, centerY);
-    Icon_DrawRotatedAt(x + 0x114, bandTopY, 0x2E, 0x20, markColor, angle, 0x1C, centerX, centerY);
-    Icon_DrawRotatedAt(x + 0x114, bandBottomY, 0x2E, 0x20, markColor, angle, 0x1C, centerX, centerY);
+    bandTopY = midY - 120;
+    Icon_DrawRotatedAt(x + 20, bandTopY, 0x100, 32, markColor, angle, 27, centerX, centerY);
+    bandBottomY = midY + 120;
+    Icon_DrawRotatedAt(x + 20, bandBottomY, 0x100, 32, markColor, angle, 27, centerX, centerY);
+    Icon_DrawRotatedAt(x + 0x114, bandTopY, 46, 32, markColor, angle, 28, centerX, centerY);
+    Icon_DrawRotatedAt(x + 0x114, bandBottomY, 46, 32, markColor, angle, 28, centerX, centerY);
 }
-
-extern s16 gQuestMapGroups[];
 
 /* Draws a grey box at (x, y), w by height, with gQuestMapGroups' tabs beside it
  * (Menu_DrawLabelsPos). Every case of the switch on kind sets the angle to 0: the test
@@ -169,28 +171,15 @@ void Menu_DrawDecoBox(s16 x, s16 y, s16 w, s16 height, s8 kind)
     Menu_DrawLabelsPos(innerX - 50, y + 3, angle, centerX, centerY, gQuestMapGroups);
 }
 
-/* One page's turn of the quest sheet pile (gStripTurnOffsets, 12 of them):
- * the page's x and y offsets, its pivot's offsets from the centre, its angle. */
-typedef struct SheetTurn {
-    s16 dx;
-    s16 dy;
-    s16 pivotDx;
-    s16 pivotDy;
-    s16 angle;
-} SheetTurn;
 typedef struct IconTex {
     s32 tex;
     UV uv0;
     UV uv1;
 } IconTex;
-void TexRect_DrawRotated2(TexRect *r, s16 cx, s16 cy, s16 cx2, s16 cy2, u32 angle1, u32 angle2);
-void Tex_Prepare(s32 n, s32 tex);
-void Tex_Bind(s32);
 extern IconTex gIconSprites[];
 extern s32 gFrameStripColors[];
 extern SheetTurn gStripTurnOffsets[];
 
-void Menu_DrawFrameStrip(s16 x, s16 y, s16 w, s16 h, u8 kind, s8 sel);
 #pragma optimization_level 4
 /*
  * Draws one sheet of a menu's pile of papers: a grey shadow box at (x, y), w by height, then
@@ -198,12 +187,12 @@ void Menu_DrawFrameStrip(s16 x, s16 y, s16 w, s16 h, u8 kind, s8 sel);
  * the sheet tables (gStripTurnOffsets: the x and y offsets, the pivot's offsets from the
  * centre, the angle). Then its frame strip of kind `kind` (Menu_DrawFrameStrip; -1 none), its
  * tabs (tabs, NULL none: the rows above 0 unturned under the sheet, those below 0 on it,
- * turned with it) and its emblem: -2 none, -1 the round mark (sprite 0x1F), otherwise the two
+ * turned with it) and its emblem: -2 none, -1 the round mark (sprite 31), otherwise the two
  * halves of emblem `emblem`.
  * Built at optimization level 4 (the pragma pair). Forms kept for the match:
  * - x + w / 2 is written out at each use: with a local for w / 2 the compiler keeps a widened
  *   copy of x on the stack.
- * - (y + height / 2) - 0x30 is written out at both emblem calls: a local for it changes where
+ * - (y + height / 2) - 48 is written out at both emblem calls: a local for it changes where
  *   the compiler widens height.
  * - k = emblem; k *= 2 takes two statements: emblem * 2 in one swaps two registers.
  * FAKEMATCH: the emblem colour col is set twice, the second time in the tabs block. With two
@@ -229,7 +218,7 @@ void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 height, s16 *tabs, s16 page, s
     col = 0x40000000;
     if (tabs != NULL) {
         col = 0x40000000; /* FAKEMATCH: set twice (see above) */
-        Menu_DrawLabelsPos(x - 0x40, y, 0, gStripTurnOffsets[backPage].dx, gStripTurnOffsets[backPage].dy, tabs);
+        Menu_DrawLabelsPos(x - 64, y, 0, gStripTurnOffsets[backPage].dx, gStripTurnOffsets[backPage].dy, tabs);
     }
     x += gStripTurnOffsets[page].dx;
     y += gStripTurnOffsets[page].dy;
@@ -247,24 +236,24 @@ void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 height, s16 *tabs, s16 page, s
         break;
     }
     if (tabs != NULL) {
-        Menu_DrawLabelsNeg(x - 0x40, y, angle, pivotX, pivotY, tabs);
+        Menu_DrawLabelsNeg(x - 64, y, angle, pivotX, pivotY, tabs);
     }
     if (emblem != -2) {
         if (emblem != -1) {
             emblemSprite = emblem;
             emblemSprite *= 2;
-            Icon_DrawRotatedAt((x + w / 2) - 0x38, (y + height / 2) - 0x30, 0x38, 0x70, col, angle, emblemSprite + 0x7A, pivotX, pivotY);
-            Icon_DrawRotatedAt(x + w / 2, (y + height / 2) - 0x30, 0x38, 0x70, col, angle, emblemSprite + 0x7B, pivotX, pivotY);
+            Icon_DrawRotatedAt((x + w / 2) - 56, (y + height / 2) - 48, 56, 112, col, angle, emblemSprite + 122, pivotX, pivotY);
+            Icon_DrawRotatedAt(x + w / 2, (y + height / 2) - 48, 56, 112, col, angle, emblemSprite + 123, pivotX, pivotY);
         } else {
-            Icon_DrawRotatedAt(centerX - 0x38, centerY - 0x38, 0x70, 0x70, 0x40000000, angle, 0x1F, pivotX, pivotY);
+            Icon_DrawRotatedAt(centerX - 56, centerY - 56, 112, 112, 0x40000000, angle, 31, pivotX, pivotY);
         }
     }
 }
 #pragma optimization_level reset
 
-/* Draws a sheet's frame strip: tiles of sprite 100 + kind, 0x18 pixels square, in two rows
- * (near the sheet's top and height - 0x39 below it), turned with page `page`'s sheet. 11
- * tiles; kind 1 draws 9 tiles 0x1E wide, kind 2 alternates short and full tiles, kinds 0 and
+/* Draws a sheet's frame strip: tiles of sprite 100 + kind, 24 pixels square, in two rows
+ * (near the sheet's top and height - 57 below it), turned with page `page`'s sheet. 11
+ * tiles; kind 1 draws 9 tiles 30 wide, kind 2 alternates short and full tiles, kinds 0 and
  * 3/5 mirror the tile across u or v. Kinds below 7 take gFrameStripColors' colour. */
 void Menu_DrawFrameStrip(s16 x, s16 y, s16 w, s16 height, u8 kind, s8 page)
 {
@@ -283,11 +272,11 @@ void Menu_DrawFrameStrip(s16 x, s16 y, s16 w, s16 height, u8 kind, s8 page)
     if (kind < 7) {
         tile.color = gFrameStripColors[kind];
     }
-    tile.x = x + 0x1A;
-    tile.y = y + 0x28;
+    tile.x = x + 26;
+    tile.y = y + 40;
     rowY = tile.y;
-    tile.h = 0x18;
-    tile.w = 0x18;
+    tile.h = 24;
+    tile.w = 24;
     tile.uv0 = iconTex->uv0;
     tile.uv1 = iconTex->uv1;
     tile.x += gStripTurnOffsets[page].dx;
@@ -306,17 +295,17 @@ void Menu_DrawFrameStrip(s16 x, s16 y, s16 w, s16 height, u8 kind, s8 page)
             tile.uv1.u = swap;
             break;
         case 1:
-            tile.w = 0x1E;
+            tile.w = 30;
             if (i > 8) {
                 return;
             }
             break;
         case 2:
             if (i & 1) {
-                tile.h = 0x18;
+                tile.h = 24;
             } else {
                 tile.y = rowY + 8;
-                tile.h = 0x10;
+                tile.h = 16;
             }
             break;
         case 3:
@@ -329,16 +318,15 @@ void Menu_DrawFrameStrip(s16 x, s16 y, s16 w, s16 height, u8 kind, s8 page)
         tileX = tile.x + tile.w / 2;
         tileY = tile.y + tile.h / 2;
         TexRect_DrawRotated2(&tile, tileX, tileY, pivotX, pivotY, 0, angle);
-        tile.y = tile.y + (height - 0x39);
+        tile.y = tile.y + (height - 57);
         TexRect_DrawRotated2(&tile, tileX, tileY, pivotX, pivotY, 0, angle);
         tile.x += tile.w;
     }
 }
 
-s32 abs(s32);
 void Icon_DrawRotated(s16 x, s16 y, s16 w, s16 h, u32 colour, u16 angle, s32 spr); /* unit's own declaration: s16 place and size, a u32 colour and a u16 angle where the function takes s32s; the two stamps pass them so and only build as the game's code does with these narrower types */
 
-/* Draws the quest's stamp (sprite 0x23, 0xA4 pixels square) on a sheet at (x, y), w by
+/* Draws the quest's stamp (sprite 35, 164 pixels square) on a sheet at (x, y), w by
  * height. Its place, angle (within about 45 degrees of upright) and alpha come from seed.
  * pressTimer is the press's countdown: above 3 the stamp is drawn (pressTimer - 3) * 20
  * pixels larger, at 3 and 2 it is moved by a pixel or two, below that it lies flat. */
@@ -350,9 +338,9 @@ void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 height, u16 seed, s16 pressTimer)
     s16 dy;
     f32 half;
 
-    angle = seed % 0x4000 + 0xE001;
-    x += (s16)(abs(seed % (w - 0xCC)) + 10);
-    y += (s16)(abs((seed >> 3) % (height - 0xCC)) + 10);
+    angle = seed % (ANGLE_TURN / 4) + 0xE001;
+    x += (s16)(abs(seed % (w - 204)) + 10);
+    y += (s16)(abs((seed >> 3) % (height - 204)) + 10);
     dx = 0;
     dy = 0;
     if (pressTimer > 3) {
@@ -373,12 +361,12 @@ void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 height, u16 seed, s16 pressTimer)
     half = 0.5f * size;
     x = x - half;
     y = y - half;
-    size += 0xA4;
-    Icon_DrawRotated(x, y, size, size, ((angle % 8) * 16 + 0x80) << 24 | 0x50140A, angle, 0x23);
+    size += 164;
+    Icon_DrawRotated(x, y, size, size, ((angle % 8) * 16 + 128) << 24 | 0x50140A, angle, 35);
 }
 
-/* As Menu_DrawStamp for the quest board's smaller stamp: the round mark (sprite 0x1F,
- * 0x60 pixels square) in its own colour, placed and turned from other bits of seed. */
+/* As Menu_DrawStamp for the quest board's smaller stamp: the round mark (sprite 31,
+ * 96 pixels square) in its own colour, placed and turned from other bits of seed. */
 void QuestBoard_DrawStamp(s16 x, s16 y, s16 w, s16 height, u16 seed, s16 pressTimer)
 {
     u16 angle;
@@ -389,9 +377,9 @@ void QuestBoard_DrawStamp(s16 x, s16 y, s16 w, s16 height, u16 seed, s16 pressTi
     s16 dy;
     f32 half;
 
-    angle = (seed >> 2) % 0x4000 + 0xE001;
-    stampX = x + (abs((seed >> 3) % (w - 0x92)) + 10);
-    stampY = y + (abs((seed >> 1) % (height - 0x92)) + 10);
+    angle = (seed >> 2) % (ANGLE_TURN / 4) + 0xE001;
+    stampX = x + (abs((seed >> 3) % (w - 146)) + 10);
+    stampY = y + (abs((seed >> 1) % (height - 146)) + 10);
     dx = 0;
     dy = 0;
     if (pressTimer > 3) {
@@ -412,12 +400,12 @@ void QuestBoard_DrawStamp(s16 x, s16 y, s16 w, s16 height, u16 seed, s16 pressTi
     half = 0.5f * size;
     stampX -= half;
     stampY -= half;
-    size += 0x60;
-    Icon_DrawRotated(stampX, stampY, size, size, ((angle % 8) * 16 + 0x80) << 24 | 0xA1450, angle, 0x1F);
+    size += 96;
+    Icon_DrawRotated(stampX, stampY, size, size, ((angle % 8) * 16 + 128) << 24 | 0xA1450, angle, 31);
 }
 
 /* Draws the arrows on both sides of a text of size-pixel characters that starts at (x, y):
- * the left arrow (sprite 0x28) before x and, when text is given, the right arrow (0x29)
+ * the left arrow (sprite 40) before x and, when text is given, the right arrow (41)
  * after its end (Text_DisplayLength, in half widths). Both are size + 8 pixels square,
  * centred on the line, and step 6 pixels outward every other 16 frames (gFrameTick). */
 void Menu_DrawArrows(s16 x, s16 y, s16 size, char *text, s32 color)
@@ -432,10 +420,10 @@ void Menu_DrawArrows(s16 x, s16 y, s16 size, char *text, s32 color)
     arrowY = y - (arrowSize - size) / 2;
     leftX = x - arrowSize;
     bob = (gFrameTick & 0x10) ? 6 : 0;
-    Icon_Draw(leftX - 4 - bob, arrowY, arrowSize, arrowSize, color, 0x28);
+    Icon_Draw(leftX - 4 - bob, arrowY, arrowSize, arrowSize, color, 40);
     if (text != NULL) {
         rightX = leftX + arrowSize + size * Text_DisplayLength(text) / 2;
-        Icon_Draw(rightX + 4 + bob, arrowY, arrowSize, arrowSize, color, 0x29);
+        Icon_Draw(rightX + 4 + bob, arrowY, arrowSize, arrowSize, color, 41);
     }
 }
 
@@ -452,10 +440,10 @@ void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *text, s32 color)
     arrowY = y - (arrowSize - size) / 2;
     leftX = x - arrowSize;
     bob = (gFrameTick & 0x10) ? 6 : 0;
-    Icon_Draw(leftX - 4 - bob, arrowY, arrowSize, arrowSize, color, 0x29);
+    Icon_Draw(leftX - 4 - bob, arrowY, arrowSize, arrowSize, color, 41);
     if (text != NULL) {
         rightX = leftX + arrowSize + size * Text_DisplayLength(text) / 2;
-        Icon_Draw(rightX + 4 + bob, arrowY, arrowSize, arrowSize, color, 0x28);
+        Icon_Draw(rightX + 4 + bob, arrowY, arrowSize, arrowSize, color, 40);
     }
 }
 
@@ -470,10 +458,10 @@ void Menu_DrawArrowsSized(s16 x, s16 y, s16 arrowSize, s16 size, char *text, s32
     arrowY = y - (arrowSize - size) / 2;
     leftX = x - arrowSize;
     bob = (gFrameTick & 0x10) ? 6 : 0;
-    Icon_Draw(leftX - 4 - bob, arrowY, arrowSize, arrowSize, color, 0x28);
+    Icon_Draw(leftX - 4 - bob, arrowY, arrowSize, arrowSize, color, 40);
     if (text != NULL) {
         rightX = leftX + arrowSize + size * Text_DisplayLength(text) / 2;
-        Icon_Draw(rightX + 4 + bob, arrowY, arrowSize, arrowSize, color, 0x29);
+        Icon_Draw(rightX + 4 + bob, arrowY, arrowSize, arrowSize, color, 41);
     }
 }
 

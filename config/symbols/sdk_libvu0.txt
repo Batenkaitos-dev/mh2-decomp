@@ -1,6 +1,8 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libvu0, "PsIIlibvu0  3000" (.data 0x1998B0), text 0x1277A0-0x1284F0; asm piece sdk/libvu0
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libvu0 (version 3000, by its id string
+// in .data at 0x1998B0), text 0x1277A0-0x1284F0; asm piece sdk/libvu0.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 
-// Round 27 (names h1) - library functions the C calls, named from the evidence
+// Functions the game's C calls, named from what each does (its line's
+// comment).
 sceVpu0Reset = 0x00128488; // type:func resets VIF0 (FBRST) and VU0 (vi28 FBRST bit 1) and sends VIF0 its initial codes

@@ -20,6 +20,7 @@
 #include "plsel.h"
 #include "overlay.h"
 #include "select.h"
+#include "screen_fade.h"
 extern u8 gFieldControl;
 extern s32 gStageFile; /* sub_main: the stage file's address */
 #include "scene.h"
@@ -34,38 +35,33 @@ extern s32 gStageFile; /* sub_main: the stage file's address */
 #include "area.h"
 #include "camera.h"
 #include "lobby_state.h"
+#include "area_anim.h"
+#include "bgm.h"
+#include "obj.h"
+#include "light.h"
+#include "lobby_net.h"
+#include "sound.h"
+#include "stream.h"
+#include "text.h"
+#include "frame.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "lobby_screen.h"
+#include "main.h"
+#include "mem_util.h"
+#include "packet_mode.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "town_frame.h"
+#include "libc.h"
+#include "libkernl.h"
 
-void Afs_LoadPartition(s32 ptid, s32 flid, void *ptinfo, char *name);
-s32 Afs_ReadFileIdle(s32 flid, s32 ptid, void *buf);
-
-void Galex_RollEmLevel(QuestEm *qem);
-extern u8 gEmShowsOnMap[];
-
-void CamReq_TownTour(s32);
-void Bgm_PlayTownTune(s32, s32);
 struct StageEntry;
-void *StageEntry_GetData(struct StageEntry *e, s32 which);
-void Em_CopyBoneMatrices(Em *);
-s32 GmEm_Task(Em *em);
-void Em_UpdateMatrix(Em *);
-void Em_CarryRiders(Em *);
-void Stream_UpdateFades(void);
-void Em_CollideField(Em *em, u8 keep);
-void CamCtl_Apply(void);
-void LightSet_UpdateAll(void);
-void StageObj_UpdateAll(void);
-void ObjAttach_UpdateAll(void);
-void Obj_UpdateAll(void);
-void Area_UpdateTimers(void);
 
-s32 Em_HasRandomSize(s16);
 /* the calls cast its value to u8, as the game's code takes it */
-s32 Quest_GetSeason(void);
 extern u16 gEmSizeSeasonAdd[][3];
 
-u8 Daytime_Get(void);
-u16 Quest_Random(void);
-extern s8 *gEmLevelTables[];
 extern s8 gEmLevelTableIdx[][2];
 extern s8 gEmLevelSeasonAdd[][3];
 
@@ -127,64 +123,14 @@ void Galex_MusicHook(u8 music)
 {
 }
 
-s32 Overlay_IsLoaded(s32);
-extern ScEventHead *gGalleryScEvents[];
-void ScEvent_SetupB(ScEventHead *h);
-void Scene_LoadOverlay(s32);
-void FadeA_Reset(void);
-void Load_EmptyHook(void);
-void *memset(void *, s32, u32);
-void Game_ResetSubsystems(void);
-void Gfx_ClearModelBuffers(void);
-void Quest_Clear(void);
-void Packet_SetMode0(void);
 extern NextQuest gNextQuest;
 void Daytime_Set(u8); /* unit's own declaration: u8 here; with the definition's s32 (main), Galex_QuestTask's code differs */
 void Season_Set(s32);
-void Galex_SetupQuest(void);
-void Quest_Init(void);
-void ScEvent_StartFrom(ScEventHead *h);
-u16 Area_OtherTimeId(u16);
-void Hud_Start(void);
-void Area_Load(s32);
-void Quest_InitPlayers(void);
-void Quest_LoadCommonModels(void);
-void Quest_SetupStub(void);
-void Quest_EmptyHook(void);
-void Quest_EmptySetupHook(void);
-void Quest_SpawnMonsters(s32);
-void Packet_SetMode2(void);
 extern u8 *gLoadBuf;
-s32 Sound_StopBank(s32 slot);
-s32 Sound_SetSpuMapPage(u32 page);
-void FlushCache(s32);
-void Sound_QueueBank(u32 id, void *buf);
-s32 FileQueue_IsBusy(void);
 struct SndFile;
 s32 Sound_LoadBank(struct SndFile *f, u32 slot);
-s32 Sound_CheckTransfer(void);
 extern s16 gAreaSeBanks[];
-void SndLoad_Init(s8 count);
-s32 SndLoad_QuestBanks(u8 *, u8 *);
 s32 Sound_LoadStaged(struct SndFile *f, u8 *out, u32 slot);
-s32 SndLoad_ListBanks(u8 *, u8 *);
-void Area_ApplyFog(u16);
-void Area_StartObjects(u16);
-void Bgm_EnterArea(u16);
-void ScEvent_SetCamera(u8, u8);
-void Mem_Compact(void);
-void CamCtl_Update(s32);
-void FadeA_Start(s32);
-void Loading_Stop(void);
-void Galex_MusicHook(u8);
-void ScEvent_Update(void);
-void Frame_Draw(void);
-u8 FadeA_GetState(void);
-void Pad_UpdateInput(void);
-void Stream_FadeOut(s32, s32);
-void CamReq_Cancel(void);
-void TaskSlot_End(TaskSlot *t);
-void Task_StartBootToGmSub(void);
 
 extern u16 gNextQuestId;
 /*
@@ -309,7 +255,7 @@ void Galex_QuestTask(TaskSlot *task)
             return;
         case 3:
             Sound_StopBank(7);
-            bankId = (gAreaSeBanks[gScene.area] + 0xB) | 0x10000;
+            bankId = (gAreaSeBanks[gScene.area] + 11) | 0x10000;
             FlushCache(0);
             Sound_QueueBank(bankId, loadBuf);
             gScene.subStep++;
@@ -340,7 +286,7 @@ void Galex_QuestTask(TaskSlot *task)
         case 13:
         case 16:
             player = (gScene.subStep - 7) / 3;
-            if (SndLoad_QuestBanks(loadBuf, (u8 *)&gPlayers[player])) {
+            if (SndLoad_PlayerBanks(loadBuf, &gPlayers[player])) {
                 gScene.subStep++;
                 Sound_LoadStaged((struct SndFile *) loadBuf, loadBuf + 0x20000, player + 2);
             }
@@ -358,14 +304,14 @@ void Galex_QuestTask(TaskSlot *task)
             }
             return;
         case 18:
-            if (SndLoad_ListBanks(loadBuf, gScene.emKind)) {
+            if (SndLoad_EmBanks(loadBuf, gScene.emKind)) {
                 gScene.subStep++;
             }
             return;
         case 19:
             if (!FileQueue_IsBusy()) {
                 gScene.subStep++;
-                Sound_LoadStaged((struct SndFile *) loadBuf, loadBuf + 0x4800, 6);
+                Sound_LoadStaged((struct SndFile *) loadBuf, loadBuf + 18432, 6);
             }
             return;
         case 20:
@@ -449,22 +395,22 @@ void Galex_QuestTask(TaskSlot *task)
     }
 }
 
-/* The town tour (0-5) of the entry being played: gallery entries 0x1F to
- * 0x24 in order; 0 for any other. */
+/* The town tour (0-5) of the entry being played: gallery entries 31 to
+ * 36 in order; 0 for any other. */
 s32 Galex_TourIndex(void)
 {
     switch (gSysSettings.galleryEntry & GAL_ENTRY_MASK) {
-    case 0x1F:
+    case 31:
         return 0;
-    case 0x20:
+    case 32:
         return 1;
-    case 0x21:
+    case 33:
         return 2;
-    case 0x22:
+    case 34:
         return 3;
-    case 0x23:
+    case 35:
         return 4;
-    case 0x24:
+    case 36:
         return 5;
     }
     return 0;
@@ -510,35 +456,11 @@ void Galex_StartTourCamera(void)
     }
 }
 
-void Scene_LoadOverlay(s32);
-void FadeA_Reset(void);
-void Load_EmptyHook(void);
-void *memset(void *, s32, u32);
 /* Galex_Task passes the result on as an int; with the definition's u16
  * return, the call would clear its upper bits first, which the game's code
  * doesn't do.
  * unit's own declaration: declared as the caller uses it. */
 s32 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level);
-s32 Equip_EquipSlot(SaveData *save, u16 idx);
-void Equip_Refresh(SaveData *save);
-void Town_Reset(void);
-void Dmcam_PreloadAlt(void);
-void Gfx_ClearModelBuffers(void);
-void Scene_ResetAll(void);
-void LobbyTime_SetClock(u32);
-void LobbyTime_Tick(void);
-s32 LobbyScreen_RunStep(void);
-void Town_Frame(void);
-s32 CamReq_State(void);
-void Stream_FadeOut(s32, s32);
-void FadeA_Start(s32);
-u8 FadeA_GetState(void);
-void Frame_Draw(void);
-void CamReq_Cancel(void);
-void Game_ResetSubsystems(void);
-void Task_StartBootToGmSub(void);
-extern LobbyStartPos gLobbyStartPos;
-s32 Galex_TourIndex(void);
 
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
@@ -579,13 +501,13 @@ void Galex_Task(TaskSlot *task)
         memset(gSave.pouch, 0, sizeof(gSave.pouch));
         memset(gSave.box, 0, sizeof(gSave.box));
         memset(gSave.itemBox, 0, sizeof(gSave.itemBox));
-        gSave.equipIdx[1] = 0xFFFF;
-        gSave.equipIdx[2] = 0xFFFF;
-        gSave.equipIdx[3] = 0xFFFF;
-        gSave.equipIdx[4] = 0xFFFF;
-        gSave.equipIdx[5] = 0xFFFF;
-        /* a blade weapon (EquipItem.type 6, id 0x9C), equipped */
-        Equip_EquipSlot(&gSave, Box_AddItem(&gSave, EQUIP_BLADE, 0x9C, 0));
+        gSave.equipIdx[1] = 65535;
+        gSave.equipIdx[2] = 65535;
+        gSave.equipIdx[3] = 65535;
+        gSave.equipIdx[4] = 65535;
+        gSave.equipIdx[5] = 65535;
+        /* a blade weapon (EQUIP_BLADE, id 156), equipped */
+        Equip_EquipSlot(&gSave, Box_AddItem(&gSave, EQUIP_BLADE, 156, 0));
         Equip_Refresh(&gSave);
         gSave.equip[1].type = 0;
         gSave.equip[2].type = 2;
@@ -605,7 +527,7 @@ void Galex_Task(TaskSlot *task)
         gTownSeasonDays[0] = 3;
         gTownSeasonDays[1] = 3;
         gTownSeasonDays[2] = 3;
-        gTownDayTicks = 86400; /* seconds */
+        gTownDayTicks = LOBBY_DAY_SECONDS;
         gTownDay = 0;
         if (gSysSettings.galleryEntry & GAL_ENTRY_NIGHT) {
             LobbyTime_SetClock(54000);
@@ -626,7 +548,7 @@ void Galex_Task(TaskSlot *task)
             *(Vec3f *)((u8 *)gPlayers[0].moveTo + playerOfs) = startPos;
             gLobbyScreenMode = LOBBY_SCREEN_TOUR;
             gTownMenuOpen = 1;
-            gTownMode = 0x22;
+            gTownMode = 34;
             gFieldControl = 0;
             gLobbyScreenStep = 0;
             task->mode++;
@@ -743,15 +665,15 @@ void Galex_InitQuestEm(QuestEm *qem, s32 *nextIndex)
 }
 
 /* Opens the gallery's partition of the AFS (partition 5, its table in
- * gSysSettings.readBuf) and reads its stage file (file 0x37) into the
+ * gSysSettings.readBuf) and reads its stage file (file 55) into the
  * stage file's buffer. */
 void Galex_LoadStageFile(void)
 {
-    Afs_LoadPartition(5, 0x19F4, gSysSettings.readBuf, "galex");
-    Afs_ReadFileIdle(0x37, 5, (void *)gStageFile);
+    Afs_LoadPartition(5, 6644, gSysSettings.readBuf, "galex");
+    Afs_ReadFileIdle(55, 5, (void *)gStageFile);
 }
 
-/* Sets up the quest monsters of the stage's monster sets (0x10-byte
+/* Sets up the quest monsters of the stage's monster sets (16-byte
  * entries until one has no count), with the sizes of the kinds that roll
  * one (sub_main's QuestEm_InitSets). */
 void Galex_InitEmSets(u8 *set, s32 *nextIndex)
@@ -783,7 +705,7 @@ void Galex_InitEmSets(u8 *set, s32 *nextIndex)
                 qem++;
             }
         }
-        set += 0x10;
+        set += 16;
     }
 }
 
@@ -811,7 +733,7 @@ void Galex_InitEmAreaSets(u8 **list, s32 *nextIndex)
         for (;;) {
             count = StageEntry_GetData((struct StageEntry *) set, 0);
             qem = StageEntry_GetData((struct StageEntry *) set, 1);
-            set += 0x10;
+            set += 16;
             if (count == NULL) {
                 break;
             }
@@ -829,15 +751,6 @@ void Galex_InitEmAreaSets(u8 **list, s32 *nextIndex)
         list++;
     }
 }
-
-extern u16 gNextQuestId;
-void *memcpy(void *, const void *, u32);
-void Bgm_Init(void);
-u16 Rand_Next(s32);
-u16 Save_RankFromPoints(SaveData *s);
-void Quest_SetStartArea(u16);
-s32 Quest_GetTime(s32);
-void GmLoad_Reset(void);
 
 /* sub_main's Quest_LoadTargets, inlined into Galex_SetupQuest: copies the
  * stage's sub-quest targets that are set, numbered 1 and 2. */
@@ -998,5 +911,5 @@ void Galex_SetupQuest(void)
 }
 
 /* Zeros up to the end of .rodata: the game's linker ended each section
- * on a 0x80-byte boundary, and this file is the overlay's last. */
-const u8 D_00D7BD40[0x40] = {0};
+ * on a 128-byte boundary, and this file is the overlay's last. */
+const u8 D_00D7BD40[64] = {0};

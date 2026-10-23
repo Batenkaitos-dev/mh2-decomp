@@ -5,51 +5,72 @@
  * leader link), the lookups keyed by the monster's area (Em.area:
  * Em_FindAreaEntry, Em_AreaEntryValue, Em_NextAreas), the need gauges, and
  * the player-area script trigger. The .data holds the per-kind tables these
- * read.
+ * read, and last the per-kind area lists Em_CanEnterArea reads
+ * and gEmStartsBattle, the kinds' battle flags Em_InitKindParams reads.
  */
 #include "em.h"
+#include "em_bulldrome.h"
+#include "area.h"
 
+
+/* The objects of other files and modules this file's tables point to */
+extern EmAreaValue gEmAreaTimer1Values_Blangonga[1];
+extern EmAreaValue gEmAreaTimer1Values_Cephadrome[1];
+extern EmAreaValue gEmAreaTimer1Values_Chameleos[1];
+extern EmAreaValue gEmAreaTimer1Values_DaimyoHermitaur[1];
+extern EmAreaValue gEmAreaTimer1Values_Diablos[1];
+extern EmAreaValue gEmAreaTimer1Values_Fatalis[1];
+extern EmAreaValue gEmAreaTimer1Values_Gravios[1];
+extern EmAreaValue gEmAreaTimer1Values_Khezu[1];
+extern EmAreaValue gEmAreaTimer1Values_Kirin[1];
+extern EmAreaValue gEmAreaTimer1Values_KushalaDaora[1];
+extern EmAreaValue gEmAreaTimer1Values_Lunastra[1];
+extern EmAreaValue gEmAreaTimer1Values_Plesioth[1];
+extern EmAreaValue gEmAreaTimer1Values_Rathian[1];
+extern EmAreaValue gEmAreaTimer1Values_Velocidrome[1];
+extern EmAreaValue gEmAreaTimer1Values_YianGaruga[1];
+extern EmAreaValue gEmAreaTimer1Values_YianKutKu[1];
+extern EmAreaValue gEmAreaTimer2Values_Blangonga[18];
+extern EmAreaValue gEmAreaTimer2Values_Cephadrome[4];
+extern EmAreaValue gEmAreaTimer2Values_Chameleos[14];
+extern EmAreaValue gEmAreaTimer2Values_DaimyoHermitaur[12];
+extern EmAreaValue gEmAreaTimer2Values_Diablos[7];
+extern EmAreaValue gEmAreaTimer2Values_Fatalis[1];
+extern EmAreaValue gEmAreaTimer2Values_Gravios[5];
+extern EmAreaValue gEmAreaTimer2Values_Gypceros[1];
+extern EmAreaValue gEmAreaTimer2Values_Khezu[12];
+extern EmAreaValue gEmAreaTimer2Values_Kirin[5];
+extern EmAreaValue gEmAreaTimer2Values_KushalaDaora[13];
+extern EmAreaValue gEmAreaTimer2Values_Lunastra[9];
+extern EmAreaValue gEmAreaTimer2Values_Plesioth[3];
+extern EmAreaValue gEmAreaTimer2Values_Rathian[22];
+extern EmAreaValue gEmAreaTimer2Values_Velocidrome[18];
+extern EmAreaValue gEmAreaTimer2Values_YianGaruga[2];
+extern EmAreaValue gEmAreaTimer2Values_YianKutKu[7];
+extern EmNextAreaSet * gEmIdSets_Blangonga[MAP_COUNT];
+extern EmNextAreaSet * gEmIdSets_Chameleos[MAP_COUNT];
+extern EmNextAreaSet * gEmIdSets_Gypceros[MAP_COUNT];
+extern EmNextAreaSet * gEmIdSets_Khezu[MAP_COUNT];
+extern EmNextAreaBlock3 gEmIdSets_KushalaDaora[1];
+extern EmNextAreaBlock7 gEmIdSets_Lunastra[1];
+extern EmNextAreaSet * gEmIdSets_Rathalos[MAP_COUNT];
+extern EmNextAreaSet * gEmIdSets_Rathian[MAP_COUNT];
+extern EmNextAreaSet * gEmIdSets_YianGaruga[MAP_COUNT];
+extern EmNextAreaSet * gEmIdSets_YianKutKu[MAP_COUNT];
 typedef struct EmIdEntry {
     s16 id;             /* 0x0: >= 10000: an exact Em.area + 10000; -1 ends the table */
     s16 count;          /* 0x2: the number of positions */
     f32 *value;         /* 0x4: the area's position table (float triples) */
 } EmIdEntry;
 
-typedef struct EmIdEntryU {
-    u16 id;             /* 0x0: 0xFF ends the table */
-    u16 pad;
-    s16 *value;         /* 0x4: the area list (Em_NextAreas, Em_NextAreasFrom) */
-} EmIdEntryU;
-
-typedef struct EmIdSet {
-    s32 key;            /* 0x0: matched with Em.questKey; -1 is the default */
-    EmIdEntryU *entries;
-} EmIdSet;
-
-extern EmRageRow *gEmRageTbl[];
-extern EmStatusParam *gEmStatus1Params[];
-extern EmStatusParam *gEmStatusParams[];
-extern EmStatusParam *gEmStatus4Params[];
-extern EmStatusParam *gEmStatus2Params[];
-extern EmStatusParam *gEmStatus5Params[];
+extern EmPoisonParam *gEmStatusParams[];
 extern u16 gEmCollMasks[];
-extern u8 gEmIsLarge[];
-extern s16 *gEmRequestIds[];
-extern u8 gEmShowsOnMap[];
-extern EmIdSet **gEmIdSets[];
+extern EmNextAreaSet **gEmIdSets[];
 extern u8 gEmStartsBattle[];
 extern f32 gEffect06Scales[];
 
-u16 Area_DayId(u16 id);
 void Effect06_SpawnAtBone(Em *em, s32 a, s32 b, u8 c, f32 f); /* unit's own declaration: declared with s32 type and sub as Em_SpawnStatus4Effect passes them; with the definition's s16 and u8 the call compiles differently */
 void Effect06_SpawnAt(void *obj, s16 type, u8 bone, f32 *pos, f32 scale);
-void Em_AddPoison(Em *em, s32 arg);
-void Em_AddStatus4(Em *em, s32 arg);
-void Em_AddStatus2(Em *em, s32 arg);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
 
 /*
  * Sets the monster's rage from its kind's EmRageRow (gEmRageTbl[type]).
@@ -80,7 +101,7 @@ void Em_InitRage(Em *em)
 void Em_InitStatusThresholds(Em *em)
 {
     EmStatusParam *status1Param = gEmStatus1Params[em->type];
-    EmStatusParam *poisonParam = gEmStatusParams[em->type];
+    EmPoisonParam *poisonParam = gEmStatusParams[em->type];
     EmStatusParam *status4Param = gEmStatus4Params[em->type];
     EmStatusParam *status2Param = gEmStatus2Params[em->type];
     EmStatusParam *status5Param = gEmStatus5Params[em->type];
@@ -307,7 +328,7 @@ EmIdEntry *Em_FindAreaEntry(Em *em, EmIdEntry *entry, s16 id)
 {
     s16 i;
 
-    for (i = 0; i < 0xC5; i++, entry++) {
+    for (i = 0; i < 197; i++, entry++) {
         if (entry->id == -1) {
             return entry;
         }
@@ -331,7 +352,7 @@ f32 *Em_AreaEntryValue(Em *em, EmIdEntry *entry)
 {
     s16 i;
 
-    for (i = 0; i < 0xC5; i++, entry++) {
+    for (i = 0; i < 197; i++, entry++) {
         if (entry->id == -1) {
             return entry->value;
         }
@@ -368,16 +389,16 @@ void Em_FindLink(Em *em)
     switch (em->type) {
     case EM_KIND_VELOCIPREY:
     case EM_KIND_GIAPREY:
-        leaderKind = 0x1B;
+        leaderKind = 27;
         break;
     case EM_KIND_GENPREY:
-        leaderKind = 0x1C;
+        leaderKind = 28;
         break;
     case EM_KIND_IOPREY:
-        leaderKind = 0x1F;
+        leaderKind = 31;
         break;
     case EM_KIND_BULLFANGO:
-        leaderKind = 0x44;
+        leaderKind = 68;
         break;
     default:
         return;
@@ -558,14 +579,14 @@ void Em_SpawnStatus4Effect(Em *em, s32 bone)
  * Returns the list of areas the monster can move on to from its area
  * (Em_PickRoutePoint and EmScript_GoalAreaToward pick from it). From the
  * kind's gEmIdSets for the stage map it takes the set keyed by questKey (or
- * the -1 default), then the entry for its area by Area_DayId. 0xFF ends the
+ * the -1 default), then the entry for its area by Area_DayId. 255 ends the
  * list and is the default. Returns NULL for a kind without sets.
  */
 s16 *Em_NextAreas(Em *em)
 {
-    EmIdSet **sets = gEmIdSets[em->type];
-    EmIdSet *set;
-    EmIdEntryU *entry;
+    EmNextAreaSet **sets = gEmIdSets[em->type];
+    EmNextAreaSet *set;
+    EmNextAreaEntry *entry;
     s16 i;
 
     if (sets == NULL) {
@@ -579,9 +600,9 @@ s16 *Em_NextAreas(Em *em)
         }
         set++;
     }
-    for (i = 0; i < 0xC5; i++, entry++) {
-        if (entry->id == 0xFF || Area_DayId(entry->id) == Area_DayId(em->area)) {
-            return entry->value;
+    for (i = 0; i < 197; i++, entry++) {
+        if (entry->area == 255 || Area_DayId(entry->area) == Area_DayId(em->area)) {
+            return entry->next;
         }
     }
     return 0;
@@ -593,9 +614,9 @@ s16 *Em_NextAreas(Em *em)
  */
 s16 *Em_NextAreasFrom(Em *em, u16 area)
 {
-    EmIdSet **sets = gEmIdSets[em->type];
-    EmIdSet *set;
-    EmIdEntryU *entry;
+    EmNextAreaSet **sets = gEmIdSets[em->type];
+    EmNextAreaSet *set;
+    EmNextAreaEntry *entry;
     s16 i;
 
     if (sets == NULL) {
@@ -609,9 +630,9 @@ s16 *Em_NextAreasFrom(Em *em, u16 area)
         }
         set++;
     }
-    for (i = 0; i < 0xC5; i++, entry++) {
-        if (entry->id == 0xFF || Area_DayId(entry->id) == Area_DayId(area)) {
-            return entry->value;
+    for (i = 0; i < 197; i++, entry++) {
+        if (entry->area == 255 || Area_DayId(entry->area) == Area_DayId(area)) {
+            return entry->next;
         }
     }
     return 0;
@@ -708,89 +729,29 @@ void Em_RaisePlayerAreaTrigger(Em *em)
 }
 
 /* The file's data. */
-extern u32 D_008BC8F8[];
-extern u32 D_008BC908[];
-extern u32 D_008BC918[];
-extern u32 D_008BC928[];
-extern u32 D_008BC938[];
-extern u32 D_008BC948[];
-extern u32 D_008BC958[];
-extern u32 D_008BC968[];
-extern u32 D_008BC978[];
-extern u32 D_008BC988[];
-extern u32 D_008BC998[];
-extern u32 D_008BC9A8[];
-extern u32 D_008BC9B8[];
-extern u32 D_008BC9C8[];
-extern u32 D_008BC9D8[];
-extern u32 D_008BC9E8[];
-extern u32 D_008BC9F8[];
-extern u32 D_008BCA08[];
-extern u32 D_008BCA18[];
-extern u32 D_008BCA28[];
-extern u32 D_008BCA38[];
-extern u32 D_008BCA48[];
-extern u32 D_008BCA58[];
-extern u32 D_008BCA68[];
-extern u32 D_008BCA78[];
-extern u32 D_008BCA88[];
-extern u32 D_008BCA98[];
-extern u32 D_008BCAA8[];
-extern u32 D_008BCAB8[];
-extern u32 D_008BCAC8[];
-extern u32 D_008BCAD8[];
-extern u32 D_008BCAE8[];
-extern u32 D_008BCAF8[];
-extern u32 D_008BCB08[];
-extern u32 D_008BCB18[];
-extern u32 D_008BCB28[];
-extern u32 D_008BCB38[];
-extern u32 D_008BCB48[];
-extern u32 D_008BCB58[];
-extern u32 D_008BCB68[];
-extern u32 D_008BCB78[];
-extern u32 D_008BCB88[];
-extern u32 D_008BCB98[];
-extern u32 D_008BCBA8[];
-extern u32 D_008BCBB8[];
-extern u32 D_008BCBC8[];
-extern u32 D_008BCBD8[];
-extern u32 D_008BCBE8[];
-extern u32 D_008BCBF8[];
-extern u32 D_008BCC08[];
-extern u32 D_008BCC18[];
-extern u32 D_008BCC28[];
-extern u32 D_008BCC38[];
-extern u32 D_008BCC48[];
-extern u32 D_008BCC58[];
-extern u32 D_008BCC68[];
-extern u32 D_008BCC78[];
-extern u32 D_008BCC88[];
-extern u32 gEmAreaTimer1Values_68[];
-extern u32 gEmAreaTimer2Values_68[];
-u32 gEmStatusParams_73[3] = {
+EmPoisonParam gEmStatusParams_73 = {
 #include "game/008BCC98.inc"
 };
-EmStatusParam *gEmStatusParams[74] = {
-    NULL, (EmStatusParam *)D_008BC908, (EmStatusParam *)D_008BC928, (EmStatusParam *)D_008BC938,
-    (EmStatusParam *)D_008BC948, (EmStatusParam *)D_008BC958, (EmStatusParam *)D_008BC968, (EmStatusParam *)D_008BC8F8,
-    (EmStatusParam *)D_008BC978, (EmStatusParam *)D_008BC988, (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BC918,
-    (EmStatusParam *)D_008BC998, (EmStatusParam *)D_008BC9A8, (EmStatusParam *)D_008BC9B8, (EmStatusParam *)D_008BC9C8,
-    (EmStatusParam *)D_008BC9D8, (EmStatusParam *)D_008BC9E8, (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BC9F8,
-    (EmStatusParam *)D_008BCA08, (EmStatusParam *)D_008BCA18, (EmStatusParam *)D_008BCA28, (EmStatusParam *)D_008BCA38,
-    (EmStatusParam *)D_008BCA48, (EmStatusParam *)D_008BCA58, (EmStatusParam *)D_008BCA68, (EmStatusParam *)D_008BCA78,
-    (EmStatusParam *)D_008BCA88, (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BCA98, (EmStatusParam *)D_008BCAA8,
-    (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BCAB8, (EmStatusParam *)D_008BCAC8, (EmStatusParam *)D_008BCAD8,
-    (EmStatusParam *)D_008BC928, (EmStatusParam *)D_008BCAE8, (EmStatusParam *)D_008BCAF8, (EmStatusParam *)D_008BCB08,
-    (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BCB18, (EmStatusParam *)D_008BCB28, (EmStatusParam *)D_008BCB38,
-    (EmStatusParam *)D_008BCB48, (EmStatusParam *)D_008BCB58, (EmStatusParam *)D_008BCB68, (EmStatusParam *)D_008BCB78,
-    (EmStatusParam *)D_008BCB88, (EmStatusParam *)D_008BCB98, (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BCBA8,
-    (EmStatusParam *)D_008BCBB8, (EmStatusParam *)D_008BCBC8, (EmStatusParam *)D_008BCBD8, (EmStatusParam *)D_008BC8F8,
-    (EmStatusParam *)D_008BCBE8, (EmStatusParam *)D_008BCBF8, (EmStatusParam *)D_008BC8F8, (EmStatusParam *)D_008BCC08,
-    (EmStatusParam *)D_008BCBD8, (EmStatusParam *)D_008BCC18, (EmStatusParam *)D_008BCC18, (EmStatusParam *)D_008BCC28,
-    (EmStatusParam *)D_008BCC38, (EmStatusParam *)D_008BCC48, (EmStatusParam *)D_008BCC58, (EmStatusParam *)D_008BCC68,
-    (EmStatusParam *)D_008BCC78, (EmStatusParam *)D_008BC938, (EmStatusParam *)D_008BC998, (EmStatusParam *)D_008BCC88,
-    (EmStatusParam *)D_008BC8F8, (EmStatusParam *)gEmStatusParams_73,
+EmPoisonParam *gEmStatusParams[74] = {
+    NULL, &gEmRateStatus.status[1].param, &gEmRateStatus.status[3].param, &gEmRateStatus.status[4].param,
+    &gEmRateStatus.status[5].param, &gEmRateStatus.status[6].param, &gEmRateStatus.status[7].param, &gEmRateStatus.status[0].param,
+    &gEmRateStatus.status[8].param, &gEmRateStatus.status[9].param, &gEmRateStatus.status[0].param, &gEmRateStatus.status[2].param,
+    &gEmRateStatus.status[10].param, &gEmRateStatus.status[11].param, &gEmRateStatus.status[12].param, &gEmRateStatus.status[13].param,
+    &gEmRateStatus.status[14].param, &gEmRateStatus.status[15].param, &gEmRateStatus.status[0].param, &gEmRateStatus.status[16].param,
+    &gEmRateStatus.status[17].param, &gEmRateStatus.status[18].param, &gEmRateStatus.status[19].param, &gEmRateStatus.status[20].param,
+    &gEmRateStatus.status[21].param, &gEmRateStatus.status[22].param, &gEmRateStatus.status[23].param, &gEmRateStatus.status[24].param,
+    &gEmRateStatus.status[25].param, &gEmRateStatus.status[0].param, &gEmRateStatus.status[26].param, &gEmRateStatus.status[27].param,
+    &gEmRateStatus.status[0].param, &gEmRateStatus.status[28].param, &gEmRateStatus.status[29].param, &gEmRateStatus.status[30].param,
+    &gEmRateStatus.status[3].param, &gEmRateStatus.status[31].param, &gEmRateStatus.status[32].param, &gEmRateStatus.status[33].param,
+    &gEmRateStatus.status[0].param, &gEmRateStatus.status[34].param, &gEmRateStatus.status[35].param, &gEmRateStatus.status[36].param,
+    &gEmRateStatus.status[37].param, &gEmRateStatus.status[38].param, &gEmRateStatus.status[39].param, &gEmRateStatus.status[40].param,
+    &gEmRateStatus.status[41].param, &gEmRateStatus.status[42].param, &gEmRateStatus.status[0].param, &gEmRateStatus.status[43].param,
+    &gEmRateStatus.status[44].param, &gEmRateStatus.status[45].param, &gEmRateStatus.status[46].param, &gEmRateStatus.status[0].param,
+    &gEmRateStatus.status[47].param, &gEmRateStatus.status[48].param, &gEmRateStatus.status[0].param, &gEmRateStatus.status[49].param,
+    &gEmRateStatus.status[46].param, &gEmRateStatus.status[50].param, &gEmRateStatus.status[50].param, &gEmRateStatus.status[51].param,
+    &gEmRateStatus.status[52].param, &gEmRateStatus.status[53].param, &gEmRateStatus.status[54].param, &gEmRateStatus.status[55].param,
+    &gEmRateStatus.status[56].param, &gEmRateStatus.status[4].param, &gEmRateStatus.status[10].param, &gEmRateStatus.status[57].param,
+    &gEmRateStatus.status[0].param, &gEmStatusParams_73,
 };
 EmStatusParam gEmStatus4Params_7 = {
 #include "game/008BCDD8.inc"
@@ -1350,10 +1311,10 @@ EmStatusParam *gEmStatus1Params[74] = {
     &gEmStatus1Params_1, &gEmStatus1Params_2, &gEmStatus1Params_2, &gEmStatus1Params_2,
     &gEmStatus1Params_2, &gEmStatus1Params_2,
 };
-u32 gEmKindTimerValues[2] = {
+s16 gEmKindTimerValues[4] = {
 #include "game/008BDC78.inc"
 };
-u32 gEmKindTimerIndex[20] = {
+s8 gEmKindTimerIndex[80] = {
 #include "game/008BDC80.inc"
 };
 EmRageRow gEmRageTbl_1 = {
@@ -1506,64 +1467,64 @@ EmRageRow *gEmRageTbl[74] = {
     &gEmRageTbl_5, NULL, NULL, &gEmRageTbl_36,
     &gEmRageTbl_11, NULL,
 };
-u32 gEmDamagedPartTbls_1[2] = {
+u8 gEmDamagedPartTbls_1[8] = {
 #include "game/008BE8B8.inc"
 };
-u32 gEmDamagedPartTbls_48[2] = {
+u8 gEmDamagedPartTbls_48[8] = {
 #include "game/008BE8C0.inc"
 };
-u32 gEmDamagedPartTbls_51[2] = {
+u8 gEmDamagedPartTbls_51[8] = {
 #include "game/008BE8C8.inc"
 };
-u32 gEmDamagedPartTbls_53[2] = {
+u8 gEmDamagedPartTbls_53[8] = {
 #include "game/008BE8D0.inc"
 };
-u32 gEmDamagedPartTbls_54[2] = {
+u8 gEmDamagedPartTbls_54[8] = {
 #include "game/008BE8D8.inc"
 };
-u32 gEmDamagedPartTbls_59[2] = {
+u8 gEmDamagedPartTbls_59[8] = {
 #include "game/008BE8E0.inc"
 };
-u32 gEmDamagedPartTbls_64[2] = {
+u8 gEmDamagedPartTbls_64[8] = {
 #include "game/008BE8E8.inc"
 };
-u32 gEmDamagedPartTbls[76] = {
-    0, (u32)gEmDamagedPartTbls_1, 0, 0,
-    0, 0, 0, 0,
-    0, 0, 0, (u32)gEmDamagedPartTbls_1,
-    0, 0, (u32)gEmDamagedPartTbls_1, 0,
-    0, (u32)gEmDamagedPartTbls_1, 0, 0,
-    0, 0, (u32)gEmDamagedPartTbls_1, 0,
-    0, 0, (u32)gEmDamagedPartTbls_1, 0,
-    0, 0, 0, 0,
-    0, 0, 0, 0,
-    0, (u32)gEmDamagedPartTbls_1, 0, 0,
-    (u32)gEmDamagedPartTbls_1, (u32)gEmDamagedPartTbls_1, (u32)gEmDamagedPartTbls_1, (u32)gEmDamagedPartTbls_1,
-    (u32)gEmDamagedPartTbls_1, 0, 0, (u32)gEmDamagedPartTbls_1,
-    (u32)gEmDamagedPartTbls_48, (u32)gEmDamagedPartTbls_1, 0, (u32)gEmDamagedPartTbls_51,
-    0, (u32)gEmDamagedPartTbls_53, (u32)gEmDamagedPartTbls_54, 0,
-    0, 0, 0, (u32)gEmDamagedPartTbls_59,
-    (u32)gEmDamagedPartTbls_54, 0, 0, 0,
-    (u32)gEmDamagedPartTbls_64, (u32)gEmDamagedPartTbls_64, 0, 0,
-    0, 0, 0, 0,
-    0, 0, 0, 0,
+u8 *gEmDamagedPartTbls[76] = {
+    NULL, gEmDamagedPartTbls_1, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, gEmDamagedPartTbls_1,
+    NULL, NULL, gEmDamagedPartTbls_1, NULL,
+    NULL, gEmDamagedPartTbls_1, NULL, NULL,
+    NULL, NULL, gEmDamagedPartTbls_1, NULL,
+    NULL, NULL, gEmDamagedPartTbls_1, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, gEmDamagedPartTbls_1, NULL, NULL,
+    gEmDamagedPartTbls_1, gEmDamagedPartTbls_1, gEmDamagedPartTbls_1, gEmDamagedPartTbls_1,
+    gEmDamagedPartTbls_1, NULL, NULL, gEmDamagedPartTbls_1,
+    gEmDamagedPartTbls_48, gEmDamagedPartTbls_1, NULL, gEmDamagedPartTbls_51,
+    NULL, gEmDamagedPartTbls_53, gEmDamagedPartTbls_54, NULL,
+    NULL, NULL, NULL, gEmDamagedPartTbls_59,
+    gEmDamagedPartTbls_54, NULL, NULL, NULL,
+    gEmDamagedPartTbls_64, gEmDamagedPartTbls_64, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
 };
-u32 gEmCombatInit[40] = {
+s16 gEmCombatInit[80] = {
 #include "game/008BEA20.inc"
 };
-u32 gEmBlindTimes[38] = {
+s16 gEmBlindTimes[76] = {
 #include "game/008BEAC0.inc"
 };
-u32 gEmAreaTimer2Values_0[2] = {
+EmAreaValue gEmAreaTimer2Values_0[2] = {
 #include "game/008BEB58.inc"
 };
-u32 gEmAreaTimer2Values[74] = {
+EmAreaValue *gEmAreaTimer2Values[74] = {
 #include "game/008BEB60.inc"
 };
-u32 gEmAreaTimer1Values_0[2] = {
+EmAreaValue gEmAreaTimer1Values_0[2] = {
 #include "game/008BEC88.inc"
 };
-u32 gEmAreaTimer1Values[76] = {
+EmAreaValue *gEmAreaTimer1Values[76] = {
 #include "game/008BEC90.inc"
 };
 u16 gEmCollMasks[80] = {
@@ -1572,7 +1533,7 @@ u16 gEmCollMasks[80] = {
 u8 gEmIsLarge[80] = {
 #include "game/008BEE60.inc"
 };
-u32 gEmCarryReact[20] = {
+u8 gEmCarryReact[80] = {
 #include "game/008BEEB0.inc"
 };
 EmKindInfo gEmKindInfo[74] = {
@@ -1629,6 +1590,149 @@ s16 *gEmRequestIds[76] = {
 u8 gEmShowsOnMap[80] = {
 #include "game/008BF2D0.inc"
 };
-EmIdSet* *gEmIdSets[76] = {
+EmNextAreaSet **gEmIdSets[76] = {
 #include "game/008BF320.inc"
+};
+
+/* The per-kind area lists Em_CanEnterArea reads, and the kinds' battle flags. */
+u16 gEmEnterAreaLists_Rathian_2[8] = {
+#include "game/008BF450.inc"
+};
+u16 gEmEnterAreaLists_Rathian_3[8] = {
+#include "game/008BF460.inc"
+};
+u16 gEmEnterAreaLists_Rathian_4[8] = {
+#include "game/008BF470.inc"
+};
+u16 gEmEnterAreaLists_Rathian_6[24] = {
+#include "game/008BF480.inc"
+};
+u16 *gEmEnterAreaLists_Rathian[16] = {
+    NULL, NULL, gEmEnterAreaLists_Rathian_2, gEmEnterAreaLists_Rathian_3,
+    gEmEnterAreaLists_Rathian_4, NULL, gEmEnterAreaLists_Rathian_6, NULL,
+    NULL, NULL, NULL, &gEmEnterAreaLists_Rathian_6[12],
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_Khezu_4[8] = {
+#include "game/008BF4F0.inc"
+};
+u16 gEmEnterAreaLists_Khezu_9[4] = {
+#include "game/008BF500.inc"
+};
+u16 gEmEnterAreaLists_Khezu_11[6] = {
+#include "game/008BF508.inc"
+};
+u16 *gEmEnterAreaLists_Khezu[16] = {
+    NULL, NULL, NULL, NULL,
+    gEmEnterAreaLists_Khezu_4, NULL, NULL, NULL,
+    NULL, gEmEnterAreaLists_Khezu_9, NULL, gEmEnterAreaLists_Khezu_11,
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_YianKutKu_2[8] = {
+#include "game/008BF560.inc"
+};
+u16 gEmEnterAreaLists_YianKutKu_4[8] = {
+#include "game/008BF570.inc"
+};
+u16 gEmEnterAreaLists_YianKutKu_6[8] = {
+#include "game/008BF580.inc"
+};
+u16 *gEmEnterAreaLists_YianKutKu[16] = {
+    NULL, NULL, gEmEnterAreaLists_YianKutKu_2, NULL,
+    gEmEnterAreaLists_YianKutKu_4, NULL, gEmEnterAreaLists_YianKutKu_6, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_YianGaruga_6[16] = {
+#include "game/008BF5D0.inc"
+};
+u16 *gEmEnterAreaLists_YianGaruga[16] = {
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, gEmEnterAreaLists_YianGaruga_6, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_Blangonga_4[8] = {
+#include "game/008BF630.inc"
+};
+u16 gEmEnterAreaLists_Blangonga_5[8] = {
+#include "game/008BF640.inc"
+};
+u16 gEmEnterAreaLists_Blangonga_6[8] = {
+#include "game/008BF650.inc"
+};
+u16 gEmEnterAreaLists_Blangonga_9[16] = {
+#include "game/008BF660.inc"
+};
+u16 *gEmEnterAreaLists_Blangonga[16] = {
+    NULL, NULL, NULL, NULL,
+    gEmEnterAreaLists_Blangonga_4, gEmEnterAreaLists_Blangonga_5, gEmEnterAreaLists_Blangonga_6, NULL,
+    NULL, gEmEnterAreaLists_Blangonga_9, NULL, &gEmEnterAreaLists_Blangonga_9[4],
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_KushalaDaora_3[16] = {
+#include "game/008BF6C0.inc"
+};
+u16 gEmEnterAreaLists_KushalaDaora_6[24] = {
+#include "game/008BF6E0.inc"
+};
+u16 *gEmEnterAreaLists_KushalaDaora[16] = {
+    NULL, NULL, NULL, gEmEnterAreaLists_KushalaDaora_3,
+    NULL, NULL, gEmEnterAreaLists_KushalaDaora_6, NULL,
+    NULL, NULL, NULL, &gEmEnterAreaLists_KushalaDaora_6[12],
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_Chameleos_2[8] = {
+#include "game/008BF750.inc"
+};
+u16 gEmEnterAreaLists_Chameleos_4[8] = {
+#include "game/008BF760.inc"
+};
+u16 gEmEnterAreaLists_Chameleos_6[8] = {
+#include "game/008BF770.inc"
+};
+u16 *gEmEnterAreaLists_Chameleos[16] = {
+    NULL, NULL, gEmEnterAreaLists_Chameleos_2, NULL,
+    gEmEnterAreaLists_Chameleos_4, NULL, gEmEnterAreaLists_Chameleos_6, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+};
+u16 gEmEnterAreaLists_Lunastra_3[12] = {
+#include "game/008BF7C0.inc"
+};
+u16 gEmEnterAreaLists_Lunastra_4[6] = {
+#include "game/008BF7D8.inc"
+};
+u16 gEmEnterAreaLists_Lunastra_5[6] = {
+#include "game/008BF7E8.inc"
+};
+u16 *gEmEnterAreaLists_Lunastra[16] = {
+    NULL, NULL, NULL, gEmEnterAreaLists_Lunastra_3,
+    gEmEnterAreaLists_Lunastra_4, gEmEnterAreaLists_Lunastra_5, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+};
+u16 **gEmEnterAreaLists[76] = {
+    NULL, gEmEnterAreaLists_Rathian, NULL, NULL,
+    NULL, NULL, gEmEnterAreaLists_YianKutKu, NULL,
+    NULL, NULL, NULL, gEmEnterAreaLists_Rathian,
+    NULL, NULL, NULL, gEmEnterAreaLists_Khezu,
+    NULL, NULL, NULL, NULL,
+    gEmEnterAreaLists_YianKutKu, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, gEmEnterAreaLists_Rathian, gEmEnterAreaLists_YianKutKu, gEmEnterAreaLists_YianKutKu,
+    gEmEnterAreaLists_YianGaruga, gEmEnterAreaLists_Rathian, gEmEnterAreaLists_Rathian, NULL,
+    NULL, gEmEnterAreaLists_Khezu, NULL, NULL,
+    NULL, gEmEnterAreaLists_Rathian, NULL, gEmEnterAreaLists_Blangonga,
+    gEmEnterAreaLists_Blangonga, gEmEnterAreaLists_Blangonga, gEmEnterAreaLists_KushalaDaora, NULL,
+    NULL, NULL, NULL, gEmEnterAreaLists_Chameleos,
+    gEmEnterAreaLists_KushalaDaora, NULL, NULL, NULL,
+    gEmEnterAreaLists_Lunastra, gEmEnterAreaLists_Lunastra, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+    NULL, NULL, NULL, NULL,
+};
+u8 gEmStartsBattle[80] = {
+#include "game/008BF970.inc"
 };

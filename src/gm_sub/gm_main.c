@@ -17,65 +17,26 @@
 #include "task.h"
 #include "qsync.h"
 #include "select.h"
+#include "sound.h"
+#include "stream.h"
+#include "text.h"
+#include "gm_main.h"
+#include "camera.h"
+#include "file_load.h"
+#include "frame.h"
+#include "game_util.h"
+#include "rand.h"
+#include "sys_main.h"
+#include "screen_fade.h"
+#include "bgm.h"
+#include "libc.h"
 
 
 /* The title screen's state: gSysSettings.workArea, set by GmSub_Task. */
 GmWork *gGmWork;
 
-void Boot_Task(TaskSlot *task);
-void Title_DrawLogo(void);
-void ModeSel_DrawScreen(void);
-void Gallery_Task(TaskSlot *task);
-
-void Sound_ReverbOn(void);
-void Stream_Play(s32, s32);
-void Sound_LoadGmSubBanks(void);
-void Gs_SetTableColor(s32);
-u8 FadeA_GetState(void);
-void FadeA_Start(s32);
-void Tex_LoadSystemPack(s32);
-void TaskSlot_Set(void *func, s16 slot);
-void TaskSlot_End(TaskSlot *t);
-void TaskSlot_Hold(s16 slot);
-void Task_EndGmSubForNetScene(void);
-void Task_EndGmSubForNetSetup(void);
-u16 Pad_KeyRepeat(s32 pad, u16 held, u16 pressed);
-void Game_ResetSubsystems(void);
-void Sound_PlayCursorMove(void);
-void Title_ResetBgAnim(void);
-void Title_StepBgAnim(void);
-void ModeSel_StartSlide(void);
 void ModeSel_Start(s32); /* unit's own declaration: the definition (select) is void ModeSel_Start(s16 sel); the calls here match only with this one */
 s32 ModeSel_IsIdle(void);
-void ModeSel_UpdateSlide(void);
-void Sel_LoadCommonTextures(void);
-void GmSub_MoveCursorH(u16, u16, u8 *, u8);
-void *memset(void *dst, s32 c, u32 n);
-void gm_sub_entry(void);
-s32 GmSub_Setup(void);
-s32 GmSub_UpdateMenu(u16, u16);
-s32 GmSub_StartGame(TaskSlot *, u16, u16);
-s32 GmSub_ExitToBoot(TaskSlot *, u16, u16);
-void Callbacks_Add(void (*fn)(void));
-void LayerCallbacks_Add(void (*fn)(void), u8 layer);
-void Camera_Update(void);
-void Frame_Draw(void);
-void Chara_CreateTask(TaskSlot *task);
-void Chara_SelectTask(TaskSlot *task);
-void Option_Task(TaskSlot *task);
-void NetOption_Task(TaskSlot *task);
-void Psp_ConnectTask(TaskSlot *task);
-void Title_Draw(void);
-void Title_RandomView(void);
-void Sound_PlayConfirm(void);
-void Sound_PlayCancel(void);
-void Stream_Stop(s32);
-TaskSlot *TaskSlot_Get(s16 slot);
-void Task_StartBootScreens(void);
-void GmSub_InitMenu(void);
-void GmSub_MoveCursorV(u16, u16, u8 *, u8);
-s32 GmSub_UpdateModeSelect(u16, u16);
-void GmSub_OpenModeSelect(void);
 
 /*
  * The overlay's entry, at its first address. GmSub_Task calls it after a
@@ -259,7 +220,7 @@ void GmSub_InitMenu(void)
     Game_ResetSubsystems();
     Tex_LoadSystemPack(0);
     Sel_LoadCommonTextures();
-    Sound_LoadGmSubBanks();
+    Sound_LoadTitleMenuBanks();
     Gs_SetTableColor(0);
     if (gSysSettings.cardHasChara != 0) {
         gGmWork->menuSel = GMSUB_MENU_LOAD_CHARA;

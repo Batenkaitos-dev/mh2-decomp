@@ -59,7 +59,7 @@ typedef struct HttpDigest {
 typedef struct HttpReq HttpReq;
 typedef void (*HttpStateFn)(HttpReq *req);
 
-/* One request (0xE4 bytes): HttpReq_Alloc hands one out, the caller fills it (the lobby's
+/* One request (228 bytes): HttpReq_Alloc hands one out, the caller fills it (the lobby's
  * HttpReq_Setup), HttpReq_Step runs it, HttpReq_Free returns it. err, sjis and index are
  * s8: nethttp only writes them, the lobby's browser reads them signed. */
 struct HttpReq {
@@ -212,8 +212,8 @@ enum HttpTeardown {
 
 /* libhttps' client options (its set-option call), named by
  * what HttpReq_SetOptions and HttpReq_Authenticate pass with them. The
- * code also sets options 7, 8 and 0x15 to 60, 9 and 0x16 to 0, 0x13 to
- * "Content-Length" for POST, and 0xE to gHttpsSecureOption for https://;
+ * code also sets options 7, 8 and 21 to 60, 9 and 22 to 0, 19 to
+ * "Content-Length" for POST, and 14 to gHttpsSecureOption for https://;
  * those stay numbers. */
 #define HTTPS_OPT_USER_AGENT 0      /* the client's name */
 #define HTTPS_OPT_METHOD 2          /* HTTPS_METHOD_* */
@@ -265,5 +265,39 @@ enum HttpTeardown {
  * scratch area after it where each piece is obfuscated */
 #define HTTP_LBS_OBF_OFFSET 0xF000
 #define HTTP_LBS_PREFIX_LEN 10      /* an lbs:// URL's characters before the part the server gets */
+
+s32 Http_Init(void); /* nethttp */
+s32 Http_Term(void);
+HttpReq *HttpReq_Alloc(void);
+s32 HttpReq_HasFree(void);
+s32 HttpReq_AllIdle(void);
+s32 HttpReq_Free(HttpReq *req);
+void HttpReq_Step(HttpReq *req);
+s32 HttpReq_CheckSjis(HttpReq *req, u8 *text, s32 n);
+void HttpReq_Open(HttpReq *req);
+void HttpReq_ParseUrl(HttpReq *req);
+void HttpReq_CreateClient(HttpReq *req);
+void HttpReq_SetOptions(HttpReq *req);
+void HttpReq_Connect(HttpReq *req);
+void HttpReq_Send(HttpReq *req);
+void HttpReq_ReadBody(HttpReq *req);
+void HttpReq_CheckStatus(HttpReq *req);
+void HttpReq_Authenticate(HttpReq *req);
+void HttpReq_Close(HttpReq *req);
+void HttpReq_Done(HttpReq *req);
+void HttpReq_Abort(HttpReq *req);
+void HttpReq_Failed(HttpReq *req);
+void HttpLbs_Send(HttpReq *req);
+void HttpLbs_Wait(HttpReq *req);
+void HttpLbs_Receive(void); /* nethttp */
+void HttpLbs_Done(HttpReq *req);
+void HttpLbs_Abort(HttpReq *req);
+void HttpLbs_Failed(HttpReq *req);
+void HttpAfs_Read(HttpReq *req);
+void HttpAfs_Next(HttpReq *req);
+void HttpAfs_Done(HttpReq *req);
+void Http_LoadAfsPartition(void); /* nethttp */
+s32 Http_ReadBrdata(void *buf, s32 flid); /* nethttp */
+s32 Http_ReadFile(void *buf, s32 flid); /* nethttp */
 
 #endif

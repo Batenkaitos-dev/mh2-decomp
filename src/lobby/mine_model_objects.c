@@ -21,20 +21,24 @@
 #include "objhead.h"
 #include "render_state.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "text.h"
+#include "village_cond.h"
+#include "mine_model_objects.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "pets.h"
+#include "rand.h"
+#include "ship_mine_menus.h"
 #pragma optimization_level 4
-void DrawSlot_Free(s32);
 
-void ModelObj_SpawnOnScaled(u8 *owner, s32 type, f32 scale);
-void ModelObj_Init(StageObj *o);
-void ModelObj_Run(StageObj *o);
-void ModelObj_End(StageObj *o);
-void ModelObj_Free(StageObj *o);
-
-
-s32 Cond_Check(u16 id);
-s32 Items_HaveEnough(u16 item, s32 n);
-void LobbySe_Play(s32 se);
-s32 Menu_WrapUpDown(s32 cursor, s32 count);
 extern u16 gMineFindsWeak[];
 extern u16 gMineFindsMid[];
 extern u16 gMineFindsStrong[];
@@ -43,10 +47,6 @@ extern u16 gMineFindsMidOpen[];
 extern u16 gMineFindsStrongOpen[];
 extern u16 gMineFindsStrongEvent[];
 extern s16 gMineBonusByLevel[];
-u16 Rand_Next(s32 stream);
-s32 Mine_IsOpen(void);
-void Items_Take(s32 item, s32 n);
-s32 Save_TestEventFlag(s32 flag);
 u8 Village_FacilityLevel(s32 k);
 
 /* Takes the pickaxe chosen and starts the miner's dig: rolls the digs it
@@ -83,7 +83,7 @@ void Mine_Dig(MineMenu *menu)
         gSave.mine.digs = Rand_Next(1) % 5 + 2;
         if (Mine_IsOpen() == 1) {
             finds = gMineFindsStrongOpen;
-        } else if (Save_TestEventFlag(0x89) == 0) {
+        } else if (Save_TestEventFlag(137) == 0) {
             finds = gMineFindsStrong;
         } else {
             finds = gMineFindsStrongEvent;
@@ -124,20 +124,10 @@ s32 Mine_PickaxeInput(MineMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 a3, s32 item, u16 t1, s8 t2, u32 color);
-void Text_PrintfColored(const char *fmt, ...);
-void Menu_DrawItemCountRow(s16 x, s16 y, u16 item, u32 color);
 /* unit's own declaration: returning an int, as this file's code uses the result; with the definition's s16 return, Mine_DrawPickaxes compiles differently */
 s32 Text_CenterX(char *s, s16 x, s32 size);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
 /* unit's own declaration: with s16 coordinates, as this file's code passes them; with the definition's s32 ones, Mine_DrawPickaxes compiles differently */
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 
 /* Draws the pickaxe window at (x, y): its title, a row per pickaxe held
  * with its count and the cursor's bar, the description of the one under
@@ -149,38 +139,36 @@ void Mine_DrawPickaxes(MineMenu *menu, s16 x, s16 y)
     u16 item;
     u16 cursorItem;
 
-    Win_Draw(x, y, 0x154, 0x120, 0xBDB59F6C, 0xBB402010, 8);
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xC8, 0xFFB0B000, gListTitles[LIST_TITLE_PICKAXE], 2, 1);
+    Win_Draw(x, y, 340, 288, 0xBDB59F6C, 0xBB402010, 8);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 200, 0xFFB0B000, gListTitles[LIST_TITLE_PICKAXE], 2, 1);
     if (menu->count == 0) {
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(Text_CenterX(gTownLabels[TOWN_LABEL_NO_PICKAXE], x + 0xAA, 0x12), rowY + 0x5A);
+        Font_SetPos(Text_CenterX(gTownLabels[TOWN_LABEL_NO_PICKAXE], x + 170, 18), rowY + 90);
         Text_PrintfColored(gTownLabels[TOWN_LABEL_NO_PICKAXE]);
         return;
     }
     Font_SetColor(0x807F7F7F);
-    rowY += 0x1E;
-    Font_SetSpacing(0x14, 0x14);
+    rowY += 30;
+    Font_SetSpacing(20, 20);
     for (i = 0; i < 7; i++) {
         if (i <= menu->count) {
             item = menu->items[i];
             if (i == menu->cursor) {
                 cursorItem = item;
-                Menu_DrawLine(x + 0xA, rowY - 1, 0x140, 0x18, 0);
+                Menu_DrawRowHighlight(x + 10, rowY - 1, 320, 24, 0);
             }
-            Menu_DrawItemCountRow(x + 0x3C, rowY, item, 0x807F7F7F);
+            Menu_DrawItemCountRow(x + 60, rowY, item, 0x807F7F7F);
         }
-        rowY += 0x16;
+        rowY += 22;
     }
-    Gfx_DrawLine(x + 0x14, rowY + 2, 0x12C, 2, 0xBDB59F6C);
-    ItemInfo_Draw((s16)(x + 0x3C) - 0x32, rowY + 4, 0x154, menu->toggle, cursorItem, 0, -1, 0x807F7F7F);
-    Win_DrawText(0x118, 0x164, 0x154, 0x50, 0xBDB59F6C, 0xC0101010, gTownLabels[TOWN_LABEL_PICKAXE_HELP]);
+    Gfx_DrawLine(x + 20, rowY + 2, 300, 2, 0xBDB59F6C);
+    ItemInfo_Draw((s16)(x + 60) - 50, rowY + 4, 340, menu->toggle, cursorItem, 0, -1, 0x807F7F7F);
+    Win_DrawText(280, 356, 340, 80, 0xBDB59F6C, 0xC0101010, gTownLabels[TOWN_LABEL_PICKAXE_HELP]);
 }
 
 extern u8 gMenuWork[];
-void Text_SetSize(s32 size);
-void Mine_DrawPickaxes(MineMenu *m, s16 x, s16 y);
 /* The mine menu's draw: the pickaxe window, at its slide position, while
  * it slides in and while a pickaxe is chosen. */
 void Mine_DrawMenu(MenuTask *task)
@@ -191,7 +179,7 @@ void Mine_DrawMenu(MenuTask *task)
     switch (menu->state) {
     case MINE_MENU_SLIDE_IN:
     case MINE_MENU_CHOOSE:
-        Mine_DrawPickaxes(menu, menu->win.pos, 0x3A);
+        Mine_DrawPickaxes(menu, menu->win.pos, 58);
         break;
     }
 }
@@ -203,8 +191,6 @@ void ModelObj_SpawnOn(void *owner, s32 type)
     ModelObj_SpawnOnScaled((void *)owner, type, 1.0f);
 }
 
-void ModelObj_Update(StageObj *o);
-void Vec_Copy(f32 *dst, f32 *src);
 /* Spawns a model object of the given type at pos, with no owner;
  * colorIndex picks MODEL_OBJ_SPARKLE's colour (gModelObjPartColors). */
 void ModelObj_SpawnAt(f32 *pos, s32 type, s32 colorIndex, f32 scale)
@@ -264,13 +250,6 @@ void ModelObj_Update(StageObj *obj)
     }
 }
 
-
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Vec_RotateSelf(f32 *v, f32 *m);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void ModelObj_DrawPart(DrawSlot *slot);
 extern s16 gModelObjPartCounts[];
 extern s16 gModelObjBurstDelays[];
 
@@ -360,37 +339,37 @@ void ModelObj_Init(StageObj *obj)
                 break;
             case 2:
                 curPart->angle = Rand_Next(1);
-                curPart->spin = (Rand_Next(1) & 0x3ff) - 0x200;
+                curPart->spin = (Rand_Next(1) & 0x3ff) - 512;
                 break;
             case 3:
                 curPart->angle = Rand_Next(1);
-                curPart->spin = (Rand_Next(1) & 0xFF) - 0x80;
+                curPart->spin = (Rand_Next(1) & 0xFF) - 128;
                 curPart->scale *= 3.0f;
                 break;
             case 4:
             case 5:
             case 6:
                 curPart->angle = Rand_Next(1);
-                curPart->spin = (Rand_Next(1) & 0x3ff) - 0x200;
+                curPart->spin = (Rand_Next(1) & 0x3ff) - 512;
                 curPart->scale *= 0.5f + 0.0003f * ((Rand_Next(1) & 0x3ff));
                 break;
             }
             break;
         case MODEL_OBJ_NPC_PUFF:
             curPart->angle = 0;
-            curPart->spin = (Rand_Next(1) & 0x7ff) - 0x400;
+            curPart->spin = (Rand_Next(1) & 0x7ff) - 1024;
             curPart->scale *= 0.8f + 0.00040000002f * ((Rand_Next(1) & 0x3ff));
             curPart->driftSeed = Rand_Next(1);
             break;
         case MODEL_OBJ_SPARKLE:
             curPart->angle = Rand_Next(1);
-            curPart->spin = (Rand_Next(1) & 0x1ff) - 0x100;
+            curPart->spin = (Rand_Next(1) & 0x1ff) - 256;
             curPart->driftSeed = Rand_Next(1);
             break;
         case MODEL_OBJ_PLAYER_FX_A:
             switch (curPart->index) {
             case 3:
-                curPart->angle = 0x4000;
+                curPart->angle = ANGLE_TURN / 4;
                 break;
             case 1:
             default:
@@ -401,7 +380,7 @@ void ModelObj_Init(StageObj *obj)
             break;
         case MODEL_OBJ_PLAYER_FX_B:
             curPart->frame = -i * 5 - 10;
-            curPart->angle = 0x2000;
+            curPart->angle = ANGLE_TURN / 8;
             curPart->spin = 0;
             break;
         case MODEL_OBJ_PET_JOY:
@@ -425,11 +404,6 @@ void ModelObj_Init(StageObj *obj)
     }
 }
 
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
-s16 Poogie_JoyFrames(void);
-void Vec_RotateY(f32 *v, f32 a);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 extern f32 gCamMatrix[];
 extern u16 gModelObjLifetimes[];
 extern s16 gModelObjFirstKey[];
@@ -445,7 +419,7 @@ extern void *gModelObjKeys[];
  * each part: a part waits while its frame is 0 or less, then lives its
  * frames, its size, offset and alpha read from its key curves; each part
  * drawn goes into the sorted ordering table.
- * Built at optimization level 3. partFrameTable[i] and i * 0x5555 are
+ * Built at optimization level 3. partFrameTable[i] and i * 0x5555 (an angle) are
  * written as indexing, not as pointers stepped by the loop: the compiler
  * then sets up its own stepping after the loop's first test, as the
  * game's code does.
@@ -573,7 +547,7 @@ void ModelObj_Run(StageObj *obj)
             keyIdx += 2;
             Key_LerpVec3(gModelObjKeys[(s16)(curveIdx + 1)], &curveOffset.x, part->frame);
             Vec_RotateY((f32 *) &curveOffset, 6.2831855f * obj->angle / 65536.0f);
-            offset.x = part->frame * (0.030000001f * ((part->driftSeed & 0x3FF) - 0x200)) / partFrames;
+            offset.x = part->frame * (0.030000001f * ((part->driftSeed & 0x3FF) - 512)) / partFrames;
             offset.y = 0.0f;
             offset.z = 0.0f;
             Vec_RotateSelf(&offset.x, gCamMatrix);
@@ -590,7 +564,7 @@ void ModelObj_Run(StageObj *obj)
             Vec_RotateY((f32 *) &curveOffset, 6.2831855f * obj->angle / 65536.0f);
             keyIdx += 3;
             Key_LerpFloat(gModelObjKeys[(s16)(curveIdx + 2)], &part->alpha, part->frame);
-            offset.x = part->frame * (0.010000001f * ((part->driftSeed & 0x3FF) - 0x200)) / partFrames;
+            offset.x = part->frame * (0.010000001f * ((part->driftSeed & 0x3FF) - 512)) / partFrames;
             offset.y = 0.0f;
             offset.z = 0.0f;
             Vec_RotateSelf(&offset.x, gCamMatrix);
@@ -626,13 +600,12 @@ void ModelObj_Run(StageObj *obj)
             part->draw->pos[0] = part->pos.x + offset.x;
             part->draw->pos[1] = part->pos.y + offset.y;
             part->draw->pos[2] = part->pos.z + offset.z;
-            OT_AddByDepth(gDrawOtSorted, part->draw, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, part->draw, 64, 0);
         }
     }
 }
 #pragma optimization_level reset
 
-extern s16 gModelObjPartCounts[];
 /* The end (LOBBY_OBJ_END): frees the object's own draw slot, if it has
  * one, and each part's. */
 void ModelObj_End(StageObj *obj)
@@ -659,15 +632,6 @@ void ModelObj_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-
-s16 Effect_MapTexId(s16 id);
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-s32 Gs_SetState(u8, u32);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
-s32 Poogie_AtGreatJoyStart(void);
 extern u32 gModelObjColorKeys[];
 extern u32 gModelObjPartColors[];
 /* gModelObjPartColors' bytes, each colour's red, green, blue and alpha
@@ -713,7 +677,7 @@ void ModelObj_DrawPart(DrawSlot *slot)
         scale.z = curPart->scale * curPart->size.z;
         switch (obj->type) {
         case MODEL_OBJ_NPC_BURST:
-            blue = green = red = 0xFF;
+            blue = green = red = 255;
             id = Effect_MapTexId(gModelObjTables.burstTexIds[curPart->index]);
             switch (curPart->index) {
             case 0:
@@ -722,22 +686,22 @@ void ModelObj_DrawPart(DrawSlot *slot)
             case 1:
                 flags |= 2;
                 order = 0;
-                green = 0xEA;
-                blue = 0x94;
+                green = 234;
+                blue = 148;
                 break;
             case 2:
                 flags |= 2;
                 order = 3;
-                green = 0x7C;
-                blue = 0x76;
+                green = 124;
+                blue = 118;
                 break;
             case 3:
                 flags |= 2;
                 rot.z = 6.2831855f * curPart->angle / 65536.0f;
                 order = 3;
-                red = 0xFF;
-                green = 0x39;
-                blue = 0x76;
+                red = 255;
+                green = 57;
+                blue = 118;
                 break;
             case 4:
             case 5:
@@ -749,12 +713,12 @@ void ModelObj_DrawPart(DrawSlot *slot)
             color = ((u8)(255.0f * curPart->alpha) << 24) | (red << 16) | (green << 8) | blue;
             break;
         case MODEL_OBJ_NPC_PUFF:
-            id = Effect_MapTexId(0x4A);
+            id = Effect_MapTexId(74);
             order = 0;
             Color_EvalKeys((s32 *) gModelObjColorKeys, curPart->frame, (u32 *) &color);
             break;
         case MODEL_OBJ_SPARKLE:
-            id = Effect_MapTexId(0x48);
+            id = Effect_MapTexId(72);
             rot.z = 6.2831855f * curPart->angle / 65536.0f;
             order = 3;
             colorIdx = obj->var2 * 4;
@@ -767,17 +731,17 @@ void ModelObj_DrawPart(DrawSlot *slot)
             case 1:
             case 2:
             case 3:
-                id = Effect_MapTexId(0x40);
+                id = Effect_MapTexId(64);
                 break;
             case 4:
-                id = Effect_MapTexId(0x25);
+                id = Effect_MapTexId(37);
                 Mtx_Translation(uvMtx[0], 0.0f, 0.0f, 0.0f);
                 Gs_SetState(RS_UV_MTX, (u32)uvMtx);
                 break;
             case 5:
             case 6:
             default:
-                id = Effect_MapTexId(0x58);
+                id = Effect_MapTexId(88);
                 break;
             }
             flags |= 2;
@@ -786,7 +750,7 @@ void ModelObj_DrawPart(DrawSlot *slot)
             color = ((u8)(255.0f * curPart->alpha) << 24) | 0x7FDFFF;
             break;
         case MODEL_OBJ_PLAYER_FX_B:
-            id = Effect_MapTexId(0x25);
+            id = Effect_MapTexId(37);
             flags |= 2;
             rot.z = 6.2831855f * curPart->angle / 65536.0f;
             order = 3;
@@ -795,7 +759,7 @@ void ModelObj_DrawPart(DrawSlot *slot)
             Gs_SetState(RS_UV_MTX, (u32)uvMtx);
             break;
         case MODEL_OBJ_PET_JOY:
-            id = Effect_MapTexId(0x17);
+            id = Effect_MapTexId(23);
             order = 0;
             if (Poogie_AtGreatJoyStart() == 1) {
                 flags |= 2;
@@ -840,49 +804,49 @@ u16 gMineFindsStrongEvent[8] = {
 s16 gMineBonusByLevel[16] = {
 #include "lobby/007DBF40.inc"
 };
-u32 gModelObjKeys_0[76] = {
+Vec3Key gModelObjKeys_0[19] = {
 #include "lobby/007DBF60.inc"
 };
-u32 gModelObjKeys_1[96] = {
+Vec3Key gModelObjKeys_1[24] = {
 #include "lobby/007DC090.inc"
 };
-u32 gModelObjKeys_2[8] = {
+FloatKey gModelObjKeys_2[4] = {
 #include "lobby/007DC210.inc"
 };
-u32 gModelObjKeys_3[12] = {
+Vec3Key gModelObjKeys_3[3] = {
 #include "lobby/007DC230.inc"
 };
-u32 gModelObjKeys_6[20] = {
+Vec3Key gModelObjKeys_6[5] = {
 #include "lobby/007DC260.inc"
 };
-u32 gModelObjKeys_9[20] = {
+Vec3Key gModelObjKeys_9[5] = {
 #include "lobby/007DC2B0.inc"
 };
-u32 gModelObjKeys_12[16] = {
+Vec3Key gModelObjKeys_12[4] = {
 #include "lobby/007DC300.inc"
 };
-u32 gModelObjKeys_4[12] = {
+Vec3Key gModelObjKeys_4[3] = {
 #include "lobby/007DC340.inc"
 };
-u32 gModelObjKeys_7[12] = {
+Vec3Key gModelObjKeys_7[3] = {
 #include "lobby/007DC370.inc"
 };
-u32 gModelObjKeys_10[12] = {
+Vec3Key gModelObjKeys_10[3] = {
 #include "lobby/007DC3A0.inc"
 };
-u32 gModelObjKeys_13[16] = {
+Vec3Key gModelObjKeys_13[4] = {
 #include "lobby/007DC3D0.inc"
 };
-u32 gModelObjKeys_5[8] = {
+FloatKey gModelObjKeys_5[4] = {
 #include "lobby/007DC410.inc"
 };
-u32 gModelObjKeys_8[8] = {
+FloatKey gModelObjKeys_8[4] = {
 #include "lobby/007DC430.inc"
 };
-u32 gModelObjKeys_11[8] = {
+FloatKey gModelObjKeys_11[4] = {
 #include "lobby/007DC450.inc"
 };
-u32 gModelObjKeys_14[8] = {
+FloatKey gModelObjKeys_14[4] = {
 #include "lobby/007DC470.inc"
 };
 u16 gModelObjBurstPartFrames[8] = {
@@ -891,67 +855,67 @@ u16 gModelObjBurstPartFrames[8] = {
 s16 gModelObjBurstDelays[8] = {
 #include "lobby/007DC4A0.inc"
 };
-u32 gModelObjKeys_21[20] = {
+Vec3Key gModelObjKeys_21[5] = {
 #include "lobby/007DC4B0.inc"
 };
-u32 gModelObjKeys_22[16] = {
+Vec3Key gModelObjKeys_22[4] = {
 #include "lobby/007DC500.inc"
 };
 u32 gModelObjColorKeys[8] = {
 #include "lobby/007DC540.inc"
 };
-u32 gModelObjKeys_23[12] = {
+Vec3Key gModelObjKeys_23[3] = {
 #include "lobby/007DC560.inc"
 };
-u32 gModelObjKeys_24[12] = {
+Vec3Key gModelObjKeys_24[3] = {
 #include "lobby/007DC590.inc"
 };
-u32 gModelObjKeys_25[12] = {
+FloatKey gModelObjKeys_25[6] = {
 #include "lobby/007DC5C0.inc"
 };
 u32 gModelObjPartColors[4] = {
 #include "lobby/007DC5F0.inc"
 };
-u32 gModelObjKeys_26[20] = {
+Vec3Key gModelObjKeys_26[5] = {
 #include "lobby/007DC600.inc"
 };
-u32 gModelObjKeys_28[20] = {
+Vec3Key gModelObjKeys_28[5] = {
 #include "lobby/007DC650.inc"
 };
-u32 gModelObjKeys_30[20] = {
+Vec3Key gModelObjKeys_30[5] = {
 #include "lobby/007DC6A0.inc"
 };
-u32 gModelObjKeys_34[20] = {
+Vec3Key gModelObjKeys_34[5] = {
 #include "lobby/007DC6F0.inc"
 };
-u32 gModelObjKeys_36[20] = {
+Vec3Key gModelObjKeys_36[5] = {
 #include "lobby/007DC740.inc"
 };
-u32 gModelObjKeys_38[20] = {
+Vec3Key gModelObjKeys_38[5] = {
 #include "lobby/007DC790.inc"
 };
-u32 gModelObjKeys_27[8] = {
+FloatKey gModelObjKeys_27[4] = {
 #include "lobby/007DC7E0.inc"
 };
-u32 gModelObjKeys_29[8] = {
+FloatKey gModelObjKeys_29[4] = {
 #include "lobby/007DC800.inc"
 };
-u32 gModelObjKeys_31[8] = {
+FloatKey gModelObjKeys_31[4] = {
 #include "lobby/007DC820.inc"
 };
-u32 gModelObjKeys_35[8] = {
+FloatKey gModelObjKeys_35[4] = {
 #include "lobby/007DC840.inc"
 };
-u32 gModelObjKeys_37[8] = {
+FloatKey gModelObjKeys_37[4] = {
 #include "lobby/007DC860.inc"
 };
-u32 gModelObjKeys_39[8] = {
+FloatKey gModelObjKeys_39[4] = {
 #include "lobby/007DC880.inc"
 };
 u16 gModelObjFxAPartFrames[8] = {
 #include "lobby/007DC8A0.inc"
 };
-u32 gModelObjKeys_40[24] = {
+Vec3Key gModelObjKeys_40[6] = {
 #include "lobby/007DC8B0.inc"
 };
 void *gModelObjKeys[44] = {
@@ -985,6 +949,6 @@ u16 gModelObjPartFrames[16] = {
 ModelObjTables gModelObjTables = {
 #include "lobby/007DCA60.inc"
 };
-u32 gGalleryTargetSwingAmps[8] = {
+f32 gGalleryTargetSwingAmps[8] = {
 #include "lobby/007DCAA0.inc"
 };

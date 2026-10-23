@@ -27,28 +27,20 @@
 #include "lobby_menu.h"
 #include "menu_task.h"
 #include "lobby_labels.h"
-
-#define FRIEND_PAGE_LEN 10      /* the rows of a page of the list */
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "lobby_net.h"
+#include "friend_list.h"
+#include "draw_slots.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "lobby_web_users.h"
+#include "menu_steps.h"
+#include "libc.h"
 
 #pragma optimization_level 4
-
-
-/* The friend list's menu (gFriendListMenu, 0x84 bytes): FriendList_Open
- * clears and sets it up. */
-typedef struct FriendListMenu {
-    /* 0x00 */ WinSlide win;
-    /* 0x08 */ MenuTask layer[2];   /* the draw tasks: the list, then the hunter info window */
-    /* 0x48 */ s32 list[FRIEND_PAGE_LEN]; /* the page's gFriendList indexes */
-    /* 0x70 */ s32 checkIdx;        /* the row whose status is being asked of the server */
-    /* 0x74 */ s32 pick;            /* FRIEND_LIST_OPEN_PICK: a choice returns to the caller */
-    /* 0x78 */ s16 page;
-    /* 0x7A */ s16 pageCount;
-    /* 0x7C */ s16 cursor;
-    /* 0x7E */ s16 count;           /* the rows on the page */
-    /* 0x80 */ s16 actionSel;       /* the action window's cursor (enum FriendAction) */
-    /* 0x82 */ s8 state;            /* enum FriendListState */
-    /* 0x83 */ s8 step;
-} FriendListMenu;
 
 /* FriendListMenu.state */
 enum FriendListState {
@@ -73,27 +65,15 @@ enum FriendAction {
     FRIEND_ACTION_COUNT = 2
 };
 
-#define FRIEND_LIST_OPEN_PICK 1 /* FriendList_Open's argument: the short mail form picks its addressee */
-
-
-void LobbySe_Play(s32);
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-s32 Menu_WrapLeftRight(s32 arg0, s32 arg1);
 extern s8 gFriendStatus[];
 extern FriendEntry gFriendList[];
 
 struct FriendEntryWords;
-s32 FriendList_DeleteAt(struct FriendEntryWords *, u8 idx, u8 n);
 
 extern s8 gFriendListOpen;
-void *memset(void *dst, s32 c, u32 n);
 
 #pragma optimization_level reset
 extern FriendListMenu gFriendListMenu;
-void FriendList_BuildPage(FriendListMenu *m, s16 page);
-void FriendList_Draw(MenuTask *task);
-void FriendList_Draw2(MenuTask *task);
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
 /* Opens the friend list: clears gFriendListMenu, builds its first page, puts
  * the cursor on the first row, marks the list open, sets its two draw tasks
  * (the list and the hunter info window) and starts the window's slide.
@@ -112,7 +92,7 @@ void FriendList_Open(s32 mode)
     gFriendListMenu.layer[1].draw = FriendList_Draw2;
     gFriendListMenu.layer[0].textSize = 0;
     gFriendListMenu.layer[1].textSize = 1;
-    WinSlide_Step(&gFriendListMenu.win, 0x280, 0xE6);
+    WinSlide_Step(&gFriendListMenu.win, 640, 230);
 }
 #pragma optimization_level 4
 
@@ -143,20 +123,6 @@ void *FriendList_GetSelectedName(void)
 
 extern u8 gLobbyLevel1Sel;
 extern LobbyMenu *gLobbyMenu;
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
-s32 FriendList_HasUnchecked(FriendListMenu *menu);
-s32 FriendList_CheckStatus(FriendListMenu *m);
-s32 FriendList_ListInput(FriendListMenu *menu, u16 pad);
-s32 FriendList_ActionInput(FriendListMenu *menu, u16 pad);
-s32 FriendList_RemoveInput(FriendListMenu *m, u16 pad);
-void FriendList_BuildPage(FriendListMenu *m, s16 page);
-void HunterInfo_Open(void *src, s32 flags);
-s32 HunterInfo_Update(u16 pad);
-void LobbyText_Open(s32);
-void Menu_SetYesNo(s8 a);
-void LobbyDialog_Grow(void);
-void LobbyDialog_SetMember(void *a, void *b);
-s32 OT_AddAt(u32 *, void *, s32, s32);
 /*
  * Runs the friend list each frame: the window slides in, the page's
  * unknown statuses are checked, then the list, the action window, the
@@ -172,7 +138,7 @@ s32 FriendList_Update(u16 pad)
 
     switch (gFriendListMenu.state) {
     case FRIEND_LIST_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0xE6)) {
+        switch (WinSlide_Step(&menu->win, 640, 230)) {
         case MENU_DONE:
             if (menu->count != 0 && FriendList_HasUnchecked(menu) == 1) {
                 menu->state++;
@@ -314,11 +280,6 @@ void FriendList_Remove(s32 idx)
 }
 
 extern s8 gMenuInputLock;
-s32 Menu_YesNoInput(void);
-void LobbyText_Open(s32);
-void LobbyDialog_SetMember(void *a, void *b);
-void FriendList_Remove(s32 idx);
-void FriendList_BuildPage(FriendListMenu *m, s16 page);
 /*
  * Runs the removal question over the chosen friend: a yes removes the
  * entry, rebuilds the page, keeps the cursor on a row and shows the
@@ -427,8 +388,6 @@ s32 FriendList_ListInput(FriendListMenu *menu, u16 pad)
 
 extern s16 gFriendCheckTimers[];
 extern u16 gFriendCheckFrames;
-s32 LobbyUser_FindById(s8 *id);
-void LobbyNet_GetUserStatus(u16 *arg0, u16 *arg1, u16 *arg2, u8 *arg3);
 /*
  * Asks the server for the status of each friend on the page whose status
  * is unknown, one at a time, and restarts the page's status timer
@@ -485,7 +444,6 @@ s32 FriendList_CheckStatus(FriendListMenu *menu)
     return 2;
 }
 
-s32 Menu_CountPages(s16 n, s16 per);
 /*
  * Fills the menu's list with the record indexes of the used entries on
  * page `page` (FRIEND_PAGE_LEN a page), counts the pages, steps back a
@@ -522,13 +480,11 @@ void FriendList_BuildPage(FriendListMenu *menu, s16 page)
 
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k); /* unit's own declaration: declared with the types the calls here were compiled with; the definition's (s32 coordinates and an s16 kind) change the calls' code */
 void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Menu_DrawLine(s16 x, s16 y, s32 w, s32 h, s32 sel); /* unit's own declaration: declared with the types the calls here were compiled with; the definition's (s16 coordinates and an s8 flag) change the calls' code */
+void Menu_DrawRowHighlight(s16 x, s16 y, s32 w, s32 h, s32 sel); /* unit's own declaration: declared with the types the calls here were compiled with; the definition's (s16 coordinates and an s8 flag) change the calls' code */
 void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
 void Text_PrintfColored(char *fmt, ...);
 void Text_Printf(const char *fmt, ...);
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Sjis_Widen(char *src, char *dst);
 /*
  * Draws the list window at x, y: the title and page number, the column
  * headings (name, id, connection), then each row with its name, its id
@@ -546,31 +502,31 @@ void FriendList_DrawList(FriendListMenu *menu, s16 x, s16 y)
     s32 friendIdx;
     s16 rowY = y;
 
-    Win_Draw(x, y, 0x186, 0x122, 0xBDB59F6C, 0xBB402010, 8);
-    Gfx_DrawLine(x + 8, y + 0xC, 0x176, 0x14, 0x80B59F6C);
+    Win_Draw(x, y, 390, 290, 0xBDB59F6C, 0xBB402010, 8);
+    Gfx_DrawLine(x + 8, y + 12, 374, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x10, y + 0xE);
+    Font_SetPos(x + 16, y + 14);
     Text_PrintfColored(gGameMenuLabels[MENU_LABEL_FRIEND_LIST]); /* the list window's title */
     if (menu->count == 0) {
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_NOT_REGISTERED], x + 0xC3, 0x12), (s16)(y + 0xE) + 0x5A);
+        Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_NOT_REGISTERED], x + 195, 18), (s16)(y + 14) + 90);
         Text_PrintfColored(gNetLabels[NET_LABEL_NOT_REGISTERED]);
         return;
     }
-    Menu_DrawPageNum(x + 0x12C, y + 0xE, menu->page, menu->pageCount, 1);
-    rowY += 0x24;
+    Menu_DrawPageNum(x + 300, y + 14, menu->page, menu->pageCount, 1);
+    rowY += 36;
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x10, rowY);
+    Font_SetPos(x + 16, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_NAME]);
-    Font_SetPos(x + 0xAA, rowY);
+    Font_SetPos(x + 170, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_ID]);
-    Font_SetPos(x + 0x120, rowY);
+    Font_SetPos(x + 288, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_CONN_STATE]);
     for (i = 0; i < menu->count; i++) {
         friendIdx = menu->list[i];
         entry = &gFriendList[friendIdx];
         Font_SetColor(0x807F7F7F);
-        rowY += 0x16;
+        rowY += 22;
         if (menu->cursor == i) {
             switch (menu->state) {
             case FRIEND_LIST_LIST:
@@ -580,14 +536,14 @@ void FriendList_DrawList(FriendListMenu *menu, s16 x, s16 y)
                 dim = 1;
                 break;
             }
-            Menu_DrawLine(x + 8, rowY - 1, 0x176, 0x14, dim);
+            Menu_DrawRowHighlight(x + 8, rowY - 1, 374, 20, dim);
         }
-        Font_SetPos(x + 0x10, rowY);
+        Font_SetPos(x + 16, rowY);
         Text_PrintfColored("%s", entry->name);
-        Font_SetPos(x + 0xAA, rowY);
+        Font_SetPos(x + 170, rowY);
         Sjis_Widen((char *)entry, wideId);
         Text_PrintfColored(wideId);
-        Font_SetPos(x + 0x120, rowY);
+        Font_SetPos(x + 288, rowY);
         switch (gFriendStatus[friendIdx]) {
         case FRIEND_STATUS_UNKNOWN:
             label = gNetLabels[NET_LABEL_CHECKING];
@@ -606,10 +562,6 @@ void FriendList_DrawList(FriendListMenu *menu, s16 x, s16 y)
     }
 }
 
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(char *fmt, ...);
 /*
  * Draws the two-line action window to the left of the list (the status and
  * the removal), with the action cursor highlighted (dimmed outside the
@@ -620,12 +572,12 @@ void FriendList_DrawActions(FriendListMenu *menu, s16 x, s16 y)
     s16 i;
     s32 dim;
 
-    Win_Draw(x - 0x6E, y, 0x6E, 0x3A, 0xBDB59F6C, 0xBB402010, 3);
+    Win_Draw(x - 110, y, 110, 58, 0xBDB59F6C, 0xBB402010, 3);
     y += 8;
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < FRIEND_ACTION_COUNT; i++) {
         if (i > 0) {
-            Gfx_DrawLine((s16)(x - 0x6E) + 8, y - 2, 0x5E, 2, 0xBDB59F6C);
+            Gfx_DrawLine((s16)(x - 110) + 8, y - 2, 94, 2, 0xBDB59F6C);
         }
         if (menu->actionSel == i) {
             switch (menu->state) {
@@ -636,17 +588,15 @@ void FriendList_DrawActions(FriendListMenu *menu, s16 x, s16 y)
                 dim = 1;
                 break;
             }
-            Menu_DrawLine((s16)(x - 0x6E) + 8, y - 1, 0x5E, 0x14, dim);
+            Menu_DrawRowHighlight((s16)(x - 110) + 8, y - 1, 94, 20, dim);
         }
-        Font_SetPos((s16)(x - 0x6E) + 8, y);
+        Font_SetPos((s16)(x - 110) + 8, y);
         Text_PrintfColored(gNetLabels[NET_LABEL_STATUS + i]);
-        y += 0x16;
+        y += 22;
     }
 }
 
 void Text_SetSize(s32);
-void Font_SetSpacing(u8 a, u8 b);
-void FriendList_DrawActions(FriendListMenu *m, s16 x, s16 y);
 /*
  * The friend list's first draw task: sets the task's text size, then draws
  * the list at the window's slide position, and the action window over it
@@ -659,22 +609,19 @@ void FriendList_Draw(MenuTask *task)
     s16 x;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (gFriendListMenu.state != FRIEND_LIST_INFO) {
         x = menu->win.pos;
-        FriendList_DrawList(menu, x, 0x3A);
+        FriendList_DrawList(menu, x, 58);
         switch (menu->state) {
         case FRIEND_LIST_REMOVE:
         case FRIEND_LIST_ACTIONS:
-            FriendList_DrawActions(menu, x, 0x3A);
+            FriendList_DrawActions(menu, x, 58);
             break;
         }
     }
 }
 
-void Text_SetSize(s32);
-void Font_SetSpacing(u8 a, u8 b);
-void HunterInfo_DrawIfOpen(void);
 /*
  * The friend list's second draw task: sets the task's text size and draws
  * the hunter info window while it is open.
@@ -682,7 +629,7 @@ void HunterInfo_DrawIfOpen(void);
 void FriendList_Draw2(MenuTask *task)
 {
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (gFriendListMenu.state) {
     case FRIEND_LIST_INFO:
         HunterInfo_DrawIfOpen();

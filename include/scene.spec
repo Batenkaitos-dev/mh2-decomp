@@ -11,16 +11,16 @@ size 0x2BC
 0x200 u32 supplyTaken[2] // one bit per supply box slot taken
 0x224 u8 inQuest[4] // per player: IN_QUEST_YES in the quest, IN_QUEST_LEFT left it, IN_QUEST_NO_PLAYER none (NetScene_Run, QNetIf_FindHost, Player_Init)
 0x275 u8 eventRunning // a scripted event (ScEvent_*) is running: monsters, HUD and Field_UpdateAll wait
-0x0D0 void * models[4] // model headers (0x80 bytes), copied per monster (EmSlot_SetupModel, Em +0x30F)
-0x011 u8 musicState // the music's state: in the field an enum MusicState (Bgm_FieldUpdate), in the town MUSIC_TOWN_* (Bgm_TownUpdate); the hunters' actions set MUSIC_MONSTER_BATTLE with musicTimer 0x96
+0x0D0 void * models[4] // model headers (128 bytes), copied per monster (EmSlot_SetupModel, Em +0x30F)
+0x011 u8 musicState // the music's state: in the field an enum MusicState (Bgm_FieldUpdate), in the town MUSIC_TOWN_* (Bgm_TownUpdate); the hunters' actions set MUSIC_MONSTER_BATTLE with musicTimer 150
 0x016 u16 startArea // the area loaded first (Quest_SetStartArea sets it with area; Quest_Setup: Area_Load)
 0x02A u8 emKind[4] // per monster slot, its kind (QuestEm_SpawnArea, Quest_SpawnMonsters from gQuestSync.emKind); 0 none
 0x02E u16 questId // the quest id (QuestDesk_Accept, Quest_Init; Tex_LoadStageFile(map, questId))
-0x031 u8 campArea // the map's base camp: a fainted player goes back there (Player_StateThrowItem), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1)
+0x031 u8 campArea // the map's base camp: a fainted player goes back there (Player_StateThrowItem), EM_KIND_FELYNE_CART spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1)
 0x03C u8 localPlayer // the local player's index (gPlayers, per-player arrays)
 0x03D u8 unk03D // set to 1 with inLobby when NetScene_Run enters the lobby from another scene (before its mode 1)
 0x040 u8 questPhase // QUEST_PHASE_*: 2 the hunt, 3/4 the goal met, 5-7 lost, 8 quit (Quest_GetOutcome)
-0x041 u8 inLobby // nonzero while a scene of the lobby overlay runs: the network set-up and the online town (NetScene_Run), or plsel's tour of the town. 0 in every quest, online or not: the game overlay loads at the lobby's addresses, and Player_HasSkill calls the lobby's Town_InMode46 while it is set. Online play is Game_IsOnline
+0x041 u8 inLobby // nonzero while a scene of the lobby overlay runs: the network set-up and the online town (NetScene_Run), or plsel's tour of the town. 0 in every quest, online or not: the game overlay loads at the lobby's addresses, and Player_HasSkill calls the lobby's Town_InRecordsMode while it is set. Online play is Game_IsOnline
 0x12C u16 deductedItem // the item Quest_DeductReward took from the reward
 0x12E s16 deductedCount // its count
 0x130 u8 rewardDeducted // set by Quest_DeductReward, cleared by Quest_Init
@@ -43,7 +43,7 @@ size 0x2BC
 0x028 u16 musicTimer // the frames left in musicState's state (Bgm_FieldUpdate: it moves on at 0 or less)
 0x131 u8 aimReverse // the bowgun aim reversal option: 0 none, 1 up/down, 2 up/down and left/right (Player_BowgunAim)
 0x209 u8 emEventFlags // flags: bit 0 set by Shen Gaoren and Lao-Shan, bit 1 by Fatalis; area objects test them (area_objects.c, area_scenery.c)
-0x20A u8 skipFlaggedTris // set by CastleGate_Create (0 in quest 0xBBC, else 1): the area collisions skip the triangles of attribute 0x4000 (their masks add 0x4000), the kind 0x14 area object runs, and EmScript op 0x60 branches on it
+0x20A u8 skipFlaggedTris // set by CastleGate_Create (0 in quest 3004, else 1): the area collisions skip the triangles with attribute bit 0x4000 (their masks add that bit), the kind 20 area object runs, and EMOP_IF_GATE_OPEN branches on it
 0x001 u8 step // the scene's step (Scene_StartQuest, NetScene_Run, ...)
 0x00D u8 padRead // the pads are read each frame while set (Pad_Update; set by the scene start, and by the lobby)
 0x00E u8 menuOpen // the field or player menu is open (FieldMenu_Open, Plsel_OpenPlayerMenu); blocks the HUD input (Hud_InputBlocked)
@@ -57,7 +57,7 @@ size 0x2BC
 0x003 u8 openingFirst // 1 when the opening movie plays for the first time (event flag 0x26 not set yet; Scene_Opening), cleared on entering the field
 0x010 u8 musicFlags // MUSIC_FLAG_*: an area's own tune has played, the music is turned down under a tune
 0x012 u8 allLocal // in a drill, every player counts as local (Player_IsLocal); set by Scene_EnterField, cleared by plsel
-0x2BA u16 galexTimer // frames of the current Galex_Task step: zeroed, counted up, compared with the step limit (plsel gallery_scene.c; read there as unk276[0x2BA - 0x276] before)
+0x2BA u16 galexTimer // frames of the current Galex_Task step: zeroed, counted up, compared with the step limit (plsel gallery_scene.c)
 0x022 u8 padIndex[2] // per pad port, its gPadState index (Pad_ReadButtons; the scene reset sets 0 and 1); the login screen reads [0] (LoginPad_Triggered); was padPort
 0x025 u8 pauseState // the offline pause: 0 none, 1 requested, 2-3 paused, 4 leaving (Scene_RequestPause, Game_PauseState; the lobby keeps copies of the pause functions)
 0x004 s16 timer // a scene timer (scene.c SceneView, plsel PlselScene)
@@ -70,12 +70,12 @@ size 0x2BC
 0x008 s16 timeout // a third timer: the drill rewards list's timeout, frames (Plsel_RewardListTask)
 0x00A s16 stateSyncFrame // frames since the last state sync: at 60 Scene_QuestFrameTick sends QSync_SendState(8) and restarts it; zeroed when the quest results screen starts (Plsel_ResultsUpdate)
 0x26A u16 supplyWho // the player whose supply box request the host answers (QNet case 7; sent in message 10)
-0x26C u16 supplySlot // the supply slot granted to supplyWho, 0xFF: already taken (supplyTaken)
+0x26C u16 supplySlot // the supply slot granted to supplyWho, QSYNC_SLOT_TAKEN: already taken (supplyTaken)
 0x00F u8 camControl // the camera control option (option byte 4, copied with gSysSave.camControl): 0 L1/R1 change the distance, 2 reverses the turn (CamMode1 in kbd.c)
 0x019 u8 charIndex // the save's character slot, copied from gQuestSync.charIndex at the scene reset (scene.c)
 0x026 u8 heldMask // buttons held at a change of control, masked out until released (Pad_ReadButtons)
 0x027 u8 camFollow // the camera follow option (option byte 3, copied with gSysSave.camFollow): 0 the camera swings behind the hunter (CamMode1 in kbd.c)
-0x132 u8 noticeId // the last notice id, 0-0x7F (Notice_ResetQueue, the Notice_Push functions in area_draw.c)
-0x133 u8 bannerNotice // the notice the banner shows, 0xFF none (NoticeBanner_Spawn*, compared with gHudState dropNotice)
+0x132 u8 noticeId // the last notice id, 0-127 (Notice_ResetQueue, the Notice_Push functions in area_draw.c)
+0x133 u8 bannerNotice // the notice the banner shows, 255 none (NoticeBanner_Spawn*, compared with gHudState dropNotice)
 0x13A s16 unk13A // a health value: the rewards REWARD_HP_BELOW need it above their threshold and gQuest.savedEmHp at or below (Quest_RollRewards); no writer seen
 0x20E u16 bgmId // the tune last started on the tune channel (Jingle_Play)

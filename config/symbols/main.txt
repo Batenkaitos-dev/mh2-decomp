@@ -1,11 +1,13 @@
-// Symbols for the boot ELF (SLPM_662.80). Format: name = 0xADDRESS; // attributes
-// Only names with evidence belong here. Every address
-// below was checked to be a function start in the split assembly.
+// Symbols for the boot ELF (SLPM_662.80): the game's core, which loads the
+// overlays and serves them memory, DMA, display, sound, streaming, textures,
+// pads and the save's helpers. Only names with evidence belong here.
+// Format: name = 0xADDRESS; // attributes
 
-// Entry (crt0 calls it; __start is in sdk_crt0.txt)
+// The entry point, which crt0's __start calls.
 main = 0x0018CC20; // type:func
 
-// Capcom core (main ELF)
+// The core: overlay loading and relocation, the display and VBlank set-up, the
+// system work area, the IOP modules, whole-file reads and the DMA waits.
 Overlay_Relocate = 0x0018CF00; // type:func
 LoadOverlay = 0x0018D070; // type:func
 Afs_ReadFile = 0x001941D0; // type:func
@@ -27,8 +29,9 @@ File_Append = 0x0017FC70; // type:func
 File_GetSize = 0x0017FD50; // type:func
 Dma_WaitIdle = 0x0017B090; // type:func
 Dma_FlushQueue = 0x0017B110; // type:func
-// DMA tags and VIF codes (src/main/dma.c): each writes one quadword and
-// returns the next; the tags set the IRQ bit when asked.
+// DMA: the tags and VIF codes (each writes one quadword and returns the next;
+// the tags set the IRQ bit when asked), image loads and stores, the DMA queue,
+// and Mem_Fill and Mem_Copy.
 DmaTag_Cnt = 0x00179590; // type:func
 DmaTag_Next = 0x001795C0; // type:func
 DmaTag_Ref = 0x00179620; // type:func
@@ -53,21 +56,21 @@ DmaQueue_Handler = 0x0017AB70; // type:func
 SendFrameDmaChain = 0x0017AEB0; // type:func
 Mem_Fill = 0x0017FE20; // type:func
 Mem_Copy = 0x0017FEB0; // type:func
-// Set to 2 by code that flips frames itself; the flip at 0x186D80 counts it
-// down (0x186D40), and 0x17F420 waits while it is nonzero.
+// Set to 2 by code that flips frames itself; Sys_FlipTick counts it down at
+// each flip (Sys_WaitFlip), and ScreenTex_Capture waits while it is nonzero.
 gFlipCountdown = 0x001E8B58;
-// sceDmaGetChan(0..9), filled by 0x180810: [1] VIF1, [2] GIF
+// sceDmaGetChan(0..9), filled by Sys_Init: [1] VIF1, [2] GIF
 gDmaChan = 0x00219034; // size:0x28
 
-// Display: setup, frame flip, clears and the debug log (src/main/unk_180A50.c)
+// The display: set-up, frame flip, clears and the debug log.
 Gs_ClearVram = 0x00180A50; // type:func
 Gs_SetupDisplay = 0x00180B20; // type:func
 Gs_ShowFrame = 0x00181670; // type:func
 Gs_ClearFrame = 0x00181C50; // type:func
 Debug_Printf = 0x00181E00; // type:func
 Gs_ClearColor = 0x00181EF0; // type:func
-// The clear packet (a DMA END tag and a GIF packet: scissor, a sprite in the
-// background colour, the draw registers restored), ClearPacket in unk_180A50.c.
+// The clear packet: a DMA END tag and a GIF packet (scissor, a sprite in the
+// background colour, the draw registers restored).
 gClearPacket = 0x002189F0; // size:0x140
 // The draw environments of the two frame buffers (0xA0 bytes each, sent at
 // each flip by Gs_ShowFrame).
@@ -75,24 +78,25 @@ gDrawEnv = 0x00218B30; // size:0x140
 // The frame buffer described as an Image (Gs_SetupDisplay).
 gFrameImage = 0x00219140; // size:0x48
 
-// Render state (src/main/unk_183D20.c, unk_185460.c)
+// The render state: reset, set and read, and the background colour.
 Gs_ResetState = 0x00183D40; // type:func
 Gs_SetState = 0x00183F20; // type:func
 Gs_GetState = 0x00184EB0; // type:func
 Gs_SetBgColor = 0x00185440; // type:func
 Gs_GetBgColor = 0x00185450; // type:func
 
-// Monster rates in the save data (src/main/unk_18DA50.c, include/saveview.h)
+// The monster rates' lists in the save data.
 Rate_ListAdd = 0x0018DBB0; // type:func
 Rate_GroupOf = 0x0018DC90; // type:func
 
-// The character edit's colour editor (src/main/unk_18DA50.c)
+// The character edit's colour editor.
 ColorEdit_Draw = 0x0018E000; // type:func
 
-// --- The game's sound manager (src/main/sound.c), over the Snd_* calls ----
-// sub_main 0x6A9DE0 (sub_main.txt names it gCamPos; the boot ELF's link doesn't
-// read sub_main.txt, so main needs its own name): the camera position, which the
-// SE volumes are measured from; Sound_PlaySePos matches only with it named
+// The game's sound manager, over the Snd_* calls.
+// gCameraPos is sub_main's camera position, which the sound volumes are
+// measured from. main names it itself, since the boot ELF's link doesn't read
+// sub_main's symbols; Sound_PlaySePos compiles to the game's code only with
+// it named.
 gCameraPos = 0x006A9DE0;
 Sound_Init = 0x0018EBA0; // type:func
 Sound_InitBuffers = 0x0018EBB0; // type:func
@@ -136,11 +140,10 @@ gSndBankBufs = 0x0026C3B0; // size:0x40
 gSndSeBufs = 0x0026C3F0; // size:0x40
 gSndSpuMapBuf = 0x0026C430;
 
-// --- Capcom Sound Engine, EE side (src/main/cse*.c, ml_rpc_queue.c) --------
-// Names in lower camel case
-// (cseCheckVtransStatus, mlRpcQueue*) are the original ones, from error
-// strings; the others are ours.
-// SPU memory map (cse_spumap.c)
+// The Capcom Sound Engine, EE side. The names in lower camel case
+// (cseCheckVtransStatus, mlRpcQueue*) are the game's own, from its error
+// messages; the others are ours.
+// The SPU memory map.
 CseSpuMap_Init = 0x0018FBA0; // type:func
 CseSpuMap_SetPage = 0x0018FCA0; // type:func
 CseSpuMap_GetBankAddr = 0x0018FE60; // type:func
@@ -149,7 +152,7 @@ gCseSpuMapPage = 0x0026C438;
 gCseSpuBanks = 0x0026C440; // size:0x80
 gCseEffectEnd = 0x0026C4C0; // size:0x8
 gCseSpuMap = 0x0026C4C8;
-// SIF RPC client, "sndtest(EE_RPC)" (cse_rpc.c)
+// The SIF RPC client of the IOP's sound driver.
 CseRpc_Init = 0x0018FEF0; // type:func
 CseRpc_Call = 0x00190070; // type:func
 CseRpc_Send = 0x001902D0; // type:func
@@ -167,7 +170,7 @@ gCseRpcFno = 0x0026CE00;
 gCseClientThmn = 0x0026CE10; // size:0x28
 gCseClientStat = 0x0026CE40; // size:0x28
 gCseClientComm = 0x0026CE70; // size:0x28
-// Engine API, SE tables, and the game's sound calls (cse.c)
+// The engine's API, the SE tables and the game's sound calls.
 Cse_Init = 0x001903B0; // type:func
 Cse_Update = 0x00190450; // type:func
 cseCheckVtransStatus = 0x001904B0; // type:func
@@ -209,7 +212,7 @@ gSndOutputMode = 0x001BCC98;
 gCseFrame = 0x0026CEA0; // size:0x44
 gCseSeKeyOnHook = 0x0026CEE8;
 gCseSeTables = 0x0026CEF0; // size:0x40
-// Bank table (cse_bank.c)
+// The bank table.
 CseBank_Init = 0x00191030; // type:func
 CseBank_SetPage = 0x001910B0; // type:func
 CseBank_GetSpuAddr = 0x001910E0; // type:func
@@ -218,7 +221,7 @@ CseBank_Set = 0x00191100; // type:func
 CseBank_Get = 0x00191170; // type:func
 CseBank_Merge = 0x001911E0; // type:func
 gCseBanks = 0x0026CF30; // size:0x40
-// Bank files: Head, Prog, Smpl and Vagi chunks (cse_bankfile.c)
+// The bank files: their Head, Prog, Smpl and Vagi chunks.
 CseBankFile_IsHead = 0x00191970; // type:func
 CseBankFile_IsProg = 0x001919A0; // type:func
 CseBankFile_IsSmpl = 0x001919D0; // type:func
@@ -227,7 +230,7 @@ CseBankFile_GetNumSplits = 0x00191A30; // type:func
 CseBankFile_GetTone = 0x00191B40; // type:func
 CseBankFile_GetVoice = 0x00191D60; // type:func
 CseBankFile_GetBodySize = 0x00191FE0; // type:func
-// emlRpcQueue (ml_rpc_queue.c)
+// The ml RPC queue (mlRpcQueue*).
 MlRpcQueue_Init = 0x00192020; // type:func
 MlRpcQueue_NumUploads = 0x00192090; // type:func
 mlRpcQueueReferStatus = 0x001920A0; // type:func
@@ -243,7 +246,7 @@ gMlRpcQueueCount = 0x0026E180;
 gMlRpcQueueRead = 0x0026E188;
 gMlRpcQueueWrite = 0x0026E190;
 gMlRpcQueue = 0x0026E1C0; // size:0x1200
-// Requests (cse_cmd.c)
+// The engine's requests.
 Cse_ReqInit = 0x00192490; // type:func
 Cse_ReqSetMono = 0x001924F0; // type:func
 Cse_ReqSetMasterVolume = 0x00192550; // type:func
@@ -266,7 +269,8 @@ Cse_NextSeq = 0x00192E80; // type:func
 gCseSeqInit = 0x0026F3C0;
 gCseSeq = 0x0026F3C8;
 
-// Memory managers (src/main/unk_1826D0.c, include/heap.h)
+// The memory managers: the heaps, the main and system heaps, the linear heap
+// and the packet buffer.
 Heap_Init = 0x001826D0; // type:func
 Heap_AllocTopAligned = 0x00182750; // type:func
 Heap_AllocTop = 0x00182760; // type:func
@@ -305,14 +309,14 @@ Packet_Alloc = 0x001801A0; // type:func
 gHeap = 0x002491B0; // size:0x28
 gSysHeap = 0x00219110; // size:0x18
 
-// Image pixel access (src/main/unk_1826D0.c, include/image.h)
+// Image pixel access.
 Image_PixelAddr = 0x001835E0; // type:func
 Image_PutPixel = 0x001836A0; // type:func
 Image_SetPixel = 0x00183900; // type:func
 Image_GetPixel = 0x00183930; // type:func
 Image_Convert = 0x00183BD0; // type:func
 
-// 2D primitives and GS packets (src/main/unk_186D80.c)
+// 2D primitives and GS packets.
 Prim_SendPacket = 0x00186E20; // type:func
 Prim_DrawLine = 0x00187080; // type:func
 Prim_FillRect = 0x00187380; // type:func
@@ -324,7 +328,7 @@ Prim_DrawTexTriF = 0x001887A0; // type:func
 Prim_FillRectF = 0x00188BE0; // type:func
 Prim_DrawSpriteF = 0x00188E70; // type:func
 
-// Streaming (include/stream.h): music channels, AFS partitions and loaders, background file reads
+// Streaming: music channels, AFS partitions and loaders, background file reads.
 Adx_Init = 0x00192EF0; // type:func
 Adx_ErrorCallback = 0x00192EE0; // type:func
 Stream_Update = 0x001930E0; // type:func
@@ -335,6 +339,7 @@ FileQueue_AddCall = 0x00193320; // type:func
 FileQueue_Update = 0x001933A0; // type:func
 FileQueue_Next = 0x00193540; // type:func
 FileQueue_IsBusy = 0x00193660; // type:func
+Lobby_IsLookPending = 0x00193670; // type:func playerIndex
 FileQueue_Call = 0x00193690; // type:func
 FileQueue_Flush = 0x00193750; // type:func
 Stream_Init = 0x001937A0; // type:func
@@ -376,9 +381,16 @@ Dmcam_Load = 0x00194480; // type:func
 Stream_Server = 0x00194820; // type:func
 gAfsPartitions = 0x001BCCB0;
 gAdxtParams = 0x001BCCE0;
+gAfs00Name = 0x001C84F0; // size:0x10 the file name of AFS partition 0
+gAfs01Name = 0x001C8500; // size:0x10 the file name of AFS partition 1
+gAfs02Name = 0x001C8510; // size:0x10 the file name of AFS partition 2
+gDataBinName = 0x001C8520; // size:0x10 the file name of data.bin
 gVolumeDb = 0x001BCD00;
 gVolumeMax = 0x001BCE00;
 gVolumeMaxSurround = 0x001BCE08;
+gMibPtName = 0x001C8530; // size:0x8 the name Mib_Read gives its AFS partition
+gEmcmdPtName = 0x001C8538; // size:0x8 the name of the emcmd files' AFS partition
+gBrdataPtName = 0x001C8540; // size:0x40 the name of the brdata files' AFS partition, then the dmcam one's at 0x1C8548 (gDmcamPtName)
 gDmcamGroupAlt = 0x001BCE10;
 gDmcamGroup = 0x001BCE18;
 gDmcamCount = 0x0026F3D0;
@@ -392,15 +404,16 @@ gStreamChan = 0x002E3730;
 gStreamAdxt = 0x002E3758;
 gAfsPtInfo4 = 0x002E3760;
 SndLoad_Init = 0x00195240; // type:func
-SndLoad_ListBanks = 0x00195280; // type:func
-SndLoad_QuestBanks = 0x001955F0; // type:func
+SndLoad_EmBanks = 0x00195280; // type:func
+SndLoad_PlayerBanks = 0x001955F0; // type:func
 Sound_QueueBank = 0x00195BE0; // type:func
 Sound_ReadBank = 0x00195BF0; // type:func
 Afs_ReadId = 0x0018CDC0; // type:func
 gSndLoad = 0x002E3890;
 Sound_LoadVoiceBank = 0x00195A10; // type:func
 
-// Textures and palettes (src/main/texture.c, include/texture.h): Capcom fl layer; flCreatePaletteHandle is named in its error string, the other fl names follow it
+// Textures, palettes and VRAM slots. flCreatePaletteHandle's name is in its
+// error message; the other fl names follow it.
 Vram_AllocBlock = 0x0017B1B0; // type:func
 Vram_FreeBlock = 0x0017B280; // type:func
 flCreateTextureHandle = 0x0017B330; // type:func
@@ -472,7 +485,7 @@ gScreenTexPacket = 0x001BA990; // size:0x80
 Tex_CreateFromTim2 = 0x00180210; // type:func
 Tex_AlphaToGs = 0x001805B0; // type:func
 
-// TIM2 pictures (src/main/pad_port.c): header checks, part addresses, Image descriptions
+// TIM2 pictures: header checks, part addresses, Image descriptions.
 Tim2_LastLevel = 0x0018C2E0; // type:func
 Tim2_DescribeLevels = 0x0018C330; // type:func
 Tim2_DescribeClut = 0x0018C5F0; // type:func
@@ -484,7 +497,7 @@ Tim2_GetPicture = 0x0018C970; // type:func
 Tim2_GetImage = 0x0018C9F0; // type:func
 Tim2_GetPictClut = 0x0018CB80; // type:func
 
-// Pad input (src/main/pad.c, pad_port.c, include/padio.h)
+// Pad input.
 Pad_ClearMem = 0x0018A030; // type:func
 Pad_Init = 0x0018A170; // type:func
 Pad_End = 0x0018A1D0; // type:func
@@ -507,10 +520,9 @@ Pad_ClearBuffers = 0x0018AF80; // type:func
 Pad_ConvertData = 0x0018AFE0; // type:func
 Pad_StickPolar = 0x0018B4F0; // type:func
 Pad_StickDirBits = 0x0018B650; // type:func
-// Round 17 (units): not a symbol. 0x80000000 is the float-to-u32 bias in
-// Pad_StickDirBits (lui 0x8000), which spimdisasm paired with the table
-// load's 0(v0); banned so the expected asm keeps the immediates
-// (objdiff counted a relocation-only miss).
+// Not a symbol: 0x80000000 is the float-to-u32 bias in Pad_StickDirBits, which
+// the disassembler took for an address. Ignored, so that the expected assembly
+// keeps the number.
 D_80000000 = 0x80000000; // ignore:true
 Pad_StartLibs = 0x0018B6E0; // type:func
 Pad_OpenSocket = 0x0018B730; // type:func
@@ -518,18 +530,17 @@ Pad_EndLibs = 0x0018B7B0; // type:func
 Pad_ReadPort = 0x0018B800; // type:func
 Pad_SetVibration = 0x0018C1C0; // type:func
 
-// Names left waiting after round 7, applied by the lead before round 8
-// draws sprite.h's Sprite, a textured rectangle (round 7 main core suggested Prim_DrawSprite, which lobby_browser.txt already uses)
+// Draws a Sprite (a textured rectangle).
 Sprite_Draw = 0x00187A80; // type:func
-// Sound_PlaySeAtPos unless the id is 0xFFFF (round 7 main core)
+// Sound_PlaySeAtPos unless the id is SE_ID_NONE.
 Sound_PlaySeAtPosChecked = 0x00194980; // type:func
 
-// The current pad's input record (-> gPadIn, set by the pad code in pad.c);
-// sub_main's engine_core.c reaches it by address
+// The current pad's input record (it points to gPadIn); the pad code sets it
+// and sub_main's code reads it.
 gPadInputPtr = 0x0024BBE8;
 
-// main's render state (the viewport and projection), named so that overlays can
-// link them: sub_main's matrix and viewport functions (engine_core.c) read them by name
+// main's render state (the viewport and projection), named so that the
+// overlays can link them: sub_main's matrix and viewport functions read them.
 gViewClipH = 0x0020CB80; // size:0x4
 gViewClipW = 0x0020CB88; // size:0x4
 gViewCenterY = 0x0020CB90; // size:0x4
@@ -543,7 +554,7 @@ gSysZMax = 0x00218CB4; // size:0x4
 gDispHeight = 0x00219190; // size:0x4
 gDispWidth = 0x00219198; // size:0x4
 
-// main.c: file systems, overlays, dojo records, rates, the season (round 13)
+// The file systems' and the overlays' set-up.
 Adx_InitFileSystems = 0x0018CD00; // type:func
 Sys_EmptyHook = 0x0018CC10; // type:func
 Overlay_ReadFile = 0x0018CFB0; // type:func
@@ -557,7 +568,8 @@ Dojo_GetBestScore = 0x0018D4F0; // type:func
 Dojo_GetBestTime = 0x0018D570; // type:func
 Rate_GetSnapshot = 0x0018D660; // type:func
 Rate_TakeSnapshot = 0x0018D6A0; // type:func
-// the season, 0-2 (the low bits of sub_main's 0x5D4910); the quest's is in 0x5D87A9
+// the season, 0-2 (the low bits of gSeasonFlags); the quest's is in
+// gQuestSeasonFlags
 Season_Get = 0x0018D970; // type:func
 Season_Set = 0x0018D9C0; // type:func
 Quest_GetSeason = 0x0018DA00; // type:func
@@ -565,16 +577,23 @@ Quest_GetSeason = 0x0018DA00; // type:func
 gOverlayWindow = 0x001BB130; // size:0xB
 gOverlayWindowBase = 0x001C8580; // size:0x24
 // per HR gate, a 0-terminated list of quest ids (Save_HrGateCleared)
+gHrGateQuests_0 = 0x001BB180; // size:0x10 the quests of HR gate 0, 0-ended
+gHrGateQuests_1 = 0x001BB190; // size:0x10 the quests of HR gate 1, 0-ended
+gHrGateQuests_2 = 0x001BB1A0; // size:0x10 the quests of HR gate 2, 0-ended
+gHrGateQuests_3 = 0x001BB1B0; // size:0x10 the quests of HR gate 3, 0-ended
+gHrGateQuests_4 = 0x001BB1C0; // size:0x10 the quests of HR gate 4, 0-ended
+gHrGateQuests_5 = 0x001BB1D0; // size:0x10 the quests of HR gate 5, 0-ended
 gHrGateQuests = 0x001BB1E0; // size:0x18
 gDojoParTimes = 0x001BB200; // size:0x60
 // main's first three arguments (0x40 bytes each)
 gArgv = 0x0024C090; // size:0xc0
 // the CD/DVD cache system's work area (Adx_InitFileSystems)
 gAdxCacheWork = 0x0024BE70; // size:0x220
-// The monster rates: the save data's current value per kind (Rate_Get/Rate_Set,
-// with a trend and level byte), and a snapshot of them taken on entering the town
-// (Rate_TakeSnapshot, 0x5D4790) that the results compare against; Rate_ClearSnapshot
-// also clears the season and daytime bits. Rate_InitSave sets a new save's values.
+// The monster rates: the save data's current value per kind (Rate_Get and
+// Rate_Set, with a trend and level byte), and a snapshot of them taken on
+// entering the town (Rate_TakeSnapshot, gRateSnapshot) that the results compare
+// against; Rate_ClearSnapshot also clears the season and daytime bits.
+// Rate_InitSave sets a new save's values.
 Rate_ClearSnapshot = 0x0018D5F0; // type:func
 Rate_Get = 0x0018D680; // type:func
 Rate_Set = 0x0018DD20; // type:func
@@ -586,8 +605,9 @@ Daytime_Set = 0x0018DAA0; // type:func
 // 1 for ids >= 50000 (downloaded event quests)
 Quest_IsDownloadId = 0x0018DEF0; // type:func
 ColorEdit_DrawFrame = 0x0018DF10; // type:func
-// The quest record at sub_main 0x5D4920 (0xDC bytes): quest id, season and time, counts
-// of the 16 ids of 0x1BB280 (QuestRecord_Count) and two tables of 0x60 per monster kind
+// The quest record (gQuestRecord): quest id, season and time, the clear counts
+// of the 16 ids of gQuestRecordIds (QuestRecord_Count), and two tables of 96
+// bytes per monster kind.
 QuestRecord_Clear = 0x0018D750; // type:func
 QuestRecord_Fill = 0x0018D770; // type:func
 QuestRecord_Count = 0x0018D900; // type:func
@@ -595,7 +615,8 @@ gRateGroups = 0x001BB2A0; // size:0xDC
 gRateListsInit = 0x001BB380; // size:0x50
 gQuestGroupLastIds = 0x001BB3D0; // size:0x20 the last quest id of each group of quest ids, 0 ends the list (Quest_Init picks the group of gStageFileTbls, the lobby Quest_GetDiscInfo the group of gGuildQuestLists)
 
-// Sound helpers (src/main/sound_effects.c): flat SE at the SE volume setting (0x6ADFC7), random picks, player and monster SE (round 13)
+// Sound helpers: a flat sound at the options' sound-effect volume, random
+// picks, the hunters' and the monsters' sounds.
 Sound_PlaySeFlat = 0x00194830; // type:func
 Sound_PlaySeFlatPan = 0x001948A0; // type:func
 Sound_RandomSe = 0x001949B0; // type:func
@@ -603,16 +624,16 @@ Sound_PlayPlayerSe = 0x00194A60; // type:func
 Sound_PlayArmorRattle = 0x00194AE0; // type:func
 Sound_PlayEmSe = 0x00194E70; // type:func
 gSndVolumeScale = 0x001BCE20; // size:0x20
-// Sound banks read at once into the system work buffer: gm_sub's menu (2, 9, 8),
-// the select/plsel menus (2, 7), select's PSP connection (0xA)
-Sound_LoadGmSubBanks = 0x001958C0; // type:func
+// Sound banks read at once into the system work buffer: the title menu's, the
+// select and plsel menus' and select's PSP connection's.
+Sound_LoadTitleMenuBanks = 0x001958C0; // type:func
 Sound_LoadSelectBanks = 0x00195970; // type:func
 Sound_LoadPspBank = 0x00195AB0; // type:func
 
-// The render state's GS register setters (src/main/unk_185460.c; GS registers in the comments)
-// and gSysWork's fields as the C reaches them: separate objects, since a struct member
-// is scheduled differently from a plain extern (include/syswork.h). The GS register
-// shadows (gGs*, gScissor*) are gSysWork + 0x420 on.
+// The render state's GS register setters, and gSysWork's fields as the C
+// reaches them: separate objects, since a struct member is scheduled
+// differently from a plain extern. The GS register shadows (gGs*, gScissor*)
+// are gSysWork + 0x420 on.
 Gs_SetScissor = 0x00185460; // type:func
 Gs_SetZbuf = 0x00185760; // type:func
 Gs_SetTest = 0x001858F0; // type:func
@@ -663,10 +684,10 @@ gScissor2Y0 = 0x002190D4; // size:0x4
 gScissor2X1 = 0x002190D8; // size:0x4
 gScissor2Y1 = 0x002190DC; // size:0x4
 
-// Texture registers and screen-to-GS conversions (src/main/unk_1864E0.c): the
-// texture setter fills gTexRegPacket's A+D pairs (TEXA, TEX1, TEX0, CLAMP, MIPTBP1/2);
-// the conversions subtract the scroll and halve y in field mode; Gs_ColorToGs maps
-// 0-0xFF to the GS's 0-0x80.
+// Texture registers and screen-to-GS conversions: the texture setter fills
+// gTexRegPacket's A+D pairs (TEXA, TEX1, TEX0, CLAMP, MIPTBP1/2); the
+// conversions subtract the scroll and halve y in field mode; Gs_ColorToGs
+// maps 0-255 to the GS's 0-128.
 Gs_SetTexture = 0x001864E0; // type:func
 Gs_BuildTexRegs = 0x00186560; // type:func
 Gs_ScreenX = 0x00186B20; // type:func
@@ -682,19 +703,26 @@ gTexRegTex0 = 0x001BAB70; // size:0x8
 gTexRegClamp = 0x001BAB80; // size:0x8
 gTexRegMiptbp1 = 0x001BAB90; // size:0x8
 gTexRegMiptbp2 = 0x001BABA0; // size:0x8
+gTexRegTexaAddr = 0x001BAB58; // size:0x8 the A+D pair's register word (GS_REG_TEXA)
+gTexRegTex1Addr = 0x001BAB68; // size:0x8 the A+D pair's register word (GS_REG_TEX1_1)
+gTexRegTex0Addr = 0x001BAB78; // size:0x8 the A+D pair's register word (GS_REG_TEX0_1)
+gTexRegClampAddr = 0x001BAB88; // size:0x8 the A+D pair's register word (GS_REG_CLAMP_1)
+gTexRegMiptbp1Addr = 0x001BAB98; // size:0x8 the A+D pair's register word (GS_REG_MIPTBP1_1)
+gTexRegMiptbp2Addr = 0x001BABA8; // size:0x8 the A+D pair's register word (GS_REG_MIPTBP2_1)
 
-// Frame flip, power-off thread, 3D primitives, movie init (round 13)
+// The frame flip, the power-off thread, the 3D primitives and the movie set-up.
 // The end of a frame: waits for the DMA and the flip (Sys_WaitFlip: the sound and CRI
 // updates, then the pending flip), resets timer 0, sends the frame's DMA chain, starts the
 // next packet buffer and clears the frame
 Sys_FlipFrame = 0x001809C0; // type:func
 Sys_WaitFlip = 0x00186D80; // type:func
 Sys_FlipTick = 0x00186D40; // type:func
-// gGameVSyncOn: VBlankHandler also counts sub_main's VSync counter (0x6AE398)
+// gGameVSyncOn: VBlankHandler also counts sub_main's VSync counter
+// (gSubVSyncCount)
 Sys_EnableGameVSync = 0x00180640; // type:func
 gGameVSyncOn = 0x001E8B38; // size:0x4
 Sys_InitHeap = 0x00182640; // type:func
-// Forwards to Tex_MakeResident(n, handles)
+// Tex_Use (it forwards to Tex_MakeResident) and the 3D primitives
 Tex_Use = 0x0017D240; // type:func
 Prim_InViewClip = 0x00186ED0; // type:func
 Prim_InGsRange = 0x00186FA0; // type:func
@@ -709,8 +737,9 @@ PowerOff_Callback = 0x00189F80; // type:func
 Movie_NullCallback = 0x00189FA0; // type:func
 Movie_InitSfd = 0x00189FB0; // type:func
 
-// The pad input (src/main/pad.c, pad_port.c, include/padio.h): gPadRaw per port after a read,
-// gPadIn as read and gPad remapped by gPadConfig (gPadConfigDefault at boot); gPadBit[i] is 1 << i
+// The debug message, the pad input's data (gPadRaw per port after a read, gPadIn
+// as read and gPad remapped by gPadConfig, gPadConfigDefault at boot; gPadBit[i]
+// is 1 << i), and the strings the file functions use.
 Debug_Sprintf = 0x001832E0; // type:func
 gDebugMsg = 0x002491F0; // size:0x800
 gPadConnected = 0x0024BA90; // size:0x1
@@ -724,6 +753,9 @@ gPadData = 0x0024BDC0; // size:0x20
 gPadLimits = 0x0024BE00; // size:0x10
 gPadPort = 0x0024BE10; // size:0x18
 gPadRaw = 0x0024BE30; // size:0x34
+gIopLoadErrorFmt = 0x001C7C30; // size:0x18 the format Iop_LoadModule prints when a module does not load
+gCdromPrefix = 0x001C7C48; // size:0x8 the device File_Read and the other whole-file functions put before a name
+gCdromSuffix = 0x001C7C50; // size:0x10 the version suffix they put after it
 gPadConfigDefault = 0x001C7C60; // size:0x2C
 gPadBit = 0x001C7C90; // size:0x60
 
@@ -740,8 +772,9 @@ gPacketEnd = 0x0021907C; // size:0x4
 gPacketCur = 0x00219080; // size:0x4
 gPacketBlocks = 0x00219084; // size:0x8
 
-// Awards and the monster notes (src/main/unk_18DA50.c)
-// Gives award n (sub_main 0x3BD550) with its message unless the save has it; 1 when given
+// Awards and the monster notes.
+// Grants award n (Save_SetTitle) with its notice unless the save has it; 1
+// when given
 Award_Grant = 0x0018E700; // type:func
 // The monster notes: the index of a monster id in gMonsterNoteIds (0xFF: none); four
 // bits per monster in the save data (+0x3688) mark which of the values of its gMonsterNoteMarks
@@ -752,24 +785,41 @@ MonsterNote_GetListFlags = 0x0018E9A0; // type:func
 MonsterNote_Record = 0x0018EA20; // type:func
 gMonsterNoteIds = 0x001BB990; // size:0x36
 gMonsterNoteMarks = 0x001BB710; // size:0x68
+gMonsterNoteMarks_0 = 0x001BB440; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 0 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_1 = 0x001BB470; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 1 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_2 = 0x001BB4A0; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 2 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_3 = 0x001BB4D0; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 3 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_4 = 0x001BB500; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 4 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_5 = 0x001BB530; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 5 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_6 = 0x001BB560; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 6 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_7 = 0x001BB590; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 7 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_8 = 0x001BB5C0; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 8 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_9 = 0x001BB5F0; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 9 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_10 = 0x001BB620; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 10 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_11 = 0x001BB650; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 11 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_12 = 0x001BB680; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 12 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_13 = 0x001BB6B0; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 13 (and of the entries that share it), key 0 ending it
+gMonsterNoteMarks_16 = 0x001BB6E0; // size:0x30 the TeamEntry list of gMonsterNoteMarks' entry 16 (and of the entries that share it), key 0 ending it
 gHeapBlocks = 0x002191B0; // size:0x30000
 
-// sub_main objects the core reads (main needs its own names: the boot ELF does not link
-// sub_main.txt). The season (bits 0-2, Season_Get) and daytime (bits 3-4, Daytime_Get) flags
+// sub_main objects the core reads (main needs its own names, since the boot
+// ELF's link doesn't read sub_main's symbols). The season (bits 0-2,
+// Season_Get) and daytime (bits 3-4, Daytime_Get) flags
 gSeasonFlags = 0x005D4910; // size:0x1
-// The system settings and memory layout (include/syssettings.h)
+// The system settings, a sound at the music volume, the VSync count of the
+// file loads' last flip, and the quest's season flags.
 gSysSettings = 0x006ADF90; // size:0xF4
 Sound_PlaySeMusicVol = 0x00194910; // type:func
 gLoadLastVSync = 0x005D4A50; // size:0x4
 gQuestSeasonFlags = 0x005D87A9; // size:0x1
 
-// More Sony libc (named from their use: formats, arguments, results) and libusbkb (the
-// Sony API names; UsbKb_* in sub_main use them as those), round 13
+// 1 while sub_main's loading screen shows: main's file loads then flip a frame
+// at each VSync.
 gLoadingScreenOn = 0x001E8B48; // size:0x4
 
-
-// Round 16 (asub): copy, clear and fill loops (main 0x182450, hand-written assembly: 8-byte
-// aligned entries; MWCC aligns every function to 16). Counts are in blocks, at least 1
+// Copy, clear and fill loops, hand-written assembly (their entries are 8-byte
+// aligned, and MWCC aligns every function to 16). Counts are in blocks, at
+// least 1.
 Mem_CopyWords = 0x00182450; // type:func
 Mem_Copy16ByWords = 0x00182470; // type:func
 Mem_Copy16ByDwords = 0x001824A8; // type:func
@@ -783,7 +833,7 @@ Mem_ClearQwords = 0x001825F8; // type:func
 Mem_FillWords = 0x00182610; // type:func
 Mem_FillQwords = 0x00182628; // type:func
 
-// Round 17 (xref): bss objects sub_main's code reads (main's own code writes them as scalars).
+// bss objects sub_main's code reads (main's own code writes them as scalars).
 gGsColor2F = 0x0020D810; // size:0x10 render state RS_COLOR2 as floats over 255, copied into the VU1 packets (Vu1Pkt_V, Vu1Pkt_LV)
 gGsColorF = 0x0020D820; // size:0x10 render state RS_COLOR as floats, RGB over 255 and alpha 0 to 128, the base colour of the VU1 packets (Vu1Pkt_L, Vu1Pkt_SL)
 gGsFogFar = 0x00219100; // size:0x4 Gs state 0x11, the fog end depth (Gs_SetState, Vu1Pkt_D, Vu1Pkt_LD)
@@ -796,8 +846,10 @@ gDispTexScaleU = 0x001E8B68; // size:0x4 the display width over the next power o
 gModelCount = 0x001E8B78; // size:0x4 the number of models set up (Model_Setup, Model_FreeHandle), 0 at Sys_InitWork
 D_0020E134 = 0x0020E134; // size:0x4
 
-// Round 18 (nsub)
-Tex_UploadPacketSize = 0x00179860; // type:func
+// Packet modes, the frame flip's timing, the display offset, the next quest's
+// settings, the rate flags, the hunters' and the monsters' sounds, and sound
+// banks.
+Dma_EndPacketSize = 0x00179860; // type:func
 Packet_SetMode0 = 0x00182010; // type:func
 Packet_SetMode2 = 0x00182020; // type:func
 Sys_SetNextFlipAt = 0x00182030; // type:func
@@ -806,9 +858,9 @@ Packet_SetMode2Ok = 0x00183D20; // type:func
 Display_SetOffset = 0x00186D10; // type:func
 Display_AdxVint = 0x00186D30; // type:func
 AdxWrap_VintHook = 0x00189F90; // type:func
-NetQuest_SetRareRoll = 0x0018DEA0; // type:func
-NetQuest_SetInfo = 0x0018DEB0; // type:func
-NetQuest_SetStage = 0x0018DED0; // type:func
+NextQuest_SetFlyer = 0x0018DEA0; // type:func
+NextQuest_SetHuntGoals = 0x0018DEB0; // type:func
+NextQuest_SetStage = 0x0018DED0; // type:func
 QuestId_IsStandard = 0x0018DEE0; // type:func
 RateFlag_Set = 0x0018E750; // type:func
 RateFlag_SetQuiet = 0x0018E810; // type:func
@@ -821,17 +873,16 @@ Em_PlaySeType = 0x001950A0; // type:func
 Em_PlayEmBankSe = 0x00195170; // type:func
 Em_PlayCommonSe = 0x001951D0; // type:func
 Sound_Silence = 0x00195230; // type:func
-Sound_LoadCommonBanks = 0x00195840; // type:func
-Sound_ReloadBank7 = 0x00195B20; // type:func
-Sound_ReloadBank1 = 0x00195B90; // type:func
+Sound_LoadNetModeBanks = 0x00195840; // type:func
+Sound_LoadResultsBank = 0x00195B20; // type:func
+Sound_ReloadCommonBank = 0x00195B90; // type:func
 
-// Round 18 (nsub-h1)
-
-// Round 19 (ndata)
+// The matrix slots and the viewport matrix.
 gMtxSlots = 0x0020D830; // size:0x840
 gViewportMtx = 0x0020D6D0; // size:0x40
 
-// Round 20 (ndata)
+// The matrices, the DMA receive state, the model pool, the preset colours,
+// the ctype table and the render state's materials.
 gMtxIdentity = 0x0020D7D0; // size:0x40
 gMtxProj = 0x0020D690; // size:0x40
 gDmaRecvDst = 0x001E8AD0; // size:0x4
@@ -849,7 +900,8 @@ gMtxProjScreen = 0x0020D750; // size:0x40
 gMtxUv = 0x0020E0F0; // size:0x40 render state RS_UV_MTX, the texture coordinate matrix (the Vu1Pkt_ E packets)
 gRsMaterials = 0x0020CD10; // size:0x980
 
-// Round 24 (nnames): tables named by their use (session 2)
+// Tables: the positional sounds' curves and ranges, the IOP modules' arguments
+// and the texture swizzles.
 gSePosVolCurves = 0x001BC990; // size:0x70 per kind volume curves of positional SEs, Sound_PlaySePos
 gSePosCurves2 = 0x001BCC00; // size:0x70 per kind second curves of positional SEs (CseOpt.v[7]) or NULL, Sound_PlaySePos
 gSePosRanges = 0x001BCA00; // size:0x1B0 per kind step, far distance and id offset of positional SEs, Sound_PlaySePos
@@ -857,7 +909,7 @@ gIopModArgs = 0x001BAAA0; // size:0x90 the IOP modules Iop_Init starts in order,
 gTexSwizzle4Tbls = 0x001BA770; // size:0x10 swizzle tables of Tex_Swizzle4Kernel
 gTexSwizzle8Tbls = 0x001BA980; // size:0x10 swizzle tables of Tex_Swizzle8Kernel
 
-// Round 24 (nnames): entries of the tables named by their use (session 2), TABLE_N
+// The objects those tables point to, named TABLE_N after entry N.
 gSePosVolCurves_0 = 0x001BBA60; // size:0x90 entry 0 of gSePosVolCurves
 gSePosVolCurves_1 = 0x001BBAF0; // size:0x90 entry 1 of gSePosVolCurves
 gSePosVolCurves_2 = 0x001BBB80; // size:0x90 entry 2 of gSePosVolCurves
@@ -891,7 +943,9 @@ gTexSwizzle4Tbls_1 = 0x001BA570; // size:0x200 entry 1 of gTexSwizzle4Tbls
 gTexSwizzle8Tbls_0 = 0x001BA780; // size:0x100 entry 0 of gTexSwizzle8Tbls
 gTexSwizzle8Tbls_1 = 0x001BA880; // size:0x100 entry 1 of gTexSwizzle8Tbls
 
-// Round 25 (names)
+// The model code's heap hooks, the pad tables and state, the GS render state's
+// values, the http front end's flag (NETWORK), the DMA channels' registers, the
+// power-off thread's stack and the system heap.
 gSysAllocHook = 0x002491E0; // size:0x4 the allocator hook of the model code, set to SysHeap_Alloc by Sys_InitWork
 gPadVibration = 0x0024BD90; // size:0x1 the vibration request flag (Pad_SetVibrationFlag, Pad_Read)
 gHttpActive = 0x00249A78; // size:0x4 NETWORK, 1 while the http front end is up (set by Http_Init, cleared by Http_Term in nethttp)
@@ -915,7 +969,8 @@ gSysHeapSize = 0x0021906C; // size:0x4 the system heap size, 0xE00000 (Sys_InitW
 gPowerOffStack = 0x00249A90; // size:0x2000 the stack of the power off thread (PowerOff_Init)
 gPadPortCount = 0x0024BD80; // size:0x4 the number of pad ports opened (Pad_Open)
 
-// Round 27 (names)
+// The versus defeat flag, the vibration request, the flip count, the display
+// adjustment and the free hook.
 Quest_ClearVersusDefeat = 0x0018EB10; // type:func clears gQuest.versusDefeat
 gPadVibrationLast = 0x0024BD88; // size:0x1 the vibration request as of the last Pad_Read, which copies gPadVibration into it (Pad_Open clears it)
 gSysFlipCount = 0x00219188; // size:0x4 frames flipped, counted by Sys_FlipFrame
@@ -923,11 +978,17 @@ gSysDispAdjX = 0x0021902C; // size:0x4 display position adjustment, x (Display_S
 gSysDispAdjY = 0x00219030; // size:0x4 display position adjustment, y (Display_SetOffset), added to dispY by Gs_ShowFrame, gSysWork.unk3C0
 gSysFreeHook = 0x002491D8; // size:0x4 the free hook next to gSysAllocHook, set to libc free by Sys_InitWork
 
-// Round 31 (names)
+// The GS and render state's values and lights, the texture swizzle and palette
+// tables, the team item bits, the power-off status, the debug file flag, the
+// clear packet, the quest record's ids, the arena's and the persistent
+// monsters' tables, the listener's axis, the memory card set-up and the sound
+// banks' hook.
 gGsTexLodL = 0x0020E140; // size:0x4 the TEX1 L value (Gs_SetState states 0x68 and 0x69, Gs_BuildTexRegs shifts it to bit 19)
 gGsAlphaRef = 0x002190E0; // size:0x4 the alpha test reference (Gs_SetState state 0x60, Gs_SetTest)
 gSwizzleBlockCol = 0x001BA170; // size:0x80 per block of a page its column (Tex_Swizzle4Block, Tex_Swizzle8Block)
 gSwizzleBlockRow = 0x001BA1F0; // size:0x80 per block of a page its row
+gRsLightReciprocals = 0x0020CBC0; // size:0x10 per render state light, 1 over its unk50 (Gs_SetState), no reader seen
+gGsBoundTexture = 0x002191A8; // size:0x4 the texture render state RS_TEXTURE bound last (Gs_SetState), 1 after the texture conversion
 gRsLights = 0x0020CBD0; // size:0x138 the render state lights (RsLight, Gs_SetState states 0x5A-0x5C normalize their direction at 0x34), Vu1_PutLightColors and the Vu1Pkt_ light packets read them
 gClutCsm1Order = 0x001BA150; // size:0x20 per palette index in a block of 32 its CSM1 position, 8-15 and 16-23 swapped (Tex_ConvertPixels)
 gSwizzle4BlockOrder = 0x001BA270; // size:0x80 the block order of a PSMT4 page (Tex_Swizzle4Block)
@@ -938,9 +999,28 @@ gPowerOffStat = 0x00249A80; // size:0x4 PowerOff_Thread, the hdd devctl 0x4807 r
 gDebugFileFirst = 0x001BAA10; // size:0x4 Debug_Printf, 1 until the debug file has been created
 gClearColorPacket = 0x001BAA20; // size:0x80 Gs_ClearColors A+D packet (test, rgbaq, two xyz, gGsTest1 put back), sent by Prim_SendPacket
 gQuestRecordIds = 0x001BB280; // size:0x20 QuestRecord_Count, the quest ids (0 ends, 16 at most) whose clears gQuestRecord.counts counts
-gArenaGaugeUpChances = 0x001BB920; // size:0x70 Versus_UpdateRecords, by MonsterNote_Index a row set of 5 by 4 bytes (minutes trained over 30, 60, 120, 180, by gauge level), the chance in 128 that the gauge level rises, inside the C object D_001BB900, size to its end
+gArenaGaugeUpChances = 0x001BB920; // size:0x70 Versus_UpdateRecords, by MonsterNote_Index a row set of 5 by 4 bytes (minutes trained over 30, 60, 120, 180, by gauge level), the chance in 128 that the gauge level rises, 28 entries to the next object
+gArenaGaugeUpChances_0 = 0x001BB780; // size:0x14 the row of gArenaGaugeUpChances' entry 0 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_1 = 0x001BB7A0; // size:0x14 the row of gArenaGaugeUpChances' entry 1 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_2 = 0x001BB7C0; // size:0x14 the row of gArenaGaugeUpChances' entry 2 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_3 = 0x001BB7E0; // size:0x14 the row of gArenaGaugeUpChances' entry 3 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_4 = 0x001BB800; // size:0x14 the row of gArenaGaugeUpChances' entry 4 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_5 = 0x001BB820; // size:0x14 the row of gArenaGaugeUpChances' entry 5 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_6 = 0x001BB840; // size:0x14 the row of gArenaGaugeUpChances' entry 6 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_7 = 0x001BB860; // size:0x14 the row of gArenaGaugeUpChances' entry 7 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_8 = 0x001BB880; // size:0x14 the row of gArenaGaugeUpChances' entry 8 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_9 = 0x001BB8A0; // size:0x14 the row of gArenaGaugeUpChances' entry 9 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_10 = 0x001BB8C0; // size:0x14 the row of gArenaGaugeUpChances' entry 10 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_12 = 0x001BB8E0; // size:0x14 the row of gArenaGaugeUpChances' entry 12 (and of the entries that share it), by minutes band and gauge level, the chance in 128
+gArenaGaugeUpChances_13 = 0x001BB900; // size:0x14 the row of gArenaGaugeUpChances' entry 13 (and of the entries that share it), by minutes band and gauge level, the chance in 128
 gPersistentEmKinds = 0x001BB9C8; // size:0x8 Quest_FindSpecialMonster, the monster kinds that keep their health and broken parts between quests, ended by 0
 gPersistentEmHp = 0x001BB9D0; // size:0x10 QuestEm_LoadPersistentHp, by Quest_FindSpecialMonster index, the hp (and hpMax) a persistent monster starts with
 gSndForwardAxis = 0x001BCC70; // size:0xC Sound_PlaySePos, the listener forward axis (0, 0, 1)
-Sys_InitCard = 0x00183C80; // type:func the memory card set up Sys_Init ends with, sceMcInit (again while it returns -0x65), then clears D_00249A10 (0x64 bytes) and two 0xC-byte records at D_002499F0
+Sys_InitCard = 0x00183C80; // type:func the memory card set up Sys_Init ends with, sceMcInit (again while it returns -101), then clears gCardWork and gCardRecords
+gCardWork = 0x00249A10; // size:0x68 Sys_InitCard clears its first 100 bytes, no code reads it
+gCardRecords = 0x002499F0; // size:0x20 two 12-byte records Sys_InitCard clears, no code reads them
 Sound_OnBanksLoaded = 0x00195A00; // type:func empty, called once the select screen sound banks are loaded (Plsel_SelectWaitSound)
+
+// The texts named after the table that lists them, by their entry (TABLE_N)
+gIopModArgs_9 = 0x001C7D30;
+gIopModArgs_10 = 0x001C7D50;

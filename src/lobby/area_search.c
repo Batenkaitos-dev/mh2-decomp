@@ -22,12 +22,16 @@
 #include "lobby_menu.h"
 #include "lobby_labels.h"
 #include "lobby_search.h"
+#include "text.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "lobby_web_users.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "libc.h"
 
-void *memset(void *dst, s32 c, u32 n);
-void AreaSearch_Draw(MenuTask *task);
-void AreaSearch_Draw2(MenuTask *task);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern u8 gMenuWork;
 
 /* Opens the area search: clears its work and sets its draw callbacks. */
@@ -51,20 +55,10 @@ void AreaSearch_Close(void)
 /* the hunters an area search found (LobbyNet_GetUserSearch) */
 extern NetUserSearchFound *gUserSearchFound;
 
-void AreaSearch_BuildPage(AreaSearchMenu *menu, s16 page);
-s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
-void Text_SetSize(s32);
-
 extern LobbyMenu *gLobbyMenu;
 extern u8 gLobbyLevel1Sel;
 extern u16 gAreaSearchTimer;
 extern u16 gAreaSearchFrames;
-void LobbyText_Open(s32);
-void AreaSearch_ShowResults(AreaSearchMenu *menu);
-s32 AreaSearch_ResultsInput(AreaSearchMenu *menu, u16 pad);
-s32 LobbyUser_Search(NetUserSearchCond *cond, s8 n);
-s32 HunterInfo_Update(u16 pad);
-void HunterInfo_Open(void *, s32);
 
 /*
  * The area search's frame, from the game menu: asks the server for the
@@ -150,8 +144,6 @@ s32 AreaSearch_Update(u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Menu_CountPages(s16 n, s16 per);
-
 /* Fills the results' rows with page `page` of the hunters found (all but
  * the answer's last record), counts the pages, and keeps the cursor on the
  * page. */
@@ -180,14 +172,10 @@ void AreaSearch_BuildPage(AreaSearchMenu *menu, s16 page)
 void AreaSearch_ShowResults(AreaSearchMenu *menu)
 {
     AreaSearch_BuildPage(menu, 0);
-    WinSlide_Step(&menu->win, 0x280, 0x12C);
+    WinSlide_Step(&menu->win, 640, 300);
 }
 
 extern char gMyUserId[];
-s32 memcmp(void *a, void *b, s32 n);
-void LobbySe_Play(s32);
-s32 Menu_WrapUpDown(s32, s32);
-s32 Menu_WrapLeftRight(s32, s32);
 
 /*
  * The area search's results: slide in, then the cursor moves over the page
@@ -199,7 +187,7 @@ s32 AreaSearch_ResultsInput(AreaSearchMenu *menu, u16 pad)
 {
     switch (menu->inputStep) {
     case AREA_RESULTS_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x12C)) {
+        switch (WinSlide_Step(&menu->win, 640, 300)) {
         case MENU_DONE:
             menu->inputStep++;
             break;
@@ -237,11 +225,6 @@ s32 AreaSearch_ResultsInput(AreaSearchMenu *menu, u16 pad)
 
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: s16 coordinates and sizes and an s32 kind here; with the definition's s32 coordinates and s16 kind, AreaSearch_DrawResults compiles differently */
 void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Text_PrintfColored(const char *fmt, ...);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 void Icon_DrawWeaponClass(s16, s16, s32, s32, u8, s32); /* unit's own declaration: s16 coordinates and a u8 kind here; with the definition's types, AreaSearch_DrawResults compiles differently */
 void Sjis_Widen(char *src, char *dst);
 extern char gAreaSearchTextFmt[];
@@ -257,37 +240,37 @@ extern char gAreaSearchHrFmt[];
 void AreaSearch_DrawResults(AreaSearchMenu *menu, s16 x, s16 y)
 {
     HunterCard *card;
-    char wideId[0x20];
+    char wideId[32];
     s8 dim;
     s16 rowY = y;
     s16 i;
 
-    Win_Draw(x, y, 0x140, 0x122, 0xBDB59F6C, 0xBB402010, 8);
-    Gfx_DrawLine(x + 8, y + 0xC, 0x130, 0x14, 0x80B59F6C);
+    Win_Draw(x, y, 320, 290, 0xBDB59F6C, 0xBB402010, 8);
+    Gfx_DrawLine(x + 8, y + 12, 304, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    y += 0xE;
-    Font_SetPos(x + 0x10, y);
+    y += 14;
+    Font_SetPos(x + 16, y);
     Text_PrintfColored(gSearchMenuTexts[SEARCH_MENU_TEXT_AREA]);
     if (menu->count == 0) {
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_NO_RESULTS], x + 0xA0, 0x12), y + 0x64);
+        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_NO_RESULTS], x + 160, 18), y + 100);
         Text_PrintfColored(gEmptyListTexts[EMPTY_LIST_NO_RESULTS]);
         return;
     }
-    Menu_DrawPageNum(x + 0xE6, y, menu->page, menu->pageCount, 1);
-    rowY += 0x24;
+    Menu_DrawPageNum(x + 230, y, menu->page, menu->pageCount, 1);
+    rowY += 36;
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x10, rowY);
+    Font_SetPos(x + 16, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_NAME]);
-    Font_SetPos(x + 0x62, rowY);
+    Font_SetPos(x + 98, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_ID]);
-    Font_SetPos(x + 0xD8, rowY);
+    Font_SetPos(x + 216, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_WEAPON]);
-    Font_SetPos(x + 0x106, rowY);
+    Font_SetPos(x + 262, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_HR]);
     for (i = 0; i < menu->count; i++) {
         Font_SetColor(0x807F7F7F);
-        rowY += 0x16;
+        rowY += 22;
         if (menu->cursor == i) {
             switch (menu->step) {
             case AREA_SEARCH_RESULTS:
@@ -297,27 +280,24 @@ void AreaSearch_DrawResults(AreaSearchMenu *menu, s16 x, s16 y)
                 dim = 1;
                 break;
             }
-            Menu_DrawLine(x + 8, rowY - 1, 0x130, 0x14, dim);
+            Menu_DrawRowHighlight(x + 8, rowY - 1, 304, 20, dim);
         }
-        Font_SetPos(x + 0x10, rowY);
+        Font_SetPos(x + 16, rowY);
         Text_PrintfColored(gAreaSearchTextFmt, menu->rows[i]->name);
-        Font_SetPos(x + 0x62, rowY);
+        Font_SetPos(x + 98, rowY);
         Sjis_Widen(menu->rows[i]->id, wideId);
         Text_PrintfColored(wideId);
         card = (HunterCard *)menu->rows[i]->text;
-        Icon_DrawWeaponClass(x + 0xE2, rowY - 2, 0x16, -1, card->weaponClass, 0);
-        Font_SetPos(x + 0x106, rowY);
+        Icon_DrawWeaponClass(x + 226, rowY - 2, 22, -1, card->weaponClass, 0);
+        Font_SetPos(x + 262, rowY);
         Text_PrintfColored(gAreaSearchHrFmt, card->hr);
     }
     if (menu->page == AREA_SEARCH_PAGES - 1 && i == AREA_SEARCH_ROWS_PER_PAGE - 1) {
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(x + 0x10, rowY + 0x16);
+        Font_SetPos(x + 16, rowY + 22);
         Text_PrintfColored(gAreaSearchTextFmt, gNetLabels[NET_LABEL_AREA_JOIN_PROMPT]);
     }
 }
-
-void Font_SetSpacing(u8 a, u8 b);
-void HunterInfo_DrawIfOpen(void);
 
 /*
  * The area search's first draw callback: the results, or the hunter's info
@@ -328,10 +308,10 @@ void AreaSearch_Draw(MenuTask *task)
     AreaSearchMenu *menu = (AreaSearchMenu *)&gMenuWork;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (menu->step) {
     case AREA_SEARCH_RESULTS:
-        AreaSearch_DrawResults(menu, menu->win.pos, 0x3A);
+        AreaSearch_DrawResults(menu, menu->win.pos, 58);
         break;
     case AREA_SEARCH_HUNTER:
         HunterInfo_DrawIfOpen();
@@ -347,10 +327,10 @@ void AreaSearch_Draw2(MenuTask *task)
 
 /* The area search's read-only data: its string and hunter rank formats. */
 #pragma rodata on
-char gAreaSearchTextFmt[0x8] = {
+char gAreaSearchTextFmt[8] = {
 #include "lobby/008381A0.inc"
 };
-char gAreaSearchHrFmt[0x8] = {
+char gAreaSearchHrFmt[8] = {
 #include "lobby/008381A8.inc"
 };
 #pragma rodata off

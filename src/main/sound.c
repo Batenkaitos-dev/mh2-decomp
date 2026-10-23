@@ -12,6 +12,11 @@
  */
 #include "cse.h"
 #include "syssettings.h"
+#include "bgm.h"
+#include "sound.h"
+#include "display.h"
+#include "engine_math.h"
+#include "rand.h"
 
 typedef struct SndFile {
     u32 unk0[2];
@@ -31,6 +36,14 @@ typedef struct SndRange {
     f32 far;            /* 0x08: silent from here (kind 4: clamped to it) */
     f32 idOffset;       /* 0x0C: added to the SE id */
 } SndRange;
+
+/* A positional SE kind's volume curve (gSePosVolCurves): the volume at
+ * each step (SndRange.step) of the distance, interpolated between steps;
+ * Sound_PlaySePos reads battleVol while Bgm_IsBattleState is 1. */
+typedef struct SndVolCurve {
+    s32 vol[17];        /* 0x00 */
+    s32 battleVol[17];  /* 0x44 */
+} SndVolCurve;
 
 typedef struct SndVec {
     f32 x, y, z;
@@ -54,13 +67,7 @@ extern u8 *gSndStageBodyBase;
 extern SndRange gSePosRanges[];
 
 void *memcpy(void *dst, void *src, u32 n);
-s32 Sound_ReadBank(u32 id, void *dst);   /* loads a file by id */
-s32 Sys_FlipFrame(s32 unused0);             /* flips a frame */
-s32 Sound_PlaySe(u32 bank, u32 id, CseOpt *opt);
-u16 Rand_Next(s32 stream);            /* Rand_Next (sub_main) */
-s32 Sound_LoadBankFile(s32 data, s32 slot);
 s32 Sound_LoadMergedBanks(SndFile *f, u8 *out, u32 slot);
-s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update);
 
 void Sound_Init(void)
 {
@@ -213,8 +220,6 @@ s32 Sound_LoadBank(SndFile *file, u32 slot)
     return 0;
 }
 
-s32 Sound_CheckTransfer(void);
-
 /* Loads a bank and waits (flipping frames) until its upload is done. */
 s32 Sound_LoadBankWait(SndFile *file, u32 slot)
 {
@@ -358,7 +363,7 @@ s32 Sound_PlaySeVolPan(u32 slot, u32 id, s32 vol, s32 pan, s32 unused, s32 prog)
 {
     CseOpt opt = {0};
 
-    opt.flags = 0x841;
+    opt.flags = 2113;
     opt.v[6] = pan;
     opt.v[0] = prog;
     opt.v[11] = vol * 100 / 127;
@@ -395,21 +400,12 @@ s32 Sound_PlaySe(u32 slot, u32 id, CseOpt *opt)
 extern s32 *gSePosVolCurves[];       /* volume curves */
 extern s32 *gSePosCurves2[];       /* second curves (CseOpt.v[7]), or NULL */
 extern SndVec gSndForwardAxis;       /* the listener's forward axis */
-extern f32 gSndVolumeScale[];        /* the SE volume settings */
 extern u8 gViewMatrix[];           /* sub_main: the listener's rotation */
 extern SndVec gCameraPos;      /* sub_main's camera position, the listener */
 #define gSndOutputSetting (gSysSettings.soundMode)
 #define gSndSeVolSetting (gSysSettings.seVolume)
 /* sub_main's vector helpers (asm there, with f32 * parameters): declared
    here with the SndVec * this file passes */
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Vec_Normalize(f32 *v);
-f32 Vec_Dot(f32 *a, f32 *b);
-void Vec_Cross(f32 *out, f32 *a, f32 *b);
-f32 Math_Acos(f32 x);         /* acos */
-f32 Math_Floor(f32 x);
-f32 Math_Sqrtf(f32 x);
-s32 Bgm_IsBattleState(void);
 
 /*
  * Plays or updates an SE placed at pos: the volume from the kind's curve by
@@ -515,7 +511,7 @@ s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update)
         opt.v[12] = flags;
         opt.v[6] = pan;
         opt.v[0] = prog;
-        opt.flags = 0x1841;
+        opt.flags = 6209;
         if (curve2 != NULL) {
             opt.v[7] = curve2Vol;
             opt.flags |= 0x80;
@@ -574,95 +570,95 @@ u32 gSndSeBufSizes[16] = {
 u32 gSndBankBufSizes[16] = {
 #include "main/001BBA20.inc"
 };
-s32 gSePosVolCurves_0[36] = {
+SndVolCurve gSePosVolCurves_0 = {
 #include "main/001BBA60.inc"
 };
-s32 gSePosVolCurves_1[36] = {
+SndVolCurve gSePosVolCurves_1 = {
 #include "main/001BBAF0.inc"
 };
-s32 gSePosVolCurves_2[36] = {
+SndVolCurve gSePosVolCurves_2 = {
 #include "main/001BBB80.inc"
 };
-s32 gSePosVolCurves_3[36] = {
+SndVolCurve gSePosVolCurves_3 = {
 #include "main/001BBC10.inc"
 };
-s32 gSePosVolCurves_4[36] = {
+SndVolCurve gSePosVolCurves_4 = {
 #include "main/001BBCA0.inc"
 };
-s32 gSePosVolCurves_5[36] = {
+SndVolCurve gSePosVolCurves_5 = {
 #include "main/001BBD30.inc"
 };
-s32 gSePosVolCurves_6[36] = {
+SndVolCurve gSePosVolCurves_6 = {
 #include "main/001BBDC0.inc"
 };
-s32 gSePosVolCurves_7[36] = {
+SndVolCurve gSePosVolCurves_7 = {
 #include "main/001BBE50.inc"
 };
-s32 gSePosVolCurves_8[36] = {
+SndVolCurve gSePosVolCurves_8 = {
 #include "main/001BBEE0.inc"
 };
-s32 gSePosVolCurves_9[36] = {
+SndVolCurve gSePosVolCurves_9 = {
 #include "main/001BBF70.inc"
 };
-s32 gSePosVolCurves_10[36] = {
+SndVolCurve gSePosVolCurves_10 = {
 #include "main/001BC000.inc"
 };
-s32 gSePosVolCurves_11[36] = {
+SndVolCurve gSePosVolCurves_11 = {
 #include "main/001BC090.inc"
 };
-s32 gSePosVolCurves_12[36] = {
+SndVolCurve gSePosVolCurves_12 = {
 #include "main/001BC120.inc"
 };
-s32 gSePosVolCurves_13[36] = {
+SndVolCurve gSePosVolCurves_13 = {
 #include "main/001BC1B0.inc"
 };
-s32 gSePosVolCurves_14[36] = {
+SndVolCurve gSePosVolCurves_14 = {
 #include "main/001BC240.inc"
 };
-s32 gSePosVolCurves_15[36] = {
+SndVolCurve gSePosVolCurves_15 = {
 #include "main/001BC2D0.inc"
 };
-s32 gSePosVolCurves_16[36] = {
+SndVolCurve gSePosVolCurves_16 = {
 #include "main/001BC360.inc"
 };
-s32 gSePosVolCurves_17[36] = {
+SndVolCurve gSePosVolCurves_17 = {
 #include "main/001BC3F0.inc"
 };
-s32 gSePosVolCurves_18[36] = {
+SndVolCurve gSePosVolCurves_18 = {
 #include "main/001BC480.inc"
 };
-s32 gSePosVolCurves_19[36] = {
+SndVolCurve gSePosVolCurves_19 = {
 #include "main/001BC510.inc"
 };
-s32 gSePosVolCurves_20[36] = {
+SndVolCurve gSePosVolCurves_20 = {
 #include "main/001BC5A0.inc"
 };
-s32 gSePosVolCurves_21[36] = {
+SndVolCurve gSePosVolCurves_21 = {
 #include "main/001BC630.inc"
 };
-s32 gSePosVolCurves_22[36] = {
+SndVolCurve gSePosVolCurves_22 = {
 #include "main/001BC6C0.inc"
 };
-s32 gSePosVolCurves_23[36] = {
+SndVolCurve gSePosVolCurves_23 = {
 #include "main/001BC750.inc"
 };
-s32 gSePosVolCurves_24[36] = {
+SndVolCurve gSePosVolCurves_24 = {
 #include "main/001BC7E0.inc"
 };
-s32 gSePosVolCurves_25[36] = {
+SndVolCurve gSePosVolCurves_25 = {
 #include "main/001BC870.inc"
 };
-s32 gSePosVolCurves_26[36] = {
+SndVolCurve gSePosVolCurves_26 = {
 #include "main/001BC900.inc"
 };
 s32 *gSePosVolCurves[28] = {
-    gSePosVolCurves_0, gSePosVolCurves_1, gSePosVolCurves_2, gSePosVolCurves_3,
-    gSePosVolCurves_4, gSePosVolCurves_5, gSePosVolCurves_6, gSePosVolCurves_7,
-    gSePosVolCurves_8, gSePosVolCurves_9, gSePosVolCurves_10, gSePosVolCurves_11,
-    gSePosVolCurves_12, gSePosVolCurves_13, gSePosVolCurves_14, gSePosVolCurves_15,
-    gSePosVolCurves_16, gSePosVolCurves_17, gSePosVolCurves_18, gSePosVolCurves_19,
-    gSePosVolCurves_20, gSePosVolCurves_21, gSePosVolCurves_22, gSePosVolCurves_23,
-    gSePosVolCurves_24, gSePosVolCurves_25, gSePosVolCurves_26, NULL,
+    gSePosVolCurves_0.vol, gSePosVolCurves_1.vol, gSePosVolCurves_2.vol, gSePosVolCurves_3.vol,
+    gSePosVolCurves_4.vol, gSePosVolCurves_5.vol, gSePosVolCurves_6.vol, gSePosVolCurves_7.vol,
+    gSePosVolCurves_8.vol, gSePosVolCurves_9.vol, gSePosVolCurves_10.vol, gSePosVolCurves_11.vol,
+    gSePosVolCurves_12.vol, gSePosVolCurves_13.vol, gSePosVolCurves_14.vol, gSePosVolCurves_15.vol,
+    gSePosVolCurves_16.vol, gSePosVolCurves_17.vol, gSePosVolCurves_18.vol, gSePosVolCurves_19.vol,
+    gSePosVolCurves_20.vol, gSePosVolCurves_21.vol, gSePosVolCurves_22.vol, gSePosVolCurves_23.vol,
+    gSePosVolCurves_24.vol, gSePosVolCurves_25.vol, gSePosVolCurves_26.vol, NULL,
 };
 SndRange gSePosRanges[27] = {
 #include "main/001BCA00.inc"

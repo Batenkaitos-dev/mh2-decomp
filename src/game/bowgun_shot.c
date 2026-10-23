@@ -1,6 +1,6 @@
 /*
- * Two families of attack objects (ObjAttach). BowgunShot is a bowgun's shot in
- * flight: Bowgun_FireShot makes it (BowgunShot_Create, then BowgunShot_Init at
+ * BowgunShot, a family of attack objects (ObjAttach): a bowgun's shot in
+ * flight. Bowgun_FireShot makes it (BowgunShot_Create, then BowgunShot_Init at
  * set up), and its row of gBowgunShotParams (its ammunition kind) says how it
  * flies (BowgunShotParam.kind) and what a hit does (BowgunShotParam.hitKind): it
  * ends, sticks to the bone it hit and may burst into an Explosion, pierces,
@@ -11,185 +11,361 @@
  * (BowgunShot_Glow*) through draw slots. BowgunShot_InitWeapon and
  * BowgunShot_InitSkills read the weapon's level, options and the shooter's
  * skills; BowgunShot_StepRandBits and the BitsTo* helpers turn the shot's random
- * bits into per-frame jitter. EmImpactAttack is a monster's hit zone made at a
- * point for one attack row (a slam, a landing, a stomp), made by the monster
- * states. Each family's Update, which ObjAttach_UpdateAll calls every frame,
- * switches on ObjAttach.state (enum ObjAttachState).
+ * bits into per-frame jitter. BowgunShot_Update, which ObjAttach_UpdateAll
+ * calls every frame, switches on ObjAttach.state (enum ObjAttachState).
  */
 #include "common.h"
-#include "item.h"
 #include "save.h"
 #include "render_state.h"
 #include "em.h"
 #include "player.h"
 #include "objattach.h"
 #include "capsule.h"
-#include "stageobj.h"
 #include "sprite.h"
+#include "area.h"
+#include "quest.h"
+#include "sound.h"
+#include "text.h"
+#include "cam_helpers.h"
+#include "draw_slots.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "hit_effects.h"
+#include "hit_setup.h"
+#include "monster_effects.h"
+#include "place_rules.h"
+#include "rand.h"
+#include "vec_math.h"
 
 /* prototypes */
-void BowgunShot_CalcPower(ObjAttach *o);
-void BowgunShot_ApplyStage(ObjAttach *o);
-s32 BowgunShot_UpdatePowerStage(ObjAttach *o);
-void BowgunShot_GlowAlloc(ObjAttach *o);
-f32 BowgunShot_BitsToFrac(u16 randBits, s32 bits);
-f32 BowgunShot_BitsToSignedFrac(u16 value, u16 bits);
-void Explosion_CreateInArea(Player *owner, f32 *pos, s32 kind, u16 area);
-u16 BowgunShot_StepRandBits(u16 randBits, u16 step, s32 mul, s32 shift);
 extern u16 BowgunShot_StreakFrames[];
 void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
-void CamShake_SetA(s32 kind, f32 *pos);
-void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-void AttackBurst_CreateAt(f32 *pos, s16 k, u8 c, f32 scale);
-void AttackBurst_CreateAtYaw(f32 *pos, s16 k, u8 c, s32 v, f32 scale);
-void ShotFlash_CreateAtScaled(f32 *pos, s32 k, u8 c, f32 scale);
-void FireBlast_CreateScaledExact(f32 *pos, s16 k, f32 scale);
-void MonsterFx_CreateAt(f32 *src, u8 k, f32 f);
-StageObj *MonsterFx_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
-extern f32 EmRangedAttack_RemobraSpitScales[];
-s32 Player_IsLocal(void *obj);
-s32 Em_HitQuadsVertical(f32 *p, Em **hitEm, s16 *hitBone, f32 *hit);
-void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void PlacedItem_Update(ObjAttach *o);
-void Vec_Scale(f32 *out, f32 *in, f32 s);
-void Mtx_Inverse(f32 *out, f32 *in);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-void BowgunShot_Scatter(ObjAttach *o, u8 *p, f32 f);
-void ItemProp_CreateFromAttach(ObjAttach *oa, s32 k, u8 c);
 extern s32 BowgunShot_ScatterParams[];
-typedef struct { s32 frame; u32 color; } ColorKey;
-void BowgunShot_PlaySe(ObjAttach *o, s16 kind);
-void ShotFlash_CreateFromShot(u8 *src, s32 k, u8 c);
-s32 ObjAttach_RollBatBack(ObjAttach *o, u16 x);
-void Vec_Diff(f32 *out, f32 *a, f32 *b);
-void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw);
-extern u8 BowgunShot_RowsPtr;
+extern void *BowgunShot_RowsPtr;
 extern HitShape *BowgunShot_HitShapes[];
-void Mtx_RotateZ(f32 *m, f32 a);
 extern s32 BowgunShot_Colors[];
-void BowgunShot_DrawStreak(ObjAttach *o);
-void EmRangedAttack_KeepStrikePos(u8 *a, u8 *b);
-void ThunderSpark_CreateAt(void *src, u8 k, u8 c, f32 f);
-void Vec_Add(f32 *, f32 *, f32 *);
 extern f32 (*EmRangedAttack_KirinStrikeSpots[])[2];
-void Vec_RotateSelf(f32 *v, f32 *m);
-extern f32 EmRangedAttack_BoneOfs[];
-s32 LightBowgun_HasSilencer(Player *player);
-s16 Bowgun_RecoilLevel(Player *player, u8 kind);
-void Player_PlaySe(Player *pl, s32 id, s32 a, void *pos, s32 b, s32 c);
 extern s16 BowgunShot_StageHitFxOdd[];
 extern s16 BowgunShot_StageHitFxEven[];
 extern f32 BowgunShot_StagePowerScales[];
 extern s16 BowgunShot_StageHitSe[];
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateX(f32 *v, f32 angle);
-void Vec_RotateY(f32 *v, f32 angle);
-f32 Math_Atan2(f32 y, f32 x);
-f32 Math_Sqrtf(f32 x);
 extern s16 *BowgunShot_StageFrameTbls[];
-void EmImpactAttack_Update(ObjAttach *o);
 u8 Equip_GetClass(EquipItem *e);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void BowgunShot_Init(ObjAttach *o);
-void BowgunShot_Draw(DrawSlot *slot);
-void BowgunShot_GlowDraw(DrawSlot *d);
-void BowgunShot_GlowRun(ObjAttach *o);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Gfx_SetBlend(s32 a, s32 b);
 extern f32 gCamMatrix[];
 extern f32 BowgunShot_GlowFirstScales[][3];
 extern f32 BowgunShot_GlowSecondScales[][3];
 extern f32 BowgunShot_GlowFlashScales[][3];
-void ShotFlash_CreateAt(f32 *pos, s32 k, u8 c);
-void Mtx_Identity(f32 *m);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_TurnZ(f32 *m, f32 a);
-extern HitShape *EmImpactAttack_HitShapes[];
-extern void *EmImpactAttack_RowsPtr;
-f32 Math_Absf(f32 x);
-s32 Model_Draw(u32 h, s32 flags);
-void ObjAttach_Free(ObjAttach *p);
-s32 Player_HasSkill(Player *p, u8 skill);
-u16 Rand_Next(s32 stream);
-void BowgunShot_Run(ObjAttach *);
-u8 BowgunShot_BounceStep(ObjAttach *);
-void BowgunShot_Fall(ObjAttach *);
 extern BowgunShotParam gBowgunShotParams[];
-void BowgunShot_End(ObjAttach *o);
-void BowgunShot_Free(ObjAttach *o);
-void BowgunShot_GlowFree(ObjAttach *o);
-void EmImpactAttack_Run(ObjAttach *o);
-void EmImpactAttack_End(ObjAttach *o);
-void EmImpactAttack_Free(ObjAttach *o);
-void EmRangedAttack_Setup(ObjAttach *o);
-void EmRangedAttack_Run(ObjAttach *o);
-void EmRangedAttack_Hit(ObjAttach *);
-void EmRangedAttack_End(ObjAttach *o);
-void EmRangedAttack_Free(ObjAttach *o);
-void Explosion_Setup(ObjAttach *o);
-void Explosion_Run(ObjAttach *);
-void Explosion_Hit(ObjAttach *o);
-void Explosion_End(ObjAttach *o);
-void Explosion_Free(ObjAttach *o);
-void PlacedItem_Setup(ObjAttach *o);
-void PlacedItem_Run(ObjAttach *o);
-void PlacedItem_Hit(ObjAttach *o);
-void PlacedItem_End(ObjAttach *o);
-void PlacedItem_Free(ObjAttach *o);
-s32 Gs_SetState(u8 reg, u32 v);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Vec_Copy(f32 *out, f32 *in);
 void Draw_SetBlendFlags(u16 flags);
-f32 AreaGrid2_GetFloorYFiltered(f32 *);
-void Draw_ApplyStates(u32);
-void Draw_SetDefaultState(void);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void DrawSlot_Free(s32);
 void ObjAttach_Move(ObjAttach *);
 void ObjAttach_MoveAccel(ObjAttach *);
-void EmRangedAttack_Update(ObjAttach *o);
-void Vec_Normalize(f32 *);
-f32 Vec_Dot(f32 *a, f32 *b);
-void Vec_Cross(f32 *, f32 *, f32 *);
-void Vec_Sub(f32 *, f32 *, f32 *);
 extern f32 gCamPos;
-ObjAttach *ObjAttach_Alloc(s32 n);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-u8 Player_InCurrentArea(void *obj);
-void ObjAttach_StartAttack(ObjAttach *o, s32 a, void *b);
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *, s32 a, s32 b, void *c);
 extern HitShape *Explosion_HitShapes[];
-extern void *Explosion_RowsPtr;
-extern u8 Explosion_TakesOwnerSide[];
-extern s16 EmRangedAttack_RowBase[];
-extern void *EmRangedAttack_RowsPtr;
-void EmRangedAttack_StartAttackRow(ObjAttach *, s32);
-void Explosion_Init(ObjAttach *);
-void Explosion_BoostPower(ObjAttach *);
-void Explosion_Spawn(ObjAttach *);
-void Explosion_Update(ObjAttach *);
-void EmImpactAttack_Setup(ObjAttach *o);
-void BowgunShot_Setup(ObjAttach *o);
-void BowgunShot_DrawModel(DrawSlot *d);
-void BowgunShot_Deflect(ObjAttach *o);
-void BowgunShot_Hit(ObjAttach *o);
-void EmRangedAttack_Impact(ObjAttach *o, s16 n, f32 *pos);
-void BowgunShot_Fly(ObjAttach *o);
 /* end of prototypes */
 
-extern f32 gBarrelLightShotWobble;
-extern f32 gBarrelHeavyShotWobble;
 extern f32 gSilencerShotWobble;
+extern s32 BowgunShot_PlayerFlags[];
+/*
+ * The bowgun's shot: the muzzle's flash and smoke by the ammunition kind
+ * (ammo with bit 0x80 names it, else pl->ammoType; not for the local player
+ * while aiming), then the shot itself (BowgunShot_Create with pl->ammoType).
+ * bone is the gun bone the effects start from.
+ */
+void Bowgun_FireShot(Player *pl, s32 ammo, s32 bone, f32 scale)
+{
+    f32 launchPos[3];
+    s32 launchAngles[3];
+    u8 kind;
+
+    if ((ammo & 0x80) == 0) {
+        kind = pl->ammoType;
+    } else {
+        kind = ammo & 0x7F;
+    }
+    if ((pl->index != gScene.localPlayer || CamCtl_IsAiming(pl) == 0) && (u8)Obj_InCurrentArea(pl) == 1) {
+        switch (kind) {
+        default:
+            ShotFlash_CreateOnBone((s32) pl, bone, 0);
+            ShotFlash_CreateOnBone((s32) pl, bone, 1);
+            ShotFlash_CreateOnBone((s32) pl, bone, 2);
+            break;
+        case 20:
+        case 21:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 0);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 0);
+            break;
+        case 26:
+        case 27:
+        case 28:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 3);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 3);
+            break;
+        case 22:
+        case 23:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 1);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 1);
+            break;
+        case 24:
+        case 25:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 2);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 2);
+            break;
+        case 29:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 8);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 8);
+            break;
+        case 30:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 6);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 6);
+            break;
+        case 31:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 7);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 7);
+            break;
+        case 19:
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 9);
+            ElementBurst_CreateAtYaw(launchPos, 8, 1, (u16) pl->rot[1], 0.25f);
+            break;
+        case 17:
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 10);
+            ElementBurst_CreateAtYaw(launchPos, 9, 1, (u16) pl->rot[1], 0.25f);
+            break;
+        case 16:
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 11);
+            ElementBurst_CreateAtYaw(launchPos, 2, 1, (u16) pl->rot[1], 0.4f);
+            break;
+        case 15:
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 12);
+            ShotFlash_CreateOnBoneColored(pl, bone, 6, 12);
+            break;
+        case 18:
+            BowgunShot_BoneLaunchPos(launchPos, pl, launchAngles, bone);
+            ShotFlash_CreateOnBoneColored(pl, bone, 5, 13);
+            PlayerFx_CreateAt(launchPos, 12, 1, 0.4f);
+            break;
+        }
+    }
+    BowgunShot_Create(pl, pl->ammoType, bone, scale);
+}
+
+/*
+ * Makes a BowgunShot of ammunition kind (a row of gBowgunShotParams) for pl;
+ * bone goes to aux, the gun bone it starts from; scale is the shot's power
+ * scale.
+ */
+void BowgunShot_Create(Player *pl, u8 kind, s16 bone, f32 scale)
+{
+    ObjAttach *obj;
+    BowgunShotBuf *buf;
+
+    if ((obj = ObjAttach_Alloc(1)) != NULL) {
+        buf = (BowgunShotBuf *) obj->buf;
+        obj->kind = ATTACH_BOWGUN_SHOT;
+        obj->type = kind;
+        obj->aux = bone;
+        obj->update = BowgunShot_Update;
+        obj->idx = pl->index;
+        obj->isEm = pl->isEm;
+        obj->owner = pl;
+        obj->yaw = pl->rot[1];
+        obj->randBits = pl->stateRand;
+        obj->stateVar1 = 0;
+        obj->area = pl->area;
+        obj->side = *(u8 *) &pl->side;
+        buf->scale = scale;
+    }
+}
+
+/*
+ * Splits a shot into pellets (the scatter shot): params gives their kind and
+ * count; each copies the shot's flight with its own random bits, and power
+ * goes to the source's buffer (the source's, not the new pellet's).
+ */
+void BowgunShot_Scatter(ObjAttach *obj, u8 *params, f32 power)
+{
+    s16 i;
+    u8 kind = params[0];
+    s32 randMul;
+    s16 count = *(s16 *) (params + 2);
+    ObjAttach *pellet;
+    BowgunShotBuf *buf;
+
+    BowgunShot_PlaySe(obj, 0);
+    i = 0;
+    if (i < count) {
+        randMul = 1;
+        do {
+            if ((pellet = ObjAttach_Alloc(1)) != NULL) {
+                buf = (BowgunShotBuf *) obj->buf;
+                pellet->kind = ATTACH_BOWGUN_SHOT;
+                pellet->type = kind;
+                pellet->aux = obj->aux;
+                pellet->update = BowgunShot_Update;
+                pellet->idx = ((Em *) obj->owner)->index;
+                pellet->isEm = ((Em *) obj->owner)->isEm;
+                pellet->owner = obj->owner;
+                pellet->yaw = *(u16 *) &obj->yaw;
+                pellet->rotX = obj->rotX;
+                pellet->rotY = obj->rotY;
+                pellet->pos[0] = obj->pos[0];
+                pellet->pos[1] = obj->pos[1];
+                pellet->pos[2] = obj->pos[2];
+                pellet->velX = obj->velX;
+                pellet->velY = obj->velY;
+                pellet->velZ = obj->velZ;
+                pellet->randBits = obj->randBits * randMul;
+                pellet->stateVar1 = i;
+                pellet->area = obj->area;
+                pellet->side = obj->side;
+                /* the source's buffer, not the new object's */
+                buf->scale = power;
+            }
+            i++;
+            randMul += 2;
+        } while (i < count);
+    }
+}
+
+extern f32 gSilencerShotSpeeds[];
+/*
+ * Sets a shot up from its row of gBowgunShotParams: the weapon's level and
+ * skills, the affinity's roll (crit 1 or a weak 2), the power, and the launch
+ * speed (the level row's, plus the level bits' extras).
+ */
+void BowgunShot_Init(ObjAttach *obj)
+{
+    f32 mtx[16];
+    BowgunShotBuf *buf = (BowgunShotBuf *) obj->buf;
+    BowgunShotParam *param = &gBowgunShotParams[obj->type];
+    Player *pl = obj->owner;
+    u8 *levelRow;
+    u8 bits;
+    s16 affinity;
+    f32 speed;
+    f32 speedRand;
+    f32 gravityRand;
+
+    obj->state++;
+    obj->visible = 1;
+    obj->draw = NULL;
+    obj->ownerMotion = 0;
+    Player_TestSetFlags(obj, BowgunShot_PlayerFlags[obj->type]);
+    ObjAttach_StartOwnedAttack(obj, (s32) pl, obj->type + 1, &BowgunShot_RowsPtr);
+    buf->crit = 0;
+    if (obj->type != 32) {
+        BowgunShot_InitWeapon(buf, pl);
+        BowgunShot_InitSkills(buf, pl);
+        affinity = Player_GetWeaponStat(pl, WSTAT_AFFINITY);
+        if (affinity < 0) {
+            if (obj->randBits % 100 < -affinity) {
+                buf->crit = 2;
+            }
+        } else if (affinity > obj->randBits % 100) {
+            buf->crit = 1;
+        }
+        BowgunShot_CalcPower(obj);
+        levelRow = buf->levelRow;
+        bits = buf->level;
+        speed = *(f32 *) (levelRow + 4);
+        speedRand = *(f32 *) (levelRow + 8);
+        gravityRand = *(f32 *) (levelRow + 12);
+        if (bits & 0x10) {
+            speed += gSilencerShotSpeeds[0];
+            speedRand += gSilencerShotSpeeds[1];
+            gravityRand += gSilencerShotSpeeds[2];
+        }
+        if (bits & 0x20) {
+            if (buf->isLightBowgun == 0) {
+                speed += gBarrelHeavyShotSpeeds[0];
+                speedRand += gBarrelHeavyShotSpeeds[1];
+                gravityRand += gBarrelHeavyShotSpeeds[2];
+            } else {
+                speed += gBarrelLightShotSpeeds[0];
+                speedRand += gBarrelLightShotSpeeds[1];
+                gravityRand += gBarrelLightShotSpeeds[2];
+            }
+        }
+        bits = buf->skills;
+        speed *= param->speed;
+        speedRand *= param->speedRand;
+        gravityRand *= param->gravityRand;
+        if (bits & 0x10) {
+            speedRand *= 2.0f;
+            gravityRand *= 2.0f;
+        }
+        if (bits & 0x20) {
+            speedRand *= 0.5f;
+            gravityRand *= 0.5f;
+        }
+    } else {
+        speed = param->speed;
+        speedRand = param->speedRand;
+        gravityRand = param->gravityRand;
+    }
+    buf->power = obj->power;
+    obj->hitList = BowgunShot_HitShapes[obj->hitListNo];
+    obj->hurtList = 0;
+    obj->step = 0;
+    obj->stateVar0 = 0;
+    buf->bounced = 0;
+    buf->stage = 0;
+    buf->flyStep = 0;
+    buf->nextHit = 0;
+    obj->homingTurn = 0.0f;
+    obj->homingSpeed = 0.0f;
+    switch (param->kind) {
+    case 4:
+    default:
+    case 0:
+    case 1:
+        if (param->model == 98) {
+            buf->bounced = 1;
+            obj->rotZ = Rand_Next(1);
+            if (param->kind == 4) {
+                obj->hitPhase = 0;
+            }
+        }
+        BowgunShot_BoneLaunchPos(obj->pos, pl, &obj->rotX, obj->aux);
+        obj->velX = 0.0f;
+        obj->velY = 0.0f;
+        obj->velZ = speed + speedRand * BowgunShot_BitsToFrac(obj->randBits, 0x10);
+        Vec_RotateX(&obj->velX, (6.2831855f * obj->rotX) / 65536.0f);
+        Vec_RotateY(&obj->velX, (6.2831855f * obj->rotY) / 65536.0f);
+        obj->gravity = -(param->gravity + gravityRand * BowgunShot_BitsToFrac(obj->randBits >> 1, 15));
+        break;
+    case 2:
+        Mtx_Copy(mtx, (f32 *)Em_GetBone(pl, obj->aux));
+        obj->velX = speed + speedRand * BowgunShot_BitsToFrac(obj->randBits >> 2, 14);
+        if ((obj->randBits >> 3) & 1) {
+            obj->velX = -obj->velX;
+        }
+        obj->velY = 2.0f * (speed + speedRand * BowgunShot_BitsToFrac(obj->randBits >> 4, 12));
+        obj->velZ = speed + speedRand * BowgunShot_BitsToFrac(obj->randBits >> 5, 11);
+        if ((obj->randBits >> 6) & 1) {
+            obj->velZ = -obj->velZ;
+        }
+        obj->rotX = (u16) (s32) (0.5f + 65536.0f * Math_Atan2(obj->velY, Math_Sqrtf(obj->velX * obj->velX + obj->velZ * obj->velZ)) / 6.2831855f);
+        obj->rotY = (u16) (s32) (0.5f + 65536.0f * Math_Atan2(obj->velX, obj->velZ) / 6.2831855f) + ANGLE_TURN / 2;
+        obj->gravity = -(param->gravity + gravityRand * BowgunShot_BitsToFrac(obj->randBits >> 7, 9));
+        break;
+    }
+    Vec_Copy(obj->pos2, obj->pos);
+    Vec_Copy(buf->drawPos, obj->pos);
+    BowgunShot_PlaySe(obj, 1);
+    if (param->life == 255) {
+        buf->streakPhase = 2;
+    } else {
+        buf->streakPhase = 0;
+    }
+    buf->glowState = 0;
+    if (param->powerTbl != -1) {
+        BowgunShot_ApplyStage(obj);
+    }
+}
+
 /*
  * Moves a shot one frame. A shot that has hit (stateVar0 > 0) first acts by
  * its hitKind: a sticking shot (1, 3-5) follows its offset from the bone aux
@@ -350,11 +526,11 @@ void BowgunShot_Fly(ObjAttach *shot)
                 shot->velY += dir[1];
                 shot->velZ += dir[2];
                 horizSpeed = Math_Sqrtf(shot->velX * shot->velX + shot->velZ * shot->velZ);
-                pitchJitter = (u8) BowgunShot_StepRandBits(shot->randBits, shot->aux, 0x14D, 2) - 0x80;
+                pitchJitter = (u8) BowgunShot_StepRandBits(shot->randBits, shot->aux, 0x14D, 2) - 128;
                 pitch = (u16) (s32) (0.5f + (65536.0f * Math_Atan2(shot->velY, horizSpeed)) / 6.2831855f);
                 shot->rotX = pitch + pitchJitter;
                 shot->rotY = (u16) (s32) (0.5f + (65536.0f * Math_Atan2(shot->velX, shot->velZ)) / 6.2831855f)
-                          + ((u8) BowgunShot_StepRandBits(shot->randBits, shot->aux, 0x845, 5) - 0x80);
+                          + ((u8) BowgunShot_StepRandBits(shot->randBits, shot->aux, 2117, 5) - 128);
                 buf->flyStep++;
             case 1:
                 if (buf->nextHit != 0 && --buf->nextHit == 0) {
@@ -374,9 +550,9 @@ void BowgunShot_Fly(ObjAttach *shot)
     case SHOT_FLY_STRAIGHT_B:
     default:
         horizSpeed = Math_Sqrtf(shot->velX * shot->velX + shot->velZ * shot->velZ);
-        acc[1] = param->wobbleY * horizSpeed * BowgunShot_BitsToFrac(BowgunShot_StepRandBits(shot->randBits, shot->ownerMotion, 0x147F, 2), 0xE);
-        if (shot->ownerMotion < 20 && BowgunShot_StepRandBits(shot->randBits, shot->ownerMotion, 0x3045, 1) < 0x2000) {
-            wobbleOrFloorY = *(f32 *) (buf->levelRow + 0x10);
+        acc[1] = param->wobbleY * horizSpeed * BowgunShot_BitsToFrac(BowgunShot_StepRandBits(shot->randBits, shot->ownerMotion, 5247, 2), 14);
+        if (shot->ownerMotion < 20 && BowgunShot_StepRandBits(shot->randBits, shot->ownerMotion, 12357, 1) < 8192) {
+            wobbleOrFloorY = *(f32 *) (buf->levelRow + 16);
             if (buf->level & GUN_OPT_SILENCER) {
                 wobbleOrFloorY += gSilencerShotWobble;
             }
@@ -394,7 +570,7 @@ void BowgunShot_Fly(ObjAttach *shot)
             if (buf->skills & 0x20) {
                 wobbleOrFloorY *= 0.5f;
             }
-            acc[0] = wobbleOrFloorY * BowgunShot_BitsToSignedFrac(BowgunShot_StepRandBits(shot->randBits, shot->ownerMotion, 0x3121, 4), 6);
+            acc[0] = wobbleOrFloorY * BowgunShot_BitsToSignedFrac(BowgunShot_StepRandBits(shot->randBits, shot->ownerMotion, 12577, 4), 6);
         } else {
             acc[0] = 0.0f;
         }
@@ -404,7 +580,7 @@ void BowgunShot_Fly(ObjAttach *shot)
         Vec_Add(&shot->velX, &shot->velX, acc);
         break;
     case SHOT_FLY_PULSE:
-        if (shot->ownerMotion > 22 || buf->stage == 0xFF) {
+        if (shot->ownerMotion > 22 || buf->stage == 255) {
             shot->hitFrames = 0;
             shot->state = ATTACH_END;
             goto tail;
@@ -438,7 +614,7 @@ void BowgunShot_Fly(ObjAttach *shot)
             shot->state = ATTACH_END;
             switch (param->hitKind) {
             case SHOT_HIT_SCATTER:
-                if (buf->stage != 0xFF) {
+                if (buf->stage != 255) {
                     BowgunShot_Scatter(shot, (u8 *) &BowgunShot_ScatterParams[param->count], buf->scale);
                 }
                 break;
@@ -502,7 +678,7 @@ tail:
  * counts the hit and sets nextHit (2 or 4 frames) until count hits, then
  * closes its hit; 7 scatters into pellets and ends; 9 flies on; 10 leaves a
  * smoke screen and ends. A shot that flies on then moves (BowgunShot_Fly); a
- * batted-back shot (stateVar1 0xFF) just ends. Last it queues its draw slot.
+ * batted-back shot (stateVar1 255) just ends. Last it queues its draw slot.
  */
 void BowgunShot_Hit(ObjAttach *shot)
 {
@@ -514,7 +690,7 @@ void BowgunShot_Hit(ObjAttach *shot)
     f32 hitOfs[3];
     f32 midPoint[3];
 
-    if (shot->stateVar1 == 0xFF) {
+    if (shot->stateVar1 == 255) {
         shot->hitFrames = 0;
         shot->state = ATTACH_END;
         goto draw;
@@ -603,22 +779,22 @@ void BowgunShot_Hit(ObjAttach *shot)
     BowgunShot_Fly(shot);
 draw:
     if (shot->drawSlotBuf != NULL) {
-        if (param->model == 0x62) {
+        if (param->model == 98) {
             Vec_Copy(shot->drawSlotBuf->pos, buf->drawPos);
         } else {
             Vec_Copy(shot->drawSlotBuf->pos, shot->pos);
         }
-        OT_AddByDepth(gDrawOt32, shot->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, shot->drawSlotBuf, 32U, 0);
     }
 }
 
 /*
  * Runs a deflected shot (ATTACH_DEFLECTED, ATTACH_DEFLECTED_AURA). Either it
- * bounces off (stateVar1 0xFE): its hit closes and it flies back up at a
+ * bounces off (stateVar1 254): its hit closes and it flies back up at a
  * random angle; or, when ObjAttach_RollBatBack allows it (40% of the time,
  * never for the aura), the monster in targetEm bats it back: it becomes that
- * monster's attack (attack row 0x22), aimed from where it is at a point 100
- * units above its shooter's feet at speed 100 (stateVar1 0xFF), with the
+ * monster's attack (attack row 34), aimed from where it is at a point 100
+ * units above its shooter's feet at speed 100 (stateVar1 255), with the
  * batted-back sound. Then it runs as ATTACH_RUN.
  */
 void BowgunShot_Deflect(ObjAttach *shot)
@@ -647,12 +823,12 @@ void BowgunShot_Deflect(ObjAttach *shot)
     shot->ownerMotion = 0;
     shot->side = 0;
     if (ObjAttach_RollBatBack(shot, shot->randBits) == 0) {
-        shot->stateVar1 = 0xFE;
+        shot->stateVar1 = 254;
         shot->hitPhase = 0;
         Vec_Diff(dir, shot->pos2, shot->pos);
         Vec_DirToAngles(dir, (s16 *) &aimPitch, (s16 *) &aimYaw);
         aimPitch += -(Rand_Next(1) & 0x7FF) - 0x300;
-        aimYaw += (Rand_Next(1) & 0x1FFF) - 0x1000;
+        aimYaw += (Rand_Next(1) & 0x1FFF) - ANGLE_TURN / 16;
         shot->velX = 0.0f;
         shot->velY = Rand_Next(1) & 7;
         shot->velZ = 10.0f + (Rand_Next(1) & 7);
@@ -662,12 +838,12 @@ void BowgunShot_Deflect(ObjAttach *shot)
         Vec_RotateX(&shot->velX, (6.2831855f * aimPitch) / 65536.0f);
         Vec_RotateY(&shot->velX, (6.2831855f * aimYaw) / 65536.0f);
     } else {
-        shot->stateVar1 = 0xFF;
+        shot->stateVar1 = 255;
         shot->idx = batter->index;
         shot->isEm = batter->isEm;
         shot->owner = batter;
         Player_TestSetFlags(shot, 0);
-        ObjAttach_StartOwnedAttack(shot, (s32) batter, 0x22, &BowgunShot_RowsPtr);
+        ObjAttach_StartOwnedAttack(shot, (s32) batter, 34, &BowgunShot_RowsPtr);
         shot->hitList = BowgunShot_HitShapes[shot->hitListNo];
         shot->hurtList = 0;
         Vec_Copy(shotBuf->drawPos, shot->pos);
@@ -701,8 +877,8 @@ void BowgunShot_Deflect(ObjAttach *shot)
 void BowgunShot_Fall(ObjAttach *shot)
 {
     Vec_Copy(shot->pos2, shot->pos);
-    shot->hitFrames = 0x63;
-    if (shot->ownerMotion < 0x14) {
+    shot->hitFrames = 99;
+    if (shot->ownerMotion < 20) {
         ObjAttach_Move(shot);
     } else {
         ObjAttach_MoveAccel(shot);
@@ -714,7 +890,7 @@ void BowgunShot_Fall(ObjAttach *shot)
 }
 
 /*
- * Moves a shot that bounced off (stateVar1 0xFE) one frame: its hit stays
+ * Moves a shot that bounced off (stateVar1 254) one frame: its hit stays
  * closed, it falls and tumbles (rotX turns, rotY is fixed), and bounced is
  * set so the draw stops turning it along its velocity. Returns 1 after 30
  * frames, when the shot should end, else 0.
@@ -737,7 +913,7 @@ u8 BowgunShot_BounceStep(ObjAttach *shot)
 /*
  * Draws a shot (through BowgunShot_Draw): in streak phase 0 only its streak,
  * in phase 1 the streak and its mesh, later only the mesh, mesh set
- * param->model of the common model (0xFF: none). Model 0x62 is animated, one
+ * param->model of the common model (255: none). Model 98 is animated, one
  * mesh set per frame for 15 frames, scaled 2.25, turned by rotZ, with a
  * texture offset. Unless the shot bounced, its pitch and yaw follow its
  * velocity. The colour is BowgunShot_Colors[param->colorRow].
@@ -766,7 +942,7 @@ void BowgunShot_DrawModel(DrawSlot *slot)
         BowgunShot_DrawStreak(shot);
         break;
     }
-    if (param->model == 0xFF) {
+    if (param->model == 255) {
         return;
     }
     commonModel = gCommonModels[0];
@@ -777,7 +953,7 @@ void BowgunShot_DrawModel(DrawSlot *slot)
         return;
     }
     texMats = commonModel->mats;
-    if (param->model == 0x62) {
+    if (param->model == 98) {
         if (shot->ownerMotion > 14) {
             return;
         }
@@ -801,7 +977,7 @@ void BowgunShot_DrawModel(DrawSlot *slot)
     Mtx_SetTrans(mtx, slot->pos[0], slot->pos[1], slot->pos[2]);
     Gs_SetState(RS_COLOR2, BowgunShot_Colors[(s8) (u8)param->colorRow]);
     Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
-    Gs_SetState(RS_ALPHA_REF, 0x80);
+    Gs_SetState(RS_ALPHA_REF, 128);
     if (meshSet != NULL && meshSet->id != -1) {
         Gs_SetLightList(texMats, meshSet);
         Draw_ApplyStates(meshSet->flags);
@@ -864,7 +1040,7 @@ void BowgunShot_Setup(ObjAttach *shot)
         shot->drawSlotBuf->owner = shot;
         shot->drawSlotBuf->draw = BowgunShot_Draw;
         Vec_Copy(shot->drawSlotBuf->pos, shot->pos);
-        OT_AddByDepth(gDrawOt32, shot->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, shot->drawSlotBuf, 32U, 0);
     } else {
         ObjAttach_Free(shot);
     }
@@ -874,15 +1050,15 @@ void BowgunShot_Setup(ObjAttach *shot)
  * A shot's frame. A shot that bounced off tumbles until BowgunShot_BounceStep
  * ends it; a shot that hit goes to BowgunShot_Hit; otherwise it ends after
  * 120 frames, else it flies (BowgunShot_Fly) or, batted back (stateVar1
- * 0xFF), falls (BowgunShot_Fall). Then its draw slot is queued at its
- * position (at drawPos, the launch point, for model 0x62).
+ * 255), falls (BowgunShot_Fall). Then its draw slot is queued at its
+ * position (at drawPos, the launch point, for model 98).
  */
 void BowgunShot_Run(ObjAttach *shot)
 {
     BowgunShotBuf *buf = (BowgunShotBuf *) shot->buf;
     BowgunShotParam *param = &gBowgunShotParams[shot->type];
 
-    if (shot->stateVar1 == 0xFE) {
+    if (shot->stateVar1 == 254) {
         if (BowgunShot_BounceStep(shot) != 0) {
             shot->state = ATTACH_END;
             return;
@@ -897,19 +1073,19 @@ void BowgunShot_Run(ObjAttach *shot)
             shot->state = ATTACH_END;
             return;
         }
-        if (shot->stateVar1 != 0xFF) {
+        if (shot->stateVar1 != 255) {
             BowgunShot_Fly(shot);
         } else {
             BowgunShot_Fall(shot);
         }
     }
     if (shot->drawSlotBuf != NULL) {
-        if (param->model == 0x62) {
+        if (param->model == 98) {
             Vec_Copy(shot->drawSlotBuf->pos, buf->drawPos);
         } else {
             Vec_Copy(shot->drawSlotBuf->pos, shot->pos);
         }
-        OT_AddByDepth(gDrawOt32, shot->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, shot->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -970,29 +1146,29 @@ void BowgunShot_InitWeapon(BowgunShotBuf *buf, Player *pl)
 
 /*
  * Sets a shot's skill bits from its shooter's skills: 1, 2 and 4 the power
- * skills of ammunition types 0-2, 3-5 and 6-8 (skills 0x36, 0x37, 0x38), 8
- * SKILL_STATUS_PLUS, 0x10 a doubled random spread (skill 0xBA), 0x20 a halved
- * one (skill 0xB9).
+ * skills of ammunition types 0-2, 3-5 and 6-8 (SKILL_AMMO_POWER_A, _B, _C), 8
+ * SKILL_STATUS_PLUS, 0x10 a doubled random spread (SKILL_SPREAD_DOUBLE), 0x20 a halved
+ * one (SKILL_SPREAD_HALF).
  */
 void BowgunShot_InitSkills(BowgunShotBuf *buf, Player *pl)
 {
     buf->skills = 0;
-    if (Player_HasSkill(pl, 0x36) == 1) {
+    if (Player_HasSkill(pl, SKILL_AMMO_POWER_A) == 1) {
         buf->skills |= 1;
     }
-    if (Player_HasSkill(pl, 0x37) == 1) {
+    if (Player_HasSkill(pl, SKILL_AMMO_POWER_B) == 1) {
         buf->skills |= 2;
     }
-    if (Player_HasSkill(pl, 0x38) == 1) {
+    if (Player_HasSkill(pl, SKILL_AMMO_POWER_C) == 1) {
         buf->skills |= 4;
     }
     if (Player_HasSkill(pl, SKILL_STATUS_PLUS) == 1) {
         buf->skills |= 8;
     }
-    if (Player_HasSkill(pl, 0xBA) == 1) {
+    if (Player_HasSkill(pl, SKILL_SPREAD_DOUBLE) == 1) {
         buf->skills |= 0x10;
     }
-    if (Player_HasSkill(pl, 0xB9) == 1) {
+    if (Player_HasSkill(pl, SKILL_SPREAD_HALF) == 1) {
         buf->skills |= 0x20;
     }
 }
@@ -1052,8 +1228,8 @@ void BowgunShot_CalcPower(ObjAttach *shot)
         value = shot->elementPower * factor;
         if (value == 0) {
             value = 1;
-        } else if (value > 0xFF) {
-            value = 0xFF;
+        } else if (value > 255) {
+            value = 255;
         }
         shot->elementPower = value;
         break;
@@ -1070,8 +1246,8 @@ void BowgunShot_CalcPower(ObjAttach *shot)
     case 28:
         if (shotBuf->skills & 8) {
             value = 1.125f * shot->elementPower;
-            if (value > 0xFF) {
-                value = 0xFF;
+            if (value > 255) {
+                value = 255;
             }
             shot->elementPower = value;
         }
@@ -1088,21 +1264,19 @@ void BowgunShot_CalcPower(ObjAttach *shot)
         value = shot->power * factor;
         if (value == 0) {
             value = 1;
-        } else if (value > 0xFF) {
-            value = 0xFF;
+        } else if (value > 255) {
+            value = 255;
         }
         shot->power = value;
     }
 }
 
-extern f32 gBarrelLightShotRange;
-extern f32 gBarrelHeavyShotRange;
 extern f32 gSilencerShotRange;
 /*
  * Steps a shot's power stage (buf->stage) by the frames it has flown: each
  * entry of its row of BowgunShot_StageFrameTbls, times the range factor (the
  * level row's, plus the silencer's and the barrel's), is the frame the next
- * stage starts at; a negative entry ends the stages (stage 0xFF) and closes
+ * stage starts at; a negative entry ends the stages (stage 255) and closes
  * the hit. Returns 1 when the stage changed or ended, else 0 (always 0 for a
  * shot with no table).
  */
@@ -1119,7 +1293,7 @@ s32 BowgunShot_UpdatePowerStage(ObjAttach *shot)
         return 0;
     }
     tbl = BowgunShot_StageFrameTbls[param->powerTbl];
-    rangeFactor = *(f32 *) (buf->levelRow + 0x14);
+    rangeFactor = *(f32 *) (buf->levelRow + 20);
     if (buf->level & GUN_OPT_SILENCER) {
         rangeFactor += gSilencerShotRange;
     }
@@ -1130,14 +1304,14 @@ s32 BowgunShot_UpdatePowerStage(ObjAttach *shot)
             rangeFactor += gBarrelLightShotRange;
         }
     }
-    while (buf->stage != 0xFF) {
+    while (buf->stage != 255) {
         stageFrame = rangeFactor * tbl[buf->stage];
         if (!(stageFrame < shot->ownerMotion)) {
             break;
         }
         ret = 1;
         if (stageFrame < 0) {
-            buf->stage = 0xFF;
+            buf->stage = 255;
             shot->hitPhase = 0;
             break;
         }
@@ -1159,7 +1333,7 @@ void BowgunShot_ApplyStage(ObjAttach *shot)
     s16 *hitFxTbl;
     f32 stagePower;
 
-    if (shot->power == 0 || shotBuf->stage > 4 || shotBuf->stage == 0xFF) {
+    if (shot->power == 0 || shotBuf->stage > 4 || shotBuf->stage == 255) {
         return;
     }
     switch (shot->hitFx & 0x3F) {
@@ -1212,7 +1386,7 @@ void BowgunShot_DrawStreak(ObjAttach *shot)
 
     if (commonModel != NULL && commonModel->active != 0) {
         meshSet = &commonModel->matSets[89];
-        Gs_SetState(RS_ALPHA_REF, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         texMats = commonModel->mats;
         for (i = 0; i < 2; i++) {
             Mtx_Identity(mtx);
@@ -1262,7 +1436,7 @@ f32 BowgunShot_BitsToSignedFrac(u16 value, u16 bits)
 {
     u16 shift = 16 - bits;
 
-    return 0.000015625f * (s16) (((value & (u16) (0xFFFF >> shift)) << shift) - 0x8000);
+    return 0.000015625f * (s16) (((value & (u16) (0xFFFF >> shift)) << shift) - 32768);
 }
 
 /*
@@ -1311,7 +1485,7 @@ void BowgunShot_PlaySe(ObjAttach *shot, s16 kind)
             case 12:
             case 13:
             case 14:
-                Sound_PlaySeAtPosChecked(1, 0x4E, 0, shot->pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 78, 0, shot->pos, 1, 0);
                 break;
             }
             break;
@@ -1341,7 +1515,7 @@ void BowgunShot_PlaySe(ObjAttach *shot, s16 kind)
             }
             break;
         case 2:
-            Sound_PlaySeAtPosChecked(1, 0x96, 0, shot->pos, 6, 0);
+            Sound_PlaySeAtPosChecked(1, 150, 0, shot->pos, 6, 0);
             break;
         }
     }
@@ -1401,7 +1575,7 @@ void BowgunShot_GlowRun(ObjAttach *shot)
         glow->slot->pos[0] = shot->pos[0] + trailOfs[0];
         glow->slot->pos[1] = shot->pos[1] + trailOfs[1];
         glow->slot->pos[2] = shot->pos[2] + trailOfs[2];
-        OT_AddByDepth(gDrawOtSorted, glow->slot, 0x40U, 0);
+        OT_AddByDepth(gDrawOtSorted, glow->slot, 64U, 0);
     }
 }
 
@@ -1473,10 +1647,10 @@ void BowgunShot_GlowDraw(DrawSlot *slot)
             if (meshSet != NULL && meshSet->id != -1) {
                 Gs_SetState(RS_ALPHA_REF, 0);
                 Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
-                Gs_SetState(RS_COLOR2, -0x41);
+                Gs_SetState(RS_COLOR2, -65);
                 Gs_SetLightList(texMats, meshSet);
                 Draw_ApplyStates(meshSet->flags);
-                Gfx_SetBlend(4, 1);
+                Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
                 Model_Draw(meshSet->id, 0);
             }
         }
@@ -1484,161 +1658,52 @@ void BowgunShot_GlowDraw(DrawSlot *slot)
     }
 }
 
-/*
- * Makes an EmImpactAttack of type kind (its row of the attack and hit tables)
- * for the monster em at pos, when em is in the current area: it copies the
- * monster's motion, rotation and side, and clears the monster's hitPending
- * and contactHit. Types 5 and 6 (EmHermitaur_MotionEffects) take the
- * monster's scale for the hit capsule.
- */
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind)
-{
-    ObjAttach *impact;
+HitShape BowgunShot_HitShapes_0[2] = {
+#include "game/0089B4B0.inc"
+};
 
-    if (Player_InCurrentArea(em) & 0xFF) {
-        if ((impact = ObjAttach_Alloc(0)) != NULL) {
-            impact->kind = ATTACH_EM_IMPACT_ATTACK;
-            impact->type = kind;
-            impact->update = EmImpactAttack_Update;
-            impact->idx = em->index;
-            impact->isEm = em->isEm;
-            impact->ownerMotion = em->motionId[0];
-            impact->owner = em;
-            impact->yaw = em->rotY;
-            impact->pos[0] = pos[0];
-            impact->pos[1] = pos[1];
-            impact->pos[2] = pos[2];
-            impact->rotX = em->rotX;
-            impact->rotY = em->rotY;
-            impact->rotZ = em->rotZ;
-            impact->side = *(u8 *) &em->side;
-            em->hitPending = 0;
-            em->contactHit = 0;
-            switch (impact->type) {
-            case 5:
-            case 6:
-                impact->hitScale = em->scaleX;
-                break;
-            }
-        }
-    }
-}
+HitShape BowgunShot_HitShapes_1[2] = {
+#include "game/0089B500.inc"
+};
 
-/*
- * The family's update (ObjAttach.update): by ObjAttach.state it runs
- * EmImpactAttack_Setup, EmImpactAttack_Run (also in ATTACH_HIT),
- * EmImpactAttack_End in every other live state, and EmImpactAttack_Free.
- */
-void EmImpactAttack_Update(ObjAttach *impact)
-{
-    switch (impact->state) {
-    case ATTACH_SETUP:
-        EmImpactAttack_Setup(impact);
-        break;
-    case ATTACH_RUN:
-        EmImpactAttack_Run(impact);
-        break;
-    case ATTACH_END:
-        EmImpactAttack_End(impact);
-        break;
-    case ATTACH_HIT:
-        EmImpactAttack_Run(impact);
-        break;
-    case 4:
-        EmImpactAttack_End(impact);
-        break;
-    case ATTACH_DEFLECTED:
-        EmImpactAttack_End(impact);
-        break;
-    case ATTACH_DEFLECTED_AURA:
-        EmImpactAttack_End(impact);
-        break;
-    case 7:
-        EmImpactAttack_End(impact);
-        break;
-    case ATTACH_FREE:
-        EmImpactAttack_Free(impact);
-        
-    default:
-        break;
-    }
-}
+HitShape BowgunShot_HitShapes_2[2] = {
+#include "game/0089B550.inc"
+};
 
-/*
- * Sets an impact up: its attack flags by type (6 hits no player, 7 hits
- * shielded objects, the others give the owner its contact), its attack row
- * and hit shapes, the monster's area, and its hitDelay moved by the monster
- * motion's blend frames less its start frame, never below 0. It has no model
- * and no draw slot.
- */
-void EmImpactAttack_Setup(ObjAttach *impact)
-{
-    Em *ownerEm = &gEms[impact->idx];
-    s32 blendFrames;
+HitShape BowgunShot_HitShapes_3[2] = {
+#include "game/0089B5A0.inc"
+};
 
-    impact->state++;
-    impact->visible = 1;
-    impact->draw = NULL;
-    switch (impact->type) {
-    case 6:
-        Player_TestSetFlags(impact, ATKF_NO_PLAYER);
-        break;
-    case 7:
-        Player_TestSetFlags(impact, ATKF_PIERCES);
-        break;
-    default:
-        Player_TestSetFlags(impact, ATKF_OWNER_CONTACT);
-        break;
-    }
-    ObjAttach_StartOwnedAttack(impact, (s32) ownerEm, impact->type, &EmImpactAttack_RowsPtr);
-    impact->hitList = EmImpactAttack_HitShapes[impact->hitListNo];
-    impact->hurtList = 0;
-    impact->area = ownerEm->area;
-    if (impact->hitDelay != 0) {
-        blendFrames = Math_Absf(ownerEm->motionBlend[0] % 100);
-        impact->hitDelay += blendFrames - (s32) Math_Absf(ownerEm->motionFrame[0]) - 1;
-        if ((s8) impact->hitDelay < 0) {
-            impact->hitDelay = 0;
-        }
-    }
-    impact->drawSlotBuf = NULL;
-}
+HitShape BowgunShot_HitShapes_4[2] = {
+#include "game/0089B5F0.inc"
+};
 
-/*
- * Ends the impact once its hit window has closed (hitPhase 0), and queues its
- * draw slot when it has one (Setup gives it none).
- */
-void EmImpactAttack_Run(ObjAttach *impact)
-{
+HitShape BowgunShot_HitShapes_5[2] = {
+#include "game/0089B640.inc"
+};
 
-    if (impact->hitPhase == 0) {
-        impact->state = ATTACH_END;
-    }
-    if (impact->drawSlotBuf != NULL) {
-        Vec_Copy(impact->drawSlotBuf->pos, impact->pos);
-        OT_AddByDepth(gDrawOt32, impact->drawSlotBuf, 0x20U, 0);
-    }
-}
+HitShape BowgunShot_HitShapes_6[2] = {
+#include "game/0089B690.inc"
+};
 
-/*
- * Ends an impact: closes its hit, hides it, frees its draw slot if it has
- * one, and sets ATTACH_FREE.
- */
-void EmImpactAttack_End(ObjAttach *impact)
-{
-    impact->hitPhase = 0;
-    impact->state = ATTACH_FREE;
-    impact->visible = 0;
-    if (impact->drawSlotBuf != NULL) {
-        DrawSlot_Free((s32) impact->drawSlot);
-    }
-}
+HitShape *BowgunShot_HitShapes[8] = {
+    BowgunShot_HitShapes_0, BowgunShot_HitShapes_1, BowgunShot_HitShapes_2, BowgunShot_HitShapes_3,
+    BowgunShot_HitShapes_4, BowgunShot_HitShapes_5, BowgunShot_HitShapes_6, 0,
+};
 
-/* Frees the object (ObjAttach_Free). */
-void EmImpactAttack_Free(ObjAttach *impact)
-{
-    ObjAttach_Free(impact);
-}
+AttackRow BowgunShot_Rows[35] = {
+#include "game/0089B700.inc"
+};
+
+void *BowgunShot_RowsPtr = (void *)BowgunShot_Rows;
+
+BowgunShotParam gBowgunShotParams[33] = {
+#include "game/0089BA50.inc"
+};
+
+s32 BowgunShot_PlayerFlags[34] = {
+#include "game/0089BF00.inc"
+};
 
 /* The file's data. */
 s16 BowgunShot_StageFrameTbls_0[6] = {
@@ -1732,45 +1797,3 @@ f32 BowgunShot_GlowSecondScales[2][3] = {
 f32 BowgunShot_GlowFlashScales[6][3] = {
 #include "game/0089C160.inc"
 };
-HitShape EmImpactAttack_HitShapes_0[2] = {
-#include "game/0089C1B0.inc"
-};
-HitShape EmImpactAttack_HitShapes_1[2] = {
-#include "game/0089C200.inc"
-};
-HitShape EmImpactAttack_HitShapes_2[2] = {
-#include "game/0089C250.inc"
-};
-HitShape EmImpactAttack_HitShapes_3[2] = {
-#include "game/0089C2A0.inc"
-};
-HitShape EmImpactAttack_HitShapes_4[2] = {
-#include "game/0089C2F0.inc"
-};
-HitShape EmImpactAttack_HitShapes_5[2] = {
-#include "game/0089C340.inc"
-};
-HitShape EmImpactAttack_HitShapes_6[2] = {
-#include "game/0089C390.inc"
-};
-HitShape EmImpactAttack_HitShapes_7[2] = {
-#include "game/0089C3E0.inc"
-};
-HitShape EmImpactAttack_HitShapes_8[2] = {
-#include "game/0089C430.inc"
-};
-HitShape EmImpactAttack_HitShapes_9[2] = {
-#include "game/0089C480.inc"
-};
-HitShape EmImpactAttack_HitShapes_10[2] = {
-#include "game/0089C4D0.inc"
-};
-HitShape *EmImpactAttack_HitShapes[12] = {
-    EmImpactAttack_HitShapes_0, EmImpactAttack_HitShapes_1, EmImpactAttack_HitShapes_2, EmImpactAttack_HitShapes_3,
-    EmImpactAttack_HitShapes_4, EmImpactAttack_HitShapes_5, EmImpactAttack_HitShapes_6, EmImpactAttack_HitShapes_7,
-    EmImpactAttack_HitShapes_8, EmImpactAttack_HitShapes_9, EmImpactAttack_HitShapes_10, 0,
-};
-u32 EmImpactAttack_Rows[102] = {
-#include "game/0089C550.inc"
-};
-void *EmImpactAttack_RowsPtr = (void *)EmImpactAttack_Rows;

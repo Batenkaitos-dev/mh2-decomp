@@ -27,19 +27,30 @@
 #include "sprite.h"
 #include "qsync.h"
 #include "shadow.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "capsule.h"
+#include "quest.h"
+#include "save.h"
+#include "sound.h"
+#include "area.h"
+#include "bone_effects.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "frame.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "rand.h"
+#include "libc.h"
+#include "vec_math.h"
+#include "light.h"
 
-/* An entry of a start item list (gStartItemLists, gStartItemsByClass): n of item; n == -1 ends
- * the list. */
-typedef struct StartItem {
-    s16 n;
-    u16 item;
-} StartItem;
-
-/* The player system's state (gPlayerSys, 0x10 bytes). */
+/* The player system's state (gPlayerSys, 16 bytes). */
 typedef struct PlayerSys {
     s8 state;                   /* 0x0: 0 set the hunters up, 1 run them; 2 and 3 idle */
     s8 unk1;                    /* 0x1: cleared by Player_InitAll; nothing reads it */
-    u8 unk2[0x10 - 0x2];
+    u8 unk2[16 - 2];
 } PlayerSys;
 
 /* A hunter's offset from the start point (gPlayerSpawnOffset, by player index). */
@@ -52,8 +63,6 @@ extern Vec3f gStartPos[];
 extern u16 gStartAngle[];
 extern Vec3f gVersusStartPos[];
 extern u16 gVersusStartAngle[];
-extern Vec3f gPlayerResetPos[];
-extern s32 gPlayerResetRotY[];
 
 extern StartItem *gStartItemLists[];
 extern StartItem *gTrainingStartItems[];
@@ -64,87 +73,24 @@ extern s8 gPresetEquipIds[];
 extern PlayerVt *gPlayerHandlers;
 extern SpawnOffset gPlayerSpawnOffset[];
 extern PlayerSys gPlayerSys;
-extern BladeData gBladeData[];
 
-void *memset(void *p, s32 c, u32 n);
-u16 Rand_Next(s32 stream);
-s32 Pouch_SetAtLeast(Player *p, u16 mode, u16 item, s16 n);
-s32 Player_IsLocal(void *obj);
-s32 Player_HasSkill(Player *p, u8 skill);
-void Player_CalcSkills(Player *pl);
-u32 Player_TestFlag(void *obj, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-void Player_ClearFlag(void *obj, u32 flag);
-s32 Quest_IsDrill(void);
-s32 Quest_IsTraining(void);
-void Player_SetColorWord(Player *p, u8 i);
-void Player_LoadWeaponModel(s32 kind, s32 pl);
 void Player_LoadPartModels(Player *p);
-void Player_ClearFxBlock(Player *p);
-DrawSlot *DrawSlot_Get(s32 i);
-s16 DrawSlot_Alloc(void);
-void DrawCb_LocalPlayer(DrawSlot *slot);
-void Shadow_Spawn(void *obj, s16 type);
-void Effect06_SpawnAtBone(Player *p, s16 type, u8 sub, s16 bone, f32 scale);
-void Hit_ResetAll(void);
-void QSync_SendPlayer(Player *p, s32 kind, u16 mode);
-struct StageObj *WeaponTrail_Create(void *owner, s32 a, s32 b);
 struct Em;
 void DemonGlow_Create(struct Em *em, u8 k); /* game em_bulldrome.c; called here with a Player */
-void BowArc_Create(void *owner);
-void PlayerFx_CreateOnPlayerDefault(Player *p, u8 k, f32 scale);
-void Game_UpdatePlayers(void);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-s32 Debug_IsOn(s32 unused0);
 /* The definition takes (Player *, s32 frame, s32 n, s32 part); Player_Reset's and
  * Player_UpdateMotionStep's calls compile as the game's only with these u16 and s16
  * parameters. */
 /* unit's own declaration: kept for the match */
 void Player_BeginLayerMotion(Player *p, u16 motion, s16 a, s32 layer);
 s32 Player_UpdateMotion(Player *p);
-void Player_InitAll(s16 mode);
-void Player_Init(Player *p, u8 idx, PlayerVt *vt);
-void Player_Reset(Player *p);
-void Player_UpdateStatus(Player *p);
-void Player_TickPaint(Player *p);
-s32 Quest_IsVersus(void);
-void Player_CheckTeamCombo(Player *self);
-void Player_AddMaxStamina(Player *p, s16 n);
-u8 Player_GetSharpnessLevel(Player *p);
-void Pouch_SelectFirst(Player *p);
-void Player_InitRecords(Player *p);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
-void Player_ResetAttackPercent(Player *p);
-u16 Bowgun_NextAmmoSlot(Player *p, u16 slot, u8 dir);
-void Bowgun_LoadAmmo(Player *p, s32 a);
-void HuntingHorn_ClearNotes(Player *p);
 void Player_ClearSongEffects(Player *p);
-void Player_StartIdleMotion(Player *p, s32 a, s32 b);
-void Player_ClearActionState(Player *p);
-void Player_ResetAim(Player *p);
-void Vec_Copy(f32 *dst, f32 *src);
-void Player_CalcResists(Player *p);
-void Player_ClearLightColors(Player *p);
-void Player_UpdateAreaPos(void *obj);
 void Player_CheckAreaMsgEvent(Player *p);
-s32 Quest_PhaseIsOver(s32 a);
-u8 Notice_Push(u8 kind, s16 a, s16 b);
-s16 Area_Temperature(u16 area);
-void Player_PlaySe(Player *pl, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void Player_AddStamina(Player *p, s16 n);
-void Player_UseStamina(Player *p, s32 n);
-void Player_UpdateHunger(Player *p);
-s32 Player_InEmAura(Player *p);
 /* The definition returns u8; Player_UpdateStatus compiles as the game's only with the s32
  * return. */
 /* unit's own declaration: kept for the match */
 s32 Player_GetSkill(Player *p, u8 group);
-void Player_AddHp(Player *p, s16 n);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-u16 Pouch_FindCarryItem(Player *p);
-void Jingle_CarryLost(Player *p);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
 extern s16 D_005B396C;
 
@@ -532,8 +478,8 @@ void Player_Reset(Player *pl)
             pl->clipSize = pl->ammoCount;
             break;
         case WEAPON_BOW:
-            pl->unk7CC = 0x87;
-            pl->unk7CE = 0xFF;
+            pl->unk7CC = 135;
+            pl->unk7CE = 255;
             pl->sharpnessLevel = 3;
             break;
         }
@@ -566,7 +512,7 @@ void Player_Reset(Player *pl)
             pl->carry = (u8)(flags & PL_CARRY_KIND_MASK) | PL_CARRY_HOLD_ENTER;
             Player_SetState(pl, PL_GROUP_CARRY, PL_CARRY_IDLE, 0);
         } else if (pl->mashLeft > 0) {
-            Player_SetState(pl, PL_GROUP_REACT, PL_REACT_MASH_IDLE, 0xC);
+            Player_SetState(pl, PL_GROUP_REACT, PL_REACT_MASH_IDLE, 12);
         } else {
             Player_ClearActionState(pl);
             Player_StartIdleMotion(pl, 0, 0);
@@ -632,12 +578,12 @@ void Player_Reset(Player *pl)
         HuntingHorn_ClearNotes(pl);
         Player_ClearSongEffects(pl);
         if (pl->areaMoveState == PL_AREA_MOVE_CART) {
-            Player_SetState(pl, PL_GROUP_EVENT, PL_EVENT_CART, 0xC);
+            Player_SetState(pl, PL_GROUP_EVENT, PL_EVENT_CART, 12);
         } else {
             pl->visible = 1;
             pl->stateGroup = 0;
             pl->state = 0;
-            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_IDLE, 0xC);
+            Player_SetState(pl, PL_GROUP_ACTION, PL_ACT_IDLE, 12);
             Player_ClearActionState(pl);
             Player_StartIdleMotion(pl, 0, 0);
         }
@@ -656,7 +602,7 @@ void Player_Reset(Player *pl)
     pl->unk58C = -1;
     pl->unk58E = -1;
     pl->unk3F8 = 0;
-    pl->painted = 0xFF;
+    pl->painted = 255;
     pl->alpha = 1.0f;
     pl->fadeAlpha = 1.0f;
     pl->weaponShown = 1;
@@ -716,11 +662,11 @@ void Player_Reset(Player *pl)
 /* Three Player timers as Player_UpdateStatus reads them, as u16 (Player has them as s16):
  * kept for the match, which needs the unsigned loads. */
 typedef struct PlayerTimers {
-    u8 pad000[0x62A];
+    u8 pad000[1578];
     u16 attackBuffTimer;        /* 0x62A: Player.attackBuffTimer */
-    u8 pad62C[0x88C - 0x62C];
+    u8 pad62C[2188 - 1580];
     u16 detectTimer;            /* 0x88C: Player.detectTimer */
-    u8 pad88E[0x8BA - 0x88E];
+    u8 pad88E[2234 - 2190];
     u16 actDetectTimer;         /* 0x8BA: Player.actDetectTimer */
 } PlayerTimers;
 
@@ -768,7 +714,7 @@ void Player_UpdateStatus(Player *pl)
     if (pl->staminaLockTimer != 0) {
         pl->staminaLockTimer--;
         if (pl->staminaLockTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
-            Notice_Push(0, 0x15, 0);
+            Notice_Push(0, 21, 0);
         }
     }
     if (pl->coolDrinkTimer != 0) {
@@ -782,7 +728,7 @@ void Player_UpdateStatus(Player *pl)
             pl->coolDrinkTimer--;
         }
         if (pl->coolDrinkTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
-            Notice_Push(0, 0x12, 0);
+            Notice_Push(0, 18, 0);
         }
     }
     if (pl->hotDrinkTimer != 0) {
@@ -796,13 +742,13 @@ void Player_UpdateStatus(Player *pl)
             pl->hotDrinkTimer--;
         }
         if (pl->hotDrinkTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
-            Notice_Push(0, 0x13, 0);
+            Notice_Push(0, 19, 0);
         }
     }
     if (pl->regenTimer != 0) {
         pl->regenTimer--;
         if (pl->regenTimer == 0 && Player_IsLocal(pl) == 1 && Quest_PhaseIsOver(1) == 0) {
-            Notice_Push(0, 0x16, 0);
+            Notice_Push(0, 22, 0);
         }
     }
     if (timers->detectTimer != 0) {
@@ -848,9 +794,9 @@ void Player_UpdateStatus(Player *pl)
         pl->weaponTimer--;
         if (pl->weaponTimer == 0) {
             pl->unk8B3 = 0;
-            Player_PlaySe(pl, 0x15, 0, pl->pos, 1, 0);
+            Player_PlaySe(pl, 21, 0, pl->pos, 1, 0);
             if (Player_IsLocal(pl) == 1) {
-                Sound_PlaySeFlat(0, 0x21, 0);
+                Sound_PlaySeFlat(0, 33, 0);
             }
             pl->swordGaugeTimer = 10;
         } else {
@@ -860,9 +806,9 @@ void Player_UpdateStatus(Player *pl)
     if (Player_TestFlag(pl, 0x200) == 0 && pl->demonMode == 0) {
         switch (pl->stateGroup) {
         case 0:
-            if (pl->state != 0x6E && pl->state != 0x6D && pl->state != 0x6C && pl->state != 0x6B &&
-                pl->state != 0x44 && pl->state != 0x32 && pl->state != 0x31 && pl->state != 0x2D &&
-                pl->state != 0x1C && pl->state != 0x78 && pl->state != 0x77) {
+            if (pl->state != 110 && pl->state != 109 && pl->state != 108 && pl->state != 107 &&
+                pl->state != 68 && pl->state != 50 && pl->state != 49 && pl->state != 45 &&
+                pl->state != 28 && pl->state != 120 && pl->state != 119) {
                 Player_AddStamina(pl, 2);
             }
             break;
@@ -874,20 +820,20 @@ void Player_UpdateStatus(Player *pl)
                     Player_AddStamina(pl, 2);
                     break;
                 case 3:
-                case 0xC:
-                case 0xD:
-                case 0xE:
+                case 12:
+                case 13:
+                case 14:
                 case 4:
                     break;
                 }
                 break;
             case WEAPON_LANCE:
-                if (pl->state != 0x10 && pl->state != 5 && pl->state != 0xE && pl->state != 3) {
+                if (pl->state != 16 && pl->state != 5 && pl->state != 14 && pl->state != 3) {
                     Player_AddStamina(pl, 2);
                 }
                 break;
             case WEAPON_BOW:
-                if (pl->state != 0xA && pl->state != 8 && pl->weaponTimer == 0) {
+                if (pl->state != 10 && pl->state != 8 && pl->weaponTimer == 0) {
                     Player_AddStamina(pl, 2);
                 }
                 break;
@@ -936,16 +882,16 @@ void Player_UpdateStatus(Player *pl)
         if (pl->poison == 0 && rate == 0) {
             interval = 60;
             if ((u8)Player_GetSkill(pl, 7)) {
-                if (Player_HasSkill(pl, 0x1B) == 1) {
+                if (Player_HasSkill(pl, 27) == 1) {
                     interval = 20;
                 }
-                if (Player_HasSkill(pl, 0x1C) == 1) {
+                if (Player_HasSkill(pl, 28) == 1) {
                     interval = 15;
                 }
-                if (Player_HasSkill(pl, 0x1D) == 1) {
+                if (Player_HasSkill(pl, 29) == 1) {
                     interval = 180;
                 }
-                if (Player_HasSkill(pl, 0x1E) == 1) {
+                if (Player_HasSkill(pl, 30) == 1) {
                     interval = 240;
                 }
             }
@@ -1023,10 +969,10 @@ no_regen:
 }
 
 /* For a record with isEm set, instead of Player_UpdateStatus: counts the paintball's timer
- * down, then clears the paint (Player.painted 0xFF stays). */
+ * down, then clears the paint (Player.painted 255 stays). */
 void Player_TickPaint(Player *pl)
 {
-    if (pl->startItemList == 0 && pl->painted != 0xFF && pl->painted != 0) {
+    if (pl->startItemList == 0 && pl->painted != 255 && pl->painted != 0) {
         if (pl->paintTimer != 0) {
             pl->paintTimer--;
         } else {
@@ -1093,10 +1039,10 @@ void Player_UpdateHitStop(void *obj)
 
 /* Sets the step of the hunter's two motion layers: 0 in hit stop, 0.2 while slowed by a hit, else
  * by the motion (some at least 2, three kept, the rest 2 times Player.motionSpeed); starts the
- * layers' new motions and steps them (unless the debug switch 0x18 is on). */
+ * layers' new motions and steps them (unless the debug switch 24 is on). */
 void Player_UpdateMotionStep(Player *pl)
 {
-    if (Debug_IsOn(0x18) == 0) {
+    if (Debug_IsOn(24) == 0) {
         Mtx_FromAnglesXYZ(pl->rot, pl->rotMtx);
         if (pl->hitStop != 0) {
             pl->motion[0].step = 0.0f;
@@ -1108,24 +1054,24 @@ void Player_UpdateMotionStep(Player *pl)
         } else {
             pl->hitSlowTimer = 0;
             switch (pl->motionId[0]) {
-            case 0x195:
-            case 0x19B:
-            case 0x19C:
-            case 0x19D:
-            case 0x19F:
-            case 0x1A0:
-            case 0x1A2:
-            case 0x1A3:
-            case 0x1A6:
-            case 0x1A7:
+            case 405:
+            case 411:
+            case 412:
+            case 413:
+            case 415:
+            case 416:
+            case 418:
+            case 419:
+            case 422:
+            case 423:
                 if (pl->motion[0].step <= 2.0f) {
                     pl->motion[0].step = 2.0f;
                     pl->motion[1].step = 2.0f;
                 }
                 break;
             case 3:
-            case 0x22:
-            case 0x23:
+            case 34:
+            case 35:
                 break;
             default:
                 pl->motion[0].step = 2.0f * pl->motionSpeed;
@@ -1146,8 +1092,6 @@ void Player_UpdateMotionStep(Player *pl)
 }
 
 /* The file's tables. */
-void Player_NoHandler(Player *p);
-void Player_MotionFxStep(Player *p);
 PlayerVt gPlayerHandlerTable[2] = {
     {Player_NoHandler, Player_NoHandler, Player_NoHandler, Player_MotionFxStep},
     {NULL, NULL, NULL, NULL},
@@ -1155,166 +1099,166 @@ PlayerVt gPlayerHandlerTable[2] = {
 u16 gPartIdMax[16] = {
 #include "sub_main/0044A1B0.inc"
 };
-u32 gArmourIdMax[4] = {
+u16 gArmourIdMax[8] = {
 #include "sub_main/0044A1D0.inc"
 };
-u32 gWeaponClassInfo[8] = {
+u8 gWeaponClassInfo[16][2] = {
 #include "sub_main/0044A1E0.inc"
 };
-u32 gFaceBodyTypeMale[8] = {
+u8 gFaceBodyTypeMale[32] = {
 #include "sub_main/0044A200.inc"
 };
-u32 gFaceBodyTypeFemale[8] = {
+u8 gFaceBodyTypeFemale[32] = {
 #include "sub_main/0044A220.inc"
 };
-u32 D_0044A240[2] = {
+s16 gEquipFxListsAltHead_0_0[4] = {
 #include "sub_main/0044A240.inc"
 };
-u32 D_0044A248[2] = {
+s16 gEquipFxListsHead_0_0[4] = {
 #include "sub_main/0044A248.inc"
 };
-u32 D_0044A250[2] = {
+s16 gEquipFxListsHead_0_6[4] = {
 #include "sub_main/0044A250.inc"
 };
-u32 D_0044A258[2] = {
+s16 gEquipFxListsHead_0_7[4] = {
 #include "sub_main/0044A258.inc"
 };
-u32 D_0044A260[2] = {
+s16 gEquipFxListsAltHead_0_4[4] = {
 #include "sub_main/0044A260.inc"
 };
-u32 D_0044A268[2] = {
+s16 gEquipFxListsAltHead_1_2[4] = {
 #include "sub_main/0044A268.inc"
 };
-u32 D_0044A270[2] = {
+s16 gEquipFxListsAltHead_1_3[4] = {
 #include "sub_main/0044A270.inc"
 };
-u32 D_0044A278[2] = {
+s16 gEquipFxListsHead_1_6[4] = {
 #include "sub_main/0044A278.inc"
 };
-u32 D_0044A280[2] = {
+s16 gEquipFxListsHead_1_7[4] = {
 #include "sub_main/0044A280.inc"
 };
-u32 D_0044A288[2] = {
+s16 gEquipFxListsHead_1_8[4] = {
 #include "sub_main/0044A288.inc"
 };
-u32 D_0044A290[2] = {
+s16 gEquipFxListsAltHead_1_4[4] = {
 #include "sub_main/0044A290.inc"
 };
-u32 D_0044A298[2] = {
+s16 gEquipFxListsHead_1_49[4] = {
 #include "sub_main/0044A298.inc"
 };
-u32 D_0044A2A0[2] = {
+s16 gEquipFxListsHead_0_14[4] = {
 #include "sub_main/0044A2A0.inc"
 };
-u32 D_0044A2A8[2] = {
+s16 gEquipFxListsHead_0_47[4] = {
 #include "sub_main/0044A2A8.inc"
 };
-u32 D_0044A2B0[2] = {
+s16 gEquipFxListsAltHead_0_2[4] = {
 #include "sub_main/0044A2B0.inc"
 };
-u32 D_0044A2B8[2] = {
+s16 gEquipFxListsAltHead_0_1[4] = {
 #include "sub_main/0044A2B8.inc"
 };
-u32 D_0044A2C0[2] = {
+s16 gEquipFxListsHead_0_1[4] = {
 #include "sub_main/0044A2C0.inc"
 };
-u32 D_0044A2C8[2] = {
+s16 gEquipFxListsHead_1_1[4] = {
 #include "sub_main/0044A2C8.inc"
 };
-u32 D_0044A2D0[2] = {
+s16 gEquipFxListsAltHead_1_5[4] = {
 #include "sub_main/0044A2D0.inc"
 };
-u32 D_0044A2D8[2] = {
+s16 gEquipFxListsAltHead_1_6[4] = {
 #include "sub_main/0044A2D8.inc"
 };
-u32 D_0044A2E0[2] = {
+s16 gEquipFxListsHead_1_23[4] = {
 #include "sub_main/0044A2E0.inc"
 };
-u32 D_0044A2E8[2] = {
+s16 gEquipFxListsHead_1_27[4] = {
 #include "sub_main/0044A2E8.inc"
 };
-u32 D_0044A2F0[2] = {
+s16 gEquipFxListsHead_1_28[4] = {
 #include "sub_main/0044A2F0.inc"
 };
-u32 D_0044A2F8[2] = {
+s16 gEquipFxListsHead_1_4[4] = {
 #include "sub_main/0044A2F8.inc"
 };
-u32 D_0044A300[2] = {
+s16 gEquipFxListsHead_0_25[4] = {
 #include "sub_main/0044A300.inc"
 };
-u32 D_0044A308[2] = {
+s16 gEquipFxListsHead_0_21[4] = {
 #include "sub_main/0044A308.inc"
 };
-u32 D_0044A310[2] = {
+s16 gEquipFxListsHead_0_32[4] = {
 #include "sub_main/0044A310.inc"
 };
-u32 D_0044A318[2] = {
+s16 gEquipFxListsHead_1_26[4] = {
 #include "sub_main/0044A318.inc"
 };
-u32 D_0044A320[2] = {
+s16 gEquipFxListsHead_0_23[4] = {
 #include "sub_main/0044A320.inc"
 };
-u32 D_0044A328[2] = {
+s16 gEquipFxListsHead_0_24[4] = {
 #include "sub_main/0044A328.inc"
 };
-u32 D_0044A330[2] = {
+s16 gEquipFxListsHead_1_37[4] = {
 #include "sub_main/0044A330.inc"
 };
-u32 D_0044A338[2] = {
+s16 gEquipFxListsHead_0_39[4] = {
 #include "sub_main/0044A338.inc"
 };
-u32 D_0044A340[2] = {
+s16 gEquipFxListsHead_1_68[4] = {
 #include "sub_main/0044A340.inc"
 };
-u32 D_0044A348[2] = {
+s16 gEquipFxListsHead_1_50[4] = {
 #include "sub_main/0044A348.inc"
 };
-u32 D_0044A350[2] = {
+s16 gEquipFxListsAltHead_0_3[4] = {
 #include "sub_main/0044A350.inc"
 };
-u32 D_0044A358[2] = {
+s16 gEquipFxListsHead_0_4[4] = {
 #include "sub_main/0044A358.inc"
 };
-u32 D_0044A360[2] = {
+s16 gEquipFxListsHead_1_58[4] = {
 #include "sub_main/0044A360.inc"
 };
-u32 D_0044A368[2] = {
+s16 gEquipFxListsHead_0_41[4] = {
 #include "sub_main/0044A368.inc"
 };
-u32 D_0044A370[2] = {
+s16 gEquipFxListsHead_1_12[4] = {
 #include "sub_main/0044A370.inc"
 };
-u32 D_0044A378[2] = {
+s16 gEquipFxListsHead_0_22[4] = {
 #include "sub_main/0044A378.inc"
 };
-u32 D_0044A380[2] = {
+s16 gEquipFxListsHead_1_59[4] = {
 #include "sub_main/0044A380.inc"
 };
-u32 D_0044A388[2] = {
+s16 gEquipFxListsHead_0_50[4] = {
 #include "sub_main/0044A388.inc"
 };
-u32 D_0044A390[4] = {
+s16 gEquipFxListsHead_1_75[4] = {
 #include "sub_main/0044A390.inc"
 };
-u32 D_0044A3A0[12] = {
+EquipFxList gEquipFxListsAltHead_0[6] = {
 #include "sub_main/0044A3A0.inc"
 };
-u32 D_0044A3D0[108] = {
+EquipFxList gEquipFxListsHead_0[54] = {
 #include "sub_main/0044A3D0.inc"
 };
-u32 D_0044A580[24] = {
+EquipFxList gEquipFxListsAltHead_1[12] = {
 #include "sub_main/0044A580.inc"
 };
-u32 D_0044A5E0[158] = {
+EquipFxList gEquipFxListsHead_1[79] = {
 #include "sub_main/0044A5E0.inc"
 };
-u32 gEquipFxListsAltHead[2] = {
-    (u32)D_0044A3A0, (u32)D_0044A580,
+EquipFxList *gEquipFxListsAltHead[2] = {
+    gEquipFxListsAltHead_0, gEquipFxListsAltHead_1,
 };
-u32 gEquipFxListsHead[2] = {
-    (u32)D_0044A3D0, (u32)D_0044A5E0,
+EquipFxList *gEquipFxListsHead[2] = {
+    gEquipFxListsHead_0, gEquipFxListsHead_1,
 };
-u32 gLobbyActorFxIds[2] = {
+s16 gLobbyActorFxIds[4] = {
 #include "sub_main/0044A868.inc"
 };
 StartItem gStartItemsByClass_0[8] = {
@@ -1345,10 +1289,10 @@ StartItem *gStartItemsByClass[12] = {
 };
 /* The skill groups and their thresholds: SkillDef records (item.h), ended
  * by SKILL_GROUP_END. The game's bytes are included here as words. */
-u32 gSkillTable[292] = {
+SkillDef gSkillTable[73] = {
 #include "sub_main/0044A9A0.inc"
 };
-u32 gBladeSpecialMarks[12] = {
+u8 gBladeSpecialMarks[16][3] = {
 #include "sub_main/0044AE30.inc"
 };
 u32 gPlayerColorWords[12] = {

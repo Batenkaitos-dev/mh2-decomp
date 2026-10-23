@@ -9,7 +9,7 @@
 
 typedef struct MlRpcQueueEntry {
     s32 fno;
-    u8 data[0x40];
+    u8 data[64];
     u32 size;
 } MlRpcQueueEntry;
 
@@ -75,7 +75,7 @@ u32 MlRpcQueue_Set(s32 fno, void *req, s32 size)
     }
     gMlRpcQueue[gMlRpcQueueWrite].fno = fno;
     gMlRpcQueue[gMlRpcQueueWrite].size = size;
-    memset(gMlRpcQueue[gMlRpcQueueWrite].data, 0, 0x40);
+    memset(gMlRpcQueue[gMlRpcQueueWrite].data, 0, 64);
     memcpy(gMlRpcQueue[gMlRpcQueueWrite].data, req, size);
     gMlRpcQueueWrite = (gMlRpcQueueWrite + 1) & 0x3F;
     gMlRpcQueueCount++;

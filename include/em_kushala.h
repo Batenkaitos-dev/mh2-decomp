@@ -1,5 +1,6 @@
 #ifndef EM_KUSHALA_H
 #define EM_KUSHALA_H
+#include "em.h"
 
 /*
  * The Kushala Daora family's vocabulary (src/game/em_kushala.c, EmKushala_*):
@@ -25,8 +26,8 @@ enum EmKushalaMotion {
     KUSH_MOT_TURN_LEFT = 0x05,          /* EmKushala_TurnParams[0]: motLeft */
     KUSH_MOT_TURN_RIGHT = 0x06,         /* its motRight */
     KUSH_MOT_TURN_SMALL = 0x07,         /* KUSH_MOVE_TURN_ALERT within about 50 degrees */
-    KUSH_MOT_TURN_BIG_RIGHT = 0x08,     /* KUSH_MOVE_TURN_ALERT, an angle under 0x8000 */
-    KUSH_MOT_TURN_BIG_LEFT = 0x09,      /* KUSH_MOVE_TURN_ALERT, an angle of 0x8000 or more */
+    KUSH_MOT_TURN_BIG_RIGHT = 0x08,     /* KUSH_MOVE_TURN_ALERT, an angle under half a turn */
+    KUSH_MOT_TURN_BIG_LEFT = 0x09,      /* KUSH_MOVE_TURN_ALERT, an angle of half a turn or more */
     KUSH_MOT_TAKE_OFF = 0x0A,           /* off the ground at frame 48 (curve kind 0) */
     KUSH_MOT_HOVER = 0x0B,              /* the wing-beat loop of hovering and slow flight */
     KUSH_MOT_FLY_FAST = 0x0C,           /* flight at speed 80 */
@@ -43,13 +44,13 @@ enum EmKushalaMotion {
     KUSH_MOT_RUN_C = 0x17,              /* follows KUSH_MOT_RUN_B */
     KUSH_MOT_RUN_STOP = 0x18,
     KUSH_MOT_REAR_UP = 0x19,            /* opens the stomp and the lift into the hover */
-    KUSH_MOT_STOMP = 0x1A,              /* attack 0xB at frame 16 */
+    KUSH_MOT_STOMP = 0x1A,              /* attack row 11 at frame 16 */
     KUSH_MOT_LIFT_TO_HOVER = 0x1B,      /* into stance 1 */
     KUSH_MOT_BANK_A = 0x1C,             /* Em_UpdateFlight's banking motions, by rotZ */
     KUSH_MOT_BANK_B = 0x1D,
     KUSH_MOT_WING_FLAP = 0x1E,          /* before taking off from the idle, and after getting up in combat */
     KUSH_MOT_ALERT = 0x1F,              /* the alert stance */
-    KUSH_MOT_ROAR = 0x20,               /* attack 0x1C at frame 62; the wind's burst at frame 186 */
+    KUSH_MOT_ROAR = 0x20,               /* attack row 28 at frame 62; the wind's burst at frame 186 */
     KUSH_MOT_TESCA_ACTION_C_END = 0x21,
     KUSH_MOT_IDLE_ACTION_A = 0x22,
     KUSH_MOT_EAT_START = 0x23,
@@ -94,6 +95,40 @@ enum EmKushalaMotion {
     KUSH_MOT_DOWNED = 0x61              /* captured */
 };
 
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: where a breath or
+ * an effect starts, the feet the walk's steps take turns at, the bones of
+ * the attack hit shapes EmKushala_CreateAttack makes on given frames of a
+ * motion (KushalaAttack_HitShapes and TeostraAttack_HitShapes, by the
+ * attack rows' hit lists). The feet are lettered in the walk's order
+ * (KUSH_MOT_WALK steps on A, B, C, D); which is front or left the code
+ * doesn't show. Bones no code explains stay numbers.
+ */
+enum EmKushalaBone {
+    KUSH_BONE_BODY = 2,             /* the body's large spheres (radius 220 to 400 in several attacks); the sounds of its falls */
+    KUSH_BONE_FOOT_D = 8,           /* the fourth step of the walk; the run's first dust */
+    KUSH_BONE_FOOT_B = 13,          /* the second step of the walk */
+    KUSH_BONE_LEG_A = 25,           /* in foot A's leg (the turn sweep's spheres are on bones 24 and 26): the big turns' dust */
+    KUSH_BONE_FOOT_A = 26,          /* the first step of the walk */
+    KUSH_BONE_FOOT_C = 31,          /* the third step of the walk */
+    KUSH_BONE_BREATH = 37,          /* where the breaths (KushalaBreath, EMRANGED_KUSHALA_BREATH, EMFX_BREATH_CHAIN) and the lying puffs start */
+    KUSH_BONE_BLAST = 39,           /* the blast's flash starts in front of it (EmKushala_SpawnBlastBurst) */
+    KUSH_BONE_WING_A = 46,          /* the wing beats of the hover, the fast flight and KUSH_MOT_WING_FLAP play here and at KUSH_BONE_WING_B, a few frames apart */
+    KUSH_BONE_WING_B = 50
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (the program
+ * gSeBankByType gives the kind; Em_PlaySeAtBone and Em_PlaySeType). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmKushalaSe {
+    KUSH_SE_BREATH = 24             /* a breath: a frame or two before the breath starts (KUSH_MOT_BREATH, KUSH_MOT_STRIKE_BREATH) */
+};
+
 /* Group 0, EM_GROUP_IDLE (EmKushala_RunIdleState). */
 enum EmKushalaIdleState {
     KUSH_IDLE_STAND = 0x00,             /* waits Em.timer, then asks the script */
@@ -126,7 +161,7 @@ enum EmKushalaIdleState {
     KUSH_IDLE_ROAR = 0x1B               /* the roar with no change to the wind */
 };
 
-/* Group 1, EM_GROUP_MOVE (EmKushala_RunMoveState). 0x00-0x13 are ground moves, 0x15 and up hover moves. */
+/* Group 1, EM_GROUP_MOVE (EmKushala_RunMoveState). 0 to 19 are ground moves, 21 and up hover moves. */
 enum EmKushalaMoveState {
     KUSH_MOVE_WALK = 0x00,
     KUSH_MOVE_LIMP = 0x01,              /* the walk below 12% hp (Lunastra and Teostra: 15%) */
@@ -137,10 +172,10 @@ enum EmKushalaMoveState {
     KUSH_MOVE_STOMP = 0x06,
     KUSH_MOVE_LIFT_TO_HOVER = 0x07,
     KUSH_MOVE_RUN_PAST = 0x08,          /* the run, 700 past the goal */
-    KUSH_MOVE_RUN_PAST_ARC_A = 0x09,    /* the same, curving: rotY +0x5B a frame */
-    KUSH_MOVE_RUN_PAST_ARC_B = 0x0A,    /* +0xE3 */
-    KUSH_MOVE_RUN_PAST_ARC_C = 0x0B,    /* -0x5B */
-    KUSH_MOVE_RUN_PAST_ARC_D = 0x0C,    /* -0xE3 */
+    KUSH_MOVE_RUN_PAST_ARC_A = 0x09,    /* the same, curving: rotY +91 a frame */
+    KUSH_MOVE_RUN_PAST_ARC_B = 0x0A,    /* +227 */
+    KUSH_MOVE_RUN_PAST_ARC_C = 0x0B,    /* -91 */
+    KUSH_MOVE_RUN_PAST_ARC_D = 0x0C,    /* -227 */
     KUSH_MOVE_TAKE_OFF_TO_HOVER = 0x14, /* the one move allowed on the ground and in the hover */
     KUSH_MOVE_SIDE_DASH_A = 0x15,
     KUSH_MOVE_SIDE_DASH_B = 0x16,
@@ -247,5 +282,58 @@ enum EmKushalaEventState {
     KUSH_EVENT_SCENE_FLY_IN = 0x06,     /* Kushala, AREA_JUNGLE_3 */
     KUSH_EVENT_SCENE_WAKE = 0x07        /* Lunastra and Teostra, AREA_TOWER_0x7C */
 };
+
+extern void *EmKushala_Callbacks[8];
+void EmKushala_MotionSounds(void *em, EmWork *work);
+void EmKushala_MotionSoundsTesca(Em *em, EmWork *work);
+void EmKushala_Init(Em *em);
+void EmKushala_Start(Em *em);
+void EmKushala_ToIdle(Em *em);
+void EmKushala_BreakParts(Em *em, s32 apply);
+void EmKushala_EatNeedStart(Em *em, EmWork *work, s32 variant);
+void EmKushala_Roar(Em *em, EmWork *work);
+void EmKushala_RoarB(Em *em, EmWork *work);
+void EmKushala_TurnAlert(Em *em, EmWork *work);
+void EmKushala_Run(Em *em, EmWork *work, s32 variant);
+void EmKushala_SideDash(Em *em, EmWork *work, s32 variant);
+void EmKushala_HoverTurn(Em *em, EmWork *work);
+void EmKushala_Land(Em *em, EmWork *work, s32 variant);
+void EmKushala_LeaveArea(Em *em, EmWork *work);
+void EmKushala_EnterAreaAndLand(Em *em, EmWork *work);
+void EmKushala_CrossArea(Em *em, EmWork *work);
+void EmKushala_RiseToHeight(Em *em, EmWork *work, s32 variant);
+void EmKushala_StepForward(Em *em, EmWork *work);
+void EmKushala_BreathAttack(Em *em, EmWork *work, s32 variant);
+void EmKushala_BlastRingFort(Em *em, EmWork *work);
+void EmKushala_Leave(Em *em, EmWork *work);
+void EmKushala_LeaveFromAir(Em *em, EmWork *work);
+void EmKushala_SceneWalkIn(Em *em);
+void EmKushala_SceneRise(Em *em, EmWork *work);
+void EmKushala_Captured(Em *em);
+void EmKushala_SceneDescend(Em *em, EmWork *work);
+void EmKushala_SceneFlyIn(Em *em, EmWork *work);
+void EmKushala_SceneWake(Em *em);
+void EmKushala_Die(Em *em, EmWork *work);
+void EmKushala_DieFalling(Em *em, EmWork *work);
+void EmKushala_RunIdleState(Em *em, EmWork *work);
+void EmKushala_RunMoveState(Em *em, EmWork *work);
+void EmKushala_RunAttackState(Em *em, EmWork *work);
+void EmKushala_Update(Em *em);
+void EmKushala_RunState(Em *em, s32 work);
+s32 EmKushala_StateHasWindRing(Em *em);
+void EmKushala_MotionEffects(Em *em, EmWork *work);
+void EmKushala_CreateAttack(Em *em, s32 kind);
+void EmKushala_SpawnBlastBurst(Em *em);
+
+s32 EmKushala_WindActive(Em *em);
+s32 EmKushala_WindActiveTesca(Em *em);
+void EmKushala_SetIdleState(Em *em, u16 state, u8 mode);
+void EmKushala_SetMoveState(Em *em, u16 state, u8 mode);
+void EmKushala_SetFlyState(Em *em, u16 state, u8 mode);
+void EmKushala_SetAttackState(Em *em, u16 state, u8 mode);
+void EmKushala_SetReactState(Em *em, u16 state, u8 mode);
+void EmKushala_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmKushala_StartCurves(Em *em, u8 kind);
+u8 EmKushala_UpdateCurves(Em *em);
 
 #endif

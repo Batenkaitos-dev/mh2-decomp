@@ -59,7 +59,7 @@ typedef struct NetAddr {
 typedef struct NetTcpStatus {
     /* 0x0 */ s16 state;                /* NET_TCP_STATE_*: AVE's state, copied */
     /* 0x2 */ u16 unk2;
-    /* 0x4 */ u16 sendSpace;            /* the lobby reads nothing while it is 0x400 or less */
+    /* 0x4 */ u16 sendSpace;            /* the lobby reads nothing while it is 1024 or less */
     /* 0x6 */ u16 recvLen;              /* bytes waiting to be read */
 } NetTcpStatus;
 
@@ -72,7 +72,7 @@ typedef struct NetTcpStatus {
 #define NET_TCP_STATE_OTHER 7 /* a state AVE gave that NetTcp_Status doesn't know */
 #define NET_TCP_STATE_ERROR 11 /* AVE's state AVE_TCP_STATE_NONE; nothing reads it */
 
-/* The connect and disconnect state machine's state (gNetMsgState, 0x12
+/* The connect and disconnect state machine's state (gNetMsgState, 18
  * bytes): NetMsg_Update passes its fields to the handler of the phase,
  * gNetMsgHandlers[phase]; Net_ClearState clears it. */
 typedef struct NetMsgState {
@@ -195,5 +195,61 @@ typedef char NetMsgState_size_check[(sizeof(NetMsgState) == 0x12) ? 1 : -1];
 #define DNAS_KIND_AUTH 0            /* the authentication at login */
 #define DNAS_KIND_INST 1            /* the check before a patch download */
 #define DNAS_RESULT_CANCELED 0x7F   /* cancelled, or the disc did not get ready */
+
+s32 NetTcp_Init(void);
+s32 NetTcp_Term(void);
+s32 NetIf_IsConnected(void);
+s32 NetIf_GetState(void);
+s32 NetIf_SetErrorCheck(s32 enable);
+s32 NetIf_PollError(s32 devType, s32 useDhcp);
+s32 NetIf_GetError(void);
+s16 NetIf_Down(void);
+s32 NetTcp_Open(NetAddr *dest);
+s32 NetTcp_GetOptions(s32 sock, s32 *opts);
+s32 NetTcp_SetOptions(s32 sock, s32 *opts);
+s32 NetTcp_Status(s32 sock, NetTcpStatus *status);
+s32 NetTcp_Recv(s32 sock, void *buf, s16 len);
+s32 NetTcp_Send(s32 sock, void *data, s16 len);
+s32 NetTcp_Abort(s32 sock);
+s32 NetTcp_Delete(s32 *sock);
+s32 NetDns_Init(char *domain, s32 primaryDns, s32 secondaryDns);
+s32 NetDns_Term(void);
+s32 NetDns_Free(s16 id);
+s32 NetDns_LookUp(s16 id, s32 *addr);
+s32 NetPpp_Init(void);
+s16 NetPpp_SetOption1(void *src);
+s32 NetPpp_GetInfo(s32 *out);
+s32 NetModem_GetChat(s32 devType, s32 driver, s32 unused2, s32 unused3, char **chats);
+s32 NetPpp_GetLinkState(void);
+s32 NetPpp_Connect(NetDialArg *arg);
+s32 NetPpp_SetConnected(s32 unused0);
+s32 NetPpp_SetClosed(s32 unused0);
+s32 NetPpp_GetStatus(NetConnInfo *out);
+s32 NetPpp_Disconnect(s32 unused0);
+s32 NetPpp_Term(void);
+s32 NetEth_Init(void);
+s32 NetEth_SetAddress(s32 *addrMask);
+s32 NetEth_Start(s32 phyMode);
+s32 NetEth_IsLinkUp(void);
+s32 NetEth_SetConnected(s32 unused0);
+s32 NetEth_ClearAddress(s32 unused0);
+s32 NetIf_GetOption8(void *buf);
+s32 NetEth_Stop(void);
+s32 NetEth_Term(void);
+s32 NetRoute_Add(s32 dest, s32 gateway);
+s32 NetRoute_Delete(s32 dest, s32 gateway);
+s32 NetDhcp_Init(void);
+s32 NetDhcp_Term(void);
+s32 NetDhcp_Start(s32 addr, s32 dhcpParam);
+s32 NetDhcp_GetState(void);
+s32 NetDhcp_GetAddress(s32 *addrMask);
+s32 NetDhcp_GetDns(char *domain, s32 *dnsServers);
+s32 NetDhcp_GetRouter(s32 *out);
+s32 NetDhcp_Release(s32 *addrMask, s32 dhcpParam);
+s32 NetIf_PollEvent(s32 *out);
+s32 NetIf_GetEvent(s32 query, s32 *event);
+s32 NetIf_AckEvent(s32 event);
+void NetSock_Lock(void);
+void NetSock_Unlock(void);
 
 #endif

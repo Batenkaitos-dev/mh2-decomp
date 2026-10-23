@@ -1,6 +1,7 @@
 #ifndef MINE_POINT_H
 #define MINE_POINT_H
 #include "common.h"
+#include "player.h"
 
 /*
  * The gathering points placed while a quest runs (the quest's code, from
@@ -13,7 +14,7 @@
 
 #define MINE_POINT_COUNT    20
 
-/* A point placed at run time (0x20 bytes). */
+/* A point placed at run time (32 bytes). */
 typedef struct MinePoint {
     f32 x;              /* 0x00 */
     f32 y;
@@ -77,8 +78,10 @@ extern s8 gMineActive[MINE_POINT_COUNT];        /* 0x6AEDE0: the slots in use, o
 
 s32 MinePoint_Add(MinePoint *src, f32 *pos, u8 noBonus);
 s32 MinePoint_AddUntimed(MinePoint *pt, f32 *pos, u8 noBonus); /* sub_main quest.c */
-void MinePoint_Remove(s32 slot);
-void MinePoint_RemoveOldest(void);
-void MinePoint_SetPos(s32 slot, f32 *pos);
+
+u16 Gather_AtPoint(Player *pl);
+u16 Player_FindActionSpot(Player *pl, f32 *pos, u16 *angle, u8 *type);
+void Player_RecordActionSpot(Player *pl);
+u16 Gather_RollItem(u16 table);
 
 #endif /* MINE_POINT_H */

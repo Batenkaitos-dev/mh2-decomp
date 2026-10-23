@@ -1,31 +1,15 @@
 /*
  * Skeleton files: counting and finding the
  * parts, chunks and nodes of a skeleton file (SkelFileHeader, SkelChunk
- * and SkelFileNode, include/model.h), for SkelFile_BuildPart, which builds
- * the skeletons from them. Also an animation file's entry count.
+ * and SkelFileNode, include/model.h), and SkelFile_BuildPart, which builds
+ * a part's skeleton from them.
  */
 #include "common.h"
 #include "model.h"
 
 extern s32 gSkelTreeCount;
 
-void *AnimFile_Header(void *file);
 static SkelFileHeader *SkelFile_Header(void *file);
-u8 *SkelFile_FindChunk(void *file, s32 type);
-s32 SkelFile_PartRoot(void *file, u32 i);
-s32 SkelFile_CountTree(void *file, s32 node);
-void SkelFile_CountTreeRec(void *file, s32 node);
-u8 *SkelFile_NodeChunk(void *file, u32 idx);
-s32 *SkelFile_GetNode(void *file, s32 node);
-s32 SkelFile_PartCount(void *file);
-s32 SkelFile_PartBoneCount(void *file, s32 i);
-
-/* The entries of an animation file: its header starts like a skeleton
- * file's, flags then a count. */
-s32 AnimFile_Count(void *file)
-{
-    return ((SkelFileHeader *)AnimFile_Header(file))->count;
-}
 
 /* The file's bones: its chunks, less the parts chunk when it has one. */
 s32 SkelFile_BoneCount(void *file)
@@ -148,8 +132,8 @@ s32 *SkelFile_GetNode(void *file, s32 node)
     return NULL;
 }
 
-/* The bytes part i's skeleton takes when built: a 0x10-byte header and
- * 0x40 bytes a bone (SkelHeader and BoneDef); 0 when there
+/* The bytes part i's skeleton takes when built: a 16-byte header and
+ * 64 bytes a bone (SkelHeader and BoneDef); 0 when there
  * is no such part. */
 s32 SkelFile_PartSize(void *file, s32 i)
 {
@@ -157,5 +141,58 @@ s32 SkelFile_PartSize(void *file, s32 i)
         return 0;
     }
     i = SkelFile_PartBoneCount(file, i);
-    return (i << 6) + 0x10;
+    return (i << 6) + 16;
+}
+
+/* Builds a part of skeleton file skelFile in built (the bones follow the header), copies the
+ * header to dst and links it; 0 for a bad part. */
+s32 SkelFile_BuildPart(SkelHeader *dst, SkelHeader *built, void *skelFile, s32 part)
+{
+    s32 boneCount;
+    s32 boneIdx;
+    s32 comp;
+    s32 rootNode;
+    BoneDef *def;
+    BoneDef *clearDef;
+    SkelFileNode *srcNode;
+
+    if (part >= SkelFile_PartCount(skelFile)) {
+        return 0;
+    }
+    built->size = SkelFile_PartSize(skelFile, part);
+    built->count = boneCount = SkelFile_PartBoneCount(skelFile, part);
+    built->headerSize = sizeof(SkelHeader);
+    def = (BoneDef *)(built + 1);
+    built->block = NULL;
+    for (boneIdx = 0; boneIdx < boneCount; boneIdx++) {
+        clearDef = &def[boneIdx];
+        for (comp = 0; comp < 4; comp++) {
+            clearDef->scale[comp] = 0.0f;
+            clearDef->rot[comp] = 0.0f;
+            clearDef->trans[comp] = 0.0f;
+        }
+    }
+    rootNode = SkelFile_PartRoot(skelFile, part);
+    for (boneIdx = 0; boneIdx < boneCount; boneIdx++, def++) {
+        srcNode = (SkelFileNode *)SkelFile_GetNode(skelFile, boneIdx + rootNode);
+        def->index = srcNode->index;
+        def->id = srcNode->id;
+        def->child = srcNode->child;
+        def->sibling = srcNode->sibling;
+        if (def->child != -1) {
+            def->child -= (s16)rootNode;
+        }
+        if (def->sibling != -1) {
+            def->sibling -= (s16)rootNode;
+        }
+        def->unkA = srcNode->unkA;
+        for (comp = 0; comp < 4; comp++) {
+            def->scale[comp] = srcNode->scale[comp];
+            def->rot[comp] = srcNode->rot[comp];
+            def->trans[comp] = srcNode->trans[comp];
+        }
+    }
+    *dst = *built;
+    dst->block = built;
+    return 1;
 }

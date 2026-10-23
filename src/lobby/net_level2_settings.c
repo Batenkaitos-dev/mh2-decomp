@@ -1,6 +1,6 @@
 /*
- * Entering the third level (6406 with a password, 6407), leaving it
- * (6501) and opening an entry (6408); then NetLevel2SettingsTask (task 7),
+ * Entering a third-level entry (6406, with its password), leaving it
+ * (6501) and opening one (6407); then NetLevel2SettingsTask (task 7),
  * which sends the settings of the third-level entry the player is in
  * (gLobbyNet.settings2): 6609 the name, 660A the password and 6610 the
  * text (each only if the server allowed it: gLobbyNet.recs2.send*), 660B
@@ -18,46 +18,7 @@
 #include "pad.h"
 #include "m2c_macros.h"
 
-s32 NetReq_CountFree(void);
-void NetList_Select(s32 level, u16 id);
-void NetList_Leave(u8 level);
-void NetList_Enter(u8 level);
-s32 LobbyPkt_Leave(u16 kind);
-s32 LobbyPkt_Level2Enter(u16 id, char *pass, u8 v);
-s32 LobbyPkt_Level2Open(u16 id, u8 v);
-void NetLevel2SettingsTask_Run(s32 task);
-void NetLevel2SettingsTask_Steps(NetTask *t);
-void NetLevel2SettingsTask_Done(NetTask *t);
-void NetLevel2SettingsTask_Failed(NetTask *t);
-void NetLevel2SettingsTask_Step0(NetTask *t);
-void NetLevel2SettingsTask_Step1(NetTask *t);
-void NetLevel2SettingsTask_Step2(NetTask *t);
-void NetLevel2SettingsTask_Step3(NetTask *t);
-void NetLevel2SettingsTask_Step4(NetTask *t);
-void NetLevel2SettingsTask_Step5(NetTask *t);
-void NetLevel2SettingsTask_Step6(NetTask *t);
-void NetLevel2SettingsTask_Step7(NetTask *t);
-void NetLevel2SettingsTask_Step8(NetTask *t);
-void NetLevel2SettingsTask_Step9(NetTask *t);
-void NetLevel2SettingsTask_Step10(NetTask *t);
-void NetLevel2SettingsTask_Step11(NetTask *t);
-void NetLevel2SettingsTask_Step12(NetTask *t);
-void NetLevel2SettingsTask_OnReply(NetMsg m, NetMsg *pm);
-s32 LobbyPkt_Level2SetRecChoice(u8 i, u8 v);
-s32 LobbyReq_Level2SetName(char *name, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2SetPass(char *pass, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2SetText(char *text, u16 n, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2SettingsEnd(void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Quest(u16 id, u8 *c, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyPkt_Level2SetName(char *arg0);
-s32 LobbyPkt_Level2SetText(char *src, u16 n);
-s32 LobbyPkt_Level2SetPass(char *s);
-s32 LobbyPkt_Level2SettingsEnd(void);
-void Lobby_RouteMessage(s32);
 struct LobbyPkt;
-s32 LobbyPkt_Send(struct LobbyPkt *);
-u16 LobbyPkt_BeginCmd(struct LobbyPkt *, u16 cmd);
-void LobbyPkt_End(struct LobbyPkt *);
 
 /* the reply to 6406: the third-level entry was entered */
 void LobbyReply_Level2Enter(void)
@@ -565,4 +526,10 @@ s32 LobbyPkt_Level2SettingsEnd(void)
     LobbyPkt_End(&gLobbyPkt);
     LobbyPkt_Send(&gLobbyPkt);
     return seq;
+}
+
+/* the reply to 660C */
+void LobbyReply_Level2SettingsEnd(void)
+{
+    Lobby_RouteMessage(NET_ROUTE_NONE);
 }

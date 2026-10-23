@@ -10,7 +10,10 @@
  * quest is posted to the quest room first (QuestDesk_Post).
  * QuestDesk_BuildLists fills the lists the choices show. The desk's
  * draws are QuestDesk_Draw and QuestDesk_Draw2 (with QuestBoard_Draw, the quest sheet).
- * Lobby_EnterRollRare, at the end, is the lobby entry's random roll.
+ * Lobby_EnterRollRare, at the end, is the roll made on entering the lobby
+ * (1 in about 9), which the quest's departure hands to the next quest's
+ * flyer (NextQuest_SetFlyer) and the town's quest message carries; the
+ * next file, the quests the desk offers, is no closer a subject.
  */
 #include "common.h"
 #include "item.h"
@@ -26,64 +29,46 @@
 #include "pad.h"
 #include "lobby_text.h"
 #include "lobby_npc.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "camera.h"
+#include "village_cond.h"
+#include "quest_desk.h"
+#include "chat_send.h"
+#include "game_util.h"
+#include "hunter_card.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_steps.h"
+#include "quest_desk_draw.h"
+#include "quest_offers.h"
+#include "quest_order_terms.h"
+#include "rand.h"
+#include "talk.h"
+#include "wanted.h"
 
 extern u8 gMenuWork[];
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 void *memset(void *dst, s32 c, u32 n);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void QuestDesk_Draw(MenuTask *task);
-void QuestDesk_Draw2(MenuTask *task);
-s32 LobbyWorld_GetSeason(void);
-s32 LobbyTime_IsPm(void);
-s32 Equip_GunHasNoAmmo(Player *pl, SaveData *save);
-s32 Menu_PushNoticeOnce(s32);
-s32 Game_IsOnline(void);
-s32 Cond_Check(u16 id);
 void ElderForecast_Load(u16 *out, s8 b); /* unit's own declaration: declared with an s8 second parameter as QuestDesk_HasEntry passes it; with the definition's s32 the call compiles differently */
 s32 QuestDesk_HasEntry(s16 k);
-void QuestList_Rebuild(void);
-void LobbySe_Play(s32 se);
-void CamFocus_End(void);
-void CamFocus_SetAside(s8 aside);
 extern s8 gMenuInputLock;
 extern u8 gQuestListRebuildPending;
-u16 Rand_Next(s32);
-extern s16 gQuestMapGroups[];
 extern u16 gLobbyQuestId;
 extern LobbyMenu *gLobbyMenu;
 extern NetUser gNetUsers[];
 void *memcpy(void *dst, void *src, u32 n);
-s32 MapGroup_IsOpen(u16 id);
-void HunterCard_Build(void *out);
-void Money_PayPending(u8 silent);
-s32 Lobby_HasQuest(void);
-void Talk_Say(s32 a, s8 b);
-QuestInfo *Quest_GetInfoAny(u16 id);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
-void LobbyText_Open(s32 id);
-s32 Quest_PostStep(MsgQuestPost *req);
-s32 Talk_Update(void);
 s32 LobbyStep_Level2Leave(void);
-s32 Quest_CheckOrderTerms(u8 id, u8 flag);
-void LobbyDialog_Grow(void);
 extern s8 gQuestMinMembers;
 extern s8 gRoomPassOn;
 extern s8 gRoomPassword[9];
-s32 LobbyMenu_KbdEntry(void *opts);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
 extern u16 gTalkLine;
 extern char *gTalkLineText;
 extern s8 gTalkMode;
-QuestInfo *Quest_GetDiscInfo(u16 id);
-s32 QuestDesk_IsWanted(u8 *p);
-s16 QuestDesk_GetWantedFee(void);
-char *Talk_LineText(u16 id);
-char *Text_FillDollar(char *fmt, s32 n);
-char *Text_FillDollar2(s32 arg0);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
 
 /*
  * Opens the quest desk for the townsperson npc (an Em; the town's talk
@@ -105,7 +90,7 @@ void QuestDesk_Open(u8 *npc)
 
     gTownMenuOpen = 1;
     desk = (QuestDesk *)gMenuWork;
-    npcWork = (NpcWork *)(npc + 0x438);
+    npcWork = (NpcWork *)(npc + 1080);
     gTownMode = TOWN_MODE_QUEST_DESK;
     memset(desk, 0, MENU_WORK_SIZE);
     LobbyMenu_Init();
@@ -139,9 +124,9 @@ void QuestDesk_Open(u8 *npc)
  * 1 when the desk offers entry (QUEST_DESK_*), else 0: QUEST_DESK_GUIDE and
  * QUEST_DESK_BOARD always; QUEST_DESK_FORECAST once the forecast has been
  * heard (gElderForecastHeard), and offline only under the village's
- * condition 0xD (Cond_Check); it also loads the season's forecast into the
+ * condition 13 (Cond_Check); it also loads the season's forecast into the
  * work area (ElderForecast_Load). QUEST_DESK_BY_MAP online or under
- * condition 7; QUEST_DESK_BY_TYPE online or under condition 0xA.
+ * condition 7; QUEST_DESK_BY_TYPE online or under condition 10.
  */
 s32 QuestDesk_HasEntry(s16 entry)
 {
@@ -151,7 +136,7 @@ s32 QuestDesk_HasEntry(s16 entry)
     case QUEST_DESK_GUIDE:
         return 1;
     case QUEST_DESK_FORECAST:
-        if (Game_IsOnline() == 0 && Cond_Check(0xD) == 0) {
+        if (Game_IsOnline() == 0 && Cond_Check(13) == 0) {
             return 0;
         }
         if (gElderForecastHeard != 0) {
@@ -173,7 +158,7 @@ s32 QuestDesk_HasEntry(s16 entry)
         if (Game_IsOnline() == 1) {
             return 1;
         }
-        if (Cond_Check(0xA) == 1) {
+        if (Cond_Check(10) == 1) {
             return 1;
         }
         break;
@@ -196,7 +181,7 @@ void QuestDesk_Close(void)
     LobbyMenu_SetDraw(0, 0, 0, 0);
     CamFocus_SetAside(0);
     CamFocus_End();
-    gMenuInputLock = 0x14;
+    gMenuInputLock = 20;
     if (gQuestListRebuildPending != 0) {
         QuestList_Rebuild();
         gQuestListRebuildPending = 0;
@@ -208,7 +193,7 @@ void QuestDesk_Close(void)
 /*
  * The number of the 7 quest map groups (gQuestMapGroups) that are open
  * (MapGroup_IsOpen); group 2 is not counted in AREA_TAVERN and
- * AREA_HUB_0x89, and group 0xD is never counted. The parameter is not
+ * AREA_HUB_0x89, and group 13 is never counted. The parameter is not
  * used. The top menu stores the result as the field guide's row count.
  */
 s16 QuestDesk_CountOpenGroups(void *desk)
@@ -222,7 +207,7 @@ s16 QuestDesk_CountOpenGroups(void *desk)
             if (*group == 2 && (gScene.area == AREA_TAVERN || gScene.area == AREA_HUB_0x89)) {
                 continue;
             }
-            if (*group != 0xD) {
+            if (*group != 13) {
                 count++;
             }
         }
@@ -230,23 +215,6 @@ s16 QuestDesk_CountOpenGroups(void *desk)
     return count;
 }
 
-s32 QuestDesk_Greet(void);
-s32 QuestDesk_TopMenu(u16 pad);
-s32 QuestDesk_ChooseList(u16 pad);
-s32 QuestDesk_ChooseQuest(u16 pad);
-s32 QuestDesk_CheckFee(u16 pad);
-s32 QuestDesk_Post(u16 pad);
-s32 QuestDesk_Cancel(QuestDeskCancel *cancel, u16 pad);
-s32 QuestDesk_ForecastInput(u16 pad);
-s32 QuestDesk_GuideInput(u16 pad);
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Win_Shake(WinShake *s);
-void QuestDesk_SayBye(void);
-void QuestDesk_BuildLists(void);
-void QuestRoom_ResetSettings(void);
-void QuestDesk_Close(void);
-void QuestDesk_Accept(u16 id, s16 money, s32 pay);
 extern s16 gQuestStampRand;
 
 /*
@@ -307,7 +275,7 @@ void QuestDesk_Update(void)
         Talk_Update();
         CamFocus_SetAside(1);
         desk->hidePageNum = 1;
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         break;
     case QUEST_DESK_STEP_SLIDE_IN:
         switch (WinSlide_Step(&desk->win, QUEST_DESK_WIN_X_OUT, QUEST_DESK_WIN_X)) {
@@ -410,7 +378,7 @@ void QuestDesk_Update(void)
             desk->savedSel = desk->sel;
             desk->sel = 0;
             QuestRoom_ResetSettings();
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         case MENU_CANCEL:
             desk->step = QUEST_DESK_STEP_SLIDE_BACK;
@@ -518,15 +486,7 @@ void QuestDesk_Update(void)
 
 extern u8 gQuestIsOfficial;
 extern u8 gMemberNamesOff;
-void Quest_ClearVersusDefeat(void);
-void Quest_SetInfo(QuestInfo *q);
-void NetQuest_SetStage(u16 id);
-s32 QuestFlags_GetCategory(u32 *arg0);
-void Save_AddMoney(s32 n);
 s32 HunterCard_SendChanged(void);
-s32 LobbyWorld_GetSeason(void);
-s32 LobbyTime_IsPm(void);
-s32 LobbyWorld_GetSeasonDay(void);
 
 /*
  * Makes quest id the taken quest: clears the versus defeat, sets the money
@@ -535,8 +495,8 @@ s32 LobbyWorld_GetSeasonDay(void);
  * the quest info, the network stage and the scene's quest id, and plays
  * the money sound. With pay set the quest's fee is added to the money
  * taken, the quest is marked paid (lobby and scene) and the local player's
- * quest status is the quest's category with 0x80; without pay the category
- * with 0x40. The money taken (when nonzero) leaves gSave.money; the hunter
+ * quest status is the quest's category with QUEST_STATUS_PAID; without pay the category
+ * with QUEST_STATUS_TAKEN. The money taken (when nonzero) leaves gSave.money; the hunter
  * cards (the lobby member's and the net user's) are rebuilt; gNextQuest
  * gets the quest's flags and map. Online it sends the changed card, shows
  * member names again and takes a nonzero ready argument from the lobby
@@ -558,7 +518,7 @@ void QuestDesk_Accept(u16 id, s16 money, s32 pay)
     gLobbyQuestId = id;
     gLobby->questTaken = 1;
     Quest_SetInfo(quest);
-    NetQuest_SetStage(id);
+    NextQuest_SetStage(id);
     gScene.questId = id;
     LobbySe_Play(LOBBY_SE_MONEY);
     flags = QuestFlags_GetCategory((u32 *) quest);
@@ -653,7 +613,7 @@ s32 QuestDesk_TopMenu(u16 pad)
             if (desk->groupCount == 0) {
                 LobbySe_Play(LOBBY_SE_REFUSE);
             } else {
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 return MENU_DONE;
             }
             break;
@@ -663,7 +623,7 @@ s32 QuestDesk_TopMenu(u16 pad)
                 if (gQuestDeskShown[1][0] == 0) {
                     LobbySe_Play(LOBBY_SE_REFUSE);
                 } else {
-                    LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                    LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                     return MENU_DONE;
                 }
                 break;
@@ -671,14 +631,14 @@ s32 QuestDesk_TopMenu(u16 pad)
                 if (gQuestDeskShown[0][0] == 0) {
                     LobbySe_Play(LOBBY_SE_REFUSE);
                 } else {
-                    LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                    LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                     return MENU_DONE;
                 }
                 break;
             }
             break;
         case QUEST_DESK_FORECAST:
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_DONE;
         default:
             LobbySe_Play(LOBBY_SE_CONFIRM);
@@ -727,7 +687,7 @@ s32 QuestDesk_ChooseList(u16 pad)
         switch (Talk_Update()) {
         case MENU_DONE:
             desk->subStep = 0;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_DONE;
         }
         break;
@@ -791,7 +751,7 @@ s32 QuestDesk_ChooseQuest(u16 pad)
                     gTalkLineText = Text_FillDollar2(desk->quest->fee);
                     WinSlide_Step(&desk->win, QUEST_DESK_WIN_X_OUT, QUEST_DESK_WANTED_X);
                     desk->subStep++;
-                    LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                    LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 } else {
                     Talk_Say(QUEST_DESK_TALK_FEE, 0);
                     gTalkLineText = Text_FillDollar(Talk_LineText(gTalkLine), desk->quest->fee);
@@ -807,10 +767,10 @@ s32 QuestDesk_ChooseQuest(u16 pad)
             desk->hidePageNum = 1;
         } else if (pad & PAD_CROSS) {
             desk->quest = NULL;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_CANCEL;
         } else {
-            desk->sel = Menu_WrapUpDownSe(desk->sel, count, LOBBY_SE_WINDOW_OUT);
+            desk->sel = Menu_WrapUpDownSe(desk->sel, count, LOBBY_SE_WINDOW_SLIDE);
             desk->page = Menu_WrapLeftRight(desk->page, QUEST_SHEET_PAGES);
         }
         break;
@@ -1106,7 +1066,7 @@ s32 QuestDesk_Cancel(QuestDeskCancel *cancel, u16 pad)
 s32 QuestDesk_ForecastInput(u16 pad)
 {
     if (pad & PAD_CROSS) {
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         return MENU_DONE;
     }
     return MENU_RUNNING;
@@ -1122,16 +1082,14 @@ s32 QuestDesk_GuideInput(u16 pad)
     QuestDesk *desk = (QuestDesk *)gMenuWork;
 
     if (pad & PAD_CROSS) {
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         return MENU_DONE;
     }
-    desk->sel = Menu_WrapUpDownSe(desk->sel, desk->groupCount, LOBBY_SE_WINDOW_OUT);
+    desk->sel = Menu_WrapUpDownSe(desk->sel, desk->groupCount, LOBBY_SE_WINDOW_SLIDE);
     return MENU_RUNNING;
 }
 
 u16 Map_Group(u16 map);
-s32 QuestDesk_CountMapLists(void);
-s32 Save_TestEventFlag(s32 flag);
 s64 abs(s32);
 extern u16 gLobbyEnterRand;
 extern u16 gQuestLists[2][60];
@@ -1213,26 +1171,26 @@ void QuestDesk_BuildLists(void)
 /*
  * The number of map-group lists the by-map entry offers (QuestDesk.listCount),
  * by the story's progress. Offline by the village's conditions (Cond_Check):
- * 1 at first, 2 to 6 as conditions 7, 0xA, 0x10, 0x15 and 0x1A hold, and
- * under condition 0x4F 6, or 7 in AREA_HUB_0x57. Online 5, 6 under
- * condition 0x60, 7 with EVENT_FLAG_SONG_TRACK_3.
+ * 1 at first, 2 to 6 as conditions 7, 10, 16, 21 and 26 hold, and
+ * under condition 79 6, or 7 in AREA_HUB_0x57. Online 5, 6 under
+ * condition 96, 7 with EVENT_FLAG_SONG_TRACK_3.
  */
 s32 QuestDesk_CountMapLists(void)
 {
     if (Game_IsOnline() == 0) {
-        if (Cond_Check(0x4F) == 1) {
+        if (Cond_Check(79) == 1) {
             return gScene.area == AREA_HUB_0x57 ? 7 : 6;
         }
-        if (Cond_Check(0x1A) == 1) {
+        if (Cond_Check(26) == 1) {
             return 6;
         }
-        if (Cond_Check(0x15) == 1) {
+        if (Cond_Check(21) == 1) {
             return 5;
         }
-        if (Cond_Check(0x10) == 1) {
+        if (Cond_Check(16) == 1) {
             return 4;
         }
-        if (Cond_Check(0xA) == 1) {
+        if (Cond_Check(10) == 1) {
             return 3;
         }
         return Cond_Check(7) == 1 ? 2 : 1;
@@ -1240,7 +1198,7 @@ s32 QuestDesk_CountMapLists(void)
         if (Save_TestEventFlag(EVENT_FLAG_SONG_TRACK_3) == 1) {
             return 7;
         }
-        if (Cond_Check(0x60) == 1) {
+        if (Cond_Check(96) == 1) {
             return 6;
         }
         return 5;

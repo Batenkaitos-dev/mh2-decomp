@@ -1,6 +1,5 @@
 /*
- * The player's reaction to the hits it takes, and the monster script's
- * trigger handling.
+ * The player's reaction to the hits it takes.
  *
  * Player_ReactToHit runs for a player with a hit pending (Player.hitReceived,
  * set by ObjAttach_DamagePlayer in sub_main): a hit the guard takes
@@ -10,213 +9,34 @@
  * it; the statuses the hit carries (poison, the buildups) are applied here.
  * The small Player_* predicates below are shared with the player's states
  * and sub_main.
- *
- * The monster side: EmScript_PickTrigger starts the script of a pending
- * trigger (Em.triggers), EmScript_Restart restarts the script, Em_SetCombat
- * enters and leaves combat, Em_CanEnterArea checks a move.
  */
 #include "common.h"
 #include "em.h"
 #include "player.h"
 #include "objattach.h"
 #include "item.h"
+#include "bgm.h"
+#include "card.h"
+#include "quest.h"
+#include "sound.h"
+#include "bone_effects.h"
+#include "dust_flash_effects.h"
+#include "hit_effects.h"
+#include "rand.h"
+#include "vibration.h"
+#include "save.h"
 
 /* prototypes */
-void Player_AddStamina(Player *p, s16 n);
-void Player_AddSharpness(Player *p, s16 n);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
-extern u16 **D_008BF840[];
-u16 Map_DayId(u16);
-u16 Area_DayId(u16 area);
-void *EmScript_Trigger10Script(Em *em, u8 i);
-void *EmScript_Trigger20Script(Em *em, u8 i);
-void *EmScript_Trigger02Script(Em *em, u8 i);
-void *EmScript_Trigger04Script(Em *em, u8 i);
-void *EmScript_Trigger08Script(Em *em, u8 i);
-void *EmScript_Trigger80Script(Em *em);
-void *EmScript_Trigger40Script(Em *em);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-void Bgm_StopEvent(void *);
 void Player_ClearBuffs(Player *pl);
-void Player_RequestStateSynced(Player *p, u16 state, u8 sub, u16 flags);
-void Player_ClearFlag(void *, u32 flag);
-void Player_ResetAim(Player *p);
-void MashDebris_Create(s8 k, s16 *arg);
 /* unit's own declaration: declared with s32 group and state; with the definition's u8 parameters and s16 result Player_InStatus4State compiles differently */
 s32 Player_IsState(void *obj, s32 group, s32 state);
-s32 Em_StartScript(Em *em);
-s32 Player_HasSkill(Player *p, u8 skill);
-s32 Player_CanGuard(Player *p);
-s32 HeavyBowgun_HasShield(Player *p);
-u32 Player_TestFlag(void *obj, u32 flag);
 /* end of prototypes */
-
-/*
- * Starts the script of the most urgent pending trigger (Em.triggers): 0x40
- * and 0x80 replace the running script thread outright, the others (0x20,
- * 0x10, 8, 4, 2, in that order) are added to the running threads in
- * Em.scriptFlags. A trigger whose thread already runs (Em_ScriptFlagsFrom)
- * waits. Returns the script started first, or NULL; it becomes Em.scriptPos.
- */
-u8 *EmScript_PickTrigger(Em *em)
-{
-    void *script;
-    s32 pending;
-
-    pending = em->triggers;
-    if (pending == 0) {
-        return 0;
-    }
-    script = NULL;
-    if (((u8) pending & 0x40) && Em_ScriptFlagsFrom(em, 0x40) == 0) {
-        script = EmScript_Trigger40Script(em);
-        em->triggers = 0;
-        em->scriptFlags = 0x40;
-    }
-    if ((em->triggers & 0x80) && Em_ScriptFlagsFrom(em, 0x80) == 0 && script == NULL) {
-        script = EmScript_Trigger80Script(em);
-        em->triggers = 0;
-        em->scriptFlags = 0x80;
-    }
-    if ((em->triggers & 0x20) && Em_ScriptFlagsFrom(em, 0x20) == 0) {
-        em->trigger20Pos = EmScript_Trigger20Script(em, 0);
-        if (script == NULL) {
-            script = em->trigger20Pos;
-        }
-        em->triggers &= 0xCE;
-        em->scriptFlags |= 0x20;
-    }
-    if ((em->triggers & 0x10) && Em_ScriptFlagsFrom(em, 0x10) == 0) {
-        em->trigger10Pos = EmScript_Trigger10Script(em, 0);
-        if (script == NULL) {
-            script = em->trigger10Pos;
-        }
-        em->triggers &= 0xEF;
-        em->scriptFlags |= 0x10;
-    }
-    if ((em->triggers & 8) && Em_ScriptFlagsFrom(em, 8) == 0) {
-        em->trigger08Pos = EmScript_Trigger08Script(em, 0);
-        if (script == NULL) {
-            script = em->trigger08Pos;
-        }
-        em->triggers &= 0xF7;
-        em->scriptFlags |= 8;
-    }
-    if ((em->triggers & 4) && Em_ScriptFlagsFrom(em, 4) == 0) {
-        em->trigger04Pos = EmScript_Trigger04Script(em, 0);
-        if (script == NULL) {
-            script = em->trigger04Pos;
-        }
-        em->triggers &= 0xC8;
-        em->scriptFlags |= 4;
-    }
-    if ((em->triggers & 2) && Em_ScriptFlagsFrom(em, 2) == 0) {
-        em->trigger02Pos = EmScript_Trigger02Script(em, 0);
-        if (script == NULL) {
-            script = em->trigger02Pos;
-        }
-        em->triggers &= 0xCC;
-        em->scriptFlags |= 2;
-    }
-    if (script != NULL) {
-        em->scriptPos = script;
-    }
-    return script;
-}
-
-/* Restarts the monster's script from main script 0 when Em.scriptRestart is
- * set: the threads, the loop, the area sequence and the destination area are
- * cleared. */
-void EmScript_Restart(Em *em)
-{
-    if (em->scriptRestart != 0) {
-        em->scriptPending = 0;
-        em->scriptRestart = 0;
-        em->scriptFlags = 0;
-        em->scriptDelay = 0;
-        em->scriptNo = 0;
-        em->mainScriptPos = (u8 *) Em_StartScript(em);
-        em->loopPoint = -1;
-        em->loopCount = -1;
-        em->areaSeqPos = -1;
-        em->areaSeqLen = -1;
-        *(u16 *) &em->destArea = 0xFFFF;
-        em->prevArea = 0xFFFF;
-        em->unk7A8 = 0;
-    }
-}
-
-/*
- * Sets the monster's combat mode (Em.combat) to `mode`, for `frames` frames
- * when frames > 0 (Em.combatTimer). The trigger threads below 0x40 stop.
- * Leaving combat (mode 0) clears what it had noticed of the players, and
- * the players it fought leave the battle. Returns 1 when the mode changed,
- * 0 when it was already set.
- */
-s32 Em_SetCombat(Em *em, u8 mode, s16 frames)
-{
-    s8 i;
-
-    if (em->combat == mode) {
-        return 0;
-    }
-    if (frames > 0) {
-        em->combatTimer = frames;
-    }
-    em->combat = mode;
-    em->scriptFlags &= 0xC0;
-    if (em->combat == 0) {
-        em->seen = 0;
-        em->noticed = 0;
-        for (i = 0; i < 4; i++) {
-            em->alertBuildup[i] = 0;
-            em->noticeCount[i] = 0;
-            em->noticeTimer[i] = 0;
-            if ((em->combatPlayers & (1 << i)) && gPlayers[i].active != 0 && gPlayers[i].unk73A_combat != 0) {
-                gPlayers[i].unk73A_combat = 0;
-            }
-        }
-        em->combatPlayers = 0;
-    }
-    return 1;
-}
-
-/* 1 if the monster may go to area `area`: its own area, or one of the list of its kind for the
- * current quest row (ids from 10000 on name an area, the others a day id), ending with 0xFFFF. */
-s32 Em_CanEnterArea(Em *em, u16 area)
-{
-    u16 **kindAreas = D_008BF840[em->type];
-    u16 *entry;
-
-    if (em->area == area) {
-        return 1;
-    }
-    if (kindAreas == NULL) {
-        return 0;
-    }
-    kindAreas += Map_DayId(gScene.map);
-    entry = *kindAreas;
-    if (entry == NULL) {
-        return 0;
-    }
-    while (*entry != 0xFFFF) {
-        if (*entry >= 10000) {
-            if (*entry - 10000 == area) {
-                return 1;
-            }
-        } else if (Area_DayId(*entry) == Area_DayId(area)) {
-            return 1;
-        }
-        entry++;
-    }
-    return 0;
-}
 
 /* 1 when the status 5 buildup is full (50). */
 s32 Player_Status5Full(Player *pl)
 {
-    return (pl->status5Buildup >= 0x32) & 0xFF;
+    return (pl->status5Buildup >= 50) & 0xFF;
 }
 
 /* 1 while the player has a buildup toward the mash status. */
@@ -234,14 +54,14 @@ s32 Player_InMashStatus(Player *pl)
     }
     if (pl->stateGroup == PL_GROUP_REACT) {
         switch (pl->state) {
-        case 0x1B:
-        case 0x1E:
-        case 0x1F:
-        case 0x20:
-        case 0x21:
-        case 0x22:
-        case 0x23:
-        case 0x24:
+        case 27:
+        case 30:
+        case 31:
+        case 32:
+        case 33:
+        case 34:
+        case 35:
+        case 36:
             return 1;
         }
     }
@@ -249,7 +69,7 @@ s32 Player_InMashStatus(Player *pl)
 }
 
 /* Ends the mash status. If presses were still needed, it first makes stage
- * object 0x1B (mode 0) for the player, as the mash states do. */
+ * object STAGEOBJ_KIND_MASH_DEBRIS (mode 0) for the player, as the mash states do. */
 void Player_EndMash(Player *pl)
 {
     if (pl->mashLeft > 0) {
@@ -309,7 +129,7 @@ s32 Player_InBlownAway(Player *pl)
     case 2:
     case 5:
     case 7:
-    case 0xE:
+    case 14:
         return 1;
     }
     return 0;
@@ -347,7 +167,7 @@ s32 Player_InGuardArc(u16 angle, u16 hitAngle)
     s32 diff;
 
     diff = ((((angle & 0xFFFF) - (hitAngle & 0xFFFF)) & 0xFFFF) + 0x4000) & 0xFFFF;
-    if ((diff <= 3641) || (diff >= 0x71C7)) {
+    if ((diff <= 3641) || (diff >= 29127)) {
         return 1;
     }
     return 0;
@@ -401,7 +221,7 @@ u8 Player_CanGuardHit(Player *pl)
 
 /*
  * Reacts to a hit the guard took: its force (Player.hitForce), raised or
- * lowered by the guard skills 0x28-0x2B, picks the reaction (a push, a
+ * lowered by the guard skills SKILL_GUARD_PLUS10 to SKILL_GUARD_MINUS10, picks the reaction (a push, a
  * stagger or a knockback, by weapon) and the stamina and sharpness the
  * guard costs. Returns the reaction: 0 a push, 1 a stagger, 2 a knockback.
  * The great sword's test of lastAttackKind is always true (!= one kind or
@@ -417,36 +237,36 @@ u8 Player_GuardHit(Player *pl)
     force = pl->hitForce;
     react = 0;
     if (Player_HasSkill(pl, SKILL_GUARD_PLUS20) == 1 && pl->weaponType != WEAPON_HEAVY_BOWGUN) {
-        if (force > 0x15) {
-            force -= 0x14;
+        if (force > 21) {
+            force -= 20;
         } else {
             force = 1;
         }
     } else if (Player_HasSkill(pl, SKILL_GUARD_PLUS10) == 1 && pl->weaponType != WEAPON_HEAVY_BOWGUN) {
-        if (force > 0xB) {
-            force -= 0xA;
+        if (force > 11) {
+            force -= 10;
         } else {
             force = 1;
         }
     } else if (Player_HasSkill(pl, SKILL_GUARD_MINUS5) == 1 && pl->weaponType != WEAPON_HEAVY_BOWGUN) {
-        if (force < 0xFA) {
+        if (force < 250) {
             force += 5;
         } else {
-            force = 0xFF;
+            force = 255;
         }
     } else if (Player_HasSkill(pl, SKILL_GUARD_MINUS10) == 1 && pl->weaponType != WEAPON_HEAVY_BOWGUN) {
-        if (force < 0xF5) {
-            force += 0xA;
+        if (force < 245) {
+            force += 10;
         } else {
-            force = 0xFF;
+            force = 255;
         }
     }
-    if (force >= 0x28) {
+    if (force >= 40) {
         react = 2;
         Player_SetState(pl, PL_GROUP_REACT, PL_REACT_GUARD_KNOCKBACK, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
-        dull = -0xA;
-        Player_AddStamina(pl, -0xB4);
-    } else if (force >= 0xF) {
+        dull = -10;
+        Player_AddStamina(pl, -180);
+    } else if (force >= 15) {
         switch (pl->weaponType) {
         case WEAPON_GREAT_SWORD:
         case WEAPON_LONG_SWORD:
@@ -467,12 +287,12 @@ u8 Player_GuardHit(Player *pl)
             dull = -1;
             break;
         }
-        Player_AddStamina(pl, -0x64);
+        Player_AddStamina(pl, -100);
     } else {
         react = 0;
         Player_SetState(pl, PL_GROUP_REACT, PL_REACT_GUARD_PUSH, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
         dull = -1;
-        Player_AddStamina(pl, -0x4B);
+        Player_AddStamina(pl, -75);
     }
     if (pl->weaponType == WEAPON_GREAT_SWORD && (pl->lastAttackKind != ATTACK_ROAR || pl->lastAttackKind != ATTACK_ROAR_WEAK || pl->lastAttackKind != ATTACK_ROAR_STRONG)) {
         Player_AddSharpness(pl, dull);
@@ -480,27 +300,14 @@ u8 Player_GuardHit(Player *pl)
     return react;
 }
 
-void Effect06_SpawnAtBone(Player *pl, s16 type, u8 sub, s16 bone, f32 scale);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-void Player_AddHp(Player *pl, s16 n);
-void Player_AddMaxStamina(Player *pl, s16 n);
 s32 Player_HasSongEffect(Player *pl, s16 kind);
-s32 Player_IsLocal(void *obj);
-void Player_SetFlag(void *obj, u32 flag);
-u16 Rand_Next(s32 stream);
-void Sound_PlayPlayerSe(void *obj, s32 id, s32 a, void *pos, s32 b, s32 c);
-void HitSplash_CreateByHitFx(Em *em, f32 *pos, u8 k, s16 mode, s16 part, f32 scale);
-void Vib_StartLocal(void *port, s32 i);
-void Player_PlaySe(Player *pl, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Player_IgnoresFlinch(Player *pl);
-void Player_AddPoison(Player *pl, s16 n);
 
 /*
  * Reacts to the hit the player took this frame (see the file's comment).
  * hitDir is the hit's direction relative to the player's heading plus a
  * quarter turn: below 0x8000 the hit came from behind. knockedDown picks
  * the heavier hit sound; noHitSound (set in the roar, wind and tremor
- * cases) skips the end of the event music and sound 0x1E. The cases share
+ * cases) skips the end of the event music and sound 30. The cases share
  * their tails through the gotos (react, turn, done).
  */
 void Player_ReactToHit(Player *pl)
@@ -546,24 +353,24 @@ void Player_ReactToHit(Player *pl)
                 }
             }
         } else {
-            hitDir = (u16) (pl->rot[1] - pl->hitAngle) + 0x4000;
+            hitDir = (u16) (pl->rot[1] - pl->hitAngle) + ANGLE_TURN / 4;
             if (Player_IsLocal(pl) == 1) {
                 if (pl->hitDamage[0] != 0) {
                     hpBefore = pl->hp;
                     if (hpBefore > 0 && (Rand_Next(1) & 3) == 0) {
                         if (Player_HasSkill(pl, SKILL_DAMAGE_CHANCE_GUARD) == 1) {
                             pl->hitDamage[0] = 0.7f * pl->hitDamage[0];
-                            Effect06_SpawnAtBone(pl, 2, 0x19, 0xA, 4.0f);
-                            Em_GetBonePos(pl, 0xA, pos);
-                            Sound_PlayPlayerSe(pl, 0x72, 0, pos, 1, 0);
+                            Effect06_SpawnAtBone(pl, 2, 25, 10, 4.0f);
+                            Em_GetBonePos(pl, 10, pos);
+                            Sound_PlayPlayerSe(pl, 114, 0, pos, 1, 0);
                             if (pl->hitDamage[0] == 0) {
                                 pl->hitDamage[0] = 1;
                             }
                         } else if (Player_HasSkill(pl, SKILL_DAMAGE_CHANCE_WEAK) == 1) {
                             pl->hitDamage[0] = 1.3f * pl->hitDamage[0];
-                            Em_GetBonePos(pl, 0xA, pos);
+                            Em_GetBonePos(pl, 10, pos);
                             HitSplash_CreateByHitFx((Em *) pl, pos, 5, 3, 1, 1.0f);
-                            Sound_PlayPlayerSe(pl, 0x73, 0, pos, 1, 0);
+                            Sound_PlayPlayerSe(pl, 115, 0, pos, 1, 0);
                         }
                     }
                     Player_AddHp(pl, -pl->hitDamage[0]);
@@ -671,7 +478,7 @@ void Player_ReactToHit(Player *pl)
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_TOSSED_FORWARD, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                             }
                         } else {
-                            pl->rot[1] = (u16) (pl->hitAngle + 0x8000);
+                            pl->rot[1] = (u16) (pl->hitAngle + ANGLE_TURN / 2);
                             pl->targetYaw = pl->rot[1];
                             if (attackKind == ATTACK_BLOW) {
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_BLOWN_BACK, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
@@ -748,11 +555,11 @@ void Player_ReactToHit(Player *pl)
                             case 5:
                             case 6:
                             case 7:
-                            case 0xE:
-                            case 0xF:
-                            case 0x11:
-                            case 0x12:
-                            case 0x1A:
+                            case 14:
+                            case 15:
+                            case 17:
+                            case 18:
+                            case 26:
                                 noHitSound = 1;
                                 break;
                             default:
@@ -782,7 +589,7 @@ void Player_ReactToHit(Player *pl)
                             break;
                         default:
                         turn:
-                            pl->rot[1] = (u16) (pl->hitAngle + 0x8000);
+                            pl->rot[1] = (u16) (pl->hitAngle + ANGLE_TURN / 2);
                             pl->targetYaw = pl->rot[1];
                             Player_EndMash(pl);
                             switch (attackKind) {
@@ -790,10 +597,10 @@ void Player_ReactToHit(Player *pl)
                             case 4:
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_ROAR, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                                 goto react;
-                            case 0xF:
+                            case 15:
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_ROAR_SHORT, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                                 goto react;
-                            case 0x15:
+                            case 21:
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_ROAR_STRONG, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                                 goto react;
                             }
@@ -810,7 +617,7 @@ void Player_ReactToHit(Player *pl)
                         } else if (Player_HasSkill(pl, SKILL_WIND_GUARD_WEAK) == 1 && attackKind == ATTACK_WIND_WEAK) {
                             noHitSound = 1;
                         } else {
-                            pl->rot[1] = (u16) (pl->hitAngle + 0x8000);
+                            pl->rot[1] = (u16) (pl->hitAngle + ANGLE_TURN / 2);
                             pl->targetYaw = pl->rot[1];
                             Player_EndMash(pl);
                             if (attackKind == ATTACK_WIND) {
@@ -869,15 +676,15 @@ void Player_ReactToHit(Player *pl)
                         if (hitDir < 0x8000) {
                             pl->rot[1] = pl->hitAngle;
                             pl->targetYaw = pl->rot[1];
-                            if (*(u16 *) ((u8 *) pl + 0x3F2) < 0xB) {
+                            if (*(u16 *) ((u8 *) pl + 1010) < 11) {
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_FLINCH_BACK, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                             } else {
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_KNOCKDOWN_BACK, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                             }
                         } else {
-                            pl->rot[1] = (u16) (pl->hitAngle + 0x8000);
+                            pl->rot[1] = (u16) (pl->hitAngle + ANGLE_TURN / 2);
                             pl->targetYaw = pl->rot[1];
-                            if (*(u16 *) ((u8 *) pl + 0x3F2) < 0xB) {
+                            if (*(u16 *) ((u8 *) pl + 1010) < 11) {
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_FLINCH_FRONT, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
                             } else {
                                 Player_SetState(pl, PL_GROUP_REACT, PL_REACT_KNOCKDOWN_FRONT, PL_SET_SNAP_POS | PL_SET_SNAP_YAW);
@@ -887,9 +694,9 @@ void Player_ReactToHit(Player *pl)
                     react:
                         Vib_StartLocal(pl, 2);
                         if (!(knockedDown & 0xFF)) {
-                            Player_PlaySe(pl, Sound_RandomSe(0x20, 2, 0x21, 2), 0, &pl->pos[0], 1, 0);
+                            Player_PlaySe(pl, Sound_RandomSe(32, 2, 33, 2), 0, &pl->pos[0], 1, 0);
                         } else {
-                            Player_PlaySe(pl, Sound_RandomSe(0x22, 4, 0x22, 0), 0, &pl->pos[0], 1, 0);
+                            Player_PlaySe(pl, Sound_RandomSe(34, 4, 34, 0), 0, &pl->pos[0], 1, 0);
                         }
                         break;
                     }
@@ -901,151 +708,7 @@ void Player_ReactToHit(Player *pl)
     done:
         if (!(noHitSound & 0xFF)) {
             Bgm_StopEvent(pl);
-            Player_PlaySe(pl, 0x1E, 0, &pl->pos[0], 1, 0);
+            Player_PlaySe(pl, 30, 0, &pl->pos[0], 1, 0);
         }
     }
 }
-
-
-/* The file's data. */
-u32 D_008BF450[4] = {
-#include "game/008BF450.inc"
-};
-u32 D_008BF460[4] = {
-#include "game/008BF460.inc"
-};
-u32 D_008BF470[4] = {
-#include "game/008BF470.inc"
-};
-u32 D_008BF480[12] = {
-#include "game/008BF480.inc"
-};
-u16 *D_008BF4B0[16] = {
-    NULL, NULL, (u16 *)D_008BF450, (u16 *)D_008BF460,
-    (u16 *)D_008BF470, NULL, (u16 *)D_008BF480, NULL,
-    NULL, NULL, NULL, (u16 *)&D_008BF480[6],
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF4F0[4] = {
-#include "game/008BF4F0.inc"
-};
-u32 D_008BF500[2] = {
-#include "game/008BF500.inc"
-};
-u32 D_008BF508[3] = {
-#include "game/008BF508.inc"
-};
-u16 *D_008BF520[16] = {
-    NULL, NULL, NULL, NULL,
-    (u16 *)D_008BF4F0, NULL, NULL, NULL,
-    NULL, (u16 *)D_008BF500, NULL, (u16 *)D_008BF508,
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF560[4] = {
-#include "game/008BF560.inc"
-};
-u32 D_008BF570[4] = {
-#include "game/008BF570.inc"
-};
-u32 D_008BF580[4] = {
-#include "game/008BF580.inc"
-};
-u16 *D_008BF590[16] = {
-    NULL, NULL, (u16 *)D_008BF560, NULL,
-    (u16 *)D_008BF570, NULL, (u16 *)D_008BF580, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF5D0[8] = {
-#include "game/008BF5D0.inc"
-};
-u16 *D_008BF5F0[16] = {
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, (u16 *)D_008BF5D0, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF630[4] = {
-#include "game/008BF630.inc"
-};
-u32 D_008BF640[4] = {
-#include "game/008BF640.inc"
-};
-u32 D_008BF650[4] = {
-#include "game/008BF650.inc"
-};
-u32 D_008BF660[8] = {
-#include "game/008BF660.inc"
-};
-u16 *D_008BF680[16] = {
-    NULL, NULL, NULL, NULL,
-    (u16 *)D_008BF630, (u16 *)D_008BF640, (u16 *)D_008BF650, NULL,
-    NULL, (u16 *)D_008BF660, NULL, (u16 *)&D_008BF660[2],
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF6C0[8] = {
-#include "game/008BF6C0.inc"
-};
-u32 D_008BF6E0[12] = {
-#include "game/008BF6E0.inc"
-};
-u16 *D_008BF710[16] = {
-    NULL, NULL, NULL, (u16 *)D_008BF6C0,
-    NULL, NULL, (u16 *)D_008BF6E0, NULL,
-    NULL, NULL, NULL, (u16 *)&D_008BF6E0[6],
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF750[4] = {
-#include "game/008BF750.inc"
-};
-u32 D_008BF760[4] = {
-#include "game/008BF760.inc"
-};
-u32 D_008BF770[4] = {
-#include "game/008BF770.inc"
-};
-u16 *D_008BF780[16] = {
-    NULL, NULL, (u16 *)D_008BF750, NULL,
-    (u16 *)D_008BF760, NULL, (u16 *)D_008BF770, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-};
-u32 D_008BF7C0[6] = {
-#include "game/008BF7C0.inc"
-};
-u32 D_008BF7D8[3] = {
-#include "game/008BF7D8.inc"
-};
-u32 D_008BF7E8[3] = {
-#include "game/008BF7E8.inc"
-};
-u16 *D_008BF800[16] = {
-    NULL, NULL, NULL, (u16 *)D_008BF7C0,
-    (u16 *)D_008BF7D8, (u16 *)D_008BF7E8, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-};
-u16* *D_008BF840[76] = {
-    NULL, D_008BF4B0, NULL, NULL,
-    NULL, NULL, D_008BF590, NULL,
-    NULL, NULL, NULL, D_008BF4B0,
-    NULL, NULL, NULL, D_008BF520,
-    NULL, NULL, NULL, NULL,
-    D_008BF590, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, D_008BF4B0, D_008BF590, D_008BF590,
-    D_008BF5F0, D_008BF4B0, D_008BF4B0, NULL,
-    NULL, D_008BF520, NULL, NULL,
-    NULL, D_008BF4B0, NULL, D_008BF680,
-    D_008BF680, D_008BF680, D_008BF710, NULL,
-    NULL, NULL, NULL, D_008BF780,
-    D_008BF710, NULL, NULL, NULL,
-    D_008BF800, D_008BF800, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-    NULL, NULL, NULL, NULL,
-};
-u32 gEmStartsBattle[20] = {
-#include "game/008BF970.inc"
-};

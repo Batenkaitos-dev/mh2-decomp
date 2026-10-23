@@ -7,7 +7,7 @@
  * the line (LF by n lines) and END ends the text. A backslash starts a new
  * run of text. The message dialog prints its wait texts with it.
  *
- * The text is read a line at a time (TagText_ReadLine) into runs (TextRun):
+ * The text is read a line at a time (TagText_ReadLine) into runs (TagTextRun):
  * each run is a piece of text with the flags of the tags before it. The
  * line is then drawn run by run (TagText_DrawLine), the tags' flags
  * applied first.
@@ -16,12 +16,15 @@
 #include "lobby_state.h"
 #include "em.h"
 #include "text.h"
+#include "lobby_text.h"
+#include "font.h"
+#include "lobby_util.h"
 
 void *memset(void *dst, s32 c, u32 n);
 char *strcpy(char *dst, const char *src);
 
 /* The tags, in the order of gTagNames: a tag's index is its number, and
- * TextRun.flags' bit n - 1 is tag n. CENTER, LEFT and RIGHT are also the
+ * TagTextRun.flags' bit n - 1 is tag n. CENTER, LEFT and RIGHT are also the
  * alignment's values (gTagTextAlign). */
 enum TagTextTag {
     TAG_NONE = 0,       /* no tag: gTagNames' first name never matches a tag of the texts */
@@ -50,15 +53,15 @@ enum TagTextTag {
 #define TAGTEXT_BODY 1          /* in the text */
 #define TAGTEXT_NEW_LINE 2      /* after BR or LF: the next character starts a run */
 
-#define TAG_NAME_SIZE 0x1E      /* gTagTextTagName's bytes */
+#define TAG_NAME_SIZE 30        /* gTagTextTagName's bytes */
 #define TAG_NAME_MAX 25         /* a longer tag name reads as END */
 #define TAG_RUNS_MAX 30         /* runs a line may start; one more ends the text */
 #define TAG_LINES_MAX 26
 #define TAG_DEFAULT_SIZE 5
 #define TAG_DEFAULT_COLOR 7     /* COLOR and C past 15 */
 #define TAG_LF_MAX 9
-#define TAG_TEXT_SPACING 0x14   /* Font_SetSpacing's spacing outside the printer */
-#define TAG_SCREEN_CENTER_X 0x140
+#define TAG_TEXT_SPACING 20     /* Font_SetSpacing's spacing outside the printer */
+#define TAG_SCREEN_CENTER_X 320
 #define TAG_RIGHT_EDGE 396.0f   /* RIGHT's end, from the left margin */
 #define TAG_ESCAPE '\\'         /* starts a run (and is not drawn) */
 
@@ -68,27 +71,21 @@ extern u8 gTagTextEnd;                        /* TAGTEXT_GOING, _ENDED, _BAD_TAG
 
 /* A run of a line: its text and length, the flags of the tags before it
  * (TAG_FLAG), and the values SIZE, COLOR or C and LF give. */
-typedef struct TextRun {
+typedef struct TagTextRun {
     char *text;
     s32 flags;
     u8 colour;
     u8 size;
     u8 lfLines;
     u8 len;
-} TextRun;
-extern TextRun gTagTextRuns[50];          /* the line's runs */
-extern TextRun *gTagTextRun;              /* the run being read, or drawn */
-extern TextRun *gTagTextReadRun;          /* the last run started: the text read goes to it */
+} TagTextRun;
+extern TagTextRun gTagTextRuns[50];          /* the line's runs */
+extern TagTextRun *gTagTextRun;              /* the run being read, or drawn */
+extern TagTextRun *gTagTextReadRun;          /* the last run started: the text read goes to it */
 extern u16 gTagTextLineBytes;             /* the line's length in bytes (a Shift-JIS character two) */
 extern char *gTagNames[];                 /* the tags' names, by enum TagTextTag */
 extern u8 gTagTextLastTag;                /* the last tag read (enum TagTextTag) */
 char *strstr(const char *s, const char *w);
-void TagText_ReadTag(void);
-void TagText_HandleTag(void);
-void TagText_ReadLine(void);
-void TagText_DrawLine(void);
-void Text_SetColorIndex(s16 i);
-void Font_SetSpacing(u8 a, u8 b);
 extern u8 gTagTextAlign;                  /* TAG_CENTER, TAG_LEFT or TAG_RIGHT */
 extern u8 gTagTextState;                  /* TAGTEXT_HEAD, _BODY, _NEW_LINE */
 extern s32 gTagTextSize;                  /* the size drawn, gTagSizeWidths' index */
@@ -98,10 +95,9 @@ extern f32 gTagTextLeft;
 extern f32 gTagTextY;
 extern f32 gTagTextX;
 extern u32 gTagTextFlags;                 /* the run's flags left to handle */
-extern char gTagTextLine[0x300];          /* a run's text, terminated */
+extern char gTagTextLine[768];          /* a run's text, terminated */
 extern s16 gTagSizeWidths[];              /* the sizes' widths */
 extern u8 gTagColors[];                   /* the colours, Text_SetColorIndex's */
-void Text_PrintAt(char *s, f32 x, f32 y);
 void *memcpy(void *dst, const void *src, u32 n);
 extern char gTagNameEnd[];
 

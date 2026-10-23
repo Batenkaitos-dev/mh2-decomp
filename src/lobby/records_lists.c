@@ -27,25 +27,24 @@
 #include "lobby_globals.h"
 #include "lobby_menu.h"
 #include "area.h"
-void *memset(void *, s32, u32);
-void *memcpy(void *, const void *, u32);
-s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
-void LobbySe_Play(s32);
+#include "records_lists.h"
+#include "game_util.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "my_house.h"
+#include "records_draw.h"
+#include "libc.h"
 
-s32 Game_IsOnline(void);
-
-void Records_SetEquipPage(RecordMenu *m, s16 page);
 extern u8 gMenuWork[];
 extern NetUser gNetUsers[];
 extern s32 gTownMode;
-s32 memcmp(void *a, void *b, s32 n);
 
 /* The house owner's slot in gNetUsers: LobbyState.memberSlot holds it as
  * the digit character '0' + slot. */
 #define RECORDS_OWNER_SLOT() ((u8)gLobby->memberSlot[gScene.localPlayer] - '0')
 
 /*
- * Town messages 0x32 to 0x38: the house owner's packed flags of one
+ * Town messages TOWN_MSG_RECORDS_LEGS to TOWN_MSG_RECORDS_GUNS: the house owner's packed flags of one
  * equipment type (equipType, an EquipItem type). Taken only while the
  * equipment screen waits for them and only from the owner: fills
  * equipBits, builds the list's first page and moves on to the list.
@@ -63,8 +62,6 @@ void Records_RecvEquipBits(void *from, s32 equipType, void *bits)
         menu->step++;
     }
 }
-
-u8 Weapon_GetClass(u8 type, u16 id);
 
 /* 1 if the weapon's class (Weapon_GetClass, enum WeaponType) belongs to
  * the records genre (enum RecordsGenre); else 0. */
@@ -106,8 +103,6 @@ s32 Weapon_IsInGenre(EquipItem *item, s16 genre)
     return 0;
 }
 
-s32 Weapon_IsInGenre(EquipItem *item, s16 genre);
-
 /* 1 if a piece of equipment belongs in the list shown: every piece in the
  * armour list, else a weapon of the genre chosen (RecordMenu.genre). */
 s32 Records_IsInGenre(RecordMenu *menu, EquipItem *item)
@@ -117,10 +112,6 @@ s32 Records_IsInGenre(RecordMenu *menu, EquipItem *item)
     }
     return Weapon_IsInGenre(item, menu->genre);
 }
-
-s32 MyHouse_InOwnHouse(void);
-s8 MyHouse_LocalSlot(void);
-u8 Equip_GetWearMask(SaveData *save, EquipItem *item);
 
 /* The house owner's player slot (MyHouse_LocalSlot). */
 static inline s8 Records_OwnerPlayerSlot(void)
@@ -146,8 +137,6 @@ s32 Records_OwnerCanWear(EquipItem *item)
     }
     return 0;
 }
-
-s32 Equip_TestFlag(EquipItem *item, s16 bit);
 
 /*
  * Counts, per weapon genre, the weapons the owner can wear: out holds
@@ -257,9 +246,6 @@ void Records_TallyArmor(s32 *out)
     }
 }
 
-s32 Bits_Test(u8 *bits, u16 n);
-s32 Menu_CountPages(s16 n, s16 per);
-
 /*
  * Fills RecordMenu.items with page `page` (RECORDS_PAGE_ROWS rows) of the
  * pieces of equipType that the owner can wear, whose flag is set in
@@ -321,7 +307,7 @@ void Records_SetEquipPage(RecordMenu *menu, s16 page)
     }
 }
 
-/* Town messages 0x3A and 0x3B: the owner's weapon or armour counts, taken
+/* Town messages TOWN_MSG_RECORDS_WEAPON_TALLY and TOWN_MSG_RECORDS_ARMOR_TALLY: the owner's weapon or armour counts, taken
  * while the menu waits for them; the page then opens. */
 void Records_RecvEquipTally(void *from, void *tally)
 {
@@ -362,7 +348,7 @@ void Records_RecvTitleBits(void *from, void *bits)
 }
 
 /*
- * Town messages 0x2E to 0x30, one part of the owner's monster records
+ * Town messages TOWN_MSG_RECORDS_SIZE_MAX to TOWN_MSG_RECORDS_HUNTED, one part of the owner's monster records
  * each: part 0 the largest sizes, 1 the smallest (a byte per monster,
  * widened), 2 the hunt counts, which end the wait.
  */
@@ -397,19 +383,13 @@ extern s32 gTownMenuOpen;
 extern s8 gMenuInputLock;
 extern s16 gMenuOffsetX;
 extern s16 gMenuOffsetY;
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void Records_Draw(MenuTask *);
-void Records_DrawMenuLayer(MenuTask *);
-s32 Save_IsItemObtained(SaveData *save, u16 item);
-s32 MyHouse_IsOwner(void);
 
 /*
  * Opens the records menu (TOWN_MODE_RECORDS): clears gMenuWork, sets the
  * draw callbacks, ignores the pad for 6 frames, starts the window's slide
  * in and lists the entries the player may see: the house's access online
  * and for the owner only, the titles for the owner only, each score page
- * for the owner once its unlocking item (0x2C1, 0x2C2) is obtained, the
+ * for the owner once its unlocking item (705, 706) is obtained, the
  * others always.
  */
 void Records_Open(void)
@@ -423,8 +403,8 @@ void Records_Open(void)
     LobbyMenu_Init();
     LobbyMenu_SetDraw(Records_Draw, Records_DrawMenuLayer, 0, 0);
     gMenuInputLock = 6;
-    WinSlide_Step(&menu->win, 0x280, 0x118);
-    LobbySe_Play(0x16); /* the window opens */
+    WinSlide_Step(&menu->win, 640, 280);
+    LobbySe_Play(22); /* the window opens */
     menu->menuCount = 0;
     for (i = 0; i < RECORD_KIND_COUNT; i++) {
         switch (i) {
@@ -441,13 +421,13 @@ void Records_Open(void)
             }
             break;
         case RECORD_KIND_SCORES_A:
-            if (Save_IsItemObtained(&gSave, 0x2C1) && MyHouse_IsOwner()) {
+            if (Save_IsItemObtained(&gSave, 705) && MyHouse_IsOwner()) {
                 menu->kind[menu->menuCount] = i;
                 menu->menuCount++;
             }
             break;
         case RECORD_KIND_SCORES_B:
-            if (Save_IsItemObtained(&gSave, 0x2C2) && MyHouse_IsOwner()) {
+            if (Save_IsItemObtained(&gSave, 706) && MyHouse_IsOwner()) {
                 menu->kind[menu->menuCount] = i;
                 menu->menuCount++;
             }
@@ -458,6 +438,6 @@ void Records_Open(void)
             break;
         }
     }
-    gMenuOffsetX = -0x14;
-    gMenuOffsetY = 0x28;
+    gMenuOffsetX = -20;
+    gMenuOffsetY = 40;
 }

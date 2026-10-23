@@ -15,18 +15,24 @@
 #include "lobby_state.h"
 #include "lobby_menu.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "kbd.h"
+#include "text.h"
+#include "window.h"
+#include "id_search.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
 
-
-void Text_SetSize(s32);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
 void *memset(void *dst, s32 c, u32 n);
 
 extern u8 gMenuWork;
 
-void IdSearch_Draw(MenuTask *task);
-void IdSearch_Draw2(MenuTask *task);
 /* Opens the id search: clears its work, takes the pad from the field and
  * slides the form in. */
 void IdSearch_Open(void)
@@ -35,7 +41,7 @@ void IdSearch_Open(void)
     gFieldControl = 0;
     LobbyMenu_Init();
     LobbyMenu_SetDraw(0, IdSearch_Draw, IdSearch_Draw2, 0);
-    WinSlide_Step(&((IdSearchMenu *)&gMenuWork)->win, 0x280, 0x190);
+    WinSlide_Step(&((IdSearchMenu *)&gMenuWork)->win, 640, 400);
 }
 
 /* The rest of the id search was built at optimization level 4. */
@@ -51,11 +57,6 @@ void IdSearch_Close(void)
 
 extern LobbyMenu *gLobbyMenu;
 extern u8 gLobbyLevel1Sel;
-s32 IdSearch_InputId(void *menu, u16 pad);
-s32 HunterInfo_Update(u16 pad);
-void HunterInfo_Open(void *, s32);
-void LobbyText_Open(s32);
-void LobbySe_Play(s32);
 /*
  * The id search's frame, from the game menu: runs the form until an id is
  * taken, then opens that hunter's info (with joining on offer only while
@@ -119,15 +120,10 @@ s32 IdSearch_Update(u16 pad)
 }
 
 extern char gMyUserId[];
-u32 strlen(const char *s);
+u32 strlen(const void *s);
 s32 memcmp(const char *a, const char *b, s32 n);
-void Kbd_SetPos(s32 a, f32 b);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
 /* unit's own declaration: an s32 result here, read as an s8 at the call; with the definition's s8, IdSearch_InputId compiles differently */
 s32 Kbd_Run(char *dst, s16 held, s16 pressed);
-void Kbd_Cancel(void);
-void LobbyDialog_Grow(void);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
 
 /*
  * The id search's form: slides in, then moves over its two rows. Circle on
@@ -142,7 +138,7 @@ s32 IdSearch_InputId(void *arg, u16 pad)
 
     switch (menu->inputStep) {
     case ID_INPUT_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x190)) {
+        switch (WinSlide_Step(&menu->win, 640, 400)) {
         case MENU_DONE:
             menu->inputStep++;
             menu->row = ID_SEARCH_ROW_ID;
@@ -153,7 +149,7 @@ s32 IdSearch_InputId(void *arg, u16 pad)
         if (pad & PAD_CIRCLE) {
             if (menu->row == ID_SEARCH_ROW_ID) {
                 menu->inputStep++;
-                Kbd_SetPos(0x3A, 80.0f);
+                Kbd_SetPos(58, 80.0f);
                 Chat_OpenKbd(0, 6, ID_SEARCH_ID_CHARS, menu->id); /* keyboard layout 6 */
                 LobbySe_Play(LOBBY_SE_CONFIRM);
             } else if (strlen(menu->id) < ID_SEARCH_ID_CHARS) {
@@ -214,13 +210,6 @@ s32 IdSearch_InputId(void *arg, u16 pad)
 extern char gIdSearchTextFmt[];
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k); /* unit's own declaration: s16 coordinates and an s32 kind here; with the definition's s32 coordinates and s16 kind, IdSearch_DrawForm compiles differently */
 void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-u32 Color_PulseAlpha(u32 color);
-void Menu_DrawSideArrows(s16 x, s16 y, s16 w, s16 size, s8 flip, u32 color);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *text, s32 color);
 
 /*
  * Draws the id search's form at x, y: its title, the id's frame (pulsing,
@@ -234,37 +223,34 @@ void IdSearch_DrawForm(IdSearchMenu *menu, s16 x, s16 y)
     u32 startColor;
     s16 rowY = y;
 
-    Win_Draw(x, y, 0xC8, 0x82, 0xBDB59F6C, 0xBB402010, 8);
-    Gfx_DrawLine(x + 8, rowY + 0xC, 0xB8, 0x14, 0x80B59F6C);
+    Win_Draw(x, y, 200, 130, 0xBDB59F6C, 0xBB402010, 8);
+    Gfx_DrawLine(x + 8, rowY + 12, 184, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x10, rowY + 0xE);
+    Font_SetPos(x + 16, rowY + 14);
     Text_PrintfColored(gSearchMenuTexts[SEARCH_MENU_TEXT_ID]); /* the id search's title (entry 0 is the name search's) */
-    rowY += 0x36;
+    rowY += 54;
     if (menu->row == ID_SEARCH_ROW_ID) {
-        frameColor = Color_PulseAlpha(0x8080);
+        frameColor = Color_PulseAlpha(32896);
         startColor = 0x80404040;
-        Menu_DrawSideArrows(x + 0xA, rowY, 0xB4, 0x16, 0, 0xFF008080);
+        Menu_DrawSideArrows(x + 10, rowY, 180, 22, 0, 0xFF008080);
     } else {
         frameColor = 0x80808080;
         startColor = 0x802B7F7F;
     }
-    Gfx_DrawRectFrame(x + 0x14, rowY, 0xA0, 0x18, frameColor);
-    Gfx_DrawRectFrame(x + 0x13, rowY - 1, 0xA2, 0x1A, frameColor);
+    Gfx_DrawRectFrame(x + 20, rowY, 160, 24, frameColor);
+    Gfx_DrawRectFrame(x + 19, rowY - 1, 162, 26, frameColor);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(Text_CenterX(menu->id, x + 0x64, 0x12), rowY + 4);
+    Font_SetPos(Text_CenterX(menu->id, x + 100, 18), rowY + 4);
     Text_PrintfColored(gIdSearchTextFmt, menu->id);
     Font_SetColor(startColor);
-    labelX = Text_CenterX(gNetLabels[NET_LABEL_SEARCH_START], x + 0x64, 0x12);
-    Font_SetPos(labelX, rowY += 0x28);
+    labelX = Text_CenterX(gNetLabels[NET_LABEL_SEARCH_START], x + 100, 18);
+    Font_SetPos(labelX, rowY += 40);
     Text_PrintfColored(gNetLabels[NET_LABEL_SEARCH_START]);
     if (menu->row == ID_SEARCH_ROW_START) {
-        Menu_DrawArrowsRev(labelX, rowY, 0x12, gNetLabels[NET_LABEL_SEARCH_START], 0xFF008080);
+        Menu_DrawArrowsRev(labelX, rowY, 18, gNetLabels[NET_LABEL_SEARCH_START], 0xFF008080);
     }
 }
 
-void Font_SetSpacing(u8 a, u8 b);
-void IdSearch_DrawForm(IdSearchMenu *menu, s16 x, s16 y);
-void HunterInfo_DrawIfOpen(void);
 /*
  * The id search's first draw callback: the form, or the hunter's info once
  * it is open.
@@ -274,10 +260,10 @@ void IdSearch_Draw(MenuTask *task)
     IdSearchMenu *menu = (IdSearchMenu *)&gMenuWork;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (menu->step) {
     case ID_SEARCH_FORM:
-        IdSearch_DrawForm(menu, menu->win.pos, 0x3A);
+        IdSearch_DrawForm(menu, menu->win.pos, 58);
         break;
     case ID_SEARCH_HUNTER:
         HunterInfo_DrawIfOpen();
@@ -293,7 +279,7 @@ void IdSearch_Draw2(MenuTask *task)
 
 /* The id search's read-only data: its string format. */
 #pragma rodata on
-char gIdSearchTextFmt[0x8] = {
+char gIdSearchTextFmt[8] = {
 #include "lobby/00838190.inc"
 };
 #pragma rodata off

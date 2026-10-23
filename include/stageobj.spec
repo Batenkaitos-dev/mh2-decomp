@@ -8,7 +8,7 @@ name StageObj
 size 0x40
 0x000 u8 active // nonzero while the object is in use
 0x001 u8 visible
-0x002 u8 kind // set by the creator (0xC, 0x11, 0x1B...)
+0x002 u8 kind // set by the creator (enum StageObjKind)
 0x003 u8 type // the variant within the kind (the updates switch on it)
 0x004 u8 state // the update's state
 0x005 u8 var0 // per-kind scratch byte (counters, flags)

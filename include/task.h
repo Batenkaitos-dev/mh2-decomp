@@ -5,7 +5,7 @@
 
 /*
  * The task system: sub_main's table gTaskSlots holds TASK_SLOT_COUNT slots
- * of 0x20 bytes. TaskSlot_Set starts a task with a function, which then
+ * of 32 bytes. TaskSlot_Set starts a task with a function, which then
  * runs with its slot as its argument once a frame (Task_RunFrame). The
  * bytes from +8 on are the task's own: every task keeps
  * its state at +8 and the state's step at +9 (plsel_entry, the select
@@ -81,5 +81,22 @@ typedef struct TaskSlot {
 } TaskSlot;
 
 typedef char TaskSlot_size_check[(sizeof(TaskSlot) == 0x20) ? 1 : -1];
+
+void TaskSlot_InitAll(void);
+void TaskSlot_ClearFirstNine(void);
+void Task_RunFrame(void);
+void TaskSlot_Set(void *func, s16 slot);
+void Task_StartGmSub(void);
+void TaskSlot_End(TaskSlot *task);
+void TaskSlot_Hold(s16 slot);
+void TaskSlot_Prepare(void *func, s16 slot);
+TaskSlot *TaskSlot_Get(s16 slot);
+void Task_EndGmSubForNetScene(void);
+void Task_EndGmSubForNetSetup(void);
+void Task_StartBootToGmSub(void);
+void Task_StartBootToGmSubKeep(void);
+void Task_StartBoot(void);
+void Task_StartBootScreens(void);
+void Field_UpdateAll(void);
 
 #endif

@@ -1,5 +1,6 @@
 #ifndef EM_KUTKU_H
 #define EM_KUTKU_H
+#include "em.h"
 
 /*
  * The Kut-Ku family's vocabulary (src/game/em_kutku.c): Yian Kut-Ku, Blue
@@ -17,7 +18,7 @@
 enum EmKutkuMotion {
     KUTKU_MOT_IDLE = 0x01,          /* the idle loop; layers 0-2 idle with EM_MOTION_ID(layer, 1) */
     KUTKU_MOT_WALK = 0x03,          /* KUTKU_MOVE_WALK; forward motion of Em_TurnToTargetMotion in group 3 */
-    KUTKU_MOT_TURN_LEFT = 0x06,     /* intro: rotY offset -0x4000 and turned back over half its length */
+    KUTKU_MOT_TURN_LEFT = 0x06,     /* intro: rotY offset by -ANGLE_TURN / 4 and turned back over half its length */
     KUTKU_MOT_LIMP = 0x0A,          /* KUTKU_MOVE_LIMP (below 20% hp) */
     KUTKU_MOT_DESCEND = 0x0B,       /* the last stretch of a landing (KUTKU_FLY_LAND, HOP_TO_GOAL) */
     KUTKU_MOT_GLIDE = 0x0C,         /* entering a flight (FlyRoute, GlideToGoal*, GlideOnce, the swoops start) */
@@ -36,20 +37,20 @@ enum EmKutkuMotion {
     KUTKU_MOT_REST_LIE_DOWN = 0x20, /* start of KUTKU_IDLE_REST */
     KUTKU_MOT_REST_GET_UP = 0x21,   /* KUTKU_IDLE_REST_END */
     KUTKU_MOT_LIE = 0x22,           /* lying under statuses 1/2 (STATUS1/2_COLLAPSE, STATUS2_LIE_DOWN) */
-    KUTKU_MOT_STARE = 0x24,         /* TurnAndStare, Stare; effects KutkuAttack 0x21 (f46) and 1 (f50) */
+    KUTKU_MOT_STARE = 0x24,         /* TurnAndStare, Stare; effects KutkuAttack 33 (f46) and 1 (f50) */
     KUTKU_MOT_GET_UP = 0x25,        /* STATUS1_END, STATUS2_END */
     KUTKU_MOT_COLLAPSE = 0x26,      /* CapturedHold2 start (status 1 begun) */
     KUTKU_MOT_LIE_DOWN = 0x27,      /* STATUS2_LIE_DOWN */
-    KUTKU_MOT_LEAP = 0x28,          /* Leap, airborne from frame 60; KutkuAttack 0x1C at frame 60 */
-    KUTKU_MOT_LEAP_LAND = 0x29,     /* Leap and SwoopThenLand landings; KutkuAttack 0x1D, dust */
-    KUTKU_MOT_TAIL_SPIN = 0x2A,     /* TailSpin, rotY + 0x200; KutkuAttack 0x11 at frame 30 */
+    KUTKU_MOT_LEAP = 0x28,          /* Leap, airborne from frame 60; KutkuAttack 28 at frame 60 */
+    KUTKU_MOT_LEAP_LAND = 0x29,     /* Leap and SwoopThenLand landings; KutkuAttack 29, dust */
+    KUTKU_MOT_TAIL_SPIN = 0x2A,     /* TailSpin, rotY + 0x200; KutkuAttack 17 at frame 30 */
     KUTKU_MOT_SWOOP_DIVE = 0x2C,    /* the swoops start, aimed at the target */
-    KUTKU_MOT_SWOOP_CLAW = 0x2D,    /* EmKutku_SwoopClawIfNear near the target; KutkuAttack 0x14 and 0x15 at frame 22 */
-    KUTKU_MOT_SPIT = 0x2F,          /* Spit and SpitAfterFlinch; projectile at the table frame, KutkuAttack 0x22 at 30 */
+    KUTKU_MOT_SWOOP_CLAW = 0x2D,    /* EmKutku_SwoopClawIfNear near the target; KutkuAttack 20 and 21 at frame 22 */
+    KUTKU_MOT_SPIT = 0x2F,          /* Spit and SpitAfterFlinch; projectile at the table frame, KutkuAttack 34 at 30 */
     KUTKU_MOT_ALERT_IDLE = 0x33,    /* intro, VS_EAT_BAIT end, KUTKU_IDLE_ALERT (combat idle) */
     KUTKU_MOT_BACK_HOP = 0x34,      /* BackHop, airborne from frame 76 */
     KUTKU_MOT_TURN_IN_PLACE = 0x36, /* KUTKU_MOVE_TURN_TO_GOAL (rotY 0x200 a frame to frame 60); also KUTKU_VS_POSE_C */
-    KUTKU_MOT_BACK_HOP_LAND = 0x39, /* BackHop landing; KutkuAttack 0x1F, 0x1B, 0x20 */
+    KUTKU_MOT_BACK_HOP_LAND = 0x39, /* BackHop landing; KutkuAttack 31, 27, 32 */
     KUTKU_MOT_FEED = 0x3B,          /* after the forage motion in the eat states; +5% hp, need gauges refilled */
     KUTKU_MOT_FLINCH = 0x3C,        /* REACT_HOLD2 start (no root motion to frame 52), KUTKU_REACT_FLINCH */
     KUTKU_MOT_FLINCH_E = 0x3D,      /* FlinchE */
@@ -67,24 +68,24 @@ enum EmKutkuMotion {
     KUTKU_MOT_STATUS4 = 0x4C,       /* KUTKU_REACT_STATUS4 (status 4 effect) and REACT_HOLD2 until the timer */
     KUTKU_MOT_FALL = 0x4D,          /* falling out of the air (AirFlinch, FallFromAir*) */
     KUTKU_MOT_FALL_LAND = 0x4E,     /* DEFEAT_DIE_FALLING on the floor */
-    KUTKU_MOT_FORAGE = 0x4F,        /* first motion of the eat states: dust clouds (DustCloud_Create kinds 6-0x10) at its frames */
+    KUTKU_MOT_FORAGE = 0x4F,        /* first motion of the eat states: dust clouds (DustCloud_Create types 6-16) at its frames */
     KUTKU_MOT_IDLE_PAIR_A = 0x50,   /* idle PAIR_A/B/C, ACTION_D; nothing tells it from KUTKU_MOT_IDLE_PAIR_B */
     KUTKU_MOT_IDLE_PAIR_B = 0x51,   /* idle PAIR_A/B/C */
     KUTKU_MOT_DIE_FALLING = 0x52,   /* DEFEAT_DIE_FALLING after landing */
     KUTKU_MOT_HOP_IN_PLACE = 0x54,  /* HopInPlace, airborne from frame 36 */
     KUTKU_MOT_SWOOP = 0x57,         /* the swoops descent after KUTKU_MOT_SWOOP_DIVE, velZ 100 */
     KUTKU_MOT_LEVEL_OUT = 0x5A,     /* LevelOut*, rotX and rotZ stepped to 0 */
-    KUTKU_MOT_CHARGE_TRIP = 0x5B,   /* ChargeTrip end with KutkuAttack 0x24 */
+    KUTKU_MOT_CHARGE_TRIP = 0x5B,   /* ChargeTrip end with KutkuAttack 36 */
     KUTKU_MOT_TRAPPED = 0x5F,       /* KUTKU_REACT_TRAPPED (pitfall) */
     KUTKU_MOT_STRUGGLE = 0x60,      /* TrapStruggle, Status4DownedEnd, looped until trapTimer ends */
     KUTKU_MOT_DOWNED = 0x61,        /* STATUS1/2_DOWNED with lying puffs and a periodic sound; also group-4 and group-8 states */
     KUTKU_MOT_DOWNED_GET_UP = 0x62, /* Status2/1DownedEnd */
     KUTKU_MOT_THREAT = 0x64,        /* IDLE_DISPLAY (and its rage / pending-rage forms), KUTKU_REACT_ATTACK5 after KUTKU_MOT_ATTACK5_FLINCH */
     KUTKU_MOT_TURN_TO_GOAL = 0x65,  /* KUTKU_IDLE_TURN_TO_GOAL (aimAngle to the goal, snaps rotY), end of MOVE_WALK_B_AND_TURN */
-    KUTKU_MOT_PECK_COMBO = 0x66,    /* PeckCombo, PeckSteal (also KUTKU_IDLE_ACTION_B); four KutkuAttack 0x18 */
+    KUTKU_MOT_PECK_COMBO = 0x66,    /* PeckCombo, PeckSteal (also KUTKU_IDLE_ACTION_B); four KutkuAttack 24 */
     KUTKU_MOT_WALK_B = 0x68,        /* KUTKU_MOVE_WALK_B / WALK_B_AND_TURN, Em_StepToGoal */
-    KUTKU_MOT_SPIT_VOLLEY = 0x69,   /* MotionEffects: four ranged shots from bone 0x22 (frames 78/150/240/296) */
-    KUTKU_MOT_PECK_COMBO_B = 0x6A,  /* PeckComboB (also KUTKU_IDLE_ACTION_A); KutkuAttack 0x12 then four 0x18 */
+    KUTKU_MOT_SPIT_VOLLEY = 0x69,   /* MotionEffects: four ranged shots from KUTKU_BONE_BREATH (frames 78/150/240/296) */
+    KUTKU_MOT_PECK_COMBO_B = 0x6A,  /* PeckComboB (also KUTKU_IDLE_ACTION_A); KutkuAttack 18 then four 24 */
     KUTKU_MOT_FLASH = 0x6B,         /* Gypceros: MotionEffects: sets crestGlow */
     KUTKU_MOT_ATTACK5_FLINCH = 0x6C, /* Kut-Ku KUTKU_REACT_ATTACK5 (EM_DMG_ATTACK5, not Gypceros, then enrage); Kut-Ku VS_POSE_A */
     KUTKU_MOT_FEIGN_DEATH_RISE = 0x6D, /* KUTKU_ATK_FEIGN_DEATH_RISE/KUTKU_MOT_REST_LIE_DOWN after feigned death */
@@ -129,7 +130,7 @@ enum EmKutkuIdleState {
     KUTKU_IDLE_DISPLAY_RAGE = 0x23,        /* Em_StartRage; KUTKU_MOT_THREAT */
     KUTKU_IDLE_STUN_SHAKE_OFF = 0x24,      /* Em_EndStatus5 (the stun); entered from KUTKU_REACT_STUN */
     KUTKU_IDLE_DISPLAY_PENDING_RAGE = 0x25, /* Em_StartPendingRage; KUTKU_MOT_THREAT */
-    KUTKU_IDLE_EAT = 0x28                  /* Em_StartGoalAction(0x2710); feed KUTKU_MOT_FEED after EAT_START */
+    KUTKU_IDLE_EAT = 0x28                  /* Em_StartGoalAction(10000); feed KUTKU_MOT_FEED after EAT_START */
 };
 
 /* Group 1, EM_GROUP_MOVE (EmKutku_RunMoveState): walking, running, limping and turning. */
@@ -169,7 +170,7 @@ enum EmKutkuFlyState {
     KUTKU_FLY_ROUTE_LOOP = 0x11,            /* restarts itself at each goal, no leg count */
     KUTKU_FLY_LEVEL_OUT_AND_LAND = 0x12,    /* KUTKU_MOT_LEVEL_OUT, then KUTKU_FLY_LAND */
     KUTKU_FLY_GLIDE_TO_GOAL = 0x13,         /* one leg, then KUTKU_FLY_GLIDE_ONCE */
-    KUTKU_FLY_HOP_IN_PLACE = 0x14,          /* KUTKU_MOT_HOP_IN_PLACE, velY-only curve 0xC */
+    KUTKU_FLY_HOP_IN_PLACE = 0x14,          /* KUTKU_MOT_HOP_IN_PLACE, velY-only curve 12 */
     KUTKU_FLY_HOVER_STRAIGHT_TO_GOAL = 0x15, /* yaw straight at the goal, 3D distance */
     KUTKU_FLY_LEVEL_OUT = 0x16,             /* KUTKU_MOT_LEVEL_OUT, then the hover */
     KUTKU_FLY_TRAP_ESCAPE = 0x17,           /* from the trap struggles; clears holdTimer */
@@ -188,7 +189,7 @@ enum EmKutkuAttackState {
     KUTKU_ATK_FEIGN_DEATH_LIE = 0x09,         /* KUTKU_MOT_FEIGN_DEATH_LIE, out of combat, gathering point */
     KUTKU_ATK_PECK_COMBO = 0x0A,              /* turn, KUTKU_MOT_PECK_COMBO */
     KUTKU_ATK_PECK_STEAL = 0x0B,              /* KUTKU_MOT_PECK_COMBO, EmKutku_StealItem on contact */
-    KUTKU_ATK_CHARGE_TRIP = 0x12,             /* KUTKU_MOT_RUN run, KUTKU_MOT_CHARGE_TRIP with KutkuAttack 0x24 */
+    KUTKU_ATK_CHARGE_TRIP = 0x12,             /* KUTKU_MOT_RUN run, KUTKU_MOT_CHARGE_TRIP with KutkuAttack 36 */
     KUTKU_ATK_SWOOP_THEN_LAND = 0x15,         /* swoop, drop, KUTKU_MOT_LEAP_LAND */
     KUTKU_ATK_SPIT_B = 0x17,                  /* EmKutku_Spit variant 1 */
     KUTKU_ATK_SPIT_C = 0x18,                  /* variant 2 */
@@ -226,7 +227,7 @@ enum EmKutkuReactState {
     KUTKU_REACT_STATUS1_DOWNED_END = 0x13,   /* Em_EndStatus1, KUTKU_MOT_DOWNED_GET_UP */
     KUTKU_REACT_PART6_BREAK = 0x14,          /* Gypceros, Em_BreakPart(em, 1) */
     KUTKU_REACT_STUN = 0x15,                 /* EM_DMG_STATUS5 not held; stun stars; Em_BeginStatus5 */
-    KUTKU_REACT_STUN_TRAPPED = 0x16,         /* EM_DMG_STATUS5 with holdTimer; downed KUTKU_MOT_DOWNED; then 0x17 */
+    KUTKU_REACT_STUN_TRAPPED = 0x16,         /* EM_DMG_STATUS5 with holdTimer; downed KUTKU_MOT_DOWNED; then KUTKU_REACT_STUN_TRAPPED_STRUGGLE */
     KUTKU_REACT_STUN_TRAPPED_STRUGGLE = 0x17, /* KUTKU_MOT_STRUGGLE until trapTimer; Em_EndStatus5; to KUTKU_FLY_TRAP_ESCAPE */
     KUTKU_REACT_HOLD2 = 0x18,                /* EM_DMG_ATTACK13; Em_SetHold2; */
     KUTKU_REACT_FEIGN_DEATH_CARVABLE = 0x19  /* Gypceros level 11-17; KUTKU_MOT_DIE, EmKutku_AddMinePoint, to KUTKU_ATK_FEIGN_DEATH_RISE_B */
@@ -250,11 +251,85 @@ enum EmKutkuEventState {
 /* Group 8, EM_GROUP_VERSUS (EmKutku_RunVersusState): the versus quests' bait and poses. */
 enum EmKutkuVersusState {
     KUTKU_VS_EAT_BAIT = 0x00, /* VersusBait_Create, head-down, feed */
-    KUTKU_VS_POSE_A = 0x01,   /* per-kind motions, then 0x98 */
-    KUTKU_VS_POSE_B = 0x02,   /* per-kind motions, then 0x98 */
-    KUTKU_VS_POSE_C = 0x03,   /* per-kind motions, then 0x98 */
+    KUTKU_VS_POSE_A = 0x01,   /* per-kind motions, then KUTKU_VS_WAIT_BOTH */
+    KUTKU_VS_POSE_B = 0x02,   /* per-kind motions, then KUTKU_VS_WAIT_BOTH */
+    KUTKU_VS_POSE_C = 0x03,   /* per-kind motions, then KUTKU_VS_WAIT_BOTH */
     KUTKU_VS_WAIT_BOTH = 0x98, /* Versus_MarkDefeat on entry; waits Versus_BothDefeated */
     KUTKU_VS_END = 0x99       /* 90 frames then EndState */
 };
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes KutkuAttack_Create makes on given frames of a motion
+ * (KutkuAttack_HitShapes, by the attack rows' hit lists), where the
+ * shots start, the bones the wing beats and the steps' sounds take turns
+ * at. "A" and "B" tell two bones apart; which side is left the code doesn't
+ * show. Bones no code explains stay numbers: 1 and 27 (effects in motion 13
+ * and KUTKU_MOT_FLINCH), 39 (the spark when part 6 breaks), 42 and 44.
+ */
+enum EmKutkuBone {
+    KUTKU_BONE_ROOT = 0,        /* the skeleton's first bone: the body's sphere in KUTKU_MOT_RUN (KutkuAttack 19) and KUTKU_MOT_WALK_B */
+    KUTKU_BONE_BODY = 2,        /* the body's sphere in the leap, its landing and the collapse; the carving point is on the floor under it */
+    KUTKU_BONE_WING_A = 6,      /* the wing beats (the hover's sounds) play here and at KUTKU_BONE_WING_B, four frames apart */
+    KUTKU_BONE_WING_B = 12,
+    KUTKU_BONE_LEG_A = 19,      /* leg A's smaller sphere in the walk's and the turns' steps (with KUTKU_BONE_FOOT_A's) */
+    KUTKU_BONE_STEP_A = 20,     /* the walk's and the turns' step sounds take turns here and at KUTKU_BONE_STEP_B */
+    KUTKU_BONE_FOOT_A = 22,     /* leg A's foot: the steps' larger sphere, the talons in KUTKU_MOT_SWOOP_CLAW, a landing on both feet */
+    KUTKU_BONE_LEG_B = 25,      /* the same for leg B */
+    KUTKU_BONE_STEP_B = 26,
+    KUTKU_BONE_FOOT_B = 28,
+    KUTKU_BONE_BREATH = 34,     /* where the shots start: Kut-Ku's fireball (EMRANGED_KUTKU_FIREBALL), the Gypceros's shot (EMRANGED_GYPCEROS_SHOT) */
+    KUTKU_BONE_HEAD = 35,       /* the head's sphere in the pecks (KUTKU_MOT_PECK_COMBO, _B) and the forage */
+    KUTKU_BONE_TAIL_A = 41,     /* the tail's two spheres in KUTKU_MOT_TAIL_SPIN (with KUTKU_BONE_TAIL_B) */
+    KUTKU_BONE_TAIL_B = 43
+};
+
+extern void *EmKutku_Callbacks[8];
+void EmKutku_MotionSounds(Em *em, EmWork *work);
+void EmKutku_Init(Em *em);
+void EmKutku_Start(Em *em);
+void EmKutku_AddMinePoint(Em *em);
+void EmKutku_Land(Em *em, EmWork *work);
+void EmKutku_FlyOutOfArea(Em *em, EmWork *work);
+void EmKutku_FlyToGoalAndLand(Em *em, EmWork *work);
+void EmKutku_FlyThroughArea(Em *em, EmWork *work);
+void EmKutku_AirFlinch(Em *em, EmWork *work);
+void EmKutku_FallFromAir(Em *em, EmWork *work);
+void EmKutku_Part6Break(Em *em, EmWork *work);
+void EmKutku_FeignDeathCarvable(Em *em, EmWork *work);
+void EmKutku_JungleIntro(Em *em, EmWork *work);
+void EmKutku_Captured(Em *em);
+void EmKutku_VsEatBait(Em *em, EmWork *work);
+void EmKutku_VsPoseA(Em *em, EmWork *work);
+void EmKutku_VsPoseB(Em *em, EmWork *work);
+void EmKutku_VsPoseC(Em *em, EmWork *work);
+void EmKutku_Die(Em *em, EmWork *work);
+void EmKutku_DieHeld(Em *em, EmWork *work);
+void EmKutku_DieFalling(Em *em, EmWork *work);
+void EmKutku_Reappear(Em *em, EmWork *work);
+void EmKutku_RunIdleState(Em *em, EmWork *work);
+void EmKutku_RunMoveState(Em *em, EmWork *work);
+void EmKutku_RunAttackState(Em *em, EmWork *work);
+void EmKutku_Update(Em *em);
+void EmKutku_RunState(Em *em, s32 work);
+void EmKutku_SpawnLandingDust(Em *em);
+void EmKutku_SpawnDustCloudAEvery5(Em *em);
+s32 EmKutku_SwoopClawIfNear(Em *em);
+void EmKutku_EndAttack(Em *em, EmWork *work);
+void EmKutku_EndSwoop(Em *em, s32 unused);
+s32 EmKutku_IsFeigningDeath(Em *em);
+void EmKutku_SetIdleState(Em *em, u16 state, u8 mode);
+void EmKutku_SetMoveState(Em *em, u16 state, u8 mode);
+void EmKutku_SetFlyState(Em *em, u16 state, u8 mode);
+void EmKutku_SetAttackState(Em *em, u16 state, u8 mode);
+void EmKutku_SetReactState(Em *em, u16 state, u8 mode);
+void EmKutku_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmKutku_SetFarthestEscapePoint(Em *em);
+void EmKutku_StepPitch(Em *em, s32 mode, f32 height);
+void EmKutku_MoveByVelYCurve(Em *em, s32 kind);
+void EmKutku_StartCurves(Em *em, u8 kind);
+u8 EmKutku_UpdateCurves(Em *em);
 
 #endif

@@ -27,85 +27,37 @@
 #include "scene.h"
 #include "sprite.h"
 #include "capsule.h"
+#include "area.h"
+#include "camera.h"
+#include "card.h"
+#include "quest.h"
+#include "text.h"
+#include "draw_slots.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "hit_setup.h"
+#include "monster_effects.h"
+#include "rand.h"
+#include "cam_shake.h"
+#include "vec_math.h"
+#include "sound.h"
 
 #pragma optimization_level 4
 
 void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
-void CamShake_SetA(s32 kind, f32 *pos);
 /* unit's own declaration: the angle declared u16 and the kind s32 as the callers pass them; with the definition's s32 angle and s16 kind the calls compile differently */
 void AttackBurst_CreateAtScaled(f32 *pos, u16 r, s32 kind, f32 scale);
 void AttackBurst_CreateAt(f32 *pos, s16 k, u8 c, f32 scale);
 /* unit's own declaration: the kind declared s32 and the angle u16 as the callers pass them; with the definition's s16 kind and s32 angle the calls compile differently */
 void AttackBurst_CreateAtYaw(f32 *pos, s32 kind, u8 type, u16 ang, f32 scale);
-void ShotFlash_CreateAtScaled(f32 *pos, s32 k, u8 c, f32 scale);
 void FireBlast_CreateScaledExact(f32 *pos, s16 k, f32 scale);
-void MonsterFx_CreateAt(f32 *src, u8 k, f32 f);
-StageObj *MonsterFx_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
-extern f32 EmRangedAttack_RemobraSpitScales[];
 void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-typedef struct { s32 frame; u32 color; } ColorKey;
-void Mtx_RotateZ(f32 *m, f32 a);
-void EmRangedAttack_KeepStrikePos(u8 *a, u8 *b);
-void ThunderSpark_CreateAt(void *src, u8 k, u8 c, f32 f);
-void Vec_Add(f32 *, f32 *, f32 *);
 extern f32 (*EmRangedAttack_KirinStrikeSpots[])[2];
-void Vec_RotateSelf(f32 *v, f32 *m);
-extern f32 EmRangedAttack_BoneOfs[];
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateX(f32 *v, f32 angle);
-void Vec_RotateY(f32 *v, f32 angle);
-f32 Math_Atan2(f32 y, f32 x);
-f32 Math_Sqrtf(f32 x);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Gfx_SetBlend(s32 a, s32 b);
 extern f32 gCamMatrix[];
-void ShotFlash_CreateAt(f32 *pos, s32 k, u8 c);
-void Mtx_Identity(f32 *m);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-f32 Math_Absf(f32 x);
-s32 Model_Draw(u32 h, s32 flags);
-void ObjAttach_Free(ObjAttach *p);
-u16 Rand_Next(s32 stream);
-void EmRangedAttack_Setup(ObjAttach *o);
-void EmRangedAttack_Run(ObjAttach *o);
-void EmRangedAttack_Hit(ObjAttach *);
-void EmRangedAttack_End(ObjAttach *o);
-void EmRangedAttack_Free(ObjAttach *o);
-s32 Gs_SetState(u8 reg, u32 v);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Vec_Copy(f32 *out, f32 *in);
 /* unit's own declaration: the flags declared s32; with the definition's u16 EmRangedAttack_DrawModel's call compiles differently */
 void Draw_SetBlendFlags(s32);
-f32 AreaGrid2_GetFloorYFiltered(f32 *);
-void Draw_ApplyStates(u32);
-void Draw_SetDefaultState(void);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void DrawSlot_Free(s32);
 void ObjAttach_MoveAccel(ObjAttach *);
-void EmRangedAttack_Update(ObjAttach *o);
-void Vec_Normalize(f32 *);
-f32 Vec_Dot(f32 *a, f32 *b);
-void Vec_Cross(f32 *, f32 *, f32 *);
-void Vec_Sub(f32 *, f32 *, f32 *);
 extern f32 gCamPos;
-ObjAttach *ObjAttach_Alloc(s32 n);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-u8 Player_InCurrentArea(void *obj);
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *, s32 a, s32 b, void *c);
-extern s16 EmRangedAttack_RowBase[];
-extern void *EmRangedAttack_RowsPtr;
-void EmRangedAttack_StartAttackRow(ObjAttach *, s32);
-void EmRangedAttack_Impact(ObjAttach *o, s16 n, f32 *pos);
 
 /*
  * Fills a new EmRangedAttack object for its owner: the kind
@@ -290,7 +242,7 @@ void EmRangedAttack_StartAttackRow(ObjAttach *atk, s32 owner)
  * drawn part (EmRangedAttack_PartCounts[type]). */
 typedef struct EmRangedAttackPart {
     s8 idx;                     /* 0x00 */
-    u8 alpha;                   /* 0x01: types 4 and 21: the part's alpha (0xFF in phases 1-3) */
+    u8 alpha;                   /* 0x01: types 4 and 21: the part's alpha (255 in phases 1-3) */
     s16 frame;                  /* 0x02: the part's frame; a negative one is a delay */
     f32 scale[3];               /* 0x04 */
     u16 rot[3];                 /* 0x10 */
@@ -309,7 +261,7 @@ typedef struct EmRangedAttackBuf {
     DrawSlot *ds;               /* 0x08 */
     f32 pos[3];                 /* 0x0C */
     f32 strikePos[3];            /* 0x18: type 8: where the strike lands */
-    u8 pad24[0x30 - 0x24];
+    u8 pad24[48 - 36];
     s16 bone;                   /* 0x30 */
     u16 phaseTimer;             /* 0x32: the frames in the phase */
     f32 floorY;                 /* 0x34 */
@@ -328,10 +280,6 @@ extern s16 EmRangedAttack_SpinY[];
 extern s16 EmRangedAttack_KirinStrikeCounts[];
 extern HitShape *EmRangedAttack_HitShapes[];
 EmBone *Em_Bone(void *obj, s16 bone);
-f32 AreaGrid2_GetFloorY(f32 *pos);
-void EmRangedAttack_DrawParts(DrawSlot *ds);
-void EmRangedAttack_AttachToBone(ObjAttach *o, u8 *b);
-void EmRangedAttack_KirinNextStrike(ObjAttach *o, u8 *b);
 
 /*
  * Sets up an EmRangedAttack on its first update (ATTACH_SETUP), then runs its
@@ -444,11 +392,11 @@ void EmRangedAttack_Setup(ObjAttach *atk)
                 if (i == 0) {
                     parts->rot[2] = Rand_Next(1);
                 } else {
-                    parts->spin[0] = EmRangedAttack_SpinX[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 0x10)) / 360.0f);
-                    parts->spin[1] = EmRangedAttack_SpinY[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 0x10)) / 360.0f);
+                    parts->spin[0] = EmRangedAttack_SpinX[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 16)) / 360.0f);
+                    parts->spin[1] = EmRangedAttack_SpinY[i - 1] + (u16) (s32) (0.5f + 65536.0f * (0.1f * ((Rand_Next(1) & 0x1F) - 16)) / 360.0f);
                 }
             } else {
-                parts->rot[0] = 0xC000;
+                parts->rot[0] = ANGLE_TURN * 3 / 4;
             }
         }
         break;
@@ -458,23 +406,23 @@ void EmRangedAttack_Setup(ObjAttach *atk)
         head->yawOfs = (atk->rotY - em->rotY) >> 8;
         head->ownerMotionId = ((Em *) atk->owner)->motionId[0];
         EmRangedAttack_AttachToBone(atk, (u8 *) head);
-        parts->spin[2] = 0x71C;
+        parts->spin[2] = 1820;
         break;
     case EMRANGED_HERMITAUR_SHOT:
-        Em_PlaySeChecked(atk->owner, 0x1C, 0, atk->pos, 1, 0);
+        Em_PlaySeChecked(atk->owner, 28, 0, atk->pos, 1, 0);
         goto grow;
     case EMRANGED_REMOBRA_SPIT:
         atk->hitScale = EmRangedAttack_RemobraSpitScales[atk->stateVar1];
         switch (atk->stateVar1) {
         default:
         case 0:
-            Em_PlaySeChecked(atk->owner, 0x18, 0, atk->pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 24, 0, atk->pos, 1, 0);
             break;
         case 1:
-            Em_PlaySeChecked(atk->owner, 0x27, 0, atk->pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 39, 0, atk->pos, 1, 0);
             break;
         }
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
     case EMRANGED_KUTKU_FIREBALL:
     case EMRANGED_PREY_SPIT:
     case EMRANGED_GRAVIOS_SHOT:
@@ -498,7 +446,7 @@ void EmRangedAttack_Setup(ObjAttach *atk)
             parts->idx = 0;
             parts->frame = -i * 4;
             parts->rot[2] = Rand_Next(1);
-            parts->spin[2] = 0x199A;
+            parts->spin[2] = 6554;
             parts++;
         }
         break;
@@ -513,14 +461,14 @@ void EmRangedAttack_Setup(ObjAttach *atk)
         for (i = 0; i < n; i++) {
             switch (parts->idx) {
             case 0:
-                parts->spin[2] = 0x1000;
+                parts->spin[2] = 4096;
             }
             parts++;
         }
         break;
     case EMRANGED_KHEZU_GROUND_BOLT:
         atk->pos[1] = em->floorY;
-        Em_PlaySeChecked(atk->owner, 0x37, 0, atk->pos, 1, 0);
+        Em_PlaySeChecked(atk->owner, 55, 0, atk->pos, 1, 0);
         head->slot = DrawSlot_Alloc();
         if (head->slot != -1) {
             head->ds = DrawSlot_Get(head->slot);
@@ -583,9 +531,9 @@ void EmRangedAttack_Setup(ObjAttach *atk)
         parts->rot[0] = Rand_Next(1);
         parts->rot[1] = Rand_Next(1);
         parts->rot[2] = Rand_Next(1);
-        parts->spin[0] = (Rand_Next(1) & 0xFF) - 0x80;
-        parts->spin[1] = (Rand_Next(1) & 0xFF) - 0x80;
-        parts->spin[2] = (Rand_Next(1) & 0xFF) - 0x80;
+        parts->spin[0] = (Rand_Next(1) & 0xFF) - 128;
+        parts->spin[1] = (Rand_Next(1) & 0xFF) - 128;
+        parts->spin[2] = (Rand_Next(1) & 0xFF) - 128;
         break;
     case EMRANGED_CONGALALA_THROW:
         parts->scale[2] = 1.5f;
@@ -594,9 +542,9 @@ void EmRangedAttack_Setup(ObjAttach *atk)
         parts->rot[0] = Rand_Next(1);
         parts->rot[1] = Rand_Next(1);
         parts->rot[2] = Rand_Next(1);
-        parts->spin[0] = (Rand_Next(1) & 0xFF) - 0x80;
-        parts->spin[1] = (Rand_Next(1) & 0xFF) - 0x80;
-        parts->spin[2] = (Rand_Next(1) & 0xFF) - 0x80;
+        parts->spin[0] = (Rand_Next(1) & 0xFF) - 128;
+        parts->spin[1] = (Rand_Next(1) & 0xFF) - 128;
+        parts->spin[2] = (Rand_Next(1) & 0xFF) - 128;
         break;
     case EMRANGED_BIG_FRAGMENT:
         parts->scale[2] = 5.0f;
@@ -605,9 +553,9 @@ void EmRangedAttack_Setup(ObjAttach *atk)
         parts->rot[0] = Rand_Next(1);
         parts->rot[1] = Rand_Next(1);
         parts->rot[2] = Rand_Next(1);
-        parts->spin[0] = (Rand_Next(1) & 0xFF) - 0x80;
-        parts->spin[1] = (Rand_Next(1) & 0xFF) - 0x80;
-        parts->spin[2] = (Rand_Next(1) & 0xFF) - 0x80;
+        parts->spin[0] = (Rand_Next(1) & 0xFF) - 128;
+        parts->spin[1] = (Rand_Next(1) & 0xFF) - 128;
+        parts->spin[2] = (Rand_Next(1) & 0xFF) - 128;
         break;
     }
     if (atk->type == EMRANGED_KIRIN_BOLTS) {
@@ -623,18 +571,13 @@ void EmRangedAttack_Setup(ObjAttach *atk)
 extern s16 EmRangedAttack_PartFrames[];
 extern s16 EmRangedAttack_Lives[];
 extern s16 EmRangedAttack_GroundBoltPartFrames[];
-void EmRangedAttack_FloorCrossing(ObjAttach *o, ObjAttach *ref, f32 *out);
 void EmRangedAttack_RestartBoltPart(ObjAttach *o, EmRangedAttackPart *p);
 extern s16 EmRangedAttack_FirstCurve[];
 extern s16 EmRangedAttack_CurveSteps[];
 extern u32 EmRangedAttack_Curves[];
 extern f32 gCamDir[3];
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void CamShake_SetAEverywhere(s32);
 void AttackBurst_CreateAtBone(Em *em, s16 bone, s16 k, u16 c);
 void AttackBurst_CreateTrail(f32 *pos, u16 v, u16 w, u8 a, u8 b);
-void MonsterFx_CreateAtAngled(f32 *pos, u16 w, u16 v, u8 k, f32 scale);
-f32 AreaGrid2_GetFloorY(f32 *pos);
 /*
  * Runs an EmRangedAttack every frame (ATTACH_RUN). It counts frames in
  * ownerMotion and ends the object past its life (EmRangedAttack_Lives[type],
@@ -688,12 +631,12 @@ void EmRangedAttack_Run(ObjAttach *atk)
     lim = EmRangedAttack_PartFrames[type];
     top = parts;
     if (!((type == 8 || (type == 15 && atk->hitPhase == 1)) && type == 16 && atk->hitPhase == 1)) {
-        atk->hitFrames = 0x63;
+        atk->hitFrames = 99;
     }
     atk->yaw = atk->rotY;
     switch (atk->type) {
     case EMRANGED_FIREBALL:
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
     case EMRANGED_KUTKU_FIREBALL:
     case EMRANGED_KHEZU_CEILING_SHOT:
     case EMRANGED_KHEZU_GROUND_BOLT:
@@ -766,13 +709,13 @@ void EmRangedAttack_Run(ObjAttach *atk)
             }
             if (atk->type == EMRANGED_FATALIS_SWEEP) {
                 if (atk->pos2[1] >= 3000.0f && atk->pos[1] < 3000.0f) {
-                    Em_PlaySeChecked((Em *) atk->owner, 0x42, 0, atk->pos, 7, 0);
+                    Em_PlaySeChecked((Em *) atk->owner, 66, 0, atk->pos, 7, 0);
                 }
                 if (atk->ownerMotion % 5 == 0) {
-                    Em_PlaySeChecked((Em *) atk->owner, 0x3B, 0, atk->pos, 0x18, 0);
+                    Em_PlaySeChecked((Em *) atk->owner, 59, 0, atk->pos, 24, 0);
                 }
             } else if (atk->ownerMotion % 5 == 0) {
-                Em_PlaySeChecked((Em *) atk->owner, 0x3A, 0, atk->pos, 0x18, 0);
+                Em_PlaySeChecked((Em *) atk->owner, 58, 0, atk->pos, 24, 0);
             }
         }
         break;
@@ -825,27 +768,27 @@ void EmRangedAttack_Run(ObjAttach *atk)
         }
         atk->yaw = atk->rotY;
         break;
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
     case EMRANGED_KUTKU_FIREBALL:
     case EMRANGED_GRAVIOS_SHOT:
         ObjAttach_MoveAccel(atk);
         if (atk->area == gScene.area && atk->ownerMotion >= 3 && (atk->ownerMotion & 1)) {
-            if (atk->type == EMRANGED_KUTKU_FIREBALL_SIDE || atk->type == EMRANGED_KUTKU_FIREBALL) {
-                AttackBurst_CreateAtYaw(atk->pos, 0x12, ((Em *) atk->owner)->type, atk->rotY, 1.0f);
+            if (atk->type == EMRANGED_GYPCEROS_SHOT || atk->type == EMRANGED_KUTKU_FIREBALL) {
+                AttackBurst_CreateAtYaw(atk->pos, 18, ((Em *) atk->owner)->type, atk->rotY, 1.0f);
             } else if (atk->type == EMRANGED_GRAVIOS_SHOT) {
-                AttackBurst_CreateAtYaw(atk->pos, 0x12, ((Em *) atk->owner)->type, atk->rotY, 2.0f);
+                AttackBurst_CreateAtYaw(atk->pos, 18, ((Em *) atk->owner)->type, atk->rotY, 2.0f);
             }
         }
         break;
     case EMRANGED_GRAVIOS_BEAM:
-        if (atk->stateVar0 != 0xFF) {
+        if (atk->stateVar0 != 255) {
             owner = (Em *) atk->owner;
             if (!owner->active || owner->taskPhase == 3
-                || (owner->motionId[0] != head->ownerMotionId && owner->motionId[0] != 0x45A)) {
-                atk->stateVar0 = 0xFF;
+                || (owner->motionId[0] != head->ownerMotionId && owner->motionId[0] != 1114)) {
+                atk->stateVar0 = 255;
             }
         }
-        if (atk->stateVar0 != 0xFF) {
+        if (atk->stateVar0 != 255) {
             EmRangedAttack_AttachToBone(atk, (u8 *) head);
         }
         switch (head->phase) {
@@ -853,7 +796,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
             lim = 11;
             if (++head->phaseTimer > lim) {
                 head->phase++;
-                if (atk->stateVar0 != 0xFF && atk->area == gScene.area) {
+                if (atk->stateVar0 != 255 && atk->area == gScene.area) {
                     AttackBurst_CreateAtBone(em, head->bone, 7, 0);
                 }
                 head->phaseTimer = 0;
@@ -868,11 +811,11 @@ void EmRangedAttack_Run(ObjAttach *atk)
                         break;
                     case 1:
                         beamPart->rot[2] = 0;
-                        beamPart->spin[2] = 0x1000;
+                        beamPart->spin[2] = 4096;
                         break;
                     case 2:
                         beamPart->rot[2] = 0;
-                        beamPart->spin[2] = 0x1000;
+                        beamPart->spin[2] = 4096;
                         break;
                     }
                 }
@@ -898,7 +841,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
                 for (i = 0; i < n; i++) {
                     parts[i].frame = 0;
                 }
-                atk->stateVar0 = 0xFF;
+                atk->stateVar0 = 255;
                 atk->hitPhase = 0;
                 if (atk->area == gScene.area) {
                     AttackBurst_CreateAtYaw(atk->pos2, 6, ((Em *) atk->owner)->type, atk->rotY, 1.0f);
@@ -1044,18 +987,18 @@ void EmRangedAttack_Run(ObjAttach *atk)
     case EMRANGED_CONGALALA_THROW:
         ObjAttach_MoveAccel(atk);
         if (atk->area == gScene.area && !(atk->ownerMotion & 1)) {
-            MonsterFx_CreateAt(atk->pos, 0x16, 2.0f);
+            MonsterFx_CreateAt(atk->pos, 22, 2.0f);
         }
         break;
     case EMRANGED_RAJANG_BEAM:
-        if (atk->stateVar0 != 0xFF) {
+        if (atk->stateVar0 != 255) {
             owner = (Em *) atk->owner;
             if (!owner->active || owner->taskPhase == 3
-                || (owner->motionId[0] != head->ownerMotionId && owner->motionId[0] != 0x439)) {
-                atk->stateVar0 = 0xFF;
+                || (owner->motionId[0] != head->ownerMotionId && owner->motionId[0] != 1081)) {
+                atk->stateVar0 = 255;
             }
         }
-        if (atk->stateVar0 != 0xFF) {
+        if (atk->stateVar0 != 255) {
             EmRangedAttack_AttachToBone(atk, (u8 *) head);
         }
         switch (head->phase) {
@@ -1075,11 +1018,11 @@ void EmRangedAttack_Run(ObjAttach *atk)
                         break;
                     case 1:
                         beamPart->rot[2] = 0;
-                        beamPart->spin[2] = 0x1000;
+                        beamPart->spin[2] = 4096;
                         break;
                     case 2:
                         beamPart->rot[2] = 0;
-                        beamPart->spin[2] = 0x1000;
+                        beamPart->spin[2] = 4096;
                         break;
                     }
                 }
@@ -1105,7 +1048,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
                 for (i = 0; i < n; i++) {
                     parts[i].frame = 0;
                 }
-                atk->stateVar0 = 0xFF;
+                atk->stateVar0 = 255;
                 atk->hitPhase = 0;
             }
             break;
@@ -1152,7 +1095,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
                 factor *= 1.0f - head->phaseTimer / (f32) lim;
             }
             if (factor > 0.0f) {
-                MonsterFx_CreateAtAngled(atk->pos2, atk->rotX, atk->rotY, 0x24, factor);
+                MonsterFx_CreateAtAngled(atk->pos2, atk->rotX, atk->rotY, 36, factor);
             }
         }
         atk->yaw = atk->rotY;
@@ -1210,7 +1153,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
         }
         if (parts->frame > lim) {
             switch (atk->type) {
-            case EMRANGED_KUTKU_FIREBALL_SIDE:
+            case EMRANGED_GYPCEROS_SHOT:
             case EMRANGED_KUTKU_FIREBALL:
             case EMRANGED_GRAVIOS_SHOT:
             case EMRANGED_KUSHALA_BREATH:
@@ -1283,7 +1226,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
             }
             parts->rot[2] += parts->spin[2];
             break;
-        case EMRANGED_KUTKU_FIREBALL_SIDE:
+        case EMRANGED_GYPCEROS_SHOT:
         case EMRANGED_KUTKU_FIREBALL:
         case EMRANGED_PREY_SPIT:
         case EMRANGED_GRAVIOS_SHOT:
@@ -1315,7 +1258,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
                 break;
             case 1:
                 parts->shown = 1;
-                parts->alpha = 0xFF;
+                parts->alpha = 255;
                 switch (parts->idx) {
                 case 0:
                 case 1:
@@ -1334,7 +1277,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
                 }
                 break;
             case 2:
-                parts->alpha = 0xFF;
+                parts->alpha = 255;
                 switch (parts->idx) {
                 case 0:
                     parts->shown = 0;
@@ -1357,7 +1300,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
                 }
                 break;
             case 3:
-                parts->alpha = 0xFF;
+                parts->alpha = 255;
                 switch (parts->idx) {
                 case 0:
                     parts->shown = 0;
@@ -1519,7 +1462,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
             break;
         }
         break;
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
     case EMRANGED_KUTKU_FIREBALL:
     case EMRANGED_PREY_SPIT:
     case EMRANGED_GRAVIOS_SHOT:
@@ -1632,7 +1575,7 @@ void EmRangedAttack_Run(ObjAttach *atk)
         }
         if (atk->area == gScene.area && !(atk->ownerMotion & 1)) {
             if (!(atk->ownerMotion & 2)) {
-                Em_PlaySeChecked((Em *) atk->owner, 0x25, 0, atk->pos, 1, 0);
+                Em_PlaySeChecked((Em *) atk->owner, 37, 0, atk->pos, 1, 0);
             }
             AttackBurst_CreateAt(atk->pos, 13, ((Em *) atk->owner)->type, 1.0f);
         }
@@ -1702,17 +1645,17 @@ void EmRangedAttack_Run(ObjAttach *atk)
         case EMRANGED_KUSHALA_BREATH:
         case EMRANGED_RAJANG_BEAM:
             Vec_Copy(atk->drawSlotBuf->pos, atk->pos2);
-            OT_AddByDepth(gDrawOtSorted, atk->drawSlotBuf, 0x40, 1);
+            OT_AddByDepth(gDrawOtSorted, atk->drawSlotBuf, 64, 1);
             break;
         case EMRANGED_KIRIN_BOLTS:
             Vec_Copy(atk->drawSlotBuf->pos, head->strikePos);
-            OT_AddByDepth(gDrawOtSorted, atk->drawSlotBuf, 0x40, 1);
+            OT_AddByDepth(gDrawOtSorted, atk->drawSlotBuf, 64, 1);
             break;
         case EMRANGED_PLESIOTH_FLOOR_WAVE:
             return;
         default:
             Vec_Copy(atk->drawSlotBuf->pos, atk->pos);
-            OT_AddByDepth(gDrawOtSorted, atk->drawSlotBuf, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, atk->drawSlotBuf, 64, 0);
             break;
         }
     }
@@ -1725,9 +1668,9 @@ void EmRangedAttack_Run(ObjAttach *atk)
             head->ds->pos[0] = atk->pos[0];
             head->ds->pos[1] = 10.0f + floorY;
             head->ds->pos[2] = atk->pos[2];
-            OT_AddByDepth(gDrawOtSorted, head->ds, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, head->ds, 64, 0);
             break;
-        case EMRANGED_KUTKU_FIREBALL_SIDE:
+        case EMRANGED_GYPCEROS_SHOT:
         case EMRANGED_KUTKU_FIREBALL:
         case EMRANGED_PREY_SPIT:
         case EMRANGED_GRAVIOS_SHOT:
@@ -1741,11 +1684,11 @@ void EmRangedAttack_Run(ObjAttach *atk)
             head->ds->pos[0] = atk->pos[0] + vec[0];
             head->ds->pos[1] = atk->pos[1] + vec[1];
             head->ds->pos[2] = atk->pos[2] + vec[2];
-            OT_AddByDepth(gDrawOtSorted, head->ds, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, head->ds, 64, 0);
             break;
         case EMRANGED_KHEZU_GROUND_BOLT:
             Vec_Copy(head->ds->pos, atk->pos);
-            OT_AddByDepth(gDrawOtSorted, head->ds, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, head->ds, 64, 0);
             break;
         }
     }
@@ -1777,7 +1720,7 @@ void EmRangedAttack_Hit(ObjAttach *atk)
         atk->state = ATTACH_END;
         EmRangedAttack_Impact(atk, 1, pos);
         break;
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
     case EMRANGED_KUTKU_FIREBALL:
     case EMRANGED_PREY_SPIT:
     case EMRANGED_GRAVIOS_SHOT:
@@ -1843,17 +1786,12 @@ void EmRangedAttack_DrawModel(ModelMatSet *set, f32 *mtx, u32 color, s32 flags, 
     }
 }
 
-s16 EmSlot_FindKind(s16 id);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateZXY(f32 *m, f32 x, f32 y, f32 z);
 void Eff_ColorKeyLerp(ColorKey *k, s32 t, u32 *out);
-void EmRangedAttack_Billboard(f32 *arg0, void *arg1);
 extern f32 gCamYawMtx[];
 extern s16 EmRangedAttack_Models[];
-extern s16 EmRangedAttack_Lives[];
 extern ColorKey *EmRangedAttack_FireballPartKeys[];
 extern ColorKey *EmRangedAttack_FatalisFireballPartKeys[];
-extern ColorKey EmRangedAttack_KutkuSideShotKeys[];
+extern ColorKey EmRangedAttack_GypcerosShotKeys[];
 extern ColorKey EmRangedAttack_FireShotKeys[];
 extern ColorKey EmRangedAttack_PreySpitBKeys[];
 extern ColorKey EmRangedAttack_SpitKeys[];
@@ -1861,7 +1799,6 @@ extern ColorKey EmRangedAttack_GraviosBeamStartKeys[];
 extern ColorKey EmRangedAttack_BeamEndKeys[];
 extern ColorKey EmRangedAttack_KirinBoltKeys[];
 extern ColorKey EmRangedAttack_RajangBeamStartKeys[];
-extern s16 EmRangedAttack_GroundBoltPartFrames[];
 extern ColorKey *EmRangedAttack_GroundBoltPartKeys[];
 extern s16 EmRangedAttack_GroundBoltPartModels[];
 extern s16 EmRangedAttack_KirinBoltModels[];
@@ -1966,32 +1903,32 @@ void EmRangedAttack_DrawParts(DrawSlot *slot)
             div = 6;
             thr = 30;
             glowCount = 1;
-            red = 0xFF;
+            red = 255;
             n = 3;
-            green = 0xCB;
+            green = 203;
             keysp = EmRangedAttack_FireballPartKeys;
-            blue = 0x79;
+            blue = 121;
         } else if (atk->type == EMRANGED_FATALIS_FIREBALL) {
             div = 6;
             thr = 30;
             glowCount = 1;
-            red = 0xFF;
+            red = 255;
             n = 3;
-            green = 0xF3;
+            green = 243;
             keysp = EmRangedAttack_FatalisFireballPartKeys;
-            blue = 0xDF;
+            blue = 223;
         } else {
             div = 1000;
             thr = 1000;
             glowCount = 1;
-            red = 0xFF;
+            red = 255;
             n = 3;
-            green = 0xF3;
+            green = 243;
             keysp = EmRangedAttack_FatalisFireballPartKeys;
-            blue = 0xDF;
+            blue = 223;
         }
         if (atk->ownerMotion < thr) {
-            alpha = 0xFF;
+            alpha = 255;
         } else {
             fade = (1.0f / div) * (last - atk->ownerMotion);
             alpha = 255.0f * fade;
@@ -2077,7 +2014,7 @@ void EmRangedAttack_DrawParts(DrawSlot *slot)
         Gs_SetState(RS_UV_MTX, (s32) uvMtx);
         EmRangedAttack_DrawModel(mdl, mtx, -1, 2, emMats);
         break;
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
     case EMRANGED_KUTKU_FIREBALL:
     case EMRANGED_PREY_SPIT:
     case EMRANGED_GRAVIOS_SHOT:
@@ -2094,13 +2031,13 @@ void EmRangedAttack_DrawParts(DrawSlot *slot)
         if (parts->frame > 0 && parts->frame < 11) {
             Vec_Copy(scaleVec, parts->scale);
             switch (atk->type) {
-            case 24:
+            case EMRANGED_REMOBRA_SPIT:
                 scaleVec[0] *= EmRangedAttack_RemobraSpitScales[atk->stateVar1];
                 scaleVec[1] *= EmRangedAttack_RemobraSpitScales[atk->stateVar1];
                 scaleVec[2] *= EmRangedAttack_RemobraSpitScales[atk->stateVar1];
-            case 9:
-            case 22:
-            case 23:
+            case EMRANGED_PREY_SPIT:
+            case EMRANGED_HERMITAUR_SHOT:
+            case EMRANGED_PREY_SPIT_B:
                 mdl = &stageModel->matSets[model];
                 scaleVec[0] *= 0.5f;
                 scaleVec[1] *= 0.5f;
@@ -2112,14 +2049,14 @@ void EmRangedAttack_DrawParts(DrawSlot *slot)
                 break;
             }
             switch (atk->type) {
-            case 2:
-                keys = EmRangedAttack_KutkuSideShotKeys;
+            case EMRANGED_GYPCEROS_SHOT:
+                keys = EmRangedAttack_GypcerosShotKeys;
                 break;
-            case 3:
-            case 13:
+            case EMRANGED_KUTKU_FIREBALL:
+            case EMRANGED_GRAVIOS_SHOT:
                 keys = EmRangedAttack_FireShotKeys;
                 break;
-            case 23:
+            case EMRANGED_PREY_SPIT_B:
                 keys = EmRangedAttack_PreySpitBKeys;
                 break;
             default:
@@ -2262,7 +2199,7 @@ void EmRangedAttack_DrawParts(DrawSlot *slot)
                     Mtx_Scale(mtx, scaleVec[0], scaleVec[1], scaleVec[2]);
                     switch (parts->idx) {
                     case 3:
-                        Gs_SetState(RS_ALPHA_REF, 0x80);
+                        Gs_SetState(RS_ALPHA_REF, 128);
                         yawAngle = (6.2831855f * atk->rotY) / 65536.0f;
                         Mtx_RotateZ(mtx, (6.2831855f * parts->rot[2]) / 65536.0f);
                         Mtx_RotateY(mtx, yawAngle);
@@ -2497,7 +2434,7 @@ void EmRangedAttack_DrawParts(DrawSlot *slot)
         break;
     }
     Draw_SetDefaultState();
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Gs_SetState(RS_ZWRITE, 1);
 end:;
 }
@@ -2533,7 +2470,7 @@ void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos)
             explosionType = EXPLOSION_FIREBALL_BIG;
         }
         if (atk->area == gScene.area) {
-            Em_PlaySeChecked(atk->owner, 0x25, 0, pos, 15, 0);
+            Em_PlaySeChecked(atk->owner, 37, 0, pos, 15, 0);
             fxScale = 0.15f * scale;
             FireBlast_CreateScaled((f32 *) pos, 1, fxScale);
             AttackBurst_CreateAtScaled(pos, atk->rotY, 4, fxScale);
@@ -2543,7 +2480,7 @@ void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos)
         case 0:
             if (atk->type != EMRANGED_REMOBRA_SPIT && atk->area == gScene.area) {
                 AttackBurst_CreateAtScaled(pos, atk->rotY, 8, scale);
-                AttackBurst_CreateAtScaled(pos, atk->rotY, 0xB, scale);
+                AttackBurst_CreateAtScaled(pos, atk->rotY, 11, scale);
                 CamShake_SetA(2, pos);
             }
             Explosion_CreateOwned(atk->owner, pos, explosionType);
@@ -2556,38 +2493,38 @@ void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos)
     case EMRANGED_PLESIOTH_STREAM:
         if (atk->area == gScene.area) {
             if (atk->ownerMotion & 2) {
-                Em_PlaySeChecked(atk->owner, 0x25, 0, pos, 1, 0);
+                Em_PlaySeChecked(atk->owner, 37, 0, pos, 1, 0);
             }
-            AttackBurst_CreateAt(pos, 0xD, ((Em *) atk->owner)->type, 1.0f);
+            AttackBurst_CreateAt(pos, 13, ((Em *) atk->owner)->type, 1.0f);
         }
         break;
-    case EMRANGED_KUTKU_FIREBALL_SIDE:
+    case EMRANGED_GYPCEROS_SHOT:
         if (atk->area == gScene.area) {
-            Em_PlaySeChecked(atk->owner, 0x25, 0, pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 37, 0, pos, 1, 0);
         }
         if (atk->area == gScene.area) {
             AttackBurst_CreateAtScaled(pos, atk->rotY, 5, 1.0f);
-            AttackBurst_CreateAtYaw(pos, 0xF, ((Em *) atk->owner)->type, atk->rotY, 1.4f);
+            AttackBurst_CreateAtYaw(pos, 15, ((Em *) atk->owner)->type, atk->rotY, 1.4f);
         }
         if (atk->stateVar1 == 1) {
-            Explosion_CreateOwned(atk->owner, pos, EXPLOSION_KUTKU_FIREBALL_SIDE_B);
+            Explosion_CreateOwned(atk->owner, pos, EXPLOSION_GYPCEROS_SHOT_B);
         } else {
-            Explosion_CreateOwned(atk->owner, pos, EXPLOSION_KUTKU_FIREBALL_SIDE);
+            Explosion_CreateOwned(atk->owner, pos, EXPLOSION_GYPCEROS_SHOT);
         }
         break;
     case EMRANGED_KUTKU_FIREBALL:
         if (atk->area == gScene.area) {
-            Em_PlaySeChecked(atk->owner, 0x25, 0, pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 37, 0, pos, 1, 0);
         }
         if (atk->area == gScene.area) {
-            AttackBurst_CreateAtScaled(pos, atk->rotY, 0x10, 1.0f);
-            AttackBurst_CreateAtYaw(pos, 0xF, ((Em *) atk->owner)->type, atk->rotY, 1.2f);
+            AttackBurst_CreateAtScaled(pos, atk->rotY, 16, 1.0f);
+            AttackBurst_CreateAtYaw(pos, 15, ((Em *) atk->owner)->type, atk->rotY, 1.2f);
         }
         Explosion_CreateOwned(atk->owner, pos, EXPLOSION_KUTKU_FIREBALL);
         break;
     case EMRANGED_KHEZU_CEILING_SHOT:
         if (atk->area == gScene.area) {
-            Em_PlaySeChecked(atk->owner, 0x1D, 0, pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 29, 0, pos, 1, 0);
             ThunderSpark_CreateAt(pos, SPARK_KHEZU_SHOT_FLASH, ((Em *) atk->owner)->type, 1.0f);
             ThunderSpark_CreateAt(pos, SPARK_KHEZU_SHOT_RISE, ((Em *) atk->owner)->type, 1.0f);
         }
@@ -2596,14 +2533,14 @@ void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos)
         switch (how) {
         case 0:
             if (atk->area == gScene.area) {
-                AttackBurst_CreateAt(pos, 0x14, ((Em *) atk->owner)->type, 1.0f);
+                AttackBurst_CreateAt(pos, 20, ((Em *) atk->owner)->type, 1.0f);
             }
             Explosion_CreateOwned(atk->owner, pos, EXPLOSION_CEPHADROME_SHOT);
             break;
         case 1:
         case 2:
             if (atk->area == gScene.area) {
-                AttackBurst_CreateAt(pos, 0x13, ((Em *) atk->owner)->type, 1.0f);
+                AttackBurst_CreateAt(pos, 19, ((Em *) atk->owner)->type, 1.0f);
             }
             break;
         }
@@ -2626,12 +2563,12 @@ void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos)
         break;
     case EMRANGED_GRAVIOS_SHOT:
         if (atk->area == gScene.area) {
-            Em_PlaySeChecked(atk->owner, 0x25, 0, pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 37, 0, pos, 1, 0);
         }
         if (atk->area == gScene.area) {
             CamShake_SetA(2, pos);
             FireBlast_CreateScaledExact(atk->pos, 0, 1.5f);
-            AttackBurst_CreateAtYaw(pos, 0xF, ((Em *) atk->owner)->type, atk->rotY, 1.8000001f);
+            AttackBurst_CreateAtYaw(pos, 15, ((Em *) atk->owner)->type, atk->rotY, 1.8000001f);
         }
         Explosion_CreateOwned(atk->owner, pos, EXPLOSION_GRAVIOS_SHOT);
         break;
@@ -2639,24 +2576,24 @@ void EmRangedAttack_Impact(ObjAttach *atk, s16 how, f32 *pos)
         if (atk->area == gScene.area) {
             CamShake_SetA(2, pos);
             MonsterFx_CreateAt(pos, 5, 1.0f);
-            Em_PlaySeChecked(atk->owner, 0x17, 0, pos, 15, 0);
+            Em_PlaySeChecked(atk->owner, 23, 0, pos, 15, 0);
         }
-        EmRangedAttack_CreateFromAimed(atk->owner, 0x10, 0, atk, pos, 0xE000, atk->rotY);
-        EmRangedAttack_CreateFromAimed(atk->owner, 0x10, 0, atk, pos, 0xE000, atk->rotY + 0x6000);
-        EmRangedAttack_CreateFromAimed(atk->owner, 0x10, 0, atk, pos, 0xE000, atk->rotY + 0xA000);
+        EmRangedAttack_CreateFromAimed(atk->owner, 16, 0, atk, pos, 0xE000, atk->rotY);
+        EmRangedAttack_CreateFromAimed(atk->owner, 16, 0, atk, pos, 0xE000, atk->rotY + ANGLE_TURN * 3 / 8);
+        EmRangedAttack_CreateFromAimed(atk->owner, 16, 0, atk, pos, 0xE000, atk->rotY + ANGLE_TURN * 5 / 8);
         break;
     case EMRANGED_KUSHALA_BREATH:
         if (atk->area == gScene.area) {
-            MonsterFx_CreateAtYaw(pos, atk->rotY, 0xE, 1.0f);
+            MonsterFx_CreateAtYaw(pos, atk->rotY, 14, 1.0f);
             if (how == 0) {
-                Em_PlaySeChecked(atk->owner, 0x3D, 0, pos, 1, 0);
+                Em_PlaySeChecked(atk->owner, 61, 0, pos, 1, 0);
             }
         }
         break;
     case EMRANGED_CONGALALA_THROW:
         if (atk->area == gScene.area) {
-            Em_PlaySeChecked(atk->owner, 0x1C, 0, pos, 1, 0);
-            MonsterFx_CreateAtYaw(pos, atk->rotY, 0x1E, 2.0f);
+            Em_PlaySeChecked(atk->owner, 28, 0, pos, 1, 0);
+            MonsterFx_CreateAtYaw(pos, atk->rotY, 30, 2.0f);
         }
         break;
     }
@@ -2675,7 +2612,7 @@ void EmRangedAttack_AttachToBone(ObjAttach *atk, u8 *buf)
     f32 z;
     f32 x;
 
-    Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(atk->owner, *(s16 *) (buf + 0x30))));
+    Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(atk->owner, *(s16 *) (buf + 48))));
     ofs[0] = EmRangedAttack_BoneOfs[atk->type * 3];
     ofs[1] = EmRangedAttack_BoneOfs[atk->type * 3 + 1];
     ofs[2] = EmRangedAttack_BoneOfs[atk->type * 3 + 2];
@@ -2690,7 +2627,7 @@ void EmRangedAttack_AttachToBone(ObjAttach *atk, u8 *buf)
         atk->rotX = (u16) (s32) (0.5f + (65536.0f * Math_Atan2(-boneMtx[9], Math_Sqrtf(x * x + z * z))) / 6.2831855f);
         atk->rotX += buf[1] << 8;
     } else {
-        atk->rotY = (buf[0x3B] << 8) + (u16) (s32) (0.5f + (65536.0f * Math_Atan2(boneMtx[8], boneMtx[10])) / 6.2831855f);
+        atk->rotY = (buf[59] << 8) + (u16) (s32) (0.5f + (65536.0f * Math_Atan2(boneMtx[8], boneMtx[10])) / 6.2831855f);
     }
 }
 
@@ -2810,7 +2747,7 @@ void EmRangedAttack_RestartBoltPart(ObjAttach *atk, EmRangedAttackPart *part)
 {
     s8 partIdx;
 
-    Em_PlaySeChecked(atk->owner, 0x37, 0, atk->pos, 5, 1);
+    Em_PlaySeChecked(atk->owner, 55, 0, atk->pos, 5, 1);
     partIdx = part->idx;
     switch (partIdx) {
     case 0:
@@ -2862,7 +2799,7 @@ void EmRangedAttack_KirinNextStrike(ObjAttach *atk, u8 *buf)
     if (buf[1] != 0) {
         EmRangedAttack_KeepStrikePos((u8 *) atk, buf);
         if (gScene.area == atk->area) {
-            Em_PlaySeChecked(atk->owner, 0x18, 0, atk->pos, 1, 0);
+            Em_PlaySeChecked(atk->owner, 24, 0, atk->pos, 1, 0);
         }
         if (buf[0] == 0) {
             return;
@@ -2874,7 +2811,7 @@ void EmRangedAttack_KirinNextStrike(ObjAttach *atk, u8 *buf)
     ofs[1] = 0.0f;
     ofs[2] = tbl[buf[1]][1];
     Vec_RotateY(ofs, (6.2831855f * atk->rotY) / 65536.0f);
-    Vec_Add(atk->pos, (f32 *) (buf + 0xC), ofs);
+    Vec_Add(atk->pos, (f32 *) (buf + 12), ofs);
     atk->pos[1] = AreaGrid2_GetFloorYFiltered(atk->pos);
     sparkPos[0] = atk->pos[0];
     sparkPos[1] = 1000.0f + atk->pos[1];
@@ -2892,7 +2829,7 @@ void EmRangedAttack_KirinNextStrike(ObjAttach *atk, u8 *buf)
  */
 void EmRangedAttack_KeepStrikePos(u8 *atk, u8 *buf)
 {
-    Vec_Copy((f32 *) (buf + 0x18), (f32 *) (atk + 0x30));
+    Vec_Copy((f32 *) (buf + 24), (f32 *) (atk + 48));
 }
 
 /* The file's data. */
@@ -2937,17 +2874,17 @@ HitShape *EmRangedAttack_HitShapes[12] = {
     EmRangedAttack_HitShapes_4, EmRangedAttack_HitShapes_5, EmRangedAttack_HitShapes_6, EmRangedAttack_HitShapes_7,
     EmRangedAttack_HitShapes_8, EmRangedAttack_HitShapes_9, EmRangedAttack_HitShapes_10, EmRangedAttack_HitShapes_11,
 };
-u32 EmRangedAttack_Rows[300] = {
+AttackRow EmRangedAttack_Rows[50] = {
 #include "game/0089CB10.inc"
 };
 void *EmRangedAttack_RowsPtr = (void *)EmRangedAttack_Rows;
-u32 EmRangedAttack_Curves_0[20] = {
+Vec3Key EmRangedAttack_Curves_0[5] = {
 #include "game/0089CFD0.inc"
 };
-u32 EmRangedAttack_Curves_1[20] = {
+Vec3Key EmRangedAttack_Curves_1[5] = {
 #include "game/0089D020.inc"
 };
-u32 EmRangedAttack_Curves_2[14] = {
+f32 EmRangedAttack_Curves_2[14] = {
 #include "game/0089D070.inc"
 };
 s16 EmRangedAttack_SpinX[4] = {
@@ -2956,84 +2893,84 @@ s16 EmRangedAttack_SpinX[4] = {
 s16 EmRangedAttack_SpinY[8] = {
 #include "game/0089D0B0.inc"
 };
-ColorKey EmRangedAttack_KeysP12_0[4] = {
+ColorKey EmRangedAttack_FireballPartKeys_0[4] = {
 #include "game/0089D0C0.inc"
 };
-ColorKey EmRangedAttack_KeysP12_1[4] = {
+ColorKey EmRangedAttack_FireballPartKeys_1[4] = {
 #include "game/0089D0E0.inc"
 };
-ColorKey EmRangedAttack_KeysP12_2[4] = {
+ColorKey EmRangedAttack_FireballPartKeys_2[4] = {
 #include "game/0089D100.inc"
 };
 ColorKey *EmRangedAttack_FireballPartKeys[4] = {
-    EmRangedAttack_KeysP12_0, EmRangedAttack_KeysP12_1, EmRangedAttack_KeysP12_2, NULL,
+    EmRangedAttack_FireballPartKeys_0, EmRangedAttack_FireballPartKeys_1, EmRangedAttack_FireballPartKeys_2, NULL,
 };
-u32 EmRangedAttack_Curves_3[16] = {
+Vec3Key EmRangedAttack_Curves_3[4] = {
 #include "game/0089D130.inc"
 };
-u32 EmRangedAttack_Curves_4[20] = {
+Vec3Key EmRangedAttack_Curves_4[5] = {
 #include "game/0089D170.inc"
 };
-ColorKey EmRangedAttack_KutkuSideShotKeys[4] = {
+ColorKey EmRangedAttack_GypcerosShotKeys[4] = {
 #include "game/0089D1C0.inc"
 };
 ColorKey EmRangedAttack_FireShotKeys[4] = {
 #include "game/0089D1E0.inc"
 };
-u32 EmRangedAttack_Curves_5[16] = {
+Vec3Key EmRangedAttack_Curves_5[4] = {
 #include "game/0089D200.inc"
 };
 ColorKey EmRangedAttack_GraviosBeamStartKeys[4] = {
 #include "game/0089D240.inc"
 };
-u32 EmRangedAttack_Curves_6[20] = {
+Vec3Key EmRangedAttack_Curves_6[5] = {
 #include "game/0089D260.inc"
 };
-u32 EmRangedAttack_Curves_7[20] = {
+Vec3Key EmRangedAttack_Curves_7[5] = {
 #include "game/0089D2B0.inc"
 };
-u32 EmRangedAttack_Curves_8[20] = {
+Vec3Key EmRangedAttack_Curves_8[5] = {
 #include "game/0089D300.inc"
 };
 ColorKey EmRangedAttack_BeamEndKeys[4] = {
 #include "game/0089D350.inc"
 };
-u32 EmRangedAttack_Curves_9[20] = {
+Vec3Key EmRangedAttack_Curves_9[5] = {
 #include "game/0089D370.inc"
 };
-u32 EmRangedAttack_Curves_10[24] = {
+Vec3Key EmRangedAttack_Curves_10[6] = {
 #include "game/0089D3C0.inc"
 };
-u32 EmRangedAttack_Curves_11[20] = {
+Vec3Key EmRangedAttack_Curves_11[5] = {
 #include "game/0089D420.inc"
 };
-u32 EmRangedAttack_Curves_12[12] = {
+Vec3Key EmRangedAttack_Curves_12[3] = {
 #include "game/0089D470.inc"
 };
-u32 EmRangedAttack_Curves_13[12] = {
+Vec3Key EmRangedAttack_Curves_13[3] = {
 #include "game/0089D4A0.inc"
 };
-u32 EmRangedAttack_Curves_14[12] = {
+Vec3Key EmRangedAttack_Curves_14[3] = {
 #include "game/0089D4D0.inc"
 };
-ColorKey EmRangedAttack_ColorKeysByIdx_0[4] = {
+ColorKey EmRangedAttack_GroundBoltPartKeys_0[4] = {
 #include "game/0089D500.inc"
 };
-ColorKey EmRangedAttack_ColorKeysByIdx_1[4] = {
+ColorKey EmRangedAttack_GroundBoltPartKeys_1[4] = {
 #include "game/0089D520.inc"
 };
-ColorKey EmRangedAttack_ColorKeysByIdx_2[4] = {
+ColorKey EmRangedAttack_GroundBoltPartKeys_2[4] = {
 #include "game/0089D540.inc"
 };
-ColorKey EmRangedAttack_ColorKeysByIdx_3[4] = {
+ColorKey EmRangedAttack_GroundBoltPartKeys_3[4] = {
 #include "game/0089D560.inc"
 };
-ColorKey EmRangedAttack_ColorKeysByIdx_4[4] = {
+ColorKey EmRangedAttack_GroundBoltPartKeys_4[4] = {
 #include "game/0089D580.inc"
 };
 ColorKey *EmRangedAttack_GroundBoltPartKeys[6] = {
-    EmRangedAttack_ColorKeysByIdx_0, EmRangedAttack_ColorKeysByIdx_1, EmRangedAttack_ColorKeysByIdx_2, EmRangedAttack_ColorKeysByIdx_3,
-    EmRangedAttack_ColorKeysByIdx_4, NULL,
+    EmRangedAttack_GroundBoltPartKeys_0, EmRangedAttack_GroundBoltPartKeys_1, EmRangedAttack_GroundBoltPartKeys_2, EmRangedAttack_GroundBoltPartKeys_3,
+    EmRangedAttack_GroundBoltPartKeys_4, NULL,
 };
 s16 EmRangedAttack_GroundBoltPartFrames[6] = {
 #include "game/0089D5B8.inc"
@@ -3041,7 +2978,7 @@ s16 EmRangedAttack_GroundBoltPartFrames[6] = {
 s16 EmRangedAttack_GroundBoltPartModels[6] = {
 #include "game/0089D5C8.inc"
 };
-u32 EmRangedAttack_Curves_16[20] = {
+Vec3Key EmRangedAttack_Curves_16[5] = {
 #include "game/0089D5E0.inc"
 };
 ColorKey EmRangedAttack_KirinBoltKeys[6] = {
@@ -3053,19 +2990,19 @@ ColorKey EmRangedAttack_SpitKeys[4] = {
 ColorKey EmRangedAttack_PreySpitBKeys[4] = {
 #include "game/0089D680.inc"
 };
-ColorKey EmRangedAttack_KeysP12B_0[4] = {
+ColorKey EmRangedAttack_FatalisFireballPartKeys_0[4] = {
 #include "game/0089D6A0.inc"
 };
-ColorKey EmRangedAttack_KeysP12B_1[4] = {
+ColorKey EmRangedAttack_FatalisFireballPartKeys_1[4] = {
 #include "game/0089D6C0.inc"
 };
-ColorKey EmRangedAttack_KeysP12B_2[4] = {
+ColorKey EmRangedAttack_FatalisFireballPartKeys_2[4] = {
 #include "game/0089D6E0.inc"
 };
 ColorKey *EmRangedAttack_FatalisFireballPartKeys[4] = {
-    EmRangedAttack_KeysP12B_0, EmRangedAttack_KeysP12B_1, EmRangedAttack_KeysP12B_2, NULL,
+    EmRangedAttack_FatalisFireballPartKeys_0, EmRangedAttack_FatalisFireballPartKeys_1, EmRangedAttack_FatalisFireballPartKeys_2, NULL,
 };
-u32 EmRangedAttack_Curves_17[12] = {
+Vec3Key EmRangedAttack_Curves_17[3] = {
 #include "game/0089D710.inc"
 };
 ColorKey EmRangedAttack_RajangBeamStartKeys[4] = {
@@ -3111,27 +3048,27 @@ f32 EmRangedAttack_BoneOfs[76] = {
 s16 EmRangedAttack_KirinStrikeCounts[8] = {
 #include "game/0089DB80.inc"
 };
-u32 EmRangedAttack_KirinStrikeSpots_0[8] = {
+f32 EmRangedAttack_KirinStrikeSpots_0[4][2] = {
 #include "game/0089DB90.inc"
 };
-u32 EmRangedAttack_KirinStrikeSpots_1[12] = {
+f32 EmRangedAttack_KirinStrikeSpots_1[6][2] = {
 #include "game/0089DBB0.inc"
 };
-u32 EmRangedAttack_KirinStrikeSpots_2[16] = {
+f32 EmRangedAttack_KirinStrikeSpots_2[8][2] = {
 #include "game/0089DBE0.inc"
 };
-u32 EmRangedAttack_KirinStrikeSpots_3[12] = {
+f32 EmRangedAttack_KirinStrikeSpots_3[6][2] = {
 #include "game/0089DC20.inc"
 };
-u32 EmRangedAttack_KirinStrikeSpots_4[16] = {
+f32 EmRangedAttack_KirinStrikeSpots_4[8][2] = {
 #include "game/0089DC50.inc"
 };
-u32 EmRangedAttack_KirinStrikeSpots_5[12] = {
+f32 EmRangedAttack_KirinStrikeSpots_5[6][2] = {
 #include "game/0089DC90.inc"
 };
 f32 (*EmRangedAttack_KirinStrikeSpots[6])[2] = {
-    (void *)EmRangedAttack_KirinStrikeSpots_0, (void *)EmRangedAttack_KirinStrikeSpots_1, (void *)EmRangedAttack_KirinStrikeSpots_2, (void *)EmRangedAttack_KirinStrikeSpots_3,
-    (void *)EmRangedAttack_KirinStrikeSpots_4, (void *)EmRangedAttack_KirinStrikeSpots_5,
+    EmRangedAttack_KirinStrikeSpots_0, EmRangedAttack_KirinStrikeSpots_1, EmRangedAttack_KirinStrikeSpots_2, EmRangedAttack_KirinStrikeSpots_3,
+    EmRangedAttack_KirinStrikeSpots_4, EmRangedAttack_KirinStrikeSpots_5,
 };
 s16 EmRangedAttack_KirinBoltModels[4] = {
 #include "game/0089DCD8.inc"

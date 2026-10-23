@@ -20,35 +20,23 @@
 #include "common.h"
 #include "syssettings.h"
 #include "texture.h"
-
-void Tex_ReleaseRange(s32 start, s32 n);
-s32 Tex_RegisterPack(s32 slot, s32 kind, u8 *buf);
-s32 LoadFile(u8 *dst, s32 id);
-s32 LoadCompressedFile(u8 *dst, s32 id);
-s32 LzDecompressSized(u8 *src, u8 *dst, s32 size);
+#include "model.h"
+#include "file_load.h"
+#include "tex_files.h"
+#include "packs.h"
 
 extern u8 *gLoadBuf;
 extern u8 *gReadBuf;
 
-
-s32 Pack_Count(s32 *buf);
-void *Pack_GetPart(u8 *buf, s32 a);
-s32 Tex_LoadById(s32 id, s32 buf, s32 kind);
 s32 Tex_FindById(s32 a, u8 *buf, s32 kind); /* unit's own declaration: declared as this file's callers use it; with the definition's s32 (s8 id, u8 *buf, s32 kind), Tex_RegisterTim2Pair compiles differently */
 u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
-void Tex_RegisterTim2Pair(TexPackHead *pack, s32 slot, s32 kind, s32 secondId, u8 *buf, s32 find);
 
 extern s32 gTexHandles[];
-extern s32 gTexCreateKinds[];
-extern s32 gTexPackFiles[];
-extern s32 gSystemTexFiles[];
 extern s8 gCommonPackTexSlots[];
-s32 Tex_IsIdSlot(s32 h);
-void Tex_ReleaseIdSlots(void);
 
 #pragma optimization_level 4
 
-/* Releases the texture and palette handles of all the texture slots but 0, 0x148 and
+/* Releases the texture and palette handles of all the texture slots but 0, 328 and
  * TEX_SLOT_ICONS, which Tex_LoadFile loads once and keeps (a slot
  * whose handle Tex_IsIdSlot frees is just cleared). */
 void Tex_ReleaseAll(void)
@@ -67,7 +55,7 @@ void Tex_ReleaseAll(void)
         }
         switch (i) {
         case 0:
-        case 0x148:
+        case 328:
         case TEX_SLOT_ICONS:
             continue;
         }
@@ -153,13 +141,13 @@ s32 Tex_LoadPackRaw(s32 id, s32 slot, s32 kind)
     return Tex_RegisterPack(slot, kind, buf);
 }
 
-/* Decompresses a pack from memory (src, up to 0x8000 bytes) into
+/* Decompresses a pack from memory (src, up to 32768 bytes) into
  * gLoadBuf and registers it. */
 s32 Tex_LoadPackLz(s32 unused, s32 slot, s32 kind, s32 src)
 {
     u8 *buf = gLoadBuf;
 
-    LzDecompressSized((u8 *)src, buf, 0x8000);
+    LzDecompressSized((u8 *)src, buf, 32768);
     return Tex_RegisterPack(slot, kind, buf);
 }
 
@@ -188,14 +176,14 @@ void Tex_LoadPackFile(TexPackHead *pack, s32 slot, s32 kind, s32 secondId)
     Tex_RegisterTim2Pair(pack, slot, kind, secondId, buf, 0);
 }
 
-/* Decompresses a model's pack from memory (src, up to 0x8000 bytes) into
+/* Decompresses a model's pack from memory (src, up to 32768 bytes) into
  * the read buffer (at +0xE0000) and registers its textures, the second
  * found among the loaded ones (Model_SetupLoadedPackEx). */
 void Tex_LoadPackLzHigh(TexPackHead *pack, s32 slot, s32 kind, s32 secondId, s32 src)
 {
     u8 *buf = gReadBuf + 0xE0000;
 
-    LzDecompressSized((u8 *)src, buf, 0x8000);
+    LzDecompressSized((u8 *)src, buf, 32768);
     Tex_RegisterTim2Pair(pack, slot, kind, secondId, buf, 1);
 }
 

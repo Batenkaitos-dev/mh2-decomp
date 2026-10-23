@@ -1,20 +1,8 @@
-/* The HTML tag handlers: <FORM ...> and <INPUT ...>. */
+/* The HTML tag handlers: <FORM ...> and <INPUT ...>, with their attributes. */
 #include "common.h"
 #include "html.h"
-s32 strncmp(const char *, const char *, s32);
-
-void *memset(void *dst, s32 c, u32 n);
-s32 strncmp(const char *a, const char *b, s32 n);
-
-void Html_DecodeEntities(char *s);
-void Html_ReadAttrValue(u8 **cur, char *buf, s32 size);
-void Html_ReadAttrKeyword(u8 **cur, char *buf, s32 size);
-s32 Html_ParseNumber(char *s);
-u8 Html_LookupKeyword(char *s, HtmlKeyword *table, u32 size);
-void Layout_Flush(u8 *text);
-void Layout_FlushBlock(u8 *text);
-void Html_ClearInputAttrs(void);
-void Draw_FormBegin(u8 *s1, u8 a1);
+#include "browser.h"
+#include "libc.h"
 
 extern HtmlKeyword gInputTypeKeywords[]; /* INPUT's TYPE */
 extern char gHtmlMethodPost[]; /* "POST" */
@@ -69,7 +57,7 @@ s32 Html_AttrInputType(u8 **cur, u8 *text)
     char buf[HTML_ATTR_MAX + 1];
 
     Html_ReadAttrValue(cur, buf, HTML_ATTR_MAX);
-    gHtml->input.type = Html_LookupKeyword(buf, gInputTypeKeywords, 0x48); /* the first nine of its ten keywords */
+    gHtml->input.type = Html_LookupKeyword(buf, gInputTypeKeywords, 72); /* the first nine of its ten keywords */
     return 0;
 }
 
@@ -118,47 +106,96 @@ s32 Html_AttrInputMaxlength(u8 **cur, u8 *text)
     return 0;
 }
 
+/* <INPUT CHECKED> */
+s32 Html_AttrInputChecked(u8 **cur, u8 *text)
+{
+    gHtml->input.checked = 1;
+    return 0;
+}
+
+/* <INPUT ...>'s ">" */
+s32 Html_TagInputEnd(u8 **cur, u8 *text)
+{
+    Layout_InputEnd();
+    return 0;
+}
+
+/* <INPUT SRC=...> */
+s32 Html_AttrInputSrc(u8 **cur, u8 *text)
+{
+    Html_ReadAttrValue(cur, gHtml->input.src, HTML_ATTR_MAX);
+    return 0;
+}
+
+/* <INPUT WIDTH=...> */
+s32 Html_AttrInputWidth(u8 **cur, u8 *text)
+{
+    char buf[HTML_ATTR_MAX + 1];
+
+    Html_ReadAttrValue(cur, buf, HTML_ATTR_MAX);
+    gHtml->input.width = Html_ParseNumber(buf);
+    return 0;
+}
+
+/* <INPUT HEIGHT=...> */
+s32 Html_AttrInputHeight(u8 **cur, u8 *text)
+{
+    char buf[HTML_ATTR_MAX + 1];
+
+    Html_ReadAttrValue(cur, buf, HTML_ATTR_MAX);
+    gHtml->input.height = Html_ParseNumber(buf);
+    return 0;
+}
+
+/* <INPUT ALT=...> */
+s32 Html_AttrInputAlt(u8 **cur, u8 *text)
+{
+    Html_ReadAttrValue(cur, gHtml->input.alt, HTML_ATTR_MAX);
+    Html_DecodeEntities(gHtml->input.alt);
+    return 0;
+}
+
 /* The keyword tables (data), then the strings they point at. */
 extern u32 D_00839D98[];
-extern char D_00839E10[];
-extern char D_00839E20[];
-extern char D_00839E28[];
-extern char D_00839E30[];
-extern char D_00839E38[];
-extern char D_00839E48[];
-extern char D_00839E50[];
-extern char D_00839E58[];
+extern char gInputTypeKeywords_1[];
+extern char gInputTypeKeywords_2[];
+extern char gInputTypeKeywords_3[];
+extern char gInputTypeKeywords_4[];
+extern char gInputTypeKeywords_5[];
+extern char gInputTypeKeywords_6[];
+extern char gInputTypeKeywords_7[];
+extern char gInputTypeKeywords_8[];
 HtmlKeyword gInputTypeKeywords[10] = {
 #include "lobby/007EFE70.inc"
 };
 
 /* The keywords' strings (read-only data). */
 #pragma rodata on
-char D_00839E10[0x10] = {
+char gInputTypeKeywords_1[16] = {
 #include "lobby/00839E10.inc"
 };
-char D_00839E20[0x8] = {
+char gInputTypeKeywords_2[8] = {
 #include "lobby/00839E20.inc"
 };
-char D_00839E28[0x8] = {
+char gInputTypeKeywords_3[8] = {
 #include "lobby/00839E28.inc"
 };
-char D_00839E30[0x8] = {
+char gInputTypeKeywords_4[8] = {
 #include "lobby/00839E30.inc"
 };
-char D_00839E38[0xC] = {
+char gInputTypeKeywords_5[12] = {
 #include "lobby/00839E38.inc"
 };
-char D_00839E48[0x8] = {
+char gInputTypeKeywords_6[8] = {
 #include "lobby/00839E48.inc"
 };
-char D_00839E50[0x8] = {
+char gInputTypeKeywords_7[8] = {
 #include "lobby/00839E50.inc"
 };
-char D_00839E58[0x8] = {
+char gInputTypeKeywords_8[8] = {
 #include "lobby/00839E58.inc"
 };
-u32 gHtmlAlignKeywords_0[2] = {
+char gHtmlAlignKeywords_0[8] = {
 #include "lobby/00839E60.inc"
 };
 #pragma rodata off

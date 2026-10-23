@@ -1,5 +1,6 @@
 #ifndef EM_KIRIN_H
 #define EM_KIRIN_H
+#include "em.h"
 
 /*
  * The Kirin's vocabulary (the code in em_kirin.c, EM_KIND_KIRIN).
@@ -24,16 +25,16 @@ enum EmKirinMotion {
     KIRIN_MOT_TURN_TO_GOAL_LEFT = 0x07, /* KIRIN_IDLE_TURN_TO_GOAL, goal on the rotY-rising side */
     KIRIN_MOT_TURN_TO_GOAL_RIGHT = 0x08, /* KIRIN_IDLE_TURN_TO_GOAL, goal on the falling side */
     KIRIN_MOT_WALK = 0x09,              /* KIRIN_MOVE_WALK, WALK_TURN_TO_GOAL, the walks of the scene; footsteps */
-    KIRIN_MOT_CHARGE = 0x0A,            /* KIRIN_MOVE_CHARGE(_WIDE) with contact attack 0x10; dust at f4 and f28 */
+    KIRIN_MOT_CHARGE = 0x0A,            /* KIRIN_MOVE_CHARGE(_WIDE) with contact attack 16; dust at f4 and f28 */
     KIRIN_MOT_GALLOP = 0x0B,            /* KIRIN_MOVE_GALLOP(_WIDE), restarted by hand on layers 0 and 1; dust */
     KIRIN_MOT_STRIDE_A = 0x0C,          /* KIRIN_MOVE_STRIDE_A, STRIDE_RAMPAGE; dust at f12 */
     KIRIN_MOT_STRIDE_B = 0x0D,          /* KIRIN_MOVE_STRIDE_B, STRIDE_RAMPAGE; same sounds and dust as STRIDE_A */
     KIRIN_MOT_STOP = 0x0E,              /* after charge, gallop (layers 0 and 1), strides, lunge, jump landing; dust at f12/f16 */
     KIRIN_MOT_TURN_AROUND_LEFT = 0x0F,  /* KIRIN_MOVE_TURN_AROUND_LEFT and FACE_GOAL, rotY rising 0x888 a frame */
     KIRIN_MOT_LUNGE = 0x11,             /* KIRIN_ATK_LUNGE; contact KIRIN_ATK_BOLTS_B_ALT at f20, dust at f24, then STOP */
-    KIRIN_MOT_HOP = 0x12,               /* KIRIN_MOVE_HOP, FACE_GOAL (up to 0x4000 of turn to f26), the scene; dust at f26 */
+    KIRIN_MOT_HOP = 0x12,               /* KIRIN_MOVE_HOP, FACE_GOAL (up to a quarter turn to f26), the scene; dust at f26 */
     KIRIN_MOT_JUMP = 0x14,              /* KIRIN_MOVE_JUMP_TO_GOAL (frozen at f36 in the air), KIRIN_ATK_JUMP_STRIKE */
-    KIRIN_MOT_TURN_AROUND_RIGHT = 0x16, /* KIRIN_MOVE_TURN_AROUND_RIGHT and FACE_GOAL, rotY falling; sounds as 0x0F */
+    KIRIN_MOT_TURN_AROUND_RIGHT = 0x16, /* KIRIN_MOVE_TURN_AROUND_RIGHT and FACE_GOAL, rotY falling; sounds as KIRIN_MOT_TURN_AROUND_LEFT */
     KIRIN_MOT_STRIKE = 0x18,            /* KIRIN_ATK_STRIKE_BOLTS (lightning at f22), KIRIN_ATK_JUMP_STRIKE; contact KIRIN_ATK_BOLTS_C_ALT at f14 */
     KIRIN_MOT_THREAT = 0x26,            /* KIRIN_IDLE_THREAT(_THEN_IDLE), KIRIN_ATK_THREAT, the scene before the lightning */
     KIRIN_MOT_CALL_LIGHTNING = 0x27,    /* ATK_BOLTS_*, spark type 8 at start, lightning at f90 */
@@ -43,7 +44,7 @@ enum EmKirinMotion {
     KIRIN_MOT_KNOCKBACK_LAND = 0x3F,    /* landing after KNOCKBACK (lies 90 frames; the hunted carcass pose); dust at f44 */
     KIRIN_MOT_GET_UP = 0x40,            /* KIRIN_IDLE_STATUS2_GET_UP, end of KIRIN_REACT_KNOCKBACK, KIRIN_REACT_COLLAPSE_AND_RISE */
     KIRIN_MOT_COLLAPSE = 0x41,          /* start of KIRIN_IDLE_STATUS2_COLLAPSE, KIRIN_REACT_COLLAPSE_AND_RISE */
-    KIRIN_MOT_STATUS2_LIE = 0x43,       /* lying under status 2 until the timer; lying puffs at bone 0x17 */
+    KIRIN_MOT_STATUS2_LIE = 0x43,       /* lying under status 2 until the timer; lying puffs at KIRIN_BONE_BOLT */
     KIRIN_MOT_STATUS4 = 0x44,           /* KIRIN_REACT_STATUS4 with the status 4 effect */
     KIRIN_MOT_STATUS4_SHAKE_OFF = 0x45  /* KIRIN_IDLE_STATUS4_SHAKE_OFF; random voice */
 };
@@ -69,8 +70,8 @@ enum EmKirinIdleState {
 enum EmKirinMoveState {
     KIRIN_MOVE_WALK_TURN_TO_GOAL = 0x00, /* walk motion, rotY 0x100 a frame to the goal */
     KIRIN_MOVE_WALK = 0x01,             /* walk, Em_StepToGoal, stop margin 100 */
-    KIRIN_MOVE_CHARGE = 0x02,           /* KIRIN_MOT_CHARGE + contact attack 0x10, stop margin 100 */
-    KIRIN_MOVE_GALLOP = 0x03,           /* looped KIRIN_MOT_GALLOP + contact attack 0x10, stop margin 100 */
+    KIRIN_MOVE_CHARGE = 0x02,           /* KIRIN_MOT_CHARGE + contact attack 16, stop margin 100 */
+    KIRIN_MOVE_GALLOP = 0x03,           /* looped KIRIN_MOT_GALLOP + contact attack 16, stop margin 100 */
     KIRIN_MOVE_STRIDE_A = 0x04,         /* KIRIN_MOT_STRIDE_A then stop */
     KIRIN_MOVE_STRIDE_B = 0x05,         /* KIRIN_MOT_STRIDE_B then stop */
     KIRIN_MOVE_TURN_AROUND_LEFT = 0x06, /* half turn, rotY rising */
@@ -98,8 +99,8 @@ enum EmKirinAttackState {
     KIRIN_ATK_BOLTS_A_ALT = 0x0A,     /* variant 7: the spots of BOLTS_A, attack row 7 */
     KIRIN_ATK_BOLTS_B_ALT = 0x0B,     /* variant 8 */
     KIRIN_ATK_BOLTS_C_ALT = 0x0C,     /* variant 9 */
-    KIRIN_ATK_BOLTS_D_ALT = 0x0D,     /* variant 0xA */
-    KIRIN_ATK_BOLTS_E_ALT = 0x0E      /* variant 0xB */
+    KIRIN_ATK_BOLTS_D_ALT = 0x0D,     /* variant 10 */
+    KIRIN_ATK_BOLTS_E_ALT = 0x0E      /* variant 11 */
 };
 
 /* Group 4, EM_GROUP_REACT (EmKirin_RunReactState): what EmKirin_Update picks from Em_UpdateDamage's result. */
@@ -121,5 +122,44 @@ enum EmKirinDefeatState {
 enum EmKirinEventState {
     KIRIN_EVENT_SNOWY_MOUNTAINS_SCENE = 0x00 /* Update starts it in quests QUEST_ID_KIRIN_SCENE_1 and QUEST_ID_KIRIN_SCENE_2, in AREA_SNOWY_MOUNTAINS_8 */
 };
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: where the
+ * lightning and an effect start, and the bones the runs' dust rises at.
+ * Bones no code explains stay numbers: 22 (the dust as a lunge or a hop
+ * lands).
+ */
+enum EmKirinBone {
+    KIRIN_BONE_ROOT = 0,    /* the skeleton's first bone: most of the motions' sounds play here */
+    KIRIN_BONE_BODY = 2,    /* the dust as it lands from a knockback (KIRIN_MOT_KNOCKBACK_LAND) */
+    KIRIN_BONE_FOOT_A = 7,  /* the dust of the feet that brake in KIRIN_MOT_STOP, here and at KIRIN_BONE_FOOT_B */
+    KIRIN_BONE_FOOT_B = 11,
+    KIRIN_BONE_FOOT_C = 17, /* the dust of the feet in the runs (KIRIN_MOT_CHARGE, KIRIN_MOT_GALLOP, KIRIN_MOT_STRIDE_B) and the turn around, here and at KIRIN_BONE_FOOT_D */
+    KIRIN_BONE_FOOT_D = 21,
+    KIRIN_BONE_BOLT = 23    /* where the lightning (EMRANGED_KIRIN_BOLTS) and the lying puffs start; the voice sounds play here */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBone and Em_PlaySeType). A sound is
+ * named where the code shows what it is: it plays on the frame of the
+ * thing it goes with. The others stay numbers.
+ */
+enum EmKirinSe {
+    KIRIN_SE_LIGHTNING = 2  /* on the frame the lightning strikes (90) in KIRIN_MOT_CALL_LIGHTNING; also at frame 14 of KIRIN_MOT_LUNGE */
+};
+
+extern void *EmKirin_Callbacks[8];
+void EmKirin_Init(Em *em);
+void EmKirin_Update(Em *em);
+void EmKirin_KnockBack(Em *em, EmWork *work, s16 variant);
+void EmKirin_Hunted(Em *em, EmWork *work);
+void EmKirin_SnowyMountainsScene(Em *em);
+void EmKirin_RunState(Em *em);
+void EmKirin_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmKirin_EndState(Em *em);
+void EmKirin_MotionEffects(Em *em, EmWork *work);
 
 #endif

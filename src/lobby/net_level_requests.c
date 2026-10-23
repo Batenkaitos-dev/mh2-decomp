@@ -1,9 +1,11 @@
 /*
  * The three levels' shared request builders (a count, an entry's name,
  * values, state, text and kind, leaving, each for level 0, 1 or 2), the
- * sender of 6305 (entering a level-1 entry), 640F's reply and 630A (the
- * users of a level-1 entry). Network code: it stays byte for byte, as the
- * whole build does.
+ * sender of 6305 (entering a level-1 entry), the reader of an entry's
+ * values (a u16 id and a u16 array: NetList_ReadValues reads the answer
+ * to LobbyPkt_EntryValues with it) and 640F's reply (its meaning unknown;
+ * the next file, level 1's users and places, is no closer a subject).
+ * Network code: it stays byte for byte, as the whole build does.
  */
 #include "common.h"
 #include "em.h"
@@ -12,8 +14,6 @@
 #include "m2c_macros.h"
 
 extern char gNoPassword[];
-char *strcpy(char *dst, const char *src);      /* strcpy */
-s32 LobbyPkt_Level1Users(u16 id);
 
 /*
  * Sends the count request of a level (0-2: 6203, 6301, 6401); returns its
@@ -221,7 +221,7 @@ void LobbyMsg_ReadU16Array(u16 *id, u16 n, u16 *out)
     }
 }
 
-/* the reply to 640F and its notification: u16 x3; route 0x1C */
+/* the reply to 640F and its notification: u16 x3; route NET_ROUTE_640F */
 void LobbyReply_640F(void)
 {
     if (gLobbyNet.replyErr == 0) {
@@ -230,49 +230,11 @@ void LobbyReply_640F(void)
     Lobby_RouteMessage(NET_ROUTE_640F);
 }
 
-/*
- * Sends 630A as a request; onReply gets its reply. Returns the request's
- * slot, -1 if none is free.
- */
-s32 LobbyReq_Level1Users(u16 id, void (*onReply)(NetMsg, NetMsg *))
-{
-    s32 req;
-
-    req = NetReq_Alloc(1, 0, onReply);
-    if (req != -1) {
-        memset(gLobbyNet.users, 0, sizeof(gLobbyNet.users));
-        gLobbyNet.req[req].seq = LobbyPkt_Level1Users(id);
-        return req;
-    }
-    return -1;
-}
-
-/* user i of 630A's reply: id, name and text */
-s32 LobbyNet_GetUser(u16 i, char *id, char *name, u8 *text)
-{
-    strcpy(id, gLobbyNet.users[i].u.id);
-    strcpy(name, gLobbyNet.users[i].u.name);
-    memcpy(text, gLobbyNet.users[i].u.text, 0x100);
-    return 0;
-}
-
 /* the file's .rodata: the empty password blob */
 #pragma rodata on
 #pragma explicit_zero_data on
-char gNoPassword[0x8] = {
+char gNoPassword[8] = {
 #include "lobby/00838598.inc"
 };
 #pragma explicit_zero_data reset
 #pragma rodata off
-
-/* Sends 630A for level-1 entry id; returns its sequence number. */
-s32 LobbyPkt_Level1Users(u16 id)
-{
-    s32 seq;
-
-    seq = LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_LEVEL1_USERS) & 0xFFFF;
-    LobbyPkt_PutU16(&gLobbyPkt, id);
-    LobbyPkt_End(&gLobbyPkt);
-    LobbyPkt_Send(&gLobbyPkt);
-    return seq;
-}

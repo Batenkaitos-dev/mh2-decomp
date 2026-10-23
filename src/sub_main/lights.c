@@ -17,9 +17,10 @@
 #include "light.h"
 #include "objhead.h"
 #include "render_state.h"
+#include "engine_math.h"
+#include "libc.h"
 
 /* prototypes */
-s32 Gs_SetState(u8 reg, u32 v);
 /* end of prototypes */
 
 extern LightSets gLightSets;
@@ -101,7 +102,6 @@ static void Light_SetDefault(Light *light, u16 area, s32 i, u16 mode)
 }
 
 extern LightSources gLightInitSources;
-void *memset(void *dst, s32 c, u32 n);
 
 /* The scene's area (gScene.area) under a name of its own: Light_InitAll's check needs it;
  * through gScene.area the load moves after the stores. */
@@ -168,8 +168,6 @@ void Light_InitAll(s32 unused0)
     }
 }
 
-void LightSet_UpdateFade(LightSet *set);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 extern f32 gCamMatrix[];
 
 /* Sets vec to (x, y, z). Kept as an inline function: through its pointer parameter the
@@ -183,7 +181,7 @@ static inline void Vec3_Set(f32 *vec, f32 x, f32 y, f32 z)
 }
 
 /* Steps the two light sets (gLightSets): a set in mode 1 fades (LightSet_UpdateFade). Then set 1's third
- * light points straight down, turned by the camera (gCamMatrix), except in area 0x11 (no map lists it).
+ * light points straight down, turned by the camera (gCamMatrix), except in area 17 (no map lists it).
  * The loop steps a byte pointer one LightSet at a time, as Light_InitAll's do. */
 void LightSet_UpdateAll(void)
 {
@@ -203,7 +201,7 @@ void LightSet_UpdateAll(void)
             LightSet_UpdateFade(set);
             break;
         }
-        if (i == 1 && gScene.area != 0x11) { /* no AreaId names 0x11 */
+        if (i == 1 && gScene.area != 17) { /* no AreaId names 17 */
             Vec3_Set(down, 0.0f, 0.0f, -1.0f);
             light = &set->lights[2];
             Vec_Rotate(rotated, down, gCamMatrix);
@@ -259,7 +257,7 @@ void LightSet_UpdateFade(LightSet *set)
 extern f32 gLightFixedColors[3][4];
 
 /* Sets the colours of light set n's three lights for the object about to be drawn (a hunter, a monster or
- * one of the lobby's people). In the fortress areas below (and area 0xD, which no map lists), while a
+ * one of the lobby's people). In the fortress areas below (and area 13, which no map lists), while a
  * large monster is near the object, they are gLightFixedColors. Otherwise lights 0 and 1 take the
  * object's own colours (lightColors) when it has them, and the rest take the area's (Light_SetDefault). */
 void LightSet_SetColors(void *obj, s32 n)
@@ -275,7 +273,7 @@ void LightSet_SetColors(void *obj, s32 n)
         light = &set->lights[i];
         switch (gScene.area) {
         case AREA_FORTRESS_5:
-        case 0xD: /* no AreaId names 0xD */
+        case 13: /* no AreaId names 13 */
         case AREA_FORTRESS_1:
         case AREA_FORTRESS_3:
         case AREA_FORTRESS_2:
@@ -331,8 +329,6 @@ void Player_ClearLightColors(Player *pl)
     pl->lightFadeColors[1] = 0;
     pl->lightFadeColors[2] = 0;
 }
-
-void *memcpy(void *dst, const void *src, u32 n);
 
 /* Hands light set 1's three lights to the renderer with the object's faded colours: each light's colour
  * goes a fifth of the way from the object's lightFadeColors (0xFFRRGGBB; 0: none, the set's colour as it

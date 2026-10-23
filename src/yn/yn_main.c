@@ -9,11 +9,16 @@
  * screen (enum YnProxyState); each queues its draw callback. The chosen
  * entry goes into sub_main's network globals (Yn_ExportSettings) and into
  * gNetSaveData.config, the settings kept in the NET file; gNetMode carries the
- * result back to the online set-up. The YnCard_* functions, in the
- * overlay's other file, check the memory cards. The file owns its .data
- * (the screens' text tables), .rodata and .bss.
+ * result back to the online set-up. The YnCard_* functions check the
+ * memory cards; the YnNetcnf_* functions and the conversions under them
+ * read the settings file's entries, convert them and pick the network
+ * device.
+ * The file owns its .data (the screens' text tables), .rodata and .bss.
  */
 #include "common.h"
+#include "sif.h"
+#include "texture.h"
+#include "stream.h"
 extern s8 gNetLanMode;
 extern s32 gNetNetmask;
 extern s32 gNetIpAddr;
@@ -28,6 +33,11 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "syssave.h"
 #include "dma.h"
 #include "render_state.h"
+#include "text.h"
+#include "engine_math.h"
+#include "frame.h"
+#include "mem_util.h"
+#include "netcnfif.h"
 
 /* The game compiled this file at optimization level 4 (the build's -O3,p
  * plus MWCC's level-4 passes): Yn_Connect, Yn_UpdateEntryList, Yn_DrawPort
@@ -40,20 +50,10 @@ s32 printf(char *fmt, ...);               /* printf */
 s32 strlen(char *s);                      /* strlen */
 char *strchr(char *s, s32 c);               /* strchr */
 char *strncpy(char *dst, char *src, u32 n);    /* strncpy */
-s32 flReleaseTextureHandle(u32 handle);
-s32 flReleasePaletteHandle(u32 handle);
-void Mem_Compact(void);
 void *memset(void *dst, s32 c, u32 n);
 s32 sprintf(char *dst, char *fmt, ...);    /* sprintf */
-s32 strcmp(char *a, char *b);             /* strcmp */
 char *strcpy(char *dst, char *src);       /* strcpy */
 char *strcat(char *dst, char *src);       /* strcat */
-void FlushCache(s32 mode);
-s32 sceSifStopModule(s32 id, s32 argc, char *argv, s32 *result);   /* stop a module */
-s32 sceSifUnloadModule(s32 id);                       /* unload a module */
-s32 sceSifSearchModuleByName(char *name);                   /* find a loaded module by name */
-s32 sceSifLoadModule(char *path, s32 argc, char *argv);            /* load a module */
-s32 sceSifLoadStartModule(char *path, s32 argc, char *argv, void *buf);
 /* sub_main */
 s32 Sjis_CharBytes(u8 *s);                     /* size of the character at s */
 void Font_SetSpacing(u8 a, u8 b);
@@ -63,43 +63,20 @@ void Font_SetSize(f32 scale);
 void Font_SetColorIndex(s16 c);
 void Font_SetHalfWidth(s8 mode); /* unit's own declaration: an s8 mode as Yn_SetTextMode passes it; with the definition's s32, the call compiles differently */
 s32 Str_Length(char *text);
-void Text_Printf(const char *fmt, ...);
 void Font_ResetState(void);
-void NetDev_ClearList(void);
-s32 NetDev_IsKnownName(char *vendor, char *product);
 s32 net_inet_addr2(char *addr);                  /* the address in a dotted string */
-s32 Net_StopDevice(void);
-s32 Net_LoadDriverType1(void);
-s32 Net_LoadDrivers(void);
-s32 NetDev_Refresh(void);
-void NetMode_OpenIcon7(void);
-void NetMode_CloseBoxes(s32 arg);
-void LoginSe_Decide(void);                        /* lobby: sound effect 0x13 */
-void LoginSe_Play9(void);                        /* lobby: sound effect 9 */
-void LoginSe_Cancel(void);                        /* lobby: sound effect 0x14 */
-void LoginSe_Cursor(void);                        /* lobby: sound effect 0x17 */
-void Callbacks_Add(void (*fn)(void));           /* sub_main */
 /* lobby: the software keyboard and more */
-s32 NetKbd_Run(void);
-void NetKbd_Open(s32 arg0, s32 arg1, void *arg2, s32 arg3, s32 arg4);
-char *NetKbd_GetText(void);
-void NetKbd_SetActive(s32 on);
-void NetKbd_Draw(void);
 /* more of main and sub_main */
-s32 Gs_SetState(u8 reg, u32 v);
 void Font_DrawPage(s32 layer);
-void Gfx_SetTexFilter(s32 a);
-void Text_Reset(void);
-void Text_DrawIcons(s32 a);
 /* sub_main: the network connection settings */
-extern char gNetAuthKey[0x100];
-extern char gNetAuthName[0x100];
-extern char gNetDomain[0x100];
-extern char gNetPppAuthText[0x10];
-extern char gNetPppConfBuf[0xF0];
-extern char D_59DD00[0x100];
-extern char gHttpsProxy[0x110];         /* the HTTPS proxy URL */
-extern char gHttpProxy[0x110];         /* the HTTP proxy URL */
+extern char gNetAuthKey[256];
+extern char gNetAuthName[256];
+extern char gNetDomain[256];
+extern char gNetPppAuthText[16];
+extern char gNetPppConfBuf[240];
+extern char D_59DD00[256];
+extern char gHttpsProxy[272];         /* the HTTPS proxy URL */
+extern char gHttpProxy[272];         /* the HTTP proxy URL */
 void Window_DrawTextAlpha(); /* unit's own declaration: the definition (sub_main) takes (Window *, u8 *text, u8 alpha); Yn_DrawBackground also passes &rect in a3, which it ignores (a native build drops it), and a fixed 4-parameter type reschedules that function */
 s32 Prim_FillRect(PrimLine *rect);
 void Hud_DrawButtonIcon(s16 id, s16 x, s16 y, s16 depth, u32 color, f32 scale); /* unit's own declaration:
@@ -108,130 +85,18 @@ void Hud_DrawButtonIcon(s16 id, s16 x, s16 y, s16 depth, u32 color, f32 scale); 
 void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);               /* draws a box */
 s16 Font_GetAdvance(void);
 s16 Font_GetCharH(void);
-f32 Math_Sin(f32 x);                        /* sinf */
-s32 Dma_WaitIdle(void);
-void Pad_End(void);
-void DisableDmac(s32 a);
-void DisableIntc(s32 a);
 void sceCdInit(s32 a);
-void sceSifExitCmd(void);
 void func_11DD10(char *path, s32 argc, char **argv);
 void sceGsSyncPath(s32 mode, u16 timeout);
-void DIntr(void);
-void EIntr(void);
-s32 RemoveDmacHandler(s32 channel, s32 id);
-s32 RemoveIntcHandler(s32 cause, s32 id);
 void *sceGsSyncVCallback(void *func);
 /* Sony's netcnfif (netcnfif.s) */
-s32 yn_entry(void);
-s32 func_00AC8128(void);
-s32 sceNetcnfifCheck(void);
-s32 sceNetcnfifGetResult(s32 *result);
-void sceNetcnfifSetFNoDecode(s32 flag);
-void sceNetcnfifGetCount(char *path, s32 type);
-void sceNetcnfifGetList(char *path, s32 type, NetcnfEntry *list, s32 count);
-s32 sceNetcnfifLoadEntry(char *path, s32 type, char *usrName, NetcnfData *data);
-s32 sceNetcnfifAllocWorkarea(s32 size);
-s32 sceNetcnfifFreeWorkarea(void);
-void func_00AC8DC0(void);
-void sceNetcnfifDataInit(NetcnfData *data);
-s32 sceNetcnfifConvAuthname(char *src, char *dst, s32 size);
 /* this file */
-void Yn_ConfigToIfc(YnConfig *cfg, NetcnfData *data, char *name);
-void Yn_ConfigToDev(YnConfig *cfg, NetcnfData *data);
-void Yn_DrawMessageText(void);
-s32 Yn_ScanCardsForConnect(void);
-s32 Yn_Connect(void);
-void Yn_ResetStreams(void);
-void Yn_Draw(void);
-void Yn_Quit(void);
-s32 Yn_ScanCards(void);
-s32 Yn_UpdateEntryList(void);
-void Yn_UpdatePadRepeat(PadState *pad);
-void Yn_PreUpdate(void);
-void Yn_LoadProxy(void);
-s32 YnNetcnf_LoadModules(YnNetcnf *n);
-s32 YnNetcnf_Open(YnNetcnf *n);
-void Yn_ResetNetDevices(void);
-s32 Yn_IsCurrentCardGone(void);
-void Yn_StrCopy(char *dst, char *src);
-void Yn_DrawProxy(void);
-void Yn_AlignAddress(u8 *dst, u8 *src);
-s32 Yn_IsCardGone(void);
-void Yn_ExportSettings(NetcnfData *d);
-void Yn_ApplyEntry(NetcnfData *data);
-s32 Yn_FindCombination(YnConfig *cfg, YnCombo *combo, s32 n);
-s32 Yn_CompareProxy(YnEntryKey *a, YnEntryKey *b);
-s32 YnNetcnf_IsEmpty(YnNetcnf *n);
-s32 Yn_SelectDevice(s32 i);
-void Yn_DrawSlotMessage(s32 sel);
-void Yn_DrawEntryDetails(void);
-s16 Yn_CenterX(char *text, s32 w);
-void Yn_DrawIcon(f32 scale, s32 id, s32 x, s32 y, s32 blink);
-void YnNetcnf_SetPath(YnNetcnf *n, s32 slot);
-s32 YnNetcnf_CheckFile(YnNetcnf *n);
-void YnNetcnf_LoadCombos(YnNetcnf *n);
-void Yn_BuildCombos(YnNetcnf *n, YnCombo *combo);
-void Yn_PreDraw(void);
-void Yn_DrawScreen(void);
-void Yn_DrawItems(void);
-void Yn_DrawChoiceItems(s32 sel, s32 color);
-void Yn_DrawEntryList(void);
-void Yn_DrawPort(u16 *value, s16 x, s16 y);
-void Yn_DrawTextField(u8 *text, char *label, s16 x, s16 y, s32 w);
-void Yn_DrawMessage(void);
-void Yn_DrawHelp(void);
-void Yn_Print(s16 x, s16 y, char *text);
-void Yn_SetColor(s8 color);
-void Yn_SetFontSize(s32 w, s32 h);
-void Yn_SetGlyphSize(f32 scale);
-void Yn_SetTextMode(s8 mode);
-s32 Yn_GetTextMode(void);
-s16 Yn_CenterXSjis(char *text, s32 w);
-void Yn_CopyForPrint(char *dst, u8 *src, s32 max);
-void Yn_DrawChoiceCursor(void);
-void Yn_IfcToConfig(YnConfig *cfg, NetcnfData *data, char *name);
-void Yn_DevToConfig(YnConfig *cfg, NetcnfData *data);
-void Yn_DrawTextLayer(void);
-void Yn_DrawBackground(void);
-void Yn_DrawHelpBar(s32 arg);
-s32 YnNetcnf_Close(YnNetcnf *n);
-char *YnNetcnf_FindUsrName(YnNetcnf *n, char *name);
-s32 Yn_Init(s32 arg);
-/* yn_card.c */
-void YnCard_Reset(YnCardCheck *c);
-void YnCard_SetSlot(YnCardCheck *c, u8 slot);
-s32 YnCard_ListNetcnfDir(YnCardCheck *c);
-s32 YnCard_CheckSlots(YnCardCheck *c);
-s32 YnCard_CheckCurrentSlot(YnCardCheck *c);
-s32 YnCard_GetSlot(YnCardCheck *c);
-void YnNetcnf_SetType(YnNetcnf *n, s32 type);
-s32 YnNetcnf_GetCount(YnNetcnf *n);
-s32 YnNetcnf_GetList(YnNetcnf *n);
-s32 YnNetcnf_LoadFirst(YnNetcnf *n);
-void Yn_ParseAddress(u8 *str, u8 *ip);
-void Yn_FormatAddress(char *str, u8 *ip);
-s32 Yn_IsAddressSet(u8 *ip);
-s32 Yn_FindDevice(char *vendor, char *product);
-s32 Yn_GetDeviceKind(char *vendor, char *product);
-void Yn_Utf8ToSjis(char *dst, char *src);
-void Yn_SjisToUtf8(char *dst, char *src);
-void Yn_UnloadModule(s32 id);
-void Yn_LoadModule(char *path, s32 argc, char *argv, void *buf, s32 tries);
-
-/* The busy wait in the IRX loaders' retry loops: the original has eight
- * nops as the loop body. */
-#define YN_WAIT() __asm__ volatile ("nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop")
-#define YN_WAIT7() __asm__ volatile ("nop\n nop\n nop\n nop\n nop\n nop\n nop")
-
-extern NetDevice *gNetDevCur;
-#define gNetDevice (gNetDevCur)   /* sub_main: the device in use */
 
 /* .bss, declared from the highest address down (MWCC emits them last-declared
- * first). gYnWorkBuf is the work area gYnWork points to (0x1AF00 bytes
+ * first). gYnWorkBuf is the work area gYnWork points to (110336 bytes
  * cleared by Yn_Init) and what follows it. */
 u8 gYnWorkBuf[0x40500];
-u8 gYnSetupGuideArg[0x130];
+u8 gYnSetupGuideArg[304];
 
 /* .data: the screens' text tables. */
 YnWindow gYnWindows[4] = {
@@ -240,13 +105,13 @@ YnWindow gYnWindows[4] = {
 YnWindow gYnProxyWindows[3] = {
 #include "yn/00AD11F0.inc"
 };
-u32 gYnStorageNames[4] = {
+char *gYnStorageNames[4] = {
 #include "yn/00AD1230.inc"
 };
 char *gYnHelpBarLabels[12] = {
 #include "yn/00AD1240.inc"
 };
-u32 gYnEtherModeTexts[8] = {
+char *gYnEtherModeTexts[8] = {
 #include "yn/00AD1270.inc"
 };
 /* The space and the empty text come here in the game's .rodata, before the
@@ -259,40 +124,40 @@ const char gYnSpaceText[2] = {
 const char gYnEmptyText[1] = {
 #include "yn/00AD28E0.inc"
 };
-u32 gYnFieldHeaders[6] = {
+char *gYnFieldHeaders[6] = {
 #include "yn/00AD1290.inc"
 };
-u32 gYnHttpsTexts[2] = {
+char *gYnHttpsTexts[2] = {
 #include "yn/00AD12A8.inc"
 };
-u32 gYnDeviceTexts[2] = {
+char *gYnDeviceTexts[2] = {
 #include "yn/00AD12B0.inc"
 };
-u32 gYnUserIdTexts[2] = {
+char *gYnUserIdTexts[2] = {
 #include "yn/00AD12B8.inc"
 };
-u32 gYnHostIpTexts[2] = {
+char *gYnHostIpTexts[2] = {
 #include "yn/00AD12C0.inc"
 };
-u32 gYnNetmaskTexts[2] = {
+char *gYnNetmaskTexts[2] = {
 #include "yn/00AD12C8.inc"
 };
-u32 gYnDnsTexts[2] = {
+char *gYnDnsTexts[2] = {
 #include "yn/00AD12D0.inc"
 };
-u32 gYnYesNoTexts[2] = {
+char *gYnYesNoTexts[2] = {
 #include "yn/00AD12D8.inc"
 };
-u32 gYnNoTexts[4] = {
+char *gYnNoTexts[4] = {
 #include "yn/00AD12E0.inc"
 };
-u32 gYnOtherPs2Lines[6] = {
+char *gYnOtherPs2Lines[6] = {
 #include "yn/00AD12F0.inc"
 };
-u32 gYnNoCardLines[3] = {
+char *gYnNoCardLines[3] = {
 #include "yn/00AD1308.inc"
 };
-u32 gYnNoSettingsLines[3] = {
+char *gYnNoSettingsLines[3] = {
 #include "yn/00AD1318.inc"
 };
 YnItem gYnScreenNoneItems[1] = {
@@ -679,6 +544,12 @@ s8 gYnHelpItemCounts[40] = {
 #include "yn/00AD2100.inc"
 };
 
+/* Resets sub_main's streams. */
+void Yn_ResetStreams(void)
+{
+    Stream_Reset();
+}
+
 /*
  * Points gYnWork at gYnWorkBuf, clears the work area and sets state 0.
  * arg is kept in initArg: 0 runs the settings list (and calls
@@ -838,7 +709,7 @@ s32 Yn_Update(void)
             gYnWork->quitAsked = 1;
             gYnWork->listDetail = 0;
             gYnWork->quitChoice = 1;
-            LoginSe_Play9();
+            LoginSe_Alert();
             break;
         case -2:
             gYnWork->state = YN_STATE_SCAN;
@@ -911,7 +782,7 @@ void Yn_Draw(void)
     gYnWork->textMode = Yn_GetTextMode();
     Yn_SetTextMode(1);
     Yn_SetColor(0);
-    Yn_SetFontSize(0x16, 0x16);
+    Yn_SetFontSize(22, 22);
     Yn_SetGlyphSize(621.4285888671875f);
     Yn_PreDraw();
     Yn_DrawScreen();
@@ -942,7 +813,7 @@ void Yn_Quit(void)
     Yn_Init(0);
     YnNetcnf_Close(&gYnWork->netcnf);
     Mem_Compact();
-    NetMode_CloseBoxes(0x20);
+    NetMode_CloseBoxes(32);
 }
 
 /*
@@ -1201,7 +1072,7 @@ s32 Yn_Connect(void)
                 }
                 gYnWork->step = YN_CONNECT_STEP_CONNECTED;
                 gYnWork->msg = YN_MSG_CONNECTED;
-                LoginSe_Play9();
+                LoginSe_Alert();
                 gYnWork->msgTimer = 60;
                 break;
             }
@@ -1266,7 +1137,7 @@ s32 Yn_Connect(void)
  */
 void Yn_ResetNameScroll(void)
 {
-    char buf[0x100];
+    char buf[256];
     char *name;
     s32 i;
 
@@ -1293,7 +1164,7 @@ void Yn_ResetNameScroll(void)
  */
 void Yn_UpdateNameScroll(void)
 {
-    char buf[0x100];
+    char buf[256];
     char *visible;
     s32 i;
     s32 n;
@@ -1422,7 +1293,7 @@ s32 Yn_UpdateEntryList(void)
         }
         if (gPadState[0].pressed & PAD_L1) {
             gYnWork->scanResult = YN_SCAN_SLOT_SWITCHED;
-            LoginSe_Play9();
+            LoginSe_Alert();
             gYnWork->slot++;
             gYnWork->slot &= 1;
             YnCard_SetSlot(&gYnWork->card, gYnWork->slot);
@@ -1474,7 +1345,7 @@ s32 Yn_UpdateEntryList(void)
     case YN_LIST_WAIT_CARD:
         gYnWork->helpBar = YN_HELPBAR_NONE;
         if (YnCard_CheckSlots(&gYnWork->card) >= 0) {
-            LoginSe_Play9();
+            LoginSe_Alert();
             return -2;
         }
         break;
@@ -1486,23 +1357,23 @@ s32 Yn_UpdateEntryList(void)
         if (nameCopy == NULL || nameCopy[0] == 0) {
             gYnWork->step = YN_LIST_ERROR;
             gYnWork->msg = YN_MSG_NO_NAME;
-            LoginSe_Play9();
+            LoginSe_Alert();
             break;
         }
         if (YnNetcnf_CheckFile(&gYnWork->netcnf) != 0) {
             gYnWork->step = YN_LIST_ERROR;
             gYnWork->msg = YN_MSG_FILE_ERROR;
-            LoginSe_Play9();
+            LoginSe_Alert();
             break;
         }
         idx = gYnWork->cursor;
         if (gYnWork->combos[idx].kind == YN_COMBO_ETHERNET
             && gYnWork->netcnf.data[idx].phoneNumbers[0][0] != 0
             && gYnWork->netcnf.data[idx].ifcType == 2
-            && gYnWork->netcnf.data[idx].pppoe == 0xFF) {
+            && gYnWork->netcnf.data[idx].pppoe == 255) {
             gYnWork->step = YN_LIST_ERROR;
             gYnWork->msg = YN_MSG_DIAL_UP;
-            LoginSe_Play9();
+            LoginSe_Alert();
             break;
         }
         dev = gYnWork->combos[idx].device;
@@ -1513,13 +1384,13 @@ s32 Yn_UpdateEntryList(void)
             } else {
                 gYnWork->msg = YN_MSG_DEVICE_UNKNOWN;
             }
-            LoginSe_Play9();
+            LoginSe_Alert();
             break;
         }
         if (Yn_SelectDevice(dev) < 0) {
             gYnWork->step = YN_LIST_ERROR;
             gYnWork->msg = YN_MSG_DEVICE_ABSENT;
-            LoginSe_Play9();
+            LoginSe_Alert();
             break;
         }
         if (Yn_CompareProxy((YnEntryKey *)&gYnWork->proxy, (YnEntryKey *)&gNetSaveData.configProxy) < 0) {
@@ -1587,10 +1458,10 @@ void Yn_DrawScreen(void)
         Yn_DrawEntryList();
         break;
     case YN_SCREEN_PROXY_FIELDS:
-        Yn_DrawTextField((u8 *)gYnWork->proxy.http, (char *)gYnFieldHeaders[5], 0x16B, 0xB4, 0x12);
-        Yn_DrawTextField((u8 *)gYnWork->proxy.https, (char *)gYnHttpsTexts[0], 0x16B, 0xE6, 0x12);
-        Yn_DrawPort(&gYnWork->proxy.httpPort, 0x16B, 0xCD);
-        Yn_DrawPort(&gYnWork->proxy.httpsPort, 0x16B, 0xFF);
+        Yn_DrawTextField((u8 *)gYnWork->proxy.http, gYnFieldHeaders[5], 363, 180, 18);
+        Yn_DrawTextField((u8 *)gYnWork->proxy.https, gYnHttpsTexts[0], 363, 230, 18);
+        Yn_DrawPort(&gYnWork->proxy.httpPort, 363, 205);
+        Yn_DrawPort(&gYnWork->proxy.httpsPort, 363, 255);
         Yn_DrawItems();
         break;
     case YN_SCREEN_PROXY_USE:
@@ -1618,7 +1489,7 @@ void Yn_DrawItems(void)
     for (i = 0; i < count; i++, item++) {
         x = item->x;
         if (x == -1) {
-            x = Yn_CenterXSjis(item->text, 0x16);
+            x = Yn_CenterXSjis(item->text, 22);
         }
         Yn_Print(x, item->y, item->text);
     }
@@ -1640,7 +1511,7 @@ void Yn_DrawChoiceItems(s32 sel, s32 color)
     for (i = 0; i < count; i++, item++) {
         x = item->x;
         if (x == -1) {
-            x = Yn_CenterXSjis(item->text, 0x16);
+            x = Yn_CenterXSjis(item->text, 22);
         }
         if (i < 2) {
             if (i == sel) {
@@ -1671,8 +1542,8 @@ const char gYnFmtString[3] = {
  */
 void Yn_DrawEntryList(void)
 {
-    char buf[0x100];
-    char scratch[0x100];
+    char buf[256];
+    char scratch[256];
     char *name;
     s8 idx;
     s32 kind;
@@ -1685,15 +1556,15 @@ void Yn_DrawEntryList(void)
 
     scratch[0] = 0;
     buf[0] = 0;
-    Yn_SetFontSize(0x14, 0x14);
+    Yn_SetFontSize(20, 20);
     Yn_SetColor(0);
-    Yn_Print(0x2C, 0x54, (char *)(&gYnStorageNames[1])[YnCard_GetSlot(&gYnWork->card)]);
+    Yn_Print(44, 84, (&gYnStorageNames[1])[YnCard_GetSlot(&gYnWork->card)]);
     scanStatus = gYnWork->scanResult;
     if (scanStatus == -10) {
         return;
     }
     if (scanStatus != 0) {
-        y = 0x90;
+        y = 144;
         Yn_SetColor(5);
         if (gYnWork->state == 4 && gYnWork->step == 1) {
             switch (gYnWork->scanResult) {
@@ -1701,14 +1572,14 @@ void Yn_DrawEntryList(void)
                 lines = NULL;
                 break;
             case -2:
-                lines = (char **)gYnNoCardLines;
+                lines = gYnNoCardLines;
                 break;
             case -3:
-                lines = (char **)gYnOtherPs2Lines;
+                lines = gYnOtherPs2Lines;
                 break;
             case -1:
             default:
-                lines = (char **)gYnNoSettingsLines;
+                lines = gYnNoSettingsLines;
                 break;
             }
         } else {
@@ -1720,23 +1591,23 @@ void Yn_DrawEntryList(void)
                 strcpy(scratch, *lines);
                 percent = (u8 *)strchr(scratch, '%');
                 if (percent != NULL && percent[1] == 's') {
-                    strcpy(buf, (char *)gYnStorageNames[YnCard_GetSlot(&gYnWork->card) + 1]);
+                    strcpy(buf, gYnStorageNames[YnCard_GetSlot(&gYnWork->card) + 1]);
                     strcat(buf, (char *)percent + 2);
                 } else {
                     strcpy(buf, scratch);
                 }
-                Yn_SetFontSize(0x14, 0x14);
-                Yn_Print(0x2C, y, buf);
+                Yn_SetFontSize(20, 20);
+                Yn_Print(44, y, buf);
                 lines++;
-                y += 0x1A;
+                y += 26;
             } while (*lines != NULL);
         }
         Yn_SetColor(0);
-        Yn_SetFontSize(0x16, 0x16);
+        Yn_SetFontSize(22, 22);
         return;
     }
-    Yn_SetFontSize(0x16, 0x16);
-    y = 0x89;
+    Yn_SetFontSize(22, 22);
+    y = 137;
     for (i = 0; i < 4; i++) {
         color = 0;
         Yn_SetColor(0);
@@ -1750,7 +1621,7 @@ void Yn_DrawEntryList(void)
         } else if (gYnWork->combos[gYnWork->listTop + i].kind == 1
                    && gYnWork->netcnf.data[gYnWork->listTop + i].phoneNumbers[0][0] != 0
                    && gYnWork->netcnf.data[gYnWork->listTop + i].ifcType == 2
-                   && gYnWork->netcnf.data[gYnWork->listTop + i].pppoe == 0xFF) {
+                   && gYnWork->netcnf.data[gYnWork->listTop + i].pppoe == 255) {
             color = 2;
         } else if (gYnWork->combos[gYnWork->listTop + i].kind == 2) {
             color = 2;
@@ -1762,7 +1633,7 @@ void Yn_DrawEntryList(void)
         } else {
             Yn_Utf8ToSjis(buf, name);
             if (gYnWork->nameScroll != 0 && gYnWork->cursor == i) {
-                Yn_CopyForPrint(scratch, (u8 *)buf + gYnWork->nameOfs, 0x2C);
+                Yn_CopyForPrint(scratch, (u8 *)buf + gYnWork->nameOfs, 44);
                 if (gYnWork->nameOfs == 0) {
                     strcpy(buf, scratch);
                 } else {
@@ -1770,16 +1641,16 @@ void Yn_DrawEntryList(void)
                     strcat(buf, scratch);
                 }
             } else {
-                Yn_CopyForPrint(scratch, (u8 *)buf, 0x2C);
+                Yn_CopyForPrint(scratch, (u8 *)buf, 44);
                 strcpy(buf, scratch);
             }
         }
-        Font_SetPos(0x2C, y);
+        Font_SetPos(44, y);
         Font_Printf("%d: ", i + 1 + gYnWork->listTop);
         Yn_SetColor(color);
-        Font_SetPos(0x4D, y);
+        Font_SetPos(77, y);
         Font_Printf(buf);
-        y += 0x20;
+        y += 32;
     }
     if (gYnWork->listDetail >= 2) {
         Yn_SetColor(0);
@@ -1787,15 +1658,15 @@ void Yn_DrawEntryList(void)
         kind = gYnWork->combos[idx].kind;
         if (kind == 0
             || (kind == 1 && gYnWork->netcnf.data[idx].phoneNumbers[0][0] != 0
-                && gYnWork->netcnf.data[idx].ifcType == 2 && gYnWork->netcnf.data[idx].pppoe == 0xFF)) {
+                && gYnWork->netcnf.data[idx].ifcType == 2 && gYnWork->netcnf.data[idx].pppoe == 255)) {
             sprintf(buf, "%s:%s", gYnDeviceTexts[0], gYnHttpsTexts[1]);
         } else {
             sprintf(buf, "%s:%s/%s", gYnDeviceTexts[0], gYnWork->combos[idx].vendor, gYnWork->combos[idx].product);
         }
-        Yn_SetFontSize(0x14, 0x14);
-        Yn_Print(0x2C, 0x107, buf);
+        Yn_SetFontSize(20, 20);
+        Yn_Print(44, 263, buf);
         Yn_SetColor(0);
-        Yn_SetFontSize(0x16, 0x16);
+        Yn_SetFontSize(22, 22);
     }
 }
 
@@ -1807,7 +1678,7 @@ void Yn_DrawEntryList(void)
 void Yn_DrawPort(u16 *value, s16 x, s16 y)
 {
     s8 digits[8];
-    char buf[0x48];
+    char buf[72];
     char *bufPos;
     s32 j;
     s32 i;
@@ -1850,7 +1721,7 @@ void Yn_DrawPort(u16 *value, s16 x, s16 y)
             digits[0] = *bufPos++;
             digits[1] = 0;
             if (17 - i == gYnWork->numDigitPos) {
-                Yn_SetColor(0xB);
+                Yn_SetColor(11);
             } else {
                 Yn_SetColor(0);
             }
@@ -1867,7 +1738,7 @@ void Yn_DrawPort(u16 *value, s16 x, s16 y)
  */
 void Yn_DrawTextField(u8 *text, char *label, s16 x, s16 y, s32 w)
 {
-    char buf[0x40];
+    char buf[64];
 
     if (*text == 0) {
         Yn_Print(x, y, label);
@@ -1888,24 +1759,24 @@ void Yn_DrawMessageWindow(void)
     case YN_MSG_DEVICE_UNKNOWN:
     case 6:
     case 7:
-    case 0x17:
+    case 23:
     case YN_MSG_ENTRY_DETAILS:
     case YN_MSG_DIAL_UP:
     case YN_MSG_FILE_ERROR:
-    case 0x1E:
-    case 0x2B:
+    case 30:
+    case 43:
     case YN_MSG_PROXY_SAVED:
     case YN_MSG_NO_NAME:
     case YN_MSG_CONNECTED:
-    case 0x39:
+    case 57:
     case YN_MSG_QUIT_ASK:
-        Window_DrawTextAlpha(&gYnWindows[2], 0, 0xF0);
+        Window_DrawTextAlpha(&gYnWindows[2], 0, 240);
         break;
     case 1:
     case YN_MSG_PROXY_CONFIRM:
-    case 0x37:
-    case 0x38:
-        Window_DrawTextAlpha(&gYnWindows[2], 0, 0xF0);
+    case 55:
+    case 56:
+        Window_DrawTextAlpha(&gYnWindows[2], 0, 240);
         break;
     case YN_MSG_NONE:
         break;
@@ -1924,21 +1795,21 @@ void Yn_DrawMessage(void)
 
     Yn_SetGlyphSize(478.5714416503906f);
     switch (gYnWork->msg) {
-    case 0x01:
+    case 1:
     case YN_MSG_DEVICE_ABSENT:
     case YN_MSG_DEVICE_UNKNOWN:
-    case 0x06:
-    case 0x07:
-    case 0x17:
+    case 6:
+    case 7:
+    case 23:
     case YN_MSG_PROXY_CONFIRM:
-    case 0x38:
+    case 56:
     case YN_MSG_QUIT_ASK:
     case YN_MSG_DIAL_UP:
-    case 0x1E:
-    case 0x2B:
+    case 30:
+    case 43:
     case YN_MSG_PROXY_SAVED:
-    case 0x37:
-    case 0x39:
+    case 55:
+    case 57:
         Yn_DrawMessageText();
         break;
     case YN_MSG_NO_NAME:
@@ -1954,7 +1825,7 @@ void Yn_DrawMessage(void)
         Yn_DrawMessageText();
         w = Font_GetAdvance();
         height = Font_GetCharH();
-        Yn_SetFontSize(0x12, 0x12);
+        Yn_SetFontSize(18, 18);
         Yn_DrawEntryDetails();
         Yn_SetFontSize(w, height);
         break;
@@ -1986,8 +1857,8 @@ void Yn_DrawMessageText(void)
     case 6:
     case 7:
     case YN_MSG_DIAL_UP:
-    case 0x39:
-        Yn_SetColor(0xB);
+    case 57:
+        Yn_SetColor(11);
         break;
     default:
         Yn_SetColor(0);
@@ -1999,20 +1870,20 @@ void Yn_DrawMessageText(void)
     for (i = 0; i < count; i++, item++) {
         percent = strchr(item->text, '%');
         if (percent != NULL && percent[1] == 'a') {
-            x = Yn_CenterX((char *)gYnYesNoTexts[0], advance);
+            x = Yn_CenterX(gYnYesNoTexts[0], advance);
             if (gYnWork->quitChoice == 0) {
                 Yn_SetColor(5);
             } else {
                 Yn_SetColor(0);
             }
-            Yn_Print(x, item->y, (char *)gYnYesNoTexts[1]);
+            Yn_Print(x, item->y, gYnYesNoTexts[1]);
             x += advance * 5;
             if (gYnWork->quitChoice == 0) {
                 Yn_SetColor(0);
             } else {
                 Yn_SetColor(5);
             }
-            Yn_Print(x, item->y, (char *)gYnNoTexts[0]);
+            Yn_Print(x, item->y, gYnNoTexts[0]);
             Yn_SetColor(0);
         } else {
             x = item->x;
@@ -2031,7 +1902,7 @@ void Yn_DrawMessageText(void)
  */
 void Yn_DrawSlotMessage(s32 sel)
 {
-    char buf[0x100];
+    char buf[256];
     s8 count;
     YnItem *item;
     s8 i;
@@ -2042,7 +1913,7 @@ void Yn_DrawSlotMessage(s32 sel)
     for (i = 0; i < count; i++, item++) {
         x = item->x;
         if (x == -1) {
-            x = Yn_CenterXSjis(item->text, 0x16);
+            x = Yn_CenterXSjis(item->text, 22);
         }
         if (i == sel) {
             sprintf(buf, item->text, YnCard_GetSlot(&gYnWork->card) + 1);
@@ -2060,8 +1931,8 @@ void Yn_DrawSlotMessage(s32 sel)
  */
 void Yn_DrawEntryDetails(void)
 {
-    char scratch[0x200];
-    char buf[0x200];
+    char scratch[512];
+    char buf[512];
     YnCombo *combo;
     NetcnfData *data;
     s32 y;
@@ -2069,29 +1940,29 @@ void Yn_DrawEntryDetails(void)
     s32 x;
     s32 etherMode;
 
-    y = 0x82;
+    y = 130;
     combo = &gYnWork->combos[gYnWork->cursor];
     data = combo->data;
     name = YnNetcnf_FindUsrName(&gYnWork->netcnf, gYnWork->netcnf.data[gYnWork->cursor].attachIfc);
     if (name != NULL && combo->kind == 1
         && !(gYnWork->netcnf.data[gYnWork->cursor].phoneNumbers[0][0] != 0
              && gYnWork->netcnf.data[gYnWork->cursor].ifcType == 2
-             && gYnWork->netcnf.data[gYnWork->cursor].pppoe == 0xFF)) {
+             && gYnWork->netcnf.data[gYnWork->cursor].pppoe == 255)) {
         sprintf(scratch, "        %s  %s/%s", gYnDeviceTexts[0], combo->vendor, combo->product);
-        Yn_CopyForPrint(buf, (u8 *)scratch, 0x3C);
-        x = 0x58;
+        Yn_CopyForPrint(buf, (u8 *)scratch, 60);
+        x = 88;
     } else {
         Yn_SetColor(2);
         sprintf(buf, "        %s", gYnHttpsTexts[1]);
-        x = 0x44;
+        x = 68;
     }
     Yn_SetColor(0);
     Yn_Print(x, y, buf);
-    y += 0x19;
+    y += 25;
     if (data != NULL && name != NULL && combo->kind == 1
         && !(combo->kind == 1 && gYnWork->netcnf.data[gYnWork->cursor].phoneNumbers[0][0] != 0
              && gYnWork->netcnf.data[gYnWork->cursor].ifcType == 2
-             && gYnWork->netcnf.data[gYnWork->cursor].pppoe == 0xFF)) {
+             && gYnWork->netcnf.data[gYnWork->cursor].pppoe == 255)) {
         switch (data->phyConfig) {
         case -1:
         default:
@@ -2115,39 +1986,39 @@ void Yn_DrawEntryDetails(void)
         }
         if (0 <= etherMode) {
             sprintf(scratch, "  %s  %s", gYnDeviceTexts[1], gYnEtherModeTexts[etherMode]);
-            Yn_CopyForPrint(buf, (u8 *)scratch, 0x2C);
-            Yn_Print(0x58, y, buf);
-            y += 0x19;
+            Yn_CopyForPrint(buf, (u8 *)scratch, 44);
+            Yn_Print(88, y, buf);
+            y += 25;
         }
         if (data->pppoe == 1) {
-            Yn_CopyForPrint(scratch, (u8 *)data->authName, 0x1C);
-            sceNetcnfifConvAuthname(scratch, buf, 0x100);
+            Yn_CopyForPrint(scratch, (u8 *)data->authName, 28);
+            sceNetcnfifConvAuthname(scratch, buf, 256);
             sprintf(scratch, "    %s  %s", gYnUserIdTexts[0], buf);
-            Yn_Print(0x58, y, scratch);
-            y += 0x19;
+            Yn_Print(88, y, scratch);
+            y += 25;
         } else if (data->dhcp == 1) {
             if (data->dhcpHostname[0] == 0) {
                 sprintf(scratch, (char *)gYnFmtString, gYnUserIdTexts[1]);
             } else {
-                Yn_CopyForPrint(scratch, (u8 *)data->dhcpHostname, 0x1C);
+                Yn_CopyForPrint(scratch, (u8 *)data->dhcpHostname, 28);
             }
             sprintf(buf, "%s  %s", gYnHostIpTexts[0], scratch);
-            Yn_Print(0x46, y, buf);
+            Yn_Print(70, y, buf);
             sprintf(scratch, (char *)gYnFmtString, gYnUserIdTexts[1]);
             sprintf(buf, "    %s  %s", gYnHostIpTexts[1], scratch);
-            Yn_Print(0x58, y + 0x19, buf);
-            y += 0x32;
+            Yn_Print(88, y + 25, buf);
+            y += 50;
         } else if (data->address[0] != 0) {
             Yn_AlignAddress((u8 *)buf, (u8 *)data->address);
             sprintf(scratch, "    %s  %s", gYnHostIpTexts[1], buf);
-            Yn_Print(0x58, y, scratch);
+            Yn_Print(88, y, scratch);
             Yn_AlignAddress((u8 *)buf, (u8 *)data->netmask);
             sprintf(scratch, "    %s  %s", gYnNetmaskTexts[0], buf);
-            Yn_Print(0x58, y + 0x19, scratch);
+            Yn_Print(88, y + 25, scratch);
             Yn_AlignAddress((u8 *)buf, (u8 *)data->gateway);
             sprintf(scratch, "%s  %s", gYnNetmaskTexts[1], buf);
-            Yn_Print(0x58, y + 0x32, scratch);
-            y += 0x4B;
+            Yn_Print(88, y + 50, scratch);
+            y += 75;
         }
         if (data->dns1Address[0] == 0) {
             if (data->pppoe != 1 && data->dhcp != 1) {
@@ -2159,7 +2030,7 @@ void Yn_DrawEntryDetails(void)
             Yn_AlignAddress((u8 *)scratch, (u8 *)data->dns1Address);
         }
         sprintf(buf, "%s  %s", gYnDnsTexts[0], scratch);
-        Yn_Print(0x58, y, buf);
+        Yn_Print(88, y, buf);
         if (data->dns2Address[0] == 0) {
             if (data->pppoe != 1 && data->dhcp != 1) {
                 sprintf(scratch, (char *)gYnFmtString, gYnHttpsTexts[1]);
@@ -2170,7 +2041,7 @@ void Yn_DrawEntryDetails(void)
             Yn_AlignAddress((u8 *)scratch, (u8 *)data->dns2Address);
         }
         sprintf(buf, "%s  %s", gYnDnsTexts[1], scratch);
-        Yn_Print(0x58, y + 0x19, buf);
+        Yn_Print(88, y + 25, buf);
     }
 }
 
@@ -2212,17 +2083,17 @@ void Yn_DrawHelp(void)
     s8 i;
     s16 x;
 
-    Yn_SetFontSize(0x12, 0x12);
+    Yn_SetFontSize(18, 18);
     item = gYnHelpItems[gYnWork->help + gYnWork->helpVariant];
     count = gYnHelpItemCounts[gYnWork->help + gYnWork->helpVariant];
     for (i = 0; i < count; i++, item++) {
         x = item->x;
         if (x == -1) {
-            x = Yn_CenterXSjis(item->text, 0x16);
+            x = Yn_CenterXSjis(item->text, 22);
         }
         Yn_Print(x, item->y, item->text);
     }
-    Yn_SetFontSize(0x16, 0x16);
+    Yn_SetFontSize(22, 22);
 }
 
 void Yn_Print(s16 x, s16 y, char *text)
@@ -2284,11 +2155,11 @@ s16 Yn_CenterXSjis(char *str, s32 w)
     text = (u8 *)str;
     half = 0;
     full = 0;
-    for (i = 0; i < 0x100; i++) {
+    for (i = 0; i < 256; i++) {
         if (*text == 0) {
             break;
         }
-        if (*text >= 0x80) {
+        if (*text >= 128) {
             text++;
             full++;
         } else {
@@ -2318,7 +2189,7 @@ void Yn_CopyForPrint(char *dst, u8 *src, s32 max)
         n = 0;
         ch = *src;
         while (ch != 0) {
-            if (ch >= 0x80) {
+            if (ch >= 128) {
                 dst[0] = ch;
                 n += 2;
                 dst[1] = src[1];
@@ -2395,19 +2266,19 @@ void Yn_OpenKeyboard(s32 mode, char *str)
 
     Font_ResetState();
     buf = gYnWork->editBuf;
-    memset(buf, 0, 0x200);
+    memset(buf, 0, 512);
     gYnWork->editTarget = str;
     strcpy(buf, str);
     NetKbd_SetActive(1);
     switch (mode) {
     case 0:
-        NetKbd_Open(0x50, 0x12A, buf, 0xFF, 3);
+        NetKbd_Open(80, 298, buf, 255, 3);
         break;
     case 1:
-        NetKbd_Open(0x50, 0x12A, buf, 0xFF, 4);
+        NetKbd_Open(80, 298, buf, 255, 4);
         break;
     case 2:
-        NetKbd_Open(0x50, 0x12A, buf, 0xFF, 5);
+        NetKbd_Open(80, 298, buf, 255, 5);
         break;
     }
 }
@@ -2440,12 +2311,12 @@ void Yn_PreUpdate(void)
  */
 void Yn_DrawTextLayer(void)
 {
-    Gs_SetState(0x61, 0x01000000);
+    Gs_SetState(RS_BLEND_ON, RF_BLEND_ON);
     Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
     Gs_SetState(RS_ALPHA_TEST, RS_CMP_NOTEQUAL);
     Gs_SetState(RS_ALPHA_REF, 0);
     Gs_SetState(RS_ZWRITE, 0);
-    Gfx_SetTexFilter(0);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     Font_DrawPage(4);
     Yn_DrawMessageWindow();
     if (gYnWork->quitAsked != 0) {
@@ -2588,21 +2459,21 @@ void Yn_DrawBackground(void)
 
     rect = gYnBackgroundRect;
     win = gYnWindows[3];
-    Window_DrawTextAlpha(&win, 0, 0x80, &rect);
+    Window_DrawTextAlpha(&win, 0, 128, &rect);
     for (i = 0, w = gYnWindows; i < 2; i++, w++) {
         win = *w;
-        Window_DrawTextAlpha(&win, 0, 0x80);
+        Window_DrawTextAlpha(&win, 0, 128);
     }
     Prim_FillRect(&rect);
     if (gYnWork->state == 4 && gYnWork->step == 1) {
-        Hud_DrawButtonIcon(4, 0x136, 0x50, 0x155, -1, 1.2f);
+        Hud_DrawButtonIcon(4, 310, 80, 341, -1, 1.2f);
     }
     if (gYnWork->state == 4 && gYnWork->step == 1 && gYnWork->scanResult == 0 && gYnWork->entryCount != 0) {
-        Menu_DrawGlowBar(0x140, gYnListBarYs[(gYnWork->cursor - gYnWork->listTop) & 3], 0x240, 0x1E, 0xFF20C0C0);
+        Menu_DrawGlowBar(320, gYnListBarYs[(gYnWork->cursor - gYnWork->listTop) & 3], 576, 30, 0xFF20C0C0);
     }
 }
 
-u32 gYnGuideArgv[4] = {
+char *gYnGuideArgv[4] = {
 #include "yn/00AD2140.inc"
 };
 extern s32 gSysExiting;
@@ -2630,7 +2501,7 @@ void Yn_LaunchSetupGuide(void)
     sceGsSyncVCallback(0);
     sceCdInit(5);
     sceSifExitCmd();
-    func_11DD10("cdrom0:\\NTGUIDVD\\NTGDVDJ.BIN;1", 3, (char **)gYnGuideArgv);
+    func_11DD10("cdrom0:\\NTGUIDVD\\NTGDVDJ.BIN;1", 3, gYnGuideArgv);
 }
 
 /*
@@ -2644,13 +2515,13 @@ void Yn_DrawChoiceCursor(void)
     s16 x;
 
     advance = Font_GetAdvance();
-    w = Yn_CenterX((char *)gYnYesNoTexts[0], advance);
+    w = Yn_CenterX(gYnYesNoTexts[0], advance);
     if (gYnWork->quitChoice == 0) {
         x = w + advance;
     } else {
         x = w + advance * 5 + (s16)(1.5f * advance);
     }
-    Menu_DrawGlowBar(x, 0x12A, advance * 6, advance + 4, 0xFF20C0C0);
+    Menu_DrawGlowBar(x, 298, advance * 6, advance + 4, 0xFF20C0C0);
 }
 
 /*
@@ -2670,7 +2541,7 @@ void Yn_DrawIcon(f32 scale, s32 id, s32 x, s32 y, s32 blink)
     } else {
         color = 0xFFF08200;
     }
-    Hud_DrawButtonIcon(id, x, y, 0x155, color, scale);
+    Hud_DrawButtonIcon(id, x, y, 341, color, scale);
 }
 
 s16 gYnProxyBarYs[4] = {
@@ -2696,13 +2567,13 @@ void Yn_DrawProxy(void)
     s32 state;
 
     win = *(YnWindow *)((u8 *)gYnProxyWindows + 0);
-    Window_DrawTextAlpha(&win, 0, 0x80);
+    Window_DrawTextAlpha(&win, 0, 128);
     win = gYnProxyWindows[1];
-    Window_DrawTextAlpha(&win, 0, 0x80);
+    Window_DrawTextAlpha(&win, 0, 128);
     switch (state = gYnWork->state) {
     case YN_PROXY_USE:
-        Menu_DrawGlowBar(0x140, gYnProxyChoiceYs[gYnWork->proxyCursor], 0xF0, 0x18, 0xFF20C0C0);
-        Yn_DrawIcon(2.0f, YN_ICON_ARROW_RIGHT, 0x230, 0xD0, 0);
+        Menu_DrawGlowBar(320, gYnProxyChoiceYs[gYnWork->proxyCursor], 240, 24, 0xFF20C0C0);
+        Yn_DrawIcon(2.0f, YN_ICON_ARROW_RIGHT, 560, 208, 0);
         break;
     case YN_PROXY_FIELDS:
     case YN_PROXY_KEYBOARD:
@@ -2712,14 +2583,14 @@ void Yn_DrawProxy(void)
             win = gYnProxyWindows[2];
             barY = &gYnProxyBarYs[mode];
             win.win.y = *barY + 3;
-            Window_DrawTextAlpha(&win, 0, 0x80);
-            Menu_DrawGlowBar(0x204, *barY, 0x46, 0x18, 0xFF20C0C0);
-            x = 0x214 - gYnWork->numDigitPos * 10;
+            Window_DrawTextAlpha(&win, 0, 128);
+            Menu_DrawGlowBar(516, *barY, 70, 24, 0xFF20C0C0);
+            x = 532 - gYnWork->numDigitPos * 10;
             state = win.win.y - 11;
             Yn_DrawIcon(0.5f, YN_ICON_ARROW_UP, x, state, 1);
-            Yn_DrawIcon(0.5f, YN_ICON_ARROW_DOWN, x, state + 0x1D, 1);
+            Yn_DrawIcon(0.5f, YN_ICON_ARROW_DOWN, x, state + 29, 1);
         } else {
-            Menu_DrawGlowBar(0x140, gYnProxyBarYs[mode], 0x212, 0x18, 0xFF20C0C0);
+            Menu_DrawGlowBar(320, gYnProxyBarYs[mode], 530, 24, 0xFF20C0C0);
         }
         switch (mode) {
         case YN_FIELD_HTTP:
@@ -2734,9 +2605,9 @@ void Yn_DrawProxy(void)
             break;
         }
         if (gYnWork->state == YN_PROXY_FIELDS) {
-            Yn_DrawIcon(2.0f, YN_ICON_ARROW_LEFT, 0x1E, 0xD0, 0);
+            Yn_DrawIcon(2.0f, YN_ICON_ARROW_LEFT, 30, 208, 0);
             if ((u8)gYnWork->proxy.http[0] != 0 && gYnWork->proxy.httpPort != 0) {
-                Yn_DrawIcon(2.0f, YN_ICON_ARROW_RIGHT, 0x230, 0xD0, 0);
+                Yn_DrawIcon(2.0f, YN_ICON_ARROW_RIGHT, 560, 208, 0);
             }
         }
         break;
@@ -2744,7 +2615,7 @@ void Yn_DrawProxy(void)
     gYnWork->textMode = Yn_GetTextMode();
     Yn_SetTextMode(1);
     Yn_SetColor(0);
-    Yn_SetFontSize(0x14, 0x14);
+    Yn_SetFontSize(20, 20);
     Yn_SetGlyphSize(621.4285888671875f);
     Yn_DrawScreen();
     Yn_DrawHelpBar(gYnWork->helpBar);
@@ -2780,9 +2651,9 @@ s32 Yn_UpdateProxy(void)
     case YN_PROXY_INIT:
         Yn_LoadProxy();
         gYnWork->state = YN_PROXY_USE;
-        gYnWork->unk46 = 0x10;
+        gYnWork->unk46 = 16;
         gYnWork->msgCloseMode = YN_MSG_CLOSE_EITHER;
-        gYnWork->unk48 = 0x13;
+        gYnWork->unk48 = 19;
         gYnWork->screen = YN_SCREEN_PROXY_USE;
         gYnWork->help = YN_HELP_PROXY_USE;
         gYnWork->proxyCursor = 1;
@@ -2997,785 +2868,23 @@ void Yn_DrawHelpBar(s32 type)
 
     w = Font_GetAdvance();
     height = (s16)Font_GetCharH();
-    Yn_SetFontSize(0x12, 0x12);
+    Yn_SetFontSize(18, 18);
     bar = gYnHelpBars[type];
     count = bar.count;
     names = gYnHelpBarLabels;
     x = (640 - bar.width) / 2.0f;
     for (i = 0; i < count; i++) {
         hint = gYnHelpHints[bar.items[i]];
-        Hud_DrawButtonIcon(*hint++, x, 0x188, 0x155, -1, 0.8f);
-        x += 0x18;
+        Hud_DrawButtonIcon(*hint++, x, 392, 341, -1, 0.8f);
+        x += 24;
         text = names[*hint];
         len = Str_Length(text);
-        Yn_Print(x, 0x188, text);
+        Yn_Print(x, 392, text);
         if (type == YN_HELPBAR_LIST) {
-            x += len * 9 + 0x1A;
+            x += len * 9 + 26;
         } else {
-            x += len * 10 + 0x36;
+            x += len * 10 + 54;
         }
     }
     Yn_SetFontSize(w, (s16)height);
 }
-
-u32 gYnNetcnfArgs[32] = {
-#include "yn/00AD21E0.inc"
-};
-u32 gYnNetcnfifArgs[8] = {
-#include "yn/00AD2260.inc"
-};
-/*
- * Loads the netcnf and netcnfif IOP modules from the disc with
- * gYnNetcnfArgs and gYnNetcnfifArgs, then retries yn_entry until it
- * succeeds. Returns 0; n is unused.
- */
-s32 YnNetcnf_LoadModules(YnNetcnf *n)
-{
-    Yn_LoadModule("cdrom0:\\IOP\\MODULES\\NETICON\\NETCNF.IRX;1", 0x7F, (char *)gYnNetcnfArgs, 0, 0);
-    Yn_LoadModule("cdrom0:\\IOP\\MODULES\\NETICON\\NETCNFIF.IRX;1", 0x16, (char *)gYnNetcnfifArgs, 0, 0);
-    func_00AC8128();
-    while (yn_entry() < 0) {
-    }
-    return 0;
-}
-
-/*
- * Allocates netcnfif's work area (each call retried or waited on) and
- * keeps the result in n->result. Returns -1 on failure, else clears the
- * no-decode flag and returns 0.
- */
-s32 YnNetcnf_Open(YnNetcnf *n)
-{
-    while (sceNetcnfifAllocWorkarea(0x1000) < 0) {
-    }
-    while (sceNetcnfifCheck() != 0) {
-    }
-    while (sceNetcnfifGetResult(&n->result) < 0) {
-    }
-    if (n->result < 0) {
-        return -1;
-    }
-    sceNetcnfifSetFNoDecode(0);
-    return 0;
-}
-
-/*
- * Frees netcnfif's work area, then stops and unloads the netcnfif and
- * netcnf modules when they are loaded. Returns 0.
- */
-s32 YnNetcnf_Close(YnNetcnf *n)
-{
-    s32 id;
-
-    while (sceNetcnfifFreeWorkarea() < 0) {
-    }
-    while (sceNetcnfifCheck() != 0) {
-    }
-    func_00AC8DC0();
-    id = sceSifSearchModuleByName("Netcnf_Interface");
-    if (0 <= id) {
-        Yn_UnloadModule(id);
-    }
-    id = sceSifSearchModuleByName("NET_configuration");
-    if (0 <= id) {
-        Yn_UnloadModule(id);
-    }
-    return 0;
-}
-
-/*
- * Returns the usrName of the type 1 entry whose sysName is name (seen: an
- * entry's attachIfc), or NULL.
- */
-char *YnNetcnf_FindUsrName(YnNetcnf *n, char *name)
-{
-    s32 i;
-
-    for (i = 0; i < n->count[1]; i++) {
-        if (strcmp(n->list1[i].sysName, name) == 0) {
-            return n->list1[i].usrName;
-        }
-    }
-    return NULL;
-}
-
-/*
- * Fills netcnf interface data from cfg: PPPoE (user, password, MTU 1454),
- * DHCP or a fixed address, given or negotiated DNS. name gets cfg->name
- * through Yn_SjisToUtf8.
- */
-void Yn_ConfigToIfc(YnConfig *cfg, NetcnfData *data, char *name)
-{
-    sceNetcnfifDataInit(data);
-    data->auth = 0;
-    if (cfg->ifcType3 == 1) {
-        data->ifcType = 3;
-    } else {
-        data->ifcType = 1;
-    }
-    if (cfg->noPppoe == 0) {
-        data->pppoe = 1;
-        data->dhcp = 0;
-        strcpy(data->authName, cfg->authName);
-        strcpy(data->authKey, cfg->authKey);
-        strcpy(data->peerName, "*");
-        data->fAuth = 1;
-        data->auth = 4;
-        data->prcNego = 0;
-        data->accNego = 0;
-        data->accmNego = 0;
-        data->mtu = 0x5AE;
-        data->ifcType = 2;
-        data->ifcIdleTimeout = 0;
-    } else {
-        data->pppoe = 0xFF;
-        if (cfg->fixedIp == 0) {
-            data->dhcp = 1;
-            strcpy(data->dhcpHostname, cfg->dhcpHostname);
-        } else {
-            data->dhcp = 0;
-            Yn_FormatAddress(data->address, cfg->address);
-            Yn_FormatAddress(data->netmask, cfg->netmask);
-            Yn_FormatAddress(data->gateway, cfg->gateway);
-        }
-    }
-    if (cfg->dnsSet != 0) {
-        if (Yn_IsAddressSet(cfg->dns1) != 0) {
-            Yn_FormatAddress(data->dns1Address, cfg->dns1);
-        }
-        if (Yn_IsAddressSet(cfg->dns2) != 0) {
-            Yn_FormatAddress(data->dns2Address, cfg->dns2);
-        }
-        if (data->dns1Address[0] == 0) {
-            memset(data->dns1Address, 0, 0x100);
-            memset(data->dns2Address, 0, 0x100);
-            data->dns1Nego = 1;
-            data->dns2Nego = 1;
-        }
-        if (data->dns2Address[0] == 0) {
-            memset(data->dns2Address, 0, 0x100);
-        }
-    } else if (data->dhcp != 1) {
-        data->dns1Nego = 1;
-        data->dns2Nego = 1;
-    }
-    Yn_SjisToUtf8(name, cfg->name);
-}
-
-/*
- * Fills cfg (cleared first) from interface data: PPPoE user and password,
- * or the DHCP host name or fixed addresses, and the DNS servers when set;
- * cfg->name gets name through Yn_Utf8ToSjis.
- */
-void Yn_IfcToConfig(YnConfig *cfg, NetcnfData *data, char *name)
-{
-    memset(cfg, 0, 0xA20);
-    cfg->ifcType = data->ifcType;
-    if (data->pppoe == 1) {
-        strcpy(cfg->authName, data->authName);
-        strcpy(cfg->authKey, data->authKey);
-    } else {
-        cfg->noPppoe = 1;
-        if (data->dhcp != 0xFF) {
-            if (data->dhcp == 1) {
-                strcpy(cfg->dhcpHostname, data->dhcpHostname);
-            } else {
-                cfg->fixedIp = 1;
-                Yn_ParseAddress((u8 *)data->address, cfg->address);
-                Yn_ParseAddress((u8 *)data->netmask, cfg->netmask);
-                Yn_ParseAddress((u8 *)data->gateway, cfg->gateway);
-            }
-        }
-    }
-    if (data->dns1Address[0] != 0) {
-        cfg->dnsSet = 1;
-        Yn_ParseAddress((u8 *)data->dns1Address, cfg->dns1);
-        Yn_ParseAddress((u8 *)data->dns2Address, cfg->dns2);
-    }
-    if (Yn_IsAddressSet(cfg->dns1) == 0) {
-        cfg->dnsSet = 0;
-        cfg->dns1[0] = 0;
-        cfg->dns2[0] = 0;
-        cfg->dns1[1] = 0;
-        cfg->dns2[1] = 0;
-        cfg->dns1[2] = 0;
-        cfg->dns2[2] = 0;
-        cfg->dns1[3] = 0;
-        cfg->dns2[3] = 0;
-    }
-    Yn_Utf8ToSjis(cfg->name, name);
-}
-
-/*
- * Fills netcnf device data from cfg: vendor, product, devType (3 when
- * ifcType3 is 1, else 1) and phyConfig from cfg's ethernet mode.
- */
-void Yn_ConfigToDev(YnConfig *cfg, NetcnfData *data)
-{
-    sceNetcnfifDataInit(data);
-    strcpy(data->vendor, cfg->vendor);
-    strcpy(data->product, cfg->product);
-    if (cfg->ifcType3 == 1) {
-        data->devType = 3;
-    } else {
-        data->devType = 1;
-    }
-    switch (cfg->phyConfig) {
-    case 0:
-    default:
-        data->phyConfig = 1;
-        break;
-    case 1:
-        data->phyConfig = 2;
-        break;
-    case 2:
-        data->phyConfig = 3;
-        break;
-    case 3:
-        data->phyConfig = 5;
-        break;
-    case 4:
-        data->phyConfig = 6;
-        break;
-    }
-}
-
-/*
- * Copies the device data's vendor and product into cfg and maps its
- * phyConfig back to cfg's ethernet mode (0 for auto or unknown).
- */
-void Yn_DevToConfig(YnConfig *cfg, NetcnfData *data)
-{
-    strcpy(cfg->vendor, data->vendor);
-    strcpy(cfg->product, data->product);
-    switch (data->phyConfig) {
-    case 1:
-    default:
-        cfg->phyConfig = 0;
-        break;
-    case 2:
-        cfg->phyConfig = 1;
-        break;
-    case 3:
-        cfg->phyConfig = 2;
-        break;
-    case 5:
-        cfg->phyConfig = 3;
-        break;
-    case 6:
-        cfg->phyConfig = 4;
-        break;
-    }
-}
-
-/*
- * Fills one YnCombo per type 0 entry: its data, vendor and product, the
- * device kind (Yn_GetDeviceKind) and the attached device's index
- * (Yn_FindDevice). Leaves type 1 selected.
- */
-void Yn_BuildCombos(YnNetcnf *n, YnCombo *combo)
-{
-    s32 i;
-
-    YnNetcnf_SetType(n, 1);
-    for (i = 0; i < n->count[0]; i++) {
-        combo->vendor = n->data[i].vendor;
-        combo->product = n->data[i].product;
-        combo->data = &n->data[i];
-        if (combo->vendor == NULL || combo->product == NULL) {
-            combo->kind = 0;
-            combo->device = -2;
-        } else {
-            combo->kind = Yn_GetDeviceKind(combo->vendor, combo->product);
-            combo->device = Yn_FindDevice(combo->vendor, combo->product);
-        }
-        combo++;
-    }
-}
-
-/*
- * Returns the index of the first of the n combos whose entry matches cfg
- * (device, DHCP host, PPPoE user and password, address, netmask, gateway
- * and both DNS servers), or -1.
- */
-s32 Yn_FindCombination(YnConfig *cfg, YnCombo *combo, s32 n)
-{
-    u32 addr;
-    char name[0x200];
-    struct {
-        NetcnfData data;
-        u8 spare[0x30];
-    } ifcx;
-    NetcnfData dev;
-    NetcnfData *entry;
-    s32 i;
-
-    name[0] = 0;
-    Yn_ConfigToIfc(cfg, &ifcx.data, name);
-    Yn_ConfigToDev(cfg, &dev);
-    for (i = 0; i < n; i++, combo++) {
-        entry = combo->data;
-        if (entry != NULL && strcmp(entry->vendor, dev.vendor) == 0 && strcmp(entry->product, dev.product) == 0
-            && entry->dhcp == ifcx.data.dhcp && strcmp(entry->dhcpHostname, ifcx.data.dhcpHostname) == 0
-            && entry->pppoe == ifcx.data.pppoe && strcmp(entry->authName, ifcx.data.authName) == 0
-            && strcmp(entry->authKey, ifcx.data.authKey) == 0) {
-            addr = 0;
-            Yn_ParseAddress((u8 *)entry->address, (u8 *)&addr);
-            if (addr == *(u32 *)cfg->address) {
-                addr = 0;
-                Yn_ParseAddress((u8 *)entry->netmask, (u8 *)&addr);
-                if (addr == *(u32 *)cfg->netmask) {
-                    addr = 0;
-                    Yn_ParseAddress((u8 *)entry->gateway, (u8 *)&addr);
-                    if (addr == *(u32 *)cfg->gateway) {
-                        addr = 0;
-                        Yn_ParseAddress((u8 *)entry->dns1Address, (u8 *)&addr);
-                        if (addr == *(u32 *)cfg->dns1) {
-                            addr = 0;
-                            Yn_ParseAddress((u8 *)entry->dns2Address, (u8 *)&addr);
-                            if (addr == *(u32 *)cfg->dns2) {
-                                return i;
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-    return -1;
-}
-
-/*
- * Returns 0 when the two proxy settings match (use, hosts and ports),
- * else -1.
- */
-s32 Yn_CompareProxy(YnEntryKey *edited, YnEntryKey *inUse)
-{
-    if (edited->use != inUse->use) {
-        return -1;
-    }
-    if (strcmp(edited->http, inUse->http) != 0) {
-        return -1;
-    }
-    if (edited->httpPort != inUse->httpPort) {
-        return -1;
-    }
-    if (strcmp(edited->https, inUse->https) != 0) {
-        return -1;
-    }
-    if (edited->httpsPort != inUse->httpsPort) {
-        return -1;
-    }
-    return 0;
-}
-
-/* Returns 1 when any of the address's four bytes is nonzero, else 0. */
-s32 Yn_IsAddressSet(u8 *addr)
-{
-    s32 i;
-
-    for (i = 0; i < 4; i++, addr++) {
-        if (!*addr == 0) {
-            return 1;
-        }
-    }
-    return 0;
-}
-
-/*
- * Selects entry type 0, 1 or 2: points list, curData and countp at that
- * type's list, data and count.
- */
-void YnNetcnf_SetType(YnNetcnf *n, s32 type)
-{
-    n->type = type;
-    switch (type) {
-    case 0:
-        n->list = n->list0;
-        n->curData = &n->cur[0];
-        n->countp = &n->count[0];
-        break;
-    case 1:
-        n->list = n->list1;
-        n->curData = &n->cur[1];
-        n->countp = &n->count[1];
-        break;
-    case 2:
-        n->list = n->list2;
-        n->curData = &n->cur[2];
-        n->countp = &n->count[2];
-        break;
-    }
-}
-
-/*
- * Asks netcnfif how many entries of the selected type the file at path
- * has (waiting for the answer) and stores it in *countp. Returns it; 0 or
- * a negative error when there are none.
- */
-s32 YnNetcnf_GetCount(YnNetcnf *n)
-{
-    sceNetcnfifGetCount(n->path, n->type);
-    while (sceNetcnfifCheck() != 0) {
-    }
-    sceNetcnfifGetResult(&n->result);
-    *n->countp = n->result;
-    if (n->result <= 0) {
-        return n->result;
-    }
-    return *n->countp;
-}
-
-/*
- * Reads the selected type's *countp entries into list (waiting for the
- * answer). Returns the count, or netcnfif's result when it is 0 or less.
- */
-s32 YnNetcnf_GetList(YnNetcnf *n)
-{
-    if (*n->countp == 0) {
-        return 0;
-    }
-    FlushCache(0);
-    sceNetcnfifGetList(n->path, n->type, n->list, *n->countp);
-    while (sceNetcnfifCheck() != 0) {
-    }
-    sceNetcnfifGetResult(&n->result);
-    if (n->result <= 0) {
-        return n->result;
-    }
-    return *n->countp;
-}
-
-/*
- * Loads every type 0 entry's full data into n->data: the count, the list,
- * then each entry by its usrName. Leaves type 0 selected.
- */
-void YnNetcnf_LoadCombos(YnNetcnf *n)
-{
-    s32 i;
-
-    memset(n->data, 0, sizeof(n->data));
-    YnNetcnf_SetType(n, 0);
-    YnNetcnf_GetCount(n);
-    YnNetcnf_GetList(n);
-    for (i = 0; i < n->count[0]; i++) {
-        sceNetcnfifDataInit(&n->data[i]);
-        FlushCache(0);
-        sceNetcnfifLoadEntry(n->path, n->type, n->list[i].usrName, &n->data[i]);
-        while (sceNetcnfifCheck() != 0) {
-        }
-    }
-}
-
-/*
- * Returns 1 when the file has no type 0 entries (or the count fails).
- * Keeps the selected type in savedType but leaves type 0 selected.
- */
-s32 YnNetcnf_IsEmpty(YnNetcnf *n)
-{
-    n->savedType = n->type;
-    YnNetcnf_SetType(n, 0);
-    return YnNetcnf_GetCount(n) <= 0;
-}
-
-/*
- * Loads the first entry of the first non-empty type (0, 1, then 2) as a
- * test. Returns -1 when netcnfif answers -15 (seen: the list then shows
- * gYnOtherPs2Lines), else 0, also when the file has no entries.
- */
-s32 YnNetcnf_CheckFile(YnNetcnf *n)
-{
-    n->savedType = n->type;
-    YnNetcnf_SetType(n, 0);
-    if (YnNetcnf_GetCount(n) > 0) {
-        YnNetcnf_GetList(n);
-        return YnNetcnf_LoadFirst(n);
-    }
-    YnNetcnf_SetType(n, 1);
-    if (YnNetcnf_GetCount(n) > 0) {
-        YnNetcnf_GetList(n);
-        return YnNetcnf_LoadFirst(n);
-    }
-    YnNetcnf_SetType(n, 2);
-    if (YnNetcnf_GetCount(n) > 0) {
-        YnNetcnf_GetList(n);
-        return YnNetcnf_LoadFirst(n);
-    }
-    return 0;
-}
-
-/*
- * Loads the first entry of the selected list into a local (retrying until
- * netcnfif takes the call), then reselects savedType. Returns -1 when the
- * result is -15, else 0.
- */
-s32 YnNetcnf_LoadFirst(YnNetcnf *n)
-{
-    NetcnfData data;
-
-    sceNetcnfifDataInit(&data);
-    FlushCache(0);
-    while (sceNetcnfifLoadEntry(n->path, n->type, n->list->usrName, &data) < 0) {
-    }
-    while (sceNetcnfifCheck() != 0) {
-    }
-    sceNetcnfifGetResult(&n->result);
-    YnNetcnf_SetType(n, n->savedType);
-    return -(n->result == -15);
-}
-
-void YnNetcnf_SetPath(YnNetcnf *n, s32 slot)
-{
-    sprintf(n->path, "mc%d:%s", slot, "/BWNETCNF/BWNETDCNF");
-}
-
-/* Parses a dotted address string into its four bytes (no checks). */
-void Yn_ParseAddress(u8 *str, u8 *addr)
-{
-    u8 octet;
-
-    octet = 0;
-    for (; *str != 0; str++) {
-        if (*str == '.') {
-            *addr++ = octet;
-            octet = 0;
-        } else {
-            octet *= 10;
-            octet += *str - '0';
-        }
-    }
-    *addr = octet;
-}
-
-void Yn_FormatAddress(char *str, u8 *addr)
-{
-    sprintf(str, "%d.%d.%d.%d", addr[0], addr[1], addr[2], addr[3]);
-}
-
-/*
- * Stops the device in use, if any, then clears and refills the list of
- * attached network devices (NetDev_ClearList, NetDev_Refresh).
- */
-void Yn_ResetNetDevices(void)
-{
-    if (gNetDevice != 0) {
-        Net_StopDevice();
-    }
-    NetDev_ClearList();
-    NetDev_Refresh();
-}
-
-/*
- * Returns the gNetDevs index of the attached device named vendor and
- * product; else -1 when it is a known model (NetDev_IsKnownName), -2 when
- * it is not.
- */
-s32 Yn_FindDevice(char *vendor, char *product)
-{
-    s32 i;
-    NetDevice *dev;
-
-    for (i = 0, dev = gNetDevs; i < 35; i++, dev++) {
-        if (dev->type != -1 && strcmp(dev->vendor, vendor) == 0 && strcmp(dev->product, product) == 0) {
-            return i;
-        }
-    }
-    return (NetDev_IsKnownName(vendor, product) != 0) ? -1 : -2;
-}
-
-/*
- * Returns 1 when the device named vendor and product is attached with
- * type 1, 2 when it is attached with another type, 0 when not attached.
- */
-s32 Yn_GetDeviceKind(char *vendor, char *product)
-{
-    s32 i;
-    NetDevice *dev;
-
-    for (i = 0, dev = gNetDevs; i < 35; i++, dev++) {
-        if (dev->type != -1 && strcmp(dev->vendor, vendor) == 0 && strcmp(dev->product, product) == 0) {
-            if (gNetDevs[i].type == 1) {
-                return 1;
-            }
-            return 2;
-        }
-    }
-    return 0;
-}
-
-/*
- * Makes gNetDevs[i] the device in use and loads the drivers; returns 1.
- * With a device already in use returns 0 if it is this one, else -1;
- * -2 for a device not of type 1.
- */
-s32 Yn_SelectDevice(s32 i)
-{
-    NetDevice *dev;
-
-    dev = &gNetDevs[i];
-    if (gNetDevice != NULL) {
-        return -(gNetDevice != dev);
-    }
-    if (dev->type != 1) {
-        return -2;
-    }
-    gNetDevice = dev;
-    Net_LoadDrivers();
-    Net_LoadDriverType1();
-    return 1;
-}
-
-/*
- * Converts UTF-8 src to Shift-JIS in dst: ASCII is copied, hiragana and
- * katakana are mapped, any other three-byte character becomes one fixed
- * placeholder character.
- */
-void Yn_Utf8ToSjis(char *dstp, char *srcp)
-{
-    u8 *dst = (u8 *)dstp;
-    u8 *src = (u8 *)srcp;
-    u16 code;
-
-    code = *src;
-    while (code != 0) {
-        if (code >= 0x80) {
-            code = (src[1] << 8) + *(src += 2);
-            src++;
-            if (code >= 0x8181 && code < 0x81C0) {
-                code += 0x11E;
-            } else if (code >= 0x8280 && code < 0x8294) {
-                code += 0x5E;
-            } else if (code >= 0x82A1 && code < 0x82C0) {
-                code += 0x9F;
-            } else if (code >= 0x8380 && code < 0x83A0) {
-                code -= 0x21;
-            } else if (code >= 0x83A0 && code < 0x83B7) {
-                code -= 0x20;
-            } else {
-                code = 0x815B;
-            }
-            dst[0] = (code >> 8) & 0xFF;
-            dst[1] = code & 0xFF;
-            dst += 2;
-        } else {
-            *dst = code;
-            src++;
-            dst++;
-        }
-        code = *src;
-    }
-    *dst = 0;
-}
-
-/*
- * Converts Shift-JIS src to UTF-8 in dst: ASCII is copied, kana become
- * three-byte sequences, other two-byte characters one fixed placeholder;
- * stops before the output passes 255 bytes.
- */
-void Yn_SjisToUtf8(char *dstp, char *srcp)
-{
-    u8 *dst = (u8 *)dstp;
-    u8 *src = (u8 *)srcp;
-    s32 n;
-    u16 code;
-
-    n = 0;
-    code = *src;
-    while (code != 0) {
-        if (code >= 0x80) {
-            if (n >= 0xFD) {
-                break;
-            }
-            code = ((code & 0xFF) << 8) + src[1];
-            src += 2;
-            if (code >= 0x829F && code < 0x82DE) {
-                code -= 0x11E;
-            } else if (code >= 0x82DE && code < 0x82F2) {
-                code -= 0x5E;
-            } else if (code >= 0x8340 && code < 0x835F) {
-                code -= 0x9F;
-            } else if (code >= 0x835F && code < 0x837F) {
-                code += 0x21;
-            } else if (code >= 0x8380 && code < 0x8397) {
-                code += 0x20;
-            } else {
-                code = 0x83BC;
-            }
-            dst[0] = 0xE3;
-            dst[1] = (code >> 8) & 0xFF;
-            n += 3;
-            *(dst += 2) = code & 0xFF;
-            dst++;
-        } else {
-            if (n >= 0xFF) {
-                break;
-            }
-            *dst = code;
-            src++;
-            dst++;
-            n++;
-        }
-        code = *src;
-    }
-    *dst = 0;
-}
-
-/*
- * Stops IOP module id, then unloads it, retrying each call until the IOP
- * accepts it.
- */
-void Yn_UnloadModule(s32 id)
-{
-    s32 result;
-    s32 ret;
-
-    while ((ret = sceSifStopModule(id, 0, 0, &result)) < 0) {
-        YN_WAIT();
-    }
-    if (0 <= ret) {
-        while (sceSifUnloadModule(id) < 0) {
-            YN_WAIT();
-        }
-    }
-}
-
-/*
- * Loads the IOP module at path with argc and argv: sceSifLoadModule, or
- * sceSifLoadStartModule (given buf) when buf is set. tries 0 retries
- * until it works, else gives up after tries attempts.
- */
-void Yn_LoadModule(char *path, s32 argc, char *argv, void *buf, s32 tries)
-{
-    s32 i;
-
-    if (buf == NULL) {
-        if (tries == 0) {
-            while (sceSifLoadModule(path, argc, argv) < 0) {
-                YN_WAIT();
-            }
-        } else {
-            for (i = 0; i < tries; i++) {
-                if (0 <= sceSifLoadModule(path, argc, argv)) {
-                    i = 0;
-                    break;
-                }
-                YN_WAIT7();
-            }
-        }
-    } else {
-        if (tries == 0) {
-            while (sceSifLoadStartModule(path, argc, argv, buf) < 0) {
-                YN_WAIT();
-            }
-        } else {
-            for (i = 0; i < tries; i++) {
-                if (0 <= sceSifLoadStartModule(path, argc, argv, buf)) {
-                    i = 0;
-                    break;
-                }
-                YN_WAIT7();
-            }
-        }
-    }
-}
-

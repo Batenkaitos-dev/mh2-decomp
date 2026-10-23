@@ -3,32 +3,23 @@
  * parts.
  * - Area_UpdateTimers runs the timers of gAreaState: state 0 (Area_StartTimers)
  *   clears the frame counter (frame) and moves to state 1; state 1
- *   (Area_Update) adds 1 to frame and 0x2E to spin every frame.
+ *   (Area_Update) adds 1 to frame and 46 to spin every frame.
  * - The others build one matrix each for the part drawer Area_DrawProp,
  *   which reads a command byte per part (record +2, AREA_ANIM_CMD_* in
  *   area_anim.h) and a data pointer (+4); the flags byte (+3) is passed on
  *   (AREA_ANIM_REVERSE, AREA_ANIM_ROT_X, AREA_ANIM_ROT_Z; about Y without
- *   them). Object matrices go to Gs_SetState(0x1A, mtx) (the first slot of
- *   the matrix palette), texture matrices to Gs_SetState(0x19, mtx).
+ *   them). Object matrices go to Gs_SetState(RS_MTX_SLOT(0), mtx) (the first slot of
+ *   the matrix palette), texture matrices to Gs_SetState(RS_UV_MTX, mtx).
  */
 #include "common.h"
 #include "area_anim.h"
 #include "area.h"
+#include "render_state.h"
+#include "engine_math.h"
 
-void Area_StartTimers(AreaState *s);
-void Area_Update(AreaState *s);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);   /* m = scale */
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);   /* m = translation */
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);   /* sets m's translation */
-void Mtx_RotateX(f32 *m, f32 a);                 /* rotates m about X */
-void Mtx_RotateY(f32 *m, f32 a);                 /* ... about Y */
-void Mtx_RotateZ(f32 *m, f32 a);                 /* ... about Z */
-f32 Math_Sin(f32 x);                           /* sin */
-f32 Math_Floor(f32 x);                           /* floorf */
 /* The value is a u32, as the other model code declares it: with a `void *`
  * parameter, the compiler loads the two arguments in the other order for a
  * local matrix. */
-s32 Gs_SetState(u8 reg, u32 v);
 
 /* Steps gAreaState's timers: starts them, then runs them (see above). */
 void Area_UpdateTimers(void)
@@ -49,7 +40,7 @@ void Area_UpdateTimers(void)
 void AreaAnim_Translate(void *mtx, f32 *pos)
 {
     Mtx_Translation(mtx, pos[0], pos[1], pos[2]);
-    Gs_SetState(0x1A, (u32)mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
 }
 
 /* AREA_ANIM_CMD_ROTATE: moved and turned by a fixed angle. */
@@ -63,12 +54,12 @@ void AreaAnim_TranslateRotate(void *mtx, AnimRot *anim, u8 flags)
     } else {
         Mtx_RotateY(mtx, anim->angle);
     }
-    Gs_SetState(0x1A, (u32)mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
 }
 
 /*
  * AREA_ANIM_CMD_SPIN: moved, and turning with the area's frame counter: a
- * turn every 0x10000 >> shift frames, backwards with AREA_ANIM_REVERSE.
+ * turn every ANGLE_TURN >> shift frames, backwards with AREA_ANIM_REVERSE.
  */
 void AreaAnim_TranslateSpin(void *mtx, AnimSpin *anim, u8 flags)
 {
@@ -90,7 +81,7 @@ void AreaAnim_TranslateSpin(void *mtx, AnimSpin *anim, u8 flags)
     } else {
         Mtx_RotateY(mtx, angle);
     }
-    Gs_SetState(0x1A, (u32)mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
 }
 
 /* AREA_ANIM_CMD_SCALE_ROTATE: scaled, moved and turned by a fixed angle. */
@@ -105,14 +96,14 @@ void AreaAnim_ScaleTranslateRotate(void *mtx, AnimRotScale *anim, u8 flags)
     } else {
         Mtx_RotateY(mtx, anim->rot->angle);
     }
-    Gs_SetState(0x1A, (u32)mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
 }
 
 /* AREA_ANIM_CMD_TRANSLATE_XZ: moved to (x, 0, z). */
 void AreaAnim_TranslateXZ(void *mtx, f32 *posXZ)
 {
     Mtx_Translation(mtx, posXZ[0], 0.0f, posXZ[1]);
-    Gs_SetState(0x1A, (u32)mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
 }
 
 /*
@@ -144,7 +135,7 @@ void AreaAnim_UvScroll(UvScroll *anim, u8 flags)
         }
     }
     Mtx_Translation((f32 *) texMtx, uOffset, vOffset, 0.0f);
-    Gs_SetState(0x19, (u32)texMtx);
+    Gs_SetState(RS_UV_MTX, (u32)texMtx);
 }
 
 /* AREA_ANIM_CMD_UV_WAVE: the texture swayed in u and v: base + amp *
@@ -167,7 +158,7 @@ void AreaAnim_UvWave(UvWave *waves)
         vOffset = waves[1].base + waves[1].amp * Math_Sin((6.2831855f * (waves[1].speed * ((u16)areaState->frame & (waves[1].period - 1)))) / 65536.0f);
     }
     Mtx_Translation((f32 *) texMtx, uOffset, vOffset, 0.0f);
-    Gs_SetState(0x19, (u32)texMtx);
+    Gs_SetState(RS_UV_MTX, (u32)texMtx);
 }
 
 /* AREA_ANIM_CMD_UV_SCROLL_SPIN: AreaAnim_UvScroll and AreaAnim_TranslateSpin. */
@@ -185,7 +176,7 @@ void AreaAnim_UvStep(UvStep *steps)
 
     Mtx_Translation((f32 *) texMtx, steps[0].step * (f32)(steps[0].mask & (gAreaState.frame >> steps[0].shift)),
                   steps[1].step * (f32)(steps[1].mask & (gAreaState.frame >> steps[1].shift)), 0.0f);
-    Gs_SetState(0x19, (u32)texMtx);
+    Gs_SetState(RS_UV_MTX, (u32)texMtx);
 }
 
 /* AREA_ANIM_CMD_UV_SCROLL_MOVE: AreaAnim_UvScroll and AreaAnim_Translate. */
@@ -217,8 +208,8 @@ void AreaAnim_SpinScroll(void *mtx, AnimSpin2 *anim)
     uOffset = 0.033333335f * ((360.0f * tick) / 65536.0f);
     uOffset -= Math_Floor(uOffset);
     Mtx_Translation((f32 *) texMtx, uOffset, 0.0f, 0.0f);
-    Gs_SetState(0x19, (u32)texMtx);
+    Gs_SetState(RS_UV_MTX, (u32)texMtx);
     AreaAnim_Translate(mtx, anim->pos);
     Mtx_RotateY(mtx, (6.2831855f * tick) / 65536.0f);
-    Gs_SetState(0x1A, (u32)mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
 }

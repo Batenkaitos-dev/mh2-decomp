@@ -10,8 +10,7 @@
  * - the fade's state, text output;
  * - the user lists: the friend list (FriendEntry records) and the block
  *   lists (BlockedUser records: the mail and chat block lists), searched,
- *   counted and shortened (FriendList_*, IdList_*);
- * - the equipment shop's open and close.
+ *   counted and shortened (FriendList_*, IdList_*).
  */
 #include "common.h"
 #include "net_save.h"
@@ -23,32 +22,18 @@
 #include "scene.h"
 #include "lobby_state.h"
 #include "sound.h"
+#include "bgm.h"
+#include "camera.h"
+#include "net_mode.h"
+#include "stream.h"
+#include "text.h"
+#include "lobby_util.h"
+#include "font.h"
+#include "screen_fade.h"
+#include "libc.h"
 
-/* prototypes */
-s32 LobbyPad_Pressed(s32 button);
-s32 LobbyPad_Held(s32 mask);
-void Lobby_BackupWork(void);
-void Lobby_RestoreWork(void);
-void LobbyStream_FadeOut(s32 frames);
-s32 LobbyFade_IsRunning(void);
-void Text_SetColorIndex(s16 i);
-s32 Lobby_IsSysBusy(void);
-void EquipShop_Close(void);
-/* end of prototypes */
-void *memcpy(void *dst, const void *src, u32 n);
-
-void Stream_Stop(s32);
-void NetMode_ReleaseTextures(M2C_UNK unused0);
 extern M2C_UNK gMailBlockList;
 extern M2C_UNK gFriendList;
-void Stream_FadeOut(s32, s32);
-void Font_SetColorIndex(s16 i);
-void CamFocus_End(void);
-void EquipPreview_Free(void);
-void Chat_SetColor(s16);
-void LobbySe_Play(s32 se);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
@@ -179,8 +164,6 @@ void LobbyStream_FadeOut(s32 frames)
     Stream_FadeOut(1, len);
 }
 
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-
 /* Plays the menu sound `sound` (enum LobbySe): the system bank's SE_SYS_*,
  * the shared bank's sounds, or bank 6's (the shooting gallery's and the
  * save menu's, among others). Ids without a case play nothing. */
@@ -188,28 +171,28 @@ void LobbySe_Play(s32 sound)
 {
     switch (sound) {
     case LOBBY_SE_LIST_BACK:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0xA4, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 164, 0);
         break;
     case LOBBY_SE_LIST_ENTRY:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0xA3, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 163, 0);
         break;
     case LOBBY_SE_LIST_SELECT:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0xA2, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 162, 0);
         break;
     case LOBBY_SE_LIST_CURSOR:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0xA1, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 161, 0);
         break;
     case LOBBY_SE_LIST_OPEN:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0xA0, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 160, 0);
         break;
     case LOBBY_SE_DESCRIPTION:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_DESCRIPTION, 0);
         break;
     case LOBBY_SE_SELECT:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x91, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 145, 0);
         break;
     case 28:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x92, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 146, 0);
         break;
     case LOBBY_SE_CONFIRM_ALT:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
@@ -218,163 +201,161 @@ void LobbySe_Play(s32 sound)
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
         break;
     case 5:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x93, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 147, 0);
         break;
     case LOBBY_SE_SCROLL:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_SCROLL, 0);
         break;
     case LOBBY_SE_CURSOR:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x90, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 144, 0);
         break;
     case LOBBY_SE_GALLERY_SHOT:
-        Sound_PlaySeFlat(6, 0x68, 0);
+        Sound_PlaySeFlat(6, 104, 0);
         break;
     case LOBBY_SE_GALLERY_DOWN:
-        Sound_PlaySeFlat(6, 0x6A, 0);
+        Sound_PlaySeFlat(6, 106, 0);
         break;
     case LOBBY_SE_MAIL:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x80, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 128, 0);
         break;
     case LOBBY_SE_CONFIRM:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
         break;
     case LOBBY_SE_MONEY:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x83, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 131, 0);
         break;
     case LOBBY_SE_OPEN:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_OPEN, 0);
         break;
     case 12:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x87, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 135, 0);
         break;
     case LOBBY_SE_SAVE_MENU:
-        Sound_PlaySeFlat(6, 0x40, 0);
+        Sound_PlaySeFlat(6, 64, 0);
         break;
     case LOBBY_SE_TALK:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x85, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 133, 0);
         break;
     case LOBBY_SE_OPEN_ALT:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_OPEN, 0);
         break;
     case 15:
-        Sound_PlaySeFlat(6, 0x47, 0);
+        Sound_PlaySeFlat(6, 71, 0);
         break;
     case LOBBY_SE_MENU_OPEN:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x81, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 129, 0);
         break;
     case LOBBY_SE_EQUIP:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x89, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 137, 0);
         break;
     case LOBBY_SE_DECO_ATTACH:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x96, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 150, 0);
         break;
     case LOBBY_SE_DECO_REMOVE:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x97, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 151, 0);
         break;
     case 19:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x82, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 130, 0);
         break;
     case LOBBY_SE_PARTY_READY:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x8C, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 140, 0);
         break;
     case 21:
-        Sound_PlaySeFlat(SE_SLOT_SYSTEM, 0x85, 0);
+        Sound_PlaySeFlat(SE_SLOT_SYSTEM, 133, 0);
         break;
     case LOBBY_SE_WINDOW_IN:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x8D, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 141, 0);
         break;
-    case LOBBY_SE_WINDOW_OUT:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x8E, 0);
+    case LOBBY_SE_WINDOW_SLIDE:
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 142, 0);
         break;
     case LOBBY_SE_STAMP:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x8F, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 143, 0);
         break;
     case 29:
-        Sound_PlaySeFlat(6, 0xF0, 0);
+        Sound_PlaySeFlat(6, 240, 0);
         break;
     case 30:
-        Sound_PlaySeFlat(6, 0xF1, 0);
+        Sound_PlaySeFlat(6, 241, 0);
         break;
     case 31:
-        Sound_PlaySeFlat(6, 0xF2, 0);
+        Sound_PlaySeFlat(6, 242, 0);
         break;
     case 32:
-        Sound_PlaySeFlat(6, 0xF3, 0);
+        Sound_PlaySeFlat(6, 243, 0);
         break;
     case 33:
-        Sound_PlaySeFlat(6, 0xF4, 0);
+        Sound_PlaySeFlat(6, 244, 0);
         break;
     case 34:
-        Sound_PlaySeFlat(6, 0xF5, 0);
+        Sound_PlaySeFlat(6, 245, 0);
         break;
     case 35:
-        Sound_PlaySeFlat(6, 0xF6, 0);
+        Sound_PlaySeFlat(6, 246, 0);
         break;
     case 36:
-        Sound_PlaySeFlat(6, 0xF7, 0);
+        Sound_PlaySeFlat(6, 247, 0);
         break;
     case 37:
-        Sound_PlaySeFlat(6, 0xF8, 0);
+        Sound_PlaySeFlat(6, 248, 0);
         break;
     case 38:
-        Sound_PlaySeFlat(6, 0xF9, 0);
+        Sound_PlaySeFlat(6, 249, 0);
         break;
     case 39:
-        Sound_PlaySeFlat(6, 0xFA, 0);
+        Sound_PlaySeFlat(6, 250, 0);
         break;
     case 40:
-        Sound_PlaySeFlat(6, 0xFB, 0);
+        Sound_PlaySeFlat(6, 251, 0);
         break;
     case 41:
-        Sound_PlaySeFlat(6, 0x55, 0);
+        Sound_PlaySeFlat(6, 85, 0);
         break;
     case 42:
-        Sound_PlaySeFlat(6, 0x56, 0);
+        Sound_PlaySeFlat(6, 86, 0);
         break;
     case 43:
-        Sound_PlaySeFlat(6, 0x57, 0);
+        Sound_PlaySeFlat(6, 87, 0);
         break;
     case 49:
-        Sound_PlaySeFlat(6, 0xD8, 0);
+        Sound_PlaySeFlat(6, 216, 0);
         break;
     case 50:
-        Sound_PlaySeFlat(6, 0xD9, 0);
+        Sound_PlaySeFlat(6, 217, 0);
         break;
     case 51:
-        Sound_PlaySeFlat(6, 0xDA, 0);
+        Sound_PlaySeFlat(6, 218, 0);
         break;
     case 52:
-        Sound_PlaySeFlat(6, 0xDB, 0);
+        Sound_PlaySeFlat(6, 219, 0);
         break;
     case 53:
-        Sound_PlaySeFlat(6, 0xDC, 0);
+        Sound_PlaySeFlat(6, 220, 0);
         break;
     case 54:
-        Sound_PlaySeFlat(6, 0xDD, 0);
+        Sound_PlaySeFlat(6, 221, 0);
         break;
     case LOBBY_SE_GALLERY_WALL:
-        Sound_PlaySeFlat(6, 0x6B, 0);
+        Sound_PlaySeFlat(6, 107, 0);
         break;
     case LOBBY_SE_GALLERY_SWING:
-        Sound_PlaySeFlat(6, 0x6A, 0);
+        Sound_PlaySeFlat(6, 106, 0);
         break;
     case LOBBY_SE_REFUSE_ALT:
     case LOBBY_SE_REFUSE:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_REFUSE, 0);
         break;
     case LOBBY_SE_PAGE:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x98, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 152, 0);
         break;
     case LOBBY_SE_NOTICE:
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_NOTICE, 0);
         break;
     case 61:
-        Sound_PlaySeFlat(SE_SLOT_SYSTEM, 0x9B, 0);
+        Sound_PlaySeFlat(SE_SLOT_SYSTEM, 155, 0);
         break;
     }
 }
-
-u8 FadeA_GetState(void);
 
 /* 1 while the screen fade runs (FADE_STATE_RUNNING), else 0. */
 s32 LobbyFade_IsRunning(void)
@@ -393,9 +374,6 @@ s32 LobbyFade_IsRunning(void)
         return 0;
     }
 }
-
-void Font_SetPos(s16, s16);
-void Text_Printf(const char *fmt, ...);
 
 /* Prints the text at x, y. */
 void Text_PrintAt(char *text, f32 x, f32 y)
@@ -428,8 +406,6 @@ s32 FriendList_FindFree(s8 *list, s32 max)
     return -1;
 }
 
-s32 memcmp(void *, void *, s32);
-
 /* The index of the entry of the friend list at list (max entries of FriendEntry)
  * whose user id is key, or -1. */
 s32 FriendList_FindId(s8 *list, s32 max, void *key)
@@ -453,18 +429,6 @@ s32 FriendList_FindId(s8 *list, s32 max, void *key)
     return -1;
 }
 
-/* A FriendEntry seen as words: the records move down by whole-record
- * copies, which the compiler makes with word loads and stores only for a
- * word-aligned struct (FriendEntry's fields are all bytes). The callers
- * pass gFriendList as one. */
-typedef struct FriendEntryWords {
-    /* 0x00 */ u8 idFirst;          /* FriendEntry.userId[0]: 0 for a free entry */
-    /* 0x01 */ u8 pad1[3];
-    /* 0x04 */ f32 word4;
-    /* 0x08 */ u8 nameFirst;        /* FriendEntry.name[0] */
-    /* 0x09 */ u8 pad9[3];
-    /* 0x0C */ f32 wordsC[9];
-} FriendEntryWords;
 
 /* Removes entry idx of the friend list at list (n entries): the later ones
  * move down and the last is cleared. 0 when idx is past the end, else 1. */
@@ -573,45 +537,4 @@ s32 Lobby_IsSysBusy(void)
     return gSysBusy != 0;
 }
 
-void *memset(void *dst, s32 c, u32 n);
 extern u8 gMenuWork[];
-extern u8 gMenuInputLock;
-void EquipShop_DrawTask(u8 *);
-struct Em;
-s16 OfferMenu_BuildList(struct Em *t, s32 b);
-
-/* Opens the equipment shop (TOWN_MODE_EQUIP_SHOP, drawn by
- * EquipShop_DrawTask) for the townsperson npc, noting whether it also has
- * deliveries or quests to offer. */
-void EquipShop_Open(u8 *npc)
-{
-    EquipShop *shop;
-
-    gTownMenuOpen = 1;
-    shop = (EquipShop *)gMenuWork;
-    gTownMode = TOWN_MODE_EQUIP_SHOP;
-    memset(shop, 0, MENU_WORK_SIZE);
-    LobbyMenu_Init();
-    LobbyMenu_SetDraw(EquipShop_DrawTask, 0, 0, 0);
-    gMenuInputLock = 6; /* frames before the menu takes buttons */
-    shop->npc = npc;
-    if (OfferMenu_BuildList((struct Em *) npc, 0) != 0) {
-        shop->hasOffers = 1;
-    }
-    shop->selling = 1;
-    LobbySe_Play(LOBBY_SE_SELECT);
-}
-
-/* Closes the equipment shop: back to TOWN_MODE_FREE, the chat's colour
- * reset, the preview's model freed and the camera's focus ended. */
-void EquipShop_Close(void)
-{
-    gTownMenuOpen = 0;
-    gTownMode = TOWN_MODE_FREE;
-    Chat_SetColor(-1);
-    LobbyMenu_Init();
-    LobbyMenu_SetDraw(0, 0, 0, 0);
-    EquipPreview_Free();
-    CamFocus_End();
-    LobbySe_Play(LOBBY_SE_CANCEL);
-}

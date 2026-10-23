@@ -12,7 +12,7 @@
  *
  * gTownMode (0x8BDC10) says which menu runs (Town_UpdateMode calls its
  * update); every menu keeps its state in the shared work area gMenuWork
- * (0x8BDC20, cleared when a menu opens: 0xF00 bytes by DojoMenu_Open), which
+ * (0x8BDC20, cleared when a menu opens: 3840 bytes by DojoMenu_Open), which
  * each menu's file views as its own struct (EquipShop, DojoMenu, PoogieMenu,
  * RecordMenu, PrizeMenu ...). A menu's draw callbacks are set with
  * LobbyMenu_SetDraw (gLobbyMenu's layers 0-3).
@@ -49,6 +49,7 @@ enum TownMode {
     TOWN_MODE_POOGIE_CARE = 0x12,   /* PoogieMenu_UpdateCare */
     TOWN_MODE_HOUSE_PET = 0x13,     /* HousePet_Update */
     TOWN_MODE_SAVE = 0x14,          /* TownSave_Update */
+    TOWN_MODE_AREA_CHANGE = 0x15,   /* AreaMenu_GoTo: the player leaves for the next area (LOBBY_SCREEN_LEAVE_AREA) */
     TOWN_MODE_ROOM_LEAVE = 0x16,    /* a message is up and the quest room is left next: too few members (Town_CheckQuestParty), or sent out (Lobby_HandleLeaveRequest) */
     TOWN_MODE_ROOM_LEAVING = 0x17,  /* LobbyStep_Level2Leave, then MESSAGE_WAIT */
     TOWN_MODE_MESSAGE_WAIT = 0x18,  /* a message waits for PAD_CIRCLE, then back to FREE */
@@ -93,6 +94,7 @@ enum TownMode {
     TOWN_MODE_DOJO = 0x3F,          /* DojoMenu_Update */
     TOWN_MODE_QUEST_PARTY = 0x40,   /* Town_CheckQuestParty, once the quest is paid */
     TOWN_MODE_ARENA_MENU = 0x41,    /* ArenaMenu_Update */
+    TOWN_MODE_SET_OUT_VERSUS = 0x42, /* as TOWN_MODE_SET_OUT_PAID for a versus quest, once both sides' monsters are sent (Town_CheckQuestParty), with the player held */
     TOWN_MODE_OFFER_MENU = 0x43,    /* OfferMenu_Update */
     TOWN_MODE_ELDER_FORECAST = 0x44, /* ElderForecast_Update */
     TOWN_MODE_OFFICIAL_DESK = 0x45, /* OfficialDesk_Update */
@@ -111,35 +113,35 @@ enum TownMode {
 /*
  * LobbySe_Play's ids: the lobby's menu sounds. LobbySe_Play maps each to a
  * sound of a bank (Sound_PlaySeFlat); those named here play the system
- * bank's SE_SYS_* (sound.h), or (WINDOW_IN, WINDOW_OUT) the sounds of slot
- * 1 the menus play as their window slides in and out. The others stay
+ * bank's SE_SYS_* (sound.h), or (WINDOW_IN, WINDOW_SLIDE) the sounds of
+ * slot 1 the menus play as their windows slide in and out. The others stay
  * numbers until their uses show their roles.
  */
 enum LobbySe {
     LOBBY_SE_CONFIRM_ALT = 0x00,    /* SE_SYS_CONFIRM, as LOBBY_SE_CONFIRM */
     LOBBY_SE_SCROLL = 0x01,         /* SE_SYS_SCROLL: a cursor, a page or a count changes */
-    LOBBY_SE_CURSOR = 0x02,         /* slot 1's sound 0x90: a list's cursor moves (Menu_WrapUpDownSe, in the workshop's counters) */
+    LOBBY_SE_CURSOR = 0x02,         /* slot 1's sound 144: a list's cursor moves (Menu_WrapUpDownSe, in the workshop's counters) */
     LOBBY_SE_NOTICE = 0x03,         /* SE_SYS_NOTICE */
     LOBBY_SE_CANCEL = 0x04,         /* SE_SYS_CANCEL: back */
     LOBBY_SE_REFUSE_ALT = 0x06,     /* SE_SYS_REFUSE, as LOBBY_SE_REFUSE */
-    LOBBY_SE_MAIL = 0x07,           /* slot 1's sound 0x80: a short mail arrives in an empty mail box */
+    LOBBY_SE_MAIL = 0x07,           /* slot 1's sound 128: a short mail arrives in an empty mail box */
     LOBBY_SE_CONFIRM = 0x08,        /* SE_SYS_CONFIRM: a choice is confirmed */
     LOBBY_SE_REFUSE = 0x09,         /* SE_SYS_REFUSE: the choice can't be taken */
-    LOBBY_SE_MONEY = 0x0A,          /* slot 1's sound 0x83: money changes hands (a purchase, a fee, a gift of money) */
+    LOBBY_SE_MONEY = 0x0A,          /* slot 1's sound 131: money changes hands (a purchase, a fee, a gift of money) */
     LOBBY_SE_OPEN = 0x0B,           /* SE_SYS_OPEN */
     LOBBY_SE_TALK = 0x0E,           /* a townsperson's talk starts (Talk_Start), a pet's menu opens */
-    LOBBY_SE_SAVE_MENU = 0x0D,      /* slot 6's sound 0x40: the save menu opens over the bed's menu (TownNetMenu_Update) */
+    LOBBY_SE_SAVE_MENU = 0x0D,      /* slot 6's sound 64: the save menu opens over the bed's menu (TownNetMenu_Update) */
     LOBBY_SE_OPEN_ALT = 0x10,       /* SE_SYS_OPEN, as LOBBY_SE_OPEN */
-    LOBBY_SE_MENU_OPEN = 0x11,      /* slot 1's sound 0x81: a counter's or a shop's menu opens */
-    LOBBY_SE_EQUIP = 0x12,          /* slot 1's sound 0x89: a new or changed piece is put on (the workshop's counters) */
-    LOBBY_SE_PARTY_READY = 0x14,    /* slot 1's sound 0x8C: the quest room's members reach the quest's least number, or the party is complete */
-    LOBBY_SE_WINDOW_IN = 0x16,      /* slot 1's sound 0x8D: a menu's window slides in as it opens */
-    LOBBY_SE_WINDOW_OUT = 0x17,     /* slot 1's sound 0x8E: a screen is left, its window slides out */
+    LOBBY_SE_MENU_OPEN = 0x11,      /* slot 1's sound 129: a counter's or a shop's menu opens */
+    LOBBY_SE_EQUIP = 0x12,          /* slot 1's sound 137: a new or changed piece is put on (the workshop's counters) */
+    LOBBY_SE_PARTY_READY = 0x14,    /* slot 1's sound 140: the quest room's members reach the quest's least number, or the party is complete */
+    LOBBY_SE_WINDOW_IN = 0x16,      /* slot 1's sound 141: a menu's window slides in as it opens */
+    LOBBY_SE_WINDOW_SLIDE = 0x17,   /* slot 1's sound 142: a window slides in or out over a menu (a list, a record or a page opens, or is left), a page turns */
     LOBBY_SE_GALLERY_SHOT = 0x19,   /* the shooting gallery: a shot is fired */
     LOBBY_SE_GALLERY_DOWN = 0x1A,   /* the shooting gallery: a target is downed */
-    LOBBY_SE_STAMP = 0x18,          /* slot 1's sound 0x8F: an entry of a level list is chosen and stamped (the area list) */
-    LOBBY_SE_SELECT = 0x1B,         /* slot 1's sound 0x91: an entry is taken and its page or question opens (the workshop) */
-    /* The list menus' sounds, slot 1's 0xA0-0xA4 (the price board's, the
+    LOBBY_SE_STAMP = 0x18,          /* slot 1's sound 143: an entry of a level list is chosen and stamped (the area list) */
+    LOBBY_SE_SELECT = 0x1B,         /* slot 1's sound 145: an entry is taken and its page or question opens (the workshop) */
+    /* The list menus' sounds, slot 1's 160-164 (the price board's, the
      * quest counters'). */
     LOBBY_SE_LIST_OPEN = 0x2C,      /* a list menu opens */
     LOBBY_SE_LIST_CURSOR = 0x2D,    /* the list's cursor or page moves */
@@ -148,10 +150,17 @@ enum LobbySe {
     LOBBY_SE_LIST_BACK = 0x30,      /* cross: back */
     LOBBY_SE_GALLERY_WALL = 0x37,   /* the shooting gallery: a shot hits a wall */
     LOBBY_SE_GALLERY_SWING = 0x38,  /* the shooting gallery: a target is hit but stays up */
-    LOBBY_SE_PAGE = 0x3C,           /* slot 1's sound 0x98: the area list's page changes */
+    LOBBY_SE_PAGE = 0x3C,           /* slot 1's sound 152: the area list's page changes */
     LOBBY_SE_DESCRIPTION = 0x39,    /* SE_SYS_DESCRIPTION: a description shows or hides */
     LOBBY_SE_DECO_ATTACH = 0x3A,    /* the decorations counter: a decoration is attached */
-    LOBBY_SE_DECO_REMOVE = 0x3B     /* the decorations counter: a decoration is removed */
+    LOBBY_SE_DECO_REMOVE = 0x3B,    /* the decorations counter: a decoration is removed */
+    LOBBY_SE_DRINK_CIRCLE = 0x31,   /* the drinking contest: the key shown is pressed, by key */
+    LOBBY_SE_DRINK_CROSS = 0x32,
+    LOBBY_SE_DRINK_SQUARE = 0x33,
+    LOBBY_SE_DRINK_TRIANGLE = 0x34,
+    LOBBY_SE_DRINK_MISS = 0x35,     /* the drinking contest: a wrong key */
+    LOBBY_SE_DRINK_MUG = 0x36,      /* the drinking contest: the player empties a mug */
+    LOBBY_SE_MINIGAME_WIN = 0x3D    /* the result banner of a town minigame the player won (both contests) */
 };
 
 /* A window's slide (WinSlide_Step, called once a frame): pos goes from
@@ -175,6 +184,10 @@ typedef char WinSlide_size_check[(sizeof(WinSlide) == 8) ? 1 : -1];
 #define MENU_CANCEL     3   /* left with cancel (a yes/no: no) */
 #define MENU_CLOSE      4   /* left with PAD_START: the whole game menu closes */
 
+/* LobbyMenu.yesNo: the yes/no cursor (Menu_SetYesNo, Menu_YesNoInput). */
+#define YES_NO_YES      0
+#define YES_NO_NO       1
+
 /* LobbyMenu_MoveCursor's modes: the keys that move the cursor, and
  * whether it wraps round at the ends. */
 #define MOVE_CURSOR_V_WRAP  0   /* up and down, wrapping */
@@ -187,6 +200,45 @@ typedef char WinSlide_size_check[(sizeof(WinSlide) == 8) ? 1 : -1];
 #define HUNTER_INFO_MAIL    0x1 /* send a short mail */
 #define HUNTER_INFO_FRIEND  0x2 /* add to the friend list */
 #define HUNTER_INFO_JOIN    0x4 /* join the hunter */
+
+/* The hunter info's actions, in gMemberActTexts' order; HUNTER_INFO_* is
+ * 1 << the action. */
+enum HunterInfoAct {
+    HUNTER_ACT_MAIL = 0,        /* send a short mail (SHORT_MAIL_TO_HUNTER) */
+    HUNTER_ACT_FRIEND = 1,      /* add to the friend list, unless the hunter's card refuses (HunterCard.friendLimit) */
+    HUNTER_ACT_JOIN = 2         /* join the hunter's group (Group_Join) */
+};
+#define HUNTER_ACTS 3
+
+/* The hunter info's pages, turned with left and right. */
+enum HunterInfoPage {
+    HUNTER_PAGE_GROUP = 0,      /* where the hunter is, and the group there */
+    HUNTER_PAGE_STATUS = 1,     /* the hunter's card: title, weapon, rank, comment */
+    HUNTER_PAGE_EQUIPMENT = 2   /* the weapon and the armour */
+};
+#define HUNTER_INFO_PAGES 3
+#define HUNTER_ARMOR_ROWS 5     /* the equipment page's armour pieces (gHunterEquipOrder) */
+
+/* The hunter info window's state (HunterInfo_Update). */
+enum HunterInfoState {
+    HUNTER_INFO_FETCH = 0,      /* the details are fetched (LobbyUser_FetchDetails); nothing drawn */
+    HUNTER_INFO_SLIDE_IN = 1,   /* the window slides in */
+    HUNTER_INFO_ACTIONS = 2,    /* the pages and the actions' cursor */
+    HUNTER_INFO_JOINING = 3,    /* HUNTER_ACT_JOIN: Group_Join */
+    HUNTER_INFO_FRIEND_ADD = 4, /* HUNTER_ACT_FRIEND: FriendList_AddInput */
+    HUNTER_INFO_MAIL_FORM = 5,  /* HUNTER_ACT_MAIL: the short mail form (ShortMail_Step), drawn instead of the window */
+    HUNTER_INFO_FETCH_FAILED = 6, /* the fetch failed: its message until circle */
+    HUNTER_INFO_MESSAGE = 7     /* a message (the friend limit, a join refused) until circle */
+};
+
+/* Group_Join's steps. */
+enum GroupJoinStep {
+    GROUP_JOIN_CHECK = 0,       /* Group_CanJoin, then the question */
+    GROUP_JOIN_ASK = 1,         /* the yes or no */
+    GROUP_JOIN_ENTER = 2,       /* the hunter's level entry is entered (LobbyLogin_EnterEntry) */
+    GROUP_JOIN_TOWN = 3,        /* in a land: the town begins */
+    GROUP_JOIN_LEAVE_AREA = 4   /* the hunter is in no area: the player's area is left */
+};
 
 /* A village resident's gift (gMenuWork while TOWN_MODE_NPC_GIFT runs):
  * NpcGift_Open fills it from the resident's gift tables, NpcGift_Update
@@ -326,7 +378,7 @@ typedef struct PrizeMenu {
     /* 0x002 */ s8 course;              /* the course (gGalleryCourseTexts) */
     /* 0x003 */ s8 cursor;
     /* 0x004 */ s32 time;               /* seconds left (gGalleryCourseTimes[course]; Gallery_ShootInput counts it down) */
-    /* 0x008 */ u8 details;             /* the prize's ItemInfo_Draw mode (pad 0x200 toggles it) */
+    /* 0x008 */ u8 details;             /* the prize's ItemInfo_Draw mode (PAD_SQUARE toggles it) */
     /* 0x009 */ u8 unk9[3];
     /* 0x00C */ struct StageObj *targets;   /* the targets' StageObj (Gallery_AddObj mode 0) */
     /* 0x010 */ struct StageObj *shots[10]; /* the shots in flight (Gallery_AddObj) */
@@ -353,7 +405,7 @@ typedef struct PrizeMenu {
     /* 0x0D0 */ u8 slots[15];           /* each target's kind (0: none; Gallery_PlaceTargets) */
     /* 0x0DF */ u8 order[0x11];         /* the 15 slots shuffled */
     /* 0x0F0 */ f32 spawnDir[3];        /* the targets' direction (GalleryBoard_Spawn) */
-    /* 0x0FC */ u8 prizeView;           /* 1: the course menu shows the prizes (pad 0x200) */
+    /* 0x0FC */ u8 prizeView;           /* 1: the course menu shows the prizes (PAD_SQUARE) */
     /* 0x0FD */ u8 kindHits[4];         /* the hits per target kind of the course's level */
     /* 0x101 */ u8 page;
     /* 0x102 */ u8 stacksChecked;       /* 1 once Gallery_MarkFullStacks ran: the prize window says the pouch is full */
@@ -364,7 +416,7 @@ typedef struct PrizeMenu {
     /* 0x10E */ u8 played;              /* 1 once a course is paid for and started: Gallery_TakePrize then charges its fee */
     /* 0x10F */ u8 playedCourse;        /* that course (gGalleryCourseFees) */
     /* 0x110 */ u8 pouchFull;           /* 1 once the course menu said the pouch is full */
-    /* 0x111 */ u8 skipped;             /* 1 when the score was skipped (pad 0x20) */
+    /* 0x111 */ u8 skipped;             /* 1 when the score was skipped (PAD_CIRCLE) */
     /* 0x112 */ u8 pad112[2];
 } PrizeMenu;
 typedef char PrizeMenu_size_check[(sizeof(PrizeMenu) == 0x114) ? 1 : -1];
@@ -448,86 +500,166 @@ enum ShopListStep {
     SHOP_STEP_CONFIRM = 3       /* the price, then yes or no */
 };
 
-/* Icon_DrawMode's arrows beside a count that can go up or down. */
-#define ICON_ARROW_DOWN 0x28
-#define ICON_ARROW_UP 0x29
+/* The cursor icon: beside a list's row (Menu_DrawCursorIcon) and either
+ * side of an item (Menu_DrawSideArrows, with its mirror image). Turned a
+ * quarter turn (Icon_DrawMode's mode 2) they are the arrows above and below
+ * a count that can go up or down. */
+#define ICON_CURSOR_MIRROR 0x28
+#define ICON_CURSOR 0x29
 
-/* A hair style of the hair menu (menu 0x3C, the hair-style change): HairMenuWork.list.hair,
- * copied from D_007EB8C0 by HairMenu_LoadPage. */
+/* The hair menu (TOWN_MODE_HAIR_MENU): the hairdresser's haircut, or the
+ * hair-style change with its colour editor. */
+#define HAIR_MENU_PAGE_ROWS     6       /* the styles on one page of the list */
+#define HAIR_PRESET_COLORS      16      /* gPresetColors' entries, picked on HAIR_COLOR_ROW_PRESET */
+#define HAIR_NPC_PRICE          500     /* the hairdresser's haircut (HairMenu_Open's withNpc) */
+#define HAIR_STYLE_LIST_END     (-1)    /* ends gHairStyles */
+#define HAIR_STYLE_COLOR_ONLY   (-2)    /* a list entry that keeps the current style: only the colour changes */
+#define HAIR_STYLE_PSP_LINK     19      /* listed only once EVENT_FLAG_PSP_LINK_4 is set */
+
+/* The hairdresser's lines (Talk_Say). */
+enum HairTalk {
+    HAIR_TALK_GREET = 0,        /* HairMenu_Open: the offer, with its price */
+    HAIR_TALK_HEAD_WORN = 1,    /* the player wears a head piece: no haircut */
+    HAIR_TALK_DONE = 3,         /* the new hair is on */
+    HAIR_TALK_DECLINED = 4,     /* the offer or the list was declined */
+    HAIR_TALK_NO_MONEY = 5      /* less money than HAIR_NPC_PRICE */
+};
+
+/* HairMenuWork.step: HairMenu_Update's steps. */
+enum HairMenuStep {
+    HAIR_STEP_TALK = 0,         /* the offer's talk */
+    HAIR_STEP_LIST = 1,         /* the style list and the colour editor (HairMenu_ListInput) */
+    HAIR_STEP_WAIT_NPC = 2,     /* the player walks to the chair; the hairdresser waits (NPC_STATE_HAIR_WAIT) */
+    HAIR_STEP_PREPARE = 3,      /* the hairdresser gets ready (NPC_STATE_HAIR_PREPARE) */
+    HAIR_STEP_SIT = 4,          /* the player sits down */
+    HAIR_STEP_CUT = 5,          /* the haircut (NPC_STATE_HAIR_DO): the hair changes on its frame 118 */
+    HAIR_STEP_FINISH = 6,       /* the closing line, until the hairdresser walks off */
+    HAIR_STEP_CLOSE = 7,
+    HAIR_STEP_LAST_TALK = 8     /* a last line, then the menu closes */
+};
+
+/* HairMenuWork.state: HairMenu_ListInput's steps. */
+enum HairListState {
+    HAIR_LIST_OPEN = 0,         /* the list's window slides in */
+    HAIR_LIST_PICK = 1,         /* a style is picked */
+    HAIR_LIST_COLOR_OPEN = 2,   /* the colour editor's window slides in */
+    HAIR_LIST_COLOR = 3,        /* the colour editor (HairMenu_ColorInput) */
+    HAIR_LIST_CONFIRM = 4       /* the yes/no on the price */
+};
+
+/* HairMenuWork.row: the colour editor's rows. */
+enum HairColorRow {
+    HAIR_COLOR_ROW_R = 0,
+    HAIR_COLOR_ROW_G = 1,
+    HAIR_COLOR_ROW_B = 2,
+    HAIR_COLOR_ROW_PRESET = 3,  /* left and right pick a preset, confirm applies it */
+    HAIR_COLOR_ROW_OK = 4,      /* confirm ends the editor */
+    HAIR_COLOR_ROWS = 5
+};
+
+/* A hair style of the hair menu's list (gHairStyles): HairMenuWork.list,
+ * copied a page at a time by HairMenu_LoadPage. */
 typedef struct HairStyle {
-    /* 0x00 */ s16 id;              /* -1: only the colour changes */
-    /* 0x02 */ s16 cost;
-    /* 0x04 */ char name[0x40];     /* name + 0x20: the one for gSave.gender != 1 */
+    /* 0x00 */ s16 id;              /* the style (gSave.hairStyle), or HAIR_STYLE_COLOR_ONLY */
+    /* 0x02 */ s16 cost;            /* in zenny */
+    /* 0x04 */ char name[2][0x20];  /* [0] when the player's gender is 1, [1] for the other */
 } HairStyle;
 
-/* an entry of the colour menu (func_006F2E80, func_006F3370): HairMenuWork.list.color */
-typedef struct ColorEntry {
-    /* 0x00 */ s16 equip;
-    /* 0x02 */ s16 rank;            /* the hunter rank it needs */
-    /* 0x04 */ u8 pad4[0x40];
-} ColorEntry;
-
-/* gMenuWork while the hairdresser's menu (HairMenu_*) or the colour menu
- * (unk_6F2E80.c) is open: the two share it, and list holds either's page */
+/* gMenuWork while the hair menu (HairMenu_*) is open. */
 struct Em;
 typedef struct HairMenuWork {
-    /* 0x000 */ WinSlide win;
-    /* 0x008 */ WinSlide win2;
-    /* 0x010 */ struct Em *npc;         /* the hairdresser (states 0x97-0x9B) */
-    /* 0x014 */ union {
-        u8 raw[6][0x44];
-        HairStyle hair[6];           /* the hair menu's page (D_007EB8C0 records) */
-        ColorEntry color[6];         /* the colour menu's page */
-    } list;
-    /* 0x1AC */ s16 sel;
-    /* 0x1AE */ s16 count;
+    /* 0x000 */ WinSlide win;           /* the style list's window */
+    /* 0x008 */ WinSlide win2;          /* the colour editor's window */
+    /* 0x010 */ struct Em *npc;         /* the hairdresser (states NPC_STATE_HAIR_WAIT ... NPC_STATE_HAIR_DO) */
+    /* 0x014 */ HairStyle list[HAIR_MENU_PAGE_ROWS]; /* the list's page */
+    /* 0x1AC */ s16 sel;                /* the list's cursor */
+    /* 0x1AE */ s16 count;              /* the styles on this page */
     /* 0x1B0 */ s16 page;
     /* 0x1B2 */ s16 pages;
-    /* 0x1B4 */ s16 equip;
-    /* 0x1B6 */ s16 repeat;
-    /* 0x1B8 */ u8 r;
+    /* 0x1B4 */ s16 style;              /* the style chosen (the entry's, or the current one for HAIR_STYLE_COLOR_ONLY) */
+    /* 0x1B6 */ s16 repeat;             /* frames a button has been held in the colour editor: past 10 it repeats */
+    /* 0x1B8 */ u8 r;                   /* the colour being edited */
     /* 0x1B9 */ u8 g;
     /* 0x1BA */ u8 b;
     /* 0x1BB */ u8 unk1BB;
-    /* 0x1BC */ s16 preset;
-    /* 0x1BE */ s16 row;
+    /* 0x1BC */ s16 preset;             /* the preset colour picked (gPresetColors) */
+    /* 0x1BE */ s16 row;                /* the colour editor's row (enum HairColorRow) */
     /* 0x1C0 */ s16 timer;              /* frames before the hairdresser starts */
-    /* 0x1C2 */ s8 toggle;
-    /* 0x1C3 */ s8 step;                /* HairMenu_Update's step */
-    /* 0x1C4 */ s8 state;
+    /* 0x1C2 */ s8 previewOff;          /* 1: the preview model is hidden (PAD_SELECT toggles it) */
+    /* 0x1C3 */ s8 step;                /* HairMenu_Update's step (enum HairMenuStep) */
+    /* 0x1C4 */ s8 state;               /* HairMenu_ListInput's step (enum HairListState) */
     /* 0x1C5 */ s8 withNpc;             /* HairMenu_Open's second argument: 1 at the hairdresser */
-    /* 0x1C6 */ s8 unk1C6;              /* set once her motion 0x43D reaches frame 118 */
+    /* 0x1C6 */ s8 applied;             /* the haircut's new hair is on */
 } HairMenuWork;
 
-/* gMenuWork during the arm wrestling contest: the talk (Contest_*, unk_6F7400.c) and the
- * match (unk_6F7AA0.c). */
+/* gMenuWork during the arm-wrestling contest: the opponent's talk
+ * (Contest_Update) and the match (Contest_Play). */
 typedef struct ContestMenu {
-    /* 0x00 */ u8 state;
-    /* 0x01 */ u8 phase;                /* the match: 3 playing, 5 result */
+    /* 0x00 */ u8 state;                /* enum ContestState */
+    /* 0x01 */ u8 phase;                /* the match's phase, enum ContestPhase */
     /* 0x02 */ u8 step;
     /* 0x03 */ u8 next;                 /* the state after the message */
     /* 0x04 */ u8 unk4[2];
     /* 0x06 */ s8 timer;
-    /* 0x07 */ s8 result;               /* 0 won, 1 draw, 2 lost (Minigame_DrawResult, TownMsg_SendContestResult) */
+    /* 0x07 */ s8 result;               /* enum MinigameResult (Minigame_DrawResult, TownMsg_SendContestResult) */
     /* 0x08 */ void *spot;              /* the player's spot, put back at the end */
-    /* 0x0C */ s32 power[2];            /* per player, +4 per button press */
+    /* 0x0C */ s32 power[2];            /* per seat (gContestSeatId - 1), CONTEST_PRESS_POWER per button press */
     /* 0x14 */ s8 toggle;               /* the button to press next: 0 circle, 1 cross */
     /* 0x15 */ u8 unk15[7];
     /* 0x1C */ struct Player *who;      /* the opponent Contest_Open was given (its index: gNetUsers) */
     /* 0x20 */ s16 timeLeft;            /* frames (Lobby_DrawTimeLeft) */
     /* 0x22 */ s16 tick;
-    /* 0x24 */ s8 level;                /* gContestLevel (offline), the row of gContestOpponents; below 7 the talk is gContestTalkLow */
+    /* 0x24 */ s8 level;                /* gContestLevel (offline), the row of gContestOpponents; below CONTEST_LEVEL_TOP the talk is gContestTalkLow */
     /* 0x25 */ s8 wait;                 /* frames to the opponent next press */
     /* 0x26 */ u8 unk26[2];
     /* 0x28 */ f32 scale[2];            /* Contest_DrawButtons */
     /* 0x30 */ s16 bump;
-    /* 0x32 */ s8 done;                 /* 1 once it ended (func_006F7A00) */
+    /* 0x32 */ s8 played;               /* 1 once the match has begun (Contest_PrizeDue) */
     /* 0x33 */ u8 unk33;
-    /* 0x34 */ s8 *msg;                 /* its messages: gContestTalkLow (level below 7) or gContestTalkTop */
+    /* 0x34 */ s8 *msg;                 /* the opponent's talk ids by enum ContestTalk: gContestTalkLow or gContestTalkTop */
     /* 0x38 */ u8 round;                /* 1 on the first match, 2 after */
     /* 0x39 */ u8 fxSpawned;            /* Effect2C_Spawn done */
 } ContestMenu;
 typedef char ContestMenu_size_check[(sizeof(ContestMenu) == 0x3C) ? 1 : -1];
+
+/* ContestMenu.state: Contest_Update's steps. */
+enum ContestState {
+    CONTEST_TALK,       /* offline, the opponent's offer (a yes or no) */
+    CONTEST_PLAY,       /* the match (Contest_Play; Contest_Draw draws it) */
+    CONTEST_END,        /* waits for the opponent to go back to idle, then closes */
+    CONTEST_MESSAGE,    /* a line of talk, then ContestMenu.next */
+    CONTEST_PRIZE       /* the prize, after its line */
+};
+
+/* ContestMenu.phase: Contest_Play's steps. */
+enum ContestPhase {
+    CONTEST_PHASE_SIT,          /* offline: the opponent sits down, then the player */
+    CONTEST_PHASE_SIT_MOTION,   /* the player's motion runs out */
+    CONTEST_PHASE_COUNTDOWN,    /* the count before the match */
+    CONTEST_PHASE_MATCH,        /* the presses, until the time runs out or a lead passes CONTEST_WIN_MARGIN */
+    CONTEST_PHASE_FINISH,       /* offline: the winner's motion */
+    CONTEST_PHASE_RESULT,       /* the result banner */
+    CONTEST_PHASE_ONLINE_WAIT   /* online: waits for the other contestant's start or result */
+};
+
+/* ContestMenu.msg's entries: the opponent's lines. */
+enum ContestTalk {
+    CONTEST_TALK_OFFER,         /* the offer to play (a yes or no) */
+    CONTEST_TALK_DECLINED,      /* the answer was no */
+    CONTEST_TALK_START,
+    CONTEST_TALK_WON,           /* the player won */
+    CONTEST_TALK_LOST,
+    CONTEST_TALK_PRIZE,         /* the prize is given */
+    CONTEST_TALK_TOP_PRIZE      /* the top prize, at CONTEST_LEVEL_TOP the first time */
+};
+
+#define CONTEST_LEVEL_TOP 7         /* the opponent's top level (gContestLevel): gContestTalkTop, the top prize */
+#define CONTEST_PRESS_POWER 4       /* ContestMenu.power gained by a press */
+#define CONTEST_WIN_MARGIN 50       /* a lead of more power ends the match */
+#define CONTEST_PRIZE_COUNT 5       /* gContestPrizesA's and gContestPrizesB's items, one at random */
+#define CONTEST_JINGLE_START 35     /* Jingle_Play: the match begins */
+#define CONTEST_JINGLE_WIN 36       /* the player won, offline */
+#define CONTEST_JINGLE_LOSE 39      /* the player lost, offline */
 
 /* The desk a quest is posted from (MsgQuestPost.desk). */
 enum QuestPostDesk {
@@ -537,7 +669,7 @@ enum QuestPostDesk {
     QUEST_POST_DESK_ARENA_CUP = 3   /* the arena cup's desk */
 };
 
-/* A quest posted to the lobby: message 650B (LobbyLevel2_SendQuestPost sends its 0x18 bytes;
+/* A quest posted to the lobby: message 650B (LobbyLevel2_SendQuestPost sends its 24 bytes;
  * Quest_PostStep). The posting menus keep it in their work area: OfficialDeskMenu,
  * the quest desk (QuestDesk.head), ArenaCupMenu at 0x0C, DojoMenu at 0x4C. */
 typedef struct MsgQuestPost {
@@ -555,13 +687,13 @@ typedef char MsgQuestPost_size_check[(sizeof(MsgQuestPost) == 0x18) ? 1 : -1];
  * Quest_PostStep's step and the posting it sends. */
 typedef struct QuestPostHead {
     /* 0x00 */ u8 unk0[7];
-    /* 0x07 */ s8 postStep;         /* Quest_PostStep's: 0 the quest's download, 1 the room list, 2 the entry, 3 the records, 4 the settings, 5 the posting (0x650B), 6, 7 0x6509; 8 an error shown */
+    /* 0x07 */ s8 postStep;         /* Quest_PostStep's: 0 the quest's download, 1 the room list, 2 the entry, 3 the records, 4 the settings, 5 the posting (message 650B), 6, 7 message 6509; 8 an error shown */
     /* 0x08 */ u8 unk8[4];
     /* 0x0C */ MsgQuestPost req;         /* the posting (LobbyLevel2_SendQuestPost) */
 } QuestPostHead;
 typedef char QuestPostHead_size_check[(sizeof(QuestPostHead) == 0x24) ? 1 : -1];
 
-/* A level-2 entry's posted quest as 650C returns it (0x20 bytes; Net_GetLevel2PostedQuest
+/* A level-2 entry's posted quest as 650C returns it (32 bytes; Net_GetLevel2PostedQuest
  * copies it into gPostedQuests[id - 1]): the poster's MsgQuestPost and 8 bytes more. */
 typedef struct PostedQuest {
     /* 0x00 */ u16 quest;           /* the quest id (0: none) */
@@ -575,54 +707,118 @@ typedef struct PostedQuest {
 typedef char PostedQuest_size_check[(sizeof(PostedQuest) == 0x20) ? 1 : -1];
 extern PostedQuest gPostedQuests[5];
 
-/* The drinking contest (gMenuWork while it runs: DrinkContest_*, Minigame_Update; unk_6F8CC0.c) */
-typedef struct Minigame {
-    void *npc;                  /* 0x00: the opponent NPC (DrinkContest_Open's npc; its +0x438 is its NpcWork) */
-    u8 step;                    /* 0x04 */
-    u8 mode;                    /* 0x05 */
-    u8 playStep;                /* 0x06: mode 3's step: 0 keys, 1 drinking, 2 knocked down, 3 getting up, 4 the hit keys flying off */
-    u8 unk7;                    /* 0x07 */
-    s16 wait;                   /* 0x08: frames: from 90 to -9 before the start (mode 2), before the result (mode 7); Minigame_DrawResult's t */
-    u8 level;                   /* 0x0A: the row of gMinigameLevelC8, gMinigameRollCounts, gMinigameRollWeights (DrinkContest_Open sets 4; from 4 the counts come from countTable) */
-    u8 count;                   /* 0x0B */
-    u8 dir[7];                  /* 0x0C */
-    u8 phase[7];                /* 0x13 */
-    u8 timer[7];                /* 0x1A */
+/*
+ * The drinking contest (gMenuWork while TOWN_MODE_DRINK_CONTEST runs:
+ * DrinkContest_Open sets it up, DrinkContest_Update runs it,
+ * DrinkContest_Draw draws it). The player and the opponent each have DRINK_MUGS mugs. Each round shows a row
+ * of `count` keys; pressing them all in order makes the player drink, and a
+ * round within quickSecs drinks faster. A wrong key ends the round, and the
+ * third such round knocks the player down for a while. The opponent drinks
+ * at its own pace. Whoever empties its mugs first wins.
+ */
+typedef struct DrinkContest {
+    struct Em *npc;             /* 0x00: the opponent (DrinkContest_Open's npc) */
+    u8 step;                    /* 0x04: enum DrinkStep (DrinkContest_Update) */
+    u8 mode;                    /* 0x05: enum DrinkMode (DrinkContest_Play) */
+    u8 playStep;                /* 0x06: enum DrinkPlayStep: DRINK_MODE_PLAY's step */
+    u8 shakeArgB;               /* 0x07: passed to DrinkContest_ShakeKey, which doesn't read it */
+    s16 wait;                   /* 0x08: frames: from 90 to -9 before the start (DRINK_MODE_COUNTDOWN), from 60 before the result's end (DRINK_MODE_RESULT); Minigame_DrawResult's t */
+    u8 level;                   /* 0x0A: the row of gDrinkQuickSecs, gDrinkKeyCounts and gDrinkRunWeights (DrinkContest_Open sets 4; from 4 the counts come from countTable) */
+    u8 count;                   /* 0x0B: the keys of a round (up to DRINK_KEYS_MAX) */
+    u8 dir[7];                  /* 0x0C: each key of the row: enum DrinkKey */
+    u8 phase[7];                /* 0x13: each key's enum DrinkKeyPhase */
+    u8 timer[7];                /* 0x1A: frames since the key was pressed: it shakes (missed) or flies off (hit) for 50 or 20 */
     u8 pad21[3];
-    s32 vx[7];                  /* 0x24 */
+    s32 vx[7];                  /* 0x24: a hit key's flight: speed */
     s32 vy[7];                  /* 0x40 */
-    f32 x[7];                   /* 0x5C */
+    f32 x[7];                   /* 0x5C: and position */
     f32 y[7];                   /* 0x78 */
-    u8 frame[8];                /* 0x94 */
-    f32 scale[7];               /* 0x9C */
-    u8 lastDir;                 /* 0xB8: the direction of the last run of keys (4: none yet) */
+    u8 frame[8];                /* 0x94: and frame (gDrinkScaleSteps, 4 frames) */
+    f32 scale[7];               /* 0x9C: and size */
+    u8 lastDir;                 /* 0xB8: the key of the last run of keys (DRINK_KEY_COUNT: none yet) */
     u8 keyNext;                 /* 0xB9: the key to press next */
-    s8 result;                  /* 0xBA: 0 the player won, 1 lost, 2 neither (the online end) */
+    s8 result;                  /* 0xBA: enum MinigameResult (MINIGAME_DRAW: online, both done) */
     u8 hits;                    /* 0xBB: keys hit this round */
     u8 keysLeft;                /* 0xBC: keys still to press (plus count at each round) */
     u8 missed;                  /* 0xBD: 1 after a wrong key: the round ends */
-    u8 playerMugs;              /* 0xBE: the player's mugs left (10; DrinkContest_DrawCounts) */
-    s8 downWait;                /* 0xBF: frames knocked down (0x78) */
+    u8 playerMugs;              /* 0xBE: the player's mugs left (DRINK_MUGS; DrinkContest_DrawCounts) */
+    s8 downWait;                /* 0xBF: frames knocked down (120) */
     u8 down;                    /* 0xC0: 1 while knocked down */
     u8 misses;                  /* 0xC1: missed rounds: the third knocks the player down */
     u8 inputFrames;             /* 0xC2: frames of input this round (quick: within 30 * quickSecs) */
-    u8 npcMugs;                 /* 0xC3: the NPC's mugs left (10; DrinkContest_DrawCounts) */
+    u8 npcMugs;                 /* 0xC3: the opponent's mugs left (DRINK_MUGS; DrinkContest_DrawCounts) */
     u8 inputOn;                 /* 0xC4: 1 once DrinkContest_Draw shows the keys: input counts from then */
     u8 padC5[3];
-    f32 quickSecs;              /* 0xC8: gMinigameLevelC8[level]: a round within this many seconds drinks faster */
-    s8 endWait;                 /* 0xCC: frames before the end (mode 5) */
-    s8 unkCD;                   /* 0xCD */
-    s8 shakeVel;                /* 0xCE: the missed key's shake (DrinkContest_ShakeIcon) */
+    f32 quickSecs;              /* 0xC8: gDrinkQuickSecs[level]: a round within this many seconds drinks faster */
+    s8 endWait;                 /* 0xCC: frames before the end (DRINK_MODE_END_WAIT) */
+    s8 shakeArgA;               /* 0xCD: passed to DrinkContest_ShakeKey, which doesn't read it */
+    s8 shakeVel;                /* 0xCE: the missed key's shake (DrinkContest_ShakeKey) */
     u8 keysShown;               /* 0xCF: 1 from the first round: DrinkContest_Draw shows the keys */
-    u8 unkD0;                   /* 0xD0 */
-    u8 cursor;                  /* 0xD1: the opening menu's cursor (DrinkContest_Update step 0) */
+    u8 unkD0;                   /* 0xD0: set to 9 as the contest starts; nothing reads it */
+    u8 cursor;                  /* 0xD1: the opening menu's cursor (enum DrinkChoice) */
     s8 menuWait;                /* 0xD2: frames since the opening menu opened (input from 6) */
-    u8 talkNext;                /* 0xD3: the talk step after the current line (DrinkContest_Update step 4: 3 close, 5 the win's lines, 6, 7) */
+    u8 talkNext;                /* 0xD3: after the current line (DRINK_STEP_TALK): the step to go to, or a line of the win's talk (DRINK_TALK_*) */
     u8 running;                 /* 0xD4: 1 from the end of the opening talk to the result (DrinkContest_IsOn) */
     u8 padD5[3];
-    u8 *countTable;             /* 0xD8: 16 key counts (DrinkContest_GetLevel by the wins), read at random from level 4 */
-} Minigame;
-typedef char Minigame_size_check[(sizeof(Minigame) == 0xDC) ? 1 : -1];
+    u8 *countTable;             /* 0xD8: 16 key counts (DrinkContest_GetLevel, by the contests won), read at random from level 4 */
+} DrinkContest;
+typedef char DrinkContest_size_check[(sizeof(DrinkContest) == 0xDC) ? 1 : -1];
+#define DRINK_MUGS 10           /* each side's mugs */
+#define DRINK_KEYS_MAX 7        /* a round's keys at most (DrinkContest.dir) */
+
+/* DrinkContest.step: DrinkContest_Update's steps. */
+enum DrinkStep {
+    DRINK_STEP_MENU = 0,        /* the opening menu: play, or hear the rules */
+    DRINK_STEP_START_TALK = 1,  /* the opponent's line before the start */
+    DRINK_STEP_PLAY = 2,        /* the contest (DrinkContest_Play) */
+    DRINK_STEP_CLOSE_WAIT = 3,  /* waits for the mug to go back, then closes */
+    DRINK_STEP_TALK = 4,        /* a line of talk; then talkNext */
+    DRINK_STEP_TALK_FORECAST = 5, /* talkNext only: the win's talk, the elder dragon's forecast */
+    DRINK_STEP_TALK_HP = 6,     /* talkNext only: how worn that dragon is */
+    DRINK_STEP_TALK_LAST = 7,   /* talkNext only: the win's last line */
+    DRINK_STEP_CLOSE = 8
+};
+/* DrinkContest.cursor: the opening menu's choices. */
+enum DrinkChoice {
+    DRINK_CHOICE_PLAY = 0,
+    DRINK_CHOICE_RULES = 1      /* a line of talk, then the menu again */
+};
+/* DrinkContest.mode: DrinkContest_Play's steps. */
+enum DrinkMode {
+    DRINK_MODE_SET_UP = 0,
+    DRINK_MODE_SIT = 1,         /* until the opponent's motion ends */
+    DRINK_MODE_COUNTDOWN = 2,
+    DRINK_MODE_PLAY = 3,        /* the rounds (DrinkContest.playStep) */
+    DRINK_MODE_LOST = 4,        /* the opponent emptied its mugs while the player was down */
+    DRINK_MODE_END_WAIT = 5,
+    DRINK_MODE_CAMERA_WAIT = 6, /* until the result's camera view is done */
+    DRINK_MODE_RESULT = 7,      /* the result's banner, then the player's reaction */
+    DRINK_MODE_RESULT_TALK = 8, /* the opponent's line */
+    DRINK_MODE_DONE = 9
+};
+/* DrinkContest.playStep: DRINK_MODE_PLAY's steps. */
+enum DrinkPlayStep {
+    DRINK_PLAY_KEYS = 0,        /* a round's keys */
+    DRINK_PLAY_DRINK = 1,       /* the player drinks (or reels after a missed round) */
+    DRINK_PLAY_DOWN = 2,        /* knocked down (downWait) */
+    DRINK_PLAY_GET_UP = 3,
+    DRINK_PLAY_KEYS_FLY = 4     /* the last key hit: waits for the keys to fly off */
+};
+/* DrinkContest.dir: a key of the row, the button to press. */
+enum DrinkKey {
+    DRINK_KEY_CIRCLE = 0,
+    DRINK_KEY_CROSS = 1,
+    DRINK_KEY_SQUARE = 2,
+    DRINK_KEY_TRIANGLE = 3,
+    DRINK_KEY_COUNT = 4         /* also lastDir's "none yet" */
+};
+#define DRINK_KEY_NONE 99       /* DrinkContest_Play: no key pressed this frame */
+/* DrinkContest.phase: a key of the row. */
+enum DrinkKeyPhase {
+    DRINK_KEY_MISSED = 0,       /* a wrong key was pressed for it: it shakes, then greys */
+    DRINK_KEY_HIT = 1,          /* pressed: it flies off */
+    DRINK_KEY_WAITING = 2
+};
 
 /* The drop talk's state for a taken quest (QuestDesk_Cancel): the quest desk's
  * and the arena cup's desk's. */
@@ -800,8 +996,8 @@ enum PointShopStock {
     POINT_SHOP_OFFLINE = 0,             /* offline, the dojo's facility below level 2 */
     POINT_SHOP_OFFLINE_LV2 = 1,         /* offline, the facility at level 2 */
     POINT_SHOP_OFFLINE_CLEARED = 2,     /* offline, every offline drill cleared */
-    POINT_SHOP_ONLINE = 3,              /* online, before Cond_Check(0x64) holds */
-    POINT_SHOP_ONLINE_HR31 = 4,         /* online, once Cond_Check(0x64) holds (HR 31) */
+    POINT_SHOP_ONLINE = 3,              /* online, before Cond_Check(COND_HR_GATE_2_HR_31) holds */
+    POINT_SHOP_ONLINE_HR31 = 4,         /* online, once Cond_Check(COND_HR_GATE_2_HR_31) holds (HR 31) */
     POINT_SHOP_ONLINE_CLEARED = 5,      /* online, the online chain cleared */
     POINT_SHOP_STOCKS = 6
 };
@@ -914,7 +1110,7 @@ enum DojoPostStep {
 #define DOJO_SETTINGS_PASSWORD 1        /* the password's keyboard */
 
 #define DOJO_BASICS_PAGES 10            /* the basics' pages (gDojoBasicsPages) */
-#define DOJO_RULES_TOPICS_ALL 11        /* the rules' topics; the last only online with Cond_Check(0x64), or offline at facility level 2 */
+#define DOJO_RULES_TOPICS_ALL 11        /* the rules' topics; the last only online with Cond_Check(COND_HR_GATE_2_HR_31), or offline at facility level 2 */
 #define POINT_SHOP_MAX_QTY 99           /* the most of a line taken at once */
 
 #define DOJO_LIST_MAX 12        /* the quests a list holds */
@@ -999,11 +1195,14 @@ enum PoogieNamingTalk {
 #define PET_FEED_ROWS           7       /* the feeding list's rows a page */
 #define PET_INPUT_DELAY         6       /* frames a step waits before it takes PAD_CIRCLE (PoogieMenu.inputDelay) */
 #define POOGIE_OUTFIT_COUNT     5       /* outfit 0, always owned, and the four of EVENT_FLAG_POOGIE_OUTFIT_0..3 */
+#define POOGIE_OUTFIT_NONE      255     /* HunterCard.poogieOutfit while the Poogie has no name */
+#define POOGIE_MODEL_OFFLINE    12      /* the Poogie's model kind offline (Town_EnterArea) */
+#define POOGIE_MODEL_OUTFIT_0   13      /* online, the model kind of outfit 0; each outfit's follows (POOGIE_MODEL_OUTFIT_0 + the outfit) */
 /* An outfit of the Poogie (gPoogieOutfits): only the name is read. */
 typedef struct PoogieOutfit {
     /* 0x00 */ char name[0x18];
     /* 0x18 */ s32 eventFlag;       /* the event flag that gives it; -1 for outfit 0 */
-    /* 0x1C */ s32 model;           /* its model (the town loads model 0xD + SaveData.poogieOutfit) */
+    /* 0x1C */ s32 model;           /* its model (the town loads POOGIE_MODEL_OUTFIT_0 + SaveData.poogieOutfit) */
 } PoogieOutfit;
 typedef struct PoogieMenu {
     /* 0x00 */ u8 step;             /* PET_STEP_* */
@@ -1364,11 +1563,11 @@ enum RoomJoinStep {
     ROOM_JOIN_REFRESH = 2,          /* LobbyStep_RefreshLevel1Users */
 };
 
-/* A mail (0x92 bytes): the mail box's (gMailBox, sub_main 0x5C0540: the last 8, newest
+/* A mail (146 bytes): the mail box's (gMailBox, sub_main 0x5C0540: the last 8, newest
  * first), the one being written (ShortMailMenu, sent as 6704 by LobbyStep_ShortMailSend, kept in
  * gShortMailMsg). */
 typedef struct MailEntry {
-    /* 0x00 */ u8 used;
+    /* 0x00 */ u8 unread;           /* 1 from the mail's arrival until it is opened */
     /* 0x01 */ char id[8];          /* the sender (the addressee in ShortMailMenu) */
     /* 0x09 */ char name[0x11];
     /* 0x1A */ char text[0x78];
@@ -1376,10 +1575,48 @@ typedef struct MailEntry {
 typedef char MailEntry_size_check[(sizeof(MailEntry) == 0x92) ? 1 : -1];
 #define MAIL_BOX_LEN 8              /* gMailBox's mails, the newest first */
 
-/* The short mail form (gShortMailMenu, 0x4B4 bytes at 0x8BCD20: ShortMail_Open, ShortMail_Step;
+/* A mail's actions (gMailActTexts' entries) */
+#define MAIL_ACT_REPLY 0
+#define MAIL_ACT_ADD_FRIEND 1
+#define MAIL_ACT_BLOCK 2
+#define MAIL_ACTS 3
+
+/* The mail menu (gMenuWork while it runs: MailMenu_Open, MailMenu_Update):
+ * the mailbox's list, then a mail with its actions. */
+typedef struct MailMenu {
+    /* 0x00 */ WinSlide win;            /* the mailbox's window */
+    /* 0x08 */ WinSlide win2;           /* the chosen mail's window, with its actions */
+    /* 0x10 */ MailEntry mail;          /* the chosen mail, copied from gMailBox */
+    /* 0xA2 */ s8 actions[MAIL_ACTS];   /* the actions' rows: MAIL_ACT_* */
+    /* 0xA5 */ u8 padA5;
+    /* 0xA6 */ s16 sel;                 /* the chosen mail (gMailBox) */
+    /* 0xA8 */ s16 mails;               /* the mails listed (MailMenu_CountMails) */
+    /* 0xAA */ s16 cursor;              /* the action's row */
+    /* 0xAC */ s16 count;               /* the actions' rows */
+    /* 0xAE */ s8 state;                /* enum MailMenuState */
+    /* 0xAF */ s8 step;                 /* the actions' step: MAIL_MENU_STEP_* */
+} MailMenu;
+
+/* MailMenu.state */
+enum MailMenuState {
+    MAIL_MENU_SLIDE_IN = 0,     /* the mailbox's window slides in */
+    MAIL_MENU_LIST = 1,         /* the mailbox: a mail is chosen */
+    MAIL_MENU_ACTIONS = 2,      /* the chosen mail and its actions */
+    MAIL_MENU_FRIEND_ADD = 3,   /* MAIL_ACT_ADD_FRIEND: FriendList_AddInput */
+    MAIL_MENU_REPLY = 4,        /* MAIL_ACT_REPLY: the short mail form (ShortMail_Step) */
+    MAIL_MENU_BLOCK_ADD = 5     /* MAIL_ACT_BLOCK: BlockList_AddInput */
+};
+
+/* MailMenu.step */
+#define MAIL_MENU_STEP_SLIDE_IN 0
+#define MAIL_MENU_STEP_INPUT 1
+
+
+/* The short mail form (gShortMailMenu, 1204 bytes at 0x8BCD20: ShortMail_Open, ShortMail_Step;
  * not in gMenuWork, so another menu can stay open under it). */
 /* ShortMail_Open's flags (ShortMailMenu.flags). */
 #define SHORT_MAIL_TYPE_ID   1  /* the addressee's id is typed in: the form has three rows */
+#define SHORT_MAIL_VIEW_ONLY 2  /* ShortMail_DrawForm: the form is only shown, without its frames and send */
 #define SHORT_MAIL_TO_HUNTER 4  /* the addressee is given: two rows */
 #define SHORT_MAIL_SAVED     8  /* with no id given, the form starts from the last mail (gShortMailMsg); three rows */
 typedef struct ShortMailMenu {
@@ -1396,6 +1633,33 @@ typedef struct ShortMailMenu {
     /* 0x4B3 */ s8 state;           /* ShortMail_Input */
 } ShortMailMenu;
 typedef char ShortMailMenu_size_check[(sizeof(ShortMailMenu) == 0x4B4) ? 1 : -1];
+/* ShortMailMenu.step (ShortMail_Step). */
+enum ShortMailStep {
+    SHORT_MAIL_STEP_SLIDE_IN = 0,
+    SHORT_MAIL_STEP_INPUT = 1,      /* the form (ShortMailMenu.state) */
+    SHORT_MAIL_STEP_SEND = 2,       /* LobbyStep_ShortMailSend */
+    SHORT_MAIL_STEP_RESULT = 3      /* its notice, until circle */
+};
+/* ShortMailMenu.state (ShortMail_Input). */
+enum ShortMailState {
+    SHORT_MAIL_FORM = 0,            /* the form's rows (ShortMailMenu.sel) */
+    SHORT_MAIL_TEXT = 1,            /* the keyboard writes the text */
+    SHORT_MAIL_TO_MENU = 2,         /* how to give the addressee (ShortMailMenu.sel2) */
+    SHORT_MAIL_ID_ENTRY = 3,        /* the keyboard writes the addressee's id */
+    SHORT_MAIL_FETCH = 4,           /* the addressee's details are looked up */
+    SHORT_MAIL_FRIENDS = 5,         /* the friend list picks the addressee */
+    SHORT_MAIL_NOTICE = 6           /* a notice, until circle */
+};
+/* ShortMailMenu.sel, counted from the addressee's row (without
+ * SHORT_MAIL_TYPE_ID the form has no such row and starts at the text). */
+enum ShortMailRow {
+    SHORT_MAIL_ROW_TO = 0,
+    SHORT_MAIL_ROW_TEXT = 1,
+    SHORT_MAIL_ROW_SEND = 2
+};
+/* ShortMailMenu.sel2: SHORT_MAIL_TO_MENU's choices. */
+#define SHORT_MAIL_PICK_FRIEND 0
+#define SHORT_MAIL_PICK_ID     1
 
 /*
  * The area list (LOBBY_PHASE_AREA_LIST): the server's first level, whose
@@ -1608,8 +1872,8 @@ enum QuestDeskEntry {
 #define QUEST_TEXT_CLIENT 6
 #define QUEST_TEXT_DETAILS 7
 
-/* The menus' text colours (Font_SetColor: 0x80 alpha, then blue, green and
- * red, 0x7F full). */
+/* The menus' text colours (Font_SetColor: 128 alpha, then blue, green and
+ * red, 127 full). */
 #define MENU_INK_WHITE 0x807F7F7F        /* a frame's headings */
 #define QUEST_SHEET_INK 0x80101010       /* the paper sheets' text: near black */
 #define QUEST_SHEET_LABEL_INK 0x80301010 /* the sheets' labels: dark blue */
@@ -1714,14 +1978,69 @@ typedef struct QuestDesk {
 } QuestDesk;
 typedef char QuestDesk_size_check[(sizeof(QuestDesk) == 0x19C) ? 1 : -1];
 
-/* The town menus' shared work area (0xF00 bytes at 0x8BDC20): a menu's Open clears it
- * (memset 0xF00) and starts the window slide that most menus keep first (WinSlide_Step).
+/* The quit menu (QuitMenu_Open, QuitMenu_Update): gQuitMenu. */
+typedef struct QuitMenu {
+    /* 0x0 */ s16 choice;               /* enum QuitChoice */
+    /* 0x2 */ s8 step;                  /* enum QuitMenuStep */
+    /* 0x3 */ u8 unk3;
+} QuitMenu;
+
+/* QuitMenu.choice: how to leave, with the LOBBY_QUIT_* reason each gives. */
+enum QuitChoice {
+    QUIT_CHOICE_GMSUB = 0,              /* LOBBY_QUIT_TO_GMSUB */
+    QUIT_CHOICE_GMSUB_KEEP = 1,         /* LOBBY_QUIT_TO_GMSUB_KEEP */
+    QUIT_CHOICE_PORTAL = 2,             /* LOBBY_QUIT_TO_PORTAL */
+    QUIT_CHOICES = 3
+};
+
+/* QuitMenu.step. */
+enum QuitMenuStep {
+    QUIT_MENU_STEP_CHOOSE = 0,          /* the choices */
+    QUIT_MENU_STEP_CONFIRM = 1          /* the yes/no on the choice */
+};
+
+/* gMenuWork while the house access menu (HouseAccess_*) is open. */
+typedef struct HouseAccessMenu {
+    /* 0x00 */ WinSlide win;
+    /* 0x08 */ char pass[9];            /* the password typed for a locked house (HunterCard.housePass) */
+    /* 0x11 */ s8 step;                 /* enum HouseVisitStep */
+    /* 0x12 */ u8 unk12[2];
+    /* 0x14 */ s16 cursor;              /* the member's row (LOBBY_MEMBER_COUNT rows) */
+} HouseAccessMenu;
+
+/* HouseAccessMenu.step: HouseAccess_Update's steps. */
+enum HouseVisitStep {
+    HOUSE_VISIT_STEP_OPEN = 0,         /* the window slides in */
+    HOUSE_VISIT_STEP_LIST = 1,         /* a member is picked */
+    HOUSE_VISIT_STEP_PASSWORD = 2,     /* the password on the keyboard */
+    HOUSE_VISIT_STEP_WRONG = 3         /* LOBBY_TEXT_HOUSE_PASSWORD_WRONG until confirm */
+};
+
+/* The area menu (AreaMenu_Open, AreaMenu_Update), in gMenuWork. */
+typedef struct AreaMenu {
+    /* 0x0 */ s8 step;      /* enum AreaMenuStep */
+    /* 0x1 */ s8 sel;       /* the choice the cursor is on, 0 or 1 */
+    /* 0x2 */ u16 area[2];  /* the two choices' areas */
+    /* 0x6 */ u16 fromArea; /* the area the menu was opened in (gScene.area) */
+    /* 0x8 */ u16 destArea; /* the door's destination (AreaMenu_Open's argument) */
+} AreaMenu;
+
+/* AreaMenu.step. */
+enum AreaMenuStep {
+    AREA_MENU_START, /* the destination is looked at: a choice, or straight on */
+    AREA_MENU_PICK   /* the two-way choice is up */
+};
+
+/* The town menus' shared work area (3840 bytes at 0x8BDC20): a menu's Open clears it
+ * (memset 3840) and starts the window slide that most menus keep first (WinSlide_Step).
  * Most units declare it as bytes; these are the menus that live there. */
 typedef union MenuWork {
     WinSlide win;
     PrizeMenu prize;
     ShopMenu shop;
     HairMenuWork hair;
+    HouseAccessMenu houseAccess;
+    AreaMenu area;
     ContestMenu contest;
     NameSearchMenu nameSearch;
     IdSearchMenu idSearch;
@@ -1729,7 +2048,7 @@ typedef union MenuWork {
     AreaList areaList;
     MoveMenu move;
     VillageBoardMenu villageBoard;
-    Minigame drink;
+    DrinkContest drink;
     QuestCounterMenu questCounter;
     u8 raw[0xF00];
 } MenuWork;
@@ -1742,6 +2061,16 @@ enum MinigameResult {
     MINIGAME_LOSE,                  /* 1 */
     MINIGAME_DRAW                   /* 2 */
 };
+/* The town minigames' jingles (Jingle_Play). */
+#define MINIGAME_JINGLE_START   37  /* the drinking contest starts */
+#define MINIGAME_JINGLE_WIN     38  /* the player won */
+#define MINIGAME_JINGLE_LOSE    39  /* the player lost (both contests) */
+/* The drinking contest's camera views (CamReq_Minigame): the contest, then
+ * the result's view, MinigameResult + 1. */
+#define DRINK_CAM_PLAY          0
+#define DRINK_CAM_WIN           1
+#define DRINK_CAM_LOSE          2
+#define DRINK_CAM_DRAW          3
 
 /* The block list page's steps (BlockListMenu.state). */
 enum BlockListStep {
@@ -1788,10 +2117,39 @@ typedef struct IconSprite {
     /* 0x8 */ UV uv1;
 } IconSprite;
 typedef char IconSprite_size_check[(sizeof(IconSprite) == 0xC) ? 1 : -1];
-#define ICON_PANEL_AREAS 0          /* the move menu's areas' panel */
+#define ICON_PANEL 0                /* a plain panel: the move menu's areas, the shop's windows (tinted) */
 #define ICON_PANEL_SERVER 1         /* a server panel (LobbySrv_DrawServerPanel) */
 #define ICON_SERVER_WAIT 0x1B       /* the mark on the server panel while the server's name hasn't arrived */
-#define ICON_CURSOR_BAR 0x6F        /* the bar under a list's cursor line (MoveMenu_DrawAreaList) */
+#define ICON_CURSOR_BAR 0x6F        /* the bar under a list's cursor line (MoveMenu_DrawAreaList): ICON_ROW_BAR_FIRST's kind 1 */
+#define ICON_ROW_BAR_FIRST 0x6E     /* a row bar's icon: this + its kind (Menu_DrawRowBar) */
+#define ICON_ROW_BAR_KINDS 6
+#define ICON_BAR_MIDDLE 3           /* Menu_DrawBarRotated's pieces: this + the bar's kind */
+#define ICON_BAR_CAP_LEFT 7
+#define ICON_BAR_CAP_RIGHT 11
+#define ICON_BAR_SEGMENT 0x42       /* a dashed line's segment (Menu_DrawDashLine, the money box's underline) */
+#define ICON_FRAME_TOP 0x43         /* a framed box's edges (Menu_DrawFrameBox) */
+#define ICON_FRAME_BOTTOM 0x44
+#define ICON_FRAME_LEFT 0x45
+#define ICON_FRAME_RIGHT 0x46
+#define ICON_MAIL 0x55              /* the mail icon while mail waits (Menu_DrawMailIcon) */
+#define ICON_MAIL_READ 0x56         /* a mail already read, in the mailbox (MailMenu_DrawMailbox) */
+#define ICON_MAIL_SPARKLE 0x57      /* the sparkle round its corners */
+#define ICON_MONEY_MARK 0x6C        /* the mark before the money and the points (Menu_DrawMoney, Menu_DrawPoints) */
+#define ICON_LEVEL_MARK 0x79        /* LobbyUi_DrawLevelMarks' mark, drawn one to three times */
+#define ICON_CLOCK_FACE 0x2A        /* the village clock's face (VillageClock_Draw) */
+#define ICON_CLOCK_HAND_RIGHT 0x2B  /* the clock's hand: its right half */
+#define ICON_CLOCK_HAND_LEFT 0x2C   /* its left half */
+#define ICON_CLOCK_SECTOR 0x30      /* the village clock's season dial: a quarter-circle sector (VillageClock_DrawSector) */
+#define ICON_CLOCK_HOUR_MARK 0x31   /* an hour mark of the clock; + 2 and + 4 in the mark's second and third hours (VillageClock_DrawHours) */
+#define ICON_CLOCK_RING 0x39        /* a piece of the clock's ring, drawn eight times (VillageClock_DrawRing) */
+#define ICON_PRESET_CLOCK_AM 0      /* gIconPresets' entries (Icon_DrawPreset): the clock's morning mark */
+#define ICON_PRESET_CLOCK_PM 1      /* its afternoon mark */
+#define ICON_SPRITE_COUNT 144       /* gIconSprites' entries */
+/* MemberCard_Draw's page argument: the page, and a flag. */
+#define MEMBER_CARD_PAGE_PROFILE 0  /* name, id, title, hr, status, area and comment */
+#define MEMBER_CARD_PAGE_EQUIP 1    /* the equipment and the skills */
+#define MEMBER_CARD_PAGE_MASK 0xF
+#define MEMBER_CARD_NO_FRAME 0x80   /* the card's frame left out */
 #define ICON_UNREAD_MARK 0x63       /* beside a village board title not read yet */
 /* LobbySprite_Draw's sprites (entries of gLobbySpriteUVs). */
 #define LOBBY_SPRITE_QUEST_TAKEN 9  /* a member's quest is taken (QUEST_STATUS_TAKEN), in its category's colour (gQuestCategoryColors) */
@@ -2070,7 +2428,7 @@ enum KitchenGuestStep {
 #define OFFER_MENU_ENTRIES 6
 #define DELIVERY_WANTS 3            /* the item stacks a delivery wants */
 
-/* A delivery (0x82 bytes): the items to bring, the points it gives the
+/* A delivery (130 bytes): the items to bring, the points it gives the
  * townsperson, its title and its text. */
 typedef struct Delivery {
     /* 0x00 */ ItemStack want[DELIVERY_WANTS];  /* item 0: none */
@@ -2147,6 +2505,11 @@ typedef struct OfferMenu {
     /* 0x396 */ u8 pad396[2];
 } OfferMenu;
 
+/* The equipment shop's page: EQUIP_SHOP_LINES lines; a tab holds
+ * EQUIP_SHOP_KINDS kinds (gEquipGroupTexts[tab * EQUIP_SHOP_KINDS + kind]). */
+#define EQUIP_SHOP_LINES 7
+#define EQUIP_SHOP_KINDS 5
+
 /* One line of the equipment shop's page. */
 typedef struct ShopLine {
     /* 0x00 */ EquipItem item;
@@ -2154,35 +2517,110 @@ typedef struct ShopLine {
     /* 0x10 */ u8 noBuy;           /* too expensive or the box is full */
     /* 0x11 */ u8 unk11[3];
 } ShopLine;
+
+/* EquipShop.state: EquipShop_Update's steps. */
+enum EquipShopState {
+    EQUIP_SHOP_STATE_CHOOSE = 0,    /* the first choice, the tab and the kind (EquipShop_InputTop) */
+    EQUIP_SHOP_STATE_OPEN = 1,      /* the window slides out */
+    EQUIP_SHOP_STATE_LIST = 2,      /* the page of equipment on sale (EquipShop_InputList) */
+    EQUIP_SHOP_STATE_BUY = 3,       /* the purchase's questions (EquipShop_InputBuy) */
+    EQUIP_SHOP_STATE_BOX = 4,       /* the box, to pick a piece to sell (EquipShop_InputSell) */
+    EQUIP_SHOP_STATE_SELL = 5,      /* the sale's question (EquipBox_SellMenu) */
+    EQUIP_SHOP_STATE_FAREWELL = 6,  /* the townsperson's last words */
+    EQUIP_SHOP_STATE_CLOSE = 7
+};
+
+/* EquipShop.choice: the first menu's entries (the third only when the
+ * townsperson has offers). */
+enum EquipShopChoice {
+    EQUIP_SHOP_BUY = 0,
+    EQUIP_SHOP_SELL = 1,
+    EQUIP_SHOP_OFFERS = 2           /* the townsperson's deliveries and quests (OfferMenu_Open) */
+};
+
+/* EquipShop.view while buying: what the right-hand side shows of the line
+ * under the cursor (the square button steps through 1 to 3). */
+enum EquipShopView {
+    EQUIP_SHOP_VIEW_PAGE = 0,       /* the page alone, at full size */
+    EQUIP_SHOP_VIEW_ITEM = 1,       /* the piece, and its model on the hunter (EquipShop_TryOn) */
+    EQUIP_SHOP_VIEW_COMPARE = 2,    /* the piece against the one worn (EquipShop.worn) */
+    EQUIP_SHOP_VIEW_SKILLS = 3      /* the hunter's skills with the piece (Equip_PreviewSkills) */
+};
+
 /* The equipment shop (TOWN_MODE_EQUIP_SHOP), in gMenuWork: EquipShop_Open
- * sets it up for the townsperson npc. */
+ * sets it up for the townsperson npc. Selling reuses the buying fields:
+ * page is the box's page, detailPage and detailPages the piece's detail. */
 typedef struct EquipShop {
     /* 0x00 */ WinSlide win;
     /* 0x08 */ u8 *npc;             /* the townsperson of the shop (OfferMenu_Open) */
-    /* 0x0C */ s8 state;
-    /* 0x0D */ s8 canWear;
+    /* 0x0C */ s8 state;            /* enum EquipShopState */
+    /* 0x0D */ s8 step;             /* the step of the first menus (0 the choice, 1 the tab, 2 the kind) or of the purchase's questions (EquipShop_Choose) */
     /* 0x0E */ u8 unkE[2];
-    /* 0x10 */ s8 unk10;
-    /* 0x11 */ s8 tab;              /* with kind: the title (gEquipGroupTexts[tab * 5 + kind]) */
+    /* 0x10 */ s8 choice;           /* enum EquipShopChoice */
+    /* 0x11 */ s8 tab;              /* 0 weapons, 1 armour; with kind: the list (EquipShop_GetList) and the title */
     /* 0x12 */ s8 kind;
     /* 0x13 */ u8 unk13[5];
     /* 0x18 */ s16 cursor;
-    /* 0x1A */ u8 unk1A[4];
-    /* 0x1E */ s16 view;             /* the page shown (EquipShop_Draw) */
+    /* 0x1A */ s16 row;             /* selling: the box's cursor (BOX_PAGE_COLS by BOX_PAGE_ROWS) */
+    /* 0x1C */ s16 col;
+    /* 0x1E */ s16 view;            /* enum EquipShopView; selling: 1 while the piece's detail shows */
     /* 0x20 */ char *msg;
-    /* 0x24 */ s16 pages;
+    /* 0x24 */ s16 pages;           /* the pages of the list; selling: of the box */
     /* 0x26 */ s16 page;
-    /* 0x28 */ s16 detailPage;      /* the detail page shown (views 1 to 3), up to detailPages */
+    /* 0x28 */ s16 detailPage;      /* the detail page shown, up to detailPages */
     /* 0x2A */ s16 detailPages;
     /* 0x2C */ s16 count;           /* equipment on sale */
     /* 0x2E */ s16 lines;           /* lines on the page */
-    /* 0x30 */ ShopLine line[7];
+    /* 0x30 */ ShopLine line[EQUIP_SHOP_LINES];
     /* 0xBC */ EquipItem worn;      /* the equipment worn in the slot of the kind on sale (gSave.equip; type set when none) */
-    /* 0xC8 */ EquipItem item;
+    /* 0xC8 */ EquipItem item;      /* the piece being bought */
     /* 0xD4 */ EquipItem shown;     /* the item whose model is loaded (EquipShop_TryOn) */
-    /* 0xE0 */ s32 price;
+    /* 0xE0 */ s32 price;           /* the price asked: the purchase's or the sale's */
     /* 0xE4 */ s8 hasOffers;        /* the townsperson also has deliveries or quests to offer (OfferMenu_BuildList) */
-    /* 0xE5 */ s8 selling;
+    /* 0xE5 */ s8 previewOff;       /* 1: no model preview; the select button turns it on and off in EQUIP_SHOP_VIEW_ITEM */
 } EquipShop;
+
+/* The elder dragon forecast (TOWN_MODE_ELDER_FORECAST): its habitats, the
+ * raid's line and the event quests. */
+#define ELDER_MONSTERS 5        /* the elder dragons of the habitats' panel: the first five of gElderMonstersOnline and gElderMonstersOffline */
+#define ELDER_EVENTS 3          /* the downloaded quests the events can list */
+#define ELDER_LIST_QUESTS 5     /* the quests of one of TownQuestLists.quests' lists */
+#define ELDER_QUEST_CHOICES 2   /* gElderForecastQuests: an elder dragon's one or two quests a season (0: none) */
+#define ELDER_FORECAST_ROWS 3   /* the menu's rows: gElderForecastTexts' first three labels */
+
+/* The forecast's state (gMenuWork while TOWN_MODE_ELDER_FORECAST runs). */
+typedef struct ElderForecastMenu {
+    /* 0x00 */ WinSlide win;            /* the panel's or the event quests' window, sliding in from the right */
+    /* 0x08 */ s32 season;              /* the season the habitats are for (LobbyWorld_GetSeason) */
+    /* 0x0C */ s32 isPm;                /* LobbyTime_IsPm at the opening; ElderForecast_DrawPanel takes it but doesn't use it */
+    /* 0x10 */ u16 habitats[ELDER_MONSTERS]; /* each elder dragon's quest this season, or 0 (ElderForecast_Load) */
+    /* 0x1A */ u16 events[ELDER_EVENTS];   /* the downloaded quests' ids (ElderForecast_ListEvents) */
+    /* 0x20 */ s16 eventCount;
+    /* 0x22 */ s16 eventSel;            /* the event quest shown */
+    /* 0x24 */ s16 page;                /* its page: ELDER_PAGE_* */
+    /* 0x26 */ s16 pages;
+    /* 0x28 */ s16 cursor;              /* the menu's row: ELDER_FORECAST_HABITAT, _ATTACK or _EVENTS */
+    /* 0x2A */ s8 mode;                 /* enum ElderForecastMode */
+    /* 0x2B */ s8 step;                 /* the habitats' and the events' step: ELDER_STEP_* */
+} ElderForecastMenu;
+
+/* ElderForecastMenu.mode */
+enum ElderForecastMode {
+    ELDER_MODE_MENU = 0,        /* the three rows */
+    ELDER_MODE_HABITATS = 1,    /* the habitats' panel */
+    ELDER_MODE_ATTACK = 2,      /* the raid's line is said */
+    ELDER_MODE_EVENTS = 3,      /* the event quests */
+    ELDER_MODE_LEAVE = 4        /* the goodbye is said, then the menu closes */
+};
+
+/* ElderForecastMenu.step */
+#define ELDER_STEP_SLIDE_IN 0   /* the window slides in */
+#define ELDER_STEP_INPUT 1      /* cross goes back to the rows */
+
+/* ElderForecastMenu.page: an event quest's pages */
+#define ELDER_PAGE_OVERVIEW 0
+#define ELDER_PAGE_TERMS 1
+#define ELDER_PAGE_DETAILS 2
+#define ELDER_PAGES 3
 
 #endif /* LOBBY_MENU_H */

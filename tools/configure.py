@@ -58,7 +58,7 @@ EXTERN_SYMBOLS = {"main": "config/main.yaml", "sub_main": "config/overlays/sub_m
 # addresses (an address-derived name of overlays loaded at the same address)
 # is left out; so are names main or sub_main already export. main's own code
 # reads sub_main's objects too (sub_main is always loaded), and a flag of the
-# lobby's while the lobby is loaded (unk_1930E0.c): main links their names the
+# lobby's while the lobby is loaded (file_queue.c): main links their names the
 # same way.
 LOADED_WITH = {
     "main": ["sub_main", "lobby"],

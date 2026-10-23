@@ -28,95 +28,41 @@
 #include "area.h"
 #include "qsync.h"
 #include "em_shengaoren.h"
+#include "shadow.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "camera.h"
+#include "capsule.h"
+#include "save.h"
+#include "sound.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "elder_attacks.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "monster_effects.h"
+#include "part_effects.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* prototypes of callees */
-void GmEm_ResetSize(Em *em);
 
 
 
 /* prototypes */
-void EmShenGaoren_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-void Player_ClearFlag(void *, u32 flag);
 void * EmEffectAttack_Create(Em *, s32, s32, s32, s32);
-void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-void Em_StartTurnAway(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void EmShenGaoren_GetMinePointPos(Em *em, f32 *out);
-s32 Save_TestEventFlag(s32);
-void CamReq_ForMonster(Em *em);
-void Em_EndStatus5(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-s32 MinePoint_Count(s32);
-void QSync_SendEm(Em *em, u8 kind, u8 arg);
-s32 Quest_GetOutcome(s32 withLoss);
-void EmShenGaoren_RunState(Em *em);
-void EmShenGaoren_IdleLow(Em *);
-void EmShenGaoren_WalkTall(Em *);
-void EmShenGaoren_WalkBackTall(Em *);
-void EmShenGaoren_WalkLow(Em *);
-void EmShenGaoren_WalkBackLow(Em *);
-void EmShenGaoren_ShotLow(Em *, s32);
-void EmShenGaoren_StrikeFort(Em *);
-void EmShenGaoren_Smash(Em *, s32);
-void EmShenGaoren_DieTall(Em *);
-void EmShenGaoren_DieLow(Em *);
-void EmShenGaoren_EventCutsceneShot(Em *);
-void EmShenGaoren_EventLeave(Em *);
-void EmShenGaoren_MotionEffects(Em *, EmWork *);
-void EmShenGaoren_MotionSounds(Em *, EmWork *work);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
-StageObj *MonsterFx_CreateOnEm(Em *em, u8 k, f32 scale);
-void Vec_RotateY(f32 *v, f32 angle);
-StageObj *MonsterFx_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 Debug_IsOn(s32);
-void MinePoint_SetArea(s32 slot, u16 area);
-void Shadow_Spawn(void *obj, s16 type);
 extern EmTurnParams EmShenGaoren_TurnParams[2];
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void EmShenGaoren_AddMinePoint(Em *, s32);
-u16 Area_DayId(u16 id);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (void *obj, s16 bone, f32 *out), the calls in EmShenGaoren_SpawnFootEffect and EmShenGaoren_SpawnGroundEffect compile differently */
 void Em_BonePos(void *obj, s32 bone, f32 *out);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 u16 Area_IdForCurrentTime(u16);
-void EmEffectAttack_CreateShengaoren(Em *em, s32 arg1, u16 arg2, s32 arg3, s32 arg4);
-void Quest_TriggerEvent(Em *em);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-void CamShake_ReqARange(Em *obj, s32 i, s32 flag);
-u8 Player_InCurrentArea(void *obj);
-s32 EmMine_Update(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-void QuestEm_Hunted(Em *em);
-void CamReq_BossHunted(void);
-void EmShenGaoren_SpawnAreaImpactEffects(Em *em, s32 a);
-void Em_MotionDelta(Em *em, f32 *out);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 extern f32 EmShenGaoren_DownEaseTargets[][4];
-void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
-void ShenGaorenAttack_Create(Em *em, s8 kind);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void PartFx_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
 extern f32 EmShenGaoren_SeOffsets[4][3];
 /* end of prototypes */
 
 /*
- * Plays sound se at bone 0xE position plus row idx of
+ * Plays sound se at SHEN_BONE_BODY's position plus row idx of
  * EmShenGaoren_SeOffsets rotated by the bone matrix (Em_PlaySeChecked with
  * volume vol).
  */
@@ -131,8 +77,8 @@ void EmShenGaoren_PlaySeAtOffset(Em *em, s32 seId, s32 idx, s32 vol)
     ofs[0] = *ofsRow++;
     ofs[1] = *ofsRow++;
     ofs[2] = *ofsRow;
-    Em_BonePos(em, 0xE, pos);
-    Vec_Rotate(rot, ofs, (f32 *)Em_Bone(em, 0xE));
+    Em_BonePos(em, SHEN_BONE_BODY, pos);
+    Vec_Rotate(rot, ofs, (f32 *)Em_Bone(em, SHEN_BONE_BODY));
     pos[0] = pos[0] + rot[0];
     pos[1] = pos[1] + rot[1];
     pos[2] = pos[2] + rot[2];
@@ -163,893 +109,893 @@ void EmShenGaoren_MotionSounds(Em *em, EmWork *work)
     motion = ((EmShenGaorenWork *)work)->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, Sound_RandomSe(0x3C, 4, 0x3A, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x162, Sound_RandomSe(0x3B, 4, 0x3C, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(58, 4, 59, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 184, Sound_RandomSe(60, 4, 58, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 354, Sound_RandomSe(59, 4, 60, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 420, Sound_RandomSe(58, 4, 59, 4), 31);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_WALK_TALL):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, Sound_RandomSe(0x3C, 4, 0x3A, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x162, Sound_RandomSe(0x3B, 4, 0x3C, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x164, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x13C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x2C, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x96, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xFC, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x164, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x164, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(58, 4, 59, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 184, Sound_RandomSe(60, 4, 58, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 354, Sound_RandomSe(59, 4, 60, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 44, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 252, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 356, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 110, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 212, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 316, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 44, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 150, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 252, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 356, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 44, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 252, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 356, Sound_RandomSe(14, 4, 15, 4), 2);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_WALK_BACK_TALL):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, Sound_RandomSe(0x3C, 4, 0x3A, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x162, Sound_RandomSe(0x3B, 4, 0x3C, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x12E, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x196, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x106, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x16E, Sound_RandomSe(8, 4, 9, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x5E, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xC2, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x12E, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x196, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x142, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(58, 4, 59, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 184, Sound_RandomSe(60, 4, 58, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 354, Sound_RandomSe(59, 4, 60, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 94, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 194, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 302, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 406, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 54, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 154, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 262, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 366, Sound_RandomSe(8, 4, 9, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 94, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 194, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 302, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 406, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 6, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 114, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 214, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 322, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
-    case EM_MOTION_ID(0, 0x4):
-        Em_PlaySeAtBoneOnFrame(em, 0x26, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x15E, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x13C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x26, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF6, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x15E, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x168, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+    case EM_MOTION_ID(0, 4):
+        Em_PlaySeAtBoneOnFrame(em, 38, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 142, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 350, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 212, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 316, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 38, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 142, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 246, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 350, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 360, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
-    case EM_MOTION_ID(0, 0x5):
-        Em_PlaySeAtBoneOnFrame(em, 0x26, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x15E, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x13C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x26, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8E, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF6, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x15E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x168, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+    case EM_MOTION_ID(0, 5):
+        Em_PlaySeAtBoneOnFrame(em, 38, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 142, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 350, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 212, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 316, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 38, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 142, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 246, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 350, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 360, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_LOWER):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xD0, 0x52, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x17C, 0x53, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x11, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x13, 2);
-        Em_PlaySeTypeAtBoneInFrames(em, 0xA, 0x168, 0x14, 2, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x152, 0xC, 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0x152, 0xF, 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0x168, 9, 0x1C);
-        Em_PlaySeAtBoneOnFrame(em, 0x168, 0xA, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x118, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x46, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8C, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xD2, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x118, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, Sound_RandomSe(0x17, 4, 0x18, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x104, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x170, Sound_RandomSe(0x15, 4, 0x16, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0x1B8, Sound_RandomSe(0x15, 4, 0x16, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xAE, Sound_RandomSe(0x15, 4, 0x16, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x11A, Sound_RandomSe(0xA, 4, 0xB, 4), 0x11);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 81, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 208, 82, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 380, 83, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 40, 17, 2);
+        Em_PlaySeAtBoneOnFrame(em, 190, 19, 2);
+        Em_PlaySeTypeAtBoneInFrames(em, 10, 360, 20, 2, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 338, 12, 24);
+        Em_PlaySeAtBoneOnFrame(em, 338, 15, 16);
+        Em_PlaySeAtBoneOnFrame(em, 360, 9, 28);
+        Em_PlaySeAtBoneOnFrame(em, 360, 10, 20);
+        Em_PlaySeAtBoneOnFrame(em, 70, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 140, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 210, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 280, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 70, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 140, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 210, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 280, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 30, Sound_RandomSe(23, 4, 24, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 260, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 368, Sound_RandomSe(21, 4, 22, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 440, Sound_RandomSe(21, 4, 22, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 174, Sound_RandomSe(21, 4, 22, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 72, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 142, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 212, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 282, Sound_RandomSe(10, 4, 11, 4), 17);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_STRIKE_A):
-        Em_PlaySeAtBoneVolOnFrame(em, 0x28, 0x50, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x13, 0xE);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x98, 0x11, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x132, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x3A, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x19, 0xA);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA0, 0x27, 0xA, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 40, 80, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 10, 19, SHEN_BONE_BODY);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 152, 17, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 306, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 58, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 58, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 140, 25, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 160, 39, SHEN_BONE_ARM_A_TIP, 9);
+        Em_PlaySeAtBoneOnFrame(em, 276, Sound_RandomSe(12, 4, 13, 4), 9);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_STRIKE_B):
-        Em_PlaySeAtBoneVolOnFrame(em, 0x28, 0x50, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x13, 0xE);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x98, 0x11, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x132, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x3A, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x19, 6);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA0, 0x27, 6, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA0, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, Sound_RandomSe(0xC, 4, 0xD, 4), 5);
+        Em_PlaySeAtBoneVolOnFrame(em, 40, 80, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 10, 19, SHEN_BONE_BODY);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 152, 17, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 306, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 58, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneVolOnFrame(em, 58, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 140, 25, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 160, 39, SHEN_BONE_ARM_B_TIP, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 160, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneOnFrame(em, 276, Sound_RandomSe(12, 4, 13, 4), 5);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_TRAMPLE_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x28, 0x54, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x154, 0x53, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x12E, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x82, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xD2, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x120, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x180, 0x20, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, Sound_RandomSe(0x1D, 4, 0x1E, 4), 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xCE, Sound_RandomSe(0x1D, 4, 0x1E, 4), 6);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x3A, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7E, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xCE, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x100, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x15A, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x62, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xB0, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x100, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x15A, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 4, 0xB, 4), 4);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, Sound_RandomSe(0xA, 4, 0xB, 4), 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x136, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 81, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 40, 84, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 340, 83, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 138, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 224, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 302, Sound_RandomSe(14, 4, 15, 4), 2);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 130, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 210, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 288, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 384, 32, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 58, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 126, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 206, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 58, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 126, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 206, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneOnFrame(em, 98, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 176, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 256, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 346, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 98, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 176, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 256, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 346, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 4, 11, 4), 4);
+        Em_PlaySeAtBoneOnFrame(em, 12, Sound_RandomSe(10, 4, 11, 4), 8);
+        Em_PlaySeAtBoneOnFrame(em, 58, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 138, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 310, Sound_RandomSe(10, 4, 11, 4), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_AIM_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x6E, 0x55, 0x1F, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x17C, 0x23, 0, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x154, 0x24, 0, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x58, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x9E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 4, 0xB, 4), 4);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, Sound_RandomSe(0xA, 4, 0xB, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8C, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xEE, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xDE, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xB6, 0x20, 1, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xB6, 0x22, 2, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xF4, 0x11, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 81, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 110, 85, 31, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 380, 35, 0, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 340, 36, 0, 9);
+        Em_PlaySeAtBoneOnFrame(em, 88, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 158, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 88, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 158, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 4, 11, 4), 4);
+        Em_PlaySeAtBoneOnFrame(em, 118, Sound_RandomSe(10, 4, 11, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 140, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 238, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 140, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 238, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 222, Sound_RandomSe(10, 4, 11, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 182, 32, 1, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 182, 34, 2, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 244, 17, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FIRE_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 0xD2, 0x57, 0x1F, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 0x25, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 0x26, 0, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xE, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x96, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x4C, 9, 1, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x4E, 0xB, 2, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xA4, 8, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x12, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0x15, 4, 0x16, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x15, 4, 0x16, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, Sound_RandomSe(0x15, 4, 0x17, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0x16, 4, 0x18, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(0xC, 4, 0xE, 4), 5);
+        Em_PlaySeAtBoneVolOnFrame(em, 210, 87, 31, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 37, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 38, 0, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 14, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 150, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 76, 9, 1, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 78, 11, 2, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 164, 8, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 34, 18, 2);
+        Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(21, 4, 22, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(21, 4, 22, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 210, Sound_RandomSe(21, 4, 23, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(22, 4, 24, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(12, 4, 13, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(12, 4, 14, 4), 5);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_SHOT_END_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10C, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA8, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x10C, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xE6, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x1C, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0x1C, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xEA, Sound_RandomSe(0xA, 4, 0xB, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x144, Sound_RandomSe(0xA, 4, 0xB, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xCE, 0x22, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x144, 0x20, 0xE);
+        Em_PlaySeAtBoneVolOnFrame(em, 10, 81, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 168, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 268, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 168, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 268, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 140, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 230, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 190, 28, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 290, 28, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 234, Sound_RandomSe(10, 4, 11, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 324, Sound_RandomSe(10, 4, 11, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 206, 34, SHEN_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 324, 32, SHEN_BONE_BODY);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_SMASH):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x50, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xD2, 0x2F, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x138, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x13, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xEC, 0x13, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x34, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x19, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x10A, Sound_RandomSe(0xE, 4, 0xF, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x118, Sound_RandomSe(0xE, 4, 0xF, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0x27, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0x33, 6);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x98, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, Sound_RandomSe(0xE, 4, 0xF, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, Sound_RandomSe(0xE, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, Sound_RandomSe(8, 4, 9, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0xAE, Sound_RandomSe(0xA, 4, 0xB, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, Sound_RandomSe(8, 4, 9, 4), 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1C);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xE4, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x80, 0x12, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xC2, 0x1F, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 80, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 210, 47, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 312, 81, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 10, 19, SHEN_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 236, 19, SHEN_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 70, 52, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 134, 25, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 140, 25, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 266, Sound_RandomSe(14, 4, 15, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 280, Sound_RandomSe(14, 4, 15, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 142, 39, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 152, 51, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 142, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 152, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 34, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 66, Sound_RandomSe(14, 4, 15, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 74, Sound_RandomSe(14, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 170, Sound_RandomSe(8, 4, 9, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 174, Sound_RandomSe(10, 4, 11, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 182, Sound_RandomSe(8, 4, 9, 4), 20);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(10, 4, 11, 4), 28);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 228, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 250, Sound_RandomSe(10, 4, 11, 4), 29);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 128, 18, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 194, 31, 0, 8);
         break;
-    case EM_MOTION_ID(0, 0x14):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x59, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x35, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x36, 2);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, 0x2B, 0x1F, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x34, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xCA, 0x20, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xEC, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7A, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xB0, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xEC, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x11E, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, Sound_RandomSe(8, 4, 9, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1D);
+    case EM_MOTION_ID(0, 20):
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 89, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 16, 53, 2);
+        Em_PlaySeAtBoneOnFrame(em, 40, 54, 2);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, 43, 31, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 52, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 202, 32, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 56, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 74, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 122, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 176, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 236, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 286, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 122, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 176, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 236, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 286, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 106, Sound_RandomSe(8, 4, 9, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 270, Sound_RandomSe(12, 4, 13, 4), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x30, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 8, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, Sound_RandomSe(8, 4, 9, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xCA, Sound_RandomSe(0xC, 4, 0xD, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x50, 0x22, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xD8, 0x20, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 48, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 48, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneOnFrame(em, 8, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 62, Sound_RandomSe(8, 4, 9, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 202, Sound_RandomSe(12, 4, 13, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 80, 34, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 216, 32, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FALL_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x5A, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x60, 0x27, 0xE, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0x36, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x3C, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x86, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x74, 0x64, 0xA, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, Sound_RandomSe(8, 4, 9, 4), 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x16, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x8A, 0x20, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(0xE, 4, 0xF, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, Sound_RandomSe(0xE, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 90, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneVolOnFrame(em, 96, 39, SHEN_BONE_BODY, 9);
+        Em_PlaySeAtBoneOnFrame(em, 122, 54, 2);
+        Em_PlaySeAtBoneOnFrame(em, 60, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 134, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 60, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 134, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneOnFrame(em, 116, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 116, SHEN_SE_STEP, SHEN_BONE_ARM_A_TIP, 9);
+        Em_PlaySeAtBoneOnFrame(em, 102, 25, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 12, Sound_RandomSe(8, 4, 9, 4), 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 22, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 138, 32, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 82, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(14, 4, 15, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 106, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 90, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 12, Sound_RandomSe(14, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 116, Sound_RandomSe(10, 4, 11, 4), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_DOWN_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x5F, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(0xC, 2, 0x16, 2), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0xE, 2, 0x17, 2), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, Sound_RandomSe(0xD, 2, 0x17, 2), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, Sound_RandomSe(0xF, 2, 0x16, 2), 0x1D);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 95, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(12, 2, 22, 2), 25);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(14, 2, 23, 2), 21);
+        Em_PlaySeAtBoneOnFrame(em, 122, Sound_RandomSe(13, 2, 23, 2), 17);
+        Em_PlaySeAtBoneOnFrame(em, 130, Sound_RandomSe(15, 2, 22, 2), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_GET_UP_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x52, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF4, 0x57, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0x13, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xEE, 0x64, 0x1A, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x100, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x152, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x152, 0x64, 0x12, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x154, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0x17, 4, 0x18, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x15E, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x140, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x190, 0x22, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1C, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x1E, 6);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, 0x64, 6, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0x1C, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xC6, Sound_RandomSe(8, 4, 9, 4), 0x1D);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 82, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 244, 87, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 152, 19, 2);
+        Em_PlaySeAtBoneOnFrame(em, 238, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 238, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 9);
+        Em_PlaySeAtBoneOnFrame(em, 256, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 338, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneVolOnFrame(em, 338, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 9);
+        Em_PlaySeAtBoneOnFrame(em, 340, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(23, 4, 24, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 104, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 56, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 350, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 48, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 100, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(21, 4, 22, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 320, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 400, 34, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 76, 28, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 124, 30, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, SHEN_SE_STEP, SHEN_BONE_ARM_B_TIP, 9);
+        Em_PlaySeAtBoneOnFrame(em, 198, 28, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 76, Sound_RandomSe(12, 4, 13, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 198, Sound_RandomSe(8, 4, 9, 4), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_DIE_TALL):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x52, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0x12, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, Sound_RandomSe(0xE, 4, 0xF, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, Sound_RandomSe(0xE, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x24, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x56, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x88, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xBA, 0x64, 0x1E, 0x16);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xD2, 0x20, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 82, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, 2);
+        Em_PlaySeAtBoneOnFrame(em, 144, 18, 2);
+        Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 86, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 62, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 102, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 168, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 92, Sound_RandomSe(14, 4, 15, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 102, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 168, Sound_RandomSe(14, 4, 15, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 36, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 86, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 136, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 186, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 210, 32, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 32, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 28, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 34, Sound_RandomSe(21, 4, 22, 4), 21);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_IDLE_LOW):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, Sound_RandomSe(0x3C, 4, 0x3A, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x162, Sound_RandomSe(0x3B, 4, 0x3C, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(58, 4, 59, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 184, Sound_RandomSe(60, 4, 58, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 354, Sound_RandomSe(59, 4, 60, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 420, Sound_RandomSe(58, 4, 59, 4), 31);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_WALK_LOW):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, Sound_RandomSe(0x3C, 4, 0x3A, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x162, Sound_RandomSe(0x3B, 4, 0x3C, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xFE, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x166, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, Sound_RandomSe(8, 4, 9, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, Sound_RandomSe(0xA, 4, 0xB, 4), 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(8, 4, 9, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0x144, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1C);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x2E, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x96, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xFE, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x166, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xEA, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x152, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(58, 4, 59, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 184, Sound_RandomSe(60, 4, 58, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 354, Sound_RandomSe(59, 4, 60, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 46, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 254, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 358, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 12, Sound_RandomSe(8, 4, 9, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 116, Sound_RandomSe(10, 4, 11, 4), 20);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(8, 4, 9, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 324, Sound_RandomSe(10, 4, 11, 4), 28);
+        Em_PlaySeAtBoneVolOnFrame(em, 46, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 150, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 254, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 358, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 60, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 164, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 234, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 338, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_WALK_BACK_LOW):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x3A, 4, 0x3B, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, Sound_RandomSe(0x3C, 4, 0x3A, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x162, Sound_RandomSe(0x3B, 4, 0x3C, 4), 0x1F);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x12C, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x194, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x176, Sound_RandomSe(8, 4, 9, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x5C, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xC4, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x12C, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x194, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x142, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(58, 4, 59, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 184, Sound_RandomSe(60, 4, 58, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 354, Sound_RandomSe(59, 4, 60, 4), 31);
+        Em_PlaySeAtBoneOnFrame(em, 92, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 196, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 300, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 404, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 62, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 166, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 270, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 374, Sound_RandomSe(8, 4, 9, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 92, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 196, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 300, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 404, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 6, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 114, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 214, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 322, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
-    case EM_MOTION_ID(0, 0x21):
-        Em_PlaySeAtBoneOnFrame(em, 0x26, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x15E, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x13C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x26, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF6, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x15E, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x168, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+    case EM_MOTION_ID(0, 33):
+        Em_PlaySeAtBoneOnFrame(em, 38, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 142, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 350, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 212, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 316, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneVolOnFrame(em, 38, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 142, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 246, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 350, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 360, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
-    case EM_MOTION_ID(0, 0x22):
-        Em_PlaySeAtBoneOnFrame(em, 0x26, Sound_RandomSe(4, 4, 5, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, Sound_RandomSe(6, 4, 7, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(4, 4, 5, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x15E, Sound_RandomSe(6, 4, 7, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x13C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x26, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8E, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF6, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x15E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x168, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
+    case EM_MOTION_ID(0, 34):
+        Em_PlaySeAtBoneOnFrame(em, 38, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 142, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(4, 4, 5, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 350, Sound_RandomSe(6, 4, 7, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 212, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 316, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneVolOnFrame(em, 38, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 142, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 246, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 350, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 50, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 150, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 360, Sound_RandomSe(12, 4, 13, 4), 2);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_RISE):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x52, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x11C, 0x2B, 0x1F, 9);
-        Em_PlaySeTypeAtBoneInFrames(em, 4, 0x164, 0x14, 2, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x11, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x100, 0x12, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, Sound_RandomSe(2, 4, 3, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x152, Sound_RandomSe(0, 4, 1, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x1B6, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8A, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF0, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x152, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x1B6, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0xA, 4, 0xB, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x13A, Sound_RandomSe(8, 4, 9, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x19E, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x104, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x106, Sound_RandomSe(0xE, 4, 0xF, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C2, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, Sound_RandomSe(0xC, 4, 0xD, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x16A, Sound_RandomSe(8, 4, 9, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, Sound_RandomSe(0xE, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xF2, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x1CC, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x9C, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xEA, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x100, 0x22, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x150, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x1C8, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x20E, 0x1F, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, Sound_RandomSe(0xC, 4, 0xD, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xAA, Sound_RandomSe(0xE, 4, 0xF, 4), 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x188, Sound_RandomSe(8, 4, 9, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x1AA, Sound_RandomSe(8, 4, 9, 4), 6);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 82, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 284, 43, 31, 9);
+        Em_PlaySeTypeAtBoneInFrames(em, 4, 356, 20, 2, 8, 0);
+        Em_PlaySeAtBoneOnFrame(em, 148, 17, 2);
+        Em_PlaySeAtBoneOnFrame(em, 256, 18, 2);
+        Em_PlaySeAtBoneOnFrame(em, 138, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 240, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 338, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 438, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 138, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 240, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 338, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 438, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 114, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(10, 4, 11, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 314, Sound_RandomSe(8, 4, 9, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 414, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 260, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 262, Sound_RandomSe(14, 4, 15, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 450, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 170, Sound_RandomSe(12, 4, 13, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 362, Sound_RandomSe(8, 4, 9, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 170, Sound_RandomSe(14, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 242, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 460, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 78, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 90, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 106, Sound_RandomSe(23, 4, 24, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 156, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 234, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 256, 34, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 336, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 456, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 526, 31, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 166, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 170, Sound_RandomSe(14, 4, 15, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 392, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 426, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_B_TIP);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_STRIKE_FORT):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x54, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x13, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, 0x34, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0x19, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, Sound_RandomSe(0xE, 4, 0xF, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, Sound_RandomSe(0xE, 4, 0xF, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, Sound_RandomSe(8, 4, 9, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, Sound_RandomSe(0xA, 4, 0xB, 4), 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x134, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x13A, Sound_RandomSe(0xE, 4, 0xF, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, Sound_RandomSe(0xE, 4, 0xF, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, Sound_RandomSe(0xE, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, Sound_RandomSe(8, 4, 9, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, Sound_RandomSe(0xA, 4, 0xB, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xCA, Sound_RandomSe(8, 4, 9, 4), 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xCE, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1C);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x126, Sound_RandomSe(0xA, 4, 0xB, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x12E, Sound_RandomSe(8, 4, 9, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x132, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x80, 0x12, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xC2, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x104, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x14E, 0x1F, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xD0, 0x27, 6);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xD2, 0x64, 6, 0x16);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 84, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 10, 19, SHEN_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 130, 52, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 194, 25, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 200, 25, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 8, Sound_RandomSe(14, 4, 15, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 14, Sound_RandomSe(14, 4, 15, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 240, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 246, Sound_RandomSe(10, 4, 11, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 308, Sound_RandomSe(12, 4, 13, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 314, Sound_RandomSe(14, 4, 15, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 112, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 128, Sound_RandomSe(14, 4, 15, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 116, Sound_RandomSe(14, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 190, Sound_RandomSe(8, 4, 9, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 194, Sound_RandomSe(10, 4, 11, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 202, Sound_RandomSe(8, 4, 9, 4), 20);
+        Em_PlaySeAtBoneOnFrame(em, 206, Sound_RandomSe(10, 4, 11, 4), 28);
+        Em_PlaySeAtBoneOnFrame(em, 290, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 294, Sound_RandomSe(10, 4, 11, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 302, Sound_RandomSe(8, 4, 9, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 306, Sound_RandomSe(10, 4, 11, 4), 29);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 128, 18, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 194, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 260, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 334, 31, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 208, 39, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 210, SHEN_SE_STEP, SHEN_BONE_ARM_B_TIP, 22);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_TRAMPLE_LOW):
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0x19, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x100, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x15A, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x62, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xB0, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x100, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x15A, 0x64, 0x16, 0x16);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x82, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xD2, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x120, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x180, 0x20, 0, 8);
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x28, 0x54, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x154, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, Sound_RandomSe(0xC, 4, 0xD, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x12E, Sound_RandomSe(0xE, 4, 0xF, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, Sound_RandomSe(0xA, 4, 0xB, 4), 4);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, Sound_RandomSe(0xA, 4, 0xB, 4), 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x136, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
+        Em_PlaySeAtBoneOnFrame(em, 150, 25, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 164, 25, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 98, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 176, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 256, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 346, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 98, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 176, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 256, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 346, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 130, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 210, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 288, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 384, 32, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 81, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 40, 84, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 340, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 138, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 224, Sound_RandomSe(12, 4, 13, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 302, Sound_RandomSe(14, 4, 15, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 44, Sound_RandomSe(10, 4, 11, 4), 4);
+        Em_PlaySeAtBoneOnFrame(em, 118, Sound_RandomSe(10, 4, 11, 4), 8);
+        Em_PlaySeAtBoneOnFrame(em, 58, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 138, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 310, Sound_RandomSe(10, 4, 11, 4), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_AIM_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x6E, 0x55, 0x1F, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x17C, 0x23, 0, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x154, 0x24, 0, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0xE, 4, 0xF, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0xE, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x58, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x9E, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xA, 4, 0xB, 4), 4);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, Sound_RandomSe(0xA, 4, 0xB, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x8C, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xEE, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xDE, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xB6, 0x20, 1, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xB6, 0x22, 2, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xF4, 0x11, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 81, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 110, 85, 31, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 380, 35, 0, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 340, 36, 0, 9);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(14, 4, 15, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(14, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 88, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 158, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 88, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 158, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(10, 4, 11, 4), 4);
+        Em_PlaySeAtBoneOnFrame(em, 118, Sound_RandomSe(10, 4, 11, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 140, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 238, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 140, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 238, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 222, Sound_RandomSe(10, 4, 11, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 182, 32, 1, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 182, 34, 2, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 244, 17, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FIRE_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 0xD2, 0x57, 0x1F, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 0x25, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 0x26, 0, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xE, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x96, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x4C, 9, 1, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x4E, 0xB, 2, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xA4, 8, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x12, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, Sound_RandomSe(0x15, 4, 0x16, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x15, 4, 0x16, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, Sound_RandomSe(0x15, 4, 0x17, 4), 0x18);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0x16, 4, 0x18, 4), 0x10);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(0xC, 4, 0xE, 4), 5);
+        Em_PlaySeAtBoneVolOnFrame(em, 210, 87, 31, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 37, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 4, 38, 0, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 14, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 150, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 76, 9, 1, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 78, 11, 2, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 164, 8, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 34, 18, 2);
+        Em_PlaySeAtBoneOnFrame(em, 36, Sound_RandomSe(21, 4, 22, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(21, 4, 22, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 210, Sound_RandomSe(21, 4, 23, 4), 24);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(22, 4, 24, 4), 16);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(12, 4, 13, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(12, 4, 14, 4), 5);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_SHOT_END_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA, 0x51, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x13, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x17C, 0x15, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x10C, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xA8, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x10C, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xE6, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0x1C, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0x1C, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xEA, Sound_RandomSe(0xA, 4, 0xB, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x144, Sound_RandomSe(0xA, 4, 0xB, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xCE, 0x22, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x144, 0x20, 0xE);
+        Em_PlaySeAtBoneVolOnFrame(em, 10, 81, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 10, 19, 2);
+        Em_PlaySeAtBoneOnFrame(em, 380, 21, 2);
+        Em_PlaySeAtBoneOnFrame(em, 168, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 268, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 168, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 268, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 140, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 230, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 190, 28, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 290, 28, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 234, Sound_RandomSe(10, 4, 11, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 324, Sound_RandomSe(10, 4, 11, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 206, 34, SHEN_BONE_BODY);
+        Em_PlaySeAtBoneOnFrame(em, 324, 32, SHEN_BONE_BODY);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_SHOT_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x22, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x40, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 6, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x32, 0x1F, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1C, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x34, 6);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 34, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 34, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 64, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 28, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 56, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(12, 4, 13, 4), 17);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 6, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 50, 31, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 12, 28, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 12, 29, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 28, 52, SHEN_BONE_ARM_B_TIP);
         break;
-    case EM_MOTION_ID(0, 0x32):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x59, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x35, 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x36, 2);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, 0x2B, 0x1F, 9);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x34, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xCA, 0x20, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x34, 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x34, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, Sound_RandomSe(0x15, 4, 0x16, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, Sound_RandomSe(2, 4, 3, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xEC, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, Sound_RandomSe(2, 4, 3, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x38, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x4A, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7A, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xB0, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xEC, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x11E, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, Sound_RandomSe(8, 4, 9, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0xC, 4, 0xD, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, Sound_RandomSe(0xC, 4, 0xD, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1D);
+    case EM_MOTION_ID(0, 50):
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 89, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 28, 53, SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 40, 54, 2);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, 43, 31, 9);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 52, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 202, 32, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 4, 52, SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 108, 52, SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 90, 52, SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 290, Sound_RandomSe(21, 4, 22, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 56, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 74, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 122, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 176, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 236, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 286, Sound_RandomSe(2, 4, 3, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 56, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 74, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 122, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 176, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 236, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 286, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 106, Sound_RandomSe(8, 4, 9, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(12, 4, 13, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 220, Sound_RandomSe(12, 4, 13, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 270, Sound_RandomSe(12, 4, 13, 4), 29);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0x15, 4, 0x16, 4), 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x30, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 8, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, Sound_RandomSe(8, 4, 9, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0xC, 4, 0xD, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xCA, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x34, 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0x34, 0x1A);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x50, 0x22, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0xD8, 0x20, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(21, 4, 22, 4), 2);
+        Em_PlaySeAtBoneOnFrame(em, 48, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 48, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneOnFrame(em, 8, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 62, Sound_RandomSe(8, 4, 9, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 202, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 4, 52, SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 80, 52, SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 96, 52, SHEN_BONE_FOOT_C);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 80, 34, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 216, 32, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_COLLAPSE):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x5A, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x11, 2);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7A, 0x27, 0xE, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x36, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0x17, 4, 0x18, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(8, 4, 9, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, Sound_RandomSe(8, 4, 9, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 0x19, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 0x1D, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x1E, 6);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x1F, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x80, 0x22, 0, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x6C, 0x1D, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x6C, 0x1E, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 90, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 86, 17, 2);
+        Em_PlaySeAtBoneVolOnFrame(em, 122, 39, SHEN_BONE_BODY, 9);
+        Em_PlaySeAtBoneOnFrame(em, 108, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 138, 54, 2);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(23, 4, 24, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 104, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 56, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 48, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 100, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(21, 4, 22, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(8, 4, 9, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 26, Sound_RandomSe(8, 4, 9, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 112, 25, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 118, 25, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 134, 29, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 138, 30, SHEN_BONE_ARM_B_TIP);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 31, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 128, 34, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 140, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 144, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 148, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 152, Sound_RandomSe(10, 4, 11, 4), 29);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 108, 29, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 108, 30, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_DOWN_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x5F, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, Sound_RandomSe(0xC, 2, 0x16, 2), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0xE, 2, 0x17, 2), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, Sound_RandomSe(0xD, 2, 0x17, 2), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x82, Sound_RandomSe(0xF, 2, 0x16, 2), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, Sound_RandomSe(0xD, 2, 0x17, 2), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, Sound_RandomSe(0xF, 2, 0x16, 2), 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 95, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 18, Sound_RandomSe(12, 2, 22, 2), 25);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(14, 2, 23, 2), 21);
+        Em_PlaySeAtBoneOnFrame(em, 122, Sound_RandomSe(13, 2, 23, 2), 17);
+        Em_PlaySeAtBoneOnFrame(em, 130, Sound_RandomSe(15, 2, 22, 2), 29);
+        Em_PlaySeAtBoneOnFrame(em, 68, Sound_RandomSe(13, 2, 23, 2), 5);
+        Em_PlaySeAtBoneOnFrame(em, 96, Sound_RandomSe(15, 2, 22, 2), 9);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_GET_UP_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x52, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF4, 0x2F, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0x13, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, Sound_RandomSe(0x1D, 4, 0x1E, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, Sound_RandomSe(0x1D, 4, 0x1E, 4), 6);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x50, 0x64, 0xA, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x7C, 0x64, 6, 0x16);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 82, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 244, 47, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 152, 19, 2);
+        Em_PlaySeAtBoneOnFrame(em, 80, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 124, Sound_RandomSe(29, 4, 30, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame(em, 80, SHEN_SE_STEP, SHEN_BONE_ARM_A_TIP, 22);
+        Em_PlaySeAtBoneVolOnFrame(em, 124, SHEN_SE_STEP, SHEN_BONE_ARM_B_TIP, 22);
         Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(8, 4, 9, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0xC, 4, 0xD, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, Sound_RandomSe(8, 4, 9, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1C, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0x1C, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0xF8, 0x1C, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xCE, Sound_RandomSe(8, 4, 9, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, Sound_RandomSe(0xC, 4, 0xD, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, Sound_RandomSe(0, 4, 1, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xEE, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x100, Sound_RandomSe(8, 4, 9, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x152, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x152, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x154, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0x17, 4, 0x18, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x15E, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x140, 0x20, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x190, 0x22, 0, 8);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(12, 4, 13, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 80, Sound_RandomSe(8, 4, 9, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 86, 28, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 198, 28, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 248, 28, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 206, Sound_RandomSe(8, 4, 9, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 216, Sound_RandomSe(12, 4, 13, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 238, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 238, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 256, Sound_RandomSe(8, 4, 9, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 338, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneVolOnFrame(em, 338, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneOnFrame(em, 340, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(23, 4, 24, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 104, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 56, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 350, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 48, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 100, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(21, 4, 22, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 320, 32, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 400, 34, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_C):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x64, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x40, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0, 4, 1, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xBA, 0x64, 0x1A, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(8, 4, 9, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(8, 4, 9, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(0xC, 4, 0xD, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x17, 4, 0x18, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x15, 4, 0x16, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x3A, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x40, 0x20, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 100, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 64, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 186, SHEN_SE_STEP, SHEN_BONE_FOOT_C, 22);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 152, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(12, 4, 13, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(23, 4, 24, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(21, 4, 22, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 76, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 120, Sound_RandomSe(21, 4, 22, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 58, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 64, 32, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_A):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x64, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x40, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0, 4, 1, 4), 0x12);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xBA, 0x64, 0x12, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(8, 4, 9, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, Sound_RandomSe(0xC, 4, 0xD, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(8, 4, 9, 4), 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x3A, 0x21, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x40, 0x20, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 100, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneVolOnFrame(em, 64, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneVolOnFrame(em, 186, SHEN_SE_STEP, SHEN_BONE_FOOT_A, 22);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 152, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(12, 4, 13, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(23, 4, 24, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(21, 4, 22, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 76, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(21, 4, 22, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 120, Sound_RandomSe(21, 4, 22, 4), 29);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 58, 33, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 64, 32, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_D):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x64, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(0, 4, 1, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x40, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0, 4, 1, 4), 0x1E);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xBA, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(8, 4, 9, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(8, 4, 9, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(0xC, 4, 0xD, 4), 5);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x17, 4, 0x18, 4), 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x15, 4, 0x16, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x3A, 0x36, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x40, 0x20, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 100, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 64, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneVolOnFrame(em, 186, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 152, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(12, 4, 13, 4), 5);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(23, 4, 24, 4), SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(21, 4, 22, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 76, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 120, Sound_RandomSe(21, 4, 22, 4), 21);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 58, 54, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 64, 32, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_B):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x58, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x64, 0x2B, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(0, 4, 1, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x40, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, Sound_RandomSe(0, 4, 1, 4), 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xBA, 0x64, 0x16, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(8, 4, 9, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, Sound_RandomSe(0xC, 4, 0xD, 4), 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(8, 4, 9, 4), 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, Sound_RandomSe(0xC, 4, 0xD, 4), 9);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0xC, 4, 0xD, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1E);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x3A, 0x36, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x40, 0x20, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 88, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 100, 43, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 64, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 186, Sound_RandomSe(0, 4, 1, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 186, SHEN_SE_STEP, SHEN_BONE_FOOT_B, 22);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 152, Sound_RandomSe(12, 4, 13, 4), SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(8, 4, 9, 4), SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 16, Sound_RandomSe(12, 4, 13, 4), 9);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(12, 4, 13, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(23, 4, 24, 4), SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 20, Sound_RandomSe(21, 4, 22, 4), SHEN_BONE_FOOT_D);
+        Em_PlaySeAtBoneOnFrame(em, 40, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 76, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 160, Sound_RandomSe(21, 4, 22, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 120, Sound_RandomSe(21, 4, 22, 4), 29);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 58, 54, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 64, 32, 0, 8);
         break;
     case EM_MOTION_ID(0, SHEN_MOT_DIE_LOW):
-        Em_PlaySeAtBoneVolOnFrame(em, 4, 0x32, 2, 9);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x33, 2);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x28, 0x13, 2, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0x35, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0x11, 0x12);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x140, 0x30, 2, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xDC, 0x27, 2, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xDC, 0x36, 0xE, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x1A2, 0x27, 2, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x1A8, 0x36, 0xE, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xF4, 0x5F, 0x1F, 9);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x16A, 0x34, 0x1F, 9);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, Sound_RandomSe(0xA, 4, 0xB, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x106, Sound_RandomSe(0xA, 4, 0xB, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xE2, Sound_RandomSe(8, 4, 9, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xE8, Sound_RandomSe(8, 4, 9, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x100, Sound_RandomSe(0x17, 4, 0x18, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x10A, Sound_RandomSe(0x17, 4, 0x18, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0xF8, Sound_RandomSe(0x17, 4, 0x18, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0xFE, Sound_RandomSe(0x17, 4, 0x18, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x12C, Sound_RandomSe(0x15, 4, 0x16, 4), 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, Sound_RandomSe(0x15, 4, 0x16, 4), 0x11);
-        Em_PlaySeAtBoneOnFrame(em, 0x138, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x230, Sound_RandomSe(0x15, 4, 0x16, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x238, Sound_RandomSe(0x15, 4, 0x16, 4), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xE2, 4, 0x12);
-        Em_PlaySeAtBoneOnFrame(em, 0xE2, 5, 0x1A);
-        Em_PlaySeAtBoneVolOnFrame(em, 0xE2, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x190, 0x1D, 0xA);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A4, 0x1E, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E0, 4, 0x16);
-        Em_PlaySeAtBoneVolOnFrame(em, 0x1E0, 0x64, 0x1E, 0x16);
-        Em_PlaySeAtBoneOnFrame(em, 0x16E, 0x35, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16E, 0x11, 0x12);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x244, 0x1F, 0, 8);
-        EmShenGaoren_PlaySeOnFrame((s32) em, 0x1F4, 0x21, 0, 8);
+        Em_PlaySeAtBoneVolOnFrame(em, 4, 50, 2, 9);
+        Em_PlaySeAtBoneOnFrame(em, 4, 51, 2);
+        Em_PlaySeAtBoneVolOnFrame(em, 40, 19, 2, 9);
+        Em_PlaySeAtBoneOnFrame(em, 14, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 24, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 42, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 68, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 166, 53, SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 166, 17, SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneVolOnFrame(em, 320, 48, 2, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 220, 39, 2, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 220, 54, SHEN_BONE_BODY, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 418, 39, 2, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 424, 54, SHEN_BONE_BODY, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 244, 95, 31, 9);
+        Em_PlaySeAtBoneVolOnFrame(em, 362, 52, 31, 9);
+        Em_PlaySeAtBoneOnFrame(em, 252, Sound_RandomSe(10, 4, 11, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 262, Sound_RandomSe(10, 4, 11, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 226, Sound_RandomSe(8, 4, 9, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 232, Sound_RandomSe(8, 4, 9, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 256, Sound_RandomSe(23, 4, 24, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 266, Sound_RandomSe(23, 4, 24, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 248, Sound_RandomSe(23, 4, 24, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 254, Sound_RandomSe(23, 4, 24, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 300, Sound_RandomSe(21, 4, 22, 4), 25);
+        Em_PlaySeAtBoneOnFrame(em, 304, Sound_RandomSe(21, 4, 22, 4), 17);
+        Em_PlaySeAtBoneOnFrame(em, 312, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 320, Sound_RandomSe(21, 4, 22, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 560, Sound_RandomSe(21, 4, 22, 4), 29);
+        Em_PlaySeAtBoneOnFrame(em, 568, Sound_RandomSe(21, 4, 22, 4), 21);
+        Em_PlaySeAtBoneOnFrame(em, 226, 4, SHEN_BONE_FOOT_A);
+        Em_PlaySeAtBoneOnFrame(em, 226, 5, SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneVolOnFrame(em, 226, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 400, 29, SHEN_BONE_ARM_A_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 420, 30, SHEN_BONE_ARM_B_TIP);
+        Em_PlaySeAtBoneOnFrame(em, 480, 4, SHEN_BONE_FOOT_B);
+        Em_PlaySeAtBoneVolOnFrame(em, 480, SHEN_SE_STEP, SHEN_BONE_FOOT_D, 22);
+        Em_PlaySeAtBoneOnFrame(em, 366, 53, SHEN_BONE_FOOT_C);
+        Em_PlaySeAtBoneOnFrame(em, 366, 17, SHEN_BONE_FOOT_A);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 580, 31, 0, 8);
+        EmShenGaoren_PlaySeOnFrame((s32) em, 500, 33, 0, 8);
 
     default:
         break;
@@ -1074,16 +1020,16 @@ void EmShenGaoren_Setup(Em *em)
 }
 
 /*
- * Callback slots 0 and 1: spawns effect 01 of type 3 on the monster
- * (Shadow_Spawn).
+ * Callback slots 0 and 1: spawns the monster's shadow, the shadow model's
+ * bones laid on the ground (SHADOW_GROUND_BONES).
  */
-void EmShenGaoren_SpawnEffect01(u8 *em)
+void EmShenGaoren_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0x3);
+    Shadow_Spawn((Player *) em, SHADOW_GROUND_BONES);
 }
 
 /*
- * Writes the carving point position: bone 0xE position plus a fixed offset
+ * Writes the carving point position: SHEN_BONE_BODY's position plus a fixed offset
  * (below and behind) rotated by the bone matrix.
  */
 void EmShenGaoren_GetMinePointPos(Em *em, f32 *out)
@@ -1095,8 +1041,8 @@ void EmShenGaoren_GetMinePointPos(Em *em, f32 *out)
     ofs[1] = -50.0f;
     ofs[2] = -150.0f;
     ofs[0] = 0.0f;
-    Em_BonePos(em, 0xE, bonePos);
-    Vec_Rotate((f32 *) rotOfs, (f32 *) ofs, (f32 *) (Em_Bone(em, 0xE)));
+    Em_BonePos(em, SHEN_BONE_BODY, bonePos);
+    Vec_Rotate((f32 *) rotOfs, (f32 *) ofs, (f32 *) (Em_Bone(em, SHEN_BONE_BODY)));
     out[0] = bonePos[0] + rotOfs[0];
     out[1] = bonePos[1] + rotOfs[1];
     out[2] = bonePos[2] + rotOfs[2];
@@ -1119,16 +1065,16 @@ void EmShenGaoren_AddMinePoint(Em *em, s32 unused)
     point.radius = 460.0f;
     switch (gQuest.header->tier) {
     default:
-        point.table = 0x60;
+        point.table = 96;
         break;
     case 1:
-        point.table = 0xDC;
+        point.table = 220;
         break;
     case 2:
-        point.table = 0x159;
+        point.table = 345;
         break;
     case 3:
-        point.table = 0x159;
+        point.table = 345;
         break;
     }
     point.action = MINE_ACTION_CARVE;
@@ -1180,19 +1126,19 @@ void EmShenGaoren_Init(Em *em)
             em->posX = 33000.0f;
             em->posY = 0.0f;
             em->posZ = 30200.0f;
-            em->rotY = 0xC000;
+            em->rotY = ANGLE_TURN * 3 / 4;
             break;
         case AREA_FORTRESS_5:
             em->posX = 7400.0f;
             em->posY = 0.0f;
             em->posZ = 26300.0f;
-            em->rotY = 0x4000;
+            em->rotY = ANGLE_TURN / 4;
             break;
         case 13:
             em->posX = 5000.0f;
             em->posY = 0.0f;
             em->posZ = 8000.0f;
-            em->rotY = 0x8000;
+            em->rotY = ANGLE_TURN / 2;
             break;
         case AREA_FORTRESS_1:
             em->posX = 2400.0f;
@@ -1222,7 +1168,7 @@ void EmShenGaoren_Init(Em *em)
             em->posX = 10000.0f;
             em->posY = 0.0f;
             em->posZ = 10000.0f;
-            em->rotY = 0x8000;
+            em->rotY = ANGLE_TURN / 2;
             break;
         }
     }
@@ -1233,7 +1179,7 @@ void EmShenGaoren_Init(Em *em)
     em->blind = 0;
     em->unk_InitFlag = 1;
     em->combat = 1;
-    em->combatPlayers = 0xF;
+    em->combatPlayers = 15;
     if ((Area_DayId(em->area) & 0xFFFF) == AREA_BATTLE_TOWN_1) {
         em->stance = SHEN_STANCE_LOW;
         Em_SetMotionRow(em, SHEN_MOT_IDLE_LOW, 0, 0);
@@ -1246,13 +1192,13 @@ void EmShenGaoren_Init(Em *em)
     w->unk00C = 1500.0f;
     w->unk022 = 0;
     w->stage = 0;
-    w->syncTimer = 0x96;
+    w->syncTimer = 150;
     w->ease[0] = 1.0f;
     w->ease[1] = 1.0f;
     w->ease[2] = 1.0f;
     w->ease[3] = 1.0f;
     w->mineCount = 3;
-    EmShenGaoren_AddMinePoint(em, 0x96);
+    EmShenGaoren_AddMinePoint(em, 150);
 }
 
 /*
@@ -1275,7 +1221,7 @@ void EmShenGaoren_EndState(Em *em)
 }
 
 /*
- * SHEN_IDLE_HOLD: unless debug switch 0x4D is on, keeps SHEN_MOT_IDLE_TALL
+ * SHEN_IDLE_HOLD: unless debug switch 77 is on, keeps SHEN_MOT_IDLE_TALL
  * playing; never ends. It sets the motion again whenever a layer's id
  * differs from the idle's; the ids it expects on layers 1 and 2 are 1101 and
  * 1201, as if the layers' ids were 100 apart (EM_MOTION_ID puts them 200
@@ -1284,15 +1230,15 @@ void EmShenGaoren_EndState(Em *em)
  */
 void EmShenGaoren_IdleHold(Em *em)
 {
-    if (Debug_IsOn(0x4D) == 0) {
+    if (Debug_IsOn(77) == 0) {
         if (em->motionId[0] != EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL)) {
-            Em_SetMotion(em, SHEN_MOT_IDLE_TALL, 0xA, 0);
+            Em_SetMotion(em, SHEN_MOT_IDLE_TALL, 10, 0);
         }
         if (em->motionId[1] != 1101) {
-            Em_SetMotion(em, SHEN_MOT_IDLE_TALL, 0xA, 0);
+            Em_SetMotion(em, SHEN_MOT_IDLE_TALL, 10, 0);
         }
         if (em->motionId[2] != 1201) {
-            Em_SetMotion(em, SHEN_MOT_IDLE_TALL, 0xA, 0);
+            Em_SetMotion(em, SHEN_MOT_IDLE_TALL, 10, 0);
         }
     }
 }
@@ -1310,13 +1256,13 @@ void EmShenGaoren_IdleTall(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_TALL;
         if (em->motionId[0] != EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL), 10, 0, 0);
         }
         if (em->motionId[1] != EM_MOTION_ID(1, SHEN_MOT_IDLE_TALL)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, SHEN_MOT_IDLE_TALL), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, SHEN_MOT_IDLE_TALL), 10, 0, 1);
         }
         if (em->motionId[2] != EM_MOTION_ID(2, SHEN_MOT_IDLE_TALL)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, SHEN_MOT_IDLE_TALL), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, SHEN_MOT_IDLE_TALL), 10, 0, 2);
         }
         break;
     case 1:
@@ -1343,7 +1289,7 @@ void EmShenGaoren_IdleLow(Em *em)
         em->stance = SHEN_STANCE_LOW;
         curMotion = em->motionId[0];
         if (curMotion == EM_MOTION_ID(0, SHEN_MOT_AIM_LOW) || curMotion == EM_MOTION_ID(0, SHEN_MOT_FIRE_LOW) || curMotion == EM_MOTION_ID(0, SHEN_MOT_SHOT_END_LOW)) {
-            Em_SetMotion(em, SHEN_MOT_IDLE_LOW, 0xC, 0);
+            Em_SetMotion(em, SHEN_MOT_IDLE_LOW, 12, 0);
         } else {
             Em_SetMotion(em, SHEN_MOT_IDLE_LOW, 0, 0);
         }
@@ -1445,15 +1391,15 @@ void EmShenGaoren_IdleTallBrief(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_TALL;
         if (em->motionId[0] != EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, SHEN_MOT_IDLE_TALL), 10, 0, 0);
         }
         if (em->motionId[1] != EM_MOTION_ID(1, SHEN_MOT_IDLE_TALL)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, SHEN_MOT_IDLE_TALL), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, SHEN_MOT_IDLE_TALL), 10, 0, 1);
         }
         if (em->motionId[2] != EM_MOTION_ID(2, SHEN_MOT_IDLE_TALL)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, SHEN_MOT_IDLE_TALL), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, SHEN_MOT_IDLE_TALL), 10, 0, 2);
         }
-        em->timer = 0x1E;
+        em->timer = 30;
         break;
     case 1:
         if (em->motion[0].playing == 0 || --em->timer <= 0) {
@@ -1476,7 +1422,7 @@ void EmShenGaoren_TrampleBrief(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_LOW;
         Em_SetMotion(em, SHEN_MOT_TRAMPLE_TALL, 0, 0);
-        em->timer = 0x1E;
+        em->timer = 30;
         break;
     case 1:
         if (em->motion[0].playing == 0 || --em->timer <= 0) {
@@ -1522,7 +1468,7 @@ void EmShenGaoren_RunIdleState(Em *em)
 
 /*
  * SHEN_MOVE_WALK_TALL: SHEN_STANCE_TALL, plays SHEN_MOT_WALK_TALL, turns toward the
- * goal by 0x40 a frame when it has one, and ends when the forward travel of
+ * goal by 64 a frame when it has one, and ends when the forward travel of
  * the motion uses up goalDist.
  */
 void EmShenGaoren_WalkTall(Em *em)
@@ -1536,22 +1482,22 @@ void EmShenGaoren_WalkTall(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_TALL;
         Em_SetMotion(em, SHEN_MOT_WALK_TALL, 0, 0);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (em->hasGoal != 0) {
             turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
             if (turn <= 0x8000) {
-                if (turn <= 0x3F) {
+                if (turn <= 63) {
                     em->rotY += turn;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else {
                 if (turn > 0xFFC0) {
                     em->rotY += turn;
                 } else {
-                    em->rotY -= 0x40;
+                    em->rotY -= 64;
                 }
             }
         }
@@ -1585,22 +1531,22 @@ void EmShenGaoren_WalkBackTall(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_TALL;
         Em_SetMotion(em, SHEN_MOT_WALK_BACK_TALL, 0, 0);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (em->hasGoal != 0) {
             turn = ((((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0x8000) & 0xFFFF) - em->rotY) & 0xFFFF;
             if (turn <= 0x8000) {
-                if (turn <= 0x3F) {
+                if (turn <= 63) {
                     em->rotY += turn;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else {
                 if (turn > 0xFFC0) {
                     em->rotY += turn;
                 } else {
-                    em->rotY -= 0x40;
+                    em->rotY -= 64;
                 }
             }
         }
@@ -1633,22 +1579,22 @@ void EmShenGaoren_WalkLow(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_LOW;
         Em_SetMotion(em, SHEN_MOT_WALK_LOW, 0, 0);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (em->hasGoal != 0) {
             turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
             if (turn <= 0x8000) {
-                if (turn <= 0x3F) {
+                if (turn <= 63) {
                     em->rotY += turn;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else {
                 if (turn > 0xFFC0) {
                     em->rotY += turn;
                 } else {
-                    em->rotY -= 0x40;
+                    em->rotY -= 64;
                 }
             }
         }
@@ -1681,22 +1627,22 @@ void EmShenGaoren_WalkBackLow(Em *em)
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_LOW;
         Em_SetMotion(em, SHEN_MOT_WALK_BACK_LOW, 0, 0);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (em->hasGoal != 0) {
             turn = ((((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0x8000) & 0xFFFF) - em->rotY) & 0xFFFF;
             if (turn <= 0x8000) {
-                if (turn <= 0x3F) {
+                if (turn <= 63) {
                     em->rotY += turn;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else {
                 if (turn > 0xFFC0) {
                     em->rotY += turn;
                 } else {
-                    em->rotY -= 0x40;
+                    em->rotY -= 64;
                 }
             }
         }
@@ -1726,7 +1672,7 @@ void EmShenGaoren_TurnLow(Em *em)
         em->step++;
         em->stance = SHEN_STANCE_LOW;
         Em_StartTurnToTarget(em, &EmShenGaoren_TurnParams[1]);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[1]) == 1) {
@@ -1748,7 +1694,7 @@ void EmShenGaoren_TurnTall(Em *em)
         em->step++;
         em->stance = SHEN_STANCE_TALL;
         Em_StartTurnToTarget(em, &EmShenGaoren_TurnParams[0]);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[0]) == 1) {
@@ -1770,7 +1716,7 @@ void EmShenGaoren_TurnAwayTall(Em *em)
         em->step++;
         em->stance = SHEN_STANCE_TALL;
         Em_StartTurnAway(em, &EmShenGaoren_TurnParams[0]);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[0]) == 1) {
@@ -1792,7 +1738,7 @@ void EmShenGaoren_TurnAwayLow(Em *em)
         em->step++;
         em->stance = SHEN_STANCE_LOW;
         Em_StartTurnAway(em, &EmShenGaoren_TurnParams[1]);
-        em->speedBonus = 0x1E;
+        em->speedBonus = 30;
         break;
     case 1:
         if (Em_TurnStep(em, &EmShenGaoren_TurnParams[1]) == 1) {
@@ -1853,7 +1799,7 @@ void EmShenGaoren_ShotTall(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_TALL;
-        em->timer = 0x12C;
+        em->timer = 300;
         Em_SetMotion(em, SHEN_MOT_AIM_TALL, 0, 0);
         break;
     case 1:
@@ -1865,7 +1811,7 @@ void EmShenGaoren_ShotTall(Em *em)
         break;
     case 2:
         if (EmMotion_PassedFrameScaled(em, 4.0f, 0U) != 0) {
-            EmEffectAttack_Create(em, EMFX_SHEN_SHOT, 0, 0xF800, 0x8000);
+            EmEffectAttack_Create(em, EMFX_SHEN_SHOT, 0, 63488, 32768);
         }
         if (em->motion[0].playing == 0) {
             if (--em->timer <= 0) {
@@ -1904,7 +1850,7 @@ void EmShenGaoren_ShotLow(Em *em, s32 variant)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_LOW;
-        em->timer = 0x12C;
+        em->timer = 300;
         Em_SetMotion(em, SHEN_MOT_AIM_LOW, 0, 0);
         break;
     case 1:
@@ -1920,16 +1866,16 @@ void EmShenGaoren_ShotLow(Em *em, s32 variant)
             case 0:
                 area = em->area;
                 if (area != (Area_IdForCurrentTime(AREA_FORTRESS_5) & 0xFFFF)) {
-                    EmEffectAttack_Create(em, EMFX_SHEN_SHOT_AWAY, 0, 0xE800, 0x8000);
-                    EmEffectAttack_CreateShengaoren(em, EMFX_SHEN_SHOT_DROP, AREA_FORTRESS_5, 0x6000, 0);
+                    EmEffectAttack_Create(em, EMFX_SHEN_SHOT_AWAY, 0, 59392, 32768);
+                    EmEffectAttack_CreateShengaoren(em, EMFX_SHEN_SHOT_DROP, AREA_FORTRESS_5, 24576, 0);
                 } else {
-                    EmEffectAttack_Create(em, EMFX_SHEN_SHOT, 0, 0xF800, 0x8000);
+                    EmEffectAttack_Create(em, EMFX_SHEN_SHOT, 0, 63488, 32768);
                 }
                 if (em->remote == 0) {
                     hits = w->fortHits;
-                    if (hits < 0xA) {
+                    if (hits < 10) {
                         w->fortHits = hits + 1;
-                        if (w->fortHits >= 0xA) {
+                        if (w->fortHits >= 10) {
                             Quest_TriggerEvent(em);
                         }
                         gScene.fortStage = w->fortHits;
@@ -1937,12 +1883,12 @@ void EmShenGaoren_ShotLow(Em *em, s32 variant)
                 }
                 break;
             case 1:
-                EmEffectAttack_Create(em, EMFX_SHEN_SHOT_AWAY, 0, 0xE800, 0x8000);
-                EmEffectAttack_CreateShengaoren(em, EMFX_SHEN_SHOT_DROP, AREA_BATTLE_TOWN_2, 0x6000, 0);
+                EmEffectAttack_Create(em, EMFX_SHEN_SHOT_AWAY, 0, 59392, 32768);
+                EmEffectAttack_CreateShengaoren(em, EMFX_SHEN_SHOT_DROP, AREA_BATTLE_TOWN_2, 24576, 0);
                 break;
             case 2:
-                EmEffectAttack_Create(em, EMFX_SHEN_SHOT_AWAY, 0, 0xE800, 0x8000);
-                EmEffectAttack_CreateShengaoren(em, EMFX_SHEN_SHOT_DROP, AREA_BATTLE_TOWN_3, 0x6000, 0);
+                EmEffectAttack_Create(em, EMFX_SHEN_SHOT_AWAY, 0, 59392, 32768);
+                EmEffectAttack_CreateShengaoren(em, EMFX_SHEN_SHOT_DROP, AREA_BATTLE_TOWN_3, 24576, 0);
                 break;
             }
         }
@@ -2218,7 +2164,7 @@ void EmShenGaoren_FlinchLegLow(Em *em, s32 variant)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = SHEN_STANCE_LOW;
-        Em_SetMotion(em, variant + 0x37, 0, 0);
+        Em_SetMotion(em, variant + 55, 0, 0);
         Em_RestartScript(em);
         break;
     case 1:
@@ -2248,7 +2194,7 @@ void EmShenGaoren_CollapseLow(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->timer = 0x12C;
+            em->timer = 300;
             em->stance = SHEN_STANCE_TALL;
             Em_SetMotion(em, SHEN_MOT_DOWN_LOW, 0, 0);
         }
@@ -2287,7 +2233,7 @@ void EmShenGaoren_KnockdownTall(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->timer = 0x12C;
+            em->timer = 300;
             Em_SetMotion(em, SHEN_MOT_DOWN_TALL, 0, 0);
         }
         break;
@@ -2325,7 +2271,7 @@ void EmShenGaoren_CollapseFromShot(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             em->stance = SHEN_STANCE_TALL;
-            Em_SetMotion(em, SHEN_MOT_COLLAPSE, 0, 0x52);
+            Em_SetMotion(em, SHEN_MOT_COLLAPSE, 0, 82);
         }
         break;
     case 2:
@@ -2438,7 +2384,7 @@ void EmShenGaoren_DieTall(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, SHEN_MOT_DIE_LOW, 0, 0xC8);
+            Em_SetMotion(em, SHEN_MOT_DIE_LOW, 0, 200);
         }
         break;
     case 2:
@@ -2452,10 +2398,10 @@ void EmShenGaoren_DieTall(Em *em)
     case 3:
         EmMine_Update(em);
         break;
-    case 0x63:
+    case 99:
         em->step++;
         EmShenGaoren_RemoveMinePoints(em);
-        em->hp = 0x3415;
+        em->hp = 13333;
         EmShenGaoren_EndState(em);
         break;
     }
@@ -2488,9 +2434,9 @@ void EmShenGaoren_DieLow(Em *em)
     case 2:
         EmMine_Update(em);
         break;
-    case 0x63:
+    case 99:
         em->step++;
-        em->hp = 0x3415;
+        em->hp = 13333;
         EmShenGaoren_RemoveMinePoints(em);
         EmShenGaoren_EndState(em);
         break;
@@ -2535,7 +2481,7 @@ void EmShenGaoren_EventCutsceneShot(Em *em)
         em->goal[0] = 7127.0f;
         em->goal[1] = -266.0f;
         em->goal[2] = 10005.0f;
-        em->rotY = (u16) (Math_AngleXZ(&em->posX, em->goal) + 0x8000);
+        em->rotY = (u16) (Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 2);
         em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
         em->scriptPending = 0;
         break;
@@ -2549,7 +2495,7 @@ void EmShenGaoren_EventCutsceneShot(Em *em)
             em->goal[0] = 12961.0f;
             em->goal[1] = -266.0f;
             em->goal[2] = 10152.0f;
-            em->rotY = (u16) (Math_AngleXZ(&em->posX, em->goal) + 0x8000);
+            em->rotY = (u16) (Math_AngleXZ(&em->posX, em->goal) + ANGLE_TURN / 2);
             em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
         }
         break;
@@ -2579,7 +2525,7 @@ void EmShenGaoren_EventCutsceneShot(Em *em)
         break;
     case 5:
         if (EmMotion_PassedFrameScaled(em, 4.0f, 0)) {
-            EmEffectAttack_Create(em, EMFX_SHEN_SHOT, 0, 0xE800, 0x8000);
+            EmEffectAttack_Create(em, EMFX_SHEN_SHOT, 0, 59392, 32768);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -2624,7 +2570,7 @@ void EmShenGaoren_EventLeave(Em *em)
         em->goal[0] = 5481.0f;
         em->goal[1] = -2.0f;
         em->goal[2] = 16020.0f;
-        em->rotY = 0x7000;
+        em->rotY = ANGLE_TURN * 7 / 16;
         Em_StartTurnToTarget(em, &EmShenGaoren_TurnParams[0]);
         break;
     case 1:
@@ -2648,16 +2594,16 @@ void EmShenGaoren_EventLeave(Em *em)
     case 3:
         turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
         if (turn <= 0x8000) {
-            if (turn <= 0x3F) {
+            if (turn <= 63) {
                 em->rotY += turn;
             } else {
-                em->rotY += 0x40;
+                em->rotY += 64;
             }
         } else {
             if (turn > 0xFFC0) {
                 em->rotY += turn;
             } else {
-                em->rotY -= 0x40;
+                em->rotY -= 64;
             }
         }
         Em_MotionDelta(em, pos);
@@ -2907,28 +2853,28 @@ void EmShenGaoren_EaseDownPose(Em *em, EmWork *work)
     s32 row = 0;
 
     switch (w->fxMotion) {
-    case 0x3FE:
+    case EM_MOTION_ID(0, SHEN_MOT_FALL_TALL):
         if (EmMotion_ReachedFrame(em, 0, 86.0f)) {
             row = 1;
         }
         break;
-    case 0x3FF:
+    case EM_MOTION_ID(0, SHEN_MOT_DOWN_TALL):
         row = 1;
         break;
-    case 0x400:
+    case EM_MOTION_ID(0, SHEN_MOT_GET_UP_TALL):
         if (!EmMotion_ReachedFrame(em, 0, 94.0f)) {
             row = 1;
         }
         break;
-    case 0x41C:
+    case EM_MOTION_ID(0, SHEN_MOT_COLLAPSE):
         if (EmMotion_ReachedFrame(em, 0, 134.0f)) {
             row = 1;
         }
         break;
-    case 0x41D:
+    case EM_MOTION_ID(0, SHEN_MOT_DOWN_LOW):
         row = 1;
         break;
-    case 0x41E:
+    case EM_MOTION_ID(0, SHEN_MOT_GET_UP_LOW):
         if (!EmMotion_ReachedFrame(em, 0, 94.0f)) {
             row = 1;
         }
@@ -2944,8 +2890,8 @@ void EmShenGaoren_EaseDownPose(Em *em, EmWork *work)
 /*
  * If a player is in the area, spawns ground effect kind at the bone
  * position on the floor; flags bit 2 shakes the camera, bit 1 makes an
- * impact attack there and the leg stomp ShenGaorenAttack (kinds 0x12 to
- * 0x17 by bone).
+ * impact attack there and the limb's stomp (ShenGaorenAttack 18 to 23, by
+ * the bone where the limb sets down).
  */
 void EmShenGaoren_SpawnGroundEffect(Em *em, s32 bone, s32 kind, s32 flags, f32 scale)
 {
@@ -2961,23 +2907,23 @@ void EmShenGaoren_SpawnGroundEffect(Em *em, s32 bone, s32 kind, s32 flags, f32 s
         if (flags & 1) {
             EmImpactAttack_CreateAt(em, (f32 *) pos, 9);
             switch ((s16) bone) {
-            case 0x1A:
-                ShenGaorenAttack_Create(em, 0x12);
+            case SHEN_BONE_FOOT_C:
+                ShenGaorenAttack_Create(em, 18);
                 break;
-            case 0x16:
-                ShenGaorenAttack_Create(em, 0x13);
+            case SHEN_BONE_FOOT_B:
+                ShenGaorenAttack_Create(em, 19);
                 break;
-            case 0x12:
-                ShenGaorenAttack_Create(em, 0x14);
+            case SHEN_BONE_FOOT_A:
+                ShenGaorenAttack_Create(em, 20);
                 break;
-            case 0x1E:
-                ShenGaorenAttack_Create(em, 0x15);
+            case SHEN_BONE_FOOT_D:
+                ShenGaorenAttack_Create(em, 21);
                 break;
-            case 6:
-                ShenGaorenAttack_Create(em, 0x16);
+            case SHEN_BONE_ARM_B_TIP:
+                ShenGaorenAttack_Create(em, 22);
                 break;
-            case 0xA:
-                ShenGaorenAttack_Create(em, 0x17);
+            case SHEN_BONE_ARM_A_TIP:
+                ShenGaorenAttack_Create(em, 23);
                 break;
             }
         }
@@ -3027,79 +2973,79 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, SHEN_MOT_WALK_TALL):
     case EM_MOTION_ID(0, SHEN_MOT_WALK_LOW):
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 256.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 358.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 3, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_WALK_BACK_TALL):
     case EM_MOTION_ID(0, SHEN_MOT_WALK_BACK_LOW):
         if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 196.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 304.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 406.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 3, 2.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x4):
-    case EM_MOTION_ID(0, 0x21):
+    case EM_MOTION_ID(0, 4):
+    case EM_MOTION_ID(0, 33):
         if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 142.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 352.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 3, 2.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x5):
-    case EM_MOTION_ID(0, 0x22):
+    case EM_MOTION_ID(0, 5):
+    case EM_MOTION_ID(0, 34):
         if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 142.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 3, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 352.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 3, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 3, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_LOWER):
         if (EmMotion_PassedFrameScaled(em, 68.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 1, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 136.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 1, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 210.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 1, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 278.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 1, 2.0f);
             break;
         }
         break;
@@ -3108,10 +3054,10 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             ShenGaorenAttack_Create(em, 3);
         }
         if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0xB, 0x26, em->scaleX);
+            DustCloud_Create((Em *) em, 11, 38, em->scaleX);
             break;
         }
         break;
@@ -3120,10 +3066,10 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             ShenGaorenAttack_Create(em, 4);
         }
         if (EmMotion_PassedFrameScaled(em, 58.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0xB, 0x27, em->scaleX);
+            DustCloud_Create((Em *) em, 11, 39, em->scaleX);
             break;
         }
         break;
@@ -3144,73 +3090,73 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             ShenGaorenAttack_Create(em, 9);
         }
         if (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0xA);
+            ShenGaorenAttack_Create(em, 10);
         }
         if (EmMotion_PassedFrameScaled(em, 334.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0xB);
+            ShenGaorenAttack_Create(em, 11);
         }
         if ((EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 206.0f, 0) != 0)) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 6);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_ARM_B_TIP);
         }
         if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x1A);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_C);
         }
         if (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0xA);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_A_TIP, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_ARM_A_TIP);
         }
         if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x16);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_B);
         }
         if (EmMotion_PassedFrameScaled(em, 256.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x12);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_A);
         }
         if (EmMotion_PassedFrameScaled(em, 346.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x1E);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_D);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_AIM_TALL):
         if (EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_A_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 240.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
-            MonsterFx_CreateOnEm(em, 0x19, 1.0f);
+            MonsterFx_CreateOnEm(em, 25, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FIRE_TALL):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            MonsterFx_CreateOnEm(em, 0x1A, 1.0f);
+            MonsterFx_CreateOnEm(em, 26, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_SHOT_END_TALL):
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 198.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 4, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 4, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 292.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0xA, 4, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_A_TIP, 4, 0, 2.0f);
             break;
         }
         break;
@@ -3219,22 +3165,22 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             ShenGaorenAttack_Create(em, 2);
         }
         if (EmMotion_PassedFrameScaled(em, 144.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0xB, 0x26, em->scaleX);
+            DustCloud_Create((Em *) em, 11, 38, em->scaleX);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x14):
+    case EM_MOTION_ID(0, 20):
         if ((EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 178.0f, 0) != 0)) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 236.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 288.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
             break;
         }
         break;
@@ -3243,49 +3189,49 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             DustCloud_Create((Em *) em, 0, 0, em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0x18);
+            ShenGaorenAttack_Create(em, 24);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_GET_UP_TALL):
         if (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 338.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_DIE_TALL):
         if (EmMotion_PassedFrameScaled(em, 34.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 132.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 184.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_RISE):
         if (EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 1, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 1, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 340.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 1, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 438.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 1, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 1, 2.0f);
             break;
         }
         break;
@@ -3301,101 +3247,101 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             pos[0] = em->posX + ofs[0];
             pos[1] = em->floorY;
             pos[2] = em->posZ + ofs[2];
-            MonsterFx_CreateAtYaw(pos, (u16) em->rotY, 0x11, 1.0f);
+            MonsterFx_CreateAtYaw(pos, (u16) em->rotY, 17, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_TRAMPLE_LOW):
         if (EmMotion_PassedFrameScaled(em, 82.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0xC);
+            ShenGaorenAttack_Create(em, 12);
         }
         if (EmMotion_PassedFrameScaled(em, 146.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0xD);
+            ShenGaorenAttack_Create(em, 13);
         }
         if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0xE);
+            ShenGaorenAttack_Create(em, 14);
         }
         if (EmMotion_PassedFrameScaled(em, 166.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0xF);
+            ShenGaorenAttack_Create(em, 15);
         }
         if (EmMotion_PassedFrameScaled(em, 242.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0x10);
+            ShenGaorenAttack_Create(em, 16);
         }
         if (EmMotion_PassedFrameScaled(em, 334.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0x11);
+            ShenGaorenAttack_Create(em, 17);
         }
         if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x1A);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_C);
         }
         if (EmMotion_PassedFrameScaled(em, 160.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 2, 0x26, em->scaleX);
+            DustCloud_Create((Em *) em, 2, 38, em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 3, 0x27, em->scaleX);
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            DustCloud_Create((Em *) em, 3, 39, em->scaleX);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 256.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x12);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_A);
         }
         if (EmMotion_PassedFrameScaled(em, 346.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
-            EmShenGaoren_SpawnFootEffect(em, 0x1E);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
+            EmShenGaoren_SpawnFootEffect(em, SHEN_BONE_FOOT_D);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_AIM_LOW):
         if (EmMotion_PassedFrameScaled(em, 88.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_A_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 158.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 248.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 380.0f, 0) != 0) {
-            MonsterFx_CreateOnEm(em, 0x19, 1.0f);
+            MonsterFx_CreateOnEm(em, 25, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FIRE_LOW):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            MonsterFx_CreateOnEm(em, 0x1A, 1.0f);
+            MonsterFx_CreateOnEm(em, 26, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_SHOT_END_LOW):
         if (EmMotion_PassedFrameScaled(em, 176.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 192.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 4, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 4, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 278.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0xA, 4, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_A_TIP, 4, 0, 2.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x32):
+    case EM_MOTION_ID(0, 50):
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 178.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 236.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 288.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
             break;
         }
         break;
@@ -3404,52 +3350,52 @@ void EmShenGaoren_MotionEffects(Em *em, EmWork *work)
             DustCloud_Create((Em *) em, 0, 0, em->scaleX);
         }
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
-            ShenGaorenAttack_Create(em, 0x19);
+            ShenGaorenAttack_Create(em, 25);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_GET_UP_LOW):
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0xA, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_A_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 126.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 6, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_ARM_B_TIP, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 338.0f, 0) != 0) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_C):
         if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1A, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_C, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_A):
         if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x12, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_A, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_D):
         if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x1E, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_D, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_FLINCH_LEG_B):
         if ((EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0)) {
-            EmShenGaoren_SpawnGroundEffect(em, 0x16, 7, 0, 2.0f);
+            EmShenGaoren_SpawnGroundEffect(em, SHEN_BONE_FOOT_B, 7, 0, 2.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, SHEN_MOT_DIE_LOW):
         if (EmMotion_PassedFrameScaled(em, 414.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0, 0x28, em->scaleX);
+            DustCloud_Create((Em *) em, 0, 40, em->scaleX);
             break;
         }
         break;
@@ -3512,11 +3458,11 @@ void EmShenGaoren_SpawnAreaImpactEffects(Em *em, s32 flag)
         pos[2] = 12400.0f;
         break;
     }
-    Em_PlaySeChecked(em, 0x45, 0, pos, 9, 0);
-    Em_PlaySeChecked(em, 0x44, 0, pos, 9, 0);
+    Em_PlaySeChecked(em, 69, 0, pos, 9, 0);
+    Em_PlaySeChecked(em, 68, 0, pos, 9, 0);
     HitSpark_SpawnForOwner(em, 0, 9, 0, pos, 3.0f);
     HitSpark_SpawnForOwner(em, 0, 9, 1, pos, 3.0f);
-    PartFx_SpawnIfHere(em, pos, 0x22, 30.0f);
+    PartFx_SpawnIfHere(em, pos, 34, 30.0f);
     CamShake_ReqARange(em, 2, 2);
 }
 
@@ -3543,6 +3489,6 @@ f32 EmShenGaoren_DownEaseTargets[2][4] = {
 #include "game/008CA0C0.inc"
 };
 void *EmShenGaoren_Callbacks[8] = {
-    EmShenGaoren_SpawnEffect01, EmShenGaoren_SpawnEffect01, EmShenGaoren_TableNop, EmShenGaoren_UpdateMotionEffects,
+    EmShenGaoren_SpawnShadow, EmShenGaoren_SpawnShadow, EmShenGaoren_TableNop, EmShenGaoren_UpdateMotionEffects,
     EmShenGaoren_ScriptQuery, EmShenGaoren_TableNop, NULL, NULL,
 };

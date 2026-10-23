@@ -47,4 +47,6 @@ typedef struct EquipPreviewEye {
     f32 x, y, z;
 } EquipPreviewEye;
 
+void Em_DrawParts(DrawSlot *drawSlot);
+
 #endif

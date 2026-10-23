@@ -2,39 +2,34 @@
  * Monster helpers: area and player checks, hit points (Em_ComputeMaxHp,
  * Em_RegenHp), the level's attack and damage factors, the trap hold time,
  * motion rows, the per-area timers, and sound effects played at a bone when
- * the motion reaches a frame. The .data holds each area's ground height
- * (gAreaGroundY), the area point sets (gEmKindTables_68_0, gEmGoalPosSets,
- * gEmKindTables_68_2), the route sets (gEmRouteSets) and Em_PartEffectTbl.
+ * the motion reaches a frame. Then the monsters' movement: flight steering
+ * (Em_UpdateFlight), turning toward the target player or the goal
+ * (Em_TurnToTargetMotion, Em_TurnToGoal, and the turning motions of
+ * Em_StartTurn and Em_TurnStep), the walk to the goal (Em_StepToGoal), and
+ * the search for a monster of a kind nearby (EmList_FindKindNear). The
+ * .data holds each area's ground height (gAreaGroundY), the area point sets
+ * (gEmKindTables_68_0, gEmGoalPosSets, gEmKindTables_68_2), the route sets
+ * (gEmRouteSets) and Em_PartEffectTbl.
  */
 
 #include "quest.h"
+#include "save.h"
 #include "em.h"
 #include "player.h"
+#include "capsule.h"
+#include "area.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+#include "em_script.h"
+#include "sound.h"
 
-typedef struct EmIdPair {
-    s16 id;             /* 0x0: >= 10000: an exact Em.area + 10000; -1 ends the table */
-    s16 value;          /* 0x2 */
-} EmIdPair;
-
-
-/* Per-kind rows (12 bytes), selected by Em.level. */
-typedef struct EmScaleRow {
-    f32 hpScale;        /* the base hp's factor (Em_ComputeMaxHp: hpMax) */
-    f32 attackFactor;   /* Em.attackFactor's */
-    f32 damageFactor;   /* Em.damageFactor's */
-} EmScaleRow;
-
-extern EmScaleRow *gEmScaleRows[];
-extern s16 *gEmBaseHp[];
-extern f32 *gEmVersusHpFactors[];
-extern f32 gEmSizeLevelFactors[];
-extern f32 gEmLowHpRatios[];
-extern EmMotionRow *gEmMotionRows[];
-extern EmIdPair *gEmAreaTimer2Values[];
-extern EmIdPair *gEmAreaTimer1Values[];
+extern EmAreaValue *gEmAreaTimer2Values[];
+extern EmAreaValue *gEmAreaTimer1Values[];
 extern s8 gSeVolumeByType[];
 
-/* Effects shown when a part record changes state (0x14 bytes). */
+/* Effects shown when a part record changes state (20 bytes). */
 typedef struct EmPartEffect {
     u8 kind;            /* 0x00: compared with Em.type through Em_KindMatches */
     u8 part;            /* 0x01: index into Em.parts */
@@ -45,45 +40,17 @@ typedef struct EmPartEffect {
     f32 offset[3];      /* 0x08: from the bone */
 } EmPartEffect;
 
-extern EmPartEffect Em_PartEffectTbl[0x2A];
+extern EmPartEffect Em_PartEffectTbl[42];
 
-s32 Obj_SameArea(void *obj, Player *b);
-s32 Quest_IsVersus(void);
-s32 MonsterNote_Index(u16 id);
-s8 Versus_Team(s8 a);
-u16 Area_DayId(u16 id);
-u8 MonsterGroup_First(u8 a);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
 void Player_BeginLayerMotion(Player *p, s32 frame, s32 n, s32 part);
 s32 Player_UpdateMotion(struct Player *em);
-void Em_UpdateMatrix(Em *em);
 s32 EmMotion_PassedFrameScaled(void *em, f32 frame, u8 a); /* unit's own declaration: with the definition's s32 (Player *p, f32 frame, s32 layer) (declared with a u8 layer as the two layer-frame sound functions pass it; with the definition's s32 their calls compile differently) */
 s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void Mtx_GetTrans(f32 *out, f32 *m);
-s32 Sound_PlayEmSe(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Em_PlaySeType(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 a, s32 b, s32 layer);
-u8 Player_InCurrentArea(void *obj);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Vec_Copy(f32 *out, f32 *in);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void Em_BreakPart(Em *em, s32 part);
-s32 Em_KindMatches(u8 a, u8 b);
-EmObj *Em_FindGoalAction(Em *em);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_ApplyActionStatus(Em *em, EmObj *action);
-void EmScript_Run(Em *em);
-void Em_RestartScript(Em *em);
-void EmTail_Drop(struct StageObj *fx);
-void Em_SetHitReactMode(Em *em, u8 a);
-f32 Em_LevelAttackFactor(Em *em);
-f32 Em_LevelDamageFactor(Em *em);
-void Em_SetAreaTimer1(Em *em, EmIdPair *pair);
-void Em_SetAreaTimer2(Em *em, EmIdPair *pair);
-void Em_PlaySeAtBoneVol(Em *em, s32 se, s32 bone, s32 vol);
+void Em_SetAreaTimer1(Em *em, EmAreaValue *pair);
+void Em_SetAreaTimer2(Em *em, EmAreaValue *pair);
+AreaRecord *Stage_GetAreaRecord(s32 area); /* unit's own declaration: the area declared s32; with the definition's u16 the callers would mask it to 16 bits first (Em_UpdateFlight), which the game's code doesn't */
+f32 Vec_Distance(f32 *a, f32 *b);
 
 /*
  * Keeps a monster in combat in place while no hunter is in its area. Clears
@@ -221,7 +188,7 @@ s32 Em_ComputeMaxHp(Em *em, s16 idx)
     if (Quest_IsVersus() == 1) {
         s32 noteIndex = MonsterNote_Index(em->type);
 
-        if (noteIndex != 0xFF) {
+        if (noteIndex != MONSTER_NOTE_NONE) {
             hp = 1700.0f * *gEmVersusHpFactors[noteIndex] * gEmSizeLevelFactors[em->level];
             hp *= gQuest.teams[Versus_Team(em->side)].sizeScale / 100.0f;
         } else {
@@ -274,22 +241,22 @@ f32 Em_LevelDamageFactor(Em *em)
 }
 
 /*
- * Sets trapTimer, how long a trap holds the monster. EM_KIND_RAJANG gets 0x9C
- * frames. Otherwise it is 0x340 when the monster was out of combat before the
- * hit (*p is Em_UpdateDamage's out), 0x208 when calm, and 0x138 when enraged.
+ * Sets trapTimer, how long a trap holds the monster. EM_KIND_RAJANG gets 156
+ * frames. Otherwise it is 832 when the monster was out of combat before the
+ * hit (*p is Em_UpdateDamage's out), 520 when calm, and 312 when enraged.
  * The families call it on EM_DMG_ATTACK9 and EM_DMG_ATTACK6, before their
  * trapped state.
  */
 void Em_SetTrapTime(Em *em, u8 *wasInCombat)
 {
     if (em->type == EM_KIND_RAJANG) {
-        em->trapTimer = 0x9C;
+        em->trapTimer = 156;
     } else if (*wasInCombat == 0) {
-        em->trapTimer = 0x340;
+        em->trapTimer = 832;
     } else if (em->rage == 0) {
-        em->trapTimer = 0x208;
+        em->trapTimer = 520;
     } else {
-        em->trapTimer = 0x138;
+        em->trapTimer = 312;
     }
 }
 
@@ -388,7 +355,7 @@ void Em_SpawnPartEffects(Em *em, u8 mask)
         if (!(mask & bit)) {
             continue;
         }
-        for (j = 0; j < 0x2A; j++) {
+        for (j = 0; j < 42; j++) {
             if (Em_KindMatches(em->type, Em_PartEffectTbl[j].kind) && Em_PartEffectTbl[j].part == i
                 && em->parts[i].state == Em_PartEffectTbl[j].state) {
                 partEffect = &Em_PartEffectTbl[j];
@@ -416,7 +383,7 @@ void Em_SpawnPartEffects(Em *em, u8 mask)
 
 /*
  * Returns the monster to the ground pose: EM_STANCE_GROUND, fxFlags bit 1
- * set, mesh 1 hidden. Unless layer 0 already plays it, it sets motion 0x53 on
+ * set, mesh 1 hidden. Unless layer 0 already plays it, it sets motion 83 on
  * layers 0-2 and rebuilds the rotation matrix, the motion and the bone
  * matrices. Then it places its tail object (tailObj, EmTail_Drop).
  */
@@ -427,10 +394,10 @@ void Em_ResetToBasePose(Em *em)
     em->stance = 0;
     em->fxFlags |= 1;
     em->meshShown[1] = 0;
-    if (em->motionId[0] != 0x43B) {
-        Em_SetLayerMotion(em, 0x43B, 0, 0, 0);
-        Em_SetLayerMotion(em, 0x503, 0, 0, 1);
-        Em_SetLayerMotion(em, 0x5CB, 0, 0, 2);
+    if (em->motionId[0] != 1083) {
+        Em_SetLayerMotion(em, 1083, 0, 0, 0);
+        Em_SetLayerMotion(em, 1283, 0, 0, 1);
+        Em_SetLayerMotion(em, 1483, 0, 0, 2);
         em->rotX = (u16)em->rotX;
         em->rotY = (u16)em->rotY;
         em->rotZ = (u16)em->rotZ;
@@ -479,8 +446,8 @@ void Em_UseGoalAction(Em *em)
 
 /*
  * Starts row `row` of the kind's motion table (gEmMotionRows) from frame 0
- * with no blend, on the layers the row names: -1 all; 0-2 that one; 0x10,
- * 0x11, 0x12 all but layer 2, 1, 0. Keeps the row's blend in rowBlend, after
+ * with no blend, on the layers the row names: -1 all; 0-2 that one; 16,
+ * 17, 18 all but layer 2, 1, 0. Keeps the row's blend in rowBlend, after
  * first rebuilding rotMtx. The last two arguments are unused.
  */
 void Em_SetMotionRow(Em *em, s32 row, s32 unused2, s32 unused3)
@@ -500,17 +467,17 @@ void Em_SetMotionRow(Em *em, s32 row, s32 unused2, s32 unused3)
                 continue;
             }
             break;
-        case 0x10:
+        case 16:
             if (i == 2) {
                 continue;
             }
             break;
-        case 0x11:
+        case 17:
             if (i == 1) {
                 continue;
             }
             break;
-        case 0x12:
+        case 18:
             if (i == 0) {
                 continue;
             }
@@ -542,7 +509,7 @@ s32 Em_KindMatches(u8 kindA, u8 kindB)
  * smaller one by Area_DayId). With no match it uses the value of the -1 entry
  * that ends the list.
  */
-void Em_SetAreaTimer1(Em *em, EmIdPair *pair)
+void Em_SetAreaTimer1(Em *em, EmAreaValue *pair)
 {
     s16 id = pair->id;
 
@@ -563,7 +530,7 @@ void Em_SetAreaTimer1(Em *em, EmIdPair *pair)
 }
 
 /* As Em_SetAreaTimer1, for areaTimer2. */
-void Em_SetAreaTimer2(Em *em, EmIdPair *pair)
+void Em_SetAreaTimer2(Em *em, EmAreaValue *pair)
 {
     s16 id = pair->id;
 
@@ -596,21 +563,21 @@ void Em_ApplyAreaValues(Em *em)
 /*
  * Returns 1 for Yian Kut-Ku, Blue Yian Kut-Ku, Cephadrome, Gypceros, Purple
  * Gypceros, Basarios, Khezu, Red Khezu and Yian Garuga. For these,
- * PartFx_InitForEm's type 7 effect with mode 2 makes RathalosAttack 0x2F
- * instead of 0xE.
+ * PartFx_InitForEm's type 7 effect with mode 2 makes RathalosAttack 47
+ * instead of 14.
  */
 s32 Em_TypeUsesK14(u8 type)
 {
     switch (type) {
     case 6:
-    case 0x26:
+    case 38:
     case 8:
-    case 0x14:
-    case 0x27:
-    case 0x16:
-    case 0xF:
-    case 0x2D:
-    case 0x28:
+    case 20:
+    case 39:
+    case 22:
+    case 15:
+    case 45:
+    case 40:
         return 1;
     }
     return 0;
@@ -830,824 +797,1455 @@ s32 Em_IsSyncFree(Em *em, u8 mode)
     return 0;
 }
 
+/* Flight steering (em_chameleos calls it with EmChameleos_FlyParam): banks (em->rotZ) toward the
+ * angle em->aimAngle (copied to em->flightTurn) and turns the heading (em->rotY) by the bank, keeps
+ * the height over the ground (Stage_GetAreaRecord) and picks the flight motions from fly by the
+ * bank. Flag bits skip parts: 2 the bank-scaled turn, 4 the height, 8 the motions, 0x10 the
+ * return of em->rotX to 0 (by fly->roll a frame). */
+void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *fly)
+{
+    AreaRecord *ground;
+    s32 k;
+    s32 sel;
+    s32 turnSize;
+    s32 bank;
+    s32 step;
+    s32 bankHigh;
+    s32 bankLow;
+    f32 sink;
+    f32 minHeight;
+
+    ground = Stage_GetAreaRecord(em->area);
+    em->flightTurn = em->aimAngle;
+    k = !(flags & 0x20);
+    turnSize = em->flightTurn;
+    if (turnSize >= 0x8000) {
+        turnSize = 0x10000 - turnSize;
+    }
+    switch (k) {
+    case 0:
+        if (turnSize <= fly->lim0) {
+            sel = fly->a0;
+        } else if (turnSize <= fly->lim1) {
+            sel = fly->a1;
+        } else if (turnSize <= fly->lim2) {
+            sel = fly->a2;
+        } else if (turnSize <= fly->lim3) {
+            sel = fly->a3;
+        }
+        if (em->velZ <= 130.0f) {
+            break;
+        }
+    case 1:
+        if (turnSize <= fly->lim0) {
+            sel = fly->b0;
+        } else if (turnSize <= fly->lim1) {
+            sel = fly->b1;
+        } else if (turnSize <= fly->lim2) {
+            sel = fly->b2;
+        } else if (turnSize <= fly->lim3) {
+            sel = fly->b3;
+        }
+        break;
+    }
+    if (em->flightTurn != 0) {
+        if (em->flightTurn <= 0x8000) {
+            if (em->rotZ <= ANGLE_TURN / 4) {
+                em->rotZ = em->rotZ - fly->pitch * 2;
+            } else if (em->rotZ <= sel || em->rotZ > ANGLE_TURN - sel) {
+                em->rotZ = em->rotZ - fly->pitch;
+            } else if (em->rotZ != ANGLE_TURN - sel) {
+                em->rotZ = em->rotZ + fly->pitch;
+            }
+        } else {
+            if (em->rotZ >= ANGLE_TURN * 3 / 4) {
+                em->rotZ = em->rotZ + fly->pitch * 2;
+            } else if (em->rotZ < sel || em->rotZ >= ANGLE_TURN - sel) {
+                em->rotZ = em->rotZ + fly->pitch;
+            } else if (em->rotZ != sel) {
+                em->rotZ = em->rotZ - fly->pitch;
+            }
+        }
+    } else if (em->rotZ != 0) {
+        if (em->rotZ <= sel) {
+            em->rotZ = em->rotZ - fly->pitch;
+        } else if (em->rotZ >= ANGLE_TURN - sel) {
+            em->rotZ = em->rotZ + fly->pitch;
+        }
+    }
+    if (!(flags & 2)) {
+        bank = em->rotZ;
+        bank = bank < 0x8000 ? bank : (u16) (0x10000 - bank);
+        if (bank <= 4096) {
+            step = fly->turn;
+        } else {
+            step = fly->turn + (bank - 4096) / 16;
+        }
+    } else {
+        step = fly->turn;
+    }
+    if (em->rotZ != 0) {
+        if (flags & 0x100) {
+            bankHigh = 0x10000;
+            bankLow = 0;
+        } else {
+            bankHigh = 61440;
+            bankLow = 4096;
+        }
+        if (em->rotZ <= bankHigh && em->rotZ >= ANGLE_TURN * 3 / 4) {
+            if (em->flightTurn <= step) {
+                em->rotY = em->rotY + em->flightTurn;
+                em->flightTurn = 0;
+            } else {
+                em->rotY = em->rotY + step;
+                em->flightTurn = em->flightTurn - step;
+            }
+        } else if (em->rotZ >= bankLow && em->rotZ <= ANGLE_TURN / 4) {
+            if (em->flightTurn >= 0x10000 - step) {
+                em->rotY = em->rotY - (ANGLE_TURN - em->flightTurn);
+                em->flightTurn += 0x10000 - em->flightTurn;
+            } else {
+                em->rotY = em->rotY - step;
+                em->flightTurn = em->flightTurn + step;
+            }
+        }
+    }
+    em->rotY = (u16) em->rotY;
+    em->flightTurn = (u16) em->flightTurn;
+    if (flags & 0x40) {
+        bank = em->rotZ;
+        if (bank >= 0x8000) {
+            bank = 0x10000 - bank;
+        }
+        if (bank < 4096) {
+            sink = 0.1f;
+        } else {
+            sink = 6.2831855f * bank / 65536.0f;
+        }
+        if (!(flags & 4)) {
+            em->posY = em->posY - sink;
+            if (em->velZ >= 50.0f && sink != 0.1f) {
+                em->velZ = em->velZ - sink;
+            }
+        }
+        if (em->posY < em->floorY) {
+            em->posY = em->floorY;
+        }
+    }
+    if (!(flags & 4)) {
+        if (flags & 0x400) {
+            minHeight = gAreaGroundY[em->area] - 2000.0f;
+            if (minHeight < ground->bottom) {
+                minHeight = ground->bottom;
+            }
+        } else {
+            minHeight = ground->bottom;
+        }
+        if (flags & 0x80) {
+            if (fly->mot[0] + 1000 == em->motionId[0]) {
+                if (em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
+                }
+                if (1000.0f + minHeight >= em->posY) {
+                    em->posY = em->posY + 5.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 1.0f;
+                    }
+                } else if (1500.0f + minHeight >= em->posY) {
+                    em->posY = em->posY + 3.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 0.5f;
+                    }
+                } else if (2000.0f + minHeight >= em->posY) {
+                    em->posY = em->posY + 2.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 0.5f;
+                    }
+                } else {
+                    if (2100.0f + minHeight >= em->posY) {
+                        em->posY = em->posY + 1.0f;
+                    }
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 1.0f;
+                    }
+                }
+            } else if (2000.0f + minHeight >= em->posY || em->velZ <= fly->speedMin) {
+                Em_SetMotion(em, fly->mot[0], 0, 0);
+            }
+        } else if (flags & 0x200) {
+            if (fly->mot[0] + 1000 == em->motionId[0]) {
+                if (em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
+                }
+                if (em->goal[1] >= em->posY) {
+                    em->posY = em->posY + 5.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 1.0f;
+                    }
+                } else if (1500.0f + minHeight >= em->posY) {
+                    em->posY = em->posY + 3.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 0.5f;
+                    }
+                } else if (2000.0f + minHeight >= em->posY) {
+                    em->posY = em->posY + 2.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 0.5f;
+                    }
+                } else {
+                    if (2100.0f + minHeight >= em->posY) {
+                        em->posY = em->posY + 1.0f;
+                    }
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 1.0f;
+                    }
+                }
+            } else if (2000.0f + minHeight >= em->posY || em->velZ <= fly->speedMin) {
+                Em_SetMotion(em, fly->mot[0], 0, 0);
+            }
+        } else {
+            if (fly->mot[0] + 1000 == em->motionId[0]) {
+                if (em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
+                }
+                if (em->goal[1] >= em->posY) {
+                    em->posY = em->posY + 5.0f;
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 1.0f;
+                    }
+                } else {
+                    if (em->goal[1] >= em->posY) {
+                        em->posY = em->posY + 1.0f;
+                    }
+                    if (em->velZ < fly->speedMax) {
+                        em->velZ = em->velZ + 1.0f;
+                    }
+                }
+            } else if (em->goal[1] >= em->posY || em->velZ <= fly->speedMin) {
+                Em_SetMotion(em, fly->mot[0], 0, 0);
+            }
+        }
+    }
+    if (!(flags & 8)) {
+        if (fly->mot[0] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+            bank = em->rotZ;
+            if (bank < 0x8000) {
+                if (bank > fly->up0) {
+                    if (fly->mot[2] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                        Em_SetMotion(em, fly->mot[2], 0, 0);
+                    }
+                } else if (bank > fly->up1) {
+                    if (fly->mot[3] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                        Em_SetMotion(em, fly->mot[3], 0, 0);
+                    }
+                } else {
+                    if (fly->mot[1] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                        Em_SetMotion(em, fly->mot[1], 0, 0);
+                    }
+                }
+            } else if (bank < fly->down0) {
+                if (fly->mot[4] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[4], 0, 0);
+                }
+            } else if (bank < fly->down1) {
+                if (fly->mot[5] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[5], 0, 0);
+                }
+            } else {
+                if (fly->mot[1] + 1000 != em->motionId[0] && em->motion[0].playing == 0) {
+                    Em_SetMotion(em, fly->mot[1], 0, 0);
+                }
+            }
+        }
+    }
+    if (!(flags & 0x10)) {
+        if (em->rotX != 0) {
+            if (em->rotX < (ANGLE_TURN / 2)) {
+                em->rotX = em->rotX - fly->roll;
+            } else {
+                em->rotX = em->rotX + fly->roll;
+            }
+            em->rotX = (u16) em->rotX;
+        }
+    }
+}
+
+/*
+ * Returns 1 when some active monster in em's area, not in the air (stance 2),
+ * lies within dist of em on the ground plane (Vec_DistanceXZ), else 0. With
+ * mode 1 only a monster of exactly type kind counts (it must also pass
+ * Em_KindMatches); with any other mode every kind counts. em itself is not
+ * skipped.
+ */
+s32 EmList_FindKindNear(Em *em, u16 kind, s32 mode, f32 dist)
+{
+    s32 i;
+    Em *other;
+
+    for (i = 0, other = gEms; i < 20; i++, other++) {
+        if (other->active != 0) {
+            if (mode == 1) {
+                if (Em_KindMatches(other->type, kind) == 0) {
+                    continue;
+                }
+                if (kind != other->type) {
+                    continue;
+                }
+            }
+            if ((u8)Obj_SameArea(em, (Player *)other) != 0 && other->stance != 2 && Vec_DistanceXZ(&em->posX, &other->posX) <= dist) {
+                return 1;
+            }
+        }
+    }
+    return 0;
+}
+
+/*
+ * Sets em->aimAngle to the turn still needed to face the target player
+ * (em->targetNo): the angle from em->mapPos to the target's point in map
+ * coordinates, minus the heading rotY. Does nothing with no target (targetNo
+ * -1).
+ */
+void Em_AimAtTarget(Em *em)
+{
+    f32 pos[3];
+    f32 world[3];
+    s8 targetNo;
+
+    targetNo = em->targetNo;
+    if (targetNo != -1) {
+        Em_GetTargetPos(em, targetNo & 0xFF, pos);
+        Area_ToWorld((s32) ((Player *) &gPlayers[targetNo])->area, pos, world);
+        em->aimAngle = Math_AngleXZ(em->mapPos, world);
+        em->aimAngle = em->aimAngle - em->rotY;
+    }
+}
+
+/*
+ * Prepares a turn toward the target: clears em->turnStep, then sets
+ * em->targetAngle to the angle from em->mapPos to the target player's point
+ * in map coordinates (and em->target to that player), or to em->stateRand
+ * when there is no target (targetNo -1).
+ */
+void Em_SetTargetAngle(Em *em)
+{
+    f32 pos[3];
+    f32 targetWorld[3];
+    Player *pl;
+    s8 i;
+
+    em->turnStep = 0;
+    i = em->targetNo;
+    if (i == -1) {
+        em->targetAngle = em->stateRand;
+    } else {
+        pl = &gPlayers[i];
+        em->target = pl;
+        Em_GetTargetPos(em, (u8) em->targetNo, pos);
+        Area_ToWorld((s32) pl->area, pos, targetWorld);
+        em->targetAngle = (u16) Math_AngleXZ(em->mapPos, targetWorld);
+    }
+}
+
+/*
+ * Turns the monster to em->targetAngle with turning motions, one call per
+ * frame; returns 1 when the turn is done (at once if targetAngle is within
+ * 0x200 of 0), else 0. Step 0 (em->turnStep) sets lookAtTarget and aimAngle
+ * and plays motFront (setting PLF_NO_ROOT_MOVE) when the angle left is within
+ * range, else motLeft when it is half a turn or more, else motRight. Step 1 turns
+ * rotY by 0x200 a frame toward aimAngle and repeats the choice when the
+ * motion ends or reaches frame 110. Within 0x200 of aimAngle it snaps rotY to
+ * it, clears lookAtTarget and PLF_NO_ROOT_MOVE and returns 1.
+ */
+s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight)
+{
+    u32 angleDelta;
+
+    switch (em->turnStep) {
+    case 0:
+        em->turnStep++;
+        em->lookAtTarget = 1;
+        em->aimAngle = em->targetAngle;
+        angleDelta = (u16) (em->targetAngle - em->rotY);
+        if ((u16) (em->targetAngle + 0x200) <= 0x400) {
+            return 1;
+        }
+        if ((u16) angleDelta <= range || (u16) angleDelta >= ANGLE_TURN - range) {
+            Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
+            Em_SetMotion(em, motFront, 0, 0);
+        } else if ((u16) angleDelta >= ANGLE_TURN / 2) {
+            Em_SetMotion(em, motLeft, 0, 0);
+        } else {
+            Em_SetMotion(em, motRight, 0, 0);
+        }
+        break;
+    case 1:
+        angleDelta = (u16) (em->aimAngle - (u16) em->rotY);
+        if (em->motion[0].playing == 0 || EmMotion_ReachedFrame(em, 0, 110.0f)) {
+            if (angleDelta <= range || angleDelta >= ANGLE_TURN - range) {
+                Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
+                Em_SetMotion(em, motFront, 0, 0);
+            } else {
+                Player_ClearFlag((Player *) em, PLF_NO_ROOT_MOVE);
+                if (angleDelta >= ANGLE_TURN / 2) {
+                    Em_SetMotion(em, motLeft, 0, 0);
+                } else {
+                    Em_SetMotion(em, motRight, 0, 0);
+                }
+            }
+        } else if (((angleDelta + 0x200) & 0xFFFF) < 0x400) {
+            Player_ClearFlag((Player *) em, PLF_NO_ROOT_MOVE);
+            em->rotY = em->aimAngle;
+            em->lookAtTarget = 0;
+            return 1;
+        } else if (angleDelta < (ANGLE_TURN / 2)) {
+            em->rotY = (u16) (em->rotY + 0x200);
+        } else {
+            em->rotY = (u16) (em->rotY - 0x200);
+        }
+        break;
+    }
+    return 0;
+}
+
+/*
+ * Sets em->goalDist, the distance left to the goal, with x and y scaled by
+ * the monster's size (GmEm_ScaleBySize). With no goal it is x, and hasGoal is
+ * 0. Otherwise it is the distance to the goal (flags 8: in three dimensions,
+ * else on the ground), less the margin y for goal kind 1 with no argument
+ * (unless flags 4; with no target player, x and no goal) and for goal kind 7
+ * (unless flags 2), never below 0.
+ */
+void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y)
+{
+    f32 noGoalDist;
+    f32 stopMargin;
+
+    noGoalDist = GmEm_ScaleBySize(em, x);
+    stopMargin = GmEm_ScaleBySize(em, y);
+    if (em->curGoalKind == 0) {
+        em->hasGoal = 0;
+        em->goalDist = noGoalDist;
+        return;
+    }
+    em->hasGoal = 1;
+    if ((flags & 8) == 8) {
+        em->goalDist = Vec_Distance(&em->posX, em->goal);
+    } else {
+        em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
+    }
+    if ((flags & 4) != 4 && em->curGoalKind == 1 && em->curGoalArg == 0) {
+        if (em->targetNo == -1) {
+            em->hasGoal = 0;
+            em->goalDist = noGoalDist;
+            return;
+        }
+        em->goalDist -= stopMargin;
+        if (em->goalDist <= 0.0f) {
+            em->goalDist = 0.0f;
+        }
+    }
+    if ((flags & 2) != 2 && em->curGoalKind == 7) {
+        em->goalDist -= stopMargin;
+        if (em->goalDist <= 0.0f) {
+            em->goalDist = 0.0f;
+        }
+    }
+}
+
+/*
+ * Moves the monster toward its goal for one frame: when em->hasGoal is set it
+ * first turns toward the goal by up to step (Em_TurnToGoal), then takes this
+ * frame's forward movement off em->goalDist. flags bit 0: count the movement
+ * only when hasGoal is set; bit 1: the movement is em->velZ, else the
+ * motion's own (Em_MotionDelta); bit 2: count its size, so moving backward
+ * also shortens the distance. Returns 1 once goalDist is 0 or less (the goal
+ * is reached), else 0.
+ */
+s32 Em_StepToGoal(Em *em, u16 step, u8 flags)
+{
+    f32 motionDelta[4];
+    f32 forwardMove;
+
+    if (em->hasGoal != 0) {
+        Em_TurnToGoal(em, step, 0);
+    }
+    if ((flags & 1) != 1 || (em->hasGoal != 0 && (flags & 1) == 1)) {
+        if ((flags & 2) == 2) {
+            if ((flags & 4) != 4) {
+                em->goalDist -= em->velZ;
+            } else if (em->velZ >= 0.0f) {
+                em->goalDist -= em->velZ;
+            } else {
+                em->goalDist += em->velZ;
+            }
+        } else {
+            Em_MotionDelta(em, motionDelta);
+            if ((flags & 4) != 4) {
+                em->goalDist = em->goalDist - motionDelta[2];
+            } else {
+                forwardMove = motionDelta[2];
+                if (forwardMove >= 0.0f) {
+                    em->goalDist -= forwardMove;
+                } else {
+                    em->goalDist += forwardMove;
+                }
+            }
+        }
+    }
+    return em->goalDist <= 0.0f;
+}
+
+/*
+ * Turns em->rotY toward an angle by at most step; returns 1 once it faces it
+ * (the angle left is within step, and rotY is set to it), else 0. The angle
+ * is the one to em->goal, or with flags bit 1 the one to the target player's
+ * point (returning 1 with no target); bit 2 turns away instead (the angle
+ * plus half a turn), and bit 0 returns 1 at once when the monster has no goal
+ * (curGoalKind 0).
+ */
+u8 Em_TurnToGoal(Em *em, u16 step, u8 flags)
+{
+    f32 pos[4];
+    f32 targetWorld[4];
+    u8 done = 0;
+    s8 i;
+    u16 ang;
+    u16 angleDelta;
+
+    if ((flags & 1) && em->curGoalKind == 0) {
+        return 1;
+    }
+    if (flags & 2) {
+        i = em->targetNo;
+        if (i == -1) {
+            return 1;
+        }
+        Em_GetTargetPos(em, i, pos);
+        Area_ToWorld((s32) ((Player *) &gPlayers[i])->area, pos, targetWorld);
+        ang = Math_AngleXZ(em->mapPos, targetWorld);
+    } else {
+        ang = Math_AngleXZ(&em->posX, em->goal);
+    }
+    if (flags & 4) {
+        ang += ANGLE_TURN / 2;
+    }
+    angleDelta = ang - em->rotY;
+    if (angleDelta <= ANGLE_TURN / 2) {
+        if (angleDelta < step) {
+            em->rotY += angleDelta;
+            done = 1;
+        } else {
+            em->rotY += step;
+        }
+    } else if (0x10000 - step < angleDelta) {
+        em->rotY += angleDelta;
+        done = 1;
+    } else {
+        em->rotY -= step;
+    }
+    em->rotY = (u16) em->rotY;
+    return done;
+}
+
+/*
+ * Starts a turning motion toward em->goal (away from it when back is
+ * nonzero): sets em->aimAngle to that angle, then plays row turn's motFront
+ * (setting PLF_NO_ROOT_MOVE) when turn->range is nonzero and the angle left is
+ * within it, else motLeft when the angle left is half a turn or more, else
+ * motRight. Em_TurnStep carries the turn on.
+ */
+void Em_StartTurn(Em *em, EmTurnParams *turn, s32 back)
+{
+    u32 angleDelta;
+
+    if (back == 0) {
+        em->aimAngle = Math_AngleXZ((f32 *) &em->posX, em->goal);
+    } else {
+        em->aimAngle = (u16) Math_AngleXZ((f32 *) &em->posX, em->goal) - ANGLE_TURN / 2;
+    }
+    angleDelta = (u16) (em->aimAngle - em->rotY);
+    if (turn->range != 0 && (angleDelta <= turn->range || angleDelta >= ANGLE_TURN - turn->range)) {
+        Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
+        Em_SetMotion(em, turn->motFront, 0, 0);
+    } else if (angleDelta >= ANGLE_TURN / 2) {
+        Em_SetMotion(em, turn->motLeft, 0, 0);
+    } else {
+        Em_SetMotion(em, turn->motRight, 0, 0);
+    }
+}
+
+void Em_StartTurnToTarget(Em *em, EmTurnParams *turn)
+{
+    Em_StartTurn(em, turn, 0);
+}
+
+void Em_StartTurnAway(Em *em, EmTurnParams *turn)
+{
+    Em_StartTurn(em, turn, 1);
+}
+
+/*
+ * Carries on a turn begun by Em_StartTurn, once a frame; returns 1 when the
+ * turn is finished, else 0 (always 0 while the motion blends). Each frame it
+ * turns em->rotY toward em->aimAngle by a step worked out from row w
+ * (w->angle spread over half the motion's frames, or over half of w->from to
+ * w->to, scaled by speedBonus and motionSpeed), only within the frames from
+ * to when those are set. When the motion has ended or reached frame w->frame
+ * (if above 0) it returns 1 if the angle left is within one step, else starts
+ * the next turn motion as Em_StartTurn does.
+ */
+s32 Em_TurnStep(Em *em, EmTurnParams *w)
+{
+    u32 step;
+    u32 angleDelta;
+    s32 reachedFrame;
+
+    if (em->motion[0].blend != 0) {
+        return 0;
+    }
+    if (w->from == 0.0f && w->to == 0.0f) {
+        step = (em->speedBonus + 100) * (em->motionSpeed * (w->angle / (em->motion[0].frameCount / 2.0f))) / 100.0f;
+    } else {
+        step = (em->speedBonus + 100) * (em->motionSpeed * (w->angle / ((w->to - w->from) / 2.0f))) / 100.0f;
+    }
+    angleDelta = (u16) (em->aimAngle - (u16) em->rotY);
+    if (w->frame <= 0.0f) {
+        reachedFrame = 0;
+    } else {
+        reachedFrame = EmMotion_ReachedFrame(em, 0, w->frame);
+    }
+    if (em->motion[0].playing == 0 || reachedFrame != 0) {
+        if (((angleDelta + step) & 0xFFFF) < step * 2) {
+            return 1;
+        }
+        if (w->range != 0 && (angleDelta <= w->range || angleDelta >= ANGLE_TURN - w->range)) {
+            Player_SetFlag((Player *) em, PLF_NO_ROOT_MOVE);
+            Em_SetMotion(em, w->motFront, 0, 0);
+        } else {
+            Player_ClearFlag((Player *) em, PLF_NO_ROOT_MOVE);
+            if (angleDelta >= ANGLE_TURN / 2) {
+                Em_SetMotion(em, w->motLeft, 0, 0);
+            } else {
+                Em_SetMotion(em, w->motRight, 0, 0);
+            }
+        }
+    } else if ((w->from == 0.0f && w->to == 0.0f) || EmMotion_InFrameRange(em, 0, w->from, w->to) == 1) {
+        if (((angleDelta + step) & 0xFFFF) < step * 2) {
+            em->rotY = em->aimAngle;
+        } else if (angleDelta < (ANGLE_TURN / 2)) {
+            em->rotY = (u16) (em->rotY + step);
+        } else {
+            em->rotY = (u16) (em->rotY - step);
+        }
+    }
+    return 0;
+}
+
+void Em_ClearTilt(Em *em, s32 unused)
+{
+    em->rotX = 0;
+    em->rotZ = 0;
+}
+
 /*
  * The file's data: the per-area tables the monsters'
  * area lookups read (em->tables, Em_AreaEntryValue, Em_FindAreaEntry):
  * ground heights, point sets, four-point sets and route sets; then
- * Em_PartEffectTbl.
+ * Em_PartEffectTbl. The point sets are EmAreaPoints lists whose points are
+ * three floats each; a route set (EmRouteSet) lists an area's routes
+ * (EmRoute), each a list of route points (EmRoutePt): em.h.
  */
-typedef struct MapRoutePt {
-    f32 x, y, z;
-    f32 r;
-    s32 flag;
-} MapRoutePt;
-typedef struct MapRoute {
-    s16 id;
-    u16 n;
-    MapRoutePt *pts;
-    u32 pad[4];
-} MapRoute;
-/* {id, count, the count's positions (Vec3)}, up to {-1, 0, NULL} */
-typedef struct MapPosSet {
-    s16 id;
-    u16 n;
-    f32 *pos;
-} MapPosSet;
-typedef struct MapRouteSet {
-    s16 id;
-    u16 n;
-    MapRoute *routes;
-} MapRouteSet;
 extern f32 gEmGoalPosSets_119[];
-extern f32 gEmKindTables_68_2_72[];
-extern MapRoute D_008C30C0[];
+extern f32 gEmKindTables_68_2_72[][3];
+extern EmRoute gEmRouteSets_24[];
 f32 gAreaGroundY[200] = {
 #include "game/008BF9C0.inc"
 };
-f32 gEmKindTables_68_0_4[4] = {
+f32 gEmKindTables_68_0_4[1][3] = {
 #include "game/008BFCE0.inc"
 };
-f32 gEmKindTables_68_0_5[4] = {
+f32 gEmKindTables_68_0_5[1][3] = {
 #include "game/008BFCF0.inc"
 };
-f32 gEmKindTables_68_0_6[4] = {
+f32 gEmKindTables_68_0_6[1][3] = {
 #include "game/008BFD00.inc"
 };
-f32 gEmKindTables_68_0_7[4] = {
+f32 gEmKindTables_68_0_7[1][3] = {
 #include "game/008BFD10.inc"
 };
-f32 gEmKindTables_68_0_8[16] = {
+f32 gEmKindTables_68_0_8[5][3] = {
 #include "game/008BFD20.inc"
 };
-f32 gEmKindTables_68_0_9[12] = {
+f32 gEmKindTables_68_0_9[4][3] = {
 #include "game/008BFD60.inc"
 };
-f32 gEmKindTables_68_0_10[4] = {
+f32 gEmKindTables_68_0_10[1][3] = {
 #include "game/008BFD90.inc"
 };
-f32 gEmKindTables_68_0_11[4] = {
+f32 gEmKindTables_68_0_11[1][3] = {
 #include "game/008BFDA0.inc"
 };
-f32 gEmKindTables_68_0_14[4] = {
+f32 gEmKindTables_68_0_14[1][3] = {
 #include "game/008BFDB0.inc"
 };
-f32 gEmGoalPosSets_123[4] = {
+f32 gEmGoalPosSets_123[1][3] = {
 #include "game/008BFDC0.inc"
 };
-f32 gEmKindTables_68_0_18[4] = {
+f32 gEmKindTables_68_0_18[1][3] = {
 #include "game/008BFDD0.inc"
 };
-f32 gEmKindTables_68_0_19[46] = {
+f32 gEmKindTables_68_0_19[15][3] = {
 #include "game/008BFDE0.inc"
 };
-f32 gEmKindTables_68_0_21[3] = {
+f32 gEmKindTables_68_0_21[1][3] = {
 #include "game/008BFE98.inc"
 };
-f32 gEmKindTables_68_0_22[18] = {
+f32 gEmKindTables_68_0_22[6][3] = {
 #include "game/008BFEB0.inc"
 };
-f32 gEmKindTables_68_0_23[3] = {
+f32 gEmKindTables_68_0_23[1][3] = {
 #include "game/008BFEF8.inc"
 };
-f32 gEmKindTables_68_0_24[16] = {
+f32 gEmKindTables_68_0_24[5][3] = {
 #include "game/008BFF10.inc"
 };
-f32 gEmKindTables_68_0_25[4] = {
+f32 gEmKindTables_68_0_25[1][3] = {
 #include "game/008BFF50.inc"
 };
-f32 gEmGoalPosSets_124[76] = {
+f32 gEmGoalPosSets_124[25][3] = {
 #include "game/008BFF60.inc"
 };
-f32 gEmGoalPosSets_125[4] = {
+f32 gEmGoalPosSets_125[1][3] = {
 #include "game/008C0090.inc"
 };
-f32 gEmGoalPosSets_126[8] = {
+f32 gEmGoalPosSets_126[2][3] = {
 #include "game/008C00A0.inc"
 };
-f32 gEmGoalPosSets_127[12] = {
+f32 gEmGoalPosSets_127[4][3] = {
 #include "game/008C00C0.inc"
 };
-f32 gEmGoalPosSets_128[12] = {
+f32 gEmGoalPosSets_128[4][3] = {
 #include "game/008C00F0.inc"
 };
-f32 gEmGoalPosSets_129[22] = {
+f32 gEmGoalPosSets_129[7][3] = {
 #include "game/008C0120.inc"
 };
-f32 gEmGoalPosSets_130[3] = {
+f32 gEmGoalPosSets_130[1][3] = {
 #include "game/008C0178.inc"
 };
-f32 gEmGoalPosSets_131[8] = {
+f32 gEmGoalPosSets_131[2][3] = {
 #include "game/008C0190.inc"
 };
-f32 gEmGoalPosSets_132[12] = {
+f32 gEmGoalPosSets_132[4][3] = {
 #include "game/008C01B0.inc"
 };
-f32 gEmGoalPosSets_133[6] = {
+f32 gEmGoalPosSets_133[2][3] = {
 #include "game/008C01E0.inc"
 };
-f32 gEmGoalPosSets_134[3] = {
+f32 gEmGoalPosSets_134[1][3] = {
 #include "game/008C01F8.inc"
 };
-f32 gEmGoalPosSets_135[6] = {
+f32 gEmGoalPosSets_135[2][3] = {
 #include "game/008C0210.inc"
 };
-f32 gEmKindTables_68_0_47[3] = {
+f32 gEmKindTables_68_0_47[1][3] = {
 #include "game/008C0228.inc"
 };
-f32 gEmKindTables_68_0_65[8] = {
+f32 gEmKindTables_68_0_65[2][3] = {
 #include "game/008C0240.inc"
 };
-f32 gEmKindTables_68_0_48[10] = {
+f32 gEmKindTables_68_0_48[3][3] = {
 #include "game/008C0260.inc"
 };
-f32 gEmKindTables_68_0_56[3] = {
+f32 gEmKindTables_68_0_56[1][3] = {
 #include "game/008C0288.inc"
 };
-f32 gEmKindTables_68_0_68[12] = {
+f32 gEmKindTables_68_0_68[4][3] = {
 #include "game/008C02A0.inc"
 };
-f32 gEmKindTables_68_0_69[34] = {
+f32 gEmKindTables_68_0_69[11][3] = {
 #include "game/008C02D0.inc"
 };
-f32 gEmKindTables_68_0_70[3] = {
+f32 gEmKindTables_68_0_70[1][3] = {
 #include "game/008C0358.inc"
 };
-f32 gEmKindTables_68_0_71[3] = {
+f32 gEmKindTables_68_0_71[1][3] = {
 #include "game/008C0368.inc"
 };
-f32 gEmKindTables_68_0_72[12] = {
+f32 gEmKindTables_68_0_72[4][3] = {
 #include "game/008C0380.inc"
 };
-f32 gEmKindTables_68_0_73[10] = {
+f32 gEmKindTables_68_0_73[3][3] = {
 #include "game/008C03B0.inc"
 };
-f32 gEmKindTables_68_0_0[3] = {
+f32 gEmKindTables_68_0_0[1][3] = {
 #include "game/008C03D8.inc"
 };
-f32 gEmKindTables_68_0_1[3] = {
+f32 gEmKindTables_68_0_1[1][3] = {
 #include "game/008C03E8.inc"
 };
-f32 gEmKindTables_68_0_2[10] = {
+f32 gEmKindTables_68_0_2[3][3] = {
 #include "game/008C0400.inc"
 };
-f32 gEmKindTables_68_0_3[3] = {
+f32 gEmKindTables_68_0_3[1][3] = {
 #include "game/008C0428.inc"
 };
-f32 gEmKindTables_68_0_12[3] = {
+f32 gEmKindTables_68_0_12[1][3] = {
 #include "game/008C0438.inc"
 };
-f32 gEmKindTables_68_0_13[12] = {
+f32 gEmKindTables_68_0_13[4][3] = {
 #include "game/008C0450.inc"
 };
-f32 gEmKindTables_68_0_16[4] = {
+f32 gEmKindTables_68_0_16[1][3] = {
 #include "game/008C0480.inc"
 };
-f32 gEmKindTables_68_0_17[4] = {
+f32 gEmKindTables_68_0_17[1][3] = {
 #include "game/008C0490.inc"
 };
-f32 gEmKindTables_68_0_20[4] = {
+f32 gEmKindTables_68_0_20[1][3] = {
 #include "game/008C04A0.inc"
 };
-f32 gEmKindTables_68_0_89[4] = {
+f32 gEmKindTables_68_0_89[1][3] = {
 #include "game/008C04B0.inc"
 };
-f32 gEmGoalPosSets_84[4] = {
+f32 gEmGoalPosSets_84[1][3] = {
 #include "game/008C04C0.inc"
 };
-f32 gEmGoalPosSets_85[10] = {
+f32 gEmGoalPosSets_85[3][3] = {
 #include "game/008C04D0.inc"
 };
-f32 gEmGoalPosSets_86[3] = {
+f32 gEmGoalPosSets_86[1][3] = {
 #include "game/008C04F8.inc"
 };
-f32 gEmGoalPosSets_87[3] = {
+f32 gEmGoalPosSets_87[1][3] = {
 #include "game/008C0508.inc"
 };
-f32 gEmGoalPosSets_88[10] = {
+f32 gEmGoalPosSets_88[3][3] = {
 #include "game/008C0520.inc"
 };
-f32 gEmGoalPosSets_89[3] = {
+f32 gEmGoalPosSets_89[1][3] = {
 #include "game/008C0548.inc"
 };
-f32 gEmGoalPosSets_90[3] = {
+f32 gEmGoalPosSets_90[1][3] = {
 #include "game/008C0558.inc"
 };
-f32 gEmGoalPosSets_92[3] = {
+f32 gEmGoalPosSets_92[1][3] = {
 #include "game/008C0568.inc"
 };
-f32 gEmGoalPosSets_93[3] = {
+f32 gEmGoalPosSets_93[1][3] = {
 #include "game/008C0578.inc"
 };
-f32 gEmGoalPosSets_94[10] = {
+f32 gEmGoalPosSets_94[3][3] = {
 #include "game/008C0590.inc"
 };
-f32 gEmGoalPosSets_95[3] = {
+f32 gEmGoalPosSets_95[1][3] = {
 #include "game/008C05B8.inc"
 };
-f32 gEmGoalPosSets_96[3] = {
+f32 gEmGoalPosSets_96[1][3] = {
 #include "game/008C05C8.inc"
 };
-f32 gEmGoalPosSets_97[3] = {
+f32 gEmGoalPosSets_97[1][3] = {
 #include "game/008C05D8.inc"
 };
-f32 gEmGoalPosSets_98[3] = {
+f32 gEmGoalPosSets_98[1][3] = {
 #include "game/008C05E8.inc"
 };
-f32 gEmGoalPosSets_99[10] = {
+f32 gEmGoalPosSets_99[3][3] = {
 #include "game/008C0600.inc"
 };
-f32 gEmGoalPosSets_100[3] = {
+f32 gEmGoalPosSets_100[1][3] = {
 #include "game/008C0628.inc"
 };
-f32 gEmGoalPosSets_101[3] = {
+f32 gEmGoalPosSets_101[1][3] = {
 #include "game/008C0638.inc"
 };
-f32 gEmGoalPosSets_102[3] = {
+f32 gEmGoalPosSets_102[1][3] = {
 #include "game/008C0648.inc"
 };
-f32 gEmGoalPosSets_103[3] = {
+f32 gEmGoalPosSets_103[1][3] = {
 #include "game/008C0658.inc"
 };
-f32 gEmGoalPosSets_104[3] = {
+f32 gEmGoalPosSets_104[1][3] = {
 #include "game/008C0668.inc"
 };
-f32 gEmGoalPosSets_105[3] = {
+f32 gEmGoalPosSets_105[1][3] = {
 #include "game/008C0678.inc"
 };
-f32 gEmGoalPosSets_106[3] = {
+f32 gEmGoalPosSets_106[1][3] = {
 #include "game/008C0688.inc"
 };
-f32 gEmGoalPosSets_107[3] = {
+f32 gEmGoalPosSets_107[1][3] = {
 #include "game/008C0698.inc"
 };
-f32 gEmGoalPosSets_108[3] = {
+f32 gEmGoalPosSets_108[1][3] = {
 #include "game/008C06A8.inc"
 };
-f32 gEmGoalPosSets_109[3] = {
+f32 gEmGoalPosSets_109[1][3] = {
 #include "game/008C06B8.inc"
 };
-f32 gEmGoalPosSets_110[3] = {
+f32 gEmGoalPosSets_110[1][3] = {
 #include "game/008C06C8.inc"
 };
-f32 gEmGoalPosSets_111[3] = {
+f32 gEmGoalPosSets_111[1][3] = {
 #include "game/008C06D8.inc"
 };
-f32 gEmGoalPosSets_112[3] = {
+f32 gEmGoalPosSets_112[1][3] = {
 #include "game/008C06E8.inc"
 };
-f32 gEmGoalPosSets_113[3] = {
+f32 gEmGoalPosSets_113[1][3] = {
 #include "game/008C06F8.inc"
 };
-f32 gEmGoalPosSets_114[3] = {
+f32 gEmGoalPosSets_114[1][3] = {
 #include "game/008C0708.inc"
 };
-f32 gEmGoalPosSets_115[3] = {
+f32 gEmGoalPosSets_115[1][3] = {
 #include "game/008C0718.inc"
 };
-f32 gEmGoalPosSets_116[3] = {
+f32 gEmGoalPosSets_116[1][3] = {
 #include "game/008C0728.inc"
 };
-f32 gEmGoalPosSets_117[18] = {
+f32 gEmGoalPosSets_117[6][3] = {
 #include "game/008C0740.inc"
 };
-f32 gEmGoalPosSets_118[3] = {
+f32 gEmGoalPosSets_118[1][3] = {
 #include "game/008C0788.inc"
 };
 f32 gEmGoalPosSets_119[8] = {
 #include "game/008C07A0.inc"
 };
-MapPosSet gEmKindTables_68_0[143] = {
+EmAreaPoints gEmKindTables_68_0[143] = {
 #include "game/008C07C0.inc"
 };
-f32 gEmGoalPosSets_4[3] = {
+f32 gEmGoalPosSets_4[1][3] = {
 #include "game/008C0C38.inc"
 };
-f32 gEmGoalPosSets_5[3] = {
+f32 gEmGoalPosSets_5[1][3] = {
 #include "game/008C0C48.inc"
 };
-f32 gEmGoalPosSets_6[3] = {
+f32 gEmGoalPosSets_6[1][3] = {
 #include "game/008C0C58.inc"
 };
-f32 gEmGoalPosSets_7[3] = {
+f32 gEmGoalPosSets_7[1][3] = {
 #include "game/008C0C68.inc"
 };
-f32 gEmGoalPosSets_8[3] = {
+f32 gEmGoalPosSets_8[1][3] = {
 #include "game/008C0C78.inc"
 };
-f32 gEmGoalPosSets_9[3] = {
+f32 gEmGoalPosSets_9[1][3] = {
 #include "game/008C0C88.inc"
 };
-f32 gEmGoalPosSets_10[3] = {
+f32 gEmGoalPosSets_10[1][3] = {
 #include "game/008C0C98.inc"
 };
-f32 gEmGoalPosSets_11[3] = {
+f32 gEmGoalPosSets_11[1][3] = {
 #include "game/008C0CA8.inc"
 };
-f32 gEmGoalPosSets_12[3] = {
+f32 gEmGoalPosSets_12[1][3] = {
 #include "game/008C0CB8.inc"
 };
-f32 gEmGoalPosSets_15[3] = {
+f32 gEmGoalPosSets_15[1][3] = {
 #include "game/008C0CC8.inc"
 };
-f32 gEmGoalPosSets_16[3] = {
+f32 gEmGoalPosSets_16[1][3] = {
 #include "game/008C0CD8.inc"
 };
-f32 gEmGoalPosSets_19[3] = {
+f32 gEmGoalPosSets_19[1][3] = {
 #include "game/008C0CE8.inc"
 };
-f32 gEmGoalPosSets_20[3] = {
+f32 gEmGoalPosSets_20[1][3] = {
 #include "game/008C0CF8.inc"
 };
-f32 gEmGoalPosSets_22[3] = {
+f32 gEmGoalPosSets_22[1][3] = {
 #include "game/008C0D08.inc"
 };
-f32 gEmGoalPosSets_23[3] = {
+f32 gEmGoalPosSets_23[1][3] = {
 #include "game/008C0D18.inc"
 };
-f32 gEmGoalPosSets_24[3] = {
+f32 gEmGoalPosSets_24[1][3] = {
 #include "game/008C0D28.inc"
 };
-f32 gEmGoalPosSets_25[3] = {
+f32 gEmGoalPosSets_25[1][3] = {
 #include "game/008C0D38.inc"
 };
-f32 gEmGoalPosSets_26[3] = {
+f32 gEmGoalPosSets_26[1][3] = {
 #include "game/008C0D48.inc"
 };
-f32 gEmGoalPosSets_27[3] = {
+f32 gEmGoalPosSets_27[1][3] = {
 #include "game/008C0D58.inc"
 };
-f32 gEmGoalPosSets_28[3] = {
+f32 gEmGoalPosSets_28[1][3] = {
 #include "game/008C0D68.inc"
 };
-f32 gEmGoalPosSets_29[3] = {
+f32 gEmGoalPosSets_29[1][3] = {
 #include "game/008C0D78.inc"
 };
-f32 gEmGoalPosSets_30[3] = {
+f32 gEmGoalPosSets_30[1][3] = {
 #include "game/008C0D88.inc"
 };
-f32 gEmGoalPosSets_31[3] = {
+f32 gEmGoalPosSets_31[1][3] = {
 #include "game/008C0D98.inc"
 };
-f32 gEmGoalPosSets_32[3] = {
+f32 gEmGoalPosSets_32[1][3] = {
 #include "game/008C0DA8.inc"
 };
-f32 gEmGoalPosSets_33[3] = {
+f32 gEmGoalPosSets_33[1][3] = {
 #include "game/008C0DB8.inc"
 };
-f32 gEmGoalPosSets_34[3] = {
+f32 gEmGoalPosSets_34[1][3] = {
 #include "game/008C0DC8.inc"
 };
-f32 gEmGoalPosSets_35[3] = {
+f32 gEmGoalPosSets_35[1][3] = {
 #include "game/008C0DD8.inc"
 };
-f32 gEmGoalPosSets_36[3] = {
+f32 gEmGoalPosSets_36[1][3] = {
 #include "game/008C0DE8.inc"
 };
-f32 gEmGoalPosSets_37[3] = {
+f32 gEmGoalPosSets_37[1][3] = {
 #include "game/008C0DF8.inc"
 };
-f32 gEmGoalPosSets_38[3] = {
+f32 gEmGoalPosSets_38[1][3] = {
 #include "game/008C0E08.inc"
 };
-f32 gEmGoalPosSets_39[3] = {
+f32 gEmGoalPosSets_39[1][3] = {
 #include "game/008C0E18.inc"
 };
-f32 gEmGoalPosSets_40[3] = {
+f32 gEmGoalPosSets_40[1][3] = {
 #include "game/008C0E28.inc"
 };
-f32 gEmGoalPosSets_41[3] = {
+f32 gEmGoalPosSets_41[1][3] = {
 #include "game/008C0E38.inc"
 };
-f32 gEmGoalPosSets_42[3] = {
+f32 gEmGoalPosSets_42[1][3] = {
 #include "game/008C0E48.inc"
 };
-f32 gEmGoalPosSets_43[3] = {
+f32 gEmGoalPosSets_43[1][3] = {
 #include "game/008C0E58.inc"
 };
-f32 gEmGoalPosSets_44[3] = {
+f32 gEmGoalPosSets_44[1][3] = {
 #include "game/008C0E68.inc"
 };
-f32 gEmGoalPosSets_45[3] = {
+f32 gEmGoalPosSets_45[1][3] = {
 #include "game/008C0E78.inc"
 };
-f32 gEmGoalPosSets_46[3] = {
+f32 gEmGoalPosSets_46[1][3] = {
 #include "game/008C0E88.inc"
 };
-f32 gEmGoalPosSets_47[3] = {
+f32 gEmGoalPosSets_47[1][3] = {
 #include "game/008C0E98.inc"
 };
-f32 gEmGoalPosSets_48[3] = {
+f32 gEmGoalPosSets_48[1][3] = {
 #include "game/008C0EA8.inc"
 };
-f32 gEmGoalPosSets_49[3] = {
+f32 gEmGoalPosSets_49[1][3] = {
 #include "game/008C0EB8.inc"
 };
-f32 gEmGoalPosSets_50[3] = {
+f32 gEmGoalPosSets_50[1][3] = {
 #include "game/008C0EC8.inc"
 };
-f32 gEmGoalPosSets_51[3] = {
+f32 gEmGoalPosSets_51[1][3] = {
 #include "game/008C0ED8.inc"
 };
-f32 gEmGoalPosSets_52[3] = {
+f32 gEmGoalPosSets_52[1][3] = {
 #include "game/008C0EE8.inc"
 };
-f32 gEmGoalPosSets_53[3] = {
+f32 gEmGoalPosSets_53[1][3] = {
 #include "game/008C0EF8.inc"
 };
-f32 gEmGoalPosSets_54[3] = {
+f32 gEmGoalPosSets_54[1][3] = {
 #include "game/008C0F08.inc"
 };
-f32 gEmGoalPosSets_55[3] = {
+f32 gEmGoalPosSets_55[1][3] = {
 #include "game/008C0F18.inc"
 };
-f32 gEmGoalPosSets_56[3] = {
+f32 gEmGoalPosSets_56[1][3] = {
 #include "game/008C0F28.inc"
 };
-f32 gEmGoalPosSets_57[3] = {
+f32 gEmGoalPosSets_57[1][3] = {
 #include "game/008C0F38.inc"
 };
-f32 gEmGoalPosSets_58[3] = {
+f32 gEmGoalPosSets_58[1][3] = {
 #include "game/008C0F48.inc"
 };
-f32 gEmGoalPosSets_59[3] = {
+f32 gEmGoalPosSets_59[1][3] = {
 #include "game/008C0F58.inc"
 };
-f32 gEmGoalPosSets_60[3] = {
+f32 gEmGoalPosSets_60[1][3] = {
 #include "game/008C0F68.inc"
 };
-f32 gEmGoalPosSets_61[3] = {
+f32 gEmGoalPosSets_61[1][3] = {
 #include "game/008C0F78.inc"
 };
-f32 gEmGoalPosSets_62[3] = {
+f32 gEmGoalPosSets_62[1][3] = {
 #include "game/008C0F88.inc"
 };
-f32 gEmGoalPosSets_63[3] = {
+f32 gEmGoalPosSets_63[1][3] = {
 #include "game/008C0F98.inc"
 };
-f32 gEmGoalPosSets_64[3] = {
+f32 gEmGoalPosSets_64[1][3] = {
 #include "game/008C0FA8.inc"
 };
-f32 gEmGoalPosSets_65[3] = {
+f32 gEmGoalPosSets_65[1][3] = {
 #include "game/008C0FB8.inc"
 };
-f32 gEmGoalPosSets_66[3] = {
+f32 gEmGoalPosSets_66[1][3] = {
 #include "game/008C0FC8.inc"
 };
-f32 gEmGoalPosSets_67[3] = {
+f32 gEmGoalPosSets_67[1][3] = {
 #include "game/008C0FD8.inc"
 };
-f32 gEmGoalPosSets_68[3] = {
+f32 gEmGoalPosSets_68[1][3] = {
 #include "game/008C0FE8.inc"
 };
-f32 gEmGoalPosSets_69[3] = {
+f32 gEmGoalPosSets_69[1][3] = {
 #include "game/008C0FF8.inc"
 };
-f32 gEmGoalPosSets_70[3] = {
+f32 gEmGoalPosSets_70[1][3] = {
 #include "game/008C1008.inc"
 };
-f32 gEmGoalPosSets_71[3] = {
+f32 gEmGoalPosSets_71[1][3] = {
 #include "game/008C1018.inc"
 };
-f32 gEmGoalPosSets_72[3] = {
+f32 gEmGoalPosSets_72[1][3] = {
 #include "game/008C1028.inc"
 };
-f32 gEmGoalPosSets_0[3] = {
+f32 gEmGoalPosSets_0[1][3] = {
 #include "game/008C1038.inc"
 };
-f32 gEmGoalPosSets_1[3] = {
+f32 gEmGoalPosSets_1[1][3] = {
 #include "game/008C1048.inc"
 };
-f32 gEmGoalPosSets_2[3] = {
+f32 gEmGoalPosSets_2[1][3] = {
 #include "game/008C1058.inc"
 };
-f32 gEmGoalPosSets_3[3] = {
+f32 gEmGoalPosSets_3[1][3] = {
 #include "game/008C1068.inc"
 };
-f32 gEmGoalPosSets_13[3] = {
+f32 gEmGoalPosSets_13[1][3] = {
 #include "game/008C1078.inc"
 };
-f32 gEmGoalPosSets_14[3] = {
+f32 gEmGoalPosSets_14[1][3] = {
 #include "game/008C1088.inc"
 };
-f32 gEmGoalPosSets_17[3] = {
+f32 gEmGoalPosSets_17[1][3] = {
 #include "game/008C1098.inc"
 };
-f32 gEmGoalPosSets_18[12] = {
+f32 gEmGoalPosSets_18[4][3] = {
 #include "game/008C10B0.inc"
 };
-f32 gEmGoalPosSets_21[4] = {
+f32 gEmGoalPosSets_21[1][3] = {
 #include "game/008C10E0.inc"
 };
-f32 gEmGoalPosSets_83[4] = {
+f32 gEmGoalPosSets_83[1][3] = {
 #include "game/008C10F0.inc"
 };
-MapPosSet gEmGoalPosSets[137] = {
+EmAreaPoints gEmGoalPosSets[137] = {
 #include "game/008C1100.inc"
 };
-f32 gEmKindTables_68_2_7[12] = {
+f32 gEmKindTables_68_2_7[4][3] = {
 #include "game/008C1550.inc"
 };
-f32 gEmKindTables_68_2_8[12] = {
+f32 gEmKindTables_68_2_8[4][3] = {
 #include "game/008C1580.inc"
 };
-f32 gEmKindTables_68_2_9[12] = {
+f32 gEmKindTables_68_2_9[4][3] = {
 #include "game/008C15B0.inc"
 };
-f32 gEmKindTables_68_2_10[12] = {
+f32 gEmKindTables_68_2_10[4][3] = {
 #include "game/008C15E0.inc"
 };
-f32 gEmKindTables_68_2_11[12] = {
+f32 gEmKindTables_68_2_11[4][3] = {
 #include "game/008C1610.inc"
 };
-f32 gEmKindTables_68_2_12[12] = {
+f32 gEmKindTables_68_2_12[4][3] = {
 #include "game/008C1640.inc"
 };
-f32 gEmKindTables_68_2_13[12] = {
+f32 gEmKindTables_68_2_13[4][3] = {
 #include "game/008C1670.inc"
 };
-f32 gEmKindTables_68_2_30[12] = {
+f32 gEmKindTables_68_2_30[4][3] = {
 #include "game/008C16A0.inc"
 };
-f32 gEmKindTables_68_2_31[12] = {
+f32 gEmKindTables_68_2_31[4][3] = {
 #include "game/008C16D0.inc"
 };
-f32 gEmKindTables_68_2_32[12] = {
+f32 gEmKindTables_68_2_32[4][3] = {
 #include "game/008C1700.inc"
 };
-f32 gEmKindTables_68_2_33[12] = {
+f32 gEmKindTables_68_2_33[4][3] = {
 #include "game/008C1730.inc"
 };
-f32 gEmKindTables_68_2_34[12] = {
+f32 gEmKindTables_68_2_34[4][3] = {
 #include "game/008C1760.inc"
 };
-f32 gEmKindTables_68_2_35[12] = {
+f32 gEmKindTables_68_2_35[4][3] = {
 #include "game/008C1790.inc"
 };
-f32 gEmKindTables_68_2_0[12] = {
+f32 gEmKindTables_68_2_0[4][3] = {
 #include "game/008C17C0.inc"
 };
-f32 gEmKindTables_68_2_1[12] = {
+f32 gEmKindTables_68_2_1[4][3] = {
 #include "game/008C17F0.inc"
 };
-f32 gEmKindTables_68_2_2[12] = {
+f32 gEmKindTables_68_2_2[4][3] = {
 #include "game/008C1820.inc"
 };
-f32 gEmKindTables_68_2_3[12] = {
+f32 gEmKindTables_68_2_3[4][3] = {
 #include "game/008C1850.inc"
 };
-f32 gEmKindTables_68_2_4[12] = {
+f32 gEmKindTables_68_2_4[4][3] = {
 #include "game/008C1880.inc"
 };
-f32 gEmKindTables_68_2_5[12] = {
+f32 gEmKindTables_68_2_5[4][3] = {
 #include "game/008C18B0.inc"
 };
-f32 gEmKindTables_68_2_6[12] = {
+f32 gEmKindTables_68_2_6[4][3] = {
 #include "game/008C18E0.inc"
 };
-f32 gEmKindTables_68_2_48[12] = {
+f32 gEmKindTables_68_2_48[4][3] = {
 #include "game/008C1910.inc"
 };
-f32 gEmKindTables_68_2_49[12] = {
+f32 gEmKindTables_68_2_49[4][3] = {
 #include "game/008C1940.inc"
 };
-f32 gEmKindTables_68_2_50[12] = {
+f32 gEmKindTables_68_2_50[4][3] = {
 #include "game/008C1970.inc"
 };
-f32 gEmKindTables_68_2_51[12] = {
+f32 gEmKindTables_68_2_51[4][3] = {
 #include "game/008C19A0.inc"
 };
-f32 gEmKindTables_68_2_52[12] = {
+f32 gEmKindTables_68_2_52[4][3] = {
 #include "game/008C19D0.inc"
 };
-f32 gEmKindTables_68_2_53[12] = {
+f32 gEmKindTables_68_2_53[4][3] = {
 #include "game/008C1A00.inc"
 };
-f32 gEmKindTables_68_2_54[12] = {
+f32 gEmKindTables_68_2_54[4][3] = {
 #include "game/008C1A30.inc"
 };
-f32 gEmKindTables_68_2_15[12] = {
+f32 gEmKindTables_68_2_15[4][3] = {
 #include "game/008C1A60.inc"
 };
-f32 gEmKindTables_68_2_16[12] = {
+f32 gEmKindTables_68_2_16[4][3] = {
 #include "game/008C1A90.inc"
 };
-f32 gEmKindTables_68_2_17[12] = {
+f32 gEmKindTables_68_2_17[4][3] = {
 #include "game/008C1AC0.inc"
 };
-f32 gEmKindTables_68_2_18[12] = {
+f32 gEmKindTables_68_2_18[4][3] = {
 #include "game/008C1AF0.inc"
 };
-f32 gEmKindTables_68_2_19[12] = {
+f32 gEmKindTables_68_2_19[4][3] = {
 #include "game/008C1B20.inc"
 };
-f32 gEmKindTables_68_2_20[12] = {
+f32 gEmKindTables_68_2_20[4][3] = {
 #include "game/008C1B50.inc"
 };
-f32 gEmKindTables_68_2_14[12] = {
+f32 gEmKindTables_68_2_14[4][3] = {
 #include "game/008C1B80.inc"
 };
-f32 gEmKindTables_68_2_25[12] = {
+f32 gEmKindTables_68_2_25[4][3] = {
 #include "game/008C1BB0.inc"
 };
-f32 gEmKindTables_68_2_26[12] = {
+f32 gEmKindTables_68_2_26[4][3] = {
 #include "game/008C1BE0.inc"
 };
-f32 gEmKindTables_68_2_27[12] = {
+f32 gEmKindTables_68_2_27[4][3] = {
 #include "game/008C1C10.inc"
 };
-f32 gEmKindTables_68_2_28[12] = {
+f32 gEmKindTables_68_2_28[4][3] = {
 #include "game/008C1C40.inc"
 };
-f32 gEmKindTables_68_2_29[12] = {
+f32 gEmKindTables_68_2_29[4][3] = {
 #include "game/008C1C70.inc"
 };
-f32 gEmKindTables_68_2_21[12] = {
+f32 gEmKindTables_68_2_21[4][3] = {
 #include "game/008C1CA0.inc"
 };
-f32 gEmKindTables_68_2_22[12] = {
+f32 gEmKindTables_68_2_22[4][3] = {
 #include "game/008C1CD0.inc"
 };
-f32 gEmKindTables_68_2_23[12] = {
+f32 gEmKindTables_68_2_23[4][3] = {
 #include "game/008C1D00.inc"
 };
-f32 gEmKindTables_68_2_24[12] = {
+f32 gEmKindTables_68_2_24[4][3] = {
 #include "game/008C1D30.inc"
 };
-f32 gEmKindTables_68_2_71[12] = {
+f32 gEmKindTables_68_2_71[4][3] = {
 #include "game/008C1D60.inc"
 };
-f32 gEmKindTables_68_2_72[12] = {
+f32 gEmKindTables_68_2_72[4][3] = {
 #include "game/008C1D90.inc"
 };
-MapPosSet gEmKindTables_68_2[76] = {
+EmAreaPoints gEmKindTables_68_2[76] = {
 #include "game/008C1DC0.inc"
 };
 f32 EmCephadrome_VelYCurves_3[60] = {
 #include "game/008C2020.inc"
 };
-MapRoutePt D_008C2110[6] = {
+EmRoutePt gEmRouteSets_0_0[6] = {
 #include "game/008C2110.inc"
 };
-MapRoute D_008C2190[1] = {
+EmRoute gEmRouteSets_0[1] = {
 #include "game/008C2190.inc"
 };
-MapRoutePt D_008C21B0[6] = {
+EmRoutePt gEmRouteSets_1_0[6] = {
 #include "game/008C21B0.inc"
 };
-MapRoute D_008C2230[1] = {
+EmRoute gEmRouteSets_1[1] = {
 #include "game/008C2230.inc"
 };
-MapRoutePt D_008C2250[5] = {
+EmRoutePt gEmRouteSets_2_0[5] = {
 #include "game/008C2250.inc"
 };
-MapRoute D_008C22C0[1] = {
+EmRoute gEmRouteSets_2[1] = {
 #include "game/008C22C0.inc"
 };
-MapRoutePt D_008C22E0[6] = {
+EmRoutePt gEmRouteSets_3_0[6] = {
 #include "game/008C22E0.inc"
 };
-MapRoute D_008C2360[1] = {
+EmRoute gEmRouteSets_3[1] = {
 #include "game/008C2360.inc"
 };
-MapRoutePt D_008C2380[6] = {
+EmRoutePt gEmRouteSets_4_0[6] = {
 #include "game/008C2380.inc"
 };
-MapRoutePt D_008C2400[8] = {
+EmRoutePt gEmRouteSets_4_1[8] = {
 #include "game/008C2400.inc"
 };
-MapRoute D_008C24A0[2] = {
+EmRoute gEmRouteSets_4[2] = {
 #include "game/008C24A0.inc"
 };
-MapRoutePt D_008C24D0[6] = {
+EmRoutePt gEmRouteSets_5_0[6] = {
 #include "game/008C24D0.inc"
 };
-MapRoute D_008C2550[1] = {
+EmRoute gEmRouteSets_5[1] = {
 #include "game/008C2550.inc"
 };
-MapRoutePt D_008C2570[6] = {
+EmRoutePt gEmRouteSets_6_0[6] = {
 #include "game/008C2570.inc"
 };
-MapRoute D_008C25F0[1] = {
+EmRoute gEmRouteSets_6[1] = {
 #include "game/008C25F0.inc"
 };
-MapRoutePt D_008C2610[6] = {
+EmRoutePt gEmRouteSets_7_0[6] = {
 #include "game/008C2610.inc"
 };
-MapRoute D_008C2690[1] = {
+EmRoute gEmRouteSets_7[1] = {
 #include "game/008C2690.inc"
 };
-MapRoutePt D_008C26B0[5] = {
+EmRoutePt gEmRouteSets_8_0[5] = {
 #include "game/008C26B0.inc"
 };
-MapRoute D_008C2720[1] = {
+EmRoute gEmRouteSets_8[1] = {
 #include "game/008C2720.inc"
 };
-MapRoutePt D_008C2740[6] = {
+EmRoutePt gEmRouteSets_9_0[6] = {
 #include "game/008C2740.inc"
 };
-MapRoute D_008C27C0[1] = {
+EmRoute gEmRouteSets_9[1] = {
 #include "game/008C27C0.inc"
 };
-MapRoutePt D_008C27E0[4] = {
+EmRoutePt gEmRouteSets_10_0[4] = {
 #include "game/008C27E0.inc"
 };
-MapRoute D_008C2830[1] = {
+EmRoute gEmRouteSets_10[1] = {
 #include "game/008C2830.inc"
 };
-MapRoutePt D_008C2850[3] = {
+EmRoutePt gEmRouteSets_11_0[3] = {
 #include "game/008C2850.inc"
 };
-MapRoutePt D_008C2890[3] = {
+EmRoutePt gEmRouteSets_11_1[3] = {
 #include "game/008C2890.inc"
 };
-MapRoute D_008C28D0[2] = {
+EmRoute gEmRouteSets_11[2] = {
 #include "game/008C28D0.inc"
 };
-MapRoutePt D_008C2900[4] = {
+EmRoutePt gEmRouteSets_12_0[4] = {
 #include "game/008C2900.inc"
 };
-MapRoute D_008C2950[1] = {
+EmRoute gEmRouteSets_12[1] = {
 #include "game/008C2950.inc"
 };
-MapRoutePt D_008C2970[7] = {
+EmRoutePt gEmRouteSets_13_0[7] = {
 #include "game/008C2970.inc"
 };
-MapRoutePt D_008C2A00[3] = {
+EmRoutePt gEmRouteSets_13_1[3] = {
 #include "game/008C2A00.inc"
 };
-MapRoute D_008C2A40[2] = {
+EmRoute gEmRouteSets_13[2] = {
 #include "game/008C2A40.inc"
 };
-MapRoutePt D_008C2A70[3] = {
+EmRoutePt gEmRouteSets_14_0[3] = {
 #include "game/008C2A70.inc"
 };
-MapRoutePt D_008C2AB0[3] = {
+EmRoutePt gEmRouteSets_14_1[3] = {
 #include "game/008C2AB0.inc"
 };
-MapRoute D_008C2AF0[2] = {
+EmRoute gEmRouteSets_14[2] = {
 #include "game/008C2AF0.inc"
 };
-MapRoutePt D_008C2B20[6] = {
+EmRoutePt gEmRouteSets_15_0[6] = {
 #include "game/008C2B20.inc"
 };
-MapRoute D_008C2BA0[1] = {
+EmRoute gEmRouteSets_15[1] = {
 #include "game/008C2BA0.inc"
 };
-MapRoutePt D_008C2BC0[6] = {
+EmRoutePt gEmRouteSets_16_0[6] = {
 #include "game/008C2BC0.inc"
 };
-MapRoute D_008C2C40[1] = {
+EmRoute gEmRouteSets_16[1] = {
 #include "game/008C2C40.inc"
 };
-MapRoutePt D_008C2C60[4] = {
+EmRoutePt gEmRouteSets_17_0[4] = {
 #include "game/008C2C60.inc"
 };
-MapRoute D_008C2CB0[1] = {
+EmRoute gEmRouteSets_17[1] = {
 #include "game/008C2CB0.inc"
 };
-MapRoutePt D_008C2CD0[4] = {
+EmRoutePt gEmRouteSets_18_0[4] = {
 #include "game/008C2CD0.inc"
 };
-MapRoute D_008C2D20[1] = {
+EmRoute gEmRouteSets_18[1] = {
 #include "game/008C2D20.inc"
 };
-MapRoutePt D_008C2D40[5] = {
+EmRoutePt gEmRouteSets_19_0[5] = {
 #include "game/008C2D40.inc"
 };
-MapRoute D_008C2DB0[1] = {
+EmRoute gEmRouteSets_19[1] = {
 #include "game/008C2DB0.inc"
 };
-MapRoutePt D_008C2DD0[7] = {
+EmRoutePt gEmRouteSets_20_0[7] = {
 #include "game/008C2DD0.inc"
 };
-MapRoute D_008C2E60[1] = {
+EmRoute gEmRouteSets_20[1] = {
 #include "game/008C2E60.inc"
 };
-MapRoutePt D_008C2E80[6] = {
+EmRoutePt gEmRouteSets_21_0[6] = {
 #include "game/008C2E80.inc"
 };
-MapRoute D_008C2F00[1] = {
+EmRoute gEmRouteSets_21[1] = {
 #include "game/008C2F00.inc"
 };
-MapRoutePt D_008C2F20[6] = {
+EmRoutePt gEmRouteSets_22_0[6] = {
 #include "game/008C2F20.inc"
 };
-MapRoute D_008C2FA0[1] = {
+EmRoute gEmRouteSets_22[1] = {
 #include "game/008C2FA0.inc"
 };
-MapRoutePt D_008C2FC0[5] = {
+EmRoutePt gEmRouteSets_23_0[5] = {
 #include "game/008C2FC0.inc"
 };
-MapRoute D_008C3030[1] = {
+EmRoute gEmRouteSets_23[1] = {
 #include "game/008C3030.inc"
 };
-MapRoutePt D_008C3050[5] = {
+EmRoutePt gEmRouteSets_24_0[5] = {
 #include "game/008C3050.inc"
 };
-MapRoute D_008C30C0[1] = {
+EmRoute gEmRouteSets_24[1] = {
 #include "game/008C30C0.inc"
 };
-MapRouteSet gEmRouteSets[26] = {
+EmRouteSet gEmRouteSets[26] = {
 #include "game/008C30E0.inc"
 };
 EmPartEffect Em_PartEffectTbl[42] = {

@@ -15,13 +15,10 @@
 extern u8 gKbdCandLines[];
 #include "kbd.h"
 #include "prim.h"
+#include "text.h"
+#include "font.h"
 
-s32 Prim_FillRect(struct PrimLine *r);
-void Font_SetSpacing(u8 a, u8 b);
-void Text_SetColor(s16 color);
-void Font_SetPos(s16 x, s16 y);
 s32 sprintf(char *dst, char *fmt, ...);
-void Kbd_Printf(const char *fmt, ...);
 
 /*
  * Draws the conversion candidate box of the keyboard at x, y: three candidates
@@ -47,9 +44,9 @@ void Kbd_DrawCandidateBox(f32 x, s16 y)
         }
         boxY = y;
         box.x0 = x + dx * scale;
-        box.x1 = box.x0 + 0xA2;
-        box.y0 = boxY + 0x14;
-        box.y1 = box.y0 + 0x56;
+        box.x1 = box.x0 + 162;
+        box.y0 = boxY + 20;
+        box.y1 = box.y0 + 86;
         box.color = *(s32 *)gKbd->kindConf;
         Prim_FillRect(&box);
         box.x0 = box.x0 + (s32)(5.0f * *(f32 *)&gKbd->drawScale); /* through an (f32 *) view: a plain gKbd->drawScale here and below allocates other registers */
@@ -58,7 +55,7 @@ void Kbd_DrawCandidateBox(f32 x, s16 y)
         box.y1 -= 5;
         box.color = 0xFF303030;
         Prim_FillRect(&box);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         x += 10.0f * gKbd->candCol;
         Text_SetColor(0);
         for (i = 0, lineY = y, line = gKbdCandLines; i < KBD_CAND_PAGE; i++, lineY += 20, line += KBD_CAND_LINE_SIZE) {
@@ -72,7 +69,7 @@ void Kbd_DrawCandidateBox(f32 x, s16 y)
         }
         Text_SetColor(0);
         sprintf(buf, "%3d/%3d", gKbd->candIdx + 1, gKbd->candCount);
-        Font_SetPos(52.0f + (20.0f + x), boxY + 0x53);
+        Font_SetPos(52.0f + (20.0f + x), boxY + 83);
         Kbd_Printf(buf);
     }
 }

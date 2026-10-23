@@ -10,9 +10,9 @@
 #define HOUSE_ACCESS_OPEN       1   /* anyone */
 #define HOUSE_ACCESS_PASSWORD   2   /* those who give the house's password */
 
-/* A hunter card (0xD8 bytes): what a player shows the others. HunterCard_Build
+/* A hunter card (216 bytes): what a player shows the others. HunterCard_Build
  * makes the local player's from the save and the player, the lobby relays it
- * as the first 0xD8 bytes of a NetUser's 0x100-byte text (gPlayerText is the
+ * as the first 216 bytes of a NetUser's 256-byte text (gPlayerText is the
  * local one), HunterCard_Sanitize clamps a received one and HunterCard_Apply
  * applies it to gPlayers[idx]. */
 typedef struct HunterCard {
@@ -24,18 +24,18 @@ typedef struct HunterCard {
     /* 0x09 */ u8 hairStyle;        /* SaveData.hairStyle, Player.hairStyle */
     /* 0x0A */ u8 gender;           /* 0 or 1: Player.gender */
     /* 0x0B */ u8 voice;            /* SaveData.voice, Player.voice (0-14) */
-    /* 0x0C */ u8 symbolColor;      /* SaveData.symbolColor once a style is earned (styleBits), else 0xFF; Player_SetColorWord */
+    /* 0x0C */ u8 symbolColor;      /* SaveData.symbolColor once a style is earned (styleBits), else SYMBOL_COLOR_NONE; Player_SetColorWord */
     /* 0x0D */ u8 charType;         /* SaveData.charType, Player.charType (0-3) */
-    /* 0x0E */ u8 title;            /* SaveData.title (below 0x94) */
-    /* 0x0F */ u8 friendLimit;      /* SaveData.friendLimit, 0 or 1 (1: no friend requests): gFriendLimitTexts[it] (MemberCard_DrawRestrict) */
+    /* 0x0E */ u8 title;            /* SaveData.title (below HUNTER_TITLE_COUNT) */
+    /* 0x0F */ u8 friendLimit;      /* SaveData.friendLimit, 0 or 1 (1: no friend requests): gFriendLimitTexts[it] (MemberCard_DrawFriendLimit) */
     /* 0x10 */ u8 comment[0x62];    /* SaveData.comment (Chat_FilterWords on a received one) */
     /* 0x72 */ s16 versusWins;      /* SaveData.versusWins */
     /* 0x74 */ EquipItem weapon;
     /* 0x80 */ EquipItem armour[6];
     /* 0xC8 */ u8 padC8;
-    /* 0xC9 */ u8 houseLevel;       /* Village_FacilityLevel(4), 0-2: the house's area is 0xAD + it */
-    /* 0xCA */ u8 poogieOutfit;     /* SaveData.poogieOutfit when the Poogie has a name (poogieName), else 0xFF (at most 4):
-                                       the town loads model 0xD + it (unk_7A6470.c) */
+    /* 0xC9 */ u8 houseLevel;       /* Village_FacilityLevel(VILLAGE_FACILITY_HOUSE), 0-2: the house's area is AREA_ONLINE_HOUSE_0 + it */
+    /* 0xCA */ u8 poogieOutfit;     /* SaveData.poogieOutfit when the Poogie has a name (poogieName), else POOGIE_OUTFIT_NONE (at most 4):
+                                       the town loads POOGIE_MODEL_OUTFIT_0 + it (Town_EnterArea) */
     /* 0xCB */ u8 houseAccess;      /* gHouseAccess: HOUSE_ACCESS_* */
     /* 0xCC */ u8 housePass[9];     /* gHousePassword: the house's password */
     /* 0xD5 */ u8 boxLevel;         /* Village_FacilityLevel(5): the box's pages - 1 (at most 4) */
@@ -43,9 +43,16 @@ typedef struct HunterCard {
                                        Quest_DrawArenaTeams groups the members by it, 1 and 3 open ArenaMenu */
     /* 0xD7 */ u8 chatToLobby;      /* gChatToLobby: 1 while the hunter's chat goes to the lobby's chat (gChatWindowSel CHAT_SEND_LOBBY) in a town entry; the members' names window blinks a sprite for it */
 } HunterCard;
+/* The parts of the card Town_UpdateTextParts sends alone when they change
+ * (HunterCard_SendPart): their offsets in the card. */
+#define CARD_PART_SYMBOL_COLOR 12   /* HunterCard.symbolColor */
+#define CARD_PART_TITLE 14          /* HunterCard.title */
+#define CARD_PART_FRIEND_LIMIT 15   /* HunterCard.friendLimit */
+#define CARD_PART_CHAT_TO_LOBBY 215 /* HunterCard.chatToLobby */
 /* HunterCard.symbolColor's value drawn cycling through the colours (Color_Cycle8)
  * instead of one of gPlayerColorWords (the name tags, the member list). */
 #define SYMBOL_COLOR_CYCLE 0xB
+#define SYMBOL_COLOR_NONE 0xFF      /* HunterCard.symbolColor: no style earned */
 typedef char HunterCard_size_check[(sizeof(HunterCard) == 0xD8) ? 1 : -1];
 
 /* HunterCard.onlineMark: the hunter's online mark, one of ONLINE_MARK_COUNT
@@ -56,7 +63,7 @@ typedef char HunterCard_size_check[(sizeof(HunterCard) == 0xD8) ? 1 : -1];
 #define ONLINE_MARK_COUNT 9
 #define ONLINE_MARK_HELP_LINE 5 /* HELP_PAGE_STATUS's line of mark 0; one line per mark */
 
-/* a user's text as the lobby relays it (0x100 bytes): a HunterCard and 0x28
+/* a user's text as the lobby relays it (256 bytes): a HunterCard and 40
  * unused bytes. NetUser.text holds one as bytes (NetUser is byte-aligned in
  * LobbyState); gPlayerText is the local player's. */
 typedef union UserText {
@@ -65,9 +72,9 @@ typedef union UserText {
 } UserText;
 typedef char UserText_size_check[(sizeof(UserText) == 0x100) ? 1 : -1];
 
-/* a user: id (6 characters used), name and a 0x100-byte text (the player's
+/* a user: id (6 characters used), name and a 256-byte text (the player's
  * own at gLobbyNet.me, set by LobbyNet_SetMe): a HunterCard in its first
- * 0xD8 bytes */
+ * 216 bytes */
 #define NET_USER_ID_MATCH 6  /* the bytes of NetUser.id the lobby compares to tell members apart */
 #define LOBBY_USER_ID_LEN 8     /* a user id's bytes (gMyUserId, gAskUserId, a friend's or a blocked user's id, a row of gScene.userIds, the quest sync's k2.userId) */
 #define LOBBY_USER_NAME_LEN 16  /* a user name's bytes as the friend and block lists keep it; one more with its terminator */
@@ -76,7 +83,13 @@ typedef char UserText_size_check[(sizeof(UserText) == 0x100) ? 1 : -1];
 #define QUEST_STATUS_TAKEN 0x40     /* the quest is taken, not paid (QuestDesk_Accept) */
 #define QUEST_STATUS_PAID 0x80      /* the quest is taken and paid */
 #define QUEST_STATUS_CATEGORY 0x0F  /* the low four bits: the quest's category (QuestFlags_GetCategory, 0-4) */
+/* Where a member is (NetUser_State, NetUser_StateByName). */
+#define NET_USER_HERE    0     /* its player has an area (and always offline) */
+#define NET_USER_NO_AREA 1     /* its player has no area yet */
+#define NET_USER_ABSENT  2     /* no member in the slot, or none with the id */
 #define LOBBY_MEMBER_COUNT 10 /* the town's members: LobbyState.members, gNetUsers, a level-1 entry's users */
+#define LOBBY_ROOM_PLAYERS 4  /* the quest room's players: LobbyState.players */
+#define LOBBY_TOWN_PLAYERS 10 /* the town's players: LobbyState.modelLoading and lookPending (FileQueue_Cancel) */
 #define LOBBY_ROOM_USER_COUNT 4 /* the users of a level-2 entry (a quest room) the lobby copies */
 /* The town member whose NetUser lies `off` bytes into LobbyState.members (off
  * is the slot times sizeof(NetUser)), and its hunter card, reached by that
@@ -102,7 +115,7 @@ typedef struct NetUser {
 } NetUser;
 
 /*
- * The lobby's state (gLobbyState, 0x39A0 bytes): the screens' modes and steps,
+ * The lobby's state (gLobbyState, 14752 bytes): the screens' modes and steps,
  * the players, the error text of the last failed request. gLobby always
  * points to it (Town_Reset, Lobby_ResetState and NetSetup_ResetLobby set it), and
  * the code reaches it through that pointer; the village's code reads it too.
@@ -114,7 +127,7 @@ typedef struct NetUser {
 #define TOWN_DATA_SLOT_SIZE 0x100
 #define LOBBY_RATE_COUNT 0x4A       /* the monster rate values: gLobbyRateValues (u16), gRateSnapshot (s32) */
 
-/* A timed event of the lobby world (0x18 bytes; LobbyWorld.events):
+/* A timed event of the lobby world (24 bytes; LobbyWorld.events):
  * LobbyWorld_RunEvents calls func once the world's time reaches the
  * event's; LobbyWorld_ScheduleEvents takes a list of them. */
 typedef struct LobbyWorldEvent {
@@ -166,7 +179,7 @@ enum LobbyEntryMode {
     LOBBY_ENTRY_START = 0,          /* the client's details, then the login task */
     LOBBY_ENTRY_TERMS = 1,          /* the terms of use's page (LobbyWeb_Run) */
     LOBBY_ENTRY_NOTICE = 2,         /* the server's notice before the login goes on */
-    LOBBY_ENTRY_PATCH = 3,          /* a patch is downloaded (LobbyNetXfer_Run) */
+    LOBBY_ENTRY_PATCH = 3,          /* a patch is downloaded (LobbyPatch_Install) */
     LOBBY_ENTRY_ID_SELECT = 4,      /* the character's choice (IdMenu_Run) */
     LOBBY_ENTRY_ERROR = 5,          /* the server's error text, then the choice again */
     LOBBY_ENTRY_SUMMARY = 6,        /* the login summary and the hunter card */
@@ -210,9 +223,9 @@ enum LobbyScreenMode {
  */
 enum LobbyEnterMode {
     LOBBY_ENTER_VILLAGE_OFFLINE = 0, /* offline (LobbyScreen_Start): the player alone, at AREA_HUB_0x89, or AREA_HUB_0x57 while away from the village */
-    LOBBY_ENTER_VILLAGE = 1,        /* the village from the network's lists: the player alone, at AREA_HUB_0x83 */
+    LOBBY_ENTER_VILLAGE = 1,        /* the village from the network's lists: the player alone, at AREA_ONLINE_VILLAGE */
     LOBBY_ENTER_VILLAGE_STAY = 2,   /* nothing reloaded: the player placed again in its area */
-    LOBBY_ENTER_VILLAGE_RETURN = 3, /* back from the town: at a set spot of AREA_HUB_0x83; the fade out clears the other players */
+    LOBBY_ENTER_VILLAGE_RETURN = 3, /* back from the town: at a set spot of AREA_ONLINE_VILLAGE; the fade out clears the other players */
     LOBBY_ENTER_TOWN = 4,           /* the town, the screen kept: AREA_HUB_0x84 */
     LOBBY_ENTER_TOWN_MEMBERS = 5,   /* the town with its members (after a quest, the town's movie, a group's join): AREA_HUB_0x84 for a group, else the area left for the quest (gQuestReturnArea) */
     LOBBY_ENTER_MEMBERS = 6         /* the members spawned, no area set (no caller seen) */
@@ -239,13 +252,23 @@ typedef struct LobbyStartPos {
     Vec3f pos[LOBBY_START_POS_COUNT];
 } LobbyStartPos;
 
+/* An area's entry point (gSpawnPoints and the town's own): where the
+ * player starts, and the facing. AreaMenu_GoTo and Town_PlaceLocalPlayer
+ * read them; the village's own entries get a quarter turn added to the
+ * facing. 16 bytes. */
+typedef struct SpawnPt {
+    Vec3f pos;
+    u16 angle;
+    u16 pad;
+} SpawnPt;
+
 /* Lobby_Disconnect's reasons (LobbyState.quitReason, and LobbyState.mode in
  * LOBBY_PHASE_EXIT). Reasons 0-3 are the player's own leaving, which
  * LobbyExit_RunPlanned runs, each going on to its next screen; 4-8 end the
  * session, from Lobby_Tick and the request steps' callers (LOBBY_QUIT_FAILED),
  * and LobbyExit_RunCut shows the reason before going back to the network
  * menu. */
-#define LOBBY_QUIT_RECONNECT 0      /* to connect again through the network scene (NetScene_ToState6): a group joined on its server, the move menu, the first login */
+#define LOBBY_QUIT_RECONNECT 0      /* to connect again through the network scene (NetScene_ToPortal): a group joined on its server, the move menu, the first login */
 #define LOBBY_QUIT_TO_GMSUB 1       /* the quit menu's first choice, the entry's cancel: the network scene ends with the boot set to BOOT_MODE_GMSUB */
 #define LOBBY_QUIT_TO_PORTAL 2      /* the quit menu's third choice, the end of the web pages: back to the portal (PORTAL_PAGE_QUIT) */
 #define LOBBY_QUIT_TO_GMSUB_KEEP 3  /* the quit menu's second choice: as LOBBY_QUIT_TO_GMSUB, with BOOT_MODE_GMSUB_KEEP */
@@ -383,6 +406,16 @@ enum LobbyAwait {
 #define LOBBY_MENU_TIMEOUT 3600     /* frames: a minute (LobbyState.timer, LobbyMenu_StartTimer) */
 #define LOBBY_IDLE_TIMEOUT 108000   /* frames: an hour without input (LobbyState.idleTimer) */
 #define LOBBY_CLOCK_NOON 43200      /* gLobbyTime, the lobby's clock in seconds of the day: noon */
+#define LOBBY_DAY_SECONDS 86400    /* the lobby world's day in seconds (gLobbyWorld's clock; gTownDayTicks when unset) */
+#define LOBBY_HOUR_SECONDS 3600
+
+/* LobbyState.elderRaidState (ElderRaid_SetState): the elder raid. */
+#define ELDER_RAID_OFF 0
+#define ELDER_RAID_ON 1             /* on, with its movie */
+#define ELDER_RAID_ON_NO_MOVIE 2    /* on, without its movie (ElderRaidEvent.noMovie) */
+/* LobbyState.townEvent, the town's event from the server's town data: 1 to
+ * 3 change the item shop's stock; the sale halves the shops' prices online. */
+#define TOWN_EVENT_SALE 4
 #define LOBBY_CHAT_TARGETS 7        /* gChatTargets: the user ids (LOBBY_USER_ID_LEN each) a chat line is told to */
 
 /* The group join's fields at LobbyState's start (groupJoin to land),
@@ -395,9 +428,38 @@ enum LobbyAwait {
 #define LOGIN_ENTRY_AGAIN 2         /* the lobby was entered before (LobbyEntry_Fetch sets it) */
 #define LOGIN_ENTRY_QUEST_RETURN 3  /* back after a quest (the quest room's leave): the save menu runs first, the player goes back to the area left */
 
+/* gLoginState in the login's connection (LobbyLogin_RunConnect). Each
+ * stage starts at 0; the scene task and the connection's steps clear it
+ * when they move the login to another stage. */
+enum LoginConnectState {
+    LOGIN_START = 0,            /* moves on to the network screen */
+    LOGIN_NET_SCREEN = 1,       /* the network screen (NetScreen_Run) */
+    LOGIN_CONNECT = 2,          /* the lobby server's connection (NetScreen_ConnectStep); the network screen's first step sets it */
+    LOGIN_CONNECTED = 3,        /* set by the connection once connected; the stage ends in the same frame */
+    LOGIN_CONN_FAILED = 10,     /* the failed connection's message, then the portal */
+    LOGIN_PORTAL = 20           /* the portal's pages (LobbyKddi_PortalStep); no code seen sets it */
+};
+
+/* gLoginState in the leave (LobbyLogin_Leave). */
+enum LoginLeaveState {
+    LOGIN_LEAVE_PORTAL = 0,     /* the portal's step ends */
+    LOGIN_LEAVE_DISCONNECT = 1, /* the socket closes (LobbyNet_DisconnectStep); NetScene_ToDisconnect starts here */
+    LOGIN_LEAVE_CHOOSE = 2,     /* gNetErrorCode chooses the exit */
+    LOGIN_LEAVE_EXIT = 3,       /* the exit runs (enum LoginLeaveExit, in gNetConnStep) */
+    LOGIN_LEAVE_DONE = 4        /* returns 1; the room's leave and NetScene_ToNetFileCheck start here */
+};
+
+/* LobbyLogin_Leave's exits (gNetConnStep at LOGIN_LEAVE_EXIT). */
+enum LoginLeaveExit {
+    LEAVE_EXIT_NET_ERROR = 0,   /* the line error's message, then the set-up's settings */
+    LEAVE_EXIT_SETTINGS = 1,    /* the set-up's settings */
+    LEAVE_EXIT_RELEASE = 2,     /* the network textures released */
+    LEAVE_EXIT_CONN_FAILED = 3  /* the failed connection's message, then the portal */
+};
+
 typedef struct LobbyState {
     /* 0x0000 */ s8 groupJoin;      /* set on joining a group (Group_Join, the group board): the level lists go on by themselves */
-    /* 0x0001 */ char groupId[0x10]; /* the group joined: its id (memcpy 0x10 from the group, LobbySrv_Index) */
+    /* 0x0001 */ char groupId[0x10]; /* the group joined: its id (memcpy 16 bytes from the group, LobbySrv_Index) */
     /* 0x0011 */ u8 unk11[3];
     /* 0x0014 */ s32 area;          /* the group's area (Group_Join; LobbyLogin_EnterEntry) */
     /* 0x0018 */ s32 land;          /* the group's land (Group_Join; LobbyLogin_EnterEntry) */
@@ -405,24 +467,24 @@ typedef struct LobbyState {
     /* 0x001D */ u8 idMenuPrompt;   /* the id menu's opening prompt (LobbyMenu.promptStep): 0, or 1 and 2 after the login's errors 7 and 8 */
     /* 0x001E */ s8 hostId[8];          /* the user id of the town host: it answers the TownMsg requests when it equals myId */
     /* 0x0026 */ char charaIds[4][8];   /* the four character ids (LobbyNet_GetCharaId; IdMenu_Redraw, LobbyEntry_IdSelect) */
-    /* 0x0046 */ u8 charaNames[0x44]; /* four names of 0x11 bytes (LobbyNet_GetCharaName; IdMenu_DrawText) */
-    /* 0x008A */ u8 charaTexts[0x400]; /* four texts of 0x100 bytes (LobbyNet_GetCharaText; HunterCard_Sanitize) */
+    /* 0x0046 */ u8 charaNames[0x44]; /* four names of 17 bytes (LobbyNet_GetCharaName; IdMenu_DrawText) */
+    /* 0x008A */ u8 charaTexts[0x400]; /* four texts of 256 bytes (LobbyNet_GetCharaText; HunterCard_Sanitize) */
     /* 0x048A */ u8 myId[8];            /* this player's user id (login; gMyUserId keeps a copy) */
     /* 0x0492 */ u8 myName[0x10];   /* this player's character name (LobbyNet_GetMyCharaName; gMyName keeps a copy) */
     /* 0x04A2 */ u8 unk4A2[4];
-    /* 0x04A6 */ u8 myText[0x100];  /* this player's text, 0x100 bytes (gPlayerText; Lobby_UpdatePlayerText) */
-    /* 0x05A6 */ NetUser players[4];
+    /* 0x04A6 */ u8 myText[0x100];  /* this player's text, 256 bytes (gPlayerText; Lobby_UpdatePlayerText) */
+    /* 0x05A6 */ NetUser players[LOBBY_ROOM_PLAYERS];
     /* 0x0A16 */ NetUser members[LOBBY_MEMBER_COUNT];   /* the town's members (the village: LobbyMember_GetCard, LobbyMember_InMyParty) */
     /* 0x152E */ u8 pcLoaded[0xA];        /* per player: 1 once its model is loaded (TownPc_LoadModel); 0: the town updates skip it; cleared when it leaves */
     /* 0x1538 */ char memberSlot[0xA];     /* per member: '0' + the player slot it is in; read as u8 */
     /* 0x1542 */ u8 unk1542[0x20];
     /* 0x1562 */ u16 houseSeatBits;     /* the player's house's seats taken, one bit per seat (TownMsg_OnHouseSeatTaken, TOWN_MSG_HOUSE_SEAT_*) */
     /* 0x1564 */ u8 houseSeatIds[0x80];   /* the user id (LOBBY_USER_ID_LEN bytes) of whoever sits in each of the 16 house seats; cleared when the seat is freed */
-    /* 0x15E4 */ u8 loginNotice;        /* the 6105 text (LobbyNet_GetLoginNotice fills 0x1004 bytes from here: NetLoginNotice.unk0) */
+    /* 0x15E4 */ u8 loginNotice;        /* the 6105 text (LobbyNet_GetLoginNotice fills 4100 bytes from here: NetLoginNotice.unk0) */
     /* 0x15E5 */ u8 pad15E5;
     /* 0x15E6 */ s16 loginNoticeSecs;   /* NetLoginNotice.unk2: the countdown shown with the text, in seconds (read as u16 and s16) */
     /* 0x15E8 */ u8 loginNoticeText[0x1000]; /* NetLoginNotice.text (LobbyDialog_OpenCountdown; copied to errText) */
-    /* 0x25E8 */ u8 loginInfo[4];     /* 614C's reply (LobbyNet_GetLoginInfo fills 0x1004 bytes from here: NetLoginInfo.unk0) */
+    /* 0x25E8 */ u8 loginInfo[4];     /* 614C's reply (LobbyNet_GetLoginInfo fills 4100 bytes from here: NetLoginInfo.unk0) */
     /* 0x25EC */ u8 loginInfoText[0x1000]; /* NetLoginInfo.text (LobbyDialog_OpenWait) */
     /* 0x35EC */ NetPatchInfo patchInfo; /* the patch the server announced at login (LobbyEntry_Patch) */
     /* 0x3608 */ char errText[0x300];   /* the server's error text (LobbyNet_GetErrText) */
@@ -431,7 +493,7 @@ typedef struct LobbyState {
     /* 0x3910 */ s32 idleTimer;         /* frames left without input (from LOBBY_IDLE_TIMEOUT) before LOBBY_QUIT_IDLE */
     /* 0x3914 */ s32 countdown;          /* frames, shown in seconds (/30) */
     /* 0x3918 */ s32 waitTimer;     /* frames left on an entry screen (8, 0x708: LobbyEntry_Info) */
-    /* 0x391C */ s32 questList;     /* the town quest list (0x100 bytes of gTownQuestLists) filled (LobbyStep_TownData) */
+    /* 0x391C */ s32 questList;     /* the town quest list (256 bytes of gTownQuestLists) filled (LobbyStep_TownData) */
     /* 0x3920 */ s32 unk3920;
     /* 0x3924 */ s32 townEvent;     /* the town event from 6884 (slot 0 first byte, Lobby_ApplyTownData): 1 to 3 change the shop stock (Shop_BuildStock), 4 halves CombShop prices; tested by the Talk_Check functions */
     /* 0x3928 */ s32 place;         /* the level the player is in, enum LobbyPlace (Lobby_SetPlace, Lobby_GetPlace) */
@@ -478,18 +540,17 @@ typedef struct LobbyState {
     /* 0x396C */ u8 mealEaten;      /* 1 after a meal (Kitchen_EatDish, Meal_ApplyEffects; ShipMenu_Update clears it) */
     /* 0x396D */ u8 unk396D;            /* seen: cleared on entering the lobby screen online; no other use */
     /* 0x396E */ u8 inLevel;            /* 1 while place is a level (LOBBY_PLACE_LEVEL0-2), 0 at LOBBY_PLACE_NONE (Lobby_SetPlace); no reader seen */
-    /* 0x396F */ u8 elderRaidState; /* ElderRaid_SetState: 1 the raid is on, 2 on without its movie (ElderRaidEvent.noMovie); 0 once over */
+    /* 0x396F */ u8 elderRaidState; /* ELDER_RAID_*: ElderRaid_SetState turns the raid on, with or without its movie (ElderRaidEvent.noMovie); ELDER_RAID_OFF once over */
     /* 0x3970 */ u8 movieState;     /* RAID_MOVIE_*: the raid's town movie waiting to play (LobbyTown_WantsMovie, LobbyTown_StartMovie) */
     /* 0x3971 */ u8 pad3971;
     /* 0x3972 */ s16 petPoints[2];     /* the pets' points for the day, by enum PetArea: the Poogie's
                                          * feeding (PoogieMenu_Feed) and the care pet's (PoogieMenu_UpdateCare) */
     /* 0x3976 */ s16 petPointsMax[2];  /* the points' limits, by enum PetArea (Poogie_DailyReset rolls them) */
     /* 0x397A */ u8 roomName[0xF];      /* the room's name (6915; LobbyRoom_FetchParty), 15 bytes: the
-                                         * game copies 0x10 in (lobby_room.c), so the name's terminator
-                                         * lands on player 0's byte below, and 0xF out */
-    /* 0x3989 */ u8 lookPending[0x17];  /* per player: nonzero while its look is to be applied: 2 changed (TownPc_RefreshChanged), 0 after Player_ApplyLook; a byte per player (10 used), read as s8 (unk_793C40.c,
-                                         * unk_7952C0.c); lobby_town.c clears the 10 as
-                                         * &roomName[0xF] */
+                                         * game copies 16 bytes in (LobbyRoom_FetchParty), so the name's terminator
+                                         * lands on player 0's byte below, and 15 out */
+    /* 0x3989 */ u8 lookPending[0x17];  /* per player: nonzero while its look is to be applied: 2 changed (TownPc_RefreshChanged), 0 after Player_ApplyLook; a byte per player (10 used), read as s8 (TownPc_UpdateAll);
+                                         * LobbyTown_Enter clears the 10 */
 } LobbyState;
 typedef char LobbyState_size_check[(sizeof(LobbyState) == 0x39A0) ? 1 : -1];
 
@@ -499,7 +560,7 @@ typedef char LobbyState_size_check[(sizeof(LobbyState) == 0x39A0) ? 1 : -1];
  * `extern LobbyMenu *gLobbyMenu;` itself (some still declare it u8 *).
  */
 typedef struct LobbyMenu {
-    /* 0x00 */ MenuTask *layer[8];            /* sub_main draw tasks gLobbyMenuLayer0..gLobbyMenuLayer7 (0x20 apart): +0x14 the
+    /* 0x00 */ MenuTask *layer[8];            /* sub_main draw tasks gLobbyMenuLayer0..gLobbyMenuLayer7 (32 bytes apart): +0x14 the
                                          * draw callback, +0x18 the text size (LobbyMenu_Init, LobbyMenu_SetDraw) */
     /* 0x20 */ u8 unk20[4];
     /* 0x24 */ s16 timer;               /* frames left (screen changes, fades) */
@@ -522,7 +583,7 @@ typedef struct LobbyMenu {
     /* 0x3C */ u8 yesNo;               /* the yes/no cursor: 0 yes, 1 no (Menu_SetYesNo) */
     /* 0x3D */ u8 hideLayers;       /* nonzero: the frame queues no menu layers (the screens skip LobbyMenu_QueueLayers) */
     /* 0x3E */ s16 slideTimer;      /* frames left of a slide or wait (SrvMenu_Start's slide-in: 6, KitchenGuest_Update) */
-    /* 0x40 */ u8 unk40[4];             /* LobbyMenu_Init clears 0x44 bytes */
+    /* 0x40 */ u8 unk40[4];             /* LobbyMenu_Init clears 68 bytes */
 } LobbyMenu;
 
 /* LobbyMenu.promptStep in a closing prompt (the server's text shown with a
@@ -532,7 +593,7 @@ typedef struct LobbyMenu {
 #define PROMPT_DONE 2              /* pressed: the screen goes on */
 typedef char LobbyMenu_size_check[(sizeof(LobbyMenu) == 0x44) ? 1 : -1];
 
-/* The third level's entry records as the screens keep them (gLobbyRecs, 0x29555 bytes at
+/* The third level's entry records as the screens keep them (gLobbyRecs, 169301 bytes at
  * 0x8C0CA0; LobbyLevel2_FetchRecords copies them from gLobbyNet.recs2, NetRecs2): the room's
  * settings (password, the member count, the arena cup's kinds) are the records' values. */
 typedef struct LobbyRec {
@@ -573,8 +634,8 @@ typedef char LobbyRecs_size_check[(sizeof(LobbyRecs) == 0x29555) ? 1 : -1];
 
 /* TownPc_MoveKind's answer: how the player moves this frame. */
 #define TOWN_MOVE_NONE          0   /* it doesn't */
-#define TOWN_MOVE_WALK          1   /* the stick tilted 0x28 or more */
-#define TOWN_MOVE_WALK_FULL     3   /* the stick fully tilted (0x78 or more) */
+#define TOWN_MOVE_WALK          1   /* the stick tilted 40 or more */
+#define TOWN_MOVE_WALK_FULL     3   /* the stick fully tilted (120 or more) */
 #define TOWN_MOVE_DASH          5   /* PAD_R2 held while moving, standing, the weapon sheathed */
 
 /* The kind of a town's action spot (ActionSpot.kind): what the action
@@ -668,5 +729,30 @@ enum TownPcState {
 extern LobbyState gLobbyState;
 extern UserText gPlayerText;  /* the local player's (sub_main; Lobby_UpdatePlayerText) */
 extern LobbyState *gLobby;      /* = &gLobbyState */
+
+void LobbyMenu_StartTimer(void);
+s32 LobbyMenu_TickTimer(void);
+void LobbyMenu_Init(void);
+void Lobby_ClearRequests(void);
+s32 Lobby_SendHeld(void);
+void Lobby_ResetState(void);
+s32 LobbyLevel_SelId(s32 level);
+void Lobby_ResetIdleTimer(s32 *timer);
+void Lobby_ReceiveWhileWaiting(void);
+void Lobby_ClearHost(void);
+void LobbyMenu_SetDraw(void *draw0, void *draw1, void *draw2, void *draw3);
+void Lobby_DrawBlackLine(void);
+void *LobbyLevel2_Entry(s32 idx);
+s32 Lobby_HasQuest(void);
+void Lobby_SetPlace(s32 place);
+s32 Lobby_GetPlace(void);
+void LobbyTime_Tick(void);
+void LobbyTime_SetClock(u32 time);
+f32 LobbyTime_GetDayFrac(void);
+f32 LobbyTime_GetDayLen30(void);
+s32 LobbyTime_IsAm(void);
+s32 LobbyTime_IsPm(void);
+void Chat_ClearTargets(void);
+void Lobby_LoadTextures(void);
 
 #endif /* LOBBY_STATE_H */

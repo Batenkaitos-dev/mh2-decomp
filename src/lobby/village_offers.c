@@ -15,13 +15,21 @@
 #include "lobby_globals.h"
 #include "lobby_menu.h"
 #include "area.h"
+#include "village_offers.h"
 #pragma optimization_level 4
 
-void *memset(void *dst, s32 c, u32 n);
 s32 Offer_FindNpc(); /* unit's own declaration: declared without parameters, as Offer_GetQuest and Offer_FindRequest call it with no argument, the townsperson id they were given still in the argument register; with a prototype the compiler passes the id itself and their code differs */
 #include "save.h"
 #include "quest.h"
 #include "lobby_state.h"
+#include "village_cond.h"
+#include "elder_forecast.h"
+#include "lobby_world.h"
+#include "quest_offers.h"
+#include "rand.h"
+#include "village_records.h"
+#include "libc.h"
+#include "lobby_npc.h"
 
 #define OFFER_OPEN_MAX          3       /* the most offers open at once */
 #define OFFER_OPEN_MAX_UPGRADED 4       /* the same once the tavern, smithy and port levels add up to 2 */
@@ -44,25 +52,26 @@ s32 Offer_FindNpc(); /* unit's own declaration: declared without parameters, as 
  * points} (Offer_Generate takes one by a random bit). */
 typedef struct RequestDef {
     s16 items[REQUEST_ITEM_SLOTS * 5];
-    char title[REQUEST_TEXTS][0x1D];    /* 0x5A */
-    char text[REQUEST_TEXTS][0x58];     /* 0xB1 */
+    char title[REQUEST_TEXTS][29];    /* 0x5A */
+    char text[REQUEST_TEXTS][88];     /* 0xB1 */
     u8 pad1B9;
 } RequestDef;
 extern RequestDef gRequestDefs[];
 
-extern OfferNpc gOfferNpcs[];
-s32 Cond_Check(u16 id);
 u8 Village_FacilityLevel(s32 k);
-s32 LobbyWorld_GetSeasonDay(void);
-u16 Rand_Next(s32 stream);
-s32 Offer_CountOpen(void);
-s8 Offer_PickKind(u16 id);
-u16 Offer_PickNpc(u16 seed, s8 kind);
-s32 Request_TakeItemSlot(u16 *arg0, u16 arg1);
-u16 Offer_PickQuest(u16 seed);
-extern s8 gOfferDayRolls[];
-extern s8 gOfferCountRolls3[];
-extern s8 gOfferCountRolls4[];
+/* A season day's roll (gOfferDayRolls, by season day): the chance that offers come, and whether the first is a quest. */
+typedef struct OfferDayRoll {
+    s8 chance;          /* 0x0: percent */
+    s8 isQuest;         /* 0x1 */
+} OfferDayRoll;
+/* A roll of how many offers come (gOfferCountRolls3/4): tried in order, the first that succeeds gives the count. */
+typedef struct OfferCountRoll {
+    s8 chance;          /* 0x0: percent */
+    s8 count;           /* 0x1: the new offers */
+} OfferCountRoll;
+extern OfferDayRoll gOfferDayRolls[4];
+extern OfferCountRoll gOfferCountRolls3[4];
+extern OfferCountRoll gOfferCountRolls4[4];
 
 /*
  * Deals out new offers (offline, on a new day or after a quest) once the
@@ -87,7 +96,7 @@ void Offer_Generate(void)
     u16 takenSlots;
     s8 j;
     u16 defIdx;
-    s8 *countRolls;
+    OfferCountRoll *countRolls;
     s8 kind;
     s8 itemIdx;
     s32 npcIdx;
@@ -115,15 +124,15 @@ void Offer_Generate(void)
         return;
     }
     seasonDay = LobbyWorld_GetSeasonDay();
-    chance = gOfferDayRolls[seasonDay * 2];
-    isQuest = gOfferDayRolls[seasonDay * 2 + 1];
+    chance = gOfferDayRolls[seasonDay].chance;
+    isQuest = gOfferDayRolls[seasonDay].isQuest;
     if (Rand_Next(1) % 100 > chance) {
         return;
     }
     for (j = 0; j < i; j++) {
-        chance = countRolls[j * 2];
+        chance = countRolls[j].chance;
         if (Rand_Next(1) % 100 <= chance) {
-            newCount = countRolls[j * 2 + 1];
+            newCount = countRolls[j].count;
             break;
         }
     }
@@ -141,7 +150,7 @@ void Offer_Generate(void)
             req = &gSave.offers[npcIdx];
             memset(req, 0, sizeof(OfferRec));
             npc = (s8 *)&gOfferNpcs[npcIdx];
-            if (Cond_Check(0x15) == 1 && (Rand_Next(1) & 1)) {
+            if (Cond_Check(21) == 1 && (Rand_Next(1) & 1)) {
                 defIdx = npc[(Rand_Next(1) & 1) + 3];
             } else {
                 defIdx = npc[(Rand_Next(1) & 1) + 1];
@@ -169,9 +178,6 @@ void Offer_Generate(void)
 }
 
 extern u16 *gQuestIdLists[6];
-s32 Quest_IsOffered(u16 id, s32 a, s32 b);
-s32 ElderForecast_HasQuest(u16 id);
-s32 QuestId_IsStandard(s32 id);
 /*
  * Returns a random quest id (by seed) among the standard quests the village
  * offers now that are not in the elder's forecast, from the six quest id
@@ -268,7 +274,7 @@ s32 Offer_FindRequest(u8 npcId)
 
     npcIdx = Offer_FindNpc();
     /* gSave.offers[ret].active: the field form changes the address arithmetic */
-    if ((npcIdx != -1) && (M2C_FIELD(((u8 *)&gSave + (npcIdx * 0x14)), s8 *, 0x29A9) != 0)) {
+    if ((npcIdx != -1) && (M2C_FIELD(((u8 *)&gSave + (npcIdx * 20)), s8 *, 10665) != 0)) {
         return npcIdx;
     }
     return -1;
@@ -417,7 +423,7 @@ s32 Offer_CountOpen(void)
     j = 0;
     questBase = (u8 *)&gSave;
     do {
-        if (*(u16 *)(questBase + 0x2ADC) != 0) {
+        if (*(u16 *)(questBase + 10972) != 0) {
             count += 1;
         }
         j += 1;
@@ -440,9 +446,6 @@ void Offer_ClearRequest(s32 npcId)
 }
 
 extern u32 gOfferQuestPoints[];
-QuestInfo *Quest_GetDiscInfo(u16 id);
-void Offer_AddPoints(s32 id, s32 v);
-Em *Npc_Find(u8 id);
 /*
  * The quest townsperson npcId offered is cleared: adds its points by the
  * quest's stars (gOfferQuestPoints; a quest without disc info counts as
@@ -491,12 +494,6 @@ typedef struct OfferMilestone {
 } OfferMilestone;
 extern OfferMilestone gOfferMilestonesA[];
 extern OfferMilestone gOfferMilestonesB[];
-void *memcpy(void *dst, const void *src, u32 n);
-s32 Cond_Check(u16 id);
-s32 Save_TestEventFlag(s32 flag);
-void Save_SetEventFlag(s32 flag);
-void Offer_CheckResidentRewards(u32 before, u32 after, s32 idx);
-void Village_CheckMilestone(u32 before, u32 after, s32 idx);
 /*
  * Adds points to townsperson npcId, to its kind and to the total. Once
  * condition 10 holds, kinds 1 and 2 also add them towards their next
@@ -580,13 +577,13 @@ void Offer_AddPoints(s32 npcId, s32 points)
 OfferNpc gOfferNpcs[15] = {
 #include "lobby/007E9410.inc"
 };
-s8 gOfferDayRolls[8] = {
+OfferDayRoll gOfferDayRolls[4] = {
 #include "lobby/007E9488.inc"
 };
-s8 gOfferCountRolls3[8] = {
+OfferCountRoll gOfferCountRolls3[4] = {
 #include "lobby/007E9490.inc"
 };
-s8 gOfferCountRolls4[8] = {
+OfferCountRoll gOfferCountRolls4[4] = {
 #include "lobby/007E9498.inc"
 };
 OfferMilestone gOfferMilestonesA[5] = {

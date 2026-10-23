@@ -6,10 +6,14 @@
  * (Net_Connect); Lobby_RecvPacket receives the server's messages a part at
  * a time; LobbyNet_DisconnectWait waits for the line to close.
  * LobbyKddi_PortalStep runs the KDDI portal's pages in the browser before
- * the lobby. The network screen's steps (NetScreen_Run) and the
- * connection's steps (NetScreen_ConnectStep) are dispatched through the
- * two function tables at the end, which list the server list's and the
- * message dialog's steps.
+ * the lobby. The connection's steps (NetScreen_ConnectStep: LobbyConnect_Reset,
+ * then LobbyConnect_Connect) are dispatched through the function table at
+ * the end.
+ *
+ * The portal's pages and the connection share the step counter
+ * gLbsConnectStep, and the login runs them one after the other
+ * (LobbyLogin_RunConnect). NetScene_BackToPortal, first, leaves for the
+ * portal's quit page, the next entry a first one again.
  */
 #include "common.h"
 #include "save.h"
@@ -25,21 +29,24 @@
 #include "chat_log.h"
 #include "lobby_labels.h"
 #include "pad.h"
-void NetScene_ToState6(void);
-s32 NetTcp_Open(NetAddr *dest);
+#include "lobby/lobby_connect.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "net_mode.h"
+#include "lobby_connect.h"
+#include "net_connection.h"
+#include "net_scene.h"
+#include "libkernl.h"
 int strncmp(const char *, const char *, unsigned int);
 
 extern u8 gLoginState;
 extern u8 gNetScreenStep;
 
-/* The network screen's steps and the connection's steps: function tables
- * (defined at the end of this file). */
-extern s32 (*jtbl_008193E0[])(void);
+/* The connection's steps: a function table (defined at the end of this
+ * file). */
 extern s32 (*jtbl_008193D0[])(void);
 extern u8 gNetConnStep;
 
 extern u8 gLbsConnectStep;
-extern char gLbsHost[0x40];           /* the lobby server's host */
+extern char gLbsHost[64];           /* the lobby server's host */
 extern u16 gLbsPort;                  /* its port */
 extern u16 gLbsResolveTimer;
 extern u8 gLoginConnectStep;
@@ -49,16 +56,11 @@ extern MmbbData gAccountData;
 extern char gCurServerId[SERVER_ID_LEN];
 s32 strncmp(const char *a, const char *b, u32 n);
 char *strncpy(char *dst, const char *src, u32 n);
-s32 Net_ResolveHost(s8 *st, s16 *timer, s32 *out, s8 *name);
 /* LobbyNet_ConnectServer casts the value to s32 before Net_Connect's u16
  * parameter: the compiler then masks it to 16 bits as the game's code does */
-u16 Swap16(s32 x);
 extern s32 gNetSock;
-s32 NetTcp_Abort(s32 sock);
-s32 NetTcp_Delete(s32 *sock);
 void *memset(void *dst, s32 c, u32 n);
 
-s32 Net_DisconnectStep(s8 *st, s16 *t);
 extern s16 gNetStepTimeout;
 extern s8 gNetDisconnectWaiting;
 extern s8 gNetSpareStep;
@@ -77,7 +79,7 @@ void NetScene_BackToPortal(void)
 {
     gNetEntryMode = LOGIN_ENTRY_FIRST;
     gPortalPage = PORTAL_PAGE_QUIT;
-    NetScene_ToState6();
+    NetScene_ToPortal();
 }
 
 /* One frame of closing the line (Net_DisconnectStep): 1 once it is
@@ -121,8 +123,6 @@ s32 Net_Connect(s32 addr, u16 port, u16 openArg)
 
 
 extern NetTcpStatus gNetTcpStatus;
-s32 NetTcp_Status(s32 sock, NetTcpStatus *st);
-s32 NetTcp_Recv(s32 sock, void *buf, s16 len);
 /* The receive state (LobbyRecv_Reset resets it). The part number and the
  * header flag are declared s8 above and read as bytes here, unsigned. */
 #define gRecvGot (gLobbyRecvGot)            /* bytes of the payload received */
@@ -131,7 +131,7 @@ s32 NetTcp_Recv(s32 sock, void *buf, s16 len);
 #define gRecvHdrDone (*(u8 *)&gLobbyRecvHdrDone) /* 1: the header was received */
 
 #define LOBBY_HDR_RECV_LEN 12   /* the header's bytes on the line (LobbyHdr's first 12) */
-#define LOBBY_SEND_SPACE_MIN 0x400 /* nothing is read while the send buffer has no more room than this */
+#define LOBBY_SEND_SPACE_MIN 1024  /* nothing is read while the send buffer has no more room than this */
 
 /*
  * Receives one message, a part at a time: the LOBBY_HDR_RECV_LEN-byte
@@ -299,18 +299,13 @@ s32 LobbyNet_ConnectServer(s32 unused)
     return -1;
 }
 
-s32 Browser_Update(void);
-void Browser_Init(u8 mode);
-void LobbyKddi_CloseBrowser(void);
-void NetMode_SeqAReset(void);
-void FlushCache(s32 kind);
 char *strcpy(char *dst, const char *src);
-extern char gBrowserUrl[0x100];            /* the browser's URL */
+extern char gBrowserUrl[256];            /* the browser's URL */
 
 /*
  * The KDDI portal's pages in the browser, before the lobby, one step a
  * frame (gLbsConnectStep). The page opened is gPortalPage's: the MMBB
- * data's f4 URL, its next URL, or the portal's top page. When the browser
+ * data's session URL, its next URL, or the portal's top page. When the browser
  * ends (BROWSER_DONE), it is a cancel from PORTAL_PAGE_NEXT or from the
  * portal's first page, and otherwise the way on to the lobby (gPortalPage
  * becomes PORTAL_PAGE_BACK). The browser's result 2 and BROWSER_LOGIN
@@ -324,7 +319,7 @@ s32 LobbyKddi_PortalStep(void)
     switch (gLbsConnectStep) {
     case PORTAL_STEP_START:
         gLbsConnectStep++;
-        NetMode_SeqAReset();
+        NetMode_FadeReset();
         gLobbyServers.unk2B20[0] = 0;
         break;
     case PORTAL_STEP_OPEN:
@@ -333,7 +328,7 @@ s32 LobbyKddi_PortalStep(void)
         memset(gBrowserUrl, 0, sizeof(gBrowserUrl));
         switch (gPortalPage) {
         case PORTAL_PAGE_BACK:
-            strcpy(gBrowserUrl, gAccountData.f4);
+            strcpy(gBrowserUrl, gAccountData.sessionUrl);
             gBrowserTopMode = BROWSER_TOP_PORTAL;
             Browser_Init(0);
             break;
@@ -346,7 +341,7 @@ s32 LobbyKddi_PortalStep(void)
         default:
             gPortalPage = PORTAL_PAGE_TOP;
             gBrowserTopMode = BROWSER_TOP_PORTAL;
-            strcpy(gBrowserUrl, "https://www01.kddi-mmbb.jp/00000080/CRS-top.jsp");
+            strcpy(gBrowserUrl, TXT(0x00846B10) /* the portal's top page */);
             Browser_Init(0);
         }
         break;
@@ -384,7 +379,7 @@ s32 LobbyKddi_PortalStep(void)
     case PORTAL_STEP_TOP_AGAIN:
         gLbsConnectStep = PORTAL_STEP_BROWSE;
         memset(gBrowserUrl, 0, sizeof(gBrowserUrl));
-        strcpy(gBrowserUrl, "https://www01.kddi-mmbb.jp/00000080/CRS-top.jsp");
+        strcpy(gBrowserUrl, TXT(0x00846B10) /* the portal's top page */);
         gBrowserTopMode = BROWSER_TOP_PORTAL;
         Browser_Init(0);
         break;
@@ -439,7 +434,7 @@ s32 LobbyConnect_Connect(void)
     case 0:
         gNetConnStep = 0;
         gLbsConnectStep = 0;
-        gLoginState = 3;
+        gLoginState = LOGIN_CONNECTED;
         gNetScreenStep = 0;
         result = 1;
         gNetStepTimeout = 0;
@@ -448,25 +443,8 @@ s32 LobbyConnect_Connect(void)
     return result;
 }
 
-/* The network screen's current step (gNetConnStep): NetScreen_Step0 to
- * NetScreen_Step5. */
-s32 NetScreen_Run(void)
-{
-    return jtbl_008193E0[gNetConnStep]();
-}
-
-/* The two function tables (this file's .data). Their names are the ones
- * the build's tools look for in a table of jumps; they stay. */
-s32 NetScreen_Step0(void);
-s32 NetScreen_Step1(void);
-s32 NetScreen_Step2(void);
-s32 NetScreen_Step3(void);
-s32 NetScreen_Step4(void);
-s32 NetScreen_Step5(void);
+/* The connection's steps (this file's .data). The table's name is the one
+ * the build's tools look for in a table of jumps; it stays. */
 s32 (*jtbl_008193D0[4])(void) = {
     LobbyConnect_Reset, LobbyConnect_Connect, NULL, NULL,
-};
-s32 (*jtbl_008193E0[8])(void) = {
-    NetScreen_Step0, NetScreen_Step1, NetScreen_Step2, NetScreen_Step3,
-    NetScreen_Step4, NetScreen_Step5, NULL, NULL,
 };

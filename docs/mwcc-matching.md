@@ -1121,7 +1121,7 @@ schedule off` turns both off and shows the creation order.
   after all the locals, in the highest ones (the last parameter gets the
   lowest of those; a narrow one converted at the entry is an exception, see
   "Parameters in each other's saved registers"). With more than six the order
-  can wrap (one function of bgm.c gave its first six locals s5..s0 and
+  can wrap (one function in sub_main gave its first six locals s5..s0 and
   the last two s6, s7). Fix: reorder the declarations. When the order can't be
   read off, try every order: 120 orders take 20 to 60 seconds with
   `func_variants.py`, and the autodecomp tools try the order the registers
@@ -1571,7 +1571,7 @@ temporary still live where another is made pushes it up.
   a local first (`cnt = D_008EA8FA;`); a state byte kept in a register
   across a switch is a local (`s8 state = m[0x45]; ... m[0x45] = state +
   1;`), reloaded it is `m[0x45]++` on an `s8 *m`. Seen in: em_status.c
-  and GreatSword_State19 (game), cse_spumap.c, dma.c, Gs_ShowFrame and
+  and GreatSword_State19 (game), cse_spumap.c, dma_packets.c, Gs_ShowFrame and
   Gs_SetState (main), func_006C4A00 (select), func_007BFAE0 (lobby). A
   float computed into a local before stores through `o->unk038` makes each
   store reload the pointer (func_006EFDE0, game).
@@ -1605,7 +1605,7 @@ temporary still live where another is made pushes it up.
   byte through a pointer: `p->f--; t = &p->f; if (*(s8 *)t <= 0) { *t =
   30; ...`. Seen in: QSync_OnPlayer (gm_sub), func_006BD050 (select),
   LobbyActor_StartScript, func_007D77A0 and func_007C2FD0 (lobby), the
-  families' Init functions (game), net_front.c (sub_main). Round 9: `--x ==
+  families' Init functions (game), net_sockets.c (sub_main). Round 9: `--x ==
   0` in the game (the counter stored, then loaded again) is `x--;` then `if (x
   == 0 ...)` (Plsel_ResultsUpdate, plsel); a value stored twice in a row and
   reloaded between is `*d++ = c[i]; *p++ = c[i];`, where `*p++ = *d++ = c[i]`
@@ -2083,7 +2083,7 @@ temporary still live where another is made pushes it up.
   Ending_Scroll (plsel), Png_ReadRow and adler32 (lobby).
 - **Bitfield stores.** Storing 0 into a bitfield isn't folded, storing 1 is;
   the bitfields of a DMA channel's CHCR give `lbu`/`and`/`or`/`sb`. Seen in:
-  dma.c (main).
+  dma_packets.c (main).
 - **A load or store of another width or signedness (`lhu` for `lh`, `lwu` for
   `lw`, `sb` for `sw`).** Cause: the field's type. Fix: retype the field, or
   `*(u16 *)&field` for `lhu` of an s16 field; `x = (u16)x` on an s32 field
@@ -2958,7 +2958,7 @@ temporary still live where another is made pushes it up.
 - **A callee declared with another integer type than its definition, and
   the argument registers set in another order.** Cause: the caller's
   header narrows a parameter the definition keeps wide (lobby_net.h had
-  Net_LockrockObfuscate's key as u16, its definition in net_front.c has
+  Net_LockrockObfuscate's key as u16, its definition in net_sockets.c has
   s32: the u16 key's register was set before n's `move a3`). Fix: the
   definition's type. Check the definition before trusting a header. Seen
   in: HttpLbs_Send (nethttp); GroupBoard_DrawMemberMenu and
@@ -3263,7 +3263,7 @@ temporary still live where another is made pushes it up.
   relocation, while the game loads the base once. Keep a pointer to the
   member made by a cast of the union's address
   (`HairMenuWork *w = (HairMenuWork *)&gMenuWork;`), with a comment.
-  Seen in: HairMenu_MovePlayer and HairMenu_Update (lobby unk_6F2610.c,
+  Seen in: HairMenu_MovePlayer and HairMenu_Update (lobby hair_menu.c,
   round 31).
 
 - **A field's offset folded into the address (`lbu v, %lo(gSave+0x1234)(t)`)
@@ -3386,7 +3386,7 @@ temporary still live where another is made pushes it up.
   QuestList_Build, func_00797040 and WordFilter_Scan (lobby),
   Plsel_CheckAwardsOffline (plsel), EmChameleos_StealItem,
   func_007037F0, HuntingHorn_CheckSongs and StageObj_K0E_RunParts (game),
-  em_bones.c (sub_main). Round 9: MWCC strength-reduces `r[i]` of a pointer
+  em_body.c (sub_main). Round 9: MWCC strength-reduces `r[i]` of a pointer
   held in a register into a walker; the game's base-plus-offset walk (an
   `addu` of base and offset at each use) came from reading the route pointer
   through memory at each use, `(*(NpcRoutePt **)(w + 0xC))[i]`, which MWCC
@@ -3546,7 +3546,7 @@ temporary still live where another is made pushes it up.
   (`r = table[id]; r.f` addresses the copy from sp). Seen in:
   Gallery_DrawPicture and CharaSel_DrawEntry (select).
 - **`sq`/`lq` of a 128-bit value.** Fix: `typedef unsigned int u128
-  __attribute__((mode(TI)));`. Seen in: dma.c (main).
+  __attribute__((mode(TI)));`. Seen in: dma_packets.c (main).
 
 ### Float code
 
@@ -3696,7 +3696,7 @@ temporary still live where another is made pushes it up.
   stays in memory; four assignments or a struct of four bytes keep the
   bytes in registers. `volatile` on an uninitialised local gives a read
   from its stack slot. Seen in: LobbyWorld_GetFadeColor (lobby),
-  net_front.c (sub_main).
+  net_sockets.c (sub_main).
 - **A frame that fixes a buffer's size.** A frame of 0x120 around one buffer
   at sp+0x10 needs a buffer of 0x101 to 0x110 bytes (`u8 buf[0x100]` gives
   0x110). Seen in: the HTML tag handlers (lobby).
@@ -3736,7 +3736,7 @@ temporary still live where another is made pushes it up.
   Plsel_DrawFrame (plsel), Title_DrawLogo (select), ArmorForge_MakeDetail,
   WeaponForge_BoxInput, func_006AF950, func_006AFB10, TownMsg_OnMove and
   TownMsg_OnActor (lobby), Slab_Contains, Seg_NearestPoint and
-  em_bones.c (sub_main), func_006E9B90 (game).
+  em_body.c (sub_main), func_006E9B90 (game).
 
 - **A stack slot 12 bytes off.** Cause: a spilled variable gets a packed
   4-byte slot, a compiler temporary a 16-byte one. Seen in:
@@ -3835,7 +3835,7 @@ strings", "Data in C"); these are the symptoms.
 - **A `%lo` paired with the wrong `%hi`.** Cause: GNU ld pairs a HI16 with
   the wrong LO16 when one symbol has two interleaved `%hi` values that
   differ by a carry. Fix: declare a second symbol for the other address.
-  Seen in: bgm.c (sub_main, D_005BA4FC).
+  Seen in: sub_main (D_005BA4FC).
 - **The last function of `.text` or of a file, and what follows it.** For
   the build, the zero padding after the last function of `.text` needs a
   `text_end` data piece in the YAML once the function is C (0x80 bytes
@@ -3887,26 +3887,26 @@ strings", "Data in C"); these are the symptoms.
   Neighbouring files of a level-4 file are candidates too (pad_port.c
   joined pad.c). A file whose functions all match at both levels
   goes to level 4 when one of them needs it (unk_733AB0.c,
-  unk_734710.c and unk_73C310.c: Portal_ParseStep, Dialog_PageStep and
-  Link_Follow match only at 4; in round 9 unk_73ACF0.c for
+  page_frame.c and page_input.c: Portal_ParseStep, Dialog_PageStep and
+  Link_Follow match only at 4; in round 9 page_focus.c for
   Page_Navigate). In the game, player_states.c's 0x722400 part and
   em_sight.c are at level 4; weapon_states.c, area_objects.c, player_hit.c and player_effects.c match whole
   at both levels.
 - **At level 4 now** (75 files, after round 20):
-  dma.c, texconv.c, unk_1864E0.c, pad.c, pad_port.c (main);
-  engine_core.c, bones.c, net_front.c, kbd_cand_box.c, kbd.c,
-  tex_pack.c, hud.c, menu_windows.c, equip_parts.c, frame_draw.c,
+  dma_packets.c, texconv.c, gs_tex_regs.c, pad.c, pad_port.c (main);
+  sys_main.c, bones.c, net_sockets.c, kbd_cand_box.c, kbd.c,
+  tex_pack.c, hud.c, menu_windows.c, equip_parts.c, draw_helpers.c,
   area_draw.c, quest_rules.c, quest.c, player_stats.c, equip_save.c,
-  hit_detection.c, part_effects.c, loading_screen.c, em_bones.c (sub_main); ending.c,
+  hit_detection.c, part_effects.c, loading_screen.c, em_body.c (sub_main); ending.c,
   plsel.c, quest_results.c (plsel); select_gallery.c, select_title.c (select);
   yn_main.c (yn); em_bulldrome.c, em_ranged_attack.c, em_effect_attack.c,
   em_sight.c, player_states.c (from 0x722400 on: one unit at both levels,
   below), monster_effects.c (game); records_menu.c, ship_mine_menus.c, mine_model_objects.c, gallery_board.c, gallery_targets.c,
   gallery_objects.c, mail_block_list.c, forge_upgrades.c, ingredient_list.c, official_desk.c,
   town_guide.c, friend_list.c, village_offers.c, group_board.c, id_search.c,
-  name_search.c, area_search.c, unk_6F16A0.c, move_menu.c, unk_6F62D0.c,
-  unk_6F8CC0.c, unk_6FB0B0.c, minigame_draw.c, unk_7115D0.c,
-  arena_cup.c, browser_dialogs.c, unk_733AB0.c, unk_734710.c, unk_73ACF0.c, unk_73C310.c,
+  name_search.c, area_search.c, arena_menu.c, move_menu.c, village_clock.c,
+  drink_contest.c, hunter_info.c, minigame_draw.c, unk_7115D0.c,
+  arena_cup.c, browser_dialogs.c, unk_733AB0.c, page_frame.c, page_focus.c, page_input.c,
   html_parse.c, html_attr_readers.c, layout_text.c, layout_tables.c, layout_cells.c,
   unk_753C10.c (zlib's inflate), box_menu_draw.c, town_players.c and area_list.c
   (lobby).
@@ -3943,21 +3943,21 @@ strings", "Data in C"); these are the symptoms.
     at. Round 18's level-only cuts were reverted at the merge (below).
 - **Level-4 pairs in level-3 files** (kept: nothing but the level places a
   cut there): area_collision.c (sub_main), area_scenery.c (game: around
-  AreaObj_K13_Draw), unk_70E2A0.c and browser_cache_draw.c (lobby), around matched
+  AreaObj_K13_Draw), unk_70E2A0.c and browser_cache.c (lobby), around matched
   functions and drafts; menu_sheets.c and quest_counter.c (lobby), inside
   NON_MATCHING blocks only.
 - **Split for this in round 18:** elder_attacks.c (game): EffEm33_*
   (0x6E3B00-0x6EA220, its .data 0x8AB600-0x8AD3A0 and jump tables closed)
   is em_effect_attack.c at level 4; EffShakalaka34_* to EffEm02_* are
   shakalaka_teostra_bulldrome.c. The units batch also cut area_scenery.c, unk_70E2A0.c,
-  browser_cache_draw.c and area_collision.c on the level alone; the lead reverted those
+  browser_cache.c and area_collision.c on the level alone; the lead reverted those
   four at the merge, since the level can change inside a unit (above). Their
   level scans and cut points are in round 18's notes.
 - **Split for this in rounds 11-12:** kbd_input.c (Kbd_DrawCandidateBox is now
-  kbd_cand_box.c), em_bones.c (the fishing code, level 3, is now
-  fishing.c), engine_core.c (the bones are now bones.c), unk_185460.c
-  (its level-4 tail is now unk_1864E0.c), arena_cup.c (round 8's join took in
-  the browser's page code, now browser_cache_draw.c, level 3), quest_counter.c (from
+  kbd_cand_box.c), em_body.c (the fishing code, level 3, is now
+  fishing.c), sys_main.c (the bones are now bones.c), gs_regs.c
+  (its level-4 tail is now gs_tex_regs.c), arena_cup.c (round 8's join took in
+  the browser's page code, now browser_cache.c, level 3), quest_counter.c (from
   func_00770410 on, now quest_counter_draw.c: its caller passes a y that
   func_0076FA10's s16 parameter would re-extend).
 - **Split for this in round 17** (the two pair files with no NON_MATCHING
@@ -3973,8 +3973,8 @@ strings", "Data in C"); these are the symptoms.
   repeats the declarations it uses from the parts before it.
 - **Level 3 needed:** in round 5's scan, level 4 broke one matched function
   in each of bowgun_shot.c, attack_families.c, em_status.c (game), unk_715CA0.c
-  (lobby), cam_control.c, model_setup.c, unk_3BD5E0.c and fishing.c
-  (sub_main; split from em_bones.c in round 11).
+  (lobby), cam_script.c, player_looks.c, unk_3BD5E0.c and fishing.c
+  (sub_main; split from em_body.c in round 11).
 - **Seen in:** Ending_DrawStaffRoll (plsel), Yn_Connect (yn), Tex_VramBlocks
   (main); in round 7 Html_ParseSome, Html_PageKeyword, Lbs_Sort, Html_Csv
   and Page_SetKind (lobby), Vec_RotateX (sub_main), the pad helpers
@@ -4009,7 +4009,7 @@ strings", "Data in C"); these are the symptoms.
   13 sub_main files' blocks found five closer at the other level.
 
 - **Other CodeWarrior settings for a whole file.** `#pragma opt_propagation
-  off` (unk_185460.c, main) and `#pragma opt_lifetimes off` (file_load.c,
+  off` (gs_regs.c, main) and `#pragma opt_lifetimes off` (file_load.c,
   sub_main: Tex_LoadFile, a pointer stepped N times in an unrolled loop
   whose loads the game doesn't fold into offsets). Such a pragma is fair
   only when every other function of the file still matches; each is an
@@ -4036,7 +4036,7 @@ strings", "Data in C"); these are the symptoms.
   assembly. CRI Sofdec (main 0x1313C0-0x158930) was built with CodeWarrior
   but isn't Capcom's, so it stays assembly too.
 - **Inline asm the game used.** The eight-nop busy waits (above); interrupt
-  handlers that end with `__asm__ volatile ("sync.l\n\tei");` (dma.c and
+  handlers that end with `__asm__ volatile ("sync.l\n\tei");` (dma_packets.c and
   display.c, main); MWCC accepts GCC-style `__asm__ volatile`, with operands
   too, and schedules it with the code around it unless it starts with `.set
   noreorder`. MWCC's `asm` functions reject `%hi`/`%lo`: a function that needs
@@ -4156,7 +4156,7 @@ e.g. under `build/`) and the function's assembly:
 ```sh
 PERM=tools/deps/permuter-venv/bin/python
 $PERM tools/deps/decomp-permuter/import.py build/perm/func.c \
-    asm/sub_main/nonmatchings/engine_core/func_002E6E20.s
+    asm/sub_main/nonmatchings/sys_main/func_002E6E20.s
 $PERM tools/deps/decomp-permuter/permuter.py nonmatchings/func_002E6E20
 ```
 

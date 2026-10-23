@@ -3,7 +3,7 @@
 #include "common.h"
 
 /*
- * gSysSettings (0x6ADF90, sub_main's .bss, 0xF4 bytes): the system settings
+ * gSysSettings (0x6ADF90, sub_main's .bss, 244 bytes): the system settings
  * and the memory layout, which the boot ELF's core reads too.
  * SysSettings_Reset sets the settings, Mem_InitLayout the
  * memory areas (the addresses given are the ones it stores).
@@ -39,15 +39,15 @@ typedef struct SysSettings {
     /* 0x23 */ u8 unk23;
     /* 0x24 */ u8 unk24;
     /* 0x25 */ u8 unk25[0x2A - 0x25];
-    /* 0x2A */ u16 boundTex;            /* the texture last bound (Tex_Bind; 0xFFFF after Gfx_ResetRenderStates) */
-    /* 0x2C */ u8 blendA;               /* Gfx_SetBlend's cached first table index (render state 0x5E) */
+    /* 0x2A */ u16 boundTex;            /* the texture last bound (Tex_Bind; 65535 after Gfx_ResetRenderStates) */
+    /* 0x2C */ u8 blendA;               /* Gfx_SetBlend's cached first table index (RS_BLEND) */
     /* 0x2D */ u8 blendB;               /* ... and its second */
-    /* 0x2E */ u8 texFilter;            /* Gfx_SetTexFilter's cached filter mode (render state 0x63) */
-    /* 0x2F */ u8 cameraPreset;         /* gCameraPreset (0xFF after a reset) */
-    /* 0x30 */ u8 blendOp;              /* Gfx_SetBlendOp's cached index (render state 0xD) */
+    /* 0x2E */ u8 texFilter;            /* Gfx_SetTexFilter's cached filter mode (RS_TEX_FILTER) */
+    /* 0x2F */ u8 cameraPreset;         /* gCameraPreset (CAM_PRESET_NONE after a reset) */
+    /* 0x30 */ u8 blendOp;              /* Gfx_SetBlendOp's cached index (RS_BLEND_OP) */
     /* 0x31 */ u8 unk31;                /* only passed to Kbd_Draw (Chat_DrawKbdBox), which ignores it */
     /* 0x32 */ u8 screenCaptureOk;      /* gScreenCaptureOk */
-    /* 0x33 */ u8 clearCapture;         /* the quest end screen capture: 0x81 asked for (the quest ends: quest.c, quest_rules.c), 0x80 taken (ScreenCapture_Take, then cleared by the quest script), 0 none */
+    /* 0x33 */ u8 clearCapture;         /* the quest end screen capture: 129 asked for (the quest ends: quest.c, quest_rules.c), 128 taken (ScreenCapture_Take, then cleared by the quest script), 0 none */
     /* 0x34 */ u8 unk34;
     /* 0x35 */ u8 soundLoading;         /* set while a sound bank is read at once */
     /* 0x36 */ u8 musicVolume;          /* option level 0..7 (also the movies' volume) */
@@ -57,7 +57,7 @@ typedef struct SysSettings {
     /* 0x3A */ u8 unk3A;
     /* 0x3B */ u8 unk3B;
     /* 0x3C */ u8 busy;                 /* gSysBusy: 1 while a card save or a lobby network step runs */
-    /* 0x3D */ u8 unk3D;                /* 0x80 after Gfx_ResetRenderStates */
+    /* 0x3D */ u8 unk3D;                /* 128 after Gfx_ResetRenderStates */
     /* 0x3E */ u8 unk3E;                /* 1 after Gfx_ResetRenderStates */
     /* 0x3F */ u8 offline;          /* 1: the town runs offline (NetScene_StateOffline, NetScene_Run; LobbyScreen_EnterSeq clears it): Town_PlaceLocalPlayer, Town_StartAreaMusic, LobbyScreen_LoadBanks */
     /* 0x40 */ s16 unk40;               /* the lobby clears it with unk3F */
@@ -69,11 +69,11 @@ typedef struct SysSettings {
     /* 0x47 */ u8 portalPage;           /* gPortalPage */
     /* 0x48 */ u8 pspCharaWait;         /* 1 while the PSP connect task waits for the character select (Chara_SelectTask clears it); a routine of the network library tests it */
     /* 0x49 */ u8 unk49;
-    /* 0x4A */ u8 unk4A;                /* the lobby keeps a copy of gNetMode.slot here */
+    /* 0x4A */ u8 cardSlot;             /* the memory card slot: the lobby keeps a copy of gNetMode.slot here */
     /* 0x4B */ u8 gallerySel;           /* the gallery's selected entry (select_gallery.c stores the cursor - 2 and restores it) */
     /* 0x4C */ u8 galleryEntry;         /* the gallery entry a scene plays (its list value; | 0x80 for the second variant: select_gallery.c, the plsel gallery tasks) */
     /* 0x4D */ u8 unk4D;
-    /* 0x4E */ u8 galleryKeep[2];       /* the gallery's two view values (its work's 0x1BC and 0x1C0), kept while a scene plays */
+    /* 0x4E */ u8 galleryKeep[2];       /* the gallery list's top entry and cursor row (its work's listTop and listRow), kept while a scene plays */
     /* 0x50 */ s8 language;             /* Kbd_InitState argument: the language from the boot arguments (Select_ParseLanguage) */
     /* 0x51 */ u8 pal;                  /* 1 for PAL (fps 50) */
     /* 0x52 */ u8 subMainLoaded;
@@ -84,27 +84,27 @@ typedef struct SysSettings {
     /* 0x60 */ u8 *selWork;             /* 0xAC8000: the select screens work area (OptWork and PspWork at +0x100) */
     /* 0x64 */ s32 unk64;               /* 0xAE8000 */
     /* 0x68 */ s32 unk68;               /* 0xAF5200 */
-    /* 0x6C */ void *bones;             /* gBones, 0xB09200: the 0x800 bone slots */
-    /* 0x70 */ struct Model *models;    /* gModels, 0xBD1200: the 0x80 model headers */
+    /* 0x6C */ void *bones;             /* gBones, 0xB09200: the 2048 bone slots */
+    /* 0x70 */ struct Model *models;    /* gModels, 0xBD1200: the 128 model headers */
     /* 0x74 */ u8 *dataBuf;             /* 0xC2C200: animation sets (Anim_LoadSet), model packs (Model_SetupWithPack) and sound banks (Sound_LoadBank) are loaded here */
     /* 0x78 */ u8 *modelPack;       /* = dataBuf (Mem_InitLayout): the model packs are read here (Load_AreaPack, 0x128000 bytes; Load_CommonModelPack, Load_AreaSubModelPack) and set up from it (Model_SetupWithPack, Model_SetupTexPack) */
     /* 0x7C */ u8 *unk7C;
     /* 0x80 */ u8 *unk80;
-    /* 0x84 */ s32 prims;               /* gPrims, 0xBD5200: up to 256 prims of 0x50 bytes */
-    /* 0x88 */ u8 *extraBuf;            /* 0xBDA200 (0x14000 bytes, cleared at a reset): the extra save file SaveExtra_CopyFile copies; sent at login (the request + 0x20) */
-    /* 0x8C */ void *workArea;          /* 0xC0A200 (0x18000 bytes): the overlays' shared work area (gWorkArea) */
+    /* 0x84 */ s32 prims;               /* gPrims, 0xBD5200: up to 256 prims of 80 bytes */
+    /* 0x88 */ u8 *extraBuf;            /* 0xBDA200 (81920 bytes, cleared at a reset): the extra save file SaveExtra_CopyFile copies; sent at login (the request + 0x20) */
+    /* 0x8C */ void *workArea;          /* 0xC0A200 (98304 bytes): the overlays' shared work area (gWorkArea) */
     /* 0x90 */ s32 lobbyWorkBuf;        /* 0xBEE200: the lobby's work buffer (gLobbyWorkBuf) */
     /* 0x94 */ u32 stageFile;           /* gStageFile, 0xC22200 */
-    /* 0x98 */ u8 *camData;         /* 0xC2A200 (0x2000 bytes, cleared at a reset): the area's camera data (Area_LoadCamData; CamCtl_InitDefaultParams) */
+    /* 0x98 */ u8 *camData;         /* 0xC2A200 (8192 bytes, cleared at a reset): the area's camera data (Area_LoadCamData; CamCtl_InitDefaultParams) */
     /* 0x9C */ u8 loaded[6];            /* the overlay in each window 2..7 (gOverlayWindow): the code
-                                           indexes from 0x9A (Overlay_IsLoaded, Overlay_Load) */
+                                           indexes from offset 0x9A (Overlay_IsLoaded, Overlay_Load) */
     /* 0xA2 */ u8 unkA2[0xB0 - 0xA2];
     /* 0xB0 */ struct SaveData *saveBuf; /* 0xD60200: the save data (gSaveBuf; Emcmd_LoadPartition in gm_load.c) */
     /* 0xB4 */ s32 unkB4;               /* 0x27E00 */
     /* 0xB8 */ u32 gmSubAddr;           /* kept by Mem_InitLayout */
     /* 0xBC */ u8 bootMode;             /* gBootMode: Boot_Task's switch (select_boot.c); gm_main sets 1 */
     /* 0xBD */ u8 taskRequest;          /* a task for Task_RunFrame to start, then cleared: 1, 2 the lobby's online tasks (overlay 4), 3 Scene_QuestTask (overlay 3) */
-    /* 0xBE */ u8 brightness;           /* the brightness option 0x38..0xA4, 0x80 neutral (the options screen shows it less 0x80; the scene draws a white overlay above 0x80, a black one below) */
+    /* 0xBE */ u8 brightness;           /* the brightness option 56..164, 128 neutral (the options screen shows it less 128; the scene draws a white overlay above 128, a black one below) */
     /* 0xBF */ u8 unkBF;
     /* 0xC0 */ f32 fps;                 /* 59.94 (NTSC) or 50 (PAL) */
     /* 0xC4 */ s8 cardHasChara;         /* 1 once the memory card holds a character (loaded or saved), 0 when none; gm_main then starts at the character entry */
@@ -112,7 +112,7 @@ typedef struct SysSettings {
     /* 0xC6 */ u8 unkC6[2];
     /* 0xC8 */ u32 lbguildFree;         /* free memory after lbguild's data */
     /* 0xCC */ u32 lbguildFreeSize;
-    /* 0xD0 */ u8 *memFile;             /* file 0x19EB, read through the memory file's seek/read (the kana-kanji converter's dictionary reads) */
+    /* 0xD0 */ u8 *memFile;             /* file 6635, read through the memory file's seek/read (the kana-kanji converter's dictionary reads) */
     /* 0xD4 */ s32 memFileSize;
     /* 0xD8 */ s32 patchArea;           /* 0xAA6780: the end of lbguild's free memory; the patch and
                                            memory card work areas start here */
@@ -128,7 +128,7 @@ typedef struct SysSettings {
     /* 0xEC */ s16 questId;             /* the current quest's id (Quest_SetCurrent) */
     /* 0xEE */ u8 unkEE[2];
     /* 0xF0 */ s32 questFromList;       /* 1: questData is a guild list entry, 0: a stage file (Quest_SetCurrent) */
-} SysSettings;                          /* 0xF4 bytes */
+} SysSettings;                          /* 244 bytes */
 
 typedef char SysSettings_size_check[(sizeof(SysSettings) == 0xF4) ? 1 : -1];
 

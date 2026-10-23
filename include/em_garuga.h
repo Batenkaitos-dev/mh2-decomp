@@ -1,5 +1,6 @@
 #ifndef EM_GARUGA_H
 #define EM_GARUGA_H
+#include "em.h"
 
 /*
  * The Yian Garuga family (EM_KIND_YIAN_GARUGA): its states, by group (em.h's
@@ -41,7 +42,7 @@ enum EmGarugaMotion {
     GARUGA_MOT_GET_UP = 0x25,
     GARUGA_MOT_COLLAPSE = 0x26,         /* falling over when a status starts */
     GARUGA_MOT_LIE_DOWN = 0x27,
-    GARUGA_MOT_SINGLE_ATTACK = 0x28,    /* the one motion of EmGaruga_SingleAttack */
+    GARUGA_MOT_ROAR = 0x28,             /* the roar (GARUGA_ATK_ROAR): at frame 60 the roar's rings (ElementBurst type 5) and attack row 22, the roar's wide sphere (radius 1400 at GARUGA_BONE_BREATH, no power); GARUGA_SE_ROAR from frame 52 to 200 */
     GARUGA_MOT_FLIP = 0x29,             /* the back flip (EmGaruga_Somersault), then FLIP_FALL and FLIP_LAND */
     GARUGA_MOT_TAIL_SPIN = 0x2A,
     GARUGA_MOT_FLIP_FALL = 0x2D,
@@ -63,7 +64,7 @@ enum EmGarugaMotion {
     GARUGA_MOT_DOWN = 0x46,             /* lying knocked down */
     GARUGA_MOT_DOWN_GET_UP = 0x47,      /* getting up from a knock-down or a fall */
     GARUGA_MOT_KNOCK_DOWN_B_GET_UP = 0x48,
-    GARUGA_MOT_KNOCK_DOWN_B = 0x4A,     /* EmGaruga_KnockDown plays 0x4A, 0x4B, then 0x48 */
+    GARUGA_MOT_KNOCK_DOWN_B = 0x4A,     /* EmGaruga_KnockDown plays it, GARUGA_MOT_KNOCK_DOWN_B_LIE, then GARUGA_MOT_KNOCK_DOWN_B_GET_UP */
     GARUGA_MOT_KNOCK_DOWN_B_LIE = 0x4B,
     GARUGA_MOT_STATUS4 = 0x4C,          /* under status 4 (EmGaruga_Status4, Hold2) */
     GARUGA_MOT_FALL = 0x4D,             /* falling out of the air */
@@ -80,7 +81,7 @@ enum EmGarugaMotion {
     GARUGA_MOT_STRUGGLE = 0x60,
     GARUGA_MOT_DOWNED = 0x61,
     GARUGA_MOT_DOWNED_GET_UP = 0x62,
-    GARUGA_MOT_ROAR = 0x64,
+    GARUGA_MOT_STOMPS = 0x64,           /* three stomps (GARUGA_IDLE_STOMPS and its rage variants): attack row 35, a sphere at each foot (GARUGA_BONE_FOOT_A, _B; power 10), at frames 118, 164 and 204, with voices 52 and 51 at the head; in a rage, dust from frame 54. No rings: the roar is GARUGA_MOT_ROAR */
     GARUGA_MOT_TURN_STOMP = 0x65,       /* a turn in place (EmGaruga_Stand, IdleTurnToGoal, RunBAndTurn) */
     GARUGA_MOT_PECK_COMBO = 0x66,
     GARUGA_MOT_RUN_B = 0x68,
@@ -121,11 +122,11 @@ enum EmGarugaIdleState {
     GARUGA_IDLE_STATUS1_END = 0x1C,
     GARUGA_IDLE_STATUS2_DOWNED = 0x1D,
     GARUGA_IDLE_STATUS1_DOWNED = 0x1F,
-    GARUGA_IDLE_ROAR = 0x21,
+    GARUGA_IDLE_STOMPS = 0x21,          /* GARUGA_MOT_STOMPS */
     GARUGA_IDLE_STATUS4_SHAKE_OFF = 0x22,
-    GARUGA_IDLE_ROAR_RAGE_BY_HP = 0x23,
+    GARUGA_IDLE_STOMPS_RAGE_BY_HP = 0x23, /* GARUGA_MOT_STOMPS; Em_CheckRageByHp on entry */
     GARUGA_IDLE_STUN_SHAKE_OFF = 0x24,
-    GARUGA_IDLE_ROAR_PENDING_RAGE = 0x25,
+    GARUGA_IDLE_STOMPS_PENDING_RAGE = 0x25, /* GARUGA_MOT_STOMPS; Em_StartPendingRage on entry */
     GARUGA_IDLE_EAT = 0x28
 };
 
@@ -181,7 +182,7 @@ enum EmGarugaAttackState {
     GARUGA_ATK_TURN_AND_PECK_A = 0x03,
     GARUGA_ATK_CHARGE_TRIP = 0x04,
     GARUGA_ATK_TURN_AND_PECK_B = 0x05,
-    GARUGA_ATK_SINGLE_ATTACK = 0x06,
+    GARUGA_ATK_ROAR = 0x06,             /* GARUGA_MOT_ROAR in place */
     GARUGA_ATK_FIREBALL = 0x07,
     GARUGA_ATK_FIREBALL_LOW = 0x08,
     GARUGA_ATK_FIREBALL_HIGH = 0x09,
@@ -243,5 +244,83 @@ enum EmGarugaVersusState {
     GARUGA_VS_WAIT_BOTH = 0x98,
     GARUGA_VS_END = 0x99
 };
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes GarugaAttack_Create makes on given frames of a motion
+ * (GarugaAttack_HitShapes, by the attack rows' hit lists), where a
+ * fireball, a burst or the rings start, and the bones the steps' sounds
+ * take turns at. "A" and "B" are the two sides; which is left the code
+ * doesn't show. Bones no code explains stay numbers: 1 and 27 (dust in
+ * motion 13 and GARUGA_MOT_FLINCH_A).
+ */
+enum EmGarugaBone {
+    GARUGA_BONE_ROOT = 0,       /* the skeleton's first bone: the body's sphere in the runs (GARUGA_MOT_RUN, GARUGA_MOT_RUN_B), with GARUGA_BONE_HEAD's in two charges; the falls' sounds */
+    GARUGA_BONE_BODY = 2,       /* the body's wide sphere in GARUGA_MOT_COLLAPSE, GARUGA_MOT_PECK_COMBO_B and the leaps' landings */
+    GARUGA_BONE_WING_A = 6,     /* the flight motions' (GARUGA_MOT_DESCEND, GARUGA_MOT_BACK_HOP) paired sounds play here and at GARUGA_BONE_WING_B, four frames apart */
+    GARUGA_BONE_WING_B = 12,
+    GARUGA_BONE_LEG_A = 19,     /* leg A's upper sphere in the walk's and the turns' steps (with GARUGA_BONE_FOOT_A's) */
+    GARUGA_BONE_STEP_A = 20,    /* leg A's step sounds (GARUGA_SE_STEP in the walk and the turns) */
+    GARUGA_BONE_FOOT_A = 22,    /* leg A's foot: the steps' larger sphere, a landing on both feet (GARUGA_MOT_TOUCH_DOWN), a stomp's sphere */
+    GARUGA_BONE_LEG_B = 25,     /* the same for leg B */
+    GARUGA_BONE_STEP_B = 26,
+    GARUGA_BONE_FOOT_B = 28,
+    GARUGA_BONE_BREATH = 34,    /* where the fireballs (EMRANGED_FIREBALL) and the lying puffs start; the centre of the roar's wide sphere (attack row 22) */
+    GARUGA_BONE_HEAD = 35,      /* the head's sphere in the pecks (GARUGA_MOT_PECK_COMBO, _B), GARUGA_MOT_HEAD_DOWN and the stare; the voice sounds play here and the roar's rings follow it */
+    GARUGA_BONE_FIREBALL_BURST = 36, /* the fireball's two bursts (AttackBurst types 1 and 2) */
+    GARUGA_BONE_TAIL_A = 41,    /* the tail's capsules start here: to GARUGA_BONE_TAIL_C in the tail spin and the stare, to GARUGA_BONE_TAIL_D in GARUGA_MOT_FLIP and motion 109 */
+    GARUGA_BONE_TAIL_B = 42,    /* the tail spin's swing sound plays here as the tail's hit starts (frame 30) */
+    GARUGA_BONE_TAIL_C = 43,
+    GARUGA_BONE_TAIL_D = 44     /* also where GARUGA_MOT_PART_BREAK's sounds play */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBone and Em_PlaySeType). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmGarugaSe {
+    GARUGA_SE_STEP = 1,         /* a step: in GARUGA_MOT_WALK on the frames of its camera shakes (52 and 116), at the step bones */
+    GARUGA_SE_FIREBALL = 24,    /* a fireball shot: in GARUGA_MOT_FIREBALL_B on the frames the three fireballs start (78, 120, 164) */
+    GARUGA_SE_ROAR = 96         /* the roar, a voice: from frame 52 and every 4 frames to 200 in GARUGA_MOT_ROAR, over its rings (frame 60) and the roar's wide sphere; from frame 72 in GARUGA_MOT_BACK_HOP, after the same sphere at 70 */
+};
+
+extern void *EmGaruga_Callbacks[8];
+void EmGaruga_MotionSounds(Em *em, EmWork *work);
+void EmGaruga_Init(Em *em);
+void EmGaruga_Start(Em *em);
+void EmGaruga_Land(Em *em, EmWork *work);
+void EmGaruga_FlyOutOfArea(Em *em, EmWork *work);
+void EmGaruga_FlyToGoalAndLand(Em *em, EmWork *work);
+void EmGaruga_FlyIntoArea(Em *em, EmWork *work);
+void EmGaruga_Fireball(Em *em, EmWork *work);
+void EmGaruga_FireballLow(Em *em, EmWork *work);
+void EmGaruga_FireballHigh(Em *em, EmWork *work);
+void EmGaruga_FallThenGlide(Em *em, EmWork *work);
+void EmGaruga_Fall(Em *em, EmWork *work);
+void EmGaruga_StoryIntro(Em *em, EmWork *work);
+void EmGaruga_Captured(Em *em);
+void EmGaruga_VersusEatBait(Em *em, EmWork *work);
+void EmGaruga_Die(Em *em, EmWork *work);
+void EmGaruga_DieHeld(Em *em, EmWork *work);
+void EmGaruga_DieFalling(Em *em, EmWork *work);
+void EmGaruga_RunIdleState(Em *em, EmWork *work);
+void EmGaruga_RunMoveState(Em *em, EmWork *work);
+void EmGaruga_Update(Em *em);
+void EmGaruga_RunState(Em *em, s32 work);
+void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work);
+void EmGaruga_SpawnLandingDust(Em *em);
+void EmGaruga_EndAttackState(Em *em, EmWork *work);
+void EmGaruga_SetIdleState(Em *em, u16 state, u8 mode);
+void EmGaruga_SetMoveState(Em *em, u16 state, u8 mode);
+void EmGaruga_SetFlyState(Em *em, u16 state, u8 mode);
+void EmGaruga_SetAttackState(Em *em, u16 state, u8 mode);
+void EmGaruga_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmGaruga_MoveByVelYCurve(Em *em, s32 kind);
+void EmGaruga_StartCurves(Em *em, u8 kind);
+u8 EmGaruga_UpdateCurves(Em *em);
 
 #endif

@@ -38,41 +38,39 @@
 #include "em.h"
 #include "pad.h"
 #include "lobby_labels.h"
-s32 Kitchen_SetCourseReady(void);
-u16 LobbyPad_Get(s32);
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "camera.h"
+#include "lobby_net.h"
+#include "text.h"
+#include "kitchen.h"
+#include "font.h"
+#include "game_util.h"
+#include "ingredient_list.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "rand.h"
+#include "service_npc_states.h"
+#include "talk.h"
+#include "town_players.h"
+#include "libc.h"
 
 extern u8 gMenuWork[];
-void Font_SetSpacing(u8 a, u8 b);
-void Text_SetSize(s32 a);
-void LobbySe_Play(s32);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void CamFocus_End(void);
-void CamReq_Cancel(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
-extern KitchenIngredient *gKitchenIngredients[];
 extern char gKitchenTextFmt[];
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
 
-struct Em *Npc_Find(u8 kind);
-void Actor_SetState(void *, s32, s32);
-s32 Game_IsOnline(void);
-void Talk_Say(s32 line, s8 question);
-s32 Talk_Update(void);
 void NpcScene_Start(s8 kind, s32 seatMask, s32 level);
-s32 NpcScene_IsDone(void);
-void *memset(void *dst, s32 c, u32 n);
-void Chat_SetWindowMode(s8 a, s8 b);
-void Kitchen_Draw(MenuTask *task);
 extern u8 gMenuInputLock;
 extern u8 gTakeSpotId;
-void Talk_Start(struct Em *npc, s8 quiet);
-u16 Rand_Next(s32 stream);
-void Kitchen_ListDiners(KitchenMenu *m);
-void Kitchen_Broadcast(KitchenMenu *m, u8 kind);
 
 /*
  * Opens the kitchen at the table the player has just sat at; nothing when
@@ -98,7 +96,7 @@ void Kitchen_Open(void)
     menu->cook = cook;
     menu->player = &gPlayers[gScene.localPlayer];
     menu->diners = 1;
-    Actor_SetState(menu->player, 0, 0x1E); /* the player's town state: sits at the table */
+    Actor_SetState(menu->player, 0, 30); /* the player's town state: sits at the table */
     Talk_Start(menu->cook, 1);
     menu->rand = Rand_Next(1);
     if (gScene.area == AREA_HUB_0x57) {
@@ -118,10 +116,7 @@ void Kitchen_Open(void)
     menu->timer = 1800; /* frames: 60 s */
 }
 
-void *memcpy(void *dst, const void *src, u32 n);
 extern char gMyUserId[];
-s32 memcmp(void *a, void *b, s32 n);
-void TownMsg_SendKitchen(u8 *p, void *to);
 
 /*
  * Sends the kitchen's town message of the given kind (enum KitchenMsg),
@@ -132,7 +127,7 @@ void TownMsg_SendKitchen(u8 *p, void *to);
 void Kitchen_Broadcast(KitchenMenu *menu, u8 kind)
 {
     KitchenMeal meal;
-    u8 msg[0x50];
+    u8 msg[80];
     s32 i;
 
     if (Game_IsOnline() == 0) {
@@ -254,27 +249,9 @@ void Kitchen_ListDiners(KitchenMenu *menu)
     }
 }
 
-void IngredientList_BuildPage(KitchenMenu *m, s16 page);
-s32 Kitchen_ChooseIngredient(KitchenMenu *m, u16 pad);
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
-void Npc_SetKitchenRoute(struct Em *npc, u8 kind);
-void Npc_AdvanceRoute(struct Em *npc);
-s32 WinSlide_Step(WinSlide *win, s16 from, s16 to);
-char *Text_FillDollar(char *arg0, s32 arg1);
-char *Talk_LineText(u16 id);
 extern u16 gTalkLine;
 extern char *gTalkLineText;
-void Menu_SetYesNo(s8 a);
-s32 Menu_YesNoInput(void);
-s32 LobbyWorld_GetSeason(void);
-void CamReq_Kitchen(s32 a);
-s16 Kitchen_EatDish(s16 season, u16 first, u16 second, u16 rand);
-void Kitchen_EatSetCourse(u16 course, u16 rand);
-void Items_Take(s32 item, s32 n);
-void Save_AddMoney(s32 n);
-s32 Menu_PushNoticeOnce(s32);
 s32 Award_Grant(s32 a);
-s32 RateFlag_SetAndNotify(s32 a);
 /*
  * The kitchen's frame (TOWN_MODE_KITCHEN), one KITCHEN_STEP_* at a time:
  * the player sits, the cook walks to the table and greets (a dish or the
@@ -317,7 +294,7 @@ void Kitchen_Update(void)
         }
         break;
     case KITCHEN_STEP_COOK_WALK:
-        if (menu->cook->state == 0x59) { /* the cook's state: at the table */
+        if (menu->cook->state == 89) { /* the cook's state: at the table */
             menu->step++;
             if (menu->setCourse == 0) {
                 Talk_Say(COOK_TALK_GREET, 0);
@@ -339,10 +316,10 @@ void Kitchen_Update(void)
                 gTalkLineText = Text_FillDollar(Talk_LineText(gTalkLine), menu->diners);
             } else if (menu->setCourse == 1) {
                 menu->step = KITCHEN_STEP_CONFIRM_IN;
-                WinSlide_Step(&menu->confirmWin, -0x118, 0x3C);
+                WinSlide_Step(&menu->confirmWin, -280, 60);
             } else {
                 menu->step = KITCHEN_STEP_LIST_IN;
-                WinSlide_Step(&menu->win, 0x280, 0x118);
+                WinSlide_Step(&menu->win, 640, 280);
             }
             break;
         case MENU_CANCEL:
@@ -356,10 +333,10 @@ void Kitchen_Update(void)
         case MENU_DONE:
             if (menu->setCourse == 1) {
                 menu->step = KITCHEN_STEP_CONFIRM_IN;
-                WinSlide_Step(&menu->confirmWin, -0x118, 0x3C);
+                WinSlide_Step(&menu->confirmWin, -280, 60);
             } else {
                 menu->step++;
-                WinSlide_Step(&menu->win, 0x280, 0x118);
+                WinSlide_Step(&menu->win, 640, 280);
             }
             break;
         case MENU_CANCEL:
@@ -370,7 +347,7 @@ void Kitchen_Update(void)
         }
         break;
     case KITCHEN_STEP_LIST_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case MENU_DONE:
             menu->step++;
             menu->firstPick = 0;
@@ -393,9 +370,9 @@ void Kitchen_Update(void)
         switch (Kitchen_ChooseIngredient(menu, pad)) {
         case MENU_DONE:
             menu->step++;
-            WinSlide_Step(&menu->confirmWin, -0x118, 0x3C);
+            WinSlide_Step(&menu->confirmWin, -280, 60);
             Menu_SetYesNo(1);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         case MENU_CANCEL:
             menu->firstPick = 0;
@@ -404,7 +381,7 @@ void Kitchen_Update(void)
         }
         break;
     case KITCHEN_STEP_CONFIRM_IN:
-        switch (WinSlide_Step(&menu->confirmWin, -0x118, 0x3C)) {
+        switch (WinSlide_Step(&menu->confirmWin, -280, 60)) {
         case MENU_DONE:
             menu->step++;
             menu->backStep = KITCHEN_STEP_PICK_SECOND;
@@ -459,11 +436,11 @@ void Kitchen_Update(void)
     case KITCHEN_STEP_COOKING:
         if (NpcScene_IsDone() == 1) {
             menu->step++;
-            Actor_SetState(menu->player, 0, 0x29); /* the player's town state: eats */
+            Actor_SetState(menu->player, 0, 41); /* the player's town state: eats */
         }
         break;
     case KITCHEN_STEP_EAT:
-        if (menu->player->motionId[0] == 0x261) { /* the player's motion: seated at the table */
+        if (menu->player->motionId[0] == 609) { /* the player's motion: seated at the table */
             menu->step++;
             if (menu->setCourse == 0) {
                 Items_Take(menu->firstPick, menu->diners);
@@ -491,7 +468,7 @@ void Kitchen_Update(void)
                     }
                 }
             }
-            if (gSave.recordCounts[RECORD_MEALS] < 65000) {
+            if (gSave.recordCounts[RECORD_MEALS] < RECORD_TALLY_MAX) {
                 gSave.recordCounts[RECORD_MEALS] += menu->diners;
                 if (gSave.recordCounts[RECORD_MEALS] >= 100) {
                     if (!(gSave.rateFlags & (1 << RATE_FLAG_MEALS))) {
@@ -500,7 +477,7 @@ void Kitchen_Update(void)
                     Award_Grant(AWARD_MEALS);
                 }
             }
-            Actor_SetState(menu->cook, 0, 0x55); /* the cook's state after the meal */
+            Actor_SetState(menu->cook, 0, 85); /* the cook's state after the meal */
         }
         break;
     case KITCHEN_STEP_REACT:
@@ -540,7 +517,7 @@ void Kitchen_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->step = KITCHEN_STEP_CLOSE;
-            Actor_SetState(menu->player, 0, 0x15); /* the player's town state: stands up */
+            Actor_SetState(menu->player, 0, 21); /* the player's town state: stands up */
             Npc_AdvanceRoute(menu->cook);
             Kitchen_Broadcast(menu, KITCHEN_MSG_DONE);
             break;
@@ -610,8 +587,6 @@ static KitchenIngredient *Kitchen_FindIngredient(u16 item)
     return fallback;
 }
 
-s32 abs(s32 x);
-
 /* The level (0 to MEAL_LEVELS - 1) of a stat change by its size, either
  * sign: up to 5 is 0, then one more for each further 5, from 26 on 5. */
 s32 Kitchen_EffectLevel(s32 change)
@@ -634,8 +609,6 @@ s32 Kitchen_EffectLevel(s32 change)
 }
 
 extern MealBonusTable gMealBonus;
-extern char **gMealTasteTexts[];
-u8 Notice_PushItem(char *);
 
 /*
  * Gives the set course's effect: courses 1 and 3 raise stamina and health
@@ -665,15 +638,15 @@ void Kitchen_EatSetCourse(u16 course, u16 rand)
         defense = attack;
         break;
     case 1:
-        stamina = 0x14;
+        stamina = 20;
         health = stamina;
         break;
     case 2:
-        attack = 0x19;
+        attack = 25;
         defense = attack;
         break;
     case 3:
-        stamina = 0x1E;
+        stamina = 30;
         health = stamina;
         break;
     }
@@ -755,28 +728,28 @@ void Kitchen_EatSetCourse(u16 course, u16 rand)
     }
     if (gained == 0 && lost == 0) {
         taste = MEAL_TASTE_NONE;
-        Actor_SetState(pl, 0, 0x27); /* the player's town state: a plain reaction (no change, or both gains and losses) */
+        Actor_SetState(pl, 0, 39); /* the player's town state: a plain reaction (no change, or both gains and losses) */
     } else if (lost == 0) {
         if (gainSum >= MEAL_STRONG_TASTE) {
             taste = MEAL_TASTE_GREAT;
         } else {
             taste = MEAL_TASTE_GOOD;
         }
-        Actor_SetState(pl, 0, 0x18); /* the player's town state: a pleased reaction */
+        Actor_SetState(pl, 0, 24); /* the player's town state: a pleased reaction */
     } else if (gained == 0) {
         if (lossSum >= MEAL_STRONG_TASTE) {
             taste = MEAL_TASTE_AWFUL;
         } else {
             taste = MEAL_TASTE_BAD;
         }
-        Actor_SetState(pl, 0, 0x2A); /* the player's town state: a displeased reaction */
+        Actor_SetState(pl, 0, 42); /* the player's town state: a displeased reaction */
     } else {
         if (lossSum < gainSum) {
             taste = MEAL_TASTE_MIXED_GOOD;
         } else {
             taste = MEAL_TASTE_MIXED_BAD;
         }
-        Actor_SetState(pl, 0, 0x27);
+        Actor_SetState(pl, 0, 39);
     }
     Notice_PushItem(gMealTasteTexts[taste][rand % 4]);
     gLobby->mealEaten = 1;
@@ -988,38 +961,34 @@ s16 Kitchen_EatDish(s16 season, u16 first, u16 second, u16 rand)
     }
     if (gained == 0 && lost == 0) {
         taste = MEAL_TASTE_NONE;
-        Actor_SetState(pl, 0, 0x27); /* the player's town state: a plain reaction (no change, or both gains and losses) */
+        Actor_SetState(pl, 0, 39); /* the player's town state: a plain reaction (no change, or both gains and losses) */
     } else if (lost == 0) {
         if (gainSum >= MEAL_STRONG_TASTE) {
             taste = MEAL_TASTE_GREAT;
         } else {
             taste = MEAL_TASTE_GOOD;
         }
-        Actor_SetState(pl, 0, 0x18); /* the player's town state: a pleased reaction */
+        Actor_SetState(pl, 0, 24); /* the player's town state: a pleased reaction */
     } else if (gained == 0) {
         if (lossSum >= MEAL_STRONG_TASTE) {
             taste = MEAL_TASTE_AWFUL;
         } else {
             taste = MEAL_TASTE_BAD;
         }
-        Actor_SetState(pl, 0, 0x2A); /* the player's town state: a displeased reaction */
+        Actor_SetState(pl, 0, 42); /* the player's town state: a displeased reaction */
     } else {
         if (lossSum < gainSum) {
             taste = MEAL_TASTE_MIXED_GOOD;
         } else {
             taste = MEAL_TASTE_MIXED_BAD;
         }
-        Actor_SetState(pl, 0, 0x27);
+        Actor_SetState(pl, 0, 39);
     }
     Notice_PushItem(gMealTasteTexts[taste][rand % 4]);
     gLobby->mealEaten = 1;
     return Kitchen_DishRank(first, second);
 }
 
-s32 Items_HaveEnough(u16 item, s32 n);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-void IngredientList_BuildPage(KitchenMenu *m, s16 page);
 /*
  * The list's input while an ingredient is chosen (KITCHEN_STEP_PICK_FIRST,
  * then KITCHEN_STEP_PICK_SECOND, whose pick must differ). Circle takes the
@@ -1070,7 +1039,6 @@ s32 Kitchen_ChooseIngredient(KitchenMenu *menu, u16 pad)
 
 extern char *gItemNames[];
 void Win_Draw(s32, s32, s32, s32, s32, s32, s16);
-void Font_SetColor(s32 color);
 /* Draws the first ingredient's window at (x, y): its label and, once
  * chosen, its name. */
 void Kitchen_DrawFirstPick(KitchenMenu *menu, s32 x, s32 y)
@@ -1078,15 +1046,15 @@ void Kitchen_DrawFirstPick(KitchenMenu *menu, s32 x, s32 y)
     s16 top = y;
     s16 left;
 
-    Font_SetSpacing(0x12, 0x12);
-    Win_Draw(x, y, 0xC8, 0x3C, 0xBDB59F6C, 0xBB402010, 3);
+    Font_SetSpacing(18, 18);
+    Win_Draw(x, y, 200, 60, 0xBDB59F6C, 0xBB402010, 3);
     Font_SetColor(0x807F7F28);
     left = x;
     Font_SetPos(left + 10, top += 10);
     Text_PrintfColored(gKitchenTextFmt, gKitchenTexts[KITCHEN_TEXT_INGREDIENT_A]);
     if (menu->firstPick != 0) {
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(left + 0x1E, top + 0x16);
+        Font_SetPos(left + 30, top + 22);
         Text_PrintfColored(gKitchenTextFmt, gItemNames[menu->firstPick]);
     }
 }
@@ -1097,15 +1065,15 @@ void Kitchen_DrawSecondPick(KitchenMenu *menu, s32 x, s32 y)
     s16 top = y;
     s16 left;
 
-    Font_SetSpacing(0x12, 0x12);
-    Win_Draw(x, y, 0xC8, 0x3C, 0xBDB59F6C, 0xBB402010, 3);
+    Font_SetSpacing(18, 18);
+    Win_Draw(x, y, 200, 60, 0xBDB59F6C, 0xBB402010, 3);
     Font_SetColor(0x807F7F28);
     left = x;
     Font_SetPos(left + 10, top += 10);
     Text_PrintfColored(gKitchenTextFmt, gKitchenTexts[KITCHEN_TEXT_INGREDIENT_B]);
     if (menu->secondPick != 0) {
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(left + 0x1E, top + 0x16);
+        Font_SetPos(left + 30, top + 22);
         Text_PrintfColored(gKitchenTextFmt, gItemNames[menu->secondPick]);
     }
 }
@@ -1117,21 +1085,16 @@ void Kitchen_DrawSetCourse(s16 x, s16 y)
 {
     char *line;
 
-    Font_SetSpacing(0x18, 0x18);
+    Font_SetSpacing(24, 24);
     line = gKitchenTexts[KITCHEN_TEXT_COURSE_SPECIAL];
-    Font_SetPos(Text_CenterX(line, x + 0xA0, 0x18), y += 0x54);
+    Font_SetPos(Text_CenterX(line, x + 160, 24), y += 84);
     Text_PrintfColored(gKitchenTextFmt, line);
     line = gKitchenTexts[KITCHEN_TEXT_COURSE_SERVICE];
-    Font_SetPos(Text_CenterX(line, x + 0xA0, 0x18), y + 0x3C);
+    Font_SetPos(Text_CenterX(line, x + 160, 24), y + 60);
     Text_PrintfColored(gKitchenTextFmt, line);
 }
 
-extern char *gMealNameTexts[];
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Text_Printf(const char *fmt, ...);
-void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
 
 /*
  * Draws the confirm window at (x, y): the set course's lines when
@@ -1139,8 +1102,8 @@ void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
  * (gMealNameTexts); then the yes/no question below it, unless the kitchen
  * guest draws it. The dish's label is gKitchenTexts[KITCHEN_TEXT_DISH_LABEL].
  *
- * The second bar of each column adds an unsigned constant (10U, 0x10AU).
- * The game's code widens x once but computes x + 10 and x + 0x10A again
+ * The second bar of each column adds an unsigned constant (10U, 266U).
+ * The game's code widens x once but computes x + 10 and x + 266 again
  * for the second bar: two sums of the same type would be computed once
  * and shared, so the second sum of each pair is written unsigned.
  */
@@ -1151,41 +1114,38 @@ void Kitchen_DrawConfirm(s16 x, s16 y, u16 firstPick, u16 secondPick)
     s16 midY;
     s16 textY = y;
 
-    Font_SetSpacing(0x14, 0x14);
-    Icon_Draw(x, y, 0x140, 0x104, 0xFFD4BF9F, 0);
-    midY = textY + 0x82;
-    Icon_Draw(x + 10, midY - 0x5A, 0x100, 0x20, 0x803E2502, 0x1B);
-    Icon_Draw(x + 10U, midY + 0x46, 0x100, 0x20, 0x803E2502, 0x1B);
-    Icon_Draw(x + 0x10A, midY - 0x5A, 0x2E, 0x20, 0x803E2502, 0x1C);
-    Icon_Draw(x + 0x10AU, midY + 0x46, 0x2E, 0x20, 0x803E2502, 0x1C);
+    Font_SetSpacing(20, 20);
+    Icon_Draw(x, y, 320, 260, 0xFFD4BF9F, 0);
+    midY = textY + 130;
+    Icon_Draw(x + 10, midY - 90, 256, 32, 0x803E2502, 27);
+    Icon_Draw(x + 10U, midY + 70, 256, 32, 0x803E2502, 27);
+    Icon_Draw(x + 266, midY - 90, 46, 32, 0x803E2502, 28);
+    Icon_Draw(x + 266U, midY + 70, 46, 32, 0x803E2502, 28);
     Font_SetColor(0x80101010);
     if (firstPick == 0) {
         Kitchen_DrawSetCourse(x, y);
         if (gTownMode != TOWN_MODE_KITCHEN_GUEST) {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_CONFIRM_DISH]);
-            Font_SetPos(0x1A2, 0x192);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_CONFIRM_DISH]);
+            Font_SetPos(418, 402);
             Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         }
     } else {
-        textX = x + 0x24;
-        Font_SetPos(textX, textY += 0x4A);
+        textX = x + 36;
+        Font_SetPos(textX, textY += 74);
         Text_PrintfColored("%s%s", gKitchenTexts[KITCHEN_TEXT_INGREDIENT_A], gItemNames[firstPick]);
-        Font_SetPos(textX, textY += 0x30);
+        Font_SetPos(textX, textY += 48);
         Text_PrintfColored("%s%s", gKitchenTexts[KITCHEN_TEXT_INGREDIENT_B], gItemNames[secondPick]);
         Font_SetColor(0x80301010);
-        Font_SetPos(textX, textY + 0x30);
+        Font_SetPos(textX, textY + 48);
         dish = (firstPick + secondPick) % MEAL_DISHES;
         Text_PrintfColored("%s%s", gKitchenTexts[KITCHEN_TEXT_DISH_LABEL], gMealNameTexts[dish % MEAL_DISHES]);
         if (gTownMode != TOWN_MODE_KITCHEN_GUEST) {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_CONFIRM_DISH]);
-            Font_SetPos(0x1A2, 0x192);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_CONFIRM_DISH]);
+            Font_SetPos(418, 402);
             Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         }
     }
 }
-
-void IngredientList_DrawWindow(struct KitchenMenu *m, s16 x, s16 y);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
 
 /*
  * The kitchen's draw: the ingredient list with the windows of the
@@ -1200,45 +1160,45 @@ void Kitchen_Draw(MenuTask *task)
     Text_SetSize(task->textSize);
     switch (menu->step) {
     case KITCHEN_STEP_LIST_IN:
-        IngredientList_DrawWindow(menu, menu->win.pos, 0x3A);
+        IngredientList_DrawWindow(menu, menu->win.pos, 58);
         if (menu->diners > 1) {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO_PARTY]);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO_PARTY]);
         } else {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO]);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO]);
         }
         break;
     case KITCHEN_STEP_PICK_FIRST:
-        IngredientList_DrawWindow(menu, menu->win.pos, 0x3A);
-        Kitchen_DrawFirstPick(menu, (s16)(menu->win.pos - 200), 0x3A);
+        IngredientList_DrawWindow(menu, menu->win.pos, 58);
+        Kitchen_DrawFirstPick(menu, (s16)(menu->win.pos - 200), 58);
         if (menu->diners > 1) {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO_PARTY]);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO_PARTY]);
         } else {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO]);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO]);
         }
         break;
     case KITCHEN_STEP_PICK_SECOND:
-        IngredientList_DrawWindow(menu, menu->win.pos, 0x3A);
-        Kitchen_DrawFirstPick(menu, (s16)(menu->win.pos - 200), 0x3A);
-        Kitchen_DrawSecondPick(menu, (s16)(menu->win.pos - 200), 0x76);
+        IngredientList_DrawWindow(menu, menu->win.pos, 58);
+        Kitchen_DrawFirstPick(menu, (s16)(menu->win.pos - 200), 58);
+        Kitchen_DrawSecondPick(menu, (s16)(menu->win.pos - 200), 118);
         if (menu->diners > 1) {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO_PARTY]);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO_PARTY]);
         } else {
-            Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO]);
+            Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gKitchenTexts[KITCHEN_TEXT_PICK_TWO]);
         }
         break;
     case KITCHEN_STEP_CONFIRM:
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawLabelBar(0x122, 0x12, 0xA0, 0xFFB0B000, gKitchenTexts[KITCHEN_TEXT_TODAYS_DISH], 2, 1);
+        Font_SetSpacing(22, 22);
+        Menu_DrawLabelBar(290, 18, 160, 0xFFB0B000, gKitchenTexts[KITCHEN_TEXT_TODAYS_DISH], 2, 1);
     case KITCHEN_STEP_CONFIRM_IN:
-        Kitchen_DrawConfirm(0x122, menu->confirmWin.pos, menu->firstPick, menu->secondPick);
+        Kitchen_DrawConfirm(290, menu->confirmWin.pos, menu->firstPick, menu->secondPick);
         break;
     case KITCHEN_STEP_COOKING:
         break;
     }
     if (Game_IsOnline() == 1 && menu->diners > 1 && (menu->step < KITCHEN_STEP_COOKING || menu->step == KITCHEN_STEP_ASK_LEAVE)) {
-        Win_Draw(0x1EA, 0x14, 0x78, 0x16, 0xBDB59F6C, 0x80202020, 6);
-        Font_SetPos(0x1EA, 0x16);
-        Font_SetSpacing(0x14, 0x14);
+        Win_Draw(490, 20, 120, 22, 0xBDB59F6C, 0x80202020, 6);
+        Font_SetPos(490, 22);
+        Font_SetSpacing(20, 20);
         Font_SetColor(0x807F7F28);
         Text_Printf(gTownLabels[TOWN_LABEL_TIME_LEFT], menu->timer / 30 + 1); /* 30 frames a second */
     }

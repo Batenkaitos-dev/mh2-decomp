@@ -26,12 +26,24 @@
 #include "render_state.h"
 #include "lobby_text.h"
 #include "lobby_labels.h"
-s32 Gs_SetState(u8, u32);
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "card.h"
+#include "model.h"
+#include "text.h"
+#include "member_list.h"
+#include "font.h"
+#include "friend_add.h"
+#include "game_util.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "member_card.h"
+#include "name_tags.h"
+#include "libc.h"
 
 extern NetUser gNetUsers[];
-void LobbyMenu_Init(void);
 extern LobbyMenu *gLobbyMenu;
-s32 memcmp(void *, void *, s32);
 
 /* The member list's empty row (a slot with no member). */
 #pragma rodata on
@@ -40,17 +52,9 @@ char gMemberListEmptyText[13] = {
 };
 #pragma rodata off
 
-s32 Card_IsSystemSaved(void);
-void GameMenu_DrawList(s8 dim);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *off);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void Text_Printf(const char *, ...);
-void Text_PrintfColored(const char *, ...);
 
 /* The game menu's open handler for the member list: sets up the lobby
  * menu's work with the cursor off the local hunter's own slot, hides the
@@ -69,14 +73,6 @@ s32 LobbyMember_OpenList(void)
     return 0;
 }
 
-void GameMenu_Back(void);
-s32 NetUser_State(s8 i);
-void LobbyMember_LoadEquip(u8 i);
-void LobbySe_Play(s32 se);
-s32 FriendList_AddInput(u16 pad);
-void FriendList_AskAdd(void *id, void *name);
-void LobbyText_Open(s32);
-void LobbyDialog_Grow(void);
 extern u8 gTownAreaMsgPending;
 
 /* The member list's input, by screen (LobbyMenu.screen, enum
@@ -110,7 +106,7 @@ u16 LobbyMember_ListInput(u16 pad)
             return 0;
         }
         if (pad & PAD_CIRCLE) {
-            if (gPlayers[gLobbyMenu->cursor].active != 0 && NetUser_State(gLobbyMenu->cursor) != 2) {
+            if (gPlayers[gLobbyMenu->cursor].active != 0 && NetUser_State(gLobbyMenu->cursor) != NET_USER_ABSENT) {
                 LobbyMember_LoadEquip(gLobbyMenu->cursor);
                 gLobbyMenu->screen++;
                 LobbySe_Play(LOBBY_SE_CONFIRM);
@@ -160,7 +156,7 @@ u16 LobbyMember_ListInput(u16 pad)
             GameMenu_Back();
             return 0;
         }
-        if (NetUser_State(gLobbyMenu->cursor) == 2) {
+        if (NetUser_State(gLobbyMenu->cursor) == NET_USER_ABSENT) {
             gLobbyMenu->screen--;
             LobbySe_Play(LOBBY_SE_CANCEL);
         } else if (buttons & PAD_CROSS) {
@@ -219,20 +215,12 @@ u16 LobbyMember_ListInput(u16 pad)
     return 0;
 }
 
-s32 Game_IsOnline(void);
-s32 LobbyMember_InMyParty(s32 arg0);
-s32 sprintf(char *, const char *, ...);
 struct ListWin;
-void ListPanel_DrawDim(struct ListWin *win, char *title, s32 sel);
 /* unit's own declaration: y is declared s16 (the definition takes an s32): with s32 the compiler passes it unlike the game's code in both draws */
 void Icon_DrawOnlineMark(s32 x, s16 y, s32 h, s32 color, s16 mark);
-void LobbySprite_Draw(s32 x, s16 y, s32 w, s32 color, s16 kind);
-s32 MemberCard_Draw(u8, u8);
-void MemberCard_DrawFriendReg(s16, u8);
 extern char *gMemberListEmptyRow;
 extern ListWin gMemberListPanel;
-extern s32 gQuestCategoryColors[];
-extern char gMemberListTexts[10][0x14];   /* the member list texts */
+extern char gMemberListTexts[10][20];   /* the member list texts */
 extern char *gMemberListRows[];          /* the member list (text pointers) */
 
 #define LM ((LobbyMenu *)gLobbyMenu)
@@ -266,7 +254,7 @@ void LobbyMember_DrawList(void)
     u8 flags;
     u8 cardFlags;
 
-    cardFlags = 0x80;
+    cardFlags = MEMBER_CARD_NO_FRAME;
     switch (LM->screen) {
     case MEMBER_LIST_ROWS:
         GameMenu_DrawList(1);
@@ -280,7 +268,7 @@ void LobbyMember_DrawList(void)
         list = gMemberListRows;
         do {
             if (i != gScene.localPlayer) {
-                if (pl->active != 0 && NetUser_State(i) != 2) {
+                if (pl->active != 0 && NetUser_State(i) != NET_USER_ABSENT) {
                     name = LOBBY_MEMBER_AT(memberOff).name;
                     if (Game_IsOnline() == 1) {
                         if (gChatHideNames != 0) {
@@ -300,12 +288,12 @@ void LobbyMember_DrawList(void)
                 } else {
                     *list = gMemberListEmptyRow;
                 }
-                buf += 0x14;
+                buf += 20;
                 list++;
             }
             i++;
             pl++;
-            memberOff += 0x11C;
+            memberOff += 284;
             user++;
             markOut++;
         } while (i < LOBBY_MEMBER_COUNT);
@@ -320,35 +308,35 @@ void LobbyMember_DrawList(void)
         s32 rowOff;
         s32 j;
 
-        y = 0x3E;
+        y = 62;
         j = 0;
         rowPlayer = gPlayers;
         rowOff = 0;
         do {
             if (j != gScene.localPlayer) {
                 if (rowPlayer->active != 0) {
-                    if (NetUser_State(j) == 0) {
-                        Icon_DrawOnlineMark(0x1A4, y, 0x12, -1, *markRead);
+                    if (NetUser_State(j) == NET_USER_HERE) {
+                        Icon_DrawOnlineMark(420, y, 18, -1, *markRead);
                     }
                     if (rowPlayer->area != 0) {
                         flags = LOBBY_MEMBER_CARD_AT(rowOff)->questStatus;
                         if (flags & QUEST_STATUS_PAID) {
                             if (!(flags & QUEST_STATUS_SET_OUT) || (gFrameTick & 0x10)) {
-                                LobbySprite_Draw(0x18E, y, 0x12, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_PAID);
+                                LobbySprite_Draw(398, y, 18, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_PAID);
                             }
                         } else if (flags & QUEST_STATUS_TAKEN) {
                             if (!(flags & QUEST_STATUS_SET_OUT) || (gFrameTick & 0x10)) {
-                                LobbySprite_Draw(0x18E, y, 0x12, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_TAKEN);
+                                LobbySprite_Draw(398, y, 18, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_TAKEN);
                             }
                         }
                     }
                 }
-                y += 0x15;
+                y += 21;
             }
             j++;
             rowPlayer++;
             markRead++;
-            rowOff += 0x11C;
+            rowOff += 284;
         } while (j < LOBBY_MEMBER_COUNT);
       }
         break;
@@ -356,11 +344,11 @@ void LobbyMember_DrawList(void)
         cardFlags = 0;
     case MEMBER_LIST_FRIEND_ASK:
         if (LM->redraw != 0) {
-            cardFlags = 0x80;
+            cardFlags = MEMBER_CARD_NO_FRAME;
         }
         MemberCard_Draw(LM->cursor, LM->step | cardFlags);
         if (LM->step == 0) {
-            MemberCard_DrawFriendReg(0x184, LM->screen - MEMBER_LIST_CARD);
+            MemberCard_DrawFriendReg(388, LM->screen - MEMBER_LIST_CARD);
         }
         break;
     }
@@ -383,21 +371,14 @@ s32 LobbyMember_InMyParty(s32 idx)
     return 0;
 }
 
-void TownPc_DrawTargetBanner(MenuTask *task);
-void Text_SetSize(s32 size);
-void Tex_Prepare(s32 n, s32 tex);
-void Tex_Bind(s32);
-void *memset(void *, s32, u32);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 /* unit's own declaration: x, y and h are declared s16 and the colours u32 (the definition takes s32s): with the definition's types the compiler builds the call unlike the game's code */
 void Win_Draw(s16 x, s16 y, s32 w, s16 h, u32 c1, u32 c2, s32 k);
 /* unit's own declaration: x and y are declared s16 and the icon a u8 (the definition takes s32s, an s16 and an s8): with the definition's types the compiler extends y before the call, unlike the game's code */
 void Icon_DrawWeaponClass(s16, s16, s32, s32, u8, s32);
-u32 Color_Cycle8(void);
 extern s32 gTownMode;
 extern u8 gLobbyLevel1Sel;
 extern u8 gMemberNamesOff;
-extern char gMemberNameBufs[LOBBY_MEMBER_COUNT][0x14];
+extern char gMemberNameBufs[LOBBY_MEMBER_COUNT][20];
 extern char *gMemberNameTexts[];
 extern u32 gPlayerColorWords[];
 
@@ -430,8 +411,8 @@ void LobbyMenu_DrawMemberNames(MenuTask *task)
     TownPc_DrawTargetBanner(task);
     Gs_SetState(RS_ALPHA_REF, 0);
     Text_SetSize(task->textSize);
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
     if (Game_IsOnline() == 0) {
         return;
     }
@@ -493,45 +474,45 @@ void LobbyMenu_DrawMemberNames(MenuTask *task)
         user++;
         pl++;
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     i = count;
-    y = 0x1A4 - (i + 1) * 22;
-    Win_Draw(0x1CC, y, 0x96, (i + 1) * 22 - 2, 0xBDB59F6C, 0x80202020, 6);
-    Gfx_DrawLine(0x1CC, y, 0x94, 0x14, 0x80B59F6C);
+    y = 420 - (i + 1) * 22;
+    Win_Draw(460, y, 150, (i + 1) * 22 - 2, 0xBDB59F6C, 0x80202020, 6);
+    Gfx_DrawLine(460, y, 148, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(0x1D2, y + 2);
+    Font_SetPos(466, y + 2);
     Text_Printf("%s", gTownLabels[TOWN_LABEL_SHOW_ON]);
-    y += 0x16;
+    y += 22;
     for (slot = 0; slot < i; slot++) {
         card = list[slot];
-        Gfx_DrawLine(0x1CC, y - 2, 0x94, 2, 0x80FFFFFF);
+        Gfx_DrawLine(460, y - 2, 148, 2, 0x80FFFFFF);
         if (card != NULL) {
             flags = card->questStatus;
             if (flags & QUEST_STATUS_PAID) {
-                LobbySprite_Draw(0x232, y, 0x12, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_PAID);
+                LobbySprite_Draw(562, y, 18, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_PAID);
             } else if (flags & QUEST_STATUS_TAKEN) {
                 if (!(flags & QUEST_STATUS_SET_OUT) || (gFrameTick & 0x10)) {
-                    LobbySprite_Draw(0x232, y, 0x12, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_TAKEN);
+                    LobbySprite_Draw(562, y, 18, gQuestCategoryColors[flags & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_TAKEN);
                 }
             }
             if (card->chatToLobby == 0 || (gFrameTick & 0x10)) {
-                Icon_DrawOnlineMark(0x24A, y, 0x12, -1, card->onlineMark);
+                Icon_DrawOnlineMark(586, y, 18, -1, card->onlineMark);
             } else {
-                LobbySprite_Draw(0x24A, y, 0x14, 0xFF40FF40, 0x13);
+                LobbySprite_Draw(586, y, 20, 0xFF40FF40, 19);
             }
             colorIdx = card->symbolColor;
-            if (colorIdx != 0xFF) {
+            if (colorIdx != 255) {
                 if (colorIdx == SYMBOL_COLOR_CYCLE) {
-                    Gfx_DrawLine(0x1CC, y, 0x16, 0x14, Color_Cycle8());
+                    Gfx_DrawLine(460, y, 22, 20, Color_Cycle8());
                 } else {
-                    Gfx_DrawLine(0x1CC, y, 0x16, 0x14, gPlayerColorWords[colorIdx]);
+                    Gfx_DrawLine(460, y, 22, 20, gPlayerColorWords[colorIdx]);
                 }
             }
-            Icon_DrawWeaponClass(0x1CC, y, 0x14, -1, card->weaponClass, 0);
+            Icon_DrawWeaponClass(460, y, 20, -1, card->weaponClass, 0);
         }
-        Font_SetPos(0x1E4, y);
+        Font_SetPos(484, y);
         Text_Printf("%s", gMemberNameTexts[slot]);
-        y += 0x16;
+        y += 22;
     }
 }
 

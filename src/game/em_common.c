@@ -25,23 +25,65 @@
 #include "player.h"
 #include "scene.h"
 #include "sprite.h"
+#include "area.h"
+#include "camera.h"
+#include "capsule.h"
+#include "render_state.h"
+#include "sound.h"
+#include "text.h"
+#include "ambient_life.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "volcano_hazard.h"
+#include "vec_math.h"
+#include "engine_util.h"
+#include "em_script.h"
+#include "prim.h"
+#include "save.h"
+#include "sprite_queue.h"
 
+
+/* The objects of other files and modules this file's tables point to */
+extern void * gEmKindTables_29[7];
+extern void * gEmKindTables_Apceros[7];
+extern void * gEmKindTables_Blangonga[7];
+extern void * gEmKindTables_Cephadrome[7];
+extern void * gEmKindTables_Cephalos[7];
+extern void * gEmKindTables_Chameleos[6];
+extern void * gEmKindTables_DaimyoHermitaur[7];
+extern void * gEmKindTables_Diablos[7];
+extern void * gEmKindTables_Fatalis[6];
+extern void * gEmKindTables_Genprey[7];
+extern void * gEmKindTables_Gravios[7];
+extern void * gEmKindTables_Kelbi[7];
+extern void * gEmKindTables_Khezu[7];
+extern void * gEmKindTables_Kirin[7];
+extern void * gEmKindTables_KushalaDaora[6];
+extern void * gEmKindTables_LaoShanLung[7];
+extern void * gEmKindTables_Lunastra[6];
+extern void * gEmKindTables_Melynx[7];
+extern void * gEmKindTables_Mosswine[7];
+extern void * gEmKindTables_Plesioth[7];
+extern void * gEmKindTables_Rathian[6];
+extern void * gEmKindTables_ShenGaoren[7];
+extern void * gEmKindTables_YamaTsukami[7];
+extern void * gEmKindTables_YamaTsukamiB[7];
+extern void * gEmKindTables_YianGaruga[7];
+extern void * gEmKindTables_YianKutKu[7];
 extern EmObj *gSightBlockObjs[32];
 
-/* A row of a kind's reaction table (gEmReactions[kind], by reaction kind,
- * Em_GetReaction): what the reaction adds to the player's noticeCount, and
- * the cap the sum must stay under (Em_AddNotice). */
-typedef struct EmReaction {
-    s32 noticeAdd;
-    s32 noticeMax;
-} EmReaction;
 
 extern EmRate *gEmRateTbl[];
 
 /* Em +0x6C4: four s16 values, one per player, and +0x6CC their last seen copies (Em_UpdateReactions runs
  * the reaction of a player whose value changed). Em has no fields there yet: a view of it. */
 typedef struct EmReactView {
-    u8 pad[0x6C4];
+    u8 pad[1732];
     s16 cur[4];
     s16 last[4];
 } EmReactView;
@@ -49,9 +91,9 @@ typedef struct EmReactView {
 /* Em +0x818: what Em_SensePlayers measures of each player each frame (em.h has bytes there: other
  * code uses +0x846 as an s16). */
 typedef struct EmSenseView {
-    u8 pad[0x7E4];
+    u8 pad[2020];
     s16 noticeTimer[4];              /* 0x7E4: Em unk7E4 */
-    u8 pad7EC[0x818 - 0x7EC];
+    u8 pad7EC[2072 - 2028];
     f32 dist[4];                /* 0x818: from the monster to the player */
     f32 distXZ[4];              /* 0x828: the same, in the ground plane */
     f32 range[4];               /* 0x838: the four reaction ranges (Em_GetReaction kinds 3 to 6) */
@@ -59,53 +101,25 @@ typedef struct EmSenseView {
     u16 dir[4];                 /* 0x858: the direction to the player (Math_AngleXZ) */
 } EmSenseView;
 
-extern s16 AreaObj_K17_AngleTbl[];
-void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-extern EmMotionRow *gEmMotionRows[];
-extern EmMotionRow *gEmMotionAltRows[];
-extern EmMotionRow *gEmMotionTransRows[];
-extern f32 *gEmSenseLimits[];
-s8 Em_AngleSector(Em *em, s32 idx);
 extern s32 (**gEmPlayerActionKinds[])[4];
-void Em_AddAlertBuildup(Em *em, u8 player, u8 idx, s8 kind);
-extern s32 *gEmNoticeDecayRates[];
 s32 EmBlangonga_CarriedShown(Em *em, u16 a);
 s32 Em_PartBroken(Em *em, s32 arg1);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
-extern f32 BreakableStructure_SoundPos[];
 extern f32 D_008B0B8C[];
 extern f32 BreakableStructure_EffectPos[][3];
 extern EmObj *gFlashObjs[32];
-u16 Math_AngleXZ(f32 *from, f32 *to);
 typedef struct EmSight {
     f32 *pos;
     s32 target;
     s32 dir;
     u16 half;
 } EmSight;
-f32 Math_Cos(f32 x);
-f32 Math_Absf(f32 x);
 u8 AreaHit_Raycast(f32 *from, f32 *to, f32 *out, u16 k);
-s32 Cyl_Contains(f32 *p, f32 *c, f32 r, f32 top, f32 bottom);
-f32 Math_Sin(f32 x);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-extern s16 BreakableStructure_ModelsDay[];
-extern s16 BreakableStructure_ModelsNight[];
-extern u16 BreakableStructure_Yaw[];
-extern f32 AmbientLife_CrossingFlyerPoints[];
 extern f32 D_008B0A94[];
 extern f32 D_008B0A98[];
-extern f32 FortressTremor_ImpactOffsets[];
 extern f32 D_008B0AC4[];
 extern f32 D_008B0AC8[];
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void CamShake_SetAEverywhere(s32);
 extern f32 CastleGate_PosOpen[][3];
 extern f32 CastleGate_PosShut[][3];
-u8 Player_InCurrentArea(void *obj);
-void CastleGate_Draw(DrawSlot *ds);
 typedef struct BreakableStructurePiece {
     s16 slot;
     s16 idx;
@@ -115,63 +129,16 @@ typedef struct BreakableStructurePiece {
     DrawSlot *ds;
 } BreakableStructurePiece;
 extern f32 BreakableStructure_Pos[][3];
-extern f32 BreakableStructure_Rise[];
-extern s16 BreakableStructure_Tilt[];
-void BreakableStructure_Draw(DrawSlot *s);
-u8 Quest_GetSeedByte(u8 k);
-void PlayerFx_CreateAt(f32 *src, u8 k, u8 c, f32 scale);
-void VolcanoHazard_Create(f32 *pos, u8 a, u8 b);
-s32 AreaObj_K19_GetPoints(u16 arg0);
-s16 AreaObj_K19_PointCount(u16 arg0);
-extern f32 AmbientLife_GlowBugTowerPos[];
 extern f32 D_008B0A14[];
 extern f32 D_008B0A18[];
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateY(f32 *v, f32 a);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-extern f32 *AnimatedScenery_Positions[];
-void AnimatedScenery_Draw(DrawSlot *ds);
-void CastleGate_Update(Obj *o);
-extern f32 FortressTremor_PosX;
 extern f32 D_008B0AAC;
-extern f32 FortressTremor_PosZ;
-void AreaObj_K17_Draw(DrawSlot *slot);
-void FortressTremor_Draw(DrawSlot *ds);
-void DistantLightning_Draw(DrawSlot *ds);
 extern f32 TurningProp_Pos[][3];
-void Vec_Copy(f32 *dst, f32 *src);
-void TurningProp_Update(Obj *o);
-void TurningProp_Draw(DrawSlot *ds);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void GroundTileGrid_Draw(DrawSlot *s);
-f32 *Mtx_FromAnglesXYZ(s32 *ang, f32 *mtx);
 void Player_BeginLayerMotion(Player *p, s32 frame, s32 n, s32 part);
-void Mtx_TurnZ(f32 *m, f32 a);
-void Mtx_RotateZ(f32 *m, f32 a);
-extern s16 TurningProp_Models[];
-extern f32 TurningProp_Scales[];
-void Mtx_RotateY(f32 *m, f32 a);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
 /* unit's own declaration: bone declared s32 as Em_NearestActionToBone passes it; with the definition's s16 the call compiles differently */
 void Em_BonePos(void *obj, s32 bone, f32 *pos);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Bone_GetAnimMoveFrom(f32 fparg0, f32 fparg1, f32 *out, EmBone *b);
-void Vec_Blend(f32 *out, f32 *a, f32 *b, f32 wa, f32 wb);
-f32 Math_Hermite(f32 x, f32 a, f32 b, f32 c, f32 d, f32 e, f32 f);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Mtx_Identity(f32 *m);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void AmbientLife_DrawModel(ModelMatSet *set, s32 arg1);
 extern f32 gCamMatrix[];
-s32 Obj_SameArea(void *obj, Player *b);
 struct Segment;
-void Segment_Init(f32 *a, f32 *b, struct Segment *seg);
-u8 Capsule_Classify(struct Segment *seg, f32 *p, f32 r);
 EmReaction *Em_GetReaction(Em *em, u8 kind, u8 player);
-void Em_AddNotice(Em *em, s32 a, s32 b, u8 player);
 /* unit's own declaration: group, state and mode declared s32 as the callers pass them; with the definition's u16, u16 and u8 the calls compile differently */
 void EmAnteka_ChangeState(Em *, s32, s32, s32);
 /* unit's own declaration: group, state and mode declared s32 as the callers pass them; with the definition's u16, u16 and u8 the calls compile differently */
@@ -226,124 +193,30 @@ void EmVelociprey_ChangeState(Em *, s32, s32, s32);
 void EmVespoid_ChangeState(Em *, s32, s32, s32);
 /* unit's own declaration: group, state and mode declared s32 as the callers pass them; with the definition's u16, u16 and u8 the calls compile differently */
 void EmYamaTsukami_ChangeState(Em *, s32, s32, s32);
-void Obj_Free(Obj *p);
-u16 Rand_Next(s32 stream);
 struct TexRect;
-void TexRect_DrawRotated(struct TexRect *r, s32 angle);
-void AmbientLife_ResetGlowBug(Obj *o);
-void FortressTremor_Setup(Obj *o);
-void FortressTremor_Run(Obj *o);
-void FortressTremor_End(Obj *o);
-void FortressTremor_Free(Obj *o);
-void BreakableStructure_Setup(Obj *o);
-void BreakableStructure_Run(Obj *o);
-void BreakableStructure_End(Obj *o);
-void BreakableStructure_Free(Obj *o);
-void ScrollingOverlay_Setup(Obj *o);
-void ScrollingOverlay_Run(Obj *o);
-void ScrollingOverlay_End(Obj *o);
-void ScrollingOverlay_Free(Obj *o);
-void TurningProp_Setup(Obj *o);
-void TurningProp_Run(Obj *o);
-void TurningProp_End(Obj *o);
-void TurningProp_Free(Obj *o);
-void GroundTileGrid_Setup(Obj *o);
-u32 GroundTileGrid_Run(Obj *o);
-void GroundTileGrid_End(Obj *o);
-void GroundTileGrid_Free(Obj *o);
-void AnimatedScenery_Setup(Obj *o);
-u32 AnimatedScenery_Run(Obj *o);
-void AnimatedScenery_End(Obj *o);
-void AnimatedScenery_Free(Obj *o);
-void CastleGate_Setup(Obj *o);
-void CastleGate_Run(Obj *o);
-void CastleGate_End(Obj *o);
-void CastleGate_Free(Obj *o);
-void DistantLightning_Setup(Obj *o);
-void DistantLightning_Run(Obj *o);
-void DistantLightning_End(Obj *o);
-void DistantLightning_Free(Obj *o);
-void AreaObj_K17_Setup(Obj *o);
-void AreaObj_K17_Run(Obj *);
-void AreaObj_K17_End(Obj *o);
-void AreaObj_K17_Free(Obj *o);
-void AreaObj_K19_Setup(Obj *o);
-void AreaObj_K19_Run(Obj *o);
-void AreaObj_K19_End(Obj *o);
-void AreaObj_K19_Free(Obj *o);
-void Em_TurnToward(Em *em, f32 *target, s32 mode);
-void Em_BendStep(Em *em, u32 speed, s32 angle);
-void Em_SetState(Em *em, s32 group, s32 state);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_ComputeGoal2(Em *em, f32 *target);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_UseGoalAction(Em *em);
 /* unit's own declaration: group, state and mode declared s32 as the callers pass them; with the definition's u16, u16 and u8 the calls compile differently */
 void EmKind38_ChangeState(Em *, s32, s32, s32);
-s32 Sprite_Draw(Sprite *s);
-void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetTexFilter(s32 a);
-void Tex_Bind(s32 i);
-void DrawSlot_Free(s32 id);
 extern u8 AreaObj_K19_PointsA2;
 extern u8 AreaObj_K19_PointsA3;
 extern u8 AreaObj_K19_PointsA6;
 extern u8 AreaObj_K19_PointsA7;
-extern u8 *gEmRows638[];
-void Player_ForceState(void *obj, s32 state, s32 sub);
-Obj *Obj_Alloc(s32 n);
-void FortressTremor_Update(Obj *o);
-void BreakableStructure_Update(Obj *o);
-void ScrollingOverlay_Update(Obj *o);
-void GroundTileGrid_Update(Obj *o);
-void DistantLightning_Update(Obj *o);
-void AreaObj_K19_Update(Obj *o);
-void AnimatedScenery_Update(Obj *o);
-void AreaObj_K17_Update(Obj *o);
-s32 Model_Draw(u32 model, s32 flags);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-s32 Gs_SetState(u8 a, u32 b);
-void Draw_ApplyStates(u32);
-void Draw_SetDefaultState(void);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern EmObj *gAreaObjList[32];
-u32 Player_TestFlag(void *obj, u32 flag);
-f32 Em_LevelAttackFactor(Em *em);
-f32 Em_LevelDamageFactor(Em *em);
-extern EmRageRow *gEmRageTbl[];
-extern s16 CastleGate_Models[];
-void Em_SyncState(Em *em, s32 kind, s32 b, s32 c);
-s32 Game_IsOnline(void);
-extern s32 *gEmPartBuildupLimits[];
-s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
-u16 Area_DayId(u16 id);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-extern u8 GroundTileGrid_Jungle1Tiles[];
-extern u8 GroundTileGrid_Jungle6Tiles[];
-extern u16 GroundTileGrid_Jungle6Turns[];
 extern f32 gViewMatrix[];
 extern f32 gFrustumPlanes[];
-void Camera_BuildFrustum(f32);
-s32 Frustum_TestSphere(f32 *p, f32 *out, f32 *m, f32 *fr, f32 r);
 typedef struct EmTurnView {
-    u8 pad[0x590];
+    u8 pad[1424];
     u16 target;
     u16 heading;
-    u8 pad594[0x63C - 0x594];
+    u8 pad594[1596 - 1428];
     u32 bend[4];
     u16 speed;
     u16 hold;
     u8 phase;
 } EmTurnView;
 typedef struct EmBendView {
-    u8 pad[0x63C];
+    u8 pad[1596];
     u32 bend[4];
 } EmBendView;
-extern EmBendRow *gEmBendOrigins[];
 /* end of prototypes */
 
 /*
@@ -364,15 +237,15 @@ void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer)
     if (layer < em->motionLayerCount) {
         Mtx_FromAnglesXYZ(&em->rotX, em->rotMtx[0]);
         off = layer * 2;
-        idSlot = (u16 *) (off + (s32) em + 0x29C);
+        idSlot = (u16 *) (off + (s32) em + 668);
         if (*idSlot == motion || *idSlot == 0) {
             blend = 0;
         }
         *idSlot = motion;
-        blendSlot = (s16 *) (off + (u32) em + 0x2AC);
+        blendSlot = (s16 *) (off + (u32) em + 684);
         *blendSlot = blend / 2;
-        *(u16 *) (off + (s32) em + 0x2A4) = frame;
-        Player_BeginLayerMotion((Player *)em, *(u16 *) (off + (s32) em + 0x2A4), *blendSlot, layer);
+        *(u16 *) (off + (s32) em + 676) = frame;
+        Player_BeginLayerMotion((Player *)em, *(u16 *) (off + (s32) em + 676), *blendSlot, layer);
     }
 }
 
@@ -454,7 +327,7 @@ void Em_TurnToward(Em *em, f32 *target, s32 mode)
         origin[0] = em->posX + ofs[0];
         origin[2] = em->posZ + ofs[2];
         cur = (u16) Math_Heading(origin[0], origin[2], target[0], target[2]);
-        view->target = cur - 0x4000 - em->rotY;
+        view->target = cur - (ANGLE_TURN / 4) - em->rotY;
         if (view->phase == 0) {
             view->phase = 1;
         }
@@ -476,7 +349,7 @@ void Em_TurnToward(Em *em, f32 *target, s32 mode)
         if (left > 0x8000) {
             left = 0x10000 - left;
         }
-        if (em->type == EM_KIND_CHAMELEOS && left < 0xE39) {
+        if (em->type == EM_KIND_CHAMELEOS && left < 3641) {
             spd = 0;
             break;
         }
@@ -717,7 +590,7 @@ void Em_BendStep(Em *em, u32 speed, s32 angle)
     if (tbl->bendMax[3] < want3) {
         want3 = tbl->bendMax[3];
     }
-    if ((u16) angle < 0x8000) {
+    if ((u16) angle < (ANGLE_TURN / 2)) {
         cur = view->bend[0];
         if (cur > 0x8000) {
             gap = want0 + (0x10000 - cur);
@@ -873,18 +746,18 @@ s8 Em_NearestActionToBone(Em *em, s32 bone, f32 *out)
         rec = (u8 *) *slot;
         if (rec != NULL) {
             Em_BonePos(em, bone, pos);
-            dist = Vec_Distance(pos, (f32 *) (rec + 0x30));
+            dist = Vec_Distance(pos, (f32 *) (rec + 48));
             if (dist <= ((f32 *) em->sightTable)[6]) {
                 if (best == -1.0f) {
                     best = dist;
-                    out[0] = *(f32 *) (rec + 0x30);
-                    out[1] = *(f32 *) (rec + 0x34);
-                    out[2] = *(f32 *) (rec + 0x38);
+                    out[0] = *(f32 *) (rec + 48);
+                    out[1] = *(f32 *) (rec + 52);
+                    out[2] = *(f32 *) (rec + 56);
                 } else if (dist < best) {
                     best = dist;
-                    out[0] = *(f32 *) (rec + 0x30);
-                    out[1] = *(f32 *) (rec + 0x34);
-                    out[2] = *(f32 *) (rec + 0x38);
+                    out[0] = *(f32 *) (rec + 48);
+                    out[1] = *(f32 *) (rec + 52);
+                    out[2] = *(f32 *) (rec + 56);
                 }
             }
         }
@@ -943,7 +816,7 @@ s32 Em_FindNearAreaObj(Em *em)
         }
     }
     if (count == 0) {
-        em->actionGoal[0] = em->actionGoal[2] = em->actionGoal[1] = 0xFF;
+        em->actionGoal[0] = em->actionGoal[2] = em->actionGoal[1] = 255;
         return 0;
     }
     obj = (EmObj *) gAreaObjList[nearest];
@@ -955,7 +828,7 @@ s32 Em_FindNearAreaObj(Em *em)
         em->actionGoal[0] = obj->kind;
         return 1;
     }
-    em->actionGoal[0] = em->actionGoal[2] = em->actionGoal[1] = 0xFF;
+    em->actionGoal[0] = em->actionGoal[2] = em->actionGoal[1] = 255;
     return 0;
 }
 
@@ -1000,7 +873,7 @@ void Em_StartGoalAction(Em *em, s32 need1Gain)
 
 /*
  * Adds the monster's velocity (velX..velZ), turned by the angles `ang` (three
- * s32, 0x10000 a turn, Y-X-Z order), to its position.
+ * s32, ANGLE_TURN to a turn, Y-X-Z order), to its position.
  */
 void Em_MoveRotated(Em *em, void *ang)
 {
@@ -1044,7 +917,7 @@ void Em_MoveRotatedAccel(Em *em, void *ang)
 /*
  * Changes the monster to state `state` of group `group` through its family's
  * ChangeState, with `mode` one of EM_SYNC_*. Kinds without a family (kind 0,
- * the trader, the Felyne cart, kind 0x1D) only draw stateRand and set the
+ * the trader, the Felyne cart, kind 29) only draw stateRand and set the
  * state (Em_SetStateRand).
  */
 void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
@@ -1069,7 +942,7 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
         return;
     case EM_KIND_MOSSWINE:
     case EM_KIND_BULLFANGO:
-    case 0x20:
+    case 32:
         EmMosswine_ChangeState(em, group, state, mode);
         return;
     case EM_KIND_YIAN_KUT_KU:
@@ -1086,14 +959,14 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
     case EM_KIND_CEPHALOS:
         EmCephadrome_ChangeState(em, group, state, mode);
         return;
-    case 0x9:
+    case 9:
     case EM_KIND_MELYNX:
         EmMelynx_ChangeState(em, group, state, mode);
         return;
     case EM_KIND_SHAKALAKA:
         EmShakalaka_ChangeState(em, group, state, mode);
         return;
-    case 0xC:
+    case 12:
     case EM_KIND_APCEROS:
     case EM_KIND_POPO:
         EmApceros_ChangeState(em, group, state, mode);
@@ -1132,7 +1005,7 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
     case EM_KIND_HORNETAUR:
         EmVespoid_ChangeState(em, group, state, mode);
         return;
-    case 0x0:
+    case 0:
     default:
         Em_SetStateRand(em, group, state);
         return;
@@ -1164,7 +1037,7 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
     case EM_KIND_SHEN_GAOREN:
         EmShenGaoren_ChangeState(em, group, state, mode);
         return;
-    case 0x38:
+    case 56:
         EmKind38_ChangeState(em, group, state, mode);
         return;
     case EM_KIND_YAMA_TSUKAMI:
@@ -1418,7 +1291,7 @@ void Em_StartPendingRage(Em *em)
         em->rage = 1;
         em->rageStarted = 1;
         if (em->remote == 0) {
-            frames = (em->versusGauge * 0x1E) + 0x1C2;
+            frames = (em->versusGauge * 30) + 450;
             em->rageTimer = frames;
             em->timer = (s32) frames;
         } else {
@@ -1468,11 +1341,11 @@ static s16 Em_NoticeTime(u8 type)
     case 27:
     case 28:
     case 31:
-        return 0x384;
+        return 900;
     case 40:
-        return 0xA8C;
+        return 2700;
     default:
-        return 0x708;
+        return 1800;
     }
 }
 
@@ -1494,7 +1367,7 @@ void Em_AddNotice(Em *em, s32 add, s32 max, u8 player)
         /* a byte offset of its own, added before the monster's address (`&em->noticeCount[i]` adds em
          * first) */
         off = i * 4;
-        count = (s32 *) (off + (s32) em + 0x86C);
+        count = (s32 *) (off + (s32) em + 2156);
         sum = *count + add;
         if (sum < max) {
             *count = sum;
@@ -1577,7 +1450,7 @@ void Em_DecayNotice(Em *em)
  * (Player_TestFlag). Crouched it is 1 with flags 0x0201020B and 0 otherwise.
  * Standing, airborne or down it is 4 with flags 0x02000200, 3 with flags
  * 0x1000B and 2 otherwise. Other postures give 0. Rank 0 also selects the
- * skill-0x13 reactions in Em_GetReaction.
+ * skill-19 reactions in Em_GetReaction.
  */
 u8 Em_PlayerActionKind(u8 player)
 {
@@ -1616,15 +1489,14 @@ u8 Em_PlayerActionKind(u8 player)
         }                                                 \
     }
 
-s32 Player_HasSkill(Player *p, u8 skill);
 /*
- * Out of combat, with no trigger script of rank 0x10 or higher running and
+ * Out of combat, with no trigger script of rank EM_TRIGGER_PART_BUILDUP or higher running and
  * the player's alertBuildup under the kind's limit, it adds to alertBuildup.
  * The amount is the base for reaction range `range` (0 nearest to 3) plus the
- * gEmAlertBuildupRows row of sense sector `sector`, picked by the player's
+ * gEmPlayerActionKinds row of sense sector `sector`, picked by the player's
  * action rank (Em_PlayerActionKind). Sectors 0 and 4 (outside all four
  * sectors) always add. Sector 1 needs rank 1 or more, sector 2 rank 2 or
- * more, and sector 3 rank 3 or more. A player with skill 0x13 adds nothing
+ * more, and sector 3 rank 3 or more. A player with skill 19 adds nothing
  * unless at rank 4. Each case copies the rank to its own block-local k, and
  * case 1 tests r != 0: this keeps the masked rank in the register the game's
  * code uses.
@@ -1642,9 +1514,9 @@ void Em_AddAlertBuildup(Em *em, u8 player, u8 range, s8 sector)
     rows = gEmPlayerActionKinds[em->type];
     base = (s32 *) rows[0];
 
-    if (em->alertBuildup[playerIdx] < gEmPartBuildupLimits[em->type][em->alertLimitRow] && Em_ScriptFlagsFrom(em, 0x10) == 0 && em->combat == 0) {
+    if (em->alertBuildup[playerIdx] < gEmPartBuildupLimits[em->type][em->alertLimitRow] && Em_ScriptFlagsFrom(em, EM_TRIGGER_PART_BUILDUP) == 0 && em->combat == 0) {
         rank = Em_PlayerActionKind(player);
-        if (Player_HasSkill(pl, 0x13) != 1 || rank == 4) {
+        if (Player_HasSkill(pl, 19) != 1 || rank == 4) {
             switch (sector) {
             case 0:
                 EM_AGGRO_ADD(1, rank, 1);
@@ -1668,8 +1540,8 @@ void Em_AddAlertBuildup(Em *em, u8 player, u8 range, s8 sector)
 
 #undef EM_AGGRO_ADD
 
-extern f32 *gEmReactionDists[];
-extern u16 *gEmReactionAngles[];
+extern EmReactionDists *gEmReactionDists[];
+extern EmReactionAngles *gEmReactionAngles[];
 /*
  * Loads reaction set `k` of the monster's kind: the four distance limits
  * (reactDist[0..1], nearRadius and a fourth at the bytes shared with
@@ -1684,22 +1556,22 @@ void Em_LoadReactionSet(Em *em, u8 k)
     f32 *dists;
     u16 *angles;
 
-    dists = gEmReactionDists[em->type];
-    angles = gEmReactionAngles[em->type];
+    dists = (f32 *)gEmReactionDists[em->type];
+    angles = (u16 *)gEmReactionAngles[em->type];
     dists = (f32 *)((u32)dists + k * 32);
     angles = (u16 *)((u32)angles + k * 8);
     em->reactionSet = k;
     em->reactDist[0] = *dists++;
     em->reactDist[1] = *dists++;
     em->nearRadius = *dists++;
-    *(f32 *) ((u8 *) em + 0x770) = *dists++; /* limit 3: Em has the Player fields inBattle, prevInBattle here */
+    *(f32 *) ((u8 *) em + 1904) = *dists++; /* limit 3: Em has the Player fields inBattle, prevInBattle here */
     em->reactRange[0] = *dists++;
     em->sectorHalfAngle[0] = *angles++;
     em->reactRange[1] = *dists++;
     em->sectorHalfAngle[1] = *angles++;
     em->reactRange[2] = *dists++;
     em->sectorHalfAngle[2] = *angles++;
-    *(f32 *) ((u8 *) em + 0x844) = *dists++; /* range 3: Em has the Player field aimPitch at +0x846 */
+    *(f32 *) ((u8 *) em + 2116) = *dists++; /* range 3: Em has the Player field aimPitch at +0x846 */
     em->sectorHalfAngle[3] = *angles++;
 }
 
@@ -1707,8 +1579,6 @@ void Em_LoadReactionSet(Em *em, u8 k)
 struct EmIdEntry;
 f32 *Em_AreaEntryValue(Em *em, struct EmIdEntry *entry);
 struct EmIdEntry *Em_FindAreaEntry(Em *em, struct EmIdEntry *entry, s16 id);
-AreaRecord *Stage_GetAreaRecord(u16 x);
-void Em_PickRoutePoint(Em *em);
 extern u8 gEmGoalPosSets[];
 extern f32 *gEmGoalPoints[];
 
@@ -1891,15 +1761,15 @@ void Em_ComputeGoal(Em *em, f32 *target)
             break;
         case 1:
             scale = 1.0f;
-            turn = 0xC000;
+            turn = 49152;
             break;
         case 2:
             scale = 1.0f;
-            turn = 0x4000;
+            turn = 16384;
             break;
         case 3:
             scale = 1.0f;
-            turn = 0x8000;
+            turn = 32768;
             break;
         case 8:
             scale = 2.0f;
@@ -1907,15 +1777,15 @@ void Em_ComputeGoal(Em *em, f32 *target)
             break;
         case 9:
             scale = 2.0f;
-            turn = 0xC000;
+            turn = 49152;
             break;
         case 10:
             scale = 2.0f;
-            turn = 0x4000;
+            turn = 16384;
             break;
         case 11:
             scale = 2.0f;
-            turn = 0x8000;
+            turn = 32768;
             break;
         }
         aheadOfs[0] = 0.0f;
@@ -1978,7 +1848,7 @@ void Em_ComputeGoal(Em *em, f32 *target)
     case 11:
         em->targetNo = em->curGoalArg;
         em->target = &gPlayers[em->targetNo];
-        k = *(u16 *) ((u8 *) em->target + 0x662);
+        k = *(u16 *) ((u8 *) em->target + 1634);
         point = Em_AreaEntryValue(em, em->tables[0]) + k * 3;
         k = Math_AngleXZ(point, &em->posX);
         sideAng[0] = 0;
@@ -2184,15 +2054,15 @@ void Em_ComputeGoal2(Em *em, f32 *target)
             break;
         case 1:
             scale = 1.0f;
-            turn = 0xC000;
+            turn = 49152;
             break;
         case 2:
             scale = 1.0f;
-            turn = 0x4000;
+            turn = 16384;
             break;
         case 3:
             scale = 1.0f;
-            turn = 0x8000;
+            turn = 32768;
             break;
         case 8:
             scale = 2.0f;
@@ -2200,15 +2070,15 @@ void Em_ComputeGoal2(Em *em, f32 *target)
             break;
         case 9:
             scale = 2.0f;
-            turn = 0xC000;
+            turn = 49152;
             break;
         case 10:
             scale = 2.0f;
-            turn = 0x4000;
+            turn = 16384;
             break;
         case 11:
             scale = 2.0f;
-            turn = 0x8000;
+            turn = 32768;
             break;
         }
         aheadOfs[0] = 0.0f;
@@ -2283,7 +2153,7 @@ void Em_ComputeGoal2(Em *em, f32 *target)
     case 11:
         em->targetNo = em->curGoalArg;
         em->target = &gPlayers[em->targetNo];
-        k = *(u16 *) ((u8 *) em->target + 0x662);
+        k = *(u16 *) ((u8 *) em->target + 1634);
         point = Em_AreaEntryValue(em, em->tables[0]) + k * 3;
         k = Math_AngleXZ(point, &em->posX);
         sideAng[0] = 0;
@@ -2442,7 +2312,7 @@ void Em_SensePlayers(Em *em)
 /*
  * For each sensed player whose alertBuildup reached the kind's limit
  * (gEmAlertBuildupLimits row alertLimitRow), out of combat, with noReact
- * clear and no trigger script of rank 0x10 or higher running: sets
+ * clear and no trigger script of rank EM_TRIGGER_PART_BUILDUP or higher running: sets
  * scriptPending, raises EM_TRIGGER_PART_BUILDUP, sets the player's
  * alertedPlayers bit and clears its alertBuildup.
  */
@@ -2452,7 +2322,7 @@ void Em_CheckPartBuildup(Em *em)
     s32 lim = gEmPartBuildupLimits[em->type][em->alertLimitRow];
 
     for (i = 0; i < 4; i++) {
-        if (Em_ScriptFlagsFrom(em, 0x10) == 0 && em->combat != 1 && em->noReact == 0 && em->alertBuildup[i] >= lim
+        if (Em_ScriptFlagsFrom(em, EM_TRIGGER_PART_BUILDUP) == 0 && em->combat != 1 && em->noReact == 0 && em->alertBuildup[i] >= lim
             && (em->sensedPlayers & (1 << i))) {
             em->scriptPending = 1;
             em->triggers |= 0x10;
@@ -2474,27 +2344,11 @@ void Em_CheckPartBuildup(Em *em)
 extern EmReaction *gEmReactions[];
 extern EmRate *gEmDecay7ECRates[];
 extern u8 gEmCarryReact[];
-extern s16 *gEmRequestIds[];
 extern EmObj *gEmSenseObjs[32];
 extern s8 gEmSenseObjCount;
 
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-f32 Math_Absf(f32 x);
-s32 Game_IsOnline(void);
-u16 Rand_Next(s32 stream);
-u8 Quest_FindSpecialMonster(u8 type);
-s32 Player_HasSkill(Player *p, u8 skill);
-s32 LightBowgun_HasSilencer(Player *player);
-s32 Obj_SameArea(void *obj, Player *b);
 void QSync_SendEm(Em *em, s32 a, s32 b); /* unit's own declaration: the definition (gm_sub qnet_sync.c) takes u8 kind, u8 arg; u8 here changes Em_SyncState */
 void Em_ChangeStateRouted(Em *em, s32 a, s32 b, s32 c);
-void Em_AddNotice(Em *em, s32 a, s32 b, u8 player);
-void Em_Reduce7F0(Em *em);
-void Em_Reduce7EC(Em *em);
-EmReaction *Em_GetReaction(Em *em, u8 kind, u8 player);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_ApplyAreaValues(Em *em);
 void EmDrome_Setup(Em *em);
 void EmGaruga_Setup(Em *em);
 void EmHermitaur_Setup(Em *em);
@@ -2660,7 +2514,7 @@ void Em_TypeSetup(Em *em)
 }
 
 /*
- * Returns the heading from `from` to `to` in the XZ plane (0x10000 a turn).
+ * Returns the heading from `from` to `to` in the XZ plane (ANGLE_TURN to a turn).
  */
 u16 Math_AngleXZ(f32 *from, f32 *to)
 {
@@ -2668,7 +2522,7 @@ u16 Math_AngleXZ(f32 *from, f32 *to)
 }
 
 /*
- * Writes to *out the pitch angle (0x10000 a turn) from the monster to the
+ * Writes to *out the pitch angle (ANGLE_TURN to a turn) from the monster to the
  * target player's position. `rise` is added to the target's height and
  * `reach` to the ground distance. Writes nothing when there is no target.
  */
@@ -2680,7 +2534,7 @@ void Em_GetPitchToTarget(Em *em, s32 *out, f32 rise, f32 reach)
     if (em->targetNo != -1) {
         Em_GetTargetPos(em, em->targetNo, target);
         dist = Vec_DistanceXZ(&em->posX, target);
-        *out = (u16)(0x10000 - Math_Heading(Math_Absf(dist + reach), em->posY, 0.0f, target[1] + rise));
+        *out = (u16)(ANGLE_TURN - Math_Heading(Math_Absf(dist + reach), em->posY, 0.0f, target[1] + rise));
     }
 }
 
@@ -2689,7 +2543,7 @@ void Em_GetPitchToGoal(Em *em, s32 *out, f32 rise, f32 reach)
 {
     f32 dist = Vec_DistanceXZ(&em->posX, em->goal);
 
-    *out = (u16)(0x10000 - Math_Heading(Math_Absf(dist + reach), em->posY,
+    *out = (u16)(ANGLE_TURN - Math_Heading(Math_Absf(dist + reach), em->posY,
                                        0.0f, em->goal[1] + rise));
 }
 
@@ -2739,20 +2593,20 @@ s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out)
 }
 
 /*
- * Picks the next request by priority. The low-hp request comes first (0x80),
- * then need4 (0x70, cleared when used), need1 (0x60), need2 (0x50) and, out
- * of combat, need3 (0x40). Each is made only when requestPrio is lower.
- * Nothing happens while a 0x80 request is pending, while a trigger-0x80
+ * Picks the next request by priority. The low-hp request comes first (128),
+ * then need4 (112, cleared when used), need1 (96), need2 (80) and, out
+ * of combat, need3 (64). Each is made only when requestPrio is lower.
+ * Nothing happens while a 128 request is pending, while an EM_TRIGGER_PLAYER_AREA
  * script runs, or in combat in an area of the kind's gEmNoRequestAreas list.
  */
 void Em_PickRequest(Em *em)
 {
     s16 *ids = gEmRequestIds[em->type];
 
-    if (em->requestPrio >= 0x80) {
+    if (em->requestPrio >= 128) {
         return;
     }
-    if (Em_ScriptFlagsFrom(em, 0x80)) {
+    if (Em_ScriptFlagsFrom(em, EM_TRIGGER_PLAYER_AREA)) {
         return;
     }
     if (ids != NULL && em->combat == 1) {
@@ -2768,32 +2622,32 @@ void Em_PickRequest(Em *em)
         }
     }
     if (em->lowHpNeed != 0) {
-        em->requestPrio = 0x80;
-        Em_SetRequest(em, gEmKindInfo[em->type].lowHpRequest, 0x80);
+        em->requestPrio = 128;
+        Em_SetRequest(em, gEmKindInfo[em->type].lowHpRequest, 128);
         return;
     }
-    if (em->requestPrio < 0x70) {
+    if (em->requestPrio < 112) {
         if (em->need4 != 0) {
             em->need4 = 0;
-            em->requestPrio = 0x70;
-            Em_SetRequest(em, gEmKindInfo[em->type].need4Request, 0x70);
+            em->requestPrio = 112;
+            Em_SetRequest(em, gEmKindInfo[em->type].need4Request, 112);
             return;
         }
-        if (em->requestPrio < 0x60) {
+        if (em->requestPrio < 96) {
             if (em->need1 != 0) {
-                em->requestPrio = 0x60;
-                Em_SetRequest(em, gEmKindInfo[em->type].need1Request, 0x60);
+                em->requestPrio = 96;
+                Em_SetRequest(em, gEmKindInfo[em->type].need1Request, 96);
                 return;
             }
-            if (em->requestPrio < 0x50) {
+            if (em->requestPrio < 80) {
                 if (em->need2 != 0) {
-                    em->requestPrio = 0x50;
-                    Em_SetRequest(em, gEmKindInfo[em->type].need2Request, 0x50);
+                    em->requestPrio = 80;
+                    Em_SetRequest(em, gEmKindInfo[em->type].need2Request, 80);
                     return;
                 }
-                if (em->requestPrio < 0x40 && em->need3 != 0 && em->combat == 0) {
-                    em->requestPrio = 0x40;
-                    Em_SetRequest(em, gEmKindInfo[em->type].need3Request, 0x40);
+                if (em->requestPrio < 64 && em->need3 != 0 && em->combat == 0) {
+                    em->requestPrio = 64;
+                    Em_SetRequest(em, gEmKindInfo[em->type].need3Request, 64);
                 }
             }
         }
@@ -2804,13 +2658,13 @@ void Em_PickRequest(Em *em)
  * Sets lowHpNeed when hp falls under hpMax * `ratio`. It clears lowHpNeed for
  * the quest's special monster, for kinds without a low-hp request and from
  * EM_GROUP_DEFEAT on. It leaves lowHpNeed alone while that request is
- * pending, while a trigger-0x80 script runs, or in combat in a listed area.
+ * pending, while an EM_TRIGGER_PLAYER_AREA script runs, or in combat in a listed area.
  */
 void Em_CheckLowHp(Em *em, f32 ratio)
 {
     s16 *ids = gEmRequestIds[em->type];
 
-    if ((u8)Quest_FindSpecialMonster(em->type) != 0xFF) {
+    if ((u8)Quest_FindSpecialMonster(em->type) != 255) {
         em->lowHpNeed = 0;
         return;
     }
@@ -2828,7 +2682,7 @@ void Em_CheckLowHp(Em *em, f32 ratio)
     if (em->requested == 1 && em->requestId == gEmKindInfo[em->type].lowHpRequest) {
         return;
     }
-    if (Em_ScriptFlagsFrom(em, 0x80)) {
+    if (Em_ScriptFlagsFrom(em, EM_TRIGGER_PLAYER_AREA)) {
         return;
     }
     if (ids != NULL && em->combat == 1) {
@@ -3106,7 +2960,7 @@ s32 Em_InBlockArea2(Em *em)
     for (i = 0; i < 32; i++) {
         obj = gSightBlockObjs[i];
         if (obj != NULL && obj->area == em->area && (obj->kind & 2)
-            && (em->stance == 0 || em->stance == 1) && em->requestPrio < 0x80
+            && (em->stance == 0 || em->stance == 1) && em->requestPrio < 128
             && Vec_Distance(obj->pos, &em->posX) <= obj->radius) {
             return 1;
         }
@@ -3151,8 +3005,8 @@ u8 EmObj_AlertMonsters(EmObj *obj)
 /*
  * Returns the kind's reaction row for reaction kind `kind` and player
  * `player`: 0 seen, 1 hit, 2 carrying, 3 to 6 the sense ranges, 7 a flash, 8
- * player flag 0x10000. Skill 0x14 shifts kind 1 to 9 and kinds 3-6 to 10-13.
- * Otherwise a silencer moves kind 1 to 0x12, and skill 0x13 with action rank
+ * player flag 0x10000. Skill 20 shifts kind 1 to 9 and kinds 3-6 to 10-13.
+ * Otherwise a silencer moves kind 1 to 18, and skill 19 with action rank
  * 0 moves kinds 3-6 to 14-17.
  */
 EmReaction *Em_GetReaction(Em *em, u8 kind, u8 player)
@@ -3162,20 +3016,20 @@ EmReaction *Em_GetReaction(Em *em, u8 kind, u8 player)
 
     switch (kind) {
     case 1:
-        if (Player_HasSkill(pl, 0x14) == 1) {
+        if (Player_HasSkill(pl, 20) == 1) {
             kind += 8;
         } else if (LightBowgun_HasSilencer(pl) == 1) {
-            kind = 0x12;
+            kind = 18;
         }
         break;
     case 3:
     case 4:
     case 5:
     case 6:
-        if (Player_HasSkill(pl, 0x14) == 1) {
+        if (Player_HasSkill(pl, 20) == 1) {
             kind += 7;
-        } else if (Player_HasSkill(pl, 0x13) == 1 && (u8)Em_PlayerActionKind(player) == 0) {
-            kind += 0xB;
+        } else if (Player_HasSkill(pl, 19) == 1 && (u8)Em_PlayerActionKind(player) == 0) {
+            kind += 11;
         }
         break;
     }
@@ -3258,7 +3112,7 @@ void Em_MigrateHost(Em *em)
         em->hostTimer--;
     }
     if (em->remote > 0) {
-        if (gScene.inQuest[em->hostNo] == 0xFF) {
+        if (gScene.inQuest[em->hostNo] == 255) {
             n = gScene.playerCount;
             for (i = 0, a = 0, inQuestMask = 0; i < n; i++) {
                 if (gScene.inQuest[i] == 1) {
@@ -3281,7 +3135,7 @@ void Em_MigrateHost(Em *em)
             }
             if (j == gScene.localPlayer) {
                 em->remote = 0;
-                em->hostTimer = 0x3C;
+                em->hostTimer = 60;
                 em->hostNo = j;
                 QSync_SendEm(em, 4, 0);
             }
@@ -3330,7 +3184,7 @@ void Em_MigrateHost(Em *em)
     }
     for (a = 0; a < n; a++) {
         if ((areaMask & (1 << j)) && gScene.inQuest[j] == 1) {
-            em->hostTimer = 0x3C;
+            em->hostTimer = 60;
             em->hostNo = j;
             QSync_SendEm(em, 4, 0);
             em->hostChanged = 1;
@@ -3385,7 +3239,7 @@ u8 Em_SenseObjects(Em *em, EmObj *self)
             }
             break;
         case 2:
-            if (em->type != 0xC && em->type != EM_KIND_POPO && em->type != EM_KIND_APCEROS) {
+            if (em->type != 12 && em->type != EM_KIND_POPO && em->type != EM_KIND_APCEROS) {
                 continue;
             }
             break;
@@ -3409,74 +3263,74 @@ u8 Em_SenseObjects(Em *em, EmObj *self)
 }
 
 /* The file's data. */
-extern u32 gEmKindTables_68[];
+extern void *gEmKindTables_68[];
 extern u32 D_008F5920[];
-extern u32 D_008F5930[];
-extern u32 D_008F5940[];
-extern u32 D_008F5990[];
-extern u32 D_008F59E0[];
-extern u32 D_008F5A30[];
-f32 gEmReactionDists_0[16] = {
+extern s32 D_008F5930[4];
+extern s32 D_008F5940[5][4];
+extern s32 D_008F5990[5][4];
+extern s32 D_008F59E0[5][4];
+extern s32 D_008F5A30[5][4];
+EmReactionDists gEmReactionDists_0[2] = {
 #include "game/008BAC10.inc"
 };
-f32 gEmReactionDists_2[16] = {
+EmReactionDists gEmReactionDists_2[2] = {
 #include "game/008BAC50.inc"
 };
-f32 gEmReactionDists_3[8] = {
+EmReactionDists gEmReactionDists_3[1] = {
 #include "game/008BAC90.inc"
 };
-f32 gEmReactionDists_4[8] = {
+EmReactionDists gEmReactionDists_4[1] = {
 #include "game/008BACB0.inc"
 };
-f32 gEmReactionDists_8[8] = {
+EmReactionDists gEmReactionDists_8[1] = {
 #include "game/008BACD0.inc"
 };
-f32 gEmReactionDists_9[8] = {
+EmReactionDists gEmReactionDists_9[1] = {
 #include "game/008BACF0.inc"
 };
-f32 gEmReactionDists_12[8] = {
+EmReactionDists gEmReactionDists_12[1] = {
 #include "game/008BAD10.inc"
 };
-f32 gEmReactionDists_14[16] = {
+EmReactionDists gEmReactionDists_14[2] = {
 #include "game/008BAD30.inc"
 };
-f32 gEmReactionDists_15[16] = {
+EmReactionDists gEmReactionDists_15[2] = {
 #include "game/008BAD70.inc"
 };
-f32 gEmReactionDists_13[8] = {
+EmReactionDists gEmReactionDists_13[1] = {
 #include "game/008BADB0.inc"
 };
-f32 gEmReactionDists_17[16] = {
+EmReactionDists gEmReactionDists_17[2] = {
 #include "game/008BADD0.inc"
 };
-f32 gEmReactionDists_21[24] = {
+EmReactionDists gEmReactionDists_21[3] = {
 #include "game/008BAE10.inc"
 };
-f32 gEmReactionDists_40[16] = {
+EmReactionDists gEmReactionDists_40[2] = {
 #include "game/008BAE70.inc"
 };
-f32 gEmReactionDists_52[16] = {
+EmReactionDists gEmReactionDists_52[2] = {
 #include "game/008BAEB0.inc"
 };
-f32 gEmReactionDists_53[16] = {
+EmReactionDists gEmReactionDists_53[2] = {
 #include "game/008BAEF0.inc"
 };
-f32 gEmReactionDists_54[16] = {
+EmReactionDists gEmReactionDists_54[2] = {
 #include "game/008BAF30.inc"
 };
-f32 gEmReactionDists_57[8] = {
+EmReactionDists gEmReactionDists_57[1] = {
 #include "game/008BAF70.inc"
 };
-f32 gEmReactionDists_66[8] = {
+EmReactionDists gEmReactionDists_66[1] = {
 #include "game/008BAF90.inc"
 };
-f32 gEmReactionDists_68[8] = {
+EmReactionDists gEmReactionDists_68[1] = {
 #include "game/008BAFB0.inc"
 };
-f32 gEmReactionDists_71[16] = {
+EmReactionDists gEmReactionDists_71[2] = {
 #include "game/008BAFD0.inc"
 };
-f32 *gEmReactionDists[76] = {
+EmReactionDists *gEmReactionDists[76] = {
     gEmReactionDists_0, gEmReactionDists_0, gEmReactionDists_2, gEmReactionDists_3,
     gEmReactionDists_4, gEmReactionDists_4, gEmReactionDists_0, gEmReactionDists_0,
     gEmReactionDists_8, gEmReactionDists_9, gEmReactionDists_0, gEmReactionDists_0,
@@ -3497,10 +3351,10 @@ f32 *gEmReactionDists[76] = {
     gEmReactionDists_68, gEmReactionDists_3, gEmReactionDists_12, gEmReactionDists_71,
     gEmReactionDists_0, gEmReactionDists_66, NULL, NULL,
 };
-u16 gEmReactionAngles_0[8] = {
+EmReactionAngles gEmReactionAngles_0[2] = {
 #include "game/008BB140.inc"
 };
-u16 *gEmReactionAngles[76] = {
+EmReactionAngles *gEmReactionAngles[76] = {
     gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0,
     gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0,
     gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0,
@@ -3521,7 +3375,7 @@ u16 *gEmReactionAngles[76] = {
     gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0, gEmReactionAngles_0,
     gEmReactionAngles_0, gEmReactionAngles_0, NULL, NULL,
 };
-u32 gEmKindTables[76] = {
+void **gEmKindTables[76] = {
 #include "game/008BB280.inc"
 };
 extern f32 D_00911410[];
@@ -3607,68 +3461,72 @@ s32 *gEmPartBuildupLimits[76] = {
     gEmPartBuildupLimits_1, gEmPartBuildupLimits_1, gEmPartBuildupLimits_1, gEmPartBuildupLimits_1,
     gEmPartBuildupLimits_1, gEmPartBuildupLimits_1, NULL, NULL,
 };
-u32 D_008BB790[4] = {
+/* The alert build-up tables (Em_AddAlertBuildup), per kind through
+ * gEmPlayerActionKinds: [0] the base, per reaction range; [1] to [4] per
+ * sense sector 0 to 3, a row per player action rank (Em_PlayerActionKind),
+ * per reaction range. gEmPlayerActionKinds_4's lists are in .bss. */
+s32 gEmPlayerActionKinds_1_0[4] = {
 #include "game/008BB790.inc"
 };
-u32 D_008BB7A0[20] = {
+s32 gEmPlayerActionKinds_1_1[5][4] = {
 #include "game/008BB7A0.inc"
 };
-u32 D_008BB7F0[20] = {
+s32 gEmPlayerActionKinds_1_2[5][4] = {
 #include "game/008BB7F0.inc"
 };
-u32 D_008BB840[20] = {
+s32 gEmPlayerActionKinds_1_3[5][4] = {
 #include "game/008BB840.inc"
 };
-u32 D_008BB890[20] = {
+s32 gEmPlayerActionKinds_1_4[5][4] = {
 #include "game/008BB890.inc"
 };
-u32 D_008BB8E0[8] = {
-    (u32)D_008BB790, (u32)D_008BB7A0, (u32)D_008BB7F0, (u32)D_008BB840,
-    (u32)D_008BB890, 0, 0, 0,
+s32 (*gEmPlayerActionKinds_1[8])[4] = {
+    &gEmPlayerActionKinds_1_0, gEmPlayerActionKinds_1_1, gEmPlayerActionKinds_1_2, gEmPlayerActionKinds_1_3,
+    gEmPlayerActionKinds_1_4, NULL, NULL, NULL,
 };
-u32 D_008BB900[8] = {
-    (u32)D_008F5930, (u32)D_008F5940, (u32)D_008F5990, (u32)D_008F59E0,
-    (u32)D_008F5A30, 0, 0, 0,
+s32 (*gEmPlayerActionKinds_4[8])[4] = {
+    &D_008F5930, D_008F5940, D_008F5990, D_008F59E0,
+    D_008F5A30, NULL, NULL, NULL,
 };
-u32 D_008BB920[4] = {
+s32 gEmPlayerActionKinds_22_0[4] = {
 #include "game/008BB920.inc"
 };
-u32 D_008BB930[20] = {
+s32 gEmPlayerActionKinds_22_1[5][4] = {
 #include "game/008BB930.inc"
 };
-u32 D_008BB980[20] = {
+s32 gEmPlayerActionKinds_22_2[5][4] = {
 #include "game/008BB980.inc"
 };
-u32 D_008BB9D0[20] = {
+s32 gEmPlayerActionKinds_22_3[5][4] = {
 #include "game/008BB9D0.inc"
 };
-u32 D_008BBA20[20] = {
+s32 gEmPlayerActionKinds_22_4[5][4] = {
 #include "game/008BBA20.inc"
 };
-u32 D_008BBA70[8] = {
-    (u32)D_008BB920, (u32)D_008BB930, (u32)D_008BB980, (u32)D_008BB9D0,
-    (u32)D_008BBA20, 0, 0, 0,
+s32 (*gEmPlayerActionKinds_22[8])[4] = {
+    &gEmPlayerActionKinds_22_0, gEmPlayerActionKinds_22_1, gEmPlayerActionKinds_22_2, gEmPlayerActionKinds_22_3,
+    gEmPlayerActionKinds_22_4, NULL, NULL, NULL,
 };
 s32 (**gEmPlayerActionKinds[76])[4] = {
-    NULL, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB900, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB900, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB900, (void *)D_008BB900, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB900, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BBA70, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB900, (void *)D_008BB8E0, (void *)D_008BB900,
-    (void *)D_008BB900, (void *)D_008BB900, (void *)D_008BB900, (void *)D_008BB900,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB900,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB900, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, (void *)D_008BB900, (void *)D_008BB8E0,
-    (void *)D_008BB8E0, (void *)D_008BB8E0, NULL, NULL,
+    NULL, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_4, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_4, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_4, gEmPlayerActionKinds_4, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_4, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_22, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_4, gEmPlayerActionKinds_1, gEmPlayerActionKinds_4,
+    gEmPlayerActionKinds_4, gEmPlayerActionKinds_4, gEmPlayerActionKinds_4, gEmPlayerActionKinds_4,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_4,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_4, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, gEmPlayerActionKinds_4, gEmPlayerActionKinds_1,
+    gEmPlayerActionKinds_1, gEmPlayerActionKinds_1, NULL, NULL,
 };
 EmReaction gEmReactions_1[20] = {
 #include "game/008BBBC0.inc"

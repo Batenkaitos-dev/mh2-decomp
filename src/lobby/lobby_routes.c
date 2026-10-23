@@ -35,132 +35,60 @@
 #include "libc_ctype.h"
 #include "quest.h"
 #include "sound.h"
+#include "area_draw.h"
+#include "lobby_routes.h"
+#include "chat_phrases.h"
+#include "hunter_card.h"
+#include "item_shop.h"
+#include "lobby_queries.h"
+#include "lobby_steps.h"
+#include "lobby_util.h"
+#include "my_house.h"
+#include "town_player_activities.h"
+#include "town_player_states.h"
+#include "lobby_labels.h"
 
 s32 LobbyNet_GetErrText(char *);
-void Lobby_ApplyTownData(void);
 extern NetUser gNetUsers[10];
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void TownMsg_SendArea(u16 id);
-s32 HunterCard_SendChanged(void);
-void LobbySe_Play(s32 a);
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
 extern char gPlayerIds[];       /* sub_main's copies of the quest's four players: their ids (LOBBY_USER_ID_LEN each), */
 extern char gMemberNames[];     /* their names (LOBBY_USER_NAME_LEN + 1 each) */
-extern char gPlayerCardTexts[];     /* and their hunter cards' texts (0x100 each) */
-void Net_SetHandler(s32 i, void (*f)(NetMsg, NetMsg *));
-void LobbyRoute_TownData(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_PartyReady(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_ServerClose(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_ChatMessage(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_ChatTell(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_ShortMail(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_DepartCancel(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_DepartError(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_ServerLeave(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level0Values(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level0Name(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level0State(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1Name(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1State(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1Color(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1Values(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1Text(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1GroupInfo(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1UserIn(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1UserOut(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Name(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2State(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Color(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Values(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Limits(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Locked(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Text(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2PostedQuest(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level0Kick(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level1Kick(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Kick(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2UserIn(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2UserOut(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_Level2Members(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_TownMsg(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_UserCard(NetMsg msg, NetMsg *msgRef);
-void LobbyRoute_UserCardPart(NetMsg msg, NetMsg *msgRef);
+extern char gPlayerCardTexts[];     /* and their hunter cards' texts (256 bytes each) */
 
 /* a received mail (LobbyNet_GetShortMail copies it out) */
 typedef struct MailMsg {
     /* 0x00 */ char id[8];
-    /* 0x08 */ char name[0x14];
-    /* 0x1C */ char text[0x80];
+    /* 0x08 */ char name[20];
+    /* 0x1C */ char text[128];
 } MailMsg;
 
 extern MailEntry gMailBox[MAIL_BOX_LEN];
 extern BlockedUser gMailBlockList[MAIL_BLOCK_LIST_LEN];
-void LobbyNet_GetShortMail(char *id, u8 *name, u8 *text);
-void Chat_FilterWords(char *text);
-void LobbyNet_GetChatMessage(struct NetChatMessage *dst);
-void Chat_Receive(u8 *msg);
 s32 strcmp(char *s, char *word);
-void Chat_SendText(s32 player, void *text, u8 color);
 extern u8 gChatClassColors[];
-extern char *gLobbyEventTexts[];
 extern u8 gLobbyLevel1Sel;      /* the level-1 entry (the town) the player is in; 0: none */
-s32 LobbyNet_GetUserInOut(NetUser *dst);
-s32 Lobby_GetPlace(void);
-void ActSpot_ClearAll(void);
-s32 TownPc_IsSeatedState(u8, u8);
-s32 Area_IsTownHall(s32 area);
-s32 Area_IsOnlineHouse(s32 area);
-void TownMsg_SendSeatTaken(void);
-void TownMsg_SendHouseSeatTaken(void);
-s32 TownPc_IsInContest(Player *pl);
-void TownMsg_SendContestSeatTaken(void);
 extern s8 gTownSeats[3];
 extern char gSongRequesterId[8];
 extern u16 gLobbyQuestId;       /* the quest taken */
 extern s8 gArenaCupJoined;
 extern s8 gArenaCupJoinValue;
 extern u8 gChatBlockList[];     /* the chat's muted ids (CHAT_BLOCK_LIST_LEN records) */
-s32 IdList_Find(s8 *list, s32 count, void *key);
 extern s8 gCtypeTable[];
 extern u8 gChatDigitColors[8];
-void LobbyNet_GetTownMsg(struct NetTownMsg *dst);
-void TownMsg_Recv(void *from, u8 *pkt);
-void Notice_ResetQueue(void);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-s32 LobbyNet_GetUserCard(NetUser *dst);
-s32 LobbyNet_GetUserCardPart(NetUserCardPart *dst);
-s32 HunterCard_Sanitize(void *);
 s32 memcmp(void *a, void *b, s32 n);
 extern u8 gLobbyLevel2Sel;      /* the level-2 entry (the quest room) the player is in */
 extern s8 gQuestMinMembers;
 extern s32 gTownMode;
 s32 NetList2_GetMembers(u16 id, u16 *a, u16 *b); /* unit's own declaration: with a u16 id, as LobbyRoute_Level2Members passes it; with the definition's s32 id the call compiles differently */
 void Chat_SystemMsg(s32 msg, char *arg);
-s32 LobbyNet_GetLastId(u16 *);
-s32 Net_GetLevel2PostedQuest(u16, u8 *);
-s32 NetList2_GetText(u16 id, char *dst);
-s32 NetList2_GetLocked(u16, u8 *);
-s32 Net_GetLevel2Color(u16 id, s32 *out);
-s32 NetList2_GetName(u16 id, char *dst);
-s32 NetList1_GetColor(u16 id, s32 *out);
 extern LevelEntry gLobbyLevel1Entries[];
-s32 NetList1_GetByte(u16, u8 *);
-s32 NetList1_GetName(u16 id, char *dst);
-s32 NetList1_GetGroupInfo(u16 id, u8 *out);
-s32 NetList1_GetText(u16 id, char *dst);
-s32 NetList0_GetByte(u16, u8 *);
 extern LevelEntry gLobbyLevel0Entries[];
 /* The game's own mismatch: LobbyRoute_Level0Name passes the entry's name
  * where the definition takes the reply handler, which NetReq_OnReply calls:
  * a native build must not call it. */
 s32 LobbyReq_Level0Name(u16 id, void *name); /* unit's own declaration: a name pointer, as the route passes it */
 s32 NetList0_GetUsers(u16 id, u16 *a, u16 *b);
-s32 NetList0_GetValue10(u16 id, u16 *a);
-s32 NetList1_GetUsers(u16 id, u16 *a, u16 *b);
-s32 NetList2_GetByte(u16 id, u8 *dst);
-s32 NetList2_GetUsers(u16 id, u16 *a, u16 *b);
-s32 NetList2_GetLimits(u16 id, u16 *a, u16 *b, u16 *c, u16 *d, u16 *e);
 
 /* Registers the lobby's route handlers, one per route (Net_SetHandler);
  * the lobby's entry calls it once it is connected. */
@@ -320,7 +248,7 @@ static u8 ChatMsg_ColorDigit(u8 digit)
  * is 0, and a chat-log line's first one is dropped (CHAT_DIGIT_NONE); a
  * missing second or third one is 0. A line without its first digit that
  * comes in a town while a raid's movie plays (or as the town comes back
- * after it) is answered with the "checking the town's state" line, unless
+ * after it) is answered with the town-state check's line, unless
  * it is that line. The line then goes to the log or a balloon
  * (Chat_Receive).
  */
@@ -432,7 +360,7 @@ void LobbyRoute_ShortMail(NetMsg msg, NetMsg *msgRef)
     }
     count = 0;
     for (i = 0, entry = gMailBox; i < MAIL_BOX_LEN; i++, entry++) {
-        if (entry->used != 0) {
+        if (entry->unread != 0) {
             count++;
         }
     }
@@ -453,7 +381,7 @@ void LobbyRoute_ShortMail(NetMsg msg, NetMsg *msgRef)
     memcpy(gMailBox[0].name, mail.name, LOBBY_USER_NAME_LEN);
     memcpy(gMailBox[0].text, mail.text, sizeof(gMailBox[0].text));
     Chat_FilterWords(gMailBox[0].text);
-    gMailBox[0].used = 1;
+    gMailBox[0].unread = 1;
 }
 
 /* A level-0 entry's (an area's) name (6204). */
@@ -780,7 +708,7 @@ void LobbyRoute_Level2Members(NetMsg msg, NetMsg *msgRef)
  * the room's players (LobbyState.players) and is announced in the chat
  * (LOBBY_EVENT_MEMBER_JOINED) out of the server's first level. With a paid
  * arena cup quest, gArenaCupJoined and gArenaCupJoinValue are set (no
- * reader of them is known). The common bank's sound 0x94 plays.
+ * reader of them is known). The common bank's sound 148 plays.
  */
 void LobbyRoute_Level2UserIn(NetMsg msg, NetMsg *msgRef)
 {
@@ -810,9 +738,9 @@ void LobbyRoute_Level2UserIn(NetMsg msg, NetMsg *msgRef)
     }
     if (gLobby->questPaid != 0 && gLobbyQuestId == QUEST_ID_ARENA_CUP) {
         gArenaCupJoined = 1;
-        gArenaCupJoinValue = 0x2C;
+        gArenaCupJoinValue = 44;
     }
-    Sound_PlaySeFlat(SE_SLOT_COMMON, 0x94, 0);
+    Sound_PlaySeFlat(SE_SLOT_COMMON, 148, 0);
 }
 
 /*
@@ -858,7 +786,7 @@ void LobbyRoute_TownMsg(NetMsg msg, NetMsg *msgRef)
 {
     struct {
         char id[8];
-        char text[0x300];
+        char text[768];
     } townMsg;
     u8 phase;
     LobbyState *lobby = gLobby;

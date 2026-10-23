@@ -24,37 +24,28 @@
 #include "sound.h"
 #include "task.h"
 #include "window.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "card.h"
+#include "stream.h"
+#include "text.h"
+#include "bed_menu.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "menu_util.h"
+#include "net_scene.h"
+#include "screen_fade.h"
+#include "lobby_labels.h"
 
-void Lobby_SetBootMode(s32);
-s32 Lobby_CheckDay(s32);
-s32 Lobby_GetDayState(void);
-void FadeA_Start(s32);
-void Chat_ShowWindows(void);
 extern s32 gTownMode;
-void Stream_Pause(s32, s32);
-s32 Game_IsOnline(void);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 extern NetUser gNetUsers[];
-s32 Card_IsSystemSaved(void);
-void GameMenu_DrawList(s8 dim);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *off);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
 extern ListPanel gQuitPanel;
 extern Frame gQuitFrame;
-extern char *gYesNoTexts[];
-extern char *gQuitSaveTexts[];
-extern char *gQuitConfirmTexts[];
-extern char *gQuitMenuTexts[];
-extern char *gQuitMenuDimTexts[];
-
-void Text_Printf(const char *, ...);
-void Text_PrintfColored(const char *, ...);
 
 /* The game menu's open handler for the quit entry: returns 1 (refused)
  * while the menu is busy (GameMenu.busy); else shows the entry's help,
@@ -68,7 +59,7 @@ s32 GameMenu_OpenQuit(void *unused0)
     }
     gHelpShow = 1;
     gHelpPage = HELP_PAGE_LOBBY;
-    gHelpLine = 0x24; /* the first way's line; 0x25 the second's */
+    gHelpLine = 36; /* the first way's line; 37 the second's */
     menu->subEntry = QUIT_WAY_ONCE;
     return 0;
 }
@@ -81,8 +72,8 @@ s32 GameMenu_OpenQuit(void *unused0)
  * back. */
 void GameMenu_Quit(void)
 {
-    if (Lobby_GetDayState() != 0) {
-        Lobby_CheckDay(0);
+    if (Lobby_GetPauseState() != 0) {
+        Lobby_SetPause(0);
     }
     Lobby_SetBootMode((gSubMenuWork->subEntry == QUIT_WAY_ONCE) ? BOOT_MODE_GMSUB : BOOT_MODE_GMSUB_KEEP);
     gTownMode = TOWN_MODE_QUIT;
@@ -90,14 +81,6 @@ void GameMenu_Quit(void)
     gFieldControl = 1;
     Chat_ShowWindows();
 }
-
-void GameMenu_Back(void);
-void Chat_HideWindows(void);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 GameMenu_YesNoInput(u16 *pad);
-void TownNetMenu_Begin(void);
-s32 TownNetMenu_Update(s32);
-u8 YesNo_Toggle(u16 buttons, u8 on, u16 mask);
 
 /* The quit entry's input. subStep 0, the list of the two ways to quit
  * (subEntry, QUIT_WAY_*; the second needs the system data saved,
@@ -130,7 +113,7 @@ u16 GameMenu_UpdateQuit(u16 pad)
         }
         Menu_CursorUpDown(&gSubMenuWork->subEntry, pad, QUIT_WAYS);
         menu = gSubMenuWork;
-        result = menu->subEntry + 0x24; /* the way's help line */
+        result = menu->subEntry + 36; /* the way's help line */
         buttons = pad;
         gHelpLine = result;
         cur = &menu->subEntry;
@@ -169,7 +152,7 @@ u16 GameMenu_UpdateQuit(u16 pad)
                 } else {
                     menu->subStep = 0;
                     gHelpShow = 1;
-                    gHelpLine = gSubMenuWork->subEntry + 0x24;
+                    gHelpLine = gSubMenuWork->subEntry + 36;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                     gFieldControl = 1;
                     Chat_ShowWindows();
@@ -292,17 +275,17 @@ done:
     return 0;
 }
 
-/* The game menu's open handler for the pause: offline, while the day clock's
- * check is idle (Lobby_GetDayState 0), it hides the help line and the chat
+/* The game menu's open handler for the pause: offline, while no pause is
+ * under way (Lobby_GetPauseState 0), it hides the help line and the chat
  * windows, asks for the pause screen (gPauseMenuReq), holds the clock and
- * pauses both streams, and returns 0. Online, or mid-check, it returns 1: the
+ * pauses both streams, and returns 0. Online, or mid-pause, it returns 1: the
  * entry doesn't open. */
 s32 GameMenu_OpenPause(void *menu)
 {
-    if ((Game_IsOnline() != 1) && (Lobby_GetDayState() == 0)) {
+    if ((Game_IsOnline() != 1) && (Lobby_GetPauseState() == 0)) {
         gHelpShow = 0;
         gPauseMenuReq = 1;
-        Lobby_CheckDay(1);
+        Lobby_SetPause(1);
         gChatWinOpen = gChatWinTimer = 0;
         Stream_Pause(1, 1);
         Stream_Pause(0, 1);
@@ -317,7 +300,7 @@ s32 GameMenu_OpenPause(void *menu)
 u16 GameMenu_UpdatePause(u16 pad)
 {
     if (pad & (PAD_START | PAD_CIRCLE | PAD_CROSS)) {
-        Lobby_CheckDay(0);
+        Lobby_SetPause(0);
         Stream_Pause(1, 0);
         Stream_Pause(0, 0);
         return PAD_START;
@@ -353,22 +336,22 @@ void GameMenu_DrawQuit(void)
         ListPanel_Draw(&gQuitPanel, 0, 0, gSubMenuWork->subEntry);
         break;
     case 1:
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         Font_SetColor(0x807F7F7F);
         switch (gSubMenuWork->page) {
         case QUIT_PAGE_CONFIRM:
             question = gSubMenuWork->subEntry;
-            Font_SetPos(0xE6, 0x104);
+            Font_SetPos(230, 260);
             Text_Printf(gYesNoTexts[gSubMenuWork->yesNo]);
             break;
         case QUIT_PAGE_ASK_SAVE:
             question = 2;
-            Font_SetPos(0xE6, 0x104);
+            Font_SetPos(230, 260);
             Text_Printf(gYesNoTexts[gSubMenuWork->yesNo]);
             break;
         case QUIT_PAGE_ASK_AGAIN:
             question = 3;
-            Font_SetPos(0x9E, 0x104);
+            Font_SetPos(158, 260);
             Text_Printf(gQuitSaveTexts[gSubMenuWork->yesNo]);
             break;
         default:
@@ -378,7 +361,7 @@ void GameMenu_DrawQuit(void)
         if (question >= 0) {
             WindowFrame_Draw(&gQuitFrame, NULL);
             Font_SetColor(0x807F7F7F);
-            Font_SetPos(0x9A, 0xB2);
+            Font_SetPos(154, 178);
             Text_PrintfColored(gQuitConfirmTexts[question]);
         }
         break;

@@ -25,63 +25,34 @@
 #include "lobby_text.h"
 #include "scene.h"
 #include "pad.h"
+#include "stream.h"
+#include "text.h"
+#include "lobby_village.h"
+#include "area_list.h"
+#include "elder_forecast.h"
+#include "game_util.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_leave_menus.h"
+#include "lobby_queries.h"
+#include "lobby_screen.h"
+#include "lobby_steps.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "screen_fade.h"
+#include "libc.h"
 
-void LobbyText_Open(s32 msg);
-void LobbyMenu_Init(void);
-void Lobby_ClearRequests(void);
-void Chat_ClearTargets(void);
-void *memset(void *dst, s32 c, u32 n);
 extern s8 gLobbyLevel1Sel;
 extern s8 gLobbyLevel2Sel;
 extern LevelEntry gLobbyLevel1Entries[];
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void Lobby_DrawBlackLine(void);
 extern u8 gMenuWork[];
 extern LobbyMenu *gLobbyMenu;
 extern u8 gLobbyScreenMode;
-u8 FadeA_GetState(void);
-void FadeA_Start(s32);
-s32 LobbyVillage_FetchTowns(void);
-s32 LobbyLevel1_Enter(void);
-void LobbyLevel0_LeaveCountdown(void);
-void LobbyVillage_BeginJoin(void);
-void Town_Reset(void);
-void Lobby_Disconnect(s32);
-s32 LobbyTown_WantsMovie(void);
-void LobbyTown_StartMovie(void);
-s32 LobbyTown_MovieDone(void);
-s32 LobbyScreen_EnterSeq(s32);
-u8 FadeB_GetState(void);
-void FadeB_Start(s32);
-s32 Lobby_HandleLeaveRequest(void);
-void LobbyScene_Run(void);
-void LobbyTown_Begin(void);
-void Stream_Stop(s32 ch);
-s32 LobbyLevel1_CanEnter(s32);
-s32 LobbyStep_EnterLevel1(void);
-s32 LobbyStep_DownloadQuests(void);
-void FileQueue_Cancel(void);
-s32 LobbyStep_Level1List(s32);
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-s32 LobbyReq_Level0Leave(void (*onReply)(NetMsg, NetMsg *));
-void Game_ResetSubsystems(void);
-void Lobby_LoadTextures(void);
-void AreaList_Begin(void);
-void LobbyLevel0_OnLeaveReply(NetMsg m, NetMsg *pm);
 extern u16 gAreaSearchTimer;
-u16 Pad_GetPressedRepeat(s32 pad);
-void LobbyDialog_OpenWait(void *);
-void Text_SetSize(s32 size);
-s32 sprintf(char *, const char *, ...);
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-void Lobby_DrawPressButton(void);
-void LobbySe_Play(s32 se);
-void LobbyLevel0_OnCountdownReply(NetMsg m, NetMsg *pm);
 
 /* Starts the village from the area list: the lobby state's steps back to
  * the start, the screen entered as LOBBY_ENTER_VILLAGE, the selections and
- * the area's town list cleared, and the "entering the area" message. */
+ * the area's town list cleared, and the area-entry message. */
 void LobbyVillage_Begin(void)
 {
     gLobby->phase = LOBBY_PHASE_VILLAGE;
@@ -446,7 +417,7 @@ s32 LobbyLevel0_Leave(void)
  * failed, the village starts again instead. */
 void LobbyLevel0_LeaveCountdown(void)
 {
-    char buf[0x10];
+    char buf[16];
     u16 pad;
 
     pad = Pad_GetPressedRepeat(0);
@@ -487,7 +458,7 @@ void LobbyLevel0_LeaveCountdown(void)
         } else {
             Text_SetSize(5);
             sprintf(buf, "%3d", gLobby->countdown / 30); /* in seconds */
-            Text_DrawShadow(0x1D6, 0x54, 1, 5, buf);
+            Text_DrawShadow(470, 84, 1, 5, buf);
         }
         break;
     case PROMPT_PRESS:

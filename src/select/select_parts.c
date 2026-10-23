@@ -20,16 +20,19 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "m2c_macros.h"
 #include "select.h"
 #include "select/select_parts.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "render_state.h"
+#include "text.h"
+#include "engine_math.h"
+#include "font.h"
+#include "libc.h"
+#include "sound.h"
+#include "sprite_queue.h"
 
 
 struct TexRect;
-void TexRect_DrawRotated(struct TexRect *r, s32 angle);  /* draws a rotated sprite */
-void Text_PrintfColored(const char *fmt, ...);
-void Parts_DrawRotated(s16 x, s16 y, s16 w, s16 h, s32 deg);
-void Parts_DrawMarker(s16 x, s16 y, s16 w, s16 h, s32 angle, s32 color, u8 idx);
 
 /* .data */
-u32 gPartsSprites[10] = {
+SelPart gPartsSprites[2] = {
 #include "select/006CB340.inc"
 };
 /* The colour swatches (Parts_DrawSwatches): texture cells, then positions. */
@@ -49,15 +52,14 @@ s16 gPartsSwatchPos[12][2] = {
 s16 gPartsRotations[8][5] = {
 #include "select/006CB3D0.inc"
 };
-void Sel_DrawPartsRotated(SelPart *p, s32 n, u32 color, s32 angle);
 
 SelPart gPartsPieces[8] = {
 #include "select/006CB420.inc"
 };
-u32 gPartsCursorParts[24] = {
+SelPart gPartsCursorParts[5] = {
 #include "select/006CB4B0.inc"
 };
-u32 gPartsTypeSprites[20] = {
+SelPart gPartsTypeSprites[4] = {
 #include "select/006CB510.inc"
 };
 s16 gPartsPanels[14][12] = {
@@ -112,7 +114,7 @@ void Parts_Init(void)
     memset(charaWork, 0, sizeof(CharaWork));
     charaWork->slide[0] = 2;
     charaWork->slide[1] = 6;
-    charaWork->slide[4] = 0x24;
+    charaWork->slide[4] = 36;
 }
 
 /*
@@ -129,7 +131,7 @@ void Parts_DrawSwatches(s16 kind, s16 alt)
     s16 *pos;
     s16 *tex;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
     if (kind == 0) {
@@ -155,9 +157,9 @@ void Parts_DrawSwatches(s16 kind, s16 alt)
     }
     spr.color = color;
     if (alt == 0) {
-        spr.w = 0x20;
+        spr.w = 32;
     } else {
-        spr.w = 0x18;
+        spr.w = 24;
     }
     spr.h = spr.w;
     for (i = 0; i < count; i++) {
@@ -167,8 +169,8 @@ void Parts_DrawSwatches(s16 kind, s16 alt)
         cell = *tex++;
         spr.u0 = (cell & 7) << 5;
         spr.v0 = (cell >> 3) << 5;
-        spr.u1 = spr.u0 + 0x1F;
-        spr.v1 = spr.v0 + 0x1F;
+        spr.u1 = spr.u0 + 31;
+        spr.v1 = spr.v0 + 31;
         Sprite_Draw(&spr);
     }
 }
@@ -180,8 +182,6 @@ extern char *gAgeFeatureTexts[];
 extern char *gHairRowTexts[];
 extern char *gFaceHairRowTexts[];
 extern char *gPartsLabels[];
-s32 sprintf(char *, const char *, ...);    /* sprintf */
-void Sjis_Widen(char *src, char *dst);
 s32 Str_Length(char *);                /* a message's width */
 
 /*
@@ -268,7 +268,7 @@ s32 Parts_DrawSides(TaskSlot *task)
             if (charaWork->slide[4] == 0) {
                 charaWork->sideState[k]++;
                 if (i == 0) {
-                    Sound_PlaySeFlat(0, 0x12, 0);
+                    Sound_PlaySeFlat(0, 18, 0);
                 }
             }
             break;
@@ -278,17 +278,17 @@ s32 Parts_DrawSides(TaskSlot *task)
                 if (!k) {
                     color = 0xFF254B61;
                     angle = -0x1C71;
-                    part.x = 0x71;
-                    part.y = 0x8B;
-                    part.w = 0x80;
-                    part.h = 0x8C;
+                    part.x = 113;
+                    part.y = 139;
+                    part.w = 128;
+                    part.h = 140;
                 } else {
                     color = 0xFF47050B;
                     angle = 0x1C72;
-                    part.x = 0x189;
-                    part.y = 0x8B;
-                    part.w = 0x80;
-                    part.h = 0x8C;
+                    part.x = 393;
+                    part.y = 139;
+                    part.w = 128;
+                    part.h = 140;
                 }
             } else {
                 alt = 0;
@@ -315,7 +315,7 @@ void Parts_SlideInPanels(u8 sel)
     base = (SelWork *)gSysSettings.workArea;
     base->chara.slideOut = 0;
     charaWork = &base->chara;
-    Sound_PlaySeFlat(1, 0xB, 0);
+    Sound_PlaySeFlat(1, 11, 0);
     for (i = 0, delay = 10; i < 7; i++, delay += 2) {
         if (i == sel) {
             charaWork->slide[i] = 0;
@@ -363,7 +363,7 @@ void Parts_StartBounce(u8 entry)
     charaWork = &((SelWork *)gSysSettings.workArea)->chara;
     charaWork->bounce[entry] = 1;
     charaWork->bounceOfs[entry] = 0;
-    Sound_PlaySeFlat(0, 0x16, 0);
+    Sound_PlaySeFlat(0, 22, 0);
 }
 
 /* Stops every list entry's bounce. */
@@ -403,8 +403,6 @@ void Parts_StartPanel(s16 toPanel)
     }
 }
 
-f32 Math_Absf(f32);   /* fabsf */
-
 /*
  * Character creation's animations, a frame: the list entries' bounces, the
  * cursor's jump, the cursor's blink (a step each 4 frames) and the panels
@@ -423,29 +421,29 @@ void Parts_Animate(void)
     for (i = 0; i < 10; i++) {
         k = i;
         shifted = (u8 *)charaWork + k;
-        switch (((s8 *)shifted)[0x184]) {
+        switch (((s8 *)shifted)[388]) {
         case 0:
             break;
         case 1:
             if (k & 1) {
-                ((s8 *)shifted)[0x18E]++;
+                ((s8 *)shifted)[398]++;
             } else {
-                ((s8 *)shifted)[0x18E]--;
+                ((s8 *)shifted)[398]--;
             }
-            if (Math_Absf(((s8 *)shifted)[0x18E]) >= 5.0f) {
-                ((s8 *)shifted)[0x184] = 2;
+            if (Math_Absf(((s8 *)shifted)[398]) >= 5.0f) {
+                ((s8 *)shifted)[388] = 2;
             }
             break;
         case 2:
             if (k & 1) {
-                ((s8 *)shifted)[0x18E]--;
-                if (((s8 *)shifted)[0x18E] <= 0) {
-                    ((s8 *)shifted)[0x184] = 0;
+                ((s8 *)shifted)[398]--;
+                if (((s8 *)shifted)[398] <= 0) {
+                    ((s8 *)shifted)[388] = 0;
                 }
             } else {
-                ((s8 *)shifted)[0x18E]++;
-                if (((s8 *)shifted)[0x18E] >= 0) {
-                    ((s8 *)shifted)[0x184] = 0;
+                ((s8 *)shifted)[398]++;
+                if (((s8 *)shifted)[398] >= 0) {
+                    ((s8 *)shifted)[388] = 0;
                 }
             }
             break;
@@ -455,14 +453,14 @@ void Parts_Animate(void)
     case 0:
         break;
     case 1:
-        charaWork->cursorY -= 0x1C;
+        charaWork->cursorY -= 28;
         charaWork->cursorJumpFrame++;
-        if (charaWork->cursorJumpFrame >= 0xC) {
+        if (charaWork->cursorJumpFrame >= 12) {
             charaWork->cursorJump = 2;
         }
         break;
     case 2:
-        charaWork->cursorY += 0x24;
+        charaWork->cursorY += 36;
         if (charaWork->cursorY >= charaWork->cursorYEnd) {
             charaWork->cursorY = charaWork->cursorYEnd;
             charaWork->cursorJump = 0;
@@ -553,7 +551,7 @@ s32 Parts_DrawPanels(TaskSlot *task)
 
     edit = &gChrEdit;
     charaWork = &((SelWork *)gSysSettings.workArea)->chara;
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     k = edit->panel;
     order[6] = k;
     for (j = 6, i = 5; i >= 0; j--, i--) {
@@ -565,7 +563,7 @@ s32 Parts_DrawPanels(TaskSlot *task)
     for (i = 0, orderPtr = order; i < 7; orderPtr++, i++) {
         k = (s16)*orderPtr;
         dy = 0;
-        x = charaWork->slide[k] * 0x50;
+        x = charaWork->slide[k] * 80;
         part = gPartsPieces[k & 1];
         rot = (s16 *)gPartsRotations + k * 5;
         part.x = x + rot[0];
@@ -577,8 +575,8 @@ s32 Parts_DrawPanels(TaskSlot *task)
         }
         if (i == 6) {
             rec = (PartsRec *)gPartsPanels[k];
-            titleSize = 0x18;
-            valueSize = 0x12;
+            titleSize = 24;
+            valueSize = 18;
             switch (k) {
             case 2:
             case 4:
@@ -594,8 +592,8 @@ s32 Parts_DrawPanels(TaskSlot *task)
             }
         } else {
             rec = (PartsRec *)gPartsPanels[k + 7];
-            titleSize = 0x14;
-            valueSize = 0x10;
+            titleSize = 20;
+            valueSize = 16;
             Font_SetColor(0xFF000000);
         }
         part = ((SelPart *)gPartsCursorParts)[rec->part];
@@ -640,7 +638,7 @@ s32 Parts_DrawPanels(TaskSlot *task)
             }
         }
     }
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
     return 1;
 }
 
@@ -661,8 +659,8 @@ void Parts_DrawRotated(s16 x, s16 y, s16 width, s16 height, s32 deg)
 }
 
 /*
- * Draws an arrow marker (system texture 0x16B), turned by angle (0x10000 a
- * turn). Its colour is color when entry is 0xFF, else lit while list entry
+ * Draws an arrow marker (system texture 363), turned by angle (ANGLE_TURN a
+ * turn). Its colour is color when entry is 255, else lit while list entry
  * entry bounces.
  */
 void Parts_DrawMarker(s16 x, s16 y, s16 width, s16 height, s32 angle, s32 color, u8 entry)
@@ -672,17 +670,17 @@ void Parts_DrawMarker(s16 x, s16 y, s16 width, s16 height, s32 angle, s32 color,
     s32 markerColor;
 
     charaWork = &((SelWork *)gSysSettings.workArea)->chara;
-    if (entry == 0xFF) {
+    if (entry == 255) {
         markerColor = color;
     } else if (charaWork->bounce[entry] == 0) {
         markerColor = PARTS_COLOR_MARKER;
     } else {
         markerColor = PARTS_COLOR_LIT;
     }
-    Tex_Prepare(1, 0x16B);
-    Tex_Bind(0x16B);
-    spr.u1 = 0xF;
-    spr.v1 = 0xF;
+    Tex_Prepare(1, 363);
+    Tex_Bind(363);
+    spr.u1 = 15;
+    spr.v1 = 15;
     spr.x = x;
     spr.y = y;
     spr.w = width;
@@ -712,7 +710,7 @@ void Parts_DrawTypes(s16 x, s16 y, s32 sel)
     s32 textColor;
     s32 k;
 
-    Parts_DrawRotated(x, y, 0x14E, 0xF2, -2);
+    Parts_DrawRotated(x, y, 334, 242, -2);
     selected = (u8)sel;
     i = 0;
     src = (SelPart *)gPartsTypeSprites;
@@ -737,11 +735,11 @@ void Parts_DrawTypes(s16 x, s16 y, s32 sel)
         textX = (*pos)[0] + x;
         Font_SetPos(textX, textY);
         Text_PrintfColored(TXT(0x006CE168) /* a choice label and its number */, k + 1);
-        markerX = textX - 0x1E;
+        markerX = textX - 30;
         if (k == selected && (gFrameTick & 0x10)) {
             markerX -= 4;
         }
-        Parts_DrawMarker(markerX, textY - 2, 0x18, 0x18, 0x8000, markerColor, 0xFF);
+        Parts_DrawMarker(markerX, textY - 2, 24, 24, 32768, markerColor, 255);
         src++;
         pos++;
     }
@@ -762,8 +760,8 @@ const char gPartsNumberFormat[11] = {
 void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
 {
     ChrEdit *edit;
-    char text[0x30];
-    char buf[0x30];
+    char text[48];
+    char buf[48];
     s16 i;
     s16 rowY;
     s32 color;
@@ -773,7 +771,7 @@ void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
     s16 labelX;
 
     edit = &gChrEdit;
-    Parts_DrawRotated(x, y, 0x14E, 0xF2, -2);
+    Parts_DrawRotated(x, y, 334, 242, -2);
     blinkOffset = 0;
     if (gChrEdit.cursor == 0) {
         if (gFrameTick & 0x10) {
@@ -783,17 +781,17 @@ void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
     } else {
         color = PARTS_COLOR_TEXT;
     }
-    Parts_DrawMarker(x + 0x37 - blinkOffset, y + 0x32, 0x1E, 0x1E, 0, PARTS_COLOR_MARKER, 0);
-    Parts_DrawMarker(blinkOffset + (x + 0xEB), y + 0x32, 0x1E, 0x1E, 0x8000, PARTS_COLOR_MARKER, 1);
-    Font_SetSpacing(0x16, 0x16);
+    Parts_DrawMarker(x + 55 - blinkOffset, y + 50, 30, 30, 0, PARTS_COLOR_MARKER, 0);
+    Parts_DrawMarker(blinkOffset + (x + 235), y + 50, 30, 30, 32768, PARTS_COLOR_MARKER, 1);
+    Font_SetSpacing(22, 22);
     Font_SetColor(color);
     sprintf(buf, gPartsNumberFormat, edit->face + 1, edit->matchCount);
     Sjis_Widen(buf, text);
-    Font_SetPos(x + 0x65, y + 0x36);
+    Font_SetPos(x + 101, y + 54);
     Text_PrintfColored(gPartsStrFormat, text);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     for (i = 0; i < 4; i++) {
-        rowY = i * 0x24 + 0x5A;
+        rowY = i * 36 + 90;
         blinkOffset = 0;
         if (edit->cursor == i + 1) {
             color = PARTS_COLOR_SELECTED;
@@ -808,16 +806,16 @@ void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
             valueColor = PARTS_COLOR_NO_MATCH;
         }
         if (i != 3) {
-            Parts_DrawMarker(x + 0x82 - blinkOffset, rowY + y, 0x18, 0x18, 0, PARTS_COLOR_MARKER, i * 2 + 2);
-            Parts_DrawMarker(blinkOffset + (x + 0x104), rowY + y, 0x18, 0x18, 0x8000, PARTS_COLOR_MARKER, i * 2 + 3);
+            Parts_DrawMarker(x + 130 - blinkOffset, rowY + y, 24, 24, 0, PARTS_COLOR_MARKER, i * 2 + 2);
+            Parts_DrawMarker(blinkOffset + (x + 260), rowY + y, 24, 24, 32768, PARTS_COLOR_MARKER, i * 2 + 3);
         }
-        Font_SetPos(x + 0x28, rowY + 2 + y);
+        Font_SetPos(x + 40, rowY + 2 + y);
         Font_SetColor(color);
         switch (i) {
         case 0:
             Text_PrintfColored(gPartsStrFormat, gGenderBackTexts[1]);
             label = &gPartsLabels[gPartsFaceLabels0[edit->cond[0]]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -829,7 +827,7 @@ void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
                 Text_PrintfColored(gPartsStrFormat, gFaceHairRowTexts[0]);
             }
             label = &gPartsLabels[gPartsFaceLabels1[edit->cond[1] + edit->gender * 3]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -837,7 +835,7 @@ void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
         case 2:
             Text_PrintfColored(gPartsStrFormat, gAgeFeatureTexts[1]);
             label = &gPartsLabels[gPartsFaceLabels2[edit->cond[2] + edit->gender * 3]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -853,8 +851,8 @@ void Parts_DrawFacePanel(s16 x, s16 y, s32 sel)
 void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
 {
     ChrEdit *edit;
-    char text[0x30];
-    char buf[0x30];
+    char text[48];
+    char buf[48];
     s16 i;
     s16 rowY;
     s32 color;
@@ -864,7 +862,7 @@ void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
     s16 labelX;
 
     edit = &gChrEdit;
-    Parts_DrawRotated(x, y, 0x14E, 0xF2, -2);
+    Parts_DrawRotated(x, y, 334, 242, -2);
     blinkOffset = 0;
     if (gChrEdit.cursor == 0) {
         if (gFrameTick & 0x10) {
@@ -874,17 +872,17 @@ void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
     } else {
         color = PARTS_COLOR_TEXT;
     }
-    Parts_DrawMarker(x + 0x32 - blinkOffset, y + 0x32, 0x1E, 0x1E, 0, PARTS_COLOR_MARKER, 0);
-    Parts_DrawMarker(blinkOffset + (x + 0xE6), y + 0x32, 0x1E, 0x1E, 0x8000, PARTS_COLOR_MARKER, 1);
-    Font_SetSpacing(0x16, 0x16);
+    Parts_DrawMarker(x + 50 - blinkOffset, y + 50, 30, 30, 0, PARTS_COLOR_MARKER, 0);
+    Parts_DrawMarker(blinkOffset + (x + 230), y + 50, 30, 30, 32768, PARTS_COLOR_MARKER, 1);
+    Font_SetSpacing(22, 22);
     Font_SetColor(color);
     sprintf(buf, gPartsNumberFormat, edit->hair + 1, edit->matchCount);
     Sjis_Widen(buf, text);
-    Font_SetPos(x + 0x60, y + 0x36);
+    Font_SetPos(x + 96, y + 54);
     Text_PrintfColored(gPartsStrFormat, text);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     for (i = 0; i < 4; i++) {
-        rowY = i * 0x24 + 0x5A;
+        rowY = i * 36 + 90;
         blinkOffset = 0;
         if (edit->cursor == i + 1) {
             color = PARTS_COLOR_SELECTED;
@@ -899,16 +897,16 @@ void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
             valueColor = PARTS_COLOR_NO_MATCH;
         }
         if (i != 3) {
-            Parts_DrawMarker(x + 0x82 - blinkOffset, rowY + y, 0x18, 0x18, 0, PARTS_COLOR_MARKER, i * 2 + 2);
-            Parts_DrawMarker(blinkOffset + (x + 0x104), rowY + y, 0x18, 0x18, 0x8000, PARTS_COLOR_MARKER, i * 2 + 3);
+            Parts_DrawMarker(x + 130 - blinkOffset, rowY + y, 24, 24, 0, PARTS_COLOR_MARKER, i * 2 + 2);
+            Parts_DrawMarker(blinkOffset + (x + 260), rowY + y, 24, 24, 32768, PARTS_COLOR_MARKER, i * 2 + 3);
         }
-        Font_SetPos(x + 0x28, rowY + 2 + y);
+        Font_SetPos(x + 40, rowY + 2 + y);
         Font_SetColor(color);
         switch (i) {
         case 0:
             Text_PrintfColored(gPartsStrFormat, gHairRowTexts[0]);
             label = &gPartsLabels[gPartsHairLabels0[edit->cond[3] + edit->gender * 3]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -916,7 +914,7 @@ void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
         case 1:
             Text_PrintfColored(gPartsStrFormat, gFaceHairRowTexts[1]);
             label = &gPartsLabels[gPartsHairLabels1[edit->cond[4]]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -924,7 +922,7 @@ void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
         case 2:
             Text_PrintfColored(gPartsStrFormat, gAgeFeatureTexts[1]);
             label = &gPartsLabels[gPartsHairLabels2[edit->cond[5] + edit->gender * 3]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -940,8 +938,8 @@ void Parts_DrawHairPanel(s16 x, s16 y, s32 sel)
 void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel)
 {
     ChrEdit *edit;
-    char text[0x30];
-    char buf[0x30];
+    char text[48];
+    char buf[48];
     s16 i;
     s16 rowY;
     s32 color;
@@ -951,7 +949,7 @@ void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel)
     s16 labelX;
 
     edit = &gChrEdit;
-    Parts_DrawRotated(x, y, 0x14E, 0xF2, -2);
+    Parts_DrawRotated(x, y, 334, 242, -2);
     blinkOffset = 0;
     if (gChrEdit.cursor == 0) {
         if (gFrameTick & 0x10) {
@@ -961,17 +959,17 @@ void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel)
     } else {
         color = PARTS_COLOR_TEXT;
     }
-    Parts_DrawMarker(x + 0x32 - blinkOffset, y + 0x32, 0x1E, 0x1E, 0, PARTS_COLOR_MARKER, 0);
-    Parts_DrawMarker(blinkOffset + (x + 0xE6), y + 0x32, 0x1E, 0x1E, 0x8000, PARTS_COLOR_MARKER, 1);
-    Font_SetSpacing(0x16, 0x16);
+    Parts_DrawMarker(x + 50 - blinkOffset, y + 50, 30, 30, 0, PARTS_COLOR_MARKER, 0);
+    Parts_DrawMarker(blinkOffset + (x + 230), y + 50, 30, 30, 32768, PARTS_COLOR_MARKER, 1);
+    Font_SetSpacing(22, 22);
     Font_SetColor(color);
     sprintf(buf, gPartsNumberFormat, edit->voice + 1, edit->matchCount);
     Sjis_Widen(buf, text);
-    Font_SetPos(x + 0x60, y + 0x36);
+    Font_SetPos(x + 96, y + 54);
     Text_PrintfColored(gPartsStrFormat, text);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     for (i = 0; i < 3; i++) {
-        rowY = i * 0x28 + 0x64;
+        rowY = i * 40 + 100;
         blinkOffset = 0;
         if (edit->cursor == i + 1) {
             color = PARTS_COLOR_SELECTED;
@@ -986,16 +984,16 @@ void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel)
             valueColor = PARTS_COLOR_NO_MATCH;
         }
         if (i != 2) {
-            Parts_DrawMarker(x + 0x82 - blinkOffset, rowY + y, 0x18, 0x18, 0, PARTS_COLOR_MARKER, i * 2 + 2);
-            Parts_DrawMarker(blinkOffset + (x + 0x104), rowY + y, 0x18, 0x18, 0x8000, PARTS_COLOR_MARKER, i * 2 + 3);
+            Parts_DrawMarker(x + 130 - blinkOffset, rowY + y, 24, 24, 0, PARTS_COLOR_MARKER, i * 2 + 2);
+            Parts_DrawMarker(blinkOffset + (x + 260), rowY + y, 24, 24, 32768, PARTS_COLOR_MARKER, i * 2 + 3);
         }
-        Font_SetPos(x + 0x28, rowY + 2 + y);
+        Font_SetPos(x + 40, rowY + 2 + y);
         Font_SetColor(color);
         switch (i) {
         case 0:
             Text_PrintfColored(gPartsStrFormat, gAgeFeatureTexts[0]);
             label = &gPartsLabels[gPartsVoiceLabels0[edit->cond[6] + edit->gender * 4]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);
@@ -1003,7 +1001,7 @@ void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel)
         case 1:
             Text_PrintfColored(gPartsStrFormat, gAgeFeatureTexts[1]);
             label = &gPartsLabels[gPartsVoiceLabels1[edit->cond[7] + edit->gender * 3]];
-            labelX = 0xD2 - Str_Length(*label) / 2 * 10;
+            labelX = 210 - Str_Length(*label) / 2 * 10;
             Font_SetPos(labelX + x, rowY + 2 + y);
             Font_SetColor(valueColor);
             Text_PrintfColored(gPartsStrFormat, *label);

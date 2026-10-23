@@ -1,7 +1,7 @@
 /*
  * CSE SIF RPC client, "sndtest(EE_RPC)" in its error messages: binds the
  * sound engine's three IOP servers and makes one call at a time. Every call
- * sends 0x40 bytes and receives up to 0x400; the reply is copied to a
+ * sends 64 bytes and receives up to 1024; the reply is copied to a
  * per-server buffer whose address CseRpc_Call returns.
  */
 #include "cse.h"
@@ -12,12 +12,12 @@ extern s32 gCseRpcReqSema;
 extern s32 gCseRpcDoneSema;
 /* Never set: calls always go through CseRpc_Send, not a helper thread. */
 extern void (*gCseRpcEndFunc)(void *);
-extern u8 gCseThmnReply[0x400];
-extern u8 gCseStatReply[0x40];
-extern u8 gCseCommReply[0x40];
+extern u8 gCseThmnReply[1024];
+extern u8 gCseStatReply[64];
+extern u8 gCseCommReply[64];
 extern SifClientData *gCseRpcClient;
-extern u8 gCseRpcRecvBuf[0x400];
-extern u8 gCseRpcSendBuf[0x40];
+extern u8 gCseRpcRecvBuf[1024];
+extern u8 gCseRpcSendBuf[64];
 extern s32 gCseRpcFno;
 extern SifClientData gCseClientThmn;
 extern SifClientData gCseClientStat;
@@ -71,8 +71,8 @@ s32 CseRpc_Init(void)
 }
 
 /*
- * Sends a request (at most 0x40 bytes) to the server that handles fno and
- * returns the copy of its reply: 0x40 bytes for COMM, 0x20 for STAT, 0x400
+ * Sends a request (at most 64 bytes) to the server that handles fno and
+ * returns the copy of its reply: 64 bytes for COMM, 32 for STAT, 1024
  * for THMN. An unknown fno returns NULL without releasing the semaphore.
  */
 void *CseRpc_Call(s32 fno, void *data, u32 size)
@@ -98,9 +98,9 @@ void *CseRpc_Call(s32 fno, void *data, u32 size)
         scePrintf("sndtest(EE_RPC) : Error : Unknown command.\n");
         return NULL;
     }
-    memset(gCseRpcSendBuf, 0xFF, sizeof(gCseRpcSendBuf));
-    memset(gCseRpcRecvBuf, 0xFF, sizeof(gCseRpcRecvBuf));
-    size = (size < 0x40) ? size : 0x40;
+    memset(gCseRpcSendBuf, 255, sizeof(gCseRpcSendBuf));
+    memset(gCseRpcRecvBuf, 255, sizeof(gCseRpcRecvBuf));
+    size = (size < 64) ? size : 64;
     memcpy(gCseRpcSendBuf, data, size);
     gCseRpcFno = fno;
     if (gCseRpcEndFunc != NULL) {
@@ -113,15 +113,15 @@ void *CseRpc_Call(s32 fno, void *data, u32 size)
     case CSE_FNO_INIT:
     case CSE_FNO_UPLOAD:
     case CSE_FNO_COMM:
-        memcpy(gCseCommReply, gCseRpcRecvBuf, 0x40);
+        memcpy(gCseCommReply, gCseRpcRecvBuf, 64);
         reply = gCseCommReply;
         break;
     case CSE_FNO_STAT:
-        memcpy(gCseStatReply, gCseRpcRecvBuf, 0x20);
+        memcpy(gCseStatReply, gCseRpcRecvBuf, 32);
         reply = gCseStatReply;
         break;
     case CSE_FNO_THMN:
-        memcpy(gCseThmnReply, gCseRpcRecvBuf, 0x400);
+        memcpy(gCseThmnReply, gCseRpcRecvBuf, 1024);
         reply = gCseThmnReply;
         break;
     }
@@ -141,7 +141,7 @@ void CseRpc_Send(void)
         FlushCache(0);
     }
     do {
-        ret = sceSifCallRpc(gCseRpcClient, gCseRpcFno, 0, gCseRpcSendBuf, 0x40, gCseRpcRecvBuf, 0x400,
+        ret = sceSifCallRpc(gCseRpcClient, gCseRpcFno, 0, gCseRpcSendBuf, 64, gCseRpcRecvBuf, 1024,
                             gCseRpcEndFunc, NULL);
         if (ret < 0) {
             scePrintf("[EE]");

@@ -15,7 +15,7 @@ size 0x5C
 0x30 u16 padding // CELLPADDING (tableAttr.cellPadding; rows and cells copy the table's)
 0x32 u16 spacing // CELLSPACING (tableAttr.cellSpacing; copied down)
 0x3A u16 alignX // x offset of the current line for ALIGN (Layout_CellAlign: 0, half or all the room left)
-0x3E u16 indent // left margin (<DD>: 0x3C)
+0x3E u16 indent // left margin (<DD>: 60)
 0x40 u16 spanH // a ROWSPAN cell's text height, carried to the cells below (Layout_RowSpanCell)
 0x42 u16 spanNext // the cell below that continues this ROWSPAN cell (0: none)
 0x45 u8 border // BORDER (tableAttr.border; copied down); Draw_Cell's frame width

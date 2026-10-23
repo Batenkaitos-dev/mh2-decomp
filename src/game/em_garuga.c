@@ -3,193 +3,67 @@
  * first function, EmGaruga_MotionSounds, to the next family's.
  *
  * Yian Garuga follows the Rathalos family's template: a state machine
- * (include/em_garuga.h names the states and motions; include/em.h the
- * groups). EmGaruga_Update reads the hits (Em_UpdateDamage) and picks
+ * (include/em_garuga.h names the states and motions, the bones
+ * (GARUGA_BONE_*) and the sounds the code shows (GARUGA_SE_*); include/em.h
+ * the groups). EmGaruga_Update reads the hits (Em_UpdateDamage) and picks
  * reactions, then EmGaruga_RunState calls the group's dispatcher
  * (EmGaruga_RunIdleState ... RunVersusState), which calls one function per
- * state with the monster and its work area (EmWork; the flying families'
- * view is EmFlyerWork). A state function switches on Em.step;
- * EmGaruga_ChangeState starts the next state through the group's Set
- * function, and EmGaruga_EndState / EndAirState hand the choice back to the
- * monster script. Its own moves are the pecks, the back flip, the hops and
- * the tail spin. Flights move along curves (EmGaruga_StartCurves,
- * UpdateCurves) and Em_UpdateFlight; EmGaruga_MotionEffects adds each
- * motion's attacks, effects and camera shakes, and EmGaruga_MotionSounds
- * its sounds.
+ * state with the monster and its work area (EmWork; the flying families' view
+ * is EmFlyerWork). A state function switches on Em.step; EmGaruga_ChangeState
+ * starts the next state through the group's Set function, and
+ * EmGaruga_EndState / EndAirState hand the choice back to the monster script.
+ * Its own moves are the pecks, the back flip, the hops and the tail spin.
+ * Flights move along curves (EmGaruga_StartCurves, UpdateCurves) and
+ * Em_UpdateFlight; EmGaruga_MotionEffects adds each motion's attacks, effects
+ * and camera shakes, and EmGaruga_MotionSounds its sounds.
  */
 #include "common.h"
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_garuga.h"
+#include "objattach.h"
 #include "player.h"
 #include "area.h"
+#include "capsule.h"
+#include "save.h"
+#include "sound.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "vec_math.h"
+#include "em_script.h"
+#include "hud.h"
 /* prototypes of callees */
-u16 Rand_Next(s32 stream);
-void GmEm_ResetSize(Em *em);
-void Em_CheckRageByHp(Em *em, s16 n);
-void EmGaruga_MotionSounds(Em *em, EmWork *work);
-void Em_StartPendingRage(Em *);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_ResetNotice(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 
 /* prototypes */
 u16 Area_IdForCurrentTime(u16);
-void EmGaruga_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-void Em_BeginStatus1(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_BreakPart(Em *em, s32 part);
 void Em_EndAllStatus(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-s8 QuestEm_Appear(Em *em);
-void QuestEm_Captured(Em *em);
-s32 Save_TestEventFlag(s32);
 void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void GarugaAttack_Create(Em *, s8);
-void Em_SelectSightRow(Em *em, u8 idx);
-void Em_MoveRotated(Em *em, void *src);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmGaruga_ChangeState, EmGaruga_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
-void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetTrapTimeGoal(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's s32 (Em *em, s16 n, s16 max, s16 interval), the calls in EmGaruga_Rest and EmGaruga_Status2Regen compile differently */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
-void Em_ResetToBasePose(Em *em);
-void Em_ClearPoison(Em *em);
-void Em_SetHold2(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeAtBoneOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
-void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
-s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void Em_TargetPlayerInRange(Em *);
-void EmGaruga_Init(Em *);
-void EmGaruga_Land(Em *em, EmWork *work);
-void EmGaruga_FlyOutOfArea(Em *, EmWork *);
-void EmGaruga_FlyToGoalAndLand(Em *, EmWork *);
-void EmGaruga_FlyIntoArea(Em *, EmWork *);
-void EmGaruga_Fireball(Em *, EmWork *);
-void EmGaruga_FireballLow(Em *, EmWork *);
-void EmGaruga_FireballHigh(Em *em, EmWork *work);
-void EmGaruga_FallThenGlide(Em *em, EmWork *work);
-void EmGaruga_Fall(Em *em, EmWork *work);
-void EmGaruga_StoryIntro(Em *em, EmWork *work);
-void EmGaruga_Captured(Em *);
-void EmGaruga_VersusEatBait(Em *, EmWork *);
-void EmGaruga_Die(Em *, EmWork *);
-void EmGaruga_DieHeld(Em *, EmWork *);
-void EmGaruga_DieFalling(Em *, EmWork *);
-void EmGaruga_RunIdleState(Em *em, EmWork *work);
-void EmGaruga_RunMoveState(Em *em, EmWork *work);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void GarugaAttack_CreateForEffects(Em *em, s8 kind);
-void ElementBurst_CreateAtSilent(f32 *pos, s32 k, s32 c, f32 scale);
-void ElementBurst_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
-u8 Player_InCurrentArea(void *obj);
-void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work);
-void EmGaruga_SpawnLandingDust(Em *em);
-void EmGaruga_EndAttackState(Em *em, EmWork *work);
-void EmGaruga_SetIdleState(Em *em, u16 state, u8 mode);
-void EmGaruga_SetMoveState(Em *em, u16 state, u8 mode);
-void EmGaruga_SetFlyState(Em *em, u16 state, u8 mode);
-void EmGaruga_SetAttackState(Em *em, u16 state, u8 mode);
-void EmGaruga_MoveByVelYCurve(Em *em, s32 kind);
-void EmGaruga_StartCurves(Em *em, u8 kind);
-u8 EmGaruga_UpdateCurves(Em *em);
-void AttackBurst_CreateAtBone(Em *em, s16 bone, s16 k, u16 c);
-void AlertMark_Create(void *owner, s16 v, u8 k);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale), the calls in EmGaruga_Stun and EmGaruga_StunDowned compile differently */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 Vec_Distance(f32 *a, f32 *b);
-void CamShake_ReqAIf(Em *obj, s32 i);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-u16 Map_DayId(u16);
-void Versus_MarkDefeat(Em *em);
-s32 Versus_BothDefeated(void);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Player_ClearAccel2(void *);
-void Motion_InitTime(void *p, s16 step);
-void Shadow_Spawn(void *obj, s16 type);
-extern f32 gAreaGroundY[];
 extern EmFlyParam EmGaruga_FlyParam;
 extern EmFlyParam EmGaruga_FlyParam2;
 extern EmTurnParams EmGaruga_TurnParams[2];
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_SetTargetAngle(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
-void Versus_RouteEmByTeam(Em *em);
-s32 Versus_DefeatCamera(Em *pl);
 /* A position copied whole (EmGaruga_CarveThrowPt): the original copies it as one struct. */
 extern Vec3f EmGaruga_CarveThrowPt __attribute__((aligned(8)));
 extern EmCurveKey *EmGaruga_MoveVelYCurves[];
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-AreaRecord *Stage_GetAreaRecord(u16 x);
 struct EmIdEntry;
 f32 *Em_AreaEntryValue(Em *em, struct EmIdEntry *entry);
-s32 Area_ContainsPos(s32 id, f32 *pos);
-void Em_EnterNextArea(Em *em);
-void Em_AreaExitPoint(Em *em, f32 *out);
-void Hud_TriggerGlow(Em *em);
-u16 Area_DayId(u16 id);
 void EmTail_Create(Em *);
-void Em_SetPartScaled(Em *em, s32 bit);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaisePlayerAreaTriggerLax(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetTrapTime(Em *em, u8 *p);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus1Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetKindTimer(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-s32 Em_IsHeld(Em *em);
-void EmGaruga_RunState(Em *em, s32 arg1);
-void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 /* end of prototypes */
 
 void EmGaruga_MotionSounds(Em *em, EmWork *work)
@@ -199,648 +73,648 @@ void EmGaruga_MotionSounds(Em *em, EmWork *work)
     motion = work->sndMotion;
     switch (motion) {
     case EM_MOTION_ID(0, GARUGA_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 52, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x4):
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x1A);
+    case EM_MOTION_ID(0, 4):
+        Em_PlaySeAtBoneOnFrame(em, 40, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 76, 6, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 25, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 25, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x7):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x14);
+    case EM_MOTION_ID(0, 7):
+        Em_PlaySeAtBoneOnFrame(em, 6, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 38, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x8):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
+    case EM_MOTION_ID(0, 8):
+        Em_PlaySeAtBoneOnFrame(em, 6, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LIMP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x59, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 89, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 6, 4, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 18, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DESCEND):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 14, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 66, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 122, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 126, 11, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_GLIDE):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x19, 6);
+        Em_PlaySeAtBoneOnFrame(em, 6, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 64, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 26, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 6, 25, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 25, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 26, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 38, 25, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 25, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 70, 26, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 72, 25, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 25, GARUGA_BONE_WING_A);
         break;
-    case EM_MOTION_ID(0, 0xD):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xF, 0xC);
+    case EM_MOTION_ID(0, 13):
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 44, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 40, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 66, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 70, 15, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLY):
-    case EM_MOTION_ID(0, 0x55):
-    case EM_MOTION_ID(0, 0x56):
-    case EM_MOTION_ID(0, 0x58):
-    case EM_MOTION_ID(0, 0x59):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x19, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x19, 6);
+    case EM_MOTION_ID(0, 85):
+    case EM_MOTION_ID(0, 86):
+    case EM_MOTION_ID(0, 88):
+    case EM_MOTION_ID(0, 89):
+        Em_PlaySeAtBoneOnFrame(em, 10, 26, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 14, 25, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 18, 25, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 42, 25, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 46, 25, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 25, GARUGA_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_HOVER):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 142, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 138, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 212, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 216, 11, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_RUN):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x29, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x29, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0x29, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 41, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 46, 41, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 82, 41, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TAKE_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 7, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 82, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 86, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 140, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 182, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 186, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 42, 7, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TOUCH_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 9, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 2, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 9, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 3, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_IDLE_ACTION_I):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xE, 6);
+        Em_PlaySeAtBoneOnFrame(em, 30, 19, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 2, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 14, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 8, 14, GARUGA_BONE_WING_A);
         break;
-    case EM_MOTION_ID(0, 0x1F):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16C, 0x2D, 0x23);
+    case EM_MOTION_ID(0, 31):
+        Em_PlaySeAtBoneOnFrame(em, 2, 45, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 182, 45, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 364, 45, GARUGA_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x20):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+    case EM_MOTION_ID(0, 32):
+        Em_PlaySeAtBoneOnFrame(em, 4, 47, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 142, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x21):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x16, 0);
+    case EM_MOTION_ID(0, 33):
+        Em_PlaySeAtBoneOnFrame(em, 4, 47, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 45, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 126, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 182, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 22, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LIE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 36, 87, GARUGA_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x23):
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xCC, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xFE, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x126, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x23, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x21, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 0x22, 0x23);
+    case EM_MOTION_ID(0, 35):
+        Em_PlaySeAtBoneOnFrame(em, 50, 2, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 58, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 84, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 104, 4, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 124, 17, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 204, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 210, 2, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 254, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 288, 2, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 36, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 132, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 290, 14, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 294, 14, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 2, 21, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 2, 35, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 48, 33, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 128, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 184, 36, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 288, 34, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_STARE):
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 36, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 21, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 60, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 12, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 166, 0, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_GET_UP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x1E, 0x48, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 30, 72, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 12, 12, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 46, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_COLLAPSE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 87, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 72, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 164, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 144, 3, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, 14, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 178, 4, GARUGA_BONE_BREATH);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LIE_DOWN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 87, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 2, 23, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 102, 16, GARUGA_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, GARUGA_MOT_SINGLE_ATTACK):
-        Em_PlaySeTypeAtBoneInFrames(em, 0x34, 0xC8, 0x60, 0x23, 6, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 5, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x86, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0, 0x1A);
+    case EM_MOTION_ID(0, GARUGA_MOT_ROAR):
+        Em_PlaySeTypeAtBoneInFrames(em, 52, 200, GARUGA_SE_ROAR, GARUGA_BONE_HEAD, 6, 0);
+        Em_PlaySeAtBoneOnFrame(em, 150, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 2, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 140, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 144, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 34, 5, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 34, 5, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 134, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 166, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 194, 0, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLIP):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x13, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x54, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 30, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 70, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 74, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 106, 20, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 106, 19, GARUGA_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 84, 79, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 160, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 164, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 210, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 214, 12, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TAIL_SPIN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 8, 75, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, GARUGA_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 42, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x2C):
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1B, 6);
+    case EM_MOTION_ID(0, 44):
+        Em_PlaySeAtBoneOnFrame(em, 28, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 32, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 6, 26, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 10, 27, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 14, 27, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, 26, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 42, 27, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 27, GARUGA_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FIREBALL):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x36, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x29, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x104, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 2, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 80, GARUGA_SE_FIREBALL, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 54, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 74, 41, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 220, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 76, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 180, 19, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 260, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 288, 3, GARUGA_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x30):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x14);
+    case EM_MOTION_ID(0, 48):
+        Em_PlaySeAtBoneOnFrame(em, 2, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 34, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 64, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 114, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_ALERT_IDLE):
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 6, 0x1A);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x96, 0x5E, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 56, 18, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeTypeAtBoneOnFrame(em, 150, 94, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 252, 39, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 238, 22, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_BACK_HOP):
         if ((em->stateGroup == EM_GROUP_FLY) && (em->state == GARUGA_FLY_BACK_HOP)) {
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 0x28, 0x23);
-            Em_PlaySeTypeAtBoneInFrames(em, 0x48, 0xB2, 0x60, 0x23, 6, 0);
-            Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 0x22);
-            Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-            Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xF, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xF, 0xC);
-            Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xB, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xB, 0xC);
-            Em_PlaySeAtBoneOnFrame(em, 0xAC, 0xB, 6);
-            Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xB, 0xC);
+            Em_PlaySeAtBoneOnFrame(em, 22, 40, GARUGA_BONE_HEAD);
+            Em_PlaySeTypeAtBoneInFrames(em, 72, 178, GARUGA_SE_ROAR, GARUGA_BONE_HEAD, 6, 0);
+            Em_PlaySeAtBoneOnFrame(em, 6, 20, GARUGA_BONE_BREATH);
+            Em_PlaySeAtBoneOnFrame(em, 22, 0, GARUGA_BONE_STEP_B);
+            Em_PlaySeAtBoneOnFrame(em, 58, 15, GARUGA_BONE_WING_A);
+            Em_PlaySeAtBoneOnFrame(em, 62, 15, GARUGA_BONE_WING_B);
+            Em_PlaySeAtBoneOnFrame(em, 106, 11, GARUGA_BONE_WING_A);
+            Em_PlaySeAtBoneOnFrame(em, 110, 11, GARUGA_BONE_WING_B);
+            Em_PlaySeAtBoneOnFrame(em, 172, 11, GARUGA_BONE_WING_A);
+            Em_PlaySeAtBoneOnFrame(em, 176, 11, GARUGA_BONE_WING_B);
         }
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x28, 0x23);
-        Em_PlaySeTypeAtBoneInFrames(em, 0x48, 0xB2, 0x4F, 0x23, 6, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 22, 40, GARUGA_BONE_HEAD);
+        Em_PlaySeTypeAtBoneInFrames(em, 72, 178, 79, GARUGA_BONE_HEAD, 6, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 20, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 106, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 110, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 172, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 176, 11, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_IN_PLACE):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x36, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x7C, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0x29, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xC, 6);
+        Em_PlaySeAtBoneOnFrame(em, 2, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 4, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, 4, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 5, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 120, 4, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 264, 4, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 20, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 54, GARUGA_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 124, 79, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 132, 41, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 16, 12, GARUGA_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_BACK_HOP_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 76, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 12, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 46, 8, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 2, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FEED):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 6, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 104, 3, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_A):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 83, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 72, 19, GARUGA_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 17, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 148, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 196, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 13, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_E):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 83, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 38, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 78, 4, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 172, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 110, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 90, 21, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_SHAKE_OFF):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 79, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 86, 31, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 19, GARUGA_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 126, 3, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_C):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 76, 31, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_D):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 118, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 122, 0, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_PART_BREAK):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x2C);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 4, 0x2C);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x142, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xD, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 84, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 168, 42, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 39, GARUGA_BONE_TAIL_D);
+        Em_PlaySeAtBoneOnFrame(em, 252, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 304, 39, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 62, 4, GARUGA_BONE_TAIL_D);
+        Em_PlaySeAtBoneOnFrame(em, 18, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 44, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 16, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 210, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 322, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 62, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 74, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 100, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 162, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 286, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 290, 13, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x43):
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
+    case EM_MOTION_ID(0, 67):
+        Em_PlaySeAtBoneOnFrame(em, 70, 45, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 23, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DIE):
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x180, 0x16, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x13A, 0x2F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x192, 0x2B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x174, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 4, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 220, 16, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 30, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 264, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 264, 7, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 276, 23, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 384, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 24, 82, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 140, 40, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 180, 44, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 314, 47, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 402, 43, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 372, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 374, 14, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 17, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DOWN):
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN_B_LIE):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x3A, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 8, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 58, 82, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DOWN_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 48, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 70, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN_B_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 48, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 17, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_STATUS4):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x5F, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 16, 95, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FALL):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x1B, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 83, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 11, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 20, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 88, 28, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 88, 27, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 92, 27, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FALL_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 10, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 7, GARUGA_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 12, 17, GARUGA_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 84, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_HEAD_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 12, 36, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 36, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 102, 34, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 164, 34, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_IDLE_SIDE_A):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 2, 22, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 100, 23, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 38, 45, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 320, 3, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_IDLE_SIDE_B):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 2, 22, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 100, 23, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 38, 45, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 320, 3, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DIE_FALLING):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x53):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xA8, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xD, 0xC);
+    case EM_MOTION_ID(0, 83):
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 16, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 198, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 83, GARUGA_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 168, 79, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 162, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 166, 13, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_HOP_IN_PLACE):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 22, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 10, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 14, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 78, 14, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 74, 10, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 92, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 5, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLIP_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 8, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 8, 8, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 34, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 104, 5, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 108, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LEVEL_OUT):
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 32, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 74, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 78, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 124, 11, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 11, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_CHARGE_TRIP):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x35, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x118, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 22, 53, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 176, 3, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 214, 3, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 264, GARUGA_SE_STEP, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 304, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 100, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 92, 16, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 140, 17, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 276, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 280, 12, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TRAPPED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 16, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 9, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 39, GARUGA_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_STRUGGLE):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 22, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 72, 18, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 12, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 19, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 40, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DOWNED):
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2B, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 34, 22, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, 22, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 4, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 108, 3, GARUGA_BONE_BREATH);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 43, GARUGA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DOWNED_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 22, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 108, 3, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 40, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 32, GARUGA_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, GARUGA_MOT_ROAR):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x2E, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 0x33, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0, 0x14);
+    case EM_MOTION_ID(0, GARUGA_MOT_STOMPS):
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, GARUGA_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 46, 79, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 36, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 40, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 146, 52, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 178, 51, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 210, 52, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 38, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 108, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 132, 0, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 142, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 186, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 220, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 224, 0, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 252, 0, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_STOMP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x144, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 7, 0x14);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 79, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 324, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 13, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 54, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 54, 7, GARUGA_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_PECK_COMBO):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x34, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x32, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x33, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x32, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x33, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 52, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 50, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 50, 51, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 50, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 90, 51, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 5, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 64, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_RUN_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5E, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x32, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x33, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xD, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 94, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 78, 50, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 104, 51, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 100, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 36, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 40, 13, GARUGA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FIREBALL_B):
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x2E, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x29, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x12A, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 20, 46, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 78, 41, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 78, GARUGA_SE_FIREBALL, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 120, GARUGA_SE_FIREBALL, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 164, GARUGA_SE_FIREBALL, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 18, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, GARUGA_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 64, 15, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 64, 15, GARUGA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 250, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 298, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 286, 19, GARUGA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_PECK_COMBO_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x32, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0x33, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0x32, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x33, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 4, 18, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 36, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 50, 50, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 74, 51, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 96, 50, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 116, 51, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 8, 6, GARUGA_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 6, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 90, GARUGA_SE_STEP, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 16, 13, GARUGA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 12, GARUGA_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x6C):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x2C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x19C, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x37, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 0x16, 0x22);
+    case EM_MOTION_ID(0, 108):
+        Em_PlaySeAtBoneOnFrame(em, 0, 22, GARUGA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, 18, GARUGA_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 18, 44, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 412, 32, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, 55, GARUGA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 304, 22, GARUGA_BONE_BREATH);
         
     case EM_MOTION_ID(0, GARUGA_MOT_IDLE):
     default:
@@ -852,19 +726,23 @@ void EmGaruga_Setup(Em *em)
 {
 }
 
+/*
+ * Callback slots 0 and 1: creates the alert mark at GARUGA_BONE_BREATH
+ * (AlertMark_Create) and the monster's shadow (SHADOW_MODEL).
+ */
 void EmGaruga_SpawnEffects(void *em)
 {
-    AlertMark_Create(em, 0x22, 0);
-    Shadow_Spawn((Player *) em, 0);
+    AlertMark_Create(em, GARUGA_BONE_BREATH, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /*
- * Sets a Yian Garuga up: the scaled parts 3, 4 and 8; in the quest-less
- * stage (gQuest.stage 0) a fixed start position per area (Area_DayId), 1500
- * apart per slot (the desert night area 11 also faces it 0x4000); the idle
+ * Sets a Yian Garuga up: the scaled parts 3, 4 and 8; in the quest-less stage
+ * (gQuest.stage 0) a fixed start position per area (Area_DayId), 1500 apart
+ * per slot (the desert night area 11 also faces it ANGLE_TURN / 4); the idle
  * motion (GARUGA_MOT_IDLE) on the ground, full hp from Em_ComputeMaxHp, a
- * pending script, aimAngle 0x4000 and the flight work pitch, turn and roll
- * speeds; then keeps only bit 0 of fxFlags and, when it is clear, hides
+ * pending script, aimAngle ANGLE_TURN / 4 and the flight work pitch, turn and
+ * roll speeds; then keeps only bit 0 of fxFlags and, when it is clear, hides
  * mesh 1 and creates the stage object of kind 9 (EmTail_Create).
  */
 void EmGaruga_Init(Em *em)
@@ -902,7 +780,7 @@ void EmGaruga_Init(Em *em)
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
-            em->rotY = 0x4000;
+            em->rotY = ANGLE_TURN / 4;
             break;
         case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (f32) em->slotNo;
@@ -942,11 +820,11 @@ void EmGaruga_Init(Em *em)
     em->unk_InitFlag = 1;
     em->noAlert = 0;
     em->painted = 0;
-    em->aimAngle = 0x4000;
+    em->aimAngle = ANGLE_TURN / 4;
     w->pitchStep = 0x100;
-    ((EmWork *)w)->turnSpeed = 0x200;
+    ((EmWork *)w)->turnSpeed = 512;
     w->rollSpeed = 0x100;
-    w->moveAngBY = 0x2000;
+    w->moveAngBY = ANGLE_TURN / 8;
     *(s32 *) &em->flightTurn = 0;
     if ((em->fxFlags &= 1) == 0) {
         switch (em->type) {
@@ -959,9 +837,9 @@ void EmGaruga_Init(Em *em)
 }
 
 /*
- * Starts a Yian Garuga: Init, then GARUGA_IDLE; in story stage QUEST_ID_GARUGA_SCENE,
- * until EVENT_FLAG_GARUGA_SCENE is set, places it in AREA_JUNGLE_9 (for the current
- * time) at a fixed position with no rotation.
+ * Starts a Yian Garuga: Init, then GARUGA_IDLE; in story stage
+ * QUEST_ID_GARUGA_SCENE, until EVENT_FLAG_GARUGA_SCENE is set, places it in
+ * AREA_JUNGLE_9 (for the current time) at a fixed position with no rotation.
  */
 void EmGaruga_Start(Em *em)
 {
@@ -1089,13 +967,13 @@ void EmGaruga_Stand(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         if (em->motionId[0] != EM_MOTION_ID(0, GARUGA_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, GARUGA_MOT_IDLE), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, GARUGA_MOT_IDLE), 10, 0, 0);
         }
         if (em->motionId[1] != EM_MOTION_ID(0, GARUGA_MOT_TURN_STOMP)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, GARUGA_MOT_IDLE), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, GARUGA_MOT_IDLE), 10, 0, 1);
         }
         if (em->motionId[2] != EM_MOTION_ID(1, GARUGA_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, GARUGA_MOT_IDLE), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, GARUGA_MOT_IDLE), 10, 0, 2);
         }
         break;
     case 1:
@@ -1275,8 +1153,8 @@ void EmGaruga_IdleTurnToGoal(Em *em)
 
 /*
  * GARUGA_IDLE_ACTION_H: plays GARUGA_MOT_IDLE_ACTION_H with layers 0 and 2
- * kept on their idle loops, sounds at bone 0x23 at layer 1 frames 56 and
- * 104, and ends the state when the layer 1 motion ends.
+ * kept on their idle loops, sounds at GARUGA_BONE_HEAD at layer 1 frames 56
+ * and 104, and ends the state when the layer 1 motion ends.
  */
 void EmGaruga_IdleActionH(Em *em)
 {
@@ -1296,8 +1174,8 @@ void EmGaruga_IdleActionH(Em *em)
     }
     EmGaruga_RestartLayerMotion(em, 0);
     EmGaruga_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x38, 0x21, 0x23, 1);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x68, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 56, 33, GARUGA_BONE_HEAD, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 104, 31, GARUGA_BONE_HEAD, 1);
 }
 
 /*
@@ -1324,8 +1202,8 @@ void EmGaruga_IdleActionI(Em *em)
 
 /*
  * GARUGA_IDLE_ACTION_J: plays GARUGA_MOT_IDLE_ACTION_J with layers 0 and 2
- * kept on their idle loops, sounds at bone 0x23 at layer 1 frames 2 and 74,
- * and ends the state when the layer 1 motion ends.
+ * kept on their idle loops, sounds at GARUGA_BONE_HEAD at layer 1 frames 2
+ * and 74, and ends the state when the layer 1 motion ends.
  */
 void EmGaruga_IdleActionJ(Em *em)
 {
@@ -1345,8 +1223,8 @@ void EmGaruga_IdleActionJ(Em *em)
     }
     EmGaruga_RestartLayerMotion(em, 0);
     EmGaruga_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 2, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x4A, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 2, 32, GARUGA_BONE_HEAD, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 74, 31, GARUGA_BONE_HEAD, 1);
 }
 
 void EmGaruga_IdleSkipD(Em *em)
@@ -1475,7 +1353,7 @@ void EmGaruga_Rest(Em *em)
         em->lookAtTarget = 0;
         Em_SetMotion(em, GARUGA_MOT_LIE_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = 0x1518;
+        em->timer = 5400;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1612,7 +1490,7 @@ void EmGaruga_Status2Regen(Em *em)
         em->lookAtTarget = 0;
         Em_SetMotion(em, GARUGA_MOT_COLLAPSE, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = 0x1518;
+        em->timer = 5400;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1813,7 +1691,8 @@ void EmGaruga_Status1End(Em *em)
 /*
  * GARUGA_IDLE_STATUS2_DOWNED: status 2 in a hold: lies downed
  * (GARUGA_MOT_DOWNED), holdTimer kept at 5, blind and with
- * EM_HIT_REACT_WAKE, with lying puffs at bone 0x22 and a sound at bone 0x23
+ * EM_HIT_REACT_WAKE, with lying puffs at GARUGA_BONE_BREATH and a sound at
+ * GARUGA_BONE_HEAD
  * every 135 frames, until Em.timer runs out, then
  * GARUGA_REACT_STATUS2_DOWNED_END.
  */
@@ -1847,9 +1726,9 @@ void EmGaruga_Status2Downed(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, GARUGA_BONE_BREATH, pos, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, GARUGA_BONE_HEAD);
     }
 }
 
@@ -1887,25 +1766,25 @@ void EmGaruga_Status1Downed(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, GARUGA_BONE_BREATH, pos, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, GARUGA_BONE_HEAD);
     }
 }
 
 /*
- * GARUGA_IDLE_ROAR, GARUGA_IDLE_ROAR_RAGE_BY_HP and
- * GARUGA_IDLE_ROAR_PENDING_RAGE: roars (GARUGA_MOT_ROAR) and ends the state
- * when the layer 1 motion ends.
+ * GARUGA_IDLE_STOMPS, GARUGA_IDLE_STOMPS_RAGE_BY_HP and
+ * GARUGA_IDLE_STOMPS_PENDING_RAGE: stomps (GARUGA_MOT_STOMPS) and ends the
+ * state when the layer 1 motion ends.
  */
-void EmGaruga_Roar(Em *em)
+void EmGaruga_Stomps(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, GARUGA_MOT_ROAR, 0, 0);
+        Em_SetMotion(em, GARUGA_MOT_STOMPS, 0, 0);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -1941,7 +1820,7 @@ void EmGaruga_ShakeOffAfterStatus(Em *em, EmWork *work, s32 variant)
 
 /*
  * GARUGA_MOVE_WALK: walks (GARUGA_MOT_WALK) to the goal (Em_StepToGoal,
- * step 0x40) and ends there; with no goal it walks until Em.timer runs out.
+ * step 64) and ends there; with no goal it walks until Em.timer runs out.
  */
 void EmGaruga_Walk(Em *em)
 {
@@ -1954,7 +1833,7 @@ void EmGaruga_Walk(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmGaruga_EndState(em, 0, 0);
                 break;
@@ -1987,7 +1866,7 @@ void EmGaruga_RunB(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmGaruga_EndState(em, 0, 0);
                 break;
@@ -2041,7 +1920,7 @@ void EmGaruga_Run(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmGaruga_EndState(em, 0, 0);
                 break;
@@ -2091,7 +1970,7 @@ void EmGaruga_Limp(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmGaruga_EndState(em, 0, 0);
                 break;
@@ -2129,7 +2008,7 @@ void EmGaruga_TurnToGoal(Em *em, EmWork *work)
         yaw = em->rotY;
         aim = em->aimAngle;
         diff = (aim - (yaw & 0xFFFF)) & 0xFFFF;
-        if (((diff + 0x200) & 0xFFFF) < 0x400U) {
+        if (((diff + 512) & 0xFFFF) < 1024U) {
             em->rotY = aim;
         } else if (diff < 0x8000U) {
             em->rotY = (yaw + 0x200) & 0xFFFF;
@@ -2169,7 +2048,7 @@ void EmGaruga_RunBAndTurn(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 Em_SetMotion(em, GARUGA_MOT_TURN_STOMP, 0, 0);
                 break;
@@ -2271,7 +2150,7 @@ void EmGaruga_Land(Em *em, EmWork *work)
             if (!(em->velY < 0.0f)) {
                 em->velY = -10.0f;
             }
-            em->timer = 0x1E;
+            em->timer = 30;
         }
         break;
     case 2:
@@ -2304,7 +2183,7 @@ void EmGaruga_Land(Em *em, EmWork *work)
 
 /*
  * GARUGA_FLY_HOVER: hovers (GARUGA_MOT_HOVER, vertical curve 1 via
- * EmGaruga_MoveByVelYCurve), turning to the goal at 0x100 a frame, until
+ * EmGaruga_MoveByVelYCurve), turning to the goal at 256 a frame, until
  * Em.timer runs out, then GARUGA_FLY_LAND; at timer 300 it asks for a hover
  * once instead (EmGaruga_EndAirState 0); never goes below floorY.
  */
@@ -2317,7 +2196,7 @@ void EmGaruga_Hover(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2328,7 +2207,7 @@ void EmGaruga_Hover(Em *em, EmWork *work)
             EmGaruga_ChangeState(em, EM_GROUP_FLY, GARUGA_FLY_LAND, EM_SYNC_SEND);
         }
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 1);
-        if (em->timer == 0x12C) {
+        if (em->timer == 300) {
             EmGaruga_EndAirState(em, 0U);
         }
         break;
@@ -2365,7 +2244,7 @@ void EmGaruga_HopToGoal(Em *em, EmWork *work)
         Player_ClearVelocity(em);
         EmGaruga_StartCurves(em, 2);
         work->flyGuard = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         break;
     case 1:
         if ((EmMotion_ReachedFrame(em, 0, 50.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 114.0f) == 0)) {
@@ -2406,7 +2285,7 @@ void EmGaruga_HopToGoal(Em *em, EmWork *work)
         break;
     case 4:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGaruga_EndState(em, 0, 0);
         }
@@ -2455,7 +2334,7 @@ void EmGaruga_HopForward(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGaruga_EndState(em, 0, 0);
         }
@@ -2499,7 +2378,7 @@ void EmGaruga_HopBack(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGaruga_EndState(em, 0, 0);
         }
@@ -2562,7 +2441,7 @@ void EmGaruga_FlyRoute(Em *em, EmWork *work)
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmGaruga_FlyParam);
+        Em_UpdateFlight(em, 225, &EmGaruga_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2591,7 +2470,7 @@ void EmGaruga_HoverToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2660,7 +2539,7 @@ void EmGaruga_FlyOutOfArea(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x4E1, &EmGaruga_FlyParam);
+        Em_UpdateFlight(em, 1249, &EmGaruga_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2717,7 +2596,7 @@ void EmGaruga_FlyToGoalAndLand(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
@@ -2729,7 +2608,7 @@ void EmGaruga_FlyToGoalAndLand(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE5, &EmGaruga_FlyParam);
+        Em_UpdateFlight(em, 229, &EmGaruga_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2755,7 +2634,7 @@ void EmGaruga_FlyToGoalAndLand(Em *em, EmWork *work)
 
 void EmGaruga_EndFlightToGlide(Em *em)
 {
-    EmGaruga_EndAirState(em, 0x1);
+    EmGaruga_EndAirState(em, 1);
 }
 
 /*
@@ -2785,12 +2664,12 @@ void EmGaruga_GlideToGoal(Em *em, EmWork *work)
                 em->velZ = 50.0f;
             }
             em->step++;
-            em->timer = 0x12C;
+            em->timer = 300;
             EmGaruga_ChangeState(em, EM_GROUP_FLY, GARUGA_FLY_LAND, EM_SYNC_SEND);
         } else {
             em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
             em->aimAngle = em->aimAngle - em->rotY;
-            Em_UpdateFlight(em, 0xE1, &EmGaruga_FlyParam);
+            Em_UpdateFlight(em, 225, &EmGaruga_FlyParam);
             work->moveAngX = em->rotX;
             work->moveAngY = em->rotY;
             work->moveAngZ = 0;
@@ -2804,13 +2683,13 @@ void EmGaruga_GlideToGoal(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmGaruga_FlyParam);
+        Em_UpdateFlight(em, 225, &EmGaruga_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
         Em_MoveRotated(em, &work->moveAngX);
         if (--em->timer <= 0) {
-            em->timer = 0x12C;
+            em->timer = 300;
             if (em->remote == 0) {
                 EmGaruga_ChangeState(em, EM_GROUP_FLY, GARUGA_FLY_LAND, EM_SYNC_SEND);
             }
@@ -2841,7 +2720,7 @@ void EmGaruga_BackHop(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, GARUGA_MOT_BACK_HOP, 0, 0);
-        EmGaruga_StartCurves(em, 0xE);
+        EmGaruga_StartCurves(em, 14);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 76.0f) != 0) {
@@ -2890,7 +2769,7 @@ void EmGaruga_FlyIntoArea(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
@@ -2911,7 +2790,7 @@ void EmGaruga_FlyIntoArea(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE5, &EmGaruga_FlyParam);
+        Em_UpdateFlight(em, 229, &EmGaruga_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2926,7 +2805,7 @@ void EmGaruga_FlyIntoArea(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmGaruga_FlyParam);
+        Em_UpdateFlight(em, 225, &EmGaruga_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3047,11 +2926,11 @@ void EmGaruga_HoverTurn(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
         Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
         work->flyGuard = 0;
-        em->timer = 0x96;
+        em->timer = 150;
         break;
     case 1:
         EmGaruga_MoveByVelYCurve(em, 1U);
@@ -3113,13 +2992,13 @@ void EmGaruga_FlyRouteB(Em *em, EmWork *work)
             em->curGoalNo++;
             em->curGoalNo &= 3;
             Em_ComputeGoal2(em, em->goal);
-            em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f) + 0x96;
+            em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f) + 150;
             em->step++;
             Em_SetStateRand(em, EM_GROUP_FLY, GARUGA_FLY_ROUTE_B);
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x321, &EmGaruga_FlyParam2);
+        Em_UpdateFlight(em, 801, &EmGaruga_FlyParam2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3156,7 +3035,7 @@ void EmGaruga_LevelOutAndLand(Em *em, EmWork *work)
     case 1:
         rotX = em->rotX;
         if (rotX != 0) {
-            if (rotX < 0x8000) {
+            if (rotX < (ANGLE_TURN / 2)) {
                 em->rotX = rotX - work->pitchStep;
             } else {
                 em->rotX = rotX + work->pitchStep;
@@ -3165,7 +3044,7 @@ void EmGaruga_LevelOutAndLand(Em *em, EmWork *work)
         }
         rotZ = em->rotZ;
         if (rotZ != 0) {
-            if (rotZ < 0x8000) {
+            if (rotZ < (ANGLE_TURN / 2)) {
                 em->rotZ = rotZ - work->rollSpeed;
             } else {
                 em->rotZ = rotZ + work->rollSpeed;
@@ -3175,14 +3054,14 @@ void EmGaruga_LevelOutAndLand(Em *em, EmWork *work)
         if (EmGaruga_UpdateCurves(em) & 0xFF) {
             em->step++;
             Player_ClearVelocity(em);
-            em->timer = 0x12C;
+            em->timer = 300;
             Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
             EmGaruga_ChangeState(em, EM_GROUP_FLY, GARUGA_FLY_LAND, EM_SYNC_SEND);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
-            em->timer = 0x12C;
+            em->timer = 300;
             Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
             if (em->remote == 0) {
                 EmGaruga_ChangeState(em, EM_GROUP_FLY, GARUGA_FLY_LAND, EM_SYNC_SEND);
@@ -3240,7 +3119,7 @@ void EmGaruga_GlideToGoalB(Em *em, EmWork *work)
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x121, &EmGaruga_FlyParam2);
+        Em_UpdateFlight(em, 289, &EmGaruga_FlyParam2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3271,7 +3150,7 @@ void EmGaruga_HopInPlace(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, GARUGA_MOT_HOP_IN_PLACE, 0, 0);
-        EmGaruga_StartCurves(em, 0xC);
+        EmGaruga_StartCurves(em, 12);
         work->flyGuard = 0;
         break;
     case 1:
@@ -3316,7 +3195,7 @@ void EmGaruga_HoverStraightToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GARUGA_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -3361,7 +3240,7 @@ void EmGaruga_LevelOut(Em *em, EmWork *work)
     case 1:
         rotX = em->rotX;
         if (rotX != 0) {
-            if (rotX < 0x8000) {
+            if (rotX < (ANGLE_TURN / 2)) {
                 em->rotX = rotX - work->pitchStep;
             } else {
                 em->rotX = rotX + work->pitchStep;
@@ -3370,7 +3249,7 @@ void EmGaruga_LevelOut(Em *em, EmWork *work)
         }
         rotZ = em->rotZ;
         if (rotZ != 0) {
-            if (rotZ < 0x8000) {
+            if (rotZ < (ANGLE_TURN / 2)) {
                 em->rotZ = rotZ - work->rollSpeed;
             } else {
                 em->rotZ = rotZ + work->rollSpeed;
@@ -3406,7 +3285,7 @@ void EmGaruga_EscapeUpward(Em *em, EmWork *work)
     case 0:
         em->step++;
         em->hitReactMode = 0;
-        Em_SetMotion(em, GARUGA_MOT_TAKE_OFF, 0xA, 0x1E);
+        Em_SetMotion(em, GARUGA_MOT_TAKE_OFF, 10, 30);
         EmGaruga_StartCurves(em, 2);
         em->stance = EM_STANCE_AIR;
         em->holdTimer = 0;
@@ -3450,7 +3329,7 @@ void EmGaruga_EscapeUpward(Em *em, EmWork *work)
         break;
     case 4:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGaruga_EndState(em, 0, 0);
         }
@@ -3512,7 +3391,7 @@ void EmGaruga_TurnAndStare(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
@@ -3591,7 +3470,7 @@ void EmGaruga_TurnAndPeckA(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
@@ -3610,7 +3489,7 @@ void EmGaruga_TurnAndPeckA(Em *em, EmWork *work)
 /*
  * GARUGA_ATK_CHARGE_TRIP: runs at the goal (GARUGA_MOT_RUN, Em_StepToGoal)
  * until it is within 500 or Em.timer runs out, then trips
- * (GARUGA_MOT_CHARGE_TRIP, GarugaAttack_Create kind 0x24) and ends the
+ * (GARUGA_MOT_CHARGE_TRIP, GarugaAttack_Create row 36) and ends the
  * state when that motion ends.
  */
 void EmGaruga_ChargeTrip(Em *em, EmWork *work)
@@ -3624,7 +3503,7 @@ void EmGaruga_ChargeTrip(Em *em, EmWork *work)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            Em_StepToGoal(em, 0x40, 1);
+            Em_StepToGoal(em, 64, 1);
             if (em->goalDist <= 500.0f) {
                 em->timer = 1;
             }
@@ -3632,7 +3511,7 @@ void EmGaruga_ChargeTrip(Em *em, EmWork *work)
         if (--em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, GARUGA_MOT_CHARGE_TRIP, 0, 0);
-            GarugaAttack_Create(em, 0x24);
+            GarugaAttack_Create(em, 36);
         }
         break;
     case 2:
@@ -3656,7 +3535,7 @@ void EmGaruga_TurnAndPeckB(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GARUGA_MOT_PECK_COMBO_B, 0, 0);
@@ -3673,17 +3552,17 @@ void EmGaruga_TurnAndPeckB(Em *em, EmWork *work)
 }
 
 /*
- * GARUGA_ATK_SINGLE_ATTACK: plays GARUGA_MOT_SINGLE_ATTACK in place and
+ * GARUGA_ATK_ROAR: plays GARUGA_MOT_ROAR in place and
  * ends the state.
  */
-void EmGaruga_SingleAttack(Em *em, EmWork *work)
+void EmGaruga_Roar(Em *em, EmWork *work)
 {
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, GARUGA_MOT_SINGLE_ATTACK, 0, 0);
+        Em_SetMotion(em, GARUGA_MOT_ROAR, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -3698,11 +3577,11 @@ void EmGaruga_SingleAttack(Em *em, EmWork *work)
 /*
  * GARUGA_ATK_FIREBALL: turns to the target, then breathes a fireball
  * (GARUGA_MOT_FIREBALL): at frame 78 two AttackBurst_CreateAtBone bursts at
- * bone 0x24 and a ranged attack (EmRangedAttack_CreateAtBone kind 0x22, no
- * angle offsets); dust clouds (kind 0x1A) every 4th frame from frame 154 to
- * 276. When the motion ends it counts down countdown: at 0 it ends the
- * state, else it re-aims (Em_SetTargetAngle) and sets GARUGA_ATK_FIREBALL
- * again (Em_SetStateRand).
+ * GARUGA_BONE_FIREBALL_BURST and a fireball (EMRANGED_FIREBALL) from
+ * GARUGA_BONE_BREATH, with no angle offsets; dust clouds (type 26) every 4th
+ * frame from frame 154 to 276. When the motion ends it counts down countdown:
+ * at 0 it ends the state, else it re-aims (Em_SetTargetAngle) and sets
+ * GARUGA_ATK_FIREBALL again (Em_SetStateRand).
  */
 void EmGaruga_Fireball(Em *em, EmWork *work)
 {
@@ -3711,7 +3590,7 @@ void EmGaruga_Fireball(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GARUGA_MOT_FIREBALL, 0, 0);
@@ -3720,12 +3599,12 @@ void EmGaruga_Fireball(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 154.0f) != 0 && EmMotion_ReachedFrame(em, 0, 276.0f) == 0) {
             if (!(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3743,7 +3622,7 @@ void EmGaruga_Fireball(Em *em, EmWork *work)
 
 /*
  * GARUGA_ATK_FIREBALL_LOW: as EmGaruga_Fireball, the ranged attack taking
- * angle argument 0xE39, repeating as GARUGA_ATK_FIREBALL_LOW.
+ * angle argument 3641, repeating as GARUGA_ATK_FIREBALL_LOW.
  */
 void EmGaruga_FireballLow(Em *em, EmWork *work)
 {
@@ -3753,7 +3632,7 @@ void EmGaruga_FireballLow(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GARUGA_MOT_FIREBALL, 0, 0);
@@ -3762,12 +3641,12 @@ void EmGaruga_FireballLow(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 154.0f) != 0 && EmMotion_ReachedFrame(em, 0, 276.0f) == 0) {
             if (!(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xE39, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 3641, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3785,7 +3664,7 @@ void EmGaruga_FireballLow(Em *em, EmWork *work)
 
 /*
  * GARUGA_ATK_FIREBALL_HIGH: as EmGaruga_Fireball, the ranged attack taking
- * angle argument 0xF1C8, repeating as GARUGA_ATK_FIREBALL_HIGH.
+ * angle argument 61896, repeating as GARUGA_ATK_FIREBALL_HIGH.
  */
 void EmGaruga_FireballHigh(Em *em, EmWork *work)
 {
@@ -3795,7 +3674,7 @@ void EmGaruga_FireballHigh(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GARUGA_MOT_FIREBALL, 0, 0);
@@ -3804,12 +3683,12 @@ void EmGaruga_FireballHigh(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 154.0f) != 0 && EmMotion_ReachedFrame(em, 0, 276.0f) == 0) {
             if (!(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xF1C8, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 61896, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3827,10 +3706,10 @@ void EmGaruga_FireballHigh(Em *em, EmWork *work)
 
 /*
  * GARUGA_ATK_FIREBALL_B: turns to the target and breathes three fireballs
- * (GARUGA_MOT_FIREBALL_B) at frames 78, 120 and 164, each with the two bone
- * 0x24 bursts and a ranged attack (kind 0x22) with its own pair of angle
- * arguments; dust clouds every 4th frame from frame 256 to 316; ends the
- * state when the motion ends (no countdown).
+ * (GARUGA_MOT_FIREBALL_B) at frames 78, 120 and 164, each with the two
+ * GARUGA_BONE_FIREBALL_BURST bursts and a fireball (EMRANGED_FIREBALL) with
+ * its own pair of angle arguments; dust clouds every 4th frame from frame 256
+ * to 316; ends the state when the motion ends (no countdown).
  */
 void EmGaruga_FireballB(Em *em, EmWork *work)
 {
@@ -3840,7 +3719,7 @@ void EmGaruga_FireballB(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, GARUGA_MOT_WALK, GARUGA_MOT_TURN_LEFT, GARUGA_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GARUGA_MOT_FIREBALL_B, 0, 0);
@@ -3848,22 +3727,22 @@ void EmGaruga_FireballB(Em *em, EmWork *work)
         break;
     case 2:
         if ((EmMotion_ReachedFrame(em, 0, 256.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 316.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, 1, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 1456, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 1274, 61896);
         }
         if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 1092, 2549);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -3893,7 +3772,7 @@ void EmGaruga_Somersault(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, GARUGA_MOT_FLIP, 0, 0);
-        EmGaruga_StartCurves(em, 0xA);
+        EmGaruga_StartCurves(em, 10);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 94.0f) != 0) {
@@ -3903,7 +3782,7 @@ void EmGaruga_Somersault(Em *em, EmWork *work)
         if ((ended != 0) && (em->posY <= (372.0f + em->floorY))) {
             em->step++;
             Em_SetMotion(em, GARUGA_MOT_FLIP_FALL, 0, 0);
-            EmGaruga_StartCurves(em, 0xB);
+            EmGaruga_StartCurves(em, 11);
         }
         break;
     case 2:
@@ -4104,7 +3983,7 @@ void EmGaruga_KnockDown(Em *em, EmWork *work)
         break;
     case 2:
         em->timer++;
-        if (em->timer >= 0x78) {
+        if (em->timer >= 120) {
             em->step++;
             Em_SetMotion(em, GARUGA_MOT_KNOCK_DOWN_B_GET_UP, 0, 0);
         }
@@ -4144,7 +4023,7 @@ void EmGaruga_KnockDownPart3(Em *em, EmWork *work)
         break;
     case 2:
         em->timer++;
-        if (em->timer >= 0x78) {
+        if (em->timer >= 120) {
             em->step++;
             Em_SetMotion(em, GARUGA_MOT_DOWN_GET_UP, 0, 0);
         }
@@ -4470,9 +4349,9 @@ void EmGaruga_TrapEscapeHop(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, GARUGA_MOT_BACK_HOP, 0, 0x46);
-        em->holdTimer = 0x32;
-        EmGaruga_StartCurves(em, 0xE);
+        Em_SetMotion(em, GARUGA_MOT_BACK_HOP, 0, 70);
+        em->holdTimer = 50;
+        EmGaruga_StartCurves(em, 14);
         EmMine_CreateTimed0(em, &em->posX);
         break;
     case 1:
@@ -4638,7 +4517,7 @@ void EmGaruga_Stun(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, GARUGA_MOT_KNOCK_DOWN, 0, 0);
-        StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, 34, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -4681,7 +4560,7 @@ void EmGaruga_StunDowned(Em *em, EmWork *work)
         Em_SetMotion(em, GARUGA_MOT_DOWNED, 0, 0);
         Em_RestartScript(em);
         em->noReact = 1;
-        StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, 34, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -4750,7 +4629,7 @@ void EmGaruga_Hold2(Em *em, EmWork *work)
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, GARUGA_MOT_STATUS4, 0xC, 0);
+            Em_SetMotion(em, GARUGA_MOT_STATUS4, 12, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
@@ -4769,16 +4648,17 @@ void EmGaruga_Hold2(Em *em, EmWork *work)
 }
 
 /*
- * GARUGA_EVENT_STORY_INTRO: the story quest scene (Update starts it in
- * quest stage QUEST_ID_GARUGA_SCENE, AREA_JUNGLE_9, while EVENT_FLAG_GARUGA_SCENE is clear),
- * untouchable throughout (senseDelay, noHitTimer): flies in between fixed
- * points (GARUGA_MOT_FLY, then GARUGA_MOT_GLIDE, each until within 500 of
- * the goal or 300 frames), hovers down and touches down
+ * GARUGA_EVENT_STORY_INTRO: the story quest scene (Update starts it in quest
+ * stage QUEST_ID_GARUGA_SCENE, AREA_JUNGLE_9, while EVENT_FLAG_GARUGA_SCENE
+ * is clear), untouchable throughout (senseDelay, noHitTimer): flies in
+ * between fixed points (GARUGA_MOT_FLY, then GARUGA_MOT_GLIDE, each until
+ * within 500 of the goal or 300 frames), hovers down and touches down
  * (GARUGA_MOT_TOUCH_DOWN), turns (GARUGA_MOT_TURN_LEFT), idles with layer
  * motions, then GARUGA_MOT_FIREBALL_B firing three fireballs
  * (EmRangedAttack_CreateAtBone with AttackBurst_CreateAtBone at frames 78,
- * 120 and 164) with dust; waits in GARUGA_MOT_ALERT_IDLE until event flag
- * 0xA1 is set, then ends the state. Keeps posY at or above the floor.
+ * 120 and 164) with dust; waits in GARUGA_MOT_ALERT_IDLE until
+ * EVENT_FLAG_GARUGA_SCENE is set, then ends the state. Keeps posY at or above
+ * the floor.
  */
 void EmGaruga_StoryIntro(Em *em, EmWork *work)
 {
@@ -4810,7 +4690,7 @@ void EmGaruga_StoryIntro(Em *em, EmWork *work)
         em->velZ = 50.0f;
         work->moveAngX = 0;
         work->moveAngZ = 0;
-        em->timer = 0x12C;
+        em->timer = 300;
         em->fieldCollide = 0;
         break;
     case 1:
@@ -4833,7 +4713,7 @@ void EmGaruga_StoryIntro(Em *em, EmWork *work)
             em->velZ = 50.0f;
             work->moveAngX = 0;
             work->moveAngZ = 0;
-            em->timer = 0x12C;
+            em->timer = 300;
             em->fieldCollide = 0;
         }
         break;
@@ -4870,7 +4750,7 @@ void EmGaruga_StoryIntro(Em *em, EmWork *work)
             em->goal[1] = 1040.0f;
             em->goal[2] = 8395.0f;
             em->rotX = 0;
-            em->rotY = (Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - 0x4000;
+            em->rotY = (Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - ANGLE_TURN / 4;
             em->rotZ = 0;
         }
         break;
@@ -4886,11 +4766,11 @@ void EmGaruga_StoryIntro(Em *em, EmWork *work)
         break;
     case 6:
         em->timer++;
-        if (em->timer == 0x28) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, GARUGA_MOT_IDLE_ACTION_J), 0xA, 0, 1);
+        if (em->timer == 40) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, GARUGA_MOT_IDLE_ACTION_J), 10, 0, 1);
         }
-        if (em->timer == 0xA) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, 0x1B), 0xA, 0, 2);
+        if (em->timer == 10) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, 27), 10, 0, 2);
         }
         if (em->motion[1].playing == 0) {
             em->step++;
@@ -4908,22 +4788,22 @@ void EmGaruga_StoryIntro(Em *em, EmWork *work)
         break;
     case 8:
         if ((EmMotion_ReachedFrame(em, 0, 256.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 316.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, 1, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 1456, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 1274, 61896);
         }
         if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, GARUGA_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, GARUGA_BONE_BREATH, EMRANGED_FIREBALL, 0, 1092, 2549);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -5000,9 +4880,9 @@ void EmGaruga_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = 10.0f;
         pos[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+        Em_SpawnLyingPuffs(em, GARUGA_BONE_BREATH, pos, 1.6f);
         if (++em->stateVar0 % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, GARUGA_BONE_HEAD);
         }
     }
 }
@@ -5034,14 +4914,14 @@ void EmGaruga_CapturedHold2(Em *em)
             em->step++;
             Em_SetMotion(em, GARUGA_MOT_LIE, 0, 0);
             QuestEm_Captured(em);
-            em->timer = 0x708;
+            em->timer = 1800;
         }
         break;
     case 2:
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
                 break;
             }
         }
@@ -5187,7 +5067,7 @@ void EmGaruga_VersusPoseC(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, GARUGA_MOT_FLIP, 0, 0);
-        EmGaruga_StartCurves(em, 0xA);
+        EmGaruga_StartCurves(em, 10);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 94.0f) != 0) {
@@ -5197,7 +5077,7 @@ void EmGaruga_VersusPoseC(Em *em, EmWork *work)
         if ((ended != 0) && (em->posY <= (372.0f + em->floorY))) {
             em->step++;
             Em_SetMotion(em, GARUGA_MOT_FLIP_FALL, 0, 0);
-            EmGaruga_StartCurves(em, 0xB);
+            EmGaruga_StartCurves(em, 11);
         }
         break;
     case 2:
@@ -5260,7 +5140,7 @@ void EmGaruga_VersusEnd(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x5A;
+        em->timer = 90;
         if (em->motionId[0] != EM_MOTION_ID(0, GARUGA_MOT_IDLE)) {
             Em_SetMotion(em, GARUGA_MOT_IDLE, 0, 0);
         }
@@ -5508,7 +5388,7 @@ void EmGaruga_Reappear(Em *em, EmWork *work)
 /*
  * Runs the current group-0 state (EM_GROUP_IDLE). The three shake-offs
  * share EmGaruga_ShakeOffAfterStatus (kind 0 status 4, 1 stun, 2 second
- * hold) and the three roars EmGaruga_Roar.
+ * hold) and the three stomp states EmGaruga_Stomps.
  */
 void EmGaruga_RunIdleState(Em *em, EmWork *work)
 {
@@ -5606,20 +5486,20 @@ void EmGaruga_RunIdleState(Em *em, EmWork *work)
     case GARUGA_IDLE_STATUS1_DOWNED:
         EmGaruga_Status1Downed(em, work);
         break;
-    case GARUGA_IDLE_ROAR:
-        EmGaruga_Roar(em);
+    case GARUGA_IDLE_STOMPS:
+        EmGaruga_Stomps(em);
         break;
     case GARUGA_IDLE_STATUS4_SHAKE_OFF:
         EmGaruga_ShakeOffAfterStatus(em, work, 0);
         break;
-    case GARUGA_IDLE_ROAR_RAGE_BY_HP:
-        EmGaruga_Roar(em);
+    case GARUGA_IDLE_STOMPS_RAGE_BY_HP:
+        EmGaruga_Stomps(em);
         break;
     case GARUGA_IDLE_STUN_SHAKE_OFF:
         EmGaruga_ShakeOffAfterStatus(em, work, 1);
         break;
-    case GARUGA_IDLE_ROAR_PENDING_RAGE:
-        EmGaruga_Roar(em);
+    case GARUGA_IDLE_STOMPS_PENDING_RAGE:
+        EmGaruga_Stomps(em);
         break;
     case GARUGA_IDLE_EAT:
         EmGaruga_Eat(em);
@@ -5781,8 +5661,8 @@ void EmGaruga_RunAttackState(Em *em, EmWork *work)
     case GARUGA_ATK_TURN_AND_PECK_B:
         EmGaruga_TurnAndPeckB(em, work);
         break;
-    case GARUGA_ATK_SINGLE_ATTACK:
-        EmGaruga_SingleAttack(em, work);
+    case GARUGA_ATK_ROAR:
+        EmGaruga_Roar(em, work);
         break;
     case GARUGA_ATK_FIREBALL:
         EmGaruga_Fireball(em, work);
@@ -6236,7 +6116,7 @@ static void EmGaruga_MotionEffectsDefault(Em *em)
  * work->sndMotion: plays its sounds (EmGaruga_MotionSounds), then on given
  * frames creates the hit zones of the attacks (GarugaAttack_Create by row
  * kind; GarugaAttack_CreateForEffects with a fire burst at the head bone in
- * GARUGA_MOT_SINGLE_ATTACK and in the GARUGA_FLY_BACK_HOP hop), dust and
+ * GARUGA_MOT_ROAR and in the GARUGA_FLY_BACK_HOP hop), dust and
  * ground effects (DustCloud_Create, extra random ones on many motions while
  * enraged), Effect0D bursts on flinches, the lying puffs
  * (Em_SpawnLyingPuffs) and camera shakes (EmGaruga_CamShakeOnFrame). A list
@@ -6255,8 +6135,8 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
     EmGaruga_MotionSounds(em, (EmWork *) work);
     switch (work->sndMotion) {
     case EM_MOTION_ID(0, GARUGA_MOT_WALK):
-        EmGaruga_CamShakeOnFrame(em, 0x34, 1);
-        EmGaruga_CamShakeOnFrame(em, 0x74, 1);
+        EmGaruga_CamShakeOnFrame(em, 52, 1);
+        EmGaruga_CamShakeOnFrame(em, 116, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             GarugaAttack_Create(em, 2);
         }
@@ -6267,7 +6147,7 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
             GarugaAttack_Create(em, 4);
         }
         break;
-    case EM_MOTION_ID(0, 0x4):
+    case EM_MOTION_ID(0, 4):
         if (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) {
             DustCloud_Create((Em *) em, 3, 0, 1.0f);
         }
@@ -6276,7 +6156,7 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_RIGHT):
-        EmGaruga_CamShakeOnFrame(em, 0x3C, 1);
+        EmGaruga_CamShakeOnFrame(em, 60, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             GarugaAttack_Create(em, 5);
         }
@@ -6284,11 +6164,11 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
             GarugaAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_LEFT):
-        EmGaruga_CamShakeOnFrame(em, 0x3C, 1);
+        EmGaruga_CamShakeOnFrame(em, 60, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             GarugaAttack_Create(em, 7);
         }
@@ -6296,71 +6176,71 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
             GarugaAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 0, 1.0f);
+            DustCloud_Create((Em *) em, 26, 0, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x7):
+    case EM_MOTION_ID(0, 7):
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
             GarugaAttack_Create(em, 9);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0xA);
+            GarugaAttack_Create(em, 10);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, 1, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 20.0f, 70.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, 0, 1.0f);
+                DustCloud_Create((Em *) em, 26, 0, 1.0f);
                 break;
             }
         }
         break;
-    case EM_MOTION_ID(0, 0x8):
+    case EM_MOTION_ID(0, 8):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0xB);
+            GarugaAttack_Create(em, 11);
         }
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0xC);
+            GarugaAttack_Create(em, 12);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 2.0f, 18.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, 0, 1.0f);
+                DustCloud_Create((Em *) em, 26, 0, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 20.0f, 70.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, 1, 1.0f);
                 break;
             }
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LIMP):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x19);
+            GarugaAttack_Create(em, 25);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x1A);
+            GarugaAttack_Create(em, 26);
         }
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x1A);
+            GarugaAttack_Create(em, 26);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DESCEND):
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 7, 5.0f);
+            PartFx_SpawnForEmScaled(em, GARUGA_BONE_BODY, 7, 5.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0xD):
+    case EM_MOTION_ID(0, 13):
         if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) {
             PartFx_SpawnForEmScaled(em, 1, 7, 5.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLY):
-    case EM_MOTION_ID(0, 0x55):
-    case EM_MOTION_ID(0, 0x56):
-    case EM_MOTION_ID(0, 0x58):
-    case EM_MOTION_ID(0, 0x59):
+    case EM_MOTION_ID(0, 85):
+    case EM_MOTION_ID(0, 86):
+    case EM_MOTION_ID(0, 88):
+    case EM_MOTION_ID(0, 89):
         if ((em->rage != 0) && (((s32) gScene.frame % 10) == 0)) {
-            DustCloud_Create((Em *) em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
+            DustCloud_Create((Em *) em, 25, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_HOVER):
@@ -6372,7 +6252,7 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 70.0f, 84.0f) || EmMotion_InFrameRange(em, 0, 146.0f, 156.0f) || EmMotion_InFrameRange(em, 0, 220.0f, 234.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -6380,7 +6260,7 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_RUN):
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x13);
+            GarugaAttack_Create(em, 19);
         }
         if ((EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0)) {
             DustCloud_Create((Em *) em, 2, 0, 1.0f);
@@ -6396,59 +6276,59 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
             }
         }
         if ((em->rage != 0) && (EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0)) {
-            DustCloud_Create((Em *) em, 0x19, 5, 1.0f);
-            DustCloud_Create((Em *) em, 0x19, 4, 1.0f);
+            DustCloud_Create((Em *) em, 25, 5, 1.0f);
+            DustCloud_Create((Em *) em, 25, 4, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TOUCH_DOWN):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0xD);
+            GarugaAttack_Create(em, 13);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmGaruga_SpawnLandingDust(em);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 18.0f, 44.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x1F):
+    case EM_MOTION_ID(0, 31):
         puffOffsetA[1] = 10.0f;
         puffOffsetA[2] = 140.0f;
         puffOffsetA[0] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOffsetA, 1.6f);
+        Em_SpawnLyingPuffs(em, GARUGA_BONE_BREATH, puffOffsetA, 1.6f);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LIE):
         puffOffsetB[1] = 10.0f;
         puffOffsetB[2] = 140.0f;
         puffOffsetB[0] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOffsetB, 1.6f);
+        Em_SpawnLyingPuffs(em, GARUGA_BONE_BREATH, puffOffsetB, 1.6f);
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_STARE):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             GarugaAttack_Create(em, 1);
         }
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x21);
+            GarugaAttack_Create(em, 33);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_COLLAPSE):
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0xF);
+            GarugaAttack_Create(em, 15);
         }
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             DustCloud_Create((Em *) em, 0, 0, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, GARUGA_MOT_SINGLE_ATTACK):
+    case EM_MOTION_ID(0, GARUGA_MOT_ROAR):
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            Mtx_GetTrans(bonePosA, em->model->bones[35].world);
+            Mtx_GetTrans(bonePosA, em->model->bones[GARUGA_BONE_HEAD].world);
             ElementBurst_CreateOnEm(em, 5, 1, 1.0f);
-            GarugaAttack_CreateForEffects(em, 0x16);
+            GarugaAttack_CreateForEffects(em, 22);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLIP):
         if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x25);
+            GarugaAttack_Create(em, 37);
         }
         if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
             DustCloud_Create((Em *) em, 1, 0, 1.0f);
@@ -6458,53 +6338,53 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TAIL_SPIN):
-        EmGaruga_CamShakeOnFrame(em, 0x2C, 1);
-        EmGaruga_CamShakeOnFrame(em, 0x49, 1);
+        EmGaruga_CamShakeOnFrame(em, 44, 1);
+        EmGaruga_CamShakeOnFrame(em, 73, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             if (em->state == GARUGA_ATK_TAIL_SPIN_B) {
-                GarugaAttack_Create(em, 0x27);
+                GarugaAttack_Create(em, 39);
             } else {
-                GarugaAttack_Create(em, 0x11);
+                GarugaAttack_Create(em, 17);
             }
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 0, 1.0f);
+            DustCloud_Create((Em *) em, 26, 0, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x2B):
-        EmGaruga_CamShakeOnFrame(em, 0x2C, 1);
-        EmGaruga_CamShakeOnFrame(em, 0x49, 1);
+    case EM_MOTION_ID(0, 43):
+        EmGaruga_CamShakeOnFrame(em, 44, 1);
+        EmGaruga_CamShakeOnFrame(em, 73, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             if (em->state == GARUGA_ATK_TAIL_SPIN_B) {
-                GarugaAttack_Create(em, 0x27);
+                GarugaAttack_Create(em, 39);
             } else {
-                GarugaAttack_Create(em, 0x11);
+                GarugaAttack_Create(em, 17);
             }
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FIREBALL):
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x22);
+            GarugaAttack_Create(em, 34);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_ALERT_IDLE):
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 72.0f, 80.0f) || EmMotion_InFrameRange(em, 0, 132.0f, 140.0f) || EmMotion_InFrameRange(em, 0, 184.0f, 192.0f)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                 break;
             }
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_BACK_HOP):
         if ((em->stateGroup == EM_GROUP_FLY) && (em->state == GARUGA_FLY_BACK_HOP) && (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0)) {
-            Mtx_GetTrans(bonePosB, em->model->bones[35].world);
+            Mtx_GetTrans(bonePosB, em->model->bones[GARUGA_BONE_HEAD].world);
             if (Player_InCurrentArea(em) & 0xFF) {
                 ElementBurst_CreateAtSilent(bonePosB, 4, 0, 1.0f);
             }
-            GarugaAttack_CreateForEffects(em, 0x16);
+            GarugaAttack_CreateForEffects(em, 22);
         }
         if (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) {
             DustCloud_Create((Em *) em, 4, 0, 1.0f);
@@ -6524,67 +6404,67 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
             DustCloud_Create((Em *) em, 5, 0, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x1B);
+            GarugaAttack_Create(em, 27);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x1F);
+            GarugaAttack_Create(em, 31);
         }
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x20);
+            GarugaAttack_Create(em, 32);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_A):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 27, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, GARUGA_BONE_FOOT_A, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 1, 0x80, 0.5f);
+            DustCloud_Create((Em *) em, 1, 128, 0.5f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_E):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, GARUGA_BONE_STEP_B, 7, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_PART_BREAK):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 3, 0x80, 1.0f);
+            DustCloud_Create((Em *) em, 3, 128, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
-            DustCloud_Create((Em *) em, 3, 0x80, 0.6f);
+            DustCloud_Create((Em *) em, 3, 128, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 1, 0x80, 1.0f);
+            DustCloud_Create((Em *) em, 1, 128, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_DIE):
         if (EmMotion_PassedFrameScaled(em, 270.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0x12, 0x80, 0.9f);
+            DustCloud_Create((Em *) em, 18, 128, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN):
-        EmGaruga_CamShakeOnFrame(em, 0x1A, 2);
+        EmGaruga_CamShakeOnFrame(em, 26, 2);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0x12, 0x80, 1.0f);
+            DustCloud_Create((Em *) em, 18, 128, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN_B):
-        EmGaruga_CamShakeOnFrame(em, 0x1A, 2);
+        EmGaruga_CamShakeOnFrame(em, 26, 2);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0x12, 0x81, 1.0f);
+            DustCloud_Create((Em *) em, 18, 129, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0xB, 0, 1.0f);
+            DustCloud_Create((Em *) em, 11, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_HEAD_DOWN):
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) || EmMotion_PassedFrameScaled(em, 106.0f, 0) || EmMotion_PassedFrameScaled(em, 174.0f, 0)) {
-            GarugaAttack_Create(em, 0x10);
+            GarugaAttack_Create(em, 16);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_HOP_IN_PLACE):
@@ -6594,17 +6474,17 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_FLIP_LAND):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x26);
+            GarugaAttack_Create(em, 38);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_LEVEL_OUT):
         if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             DustCloud_Create((Em *) em, 9, 0, 1.0f);
-            DustCloud_Create((Em *) em, 0xE, 0, 1.0f);
+            DustCloud_Create((Em *) em, 14, 0, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             DustCloud_Create((Em *) em, 9, 0, 1.0f);
-            DustCloud_Create((Em *) em, 0xE, 0, 1.0f);
+            DustCloud_Create((Em *) em, 14, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_CHARGE_TRIP):
@@ -6615,38 +6495,38 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
             DustCloud_Create((Em *) em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 96.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 120.0f) == 0) && (((s32) gScene.frame % 6) == 0)) {
-            DustCloud_Create((Em *) em, 0x12, 0, 1.0f);
+            DustCloud_Create((Em *) em, 18, 0, 1.0f);
         }
         if ((em->rage != 0) && (((s32) gScene.frame % 19) == 0)) {
-            DustCloud_Create((Em *) em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
+            DustCloud_Create((Em *) em, 25, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TRAPPED):
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 0xB, 0x80, 1.0f);
+            DustCloud_Create((Em *) em, 11, 128, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 4.0f, 60.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_STRUGGLE):
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 12.0f, 24.0f) || EmMotion_InFrameRange(em, 0, 46.0f, 90.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
         }
         break;
-    case EM_MOTION_ID(0, GARUGA_MOT_ROAR):
+    case EM_MOTION_ID(0, GARUGA_MOT_STOMPS):
         if (EmMotion_PassedFrameScaled(em, 118.0f, 0) || EmMotion_PassedFrameScaled(em, 164.0f, 0) || EmMotion_PassedFrameScaled(em, 204.0f, 0)) {
-            GarugaAttack_Create(em, 0x23);
+            GarugaAttack_Create(em, 35);
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 54.0f, 250.0f) || EmMotion_InFrameRange(em, 0, 282.0f, 296.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -6654,12 +6534,12 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_STOMP):
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0) {
-            DustCloud_Create((Em *) em, 1, 0x80, 1.0f);
+            DustCloud_Create((Em *) em, 1, 128, 1.0f);
         }
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 10.0f, 68.0f) || EmMotion_InFrameRange(em, 0, 84.0f, 96.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -6667,58 +6547,58 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_PECK_COMBO):
         if ((EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0)) {
-            GarugaAttack_Create(em, 0x18);
+            GarugaAttack_Create(em, 24);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 10.0f, 20.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
             if ((EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 92.0f, 0) != 0)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                 break;
             }
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_RUN_B):
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x17);
+            GarugaAttack_Create(em, 23);
         }
         if ((EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0x1A, 3, 4.0f);
+            PartFx_SpawnForEmScaled(em, GARUGA_BONE_STEP_B, 3, 4.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 38.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0x14, 3, 4.0f);
+            PartFx_SpawnForEmScaled(em, GARUGA_BONE_STEP_A, 3, 4.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 54.0f, 112.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, GARUGA_MOT_PECK_COMBO_B):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0x12);
+            GarugaAttack_Create(em, 18);
         }
         if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 116.0f, 0) != 0)) {
-            GarugaAttack_Create(em, 0x18);
+            GarugaAttack_Create(em, 24);
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
             DustCloud_Create((Em *) em, 3, 0, 1.0f);
         }
         if (em->rage != 0) {
             if ((EmMotion_InFrameRange(em, 0, 24.0f, 42.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
             if ((EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                 break;
             }
         }
         break;
-    case EM_MOTION_ID(0, 0x6D):
+    case EM_MOTION_ID(0, 109):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            GarugaAttack_Create(em, 0xE);
+            GarugaAttack_Create(em, 14);
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 92.0f, 0) || EmMotion_PassedFrameScaled(em, 152.0f, 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 7, 3.0f);
+            PartFx_SpawnForEmScaled(em, GARUGA_BONE_BODY, 7, 3.0f);
         }
         break;
     default:
@@ -6727,19 +6607,19 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
     case EM_MOTION_ID(0, GARUGA_MOT_IDLE):
     case EM_MOTION_ID(0, GARUGA_MOT_GLIDE):
     case EM_MOTION_ID(0, GARUGA_MOT_IDLE_ACTION_I):
-    case EM_MOTION_ID(0, 0x20):
-    case EM_MOTION_ID(0, 0x21):
+    case EM_MOTION_ID(0, 32):
+    case EM_MOTION_ID(0, 33):
     case EM_MOTION_ID(0, GARUGA_MOT_GET_UP):
     case EM_MOTION_ID(0, GARUGA_MOT_LIE_DOWN):
     case EM_MOTION_ID(0, GARUGA_MOT_FLIP_FALL):
-    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, 48):
     case EM_MOTION_ID(0, GARUGA_MOT_TURN_IN_PLACE):
     case EM_MOTION_ID(0, GARUGA_MOT_FEED):
     case EM_MOTION_ID(0, GARUGA_MOT_SHAKE_OFF):
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_C):
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_D):
     case EM_MOTION_ID(0, GARUGA_MOT_FLINCH_B):
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, 67):
     case EM_MOTION_ID(0, GARUGA_MOT_DOWN):
     case EM_MOTION_ID(0, GARUGA_MOT_DOWN_GET_UP):
     case EM_MOTION_ID(0, GARUGA_MOT_KNOCK_DOWN_B_GET_UP):
@@ -6752,7 +6632,7 @@ void EmGaruga_MotionEffects(Em *em, EmFlyerWork *work)
     case EM_MOTION_ID(0, GARUGA_MOT_DOWNED):
     case EM_MOTION_ID(0, GARUGA_MOT_DOWNED_GET_UP):
     case EM_MOTION_ID(0, GARUGA_MOT_FIREBALL_B):
-    case EM_MOTION_ID(0, 0x6C):
+    case EM_MOTION_ID(0, 108):
         break;
     }
 }
@@ -6777,7 +6657,7 @@ void EmGaruga_UpdateMotionEffects(Em *em)
 
 void EmGaruga_SpawnLandingDust(Em *em)
 {
-    DustCloud_Create((Em *) em, 0xB, 0, 1.0f);
+    DustCloud_Create((Em *) em, 11, 0, 1.0f);
 }
 
 void EmGaruga_EndAttackState(Em *em, EmWork *work)
@@ -6814,7 +6694,7 @@ s32 EmGaruga_AllowPartBreak(Em *em)
 /*
  * Starts a group-0 state on the ground: the alert idle instead of the idle
  * in combat, and the rage, statuses and needs each state begins or ends
- * (the rage checks of the roars, the status 1/2/4/5 begin and end, the eat
+ * (the rage checks of the stomps, the status 1/2/4/5 begin and end, the eat
  * goal, the rest).
  */
 void EmGaruga_SetIdleState(Em *em, u16 state, u8 mode)
@@ -6826,10 +6706,10 @@ void EmGaruga_SetIdleState(Em *em, u16 state, u8 mode)
             state = GARUGA_IDLE_ALERT;
         }
         break;
-    case GARUGA_IDLE_ROAR_RAGE_BY_HP:
+    case GARUGA_IDLE_STOMPS_RAGE_BY_HP:
         Em_CheckRageByHp(em, (s32) em->rageThreshold);
         break;
-    case GARUGA_IDLE_ROAR_PENDING_RAGE:
+    case GARUGA_IDLE_STOMPS_PENDING_RAGE:
         Em_StartPendingRage(em);
         break;
     case GARUGA_IDLE_HOLD2_SHAKE_OFF:
@@ -6842,7 +6722,7 @@ void EmGaruga_SetIdleState(Em *em, u16 state, u8 mode)
         Em_EndStatus5(em);
         break;
     case GARUGA_IDLE_EAT:
-        Em_StartGoalAction(em, 0x2710);
+        Em_StartGoalAction(em, 10000);
         break;
     case GARUGA_IDLE_REST:
         Em_ResetNotice(em);
@@ -7109,7 +6989,7 @@ void EmGaruga_SetAttackState(Em *em, u16 state, u8 mode)
         break;
     case GARUGA_ATK_STARE:
     case GARUGA_ATK_TAIL_SPIN:
-    case GARUGA_ATK_SINGLE_ATTACK:
+    case GARUGA_ATK_ROAR:
     case GARUGA_ATK_SOMERSAULT:
     case GARUGA_ATK_TAIL_SPIN_B:
     case GARUGA_ATK_PECK_A:
@@ -7137,7 +7017,7 @@ void EmGaruga_SetReactState(Em *em, u16 state, u8 mode)
         Em_BeginStatus4(em);
         break;
     case GARUGA_REACT_TRAPPED:
-        em->holdTimer = 0x32;
+        em->holdTimer = 50;
         Em_EndAllStatus(em);
         break;
     case GARUGA_REACT_STATUS4_DOWNED:
@@ -7287,22 +7167,22 @@ void EmGaruga_StartCurves(Em *em, u8 kind)
     switch (w->curveKind) {
     case 2:
         w->curveVelY = 1;
-        w->curveFrame = 0x26;
+        w->curveFrame = 38;
         break;
     case 3:
         w->curveVelY = 1;
-        w->curveFrame = 0x1E;
+        w->curveFrame = 30;
         break;
     case 5:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x3C;
+        w->curveFrame = 60;
         break;
     case 8:
     case 14:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x4C;
+        w->curveFrame = 76;
         break;
     case 9:
         w->curveVelY = 1;
@@ -7312,7 +7192,7 @@ void EmGaruga_StartCurves(Em *em, u8 kind)
     case 10:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x5C;
+        w->curveFrame = 92;
         break;
     case 11:
         w->curveVelY = 1;
@@ -7320,13 +7200,13 @@ void EmGaruga_StartCurves(Em *em, u8 kind)
         break;
     case 12:
         w->curveVelY = 1;
-        w->curveFrame = 0x24;
+        w->curveFrame = 36;
         break;
     case 13:
         w->curveVelY = 1;
         w->curveFrame = 0;
         break;
-    case 0x0:
+    case 0:
         break;
     }
     Player_ClearVelocity(em);
@@ -7340,8 +7220,11 @@ static s32 EmGaruga_CurveNone(Em *em, EmWork *work)
 
 extern EmCurveKey *EmGaruga_VelYCurves[];
 
-/* The value of curve work[0x4F] at the frame in the work area (a table of keys): sets
- * em->velY from the key pair around the frame, 2 at the table's end. */
+/*
+ * The value of curve curveKind (a table of keys) at the frame in the work
+ * area: sets em->velY from the key pair around the frame, 2 at the table's
+ * end.
+ */
 static u8 EmGaruga_CurveVelY(Em *em, EmWork *work)
 {
     EmFlyerWork *w = (EmFlyerWork *) work;
@@ -7387,8 +7270,10 @@ static u8 EmGaruga_CurveVelY(Em *em, EmWork *work)
 
 extern EmCurveKey *EmGaruga_SpeedCurves[];
 
-/* The value of curve work[0x4F] at the frame in the work area: sets em->velZ from the key
- * pair around the frame, 4 at the table's end. */
+/*
+ * The value of curve curveKind at the frame in the work area: sets em->velZ
+ * from the key pair around the frame, 4 at the table's end.
+ */
 static u8 EmGaruga_CurveSpeed(Em *em, EmWork *work)
 {
     EmFlyerWork *w = (EmFlyerWork *) work;
@@ -7465,7 +7350,6 @@ Vec3f EmGaruga_CarveThrowPt = {
 #include "game/008C42D8.inc"
 };
 extern EmCurveKey EmCephadrome_VelYCurves_3[];
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmGaruga_Callbacks[8] = {
     EmGaruga_SpawnEffects, EmGaruga_SpawnEffects, EmGaruga_TableNop, EmGaruga_UpdateMotionEffects,
     GmEm_ReturnZero, EmGaruga_Reinit, EmGaruga_AllowPartBreak, NULL,

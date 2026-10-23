@@ -10,6 +10,9 @@
 #include "player.h"
 #include "qnet.h"
 #include "qsync.h"
+#include "area_draw.h"
+#include "quest.h"
+#include "game_util.h"
 
 /* The session's settings (QNetIf_Start; sub_main's gSrvQNetMaxStall,
  * gSrvQNetPeerTimeout and gQuestQNetReadyArg override some when nonzero). */
@@ -39,39 +42,15 @@ s32 gQNetReadyArg[2] = {
 #include "gm_sub/0090ACB8.inc"
 };
 
-char gQNetIfText[0x100];        /* the messages shown when a player leaves */
+char gQNetIfText[256];        /* the messages shown when a player leaves */
 /* gScene.inQuest as its own symbol: with &gScene.inQuest[peer],
  * QNetIf_OnPlayerLost and QNetIf_OnPlayerLeft compile differently. */
 extern u8 gSceneInQuest[];
 extern char *gQNetLeftText;     /* sub_main data: the text put after a leaving player's name */
 
 void sprintf(char *, const char *, ...);
-u8 Notice_PushText(char *s);
-u8 Notice_PushItem(char *item);
-void Quest_FinishIfIdle(void);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
-s32 Game_IsOnline(void);
-void QSync_OnPlayer(u8, QSyncPlayerMsg *, s32);
-void QSync_OnEm(u8, QSyncEmMsg *, s32);
-void QSync_OnState(u8, QSyncStateMsg *, s32);
-void QSync_OnChat(u8, QSyncChatMsg *, s32);
-void QSync_OnSupply(u8, QSyncSupplyMsg *, s32);
-void QuestNet_Init(QNetConfig *);
-void QNetIf_OnPlayerLost(u8);
-void QNetIf_OnPlayerLeft(u8);
-void QuestNet_Post(void *msg);
-void QuestNet_Flush(void);
-s32 QuestNet_IsActive(void);
-s32 QuestNet_GetState(void);
-s32 QuestNet_IsRunning(void);
-u8 QuestNet_GetCount(void);
-void QuestNet_Receive(void);
-void QuestNet_Tick(void);
-void QuestNet_Ready(u8);
-void QuestNet_Unready(void);
-void QuestNet_Leave(void);
-void QuestNet_Close(void);
 
 /* The session's message callback: hands a game message from player `from`
  * to its QSync_On* handler by its cmd. The local player's own messages are
@@ -126,7 +105,7 @@ static void QNetIf_FindHost(void)
 }
 
 /* The session's callback for a player lost (silent too long): unless
- * already out, marks its slot empty (0xFF in gScene.inQuest), shows
+ * already out, marks its slot empty (255 in gScene.inQuest), shows
  * its name with gQNetLeftText, puts it in the event group's leave state
  * and finds the host again. */
 void QNetIf_OnPlayerLost(u8 peer)
@@ -134,8 +113,8 @@ void QNetIf_OnPlayerLost(u8 peer)
     Player *pl;
     u8 *flag = &gSceneInQuest[peer];
 
-    if (*flag != 0xFF) {
-        *flag = 0xFF;
+    if (*flag != 255) {
+        *flag = 255;
         pl = &gPlayers[peer];
         sprintf(gQNetIfText, "%s%s", pl->name, gQNetLeftText);
         Notice_PushText(gQNetIfText);
@@ -155,8 +134,8 @@ void QNetIf_OnPlayerLeft(u8 peer)
     Player *pl;
     u8 *flag = &gSceneInQuest[peer];
 
-    if (*flag != 0xFF) {
-        *flag = 0xFF;
+    if (*flag != 255) {
+        *flag = 255;
         gScene.peersLeft |= 1 << peer;
         pl = &gPlayers[peer];
         sprintf(gQNetIfText, "%s%s", pl->name, gQNetLeftText);
@@ -168,7 +147,6 @@ void QNetIf_OnPlayerLeft(u8 peer)
     }
 }
 
-extern char *gQNetErrorText;
 /* Each frame: keeps the last host (gScene.prevHost) and steps the session.
  * When the session ends with an error (QNET_STATE_ERROR), the local player
  * leaves the quest once: it is marked out, a notice says so, and the quest
@@ -187,8 +165,8 @@ void QNetIf_Update(void)
     case QNET_STATE_LEAVE:
         break;
     case QNET_STATE_ERROR:
-        if (gScene.inQuest[gScene.localPlayer] != 0xFF) {
-            gScene.inQuest[gScene.localPlayer] = 0xFF;
+        if (gScene.inQuest[gScene.localPlayer] != 255) {
+            gScene.inQuest[gScene.localPlayer] = 255;
             sprintf(gQNetIfText, "%s", gQNetErrorText);
             Notice_PushItem(gQNetIfText);
             Quest_FinishIfIdle();

@@ -32,16 +32,22 @@
 #include "save.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "text.h"
+#include "hunter_card.h"
+#include "chat_phrases.h"
+#include "font.h"
+#include "friend_add.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "member_card.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "name_tags.h"
+#include "libc.h"
 
-void Text_SetSize(s32 size);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void PcCard_Draw(MenuTask *task);
-void LobbyMember_LoadEquip(u8 pl);
-void LobbySe_Play(s32 se);
-void MyHouse_DrawLabel(void);
-s32 MemberCard_Draw(u8, u8);
-void MemberCard_DrawFriendReg(s16, u8);
 /* unit's own declaration: declared s32 (the definition returns an s8): with the s8, PcCard_Update builds differently from the game's code */
 s32 Kbd_IsOpen(void);
 extern s32 gTownMode;
@@ -73,17 +79,12 @@ void PcCard_Open(void)
 
 extern NetUser gNetUsers[];
 extern u8 gTownAreaMsgPending;
-void LobbyText_Open(s32);
-void LobbyDialog_Grow(void);
-void FriendList_AskAdd(void *id, void *name);
-s32 FriendList_AddInput(u16 pad);
-s32 memcmp(void *a, void *b, s32 n);
 
 /* The town card's input, by screen (LobbyMenu.screen):
  * - 0, the card: a slot left empty closes it; nothing while the keyboard is
  *   open; PAD_SQUARE on the first page asks to add the hunter to the friend
  *   list (screen 1, FriendList_AskAdd) or, when the hunter's card sets the
- *   friend limit, shows lobby text 0x93 instead (screen 2); PAD_CROSS closes
+ *   friend limit, shows LOBBY_TEXT_FRIEND_RESTRICTED instead (screen 2); PAD_CROSS closes
  *   the card; left and right turn its page (LobbyMenu.step).
  * - 1, the friend question (FriendList_AddInput, PAD_START held back): once
  *   answered, back to the card, or closed when the slot's user changed
@@ -137,7 +138,7 @@ s32 PcCard_Update(u16 pad)
             gTownAreaMsgPending = 1;
             /* the slot's user changed while the question was up (the id and the name's first
              * 8 bytes differ from the town's copy): the card closes */
-            if (memcmp(&gNetUsers[gLobbyMenu->cursor], &gLobby->members[gLobbyMenu->cursor], 0x10) != 0) {
+            if (memcmp(&gNetUsers[gLobbyMenu->cursor], &gLobby->members[gLobbyMenu->cursor], 16) != 0) {
                 LobbySe_Play(LOBBY_SE_CANCEL);
                 return 1;
             }
@@ -171,30 +172,18 @@ void PcCard_Draw(MenuTask *task)
     MyHouse_DrawLabel();
     if (Kbd_IsOpen() == 0) {
         if (gLobbyMenu->redraw != 0 || gLobbyMenu->screen > 0) {
-            cardFlags = 0x80;
+            cardFlags = MEMBER_CARD_NO_FRAME;
         }
         MemberCard_Draw(gLobbyMenu->cursor, gLobbyMenu->step | cardFlags);
         curScreen = gLobbyMenu->screen;
         if ((curScreen != 2) && (gLobbyMenu->step == 0)) {
-            MemberCard_DrawFriendReg(0x184, curScreen);
+            MemberCard_DrawFriendReg(388, curScreen);
         }
     }
 }
 
 /* prototypes */
-void FriendLimitWin_Open(void);
-void FriendLimitWin_Close(void);
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
 /* end of prototypes */
-
-void LobbyMenu_Init(void);
-extern LobbyMenu *gLobbyMenu;
-void CamFocus_End(void);
-void Chat_SetColor(s16);
-void LobbySe_Play(s32);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-extern s32 gTownMode;
-extern s32 gTownMenuOpen;
 
 /* Opens the friend limit window: the menu state cleared, the cursor on the
  * saved choice (SaveData.friendLimit), and that choice's help line. */
@@ -202,7 +191,7 @@ void FriendLimitWin_Open(void)
 {
     LobbyMenu_Init();
     gLobbyMenu->cursor = gSave.friendLimit;
-    gHelpLine = gLobbyMenu->cursor + 0xE; /* HELP_PAGE_STATUS: the choices' lines from 0xE */
+    gHelpLine = gLobbyMenu->cursor + 14; /* HELP_PAGE_STATUS: the choices' lines from 14 */
 }
 
 /* The friend limit window's close: nothing to undo (the status page draws
@@ -237,18 +226,12 @@ s32 FriendLimitWin_Input(s32 pad)
         return PAD_START;
     } else {
         gLobbyMenu->cursor = Menu_WrapUpDown(gLobbyMenu->cursor, 2); /* the two choices */
-        gHelpLine = gLobbyMenu->cursor + 0xE; /* HELP_PAGE_STATUS: the choices' lines from 0xE */
+        gHelpLine = gLobbyMenu->cursor + 14; /* HELP_PAGE_STATUS: the choices' lines from 14 */
     }
     return pad;
 }
 
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-u32 Color_PulseAlpha(u32 color);
-void Text_PrintfColored(const char *fmt, ...);
 void Win_Draw(s32, s32, s32, s32, s32, s32, s16);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 
 /* Draws the friend limit window over the status page: the window, the
  * pulsing bar on the cursor's line, the first choice (no limit), a divider,
@@ -258,40 +241,30 @@ void Font_SetColor(s32 color);
  * unlike the game's code. */
 void FriendLimitWin_Draw(void)
 {
-    s16 y = 0xC8;
+    s16 y = 200;
 
-    Font_SetSpacing(0x12, 0x12);
-    Win_Draw(0x12C, y, 0xA0, 0x3C, 0xBDB59F6C, 0x80202020, 3);
+    Font_SetSpacing(18, 18);
+    Win_Draw(300, y, 160, 60, 0xBDB59F6C, 0x80202020, 3);
     y += 10;
-    Gfx_DrawLine(0x136, y - 1 + gLobbyMenu->cursor * 0x16, 0x8C, 0x16, Color_PulseAlpha(0x8080));
+    Gfx_DrawLine(310, y - 1 + gLobbyMenu->cursor * 22, 140, 22, Color_PulseAlpha(32896));
     if (gSave.friendLimit == 0) {
         Font_SetColor(STATUS_COLOR_VALUE);
     } else {
         Font_SetColor(0x80404040);
     }
-    Font_SetPos(0x136, y);
+    Font_SetPos(310, y);
     Text_PrintfColored(gTownLabels[TOWN_LABEL_NO_LIMIT]);
-    Gfx_DrawLine(0x136, y += 0x14, 0x8C, 2, 0xBDB59F6C);
+    Gfx_DrawLine(310, y += 20, 140, 2, 0xBDB59F6C);
     if (gSave.friendLimit == 1) {
         Font_SetColor(STATUS_COLOR_VALUE);
     } else {
         Font_SetColor(0x80404040);
     }
-    Font_SetPos(0x136, y + 4);
+    Font_SetPos(310, y + 4);
     Text_PrintfColored(gTownLabels[TOWN_LABEL_LIMIT]);
 }
 
-void *memcpy(void *dst, const void *src, u32 n);
-u16 Equip_GetKind(EquipItem *e);
-u8 WeaponClass_IsGunner(u8 cls);
-u8 WeaponType_Flags(u8 cls);
-u8 Equip_GetBladeSpecial(EquipItem *e);
-void Player_SetColorWord(Player *pl, u8 idx);
-extern u8 gWeaponKindClass[];
-
-void *memset(void *p, s32 c, u32 n);
 u8 Village_FacilityLevel(s32 k);
-u8 Weapon_GetClass(u8 type, u16 id);
 extern u8 gHouseAccess;
 extern u8 gHousePassword[];
 extern u8 gChatToLobby;
@@ -300,8 +273,8 @@ extern u8 gOnlineMark;
 /* Builds the local hunter's card into out (sizeof(HunterCard) bytes): the
  * look and armour from the hunter's player (each armour piece's type set to
  * its slot), the weapon, rank, title, voice and comment from the save, the
- * style's colour (0xFF until a style is earned), the house's and the box's
- * levels, the Poogie's outfit (0xFF while it has no name), the house's
+ * style's colour (SYMBOL_COLOR_NONE until a style is earned), the house's and the box's
+ * levels, the Poogie's outfit (POOGIE_OUTFIT_NONE while it has no name), the house's
  * access and password, the online mark, the arena role, the friend limit
  * and the lobby chat flag (gChatToLobby). */
 void HunterCard_Build(void *out)
@@ -314,7 +287,7 @@ void HunterCard_Build(void *out)
     memset(&myCard, 0, sizeof(HunterCard));
     myCard.hairColor = pl->hairColor;
     if (gSave.styleBits == 0) {
-        myCard.symbolColor = 0xFF;
+        myCard.symbolColor = 255;
     } else {
         myCard.symbolColor = gSave.symbolColor;
     }
@@ -337,7 +310,7 @@ void HunterCard_Build(void *out)
     myCard.houseLevel = Village_FacilityLevel(VILLAGE_FACILITY_HOUSE);
     myCard.boxLevel = Village_FacilityLevel(VILLAGE_FACILITY_BOX);
     if ((s8)gSave.poogieName[0] == 0) {
-        myCard.poogieOutfit = 0xFF;
+        myCard.poogieOutfit = 255;
     } else {
         myCard.poogieOutfit = gSave.poogieOutfit;
     }
@@ -352,7 +325,7 @@ void HunterCard_Build(void *out)
 
 /* Puts a received card (src) on player idx: the look, the voice and the
  * quest status; the weapon with its kind, type, gunner flag, the type's
- * flags and the blade's special; the style's colour (none for 0xFF); and
+ * flags and the blade's special; the style's colour (none for SYMBOL_COLOR_NONE); and
  * the six armour pieces. */
 void HunterCard_Apply(s8 idx, void *src)
 {
@@ -376,10 +349,10 @@ void HunterCard_Apply(s8 idx, void *src)
     pl->bladeSpecial = Equip_GetBladeSpecial(&pl->equip[EQUIP_SLOT_WEAPON]);
     pl->charType = card.charType;
     color = card.symbolColor;
-    if (color != 0xFF) {
+    if (color != 255) {
         Player_SetColorWord(pl, color);
     } else {
-        pl->style = 0xFF;
+        pl->style = 255;
     }
     pieces = card.armour;
     pl->equip[0] = pieces[0];
@@ -390,8 +363,6 @@ void HunterCard_Apply(s8 idx, void *src)
     pl->equip[5] = pieces[5];
 }
 
-void *memset(void *p, s32 c, u32 n);
-void Chat_FilterWords(char *s);
 extern u16 gPartIdMax[][7];
 extern u16 gArmourIdMax[];
 
@@ -443,13 +414,13 @@ s32 HunterCard_Sanitize(void *data)
     if (card->weapon.type != EQUIP_BLADE && card->weapon.type != EQUIP_GUN) { /* not a weapon: a sword and shield */
         memset(&card->weapon, 0, sizeof(EquipItem));
         card->weapon.type = EQUIP_BLADE;
-        card->weapon.id = 0x9C; /* the default sword and shield */
+        card->weapon.id = 156; /* the default sword and shield */
         card->weaponClass = WEAPON_SWORD_SHIELD;
         changed = 1;
     } else if (card->weapon.type == EQUIP_BLADE) {
         if (card->weapon.id > BLADE_ENTRY_COUNT) {
             memset(&card->weapon, 0, sizeof(EquipItem));
-            card->weapon.id = 0x9C; /* the default sword and shield */
+            card->weapon.id = 156; /* the default sword and shield */
             card->weaponClass = WEAPON_SWORD_SHIELD;
             changed = 1;
         }
@@ -489,8 +460,8 @@ s32 HunterCard_Sanitize(void *data)
         card->charType = 0;
         changed = 1;
     }
-    if (card->symbolColor >= 12) { /* the twelve style colours (gPlayerColorWords); 0xFF none */
-        card->symbolColor = 0xFF;
+    if (card->symbolColor >= 12) { /* the twelve style colours (gPlayerColorWords); SYMBOL_COLOR_NONE none */
+        card->symbolColor = 255;
     }
     if (card->title >= HUNTER_TITLE_COUNT) {
         card->title = 0;
@@ -505,8 +476,8 @@ s32 HunterCard_Sanitize(void *data)
     if (card->houseLevel > 2) {
         card->houseLevel = 0;
     }
-    if (card->poogieOutfit != 0xFF && card->poogieOutfit > 4) {
-        card->poogieOutfit = 0xFF;
+    if (card->poogieOutfit != 255 && card->poogieOutfit > 4) {
+        card->poogieOutfit = 255;
     }
     if (card->houseAccess > HOUSE_ACCESS_PASSWORD) {
         card->houseAccess = 0;

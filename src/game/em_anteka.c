@@ -13,71 +13,26 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_anteka.h"
 #include "player.h"
 #include "objattach.h"
 #include "area.h"
-void QuestEm_Hunted(Em *em);
+#include "capsule.h"
+#include "sound.h"
+#include "attack_objects.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* prototypes */
-void EmAnteka_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-u16 Rand_Next(s32 stream);
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmAnteka_ChangeState, EmKhezu_ChangeState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void QuestEm_Leave(Em *em);
-ObjAttach *EmContactAttack_Create(Em *em, s8 kind);
-void Em_MoveRotatedAccel(Em *, void *);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmAnteka_Init(Em *);
-void EmAnteka_BlownBack(Em *em, EmWork *work, s16 variant);
-void EmAnteka_Die(Em *, EmWork *);
-void EmAnteka_EndState(Em *em);
-void EmAnteka_SetMotion(Em *em, s32 arg1, s32 arg2, s32 arg3);
-void EmAnteka_MotionEffects(Em *, EmWork *);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 Em_GetFloorY(Em *em, f32 *pos, f32 *out);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
-void Em_TargetPlayerInRange(Em *);
-s8 QuestEm_Appear(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-void Em_InitParts(Em *em);
-void GmEm_ApplySize(Em *em);
-s32 Em_SetCombat(Em *em, u8 a, s16 b);
-s32 Obj_SameArea(void *obj, Player *b);
-s32 Em_InBlockArea1(Em *em);
 void Em_SetRequest(Em *em, u8 a, u8 prio);
-extern u8 gEmShowsOnMap[];
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void EmAnteka_RunState(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
 /* end of prototypes */
 
 /*
@@ -94,170 +49,171 @@ void EmAnteka_MotionSounds(Em *em, EmWork *work)
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE):
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_A):
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, 0xD, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 92, 13, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 122, 13, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 146, 13, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 182, 13, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 210, 13, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 240, 13, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 270, 13, ANTEKA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_B):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 14, 11, ANTEKA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_C):
-        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 4, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 26, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_D):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x10, 4, 0x11, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, Sound_RandomSe(0x11, 4, 0x12, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, Sound_RandomSe(0x10, 4, 0x12, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(16, 4, 17, 4), ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 84, Sound_RandomSe(17, 4, 18, 4), ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, Sound_RandomSe(16, 4, 18, 4), ANTEKA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_E):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xE, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 58, 14, ANTEKA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_RUN):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 18, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_CHARGE):
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 16, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 12, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_MOVE_ACTION_A):
     case EM_MOTION_ID(0, ANTEKA_MOT_MOVE_ACTION_B):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 36, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_RECOVER):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_RIGHT):
     case EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 56, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_ATK_COMBO):
-        Em_PlaySeAtBoneOnFrame(em, 4, 7, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 8, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 9, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0xA, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 7, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 62, 8, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 76, 9, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 148, 10, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 18, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_ATK_SLAM):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 2, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 14, 2, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 24, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 48, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_TURN_QUICK):
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 24, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_LEAP):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_ATK_STRIKE):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 3, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 3, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 54, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_F):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 17, ANTEKA_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x27):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 2, 0);
+    case EM_MOTION_ID(0, 39):
+        Em_PlaySeAtBoneOnFrame(em, 2, 11, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 90, 2, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_FLINCH_A):
     case EM_MOTION_ID(0, ANTEKA_MOT_FLINCH_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 5, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 5, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 34, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_BLOWN_BACK):
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 4, 5, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 1, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 5, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_BLOWN_BACK_LAND):
         if ((em->stateGroup == EM_GROUP_DEFEAT) && (em->state == 0)) {
-            Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xC, 0);
-            Em_PlaySeAtBoneOnFrame(em, 4, 6, 0);
-            Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x14, 0);
+            Em_PlaySeAtBoneOnFrame(em, 62, 12, ANTEKA_BONE_ROOT);
+            Em_PlaySeAtBoneOnFrame(em, 4, 6, ANTEKA_BONE_ROOT);
+            Em_PlaySeAtBoneOnFrame(em, 44, ANTEKA_SE_FALL, ANTEKA_BONE_ROOT);
             break;
         }
-        Em_PlaySeAtBoneOnFrame(em, 4, 6, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x14, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 6, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, ANTEKA_SE_FALL, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 14, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 76, 0, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_COLLAPSE):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 4, 0);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 38, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 66, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 124, ANTEKA_SE_FALL, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 98, 1, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 4, ANTEKA_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_LIE):
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_STATUS4):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xF, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xF, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 4, 15, ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 88, ANTEKA_SE_STEP, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 138, 15, ANTEKA_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_STATUS4_END):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x10, 4, 0x11, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(16, 4, 17, 4), ANTEKA_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, ANTEKA_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, ANTEKA_BONE_ROOT);
         
         break;
     }
 }
 
 /*
- * Sets up an Anteka (EM_KIND_ANTEKA) or a Kelbi (EM_KIND_KELBI): outside a quest a test
- * placement by slot number; the blindness, stance and motion speed; hp from
- * Em_ComputeMaxHp; Em.gender (the Kelbi only: from the quest entry's variant,
- * giving a body scaled by 0.85, a second hp row and the layer-1 idle); the
- * idle motion, the parts, and the work byte from Em.spawnParam.
+ * Sets up an Anteka (EM_KIND_ANTEKA) or a Kelbi (EM_KIND_KELBI): outside a
+ * quest a test placement by slot number; the blindness, stance and motion
+ * speed; hp from Em_ComputeMaxHp; Em.gender (the Kelbi only: from the quest
+ * entry's variant, giving a body scaled by 0.85, a second hp row and the
+ * layer-1 idle); the idle motion, the parts, and the work byte from
+ * Em.spawnParam.
  */
 void EmAnteka_Init(Em *em)
 {
@@ -374,7 +330,7 @@ void EmAnteka_Update(Em *em)
             }
         }
         if (largeFighting != 0 || (largeCalm != 0 && inGroup6 != 0)) {
-            Em_SetRequest(em, 1, 0x90);
+            Em_SetRequest(em, 1, 144);
             Em_RestartScript(em);
             em->scriptPending = 1;
         }
@@ -411,7 +367,7 @@ void EmAnteka_Update(Em *em)
         {
             s32 hitDelta = em->hitAngle - em->rotY;
 
-            if (((hitDelta - 0x4000) & 0xFFFF) < 0x8000 && em->parts[0].hp > 0 && em->stance == EM_STANCE_GROUND) {
+            if (((hitDelta - 16384) & 0xFFFF) < 0x8000 && em->parts[0].hp > 0 && em->stance == EM_STANCE_GROUND) {
                 if ((hitDelta & 0xFFFF) < 0x8000) {
                     EmAnteka_ChangeState(em, EM_GROUP_REACT, ANTEKA_REACT_FLINCH_A, EM_SYNC_OWNER);
                 } else {
@@ -439,7 +395,7 @@ void EmAnteka_Update(Em *em)
         break;
     }
     if (em->requested != 1 && (u8) Em_InBlockArea1(em) == 1) {
-        Em_SetRequest(em, 2, 0x90);
+        Em_SetRequest(em, 2, 144);
         Em_RestartScript(em);
         em->scriptPending = 1;
     }
@@ -763,7 +719,7 @@ void EmAnteka_Walk(Em *em)
         EmAnteka_SetMotion(em, ANTEKA_MOT_WALK, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             EmAnteka_EndState(em);
         }
@@ -784,7 +740,7 @@ void EmAnteka_Run(Em *em, EmWork *work, s32 farStop)
         EmAnteka_SetMotion(em, ANTEKA_MOT_RUN, 0, 0);
         break;
     case 1:
-        if ((Em_StepToGoal(em, 0x40, 0) == 1) && (em->motion[0].playing == 0)) {
+        if ((Em_StepToGoal(em, 64, 0) == 1) && (em->motion[0].playing == 0)) {
             em->step++;
             EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 4, 0);
         }
@@ -813,10 +769,10 @@ void EmAnteka_Charge(Em *em, EmWork *work, s32 farStop)
         break;
     case 1:
         if ((em->type == EM_KIND_ANTEKA) && (em->stateVar0 == 0) && (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0)) {
-            EmContactAttack_Create(em, 0x16);
+            EmContactAttack_Create(em, 22);
             em->stateVar0++;
         }
-        if ((Em_StepToGoal(em, 0x40, 0) == 1) && (em->motion[0].playing == 0)) {
+        if ((Em_StepToGoal(em, 64, 0) == 1) && (em->motion[0].playing == 0)) {
             em->step++;
             EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 4, 0);
         }
@@ -844,7 +800,7 @@ void EmAnteka_MoveActionA(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 0, 0x1A);
+            EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 0, 26);
         }
         break;
     case 2:
@@ -867,7 +823,7 @@ void EmAnteka_MoveActionB(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 0, 0x1A);
+            EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 0, 26);
         }
         break;
     case 2:
@@ -881,8 +837,8 @@ void EmAnteka_MoveActionB(Em *em)
 
 /*
  * ANTEKA_MOVE_TURN_AROUND_RIGHT: a half turn: rotY grows by 0x888 a frame
- * once the blend is over, plus 8 at frame 30 (exactly 0x8000 in all), then
- * EmAnteka_EndState.
+ * once the blend is over, plus 8 at frame 30 (exactly half a turn in all),
+ * then EmAnteka_EndState.
  */
 void EmAnteka_TurnAroundRight(Em *em)
 {
@@ -1035,20 +991,20 @@ void EmAnteka_TurnToGoal(Em *em, EmWork *work)
             break;
         }
         switch (em->motionId[0]) {
-        case 0x3FA:
+        case EM_MOTION_ID(0, ANTEKA_MOT_TURN_QUICK):
             turnFrame = 26.0f;
-            turnStep = 0x4000U / (u32) (turnFrame / 2.0f);
+            turnStep = 16384U / (u32) (turnFrame / 2.0f);
             break;
-        case 0x3EF:
-        case 0x3F0:
+        case EM_MOTION_ID(0, ANTEKA_MOT_TURN_RIGHT):
+        case EM_MOTION_ID(0, ANTEKA_MOT_TURN_LEFT):
             turnFrame = 48.0f;
-            turnStep = 0x4000U / (u32) (turnFrame / 2.0f);
+            turnStep = 16384U / (u32) (turnFrame / 2.0f);
             break;
-        case 0x3F7:
-        case 0x3FE:
+        case EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_RIGHT):
+        case EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_LEFT):
         default:
             turnFrame = 30.0f;
-            turnStep = 0x8000U / (u32) (turnFrame / 2.0f);
+            turnStep = 32768U / (u32) (turnFrame / 2.0f);
             break;
         }
         angleDiff = (em->targetAngle - (em->rotY & 0xFFFF)) & 0xFFFF;
@@ -1118,7 +1074,7 @@ void EmAnteka_Leap(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 44.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, ANTEKA_MOT_RECOVER, 4, 0xA);
+            Em_SetMotion(em, ANTEKA_MOT_RECOVER, 4, 10);
         }
         break;
     case 3:
@@ -1228,7 +1184,7 @@ void EmAnteka_AttackSlam(Em *em, EmWork *work)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 0, 0x1A);
+            EmAnteka_SetMotion(em, ANTEKA_MOT_RECOVER, 0, 26);
         }
         break;
     case 2:
@@ -1405,7 +1361,7 @@ void EmAnteka_BlownBack(Em *em, EmWork *work, s16 fromLying)
             Em_EndStatus2(em);
             break;
         }
-        em->rotY = em->hitAngle + 0x8000;
+        em->rotY = em->hitAngle + ANGLE_TURN / 2;
         Player_ClearVelocity(em);
         em->velX = 0.0f;
         em->velY = 17.0f;
@@ -1427,7 +1383,7 @@ void EmAnteka_BlownBack(Em *em, EmWork *work, s16 fromLying)
             em->step++;
             em->stance = EM_STANCE_GROUND;
             EmAnteka_SetMotion(em, ANTEKA_MOT_BLOWN_BACK_LAND, 0, 0);
-            em->timer = 0x5A;
+            em->timer = 90;
         }
         break;
     case 2:
@@ -1447,8 +1403,8 @@ void EmAnteka_BlownBack(Em *em, EmWork *work, s16 fromLying)
 
 /*
  * ANTEKA_REACT_STATUS4: begins status 4 (hit-react mode EM_HIT_REACT_STATUS
- * every frame) with an effect at bone 2 each frame, until the status timer
- * (Em_SetStatus4Timer) runs out; then ANTEKA_IDLE_STATUS4_END.
+ * every frame) with an effect at ANTEKA_BONE_BODY each frame, until the
+ * status timer (Em_SetStatus4Timer) runs out; then ANTEKA_IDLE_STATUS4_END.
  */
 void EmAnteka_Status4(Em *em)
 {
@@ -1462,7 +1418,7 @@ void EmAnteka_Status4(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        Em_SpawnStatus4Effect(em, 2);
+        Em_SpawnStatus4Effect(em, ANTEKA_BONE_BODY);
         if (--em->timer <= 0) {
             em->step++;
             EmAnteka_ChangeState(em, EM_GROUP_IDLE, ANTEKA_IDLE_STATUS4_END, EM_SYNC_OWNER_FLAGGED);
@@ -1531,14 +1487,14 @@ void EmAnteka_RunReactState(Em *em, EmWork *work)
  */
 void EmAnteka_Die(Em *em, EmWork *work)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
         EmAnteka_SetMotion(em, ANTEKA_MOT_BLOWN_BACK, 0, 0);
-        em->rotY = em->hitAngle + 0x8000;
+        em->rotY = em->hitAngle + ANGLE_TURN / 2;
         em->motionSpeed = 1.0f;
         Player_ClearVelocity(em);
         em->velX = 0.0f;
@@ -1620,7 +1576,7 @@ void EmAnteka_FadeAndLeave(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         break;
     case 1:
         em->timer -= 1;
@@ -1676,7 +1632,8 @@ void EmAnteka_EventFadeAndLeave(Em *em)
 
 /*
  * ANTEKA_EVENT_SCENE: unhittable and not sensing; placed at a fixed spot
- * facing rotY 0x8000, plays three motions in a row, then EmAnteka_EndState.
+ * facing rotY ANGLE_TURN / 2, plays three motions in a row, then
+ * EmAnteka_EndState.
  */
 void EmAnteka_EventScene(Em *em)
 {
@@ -1691,7 +1648,7 @@ void EmAnteka_EventScene(Em *em)
         em->posY = 0.0f;
         em->posZ = 15007.0f;
         em->rotX = 0;
-        em->rotY = 0x8000;
+        em->rotY = ANGLE_TURN / 2;
         em->rotZ = 0;
         Em_SetMotion(em, ANTEKA_MOT_IDLE_ACTION_A, 0, 0);
         break;
@@ -1704,7 +1661,7 @@ void EmAnteka_EventScene(Em *em)
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->timer = 0x96;
+            em->timer = 150;
             Em_SetMotion(em, ANTEKA_MOT_CHARGE, 6, 0);
         }
         break;
@@ -1897,9 +1854,9 @@ void EmAnteka_SetMotion(Em *em, s32 motion, s32 blend, s32 frame)
     }
 }
 
-void EmAnteka_SpawnEffect01(u8 *em)
+void EmAnteka_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 void EmAnteka_TableNop(void)
@@ -1913,8 +1870,8 @@ void EmAnteka_MotionEffectsDefault(Em *em)
 /*
  * Runs the motion sounds (EmAnteka_MotionSounds) and, by the layer-0 motion
  * kept in work->fxMotion, the dust and impact effects at the footfall and
- * impact frames and the contact attacks at the strike frames. The kind
- * tests are always true (only EM_KIND_KELBI and EM_KIND_ANTEKA reach it), and the
+ * impact frames and the contact attacks at the strike frames. The kind tests
+ * are always true (only EM_KIND_KELBI and EM_KIND_ANTEKA reach it), and the
  * first test is redundant: both kept for the match.
  */
 void EmAnteka_MotionEffects(Em *em, EmWork *work)
@@ -1936,82 +1893,83 @@ void EmAnteka_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_RUN):
         if (EmMotion_PassedFrameScaled(em, 4.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x15, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B2, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B1, 3, 0.6f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_CHARGE):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x15, 3, 0.7f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B2, 3, 0.7f);
         }
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.7f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B1, 3, 0.7f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_MOVE_ACTION_A):
     case EM_MOTION_ID(0, ANTEKA_MOT_MOVE_ACTION_B):
-        if (work->fxMotion == 0x3F7) {
+        /* never true here (the turn-around case's test): the dust is always at ANTEKA_BONE_FOOT_B1 */
+        if (work->fxMotion == EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_RIGHT)) {
             if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-                PartFx_SpawnForEmScaled(em, 0x15, 3, 0.9f);
+                PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B2, 3, 0.9f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.9f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B1, 3, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_RECOVER):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0xB, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_A2, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0xB, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_A2, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 7, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_A1, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 7, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_A1, 3, 0.6f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_RIGHT):
     case EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_LEFT):
-        if (work->fxMotion == 0x3F7) {
+        if (work->fxMotion == EM_MOTION_ID(0, ANTEKA_MOT_TURN_AROUND_RIGHT)) {
             if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
-                PartFx_SpawnForEmScaled(em, 0x15, 3, 0.6f);
+                PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B2, 3, 0.6f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_FOOT_B1, 3, 0.6f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_ATK_COMBO):
         if (em->type == EM_KIND_KELBI || em->type == EM_KIND_ANTEKA) {
             if (EmMotion_PassedFrameScaled(em, 64.0f, 0U) != 0) {
-                EmContactAttack_Create(em, 0x11);
+                EmContactAttack_Create(em, 17);
             }
             if (EmMotion_PassedFrameScaled(em, 80.0f, 0U) != 0) {
-                EmContactAttack_Create(em, 0x12);
+                EmContactAttack_Create(em, 18);
             }
             if (EmMotion_PassedFrameScaled(em, 146.0f, 0U) != 0) {
-                EmContactAttack_Create(em, 0x13);
+                EmContactAttack_Create(em, 19);
             }
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_ATK_SLAM):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0) {
             if (em->type == EM_KIND_KELBI || em->type == EM_KIND_ANTEKA) {
-                EmContactAttack_Create(em, 0x15);
+                EmContactAttack_Create(em, 21);
             } else {
-                EmContactAttack_Create(em, 0xB);
+                EmContactAttack_Create(em, 11);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 3, 0.9f);
+            PartFx_SpawnForEmScaled(em, 22, 3, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_TURN_QUICK):
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 3, 0.9f);
+            PartFx_SpawnForEmScaled(em, 22, 3, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_LEAP):
@@ -2019,21 +1977,21 @@ void EmAnteka_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, ANTEKA_MOT_ATK_STRIKE):
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
             if (em->type == EM_KIND_KELBI || em->type == EM_KIND_ANTEKA) {
-                EmContactAttack_Create(em, 0x14);
+                EmContactAttack_Create(em, 20);
             } else {
-                EmContactAttack_Create(em, 0xC);
+                EmContactAttack_Create(em, 12);
             }
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_IDLE_ACTION_F):
-    case EM_MOTION_ID(0, 0x27):
+    case EM_MOTION_ID(0, 39):
     case EM_MOTION_ID(0, ANTEKA_MOT_FLINCH_A):
     case EM_MOTION_ID(0, ANTEKA_MOT_FLINCH_B):
     case EM_MOTION_ID(0, ANTEKA_MOT_BLOWN_BACK):
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_BLOWN_BACK_LAND):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 0.5f);
+            PartFx_SpawnForEmScaled(em, ANTEKA_BONE_BODY, 6, 0.5f);
         }
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_GET_UP):
@@ -2043,7 +2001,7 @@ void EmAnteka_MotionEffects(Em *em, EmWork *work)
         boneOffset[0] = 0.0f;
         boneOffset[1] = 0.0f;
         boneOffset[2] = 10.0f;
-        Em_SpawnLyingPuffs(em, 0x17, boneOffset, 1.0f);
+        Em_SpawnLyingPuffs(em, ANTEKA_BONE_HEAD, boneOffset, 1.0f);
         break;
     case EM_MOTION_ID(0, ANTEKA_MOT_STATUS4):
     case EM_MOTION_ID(0, ANTEKA_MOT_STATUS4_END):
@@ -2073,8 +2031,7 @@ void EmAnteka_UpdateMotionEffects(Em *em)
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmAnteka_Callbacks[8] = {
-    EmAnteka_SpawnEffect01, EmAnteka_SpawnEffect01, EmAnteka_TableNop, EmAnteka_UpdateMotionEffects,
+    EmAnteka_SpawnShadow, EmAnteka_SpawnShadow, EmAnteka_TableNop, EmAnteka_UpdateMotionEffects,
     GmEm_ReturnZero, EmAnteka_Reinit, NULL, NULL,
 };

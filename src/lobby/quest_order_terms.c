@@ -1,5 +1,9 @@
 /*
- * The quest desk's checks and the quest room's settings:
+ * The quest room's steps, the quest desk's checks and the quest room's
+ * settings:
+ * - Money_PayPending settles gRewardMoney; Quest_PostStep posts the
+ *   selected quest to the server step by step; LobbyMenu_KbdEntry types a
+ *   text with the software keyboard (the room's password).
  * - Quest_CheckOrderTerms: whether the local hunter meets a quest's order
  *   condition (QuestInfo.terms): hunter rank bounds, items, event flags,
  *   equipment, the weapon type, the style, the gender, money, or an entry
@@ -18,17 +22,221 @@
 #include "scene.h"
 #include "save.h"
 #include "quest.h"
+#include "lobby_menu.h"
+#include "kbd.h"
+#include "pad.h"
+#include "lobby_labels.h"
+#include "window.h"
+#include "quest_order_terms.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_room.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "offer_menu.h"
 
-void Quest_SendPaid(void);
-void QuestRoom_ResetSettings(void);
-
-void LobbyPkt_QuestPaidSend(void);
 void *memset(void *dst, s32 c, u32 n);
 extern s8 gQuestMinMembers;
 extern s8 gRoomPassOn;
 extern s8 gRoomPassword[9];
 extern s8 gRoomPasswordEnd;
-extern char gRoomText[0x3D];
+extern char gRoomText[61];
+s8 Kbd_Run(char *dst, s16 held, s16 pressed);
+extern u16 gLobbyQuestId;
+extern u8 gMenuWork[];
+
+/* Adds gRewardMoney to the save's money (Save_AddMoney) and clears it; the
+ * money sound plays unless `silent` or the sum is 0. */
+void Money_PayPending(u8 silent)
+{
+    Save_AddMoney(gRewardMoney);
+    if (silent == 0 && gRewardMoney != 0) {
+        LobbySe_Play(10);
+    }
+    gRewardMoney = 0;
+}
+
+extern LobbyMenu *gLobbyMenu;
+
+void *memcpy(void *dst, const void *src, u32 n);
+s32 LobbyStep_Download(s32 slot, s32 id);
+s32 strcmp(const void *a, const void *b);
+extern LobbyRecs gLobbyRecs;
+extern s32 gTownMenuOpen;
+extern s32 gTownMode;
+extern s8 gTownModeStep;
+extern u32 gQuestPostArg;
+
+/*
+ * Posts the selected quest (gLobbyQuestId) as a quest room, one step a frame
+ * (QuestPostHead.postStep): a downloaded quest's file is loaded first, then
+ * the server is asked for the room list, the entry, the records (the room's
+ * password and the member count go in), the settings, the posting `req` and
+ * the quest's acceptance. Returns 0 once posted (LobbyState.questPaid set),
+ * 2 while running, 1 once an error shown has been closed with PAD_CIRCLE.
+ * The hunter takes no pad input in the field meanwhile (gFieldControl).
+ */
+s32 Quest_PostStep(MsgQuestPost *req)
+{
+    QuestPostHead *post = (QuestPostHead *)gMenuWork;
+    u16 pad;
+    s32 i;
+    s8 slot;
+    QuestInfo *info;
+
+    pad = LobbyPad_Get(0);
+    switch (post->postStep) {
+    case 0:
+        if (gLobbyQuestId < QUEST_ID_DOWNLOADED) {
+            post->postStep++;
+            gFieldControl = 0;
+        } else {
+            slot = Quest_DownloadedSlot(gLobbyQuestId);
+            switch (LobbyStep_Download(slot, gLobbyQuestId)) {
+            case 0:
+                info = Quest_CurrentInfo();
+                if (info->id != gLobbyQuestId) {
+                    LobbyText_Open(99);
+                    post->postStep = 8;
+                    gFieldControl = 0;
+                } else {
+                    post->postStep++;
+                }
+                break;
+            case 1:
+                LobbyText_Open(99);
+                post->postStep = 8;
+                gFieldControl = 0;
+                break;
+            }
+        }
+        break;
+    case 1:
+        switch (LobbyLevel2_FetchList()) {
+        case 0:
+            post->postStep++;
+            break;
+        case 1:
+            LobbyDialog_OpenWait(gLobby->errText);
+            post->postStep = 8;
+            gFieldControl = 0;
+            break;
+        }
+        break;
+    case 2:
+        switch (LobbyLevel2_EnterFree(0)) {
+        case 0:
+            post->postStep++;
+            break;
+        case 1:
+            post->postStep = 8;
+            gFieldControl = 0;
+            break;
+        }
+        break;
+    case 3:
+        switch (LobbyLevel2_FetchRecords()) {
+        case 0:
+            memcpy(gLobbyRecs.pass, gRoomPassword, sizeof(gLobbyRecs.pass));
+            for (i = 0; i < gLobbyRecs.rec[0].subCount; i++) {
+                if (strcmp(gMemberCountTexts[gQuestMinMembers], gLobbyRecs.rec[0].subName[i]) == 0) {
+                    gLobbyRecs.rec[0].cur = i;
+                    break;
+                }
+            }
+            post->postStep++;
+            break;
+        case 1:
+            post->postStep = 8;
+            gTownMenuOpen = 1;
+            gTownMode = 24;
+            gFieldControl = 0;
+            gTownModeStep = 0;
+            break;
+        }
+        break;
+    case 4:
+        switch (LobbyLevel2_SendSettings()) {
+        case 0:
+            post->postStep++;
+            break;
+        case 1:
+            break;
+        }
+        break;
+    case 5:
+        switch (LobbyLevel2_SendQuestPost(req)) {
+        case 0:
+            post->postStep++;
+            break;
+        case 1:
+            post->postStep = 8;
+            gFieldControl = 0;
+            break;
+        }
+        break;
+    case 6:
+        post->postStep++;
+        gQuestPostArg = (gQuestPostArg & 0xFFFF0000) | gLobbyQuestId;
+        break;
+    case 7:
+        switch (LobbyLevel2_SendQuestAccept(gQuestPostArg)) {
+        case 0:
+            post->postStep = 0;
+            gLobby->questPaid = 1;
+            gFieldControl = 1;
+            return 0;
+        case 1:
+            LobbyDialog_OpenWait(gLobby->errText);
+            post->postStep = 8;
+            gFieldControl = 0;
+            break;
+        }
+        break;
+    case 8:
+        gLobbyMenu->redraw = 1;
+        if (pad & PAD_CIRCLE) {
+            gFieldControl = 1;
+            LobbySe_Play(LOBBY_SE_CONFIRM);
+            return 1;
+        }
+        break;
+    }
+    return 2;
+}
+
+/* Types a text into `buf` with the software keyboard (the room's or the
+ * records' password), one step a frame (LobbyMenu.screen): opens it, runs it
+ * until a text is entered or PAD_SELECT closes it, then closes it. Returns 1
+ * once closed, 0 before. */
+s32 LobbyMenu_KbdEntry(void *buf)
+{
+    u16 pad = Pad_GetPressedRepeat(0);
+
+    switch (gLobbyMenu->screen) {
+    case 0:
+        gLobbyMenu->screen++;
+        Kbd_SetPos(58, 80.0f);
+        Chat_OpenKbd(3, 6, 8, buf);
+        gFieldControl = 0;
+        break;
+    case 1:
+        if (Kbd_Run(buf, (s16)gPadState[0].held, (s16)gPadState[0].pressed) != 0) {
+            gLobbyMenu->screen++;
+        } else if (pad == PAD_SELECT) {
+            gLobbyMenu->screen++;
+            LobbySe_Play(LOBBY_SE_CANCEL);
+        }
+        break;
+    case 2:
+        Kbd_Cancel();
+        gLobbyMenu->screen = 0;
+        gFieldControl = 1;
+        return 1;
+    }
+    return 0;
+}
 
 /* Sends the quest-paid packet (LobbyPkt_QuestPaidSend) when a quest was
  * accepted with its fee paid (LobbyState.questPaid). */
@@ -67,14 +275,9 @@ s32 QuestFlags_GetCategory(u32 *infoFlags)
     return (s8)(cat);
 }
 
-s32 Items_HaveEnough(u16 item, s32 n);
-s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value);
-s32 Save_TestEventFlag(s32 flag);
-s32 Box_HasEquip(EquipItem *e);
-
 /*
  * 1 when the local hunter meets order condition `id` (QuestInfo.terms,
- * 0-0x5E; 0 and unknown ids always): the hunter card's rank above or below
+ * 0-94; 0 and unknown ids always): the hunter card's rank above or below
  * a bound (`cardHr`) or the save's (gSave.hr), an item held, an event flag,
  * a blade owned or worn, a rate flag, the style, the gender, the weapon type,
  * money, or an entry requirement (Player_CheckRequirement). `ordering` is 1
@@ -92,422 +295,422 @@ s32 Quest_CheckOrderTerms(u8 id, u8 ordering)
     case 0:
     default:
         return 1;
-    case 0x1:
-        if (*cardHr > 0x4 || ordering == 0) {
+    case 1:
+        if (*cardHr > 4 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x2:
-        if (*cardHr > 0xa || ordering == 0) {
+    case 2:
+        if (*cardHr > 10 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x3:
-        if (*cardHr > 0x10 || ordering == 0) {
+    case 3:
+        if (*cardHr > 16 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x4:
-        if (*cardHr > 0x15 || ordering == 0) {
+    case 4:
+        if (*cardHr > 21 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x5:
-        if (*cardHr > 0x28 || ordering == 0) {
+    case 5:
+        if (*cardHr > 40 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x6:
-        if (*cardHr > 0x32 || ordering == 0) {
+    case 6:
+        if (*cardHr > 50 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x7:
-        if (*cardHr > 0x63 || ordering == 0) {
+    case 7:
+        if (*cardHr > 99 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x8:
-        if (*cardHr > 0xc7 || ordering == 0) {
+    case 8:
+        if (*cardHr > 199 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x9:
-        if (*cardHr > 0x12b || ordering == 0) {
+    case 9:
+        if (*cardHr > 299 || ordering == 0) {
             return 1;
         }
         break;
-    case 0xA:
-        if (*cardHr > 0x1f3 || ordering == 0) {
+    case 10:
+        if (*cardHr > 499 || ordering == 0) {
             return 1;
         }
         break;
-    case 0xB:
-        if (*cardHr > 0x383 || ordering == 0) {
+    case 11:
+        if (*cardHr > 899 || ordering == 0) {
             return 1;
         }
         break;
-    case 0xC:
+    case 12:
         if (*cardHr == 999 || ordering == 0) {
             return 1;
         }
         break;
-    case 0xD:
-        if (*cardHr < 0x5) {
+    case 13:
+        if (*cardHr < 5) {
             return 1;
         }
         break;
-    case 0xE:
-        if (*cardHr < 0xb) {
+    case 14:
+        if (*cardHr < 11) {
             return 1;
         }
         break;
-    case 0xF:
-        if (*cardHr < 0x11) {
+    case 15:
+        if (*cardHr < 17) {
             return 1;
         }
         break;
-    case 0x10:
-        if (*cardHr < 0x16) {
+    case 16:
+        if (*cardHr < 22) {
             return 1;
         }
         break;
-    case 0x11:
-        if (*cardHr < 0x1f) {
+    case 17:
+        if (*cardHr < 31) {
             return 1;
         }
         break;
-    case 0x12:
-        if (*cardHr < 0x29) {
+    case 18:
+        if (*cardHr < 41) {
             return 1;
         }
         break;
-    case 0x13:
-        if (*cardHr < 0x33) {
+    case 19:
+        if (*cardHr < 51) {
             return 1;
         }
         break;
-    case 0x14:
-        if (*cardHr > 0 && *cardHr < 0x5) {
+    case 20:
+        if (*cardHr > 0 && *cardHr < 5) {
             return 1;
         }
         break;
-    case 0x15:
-        if (*cardHr > 0 && *cardHr < 0xb) {
+    case 21:
+        if (*cardHr > 0 && *cardHr < 11) {
             return 1;
         }
         break;
-    case 0x16:
-        if (*cardHr > 0 && *cardHr < 0x11) {
+    case 22:
+        if (*cardHr > 0 && *cardHr < 17) {
             return 1;
         }
         break;
-    case 0x17:
-        if (*cardHr > 0 && *cardHr < 0x16) {
+    case 23:
+        if (*cardHr > 0 && *cardHr < 22) {
             return 1;
         }
         break;
-    case 0x18:
-        if (*cardHr > 0 && *cardHr < 0x1f) {
+    case 24:
+        if (*cardHr > 0 && *cardHr < 31) {
             return 1;
         }
         break;
-    case 0x19:
-        if (*cardHr > 0 && *cardHr < 0x29) {
+    case 25:
+        if (*cardHr > 0 && *cardHr < 41) {
             return 1;
         }
         break;
-    case 0x1A:
-        if (*cardHr > 0 && *cardHr < 0x33) {
+    case 26:
+        if (*cardHr > 0 && *cardHr < 51) {
             return 1;
         }
         break;
-    case 0x1B:
-        if (*cardHr >= 0x1F && *cardHr < 0x29) {
+    case 27:
+        if (*cardHr >= 31 && *cardHr < 41) {
             return 1;
         }
         break;
-    case 0x1C:
-        if (*cardHr >= 0x1F && *cardHr < 0x33) {
+    case 28:
+        if (*cardHr >= 31 && *cardHr < 51) {
             return 1;
         }
         break;
-    case 0x1D:
-        if (Items_HaveEnough(0x2D3, 1) == 1) {
+    case 29:
+        if (Items_HaveEnough(723, 1) == 1) {
             return 1;
         }
         break;
-    case 0x1E:
-        if (Items_HaveEnough(0x2D7, 1) == 1 && gSave.hr >= 51) {
+    case 30:
+        if (Items_HaveEnough(727, 1) == 1 && gSave.hr >= 51) {
             return 1;
         }
         break;
-    case 0x1F:
+    case 31:
         if (Save_TestEventFlag(EVENT_FLAG_SONG_TRACK_3) == 1) {
             return 1;
         }
         break;
-    case 0x20:
+    case 32:
         memset(&bladeA, 0, sizeof(bladeA));
         memset(&bladeB, 0, sizeof(bladeB));
-        bladeA.id = 0x17D;
+        bladeA.id = 381;
         bladeA.type = EQUIP_BLADE;
-        bladeB.id = 0x1E4;
+        bladeB.id = 484;
         bladeB.type = EQUIP_BLADE;
         if (Box_HasEquip(&bladeA) == 1 || Box_HasEquip(&bladeB) == 1) {
             return 1;
         }
         break;
-    case 0x21:
+    case 33:
         if (gSave.rateFlags & 0x800) {
             return 1;
         }
         break;
-    case 0x22:
+    case 34:
         if (gSave.styleBits != 0 && gPlayers[gScene.localPlayer].style == 1) {
             return 1;
         }
         break;
-    case 0x23:
+    case 35:
         if (gSave.styleBits != 0 && gSave.hr >= 31 && gPlayers[gScene.localPlayer].style == 1) {
             return 1;
         }
         break;
-    case 0x24:
+    case 36:
         if (gPlayers[gScene.localPlayer].style == 2) {
             return 1;
         }
         break;
-    case 0x25:
+    case 37:
         if (gSave.styleBits != 0 && gSave.hr >= 31 && gPlayers[gScene.localPlayer].style == 2) {
             return 1;
         }
         break;
-    case 0x26:
+    case 38:
         if (gPlayers[gScene.localPlayer].style == 0) {
             return 1;
         }
         break;
-    case 0x27:
+    case 39:
         if (gSave.styleBits != 0 && gSave.hr >= 31 && gPlayers[gScene.localPlayer].style == 0) {
             return 1;
         }
         break;
-    case 0x28:
-        if (((u8 *)cardHr)[0xA] == 0) {
+    case 40:
+        if (((u8 *)cardHr)[10] == 0) {
             return 1;
         }
         break;
-    case 0x29:
-        if (((u8 *)cardHr)[0xA] == 1) {
+    case 41:
+        if (((u8 *)cardHr)[10] == 1) {
             return 1;
         }
         break;
-    case 0x2A:
+    case 42:
         if (pl->weaponType == WEAPON_GREAT_SWORD) {
             return 1;
         }
         break;
-    case 0x2B:
+    case 43:
         if (pl->weaponType == WEAPON_LANCE) {
             return 1;
         }
         break;
-    case 0x2C:
+    case 44:
         if (pl->weaponType == WEAPON_HAMMER) {
             return 1;
         }
         break;
-    case 0x2D:
+    case 45:
         if (pl->weaponType == WEAPON_SWORD_SHIELD) {
             return 1;
         }
         break;
-    case 0x2E:
+    case 46:
         if (pl->weaponType == WEAPON_DUAL_SWORDS) {
             return 1;
         }
         break;
-    case 0x2F:
+    case 47:
         if (pl->weaponType == WEAPON_LIGHT_BOWGUN) {
             return 1;
         }
         break;
-    case 0x30:
+    case 48:
         if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
             return 1;
         }
         break;
-    case 0x31:
+    case 49:
         if (pl->weaponType == WEAPON_LONG_SWORD) {
             return 1;
         }
         break;
-    case 0x32:
+    case 50:
         if (pl->weaponType == WEAPON_HUNTING_HORN) {
             return 1;
         }
         break;
-    case 0x33:
+    case 51:
         if (pl->weaponType == WEAPON_BOW) {
             return 1;
         }
         break;
-    case 0x34:
+    case 52:
         if (pl->weaponType == WEAPON_GUNLANCE) {
             return 1;
         }
         break;
-    case 0x35:
+    case 53:
         if (pl->weaponType == WEAPON_DUAL_SWORDS || pl->weaponType == WEAPON_SWORD_SHIELD) {
             return 1;
         }
         break;
-    case 0x36:
+    case 54:
         if (pl->weaponType == WEAPON_LONG_SWORD || pl->weaponType == WEAPON_GREAT_SWORD) {
             return 1;
         }
         break;
-    case 0x37:
+    case 55:
         if (pl->weaponType == WEAPON_GUNLANCE || pl->weaponType == WEAPON_LANCE) {
             return 1;
         }
         break;
-    case 0x38:
+    case 56:
         if (pl->weaponType == WEAPON_HUNTING_HORN || pl->weaponType == WEAPON_HAMMER) {
             return 1;
         }
         break;
-    case 0x39:
+    case 57:
         if (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN) {
             return 1;
         }
         break;
-    case 0x3A:
+    case 58:
         if (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN || pl->weaponType == WEAPON_BOW) {
             return 1;
         }
         break;
-    case 0x3B:
+    case 59:
         return Player_CheckRequirement(pl, QUEST_REQ_AMMO_ONLY, 0);
-    case 0x3C:
+    case 60:
         return Player_CheckRequirement(pl, QUEST_REQ_EMPTY_POUCH, 0);
-    case 0x3D:
-        if (*cardHr >= 0xB) {
+    case 61:
+        if (*cardHr >= 11) {
             return 1;
         }
         break;
-    case 0x3E:
+    case 62:
         return Player_CheckRequirement(pl, QUEST_REQ_NO_ARMOR, 0);
-    case 0x3F:
-        if (gSave.equip[SAVE_EQUIP_WEAPON].type == EQUIP_BLADE && gSave.equip[SAVE_EQUIP_WEAPON].id == 0x9C) {
+    case 63:
+        if (gSave.equip[SAVE_EQUIP_WEAPON].type == EQUIP_BLADE && gSave.equip[SAVE_EQUIP_WEAPON].id == 156) {
             return 1;
         }
         break;
-    case 0x40:
+    case 64:
         if (gSave.money <= 100) {
             return 1;
         }
         break;
-    case 0x41:
+    case 65:
         return Player_CheckRequirement(pl, QUEST_REQ_DEFENSE_MIN, 180);
-    case 0x42:
+    case 66:
         return Player_CheckRequirement(pl, QUEST_REQ_DEFENSE_MAX, 120);
-    case 0x43:
+    case 67:
         return Player_CheckRequirement(pl, QUEST_REQ_DEFENSE_MAX, 75);
-    case 0x44:
+    case 68:
         return Player_CheckRequirement(pl, QUEST_REQ_DEFENSE_MAX, 35);
-    case 0x45:
+    case 69:
         return Player_CheckRequirement(pl, QUEST_REQ_FIRE_RES_MIN, 15);
-    case 0x46:
+    case 70:
         return Player_CheckRequirement(pl, QUEST_REQ_FIRE_RES_MAX, -15);
-    case 0x47:
+    case 71:
         return Player_CheckRequirement(pl, QUEST_REQ_WATER_RES_MIN, 15);
-    case 0x48:
+    case 72:
         return Player_CheckRequirement(pl, QUEST_REQ_WATER_RES_MAX, -15);
-    case 0x49:
+    case 73:
         return Player_CheckRequirement(pl, QUEST_REQ_THUNDER_RES_MIN, 15);
-    case 0x4A:
+    case 74:
         return Player_CheckRequirement(pl, QUEST_REQ_THUNDER_RES_MAX, -15);
-    case 0x4B:
+    case 75:
         return Player_CheckRequirement(pl, QUEST_REQ_DRAGON_RES_MIN, 15);
-    case 0x4C:
+    case 76:
         return Player_CheckRequirement(pl, QUEST_REQ_DRAGON_RES_MAX, -15);
-    case 0x4D:
+    case 77:
         return Player_CheckRequirement(pl, QUEST_REQ_ICE_RES_MIN, 15);
-    case 0x4E:
+    case 78:
         return Player_CheckRequirement(pl, QUEST_REQ_ICE_RES_MAX, -15);
-    case 0x4F:
+    case 79:
         if (gSave.money >= 50000 || ordering == 1) {
             return 1;
         }
         break;
-    case 0x50:
+    case 80:
         if (gSave.money >= 100000 || ordering == 1) {
             return 1;
         }
         break;
-    case 0x51:
+    case 81:
         if (gSave.money >= 200000 || ordering == 1) {
             return 1;
         }
         break;
-    case 0x52:
+    case 82:
         if (gSave.hr > 7 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x53:
+    case 83:
         if (gSave.hr > 14 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x54:
+    case 84:
         if (gSave.hr > 19 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x55:
+    case 85:
         if (gSave.hr > 30 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x56:
+    case 86:
         if (gSave.hr > 37 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x57:
+    case 87:
         if (gSave.hr > 47 || ordering == 0) {
             return 1;
         }
         break;
-    case 0x58:
+    case 88:
         if (gSave.hr >= 17) {
             return 1;
         }
         break;
-    case 0x59:
+    case 89:
         if (gSave.hr >= 22) {
             return 1;
         }
         break;
-    case 0x5A:
+    case 90:
         if (gSave.hr >= 31) {
             return 1;
         }
         break;
-    case 0x5B:
+    case 91:
         if (gSave.hr >= 41) {
             return 1;
         }
         break;
-    case 0x5C:
+    case 92:
         if (gSave.hr >= 51) {
             return 1;
         }
         break;
-    case 0x5D:
+    case 93:
         if (ordering == 0) {
             if (gSave.hr >= 41) {
                 return 1;
@@ -516,7 +719,7 @@ s32 Quest_CheckOrderTerms(u8 id, u8 ordering)
             return 1;
         }
         break;
-    case 0x5E:
+    case 94:
         if (Player_CheckRequirement(pl, QUEST_REQ_NO_BARRED_ITEMS, 0) == 1) {
             return 1;
         }
@@ -530,30 +733,30 @@ s32 Quest_CheckOrderTerms(u8 id, u8 ordering)
 s32 Quest_IsSpecialId(u16 id)
 {
     switch (id & 0xFFFF) {
-    case 0x27:
+    case 39:
     case 9:
-    case 0xBB9:
-    case 0x40B:
-    case 0xBBA:
-    case 0x7EC:
-    case 0x802:
-    case 0xBBB:
-    case 0x2711:
-    case 0x2716:
-    case 0x271E:
-    case 0x2726:
-    case 0x2730:
-    case 0x2739:
-    case 0x273A:
-    case 0x273E:
-    case 0x273D:
-    case 0x273B:
-    case 0x273C:
-    case 0x2740:
-    case 0xBBC:
-    case 0xBBD:
-    case 0xBBE:
-    case 0xBBF:
+    case 3001:
+    case 1035:
+    case 3002:
+    case 2028:
+    case 2050:
+    case 3003:
+    case 10001:
+    case 10006:
+    case 10014:
+    case 10022:
+    case 10032:
+    case 10041:
+    case 10042:
+    case 10046:
+    case 10045:
+    case 10043:
+    case 10044:
+    case 10048:
+    case 3004:
+    case 3005:
+    case 3006:
+    case 3007:
         return 1;
     }
     return 0;

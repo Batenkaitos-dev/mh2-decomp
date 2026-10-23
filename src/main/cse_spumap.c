@@ -43,7 +43,7 @@ s32 CseSpuMap_Init(void *map)
         return 0x80000002;
     }
     for (i = 0; i < 16; i++) {
-        gCseSpuBanks.addr[i] = 0x5020;
+        gCseSpuBanks.addr[i] = 20512;
         gCseSpuBanks.size[i] = 0;
     }
     gCseSpuMap = map;
@@ -67,7 +67,7 @@ s32 CseSpuMap_SetPage(u32 page)
         return 0x80000003;
     }
     gCseSpuMapPage = page;
-    addr = 0x5020;
+    addr = 20512;
     pg = &map->pages[gCseSpuMapPage];
     for (i = 0; i < 16; i++) {
         gCseSpuBanks.addr[i] = addr;

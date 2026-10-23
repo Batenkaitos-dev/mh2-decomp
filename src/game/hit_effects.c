@@ -1,70 +1,86 @@
 /*
- * The stage objects of five kinds, each with its update (a switch on
- * StageObj.state: set-up, run, end, free), the
+ * The stage objects of six kinds, each with its update (a switch on
+ * StageObj.state: set-up, run, end, free), the draw callback of its draw
+ * slots and its creators:
+ * - PlayerHitBurst: a burst on a hunter who was hit, made by the hit
+ *   detection: a flash, two streaks and a turning mesh over ten frames,
+ *   from one draw slot and no buffer;
+ * - ItemProp: what an item leaves in the stage, drawn by type (an item's
+ *   smoke screen, rising clouds, a bait put down, a dropped carried item,
+ *   an eating puff);
+ * - FireBlast: bomb blasts and their smoke, fires, flashes, the special
+ *   mine point's glow;
+ * - ElementBurst: an elemental or status hit's burst, rings;
+ * - HitSplash: the spray, flashes and sparks where a hit lands;
+ * - AttackBurst: the monsters' shot flares, trails, impacts and rocks.
  *
- * draw callback of its draw slots and its creators: ItemProp (an item's smoke
- * screen, rising clouds, a bait put down,
- *
- * a dropped carried item, an eating puff; here its puffs' states, its end and
- * free states and its creators), FireBlast
- *
- * (bomb blasts and their smoke, fires, flashes, the special mine point's
- * glow), ElementBurst (an elemental or status
- *
- * hit's burst, rings), HitSplash (the spray, flashes and sparks where a hit
- * lands) and AttackBurst (the monsters' shot
- *
- * flares, trails and impacts; here all its types but the rocks). An object
- * keeps its parts in its buffer blocks, one
- *
- * draw slot each; a part counts up from a negative frame, takes its scale and
- * opacity from the kind's keyed curves by
- *
- * its frame (Key_LerpVec3, Key_LerpFloat), is placed (mostly toward the
- * camera) and drawn with Effect_DrawModel. The
- *
- * kinds' tables follow the code; a curve array's number is its place in the
- * kind's curve table.
+ * An object of the other kinds keeps its parts in its buffer blocks, one
+ * draw slot each; a
+ * part counts up from a negative frame, takes its scale and opacity from
+ * the kind's keyed curves by its frame (Key_LerpVec3, Key_LerpFloat), is
+ * placed (mostly toward the camera) and drawn with Effect_DrawModel. The
+ * kinds' tables follow the code; a curve array's number is its place in
+ * the kind's curve table.
  */
 #include "common.h"
+#include "area.h"
 #include "sprite.h"
 #include "quest.h"
 #include "em.h"
+#include "em_shakalaka.h"
 #include "player.h"
 #include "stageobj.h"
 #include "lobby_vobj.h"
 #include "objattach.h"
 #include "capsule.h"
 #include "scene.h"
+#include "em_rathalos.h"
+#include "em_gravios.h"
+#include "em_diablos.h"
+#include "em_fatalis.h"
+#include "em_khezu.h"
+#include "em_laoshan.h"
+#include "em_garuga.h"
+#include "em_blangonga.h"
+#include "em_kushala.h"
+#include "em_remobra.h"
+#include "render_state.h"
+#include "area_draw.h"
+#include "camera.h"
+#include "card.h"
+#include "sound.h"
+#include "text.h"
+#include "hit_effects.h"
+#include "engine_math.h"
+#include "rand.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+
+/* a rock of an AttackBurst of the rock type (48 bytes, ten in its blocks) */
+typedef struct AttackBurstRock {
+    s16 slot;                   /* 0x00: its draw slot */
+    s16 bounces;                /* 0x02: bounces left (0..2), -1: done */
+    f32 vel[3];                 /* 0x04 */
+    f32 pos[3];                 /* 0x10 */
+    f32 scale;                  /* 0x1C */
+    s16 unk20;                  /* 0x20 */
+    u16 rot[3];                 /* 0x22 */
+    s16 spin;                   /* 0x28: added to rot[2] each frame */
+    u8 unk2A[44 - 42];
+    DrawSlot *node;                /* 0x2C */
+} AttackBurstRock;
 /* Declarations of the functions called below. */
-void Vec_Copy(f32 *out, f32 *in);
 void DrawSlot_Free(s32 i);
 void DrawSlotB_Free(s32);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-u8 Player_InCurrentArea(void *obj);
 
-typedef struct ElementBurstPart {
-    s16 kind;                   /* 0x00: its index; type 9: 1 */
-    s16 slot;                   /* 0x02: its draw slot */
-    f32 pos[3];                 /* 0x04 */
-    f32 sc[3];                  /* 0x10: its scale, from a curve by its frame */
-    f32 scale;                  /* 0x1C */
-    DrawSlot *node;                /* 0x20 */
-    s16 frame;                  /* 0x24: its frame, from a delay (negative) */
-    u16 angle;                  /* 0x26: a random angle */
-    s16 spin;                  /* 0x28: its spin */
-    u8 alpha;                   /* 0x2A: from a curve by its frame */
-    u8 unk2B;
-} ElementBurstPart;
-
-/* a part of a FireBlast (0x34 bytes, in its blocks) */
+/* a part of a FireBlast (52 bytes, in its blocks) */
 typedef struct FireBlastPart {
     s16 cell;                  /* 0x00: a random 0..31 */
     s16 frame;                  /* 0x02: counts up from -9 or -15 */
     s16 slot;                   /* 0x04: its draw slot */
     s16 look;                  /* 0x06 */
     u16 angle;                  /* 0x08: a random angle */
-    s16 angleStep;                  /* 0x0A: its speed, +-0x5B */
+    s16 angleStep;                  /* 0x0A: its speed, +-91 */
     f32 curveScale[3];               /* 0x0C */
     f32 offset[3];               /* 0x18 */
     f32 alpha;                  /* 0x24: its opacity, 0 to 1, from a curve by its frame */
@@ -73,7 +89,7 @@ typedef struct FireBlastPart {
     DrawSlot *node;                /* 0x30 */
 } FireBlastPart;
 
-/* a puff of an ItemProp of types 5 and 6 (0x34 bytes, in its blocks) */
+/* a puff of an ItemProp of types 5 and 6 (52 bytes, in its blocks) */
 typedef struct ItemPropPuff {
     s16 slot;                   /* 0x00: its draw slot */
     s16 idx;                    /* 0x02 */
@@ -86,7 +102,7 @@ typedef struct ItemPropPuff {
     DrawSlot *node;                /* 0x20 */
     f32 pos[3];                 /* 0x24 */
     s16 spin;                   /* 0x30 */
-    u8 unk32[0x34 - 0x32];
+    u8 unk32[52 - 50];
 } ItemPropPuff;
 
 /* a colour (r, g, b, and an alpha that the mine glow's colours use) */
@@ -97,21 +113,21 @@ typedef struct ColorRgba {
     u8 alpha;
 } ColorRgba;
 
-/* a part of a HitSplash (0x34 bytes, in its blocks) */
+/* a part of a HitSplash (52 bytes, in its blocks) */
 typedef struct HitSplashPart {
     s16 slot;                   /* 0x00: its draw slot */
     s16 delay;                  /* 0x02: frames before it starts (negative) */
     f32 pos[3];                 /* 0x04 */
     f32 sc[3];                  /* 0x10: its scale */
-    s16 idx;                    /* 0x1C: its index; 0xFF hides it (its owner gone); types 9, 12, 13: a random 0-7 picking its spin and model */
+    s16 idx;                    /* 0x1C: its index; 255 hides it (its owner gone); types 9, 12, 13: a random 0-7 picking its spin and model */
     u16 angle;                  /* 0x1E */
-    u16 alpha;                  /* 0x20: 0xFF */
-    u8 unk22[0x24 - 0x22];
+    u16 alpha;                  /* 0x20: 255 */
+    u8 unk22[36 - 34];
     f32 scale;                  /* 0x24 */
     f32 fall;                  /* 0x28: its fall a frame: -0.8 (type 0) */
     DrawSlot *node;                /* 0x2C */
     s16 cell;                  /* 0x30 */
-    u8 unk32[0x34 - 0x32];
+    u8 unk32[52 - 50];
 } HitSplashPart;
 
 /* a step of a HitSplash spray (type 0): at frame t, a burst of size v tenths */
@@ -124,138 +140,56 @@ extern s16 gAreaFadeTimer;    /* the frames left in the fade's phase */
 extern s16 gAreaFade;         /* the area's full-screen fade: 0 none, then its phases 1 to 3 */
 
 /* prototypes */
-extern u8 ElementBurst_PoisonColorKeys[];
-extern u8 ElementBurst_WaterRingColorKeys[];
-extern u8 ElementBurst_StatusColorKeys[];
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
+extern ColorKey ElementBurst_PoisonColorKeys[];
+extern ColorKey ElementBurst_WaterRingColorKeys[];
+extern ColorKey ElementBurst_StatusColorKeys[];
 typedef struct FireBlastBuf {
     FireBlastPart part[7];          /* 0x000 */
     EmObj flash;                /* 0x16C: its flash (FlashObj_Add): 5 frames */
 } FireBlastBuf;
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 FlashObj_Add(EmObj *obj);
-void FireBlast_CreateOwned(f32 *pos, s16 k, f32 scale, void *owner);
 extern void *FireBlast_PartCurves[];
 extern s16 FireBlast_BlastCellFrames[];
 extern s16 FireBlast_SmallBlastCellFrames[];
-void SoundObj_Start(s32 bank, s32 se, s32 k, f32 *pos, s16 n, u8 quiet);
-s32 SpecialMine_Rank(void);
 extern s16 D_008CEEA8[];
-void HitSplash_PlaySound(StageObj *o, f32 *pos);
-void HitSplash_Draw(DrawSlot *node);
-s32 Effect_OwnerColorRow(s32 a);
-void Effect_ScaleVec(f32 *scale);
 extern ColorRgba gEffectColors[];
-void Mtx_RotateX(f32 *m, f32 a);
 extern void *ItemProp_PuffCurves[];
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void ItemProp_OffsetFromBone(f32 *out, f32 *m, f32 *v);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 extern s16 ElementBurst_Limits[];
 extern s16 ElementBurst_Steps[];
 extern s16 ElementBurst_CurveIdx[];
 extern s16 ElementBurst_Durations[];
 extern s16 *ElementBurst_DurLists[];
 extern void *ElementBurst_Curves[];
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-s32 ElementBurst_RepeatRing(StageObj *o, ElementBurstPart *w);
-s32 ElementBurst_RoarBone(StageObj *o);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
 extern s16 ElementBurst_FireDelays[];
 extern s16 ElementBurst_WaterDelays[];
 extern s16 ElementBurst_RingDelays[];
-void ElementBurst_PlaySound(StageObj *o);
-void ElementBurst_Draw(DrawSlot *node);
 extern s16 ItemProp_BaitStatusAmounts[];
-s32 Player_IsLocal(void *obj);
-void Vec_Set(f32 *v, f32 x, f32 y, f32 z);
-s32 ObjList_Add(EmObj *obj);
-void Vec_RotateY(f32 *v, f32 a);
 extern ColorRgba ItemProp_SmokeColors[];
 extern f32 gCamMatrix[];
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *n);
-s32 Gs_SetState(u8 reg, u32 v);
-s32 Effect_DrawModel(void *mdl, f32 *m, s32 color, u16 flags, void *a4);
-void ItemProp_Draw(DrawSlot *node);
-void ItemProp_Run(StageObj *o);
-void ItemProp_PlaySound(StageObj *o, s16 i);
 EmBone *Em_Bone(void *obj, s16 bone);
 extern u32 FireBlast_FlameShapes[];
 extern f32 D_008CEE84[]; /* the second value of each pair of FireBlast_FlameShapes (4 bytes in) */
-f32 Rand_Signed(void);
 extern f32 HitSplash_TargetScales[];
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
 s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
+DrawSlot *DrawSlot_Get(s16 id); /* unit's own declaration: declared with an s16 id (the definition takes an s32): with the definition's type, the set-ups that pass a draw slot number (ItemProp_SetupBait) compile differently */
 void FireBlast_Draw(DrawSlot *node);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void ItemProp_Create(f32 *pos, s16 v, s32 k, u8 c);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Mtx_Inverse(f32 *out, f32 *m);
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Vec_RotateY(f32 *v, f32 angle);
-u16 Rand_Next(s32 stream);
-void FireBlast_Setup(StageObj *o);
-void FireBlast_SetupParts(StageObj *o);
-void FireBlast_SetupGlow(StageObj *o);
-void FireBlast_Run(StageObj *o);
-void FireBlast_RunParts(StageObj *o);
-void FireBlast_RunGlow(StageObj *o);
-void FireBlast_End(StageObj *o);
-void FireBlast_Free(StageObj *o);
-void ElementBurst_Setup(StageObj *o);
-void ElementBurst_Run(StageObj *o);
-void ElementBurst_End(StageObj *o);
-void ElementBurst_Free(StageObj *o);
-StageObj *ElementBurst_CreateAt(f32 *, s32, s32, f32);
-void HitSplash_Setup(StageObj *o);
-void HitSplash_Run(StageObj *o);
-void HitSplash_End(StageObj *o);
-void HitSplash_Free(StageObj *o);
-void AttackBurst_Setup(StageObj *o);
-void AttackBurst_Run(StageObj *o);
-void AttackBurst_End(StageObj *o);
-void AttackBurst_Free(StageObj *o);
-void AttackBurst_RunRocks(StageObj *o);
-void AttackBurst_RunParts(StageObj *o);
-void AttackBurst_EndRocks(StageObj *o);
-void AttackBurst_EndParts(StageObj *o);
-void ItemProp_Update(StageObj *o);
 extern s16 ElementBurst_PartCounts[];
 extern s16 HitSplash_PartCounts[];
 extern s16 FireBlast_PartCounts[];
-void FlashObj_Remove(EmObj *obj);
-void AttackBurst_SetupRocks(StageObj *o);
-void AttackBurst_SetupParts(StageObj *o);
-void AttackBurst_DrawPart(DrawSlot *node);
-void AttackBurst_DrawRock(DrawSlot *node);
-StageObj *ItemProp_Alloc(s32 kind);
-f32 Math_Sin(f32 x);
-void Gfx_SetBlend(s32 a, s32 b);
 extern s16 FireBlast_MineGlowModels[];
 extern ColorRgba FireBlast_MineRankColors[];
-s16 EmSlot_FindKind(s16 id);
-void Draw_SetDefaultState(void);
-void Mtx_TurnY(f32 *m, f32 a);
-extern u8 AttackBurst_Curve3A[];
-extern u8 AttackBurst_ColorKeys[];
-extern u8 AttackBurst_Curve3B[];
-extern u8 AttackBurst_Curve10A[];
-extern u8 AttackBurst_Curve10B[];
-extern u8 AttackBurst_CurveFA[];
-extern u8 AttackBurst_CurveFB[];
-extern u8 AttackBurst_CurveFC[];
-extern u8 AttackBurst_Curve12A[];
-extern u8 AttackBurst_Curve12B[];
+extern ColorKey AttackBurst_Curve3A[];
+extern ColorKey AttackBurst_ColorKeys[];
+extern ColorKey AttackBurst_Curve3B[];
+extern ColorKey AttackBurst_Curve10A[];
+extern ColorKey AttackBurst_Curve10B[];
+extern ColorKey AttackBurst_CurveFA[];
+extern ColorKey AttackBurst_CurveFB[];
+extern ColorKey AttackBurst_CurveFC[];
+extern ColorKey AttackBurst_Curve12A[];
+extern ColorKey AttackBurst_Curve12B[];
 extern s16 HitSplash_CellFrames[];
-extern u32 HitSplash_Curves[];
+extern void *HitSplash_Curves[];
 extern HitSplashStep HitSplash_SpraySteps[];
 extern HitSplashStep HitSplash_SprayStepsStrong[];
 extern HitSplashStep HitSplash_SprayStepsAtOnce[];
@@ -263,10 +197,976 @@ extern s16 HitSplash_Lives[];
 extern s16 HitSplash_CurveIdx[];
 extern s16 HitSplash_Ends[];
 extern s16 HitSplash_Strides[];
-f32 Effect_Scale(void);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-s32 HitSplash_SpinSpeed(s16 x);
+void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
 /* end of prototypes */
+extern u16 ItemProp_SmokeRingSpins[];
+void Draw_SetBlendFlags(u16 flags);
+struct EmBone;
+s16 DrawSlotB_Alloc(void);
+extern f32 gCamYawMtx[];
+extern f32 ItemProp_SmokeRingScales[];
+extern u8 ItemProp_SmokeColorsG[][4];
+extern u8 ItemProp_SmokeColorsB[][4];
+extern u8 ItemProp_BaitColorsFirst[][4];
+extern u8 ItemProp_BaitColorsFirstG[][4];
+extern u8 ItemProp_BaitColorsFirstB[][4];
+extern u8 ItemProp_BaitColorsSecond[][4];
+extern u8 ItemProp_BaitColorsSecondG[][4];
+extern u8 ItemProp_BaitColorsSecondB[][4];
+DrawSlot *DrawSlotB_Get(s16 id); /* unit's own declaration: declared with an s16 id (the definition takes an s32): with the definition's type, the set-ups that pass a draw slot number (ItemProp_SetupBait) compile differently */
+void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
+
+/*
+ * The update hook: Setup (0), Run (1), End (2), Free (3).
+ */
+void PlayerHitBurst_Update(StageObj *obj)
+{
+    switch (obj->state) {
+    case STAGEOBJ_SETUP:
+        PlayerHitBurst_Setup(obj);
+        break;
+    case STAGEOBJ_RUN:
+        PlayerHitBurst_Run(obj);
+        break;
+    case STAGEOBJ_END:
+        PlayerHitBurst_End(obj);
+        break;
+    case STAGEOBJ_FREE:
+        PlayerHitBurst_Free(obj);
+        break;
+    }
+}
+
+/*
+ * Moves to Run; draws three random angles into var0, var1, var2 (Rand_Next
+ * stream 1) and gets a draw slot (draw PlayerHitBurst_Draw); frees the
+ * object when none is free.
+ */
+void PlayerHitBurst_Setup(StageObj *obj)
+{
+
+    obj->state++;
+    obj->var0 = 0;
+    obj->visible = 1;
+    obj->draw = 0;
+    obj->timer = 0;
+    obj->var0 = (s32) Rand_Next(1);
+    obj->var1 = (s32) Rand_Next(1);
+    obj->var2 = (s32) Rand_Next(1);
+    obj->slot = DrawSlot_Alloc();
+    if (obj->slot != -1) {
+        obj->node = DrawSlot_Get(obj->slot);
+        obj->node->owner = obj;
+        obj->node->draw = PlayerHitBurst_Draw;
+    } else {
+        PlayerHitBurst_Free(obj);
+        return;
+    }
+}
+
+/*
+ * Counts timer; at 11 moves to End; else follows the hunter's bone 10
+ * (Em_GetBonePos) and queues the node (gDrawOtSorted).
+ */
+void PlayerHitBurst_Run(StageObj *obj)
+{
+    DrawSlot *node = obj->node;
+    Em *pl = obj->owner;
+
+    if (++obj->timer >= 11) {
+        obj->state++;
+    } else {
+        Em_GetBonePos(pl, 10, obj->pos);
+        Vec_Copy(node->pos, (f32 *) obj->pos);
+        OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
+    }
+}
+
+/*
+ * Moves to Free and frees the draw slot.
+ */
+void PlayerHitBurst_End(StageObj *obj)
+{
+    obj->state++;
+    if (obj->node != NULL) {
+        DrawSlot_Free(obj->slot);
+    }
+}
+
+/*
+ * Frees the object (StageObj_Free).
+ */
+void PlayerHitBurst_Free(StageObj *obj)
+{
+    StageObj_Free(obj);
+}
+
+/*
+ * Draws by frame (timer - 1, at least 0) when the hunter is visible in the
+ * current area: frames 0-4 the flash (common mesh 66, growing, fading,
+ * turned by var0), frames 2-5 and 3-6 a streak each (common mesh 0, turned
+ * by var1 / var2), frames 4-9 Kushala Daora's part mesh 9 (gScene.partModels
+ * of its slot) growing and turning by the three angles, all additive
+ * (Gfx_SetBlend 4, 1) with depth writes off.
+ */
+void PlayerHitBurst_Draw(DrawSlot *node)
+{
+    StageObj *obj;
+    ModelMat *materials;
+    Model *commonSet;
+    Model *kushalaSet;
+    Em *pl;
+    s16 frame;
+    s32 burstFrame;
+    s32 kushalaFrame;
+    s8 kushalaSlot;
+    ModelMatSet *model;
+    ModelMat *kushalaMats;
+    ModelMatSet *kushalaModel;
+    s16 streakFrame;
+    f32 flashSize;
+    f32 scaleX;
+    f32 scaleY;
+    f32 scaleZ;
+    s32 pitch;
+    u16 roll;
+    f32 mtx[16];
+    f32 uvMtx[16];
+
+    obj = node->owner;
+    pl = obj->owner;
+    if (gScene.area != pl->area) {
+        return;
+    }
+    commonSet = gCommonModels[0];
+    if (commonSet == NULL || pl->visible == 0) {
+        return;
+    }
+    if (commonSet->active == 0) {
+        return;
+    }
+    Gs_SetState(RS_ALPHA_REF, 0);
+    Gs_SetState(RS_ZWRITE, 0);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    frame = obj->timer - 1;
+    materials = commonSet->mats;
+    if (frame <= 0) {
+        frame = 0;
+    }
+    Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
+    Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+    burstFrame = (s16) frame;
+    if (burstFrame < 5) {
+        model = &commonSet->matSets[66];
+        flashSize = 10.0f + 2.5f * frame;
+        Mtx_Scale(mtx, flashSize, flashSize, 1.0f);
+        Mtx_RotateZ(mtx, (6.2831855f * (obj->var0 << 8)) / 65536.0f);
+        Mtx_Concat3x3(mtx, gCamMatrix);
+        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, (u8) (239 - burstFrame * 11) | (((u8) (255 - burstFrame * 8) << 8) | (((u8) (255 - burstFrame * 59) << 24) | 0xFF0000)));
+        Gs_SetLightList(materials, model);
+        Draw_ApplyStates(model->flags);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+        Model_Draw(model->id, 0);
+    }
+    if (burstFrame >= 2 && burstFrame < 6) {
+        model = commonSet->matSets;
+        streakFrame = burstFrame - 2;
+        Mtx_Scale(mtx, 0.4f + 2.5333333f * streakFrame, 4.0f - streakFrame, 1.0f);
+        Mtx_RotateZ(mtx, (6.2831855f * (obj->var1 << 8)) / 65536.0f);
+        Mtx_Concat3x3(mtx, gCamMatrix);
+        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, 0xFFFFFFEF);
+        Gs_SetLightList(materials, model);
+        Draw_ApplyStates(model->flags);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+        Model_Draw(model->id, 0);
+    }
+    if (burstFrame >= 3 && burstFrame < 7) {
+        model = commonSet->matSets;
+        streakFrame = burstFrame - 3;
+        Mtx_Scale(mtx, 0.4f + 2.5333333f * streakFrame, 4.0f - streakFrame, 1.0f);
+        Mtx_RotateZ(mtx, (6.2831855f * (obj->var2 << 8)) / 65536.0f);
+        Mtx_Concat3x3(mtx, gCamMatrix);
+        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, 0xFFFFFFEF);
+        Gs_SetLightList(materials, model);
+        Draw_ApplyStates(model->flags);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+        Model_Draw(model->id, 0);
+    }
+    if (burstFrame >= 4 && burstFrame < 11) {
+        kushalaSlot = EmSlot_FindKind(54);
+        if (kushalaSlot == -1) {
+            return;
+        }
+        kushalaSet = gScene.partModels[kushalaSlot];
+        kushalaFrame = (s16) (burstFrame - 4);
+        kushalaMats = kushalaSet->mats;
+        kushalaModel = &kushalaSet->matSets[9];
+        if (kushalaFrame < 3) {
+            scaleY = scaleX = 0.1f + 0.10000001f * kushalaFrame;
+            scaleZ = 0.7f - 0.25f * kushalaFrame;
+        } else {
+            scaleY = scaleX = 0.3f + 0.024999999f * kushalaFrame;
+            scaleZ = 0.2f - -0.025f * kushalaFrame;
+        }
+        Mtx_Scale(mtx, scaleX, scaleY, scaleZ);
+        roll = (u16) (obj->var0 << 6) / 6 * burstFrame;
+        roll += (pitch = obj->var1 << 8);
+        Mtx_RotateXYZ(mtx, (6.2831855f * pitch) / 65536.0f, (6.2831855f * (obj->var2 << 8)) / 65536.0f, (6.2831855f * roll) / 65536.0f);
+        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, (u8) (239 - kushalaFrame * 7) | (((u8) (255 - kushalaFrame * 5) << 8) | (((u8) (255 - kushalaFrame * 39) << 24) | 0xFF0000)));
+        Gs_SetLightList(kushalaMats, kushalaModel);
+        Draw_ApplyStates(kushalaModel->flags);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+        Model_Draw(kushalaModel->id, 0);
+    }
+    Draw_SetDefaultState();
+    Gs_SetState(RS_ZWRITE, 1);
+}
+
+/*
+ * Creates the burst for hunter arg when it is in the current area
+ * (Obj_InCurrentArea): no buffer, STAGEOBJ_KIND_PLAYER_HIT_BURST, owner arg.
+ */
+void PlayerHitBurst_Create(void *pl)
+{
+    StageObj *obj;
+
+    if (Obj_InCurrentArea(pl) & 0xFF) {
+        obj = StageObj_Alloc(0);
+        if (obj != NULL) {
+            obj->kind = STAGEOBJ_KIND_PLAYER_HIT_BURST;
+            obj->update = PlayerHitBurst_Update;
+            obj->owner = pl;
+        }
+    }
+}
+
+/*
+ * The update hook: Setup (0), Run (1), End (2), Free (3).
+ */
+void ItemProp_Update(StageObj *obj)
+{
+    switch (obj->state) {
+    case STAGEOBJ_SETUP:
+        ItemProp_Setup(obj);
+        break;
+    case STAGEOBJ_RUN:
+        ItemProp_Run(obj);
+        break;
+    case STAGEOBJ_END:
+        ItemProp_End(obj);
+        break;
+    case STAGEOBJ_FREE:
+        ItemProp_Free(obj);
+        break;
+    }
+}
+
+/*
+ * Moves to Run, clears var0, shows the object and calls the type's set-up
+ * (0, 1, 3, 4; 5 and 6 ItemProp_SetupPuffs); frees an object of any other
+ * type (type 2).
+ */
+void ItemProp_Setup(StageObj *obj)
+{
+    obj->state++;
+    obj->var0 = 0;
+    obj->visible = 1;
+    switch (obj->type) {
+    case ITEMPROP_MEAT:
+        ItemProp_SetupMeat(obj);
+        break;
+    case ITEMPROP_SMOKE:
+        ItemProp_SetupSmoke(obj);
+        break;
+    case ITEMPROP_BAIT:
+        ItemProp_SetupBait(obj);
+        break;
+    case ITEMPROP_DROPPED:
+        ItemProp_SetupDropped(obj);
+        break;
+    case ITEMPROP_CLOUD:
+    case ITEMPROP_EAT_PUFF:
+        ItemProp_SetupPuffs(obj);
+        break;
+    default:
+        ItemProp_Free(obj);
+        break;
+    }
+}
+
+/*
+ * Calls the type's run (0, 1, 3, 4; 5 and 6 ItemProp_RunPuffs); nothing for
+ * the others.
+ */
+void ItemProp_Run(StageObj *obj)
+{
+    switch (obj->type) {
+    case ITEMPROP_MEAT:
+        ItemProp_RunMeat(obj);
+        break;
+    case ITEMPROP_SMOKE:
+        ItemProp_RunSmoke(obj);
+        break;
+    case ITEMPROP_BAIT:
+        ItemProp_RunBait(obj);
+        break;
+    case ITEMPROP_DROPPED:
+        ItemProp_RunDropped(obj);
+        break;
+    case ITEMPROP_CLOUD:
+    case ITEMPROP_EAT_PUFF:
+        ItemProp_RunPuffs(obj);
+        
+    default:
+        break;
+    }
+}
+
+struct DrawSlot;
+/*
+ * The draw slot callback of every type: calls the type's draw with the
+ * object (and the node for types 1, 4, 5, 6).
+ */
+void ItemProp_Draw(struct DrawSlot *node)
+{
+    StageObj *obj;
+    u8 type;
+
+    obj = node->owner;
+    type = obj->type;
+    switch (type) {
+    case 0:
+        ItemProp_DrawMeat(obj);
+        break;
+    case 1:
+        ItemProp_DrawSmoke(obj, node);
+        break;
+    case 3:
+        ItemProp_DrawBait(obj);
+        break;
+    case 4:
+        ItemProp_DrawDropped(obj, node);
+        break;
+    case 5:
+    case 6:
+        ItemProp_DrawPuff(obj, node);
+        
+    default:
+        break;
+    }
+}
+
+/*
+ * Type 0: sits at the owner monster's bone 18, on its floorY raised 13
+ * times the scale (1.75), with the owner's yaw; gets a draw slot (frees the
+ * object when none) and runs the first frame. seen: no creator passes type
+ * 0.
+ */
+void ItemProp_SetupMeat(StageObj *obj)
+{
+    Em *em = obj->owner;
+
+    obj->draw = 0;
+    obj->timer = 0;
+    Em_GetBonePos(em, 18, obj->pos);
+    obj->pos[1] = em->floorY;
+    obj->angle = em->rotY;
+    obj->scale = 1.75f;
+    obj->pos[1] += 13.0f * obj->scale;
+    obj->slot = DrawSlot_Alloc();
+    if (obj->slot != -1) {
+        obj->node = DrawSlot_Get(obj->slot);
+        obj->node->owner = obj;
+        obj->node->draw = ItemProp_Draw;
+    } else {
+        StageObj_Free((struct StageObj *) obj);
+        return;
+    }
+    ItemProp_Run(obj);
+}
+
+/*
+ * Type 0: after 300 frames hides the object and moves to End; else queues
+ * the node at the object (gDrawOt32).
+ */
+void ItemProp_RunMeat(StageObj *obj)
+{
+    if (obj->timer++ >= 300) {
+        obj->state++;
+        obj->visible = 0;
+        return;
+    }
+    obj->node->pos[0] = obj->pos[0];
+    obj->node->pos[1] = obj->pos[1];
+    obj->node->pos[2] = obj->pos[2];
+    OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
+}
+
+/*
+ * Type 0: draws common mesh 58 (the meat model: VersusBait_Draw, the
+ * hunter's carried meat) scaled, 30 higher, turned by the yaw, its two
+ * materials set to fixed colours.
+ */
+void ItemProp_DrawMeat(StageObj *obj)
+{
+    Model *commonSet = gCommonModels[0];
+    ModelMat *materials;
+    ModelMatSet *model;
+    f32 *mat;
+    s32 i;
+    f32 mtx[16];
+
+    if (commonSet != NULL && commonSet->active != 0) {
+        Gfx_SetTexFilter(GFX_TEX_NEAREST);
+        Mtx_Scale(mtx, obj->scale, obj->scale, obj->scale);
+        Mtx_SetTrans(mtx, obj->pos[0], 30.0f + obj->pos[1], obj->pos[2]);
+        Mtx_RotateY(mtx, (6.2831855f * (u16) obj->angle) / 65536.0f);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        model = &commonSet->matSets[58];
+        Gs_SetState(RS_COLOR2, -1);
+        if (model != NULL && model->id != -1) {
+            materials = commonSet->mats;
+            for (i = 0; i < model->count; i++) {
+                mat = (f32 *) &materials[model->mat[i]];
+                switch (i) {
+                case 0:
+                    mat[1] = 226.0f / 255.0f;
+                    mat[2] = 237.0f / 255.0f;
+                    mat[3] = 209.0f / 255.0f;
+                    break;
+                case 1:
+                    mat[1] = 1.0f;
+                    mat[2] = 210.0f / 255.0f;
+                    mat[3] = 192.0f / 255.0f;
+                    break;
+                }
+                Gs_SetState((u8) (i + 58), (s32) mat);
+            }
+            Draw_ApplyStates(model->flags);
+            Draw_SetBlendFlags(0x10);
+            Model_Draw(model->id, 0);
+        }
+        Draw_SetDefaultState();
+    }
+}
+
+/*
+ * Type 1 (smoke screen): fills the buffer's EmObj as a sight block (radius
+ * 1500 kind 1 for colour row 0, radius 3000 kind 2 for row 1, the object's
+ * area and position, SightBlock_Add) and sets up four rings (draw slot, ring
+ * number + 1, random spin); runs the first frame.
+ */
+void ItemProp_SetupSmoke(StageObj *obj)
+{
+    ItemPropRing *ring = (ItemPropRing *) obj->buf;
+    ItemPropBuf *smoke = (ItemPropBuf *) obj->buf;
+    s16 i;
+
+    obj->draw = 0;
+    obj->timer = 0;
+    obj->angle = 0;
+    switch (obj->var1) {
+    case 0:
+        smoke->obj.radius = 1500.0f;
+        smoke->obj.kind = 1;
+        break;
+    case 1:
+        smoke->obj.radius = 3000.0f;
+        smoke->obj.kind = 2;
+        break;
+    }
+    smoke->obj.timer = 3;
+    smoke->obj.area = obj->angle2;
+    Vec_Set(smoke->obj.pos, obj->pos[0], obj->pos[1], obj->pos[2]);
+    SightBlock_Add(&smoke->obj);
+    for (i = 0; i < 4; i++, ring++) {
+        ring->slot = DrawSlot_Alloc();
+        if (ring->slot != -1) {
+            ring->view = i + 1;
+            ring->unk1C = 0;
+            ring->spin = Rand_Next(1);
+            ring->node = DrawSlot_Get(ring->slot);
+            ring->node->owner = obj;
+            ring->node->part = i;
+            ring->node->draw = ItemProp_Draw;
+        } else {
+            ring->node = NULL;
+        }
+    }
+    ItemProp_Run(obj);
+}
+
+extern s8 ItemProp_SmokeViewQueued;
+extern u8 ItemProp_SmokeViewAlpha;
+/*
+ * Type 1: keeps the sight block alive (timer 3 each frame) through three
+ * phases in var0: 120 frames fading in, 450 opaque, 120 fading out, then
+ * hides, removes the sight block and moves to End. Seen from farther than
+ * 1900, queues the four rings along the view axis with spins from
+ * ItemProp_SmokeRingSpins; from closer, one full-screen layer just in front
+ * of the camera, whose alpha is the highest of all smokes this frame
+ * (ItemProp_SmokeViewAlpha; ItemProp_SmokeViewQueued lets only the first
+ * queue it).
+ */
+void ItemProp_RunSmoke(StageObj *obj)
+{
+    u8 viewAlpha;
+    u32 k;
+    ItemPropBuf *smoke = (ItemPropBuf *) obj->buf;
+    ItemPropRing *ring = smoke->ring;
+    s16 i;
+    u8 opaque;
+    u16 *spinStep;
+    f32 camPos[3];
+    f32 toCam[3];
+    f32 ahead[3];
+    f32 ofs[3];
+
+    (obj->angle)++;
+    smoke->obj.timer = 3;
+    switch (obj->var0) {
+    case 0:
+        opaque = 0;
+        if (++obj->timer >= 120) {
+            opaque = 1;
+            obj->var0++;
+            obj->timer = 0;
+        }
+        break;
+    case 1:
+        opaque = 1;
+        if (++obj->timer >= 450) {
+            opaque = 0;
+            obj->var0++;
+            obj->timer = 120;
+        }
+        break;
+    case 2:
+        opaque = 0;
+        if (--obj->timer <= 0) {
+            obj->state++;
+            obj->visible = 0;
+            SightBlock_Remove(&smoke->obj);
+        }
+        break;
+    }
+    if (obj->visible != 0) {
+        Mtx_GetTrans(camPos, gCamMatrix);
+        Vec_Sub(toCam, camPos, obj->pos);
+        if (!(Vec_Dot(toCam, toCam) <= 3610000.0f)) {
+            for (i = 0, spinStep = ItemProp_SmokeRingSpins; i < 4; i++, ring++, spinStep++) {
+                ring->spin += (s32) *spinStep;
+                ofs[0] = 0.0f;
+                ofs[1] = 0.0f;
+                ofs[2] = 400.0f * i;
+                Vec_RotateSelf(ofs, gCamMatrix);
+                if (!(opaque & 0xFF)) {
+                    ring->alpha = obj->timer / 120.0f;
+                } else {
+                    ring->alpha = 1.0f;
+                }
+                if (ring->node != NULL) {
+                    ring->view = i + 1;
+                    ring->node->pos[0] = obj->pos[0] + ofs[0];
+                    ring->node->pos[1] = obj->pos[1] + ofs[1];
+                    ring->node->pos[2] = obj->pos[2] + ofs[2];
+                    OT_AddByDepth(gDrawOtSorted, ring->node, 64, 0);
+                }
+            }
+        } else {
+            ahead[0] = 0.0f;
+            ahead[1] = 0.0f;
+            ahead[2] = -1.1f;
+            Vec_Rotate(ofs, ahead, gCamMatrix);
+            viewAlpha = opaque == 0 ? (u32) (2.125f * obj->timer) : 255;
+            if (ItemProp_SmokeViewQueued == 0) {
+                ItemProp_SmokeViewAlpha = viewAlpha;
+                if (ring->node != NULL) {
+                    ring->view = 0;
+                    Mtx_GetTrans(ring->node->pos, gCamMatrix);
+                    ring->node->pos[0] += ofs[0];
+                    ring->node->pos[1] += ofs[1];
+                    ring->node->pos[2] += ofs[2];
+                    OT_AddByDepth(gDrawOtSorted, ring->node, 64, 0);
+                    *(u8 *)&ItemProp_SmokeViewQueued = 1;
+                }
+            } else if (ItemProp_SmokeViewAlpha < (viewAlpha & 0xFF)) {
+                ItemProp_SmokeViewAlpha = viewAlpha;
+            }
+        }
+    }
+}
+
+/*
+ * Type 1, in the object's area: the inside layer (view 0) as common mesh 67
+ * with a scrolling texture and the field of view narrowed (Camera_SetFov,
+ * restored after); a ring as common mesh 77 scaled by
+ * ItemProp_SmokeRingScales[ring] and turned by its spin, facing the camera;
+ * both in ItemProp_SmokeColors[var1] with their alpha. Clears
+ * ItemProp_SmokeViewQueued.
+ */
+void ItemProp_DrawSmoke(StageObj *obj, DrawSlot *node)
+{
+    ItemPropRing *ring = (ItemPropRing *) obj->buf + node->part;
+    ModelMat *materials;
+    Model *commonSet = gCommonModels[0];
+    ModelMatSet *model;
+    u8 alpha;
+    f32 mtx[16];
+    f32 uvMtx[16];
+
+    if (obj->angle2 == gScene.area && commonSet != NULL && commonSet->active != 0) {
+        materials = commonSet->mats;
+        Gs_SetState(RS_ALPHA_REF, 0);
+        if (ring->view == 0) {
+            Mtx_Scale(mtx, 1.0f, 1.0f, 1.0f);
+            alpha = ItemProp_SmokeViewAlpha;
+            Mtx_Translation(uvMtx, (1.0f / 2048.0f) * (gScene.frame & 0xFF), 0.0f, 0.0f);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+            model = &commonSet->matSets[67];
+            Camera_SetFov(0.87266463f);
+        } else {
+            Mtx_Scale(mtx, ItemProp_SmokeRingScales[node->part], ItemProp_SmokeRingScales[node->part], ItemProp_SmokeRingScales[node->part]);
+            Mtx_RotateZ(mtx, (6.2831855f * ring->spin) / 65536.0f);
+            alpha = 255.0f * ring->alpha;
+            Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+            model = &commonSet->matSets[77];
+        }
+        Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
+        Mtx_Concat3x3(mtx, gCamMatrix);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, ItemProp_SmokeColorsB[obj->var1][0] | ((ItemProp_SmokeColorsG[obj->var1][0] << 8) | ((alpha << 24) | (ItemProp_SmokeColors[obj->var1].r << 16))));
+        if (model != NULL && model->id != -1) {
+            Gs_SetLightList(materials, model);
+            Draw_ApplyStates(model->flags);
+            Model_Draw(model->id, 0);
+        }
+        *(u8 *)&ItemProp_SmokeViewQueued = 0;
+        Draw_SetDefaultState();
+        if (ring->view == 0) {
+            Camera_RestoreFov();
+        }
+    }
+}
+
+/*
+ * Type 3 (a meat or bait a hunter put down): gets a draw slot from the kept
+ * pool (DrawSlotB) when keep is set (the creators always set it), else the
+ * normal pool; frees the object (ItemProp_Free) when none; runs the first
+ * frame.
+ */
+void ItemProp_SetupBait(StageObj *obj)
+{
+
+    obj->var0 = 0;
+    obj->draw = 0;
+    obj->timer = 0;
+    if (obj->keep == 0) {
+        obj->slot = DrawSlot_Alloc();
+    } else {
+        obj->slot = DrawSlotB_Alloc();
+    }
+    if (obj->slot != -1) {
+        if (obj->keep == 0) {
+            obj->node = DrawSlot_Get(obj->slot);
+        } else {
+            obj->node = DrawSlotB_Get(obj->slot);
+        }
+        obj->node->owner = obj;
+        obj->node->draw = ItemProp_Draw;
+    } else {
+        ItemProp_Free(obj);
+        return;
+    }
+    ItemProp_Run(obj);
+}
+
+/*
+ * Type 3: after 5400 frames, or once a monster has used it (EmObj.done),
+ * hides it, takes its EmObj off the area object list (ObjList_Remove) and
+ * moves to End; else queues the node (gDrawOt32).
+ */
+void ItemProp_RunBait(StageObj *obj)
+{
+    ItemPropBuf *bait = (ItemPropBuf *) obj->buf;
+
+    obj->timer++;
+    if (obj->timer > 5400 || bait->obj.done != 0) {
+        obj->state++;
+        obj->visible = 0;
+        ObjList_Remove(&bait->obj);
+        return;
+    }
+    obj->var0 = 0;
+    obj->node->pos[0] = obj->pos[0];
+    obj->node->pos[1] = obj->pos[1];
+    obj->node->pos[2] = obj->pos[2];
+    OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
+}
+
+/*
+ * Type 3, in the object's area: common mesh 58 at the object turned by its
+ * yaw, material 0 coloured by ItemProp_BaitColorsFirst[var1], material 1 by
+ * ItemProp_BaitColorsSecond[var1] (var1 the bait kind).
+ */
+void ItemProp_DrawBait(StageObj *obj)
+{
+    Model *commonSet = gCommonModels[0];
+    ModelMatSet *model;
+    ModelMat *materials;
+    s32 i;
+    f32 *mat;
+    u8 redFirst;
+    u8 greenFirst;
+    u8 blueFirst;
+    u8 redSecond;
+    u8 greenSecond;
+    u8 blueSecond;
+    f32 mtx[16];
+
+    if (obj->angle2 == gScene.area && commonSet != NULL && commonSet->active != 0) {
+        model = &commonSet->matSets[58];
+        Mtx_Translation(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
+        redSecond = ItemProp_BaitColorsSecond[obj->var1][0];
+        greenSecond = ItemProp_BaitColorsSecondG[obj->var1][0];
+        blueSecond = ItemProp_BaitColorsSecondB[obj->var1][0];
+        redFirst = ItemProp_BaitColorsFirst[obj->var1][0];
+        greenFirst = ItemProp_BaitColorsFirstG[obj->var1][0];
+        blueFirst = ItemProp_BaitColorsFirstB[obj->var1][0];
+        Mtx_RotateY(mtx, (6.2831855f * obj->angle) / 65536.0f);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, -1);
+        if (model != NULL && model->id != -1) {
+            materials = commonSet->mats;
+            for (i = 0; i < model->count; i++) {
+                mat = (f32 *) &materials[model->mat[i]];
+                switch (i) {
+                case 0:
+                    mat[1] = redFirst / 255.0f;
+                    mat[2] = greenFirst / 255.0f;
+                    mat[3] = blueFirst / 255.0f;
+                    break;
+                case 1:
+                    mat[1] = redSecond / 255.0f;
+                    mat[2] = greenSecond / 255.0f;
+                    mat[3] = blueSecond / 255.0f;
+                    break;
+                }
+                Gs_SetState((u8) (i + 58), (s32) mat);
+            }
+            Draw_ApplyStates(model->flags);
+            Model_Draw(model->id, 0);
+        }
+        Draw_SetDefaultState();
+    }
+}
+
+/*
+ * Turns v by the bone matrix m (in place) and writes m's translation plus v
+ * to out. Used by ItemProp_CreateAtPlayer for a dropped item's start.
+ */
+void ItemProp_OffsetFromBone(f32 *out, f32 *boneMtx, f32 *ofs)
+{
+    Vec_RotateSelf(ofs, boneMtx);
+    Mtx_GetTrans(out, boneMtx);
+    out[0] = out[0] + ofs[0];
+    out[1] = out[1] + ofs[1];
+    out[2] = out[2] + ofs[2];
+}
+
+/*
+ * Type 4 (the item a hunter carried, let go): the node starts at the
+ * object's position (the hand), the object's y becomes the owner's floorY;
+ * frees the object when no draw slot; runs the first frame.
+ */
+void ItemProp_SetupDropped(StageObj *obj)
+{
+
+    obj->var0 = 0;
+    obj->var1 = 0;
+    obj->draw = 0;
+    obj->timer = 0;
+    obj->slot = DrawSlot_Alloc();
+    if (obj->slot != -1) {
+        obj->node = DrawSlot_Get(obj->slot);
+        obj->node->owner = obj;
+        obj->node->draw = ItemProp_Draw;
+        Vec_Copy(obj->node->pos, (f32 *) obj->pos);
+        obj->pos[1] = ((Em *)obj->owner)->floorY;
+    } else {
+        StageObj_Free((struct StageObj *) obj);
+        return;
+    }
+    ItemProp_Run(obj);
+}
+
+/*
+ * Type 4: falls with growing speed (var1 frames); on reaching the floor by
+ * carry kind: 0, 1, 6 land (sound 116 of the common bank in the current
+ * area) and stay 10 frames; 2, 3, 4 and unknown kinds vanish; 5 vanishes in
+ * a bomb explosion (FireBlast_CreateScaled in the current area,
+ * Explosion_CreateAt EXPLOSION_BOMB). Queues the node (gDrawOt32) while it
+ * lasts.
+ */
+void ItemProp_RunDropped(StageObj *obj)
+{
+    ItemPropCarry *held = (ItemPropCarry *) obj->buf;
+
+    obj->timer++;
+    obj->var1++;
+    switch (obj->var0) {
+    case 0:
+        obj->node->pos[1] += -0.72727275f * obj->var1;
+        if (obj->node->pos[1] < obj->pos[1]) {
+            switch (held->kind) {
+            case 0:
+            case 1:
+            case 6:
+                obj->node->pos[1] = obj->pos[1];
+                obj->timer = 0;
+                obj->var0++;
+                if (obj->angle2 == gScene.area) {
+                    Sound_PlaySeAtPosChecked(1, 116, 0, obj->node->pos, 1, 0);
+                }
+                break;
+            case 2:
+            case 3:
+            case 4:
+            default:
+                obj->state++;
+                obj->visible = 0;
+                return;
+            case 5:
+                obj->state++;
+                obj->visible = 0;
+                if (obj->angle2 == gScene.area) {
+                    FireBlast_CreateScaled(obj->node->pos, 0, 1.0f);
+                }
+                Explosion_CreateAt(obj->node->pos, EXPLOSION_BOMB, obj->angle2, 0);
+                return;
+            }
+        }
+        break;
+    case 1:
+    default:
+        if (obj->timer > 10) {
+            obj->state++;
+            obj->visible = 0;
+            return;
+        }
+        break;
+    }
+    OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
+}
+
+/*
+ * Type 4, in the object's area: while falling, the carried model with the
+ * creator's matrix (buf->mtx) at the node: common mesh 133 for kinds 0, 1, 6
+ * (texture row offset) and 2, mesh 41 tinted for 3, 4, 5 (as the hunter
+ * draws it carried, player_draw.c); once landed, common mesh 119 turned with
+ * the camera's yaw, scale 1.5, tinted. Returns for unknown kinds.
+ */
+void ItemProp_DrawDropped(StageObj *obj, DrawSlot *node)
+{
+    Model *commonSet = gCommonModels[0];
+    ItemPropCarry *held = (ItemPropCarry *) obj->buf;
+    ModelMatSet *model;
+    ModelMat *materials;
+    s32 i;
+    f32 *mat;
+    u8 red;
+    u8 green;
+    u8 blue;
+    f32 mtx[16];
+    f32 uvMtx[16];
+
+    if (obj->angle2 == gScene.area && commonSet != NULL && commonSet->active != 0) {
+        switch (obj->var0) {
+        case 0:
+            Mtx_SetTrans(held->mtx, node->pos[0], node->pos[1], node->pos[2]);
+            Mtx_Copy(mtx, held->mtx);
+            switch (held->kind) {
+            case 0:
+            case 1:
+            case 6:
+                model = &commonSet->matSets[133];
+                Mtx_Translation(uvMtx, 0.0f, 0.0625f, 0.0f);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+                red = 255;
+                green = 255;
+                blue = 255;
+                break;
+            case 2:
+                model = &commonSet->matSets[133];
+                Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+                red = 255;
+                green = 255;
+                blue = 255;
+                break;
+            case 3:
+                model = &commonSet->matSets[41];
+                red = 63;
+                green = 63;
+                blue = 255;
+                break;
+            case 4:
+                model = &commonSet->matSets[41];
+                red = 255;
+                green = 63;
+                blue = 63;
+                break;
+            case 5:
+                model = &commonSet->matSets[41];
+                red = 63;
+                green = 63;
+                blue = 63;
+                break;
+            default:
+                return;
+            }
+            break;
+        case 1:
+        default:
+            Mtx_Scale(mtx, 1.5f, 1.5f, 1.5f);
+            Mtx_Concat3x3(mtx, gCamYawMtx);
+            model = &commonSet->matSets[119];
+            Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
+            red = 238;
+            green = 220;
+            blue = 168;
+            break;
+        }
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, -1);
+        if (model != NULL && model->id != -1) {
+            materials = commonSet->mats;
+            for (i = 0; i < model->count; i++) {
+                mat = (f32 *) &materials[model->mat[i]];
+                switch (i) {
+                case 1:
+                    mat[1] = red / 255.0f;
+                    mat[2] = green / 255.0f;
+                    mat[3] = blue / 255.0f;
+                    break;
+                }
+                Gs_SetState((u8) (i + 58), (s32) mat);
+            }
+            Draw_ApplyStates(model->flags);
+            Model_Draw(model->id, 0);
+        }
+        Draw_SetDefaultState();
+    }
+}
 
 /*
  * Sets up an ItemProp of type 5 (the rising cloud) or 6 (the eating puff).
@@ -309,7 +1209,7 @@ void ItemProp_SetupPuffs(StageObj *obj)
             puff->idx = i;
             puff->delay = 0;
             puff->angle = Rand_Next(1);
-            puff->spin = (Rand_Next(1) & 0x1FF) - 0x100;
+            puff->spin = (Rand_Next(1) & 0x1FF) - 256;
             puff->fade = 0.15f;
             puff->size = 1.6f + 0.6f * (0.001f * (s32) (Rand_Next(1) & 0x3FF));
             Vec_Copy(puff->pos, obj->pos);
@@ -354,8 +1254,8 @@ void ItemProp_RunPuffs(StageObj *obj)
     case ITEMPROP_CLOUD:
     default:
         count = 6;
-        limit = 0x7E;
-        dur = 0x15;
+        limit = 126;
+        dur = 21;
         if (obj->timer < 90 && obj->timer % 20 == 0) {
             ItemProp_PlaySound(obj, 1);
         }
@@ -401,7 +1301,7 @@ void ItemProp_RunPuffs(StageObj *obj)
                     }
                 }
                 puff->angle = Rand_Next(1);
-                puff->spin = 0.5f + (65536.0f * (0.002f * ((Rand_Next(1) & 0x3FF) - 0x200))) / 360.0f;
+                puff->spin = 0.5f + (65536.0f * (0.002f * ((Rand_Next(1) & 0x3FF) - 512))) / 360.0f;
                 Vec_Copy(puff->pos, obj->pos);
             }
         } else if (puff->delay > dur) {
@@ -428,7 +1328,7 @@ void ItemProp_RunPuffs(StageObj *obj)
         puff->angle += puff->spin;
         if (puff->node != NULL) {
             Vec_Copy(puff->node->pos, puff->pos);
-            OT_AddByDepth(gDrawOtSorted, puff->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, puff->node, 64, 0);
         }
         puff++;
     }
@@ -455,8 +1355,8 @@ void ItemProp_DrawPuff(StageObj *obj, DrawSlot *node)
 
     if (set != NULL && set->active != 0) {
         mats = set->mats;
-        Gs_SetState(0x60, 0);
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ALPHA_REF, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         scale[0] = puff->size * puff->curveScale[0];
         scale[1] = puff->size * puff->curveScale[1];
         scale[2] = puff->size * puff->curveScale[2];
@@ -477,13 +1377,13 @@ void ItemProp_DrawPuff(StageObj *obj, DrawSlot *node)
         }
         Mtx_Concat3x3(mtx, gCamMatrix);
         Effect_DrawModel(model, mtx, color, 0, mats);
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
 /*
  * The end state: hides the object, moves on to the free state and frees its
- * draw slots: types 1, 5 and 6 those of their 4, 6 or 1 parts (0x34 bytes
+ * draw slots: types 1, 5 and 6 those of their 4, 6 or 1 parts (52 bytes
  * each; a part whose node is NULL has none), type 3 its own from the second
  * pool (DrawSlotB_Free), the other types their own slot.
  */
@@ -513,10 +1413,10 @@ void ItemProp_End(StageObj *obj)
         break;
     }
     for (i = 0; i < count; i++) {
-        if (*(s32 *) (piece + 0x20) != 0) {
+        if (*(s32 *) (piece + 32) != 0) {
             DrawSlot_Free(*(s16 *) piece);
         }
-        piece += 0x34;
+        piece += 52;
     }
 }
 
@@ -543,10 +1443,10 @@ void ItemProp_PlaySound(StageObj *obj, s16 cue)
     case ITEMPROP_CLOUD:
         switch (cue) {
         case 0:
-            Sound_PlaySeAtPosChecked(1, 0x26, 0, obj->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 38, 0, obj->pos, 1, 0);
             break;
         case 1:
-            Sound_PlaySeAtPosChecked(1, 0x27, 0, obj->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 39, 0, obj->pos, 1, 0);
             break;
         }
         break;
@@ -575,15 +1475,14 @@ StageObj *ItemProp_Alloc(s32 type)
     }
 }
 
-s32 Obj_InCurrentArea(void *obj);
 /*
  * Creates an ItemProp of type k for hunter pl when pl is in the current area
  * (type 3 in any area); it takes pl's area and yaw. Type 3 (a bait) sits 50
  * ahead and 13 up, kept when the area reloads and counted in gScene.placed3
  * for the local player. Type 4 (the item pl carried, dropped) takes pl's
- * carry kind and sits at pl's bone 0xE, moved by an offset and given a scale
+ * carry kind and sits at pl's PL_BONE_HAND, moved by an offset and given a scale
  * and rotation per carry kind (an unknown kind returns with them unset). Type
- * 6 (an eating puff) sits halfway between bones 0xE and 0x12, 15 higher; the
+ * 6 (an eating puff) sits halfway between PL_BONE_HAND and PL_BONE_OTHER_HAND, 15 higher; the
  * other types at pl's position.
  */
 void ItemProp_CreateAtPlayer(Player *pl, s32 k)
@@ -669,15 +1568,15 @@ void ItemProp_CreateAtPlayer(Player *pl, s32 k)
                 default:
                     return;
                 }
-                Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(pl, 0xE)));
+                Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(pl, PL_BONE_HAND)));
                 ItemProp_OffsetFromBone(obj->pos, boneMtx, offset);
                 Mtx_Scale(held->mtx, scaleX, scaleY, scaleZ);
                 Mtx_RotateXYZ(held->mtx, rotX, rotY, rotZ);
                 Mtx_Concat3x3(held->mtx, boneMtx);
                 break;
             case 6:
-                Em_GetBonePos(pl, 0xE, obj->pos);
-                Em_GetBonePos(pl, 0x12, offset);
+                Em_GetBonePos(pl, PL_BONE_HAND, obj->pos);
+                Em_GetBonePos(pl, PL_BONE_OTHER_HAND, offset);
                 obj->pos[0] += offset[0];
                 obj->pos[1] += offset[1];
                 obj->pos[2] += offset[2];
@@ -848,9 +1747,9 @@ void FireBlast_InitFlame(FireBlastPart *flame)
     flame->curveScale[0] = ((f32 (*)[2])FireBlast_FlameShapes)[shape][0];
     flame->curveScale[1] = ((f32 (*)[2])D_008CEE84)[shape][0];
     flame->curveScale[2] = 1.0f;
-    flame->offset[0] = 0.015000001f * (s32) ((Rand_Next(1) & 0x3FF) - 0x200);
+    flame->offset[0] = 0.015000001f * (s32) ((Rand_Next(1) & 0x3FF) - 512);
     flame->offset[1] = 0.005f * (s32) (Rand_Next(1) & 0x3FF);
-    flame->offset[2] = 0.015000001f * (s32) ((Rand_Next(1) & 0x3FF) - 0x200);
+    flame->offset[2] = 0.015000001f * (s32) ((Rand_Next(1) & 0x3FF) - 512);
 }
 
 /*
@@ -867,15 +1766,15 @@ void FireBlast_InitRoastFlame(FireBlastPart *flame)
     flame->curveScale[0] = ((f32 (*)[2])FireBlast_FlameShapes)[shape][0];
     flame->curveScale[1] = ((f32 (*)[2])D_008CEE84)[shape][0];
     flame->curveScale[2] = 1.0f;
-    flame->offset[0] = 0.010000001f * (s32) ((Rand_Next(1) & 0x3FF) - 0x200);
+    flame->offset[0] = 0.010000001f * (s32) ((Rand_Next(1) & 0x3FF) - 512);
     flame->offset[1] = 0.0050000004f * (s32) (Rand_Next(1) & 0x3FF);
-    flame->offset[2] = 0.010000001f * (s32) ((Rand_Next(1) & 0x3FF) - 0x200);
+    flame->offset[2] = 0.010000001f * (s32) ((Rand_Next(1) & 0x3FF) - 512);
 }
 
 /*
  * Starts or restarts a sparkle of the special mine point's glow (type 10): at
  * the object, x and z moved by up to 5 times its size, frame -15, one of two
- * looks and a random angle, turning 0x5B a frame one way or the other.
+ * looks and a random angle, turning 91 a frame one way or the other.
  */
 void FireBlast_InitMineGlow(StageObj *obj, FireBlastPart *glow)
 {
@@ -883,12 +1782,12 @@ void FireBlast_InitMineGlow(StageObj *obj, FireBlastPart *glow)
 
     Vec_Copy(glow->offset, obj->pos);
     bits = Rand_Next(1);
-    glow->frame = -0xF;
+    glow->frame = -15;
     glow->offset[0] += obj->scale * (5.0f * Rand_Signed());
     glow->offset[2] += obj->scale * (5.0f * Rand_Signed());
     glow->look = bits & 1;
     glow->angle = bits;
-    glow->angleStep = 0x5B;
+    glow->angleStep = 91;
     if ((bits >> 1) & 1) {
         glow->angleStep = -glow->angleStep;
     }
@@ -916,7 +1815,7 @@ void FireBlast_SetupParts(StageObj *obj)
 
     switch (obj->type) {
     case 3:
-        SoundObj_Start(7, 0x10, 0x13, obj->pos, 0x4B, 2);
+        SoundObj_Start(7, 16, 19, obj->pos, 75, 2);
         break;
     case 10:
         obj->var0 = SpecialMine_Rank();
@@ -946,11 +1845,11 @@ void FireBlast_SetupParts(StageObj *obj)
             }
             if (i == 1 || i == 2) {
                 if (Rand_Next(1) & 1) {
-                    piece->look = 0xFF;
+                    piece->look = 255;
                 } else {
                     piece->frame = -((Rand_Next(1) & 3) + 3);
-                    piece->offset[0] = 0.2f * obj->scale * ((Rand_Next(1) & 0x3FF) - 0x200);
-                    piece->offset[1] = 0.2f * obj->scale * ((Rand_Next(1) & 0x3FF) - 0x200);
+                    piece->offset[0] = 0.2f * obj->scale * ((Rand_Next(1) & 0x3FF) - 512);
+                    piece->offset[1] = 0.2f * obj->scale * ((Rand_Next(1) & 0x3FF) - 512);
                     piece->offset[2] = 0.0f;
                 }
             }
@@ -959,8 +1858,8 @@ void FireBlast_SetupParts(StageObj *obj)
         case 1:
             piece->look = i;
             piece->frame = -3 - i * 2;
-            piece->offset[0] = obj->scale * ((Rand_Next(1) & 0x1F) - 0x10);
-            piece->offset[1] = obj->scale * ((Rand_Next(1) & 0x1F) - 0x10);
+            piece->offset[0] = obj->scale * ((Rand_Next(1) & 0x1F) - 16);
+            piece->offset[1] = obj->scale * ((Rand_Next(1) & 0x1F) - 16);
             piece->offset[2] = 20.0f + i * 20;
             piece->size = obj->scale * (1.0f + 0.5f * (0.001f * (Rand_Next(1) & 0x3FF)));
             piece->angle = Rand_Next(1);
@@ -968,7 +1867,7 @@ void FireBlast_SetupParts(StageObj *obj)
         case 3:
         case 12:
             if (i == 0) {
-                piece->look = 0xFF;
+                piece->look = 255;
                 piece->frame = 0;
                 piece->cell = Rand_Next(1) & 0xF;
                 piece->curveScale[0] = 2.0f;
@@ -1022,8 +1921,8 @@ void FireBlast_SetupParts(StageObj *obj)
             }
             piece->size = 0.7f + 0.0008f * (Rand_Next(1) & 0x3FF);
             piece->rise = riseBase + 0.0005f * (Rand_Next(1) & 0x3FF);
-            piece->offset[0] = 0.2f * obj->scale * ((Rand_Next(1) & 0x3FF) - 0x200);
-            piece->offset[1] = 0.1f * obj->scale * ((Rand_Next(1) & 0x3FF) - 0x200);
+            piece->offset[0] = 0.2f * obj->scale * ((Rand_Next(1) & 0x3FF) - 512);
+            piece->offset[1] = 0.1f * obj->scale * ((Rand_Next(1) & 0x3FF) - 512);
             piece->offset[2] = -30.0f - 5.0f * i;
             break;
         case 9:
@@ -1081,7 +1980,7 @@ void FireBlast_Run(StageObj *obj)
  * its EmObj to the monsters' flash list (FlashObj_Add, radius 2500), kept
  * alive each frame after. The mine glow ends when the special mine point is
  * gone and restarts its colour fade when the rank changes. The monster's
- * flame (12) follows bone 0xB of its owner, sounds every 25 frames and ends
+ * flame (12) follows bone 11 of its owner, sounds every 25 frames and ends
  * with the owner. Each part waits out its delay, takes its shape and opacity
  * from FireBlast_PartCurves by its frame (the fires' flames and the glow's
  * sparkles restart when done), steps its texture cell (at
@@ -1107,11 +2006,11 @@ void FireBlast_RunParts(StageObj *obj)
     switch (obj->type) {
     case 0:
     case 11:
-        limit = 0x23;
+        limit = 35;
         break;
     case 1:
-        limit = 0x19;
-        dur = 0x12;
+        limit = 25;
+        dur = 18;
         break;
     case 10:
         if (gQuest.specialMinePoint == 0) {
@@ -1119,7 +2018,7 @@ void FireBlast_RunParts(StageObj *obj)
             obj->visible = 0;
             return;
         }
-        dur = limit = 0x1E;
+        dur = limit = 30;
         rank = SpecialMine_Rank();
         if (obj->var0 != rank) {
             obj->angle = 0;
@@ -1130,16 +2029,16 @@ void FireBlast_RunParts(StageObj *obj)
         }
         break;
     case 3:
-        dur = limit = 0x1A;
+        dur = limit = 26;
         break;
     case 4:
-        limit = 0x1E;
+        limit = 30;
         if (obj->timer == 12) {
             FireBlast_CreateOwned(obj->pos, 5, obj->scale, obj->owner);
         }
         break;
     case 5:
-        limit = 0x14;
+        limit = 20;
         switch (obj->var0) {
         case 0:
             if (obj->timer >= 9) {
@@ -1150,7 +2049,7 @@ void FireBlast_RunParts(StageObj *obj)
                     ((FireBlastBuf *) piece)->flash.goalArg = ((Em *) obj->owner)->index;
                     ((FireBlastBuf *) piece)->flash.timer = 5;
                     ((FireBlastBuf *) piece)->flash.area = gScene.area;
-                    FlashObj_Add((EmObj *)((u8 *) piece + 0x16C));
+                    FlashObj_Add((EmObj *)((u8 *) piece + 364));
                 }
                 obj->var0++;
                 if (gAreaFade == 3) {
@@ -1171,11 +2070,11 @@ void FireBlast_RunParts(StageObj *obj)
         }
         break;
     case 6:
-        limit = 0x24;
-        dur = 0x1A;
+        limit = 36;
+        dur = 26;
         break;
     case 8:
-        limit = 0x58;
+        limit = 88;
         break;
     case 9:
         dur = limit = 2;
@@ -1187,8 +2086,8 @@ void FireBlast_RunParts(StageObj *obj)
             obj->visible = 0;
             return;
         }
-        dur = limit = 0x1A;
-        boneMtx = (f32 *)Em_Bone(em, 0xB);
+        dur = limit = 26;
+        boneMtx = (f32 *)Em_Bone(em, SHAK_BONE_PROP);
         offset[0] = 0.0f;
         offset[1] = 30.0f;
         offset[2] = 8.5f;
@@ -1198,7 +2097,7 @@ void FireBlast_RunParts(StageObj *obj)
         obj->pos[1] += offset[1];
         obj->pos[2] += offset[2];
         if (obj->timer % 25 == 0) {
-            Em_PlaySeChecked(obj->owner, 0x33, 0, obj->pos, 1, 0);
+            Em_PlaySeChecked(obj->owner, 51, 0, obj->pos, 1, 0);
         }
         break;
     }
@@ -1218,7 +2117,7 @@ void FireBlast_RunParts(StageObj *obj)
             case 1:
             case 2:
                 k = 0;
-                dur = 0x1B;
+                dur = 27;
                 break;
             case 3:
                 k = 2;
@@ -1228,18 +2127,18 @@ void FireBlast_RunParts(StageObj *obj)
                 k = 4;
                 dur = 9;
                 break;
-            case 0xFF:
+            case 255:
                 piece++;
                 continue;
             }
             break;
         case 1:
-            k = 0x12;
+            k = 18;
             break;
         case 3:
         case 6:
         case 12:
-            k = 0x19;
+            k = 25;
             break;
         case 4:
             switch (piece->look) {
@@ -1252,50 +2151,50 @@ void FireBlast_RunParts(StageObj *obj)
                 dur = 6;
                 break;
             case 2:
-                k = 0xA;
-                dur = 0xB;
+                k = 10;
+                dur = 11;
                 break;
             case 3:
-                k = 0xC;
-                dur = 0x15;
+                k = 12;
+                dur = 21;
                 break;
             }
             break;
         case 5:
             switch (piece->look) {
             case 0:
-                k = 0xE;
-                dur = 0x14;
+                k = 14;
+                dur = 20;
                 break;
             case 1:
             default:
-                k = 0x10;
-                dur = 0xE;
+                k = 16;
+                dur = 14;
                 break;
             }
             break;
         case 8:
-            k = 0x14;
+            k = 20;
             if (!(piece->look & 2)) {
-                dur = 0x50;
+                dur = 80;
             } else {
-                k = 0x16;
-                dur = 0x3C;
+                k = 22;
+                dur = 60;
             }
             break;
         case 9:
-            k = 0x18;
+            k = 24;
             break;
         case 10:
-            k = 0x1A;
-            dur = 0x1E;
+            k = 26;
+            dur = 30;
             break;
         }
-        if (piece->look != 0xFF && ++piece->frame <= 0) {
+        if (piece->look != 255 && ++piece->frame <= 0) {
             piece++;
             continue;
         }
-        if (piece->look != 0xFF && piece->frame > dur) {
+        if (piece->look != 255 && piece->frame > dur) {
             if (obj->type == 3 || obj->type == 12) {
                 FireBlast_InitFlame(piece);
             } else if (obj->type == 10) {
@@ -1308,7 +2207,7 @@ void FireBlast_RunParts(StageObj *obj)
             curve = FireBlast_PartCurves[k++];
             Key_LerpVec3(curve, piece->curveScale, piece->frame);
         }
-        if (obj->type != 9 && piece->look != 0xFF) {
+        if (obj->type != 9 && piece->look != 255) {
             curve = FireBlast_PartCurves[k++];
             Key_LerpFloat(curve, &piece->alpha, piece->frame);
         }
@@ -1413,7 +2312,7 @@ void FireBlast_RunParts(StageObj *obj)
                 piece->node->pos[2] = obj->pos[2] + piece->offset[2];
                 break;
             }
-            OT_AddByDepth(gDrawOtSorted, piece->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
         }
         piece++;
     }
@@ -1427,10 +2326,10 @@ void FireBlast_RunParts(StageObj *obj)
 void FireBlast_RunGlow(StageObj *obj)
 {
     obj->timer += (Rand_Next(1) & 1) + 1;
-    if (obj->timer > 0x10) {
+    if (obj->timer > 16) {
         obj->timer = 1;
     }
-    OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+    OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
 }
 
 /*
@@ -1448,17 +2347,17 @@ void FireBlast_End(StageObj *obj)
     obj->state++;
     obj->visible = 0;
     if (obj->type == 5) {
-        FlashObj_Remove((EmObj *)(piece + 0x16C));
+        FlashObj_Remove((EmObj *)(piece + 364));
     }
     count = FireBlast_PartCounts[obj->type];
     if (count == 0) {
         DrawSlot_Free(obj->slot);
     } else {
         for (i = 0; i < count; i++) {
-            if (*(s32 *) (piece + 0x30) != 0) {
+            if (*(s32 *) (piece + 48) != 0) {
                 DrawSlot_Free(*(s16 *) (piece + 4));
             }
-            piece += 0x34;
+            piece += 52;
         }
     }
 }
@@ -1521,14 +2420,14 @@ void FireBlast_Draw(DrawSlot *node)
 
     if (set != NULL && set->active) {
         mats = set->mats;
-        red = 0xFF;
-        green = 0xFF;
-        blue = 0xFF;
+        red = 255;
+        green = 255;
+        blue = 255;
         opacity = 255.0f * piece->alpha;
         switch (obj->type) {
         case 0:
         case 11:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             mode |= 2;
             scale[0] = obj->scale * piece->curveScale[0];
             scale[1] = obj->scale * piece->curveScale[1];
@@ -1537,15 +2436,15 @@ void FireBlast_Draw(DrawSlot *node)
             case 0:
             case 1:
             case 2:
-                id = 0x4E;
+                id = 78;
                 Mtx_Translation(uvMtx, 0.25f * (piece->cell & 3), 0.25f * (piece->cell / 4), 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
             case 3:
-                id = 0x50;
+                id = 80;
                 break;
             case 4:
-                id = 0x58;
+                id = 88;
                 break;
             }
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
@@ -1553,37 +2452,37 @@ void FireBlast_Draw(DrawSlot *node)
             break;
         case 1:
             scale[0] = piece->size * piece->curveScale[0];
-            id = 0x4E;
+            id = 78;
             mode |= 2;
             scale[1] = piece->size * piece->curveScale[1];
             scale[2] = piece->size * piece->curveScale[2];
             Mtx_Translation(uvMtx, 0.25f * (piece->cell & 3), 0.25f * (piece->cell >> 2), 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             order = 3;
             break;
         case 2:
-            id = 0x15;
+            id = 21;
             scale[0] = obj->scale;
             scale[1] = obj->scale;
             scale[2] = obj->scale;
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             mode |= 2;
             opacity = 255.0f * (0.05f + 0.025f * (1.0f + Math_Sin((6.2831855f * (360.0f * (obj->timer / 16.0f) - 90.0f)) / 360.0f)));
             break;
         case 3:
         case 6:
         case 12:
-            id = 0x60;
+            id = 96;
             scale[0] = piece->curveScale[0];
             scale[1] = piece->curveScale[1];
             scale[2] = piece->curveScale[2];
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             mode |= 2;
             Mtx_Translation(uvMtx, 0.0625f * (piece->cell & 7), 0.0625f * (piece->cell >> 3), 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
-            red = 0xFF;
-            green = 0x5F;
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+            red = 255;
+            green = 95;
             blue = 0;
             break;
         case 4:
@@ -1594,13 +2493,13 @@ void FireBlast_Draw(DrawSlot *node)
             case 0:
             case 1:
                 mode |= 2;
-                id = 0x15;
+                id = 21;
                 break;
             case 2:
-                id = 0x23;
+                id = 35;
                 break;
             case 3:
-                id = 0x48;
+                id = 72;
                 scale[0] *= 2.0f;
                 scale[1] *= 2.0f;
                 scale[2] *= 2.0f;
@@ -1614,7 +2513,7 @@ void FireBlast_Draw(DrawSlot *node)
             fade = gAreaFade;
             scale[1] = piece->curveScale[1];
             scale[2] = piece->curveScale[2];
-            id = node->part + 0x51;
+            id = node->part + 81;
             if (fade == 1 || fade == 2) {
                 mode |= 1;
             } else if (piece->look < 2) {
@@ -1622,18 +2521,18 @@ void FireBlast_Draw(DrawSlot *node)
             }
             break;
         case 8:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             scale[0] = piece->curveScale[0] * (obj->scale * piece->size);
             scale[1] = piece->curveScale[1] * (obj->scale * piece->size);
             scale[2] = piece->curveScale[2] * (obj->scale * piece->size);
             if (!(piece->look & 1)) {
-                id = 0x4D;
+                id = 77;
                 Mtx_Translation(uvMtx, 0.0f, 0.25f, 0.0f);
             } else {
                 Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-                id = 0x4F;
+                id = 79;
             }
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             order = 3;
             break;
@@ -1642,8 +2541,8 @@ void FireBlast_Draw(DrawSlot *node)
             scale[1] = 3.0f * obj->scale * piece->curveScale[1];
             scale[2] = 3.0f * obj->scale * piece->curveScale[2];
             Mtx_Translation(uvMtx, 0.25f, 0.0f, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
-            id = 0x22;
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+            id = 34;
             mode |= 2;
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             order = 3;
@@ -1653,7 +2552,7 @@ void FireBlast_Draw(DrawSlot *node)
             scale[1] = piece->curveScale[1];
             scale[2] = piece->curveScale[2];
             id = FireBlast_MineGlowModels[piece->look];
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             color = &FireBlast_MineRankColors[obj->var0];
             if (obj->var0 != 0 && obj->angle < 16) {
                 prevColor = &FireBlast_MineRankColors[obj->var0 - 1];
@@ -1673,12 +2572,12 @@ void FireBlast_Draw(DrawSlot *node)
             }
             break;
         }
-        Gs_SetState(0x60, 0);
+        Gs_SetState(RS_ALPHA_REF, 0);
         Mtx_FromScaleRotTrans(scale, rot, node->pos, order, mtx);
         Mtx_Concat3x3(mtx, gCamMatrix);
         Effect_DrawModel(&set->matSets[id], mtx, blue | ((green << 8) | ((opacity << 24) | (red << 16))), mode, mats);
-        Gfx_SetBlend(4, 5);
-        Gs_SetState(0x6C, 1);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
@@ -1706,7 +2605,7 @@ void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale)
         if (k == 0) {
             FireBlast_CreateScaled(pos, 8, scale);
         }
-        if (k == 0xB) {
+        if (k == 11) {
             obj->scale *= 0.7f;
         }
     }
@@ -1886,10 +2785,10 @@ void ElementBurst_Setup(StageObj *obj)
             Vec_Copy(piece->pos, obj->pos);
             switch (piece->kind) {
             case 0:
-                piece->spin = (Rand_Next(1) & 0x3FF) - 0x200;
+                piece->spin = (Rand_Next(1) & 0x3FF) - 512;
                 break;
             case 2:
-                piece->spin = (Rand_Next(1) & 0x7FF) - 0x400;
+                piece->spin = (Rand_Next(1) & 0x7FF) - 1024;
                 break;
             default:
                 piece->spin = 0;
@@ -1902,7 +2801,7 @@ void ElementBurst_Setup(StageObj *obj)
             piece->frame = i * -5 - 5;
             Vec_Copy(piece->pos, obj->pos);
             piece->scale *= 1.0f - 0.2f * i;
-            piece->spin = (Rand_Next(1) & 0xFF) - 0x80;
+            piece->spin = (Rand_Next(1) & 0xFF) - 128;
             break;
         case 2:
             piece->angle = Rand_Next(1);
@@ -2122,7 +3021,7 @@ void ElementBurst_Run(StageObj *obj)
             piece->node->pos[0] = camOffset[0] + piece->pos[0];
             piece->node->pos[1] = camOffset[1] + piece->pos[1];
             piece->node->pos[2] = camOffset[2] + piece->pos[2];
-            OT_AddByDepth(gDrawOtSorted, piece->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
         }
     }
 }
@@ -2204,7 +3103,7 @@ void ElementBurst_Draw(DrawSlot *node)
                 Mtx_Translation(uvMtx, 0.0f, 0.75f, 0.0f);
                 break;
             }
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             order = 3;
             color = (piece->alpha << 24) | 0xFFFFFF;
@@ -2235,8 +3134,8 @@ void ElementBurst_Draw(DrawSlot *node)
                 Color_EvalKeys((s32 *) ElementBurst_WaterRingColorKeys, piece->frame, &color);
                 break;
             }
-            Gs_SetState(0x6C, 0);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_ZWRITE, 0);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             order = 3;
             break;
@@ -2264,8 +3163,8 @@ void ElementBurst_Draw(DrawSlot *node)
                     Mtx_Translation(uvMtx, 0.0625f, 0.5f + 0.046875f * piece->frame, 0.0f);
                 }
             }
-            Gs_SetState(0x6C, 0);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_ZWRITE, 0);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             order = 3;
             color = (piece->alpha << 24) | 0xFFFFFF;
@@ -2280,7 +3179,7 @@ void ElementBurst_Draw(DrawSlot *node)
                 model = &set->matSets[0];
                 mode |= 2;
                 Mtx_Translation(uvMtx, 0.125f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
             case 1:
                 model = &set->matSets[64];
@@ -2303,7 +3202,7 @@ void ElementBurst_Draw(DrawSlot *node)
         Mtx_FromScaleRotTrans(scale, rot, node->pos, order, mtx);
         Mtx_Concat3x3(mtx, gCamMatrix);
         Effect_DrawModel(model, mtx, color, mode, mats);
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
@@ -2323,7 +3222,7 @@ s32 ElementBurst_RepeatRing(StageObj *obj, ElementBurstPart *piece)
     case 3:
     case 4:
         if (obj->var1 == 0) {
-            piece->frame = -0xE;
+            piece->frame = -14;
         } else {
             piece->frame = -6;
         }
@@ -2339,11 +3238,17 @@ s32 ElementBurst_RepeatRing(StageObj *obj, ElementBurstPart *piece)
 
 /*
  * Returns the bone the rings on a monster (type 5) follow, by the monster's
- * kind, once its motion (likely its roar; Blangonga's are BLANG_MOT_ROAR and
- * _ROAR_B) has reached the kind's frame: 0x22 for the Rathalos, Gravios,
- * Diablos and Khezu kinds, 0x33 Fatalis, 0x25 Lao-Shan Lung, 0x23 Yian
- * Garuga, 0x13 Blangonga, Rajang and Congalala, 0x27 Kushala Daora, Lunastra
- * and Teostra. Returns -1 in other motions and for other kinds.
+ * kind, once its roar motion has reached the kind's frame; -1 in other
+ * motions and for other kinds. The bones: RATH_BONE_BREATH,
+ * KHEZU_BONE_BREATH, GRAV_BONE_BREATH and DIAB_BONE_BREATH; 51 for
+ * Fatalis, LAOSHAN_BONE_ROAR, GARUGA_BONE_HEAD, BLANG_BONE_HEAD (Blangonga,
+ * Rajang and Congalala); KUSH_BONE_BLAST for Kushala Daora, Lunastra and
+ * Teostra.
+ * Khezu's two motions here are its roars (KHEZU_SE_ROAR plays with their
+ * rings), and the Rathalos kinds make their rings in RATH_MOT_TURN_ROAR
+ * at frame 110. The Diablos kinds' case takes Rathalos's two motions with
+ * the same frames, besides DIAB_MOT_ROAR, but their own code makes rings
+ * only in DIAB_MOT_ROAR (frame 112).
  */
 s32 ElementBurst_RoarBone(StageObj *obj)
 {
@@ -2356,74 +3261,74 @@ s32 ElementBurst_RoarBone(StageObj *obj)
     case EM_KIND_RATHIAN:
     case EM_KIND_GOLD_RATHIAN:
     case EM_KIND_PINK_RATHIAN:
-        if (!((em->motionId[0] == 0x41E && EmMotion_ReachedFrame(em, 0, 110.0f)) ||
-            (em->motionId[0] == 0x41B && EmMotion_ReachedFrame(em, 0, 160.0f)))) {
+        if (!((em->motionId[0] == EM_MOTION_ID(0, RATH_MOT_TURN_ROAR) && EmMotion_ReachedFrame(em, 0, 110.0f)) ||
+            (em->motionId[0] == EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE) && EmMotion_ReachedFrame(em, 0, 160.0f)))) {
             return -1;
         }
-        return 0x22;
+        return RATH_BONE_BREATH;
     case EM_KIND_GRAVIOS:
     case EM_KIND_BLACK_GRAVIOS:
     case EM_KIND_BASARIOS:
-        if (!((em->motionId[0] == 0x41E && EmMotion_ReachedFrame(em, 0, 110.0f)) ||
-            (em->motionId[0] == 0x452 && EmMotion_ReachedFrame(em, 0, 110.0f)))) {
+        if (!((em->motionId[0] == EM_MOTION_ID(0, GRAV_MOT_TURN_ROAR) && EmMotion_ReachedFrame(em, 0, 110.0f)) ||
+            (em->motionId[0] == EM_MOTION_ID(0, GRAV_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 110.0f)))) {
             return -1;
         }
-        return 0x22;
+        return GRAV_BONE_BREATH;
     case EM_KIND_DIABLOS:
     case EM_KIND_BLACK_DIABLOS:
     case EM_KIND_MONOBLOS:
     case EM_KIND_WHITE_MONOBLOS:
-        if (!((em->motionId[0] == 0x457 && EmMotion_ReachedFrame(em, 0, 112.0f)) ||
-            (em->motionId[0] == 0x41E && EmMotion_ReachedFrame(em, 0, 110.0f)) ||
-            (em->motionId[0] == 0x41B && EmMotion_ReachedFrame(em, 0, 160.0f)))) {
+        if (!((em->motionId[0] == EM_MOTION_ID(0, DIAB_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 112.0f)) ||
+            (em->motionId[0] == EM_MOTION_ID(0, DIAB_MOT_TURN_IN_PLACE) && EmMotion_ReachedFrame(em, 0, 110.0f)) ||
+            (em->motionId[0] == EM_MOTION_ID(0, DIAB_MOT_ALERT_IDLE) && EmMotion_ReachedFrame(em, 0, 160.0f)))) {
             return -1;
         }
-        return 0x22;
+        return DIAB_BONE_BREATH;
     case EM_KIND_FATALIS:
     case EM_KIND_FATALIS_B:
     case EM_KIND_FATALIS_C:
-        if (!(em->motionId[0] == 0x408 && EmMotion_ReachedFrame(em, 0, 66.0f))) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, FAT_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 66.0f))) {
             return -1;
         }
-        return 0x33;
+        return FAT_BONE_BREATH;
     case EM_KIND_KHEZU:
     case EM_KIND_RED_KHEZU:
-        if (!((em->motionId[0] == 0x451 && EmMotion_ReachedFrame(em, 0, 66.0f)) ||
-            (em->motionId[0] == 0x41E && EmMotion_ReachedFrame(em, 0, 78.0f)))) {
+        if (!((em->motionId[0] == EM_MOTION_ID(0, KHEZU_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 66.0f)) ||
+            (em->motionId[0] == EM_MOTION_ID(0, KHEZU_MOT_TURN_ROAR) && EmMotion_ReachedFrame(em, 0, 78.0f)))) {
             return -1;
         }
-        return 0x22;
+        return KHEZU_BONE_BREATH;
     case EM_KIND_LAO_SHAN_LUNG:
     case EM_KIND_ASHEN_LAO_SHAN_LUNG:
-        if (!(em->motionId[0] == 0x3EF && EmMotion_ReachedFrame(em, 0, 4.0f))) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, LAOSHAN_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 4.0f))) {
             return -1;
         }
-        return 0x25;
+        return LAOSHAN_BONE_ROAR;
     case EM_KIND_YIAN_GARUGA:
-        if (!(em->motionId[0] == 0x410 && EmMotion_ReachedFrame(em, 0, 60.0f))) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, GARUGA_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 60.0f))) {
             return -1;
         }
-        return 0x23;
+        return GARUGA_BONE_HEAD;
     case EM_KIND_BLANGONGA:
     case EM_KIND_RAJANG:
-        if (!((em->motionId[0] == 0x41C && EmMotion_ReachedFrame(em, 0, 38.0f)) ||
-            (em->motionId[0] == 0x423 && EmMotion_ReachedFrame(em, 0, 64.0f)))) {
+        if (!((em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 38.0f)) ||
+            (em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_ROAR_B) && EmMotion_ReachedFrame(em, 0, 64.0f)))) {
             return -1;
         }
-        return 0x13;
+        return BLANG_BONE_HEAD;
     case EM_KIND_CONGALALA:
-        if (!(em->motionId[0] == 0x43E && EmMotion_ReachedFrame(em, 0, 100.0f))) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_ROAR_C) && EmMotion_ReachedFrame(em, 0, 100.0f))) {
             return -1;
         }
-        return 0x13;
+        return BLANG_BONE_HEAD;
     case EM_KIND_KUSHALA_DAORA:
     case EM_KIND_RUSTED_KUSHALA_DAORA:
     case EM_KIND_LUNASTRA:
     case EM_KIND_TEOSTRA:
-        if (!(em->motionId[0] == 0x408 && EmMotion_ReachedFrame(em, 0, 62.0f))) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_ROAR) && EmMotion_ReachedFrame(em, 0, 62.0f))) {
             return -1;
         }
-        return 0x27;
+        return KUSH_BONE_BLAST;
     }
     return -1;
 }
@@ -2438,27 +3343,27 @@ void ElementBurst_PlaySound(StageObj *obj)
 {
     switch (obj->type) {
     case 0:
-        Sound_PlaySeAtPosChecked(1, 0x5E, 0, obj->pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 94, 0, obj->pos, 1, 0);
         break;
     case 2:
         if (obj->var2 != 1) {
-            Sound_PlaySeAtPosChecked(1, 0x5F, 0, obj->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 95, 0, obj->pos, 1, 0);
         }
         break;
     case 3:
     case 7:
         if (obj->var2 != 1) {
-            Sound_PlaySeAtPosChecked(1, 0x61, 0, obj->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 97, 0, obj->pos, 1, 0);
         }
         break;
     case 8:
         if (obj->var2 != 1) {
-            Sound_PlaySeAtPosChecked(1, 0x62, 0, obj->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 98, 0, obj->pos, 1, 0);
         }
         break;
     case 4:
         if (obj->angle == 0) {
-            Sound_PlaySeAtPosChecked(1, 0x75, 0, obj->pos, 6, 0);
+            Sound_PlaySeAtPosChecked(1, 117, 0, obj->pos, 6, 0);
         }
         break;
     case 1:
@@ -2622,7 +3527,7 @@ void HitSplash_Setup(StageObj *obj)
         HitSplash_PlaySound(obj, obj->pos);
         break;
     case 8:
-        if (obj->var2 != 0xFF) {
+        if (obj->var2 != 255) {
             Em_GetBonePos(obj->owner, obj->var2, pos);
             HitSplash_PlaySound(obj, pos);
         }
@@ -2646,7 +3551,7 @@ void HitSplash_Setup(StageObj *obj)
         case 2:
             piece->delay = -i;
             piece->idx = 0;
-            piece->alpha = 0xFF;
+            piece->alpha = 255;
             piece->scale = obj->scale;
             piece->angle = Rand_Next(1);
             break;
@@ -2662,13 +3567,13 @@ void HitSplash_Setup(StageObj *obj)
                 piece->scale = obj->scale;
                 piece->angle = Rand_Next(1);
             }
-            piece->alpha = 0xFF;
+            piece->alpha = 255;
             break;
         case 6:
             piece->delay = 0;
             piece->idx = i;
             if (i == 0) {
-                piece->alpha = 0xFF;
+                piece->alpha = 255;
             }
             piece->scale = obj->scale;
             break;
@@ -2699,7 +3604,7 @@ void HitSplash_Setup(StageObj *obj)
             piece->angle = Rand_Next(1);
             piece->delay = -obj->var1;
             piece->scale = obj->scale;
-            piece->alpha = 0xFF;
+            piece->alpha = 255;
             break;
         case 15:
             piece->idx = i;
@@ -2791,14 +3696,14 @@ void HitSplash_Run(StageObj *obj)
         obj->visible = 0;
         return;
     }
-    if (obj->var2 != 0xFF
+    if (obj->var2 != 255
         && (((Em *) obj->owner)->taskPhase == 3 || ((Em *) obj->owner)->active == 0)) {
         switch (obj->type) {
         case 0:
         case 8:
         case 9:
             for (i = 0; i < count; i++) {
-                piece[i].idx = 0xFF;
+                piece[i].idx = 255;
             }
             break;
         case 3:
@@ -2808,7 +3713,7 @@ void HitSplash_Run(StageObj *obj)
             return;
         }
     }
-    if (obj->type == 0 && piece->idx != 0xFF) {
+    if (obj->type == 0 && piece->idx != 255) {
         if ((obj->var0 & 0x20) == 0) {
             stepFrame = obj->timer - 10;
         } else {
@@ -2819,10 +3724,10 @@ void HitSplash_Run(StageObj *obj)
         default:
             steps = HitSplash_SpraySteps;
             break;
-        case 0x10:
+        case 16:
             steps = HitSplash_SprayStepsStrong;
             break;
-        case 0x20:
+        case 32:
             steps = HitSplash_SprayStepsAtOnce;
             break;
         }
@@ -2835,14 +3740,14 @@ void HitSplash_Run(StageObj *obj)
             }
         }
         if (found == 1) {
-            if (obj->var2 != 0xFF) {
+            if (obj->var2 != 255) {
                 Mtx_Copy((f32 *) m, (f32 *) (Em_GetBone(obj->owner, obj->var2)));
                 Vec_Rotate(off, obj->pos, m);
                 Mtx_GetTrans(pos, m);
                 pos[0] += off[0];
                 pos[1] += off[1];
                 pos[2] += off[2];
-                if (j == 0 && ((Em *) obj->owner)->isEm == 1 && (obj->var0 & 0xF0) != 0x20) {
+                if (j == 0 && ((Em *) obj->owner)->isEm == 1 && (obj->var0 & 0xF0) != 32) {
                     HitSplash_PlaySound(obj, pos);
                 }
                 burstSize = 0.1f * steps[j].size;
@@ -2855,10 +3760,10 @@ void HitSplash_Run(StageObj *obj)
                 case 0:
                     HitSpark_SpawnForOwner(obj->owner, (u16) obj->angle, 3, 2, pos, burstSize);
                     break;
-                case 0x20:
+                case 32:
                     HitSpark_SpawnForOwner(obj->owner, (u16) obj->angle, 3, 0, pos, burstSize);
                     break;
-                case 0x10:
+                case 16:
                     HitSpark_SpawnForOwner(obj->owner, (u16) obj->angle, 3, 3, pos, burstSize);
                     break;
                 }
@@ -2912,8 +3817,8 @@ void HitSplash_Run(StageObj *obj)
         }
         if (piece->delay == 1 && obj->type != 2 && obj->type != 5 && obj->type != 6 && obj->type != 14
             && obj->type != 15) {
-            if (obj->var2 != 0xFF) {
-                if (piece->idx == 0xFF) {
+            if (obj->var2 != 255) {
+                if (piece->idx == 255) {
                     piece++;
                     continue;
                 }
@@ -2926,8 +3831,8 @@ void HitSplash_Run(StageObj *obj)
                         piece->node->pos[1] = pos[1] + off[1];
                         piece->node->pos[2] = pos[2] + off[2];
                     }
-                    off[0] = 0.02f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                    off[1] = 0.02f * ((Rand_Next(1) & 0x3FF) - 0x200);
+                    off[0] = 0.02f * ((Rand_Next(1) & 0x3FF) - 512);
+                    off[1] = 0.02f * ((Rand_Next(1) & 0x3FF) - 512);
                     off[2] = 30.0f + 0.005f * (Rand_Next(1) & 0x3FF);
                     x = off[0];
                     y = off[1];
@@ -2943,17 +3848,17 @@ void HitSplash_Run(StageObj *obj)
                     piece->pos[1] = pos[1] + off[1];
                     piece->pos[2] = pos[2] + off[2];
                     if (obj->type == 8) {
-                        off[0] = 0.04f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                        off[1] = 0.02f * ((Rand_Next(1) & 0x3FF) - 0x200);
+                        off[0] = 0.04f * ((Rand_Next(1) & 0x3FF) - 512);
+                        off[1] = 0.02f * ((Rand_Next(1) & 0x3FF) - 512);
                         off[2] = 3.0f;
                         piece->pos[0] += off[0];
                         piece->pos[1] += off[1];
                         piece->pos[2] += off[2];
                     }
                 } else {
-                    piece->pos[0] = pos[0] + off[0] + 0.004f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                    piece->pos[1] = 10.0f + (pos[1] + off[1] + 0.004f * ((Rand_Next(1) & 0x3FF) - 0x200));
-                    piece->pos[2] = pos[2] + off[2] + 0.004f * ((Rand_Next(1) & 0x3FF) - 0x200);
+                    piece->pos[0] = pos[0] + off[0] + 0.004f * ((Rand_Next(1) & 0x3FF) - 512);
+                    piece->pos[1] = 10.0f + (pos[1] + off[1] + 0.004f * ((Rand_Next(1) & 0x3FF) - 512));
+                    piece->pos[2] = pos[2] + off[2] + 0.004f * ((Rand_Next(1) & 0x3FF) - 512);
                 }
             }
         } else if (piece->delay > end) {
@@ -2971,14 +3876,14 @@ void HitSplash_Run(StageObj *obj)
         case 12:
         case 13:
             modeOrCurve = k;
-            curve = (void *) HitSplash_Curves[modeOrCurve];
+            curve = HitSplash_Curves[modeOrCurve];
             Key_LerpVec3(curve, piece->sc, piece->delay);
             k += 2;
-            Key_LerpFloat((void *) HitSplash_Curves[(s16) (modeOrCurve + 1)], &opacity, piece->delay);
+            Key_LerpFloat(HitSplash_Curves[(s16) (modeOrCurve + 1)], &opacity, piece->delay);
             piece->alpha = 255.0f * opacity;
             break;
         case 2:
-            curve = (void *) HitSplash_Curves[k++];
+            curve = HitSplash_Curves[k++];
             Key_LerpVec3(curve, piece->sc, piece->delay);
             if (i == 2) {
                 piece->angle = Rand_Next(1);
@@ -2986,7 +3891,7 @@ void HitSplash_Run(StageObj *obj)
             }
             break;
         case 5:
-            curve = (void *) HitSplash_Curves[k++];
+            curve = HitSplash_Curves[k++];
             Key_LerpVec3(curve, piece->sc, piece->delay);
             if (i >= 3) {
                 piece->idx = Rand_Next(1) % 3 + 1;
@@ -2994,13 +3899,13 @@ void HitSplash_Run(StageObj *obj)
             }
             break;
         case 6:
-            curve = (void *) HitSplash_Curves[k++];
+            curve = HitSplash_Curves[k++];
             Key_LerpVec3(curve, piece->sc, piece->delay);
             if (i == 0) {
                 piece->angle = Rand_Next(1);
                 piece->idx = Rand_Next(1) % 3;
             } else {
-                curve = (void *) HitSplash_Curves[k++];
+                curve = HitSplash_Curves[k++];
                 Key_LerpFloat(curve, &opacity, piece->delay);
                 piece->alpha = 255.0f * opacity;
             }
@@ -3009,10 +3914,10 @@ void HitSplash_Run(StageObj *obj)
             break;
         default:
             rowOrCurve = k;
-            curve = (void *) HitSplash_Curves[rowOrCurve];
+            curve = HitSplash_Curves[rowOrCurve];
             Key_LerpVec3(curve, piece->sc, piece->delay);
             k += 2;
-            Key_LerpFloat((void *) HitSplash_Curves[(s16) (rowOrCurve + 1)], &opacity, piece->delay);
+            Key_LerpFloat(HitSplash_Curves[(s16) (rowOrCurve + 1)], &opacity, piece->delay);
             piece->alpha = 255.0f * opacity;
             for (listIdx = 0; HitSplash_CellFrames[listIdx] != -1; listIdx++) {
                 if (piece->delay == HitSplash_CellFrames[listIdx]) {
@@ -3113,7 +4018,7 @@ void HitSplash_Run(StageObj *obj)
                 Vec_Copy(piece->node->pos, obj->pos);
                 break;
             }
-            OT_AddByDepth(gDrawOtSorted, piece->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
         }
         piece++;
     }
@@ -3142,8 +4047,6 @@ void HitSplash_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-extern u8 gEffectColor0Green;
-extern u8 gEffectColor0Blue;
 /*
  * Draws one part (node->part) as a stage model facing the camera (type 14
  * lying flat instead) with the part's opacity, depth writes off. The spray:
@@ -3175,12 +4078,12 @@ void HitSplash_Draw(DrawSlot *node)
 
     if (set != NULL && set->active) {
         mats = set->mats;
-        red = 0xFF;
-        green = 0xFF;
-        blue = 0xFF;
+        red = 255;
+        green = 255;
+        blue = 255;
         switch (obj->type) {
         case 0:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             rot[2] = (6.2831855f * piece->angle) / 65536.0f;
             scale[0] = piece->sc[0] * (piece->scale * HitSplash_TargetScales[obj->var0 & 0xF]);
             scale[1] = piece->sc[1] * (piece->scale * HitSplash_TargetScales[obj->var0 & 0xF]);
@@ -3191,7 +4094,7 @@ void HitSplash_Draw(DrawSlot *node)
             model = &set->matSets[97];
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Translation(uvMtx, 0.125f * (piece->cell & 1), 0.125f * (piece->cell >> 1), 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             colorRow = Effect_OwnerColorRow(obj->ownerIndex);
             red = gEffectColors[colorRow].r;
             green = gEffectColors[colorRow].g;
@@ -3204,12 +4107,12 @@ void HitSplash_Draw(DrawSlot *node)
             }
             break;
         case 2:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             scale[0] = piece->scale * piece->sc[0];
             scale[1] = piece->scale * piece->sc[1];
             scale[2] = piece->scale * piece->sc[2];
             if (node->part == 0) {
-                if ((obj->var0 & 0xF0) == 0x20) {
+                if ((obj->var0 & 0xF0) == 32) {
                     return;
                 }
                 rot[2] = (6.2831855f * obj->angle) / 65536.0f;
@@ -3219,10 +4122,10 @@ void HitSplash_Draw(DrawSlot *node)
                 model = &set->matSets[piece->idx] + 32;
             }
             if (obj->var1 == 1) {
-                red = 0xFF;
+                red = 255;
                 mode |= 2;
-                green = 0xFF;
-                blue = 0xFF;
+                green = 255;
+                blue = 255;
                 if (node->part == 0) {
                     Mtx_Translation(uvMtx, 0.125f, 0.0f, 0.0f);
                 } else {
@@ -3237,10 +4140,10 @@ void HitSplash_Draw(DrawSlot *node)
                 Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
             }
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             break;
         case 5:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             scale[0] = piece->scale * piece->sc[0];
             scale[1] = piece->scale * piece->sc[1];
             scale[2] = piece->scale * piece->sc[2];
@@ -3251,10 +4154,10 @@ void HitSplash_Draw(DrawSlot *node)
                 model = &set->matSets[piece->idx] + 31;
             }
             if (obj->var1 == 1) {
-                red = 0xFF;
+                red = 255;
                 mode |= 2;
-                green = 0xFF;
-                blue = 0xFF;
+                green = 255;
+                blue = 255;
                 if (piece->idx == 0) {
                     Mtx_Translation(uvMtx, 0.125f, 0.0f, 0.0f);
                 } else {
@@ -3269,7 +4172,7 @@ void HitSplash_Draw(DrawSlot *node)
                 Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
             }
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             break;
         case 6:
             mode |= 2;
@@ -3281,7 +4184,7 @@ void HitSplash_Draw(DrawSlot *node)
                 model = &set->matSets[piece->idx] + 32;
                 Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
                 Mtx_Translation(uvMtx, 0.25f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             } else {
                 model = &set->matSets[21];
                 Mtx_FromScaleRotTrans(scale, rot, node->pos, 0, mtx);
@@ -3297,12 +4200,12 @@ void HitSplash_Draw(DrawSlot *node)
             model = &set->matSets[78];
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Translation(uvMtx, 0.25f * (piece->cell & 3), 0.25f * (piece->cell >> 2), 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             break;
         case 9:
         case 12:
         case 13:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             if (obj->type == 9) {
                 scale[0] = 0.5f * piece->scale * piece->sc[0];
                 scale[1] = 0.5f * piece->scale * piece->sc[1];
@@ -3327,7 +4230,7 @@ void HitSplash_Draw(DrawSlot *node)
                     model = &set->matSets[79];
                     Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
                 }
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             }
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             break;
@@ -3340,7 +4243,7 @@ void HitSplash_Draw(DrawSlot *node)
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_RotateX(mtx, 4.712389f);
             Mtx_Translation(uvMtx, 0.125f * (piece->cell & 1), 0.125f * (piece->cell >> 1), 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             red = *(u8 *)gEffectColors;
             green = gEffectColor0Green;
             blue = gEffectColor0Blue;
@@ -3350,26 +4253,26 @@ void HitSplash_Draw(DrawSlot *node)
             Mtx_Concat3x3(mtx, gCamMatrix);
         }
         Effect_DrawModel(model, mtx, blue | ((green << 8) | ((piece->alpha << 24) | (red << 16))), mode, mats);
-        Gfx_SetBlend(4, 5);
-        Gs_SetState(0x6C, 1);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
 /*
- * Returns a part's turn a frame by bits 1 and 2 of x (its idx): 0x111,
- * -0x110, 0x89 or -0x88.
+ * Returns a part's turn a frame by bits 1 and 2 of x (its idx): 273,
+ * -272, 137 or -136.
  */
 s32 HitSplash_SpinSpeed(s16 x)
 {
     switch (x & 6) {
     case 0:
-        return 0x111;
+        return 273;
     case 2:
-        return -0x110;
+        return -272;
     case 4:
-        return 0x89;
+        return 137;
     case 6:
-        return -0x88;
+        return -136;
     }
     return 0;
 }
@@ -3385,14 +4288,14 @@ void HitSplash_PlaySound(StageObj *obj, f32 *pos)
     switch (obj->type) {
     case 0:
         if (HitSplash_TargetScales[obj->var0 & 0xF] <= 0.5f) {
-            Sound_PlaySeAtPosChecked(1, 0x6E, 0, pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 110, 0, pos, 1, 0);
         } else {
             switch (obj->var0 & 0xF0) {
             case 0:
-                Sound_PlaySeAtPosChecked(1, 0x6E, 0, pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 110, 0, pos, 1, 0);
                 break;
-            case 0x10:
-                Sound_PlaySeAtPosChecked(1, 0x6F, 0, pos, 1, 0);
+            case 16:
+                Sound_PlaySeAtPosChecked(1, 111, 0, pos, 1, 0);
                 break;
             }
         }
@@ -3402,21 +4305,21 @@ void HitSplash_PlaySound(StageObj *obj, f32 *pos)
         switch (obj->var1) {
         case 1:
             switch (obj->var0 & 0xF0) {
-            case 0x10:
-                Sound_PlaySeAtPosChecked(1, 0x65, 0, pos, 1, 0);
+            case 16:
+                Sound_PlaySeAtPosChecked(1, 101, 0, pos, 1, 0);
                 break;
             case 0:
-                Sound_PlaySeAtPosChecked(1, 0x64, 0, pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 100, 0, pos, 1, 0);
                 break;
             }
             break;
         }
         break;
     case 6:
-        Sound_PlaySeAtPosChecked(1, 0x63, 0, pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 99, 0, pos, 1, 0);
         break;
     case 8:
-        Sound_PlaySeAtPosChecked(1, 0x95, 0, pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 149, 0, pos, 1, 0);
         break;
     }
 }
@@ -3426,11 +4329,11 @@ void HitSplash_PlaySound(StageObj *obj, f32 *pos)
  * hunter), when em is in the current area, with size scale; hitKind (the
  * hit's ObjAttach.hitKind) sets var0's high bits (0 gives 0x20, 3 gives 0x10,
  * others 0). The guard spark (6) stays at pos with a random angle. The others
- * face back toward the hitter (the hit's angle + 0x8000). On a monster,
+ * face back toward the hitter (the hit's angle + half a turn). On a monster,
  * ownerIndex keeps its kind (the colour), five kinds (Melynx, Vespoid and
  * Hornetaur among them) take scale row 2, and the object follows the bone of
  * the hit part, pos kept relative to it, or stays at pos when no part was
- * hit; on a hunter it takes row 1 and follows bone 0xA (types 8 and 9 at the
+ * hit; on a hunter it takes row 1 and follows bone 10 (types 8 and 9 at the
  * bone itself).
  */
 void HitSplash_CreateOnEm(Em *em, ObjAttach *hit, u8 k, s16 hitKind, f32 *pos, f32 scale)
@@ -3454,10 +4357,10 @@ void HitSplash_CreateOnEm(Em *em, ObjAttach *hit, u8 k, s16 hitKind, f32 *pos, f
                 obj->var0 = 0;
                 break;
             case 3:
-                obj->var0 = 0x10;
+                obj->var0 = 16;
                 break;
             case 0:
-                obj->var0 = 0x20;
+                obj->var0 = 32;
                 break;
             }
             obj->scale = scale;
@@ -3466,7 +4369,7 @@ void HitSplash_CreateOnEm(Em *em, ObjAttach *hit, u8 k, s16 hitKind, f32 *pos, f
                 obj->pos[1] = pos[1];
                 obj->pos[2] = pos[2];
                 obj->angle = Rand_Next(1);
-                obj->var2 = 0xFF;
+                obj->var2 = 255;
                 return;
             }
             obj->angle = em->hitAngle + 0x7FFF + 1;
@@ -3475,10 +4378,10 @@ void HitSplash_CreateOnEm(Em *em, ObjAttach *hit, u8 k, s16 hitKind, f32 *pos, f
                 obj->ownerIndex = em->type;
                 switch (obj->ownerIndex) {
                 case 9:
-                case 0x17:
-                case 0x13:
-                case 0x18:
-                case 0x38:
+                case 23:
+                case 19:
+                case 24:
+                case 56:
                     obj->var0 |= 2;
                     break;
                 }
@@ -3495,7 +4398,7 @@ void HitSplash_CreateOnEm(Em *em, ObjAttach *hit, u8 k, s16 hitKind, f32 *pos, f
                 }
             } else {
                 obj->var0 |= 1;
-                obj->var2 = 0xA;
+                obj->var2 = 10;
                 if (obj->type == 8 || obj->type == 9) {
                     obj->pos[0] = 0.0f;
                     obj->pos[1] = 0.0f;
@@ -3511,7 +4414,7 @@ void HitSplash_CreateOnEm(Em *em, ObjAttach *hit, u8 k, s16 hitKind, f32 *pos, f
                 }
                 return;
             }
-            obj->var2 = 0xFF;
+            obj->var2 = 255;
             obj->pos[0] = pos[0];
             obj->pos[1] = pos[1];
             obj->pos[2] = pos[2];
@@ -3535,7 +4438,7 @@ void HitSplash_CreateAt(f32 *pos, u8 k, s16 life, u8 spacing, f32 scale)
         obj->angle = life;
         obj->scale = scale;
         obj->var1 = spacing;
-        obj->var2 = 0xFF;
+        obj->var2 = 255;
         obj->pos[0] = pos[0];
         obj->pos[1] = pos[1];
         obj->pos[2] = pos[2];
@@ -3567,10 +4470,10 @@ void HitSplash_CreateByHitFx(Em *em, f32 *pos, u8 k, s16 hitKind, s16 hitFxKind,
                 obj->var0 = 0;
                 break;
             case 3:
-                obj->var0 = 0x10;
+                obj->var0 = 16;
                 break;
             case 0:
-                obj->var0 = 0x20;
+                obj->var0 = 32;
                 break;
             }
             obj->var0 &= 0x3F;
@@ -3601,7 +4504,7 @@ void HitSplash_CreateByHitFx(Em *em, f32 *pos, u8 k, s16 hitKind, s16 hitFxKind,
             obj->pos[1] = pos[1];
             obj->pos[2] = pos[2];
             obj->angle = Rand_Next(1);
-            obj->var2 = 0xFF;
+            obj->var2 = 255;
         }
     }
 }
@@ -3625,7 +4528,7 @@ void HitSplash_CreateAtScaled(f32 *pos, u8 k, f32 scale)
         obj->pos[1] = pos[1];
         obj->pos[2] = pos[2];
         obj->angle = Rand_Next(1);
-        obj->var2 = 0xFF;
+        obj->var2 = 255;
     }
 }
 
@@ -3638,7 +4541,7 @@ f32 StageObj_RandUnit(void)
 /* Returns a random number from -0.512 to 0.511. */
 f32 StageObj_RandSigned(void)
 {
-    return 0.001f * (f32) ((Rand_Next(1) & 0xFFFF & 0x3FF) - 0x200);
+    return 0.001f * (f32) ((Rand_Next(1) & 0xFFFF & 0x3FF) - 512);
 }
 
 /*
@@ -3730,7 +4633,7 @@ void AttackBurst_Draw(DrawSlot *node)
     }
 }
 
-/* a part of an AttackBurst of the types other than the rocks (0x30 bytes, in its blocks) */
+/* a part of an AttackBurst of the types other than the rocks (48 bytes, in its blocks) */
 typedef struct AttackBurstPart {
     s16 slot;                   /* 0x00: its draw slot */
     s16 idx;                    /* 0x02 */
@@ -3746,27 +4649,20 @@ typedef struct AttackBurstPart {
 } AttackBurstPart;
 extern s16 AttackBurst_DelaysA[];
 extern s16 AttackBurst_DelaysB[];
-void AttackBurst_PlaceAtBone(StageObj *o);
-s32 AttackBurst_OwnerInMotion(StageObj *o);
-f32 StageObj_RandUnit(void);
-f32 StageObj_RandSigned(void);
-extern s16 AttackBurst_PartCounts[];
-void Mtx_TurnX(f32 *m, f32 a);
 extern u16 AttackBurst_Durations[];
 extern s16 AttackBurst_CurveIdx[];
 extern s16 AttackBurst_Steps[];
 extern u16 *AttackBurst_Tbls[];
 extern void *AttackBurst_Curves[];
-void Vec_RotateX(f32 *v, f32 a);
 
 /*
  * Sets up the types other than the rocks. First the object: type 0 moves 50
  * ahead along its yaw; the fireball flares (1, 2) move in front of a bone of
- * the owner (0x33 for the Fatalis kinds, 0x13 for Remobra, else 0x22), keep
+ * the owner (FAT_BONE_BREATH for the Fatalis kinds, REMOBRA_BONE_SPIT for Remobra, else bone 34), keep
  * its kind and face its yaw; a trail (3) takes its pitch from the timer,
  * keeps its yaw for the parts and runs var0 parts (at least 1); type 7 goes
  * to the owner's bone while it is in the motion (AttackBurst_OwnerInMotion,
- * AttackBurst_PlaceAtBone), else var1 0xFF; the spray (12) starts 50 (times
+ * AttackBurst_PlaceAtBone), else var1 255; the spray (12) starts 50 (times
  * the monster's depth scale) along bone `angle` and moves 10 a frame along
  * that bone's axis turned down by var0 << 8; types 12 and 14 keep the owner's
  * kind (14 at double size); type 18 a random spin in var1. Then each part
@@ -3798,16 +4694,16 @@ void AttackBurst_SetupParts(StageObj *obj)
     case 1:
         obj->var2 = ((Em *) obj->owner)->type;
         offset[0] = 0.0f;
-        if (obj->var2 == 2 || obj->var2 == 0x24 || obj->var2 == 0x47) {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 0x33)));
+        if (obj->var2 == EM_KIND_FATALIS || obj->var2 == EM_KIND_FATALIS_B || obj->var2 == EM_KIND_FATALIS_C) {
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, FAT_BONE_BREATH)));
             offset[1] = -41.8f;
             offset[2] = 50.0f;
-        } else if (obj->var2 == 0x3F) {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 0x13)));
+        } else if (obj->var2 == EM_KIND_REMOBRA) {
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, REMOBRA_BONE_SPIT)));
             offset[1] = -50.0f;
             offset[2] = 50.0f;
         } else {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 0x22)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 34)));
             offset[1] = -80.0f;
             offset[2] = 80.0f;
         }
@@ -3820,16 +4716,16 @@ void AttackBurst_SetupParts(StageObj *obj)
     case 2:
         obj->var2 = ((Em *) obj->owner)->type;
         offset[0] = 0.0f;
-        if (obj->var2 == 2 || obj->var2 == 0x24 || obj->var2 == 0x47) {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 0x33)));
+        if (obj->var2 == EM_KIND_FATALIS || obj->var2 == EM_KIND_FATALIS_B || obj->var2 == EM_KIND_FATALIS_C) {
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, FAT_BONE_BREATH)));
             offset[1] = -91.6f;
             offset[2] = 132.8f;
-        } else if (obj->var2 == 0x3F) {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 0x13)));
+        } else if (obj->var2 == EM_KIND_REMOBRA) {
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, REMOBRA_BONE_SPIT)));
             offset[1] = -50.0f;
             offset[2] = 50.0f;
         } else {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 0x22)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(obj->owner, 34)));
             offset[1] = -80.0f;
             offset[2] = 120.0f;
         }
@@ -3856,7 +4752,7 @@ void AttackBurst_SetupParts(StageObj *obj)
         if (AttackBurst_OwnerInMotion(obj) == 1) {
             AttackBurst_PlaceAtBone(obj);
         } else {
-            obj->var1 = 0xFF;
+            obj->var1 = 255;
         }
         obj->angle = Rand_Next(1);
         break;
@@ -3913,7 +4809,7 @@ void AttackBurst_SetupParts(StageObj *obj)
             piece->scale = obj->scale * (1.0f + 0.5f * StageObj_RandUnit());
             piece->yaw = Rand_Next(1);
             piece->angle = Rand_Next(1);
-            piece->spin = (Rand_Next(1) & 0xFF) - 0x80;
+            piece->spin = (Rand_Next(1) & 0xFF) - 128;
             break;
         case 2:
             if (i == 0) {
@@ -3929,17 +4825,17 @@ void AttackBurst_SetupParts(StageObj *obj)
             piece->delay = 0;
             piece->angle = Rand_Next(1);
             piece->yaw = trailYaw;
-            if (obj->var2 == 2 || obj->var2 == 0x24 || obj->var2 == 0x47) {
+            if (obj->var2 == 2 || obj->var2 == 36 || obj->var2 == 71) {
                 piece->scale = 1.5f;
             } else {
                 piece->scale = 1.0f;
             }
             if (i == 0) {
                 piece->scale *= 1.0f + StageObj_RandUnit();
-                piece->spin = (Rand_Next(1) & 0xFF) - 0x80;
+                piece->spin = (Rand_Next(1) & 0xFF) - 128;
             } else {
                 piece->scale *= 1.0f + 1.5f * StageObj_RandUnit();
-                piece->spin = (Rand_Next(1) & 0x1FF) - 0x100;
+                piece->spin = (Rand_Next(1) & 0x1FF) - 256;
             }
             break;
         case 4:
@@ -3947,8 +4843,8 @@ void AttackBurst_SetupParts(StageObj *obj)
             piece->angle = Rand_Next(1);
             piece->spin = 0.5f + 65536.0f * StageObj_RandSigned() / 360.0f;
             piece->scale = obj->scale * (1.0f + 0.5f * StageObj_RandUnit());
-            piece->pos[0] = obj->scale * ((Rand_Next(1) & 0x1F) - 0x10);
-            piece->pos[1] = obj->scale * ((Rand_Next(1) & 0x1F) - 0x10);
+            piece->pos[0] = obj->scale * ((Rand_Next(1) & 0x1F) - 16);
+            piece->pos[1] = obj->scale * ((Rand_Next(1) & 0x1F) - 16);
             piece->pos[2] = i * -10;
             break;
         case 5:
@@ -4036,9 +4932,9 @@ void AttackBurst_SetupParts(StageObj *obj)
             piece->angle = Rand_Next(1);
             piece->scale = 0.0f;
             Vec_Copy(piece->pos, offset);
-            piece->pos[0] += (Rand_Next(1) & 0x1F) - 0x10;
-            piece->pos[1] += (Rand_Next(1) & 0x1F) - 0x10;
-            piece->pos[2] += (Rand_Next(1) & 0x1F) - 0x10;
+            piece->pos[0] += (Rand_Next(1) & 0x1F) - 16;
+            piece->pos[1] += (Rand_Next(1) & 0x1F) - 16;
+            piece->pos[2] += (Rand_Next(1) & 0x1F) - 16;
             break;
         case 20:
             piece->delay = i * -3;
@@ -4046,9 +4942,9 @@ void AttackBurst_SetupParts(StageObj *obj)
             piece->angle = 0;
             piece->scale = obj->scale * (0.8f + 0.4f * StageObj_RandUnit());
             Vec_Copy(piece->pos, obj->pos);
-            piece->pos[0] += (Rand_Next(1) & 0x1F) - 0x10;
-            piece->pos[1] += (Rand_Next(1) & 0x1F) - 0x10;
-            piece->pos[2] += (Rand_Next(1) & 0x1F) - 0x10;
+            piece->pos[0] += (Rand_Next(1) & 0x1F) - 16;
+            piece->pos[1] += (Rand_Next(1) & 0x1F) - 16;
+            piece->pos[2] += (Rand_Next(1) & 0x1F) - 16;
             break;
         }
         piece->slot = DrawSlot_Alloc();
@@ -4103,7 +4999,7 @@ void AttackBurst_RunParts(StageObj *obj)
 
     switch (obj->type) {
     case 1:
-        life = 0x12;
+        life = 18;
         break;
     case 3:
         if (obj->var0 == 0) {
@@ -4113,18 +5009,18 @@ void AttackBurst_RunParts(StageObj *obj)
         }
         break;
     case 4:
-        life = 0x26;
+        life = 38;
         break;
     case 5:
     case 16:
-        life = 0x18;
+        life = 24;
         break;
     case 7:
-        if (obj->var1 != 0xFF) {
+        if (obj->var1 != 255) {
             if (AttackBurst_OwnerInMotion(obj) == 1) {
                 AttackBurst_PlaceAtBone(obj);
             } else {
-                obj->var1 = 0xFF;
+                obj->var1 = 255;
             }
         }
         life = dur;
@@ -4158,10 +5054,10 @@ void AttackBurst_RunParts(StageObj *obj)
         obj->pos[2] = boneMtx[14] + offset[2];
         break;
     case 19:
-        life = 0xF;
+        life = 15;
         break;
     case 20:
-        life = 0x12;
+        life = 18;
         break;
     }
     if (++obj->timer >= dur) {
@@ -4375,7 +5271,7 @@ void AttackBurst_RunParts(StageObj *obj)
                 piece->node->pos[1] = piece->pos[1];
                 piece->node->pos[2] = piece->pos[2];
             }
-            OT_AddByDepth(gDrawOtSorted, piece->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
         }
         piece++;
     }
@@ -4429,9 +5325,9 @@ void AttackBurst_DrawPart(DrawSlot *node)
             goto end;
         }
         mats = set->mats;
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         mode |= 2;
-        if (obj->var2 == 0x35) {
+        if (obj->var2 == 53) {
             model = &set->matSets[3];
         } else {
             model = &set->matSets[4];
@@ -4456,7 +5352,7 @@ void AttackBurst_DrawPart(DrawSlot *node)
         mode |= 2;
         model = &set->matSets[2];
         Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-        Gs_SetState(0x19, (s32) uvMtx);
+        Gs_SetState(RS_UV_MTX, (s32) uvMtx);
         rot[2] = (6.2831855f * piece->angle) / 65536.0f;
         scale[0] = piece->scale * piece->sc[0];
         scale[1] = piece->scale * piece->sc[1];
@@ -4492,8 +5388,8 @@ void AttackBurst_DrawPart(DrawSlot *node)
             mats = set->mats;
             mode |= 2;
             Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
-            if (obj->var2 == 2 || obj->var2 == 0x24 || obj->var2 == 0x47) {
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
+            if (obj->var2 == 2 || obj->var2 == 36 || obj->var2 == 71) {
                 curve = AttackBurst_Curve3B;
             } else {
                 curve = AttackBurst_Curve3A;
@@ -4547,9 +5443,9 @@ void AttackBurst_DrawPart(DrawSlot *node)
             goto end;
         }
         mats = set->mats;
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         mode |= 2;
-        if (obj->var2 == 0x35) {
+        if (obj->var2 == 53) {
             model = &set->matSets[5];
         } else {
             model = &set->matSets[8];
@@ -4570,7 +5466,7 @@ void AttackBurst_DrawPart(DrawSlot *node)
             goto end;
         }
         mats = set->mats;
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         mode |= 2;
         model = &set->matSets[2];
         scale[0] = piece->scale * piece->sc[0];
@@ -4603,12 +5499,12 @@ void AttackBurst_DrawPart(DrawSlot *node)
         groundPos[0] = obj->pos[0];
         groundPos[1] = 2.0f + obj->pos[1];
         groundPos[2] = obj->pos[2];
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         Mtx_FromScaleRotTrans(scale, rot, groundPos, 0, mtx);
         color = ((u8) (255.0f * piece->alpha) << 24) | 0xFFFFFF;
         break;
     case 11:
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         model = &set->matSets[35];
         scale[0] = piece->scale * piece->sc[0];
         scale[1] = piece->scale * piece->sc[1];
@@ -4627,8 +5523,8 @@ void AttackBurst_DrawPart(DrawSlot *node)
             goto end;
         }
         mats = set->mats;
-        Gs_SetState(0x6C, 0);
-        if (obj->var2 == 0x15 || obj->var2 == 0x2E) {
+        Gs_SetState(RS_ZWRITE, 0);
+        if (obj->var2 == 21 || obj->var2 == 46) {
             mode |= 2;
             color = ((u8) (255.0f * piece->alpha) << 24) | 0xFFFFFF;
         } else {
@@ -4652,8 +5548,8 @@ void AttackBurst_DrawPart(DrawSlot *node)
             goto end;
         }
         mats = set->mats;
-        Gs_SetState(0x6C, 0);
-        if (obj->var2 == 0x15 || obj->var2 == 0x2E) {
+        Gs_SetState(RS_ZWRITE, 0);
+        if (obj->var2 == 21 || obj->var2 == 46) {
             mode |= 2;
             color = ((u8) (255.0f * piece->alpha) << 24) | 0xFFFFFF;
         } else {
@@ -4704,7 +5600,7 @@ void AttackBurst_DrawPart(DrawSlot *node)
             model = &set->matSets[3];
         } else {
             model = set->matSets + piece->idx % 3 + 4;
-            if (obj->var2 == 0x14 || obj->var2 == 0x27) {
+            if (obj->var2 == 20 || obj->var2 == 39) {
                 curve = AttackBurst_CurveFB;
             } else {
                 curve = AttackBurst_CurveFC;
@@ -4741,7 +5637,7 @@ void AttackBurst_DrawPart(DrawSlot *node)
         scale[2] = piece->scale * piece->sc[2];
         rot[2] = (6.2831855f * piece->angle) / 65536.0f;
         Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
-        if (obj->var2 == 0x14 || obj->var2 == 0x27) {
+        if (obj->var2 == 20 || obj->var2 == 39) {
             curve = AttackBurst_Curve12A;
         } else {
             curve = AttackBurst_Curve12B;
@@ -4753,118 +5649,511 @@ void AttackBurst_DrawPart(DrawSlot *node)
         Mtx_Concat3x3(mtx, gCamMatrix);
     }
     Effect_DrawModel(model, mtx, color, mode, mats);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
     Draw_SetDefaultState();
 end:;
 }
 
+/*
+ * Sets up an AttackBurst of the rock type (type 8): ten rocks, each with a
+ * draw slot, 0 to 2 bounces, a random size (1.5 times obj->scale, times 1
+ * plus a random unit), a random spin, and a throw speed: sideways a random
+ * signed 40 (the first five) or 80 (the others) times the scale, upward 100
+ * plus a random 70 times the scale, divided by the rock's size. A rock gets
+ * no draw slot when none is free.
+ */
+void AttackBurst_SetupRocks(StageObj *obj)
+{
+    AttackBurstRock *rock = (AttackBurstRock *) obj->buf;
+    s16 i;
+    f32 riseRange;
+
+    switch (obj->type) {
+    case 8:
+        riseRange = 70.0f;
+        break;
+    }
+    obj->timer = 0;
+    for (i = 0; i < 10; i++, rock++) {
+        rock->slot = DrawSlot_Alloc();
+        if (rock->slot != -1) {
+            rock->bounces = Rand_Next(1) % 3;
+            rock->unk20 = 0;
+            Vec_Copy(rock->pos, obj->pos);
+            rock->scale = obj->scale * (1.5f * (1.0f + StageObj_RandUnit()));
+            if (i < 5) {
+                rock->vel[0] = 40.0f * obj->scale * StageObj_RandSigned();
+                rock->vel[1] = (obj->scale * (100.0f + riseRange * StageObj_RandUnit())) / rock->scale;
+                rock->vel[2] = 40.0f * obj->scale * StageObj_RandSigned();
+            } else {
+                rock->vel[0] = 80.0f * obj->scale * StageObj_RandSigned();
+                rock->vel[1] = (obj->scale * (100.0f + riseRange * StageObj_RandUnit())) / rock->scale;
+                rock->vel[2] = 80.0f * obj->scale * StageObj_RandSigned();
+            }
+            rock->rot[0] = Rand_Next(1);
+            rock->rot[1] = Rand_Next(1);
+            rock->rot[2] = Rand_Next(1);
+            rock->spin = (Rand_Next(1) & 0xFFF) - 2047;
+            rock->node = DrawSlot_Get(rock->slot);
+            rock->node->owner = obj;
+            rock->node->part = i;
+            rock->node->draw = AttackBurst_Draw;
+        } else {
+            rock->node = NULL;
+        }
+    }
+}
+
+/*
+ * Moves the rocks of a rock-type AttackBurst: each falls (9.8 a frame),
+ * spins, and bounces off the floor at half its fall speed until its bounces
+ * run out, then stops; a moving rock is queued for drawing. Moves to the end
+ * state after 150 frames or once every rock has stopped.
+ */
+void AttackBurst_RunRocks(StageObj *obj)
+{
+    AttackBurstRock *rock = (AttackBurstRock *) obj->buf;
+    s16 i;
+    s16 done;
+    f32 y;
+
+    if (++obj->timer > 150) {
+        obj->state++;
+        obj->visible = 0;
+        return;
+    }
+    done = 0;
+    for (i = 0; i < 10; i++) {
+        if (rock->bounces == -1) {
+            rock++;
+            done++;
+            continue;
+        }
+        rock->pos[0] += rock->vel[0];
+        rock->pos[1] += rock->vel[1];
+        rock->pos[2] += rock->vel[2];
+        rock->vel[1] += -9.8f;
+        rock->rot[2] += rock->spin;
+        y = AreaGrid2_GetFloorY(rock->pos);
+        if (rock->pos[1] <= y) {
+            rock->bounces--;
+            if (rock->bounces < 0) {
+                rock++;
+                continue;
+            }
+            rock->pos[1] = y;
+            rock->vel[1] *= -0.5f;
+        }
+        if (rock->node != NULL) {
+            rock->node->pos[0] = rock->pos[0];
+            rock->node->pos[1] = rock->pos[1];
+            rock->node->pos[2] = rock->pos[2];
+            OT_AddByDepth(gDrawOt32, rock->node, 32, 0);
+        }
+        rock++;
+    }
+    if (done >= 10) {
+        obj->state++;
+        obj->visible = 0;
+    }
+}
+
+/*
+ * Draw callback of one rock of a rock-type AttackBurst (node->part picks it):
+ * mesh 73 of the stage model set at the rock's rotation and size.
+ */
+void AttackBurst_DrawRock(DrawSlot *node)
+{
+    f32 rot[3];
+    f32 scale[3];
+    f32 mtx[16];
+    ModelMat *tex;
+    ModelMatSet *model;
+    Model *set = gStageModelSet;
+    AttackBurstRock *rock = (AttackBurstRock *) ((StageObj *) node->owner)->buf + node->part;
+
+    if (set != NULL && set->active != 0) {
+        tex = set->mats;
+        rot[0] = (6.2831855f * rock->rot[0]) / 65536.0f;
+        rot[1] = (6.2831855f * rock->rot[1]) / 65536.0f;
+        rot[2] = (6.2831855f * rock->rot[2]) / 65536.0f;
+        scale[0] = rock->scale;
+        scale[1] = rock->scale;
+        scale[2] = rock->scale;
+        Mtx_FromScaleRotTrans(scale, rot, node->pos, 6, mtx);
+        Mtx_Concat3x3(mtx, gCamMatrix);
+        Gs_SetState(RS_COLOR2, -1);
+        model = &set->matSets[73];
+        if (model != NULL && model->id != -1) {
+            Gs_SetState(RS_ALPHA_REF, 128);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+            Gs_SetLightList(tex, model);
+            Draw_ApplyStates(model->flags);
+            Model_Draw(model->id, 0);
+        }
+        Draw_SetDefaultState();
+    }
+}
+
+/*
+ * End state of the AttackBurst types other than the rocks: frees each part's
+ * draw slot (AttackBurst_PartCounts by type; the trail has var0 parts, at
+ * least one) and moves to the free state.
+ */
+void AttackBurst_EndParts(StageObj *obj)
+{
+    u8 *cursor = obj->buf;
+    s16 count;
+    s16 i;
+
+    obj->state++;
+    count = AttackBurst_PartCounts[obj->type];
+    switch (obj->type) {
+    case 3:
+        if (obj->var0 == 0) {
+            count = 1;
+        } else {
+            count = obj->var0;
+        }
+        break;
+    }
+    for (i = 0; i < count; i++) {
+        if (*(s32 *) (cursor + 44) != 0) {
+            DrawSlot_Free(*(s16 *) cursor);
+        }
+        cursor += 48;
+    }
+}
+
+/*
+ * End state of a rock-type AttackBurst: frees the draw slots of its ten rocks
+ * and moves to the free state.
+ */
+void AttackBurst_EndRocks(StageObj *obj)
+{
+    u8 *cursor = obj->buf;
+    s16 i;
+
+    obj->state++;
+    for (i = 0; i < 10; i++) {
+        if (*(s32 *) (cursor + 44) != 0) {
+            DrawSlot_Free(*(s16 *) cursor);
+        }
+        cursor += 48;
+    }
+}
+
+/* Free state of an AttackBurst: frees the object. */
+void AttackBurst_Free(StageObj *obj)
+{
+    StageObj_Free(obj);
+}
+
+/*
+ * Puts an AttackBurst (the type that stays on its owner) at a bone of its
+ * owner, a monster: Rajang's bone 1 at an offset of (0, 180, 330), the
+ * others' bone 37 at (0, -60, 140), the offset turned by the bone's matrix.
+ */
+void AttackBurst_PlaceAtBone(StageObj *obj)
+{
+    Em *em = obj->owner;
+    void *boneMtx;
+    f32 ofs[3];
+
+    if (em->type == EM_KIND_RAJANG) {
+        boneMtx = Em_Bone(em, 1);
+        ofs[0] = 0.0f;
+        ofs[1] = 180.0f;
+        ofs[2] = 330.0f;
+    } else {
+        boneMtx = Em_Bone(em, 37);
+        ofs[0] = 0.0f;
+        ofs[1] = -60.0f;
+        ofs[2] = 140.0f;
+    }
+    Vec_RotateSelf(ofs, boneMtx);
+    Mtx_GetTrans(obj->pos, boneMtx);
+    obj->pos[0] += ofs[0];
+    obj->pos[1] += ofs[1];
+    obj->pos[2] += ofs[2];
+}
+
+/*
+ * Returns 1 while the owner (a monster) is active and its layer-0 motion is
+ * still the one recorded at creation (angle2) or motion 1114; else 0.
+ */
+s32 AttackBurst_OwnerInMotion(StageObj *obj)
+{
+    Em *em = obj->owner;
+
+    if (em->active == 0 || (em->motionId[0] != obj->angle2 && em->motionId[0] != 0x45A)) {
+        return 0;
+    }
+    return 1;
+}
+
+/*
+ * Allocates an AttackBurst (one block) of type objType with obj->angle set to
+ * angleOrBone (a yaw, or the bone for the types made at one). Returns it, or
+ * NULL when no object is free.
+ */
+StageObj *AttackBurst_Alloc(s16 objType, s16 angleOrBone)
+{
+    StageObj *obj = StageObj_Alloc(1);
+
+    if (obj == NULL) {
+        return NULL;
+    }
+    obj->kind = STAGEOBJ_KIND_ATTACK_BURST;
+    obj->update = AttackBurst_Update;
+    obj->type = objType;
+    obj->angle = angleOrBone;
+    return obj;
+}
+
+/*
+ * Creates an AttackBurst of type objType at a bone of a monster, owned by it,
+ * when a player is in its area. sizeCode (kept in var0) sizes types 1 and 2
+ * (0: 1.0, 1: 1.5, else 0.5); type 7 is moved by AttackBurst_PlaceAtBone and
+ * keeps the monster's motion (angle2) and kind (var2), at 0.3. Rathalos' and
+ * Garuga's fireball states make types 1 and 2 at bone 36 (Rathalos' RATH_BONE_FIREBALL_BURST),
+ * EmRangedAttack_Run type 7.
+ */
+void AttackBurst_CreateAtBone(Em *em, s16 bone, s16 objType, u16 sizeCode)
+{
+    StageObj *obj;
+
+    if (Player_InCurrentArea(em) & 0xFF) {
+        if ((obj = AttackBurst_Alloc(objType, bone)) != NULL) {
+            obj->var0 = sizeCode;
+            Em_BonePos(em, bone, obj->pos);
+            obj->owner = em;
+            switch (objType) {
+            case 1:
+            case 2:
+                if (sizeCode == 0) {
+                    obj->scale = 1.0f;
+                } else if (sizeCode == 1) {
+                    obj->scale = 1.5f;
+                } else {
+                    obj->scale = 0.5f;
+                }
+                break;
+            case 7:
+                AttackBurst_PlaceAtBone(obj);
+                obj->angle2 = em->motionId[0];
+                obj->var2 = em->type;
+                obj->scale = 0.3f;
+                break;
+            default:
+                obj->scale = 1.0f;
+                break;
+            }
+        }
+    }
+}
+
+/*
+ * Creates the trail type (3) of AttackBurst at pos, without owner: pitch and
+ * yaw are a projectile's angles (kept in timer and angle), count its number
+ * of parts (0: one) and emKind the monster kind (var2). EmRangedAttack_Run
+ * makes one every frame of a projectile's flight.
+ */
+void AttackBurst_CreateTrail(f32 *pos, u16 pitch, u16 yaw, u8 count, u8 emKind)
+{
+    StageObj *obj = AttackBurst_Alloc(3, yaw);
+
+    if (obj != NULL) {
+        obj->var0 = count;
+        obj->timer = pitch;
+        obj->var2 = emKind;
+        obj->scale = 1.0f;
+        obj->owner = NULL;
+        Vec_Copy(obj->pos, pos);
+    }
+}
+
+/*
+ * Creates an AttackBurst of type objType at pos with a yaw and a size,
+ * without owner. Many monster states and attack objects make their impact
+ * bursts and rocks with it.
+ */
+void AttackBurst_CreateAtScaled(f32 *pos, s32 yaw, s16 objType, f32 scale)
+{
+    StageObj *obj = AttackBurst_Alloc(objType, yaw);
+
+    if (obj != NULL) {
+        obj->scale = scale;
+        obj->owner = NULL;
+        Vec_Copy(obj->pos, pos);
+    }
+}
+
+/*
+ * Creates an AttackBurst of type objType at a bone of a monster, owned by it,
+ * when a player is in its area; the high byte of tilt (an angle) goes to
+ * var0, by which type 12's set-up turns it about X. Cephadrome's states make
+ * type 12 with it.
+ */
+void AttackBurst_CreateAtBoneTilted(Em *em, s16 bone, s16 objType, u16 tilt)
+{
+    StageObj *obj;
+
+    if (Player_InCurrentArea(em) & 0xFF) {
+        if ((obj = AttackBurst_Alloc(objType, bone)) != NULL) {
+            obj->var0 = tilt >> 8;
+            Em_BonePos(em, bone, obj->pos);
+            obj->owner = em;
+            obj->scale = 1.0f;
+        }
+    }
+}
+
+/*
+ * Creates an AttackBurst of type objType at pos, without owner, with the
+ * monster kind emKind (var2) and a size.
+ */
+void AttackBurst_CreateAt(f32 *pos, s16 objType, u8 emKind, f32 scale)
+{
+    StageObj *obj;
+
+    if ((obj = AttackBurst_Alloc(objType, 0)) != NULL) {
+        obj->var2 = emKind;
+        Vec_Copy(obj->pos, pos);
+        obj->owner = NULL;
+        obj->scale = scale;
+    }
+}
+
+/* As AttackBurst_CreateAt, with a yaw. */
+void AttackBurst_CreateAtYaw(f32 *pos, s16 objType, u8 emKind, s32 yaw, f32 scale)
+{
+    StageObj *obj;
+
+    if ((obj = AttackBurst_Alloc(objType, yaw)) != NULL) {
+        obj->var2 = emKind;
+        Vec_Copy(obj->pos, pos);
+        obj->owner = NULL;
+        obj->scale = scale;
+    }
+}
+
 /* The file's data. */
-u32 ItemProp_PartCurves_0[24] = {
+f32 ItemProp_SmokeRingScales[4] = {
+#include "game/008CE620.inc"
+};
+s16 ItemProp_BaitStatusAmounts[4] = {
+#include "game/008CE630.inc"
+};
+u16 ItemProp_SmokeRingSpins[4] = {
+#include "game/008CE638.inc"
+};
+Vec3Key ItemProp_PuffCurves_0[6] = {
 #include "game/008CE640.inc"
 };
-u32 ItemProp_PartCurves_1[12] = {
+FloatKey ItemProp_PuffCurves_1[6] = {
 #include "game/008CE6A0.inc"
 };
-u32 ItemProp_PartCurves_2[24] = {
+Vec3Key ItemProp_PuffCurves_2[6] = {
 #include "game/008CE6D0.inc"
 };
-u32 ItemProp_PartCurves_3[8] = {
+f32 ItemProp_PuffCurves_3[8] = {
 #include "game/008CE730.inc"
 };
 void *ItemProp_PuffCurves[4] = {
-    (void *)ItemProp_PartCurves_0, (void *)ItemProp_PartCurves_1, (void *)ItemProp_PartCurves_2, (void *)ItemProp_PartCurves_3,
+    (void *)ItemProp_PuffCurves_0, (void *)ItemProp_PuffCurves_1, (void *)ItemProp_PuffCurves_2, (void *)ItemProp_PuffCurves_3,
 };
 ColorRgba ItemProp_SmokeColors[8] = {
 #include "game/008CE760.inc"
 };
-u32 ItemProp_BaitColorsFirst[4] = {
+u8 ItemProp_BaitColorsFirst[4][4] = {
 #include "game/008CE780.inc"
 };
-u32 ItemProp_BaitColorsSecond[4] = {
+u8 ItemProp_BaitColorsSecond[4][4] = {
 #include "game/008CE790.inc"
 };
-u32 FireBlast_PartCurves_0[16] = {
+Vec3Key FireBlast_PartCurves_0[4] = {
 #include "game/008CE7A0.inc"
 };
-u32 FireBlast_PartCurves_2[24] = {
+Vec3Key FireBlast_PartCurves_2[6] = {
 #include "game/008CE7E0.inc"
 };
-u32 FireBlast_PartCurves_4[20] = {
+Vec3Key FireBlast_PartCurves_4[5] = {
 #include "game/008CE840.inc"
 };
-u32 FireBlast_PartCurves_18[24] = {
+Vec3Key FireBlast_PartCurves_18[6] = {
 #include "game/008CE890.inc"
 };
-u32 FireBlast_PartCurves_6[20] = {
+Vec3Key FireBlast_PartCurves_6[5] = {
 #include "game/008CE8F0.inc"
 };
-u32 FireBlast_PartCurves_8[24] = {
+Vec3Key FireBlast_PartCurves_8[6] = {
 #include "game/008CE940.inc"
 };
-u32 FireBlast_PartCurves_10[12] = {
+Vec3Key FireBlast_PartCurves_10[3] = {
 #include "game/008CE9A0.inc"
 };
-u32 FireBlast_PartCurves_12[12] = {
+Vec3Key FireBlast_PartCurves_12[3] = {
 #include "game/008CE9D0.inc"
 };
-u32 FireBlast_PartCurves_14[28] = {
+Vec3Key FireBlast_PartCurves_14[7] = {
 #include "game/008CEA00.inc"
 };
-u32 FireBlast_PartCurves_16[12] = {
+Vec3Key FireBlast_PartCurves_16[3] = {
 #include "game/008CEA70.inc"
 };
-u32 FireBlast_PartCurves_20[24] = {
+Vec3Key FireBlast_PartCurves_20[6] = {
 #include "game/008CEAA0.inc"
 };
-u32 FireBlast_PartCurves_22[24] = {
+Vec3Key FireBlast_PartCurves_22[6] = {
 #include "game/008CEB00.inc"
 };
-u32 FireBlast_PartCurves_24[16] = {
+Vec3Key FireBlast_PartCurves_24[4] = {
 #include "game/008CEB60.inc"
 };
-u32 FireBlast_PartCurves_1[8] = {
+FloatKey FireBlast_PartCurves_1[4] = {
 #include "game/008CEBA0.inc"
 };
-u32 FireBlast_PartCurves_3[8] = {
+FloatKey FireBlast_PartCurves_3[4] = {
 #include "game/008CEBC0.inc"
 };
-u32 FireBlast_PartCurves_5[8] = {
+FloatKey FireBlast_PartCurves_5[4] = {
 #include "game/008CEBE0.inc"
 };
-u32 FireBlast_PartCurves_19[8] = {
+FloatKey FireBlast_PartCurves_19[4] = {
 #include "game/008CEC00.inc"
 };
-u32 FireBlast_PartCurves_7[8] = {
+FloatKey FireBlast_PartCurves_7[4] = {
 #include "game/008CEC20.inc"
 };
-u32 FireBlast_PartCurves_9[8] = {
+FloatKey FireBlast_PartCurves_9[4] = {
 #include "game/008CEC40.inc"
 };
-u32 FireBlast_PartCurves_11[8] = {
+FloatKey FireBlast_PartCurves_11[4] = {
 #include "game/008CEC60.inc"
 };
-u32 FireBlast_PartCurves_13[8] = {
+FloatKey FireBlast_PartCurves_13[4] = {
 #include "game/008CEC80.inc"
 };
-u32 FireBlast_PartCurves_15[8] = {
+FloatKey FireBlast_PartCurves_15[4] = {
 #include "game/008CECA0.inc"
 };
-u32 FireBlast_PartCurves_17[8] = {
+FloatKey FireBlast_PartCurves_17[4] = {
 #include "game/008CECC0.inc"
 };
-u32 FireBlast_PartCurves_21[8] = {
+FloatKey FireBlast_PartCurves_21[4] = {
 #include "game/008CECE0.inc"
 };
-u32 FireBlast_PartCurves_23[8] = {
+FloatKey FireBlast_PartCurves_23[4] = {
 #include "game/008CED00.inc"
 };
-u32 FireBlast_PartCurves_25[12] = {
+FloatKey FireBlast_PartCurves_25[6] = {
 #include "game/008CED20.inc"
 };
-u32 FireBlast_PartCurves_26[12] = {
+Vec3Key FireBlast_PartCurves_26[3] = {
 #include "game/008CED50.inc"
 };
-u32 FireBlast_PartCurves_27[10] = {
+FloatKey FireBlast_PartCurves_27[5] = {
 #include "game/008CED80.inc"
 };
 s16 FireBlast_MineGlowModels[4] = {
@@ -4894,22 +6183,22 @@ u32 FireBlast_FlameShapes[16] = {
 s16 FireBlast_PartCounts[16] = {
 #include "game/008CEEC0.inc"
 };
-u32 ElementBurst_Curves_0[16] = {
+Vec3Key ElementBurst_Curves_0[4] = {
 #include "game/008CEEE0.inc"
 };
-u32 ElementBurst_Curves_2[20] = {
+Vec3Key ElementBurst_Curves_2[5] = {
 #include "game/008CEF20.inc"
 };
-u32 ElementBurst_Curves_4[12] = {
+Vec3Key ElementBurst_Curves_4[3] = {
 #include "game/008CEF70.inc"
 };
-u32 ElementBurst_Curves_1[8] = {
+f32 ElementBurst_Curves_1[8] = {
 #include "game/008CEFA0.inc"
 };
-u32 ElementBurst_Curves_3[8] = {
+f32 ElementBurst_Curves_3[8] = {
 #include "game/008CEFC0.inc"
 };
-u32 ElementBurst_Curves_5[8] = {
+FloatKey ElementBurst_Curves_5[4] = {
 #include "game/008CEFE0.inc"
 };
 s16 ElementBurst_DurLists_0[4] = {
@@ -4918,76 +6207,76 @@ s16 ElementBurst_DurLists_0[4] = {
 s16 ElementBurst_FireDelays[4] = {
 #include "game/008CF008.inc"
 };
-u32 ElementBurst_Curves_6[20] = {
+Vec3Key ElementBurst_Curves_6[5] = {
 #include "game/008CF010.inc"
 };
-u8 ElementBurst_PoisonColorKeys[48] = {
+ColorKey ElementBurst_PoisonColorKeys[6] = {
 #include "game/008CF060.inc"
 };
-u32 ElementBurst_Curves_7[12] = {
+Vec3Key ElementBurst_Curves_7[3] = {
 #include "game/008CF090.inc"
 };
-u32 ElementBurst_Curves_8[12] = {
+Vec3Key ElementBurst_Curves_8[3] = {
 #include "game/008CF0C0.inc"
 };
-u32 ElementBurst_Curves_9[16] = {
+Vec3Key ElementBurst_Curves_9[4] = {
 #include "game/008CF0F0.inc"
 };
-u8 ElementBurst_WaterRingColorKeys[32] = {
+ColorKey ElementBurst_WaterRingColorKeys[4] = {
 #include "game/008CF130.inc"
 };
 s16 ElementBurst_DurLists_2[8] = {
 #include "game/008CF150.inc"
 };
-u32 ElementBurst_Curves_10[28] = {
+Vec3Key ElementBurst_Curves_10[7] = {
 #include "game/008CF160.inc"
 };
-u32 ElementBurst_Curves_12[12] = {
+Vec3Key ElementBurst_Curves_12[3] = {
 #include "game/008CF1D0.inc"
 };
-u32 ElementBurst_Curves_11[8] = {
+FloatKey ElementBurst_Curves_11[4] = {
 #include "game/008CF200.inc"
 };
-u32 ElementBurst_Curves_13[6] = {
+FloatKey ElementBurst_Curves_13[3] = {
 #include "game/008CF220.inc"
 };
 s16 ElementBurst_DurLists_3[4] = {
 #include "game/008CF238.inc"
 };
-u32 ElementBurst_Curves_14[20] = {
+Vec3Key ElementBurst_Curves_14[5] = {
 #include "game/008CF240.inc"
 };
-u32 ElementBurst_Curves_16[24] = {
+Vec3Key ElementBurst_Curves_16[6] = {
 #include "game/008CF290.inc"
 };
-u32 ElementBurst_Curves_18[12] = {
+Vec3Key ElementBurst_Curves_18[3] = {
 #include "game/008CF2F0.inc"
 };
-u32 ElementBurst_Curves_20[12] = {
+Vec3Key ElementBurst_Curves_20[3] = {
 #include "game/008CF320.inc"
 };
-u32 ElementBurst_Curves_24[12] = {
+Vec3Key ElementBurst_Curves_24[3] = {
 #include "game/008CF350.inc"
 };
-u32 ElementBurst_Curves_26[12] = {
+Vec3Key ElementBurst_Curves_26[3] = {
 #include "game/008CF380.inc"
 };
-u32 ElementBurst_Curves_15[8] = {
+f32 ElementBurst_Curves_15[8] = {
 #include "game/008CF3B0.inc"
 };
-u32 ElementBurst_Curves_17[8] = {
+FloatKey ElementBurst_Curves_17[4] = {
 #include "game/008CF3D0.inc"
 };
-u32 ElementBurst_Curves_19[8] = {
+FloatKey ElementBurst_Curves_19[4] = {
 #include "game/008CF3F0.inc"
 };
-u32 ElementBurst_Curves_21[8] = {
+FloatKey ElementBurst_Curves_21[4] = {
 #include "game/008CF410.inc"
 };
-u32 ElementBurst_Curves_25[8] = {
+FloatKey ElementBurst_Curves_25[4] = {
 #include "game/008CF430.inc"
 };
-u32 ElementBurst_Curves_27[8] = {
+FloatKey ElementBurst_Curves_27[4] = {
 #include "game/008CF450.inc"
 };
 s16 ElementBurst_RingDelays[8] = {
@@ -4996,7 +6285,7 @@ s16 ElementBurst_RingDelays[8] = {
 s16 ElementBurst_DurLists_4[8] = {
 #include "game/008CF480.inc"
 };
-u8 ElementBurst_StatusColorKeys[40] = {
+ColorKey ElementBurst_StatusColorKeys[5] = {
 #include "game/008CF490.inc"
 };
 s16 ElementBurst_DurLists_9[4] = {
@@ -5031,53 +6320,53 @@ s16 *ElementBurst_DurLists[12] = {
     ElementBurst_DurLists_4, ElementBurst_DurLists_4, NULL, ElementBurst_DurLists_3,
     ElementBurst_DurLists_3, ElementBurst_DurLists_9, NULL, NULL,
 };
-u32 HitSplash_Curves_0[24] = {
+Vec3Key HitSplash_Curves_0[6] = {
 #include "game/008CF600.inc"
 };
-u32 HitSplash_Curves_1[24] = {
+Vec3Key HitSplash_Curves_1[6] = {
 #include "game/008CF660.inc"
 };
-u32 HitSplash_Curves_2[16] = {
+Vec3Key HitSplash_Curves_2[4] = {
 #include "game/008CF6C0.inc"
 };
-u32 HitSplash_Curves_3[20] = {
+Vec3Key HitSplash_Curves_3[5] = {
 #include "game/008CF700.inc"
 };
-u32 HitSplash_Curves_5[20] = {
+Vec3Key HitSplash_Curves_5[5] = {
 #include "game/008CF750.inc"
 };
-u32 HitSplash_Curves_7[24] = {
+Vec3Key HitSplash_Curves_7[6] = {
 #include "game/008CF7A0.inc"
 };
-u32 HitSplash_Curves_9[24] = {
+Vec3Key HitSplash_Curves_9[6] = {
 #include "game/008CF800.inc"
 };
-u32 HitSplash_Curves_11[24] = {
+Vec3Key HitSplash_Curves_11[6] = {
 #include "game/008CF860.inc"
 };
-u32 HitSplash_Curves_12[24] = {
+Vec3Key HitSplash_Curves_12[6] = {
 #include "game/008CF8C0.inc"
 };
-u32 HitSplash_Curves_4[12] = {
+f32 HitSplash_Curves_4[12] = {
 #include "game/008CF920.inc"
 };
-u32 HitSplash_Curves_6[8] = {
+f32 HitSplash_Curves_6[8] = {
 #include "game/008CF950.inc"
 };
-u32 HitSplash_Curves_8[8] = {
+f32 HitSplash_Curves_8[8] = {
 #include "game/008CF970.inc"
 };
-u32 HitSplash_Curves_10[8] = {
+FloatKey HitSplash_Curves_10[4] = {
 #include "game/008CF990.inc"
 };
 s16 HitSplash_CellFrames[16] = {
 #include "game/008CF9B0.inc"
 };
-u32 HitSplash_Curves[14] = {
-    (u32)HitSplash_Curves_0, (u32)HitSplash_Curves_1, (u32)HitSplash_Curves_2, (u32)HitSplash_Curves_3,
-    (u32)HitSplash_Curves_4, (u32)HitSplash_Curves_5, (u32)HitSplash_Curves_6, (u32)HitSplash_Curves_7,
-    (u32)HitSplash_Curves_8, (u32)HitSplash_Curves_9, (u32)HitSplash_Curves_10, (u32)HitSplash_Curves_11,
-    (u32)HitSplash_Curves_12, 0,
+void *HitSplash_Curves[14] = {
+    (void *)HitSplash_Curves_0, (void *)HitSplash_Curves_1, (void *)HitSplash_Curves_2, (void *)HitSplash_Curves_3,
+    (void *)HitSplash_Curves_4, (void *)HitSplash_Curves_5, (void *)HitSplash_Curves_6, (void *)HitSplash_Curves_7,
+    (void *)HitSplash_Curves_8, (void *)HitSplash_Curves_9, (void *)HitSplash_Curves_10, (void *)HitSplash_Curves_11,
+    (void *)HitSplash_Curves_12, NULL,
 };
 f32 HitSplash_TargetScales[3] = {
 #include "game/008CFA08.inc"
@@ -5106,103 +6395,103 @@ s16 HitSplash_Ends[16] = {
 s16 HitSplash_Strides[16] = {
 #include "game/008CFAE0.inc"
 };
-u32 AttackBurst_Curves_0[12] = {
+Vec3Key AttackBurst_Curves_0[3] = {
 #include "game/008CFB00.inc"
 };
-u32 AttackBurst_Curves_1[8] = {
+FloatKey AttackBurst_Curves_1[4] = {
 #include "game/008CFB30.inc"
 };
-u32 AttackBurst_Curves_2[20] = {
+Vec3Key AttackBurst_Curves_2[5] = {
 #include "game/008CFB50.inc"
 };
-u32 AttackBurst_Curves_3[12] = {
+Vec3Key AttackBurst_Curves_3[3] = {
 #include "game/008CFBA0.inc"
 };
-u32 AttackBurst_Curves_4[8] = {
+FloatKey AttackBurst_Curves_4[4] = {
 #include "game/008CFBD0.inc"
 };
-u32 AttackBurst_Curves_5[12] = {
+Vec3Key AttackBurst_Curves_5[3] = {
 #include "game/008CFBF0.inc"
 };
-u32 AttackBurst_Curves_7[12] = {
+Vec3Key AttackBurst_Curves_7[3] = {
 #include "game/008CFC20.inc"
 };
-u32 AttackBurst_Curves_6[8] = {
+FloatKey AttackBurst_Curves_6[4] = {
 #include "game/008CFC50.inc"
 };
-u32 AttackBurst_Curves_8[8] = {
+FloatKey AttackBurst_Curves_8[4] = {
 #include "game/008CFC70.inc"
 };
 u16 AttackBurst_Tbls_2[8] = {
 #include "game/008CFC90.inc"
 };
-u32 AttackBurst_Curves_9[20] = {
+Vec3Key AttackBurst_Curves_9[5] = {
 #include "game/008CFCA0.inc"
 };
-u32 AttackBurst_Curves_10[16] = {
+Vec3Key AttackBurst_Curves_10[4] = {
 #include "game/008CFCF0.inc"
 };
-u8 AttackBurst_Curve3A[32] = {
+ColorKey AttackBurst_Curve3A[4] = {
 #include "game/008CFD30.inc"
 };
-u8 AttackBurst_ColorKeys[48] = {
+ColorKey AttackBurst_ColorKeys[6] = {
 #include "game/008CFD50.inc"
 };
-u8 AttackBurst_Curve3B[32] = {
+ColorKey AttackBurst_Curve3B[4] = {
 #include "game/008CFD80.inc"
 };
-u32 AttackBurst_Curves_11[24] = {
+Vec3Key AttackBurst_Curves_11[6] = {
 #include "game/008CFDA0.inc"
 };
-u32 AttackBurst_Curves_12[8] = {
+FloatKey AttackBurst_Curves_12[4] = {
 #include "game/008CFE00.inc"
 };
-u32 AttackBurst_Curves_13[12] = {
+Vec3Key AttackBurst_Curves_13[3] = {
 #include "game/008CFE20.inc"
 };
-u8 AttackBurst_Curve10A[32] = {
+ColorKey AttackBurst_Curve10A[4] = {
 #include "game/008CFE50.inc"
 };
-u32 AttackBurst_Curves_14[12] = {
+Vec3Key AttackBurst_Curves_14[3] = {
 #include "game/008CFE70.inc"
 };
-u32 AttackBurst_Curves_15[24] = {
+Vec3Key AttackBurst_Curves_15[6] = {
 #include "game/008CFEA0.inc"
 };
-u32 AttackBurst_Curves_16[24] = {
+Vec3Key AttackBurst_Curves_16[6] = {
 #include "game/008CFF00.inc"
 };
-u32 AttackBurst_Curves_18[24] = {
+Vec3Key AttackBurst_Curves_18[6] = {
 #include "game/008CFF60.inc"
 };
-u32 AttackBurst_Curves_17[8] = {
+FloatKey AttackBurst_Curves_17[4] = {
 #include "game/008CFFC0.inc"
 };
-u32 AttackBurst_Curves_19[12] = {
+f32 AttackBurst_Curves_19[12] = {
 #include "game/008CFFE0.inc"
 };
-u32 AttackBurst_Curves_20[16] = {
+Vec3Key AttackBurst_Curves_20[4] = {
 #include "game/008D0010.inc"
 };
-u32 AttackBurst_Curves_21[8] = {
+FloatKey AttackBurst_Curves_21[4] = {
 #include "game/008D0050.inc"
 };
-u32 AttackBurst_Curves_22[16] = {
+Vec3Key AttackBurst_Curves_22[4] = {
 #include "game/008D0070.inc"
 };
-u32 AttackBurst_Curves_25[16] = {
+Vec3Key AttackBurst_Curves_25[4] = {
 #include "game/008D00B0.inc"
 };
-u32 AttackBurst_Curves_23[28] = {
+Vec3Key AttackBurst_Curves_23[7] = {
 #include "game/008D00F0.inc"
 };
-u32 AttackBurst_Curves_26[24] = {
+Vec3Key AttackBurst_Curves_26[6] = {
 #include "game/008D0160.inc"
 };
-u32 AttackBurst_Curves_24[8] = {
+FloatKey AttackBurst_Curves_24[4] = {
 #include "game/008D01C0.inc"
 };
-u32 AttackBurst_Curves_27[8] = {
+FloatKey AttackBurst_Curves_27[4] = {
 #include "game/008D01E0.inc"
 };
 u16 AttackBurst_Tbls_11[4] = {
@@ -5211,46 +6500,46 @@ u16 AttackBurst_Tbls_11[4] = {
 s16 AttackBurst_DelaysA[4] = {
 #include "game/008D0208.inc"
 };
-u32 AttackBurst_Curves_28[16] = {
+Vec3Key AttackBurst_Curves_28[4] = {
 #include "game/008D0210.inc"
 };
-u32 AttackBurst_Curves_29[12] = {
+f32 AttackBurst_Curves_29[12] = {
 #include "game/008D0250.inc"
 };
-u32 AttackBurst_Curves_30[28] = {
+Vec3Key AttackBurst_Curves_30[7] = {
 #include "game/008D0280.inc"
 };
-u32 AttackBurst_Curves_31[12] = {
+f32 AttackBurst_Curves_31[12] = {
 #include "game/008D02F0.inc"
 };
-u32 AttackBurst_Curves_32[12] = {
+Vec3Key AttackBurst_Curves_32[3] = {
 #include "game/008D0320.inc"
 };
-u32 AttackBurst_Curves_33[12] = {
+Vec3Key AttackBurst_Curves_33[3] = {
 #include "game/008D0350.inc"
 };
-u32 AttackBurst_Curves_34[8] = {
+f32 AttackBurst_Curves_34[8] = {
 #include "game/008D0380.inc"
 };
-u32 AttackBurst_Curves_35[20] = {
+Vec3Key AttackBurst_Curves_35[5] = {
 #include "game/008D03A0.inc"
 };
-u32 AttackBurst_Curves_37[32] = {
+Vec3Key AttackBurst_Curves_37[8] = {
 #include "game/008D03F0.inc"
 };
-u32 AttackBurst_Curves_36[12] = {
+Vec3Key AttackBurst_Curves_36[3] = {
 #include "game/008D0470.inc"
 };
-u32 AttackBurst_Curves_38[12] = {
+Vec3Key AttackBurst_Curves_38[3] = {
 #include "game/008D04A0.inc"
 };
-u8 AttackBurst_CurveFA[32] = {
+ColorKey AttackBurst_CurveFA[4] = {
 #include "game/008D04D0.inc"
 };
-u8 AttackBurst_CurveFB[48] = {
+ColorKey AttackBurst_CurveFB[6] = {
 #include "game/008D04F0.inc"
 };
-u8 AttackBurst_CurveFC[32] = {
+ColorKey AttackBurst_CurveFC[4] = {
 #include "game/008D0520.inc"
 };
 u16 AttackBurst_Tbls_15[4] = {
@@ -5259,22 +6548,22 @@ u16 AttackBurst_Tbls_15[4] = {
 s16 AttackBurst_DelaysB[4] = {
 #include "game/008D0548.inc"
 };
-u8 AttackBurst_Curve10B[32] = {
+ColorKey AttackBurst_Curve10B[4] = {
 #include "game/008D0550.inc"
 };
-u32 AttackBurst_Curves_43[16] = {
+Vec3Key AttackBurst_Curves_43[4] = {
 #include "game/008D0570.inc"
 };
-u32 AttackBurst_Curves_44[8] = {
+f32 AttackBurst_Curves_44[8] = {
 #include "game/008D05B0.inc"
 };
-u32 AttackBurst_Curves_45[12] = {
+Vec3Key AttackBurst_Curves_45[3] = {
 #include "game/008D05D0.inc"
 };
-u8 AttackBurst_Curve12A[32] = {
+ColorKey AttackBurst_Curve12A[4] = {
 #include "game/008D0600.inc"
 };
-u8 AttackBurst_Curve12B[32] = {
+ColorKey AttackBurst_Curve12B[4] = {
 #include "game/008D0620.inc"
 };
 void *AttackBurst_Curves[48] = {

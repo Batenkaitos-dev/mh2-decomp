@@ -19,41 +19,10 @@
 #include "common.h"
 #include "lobby_net.h"
 #include "lobby_globals.h"
+#include "net_codes.h"
 
-s32 LobbyNet_GetMyCharaId(char *dst);
-s32 LobbyNet_GetMyCharaName(char *dst);
-void LobbyPkt_ClientInfo(void);
-s32 LobbyPkt_HunterCard(void *src, u16 n);
-s32 LobbyPkt_Ping(void);
-s32 NetLogin_ReadCharas(void);
-s32 LobbyReply_CharaSelectRead(void);
-void LobbyPkt_QnetTimeouts(void);
-void LobbyMsg_ReadErrText(void);
-s32 LobbyPkt_HunterCardPart(void *src, u16 n, u16 offset);
-u8 * LobbyMsg_GetString(void *dst, u8 *src);
-u8 * LobbyMsg_GetU32(void *dst, u8 *src);
-void LobbyNotify_LoginDone(void);
-s32 LobbyNet_SendLoginNotice(u8 arg0);
-s32 LobbyNet_SendLoginReady(void);
-s32 LobbyPkt_LoginInfo(void);
-void LobbySrvReq_6189(void);
-void LobbySrvReq_6138(void);
-void LobbyPkt_CharaSelect(void);
-void LobbyPkt_LoginParams(void);
-s32 LobbyNet_GetCharaSelectText(s32 *arg0);
-void LobbyReply_CharaSelectText(void);
-s32 LobbyPkt_CharaSelectText(void);
-void LobbyNotify_ServerIdRange(void);
-void Lobby_RouteMessage(s32 a);
-s32 Net_ChallengeReply(char *out, s8 *ch, u16 key);
-void NetLogin_Done(void);
 extern LobbyHdr gLobbyRecvHdr;
 extern u16 gSrvSyncDelay;
-s32 LobbyPkt_UserCardFetch(void *id, u16 size, u16 offset);
-s32 LobbyPkt_QuestRecord(void *arg0, s32 arg1);
-void LobbyPkt_LoginNotice(u8 arg0);
-void LobbyPkt_LoginReady(void);
-void LobbyPkt_6138(void);
 extern char gServerIdMin[];                   /* 12 digits and a NUL */
 extern char gServerIdMax[];
 
@@ -61,7 +30,7 @@ extern char gServerIdMax[];
  * then a quarter of the sum goes out with 6103's reply; then 61A1 */
 void LobbyReply_Ping(void)
 {
-    gLobbyNet.rttSum += (gLobbyNet.frames * 0x10) & 0xFFFF;
+    gLobbyNet.rttSum += (gLobbyNet.frames * 16) & 0xFFFF;
     gLobbyNet.rttCount += 1;
     if ((s32)gLobbyNet.rttCount < 4) {
         LobbyPkt_Ping();
@@ -134,7 +103,7 @@ s32 LobbyNet_GetUserCard(NetUser *dst)
     return 0;
 }
 
-/* the notification 6191: blob id (8), blob text (0x100); route 0x2C */
+/* the notification 6191: blob id (8), blob text (256); route NET_ROUTE_USER_CARD */
 void LobbyNotify_UserCard(void)
 {
     if (gLobbyNet.replyErr == 0) {
@@ -302,12 +271,12 @@ s32 LobbyReq_LoginInfo(void (*onReply)(NetMsg, NetMsg *))
 
     i = NetReq_Alloc(1, NULL, onReply);
     gLobbyNet.rxLen = 0;
-    gLobbyNet.rxSize = 0x1000;
+    gLobbyNet.rxSize = 4096;
     gLobbyNet.rxBuf = gLobbyNet.rxStore;
     memset(&gLobbyNet.loginInfo, 0, sizeof(gLobbyNet.loginInfo));
     memset(gLobbyNet.rxStore, 0, sizeof(gLobbyNet.rxStore));
     gLobbyNet.rxLen = 0;
-    gLobbyNet.rxSize = 0x1000;
+    gLobbyNet.rxSize = 4096;
     gLobbyNet.rxBuf = gLobbyNet.rxStore;
     memset(&gLobbyNet.loginInfo, 0, sizeof(gLobbyNet.loginInfo));
     memset(gLobbyNet.rxStore, 0, sizeof(gLobbyNet.rxStore));
@@ -423,7 +392,7 @@ void LobbyReply_QuestRecord(void)
  */
 void LobbyPkt_LoginAuth(void)
 {
-    u8 reply[0x10];
+    u8 reply[16];
 
     LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_LOGIN_AUTH_ANSWER);
     Net_ChallengeReply((char *) reply, (s8 *) gLobbyNet.login.id, (u16)((u16)(gLobbyPkt.echo[0] << 8) + gLobbyPkt.echo[1]));
@@ -500,7 +469,7 @@ s32 LobbyPkt_Ping(void)
 }
 
 /* the notification 6131's payload: u8 n (at most 3), then n characters
- * (blob id 8, blob name 0x10, blob text 0x100) into gLobbyNet.charas */
+ * (blob id 8, blob name 16, blob text 256) into gLobbyNet.charas */
 s32 NetLogin_ReadCharas(void)
 {
     u8 n;
@@ -515,8 +484,8 @@ s32 NetLogin_ReadCharas(void)
     gLobbyNet.nCharas = n;
     for (i = 0; i < n; i++) {
         cur = LobbyMsg_GetBlob(gLobbyNet.charas[i].id, 8, cur);
-        cur = LobbyMsg_GetBlob(gLobbyNet.charas[i].name, 0x10, cur);
-        cur = LobbyMsg_GetBlob(gLobbyNet.charas[i].text, 0x100, cur);
+        cur = LobbyMsg_GetBlob(gLobbyNet.charas[i].name, 16, cur);
+        cur = LobbyMsg_GetBlob(gLobbyNet.charas[i].text, 256, cur);
     }
     return 0;
 }
@@ -632,7 +601,7 @@ s32 LobbyPkt_CharaSelectText(void)
 }
 
 /* Sends 6712: size bytes from offset of user id's card (the menus fetch
- * the 0xD8 bytes of a HunterCard from 0). */
+ * the 216 bytes of a HunterCard from 0). */
 s32 LobbyReq_UserCardFetch(void *id, u16 size, u16 offset, void (*onReply)(NetMsg, NetMsg *))
 {
     s32 i;
@@ -645,7 +614,7 @@ s32 LobbyReq_UserCardFetch(void *id, u16 size, u16 offset, void (*onReply)(NetMs
     return -1;
 }
 
-/* the reply to 6712: blob id (8), blob name (0x10), u16 offset, u16 n, n bytes */
+/* the reply to 6712: blob id (8), blob name (16), u16 offset, u16 n, n bytes */
 void LobbyReply_UserCardFetch(void)
 {
     NetUserCardPart *card;
@@ -655,7 +624,7 @@ void LobbyReply_UserCardFetch(void)
         memset(&gLobbyNet.userCardFetch, 0, sizeof(gLobbyNet.userCardFetch));
         card = &gLobbyNet.userCardFetch;
         cur = LobbyMsg_GetBlob(card->id, sizeof(card->id), gLobbyRecvData);
-        cur = LobbyMsg_GetBlob(card->name, 0x10, cur);
+        cur = LobbyMsg_GetBlob(card->name, 16, cur);
         cur = LobbyMsg_GetU16(&card->offset, cur);
         cur = LobbyMsg_GetU16(&card->n, cur);
         LobbyMsg_GetBytes(card->data, cur, card->n);
@@ -684,7 +653,7 @@ s32 LobbyPkt_UserCardFetch(void *id, u16 size, u16 offset)
     return seq;
 }
 
-/* The notification 68B0: blob url (0x100), u16 secs, blob text (0x300) if secs, into
+/* The notification 68B0: blob url (256), u16 secs, blob text (768) if secs, into
  * gNetLoginWebPage; onDone gets NET_PROGRESS_WEB_PAGE. */
 void LobbyNotify_LoginWebPage(void)
 {
@@ -699,7 +668,7 @@ void LobbyNotify_LoginWebPage(void)
          * address, the compiler reloads the global's address at each use
          * instead of keeping page in a register */
         page = (NetLoginWebPage *)(u8 *)&gNetLoginWebPage;
-        cur = LobbyMsg_GetBlob(page->url, 0x100, gLobbyRecvData);
+        cur = LobbyMsg_GetBlob(page->url, 256, gLobbyRecvData);
         cur = LobbyMsg_GetU16(&page->secs, cur);
         if (page->secs != 0) {
             LobbyMsg_GetBlob(page->text, sizeof(page->text), cur);

@@ -12,6 +12,10 @@
  * PriceInfo_Open opens the board: its work in gMenuWork is a BoardMenu
  * (the season's wanted lines, the listed monsters' ids and prices).
  * PriceInfo_Update runs it and PriceInfo_Draw and PriceInfo_Draw2 draw it.
+ *
+ * The rates and the board share one file because their data does: the
+ * board's tables come first in .data, before the rotation's, and the rates
+ * read one of them (gPricePageCounts).
  */
 #include "common.h"
 #include "m2c_macros.h"
@@ -26,12 +30,32 @@
 #include "pad.h"
 #include "texture.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "camera.h"
+#include "model.h"
+#include "village_cond.h"
+#include "window.h"
+#include "market.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "rand.h"
+#include "wanted.h"
+#include "libc.h"
+#include "prim.h"
 /* gPriceInfoTexts from PRICE_INFO_WANTED_A, under a name of its own (a linker
  * alias): read as an index into gPriceInfoTexts, the address is computed in
  * another order and PriceInfo_DrawWanted compiles differently. */
 extern char *gPriceWantedLines[];
 
-s32 Cond_Check(u16 id);
 extern s16 gPriceListedMonsters[];
 /* A rotation or wanted record, laid out as lobby_globals.h's TownEntry: the
  * kind (1 a monster, 3 an item), the monster's or item's id (0 ends a pick
@@ -47,25 +71,20 @@ typedef struct WantedRec {
 #define WANTED_SECOND_HUB   (WANTED_SEASONS * WANTED_ENTRIES)
 #define MONSTER_BIT_NONE    0xFFFF  /* Monster_FlagBit: the monster has no bit */
 #define RATE_GROUP_COUNT    5       /* gRateGroups and the save's rate lists */
-#define RATE_LIST_LEN       0x10    /* the entries of one save rate list (SaveData.rateLists) */
 #define RATE_FREE_START     10      /* SaveData.rateFree after the prices change (Rate_UpdateDue waits for 0) */
-#define PRICE_LIST_MAX      0x4A    /* the price list's lines (BoardMenu.ids, gRateSnapshot) */
-#define PRICE_PAGE_LINES    0xB     /* the price list's lines per page */
+#define PRICE_LIST_MAX      74      /* the price list's lines (BoardMenu.ids, gRateSnapshot) */
+#define PRICE_PAGE_LINES    11      /* the price list's lines per page */
 #define BOARD_LINES         4       /* the board's lines: the price list and the three wanted lines */
-u16 Rand_Next(s32 stream);
 extern MonsterBit gMonsterFlagBits[];
 /* unit's own declaration: the rate id is taken as an s16 here; with an s32 id Rate_UpdatePrices compiles differently */
 s32 Rate_Get(s16 id);
-u16 Records_HuntedTotal(struct SaveData *save, u8 group, u8 captured);
-void *memcpy(void *dst, const void *src, u32 n);
-void *memset(void *dst, s32 c, u32 n);
 extern s16 *gRotationHuntLists[];
 extern s16 *gRotationHuntList3;
 extern WantedRec *gRotationPickListsC10[];
 extern WantedRec *gRotationPickList3C10;
 extern WantedRec *gRotationPickLists[];
 extern WantedRec *gRotationPickList3;
-extern WantedRec gRotationKind2PicksC10[];          /* kind 2's list (condition 0x10) */
+extern WantedRec gRotationKind2PicksC10[];          /* kind 2's list (condition 16) */
 extern WantedRec gRotationKind2Picks[];          /* kind 2's list */
 void Rate_ListAdd(s16 id, s32 a);
 /* a price table (gRateGroups, five of them): the bounds and the entries */
@@ -83,18 +102,11 @@ extern PriceTable gRateGroups[5];
 void Rate_Set(s16 id, s32 price); /* unit's own declaration: declared with an s16 id and an s32 price as Rate_UpdatePrices passes them; with the definition's two s32 the call compiles differently */
 extern u8 gFixedPriceIds[];                 /* their ids */
 extern s32 gFixedPrices[];                /* their prices */
-void CamReq_Cancel(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-int abs(int);
-void Font_SetSpacing(u8 a, u8 b);
 void Text_DrawShadowed(s16 x, s32 y, u32 color, s32 a, char *s); /* unit's own declaration: declared with an s32 y and the colours as u32 and s32, as PriceInfo_DrawWanted passes them; with the definition's types the call compiles differently */
-typedef struct TextBox { u8 pad[0x18]; s32 size; } TextBox;
 extern u8 gMenuWork[];
 void Text_SetSize(s32 size);
-s32 LobbyWorld_GetSeason(void);
-s32 Wanted_IsSet(s16 *p);
 /* the board screen's state (gMenuWork) */
 typedef struct BoardMenu {
     /* 0x00 */ WantedRec wanted[3][3];   /* gTownQuestLists.a: [season][line], the first hub's lists */
@@ -112,32 +124,20 @@ typedef struct BoardMenu {
     /* 0xC9 */ u8 padC9;
     /* 0xCA */ s16 ids[PRICE_LIST_MAX];          /* the list lines: an item, negative for none */
 } BoardMenu;
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 colour, char *label, u8 t1, u8 t2);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
 extern u8 gPricePageCounts[];                 /* the pages' line counts (Game_IsOnline == 0) */
 extern u8 gPricePageCountsOnline[];                 /* the same, Game_IsOnline != 0 */
 extern u8 gOnlinePriceIds[];                 /* page 2's items (Game_IsOnline != 0) */
 extern s32 gRateSnapshot[];                  /* the items' prices */
-extern char *gMonsterNames[];                /* the items' names */
-s32 Game_IsOnline(void);
-void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 h, s16 *offs, s16 sel, s8 kind, s32 b);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 typedef struct Colours3 {
     u32 c[3];
 } Colours3;
 extern Colours3 gPriceLegendColors;             /* the legend's colours */
-void LobbySe_Play(s32 se);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, M2C_UNK se);
 extern u8 gLobbyRateStates[];                 /* the entries' levels and marks */
-void Font_SetColor(s32 color);
 extern char gPriceStrFmt[];               /* "%s" */
 extern u32 gPriceBoardColors[];                /* the board texts' colours */
 void Icon_DrawRotated(s16 x, s16 y, s16 w, s16 h, u32 colour, u16 flags, s32 spr); /* unit's own declaration: declared with s16 sizes, a u32 colour and u16 flags, as PriceInfo_DrawRate passes them; with the definition's s32 parameters the call compiles differently */
 void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 colour, s32 spr, u8 a);
-void Font_SetPos(s16, s16);
 void Text_PrintfColored(char *s, ...);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
 
 /*
  * Rename to Rate_UpdateDue. 1 when the save's free count of the rate lists
@@ -208,7 +208,7 @@ s16 Rotation_RandomDays(s32 kind)
 
 /*
  * The bit of the save's monster flags that stands for monster em (looked
- * up in gMonsterFlagBits, ended by em 0); 0xFFFF when the monster has
+ * up in gMonsterFlagBits, ended by em 0); MONSTER_BIT_NONE when the monster has
  * none.
  */
 u16 Monster_FlagBit(u16 em)
@@ -286,7 +286,7 @@ WantedRec Rotation_PickLeastHunted(s16 *list)
  * (gSave.rotationDays). At 0: when the first day's entry of the kind is
  * empty it fills the kind's entry on all three days
  * (gSave.days[0..2][kind]): kind 0 the least hunted of three hunt lists,
- * kinds 1 and 2 random picks (condition 0x10 chooses the later lists), and
+ * kinds 1 and 2 random picks (condition 16 chooses the later lists), and
  * sets the days to 1; otherwise it clears the three entries and draws new
  * days (Rotation_RandomDays). The entries are reached through a byte
  * pointer because the field form changes the code.
@@ -298,9 +298,9 @@ void Rotation_Update(s32 kind)
     WantedRec *first;
 
     if (Cond_Check(7) != 0) {
-        rec = (u8 *)&gSave + kind * 8; /* gSave.days[0..2][kind] at 0x369A, 0x36B2, 0x36CA: the field form changes the code */
+        rec = (u8 *)&gSave + kind * 8; /* gSave.days[0..2][kind] at gSave+0x369A, +0x36B2 and +0x36CA: the field form changes the code */
         days = (s16 *)gSave.rotationDays + kind;
-        first = (WantedRec *)(rec + 0x369A);
+        first = (WantedRec *)(rec + 13978);
         if (*days > 0) {
             (*days)--;
         }
@@ -313,7 +313,7 @@ void Rotation_Update(s32 kind)
                     *(WantedRec *)gSave.days[2][0] = Rotation_PickLeastHunted(gRotationHuntList3);
                     break;
                 case 1:
-                    if (Cond_Check(0x10) == 1) {
+                    if (Cond_Check(16) == 1) {
                         memcpy(gSave.days[0][1], PickList_Random(gRotationPickListsC10[0]), 8);
                         memcpy(gSave.days[1][1], PickList_Random(gRotationPickListsC10[1]), 8);
                         memcpy(gSave.days[2][1], PickList_Random(gRotationPickList3C10), 8);
@@ -324,7 +324,7 @@ void Rotation_Update(s32 kind)
                     }
                     break;
                 case 2:
-                    if (Cond_Check(0x10) == 1) {
+                    if (Cond_Check(16) == 1) {
                         memcpy(gSave.days[0][2], PickList_Random(gRotationKind2PicksC10), 8);
                         memcpy(gSave.days[1][2], PickList_Random(gRotationKind2PicksC10), 8);
                         memcpy(gSave.days[2][2], PickList_Random(gRotationKind2PicksC10), 8);
@@ -338,24 +338,24 @@ void Rotation_Update(s32 kind)
                 *days = 1;
             } else {
                 memset(first, 0, 8);
-                memset(rec + 0x36B2, 0, 8);
-                memset(rec + 0x36CA, 0, 8);
+                memset(rec + 14002, 0, 8);
+                memset(rec + 14026, 0, 8);
                 *days = Rotation_RandomDays(kind);
             }
         }
     }
 }
 
-/* a random index: 0..n-1, n from 1 to 5 by the conditions 7, 0xA, 0x15, 0x4F */
+/* a random index: 0..n-1, n from 1 to 5 by the conditions 7, 10, 21, 79 */
 s32 Rate_RandomGroup(void)
 {
     s32 n;
 
-    if (Cond_Check(0x4F) == 1) {
+    if (Cond_Check(79) == 1) {
         n = 5;
-    } else if (Cond_Check(0x15) == 1) {
+    } else if (Cond_Check(21) == 1) {
         n = 4;
-    } else if (Cond_Check(0xA) == 1) {
+    } else if (Cond_Check(10) == 1) {
         n = 3;
     } else if (Cond_Check(7) == 1) {
         n = 2;
@@ -386,7 +386,7 @@ void Rate_RaiseRandom(void)
             best = 0;
             id = 0;
             for (i = 0; i < *(s32 *)(table + 8); i++) {
-                value = *(s16 *)(table + i * 4 + 0xE);
+                value = *(s16 *)(table + i * 4 + 14);
                 rate = Rate_Get(value);
                 if (best < rate) {
                     id = value;
@@ -433,7 +433,7 @@ void Rate_UpdatePrices(void)
     for (i = 0, table = gRateGroups, saveBytes = (u8 *)save; i < RATE_GROUP_COUNT; i++, table++, saveBytes += RATE_LIST_LEN) {
         n = 0;
         for (j = 0; j < RATE_LIST_LEN; j++) {
-            k = saveBytes[0x27B8 + j];
+            k = saveBytes[10168 + j];
             if (k != 0) {
                 n++;
             }
@@ -443,7 +443,7 @@ void Rate_UpdatePrices(void)
                 id = table->e[k].id;
                 hits = 0;
                 for (j = 0; j < RATE_LIST_LEN; j++) {
-                    if (id == saveBytes[0x27B8 + j]) {
+                    if (id == saveBytes[10168 + j]) {
                         hits++;
                     }
                 }
@@ -471,12 +471,11 @@ void Rate_UpdatePrices(void)
     n = gPricePageCounts[2];
     for (i = 0; i < n; i++) {
         fid = gFixedPriceIds[i];
-        if (fid == 0 || fid > 0xF0) {} /* compiled-out check */
+        if (fid == 0 || fid > 240) {} /* compiled-out check */
         Rate_Set(fid, gFixedPrices[i]);
     }
 }
 
-extern u8 gMenuWork[];
 extern s8 gMenuInputLock;
 extern s16 gPriceMonstersOnline[];
 extern s16 gPriceMonsters[];
@@ -485,17 +484,6 @@ extern s16 gPriceShownOnline[];
 extern s32 gPriceExtraIdsOnline[];
 extern s32 gPriceExtraIds[];
 extern s32 gRateSnapshot[];
-s32 Game_IsOnline(void);
-void LobbySe_Play(s32 se);
-s32 Rate_GetSnapshot(s32 id);
-s32 PriceInfo_IsListed(int);
-s32 Menu_CountPages(s16 n, s16 per);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-struct TextBox;
-void PriceInfo_Draw(struct TextBox *);
-void PriceInfo_Draw2(struct TextBox *);
-s8 Wanted_Count(void);
-void CamReq_TownArea(s32 a);
 
 /*
  * Opens the price board: clears the menu work, plays its sound, fills the
@@ -552,7 +540,7 @@ void PriceInfo_Open(void)
                 break;
             }
             k = id;
-            *(s32 *)(priceOut + 0x160) = Rate_GetSnapshot(k);
+            *(s32 *)(priceOut + 352) = Rate_GetSnapshot(k);
             found = 0;
             if (Game_IsOnline() == 1) {
                 scan = gPriceShownOnline;
@@ -569,9 +557,9 @@ void PriceInfo_Open(void)
             PriceInfo_IsListed(id);
             if (gRateSnapshot[id] != 0) {
                 if (gSave.hunted[id] + gSave.captured[id] != 0 || found == 1) {
-                    *(s16 *)(idOut + 0xCA) = id;
+                    *(s16 *)(idOut + 202) = id;
                 } else {
-                    *(s16 *)(idOut + 0xCA) = -id;
+                    *(s16 *)(idOut + 202) = -id;
                 }
                 idOut += 2;
                 n++;
@@ -598,7 +586,7 @@ void PriceInfo_Open(void)
     for (; i < 5; i++) {
         cnt = (u16)*scan + (u16)*list;
         if (cnt >= one) {
-            *(s16 *)(extraOut + 0xCA) = *tbl;
+            *(s16 *)(extraOut + 202) = *tbl;
         }
         tbl++;
         extraOut += 2;
@@ -620,17 +608,17 @@ void PriceInfo_Open(void)
     case AREA_ELDER_HALL:
         area = 2;
         break;
-    case AREA_HUB_0x83:
+    case AREA_ONLINE_VILLAGE:
         area = 3;
         break;
     case AREA_HUB_0x57:
         area = 4;
         break;
     default:
-        area = 0xFF;
+        area = 255;
         break;
     }
-    if (area != 0xFF) {
+    if (area != 255) {
         CamReq_TownArea(area);
     }
 }
@@ -687,43 +675,43 @@ u8 gFixedPriceIds[16] = {
 s32 gFixedPrices[8] = {
 #include "lobby/007EC6B0.inc"
 };
-u32 gRotationHuntLists_0[8] = {
+s16 gRotationHuntLists_0[16] = {
 #include "lobby/007EC6D0.inc"
 };
-u32 gRotationHuntLists_1[8] = {
+s16 gRotationHuntLists_1[16] = {
 #include "lobby/007EC6F0.inc"
 };
 s16 gRotationHuntList3Data[20] = {
 #include "lobby/007EC710.inc"
 };
 s16 *gRotationHuntLists[2] = {
-    (s16 *)gRotationHuntLists_0, (s16 *)gRotationHuntLists_1,
+    gRotationHuntLists_0, gRotationHuntLists_1,
 };
 s16 *gRotationHuntList3 = gRotationHuntList3Data;
-u32 gRotationPickLists_0[8] = {
+WantedRec gRotationPickLists_0[4] = {
 #include "lobby/007EC750.inc"
 };
-u32 gRotationPickLists_1[8] = {
+WantedRec gRotationPickLists_1[4] = {
 #include "lobby/007EC770.inc"
 };
 WantedRec gRotationPickList3Data[3] = {
 #include "lobby/007EC790.inc"
 };
 WantedRec *gRotationPickLists[2] = {
-    (WantedRec *)gRotationPickLists_0, (WantedRec *)gRotationPickLists_1,
+    gRotationPickLists_0, gRotationPickLists_1,
 };
 WantedRec *gRotationPickList3 = gRotationPickList3Data;
-u32 gRotationPickListsC10_0[12] = {
+WantedRec gRotationPickListsC10_0[6] = {
 #include "lobby/007EC7C0.inc"
 };
-u32 gRotationPickListsC10_1[12] = {
+WantedRec gRotationPickListsC10_1[6] = {
 #include "lobby/007EC7F0.inc"
 };
 WantedRec gRotationPickList3C10Data[6] = {
 #include "lobby/007EC820.inc"
 };
 WantedRec *gRotationPickListsC10[2] = {
-    (WantedRec *)gRotationPickListsC10_0, (WantedRec *)gRotationPickListsC10_1,
+    gRotationPickListsC10_0, gRotationPickListsC10_1,
 };
 WantedRec *gRotationPickList3C10 = gRotationPickList3C10Data;
 WantedRec gRotationKind2Picks[10] = {
@@ -815,13 +803,6 @@ s32 PriceInfo_SlideWindows(s16 fromX, s16 toX)
     return 2;
 }
 
-void Chat_SetWindowMode(s8 a, s8 b);
-u16 LobbyPad_Get(s32 a);
-s32 PriceInfo_ListInput(u16 pad);
-s32 Menu_WrapLeftRightSe(s32 cur, s32 n, M2C_UNK se);
-void PriceInfo_Close(void);
-s32 PriceInfo_SlideWindows(s16 from, s16 to);
-
 /*
  * The board screen each frame (BoardMenu.page): the line windows slide in,
  * a line is chosen (PriceInfo_ListInput), the list or detail window slides
@@ -840,7 +821,7 @@ void PriceInfo_Update(void)
     Chat_SetWindowMode(1, 2);
     switch (menu->page) {
     case 0:
-        switch (PriceInfo_SlideWindows(0x280, 0x118)) {
+        switch (PriceInfo_SlideWindows(640, 280)) {
         case 0:
             menu->page++;
             break;
@@ -850,26 +831,26 @@ void PriceInfo_Update(void)
         switch (PriceInfo_ListInput(pad)) {
         case 0:
             menu->page++;
-            WinSlide_Step(&menu->win[0], 0x280, 0x140);
+            WinSlide_Step(&menu->win[0], 640, 320);
             menu->listPage = 0;
             menu->win[1].pos = menu->win[0].pos;
             gMenuInputLock = 3;
             break;
         case 3:
-            PriceInfo_SlideWindows(0x118, 0x280);
+            PriceInfo_SlideWindows(280, 640);
             menu->page = 5;
             break;
         }
         break;
     case 2:
-        switch (WinSlide_Step(&menu->win[0], 0x280, 0x140)) {
+        switch (WinSlide_Step(&menu->win[0], 640, 320)) {
         case 0:
             i = menu->sel - 1;
             menu->page = 4;
             wanted = &menu->wanted[season][i];
             if (Wanted_IsSet(&(wanted + WANTED_SECOND_HUB)->kind) == 1 && Wanted_IsSet(&wanted->kind) == 1) {
                 menu->page = 3;
-                WinSlide_Step(&menu->win[1], 0x140, 0x1E);
+                WinSlide_Step(&menu->win[1], 320, 30);
                 return;
             }
             break;
@@ -877,14 +858,14 @@ void PriceInfo_Update(void)
         wanted = &menu->wanted[season][i];
         if (Wanted_IsSet(&(wanted + WANTED_SECOND_HUB)->kind) == 1 && Wanted_IsSet(&wanted->kind) == 1) {
             if (menu->win[0].timer < 0) {
-                WinSlide_Step(&menu->win[1], 0x140, 0x1E);
+                WinSlide_Step(&menu->win[1], 320, 30);
             } else {
                 menu->win[1].pos = menu->win[0].pos;
             }
         }
         break;
     case 3:
-        switch (WinSlide_Step(&menu->win[1], 0x140, 0x1E)) {
+        switch (WinSlide_Step(&menu->win[1], 320, 30)) {
         case 0:
             menu->page++;
             break;
@@ -899,7 +880,7 @@ void PriceInfo_Update(void)
         }
         break;
     case 5:
-        switch (PriceInfo_SlideWindows(0x118, 0x280)) {
+        switch (PriceInfo_SlideWindows(280, 640)) {
         case 0:
             menu->page++;
             PriceInfo_Close();
@@ -958,9 +939,9 @@ void PriceInfo_DrawWanted(s16 x, s32 y, s16 line, s32 color)
     char **text;
     s32 textX;
 
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     text = &gPriceWantedLines[line];
-    textX = Text_CenterX(*text, x, 0x16);
+    textX = Text_CenterX(*text, x, 22);
     Text_DrawShadowed(textX, y, 0xFF000000, color, *text);
 }
 
@@ -968,13 +949,12 @@ INCLUDE_RODATA("asm/lobby/nonmatchings/market", gPriceStrFmt);
 void Tex_Bind(s32 i);
 
 /*
- * The label of board line n, centred on x + 0xAA at y + 0x1D: line 0 the
+ * The label of board line n, centred on x + 170 at y + 29: line 0 the
  * price list's label, the others the wanted line's title in its colour
  * (gPriceBoardColors), grey when neither of its entries is set. Returns
- * the line frame's colour. Text_CenterX returns s16: its result stored in
- * x is extended in x's register (an int result goes straight into a0).
- * Text_CenterX returns an s16, so its result is sign-extended into x's
- * register, as in the game's code.
+ * the line frame's colour. Text_CenterX returns an s16, so its result is
+ * sign-extended into x's register, as in the game's code (an int result
+ * would go straight into a0).
  */
 u32 PriceInfo_DrawTitle(s16 x, s16 y, s16 n)
 {
@@ -984,22 +964,22 @@ u32 PriceInfo_DrawTitle(s16 x, s16 y, s16 n)
     WantedRec *wanted;
 
     season = LobbyWorld_GetSeason();
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     switch (n) {
     case 0:
         Font_SetColor(0x80101010);
-        x = Text_CenterX(gPriceInfoTexts[PRICE_INFO_TITLE], (s16)(x + 0xAA), 0x16);
-        Font_SetPos(x, y + 0x1D);
+        x = Text_CenterX(gPriceInfoTexts[PRICE_INFO_TITLE], (s16)(x + 170), 22);
+        Font_SetPos(x, y + 29);
         Text_PrintfColored(gPriceStrFmt, gPriceInfoTexts[PRICE_INFO_TITLE]);
         return 0xFFE0D8C8;
     default:
         i = n - 1;
         wanted = &menu->wanted[season][i];
         if (Wanted_IsSet(&wanted->kind) == 0 && Wanted_IsSet(&(wanted + WANTED_SECOND_HUB)->kind) == 0) {
-            PriceInfo_DrawWanted((s16)(x + 0xAA), (s16)(y + 0x1D), i, 0x80404040);
+            PriceInfo_DrawWanted((s16)(x + 170), (s16)(y + 29), i, 0x80404040);
             return 0xFF808080;
         }
-        PriceInfo_DrawWanted((s16)(x + 0xAA), (s16)(y + 0x1D), i, gPriceBoardColors[i]);
+        PriceInfo_DrawWanted((s16)(x + 170), (s16)(y + 29), i, gPriceBoardColors[i]);
         return 0xFFE0D8C8;
     }
 }
@@ -1019,20 +999,20 @@ void PriceInfo_DrawCategories(WinSlide *win, s16 y)
 
     for (i = 0; i < BOARD_LINES; i++) {
         x = win->pos;
-        Icon_DrawMode(x, y, 0x154, 0x50, PriceInfo_DrawTitle(x, y, i), 0, i);
-        iconY = y + 0xA;
+        Icon_DrawMode(x, y, 340, 80, PriceInfo_DrawTitle(x, y, i), 0, i);
+        iconY = y + 10;
         switch (i) {
         case 3:
-            Icon_Draw(x + 0x8C, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
+            Icon_Draw(x + 140, iconY, 60, 60, 0x40000000, 31);
             break;
         case 2:
-            Icon_Draw(x + 0x5A, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
-            Icon_Draw(x + 0xBE, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
+            Icon_Draw(x + 90, iconY, 60, 60, 0x40000000, 31);
+            Icon_Draw(x + 190, iconY, 60, 60, 0x40000000, 31);
             break;
         default:
-            Icon_Draw(x + 0x28, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
-            Icon_Draw(x + 0xF0, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
-            Icon_Draw(x + 0x8C, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
+            Icon_Draw(x + 40, iconY, 60, 60, 0x40000000, 31);
+            Icon_Draw(x + 240, iconY, 60, 60, 0x40000000, 31);
+            Icon_Draw(x + 140, iconY, 60, 60, 0x40000000, 31);
             break;
         }
         if (i == menu->sel) {
@@ -1041,10 +1021,10 @@ void PriceInfo_DrawCategories(WinSlide *win, s16 y)
             } else {
                 blink = 0;
             }
-            Icon_Draw(x + 0xA + blink, y + 0x18, 0x20, 0x20, 0xFFA0A040, 0x29);
-            Icon_Draw(x + 0x12A - blink, y + 0x18, 0x20, 0x20, 0xFFA0A040, 0x28);
+            Icon_Draw(x + 10 + blink, y + 24, 32, 32, 0xFFA0A040, 41);
+            Icon_Draw(x + 298 - blink, y + 24, 32, 32, 0xFFA0A040, 40);
         }
-        y += 0x5A;
+        y += 90;
         win++;
     }
 }
@@ -1073,15 +1053,15 @@ void PriceInfo_DrawRate(s16 x, s16 y, s16 id)
         colour = 0xFF4444A0;
     }
     if (id & 2) {
-        flip = 0x8000;
+        flip = 32768;
     } else {
         flip = 0;
     }
-    Icon_DrawRotated(x, y + 0xC, (level + 1) * 0x18, 8, colour, flip, 0x6F);
+    Icon_DrawRotated(x, y + 12, (level + 1) * 24, 8, colour, flip, 111);
     if (marks & 1) {
-        Icon_DrawMode(x + 0xE6, y - 1, 0x1E, 0x16, 0xFF4444A0, 0x1D, 2);
+        Icon_DrawMode(x + 230, y - 1, 30, 22, 0xFF4444A0, 29, 2);
     } else if (marks & 2) {
-        Icon_DrawMode(x + 0xE6, y + 2, 0x1E, 0x16, 0xFF802020, 0x1E, 3);
+        Icon_DrawMode(x + 230, y + 2, 30, 22, 0xFF802020, 30, 3);
     }
 }
 
@@ -1099,13 +1079,13 @@ void PriceInfo_DrawLegend(s16 x, s16 y)
     Font_SetPos(x - 4, y);
     Text_PrintfColored(gPriceLegendTexts[0]);
     lineY = y;
-    Font_SetPos(x - 4, lineY + 0x17);
+    Font_SetPos(x - 4, lineY + 23);
     Text_PrintfColored(gPriceLegendTexts[1]);
     Text_PrintfColored(gPriceLegendTexts[2]);
     x -= 10;
     for (i = 0; i < 3; i++) {
-        Icon_Draw(x, lineY + 0x24, 0x3C, 0xA, cols.c[i], 0x6E);
-        x += 0x36;
+        Icon_Draw(x, lineY + 36, 60, 10, cols.c[i], 110);
+        x += 54;
     }
 }
 
@@ -1132,14 +1112,14 @@ void PriceInfo_DrawList(s16 x, s16 y)
     s16 lineIdx;
     s32 price;
 
-    Menu_DrawQuestSheet(x - 0x14, y, 0x140, 0x168, 0, menu->listPage, -1, -1);
+    Menu_DrawQuestSheet(x - 20, y, 320, 360, 0, menu->listPage, -1, -1);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum((s16)(x - 0x14) + 0xFA, y + 2, menu->listPage, menu->listPages, 1);
-    Tex_Bind(0x16B);
-    Font_SetSpacing(0x14, 0x14);
-    i = y + 0x24;
-    PriceInfo_DrawLegend((s16)(x + 0x14), i);
-    y += 0x42;
+    Menu_DrawPageNum((s16)(x - 20) + 250, y + 2, menu->listPage, menu->listPages, 1);
+    Tex_Bind(363);
+    Font_SetSpacing(20, 20);
+    i = y + 36;
+    PriceInfo_DrawLegend((s16)(x + 20), i);
+    y += 66;
     if (menu->listPage > 2) {
         cnt = PRICE_PAGE_LINES;
         start = menu->listPage * PRICE_PAGE_LINES;
@@ -1168,8 +1148,8 @@ void PriceInfo_DrawList(s16 x, s16 y)
                 em = gOnlinePriceIds[i];
                 price = gRateSnapshot[em];
             }
-            y += 0x17;
-            Font_SetPos(x + 0x14, y);
+            y += 23;
+            Font_SetPos(x + 20, y);
             if (gSave.hunted[em] > 0) {
                 Text_PrintfColored("%-16s:%4dz", gMonsterNames[em], price);
             } else {
@@ -1179,11 +1159,11 @@ void PriceInfo_DrawList(s16 x, s16 y)
             em = menu->ids[lineIdx];
             price = gRateSnapshot[abs(em)];
             if (em != 0 && price != 0) {
-                y += 0x17;
-                Font_SetPos(x + 0x14, y);
+                y += 23;
+                Font_SetPos(x + 20, y);
                 if (0 < em) {
                     Text_PrintfColored("%-16s:%4dz", gMonsterNames[em], gRateSnapshot[em]);
-                    PriceInfo_DrawRate(x + 0x14, y, em);
+                    PriceInfo_DrawRate(x + 20, y, em);
                 } else {
                     Text_PrintfColored(gPriceStrFmt, gGameMenuLabels[MENU_LABEL_UNKNOWN_NAME]);
                 }
@@ -1193,17 +1173,7 @@ void PriceInfo_DrawList(s16 x, s16 y)
 }
 
 extern char *gItemNames[];
-extern char *gMonsterClassTexts[];
-s32 sprintf(char *buf, const char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
 void Text_SetColor(s16 color);
-s32 Lobby_HrAtLeast31(void);
-void Menu_DrawBarRotated(s16 x, s16 y, s16 w, s16 h, u32 color, s32 angle, s16 cx, s16 cy, u8 k);
-void Menu_DrawFrameBox(s16 x, s16 y, s16 w, s16 h, u32 color);
-void Tex_Prepare(s32 n, s32 tex);
-s32 WantedPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
-s32 Sprite_Draw(Sprite *s);
-void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
 /*
  * A wanted entry's detail card at x, y for wanted line line: the frame
  * (lighter for the second list), the icons, the line's title, the hall
@@ -1216,8 +1186,8 @@ void PriceInfo_DrawDetails(s16 x, s16 y, void *wantedIn, u8 listIn, s8 line)
 {
     WantedRec *wanted = wantedIn;
     Sprite spr;
-    char buf[0x40];
-    char wbuf[0x20];
+    char buf[64];
+    char wbuf[32];
     s16 centerX;
     u32 *col;
     s16 textX;
@@ -1227,42 +1197,42 @@ void PriceInfo_DrawDetails(s16 x, s16 y, void *wantedIn, u8 listIn, s8 line)
     BoardMenu *menu = (BoardMenu *)gMenuWork;
 
     if (list == 1) {
-        Menu_DrawBarRotated(x, y, 0x118, 0x13E, 0xFFCFBDBD, 0, 0, 0, wanted->id & 3);
+        Menu_DrawBarRotated(x, y, 280, 318, 0xFFCFBDBD, 0, 0, 0, wanted->id & 3);
     } else {
-        Menu_DrawBarRotated(x, y, 0x118, 0x13E, 0xFFE0D8C8, 0, 0, 0, wanted->id & 3);
+        Menu_DrawBarRotated(x, y, 280, 318, 0xFFE0D8C8, 0, 0, 0, wanted->id & 3);
     }
-    iconY = y + 0x4A;
+    iconY = y + 74;
     switch (menu->sel) {
     case 3:
-        Icon_Draw(x + 0x6E, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
+        Icon_Draw(x + 110, iconY, 60, 60, 0x40000000, 31);
         break;
     case 2:
-        Icon_Draw(x + 0x3C, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
-        Icon_Draw(x + 0xA0, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
+        Icon_Draw(x + 60, iconY, 60, 60, 0x40000000, 31);
+        Icon_Draw(x + 160, iconY, 60, 60, 0x40000000, 31);
         break;
     default:
-        Icon_Draw(x + 0x28, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
-        Icon_Draw(x + 0xB4, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
-        Icon_Draw(x + 0x6E, iconY, 0x3C, 0x3C, 0x40000000, 0x1F);
+        Icon_Draw(x + 40, iconY, 60, 60, 0x40000000, 31);
+        Icon_Draw(x + 180, iconY, 60, 60, 0x40000000, 31);
+        Icon_Draw(x + 110, iconY, 60, 60, 0x40000000, 31);
         break;
     }
-    centerX = x + 0x8C;
-    Font_SetSpacing(0x16, 0x16);
+    centerX = x + 140;
+    Font_SetSpacing(22, 22);
     col = &gPriceBoardColors[line];
     Font_SetColor(*col);
-    PriceInfo_DrawWanted(centerX, y += 0x14, line, *col);
-    Icon_Draw(x + 0x14, y + 0xF, 0xF0, 0xC, 0x99106060, wanted->id % 6 + 0x6E);
+    PriceInfo_DrawWanted(centerX, y += 20, line, *col);
+    Icon_Draw(x + 20, y + 15, 240, 12, 0x99106060, wanted->id % 6 + 110);
     if (Game_IsOnline() == 1) {
         text = gPriceInfoTexts[PRICE_INFO_HALL_TAVERN + list];
     } else {
         text = gPriceInfoTexts[PRICE_INFO_HALL_WANTED];
     }
-    textX = Text_CenterX(text, centerX, 0x16);
-    Font_SetPos(textX, y += 0x23);
+    textX = Text_CenterX(text, centerX, 22);
+    Font_SetPos(textX, y += 35);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Text_PrintfColored(text);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     if (wanted->kind == WANTED_KIND_ITEM) {
         text = gItemNames[wanted->id];
     } else {
@@ -1276,28 +1246,28 @@ void PriceInfo_DrawDetails(s16 x, s16 y, void *wantedIn, u8 listIn, s8 line)
     if (Lobby_HrAtLeast31() == 0 && list == 1) {
         text = gGameMenuLabels[MENU_LABEL_UNKNOWN_NAME];
     }
-    textX = Text_CenterX(text, centerX, 0x14);
-    Font_SetPos(textX, y += 0x22);
+    textX = Text_CenterX(text, centerX, 20);
+    Font_SetPos(textX, y += 34);
     Text_PrintfColored(text);
     sprintf(buf, gPriceInfoTexts[PRICE_INFO_NONE + wanted->kind], wanted->count);
     Sjis_Widen(buf, wbuf);
-    textX = Text_CenterX(wbuf, centerX, 0x14);
-    Font_SetPos(textX, y += 0x19);
+    textX = Text_CenterX(wbuf, centerX, 20);
+    Font_SetPos(textX, y += 25);
     if (Lobby_HrAtLeast31() == 0 && list == 1) {
         sprintf(wbuf, gPriceStrFmt, gGameMenuLabels[MENU_LABEL_UNKNOWN_NAME]);
     }
     Text_PrintfColored(wbuf);
-    Font_SetSpacing(0x16, 0x16);
-    spr.y = y + 0x21;
-    spr.w = 0x60;
-    spr.h = 0x60;
+    Font_SetSpacing(22, 22);
+    spr.y = y + 33;
+    spr.w = 96;
+    spr.h = 96;
     spr.color = -1;
     if (wanted->kind == WANTED_KIND_ITEM) {
         spr.x = centerX - 60.0f;
-        Menu_DrawFrameBox(spr.x - 0xA, spr.y - 5, 0x8C, 0x6A, 0xFF493120);
+        Menu_DrawFrameBox(spr.x - 10, spr.y - 5, 140, 106, 0xFF493120);
         if (Lobby_HrAtLeast31() == 0 && list == 1) {
-            spr.x = centerX - 0x30;
-            Menu_DrawFrameBox(spr.x - 0xA, spr.y - 5, 0x74, 0x6A, 0xFF493120);
+            spr.x = centerX - 48;
+            Menu_DrawFrameBox(spr.x - 10, spr.y - 5, 116, 106, 0xFF493120);
             Tex_Prepare(1, TEX_SLOT_PICTURES);
             Tex_Bind(TEX_SLOT_PICTURES);
             WantedPicture_GetUV((s32 *)&spr.u0, (s32 *)&spr.u1, 0);
@@ -1306,8 +1276,8 @@ void PriceInfo_DrawDetails(s16 x, s16 y, void *wantedIn, u8 listIn, s8 line)
             Item_DrawIcon(spr.x, spr.y, spr.w, wanted->id);
         }
     } else {
-        spr.x = centerX - 0x30;
-        Menu_DrawFrameBox(spr.x - 0xA, spr.y - 5, 0x74, 0x6A, 0xFF493120);
+        spr.x = centerX - 48;
+        Menu_DrawFrameBox(spr.x - 10, spr.y - 5, 116, 106, 0xFF493120);
         Tex_Prepare(1, TEX_SLOT_PICTURES);
         Tex_Bind(TEX_SLOT_PICTURES);
         if (Lobby_HrAtLeast31() == 0 && list == 1) {
@@ -1323,15 +1293,15 @@ void PriceInfo_DrawDetails(s16 x, s16 y, void *wantedIn, u8 listIn, s8 line)
         sprintf(buf, "%s%dz", gQuestSheetTexts[QUEST_SHEET_TEXT_REWARD], wanted->reward);
     }
     Sjis_Widen(buf, wbuf);
-    centerX = Text_CenterX(wbuf, centerX, 0x16);
+    centerX = Text_CenterX(wbuf, centerX, 22);
     Text_SetColor(1);
-    y += 0x91;
+    y += 145;
     Font_SetPos(centerX + 3, y + 2);
     Text_PrintfColored(wbuf);
     Font_SetColor(*col);
     Font_SetPos(centerX, y);
     Text_PrintfColored(wbuf);
-    Icon_Draw(centerX, y + 0xF, 0xD2, 0xC, 0x99106060, (wanted->id + 1) % 6 + 0x6E);
+    Icon_Draw(centerX, y + 15, 210, 12, 0x99106060, (wanted->id + 1) % 6 + 110);
 }
 
 /*
@@ -1340,31 +1310,31 @@ void PriceInfo_DrawDetails(s16 x, s16 y, void *wantedIn, u8 listIn, s8 line)
  * to 4 the price list (PriceInfo_DrawList) for line 0, or the chosen
  * wanted line's first entry (PriceInfo_DrawDetails).
  */
-void PriceInfo_Draw(TextBox *box)
+void PriceInfo_Draw(MenuTask *layer)
 {
     BoardMenu *menu = (BoardMenu *)gMenuWork;
     s32 season;
     s16 x;
 
     season = LobbyWorld_GetSeason();
-    Text_SetSize(box->size);
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xA0, 0xFFB0B000, gGameMenuLabels[MENU_LABEL_PRICE_INFO], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Text_SetSize(layer->textSize);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 160, 0xFFB0B000, gGameMenuLabels[MENU_LABEL_PRICE_INFO], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     x = menu->win[0].pos;
     switch (menu->page) {
     case 0:
     case 1:
     case 5:
-        PriceInfo_DrawCategories(menu->s, 0x36);
+        PriceInfo_DrawCategories(menu->s, 54);
         break;
     case 2:
     case 3:
     case 4:
         if (menu->sel == 0) {
-            PriceInfo_DrawList(x, 0x3A);
+            PriceInfo_DrawList(x, 58);
         } else {
-            PriceInfo_DrawDetails(x, 0x46, &menu->wanted[season][(s16)(menu->sel - 1)], 0, menu->sel - 1);
+            PriceInfo_DrawDetails(x, 70, &menu->wanted[season][(s16)(menu->sel - 1)], 0, menu->sel - 1);
         }
         break;
     }
@@ -1375,7 +1345,7 @@ void PriceInfo_Draw(TextBox *box)
  * second entry (PriceInfo_DrawDetails) when both of the line's entries are
  * set, at the second window's x (the first window's x on page 2).
  */
-void PriceInfo_Draw2(TextBox *box)
+void PriceInfo_Draw2(MenuTask *layer)
 {
     WantedRec *wanted;
     BoardMenu *menu = (BoardMenu *)gMenuWork;
@@ -1385,7 +1355,7 @@ void PriceInfo_Draw2(TextBox *box)
     WantedRec *wanted2;
 
     season = LobbyWorld_GetSeason();
-    Text_SetSize(box->size);
+    Text_SetSize(layer->textSize);
     x = menu->win[1].pos;
     switch (menu->page) {
     case 2:
@@ -1397,7 +1367,7 @@ void PriceInfo_Draw2(TextBox *box)
             wanted = &menu->wanted[season][line];
             wanted2 = wanted + WANTED_SECOND_HUB;
             if (Wanted_IsSet(&wanted2->kind) == 1 && Wanted_IsSet(&wanted->kind) == 1) {
-                PriceInfo_DrawDetails(x, 0x46, wanted2, 1, line);
+                PriceInfo_DrawDetails(x, 70, wanted2, 1, line);
             }
         }
         break;

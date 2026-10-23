@@ -10,44 +10,18 @@
  */
 #include "common.h"
 #include "em.h"
+#include "em_kushala.h"
+#include "em_shakalaka.h"
 #include "objattach.h"
 #include "player.h"
 #include "sprite.h"
 #include "capsule.h"
-
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
-void BulldromeAttack_Update(ObjAttach *o);
-void ShakalakaAttack_Draw(ObjAttach *o);
-void BulldromeAttack_Draw(ObjAttach *o);
-extern HitShape *ShakalakaAttack_HitShapes[];
-extern void *ShakalakaAttack_RowsPtr;
-extern HitShape *BulldromeAttack_HitShapes[];
-extern void *BulldromeAttack_RowsPtr;
-ObjAttach *ObjAttach_Alloc(s32 n);
-void ObjAttach_Free(ObjAttach *p);
-void ShakalakaAttack_End(ObjAttach *o);
-void ShakalakaAttack_Free(ObjAttach *o);
-void TeostraAttack_Setup(ObjAttach *o);
-void TeostraAttack_End(ObjAttach *o);
-void TeostraAttack_Free(ObjAttach *o);
-void BulldromeAttack_Run(struct ObjAttach *o);
-void BulldromeAttack_End(struct ObjAttach *o);
-void BulldromeAttack_Free(struct ObjAttach *o);
-void DrawSlot_Free(s32);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void Vec_Copy(f32 *out, f32 *in);
-void ShakalakaAttack_Update(ObjAttach *o);
-void TeostraAttack_Update(ObjAttach *o);
-u8 Player_InCurrentArea(void *obj);
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *, s32 a, s32 b, void *c);
-extern HitShape *TeostraAttack_HitShapes[];
-extern void *TeostraAttack_RowsPtr;
-f32 Math_Absf(f32 x);
-void ShakalakaAttack_Setup(ObjAttach *o);
-void BulldromeAttack_Setup(ObjAttach *o);
-void ShakalakaAttack_Run(ObjAttach *o);
-void TeostraAttack_Run(ObjAttach *o);
+#include "quest.h"
+#include "shakalaka_teostra_bulldrome.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "hit_setup.h"
+#include "area.h"
 
 /*
  * Makes a ShakalakaAttack of type for em, if a player is in em's area. Takes
@@ -146,9 +120,10 @@ void ShakalakaAttack_Setup(ObjAttach *o)
 }
 
 /*
- * Holds the window through the attack's motions. Type 2 holds through motion
- * 0x3FF and through 0x400 up to frame 40; type 3 while 0x3F5 plays; type 4
- * through 0x403 and 0x404; type 5 while 0x3F6 plays. The attack ends when the
+ * Holds the window through the attack's motions. Type 2 holds through
+ * SHAK_MOT_LEAP and through SHAK_MOT_LEAP_LAND up to frame 40; type 3 while
+ * SHAK_MOT_RUN plays; type 4 through SHAK_MOT_JUMP_UP and SHAK_MOT_JUMP_FALL;
+ * type 5 while SHAK_MOT_AMBUSH plays. The attack ends when the
  * motion differs from ownerMotion, the window closes or the monster's task
  * leaves its run phase.
  */
@@ -159,15 +134,15 @@ void ShakalakaAttack_Run(ObjAttach *o)
     switch (o->type) {
     case 2:
         switch (em->motionId[0]) {
-        case 0x400:
-            o->ownerMotion = 0x400;
+        case EM_MOTION_ID(0, SHAK_MOT_LEAP_LAND):
+            o->ownerMotion = EM_MOTION_ID(0, SHAK_MOT_LEAP_LAND);
             if (Motion_ReachedFrame(em, 0, 40.0f) == 0) {
                 o->hitFrames = 99;
             } else {
                 o->hitPhase = 0;
             }
             break;
-        case 0x3FF:
+        case EM_MOTION_ID(0, SHAK_MOT_LEAP):
         default:
             o->hitFrames = 99;
             break;
@@ -175,7 +150,7 @@ void ShakalakaAttack_Run(ObjAttach *o)
         break;
     case 3:
         switch (em->motionId[0]) {
-        case 0x3F5:
+        case EM_MOTION_ID(0, SHAK_MOT_RUN):
             o->hitFrames = 99;
             break;
         default:
@@ -185,12 +160,12 @@ void ShakalakaAttack_Run(ObjAttach *o)
         break;
     case 4:
         switch (em->motionId[0]) {
-        case 0x405:
+        case EM_MOTION_ID(0, SHAK_MOT_JUMP_LAND):
         default:
             o->hitPhase = 0;
             break;
-        case 0x403:
-        case 0x404:
+        case EM_MOTION_ID(0, SHAK_MOT_JUMP_UP):
+        case EM_MOTION_ID(0, SHAK_MOT_JUMP_FALL):
             o->ownerMotion = em->motionId[0];
             o->hitFrames = 99;
             break;
@@ -198,7 +173,7 @@ void ShakalakaAttack_Run(ObjAttach *o)
         break;
     case 5:
         switch (em->motionId[0]) {
-        case 0x3F6:
+        case EM_MOTION_ID(0, SHAK_MOT_AMBUSH):
             o->hitFrames = 99;
             break;
         default:
@@ -214,7 +189,7 @@ void ShakalakaAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -246,7 +221,8 @@ void ShakalakaAttack_Draw(ObjAttach *o)
 /*
  * Makes a TeostraAttack (one of Lunastra's or Teostra's body hit zones) of
  * type for em, if a player is in em's area. EmKushala_CreateAttack calls it
- * for kinds other than 0x36 and 0x3C.
+ * for kinds other than EM_KIND_KUSHALA_DAORA and
+ * EM_KIND_RUSTED_KUSHALA_DAORA.
  */
 void TeostraAttack_Create(Em *em, s32 kind)
 {
@@ -340,7 +316,8 @@ void TeostraAttack_Setup(ObjAttach *o)
 
 /*
  * As KushalaAttack_Run: types 8 and 25 hold the window open; 9, 26 and 29
- * stay 31, 1 or 32 frames after motion 0x3F6 or 0x409 starts. Each type ends
+ * stay 31, 1 or 32 frames after KUSH_MOT_DASH_END or
+ * KUSH_MOT_TESCA_ACTION_C_END starts. Each type ends
  * when the window closes or the motion leaves its own.
  */
 void TeostraAttack_Run(ObjAttach *o)
@@ -354,7 +331,7 @@ void TeostraAttack_Run(ObjAttach *o)
     case 9:
         switch (o->step) {
         case 0:
-            if (em->motionId[0] == 0x3F6) {
+            if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_END)) {
                 o->step++;
                 o->hitFrames = 31;
             } else {
@@ -371,7 +348,7 @@ void TeostraAttack_Run(ObjAttach *o)
     case 26:
         switch (o->step) {
         case 0:
-            if (em->motionId[0] == 0x3F6) {
+            if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_END)) {
                 o->step++;
                 o->hitFrames = 1;
             } else {
@@ -385,7 +362,7 @@ void TeostraAttack_Run(ObjAttach *o)
     case 29:
         switch (o->step) {
         case 0:
-            if (em->motionId[0] == 0x409) {
+            if (em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C_END)) {
                 o->step++;
                 o->hitFrames = 32;
             } else {
@@ -399,20 +376,20 @@ void TeostraAttack_Run(ObjAttach *o)
     }
     switch (o->type) {
     case 8:
-        if (!(em->motionId[0] == 0x3FD || em->motionId[0] == 0x3FE || em->motionId[0] == 0x3FF) || o->hitPhase == 0) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_RUN_START) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_RUN_B) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_RUN_C)) || o->hitPhase == 0) {
             o->hitPhase = 0;
             o->state = ATTACH_END;
         }
         break;
     case 9:
     case 26:
-        if (!(em->motionId[0] == 0x3F4 || em->motionId[0] == 0x3F5 || em->motionId[0] == 0x3F6) || o->hitPhase == 0) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_FLY_FAST) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_START) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_DASH_END)) || o->hitPhase == 0) {
             o->hitPhase = 0;
             o->state = ATTACH_END;
         }
         break;
     case 29:
-        if (!(em->motionId[0] == 0x411 || em->motionId[0] == 0x409) || o->hitPhase == 0) {
+        if (!(em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C) || em->motionId[0] == EM_MOTION_ID(0, KUSH_MOT_TESCA_ACTION_C_END)) || o->hitPhase == 0) {
             o->hitPhase = 0;
             o->state = ATTACH_END;
         }
@@ -426,7 +403,7 @@ void TeostraAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -453,7 +430,7 @@ void TeostraAttack_Free(ObjAttach *o)
 /*
  * Makes a BulldromeAttack of type for em, if a player is in em's area.
  * Returns it, or NULL. Types: 1 Bulldrome's spin, 3-5 its charge, 0 and 2 the
- * dash of monster kind 0x38.
+ * dash of monster kind 56.
  */
 ObjAttach *BulldromeAttack_Create(Em *em, s8 kind)
 {
@@ -549,6 +526,79 @@ void BulldromeAttack_Setup(ObjAttach *o)
     o->drawSlotBuf = NULL;
 }
 
+/*
+ * Types 3-5 keep the window open. Types 0 and 2 also keep it open, closing it
+ * once the monster leaves EM_GROUP_ATTACK or Em.unk473 is 0
+ * (EmKind38_ChangeState clears it). Type 1 follows the monster's yaw, its
+ * power 35 while more than 99 or 43-50 window frames are left, else 25. The
+ * attack ends when the motion changes, the window closes or the monster's
+ * task leaves its run phase.
+ */
+void BulldromeAttack_Run(ObjAttach *o)
+{
+    Em *em = &gEms[o->idx];
+
+    switch (o->type) {
+    case 0:
+    case 2:
+        o->hitFrames = 99;
+        if (em->stateGroup != EM_GROUP_ATTACK) {
+            o->hitPhase = 0;
+        }
+        if (em->unk473 == 0) {
+            o->hitPhase = 0;
+        }
+        break;
+    case 3:
+    case 4:
+    case 5:
+        o->hitFrames = 99;
+        break;
+    case 1:
+        o->yaw = em->rotY;
+        if (o->hitFrames > 99) {
+            o->power = 35;
+        } else if (o->hitFrames > 50) {
+            o->power = 25;
+        } else if (o->hitFrames > 42) {
+            o->power = 35;
+        } else {
+            o->power = 25;
+        }
+        break;
+    }
+    if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0 || em->taskPhase >= 2) {
+        o->hitPhase = 0;
+        o->state = ATTACH_END;
+        return;
+    }
+}
+
+/*
+ * Ends the attack: closes its hit window, hides it and frees its draw slot.
+ * It is freed on the next update.
+ */
+void BulldromeAttack_End(ObjAttach *o)
+{
+    o->hitPhase = 0;
+    o->state = ATTACH_FREE;
+    o->visible = 0;
+    if (o->drawSlotBuf != 0) {
+        DrawSlot_Free(o->drawSlot);
+    }
+}
+
+/* Frees the attack (ObjAttach_Free). */
+void BulldromeAttack_Free(ObjAttach *o)
+{
+    ObjAttach_Free(o);
+}
+
+/* Draws nothing. */
+void BulldromeAttack_Draw(ObjAttach *o)
+{
+}
+
 /* The file's data. */
 HitShape ShakalakaAttack_HitShapes_0[2] = {
 #include "game/008AD3A0.inc"
@@ -556,7 +606,7 @@ HitShape ShakalakaAttack_HitShapes_0[2] = {
 HitShape *ShakalakaAttack_HitShapes[4] = {
     ShakalakaAttack_HitShapes_0, 0, 0, 0,
 };
-u32 ShakalakaAttack_Rows[36] = {
+AttackRow ShakalakaAttack_Rows[6] = {
 #include "game/008AD400.inc"
 };
 void *ShakalakaAttack_RowsPtr = (void *)ShakalakaAttack_Rows;
@@ -624,7 +674,7 @@ HitShape *TeostraAttack_HitShapes[20] = {
     TeostraAttack_HitShapes_12, TeostraAttack_HitShapes_13, TeostraAttack_HitShapes_14, TeostraAttack_HitShapes_15,
     TeostraAttack_HitShapes_16, TeostraAttack_HitShapes_17, TeostraAttack_HitShapes_18, 0,
 };
-u32 TeostraAttack_Rows[186] = {
+AttackRow TeostraAttack_Rows[31] = {
 #include "game/008AE330.inc"
 };
 void *TeostraAttack_RowsPtr = (void *)TeostraAttack_Rows;
@@ -640,7 +690,7 @@ HitShape BulldromeAttack_HitShapes_2[2] = {
 HitShape *BulldromeAttack_HitShapes[4] = {
     BulldromeAttack_HitShapes_0, BulldromeAttack_HitShapes_1, BulldromeAttack_HitShapes_2, 0,
 };
-u32 BulldromeAttack_Rows[42] = {
+AttackRow BulldromeAttack_Rows[7] = {
 #include "game/008AE720.inc"
 };
 void *BulldromeAttack_RowsPtr = (void *)BulldromeAttack_Rows;

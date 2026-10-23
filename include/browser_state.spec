@@ -12,7 +12,7 @@ size 0x5C4
 0x00C s32 pageW // the page's width (x scrolls up to pageW - PAGE_VIEW_W)
 0x010 s32 pageH // the page's height (y scrolls up to pageH - PAGE_VIEW_H)
 0x014 u32 bgColor // the page's background colour (Html_SetBgColor; BROWSER_BLACK at start); Page_DrawObjBack draws bevels' lit edges grey on white (-1)
-0x018 u16 style // the page's style flags (Page_SetStyle; 0x2E7 at start; 1, 2, 4, 8, 0x20 ...)
+0x018 u16 style // the page's style flags (PAGE_STYLE_*, Page_SetStyle; HTML_PAGE_STYLE_DEFAULT at start)
 0x01A s16 marginTop // the margins (Page_SetMargins)
 0x01C s16 marginBottom
 0x01E s16 marginLeft
@@ -28,14 +28,14 @@ size 0x5C4
 0x02E u8 page // where the page on show is in its load: enum PageLoad
 0x02F u8 prevPageMode // pageMode before the last Page_SetDataMode
 0x030 u8 pageMode // the page's <CSV> block kind, CSV_KIND_* (Page_SetDataMode); the session, server-list and result kinds are data pages without form fields (Page_IsDataPage)
-0x031 u8 menuReached // 1 from CRS-MENU or COMP-SIGNUP (Page_SetKind)
+0x031 u8 menuReached // 1 from the portal's menu page or the sign-up's done page (Page_SetKind)
 0x032 u8 unk32
-0x033 u8 fromTop // 1 from CRS-TOP until the login id dialog (Page_SetKind)
+0x033 u8 fromTop // 1 from the portal's top page until the login id dialog (Page_SetKind)
 0x034 u8 plain // 1: the portal's pages 1 and 2 (no frame colour, no back button)
 0x035 s8 pageKind // what the page is to the game: enum PageKind (Page_SetKind; PAGE_KIND_NONE before)
 0x036 s8 initMode // the argument of Browser_Init (1: ...)
 0x037 u8 styled // 1: Page_SetStyle ran for the page
-0x038 u8 styleWait // 0x1E frames from Page_SetStyle (no reload meanwhile)
+0x038 u8 styleWait // 30 frames from Page_SetStyle (no reload meanwhile)
 0x039 u8 forceStyle8 // 1: the reply was status 14 or 2 (Page_SetStyle adds style flag 8)
 0x03A s8 fade // the fade: 16 in, -16 out (no reload meanwhile)
 0x03B char url[0x100] // the URL asked for (Browser_Go)

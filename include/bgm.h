@@ -17,9 +17,13 @@
  *   by the season and the time of day, and the short tunes that mark a
  *   new season or time of day.
  *
- * Each area also sets the two sound cores' reverb (gAreaReverbs).
+ * Each area also sets the two sound cores' reverb (gAreaReverbs), each
+ * core's effect set once until reset (Sound_SetEffectOnce,
+ * Sound_ResetEffects); Sound_ReverbOn and Sound_ReverbOff set both cores'.
+ * Bgm_StopInTownArena clears gBgmId in the town's arena.
  */
 #include "common.h"
+#include "player.h"
 
 #define BGM_CH_MUSIC        0       /* the stream channel of the music */
 #define BGM_CH_TUNE         1       /* the stream channel of the jingles and event tunes */
@@ -103,7 +107,7 @@ typedef struct AreaMusic {
 
 /* gAreaMusicAlts: an area's music for one of its variants (gBgmVariant). */
 typedef struct AreaMusicAlt {
-    u16 area;                   /* 0x0: 0xFFFF ends the list */
+    u16 area;                   /* 0x0: 65535 ends the list */
     u16 variant;                /* 0x2: compared with gBgmVariant */
     u16 id;                     /* 0x4 */
     u8 vol;                     /* 0x6 */
@@ -113,13 +117,13 @@ typedef struct AreaMusicAlt {
 /* A stream by key: gBattleBgmKinds (a monster kind's battle music) and
  * gAreaTunes (an area's own tune, played once). */
 typedef struct BgmKey {
-    u16 key;                    /* 0x0: the monster kind or the area; 0xFFFF ends gAreaTunes */
+    u16 key;                    /* 0x0: the monster kind or the area; 65535 ends gAreaTunes */
     u16 id;                     /* 0x2: the stream */
 } BgmKey;
 
 /* A sound played when an area's music variant changes (Jingle_PlayForArea). */
 typedef struct VariantJingle {
-    u8 from;                    /* 0x0: the variant the music was playing for (gBgmIndex); 0xFF ends the list */
+    u8 from;                    /* 0x0: the variant the music was playing for (gBgmIndex); 255 ends the list */
     u8 to;                      /* 0x1: the area's variant now (gBgmVariant) */
     u8 slot;                    /* 0x2: Sound_PlaySeFlat's slot */
     u8 se;                      /* 0x3: and sound */
@@ -127,7 +131,7 @@ typedef struct VariantJingle {
 
 /* gAreaJingles: an area's list of VariantJingle. */
 typedef struct AreaJingles {
-    u16 area;                   /* 0x0: 0xFFFF ends the list */
+    u16 area;                   /* 0x0: 65535 ends the list */
     VariantJingle *list;        /* 0x4 */
 } AreaJingles;
 
@@ -147,5 +151,43 @@ extern u8 gBgmIndex;            /* field: the variant the music plays for; AREA_
 extern u8 gBgmPaused;           /* nonzero: Bgm_TownUpdate does nothing */
 extern u8 gBgmPm;               /* the time of day the town's music was chosen for (LobbyTime_IsPm) */
 extern u8 gBgmSeason;           /* the season it was chosen for (LobbyWorld_GetSeason) */
+
+void Gfx_DrawMarker(s16 x, s16 y, s16 width, s16 height, s32 flags);
+void Bgm_Init(void);
+s32 Bgm_IsBattleState(void);
+void Bgm_FieldUpdate(void);
+void Bgm_TownUpdate(void);
+void Jingle_Play(void *owner, s32 id);
+s32 Bgm_IsNpcTunePlaying(void);
+s32 Bgm_IsDuckingTune(void);
+s32 Bgm_IsEventTune(void);
+void Bgm_PlayEvent(s32 id);
+void Bgm_StopEvent(void *owner);
+void Bgm_StopEventFade(Player *pl);
+void Bgm_PlayFaintMusic(void);
+void Bgm_SetPaused(u8 paused);
+void Bgm_ForgetCurrent(void);
+void Bgm_PlayTownTune(s32 kind, s32 i);
+void Bgm_PlayAreaMusic(u16 area);
+void Bgm_FadeInFromZero(s32 fade);
+void Bgm_FadeToVolume(s32 fade);
+void Bgm_PlayWithVolume(s32 id, s32 vol);
+void Bgm_PlayBattle(void);
+s32 Bgm_AreaTune(u8 area);
+u16 Bgm_GetAreaMusic(u16 area);
+void Jingle_PlayForArea(u16 area);
+void Bgm_Play(s32 id);
+void Jingle_OnAreaChange(u16 area);
+void Bgm_EnterArea(u16 area);
+extern s8 *gArmorRattleKinds[];
+extern s8 gEmSeBankFiles[]; /* per monster kind, its bank file after SND_BANK_EM */
+extern s8 gSeBankByType[];
+extern u32 gTextCodeColors[12];
+
+void Sound_ReverbOn(void);
+void Sound_ReverbOff(void);
+void Sound_ResetEffects(void);
+void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback);
+s32 Bgm_StopInTownArena(void);
 
 #endif /* BGM_H */

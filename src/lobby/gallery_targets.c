@@ -10,37 +10,33 @@
  * keys by type, their start delays, and the bursts of a hit.
  */
 #include "common.h"
+#include "stageobj.h"
 #include "lobby_vobj.h"
 #include "lobby_globals.h"
 #include "render_state.h"
+#include "scene.h"
+#include "gallery_targets.h"
+#include "engine_math.h"
+#include "gallery_board.h"
+#include "gallery_objects.h"
+#include "shooting_gallery.h"
 /* Built at optimisation level 4: the compiler gives these functions the
  * game's code only at this level. */
 #pragma optimization_level 4
 
-void Vec_Copy(f32 *dst, f32 *src);
-void GalleryBoard_Update(StageObj *o);
-s32 Gallery_AddObj(StageObj *, u8 mode);
 extern u8 gGalleryHitBursts[];
 
-extern u8 gGalleryBurstScaleKeys0[];
-extern u8 gGalleryBurstColorKeys0[];
-extern u8 gGalleryBurstScaleKeys1[];
-extern u8 gGalleryBurstColorKeys1[];
-extern u8 gGalleryBurstScaleKeys2[];
-extern u8 gGalleryBurstColorKeys2[];
-extern u8 gGalleryBurstScaleKeys3[];
-extern u8 gGalleryBurstColorKeys3[];
-extern u8 gGalleryBurstScaleKeys4[];
-extern u8 gGalleryBurstColorKeys4[];
+extern Vec3Key gGalleryBurstScaleKeys0[];
+extern ColorKey gGalleryBurstColorKeys0[];
+extern Vec3Key gGalleryBurstScaleKeys1[];
+extern ColorKey gGalleryBurstColorKeys1[];
+extern Vec3Key gGalleryBurstScaleKeys2[];
+extern ColorKey gGalleryBurstColorKeys2[];
+extern Vec3Key gGalleryBurstScaleKeys3[];
+extern ColorKey gGalleryBurstColorKeys3[];
+extern Vec3Key gGalleryBurstScaleKeys4[];
+extern ColorKey gGalleryBurstColorKeys4[];
 extern f32 gCamMatrix[];
-void GalleryBoard_DrawTarget(Vec3f *pos, u8 kind, u32 ax, u32 ay, s8 *timer);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-s32 Gs_SetState(u8, u32);
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
 
 /* The draw slot callback of the board and its bursts. For the board, the
  * slot's target is drawn while it holds a kind and the board stands (a
@@ -64,8 +60,8 @@ void GalleryBoard_Draw(DrawSlot *slot)
 
     if (mdl != NULL && mdl->active != 0 && obj->visible != 0) {
         ModelMatSet *mesh;
-        u8 *scaleKeys;
-        u8 *colKeys;
+        Vec3Key *scaleKeys;
+        ColorKey *colKeys;
         mats = mdl->mats;
         color = -1;
         switch (obj->type) {
@@ -225,7 +221,7 @@ u8 GalleryBoard_GetTargetSize(StageObj *obj, u8 i)
     return gGalleryTargetKinds[((GalleryBoard *)obj->buf)->kinds[i]].size;
 }
 
-/* Returns target i's yaw (0x10000 a turn). */
+/* Returns target i's yaw (ANGLE_TURN to a turn). */
 u16 GalleryBoard_GetTargetFacing(StageObj *obj, u8 i)
 {
     GalleryBoard *board = (GalleryBoard *)obj->buf;
@@ -271,34 +267,34 @@ s16 GalleryBoard_GetTargetPoints(StageObj *obj, u8 i)
  * bursts 4 to 6, 4 for bursts 7 to 9. Then the start delays of bursts 4
  * to 6 and 7 to 9 (by type, from their first), and the types of a hit's
  * bursts (five used). */
-u8 gGalleryBurstScaleKeys0[64] = {
+Vec3Key gGalleryBurstScaleKeys0[4] = {
 #include "lobby/007DCBB0.inc"
 };
-u8 gGalleryBurstColorKeys0[32] = {
+ColorKey gGalleryBurstColorKeys0[4] = {
 #include "lobby/007DCBF0.inc"
 };
-u8 gGalleryBurstScaleKeys1[96] = {
+Vec3Key gGalleryBurstScaleKeys1[6] = {
 #include "lobby/007DCC10.inc"
 };
-u8 gGalleryBurstColorKeys1[48] = {
+ColorKey gGalleryBurstColorKeys1[6] = {
 #include "lobby/007DCC70.inc"
 };
-u8 gGalleryBurstScaleKeys2[96] = {
+Vec3Key gGalleryBurstScaleKeys2[6] = {
 #include "lobby/007DCCA0.inc"
 };
-u8 gGalleryBurstColorKeys2[48] = {
+ColorKey gGalleryBurstColorKeys2[6] = {
 #include "lobby/007DCD00.inc"
 };
-u8 gGalleryBurstScaleKeys3[64] = {
+Vec3Key gGalleryBurstScaleKeys3[4] = {
 #include "lobby/007DCD30.inc"
 };
-u8 gGalleryBurstColorKeys3[32] = {
+ColorKey gGalleryBurstColorKeys3[4] = {
 #include "lobby/007DCD70.inc"
 };
-u8 gGalleryBurstScaleKeys4[48] = {
+Vec3Key gGalleryBurstScaleKeys4[3] = {
 #include "lobby/007DCD90.inc"
 };
-u8 gGalleryBurstColorKeys4[24] = {
+ColorKey gGalleryBurstColorKeys4[3] = {
 #include "lobby/007DCDC0.inc"
 };
 s8 gGalleryBurstDelaysA[8] = {

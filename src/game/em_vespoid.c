@@ -14,86 +14,25 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_vespoid.h"
 #include "player.h"
-void EmVespoid_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus4(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-s32 Motion_PassedFrame(void *, s32 layer, f32 frame);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-u16 Rand_Next(s32 stream);
-void VespoidAttack_Create(Em *, s8);
-void Em_MoveRotatedAccel(Em *, void *);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmVespoid_Init(Em *em);
-void EmVespoid_Status2Lie(Em *);
-void EmVespoid_RunMoveState(Em *em);
-void EmVespoid_FlyForward(Em *em, s32 arg1);
-void EmVespoid_FlyBack(Em *, s16);
-void EmVespoid_Hover(Em *em);
-void EmVespoid_TakeOff(Em *em);
-void EmVespoid_Land(Em *em);
-void EmVespoid_Dart(Em *);
-void EmVespoid_Lunge(Em *em);
-void EmVespoid_StingA(Em *);
-void EmVespoid_StingB(Em *);
-void EmVespoid_FallFromAir(Em *em);
-void EmVespoid_FallAndLie(Em *em);
-void EmVespoid_Die(Em *);
-void EmVespoid_DieCarvable(Em *);
-void EmVespoid_Reappear(Em *);
-void EmVespoid_FlyIn(Em *);
-void EmVespoid_StartCurves(Em *em, u8 kind);
-u8 EmVespoid_UpdateCurves(Em *);
-void EmVespoid_MoveByVelocity(Em *em);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
+#include "capsule.h"
+#include "sound.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "rand.h"
+#include "vec_math.h"
+#include "em_script.h"
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 QuestEm_CanAppear(Em *em);
-void Player_Integrate(void *);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *ofs, f32 scale);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmGravios_ChangeState, EmGravios_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-s8 QuestEm_Appear(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_BeginStatus2(Em *em);
-void Vec_Copy(f32 *out, f32 *in);
-void Vec_Sub(f32 *out, f32 *a, f32 *b);
-void Vec_Normalize(f32 *v);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
 extern EmCurveKey *EmVespoid_VelYCurves[];
 extern EmCurveKey *EmVespoid_SpeedCurves[];
-void Vec_RotateY(f32 *v, f32 angle);
-s32 Em_UpdateCombatTimer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void EmVespoid_RunState(Em *em);
 extern f32 gStartPos[];
-void Player_Move(void *obj);
 extern f32 EmVespoid_Scales[];
-void GmEm_ApplySize(Em *em);
-void Em_InitParts(Em *em);
 /* end of prototypes */
 
 /*
@@ -112,86 +51,86 @@ void EmVespoid_MotionSounds(s32 emAddr, EmWork *work)
     case EM_MOTION_ID(0, VESP_MOT_HOVER):
     case EM_MOTION_ID(0, VESP_MOT_FLY_FORWARD):
     case EM_MOTION_ID(0, VESP_MOT_FLY_BACK):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x2A, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x50, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x76, 0, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 42, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 80, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 118, 0, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_IDLE):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, Sound_RandomSe(0xD, 1, 0xD, 1), 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, Sound_RandomSe(13, 1, 13, 1), VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_HOP):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 4, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x22, 0, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 4, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 34, 0, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_HOP_LAND):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 1, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x3C, 1, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x78, 1, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0xB4, 1, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0xF0, 1, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 1, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 60, 1, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 120, 1, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 180, 1, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 240, 1, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_RUN):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 3, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x10, 3, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 3, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 16, 3, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_LUNGE):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x24, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 36, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_STING):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 6, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x1C, 7, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x26, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x48, 0, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 6, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 28, 7, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 38, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 72, 0, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_AIR_FLINCH):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 9, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x44, 0, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 9, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 68, 0, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_FALL):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0xA, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 10, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_FALL_LAND):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0xB, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 11, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_DIE_AIR):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 8, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 8, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_LIE):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0xC, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 12, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_LAND):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x16, 5, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x20, 2, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 22, 5, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 32, 2, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_FLINCH):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 9, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x14, 2, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x10, 5, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 9, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 20, 2, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 16, 5, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_IDLE_ACTION):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, Sound_RandomSe(0xD, 1, 0xD, 1), 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, Sound_RandomSe(13, 1, 13, 1), VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_DIE):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 8, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 8, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_COLLAPSE):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 0xA, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0xC, 5, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 10, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 12, 5, VESP_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, VESP_MOT_GET_UP):
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x32, 2, 0);
-        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 0x4C, 3, 0);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 4, 5, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 50, 2, VESP_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame((Em *) emAddr, 76, 3, VESP_BONE_ROOT);
         
     default:
         break;
@@ -415,7 +354,7 @@ void EmVespoid_Idle(Em *em)
     case 0:
         em->stance = EM_STANCE_GROUND;
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0x1E) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 30) + 30;
         if (em->motionId[0] != EM_MOTION_ID(0, VESP_MOT_IDLE)) {
             Em_SetMotion(em, VESP_MOT_IDLE, 0, 0);
         }
@@ -454,7 +393,8 @@ void EmVespoid_IdleAction(Em *em)
  * Status 2 (Update on EM_DMG_STATUS2 after Em_SetStatus2Timer): hit-react
  * mode WAKE and blind 2 each frame, Em_BeginStatus2, VESP_MOT_COLLAPSE then
  * VESP_MOT_LIE (straight to the lie if VESP_MOT_FALL_LAND was playing),
- * lying puffs at bone 8 until the timer ends, then VESP_IDLE_STATUS2_END.
+ * lying puffs at VESP_BONE_HEAD until the timer ends, then
+ * VESP_IDLE_STATUS2_END.
  */
 void EmVespoid_Status2Lie(Em *em)
 {
@@ -484,7 +424,7 @@ void EmVespoid_Status2Lie(Em *em)
         puffOfs[0] = 0.0f;
         puffOfs[1] = 0.0f;
         puffOfs[2] = 20.0f;
-        Em_SpawnLyingPuffs(em, 8, puffOfs, 0.6f);
+        Em_SpawnLyingPuffs(em, VESP_BONE_HEAD, puffOfs, 0.6f);
         if (--em->timer <= 0) {
             em->step++;
             EmVespoid_ChangeState(em, EM_GROUP_IDLE, VESP_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
@@ -548,7 +488,7 @@ void EmVespoid_RunIdleState(Em *em)
 
 /*
  * VESP_MOT_WALK on the ground (motionSpeed 1.2 for EM_KIND_HORNETAUR);
- * Em_StepToGoal(0x40) until it arrives, or the timer without a goal, then
+ * Em_StepToGoal(64) until it arrives, or the timer without a goal, then
  * EmVespoid_EndStateOnGround.
  */
 void EmVespoid_Walk(Em *em)
@@ -564,7 +504,7 @@ void EmVespoid_Walk(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 EmVespoid_EndStateOnGround(em);
                 break;
             }
@@ -591,7 +531,7 @@ void EmVespoid_Run(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 EmVespoid_EndStateOnGround(em);
                 break;
             }
@@ -605,7 +545,7 @@ void EmVespoid_Run(Em *em)
 }
 
 /*
- * Turns to the goal (0x71C a frame) during a hop in place: VESP_MOT_HOP
+ * Turns to the goal (1820 a frame) during a hop in place: VESP_MOT_HOP
  * without root motion, VESP_MOT_HOP_LAND blended 10 from frame 16, then
  * clears the flag and EmVespoid_EndStateOnGround.
  */
@@ -619,14 +559,14 @@ void EmVespoid_HopTurn(Em *em)
         Em_SetMotion(em, VESP_MOT_HOP, 0, 0);
         break;
     case 1:
-        Em_TurnToGoal(em, 0x71C, 0);
+        Em_TurnToGoal(em, 1820, 0);
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, VESP_MOT_HOP_LAND, 0xA, 0);
+            Em_SetMotion(em, VESP_MOT_HOP_LAND, 10, 0);
         }
         break;
     case 2:
-        Em_TurnToGoal(em, 0x71C, 0);
+        Em_TurnToGoal(em, 1820, 0);
         if (em->motion[0].playing == 0) {
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             em->step++;
@@ -666,7 +606,7 @@ void EmVespoid_FlyForward(Em *em, s32 unused)
     case 0:
         em->stance = EM_STANCE_AIR;
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         Em_SetMotion(em, VESP_MOT_FLY_FORWARD, 0, 0);
         EmVespoid_StartCurves(em, VESP_CURVE_FLY_FORWARD);
         break;
@@ -778,7 +718,7 @@ void EmVespoid_Hover(Em *em)
         if (em->motionId[0] != EM_MOTION_ID(0, VESP_MOT_HOVER)) {
             Em_SetMotion(em, VESP_MOT_HOVER, 0, 0);
         }
-        em->timer = ((em->stateRand & 3) * 0x1E) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 30) + 30;
         break;
     case 1:
         if (em->posY < em->floorY) {
@@ -819,8 +759,8 @@ void EmVespoid_TakeOff(Em *em)
         EmVespoid_UpdateCurves(em);
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, VESP_MOT_HOVER, 0xA, 0);
-            em->timer = 0xA;
+            Em_SetMotion(em, VESP_MOT_HOVER, 10, 0);
+            em->timer = 10;
         }
         break;
     case 3:
@@ -855,13 +795,13 @@ void EmVespoid_FlyToGoal(Em *em)
         em->stance = EM_STANCE_AIR;
         em->step++;
         if (em->motionId[0] != EM_MOTION_ID(0, VESP_MOT_HOVER)) {
-            em->timer = ((Rand_Next(1) & 0xFFFF & 3) * 0x1E) + 0x1E;
+            em->timer = ((Rand_Next(1) & 0xFFFF & 3) * 30) + 30;
             Em_SetMotion(em, VESP_MOT_HOVER, 0, 0);
         }
         break;
     case 1:
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x71C, 0);
+            Em_TurnToGoal(em, 1820, 0);
             goalDist = em->goalDist - 10.0f;
             em->goalDist = goalDist;
             if (goalDist <= 0.0f) {
@@ -963,7 +903,7 @@ void EmVespoid_Dart(Em *em)
     case 1:
         Player_Integrate(em);
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x71C, 0);
+            Em_TurnToGoal(em, 1820, 0);
         }
         if (--em->timer <= 0) {
             em->timer = ((em->stateRand >> 1) & 3) + 4;
@@ -976,7 +916,7 @@ void EmVespoid_Dart(Em *em)
     case 2:
         Player_Move(em);
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x71C, 0);
+            Em_TurnToGoal(em, 1820, 0);
         }
         if (--em->timer <= 0) {
             em->step++;
@@ -986,7 +926,7 @@ void EmVespoid_Dart(Em *em)
     case 3:
         Player_Integrate(em);
         if (em->hasGoal != 0) {
-            Em_TurnToGoal(em, 0x71C, 0);
+            Em_TurnToGoal(em, 1820, 0);
         }
         if (--em->timer <= 0) {
             em->step++;
@@ -1016,11 +956,11 @@ void EmVespoid_FlyHome(Em *em)
     case 0:
         em->stance = EM_STANCE_AIR;
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0xF) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 15) + 30;
         Em_SetMotion(em, VESP_MOT_FLY_FORWARD, 0, 0);
         break;
     case 1:
-        Em_TurnToGoal(em, 0x71C, 0);
+        Em_TurnToGoal(em, 1820, 0);
         EmVespoid_MoveByVelocity(em);
         floorY = em->floorY;
         if (em->posY < floorY) {
@@ -1106,7 +1046,7 @@ void EmVespoid_Lunge(Em *em)
 
 /*
  * Airborne sting: VESP_MOT_STING drifting forward at 2, at frame 34
- * VespoidAttack 7 (variant 1: 0xC, variant 2: 0x10); at the end clears
+ * VespoidAttack 7 (variant 1: 12, variant 2: 16); at the end clears
  * velocity, EmVespoid_EndStateInAir.
  */
 void EmVespoid_StingA(Em *em)
@@ -1137,10 +1077,10 @@ void EmVespoid_StingA(Em *em)
                 VespoidAttack_Create(em, 7);
                 break;
             case 1:
-                VespoidAttack_Create(em, 0xC);
+                VespoidAttack_Create(em, 12);
                 break;
             case 2:
-                VespoidAttack_Create(em, 0x10);
+                VespoidAttack_Create(em, 16);
                 break;
             }
         }
@@ -1192,7 +1132,7 @@ void EmVespoid_HopAttack(Em *em)
 }
 
 /*
- * Ground charge: motionSpeed 1.3, VESP_MOT_RUN, VespoidAttack 0xB at the
+ * Ground charge: motionSpeed 1.3, VESP_MOT_RUN, VespoidAttack 11 at the
  * start, Em_StepToGoal until it arrives (or the timer), then
  * EmVespoid_EndStateOnGround.
  */
@@ -1204,11 +1144,11 @@ void EmVespoid_Charge(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->step++;
         Em_SetMotion(em, VESP_MOT_RUN, 0, 0);
-        VespoidAttack_Create(em, 0xB);
+        VespoidAttack_Create(em, 11);
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 EmVespoid_EndStateOnGround(em);
                 break;
             }
@@ -1222,8 +1162,8 @@ void EmVespoid_Charge(Em *em)
 }
 
 /*
- * As EmVespoid_StingA with attack VESP_MOT_FALL_LAND (variant 1: 0xF, variant 2:
- * 0x11); nothing else tells the two apart.
+ * As EmVespoid_StingA with attack VESP_MOT_FALL_LAND (variant 1: 15, variant 2:
+ * 17); nothing else tells the two apart.
  */
 void EmVespoid_StingB(Em *em)
 {
@@ -1250,13 +1190,13 @@ void EmVespoid_StingB(Em *em)
         if (Motion_PassedFrame(em, 0, 34.0f) != 0) {
             switch (em->variant) {
             default:
-                VespoidAttack_Create(em, 0xE);
+                VespoidAttack_Create(em, 14);
                 break;
             case 1:
-                VespoidAttack_Create(em, 0xF);
+                VespoidAttack_Create(em, 15);
                 break;
             case 2:
-                VespoidAttack_Create(em, 0x11);
+                VespoidAttack_Create(em, 17);
                 break;
             }
         }
@@ -1455,7 +1395,7 @@ void EmVespoid_FallAndLie(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, VESP_MOT_LIE, 0, 0);
-            em->timer = 0xC8;
+            em->timer = 200;
         }
         break;
     case 3:
@@ -1493,7 +1433,7 @@ void EmVespoid_CollapseAndLie(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, VESP_MOT_LIE, 0, 0);
-            em->timer = 0xC8;
+            em->timer = 200;
         }
         break;
     case 2:
@@ -1674,8 +1614,8 @@ void EmVespoid_Reappear(Em *em)
  */
 void EmVespoid_RunDefeatState(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->state) {
     case VESP_DEFEAT_DIE:
         EmVespoid_Die(em);
@@ -1771,13 +1711,13 @@ void EmVespoid_FlyIn(Em *em)
         Em_SetMotionRow(em, VESP_MOT_FLY_BACK, 0, 0);
         em->stance = EM_STANCE_AIR;
         Player_ClearVelocity(em);
-        em->timer = 0x96;
+        em->timer = 150;
         
     case 1:
         if (--em->timer <= 0) {
             em->step++;
             em->velY = -10.0f;
-            em->timer = 0x1E;
+            em->timer = 30;
         }
         break;
     case 2:
@@ -1809,8 +1749,8 @@ void EmVespoid_FlyIn(Em *em)
  */
 void EmVespoid_RunEnterState(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     em->senseDelay = 5;
     switch (em->state) {
     case 0:
@@ -1970,7 +1910,7 @@ void EmVespoid_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, VESP_MOT_HOVER):
     case EM_MOTION_ID(0, VESP_MOT_FLY_FORWARD):
     case EM_MOTION_ID(0, VESP_MOT_FLY_BACK):
-    case EM_MOTION_ID(0, 0x4):
+    case EM_MOTION_ID(0, 4):
     case EM_MOTION_ID(0, VESP_MOT_IDLE):
     case EM_MOTION_ID(0, VESP_MOT_HOP):
     case EM_MOTION_ID(0, VESP_MOT_HOP_LAND):
@@ -2016,11 +1956,11 @@ void EmVespoid_UpdateMotionEffects(Em *em)
 }
 
 /*
- * Callback slots 0 and 1: Shadow_Spawn(em, 0). Takes the monster as u8*.
+ * Callback slots 0 and 1: Shadow_Spawn(em, SHADOW_MODEL). Takes the monster as u8*.
  */
-void EmVespoid_SpawnEffect01(u8 *obj)
+void EmVespoid_SpawnShadow(u8 *obj)
 {
-    Shadow_Spawn((Player *) obj, 0);
+    Shadow_Spawn((Player *) obj, SHADOW_MODEL);
 }
 
 /*
@@ -2046,27 +1986,27 @@ void EmVespoid_StartCurves(Em *em, u8 kind)
     case VESP_CURVE_FLY_FORWARD:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0xA;
+        w->curveFrame = 10;
         break;
     case VESP_CURVE_FLY_BACK:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0xA;
+        w->curveFrame = 10;
         break;
     case VESP_CURVE_LUNGE:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x4;
+        w->curveFrame = 4;
         break;
     case VESP_CURVE_HOP:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x6;
+        w->curveFrame = 6;
         break;
     case VESP_CURVE_FALL:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x6;
+        w->curveFrame = 6;
         break;
     case VESP_CURVE_UNUSED:
         w->curveVelY = 1;
@@ -2076,7 +2016,7 @@ void EmVespoid_StartCurves(Em *em, u8 kind)
     case VESP_CURVE_DASH_BACK:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x3;
+        w->curveFrame = 3;
         break;
     }
     Player_ClearVelocity(em);
@@ -2217,12 +2157,11 @@ void EmVespoid_MoveByVelocity(Em *em)
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 f32 EmVespoid_Scales[3] = {
 #include "game/008C5370.inc"
 };
 void *EmVespoid_Callbacks[8] = {
-    EmVespoid_SpawnEffect01, EmVespoid_SpawnEffect01, EmVespoid_TableNop, EmVespoid_UpdateMotionEffects,
+    EmVespoid_SpawnShadow, EmVespoid_SpawnShadow, EmVespoid_TableNop, EmVespoid_UpdateMotionEffects,
     GmEm_ReturnZero, EmVespoid_Reinit, NULL, NULL,
 };
 EmCurveKey EmVespoid_VelYCurves_0[10] = {

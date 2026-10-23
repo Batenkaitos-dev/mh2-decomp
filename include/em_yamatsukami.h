@@ -1,12 +1,13 @@
 #ifndef EM_YAMATSUKAMI_H
 #define EM_YAMATSUKAMI_H
+#include "em.h"
 
 /*
  * The Yama Tsukami family (EM_KIND_YAMA_TSUKAMI and EM_KIND_YAMA_TSUKAMI_B):
  * its motions, its states by group (em.h's EmStateGroup), its curves and its
  * body sizes. The functions are EmYamaTsukami_*. A giant
  * that floats over the fortress: it drifts, rises and sinks, flails and
- * slams its tentacles, spins, inhales, calls up kind 0x38 monsters, and
+ * slams its tentacles, spins, inhales, calls up kind 56 monsters, and
  * deflates in two steps under the hunters' hits until it falls to the
  * ground. The second kind stays at a fixed place, never sees the hunters
  * and leaves no carcass (EmYamaTsukami_Start).
@@ -56,7 +57,7 @@ enum EmYamaTsukamiMotion {
     YAMA_MOT_SUMMON = 0x31,
     YAMA_MOT_SUMMON_END = 0x32,
     YAMA_MOT_CRASH_FALL = 0x33,
-    YAMA_MOT_DIVE_SLAM = 0x34,          /* a hit at frame 70, the impact under bone 2 at frame 156 */
+    YAMA_MOT_DIVE_SLAM = 0x34,          /* a hit at frame 70, the impact under YAMA_BONE_BODY at frame 156 */
     YAMA_MOT_CRASH_LIE = 0x35,
     YAMA_MOT_CRASH_GET_UP = 0x36,
     YAMA_MOT_FLINCH_A = 0x3C,
@@ -67,6 +68,73 @@ enum EmYamaTsukamiMotion {
     YAMA_MOT_EVENT_TURN = 0x41,         /* YAMA_EVENT_WALK_IN turns during its first 64 frames */
     YAMA_MOT_FLINCH_HOVER = 0x42,       /* also YAMA_EVENT_WALK_IN's walk; the ground stops shaking (EmYamaTsukami_IsQuakeFreeMotion) */
     YAMA_MOT_FLINCH_C = 0x43
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * hit shapes YamaTsukamiAttack_Create makes on given frames of a motion
+ * (YamaTsukamiAttack_HitShapes, by the attack rows' hit lists), the bones
+ * of the tentacles' floor test (EmYamaTsukami_TentacleBones), the three
+ * bones the body's swelling scales (EmYamaTsukami_ScaleBones) and where
+ * the summoned monsters come out (EmKind38_SpawnAtEmBone).
+ * The four tentacles, A to D, are the rows of EmYamaTsukami_TentacleBones;
+ * each has three spheres that narrow from the base to the tip (radius 370,
+ * 220 and 160). The two small tentacles, A and B, have three each (210, 180
+ * and 155). The strikes' hits take the two small tentacles (and the body); a
+ * tentacle slam's one tentacle, and in YAMA_MOT_TENTACLE_SLAM_A and _B with a
+ * small one beside it (small A with C, small B with D); the smash with C,
+ * D and both small ones. Which side each is, the code doesn't show. Bones
+ * no code explains stay numbers: 3 (the floating sounds and most others of
+ * the body), 16, 23 and 29 (sounds in the tentacles' motions), and 36 (the
+ * sounds that open most motions).
+ */
+enum EmYamaTsukamiBone {
+    YAMA_BONE_BODY = 2,                 /* the body's sphere in most attacks (radius 600 to 2000); the carcass mine point 400 above it; the dive slam's impact 300 under it */
+    YAMA_BONE_SWELL_B = 4,              /* grows with bodyScale[1] as the body swells (EmYamaTsukami_ScaleBones) */
+    YAMA_BONE_SWELL_A = 6,              /* grows with bodyScale[0] */
+    YAMA_BONE_TENTACLE_A_BASE = 7,      /* tentacle A's widest sphere */
+    YAMA_BONE_TENTACLE_A_MID = 8,
+    YAMA_BONE_TENTACLE_A_DUST = 9,      /* with _TIP, the floor test's bones: the dust rises where either reaches the floor */
+    YAMA_BONE_TENTACLE_A_TIP = 10,      /* its narrowest sphere */
+    YAMA_BONE_TENTACLE_B_BASE = 11,
+    YAMA_BONE_TENTACLE_B_MID = 13,
+    YAMA_BONE_TENTACLE_B_DUST = 14,
+    YAMA_BONE_TENTACLE_B_TIP = 15,
+    YAMA_BONE_TENTACLE_C_BASE = 22,
+    YAMA_BONE_TENTACLE_C_MID = 24,
+    YAMA_BONE_TENTACLE_C_DUST = 25,
+    YAMA_BONE_TENTACLE_C_TIP = 26,
+    YAMA_BONE_TENTACLE_D_BASE = 28,
+    YAMA_BONE_TENTACLE_D_MID = 30,
+    YAMA_BONE_TENTACLE_D_DUST = 31,
+    YAMA_BONE_TENTACLE_D_TIP = 32,
+    YAMA_BONE_SUMMON = 34,              /* where a summoned kind 56 monster comes out, facing along the bone */
+    YAMA_BONE_SWELL_C = 35,             /* grows with bodyScale[2] */
+    YAMA_BONE_SMALL_TENTACLE_A_BASE = 39,
+    YAMA_BONE_SMALL_TENTACLE_A_MID = 41,
+    YAMA_BONE_SMALL_TENTACLE_A_TIP = 42,
+    YAMA_BONE_SMALL_TENTACLE_B_BASE = 43,
+    YAMA_BONE_SMALL_TENTACLE_B_MID = 46,
+    YAMA_BONE_SMALL_TENTACLE_B_TIP = 47
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBone and its frame variants). A sound
+ * is named where the code shows what it is: it plays on or next to the
+ * frame of the thing it goes with, or with it in the same function. The
+ * others stay numbers, showing only where they play: 101 to 103 at bone 3
+ * through the floating motions, the pairs at the bases of tentacles A and
+ * B four frames apart in the idle cycles, and the sounds that open most
+ * motions at bone 36.
+ */
+enum EmYamaTsukamiSe {
+    YAMA_SE_THUD = 6,                   /* the body striking the floor: on the frame of the landing's dust and body hit in YAMA_MOT_FALL_LAND, two and four frames before the dust in YAMA_MOT_GET_UP and _DIE */
+    YAMA_SE_SMASH_HIT = 23,             /* only in YAMA_MOT_SMASH: at the tips of the four tentacles its hit (frame 156) takes, two and six frames after it */
+    YAMA_SE_FORT_IMPACT_B = 68,         /* the fortress impact's second sound (EmYamaTsukami_SpawnFortImpact); in YAMA_MOT_SMASH four frames after the impact's frame */
+    YAMA_SE_FORT_IMPACT_A = 69          /* the fortress impact's first sound, at its point */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmYamaTsukami_RunIdleState): on the ground.
@@ -118,7 +186,7 @@ enum EmYamaTsukamiFlyState {
 
 /* Group 3, EM_GROUP_ATTACK (EmYamaTsukami_RunAttackState). */
 enum EmYamaTsukamiAttackState {
-    YAMA_ATK_SUMMON = 0x00,             /* calls up kind 0x38 monsters, five at most alive */
+    YAMA_ATK_SUMMON = 0x00,             /* calls up kind 56 monsters, five at most alive */
     YAMA_ATK_SPIN_TO_HEIGHT = 0x01,     /* spins while it rises or sinks to the goal's height */
     YAMA_ATK_HOLD_POSE = 0x02,          /* 200 frames */
     YAMA_ATK_TENTACLE_SLAM_A = 0x03,
@@ -209,5 +277,43 @@ typedef struct EmYamaTsukamiYawKey {
     s32 t;
     s32 v;
 } EmYamaTsukamiYawKey;
+
+extern void *EmYamaTsukami_Callbacks[8];
+void EmYamaTsukami_StartCurves(Em *em, u8 kind);
+u8 EmYamaTsukami_UpdateCurves(Em *em);
+void EmYamaTsukami_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmYamaTsukami_MotionSounds(Em *em, EmWork *work);
+void EmYamaTsukami_GetMinePointPos(Em *em, f32 *out);
+void EmYamaTsukami_AddMinePoint(Em *em);
+void EmYamaTsukami_RemoveMinePoints(Em *em);
+void EmYamaTsukami_Start(Em *em);
+void EmYamaTsukami_RunIdleState(Em *em);
+void EmYamaTsukami_WalkForward(Em *em);
+void EmYamaTsukami_WalkBackward(Em *em);
+void EmYamaTsukami_Turn(Em *em, s32 variant);
+void EmYamaTsukami_RecoverPause(Em *em);
+void EmYamaTsukami_FlyToGoal(Em *em, s32 variant);
+void EmYamaTsukami_RiseToGoalHeight(Em *em, s32 variant);
+void EmYamaTsukami_Rise(Em *em, s32 variant);
+void EmYamaTsukami_Descend(Em *em, s32 variant);
+void EmYamaTsukami_SurgeForward(Em *em, s32 variant);
+void EmYamaTsukami_SurgeBack(Em *em, s32 variant);
+void EmYamaTsukami_WaitForHunters(Em *em);
+void EmYamaTsukami_SinkToFloor(Em *em);
+void EmYamaTsukami_Summon(Em *em);
+void EmYamaTsukami_Spin(Em *em, s32 variant);
+void EmYamaTsukami_Smash(Em *em, s32 variant);
+void EmYamaTsukami_Die(Em *em);
+void EmYamaTsukami_DieFalling(Em *em);
+void EmYamaTsukami_WalkIn(Em *em);
+void EmYamaTsukami_Update(Em *em);
+void EmYamaTsukami_RunState(Em *em);
+void EmYamaTsukami_MotionEffects(Em *em, EmWork *work);
+void EmYamaTsukami_EaseToSize(Em *em, EmWork *work);
+void EmYamaTsukami_ScaleBones(Em *em, EmBone *bones);
+void EmYamaTsukami_SpawnFortImpact(Em *em);
+void EmYamaTsukami_InitTentacleDust(Em *em);
+void EmYamaTsukami_UpdateTentacleDust(Em *em);
+s32 EmYamaTsukami_IsQuakeFreeMotion(Em *em);
 
 #endif

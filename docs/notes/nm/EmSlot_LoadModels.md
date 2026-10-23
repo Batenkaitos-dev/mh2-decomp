@@ -1,4 +1,4 @@
-# EmSlot_LoadModels (sub_main, src/sub_main/model_load.c)
+# EmSlot_LoadModels (sub_main, src/sub_main/player_models.c)
 
 ## Status
 

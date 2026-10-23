@@ -1,16 +1,18 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libkernl, "PsIIlibkernl3000" (.data 0x198040), text 0x113700-0x11F8D0;
-// asm pieces sdk/libkernl/*: syscall 0x113700, glue 0x113FA0, thread 0x114820, deci2 0x114E00,
-// kprintf 0x115158, sif 0x1163C0, fileio 0x117C50, iopheap 0x11B888, loadfile 0x11BDD8,
-// iopreset 0x11CB38, initsys 0x11CE18, alarm 0x11DF10
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libkernl (version 3000, by its id
+// string in .data at 0x198040), text 0x113700-0x11F8D0; asm pieces
+// sdk/libkernl/*: syscall 0x113700, glue 0x113FA0, thread 0x114820, deci2
+// 0x114E00, kprintf 0x115158, sif 0x1163C0, fileio 0x117C50, iopheap
+// 0x11B888, loadfile 0x11BDD8, iopreset 0x11CB38, initsys 0x11CE18,
+// alarm 0x11DF10.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 
-// scePrintf (the port routes it to the log)
+// The kernel library's formatted print.
 scePrintf = 0x001162C0; // type:func
 
-// Sony SIF RPC (libkernl); sceSifCallRpc is named in an error string.
-// sceSifInitRpc: runs once (guard flag), installs the RPC command handlers;
-// every client calls it before sceSifBindRpc.
+// SIF RPC; sceSifCallRpc is named in an error string. sceSifInitRpc runs
+// once (a guard flag) and installs the RPC command handlers; every client
+// calls it before sceSifBindRpc.
 sceSifInitRpc = 0x00116B98; // type:func
 sceSifBindRpc = 0x00117340; // type:func
 sceSifCallRpc = 0x00117520; // type:func
@@ -96,7 +98,8 @@ sceSifFreeIopHeap = 0x0011BA78; // type:func
 sceSifLoadModule = 0x0011C7D8; // type:func
 sceWrite = 0x00119218; // type:func
 
-// Round 27 (names h1) - library functions the C calls, named from the evidence
+// Functions the game's C calls, named from what each does (its line's
+// comment).
 _iEnableIntc = 0x001138C0; // type:func syscall -0x1A
 _iDisableIntc = 0x001138D0; // type:func syscall -0x1B
 SyncDCache = 0x00114418; // type:func DIntr, index writeback-invalidate D-cache loop (cache 0x14) over start..end, EIntr

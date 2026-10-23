@@ -1,6 +1,7 @@
 /*
  * Small queries on the HUD state (gHudState, hud.h) for the other menu and
- * field code: whether a town menu is open, whether the chat key may open
+ * field code: whether the HUD's menus take the pad (Hud_InputBlocked: a menu, the chat
+ * input, the pouch-full dialog, or in a quest a message popup), whether a town menu is open, whether the chat key may open
  * the chat, how a monster shows on the map, the supply box and delivery
  * menus of the local player, the menus' D-pad key repeat, and closing the
  * field menu.
@@ -10,20 +11,38 @@
 #include "em.h"
 #include "player.h"
 #include "hud.h"
+#include "village_cond.h"
+#include "game_util.h"
+#include "menu_util.h"
+#include "net_scene.h"
 
 
 /* prototypes */
-s32 Field_ControlEnabled(void);
-s32 Cond_Check(u16 id);
-s32 Lobby_GetDayState(void);
-u16 Pad_StickToDpad(u8 pad);
 /* end of prototypes */
 
 extern u8 gHelpShow;
 
-s32 Game_IsOnline(void);
-
 extern s32 gTownMenuOpen[];
+extern u8 gChatInputMode;
+
+/* Whether the HUD's input is taken by something else: a menu, the chat
+ * input, the pouch-full dialog, or in a quest a message popup. */
+s32 Hud_InputBlocked(void)
+{
+    if (gScene.menuOpen != 0) {
+        return 1;
+    }
+    if (gChatInputMode != 0) {
+        return 1;
+    }
+    if (gHudState->dropState != 0) {
+        return 1;
+    }
+    if ((gScene.inLobby == 0) && (gHudState->popupOpen != 0)) {
+        return 1;
+    }
+    return 0;
+}
 
 /* Whether one of the town's menus is open (the lobby's gTownMenuOpen),
  * online and in the town only; always 0 otherwise. */
@@ -41,12 +60,12 @@ s32 Hud_ItemGetBusy(void)
 }
 
 /* Whether the chat key may open the chat input now (Hud_Update): not while
- * the lobby's day state (Lobby_GetDayState) is busy, nor while the field
+ * the lobby's offline pause (Lobby_GetPauseState) is set, nor while the field
  * control is off, and offline only once the game's condition 1 holds
  * (Cond_Check). Returns 1 if allowed, else 0. */
 s32 Hud_ChatKeyAllowed(void)
 {
-    if (Lobby_GetDayState() != 0) {
+    if (Lobby_GetPauseState() != 0) {
         return 0;
     }
     if (Field_ControlEnabled() != 1) {
@@ -57,9 +76,6 @@ s32 Hud_ChatKeyAllowed(void)
     }
     return 1;
 }
-
-s32 Map_GetHalf(u8 stage, u8 area);
-extern u8 gMapIconKinds[];
 
 /* How monster em shows on the map: 0 not at all, else a DETECT_* level.
  * Only a monster in the map half shown counts. A kind drawn as nothing or

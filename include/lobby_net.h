@@ -5,6 +5,7 @@
 #include "lobby_state.h"
 #include "net_tcp.h"
 #include "lobby_cmd.h"
+#include "player.h"
 
 /*
  * The lobby protocol: its messages, requests, tasks and routes, the lists
@@ -39,8 +40,11 @@
  * Lobby_RouteMessage(route) to the handler registered for its route
  * (Net_SetHandler: LobbyRoute_Register registers them all). Each
  * route carries one command (its code on the wire in the comment), or a few
- * of one kind. Routes 4, 0x0F, 0x13, 0x18, 0x1C, 0x27, 0x29-0x2B, 0x2D, 0x2F
- * and 0x34-0x36 have no handler registered: their messages are dropped. */
+ * of one kind. NET_ROUTE_6706, NET_ROUTE_6202, NET_ROUTE_LEVEL0_TEXT,
+ * NET_ROUTE_630B, NET_ROUTE_640F, NET_ROUTE_6414, NET_ROUTE_USER_IN_KIND4 to
+ * NET_ROUTE_6890, NET_ROUTE_SERVER_MESSAGE, NET_ROUTE_TOWN_CLOCK and
+ * NET_ROUTE_LEVEL0_KIND to NET_ROUTE_LEVEL2_KIND have no handler
+ * registered: their messages are dropped. */
 #define NET_ROUTE_COUNT 0x38        /* gNetHandlers' entries */
 enum NetRoute {
     NET_ROUTE_NONE = 0x00,          /* a reply only: nothing is routed */
@@ -108,8 +112,9 @@ enum NetRoute {
  *   member asks, the keeper answers yes or no to everyone (the seat and
  *   the asker's id), and the member then says it took the seat or left
  *   it.
- * - Commands 0x09, 0x11 and 0x13 do nothing, and 0x19 is read and
- *   dropped; nothing in the game sends them, nor 0x26.
+ * - TOWN_MSG_09, TOWN_MSG_11 and TOWN_MSG_13 do nothing, and TOWN_MSG_19
+ *   is read and dropped; nothing in the game sends them, nor
+ *   TOWN_MSG_BGM_POS.
  */
 enum TownMsgCmd {
     TOWN_MSG_WALK = 0x00,           /* a member's position and area: it walks there (TownMsg_OnMove) */
@@ -175,7 +180,17 @@ enum TownMsgCmd {
 };
 #define TOWN_MSG_AREAS 16   /* the town's areas a position message can name (gMsgAreaIds, Area_GetSetIndex) */
 
-/* The data of TOWN_MSG_OFFER and TOWN_MSG_OFFER_TAKE (0xE bytes): the
+/* The data of TOWN_MSG_WALK (5 bytes sent; TownMsg_SendPosition) and of
+ * TOWN_MSG_PLACE (its first 4: TownMsg_SendPlace): a member's position on
+ * the ground and, for TOWN_MSG_WALK, its area as an index into
+ * gMsgAreaIds (Area_GetSetIndex). TownMsg_OnMove reads both. */
+typedef struct TownPosMsg {
+    /* 0x0 */ s16 x;
+    /* 0x2 */ s16 z;
+    /* 0x4 */ u8 area;              /* below TOWN_MSG_AREAS */
+} TownPosMsg;
+
+/* The data of TOWN_MSG_OFFER and TOWN_MSG_OFFER_TAKE (14 bytes): the
  * items held out, and the other member's user id. */
 typedef struct OfferMsg {
     /* 0x0 */ u16 item;
@@ -184,7 +199,7 @@ typedef struct OfferMsg {
     /* 0xC */ u8 padC[2];
 } OfferMsg;
 
-/* The data of TOWN_MSG_OFFER_RESULT (0xE bytes): the giver's answer to
+/* The data of TOWN_MSG_OFFER_RESULT (14 bytes): the giver's answer to
  * TOWN_MSG_OFFER_TAKE. */
 typedef struct OfferResultMsg {
     /* 0x0 */ u16 item;
@@ -202,13 +217,13 @@ typedef struct LobbyPkt {
     /* 0x06 */ u8 cmd[2];       /* big-endian */
     /* 0x08 */ u8 size[2];      /* big-endian payload size (LobbyPkt_End) */
     /* 0x0A */ u8 echo[2];      /* a request's sequence number, or the echo of a reply */
-    /* 0x0C */ u8 err;          /* a reply's error byte (LobbyHdr.err at the receiver): 0, or 0xFF for a request refused (LobbyPkt_SetError) */
+    /* 0x0C */ u8 err;          /* a reply's error byte (LobbyHdr.err at the receiver): 0, or 255 for a request refused (LobbyPkt_SetError) */
     /* 0x0D */ u8 ff[3];
     /* 0x10 */ u8 data[0x300];
 } LobbyPkt;
 
 
-/* A received message's header (gLobbyRecvHdr, 0x10 bytes; Lobby_RecvPacket reads it): the
+/* A received message's header (gLobbyRecvHdr, 16 bytes; Lobby_RecvPacket reads it): the
  * outgoing header's layout (LobbyPkt from +4), its byte 8 the reply's error. */
 typedef struct LobbyHdr {
     /* 0x0 */ u8 magic;         /* the kind << 4 (LOBBY_MAGIC_RAW, LOBBY_MAGIC_CMD) */
@@ -462,7 +477,7 @@ typedef struct NetInfo6417 {
 typedef struct NetMember10 {
     /* 0x00 */ char id[8];
     /* 0x08 */ char name[0x14];
-    /* 0x1C */ u16 hr;              /* the hunter rank (bytes 0-1 of a 0x10-byte blob, little-endian) */
+    /* 0x1C */ u16 hr;              /* the hunter rank (bytes 0-1 of a 16-byte blob, little-endian) */
     /* 0x1E */ u8 icon;             /* its byte 3: an icon kind */
     /* 0x1F */ u8 pad1F;
 } NetMember10;
@@ -503,7 +518,7 @@ typedef struct NetEntrySettings2 {
     /* 0x16B */ u8 c[4];            /* 660F */
 } NetEntrySettings2;
 
-/* a third-level entry record of task 6 (0x14A5 bytes): a name, a few bytes,
+/* a third-level entry record of task 6 (5285 bytes): a name, a few bytes,
  * and up to 32 sub-entries, each with a name and up to 32 three-byte values */
 typedef struct NetRec2 {
     /* 0x0000 */ u8 flags;          /* 1 6604, 2 6606, 8 6605, 4 6607 arrived */
@@ -517,7 +532,7 @@ typedef struct NetRec2 {
     /* 0x08A5 */ u8 subData[0x20][0x20][3]; /* 660E */
 } NetRec2;
 
-/* the third level's entry records (gLobbyNet.recs2, 0x294A4 bytes; NetLevel2RecsTask_GetRecs
+/* the third level's entry records (gLobbyNet.recs2, 169124 bytes; NetLevel2RecsTask_GetRecs
  * copies them out): what the server allows to be sent, and the records */
 typedef struct NetRecs2 {
     /* 0x00000 */ u8 sendName;      /* 1: the name may be sent (a u8 reply) */
@@ -537,7 +552,7 @@ typedef struct NetUserCardPart {
     /* 0x120 */ u8 pad120[2];
 } NetUserCardPart;
 
-/* the server's 6105 at login: a text, sent in parts of 0x1000 bytes */
+/* the server's 6105 at login: a text, sent in parts of 4096 bytes */
 typedef struct NetLoginNotice {
     /* 0x0000 */ u8 unk0;
     /* 0x0001 */ u8 pad1;
@@ -584,7 +599,7 @@ typedef struct NetLevel1SearchRec {
 
 /* the results of a search as the pages of its reply fill them (a count,
  * then up to 100 records); a new request clears them (memset of the
- * whole struct: 0x6EF4 for 6709, 0xFA4 for 6711) */
+ * whole struct: 28404 for 6709, 4004 for 6711) */
 typedef struct NetUserSearchFound {
     /* 0x0000 */ u8 total;              /* the users found */
     /* 0x0001 */ u8 pad1[3];
@@ -641,33 +656,38 @@ typedef struct NetLevel1SearchCond {
 #define LEVEL1_SEARCH_ANY 0xFF      /* a condition's value that matches any */
 
 typedef struct NetLevel1SearchQuery {
-    /* 0x000 */ u8 id[0x10];        /* 0xC bytes sent */
+    /* 0x000 */ u8 id[0x10];        /* 12 bytes sent */
     /* 0x010 */ u8 maxFound;      /* the most results wanted (LEVEL1_SEARCH_MAX_FOUND) */
     /* 0x011 */ u8 n;               /* the conditions */
     /* 0x012 */ u8 pad12[2];
     /* 0x014 */ NetLevel1SearchCond cond[4];
 } NetLevel1SearchQuery;
 
-/* 6713's reply: a user's details */
+/* 6713's reply: a user's details, where the user is and the group there
+ * (the hunter info shows them; the lines are those the online window shows
+ * for the player's own place). */
 typedef struct NetUserProfile {
-    /* 0x000 */ u8 s0[0x14];
-    /* 0x014 */ u8 s14[0x10];
-    /* 0x024 */ u8 s24[0x104];
-    /* 0x128 */ u8 s128[0x104];
-    /* 0x22C */ u8 s22C[0x44];
-    /* 0x270 */ u8 s270[0x44];
-    /* 0x2B4 */ u8 s2B4[0x104];
-    /* 0x3B8 */ u16 h3B8;
-    /* 0x3BA */ u16 h3BA;
-    /* 0x3BC */ u16 h3BC;
-    /* 0x3BE */ u16 h3BE;
-    /* 0x3C0 */ u8 b3C0[4];
-    /* 0x3C4 */ u32 w3C4;
-    /* 0x3C8 */ u8 b3C8;
-    /* 0x3C9 */ u8 b3C9;
-    /* 0x3CA */ u8 b3CA;
+    /* 0x000 */ u8 name[0x14];      /* the user's name */
+    /* 0x014 */ u8 serverId[0x10];  /* the server the user is on (12 bytes sent; LobbySrv_Exists, LobbySrv_IsCur) */
+    /* 0x024 */ u8 location[0x104]; /* the server's location (as LobbySrv_CurName) */
+    /* 0x128 */ u8 serverName[0x104]; /* the server's name (as LobbySrv_MyName), drawn with one mark in serverColor */
+    /* 0x22C */ u8 areaName[0x44];  /* the level-0 entry's name, when area isn't 0 */
+    /* 0x270 */ u8 landName[0x44];  /* the level-1 entry's name, when land isn't 0 */
+    /* 0x2B4 */ u8 message[0x104];  /* the group's recruiting message */
+    /* 0x3B8 */ u16 area;           /* the level-0 entry (as gLobbyLevel0Sel); 0: none */
+    /* 0x3BA */ u16 land;           /* the level-1 entry (as gLobbyLevel1Sel); 0: none */
+    /* 0x3BC */ u16 members;        /* the group's members */
+    /* 0x3BE */ u16 maxMembers;     /* the most it takes */
+    /* 0x3C0 */ u8 groupInfo[4];    /* as LevelEntry.groupInfo: [0] the limit (GROUP_LIMIT_*), [1] the target quest */
+    /* 0x3C4 */ u32 serverColor;    /* the server's mark colour */
+    /* 0x3C8 */ u8 status;          /* PROFILE_STATUS_JOINABLE: the user can be joined */
+    /* 0x3C9 */ u8 areaKind;        /* the level-0 entry's kind, 1-4 (LevelEntry.kind) */
+    /* 0x3CA */ u8 unk3CA;          /* read from the reply; no use seen */
     /* 0x3CB */ u8 pad3CB;
 } NetUserProfile;
+/* NetUserProfile.status: the only one Group_CanJoin accepts (a level entry's
+ * open state, LEVEL_ENTRY_OPEN, has the same number) */
+#define PROFILE_STATUS_JOINABLE 3
 
 /* The quest party task 9 fetches (69xx): 6911 the number of players, 6912 a
  * byte (less one), 6913 and 6917 for each player, 6915 the room's name, 6914 a
@@ -697,7 +717,7 @@ typedef struct NetParty {
     /* 0x114 */ NetPartyMember members[10];
 } NetParty;
 
-/* what the connection was started with (NetLoginTask_Start, 0x40 bytes; LobbyEntry_Start
+/* what the connection was started with (NetLoginTask_Start, 64 bytes; LobbyEntry_Start
  * fills it from sub_main's account data) */
 typedef struct NetLoginParams {
     /* 0x00 */ u8 type;             /* 1; nonzero: 6103 is answered with pings (600E) */
@@ -715,7 +735,7 @@ typedef struct NetLoginParams {
 #define GROUP_LIMIT_HR_31_UP 2      /* hunter rank 31 and above only */
 #define GROUP_LIMIT_SHORT_TEXT 3    /* gGroupLimitTexts[limit + this]: the limit's short form */
 
-/* An entry of one of the three levels as the lobby screens keep it (0x164
+/* An entry of one of the three levels as the lobby screens keep it (356
  * bytes; level 0 in sub_main's gLobbyLevel0Entries, level 1 in gLobbyLevel1Entries, level 2 in
  * gLobbyLevel2Entries): copied out of gLobbyNet.list0-2 by the NetListN_Get* getters. */
 typedef struct LevelEntry {
@@ -746,7 +766,7 @@ typedef struct LevelEntry {
 #define LEVEL1_ENTRY_MAX 45         /* gLobbyLevel1Entries: its entries, cleared together when the village starts */
 #define LEVEL2_ENTRY_MAX 5          /* gLobbyLevel2Entries: a town's quest rooms (ids 1-5) */
 
-/* A quest of a room's list in the room's data (0x18 bytes). */
+/* A quest of a room's list in the room's data (24 bytes). */
 typedef struct RoomQuest {
     /* 0x00 */ char name[0x14];
     /* 0x14 */ u8 used;             /* 0: no quest in this entry */
@@ -760,7 +780,7 @@ enum RoomQuestUnlock {
     ROOM_QUEST_UNLOCK_HR = 1,               /* a hunter rank of unlockArg1 */
     ROOM_QUEST_UNLOCK_HUNTED_HR = 2,        /* monster unlockArg1 hunted and a hunter rank of unlockArg2 */
     ROOM_QUEST_UNLOCK_ARENA_CUP = 3,        /* EVENT_FLAG_ARENA_CUP_OPEN */
-    ROOM_QUEST_UNLOCK_ELDER_RAID = 4,       /* the elder raid running (ElderRaid_InState1) */
+    ROOM_QUEST_UNLOCK_ELDER_RAID = 4,       /* the elder raid running (ElderRaid_IsOn) */
     ROOM_QUEST_UNLOCK_SONG_TRACK_3 = 5,     /* EVENT_FLAG_SONG_TRACK_3 */
     ROOM_QUEST_UNLOCK_SONG_TRACK_3_HUNTED = 6 /* EVENT_FLAG_SONG_TRACK_3 and monster unlockArg1 hunted */
 };
@@ -771,7 +791,7 @@ typedef struct RoomSlot {
 } RoomSlot;
 #define ROOM_SLOTS 16
 #define GROUP_BOARD_SLOTS 11    /* the slots GroupBoard_Open counts */
-/* The room's data, 0x20 bytes into the block at gLobbyWorkBuf + 0x6EF4: its
+/* The room's data, 32 bytes into the block at gLobbyWorkBuf + 0x6EF4: its
  * quest list (LevelEntry.groupInfo[1] indexes it). */
 #define ROOM_QUESTS 64              /* RoomData.quests: the quests a room offers */
 typedef struct RoomData {
@@ -815,7 +835,7 @@ typedef struct Net6138Answer {
 } Net6138Answer;
 
 /* a chat message: the notifications 6702 and 670C (blob id 8, blob name
- * 0x10, blob text 0x100, u8 x4 the colour, u8 kind) */
+ * 16, blob text 256, u8 x4 the colour, u8 kind) */
 typedef struct NetChatMessage {
     /* 0x000 */ NetUserRec r;
     /* 0x120 */ u8 kind;            /* ChatMsg.kind: 1 the log, 2 a balloon (LobbyPkt_ChatSay's kind) */
@@ -829,7 +849,7 @@ typedef struct NetShortMail {
     /* 0x1C */ char text[0x80];
 } NetShortMail;
 
-/* 6707's reply: u16 x3, u8 (LobbyReply_UserProfileRead clears all 0x20A bytes) */
+/* 6707's reply: u16 x3, u8 (LobbyReply_UserProfileRead clears all 522 bytes) */
 typedef struct NetUserStatus {
     /* 0x000 */ u16 a;
     /* 0x002 */ u16 b;
@@ -839,14 +859,14 @@ typedef struct NetUserStatus {
     /* 0x008 */ u8 unk8[0x202];
 } NetUserStatus;
 
-/* a chat message: the notifications 6708 and 670E (blob id 8, blob text 0x300) */
+/* a chat message: the notifications 6708 and 670E (blob id 8, blob text 768) */
 typedef struct NetTownMsg {
     /* 0x000 */ char id[8];
     /* 0x008 */ u8 text[0x300];
 } NetTownMsg;
 
-/* the notification 68B0 at login: blob text (0x100), u16 n, then n bytes
- * (blob, at most 0x300) if n (the global right after gLobbyNet) */
+/* the notification 68B0 at login: blob text (256), u16 n, then n bytes
+ * (blob, at most 768) if n (the global right after gLobbyNet) */
 typedef struct NetLoginWebPage {
     /* 0x000 */ char url[0x100];    /* the page the lobby opens (gLobbyWebUrl) */
     /* 0x100 */ u8 pad100[4];
@@ -886,7 +906,7 @@ typedef struct LobbyNet {
     /* 0x127D */ s8 reqState;       /* the HTTP request state (nethttp http_front.c) */
     /* 0x127E */ u16 key;           /* Net_LockrockObfuscate's key */
     /* 0x1280 */ s32 rxLen;         /* bytes gathered in rxBuf: a long reply's parts are appended (memcpy(rxBuf + rxLen, gLobbyRecvData, len)); 0 at the start */
-    /* 0x1284 */ s32 rxSize;        /* rxBuf's size (0x1000); a part is cut to rxSize - rxLen - 1 */
+    /* 0x1284 */ s32 rxSize;        /* rxBuf's size (4096); a part is cut to rxSize - rxLen - 1 */
     /* 0x1288 */ u8 *rxBuf;         /* where a long reply is gathered (rxStore) */
     /* 0x128C */ u8 *patchDst;      /* 6122 appends here */
     /* 0x1290 */ s32 unk1290;
@@ -923,8 +943,8 @@ typedef struct LobbyNet {
     /* 0x4E2C */ NetUserRec users2[10]; /* 640A's reply */
     /* 0x596C */ u8 unk596C[0xB40];
     /* 0x64AC */ NetUserRec user6414; /* cleared by LobbyNotify_6414 (which then fills users2[0]) */
-    /* 0x65CC */ u16 count0;        /* list0's entries (6203's reply; at most 0x19) */
-    /* 0x65CE */ u16 count1;        /* list1's entries (6301's reply; at most 0x2D) */
+    /* 0x65CC */ u16 count0;        /* list0's entries (6203's reply; at most 25) */
+    /* 0x65CE */ u16 count1;        /* list1's entries (6301's reply; at most 45) */
     /* 0x65D0 */ u16 count2;        /* list2's entries (6401's reply; at most 5) */
     /* 0x65D2 */ u8 sel[3];         /* the entry being entered, levels 0-2 (NetList_Select) */
     /* 0x65D5 */ u8 unk65D5;
@@ -1053,25 +1073,39 @@ extern NetLoginWebPage gNetLoginWebPage;       /* 0x894DAC: right after gLobbyNe
 extern LobbyPkt gLobbyPkt;     /* the message being built */
 extern u8 gLobbyRecvData[];         /* the payload of the message received */
 
-
-s32 NetTcp_Status(s32 sock, NetTcpStatus *st);
-s32 NetTcp_Recv(s32 sock, void *buf, s16 len);
-
 void *memcpy(void *dst, const void *src, u32 n);
 void *memset(void *dst, s32 c, u32 n);
-s32 NetTcp_Send(s32 sock, void *data, s16 len);
 s32 Net_LockrockObfuscate(u8 *dst, u8 *src, u16 seed, s32 n, s32 key); /* unit's own declaration: declared with the u16 seed the callers pass; with the definition's u8 seed, LobbyPkt_PutBlob, LobbyPkt_PutBlob2 and HttpLbs_Send compile differently */
 u32 strlen(const void *s);
 
 /* requests and replies */
 s32 LobbyReq_Level2Kind(u16 arg0, void (*onReply)(NetMsg, NetMsg *));
+void Net_SetHandler(s32 route, void (*handler)(NetMsg, NetMsg *));
+void Net_CallHandler(s32 route, s32 unused);
 void Lobby_RouteMessage(s32 a);
+void NetReq_ClearAll(void);
+void NetTask_ClearAll(void);
 s32 NetReq_Alloc(u8 state, void (*onTick)(s32), void (*onReply)(NetMsg, NetMsg *));
+s32 NetReq_TakeFixed(s32 i, void (*onTick)(s32), void (*onReply)(NetMsg, NetMsg *));
 s32 NetReq_OnReply(NetMsg m, s32 a, s32 b);
 void Net_TickRequests(void);
+s32 NetReq_CountFree(void);
+s32 NetReq_FindReply(void);
 s32 Lobby_DispatchCommand(u16 cmd, s32 kind, u8 flag);
+s32 Lobby_ReceiveAll(s32 sock);
 void Lobby_HandleMessage(void);
+s32 LobbyReq_LobbyLeave(void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_LobbyLeave(void);
+void LobbyReply_LobbyLeave(void);
+s32 LobbyReq_Logout(void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Logout(void);
+void LobbyReply_Logout(void);
+void LobbySrvReq_Keepalive(void);
 void LobbyPkt_Keepalive(void);
+void LobbyNotify_ServerClose(void);
+void LobbyNotify_DepartCancel(void);
+void LobbyNotify_DepartError(void);
+void LobbyNotify_ServerLeave(void);
 
 /* receiving: each reads one field of src into dst and returns the next field */
 u8 *LobbyMsg_GetU8(void *dst, u8 *src);
@@ -1080,6 +1114,16 @@ u8 *LobbyMsg_GetU32(void *dst, u8 *src);
 u8 *LobbyMsg_GetString(void *dst, u8 *src);
 u8 *LobbyMsg_GetBytes(void *dst, u8 *src, u16 n);
 u8 *LobbyMsg_GetBlob(void *dst, u16 max, u8 *src);
+void LobbyMsg_ReadErrText(void);
+u8 *LobbyMsg_ReadU8(void *dst);
+u8 *LobbyMsg_RecvU16(void *dst);
+u8 *LobbyMsg_ReadU32(void *dst);
+u8 *LobbyMsg_ReadU8Str(void *first, void *second);
+u8 *LobbyMsg_ReadU8U8(void *first, void *second);
+u8 *LobbyMsg_ReadU16U8(void *first, void *second);
+u8 *LobbyMsg_ReadU16U16(void *first, void *second);
+u8 *LobbyMsg_ReadU16U32(void *first, void *second);
+u8 *LobbyMsg_ReadU8U8Str(void *first, void *second, void *third);
 
 /* sending */
 u16 LobbyPkt_BeginCmd(LobbyPkt *p, u16 cmd);
@@ -1119,5 +1163,674 @@ enum LobbyConnStep {
     CONN_START_QUEST = 6,   /* LobbyConn_StartQuest: connected */
     CONN_FAILED = 7         /* LobbyConn_Fail */
 };
+
+void Lobby_ResetTimers(void);
+void Lobby_ApplyServerTimers(void);
+void Town_Reset(void);
+void Chat_SendText(s32 unused, void *text, u8 color);
+void Chat_OnSendError(NetMsg reply, NetMsg *replyPtr);
+void TownMsg_SendPosition(Player *unused0);
+void TownMsg_SendPoogiePos(Em *poogie, void *member);
+void TownMsg_SendKitchen(u8 *msg, void *member);
+void TownMsg_SendArenaTeams(void);
+void TownMsg_SendBgmTo(s32 unused, void *member);
+void TownMsg_SendBgm(s32 track);
+void TownMsg_SendSongAsk(s32 song);
+void TownMsg_SendSongAnswer(void *askerId, s32 song, u8 busy);
+void LobbyBgm_ClearState(void);
+void TownMsg_SendHouseVisit(void *ownerId);
+void TownMsg_SendPlace(Player *pl);
+void TownMsg_SendPlaceOrigin(void);
+void TownMsg_SendSober(struct Player *pl);
+void TownMsg_SendStatus(void);
+s32 Town_IsAlone(s16 *unused0);
+void TownMsg_SendStateNow(Player *pl);
+void TownMsg_SendState(void *unused, u8 flag);
+void TownMsg_SendActor(Player *pl, void *member);
+void TownMsg_SendFacing(Player *pl);
+void TownMsg_SendArea(u16 id);
+void TownMsg_SendAreaTo(void *member, u16 id);
+void TownMsg_SendNameNotice(void);
+void TownMsg_SendRecordsAsk(u8 kind);
+void TownMsg_SendRecords(void *member, u8 kind);
+void TownMsg_SendArenaOpen(void);
+void TownMsg_SendHouseSeatAsk(Player *pl);
+void TownMsg_SendHouseSeatFree(void *pl);
+void TownMsg_SendHouseSeatAnswer(char *askerId, u8 answer, u8 seat);
+void TownMsg_SendHouseSeatTaken(void);
+void TownMsg_SendContestSeatAsk(Player *pl);
+void TownMsg_SendContestSeatFree(Player *unused);
+void TownMsg_SendContestSeatAnswer(char *askerId, u8 granted, u8 seat);
+void TownMsg_SendContestSeatTaken(void);
+void TownMsg_SendContestOpen(void *firstId, void *secondId);
+void TownMsg_SendContestStart(s32 *toId);
+void TownMsg_SendContestPower(void *toId, s32 power);
+void TownMsg_SendContestResult(s32 *toId, s8 result);
+void TownMsg_SendSeatAsk(Player *pl);
+void TownMsg_SendSeatFree(Player *unused);
+void TownMsg_SendSeatAnswer(char *askerId, u8 granted, u8 seat);
+void TownMsg_SendSeatTaken(void);
+void TownMsg_SendOfferAll(Player *pl);
+void TownMsg_SendOffer(Player *pl, void *toId);
+void TownMsg_SendOfferTake(void *toId, Player *pl);
+void TownMsg_SendOfferResult(void *toId, u8 refused);
+void TownMsg_SendOfferEnd(void);
+void TownMsg_SendSyncAsk(void);
+void TownMsg_SendSyncAskTo(u8 slot);
+void TownMsg_Send(u8 len, u8 cmd, void *data);
+void TownMsg_SendTo(u8 len, u8 cmd, void *data, void *toId);
+void TownMsg_OnSent(void);
+void TownMsg_SendSelf(u8 len, u8 cmd, void *data);
+extern u16 gMsgAreaIds[16];
+
+void LobbyNotify_PatchHeader(void);
+void NetPatch_ReadHeader(void);
+void LobbyNotify_PatchData(void);
+void NetPatch_ReadData(void);
+void LobbySrvReq_PatchAck(void);
+s32 LobbyPkt_PatchAck(u16 value);
+void LobbyNotify_6123(void);
+void LobbySrvReq_PatchEnd(void);
+s32 LobbyNet_SendPatchEnd(void);
+s32 LobbyPkt_PatchEnd(void);
+s32 LobbyNet_GetPatchInfo(NetPatchInfo *info);
+s32 NetPatch_CheckSum(u8 *buf, u32 n, u32 sum);
+s32 NetLevel0ListTask_Start(s32 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *));
+void NetLevel0ListTask_Run(s32 task);
+void NetLevel0ListTask_Steps(NetTask *task);
+void NetLevel0ListTask_Done(NetTask *task);
+void NetLevel0ListTask_Failed(NetTask *task);
+void NetLevel0ListTask_Step0(NetTask *task);
+void NetLevel0ListTask_Step1(NetTask *task);
+void NetLevel0ListTask_Step2(NetTask *task);
+void NetLevel0ListTask_Step3(NetTask *task);
+void NetLevel0ListTask_Step4(NetTask *task);
+void NetLevel0ListTask_Step5(NetTask *task);
+void NetLevel0ListTask_Step1Reply(NetMsg msg, NetMsg *msgRef);
+void NetLevel0ListTask_Step4Reply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyReq_Level0Count(void (*onReply)(NetMsg, NetMsg *));
+s32 NetList0_GetCount(u16 *out);
+void LobbyReply_Level0Count(void);
+s32 NetList0_GetName(u16 id, char *dst);
+void LobbyReply_Level0Name(void);
+s32 LobbyReq_Level0Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList0_GetUsers(u16 id, u16 *users, u16 *questUsers);
+s32 NetList0_GetMaxUsers(u16 id, u16 *out);
+s32 NetList0_GetValue10(u16 id, u16 *out);
+void LobbyReply_Level0Values(void);
+s32 LobbyReq_Level0State(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList0_GetByte(u16 id, u8 *out);
+void LobbyReply_Level0State(void);
+s32 LobbyReq_Level0Text(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList0_GetText(u16 id, char *dst);
+void LobbyReply_Level0Text(void);
+void LobbyReply_Level0Enter(void);
+s32 LobbyReq_Level0Leave(void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level0Leave(void);
+void LobbyNotify_Level0Kick(void);
+void LobbyMsg_ReadU16(void *dst);
+void LobbyMsg_ReadU16Str(void *num, void *str);
+void LobbyMsg_ReadU16U8b(void *num, void *byte);
+void LobbyMsg_ReadU16Str2(void *num, void *str);
+void LobbyMsg_ReadU16U8b2(void *num, void *byte);
+s32 LobbyReq_Level0Kind(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList0_GetKind(u16 id, u8 *out);
+void LobbyReply_Level0Kind(void);
+
+void TownMsg_Recv(void *from, u8 *pkt);
+void TownMsg_OnKitchen(s8 idx, u8 *data);
+void TownMsg_OnArenaTeam(u8 *data);
+void Lobby_ShowMemberName(s8 idx, void *data);
+void TownMsg_OnSongAsk(void *src, void *data);
+void TownMsg_OnSongAnswer(s8 *data);
+void TownMsg_OnOffer(s8 idx, void *src);
+void TownMsg_OnOfferTake(void *from, void *src);
+void TownMsg_OnOfferResult(void *src);
+s32 LobbyMember_SetRecord(s8 idx, NetUser *user, u8 *rec);
+void Chat_Receive(u8 *msg);
+u8 Lobby_FindMember(u8 *id);
+void TownMsg_OnActor(u8 pl, void *data);
+void TownMsg_OnMove(u8 pl, void *data, u8 cmd);
+void TownMsg_OnPoogiePos(u8 unused, void *data);
+void TownMsg_OnArea(u8 pl, u8 *msg);
+void TownMsg_OnContestSeatAsk(void *id, u8 *msg);
+void TownMsg_OnContestSeatAnswer(s8 idx, u8 *msg);
+void TownMsg_OnContestSeatTaken(u8 *id, u8 *data);
+void TownMsg_OnSeatAsk(void *name, u8 *data);
+void TownMsg_OnHouseSeatAsk(char *id, u8 *msg);
+void TownMsg_OnSeatAnswer(s8 unused, u8 *data);
+void TownMsg_OnHouseSeatAnswer(s8 unused, u8 *data);
+void TownMsg_OnHouseSeatFree(s8 *msg);
+void TownMsg_OnSeatTaken(u8 *a0);
+void TownMsg_OnHouseSeatTaken(u8 *msg);
+s32 Area_HasTownPcs(u16 area);
+void TownMsg_OnSyncAsk(u8 *from);
+void TownMsg_OnHouseVisit(s8 idx, u8 *msg);
+void TownMsg_OnSober(s8 idx);
+
+void LobbyNotify_ShortMail(void);
+s32 LobbyReq_ShortMailSend(void *id, char *text, void (*onReply)(NetMsg, NetMsg *));
+void LobbyNet_GetShortMail(char *id, u8 *name, u8 *text);
+void LobbyReply_ShortMailSend(void);
+s32 LobbyPkt_ShortMailSend(void *id, char *text);
+void LobbyNotify_ShortMailRead(void);
+s32 LobbyReq_UserProfile(void *id, void (*onReply)(NetMsg, NetMsg *));
+void LobbyNet_GetUserProfile(NetUserProfile *dst);
+void LobbyReply_UserProfile(void);
+s32 LobbyPkt_UserProfile(void *id);
+void LobbyReply_UserProfileRead(void);
+void LobbySrvReq_6706(void);
+s32 LobbyReq_UserSearch(NetUserSearchQuery query, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetUserSearch(NetUserSearchFound **out);
+s32 LobbyPkt_UserSearch(NetUserSearchQuery query);
+s32 LobbyPkt_UserSearchNext(u8 value);
+void LobbyReply_UserSearch(void);
+s32 LobbyPkt_6416Next(u8 value);
+void LobbyReply_6416(void);
+s32 LobbyReq_UserStatus(void *id, void (*onReply)(NetMsg, NetMsg *));
+void LobbyNet_GetUserStatus(u16 *a, u16 *b, u16 *c, u8 *d);
+void LobbyReply_UserStatus(void);
+s32 LobbyPkt_UserStatus(void *id);
+void LobbyReply_UserStatusRead(void);
+s32 LobbyReq_ChatColorMode(u8 value, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_ChatColorMode(void);
+s32 LobbyPkt_ChatColorMode(u8 value);
+void LobbyReply_6417(void);
+s32 LobbyReq_UserFindByName(NetBlob name, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetUserFindByName(NetUserFindByNameFound **out); /* the 6711 list (gLobbyNet.userFindByNameFound) */
+s32 LobbyPkt_UserFindByName(NetBlob name);
+void LobbyReply_UserFindByName(void);
+s32 LobbyPkt_UserFindByNameNext(u8 value);
+s32 LobbyReq_Level1Search(NetLevel1SearchQuery query, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetLevel1Search(u32 **out);
+s32 LobbyPkt_Level1Search(NetLevel1SearchQuery query);
+s32 LobbyPkt_Level1SearchNext(u8 value);
+void LobbyReply_Level1Search(void);
+s32 LobbyReq_Level1SearchInfo(u8 value, void (*onReply)(NetMsg, NetMsg *));
+void LobbyNet_GetLevel1SearchInfo(NetLevel1SearchInfo *dst);
+s32 LobbyPkt_Level1SearchInfo(u8 value);
+void LobbyReply_Level1SearchInfo(void);
+void LobbyNotify_PartyReady(void);
+s32 LobbyPkt_QuestPaid(void);
+
+void LobbyReply_640E(void);
+s32 LobbyReq_SetOut(u8 value, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_SetOut(u8 value);
+void LobbyReply_SetOut(void);
+s32 NetPartyTask_Start(void (*onDone)(NetMsg, NetMsg *));
+void LobbyReply_PartyCount(void);
+void LobbyReply_PartySelf(void);
+void LobbyReply_PartyMember(void);
+void LobbyReply_PartyMemberValues(void);
+void LobbyReply_PartyRoom(void);
+void LobbyReply_PartyText(void);
+void LobbyReply_PartyServer(void);
+void NetPartyTask_Finish(NetMsg msg);
+s32 LobbyPkt_PartyCount(void);
+void LobbyPkt_PartySelf(u8 value);
+void LobbyPkt_PartyMember(u8 value);
+void LobbyPkt_PartyMemberValues(u8 value);
+void LobbyPkt_PartyText(void);
+void LobbyPkt_PartyRoom(void);
+void LobbyPkt_PartyServer(void);
+s32 LobbyPkt_PartyFail(void);
+s32 LobbyNet_GetParty(NetParty *dst);
+void LobbyNet_GetPartyAddr(s32 *addr, s16 *port);
+
+void LobbyReply_Level1Users(void);
+void LobbyReply_Level1UsersRead(void);
+void LobbyMsg_ReadUsers(u8 *count, NetUserRec *out);
+void LobbyNotify_Level1UserOut(void);
+void LobbyNotify_Level1UserIn(void);
+void LobbyReply_6890(void);
+s32 LobbyReq_CurrentPlace(void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetCurrentPlace(NetCurrentPlace *dst);
+void LobbyReply_CurrentPlace(void);
+s32 LobbyPkt_CurrentPlace(void);
+s32 LobbyPkt_Level1Open(u16 id);
+void LobbyReply_Level1Open(void);
+
+s32 LobbyPkt_Level1SettingsEnd(void);
+void LobbyReply_Level1SettingsEnd(void);
+s32 LobbyReq_TownClock(void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetTownClock(NetTownClock *dst);
+void LobbyReply_TownClock(void);
+s32 LobbyPkt_TownClock(void);
+s32 LobbyReq_Level1Kind(u16 value, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level1Kind(void);
+void LobbyNet_Reset(void);
+s32 NetLoginTask_Start(NetLoginParams *src, void (*onDone)(NetMsg, NetMsg *));
+s32 LobbyNet_SetClientInfo(NetClientInfo *src);
+s32 LobbyNet_SetMe(char *id, char *name, u8 *text);
+u8 LobbyNet_GetCharaCount(void);
+s32 LobbyNet_GetCharaId(u8 i, char *dst);
+s32 LobbyNet_GetCharaName(u8 i, char *dst);
+s32 LobbyNet_GetCharaText(u8 i, u8 *dst);
+s32 LobbyNet_GetMyCharaId(char *dst);
+s32 LobbyNet_GetMyCharaName(char *dst);
+void LobbySrvReq_LoginAuth(void);
+void LobbySrvReq_ClientInfo(void);
+
+void LobbyReply_Level2Enter(void);
+s32 LobbyReq_Level2Enter(u16 id, char *pass, u8 value, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2Enter(u16 id, char *pass, u8 value);
+s32 LobbyReq_Level2Leave(void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level2Leave(void);
+s32 LobbyReq_Level2Open(u16 id, u8 value, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2Open(u16 id, u8 value);
+void LobbyReply_Level2Open(void);
+s32 NetLevel2SettingsTask_Start(NetEntrySettings2 settings, void (*onDone)(NetMsg, NetMsg *));
+void NetLevel2SettingsTask_Run(s32 task);
+void NetLevel2SettingsTask_Steps(NetTask *task);
+void NetLevel2SettingsTask_Done(NetTask *task);
+void NetLevel2SettingsTask_Failed(NetTask *task);
+void NetLevel2SettingsTask_Step0(NetTask *task);
+void NetLevel2SettingsTask_Step1(NetTask *task);
+void NetLevel2SettingsTask_Step2(NetTask *task);
+void NetLevel2SettingsTask_Step3(NetTask *task);
+void NetLevel2SettingsTask_Step4(NetTask *task);
+void NetLevel2SettingsTask_Step5(NetTask *task);
+void NetLevel2SettingsTask_Step6(NetTask *task);
+void NetLevel2SettingsTask_Step7(NetTask *task);
+void NetLevel2SettingsTask_Step8(NetTask *task);
+void NetLevel2SettingsTask_Step9(NetTask *task);
+void NetLevel2SettingsTask_Step10(NetTask *task);
+void NetLevel2SettingsTask_Step11(NetTask *task);
+void NetLevel2SettingsTask_Step12(NetTask *task);
+void NetLevel2SettingsTask_OnReply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyPkt_Level2SetRecChoice(u8 i, u8 value);
+void LobbyReply_Level2SetRecChoice(void);
+s32 LobbyReq_Level2SetName(char *src, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2SetName(char *src);
+void LobbyReply_Level2SetName(void);
+s32 LobbyReq_Level2SetPass(char *src, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2SetPass(char *src);
+void LobbyReply_Level2SetPass(void);
+s32 LobbyReq_Level2SetText(char *src, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2SetText(char *src, u16 n);
+void LobbyReply_Level2SetText(void);
+s32 LobbyReq_Level2SettingsEnd(void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2SettingsEnd(void);
+
+void LobbyNet_SendChatSay(s32 text, u16 len, u8 option, u8 kind);
+void LobbyNet_GetChatMessage(NetChatMessage *dst);
+void LobbyPkt_ChatSay(s32 text, u16 len, u8 option, u8 kind);
+void LobbyNotify_ChatMessage(void);
+void LobbyNet_SendTownMsg(s32 src, u16 n);
+void LobbyNet_GetTownMsg(NetTownMsg *dst);
+void LobbyPkt_TownMsg(s32 src, u16 n);
+void LobbyNotify_TownMsg(void);
+s32 LobbyReq_ChatTell(u8 value, void *src, s32 text, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_ChatTell(u8 value, void *src, s32 text, u16 n);
+void LobbyReply_ChatTell(void);
+void LobbyNotify_ChatTellMessage(void);
+s32 LobbyReq_TownMsgTo(void *src, void *data, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_TownMsgTo(void *src, s32 data, u16 n);
+void LobbyReply_TownMsgTo(void);
+void LobbyNotify_TownMsgToRecv(void);
+void LobbyReply_6181(void);
+void LobbyReply_6188(void);
+s32 NetDlListTask_Start(void (*onDone)(NetMsg, NetMsg *));
+void NetDlListTask_Run(s32 task);
+void NetDlListTask_Steps(NetTask *task);
+void NetDlListTask_Done(NetTask *task);
+void NetDlListTask_Failed(NetTask *task);
+void NetDlListTask_Step0(NetTask *task);
+void NetDlListTask_Step1(NetTask *task);
+void NetDlListTask_Step2(NetTask *task);
+void NetDlListTask_Step3(NetTask *task);
+void NetDlListTask_OnReply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyNet_GetDlFiles(u8 *count, NetDlFile **files);
+s32 NetDlFileTask_Start(u8 file, u8 *buf, s32 size, void (*onDone)(NetMsg, NetMsg *));
+void NetDlFileTask_Run(s32 task);
+void NetDlFileTask_Steps(NetTask *task);
+void NetDlFileTask_Done(NetTask *task);
+void NetDlFileTask_Failed(NetTask *task);
+void NetDlFileTask_Step0(NetTask *task);
+void NetDlFileTask_Step1(NetTask *task);
+void NetDlFileTask_Step2(NetTask *task);
+void NetDlFileTask_OnReply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyReq_DlData(u8 value, s32 off, s32 n, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_DlData(void);
+s32 LobbyPkt_DlData(u8 value, s32 off, s32 n);
+s32 LobbyReq_DlList(void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_DlList(void);
+s32 LobbyPkt_DlList(void);
+s32 LobbyReq_DlFileInfo(u8 value, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_DlFileInfo(u8 value);
+void LobbyReply_DlFileInfo(void);
+void LobbyNotify_ServerMessage(void);
+void LobbyReply_68A0(void);
+void LobbyReply_68A1(void);
+s32 LobbyReq_SaveSummaryBegin(u8 value, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_SaveSummaryBegin(u8 value);
+void LobbyReply_SaveSummaryBegin(void);
+s32 LobbyReq_SaveSummaryPart(u8 value, u8 subStep2, s32 src, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_SaveSummaryPart(u8 value, u8 subStep2, s32 src, u16 n);
+void LobbyReply_SaveSummaryPart(void);
+s32 LobbyNet_GetSaveSummaryPart(u8 *out);
+s32 LobbyReq_TownData(u8 i, u8 *dst, s32 max, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_TownData(u8 value);
+void Bits16_Set(u16 *slotMask, s32 i);
+void LobbyReply_TownData(void);
+s32 LobbyNet_GetTownData(u8 *slot);
+s32 LobbyNet_SetSlotBuf(u8 i, char *buf, s32 n);
+s32 LobbyReq2_TownData(u8 i, void (*onReply)(NetMsg, NetMsg *));
+void LobbyNotify_TownDataChangedOnReply(NetMsg msg, NetMsg *msgRef);
+void LobbyNotify_TownDataChanged(void);
+s32 LobbyReq_ServerName(void *src, void *buf, s32 size, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_ServerName(void *src);
+void LobbyReply_ServerName(void);
+void LobbyReply_6144(void);
+void LobbyReply_6145(void);
+void LobbyReply_6146(void);
+void LobbyPkt_6138(void);
+s32 LobbyPkt_QuestRecord(void *src, s32 n);
+void LobbyReply_6417Read(void);
+void LobbyReply_Level1SearchInfoRead(void);
+void LobbyReply_Ping(void);
+void LobbyNotify_CharaList(void);
+void LobbyReply_CharaSelect(void);
+s32 LobbyReq_HunterCard(void *src, u16 n, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_HunterCard(void);
+s32 LobbyNet_GetUserCard(NetUser *dst);
+void LobbyNotify_UserCard(void);
+s32 LobbyReq_HunterCardPart(void *src, u16 n, u16 offset, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_HunterCardPart(void);
+s32 LobbyNet_GetUserCardPart(NetUserCardPart *dst);
+void LobbyNotify_UserCardPart(void);
+s32 LobbyPkt_HunterCardPart(void *src, u16 n, u16 offset);
+void LobbyNotify_LoginDone(void);
+void LobbySrvReq_LoginNotice(void);
+void LobbyNet_GetLoginNotice(NetLoginNotice *dst);
+s32 LobbyNet_SendLoginNotice(u8 value);
+void LobbyPkt_LoginNotice(u8 value);
+s32 LobbyNet_SendLoginReady(void);
+void LobbyReply_6143(void);
+s32 LobbyReq_LoginInfo(void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetLoginInfo(NetLoginInfo *dst);
+s32 LobbyPkt_LoginInfo(void);
+void LobbyReply_LoginInfo(void);
+void NetLogin_Done(void);
+void LobbySrvReq_6189(void);
+void LobbySrvReq_6138(void);
+s32 LobbyReq_QuestRecord(void *src, s32 n, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_QuestRecord(void);
+void LobbyPkt_LoginAuth(void);
+void LobbyPkt_ClientInfo(void);
+void LobbyPkt_CharaSelect(void);
+void LobbyPkt_LoginReady(void);
+s32 LobbyPkt_HunterCard(void *src, u16 n);
+s32 LobbyPkt_Ping(void);
+s32 NetLogin_ReadCharas(void);
+s32 LobbyReply_CharaSelectRead(void);
+void LobbyPkt_LoginParams(void);
+void LobbyReply_LoginParams(void);
+void LobbyPkt_QnetTimeouts(void);
+void LobbyReply_QnetTimeouts(void);
+s32 LobbyReq_CharaSelectText(char *dst, s32 max, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetCharaSelectText(s32 *dst);
+void LobbyReply_CharaSelectText(void);
+s32 LobbyPkt_CharaSelectText(void);
+s32 LobbyReq_UserCardFetch(void *id, u16 size, u16 offset, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_UserCardFetch(void);
+s32 LobbyNet_GetUserCardFetch(NetUserCardPart *dst); /* copies 6712's reply (gLobbyNet.userCardFetch) */
+s32 LobbyPkt_UserCardFetch(void *id, u16 size, u16 offset);
+void LobbyNotify_LoginWebPage(void);
+s32 LobbyNet_GetLoginWebPage(NetLoginWebPage *dst);
+void LobbyNotify_ServerIdRange(void);
+void LobbySrvReq_MemoryCheck(void);
+
+void NetList_Select(s32 levelArg, u16 id);
+void NetList_Leave(u8 level);
+void NetList_Enter(u8 level);
+s32 LobbyNet_GetListReplies(u16 *nReplies);
+void NetLevel1ListTask_Run(s32 task);
+void NetLevel1ListTask_Steps(NetTask *task);
+void NetLevel1ListTask_Done(NetTask *task);
+void NetLevel1ListTask_Failed(NetTask *task);
+void NetLevel1ListTask_Step0(NetTask *task);
+void NetLevel1ListTask_Step1(NetTask *task);
+void NetLevel1ListTask_Step2(NetTask *task);
+void NetLevel1ListTask_Step3(NetTask *task);
+void NetLevel1ListTask_Step4(NetTask *task);
+void NetLevel1ListTask_Step5(NetTask *task);
+void NetLevel1ListTask_Step1Reply(NetMsg msg, NetMsg *msgRef);
+void NetLevel1ListTask_Step4Reply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyReq_Level1Count(void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetCount(u16 *count1);
+void LobbyReply_Level1Count(void);
+s32 LobbyReq_Level1Name(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetName(u16 id, char *dst);
+void LobbyReply_Level1Name(void);
+s32 LobbyReq_Level1Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetUsers(u16 id, u16 *users, u16 *questUsers);
+s32 NetList1_GetMaxUsers(u16 id, u16 *out);
+void LobbyReply_Level1Values(void);
+s32 LobbyReq_Level1State(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetByte(u16 id, u8 *out);
+void LobbyReply_Level1State(void);
+s32 LobbyReq_Level1Text(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetText(u16 id, char *dst);
+void LobbyReply_Level1Text(void);
+s32 LobbyReq_Level1Color(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetColor(u16 id, s32 *out);
+s32 LobbyPkt_Level1Color(u16 id);
+void LobbyReply_Level1Color(void);
+s32 LobbyReq_630B(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_630B(u16 id);
+void LobbyReply_630B(void);
+s32 LobbyReq_Level1GroupInfo(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList1_GetGroupInfo(u16 id, u8 *out);
+s32 LobbyPkt_Level1GroupInfo(u16 id);
+void LobbyReply_Level1GroupInfo(void);
+s32 LobbyReq_Level1Enter(u16 id, char *pass, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level1Enter(void);
+s32 LobbyReq_Level1Leave(void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level1Leave(void);
+void LobbyNotify_UserInOut(u8 kind);
+void NetList_ReadValues(NetListEntry *list);
+s32 LobbyReq_EnterLevels(u16 level0Id, u16 level1Id, u16 level2Id, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_EnterLevels(u16 level0Id, u16 level1Id, u16 level2Id);
+void LobbyReply_EnterLevels(void);
+void LobbyReply_LeaveAll(void);
+s32 LobbyNet_GetLastId(u16 *id);
+void LobbyReply_6202(void);
+void LobbyNotify_Level1Kick(void);
+s32 LobbyPkt_ListCount(u16 level);
+s32 LobbyPkt_EntryName(u16 level, u16 id);
+s32 LobbyPkt_EntryValues(u16 level, u16 id);
+s32 LobbyPkt_EntryState(u16 level, u16 id);
+s32 LobbyPkt_EntryText(u16 level, u16 id);
+s32 LobbyPkt_Level1Enter(u16 id, char *password);
+s32 LobbyPkt_Leave(u16 level);
+s32 LobbyPkt_EntryKind(u16 level, u16 id);
+void LobbyMsg_ReadU16Array(u16 *id, u16 n, u16 *out);
+void LobbyReply_640F(void);
+s32 LobbyReq_Level1Users(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyNet_GetUser(u16 i, char *id, char *name, u8 *text);
+s32 LobbyPkt_Level1Users(u16 id);
+void NetLevel1AllowedTask_Run(s32 task);
+void NetLevel1AllowedTask_Steps(NetTask *task);
+void NetLevel1AllowedTask_Done(NetTask *task);
+void NetLevel1AllowedTask_Failed(NetTask *task);
+void NetLevel1AllowedTask_Step0(NetTask *task);
+void NetLevel1AllowedTask_Step1(NetTask *task);
+void NetLevel1AllowedTask_Step2(NetTask *task);
+void NetLevel1AllowedTask_Step1Reply1(NetMsg msg, NetMsg *msgRef);
+void NetLevel1AllowedTask_Step1Reply2(NetMsg msg, NetMsg *msgRef);
+void NetLevel1AllowedTask_Step1Reply4(NetMsg msg, NetMsg *msgRef);
+s32 LobbyNet_GetEntryVals(u16 entry, NetEntryVals *out);
+s32 LobbyReq_Level1NameAllowed(u16 entry, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level1NameAllowed(void);
+s32 LobbyPkt_Level1NameAllowed(u16 entry);
+s32 LobbyReq_Level1PassAllowed(u16 entry, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level1PassAllowed(void);
+s32 LobbyPkt_Level1PassAllowed(u16 entry);
+s32 LobbyReq_Level1TextAllowed(u16 entry, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level1TextAllowed(void);
+s32 LobbyPkt_Level1TextAllowed(u16 entry);
+s32 LobbyReq_Level1SetName(char *name, u16 len, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level1SetName(char *src, u16 n);
+void LobbyReply_Level1SetName(void);
+s32 LobbyReq_Level1SetPass(s8 *src, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level1SetPass(s8 *src, u16 n);
+void LobbyReply_Level1SetPass(void);
+s32 LobbyReq_Level1SetText(s8 *src, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level1SetText(s8 *src, u16 n);
+void LobbyReply_Level1SetText(void);
+s32 LobbyPkt_Level1SetColor(s32 value);
+void LobbyReply_Level1SetColor(void);
+s32 LobbyReq_Level1SetGroupInfo(u16 value, u8 *bytes, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level1SetGroupInfo(u16 value, u8 *bytes);
+void LobbyReply_Level1SetGroupInfo(void);
+s32 LobbyReq_Level1SettingsEnd(void (*onReply)(NetMsg, NetMsg *));
+s32 NetLevel2ListTask_Start(s32 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *));
+void NetLevel2ListTask_Run(s32 task);
+void NetLevel2ListTask_Steps(NetTask *task);
+void NetLevel2ListTask_Done(NetTask *task);
+void NetLevel2ListTask_Failed(NetTask *task);
+void NetLevel2ListTask_Step0(NetTask *task);
+void NetLevel2ListTask_Step1(NetTask *task);
+void NetLevel2ListTask_Step2(NetTask *task);
+void NetLevel2ListTask_Step3(NetTask *task);
+void NetLevel2ListTask_Step4(NetTask *task);
+void NetLevel2ListTask_Step5(NetTask *task);
+void NetLevel2ListTask_Step1Reply(NetMsg msg, NetMsg *msgRef);
+void NetLevel2ListTask_Step4Reply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyReq_Level2Count(void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetCount(u16 *out);
+void LobbyReply_Level2Count(void);
+s32 LobbyReq_Level2Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetUsers(u16 id, u16 *userCount, u16 *questUserCount);
+void LobbyReply_Level2Values(void);
+s32 LobbyReq_Level2State(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetByte(u16 id, u8 *out);
+void LobbyReply_Level2State(void);
+s32 LobbyReq_Level2Name(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetName(u16 id, char *dst);
+void LobbyReply_Level2Name(void);
+s32 LobbyReq_Level2Text(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetText(u16 id, char *dst);
+void LobbyReply_Level2Text(void);
+s32 LobbyReq_Level2Limits(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetLimits(u16 id, u16 *maxUserCount, u16 *value1, u16 *value2, u16 *value3, u16 *value4);
+s32 LobbyPkt_Level2Limits(u16 id);
+void LobbyReply_Level2Limits(void);
+s32 LobbyReq_Level2Color(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 Net_GetLevel2Color(u16 id, s32 *out);
+s32 LobbyPkt_Level2Color(u16 id);
+void LobbyReply_Level2Color(void);
+s32 LobbyReq_Level2PostedQuest(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 Net_GetLevel2PostedQuest(u16 id, u8 *dst);
+s32 LobbyPkt_Level2PostedQuest(u16 id);
+void LobbyReply_Level2PostedQuest(void);
+s32 LobbyReq_QuestAccept(u32 value, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_QuestAccept(u32 value);
+void LobbyReply_QuestAccept(void);
+s32 LobbyReq_QuestPost(void *data, u16 n, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_QuestPost(void *data, u16 n);
+void LobbyReply_QuestPost(void);
+void LobbyReply_Level2SettingsEnd(void);
+s32 LobbyNet_GetUserInOut(NetUser *dst);
+void LobbyNotify_Level2UserIn(void);
+void LobbyNotify_Level2UserOut(void);
+s32 NetLevel2RecsTask_Start(u16 id, void (*onDone)(NetMsg, NetMsg *));
+void NetLevel2RecsTask_Run(s32 task);
+void NetLevel2RecsTask_State0(NetTask *task);
+void NetLevel2RecsTask_State1(NetTask *task);
+void NetLevel2RecsTask_State2(NetTask *task);
+void NetLevel2RecsTask_Done(NetTask *task);
+void NetLevel2RecsTask_Failed(NetTask *task);
+void NetLevel2RecsTask_S0Step0(NetTask *task);
+void NetLevel2RecsTask_S0Step1(NetTask *task);
+void NetLevel2RecsTask_S0Step2(NetTask *task);
+void NetLevel2RecsTask_S0Step3(NetTask *task);
+void NetLevel2RecsTask_S0Step4(NetTask *task);
+void NetLevel2RecsTask_S0Step5(NetTask *task);
+void NetLevel2RecsTask_S1Step0(NetTask *task);
+void NetLevel2RecsTask_S1Step1(NetTask *task);
+void NetLevel2RecsTask_S1Step2(NetTask *task);
+void NetLevel2RecsTask_S1Step3(NetTask *task);
+void NetLevel2RecsTask_S1Step4(NetTask *task);
+void NetLevel2RecsTask_S1Step5(NetTask *task);
+void NetLevel2RecsTask_S1Step6(NetTask *task);
+void NetLevel2RecsTask_S2Step0(NetTask *task);
+void NetLevel2RecsTask_S2Step1(NetTask *task);
+void NetLevel2RecsTask_S2Step2(NetTask *task);
+void NetLevel2RecsTask_S2Step3(NetTask *task);
+void NetLevel2RecsTask_S2Step4(NetTask *task);
+void NetLevel2RecsTask_S2Step5(NetTask *task);
+void NetLevel2RecsTask_OnReply(NetMsg msg, NetMsg *msgRef);
+void NetLevel2RecsTask_OnRecReply(NetMsg msg, NetMsg *msgRef);
+s32 LobbyReq_Level2RecCount(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecCount(u16 id);
+void LobbyReply_Level2RecCount(void);
+s32 LobbyReq_Level2NameEditable(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2NameEditable(u16 id);
+void LobbyReply_Level2NameEditable(void);
+s32 LobbyReq_Level2PassEditable(s32 id, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level2PassEditable(void);
+s32 LobbyPkt_Level2PassEditable(u16 id);
+s32 LobbyReq_Level2Locked(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 NetList2_GetLocked(u16 id, u8 *out);
+s32 LobbyPkt_Level2Locked(u16 id);
+void LobbyReply_Level2Locked(void);
+s32 LobbyReq_Level2Users(u16 id, void (*onReply)(NetMsg, NetMsg *)); /* called with an int: no prototype here */
+s32 NetList2_GetUser(u16 i, char *id, char *name, u8 *text);
+s32 LobbyPkt_Level2Users(u16 id);
+void LobbyReply_Level2Users(void);
+void LobbyReply_Level2Users_Users(void);
+s32 LobbyReq_Level2RecName(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecName(u16 id, u8 i);
+void LobbyReply_Level2RecName(void);
+s32 LobbyReq_Level2RecChoiceCount(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecChoiceCount(u16 id, u8 i);
+void LobbyReply_Level2RecChoiceCount(void);
+s32 LobbyReq_Level2RecDefault(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecDefault(u16 id, u8 i);
+void LobbyReply_Level2RecDefault(void);
+s32 LobbyReq_Level2RecEditable(u16 id, u8 i, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecEditable(u16 id, u8 i);
+void LobbyReply_Level2RecEditable(void);
+s32 LobbyReq_Level2RecChoiceName(u16 id, u8 i, u8 j, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecChoiceName(u16 id, u8 i, u8 j);
+void LobbyReply_Level2RecChoiceName(void);
+s32 LobbyReq_Level2RecChoiceValues(u16 id, u8 i, u8 j, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2RecChoiceValues(u16 id, u8 i, u8 j);
+void LobbyReply_Level2RecChoiceValues(void);
+void LobbyMsg_ReadU8U8Rest(u8 *i, u8 *j, u8 **rest);
+void LobbyReply_6409(void);
+s32 LobbyReq_Level2Members(u16 id, void (*onReply)(NetMsg, NetMsg *));
+void LobbyReply_Level2Members(void);
+void LobbyNotify_Level2MembersNotify(void);
+s32 LobbyPkt_Level2Members(u16 id);
+void LobbyReply_6413(void);
+void LobbyNotify_6414(void);
+s32 LobbyReq_Level2TextEditable(u16 id, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2TextEditable(u16 id);
+void LobbyReply_Level2TextEditable(void);
+s32 LobbyReq_Level2Quest(u16 id, u8 *values, void (*onReply)(NetMsg, NetMsg *));
+s32 LobbyPkt_Level2Quest(u16 id, u8 *values);
+void LobbyReply_Level2Quest(void);
+void LobbyNotify_Level2Kick(void);
+void LobbyReply_6507(void);
+void LobbyReply_Level2Kind(void);
+
+s32 NetLevel1SettingsTask_Start(NetEntrySettings *src, void (*onDone)(NetMsg, NetMsg *));
+void NetLevel1SettingsTask_Run(s32 task);
+void NetLevel1SettingsTask_Steps(NetTask *task);
+void NetLevel1SettingsTask_Done(NetTask *task);
+void NetLevel1SettingsTask_Failed(NetTask *task);
+void NetLevel1SettingsTask_Step0(NetTask *task);
+void NetLevel1SettingsTask_Step1(NetTask *task);
+void NetLevel1SettingsTask_Step2(NetTask *task);
+void NetLevel1SettingsTask_Step3(NetTask *task);
+void NetLevel1SettingsTask_Step4(NetTask *task);
+void NetLevel1SettingsTask_Step1Reply1(NetMsg msg, NetMsg *msgRef);
+void NetLevel1SettingsTask_Step1Reply2(NetMsg msg, NetMsg *msgRef);
+void NetLevel1SettingsTask_Step1Reply4(NetMsg msg, NetMsg *msgRef);
+void NetLevel1SettingsTask_Step3Reply(NetMsg msg, NetMsg *msgRef);
+void NetLevel1SettingsTask_Step1Reply8(NetMsg msg, NetMsg *msgRef);
 
 #endif /* LOBBY_NET_H */

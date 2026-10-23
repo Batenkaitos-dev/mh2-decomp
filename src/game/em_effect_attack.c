@@ -13,12 +13,26 @@
 #include "common.h"
 #include "sprite.h"
 #include "em.h"
+#include "em_kushala.h"
 #include "objattach.h"
 #include "player.h"
 #include "scene.h"
 #include "stageobj.h"
 #include "capsule.h"
 #include "area.h"
+#include "render_state.h"
+#include "camera.h"
+#include "card.h"
+#include "quest.h"
+#include "sound.h"
+#include "draw_slots.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "hit_setup.h"
+#include "monster_effects.h"
+#include "rand.h"
+#include "cam_shake.h"
+#include "vec_math.h"
 
 /* Built at optimization level 4: EmEffectAttack_DrawPart matches only there, every
    other matched function at both levels (KushalaAttack_Run before the unit
@@ -26,14 +40,8 @@
 #pragma optimization_level 4
 
 /* Declarations of the functions called below. */
-void DrawSlotB_Free(s32);
 /* prototypes */
-extern s16 EmEffectAttack_ScaleKeyBase[];
-extern s16 EmEffectAttack_ColorKeyBase[];
-extern void *EmEffectAttack_ScaleKeys[];
-extern void *EmEffectAttack_ColorKeys[];
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-/* A link of the chain (kind 0x21 type 0xF, 0x64 bytes: o->buf holds eight of them,
+/* A link of the chain (ATTACH_EM_EFFECT_ATTACK type EMFX_BREATH_CHAIN, 100 bytes: o->buf holds eight of them,
  * EmEffectAttackChain): each follows the one before it (EmEffectAttack_UpdateLink), the first the
  * owner's bone; then they drift up and fade (EmEffectAttack_RunChain). */
 typedef struct EmEffectAttackLink {
@@ -42,7 +50,7 @@ typedef struct EmEffectAttackLink {
     f32 pos[3];                 /* 0x04 */
     s16 age;                    /* 0x10: frames (from 8 - index); the texture scroll (EmEffectAttack_DrawChain) */
     s16 delay;                  /* 0x12: counts up from -1 - index; 0 starts the link's fade, drawn to 29 */
-    u8 unk14[0x18 - 0x14];
+    u8 unk14[24 - 20];
     u16 spin;                   /* 0x18: its roll (EmEffectAttack_RandLinkSpin) */
     s16 spinSpeed;              /* 0x1A */
     f32 scale;                  /* 0x1C: 1 + 0.2 * index */
@@ -52,89 +60,35 @@ typedef struct EmEffectAttackLink {
     f32 from[2][3];             /* 0x34: where the link starts (the link before's pos) */
     f32 dir[2][3];              /* 0x4C: and its direction */
 } EmEffectAttackLink;
-typedef char EmEffectAttackLink_size_check[(sizeof(EmEffectAttackLink) == 0x64) ? 1 : -1];
+typedef char EmEffectAttackLink_size_check[(sizeof(EmEffectAttackLink) == 100) ? 1 : -1];
 
 typedef struct EmEffectAttackChain {
     EmEffectAttackLink link[8];        /* 0x000 */
     s16 timer;                  /* 0x320: frames since the owner let go (38: the chain ends) */
     u16 headAlive;              /* 0x322: the first link still follows the owner's bone */
 } EmEffectAttackChain;
-typedef char EmEffectAttackChain_size_check[(sizeof(EmEffectAttackChain) == 0x324) ? 1 : -1];
+typedef char EmEffectAttackChain_size_check[(sizeof(EmEffectAttackChain) == 804) ? 1 : -1];
 
 void EmEffectAttack_RandLinkSpin(EmEffectAttackLink *e);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void Mtx_Copy(f32 *dst, f32 *src);
-f32 Math_Atan2(f32 y, f32 x);
-s32 Em_PlaySeAtPos(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void CamShake_SetA(s32 kind, f32 *pos);
 /* unit's own declaration: the angle declared u16 and the kind s32 as the callers pass them; with the definition's s32 angle and s16 kind the calls compile differently */
 void AttackBurst_CreateAtScaled(f32 *pos, u16 ang, s32 kind, f32 scale);
-void DustCloud_CreateAt(f32 *pos, u8 k, u8 c, f32 scale);
 void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-extern s16 EmEffectAttack_YamaInhaleDelays[];
 extern s16 EmEffectAttack_CongalalaBreathDelays[];
-extern s16 EmEffectAttack_DaimyoJetDelays[];
-extern u16 EmEffectAttack_FatalisBlastVariantRolls[];
-extern s16 EmEffectAttack_FatalisBlastFrames[];
-u16 Vec_Heading(f32 *a, f32 *b);
-u16 Vec_Elevation(f32 *a, f32 *b);
-extern u16 *EmEffectAttack_PartModels[];
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-void Effect_GetColor(s32 area, u8 *r, u8 *g, u8 *b, u8 *a);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
 extern f32 gCamMatrix[];
-s16 EmSlot_FindKind(s16 k);
-u16 Area_DayId(u16 id);
-void EmEffectAttack_InitParts(ObjAttach *o);
 extern HitShape *EmEffectAttack_HitShapes[];
-extern f32 EmEffectAttack_Speeds[];
-extern f32 EmEffectAttack_Gravities[];
 extern f32 EmEffectAttack_FatalisSweepSpots[][3];
 extern f32 EmEffectAttack_FatalisBlastSpots[][3];
 extern f32 EmEffectAttack_ShenDropSpotsFortress5[][3];
 extern f32 EmEffectAttack_ShenDropSpotsTown2[][3];
 extern f32 EmEffectAttack_ShenDropSpotsTown3[][3];
 extern f32 EmEffectAttack_ShenDropSpotsTown0[][3];
-void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw);
-f32 EmEffectAttack_ChainGrowth(ObjAttach *o);
-void Mtx_Identity(f32 *m);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-f32 Math_Sqrtf(f32 x);
-s32 Gs_SetState(u8 reg, u32 v);
 void Key_LerpVec2(f32 *k, volatile f32 *out, f32 t);
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-s16 DrawSlot_Alloc(void);
-s16 DrawSlotB_Alloc(void);
-struct DrawSlot *DrawSlot_Get(s32 i);
-struct DrawSlot *DrawSlotB_Get(s32 i);
-void EmEffectAttack_DrawPart(DrawSlot *d);
-EmBone *Em_GetBone(void *obj, s16 bone);
-extern u8 EmEffectAttack_CongalalaGasKinds[];
-extern u16 EmEffectAttack_CongalalaGasStarts[];
-f32 Rand_Unit(void);
-void Vec_RotateX(f32 *v, f32 angle);
-extern s16 EmEffectAttack_DaimyoJetFrames[];
-void Vec_RotateY(f32 *v, f32 angle);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_Add(f32 *, f32 *, f32 *);
-extern u8 EmEffectAttack_Bones[];
-extern f32 EmEffectAttack_BoneOfs[];
 extern f32 EmEffectAttack_BoneOfsY[];
 extern f32 EmEffectAttack_BoneOfsZ[];
-StageObj *MonsterFx_CreateAtYaw(f32 *pos, u16 v, u8 k, f32 scale);
 void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-extern s16 EmEffectAttack_MotionBase[];
-extern void *EmEffectAttack_RowsPtr;
 /*
- * One part of an EmEffectAttack (0x3C bytes): the parts follow the
+ * One part of an EmEffectAttack (60 bytes): the parts follow the
  * buffer's 12-byte header.
  */
 typedef struct EmEffectAttackPart {
@@ -158,28 +112,10 @@ typedef struct EmEffectAttackPart {
     u8 aux;         /* 0x3B: by type: the texture's second cell, or the fade frames */
 } EmEffectAttackPart;
 void EmEffectAttack_StartCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p);
-f32 Rand_Signed(void);
 u16 Area_IdForCurrentTime(u16);
-ObjAttach *ObjAttach_Alloc(s32 n);
-void ObjAttach_Free(ObjAttach *p);
-u16 Rand_Next(s32 stream);
-void EmEffectAttack_Run(ObjAttach *o);
-void EmEffectAttack_Hit(ObjAttach *o);
-void EmEffectAttack_End(ObjAttach *o);
-void EmEffectAttack_Free(ObjAttach *o);
-void DrawSlot_Free(s32);
-extern s16 EmEffectAttack_PartCounts[];
-void EmEffectAttack_Update(ObjAttach *o);
 struct DrawSlot;
-s32 OT_AddByDepth(u32 *table, struct DrawSlot *node, u32 n, s32 clamp);
-void Vec_Copy(f32 *out, f32 *in);
-u8 Player_InCurrentArea(void *obj);
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *, s32 a, s32 b, void *c);
-f32 Math_Absf(f32 x);
 void *EmEffectAttack_Create(Em *em, s32 kind, s32 c, s32 a, s32 b);
 void EmEffectAttack_UpdateLink(ObjAttach *o, EmEffectAttackLink *e, EmEffectAttackLink *prev, void *bone, f32 *dir, s16 f);
-void EmEffectAttack_Setup(ObjAttach *o);
 
 /*
  * Sets o up as an EmEffectAttack of the given type and variant (stateVar1)
@@ -282,7 +218,7 @@ void EmEffectAttack_CreateTimed(Em *em, s32 type, s32 variant, s32 pitch, s32 ya
  */
 void *EmEffectAttack_CreateDescentBlast(Em *em, s16 type, s16 spot, s32 pitch, s32 yaw)
 {
-    return EmEffectAttack_Create(em, type, (s16) (spot + 0x18), pitch, yaw);
+    return EmEffectAttack_Create(em, type, (s16) (spot + 24), pitch, yaw);
 }
 
 /*
@@ -377,7 +313,7 @@ void EmEffectAttack_StartMotion(ObjAttach *o, s32 owner)
 void EmEffectAttack_InitParts(ObjAttach *o)
 {
     u8 *attackBuf = o->buf;
-    EmEffectAttackPart *effPart = (EmEffectAttackPart *) (attackBuf + 0xC);
+    EmEffectAttackPart *effPart = (EmEffectAttackPart *) (attackBuf + 12);
     Em *em = o->owner;
     s16 count;
     s16 i;
@@ -396,31 +332,31 @@ void EmEffectAttack_InitParts(ObjAttach *o)
         *(u16 *) attackBuf = em->motionId[0];
         break;
     case EMFX_CONGALALA_GAS:
-        o->yaw = o->rotY + 0x8000;
-        if (o->aux == 0x3E) {
+        o->yaw = o->rotY + ANGLE_TURN / 2;
+        if (o->aux == 62) {
             o->stateVar0 = 1;
         }
         break;
     case EMFX_CONGALALA_RAGE_GAS:
-        Em_PlaySeChecked(em, 0x25, 0, o->pos, 6, 0);
-        Em_PlaySeChecked(em, 0x18, 0, o->pos, 6, 0);
+        Em_PlaySeChecked(em, 37, 0, o->pos, 6, 0);
+        Em_PlaySeChecked(em, 24, 0, o->pos, 6, 0);
         break;
     case EMFX_SHOGUN_JET:
         *(s16 *) (attackBuf + 2) = o->rotX;
         *(s16 *) (attackBuf + 4) = o->rotY - em->rotY;
         *(u16 *) attackBuf = em->motionId[0];
         *(f32 *) (attackBuf + 8) = em->floorY;
-        Em_PlaySeChecked(em, 0x3A, 0, o->pos2, 0x18, 0);
+        Em_PlaySeChecked(em, 58, 0, o->pos2, 24, 0);
         break;
     case EMFX_FATALIS_SWEEP_BLAST:
         if (o->area == gScene.area) {
-            Em_PlaySeChecked(em, 0x42, 0, o->pos, 15, 0);
+            Em_PlaySeChecked(em, 66, 0, o->pos, 15, 0);
         }
         break;
     case EMFX_FATALIS_BLAST:
         o->hitDelay += 30;
         if (o->area == gScene.area) {
-            Em_PlaySeChecked(em, 0x42, 0, o->pos, 15, 0);
+            Em_PlaySeChecked(em, 66, 0, o->pos, 15, 0);
         }
         break;
     }
@@ -471,7 +407,7 @@ void EmEffectAttack_InitParts(ObjAttach *o)
                 effPart->type = 0;
                 effPart->curveXY = 0;
                 effPart->rotZ = Rand_Next(1);
-                effPart->spinZ = 0x444;
+                effPart->spinZ = 1092;
             } else {
                 effPart->type = 1;
             }
@@ -484,7 +420,7 @@ void EmEffectAttack_InitParts(ObjAttach *o)
             case 0:
                 effPart->curveXY = 0;
                 effPart->rotZ = Rand_Next(1);
-                effPart->spinZ = 0x1000;
+                effPart->spinZ = 4096;
                 break;
             case 1:
                 effPart->curveXY = 0;
@@ -503,15 +439,15 @@ void EmEffectAttack_InitParts(ObjAttach *o)
             case 0:
                 effPart->type = 1;
                 effPart->aux = 1;
-                effPart->spinX = 0x1222;
-                effPart->spinY = 0x234;
+                effPart->spinX = 4642;
+                effPart->spinY = 564;
                 effPart->spinZ = 0;
                 break;
             case 1:
                 effPart->scale *= 0.9f;
                 effPart->aux = 0;
-                effPart->spinX = -0xACE;
-                effPart->spinY = -0x40D;
+                effPart->spinX = -2766;
+                effPart->spinY = -1037;
                 effPart->spinZ = 0;
                 break;
             case 2:
@@ -519,7 +455,7 @@ void EmEffectAttack_InitParts(ObjAttach *o)
                 break;
             case 3:
                 effPart->type = 2;
-                effPart->rotX = 0x4000;
+                effPart->rotX = ANGLE_TURN / 4;
                 switch (Area_DayId(o->area)) {
                 case AREA_FORTRESS_5:
                 default:
@@ -563,7 +499,7 @@ void EmEffectAttack_InitParts(ObjAttach *o)
                 effPart->rotX = o->rotX;
                 effPart->rotY = o->rotY;
                 effPart->rotZ = Rand_Next(1);
-                effPart->spinZ = 0xE39;
+                effPart->spinZ = 3641;
                 effPart->curveXY = 0;
                 effPart->aux = 0;
                 effPart->type = 0;
@@ -584,14 +520,14 @@ void EmEffectAttack_InitParts(ObjAttach *o)
             x = EmEffectAttack_BoneOfs[o->type * 3];
             y = EmEffectAttack_BoneOfs[o->type * 3 + 1];
             z = EmEffectAttack_BoneOfs[o->type * 3 + 2];
-            x += (Rand_Next(1) & 0x3F) - 0x20;
-            y += (Rand_Next(1) & 0x1F) - 0x10;
-            x += (Rand_Next(1) & 0x3F) - 0x20;
+            x += (Rand_Next(1) & 0x3F) - 32;
+            y += (Rand_Next(1) & 0x1F) - 16;
+            x += (Rand_Next(1) & 0x3F) - 32;
             effPart->vec[0] += x;
             effPart->vec[1] += y;
             effPart->vec[2] += z;
             effPart->rotZ = Rand_Next(1);
-            effPart->spinZ = 0x5B;
+            effPart->spinZ = 91;
             bits = Rand_Next(1);
             if (bits & 1) {
                 effPart->spinZ = -effPart->spinZ;
@@ -609,7 +545,7 @@ void EmEffectAttack_InitParts(ObjAttach *o)
         case EMFX_CHAMELEOS_BREATH:
             effPart->aux = 0;
             effPart->rotZ = Rand_Next(1);
-            effPart->spinZ = 0xB61;
+            effPart->spinZ = 2913;
             effPart->curveXY = 0;
             break;
         case EMFX_FATALIS_SWEEP_BLAST:
@@ -651,7 +587,7 @@ void EmEffectAttack_InitParts(ObjAttach *o)
                 } else {
                     effPart->frame = 0;
                 }
-                effPart->rotX = 0x4000;
+                effPart->rotX = ANGLE_TURN / 4;
                 effPart->vec[1] += 5.0f;
                 break;
             }
@@ -665,18 +601,18 @@ void EmEffectAttack_InitParts(ObjAttach *o)
             case 0:
                 effPart->curveXY = 0;
                 effPart->rotZ = Rand_Next(1);
-                effPart->spinZ = 0x1000;
+                effPart->spinZ = 4096;
                 break;
             case 1:
                 effPart->curveXY = 0;
                 effPart->rotZ = Rand_Next(1);
-                effPart->spinZ = 0x71C;
+                effPart->spinZ = 1820;
                 break;
             case 2:
                 effPart->frame = -15;
                 effPart->curveXY = 0;
                 effPart->rotZ = Rand_Next(1);
-                effPart->spinZ = 0x71C;
+                effPart->spinZ = 1820;
                 break;
             case 3:
             case 4:
@@ -738,7 +674,7 @@ void EmEffectAttack_InitChain(ObjAttach *o)
         link->delay = -1 - i;
         link->spin = Rand_Next(1);
         if (link->index == 0) {
-            link->spinSpeed = 0xB6;
+            link->spinSpeed = 182;
         } else {
             link->spinSpeed = 0;
         }
@@ -812,7 +748,7 @@ void EmEffectAttack_Setup(ObjAttach *o)
     o->homingTurn = 0.0f;
     o->gravity = EmEffectAttack_Gravities[o->type];
     o->homingSpeed = 0.0f;
-    if (EmEffectAttack_Bones[o->type] != 0xFF) {
+    if (EmEffectAttack_Bones[o->type] != 255) {
         bone = Em_Bone(em, EmEffectAttack_Bones[o->type]);
         off[0] = EmEffectAttack_BoneOfs[o->type * 3];
         off[1] = EmEffectAttack_BoneOfs[o->type * 3 + 1];
@@ -887,12 +823,12 @@ void EmEffectAttack_Setup(ObjAttach *o)
     EmEffectAttack_Run(o);
 }
 
-/* The owner's bone 0x25, through an inlined helper: its return value is a
+/* The owner's KUSH_BONE_BREATH, through an inlined helper: its return value is a
  * temporary with a 16-byte stack slot, where bone is spilled (sp+0xB0; a
- * plain `bone = Em_Bone(m, 0x25)` gets a 4-byte slot at sp+0xBC). */
+ * plain `bone = Em_Bone(m, KUSH_BONE_BREATH)` gets a 4-byte slot at sp+0xBC). */
 static inline void *EmEffectAttack_ChainBone(Em *em)
 {
-    return Em_Bone(em, 0x25);
+    return Em_Bone(em, KUSH_BONE_BREATH);
 }
 
 /*
@@ -920,7 +856,7 @@ s32 EmEffectAttack_RunChain(ObjAttach *o)
 
     switch (o->stateVar0) {
     case 0:
-        if (em->active == 0 || em->taskPhase == 3 || (em->motionId[0] != 0x417 && em->motionId[0] != 0x41A) || o->ownerMotion >= 300) {
+        if (em->active == 0 || em->taskPhase == 3 || (em->motionId[0] != 1047 && em->motionId[0] != 1050) || o->ownerMotion >= 300) {
             chain->timer = 0;
             Vec_Copy(chain->link[0].pos, chain->link[0].from[0]);
             o->stateVar0++;
@@ -961,7 +897,7 @@ s32 EmEffectAttack_RunChain(ObjAttach *o)
             }
             if (chainLink->delay >= 0) {
                 Key_LerpVec2(EmEffectAttack_ScaleKeys[curveIdx], chainLink->size, (f32) chainLink->delay);
-                Color_EvalKeys(EmEffectAttack_ColorKeys[colorIdx], (f32) chainLink->delay, &chainLink->color);
+                Color_EvalKeys((s32 *)EmEffectAttack_ColorKeys[colorIdx], (f32) chainLink->delay, &chainLink->color);
                 chainLink->pos[1] += 2.0f;
             }
             break;
@@ -969,7 +905,7 @@ s32 EmEffectAttack_RunChain(ObjAttach *o)
             if (++chainLink->delay == 0) {
                 if (chain->headAlive != 0) {
                     if (em->active != 0 || em->taskPhase != 3) {
-                        Em_BonePos(em, 0x25, chainLink->pos);
+                        Em_BonePos(em, KUSH_BONE_BREATH, chainLink->pos);
                     } else {
                         chain->headAlive = 0;
                         chainLink->delay = 30;
@@ -985,39 +921,29 @@ s32 EmEffectAttack_RunChain(ObjAttach *o)
                 continue;
             }
             Key_LerpVec2(EmEffectAttack_ScaleKeys[curveIdx], chainLink->size, (f32) chainLink->delay);
-            Color_EvalKeys(EmEffectAttack_ColorKeys[colorIdx], (f32) chainLink->delay, &chainLink->color);
+            Color_EvalKeys((s32 *)EmEffectAttack_ColorKeys[colorIdx], (f32) chainLink->delay, &chainLink->color);
             chainLink->pos[1] += 2.0f;
             break;
         }
         if (chainLink->draw != NULL) {
             Vec_Copy(chainLink->draw->pos, chainLink->pos);
-            OT_AddByDepth(gDrawOtSorted, chainLink->draw, 0x40U, 0);
+            OT_AddByDepth(gDrawOtSorted, chainLink->draw, 64U, 0);
         }
     }
     if (moved != 0 && o->ownerMotion % 10 == 0) {
-        Em_PlaySeChecked(em, 0x42, 0, o->pos, 6, 0);
+        Em_PlaySeChecked(em, 66, 0, o->pos, 6, 0);
     }
     return 0;
 }
 
 void ObjAttach_MoveAccel(ObjAttach *);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 AreaGrid2_GetFloorYFiltered(f32 *pos);
-void MonsterFx_CreateAt(f32 *src, u8 k, f32 f);
-void MonsterFx_CreateAtAngled(f32 *pos, u16 w, u16 v, u8 k, f32 scale);
-void MonsterFx_CreateMoving(f32 *pos, f32 *pos2, u8 k, f32 scale);
-void Vec_Diff(f32 *out, f32 *a, f32 *b);
-void Vec_Scale(f32 *out, f32 *in, f32 s);
-void EmEffectAttack_Impact(ObjAttach *o, s16 n, f32 *pos);
-void EmEffectAttack_PlaceAtBone(ObjAttach *o, u16 *ang);
 void EmEffectAttack_StartYamaInhalePart(ObjAttach *o, EmEffectAttackPart *p);
 void EmEffectAttack_StartCongalalaBreathPart(ObjAttach *o, EmEffectAttackPart *p);
 void EmEffectAttack_StartDaimyoJetDrop(ObjAttach *o, EmEffectAttackPart *p);
 void EmEffectAttack_PlaceCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p);
 void EmEffectAttack_StartChameleosBallPart(ObjAttach *o, EmEffectAttackPart *p);
-s32 EmEffectAttack_RunChain(ObjAttach *o);
 extern s16 EmEffectAttack_Lives[];
-extern u32 EmEffectAttack_PartFrames[];
+extern s16 *EmEffectAttack_PartFrames[];
 
 /*
  * Runs a frame of an EmEffectAttack. Counts its age in ownerMotion and ends
@@ -1036,7 +962,7 @@ void EmEffectAttack_Run(ObjAttach *o)
     f32 ground[3];
     u8 *attackBuf = o->buf;
     Em *em = o->owner;
-    EmEffectAttackPart *part = (EmEffectAttackPart *) (attackBuf + 0xC);
+    EmEffectAttackPart *part = (EmEffectAttackPart *) (attackBuf + 12);
     s16 *frameTbl;
     s16 count;
     s32 colorTime;
@@ -1055,7 +981,7 @@ void EmEffectAttack_Run(ObjAttach *o)
 
     count = EmEffectAttack_PartCounts[o->type];
     life = EmEffectAttack_Lives[o->type];
-    frameTbl = (s16 *) EmEffectAttack_PartFrames[o->type];
+    frameTbl = EmEffectAttack_PartFrames[o->type];
     o->ownerMotion++;
     if (life != 1000 && life < o->ownerMotion) {
         o->hitFrames = 0;
@@ -1077,7 +1003,7 @@ void EmEffectAttack_Run(ObjAttach *o)
     case EMFX_CHAMELEOS_BREATH:
         break;
     case EMFX_SHEN_SHOT_DROP:
-        if (o->ownerMotion <= 0x8C) {
+        if (o->ownerMotion <= 140) {
             return;
         }
         o->pos2[0] = o->pos[0];
@@ -1109,14 +1035,14 @@ void EmEffectAttack_Run(ObjAttach *o)
             if (em->active == 0 || em->taskPhase == 3 || *(s16 *) attackBuf != em->motionId[0] || EmMotion_ReachedFrame(em, 0, 235.0f) != 0) {
                 o->hitPhase = 0;
                 o->hitFrames = 0;
-                o->stateVar0 = 0xFF;
+                o->stateVar0 = 255;
                 faded = 0;
             } else {
                 EmEffectAttack_PlaceAtBone(o, (u16 *) attackBuf);
                 o->yaw = o->rotY;
             }
             break;
-        case 0xFF:
+        case 255:
             faded = 0;
             break;
         }
@@ -1124,7 +1050,7 @@ void EmEffectAttack_Run(ObjAttach *o)
     case EMFX_RAJANG_SHOT:
         ObjAttach_MoveAccel(o);
         if (o->area == gScene.area && o->ownerMotion % 5 == 0) {
-            Em_PlaySeChecked(o->owner, 0xE, 0, o->pos, 0x18, 0);
+            Em_PlaySeChecked(o->owner, 14, 0, o->pos, 24, 0);
         }
         break;
     case EMFX_SHEN_SHOT:
@@ -1137,20 +1063,20 @@ void EmEffectAttack_Run(ObjAttach *o)
         Vec_DirToAngles(&o->velX, (s16 *) &o->rotX, (s16 *) &o->rotY);
         if (o->area == gScene.area) {
             if (o->ownerMotion < life - 5 && o->ownerMotion >= 4 && o->ownerMotion % 3 == 2) {
-                MonsterFx_CreateAtAngled(o->pos, o->rotX, o->rotY, 0x1B, 1.0f);
+                MonsterFx_CreateAtAngled(o->pos, o->rotX, o->rotY, 27, 1.0f);
             }
             if (o->area == gScene.area && o->ownerMotion % 5 == 0) {
-                Em_PlaySeAtPos(em, 0x38, 0, o->pos, 0x18, 0);
+                Em_PlaySeAtPos(em, 56, 0, o->pos, 24, 0);
             }
         }
         break;
     case EMFX_DAIMYO_JET:
         faded = 0;
-        if (o->stateVar0 != 0xFF) {
-            if (o->ownerMotion >= 0x26 || em->active == 0 || em->taskPhase == 3) {
+        if (o->stateVar0 != 255) {
+            if (o->ownerMotion >= 38 || em->active == 0 || em->taskPhase == 3) {
                 o->hitPhase = 0;
                 o->hitFrames = 0;
-                o->stateVar0 = 0xFF;
+                o->stateVar0 = 255;
             } else {
                 EmEffectAttack_PlaceAtBone(o, (u16 *) attackBuf);
             }
@@ -1163,12 +1089,12 @@ void EmEffectAttack_Run(ObjAttach *o)
             o->state = ATTACH_END;
             return;
         }
-        if (o->ownerMotion >= 0x24) {
+        if (o->ownerMotion >= 36) {
             o->hitPhase = 0;
         }
         break;
     case EMFX_CONGALALA_RAGE_GAS:
-        if (o->ownerMotion >= 0x2A) {
+        if (o->ownerMotion >= 42) {
             o->hitPhase = 0;
         }
         break;
@@ -1176,13 +1102,13 @@ void EmEffectAttack_Run(ObjAttach *o)
         ObjAttach_MoveAccel(o);
         Vec_DirToAngles(&o->velX, (s16 *) &o->rotX, (s16 *) &o->rotY);
         if (o->area == gScene.area && o->ownerMotion < life - 5 && o->ownerMotion >= 4 && o->ownerMotion % 3 == 2) {
-            MonsterFx_CreateAtAngled(o->pos, o->rotX, o->rotY, 0x1B, 1.0f);
+            MonsterFx_CreateAtAngled(o->pos, o->rotX, o->rotY, 27, 1.0f);
         }
         break;
     case EMFX_CHAMELEOS_BALL:
         ObjAttach_MoveAccel(o);
         if (o->area == gScene.area && o->ownerMotion > 0 && (o->ownerMotion & 1) == 0) {
-            MonsterFx_CreateAt(o->pos, 0x1F, 1.0f);
+            MonsterFx_CreateAt(o->pos, 31, 1.0f);
         }
         break;
     case EMFX_SHOGUN_JET:
@@ -1202,13 +1128,13 @@ void EmEffectAttack_Run(ObjAttach *o)
                 o->hitPhase = 0;
                 o->hitFrames = 0;
                 faded = 0;
-                o->stateVar0 = 0xFF;
+                o->stateVar0 = 255;
             } else {
                 EmEffectAttack_PlaceAtBone(o, (u16 *) attackBuf);
                 o->yaw = o->rotY;
             }
             break;
-        case 0xFF:
+        case 255:
             faded = 0;
             break;
         }
@@ -1219,13 +1145,13 @@ void EmEffectAttack_Run(ObjAttach *o)
             if (em->active == 0 || em->taskPhase == 3 || *(s16 *) attackBuf != em->motionId[0] || --*(s16 *) (attackBuf + 6) <= 0) {
                 o->hitPhase = 0;
                 o->hitFrames = 0;
-                o->stateVar0 = 0xFF;
+                o->stateVar0 = 255;
                 faded = 0;
             } else {
                 EmEffectAttack_PlaceAtBone(o, (u16 *) attackBuf);
             }
             break;
-        case 0xFF:
+        case 255:
             faded = 0;
             break;
         }
@@ -1236,7 +1162,7 @@ void EmEffectAttack_Run(ObjAttach *o)
     case EMFX_FATALIS_FIREBALL:
         ObjAttach_MoveAccel(o);
         if (o->area == gScene.area && o->ownerMotion % 5 == 0) {
-            Em_PlaySeChecked(o->owner, 0x38, 0, o->pos, 0x18, 0);
+            Em_PlaySeChecked(o->owner, 56, 0, o->pos, 24, 0);
         }
         break;
     default:
@@ -1250,7 +1176,7 @@ void EmEffectAttack_Run(ObjAttach *o)
         }
         switch (o->type) {
         case EMFX_CONGALALA_BREATH:
-            if (o->stateVar0 == 0xFF) {
+            if (o->stateVar0 == 255) {
                 switch (part->type) {
                 case 0:
                     faded++;
@@ -1265,7 +1191,7 @@ void EmEffectAttack_Run(ObjAttach *o)
             colorIdx = part->type + EmEffectAttack_ColorKeyBase[o->type];
             break;
         case EMFX_CONGALALA_GAS:
-            if (part->type == 0xFF) {
+            if (part->type == 255) {
                 continue;
             }
             curveIdx = part->type + EmEffectAttack_ScaleKeyBase[o->type];
@@ -1293,7 +1219,7 @@ void EmEffectAttack_Run(ObjAttach *o)
                 }
                 break;
             case EMFX_CONGALALA_BREATH:
-                if (o->stateVar0 == 0xFF) {
+                if (o->stateVar0 == 255) {
                     part->frame = limit;
                     faded++;
                     continue;
@@ -1316,7 +1242,7 @@ void EmEffectAttack_Run(ObjAttach *o)
                 }
                 break;
             case EMFX_DAIMYO_JET:
-                if (o->stateVar0 == 0xFF) {
+                if (o->stateVar0 == 255) {
                     part->frame = limit;
                     faded++;
                     continue;
@@ -1336,7 +1262,7 @@ void EmEffectAttack_Run(ObjAttach *o)
                 break;
             case EMFX_CONGALALA_GAS:
                 EmEffectAttack_StartCongalalaGasPuff(o, part);
-                if (part->type == 0xFF) {
+                if (part->type == 255) {
                     continue;
                 }
                 if (frameTbl != NULL) {
@@ -1362,7 +1288,7 @@ void EmEffectAttack_Run(ObjAttach *o)
             case EMFX_CONGALALA_BREATH:
             case EMFX_DAIMYO_JET:
             case EMFX_CONGALALA_GAS:
-                if (o->stateVar0 == 0xFF) {
+                if (o->stateVar0 == 255) {
                     part->frame = limit;
                     faded++;
                 }
@@ -1376,7 +1302,7 @@ void EmEffectAttack_Run(ObjAttach *o)
                 EmEffectAttack_StartYamaInhalePart(o, part);
                 break;
             case EMFX_CONGALALA_BREATH:
-                if (o->stateVar0 == 0xFF) {
+                if (o->stateVar0 == 255) {
                     part->frame = limit;
                     faded++;
                     continue;
@@ -1448,7 +1374,7 @@ void EmEffectAttack_Run(ObjAttach *o)
         case EMFX_DAIMYO_JET:
             switch (part->type) {
             case 0:
-                if (o->stateVar0 == 0xFF) {
+                if (o->stateVar0 == 255) {
                     if (++part->aux >= 10) {
                         part->aux = 10;
                         faded++;
@@ -1470,7 +1396,7 @@ void EmEffectAttack_Run(ObjAttach *o)
             }
             break;
         case EMFX_SHOGUN_JET:
-            if (o->stateVar0 == 0xFF) {
+            if (o->stateVar0 == 255) {
                 if (++part->aux >= 10) {
                     part->aux = 10;
                     faded++;
@@ -1483,7 +1409,7 @@ void EmEffectAttack_Run(ObjAttach *o)
             colorTime = part->aux;
             break;
         case EMFX_CHAMELEOS_BREATH:
-            if (o->stateVar0 == 0xFF) {
+            if (o->stateVar0 == 255) {
                 if (++part->aux >= 20) {
                     part->aux = 20;
                     faded++;
@@ -1502,7 +1428,7 @@ void EmEffectAttack_Run(ObjAttach *o)
         } else {
             Key_LerpVec3(EmEffectAttack_ScaleKeys[curveIdx], part->size, scaleTime);
         }
-        Color_EvalKeys(EmEffectAttack_ColorKeys[colorIdx], colorTime, (u32 *) &part->color);
+        Color_EvalKeys((s32 *)EmEffectAttack_ColorKeys[colorIdx], colorTime, (u32 *) &part->color);
         switch (o->type) {
         case EMFX_YAMA_INHALE:
             switch (part->type) {
@@ -1613,9 +1539,9 @@ void EmEffectAttack_Run(ObjAttach *o)
                 break;
             }
             if (part->sorted == 0) {
-                OT_AddByDepth(gDrawOt32, part->draw, 0x20, 0);
+                OT_AddByDepth(gDrawOt32, part->draw, 32, 0);
             } else {
-                OT_AddByDepth(gDrawOtSorted, part->draw, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, part->draw, 64, 0);
             }
         }
     }
@@ -1679,7 +1605,7 @@ void EmEffectAttack_Run(ObjAttach *o)
         }
         break;
     case EMFX_DAIMYO_JET:
-        part = (EmEffectAttackPart *) (attackBuf + 0xC);
+        part = (EmEffectAttackPart *) (attackBuf + 12);
         if (o->hitPhase != 0) {
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
@@ -1690,7 +1616,7 @@ void EmEffectAttack_Run(ObjAttach *o)
             o->pos[1] = o->pos2[1] + ofs[1];
             o->pos[2] = o->pos2[2] + ofs[2];
             if (o->area == gScene.area && o->ownerMotion % 10 == 0) {
-                Em_PlaySeChecked(em, 0x44, 0, o->pos, 6, 0);
+                Em_PlaySeChecked(em, 68, 0, o->pos, 6, 0);
             }
         } else if (faded >= total) {
             o->state = ATTACH_END;
@@ -1733,7 +1659,7 @@ void EmEffectAttack_Run(ObjAttach *o)
         }
         break;
     case EMFX_SHOGUN_JET:
-        part = (EmEffectAttackPart *) (attackBuf + 0xC);
+        part = (EmEffectAttackPart *) (attackBuf + 12);
         if (o->hitPhase != 0) {
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
@@ -1749,8 +1675,8 @@ void EmEffectAttack_Run(ObjAttach *o)
                     ground[0] = o->pos2[0] + ofs[0] * floorFrac;
                     ground[1] = *(f32 *) (attackBuf + 8);
                     ground[2] = o->pos2[2] + ofs[2] * floorFrac;
-                    Em_PlaySeChecked(em, 0x3B, 0, ground, 0x18, 0);
-                    MonsterFx_CreateAt(ground, 0x23, 1.0f);
+                    Em_PlaySeChecked(em, 59, 0, ground, 24, 0);
+                    MonsterFx_CreateAt(ground, 35, 1.0f);
                 }
             }
         } else if (faded >= total) {
@@ -1769,7 +1695,7 @@ void EmEffectAttack_Run(ObjAttach *o)
             o->pos[2] = o->pos2[2] + 900.0f * ofs[2];
             if (o->area == gScene.area) {
                 if (o->ownerMotion % 10 == 0) {
-                    Em_PlaySeChecked(em, 0x3C, 0, o->pos, 6, 0);
+                    Em_PlaySeChecked(em, 60, 0, o->pos, 6, 0);
                 }
                 if (o->ownerMotion % 6 == 0) {
                     MonsterFx_CreateMoving(o->pos, ofs, 4, 1.0f);
@@ -1791,7 +1717,7 @@ void EmEffectAttack_Hit(ObjAttach *o)
 /* Frees the draw slots of o's parts (gDrawSlotsB ones when o->keep). */
 void EmEffectAttack_FreePartSlots(ObjAttach *o)
 {
-    EmEffectAttackPart *part = (EmEffectAttackPart *) (o->buf + 0xC);
+    EmEffectAttackPart *part = (EmEffectAttackPart *) (o->buf + 12);
     s16 count = EmEffectAttack_PartCounts[o->type];
     s16 i;
 
@@ -1932,7 +1858,7 @@ void EmEffectAttack_DrawChain(DrawSlot *d)
         case 0:
             origin[0] = origin[1] = origin[2] = 0.0f;
             rot[0] = (6.2831855f * Vec_Elevation(chainLink->dir[0], origin)) / 65536.0f;
-            rot[1] = (6.2831855f * ((u16) Vec_Heading(chainLink->dir[0], origin) + 0x4000)) / 65536.0f;
+            rot[1] = (6.2831855f * ((u16) Vec_Heading(chainLink->dir[0], origin) + ANGLE_TURN / 4)) / 65536.0f;
             Mtx_RotateX(mtx, rot[0]);
             Mtx_RotateY(mtx, rot[1]);
             Mtx_Translation(texMtx, 0.0f, (chainLink->age & 0xF) / 16.0f, 0.0f);
@@ -1943,17 +1869,15 @@ void EmEffectAttack_DrawChain(DrawSlot *d)
             Mtx_Translation(texMtx, 0.25f * (cell & 3), 0.25f * (cell >> 2), 0.0f);
             break;
         }
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
     } else {
         Mtx_Concat3x3(mtx, gCamMatrix);
     }
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     Effect_DrawModel(model, mtx, col, flags, tex);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
-s32 Effect_DrawModelAdd(void *list, f32 *v, void *base);
-void Mtx_Billboard(f32 *m, f32 *pos);
 extern u16 EmEffectAttack_FatalisBlastVariantModels[];
 
 /*
@@ -1993,7 +1917,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
     flags = 0;
     order = 0;
     o = d->owner;
-    effPart = (EmEffectAttackPart *) (o->buf + d->part * 0x3C + 0xC);
+    effPart = (EmEffectAttackPart *) (o->buf + d->part * 60 + 12);
     if (o->area != gScene.area) {
         return;
     }
@@ -2029,7 +1953,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         switch (effPart->type) {
         case 0:
             Mtx_Translation(texMtx, 0.0f, (o->ownerMotion & 0x1F) / 32.0f, 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             order = 4;
             flags |= 2;
             mode = 0;
@@ -2067,7 +1991,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         default:
             return;
         }
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_RAJANG_SHOT:
         switch (effPart->type) {
@@ -2077,7 +2001,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
             break;
         case 1:
             Mtx_Translation(texMtx, 0.0f, 0.1f * (o->ownerMotion % 10), 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             order = 7;
             mode = 0;
             break;
@@ -2101,7 +2025,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         case 0:
             frame = effPart->frame;
             Mtx_Translation(texMtx, 0.125f * (frame % 4), 0.125f * ((frame & 7) >> 2), 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             order = 3;
             mode = 1;
             flags |= 2;
@@ -2133,7 +2057,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         case 2:
         case 3:
         case 4:
-            if ((u8) (col >> 24) != 0xFF) {
+            if ((u8) (col >> 24) != 255) {
                 Mtx_Translation(texMtx, 0.75f, 0.0f, 0.0f);
             } else {
                 Mtx_Identity(texMtx);
@@ -2142,7 +2066,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         default:
             return;
         }
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_CONGALALA_GAS:
         switch (effPart->type) {
@@ -2165,7 +2089,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         default:
             return;
         }
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_CONGALALA_RAGE_GAS:
         if (effPart->aux == 0) {
@@ -2175,7 +2099,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         }
         mode = 1;
         order = 3;
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_CHAMELEOS_BALL:
         mode = 1;
@@ -2185,13 +2109,13 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         Mtx_Translation(texMtx, 0.0f, (o->ownerMotion & 7) / 8.0f, 0.0f);
         order = 4;
         mode = 3;
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_CHAMELEOS_BREATH:
         order = 7;
         mode = 0;
         Mtx_Translation(texMtx, 0.0f, (o->ownerMotion & 0x1F) / 32.0f, 0.0f);
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_FATALIS_SWEEP_BLAST:
     case EMFX_FATALIS_BLAST:
@@ -2227,7 +2151,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
             return;
         }
         Mtx_Identity(texMtx);
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     case EMFX_FATALIS_FIREBALL:
         switch (effPart->type) {
@@ -2240,7 +2164,7 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
             order = 7;
             mode = 0;
             Mtx_Translation(texMtx, 0.0f, 0.1875f * (effPart->frame / 30.0f), 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             break;
         case 3:
         case 4:
@@ -2293,13 +2217,13 @@ void EmEffectAttack_DrawPart(DrawSlot *d)
         break;
     }
     if (effPart->sorted == 0) {
-        Gs_SetState(0x67, col);
+        Gs_SetState(RS_COLOR2, col);
         Effect_DrawModelAdd(model, mtx, tex);
         return;
     }
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     Effect_DrawModel(model, mtx, col, flags, tex);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 /*
@@ -2318,21 +2242,21 @@ void EmEffectAttack_Impact(ObjAttach *o, s16 sunk, f32 *pos)
         default:
             return;
         case EMFX_RAJANG_SHOT:
-            Em_PlaySeChecked(em, 0xF, 0, pos, 6, 0);
-            MonsterFx_CreateAtYaw(pos, o->rotY, 0x11, 1.0f);
+            Em_PlaySeChecked(em, 15, 0, pos, 6, 0);
+            MonsterFx_CreateAtYaw(pos, o->rotY, 17, 1.0f);
             CamShake_SetA(4, pos);
             Explosion_CreateOwned((Player *)em, pos, EXPLOSION_RAJANG_SHOT);
             break;
         case EMFX_SHEN_SHOT:
         case EMFX_SHEN_SHOT_DROP:
-            Em_PlaySeAtPos(em, 0x39, 0, o->pos, 0x18, 0);
-            Sound_PlaySeAtPosChecked(1, 0x4F, 0, o->pos, 0x18, 0);
+            Em_PlaySeAtPos(em, 57, 0, o->pos, 24, 0);
+            Sound_PlaySeAtPosChecked(1, 79, 0, o->pos, 24, 0);
             FireBlast_CreateScaled(pos, 1, 0.45000002f);
             AttackBurst_CreateAtScaled(pos, o->rotY, 4, 0.45000002f);
             AttackBurst_CreateAtScaled(pos, o->rotY, 9, 3.0f);
             switch (sunk) {
             case 0:
-                AttackBurst_CreateAtScaled(pos, o->rotY, 0xB, 3.0f);
+                AttackBurst_CreateAtScaled(pos, o->rotY, 11, 3.0f);
                 CamShake_SetA(5, pos);
                 break;
             case 1:
@@ -2341,25 +2265,25 @@ void EmEffectAttack_Impact(ObjAttach *o, s16 sunk, f32 *pos)
             break;
         case EMFX_CHAMELEOS_BALL:
             if (o->stateVar1 != 1) {
-                Em_PlaySeChecked(em, 0x3B, 0, o->pos, 6, 0);
-                MonsterFx_CreateAtYaw(pos, o->rotY, 0x20, 1.0f);
+                Em_PlaySeChecked(em, 59, 0, o->pos, 6, 0);
+                MonsterFx_CreateAtYaw(pos, o->rotY, 32, 1.0f);
                 EmImpactAttack_CreateAt(em, pos, 7);
                 switch (sunk) {
                 case 0:
-                    MonsterFx_CreateAtYaw(pos, o->rotY, 0x21, 1.0f);
+                    MonsterFx_CreateAtYaw(pos, o->rotY, 33, 1.0f);
                     break;
                 case 1:
                     break;
                 }
             } else {
-                Em_PlaySeChecked(em, 0x3E, 0, o->pos, 6, 0);
-                DustCloud_CreateAt(pos, 0x1D, 0, 1.2f);
+                Em_PlaySeChecked(em, 62, 0, o->pos, 6, 0);
+                DustCloud_CreateAt(pos, 29, 0, 1.2f);
                 EmImpactAttack_CreateAt(em, pos, 14);
             }
             break;
         case EMFX_FATALIS_FIREBALL:
-            Em_PlaySeChecked(em, 0x25, 0, pos, 15, 0);
-            MonsterFx_CreateAtYaw(pos, o->rotY, 0x11, 1.0f);
+            Em_PlaySeChecked(em, 37, 0, pos, 15, 0);
+            MonsterFx_CreateAtYaw(pos, o->rotY, 17, 1.0f);
             CamShake_SetA(4, pos);
             Explosion_CreateOwned((Player *)em, pos, EXPLOSION_FATALIS_C_FIREBALL);
             break;
@@ -2385,7 +2309,7 @@ void EmEffectAttack_StartYamaInhalePart(ObjAttach *o, EmEffectAttackPart *p)
     case 1:
         ofs[0] = 0.0f;
         ofs[1] = 0.0f;
-        ofs[2] = em->scaleZ * ((Rand_Next(1) & 0x1FF) - 0x100);
+        ofs[2] = em->scaleZ * ((Rand_Next(1) & 0x1FF) - 256);
         Vec_RotateY(ofs, (6.2831855f * o->rotY) / 65536.0f);
         p->vec[0] += ofs[0];
         p->vec[2] += ofs[2];
@@ -2393,9 +2317,9 @@ void EmEffectAttack_StartYamaInhalePart(ObjAttach *o, EmEffectAttackPart *p)
         p->spinZ = -(Rand_Next(1) & 0x3FF);
         break;
     case 2:
-        ofs[0] = em->scaleX * ((Rand_Next(1) & 0x1FF) - 0x100);
-        ofs[1] = em->scaleY * ((Rand_Next(1) & 0x1FF) - 0x100);
-        ofs[2] = 2000.0f + em->scaleZ * ((Rand_Next(1) & 0x1FF) - 0x100);
+        ofs[0] = em->scaleX * ((Rand_Next(1) & 0x1FF) - 256);
+        ofs[1] = em->scaleY * ((Rand_Next(1) & 0x1FF) - 256);
+        ofs[2] = 2000.0f + em->scaleZ * ((Rand_Next(1) & 0x1FF) - 256);
         Vec_RotateY(ofs, (6.2831855f * o->rotY) / 65536.0f);
         p->vec[0] += ofs[0];
         p->vec[1] += ofs[1];
@@ -2408,9 +2332,9 @@ void EmEffectAttack_StartYamaInhalePart(ObjAttach *o, EmEffectAttackPart *p)
         break;
     case 3:
     case 4:
-        ofs[0] = em->scaleX * ((Rand_Next(1) & 0x3FF) - 0x200);
-        ofs[1] = em->scaleY * ((Rand_Next(1) & 0x3FF) - 0x200);
-        ofs[2] = 2000.0f + em->scaleZ * ((Rand_Next(1) & 0x3FF) - 0x200);
+        ofs[0] = em->scaleX * ((Rand_Next(1) & 0x3FF) - 512);
+        ofs[1] = em->scaleY * ((Rand_Next(1) & 0x3FF) - 512);
+        ofs[2] = 2000.0f + em->scaleZ * ((Rand_Next(1) & 0x3FF) - 512);
         Vec_RotateY(ofs, (6.2831855f * o->rotY) / 65536.0f);
         p->vec[0] += ofs[0];
         p->vec[1] += ofs[1];
@@ -2439,9 +2363,9 @@ void EmEffectAttack_StartCongalalaBreathPart(ObjAttach *o, EmEffectAttackPart *p
     case 0:
         break;
     case 1:
-        ofs[0] = em->scaleX * ((Rand_Next(1) & 0x7F) - 0x40);
-        ofs[1] = em->scaleY * ((Rand_Next(1) & 0x3F) - 0x20);
-        ofs[2] = 230.0f + em->scaleZ * ((Rand_Next(1) & 0x7F) - 0x40);
+        ofs[0] = em->scaleX * ((Rand_Next(1) & 0x7F) - 64);
+        ofs[1] = em->scaleY * ((Rand_Next(1) & 0x3F) - 32);
+        ofs[2] = 230.0f + em->scaleZ * ((Rand_Next(1) & 0x7F) - 64);
         Vec_RotateY(ofs, (6.2831855f * o->rotY) / 65536.0f);
         p->vec[0] += ofs[0];
         p->vec[1] += ofs[1];
@@ -2449,11 +2373,11 @@ void EmEffectAttack_StartCongalalaBreathPart(ObjAttach *o, EmEffectAttackPart *p
         bits = Rand_Next(1);
         p->aux = bits & 1;
         p->rotZ = Rand_Next(1);
-        p->spinZ = 0x5B;
+        p->spinZ = 91;
         if ((bits >> 1) & 1) {
             p->spinZ = -p->spinZ;
         }
-        Em_PlaySeChecked(em, 0x1A, 0, p->vec, 1, 0);
+        Em_PlaySeChecked(em, 26, 0, p->vec, 1, 0);
         break;
     }
 }
@@ -2478,9 +2402,9 @@ void EmEffectAttack_StartDaimyoJetDrop(ObjAttach *o, EmEffectAttackPart *p)
     case 3:
     case 4:
         p->scale = 1.5f * em->scaleX;
-        ofs[0] = em->scaleX * ((Rand_Next(1) & 0xFF) - 0x80);
-        ofs[1] = em->scaleY * ((Rand_Next(1) & 0xFF) - 0x80);
-        ofs[2] = 900.0f + em->scaleZ * ((Rand_Next(1) & 0xFF) - 0x80);
+        ofs[0] = em->scaleX * ((Rand_Next(1) & 0xFF) - 128);
+        ofs[1] = em->scaleY * ((Rand_Next(1) & 0xFF) - 128);
+        ofs[2] = 900.0f + em->scaleZ * ((Rand_Next(1) & 0xFF) - 128);
         Vec_RotateX(ofs, (6.2831855f * o->rotX) / 65536.0f);
         Vec_RotateY(ofs, (6.2831855f * o->rotY) / 65536.0f);
         p->vec[0] += ofs[0];
@@ -2508,18 +2432,18 @@ void EmEffectAttack_StartCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p)
     u16 *frames = EmEffectAttack_CongalalaGasStarts;
     u8 *types = EmEffectAttack_CongalalaGasKinds;
 
-    if (types[o->stateVar0] == 0xFF) {
-        p->type = 0xFF;
+    if (types[o->stateVar0] == 255) {
+        p->type = 255;
         return;
     }
     p->type = types[o->stateVar0];
     p->frame = o->ownerMotion - frames[o->stateVar0];
     switch (p->type) {
     case 1:
-        p->rotY = o->rotY + 0x8000 + (o->stateVar0 % 3 - 1) * 0x18E4 + ((Rand_Next(1) & 0x1FFF) - 0x1000);
+        p->rotY = o->rotY + (ANGLE_TURN / 2) + (o->stateVar0 % 3 - 1) * 0x18E4 + ((Rand_Next(1) & 0x1FFF) - ANGLE_TURN / 16);
         break;
     case 2:
-        p->rotY = o->rotY + 0x8000 + (((o->stateVar0 & 1) - 1) << 13) + (Rand_Next(1) & 0x1FFF);
+        p->rotY = o->rotY + (ANGLE_TURN / 2) + (((o->stateVar0 & 1) - 1) << 13) + (Rand_Next(1) & 0x1FFF);
         break;
     default:
         p->rotY = o->rotY;
@@ -2554,7 +2478,7 @@ void EmEffectAttack_PlaceCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p)
     case 1:
         p->curveXY = 1;
         p->rotZ = Rand_Next(1);
-        p->spinZ = 0x5B;
+        p->spinZ = 91;
         p->aux = Rand_Next(1) & 1;
         p->speed = 20.0f * p->scale;
         p->scale = 1.0f;
@@ -2562,7 +2486,7 @@ void EmEffectAttack_PlaceCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p)
     case 2:
         p->curveXY = 1;
         p->rotZ = Rand_Next(1);
-        p->spinZ = 0x5B;
+        p->spinZ = 91;
         p->aux = Rand_Next(1) & 1;
         p->scale = 0.5f;
         p->speed = 15.0f * p->scale;
@@ -2577,7 +2501,7 @@ void EmEffectAttack_PlaceCongalalaGasPuff(ObjAttach *o, EmEffectAttackPart *p)
 void EmEffectAttack_StartChameleosBallPart(ObjAttach *o, EmEffectAttackPart *p)
 {
     p->rotZ = Rand_Next(1);
-    p->spinZ = 0x71C;
+    p->spinZ = 1820;
     if (Rand_Next(1) & 1) {
         p->spinZ = -p->spinZ;
     }
@@ -2653,7 +2577,7 @@ void EmEffectAttack_UpdateLink(ObjAttach *o, EmEffectAttackLink *link, EmEffectA
     switch (link->index) {
     case 0:
         Mtx_GetTrans(link->pos, bone);
-        Vec_Copy(axis, (f32 *) ((u8 *) bone + 0x20));
+        Vec_Copy(axis, (f32 *) ((u8 *) bone + 32));
         Vec_DirToAngles(axis, (s16 *) &pitch, (s16 *) &yaw);
         dir[0] = 0.0f;
         dir[1] = 0.0f;
@@ -2678,7 +2602,7 @@ void EmEffectAttack_UpdateLink(ObjAttach *o, EmEffectAttackLink *link, EmEffectA
         break;
     }
     if (following == 0) {
-        for (i = 0, hist = link; i < 2; i++, hist = (EmEffectAttackLink *)((u8 *)hist + 0xC)) {
+        for (i = 0, hist = link; i < 2; i++, hist = (EmEffectAttackLink *)((u8 *)hist + 12)) {
             Vec_Copy(hist->dir[0], dir);
             Vec_Copy(hist->from[0], prev->pos);
         }
@@ -2687,7 +2611,7 @@ void EmEffectAttack_UpdateLink(ObjAttach *o, EmEffectAttackLink *link, EmEffectA
             Vec_Copy(link->dir[0], dir);
             Vec_Copy(link->from[0], prev->pos);
         } else {
-            hist = (EmEffectAttackLink *)((u8 *)link + 0xC);
+            hist = (EmEffectAttackLink *)((u8 *)link + 12);
             Vec_Copy(link->dir[0], hist->dir[0]);
             Vec_Copy(link->from[0], hist->from[0]);
         }
@@ -2703,7 +2627,7 @@ void EmEffectAttack_UpdateLink(ObjAttach *o, EmEffectAttackLink *link, EmEffectA
 void EmEffectAttack_RandLinkSpin(EmEffectAttackLink *link)
 {
     link->spin = Rand_Next(1);
-    link->spinSpeed = (s16) ((Rand_Next(1) & 0xFFFF & 0x1FF) - 0x100);
+    link->spinSpeed = (s16) ((Rand_Next(1) & 0xFFFF & 0x1FF) - 256);
 }
 
 /*
@@ -2721,7 +2645,7 @@ f32 EmEffectAttack_ChainGrowth(ObjAttach *o)
     if (age < 0) {
         return 0.2f;
     }
-    if (age < 0xF) {
+    if (age < 15) {
         growth = 0.2f + ((0.8f * (f32) age) / 15.0f);
     } else {
         growth = 1.0f;
@@ -2771,32 +2695,32 @@ HitShape *EmEffectAttack_HitShapes[12] = {
     EmEffectAttack_HitShapes_4, EmEffectAttack_HitShapes_5, EmEffectAttack_HitShapes_6, EmEffectAttack_HitShapes_7,
     EmEffectAttack_HitShapes_8, EmEffectAttack_HitShapes_9, EmEffectAttack_HitShapes_10, EmEffectAttack_HitShapes_11,
 };
-u32 EmEffectAttack_Rows[132] = {
+AttackRow EmEffectAttack_Rows[22] = {
 #include "game/008ABA80.inc"
 };
 void *EmEffectAttack_RowsPtr = (void *)EmEffectAttack_Rows;
-u32 EmEffectAttack_ScaleKeys_0[16] = {
+Vec3Key EmEffectAttack_ScaleKeys_0[4] = {
 #include "game/008ABCA0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_1[12] = {
+Vec3Key EmEffectAttack_ScaleKeys_1[3] = {
 #include "game/008ABCE0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_2[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_2[4] = {
 #include "game/008ABD10.inc"
 };
-u32 EmEffectAttack_ScaleKeys_3[12] = {
+Vec3Key EmEffectAttack_ScaleKeys_3[3] = {
 #include "game/008ABD40.inc"
 };
-u32 EmEffectAttack_ColorKeys_0[8] = {
+ColorKey EmEffectAttack_ColorKeys_0[3] = {
 #include "game/008ABD70.inc"
 };
-u32 EmEffectAttack_ColorKeys_1[8] = {
+ColorKey EmEffectAttack_ColorKeys_1[4] = {
 #include "game/008ABD90.inc"
 };
-u32 EmEffectAttack_ColorKeys_2[12] = {
+ColorKey EmEffectAttack_ColorKeys_2[5] = {
 #include "game/008ABDB0.inc"
 };
-u32 EmEffectAttack_ColorKeys_3[8] = {
+ColorKey EmEffectAttack_ColorKeys_3[3] = {
 #include "game/008ABDE0.inc"
 };
 s16 EmEffectAttack_YamaInhaleDelays[8] = {
@@ -2805,34 +2729,34 @@ s16 EmEffectAttack_YamaInhaleDelays[8] = {
 u16 EmEffectAttack_PartModels_0[8] = {
 #include "game/008ABE10.inc"
 };
-u32 EmEffectAttack_PartFrames_0[4] = {
+s16 EmEffectAttack_PartFrames_0[8] = {
 #include "game/008ABE20.inc"
 };
-u32 EmEffectAttack_ScaleKeys_5[16] = {
+Vec3Key EmEffectAttack_ScaleKeys_5[4] = {
 #include "game/008ABE30.inc"
 };
-u32 EmEffectAttack_ScaleKeys_6[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_6[4] = {
 #include "game/008ABE70.inc"
 };
-u32 EmEffectAttack_ColorKeys_5[12] = {
+ColorKey EmEffectAttack_ColorKeys_5[5] = {
 #include "game/008ABEA0.inc"
 };
-u32 EmEffectAttack_ColorKeys_6[8] = {
+ColorKey EmEffectAttack_ColorKeys_6[4] = {
 #include "game/008ABED0.inc"
 };
-u32 EmEffectAttack_ColorKeys_7[12] = {
+ColorKey EmEffectAttack_ColorKeys_7[5] = {
 #include "game/008ABEF0.inc"
 };
-u32 EmEffectAttack_ColorKeys_8[8] = {
+ColorKey EmEffectAttack_ColorKeys_8[4] = {
 #include "game/008ABF20.inc"
 };
-u32 EmEffectAttack_ColorKeys_9[12] = {
+ColorKey EmEffectAttack_ColorKeys_9[5] = {
 #include "game/008ABF40.inc"
 };
-u32 EmEffectAttack_ColorKeys_10[8] = {
+ColorKey EmEffectAttack_ColorKeys_10[4] = {
 #include "game/008ABF70.inc"
 };
-u32 EmEffectAttack_ColorKeys_11[12] = {
+ColorKey EmEffectAttack_ColorKeys_11[6] = {
 #include "game/008ABF90.inc"
 };
 u32 EmEffectAttack_ColorKeys_12[14] = {
@@ -2841,67 +2765,67 @@ u32 EmEffectAttack_ColorKeys_12[14] = {
 u16 EmEffectAttack_PartModels_1[4] = {
 #include "game/008ABFF8.inc"
 };
-u32 EmEffectAttack_PartFrames_1[4] = {
+s16 EmEffectAttack_PartFrames_1[8] = {
 #include "game/008AC000.inc"
 };
-u32 EmEffectAttack_ScaleKeys_7[16] = {
+Vec3Key EmEffectAttack_ScaleKeys_7[4] = {
 #include "game/008AC010.inc"
 };
-u32 EmEffectAttack_ScaleKeys_8[12] = {
+Vec3Key EmEffectAttack_ScaleKeys_8[3] = {
 #include "game/008AC050.inc"
 };
-u32 EmEffectAttack_ScaleKeys_9[8] = {
+f32 EmEffectAttack_ScaleKeys_9[8] = {
 #include "game/008AC080.inc"
 };
-u32 EmEffectAttack_ScaleKeys_10[8] = {
+f32 EmEffectAttack_ScaleKeys_10[8] = {
 #include "game/008AC0A0.inc"
 };
-u32 EmEffectAttack_ColorKeys_13[8] = {
+ColorKey EmEffectAttack_ColorKeys_13[3] = {
 #include "game/008AC0C0.inc"
 };
-u32 EmEffectAttack_ColorKeys_14[8] = {
+ColorKey EmEffectAttack_ColorKeys_14[4] = {
 #include "game/008AC0E0.inc"
 };
-u32 EmEffectAttack_ColorKeys_15[8] = {
+ColorKey EmEffectAttack_ColorKeys_15[4] = {
 #include "game/008AC100.inc"
 };
-u32 EmEffectAttack_ColorKeys_16[8] = {
+ColorKey EmEffectAttack_ColorKeys_16[4] = {
 #include "game/008AC120.inc"
 };
 u16 EmEffectAttack_PartModels_2[4] = {
 #include "game/008AC140.inc"
 };
-u32 EmEffectAttack_PartFrames_2[2] = {
+s16 EmEffectAttack_PartFrames_2[4] = {
 #include "game/008AC148.inc"
 };
-u32 EmEffectAttack_ScaleKeys_11[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_11[4] = {
 #include "game/008AC150.inc"
 };
-u32 EmEffectAttack_ScaleKeys_12[16] = {
+f32 EmEffectAttack_ScaleKeys_12[16] = {
 #include "game/008AC180.inc"
 };
-u32 EmEffectAttack_ColorKeys_17[8] = {
+ColorKey EmEffectAttack_ColorKeys_17[4] = {
 #include "game/008AC1C0.inc"
 };
 u16 EmEffectAttack_PartModels_3[4] = {
 #include "game/008AC1E0.inc"
 };
-u32 EmEffectAttack_PartFrames_3[2] = {
+s16 EmEffectAttack_PartFrames_3[4] = {
 #include "game/008AC1E8.inc"
 };
-u32 EmEffectAttack_ScaleKeys_14[16] = {
+Vec3Key EmEffectAttack_ScaleKeys_14[4] = {
 #include "game/008AC1F0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_15[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_15[4] = {
 #include "game/008AC230.inc"
 };
-u32 EmEffectAttack_ColorKeys_20[8] = {
+ColorKey EmEffectAttack_ColorKeys_20[4] = {
 #include "game/008AC260.inc"
 };
-u32 EmEffectAttack_ColorKeys_21[12] = {
+ColorKey EmEffectAttack_ColorKeys_21[5] = {
 #include "game/008AC280.inc"
 };
-u32 EmEffectAttack_ColorKeys_22[8] = {
+ColorKey EmEffectAttack_ColorKeys_22[4] = {
 #include "game/008AC2B0.inc"
 };
 u16 EmEffectAttack_PartModels_4[8] = {
@@ -2913,22 +2837,22 @@ s16 EmEffectAttack_DaimyoJetFrames[8] = {
 s16 EmEffectAttack_DaimyoJetDelays[8] = {
 #include "game/008AC2F0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_19[16] = {
+f32 EmEffectAttack_ScaleKeys_19[16] = {
 #include "game/008AC300.inc"
 };
-u32 EmEffectAttack_ScaleKeys_20[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_20[4] = {
 #include "game/008AC340.inc"
 };
-u32 EmEffectAttack_ColorKeys_25[8] = {
+ColorKey EmEffectAttack_ColorKeys_25[4] = {
 #include "game/008AC370.inc"
 };
-u32 EmEffectAttack_ColorKeys_26[10] = {
+ColorKey EmEffectAttack_ColorKeys_26[5] = {
 #include "game/008AC390.inc"
 };
 u16 EmEffectAttack_PartModels_6[4] = {
 #include "game/008AC3B8.inc"
 };
-u32 EmEffectAttack_PartFrames_6[2] = {
+s16 EmEffectAttack_PartFrames_6[4] = {
 #include "game/008AC3C0.inc"
 };
 u8 EmEffectAttack_CongalalaGasKinds[12] = {
@@ -2937,16 +2861,16 @@ u8 EmEffectAttack_CongalalaGasKinds[12] = {
 u16 EmEffectAttack_CongalalaGasStarts[16] = {
 #include "game/008AC3E0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_22[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_22[4] = {
 #include "game/008AC400.inc"
 };
-u32 EmEffectAttack_ColorKeys_28[10] = {
+ColorKey EmEffectAttack_ColorKeys_28[5] = {
 #include "game/008AC430.inc"
 };
 u16 EmEffectAttack_PartModels_7[4] = {
 #include "game/008AC458.inc"
 };
-u32 EmEffectAttack_PartFrames_7[4] = {
+s16 EmEffectAttack_PartFrames_7[8] = {
 #include "game/008AC460.inc"
 };
 f32 EmEffectAttack_ShenDropSpotsFortress5[4][3] = {
@@ -2961,85 +2885,85 @@ f32 EmEffectAttack_ShenDropSpotsTown3[4][3] = {
 f32 EmEffectAttack_ShenDropSpotsTown0[4][3] = {
 #include "game/008AC500.inc"
 };
-u32 EmEffectAttack_ScaleKeys_13[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_13[4] = {
 #include "game/008AC530.inc"
 };
-u32 EmEffectAttack_ColorKeys_19[8] = {
+ColorKey EmEffectAttack_ColorKeys_19[4] = {
 #include "game/008AC560.inc"
 };
-u32 EmEffectAttack_ScaleKeys_23[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_23[4] = {
 #include "game/008AC580.inc"
 };
-u32 EmEffectAttack_ColorKeys_29[8] = {
+ColorKey EmEffectAttack_ColorKeys_29[4] = {
 #include "game/008AC5B0.inc"
 };
-u32 EmEffectAttack_ColorKeys_30[8] = {
+ColorKey EmEffectAttack_ColorKeys_30[4] = {
 #include "game/008AC5D0.inc"
 };
 u16 EmEffectAttack_PartModels_9[4] = {
 #include "game/008AC5F0.inc"
 };
-u32 EmEffectAttack_PartFrames_9[2] = {
+s16 EmEffectAttack_PartFrames_9[4] = {
 #include "game/008AC5F8.inc"
 };
-u32 EmEffectAttack_ScaleKeys_24[16] = {
+Vec3Key EmEffectAttack_ScaleKeys_24[4] = {
 #include "game/008AC600.inc"
 };
-u32 EmEffectAttack_ColorKeys_31[8] = {
+ColorKey EmEffectAttack_ColorKeys_31[4] = {
 #include "game/008AC640.inc"
 };
 u16 EmEffectAttack_PartModels_10[4] = {
 #include "game/008AC660.inc"
 };
-u32 EmEffectAttack_PartFrames_10[2] = {
+s16 EmEffectAttack_PartFrames_10[4] = {
 #include "game/008AC668.inc"
 };
-u32 EmEffectAttack_ScaleKeys_25[20] = {
+Vec3Key EmEffectAttack_ScaleKeys_25[5] = {
 #include "game/008AC670.inc"
 };
-u32 EmEffectAttack_ColorKeys_32[8] = {
+ColorKey EmEffectAttack_ColorKeys_32[4] = {
 #include "game/008AC6C0.inc"
 };
 u16 EmEffectAttack_PartModels_11[4] = {
 #include "game/008AC6E0.inc"
 };
-u32 EmEffectAttack_PartFrames_11[2] = {
+s16 EmEffectAttack_PartFrames_11[4] = {
 #include "game/008AC6E8.inc"
 };
-u32 EmEffectAttack_ScaleKeys_26[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_26[4] = {
 #include "game/008AC6F0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_27[16] = {
+f32 EmEffectAttack_ScaleKeys_27[16] = {
 #include "game/008AC720.inc"
 };
-u32 EmEffectAttack_ScaleKeys_28[24] = {
+Vec3Key EmEffectAttack_ScaleKeys_28[6] = {
 #include "game/008AC760.inc"
 };
-u32 EmEffectAttack_ScaleKeys_29[16] = {
+Vec2Key EmEffectAttack_ScaleKeys_29[5] = {
 #include "game/008AC7C0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_30[16] = {
+f32 EmEffectAttack_ScaleKeys_30[16] = {
 #include "game/008AC800.inc"
 };
-u32 EmEffectAttack_ScaleKeys_31[8] = {
+f32 EmEffectAttack_ScaleKeys_31[8] = {
 #include "game/008AC840.inc"
 };
-u32 EmEffectAttack_ColorKeys_33[8] = {
+ColorKey EmEffectAttack_ColorKeys_33[3] = {
 #include "game/008AC860.inc"
 };
-u32 EmEffectAttack_ColorKeys_34[8] = {
+ColorKey EmEffectAttack_ColorKeys_34[4] = {
 #include "game/008AC880.inc"
 };
-u32 EmEffectAttack_ColorKeys_35[12] = {
+ColorKey EmEffectAttack_ColorKeys_35[5] = {
 #include "game/008AC8A0.inc"
 };
-u32 EmEffectAttack_ColorKeys_36[12] = {
+ColorKey EmEffectAttack_ColorKeys_36[5] = {
 #include "game/008AC8D0.inc"
 };
-u32 EmEffectAttack_ColorKeys_37[8] = {
+ColorKey EmEffectAttack_ColorKeys_37[4] = {
 #include "game/008AC900.inc"
 };
-u32 EmEffectAttack_ColorKeys_38[10] = {
+ColorKey EmEffectAttack_ColorKeys_38[5] = {
 #include "game/008AC920.inc"
 };
 u16 EmEffectAttack_PartModels_12[6] = {
@@ -3057,61 +2981,61 @@ s16 EmEffectAttack_FatalisBlastFrames[6] = {
 f32 EmEffectAttack_FatalisSweepSpots[40][3] = {
 #include "game/008AC980.inc"
 };
-u32 EmEffectAttack_ScaleKeys_32[16] = {
+Vec3Key EmEffectAttack_ScaleKeys_32[4] = {
 #include "game/008ACB60.inc"
 };
-u32 EmEffectAttack_ScaleKeys_33[12] = {
+Vec3Key EmEffectAttack_ScaleKeys_33[3] = {
 #include "game/008ACBA0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_34[12] = {
+Vec3Key EmEffectAttack_ScaleKeys_34[3] = {
 #include "game/008ACBD0.inc"
 };
-u32 EmEffectAttack_ScaleKeys_35[8] = {
+f32 EmEffectAttack_ScaleKeys_35[8] = {
 #include "game/008ACC00.inc"
 };
-u32 EmEffectAttack_ScaleKeys_36[8] = {
+f32 EmEffectAttack_ScaleKeys_36[8] = {
 #include "game/008ACC20.inc"
 };
-u32 EmEffectAttack_ScaleKeys_37[12] = {
+Vec3Key EmEffectAttack_ScaleKeys_37[3] = {
 #include "game/008ACC40.inc"
 };
-u32 EmEffectAttack_ColorKeys_39[8] = {
+ColorKey EmEffectAttack_ColorKeys_39[3] = {
 #include "game/008ACC70.inc"
 };
-u32 EmEffectAttack_ColorKeys_40[12] = {
+ColorKey EmEffectAttack_ColorKeys_40[5] = {
 #include "game/008ACC90.inc"
 };
-u32 EmEffectAttack_ColorKeys_41[12] = {
+ColorKey EmEffectAttack_ColorKeys_41[5] = {
 #include "game/008ACCC0.inc"
 };
-u32 EmEffectAttack_ColorKeys_42[8] = {
+ColorKey EmEffectAttack_ColorKeys_42[4] = {
 #include "game/008ACCF0.inc"
 };
-u32 EmEffectAttack_ColorKeys_43[8] = {
+ColorKey EmEffectAttack_ColorKeys_43[4] = {
 #include "game/008ACD10.inc"
 };
-u32 EmEffectAttack_ColorKeys_44[8] = {
+ColorKey EmEffectAttack_ColorKeys_44[4] = {
 #include "game/008ACD30.inc"
 };
 u16 EmEffectAttack_PartModels_13[8] = {
 #include "game/008ACD50.inc"
 };
-u32 EmEffectAttack_PartFrames_13[4] = {
+s16 EmEffectAttack_PartFrames_13[8] = {
 #include "game/008ACD60.inc"
 };
 f32 EmEffectAttack_FatalisBlastSpots[40][3] = {
 #include "game/008ACD70.inc"
 };
-u32 EmEffectAttack_ScaleKeys_38[12] = {
+Vec2Key EmEffectAttack_ScaleKeys_38[4] = {
 #include "game/008ACF50.inc"
 };
-u32 EmEffectAttack_ColorKeys_45[12] = {
+ColorKey EmEffectAttack_ColorKeys_45[5] = {
 #include "game/008ACF80.inc"
 };
 u16 EmEffectAttack_PartModels_15[8] = {
 #include "game/008ACFB0.inc"
 };
-u32 EmEffectAttack_PartFrames_15[4] = {
+s16 EmEffectAttack_PartFrames_15[8] = {
 #include "game/008ACFC0.inc"
 };
 void *EmEffectAttack_ScaleKeys[40] = {
@@ -3126,19 +3050,19 @@ void *EmEffectAttack_ScaleKeys[40] = {
     (void *)EmEffectAttack_ScaleKeys_32, (void *)EmEffectAttack_ScaleKeys_33, (void *)EmEffectAttack_ScaleKeys_34, (void *)EmEffectAttack_ScaleKeys_35,
     (void *)EmEffectAttack_ScaleKeys_36, (void *)EmEffectAttack_ScaleKeys_37, (void *)EmEffectAttack_ScaleKeys_38, NULL,
 };
-void *EmEffectAttack_ColorKeys[48] = {
-    (void *)EmEffectAttack_ColorKeys_0, (void *)EmEffectAttack_ColorKeys_1, (void *)EmEffectAttack_ColorKeys_2, (void *)EmEffectAttack_ColorKeys_3,
-    (void *)EmEffectAttack_ColorKeys_3, (void *)EmEffectAttack_ColorKeys_5, (void *)EmEffectAttack_ColorKeys_6, (void *)EmEffectAttack_ColorKeys_7,
-    (void *)EmEffectAttack_ColorKeys_8, (void *)EmEffectAttack_ColorKeys_9, (void *)EmEffectAttack_ColorKeys_10, (void *)EmEffectAttack_ColorKeys_11,
-    (void *)EmEffectAttack_ColorKeys_12, (void *)EmEffectAttack_ColorKeys_13, (void *)EmEffectAttack_ColorKeys_14, (void *)EmEffectAttack_ColorKeys_15,
-    (void *)EmEffectAttack_ColorKeys_16, (void *)EmEffectAttack_ColorKeys_17, (void *)EmEffectAttack_ColorKeys_17, (void *)EmEffectAttack_ColorKeys_19,
-    (void *)EmEffectAttack_ColorKeys_20, (void *)EmEffectAttack_ColorKeys_21, (void *)EmEffectAttack_ColorKeys_22, (void *)EmEffectAttack_ColorKeys_22,
-    (void *)EmEffectAttack_ColorKeys_22, (void *)EmEffectAttack_ColorKeys_25, (void *)EmEffectAttack_ColorKeys_26, (void *)EmEffectAttack_ColorKeys_26,
-    (void *)EmEffectAttack_ColorKeys_28, (void *)EmEffectAttack_ColorKeys_29, (void *)EmEffectAttack_ColorKeys_30, (void *)EmEffectAttack_ColorKeys_31,
-    (void *)EmEffectAttack_ColorKeys_32, (void *)EmEffectAttack_ColorKeys_33, (void *)EmEffectAttack_ColorKeys_34, (void *)EmEffectAttack_ColorKeys_35,
-    (void *)EmEffectAttack_ColorKeys_36, (void *)EmEffectAttack_ColorKeys_37, (void *)EmEffectAttack_ColorKeys_38, (void *)EmEffectAttack_ColorKeys_39,
-    (void *)EmEffectAttack_ColorKeys_40, (void *)EmEffectAttack_ColorKeys_41, (void *)EmEffectAttack_ColorKeys_42, (void *)EmEffectAttack_ColorKeys_43,
-    (void *)EmEffectAttack_ColorKeys_44, (void *)EmEffectAttack_ColorKeys_45, NULL, NULL,
+ColorKey *EmEffectAttack_ColorKeys[48] = {
+    EmEffectAttack_ColorKeys_0, EmEffectAttack_ColorKeys_1, EmEffectAttack_ColorKeys_2, EmEffectAttack_ColorKeys_3,
+    EmEffectAttack_ColorKeys_3, EmEffectAttack_ColorKeys_5, EmEffectAttack_ColorKeys_6, EmEffectAttack_ColorKeys_7,
+    EmEffectAttack_ColorKeys_8, EmEffectAttack_ColorKeys_9, EmEffectAttack_ColorKeys_10, EmEffectAttack_ColorKeys_11,
+    (ColorKey *)EmEffectAttack_ColorKeys_12, EmEffectAttack_ColorKeys_13, EmEffectAttack_ColorKeys_14, EmEffectAttack_ColorKeys_15,
+    EmEffectAttack_ColorKeys_16, EmEffectAttack_ColorKeys_17, EmEffectAttack_ColorKeys_17, EmEffectAttack_ColorKeys_19,
+    EmEffectAttack_ColorKeys_20, EmEffectAttack_ColorKeys_21, EmEffectAttack_ColorKeys_22, EmEffectAttack_ColorKeys_22,
+    EmEffectAttack_ColorKeys_22, EmEffectAttack_ColorKeys_25, EmEffectAttack_ColorKeys_26, EmEffectAttack_ColorKeys_26,
+    EmEffectAttack_ColorKeys_28, EmEffectAttack_ColorKeys_29, EmEffectAttack_ColorKeys_30, EmEffectAttack_ColorKeys_31,
+    EmEffectAttack_ColorKeys_32, EmEffectAttack_ColorKeys_33, EmEffectAttack_ColorKeys_34, EmEffectAttack_ColorKeys_35,
+    EmEffectAttack_ColorKeys_36, EmEffectAttack_ColorKeys_37, EmEffectAttack_ColorKeys_38, EmEffectAttack_ColorKeys_39,
+    EmEffectAttack_ColorKeys_40, EmEffectAttack_ColorKeys_41, EmEffectAttack_ColorKeys_42, EmEffectAttack_ColorKeys_43,
+    EmEffectAttack_ColorKeys_44, EmEffectAttack_ColorKeys_45, NULL, NULL,
 };
 s16 EmEffectAttack_PartCounts[16] = {
 #include "game/008AD130.inc"
@@ -3158,11 +3082,11 @@ u16 *EmEffectAttack_PartModels[16] = {
     EmEffectAttack_PartModels_3, EmEffectAttack_PartModels_9, EmEffectAttack_PartModels_10, EmEffectAttack_PartModels_11,
     EmEffectAttack_PartModels_12, EmEffectAttack_PartModels_13, EmEffectAttack_PartModels_12, EmEffectAttack_PartModels_15,
 };
-u32 EmEffectAttack_PartFrames[16] = {
-    (u32)EmEffectAttack_PartFrames_0, (u32)EmEffectAttack_PartFrames_1, (u32)EmEffectAttack_PartFrames_2, (u32)EmEffectAttack_PartFrames_3,
-    (u32)EmEffectAttack_DaimyoJetFrames, (u32)EmEffectAttack_PartFrames_3, (u32)EmEffectAttack_PartFrames_6, (u32)EmEffectAttack_PartFrames_7,
-    (u32)EmEffectAttack_PartFrames_3, (u32)EmEffectAttack_PartFrames_9, (u32)EmEffectAttack_PartFrames_10, (u32)EmEffectAttack_PartFrames_11,
-    (u32)EmEffectAttack_FatalisBlastFrames, (u32)EmEffectAttack_PartFrames_13, (u32)EmEffectAttack_FatalisBlastFrames, (u32)EmEffectAttack_PartFrames_15,
+s16 *EmEffectAttack_PartFrames[16] = {
+    EmEffectAttack_PartFrames_0, EmEffectAttack_PartFrames_1, EmEffectAttack_PartFrames_2, EmEffectAttack_PartFrames_3,
+    EmEffectAttack_DaimyoJetFrames, EmEffectAttack_PartFrames_3, EmEffectAttack_PartFrames_6, EmEffectAttack_PartFrames_7,
+    EmEffectAttack_PartFrames_3, EmEffectAttack_PartFrames_9, EmEffectAttack_PartFrames_10, EmEffectAttack_PartFrames_11,
+    EmEffectAttack_FatalisBlastFrames, EmEffectAttack_PartFrames_13, EmEffectAttack_FatalisBlastFrames, EmEffectAttack_PartFrames_15,
 };
 s16 EmEffectAttack_MotionBase[16] = {
 #include "game/008AD230.inc"

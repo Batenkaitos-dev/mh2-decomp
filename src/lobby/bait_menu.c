@@ -23,8 +23,30 @@
 #include "lobby_menu.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "combine.h"
+#include "hud.h"
+#include "quest.h"
+#include "text.h"
+#include "bait_menu.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "name_tags.h"
+#include "offer_menu.h"
+#include "talk.h"
+#include "town_area_change.h"
+#include "town_input.h"
+#include "town_players.h"
+#include "libc.h"
 
-void Menu_DrawLabelBar(s16 x, s16 y, s16 a2, u32 a3, char *label, u8 t1, u8 t2);
 void Win_Draw(s16, s16, s32, s32, s32, s32, s32); /* unit's own declaration: the definition takes s32 x and y and an s16 kind; declared as the calls here pass them, since with the definition's types BaitMenu_DrawWindow's calls compile differently */
 void Font_SetSpacing(u8 a, u8 b);
 
@@ -34,28 +56,6 @@ extern u8 gMenuWork[];
 extern s8 gMenuInputLock;
 extern void *gNpcTalkSe[];
 extern f32 gFishingSpotPos[2][3];
-s32 Game_IsOnline(void);
-Em *Npc_Find(u8 kind);
-void Player_SetFlag(void *obj, u32 flag);
-void Npc_PlaySeDelayed(Em *npc, void *p);
-void *memset(void *dst, s32 c, u32 n);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void BaitMenu_LoadPage(BaitMenu *m, s16 page);
-void BaitMenu_Draw(MenuTask *task);
-void Talk_Start(Em *npc, s8 quiet);
-void Talk_Say(s32 a, s8 b);
-void Npc_StartTalkState(Em *npc);
-void Npc_HoldRoute(Em *npc);
-void Npc_EnterRoutePoint(Em *npc);
-void CamFocus_Start(Em *npc);
-void CamFocus_End(void);
-void LobbySe_Play(s32 se);
-s32 Actor_HeadingDiff(void *obj, void *pos);
-void Text_SetSize(s32 a);
-void Font_SetColor(s32 color);
-void BaitMenu_DrawList(s16 x, s16 y);
-void BaitMenu_DrawCastHint(void);
 
 /* 1 while the bait menu runs, else 0. */
 s32 BaitMenu_IsOpen(void)
@@ -99,9 +99,6 @@ void BaitMenu_Open(void)
     }
 }
 
-s32 Item_IsBait(u16 item, s32 unused1);
-s32 Items_HaveEnough(u16 item, s32 n);
-s32 Menu_CountPages(s16 n, s16 per);
 /* Fills the menu with page `page` of the bait the player holds (in the
  * pouch or the item box; ITEM_ID_FISH_BAIT_LURE_ALT is never listed), and
  * sets the count, the page and the number of pages. The cursor is pulled
@@ -149,14 +146,6 @@ void BaitMenu_Close(void)
     LobbySe_Play(LOBBY_SE_CANCEL);
 }
 
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Talk_Update(void);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
-void CamFocus_SetAside(s8 a);
-s32 BaitMenu_ListInput(u16 pad);
-s32 BaitMenu_FishInput(u16 unused);
-s32 Menu_PushNoticeOnce(s32);
-void BaitMenu_StartFishing(void);
 /* The menu's frame, by its step: the greeting (with no bait held the
  * townsperson says so and the menu closes), the window sliding in, the
  * list, the fishing, and the last line before closing. Leaving the fishing
@@ -176,7 +165,7 @@ void BaitMenu_Update(void)
                 menu->step++;
                 gMenuInputLock = 6;
                 CamFocus_SetAside(1);
-                WinSlide_Step(&menu->win, 0x280, 0x118);
+                WinSlide_Step(&menu->win, 640, 280);
             } else {
                 menu->step = BAIT_STEP_BYE;
                 Talk_Say(BAIT_TALK_NO_BAIT, 0);
@@ -189,7 +178,7 @@ void BaitMenu_Update(void)
         }
         break;
     case BAIT_STEP_OPEN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case 0:
             menu->step++;
             break;
@@ -222,7 +211,7 @@ void BaitMenu_Update(void)
             BaitMenu_LoadPage(menu, 0);
             menu->step = BAIT_STEP_OPEN;
             gMenuInputLock = 6;
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             CamFocus_Start(menu->npc);
             CamFocus_SetAside(1);
             Npc_StartTalkState(menu->npc);
@@ -260,11 +249,6 @@ void BaitMenu_StartFishing(void)
     CamFocus_End();
 }
 
-s32 Items_Total(u16 item);
-void Actor_SetStateFlags(struct Player *obj, u8 state, u8 sub, u16 flags);
-void Npc_StartTurnTo(Em *npc, s32 a, s32 b);
-void Actor_SetState(void *, s32, s32);
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
 /* The fishing's input. Before a cast, circle casts (TOWN_PC_FISH_CAST,
  * which goes on to TOWN_PC_FISH_WAIT) and turns the townsperson toward
  * the water, cross goes back to the list. While the line is out it waits
@@ -296,10 +280,10 @@ s32 BaitMenu_FishInput(u16 unused)
             menu->fishStep++;
             if (Game_IsOnline() == 0) {
                 Npc_StartTalkState(menu->npc);
-                Npc_StartTurnTo(menu->npc, 10, 0x3BBC);
+                Npc_StartTurnTo(menu->npc, 10, 15292);
             } else {
-                Npc_StartTurnTo(menu->npc, 10, 0xF6C1);
-                Actor_SetState(menu->npc, 0, 0x9E);
+                Npc_StartTurnTo(menu->npc, 10, 63169);
+                Actor_SetState(menu->npc, 0, 158);
                 Player_SetFlag(menu->npc, EM_FLAG_NO_ROOT_MOTION);
             }
         } else if (pad & PAD_CROSS) {
@@ -323,16 +307,16 @@ s32 BaitMenu_FishInput(u16 unused)
             }
         }
         if (pl->motionId[0] == PL_MOT_FISH_CATCH) {
-            /* the townsperson's reaction: actor state 0x7C in the village,
-             * 0x55 online */
+            /* the townsperson's reaction: actor state 124 in the village,
+             * 85 online */
             if (Game_IsOnline() == 0) {
-                if (menu->npc->state != 0x7C && Motion_ReachedFrame(pl, 0, 60.0f) != 0) {
-                    Actor_SetState(menu->npc, 0, 0x7C);
+                if (menu->npc->state != 124 && Motion_ReachedFrame(pl, 0, 60.0f) != 0) {
+                    Actor_SetState(menu->npc, 0, 124);
                     Npc_StartTurnTo(menu->npc, 10, menu->npcYaw);
                 }
             } else {
-                if (menu->npc->state != 0x55 && Motion_ReachedFrame(pl, 0, 60.0f) != 0) {
-                    Actor_SetState(menu->npc, 0, 0x55);
+                if (menu->npc->state != 85 && Motion_ReachedFrame(pl, 0, 60.0f) != 0) {
+                    Actor_SetState(menu->npc, 0, 85);
                     Player_SetFlag(menu->npc, EM_FLAG_NO_ROOT_MOTION);
                 }
             }
@@ -342,8 +326,6 @@ s32 BaitMenu_FishInput(u16 unused)
     return MENU_RUNNING;
 }
 
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
 /* The list's input: circle takes the bait under the cursor (MENU_DONE),
  * cross leaves (MENU_CANCEL), square shows or hides its description, left
  * and right turn the page, up and down move the cursor. Returns
@@ -380,17 +362,11 @@ s32 BaitMenu_ListInput(u16 pad)
 /* Draws the list's window at (x, y) and its title bar. */
 void BaitMenu_DrawWindow(s16 x, s16 y)
 {
-    Win_Draw(x, y, 0x154, 0x120, 0xBDB59F6C, 0xBB402010, 8);
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xC8, -0x4F5000, gListTitles[LIST_TITLE_BAIT], 2, 1);
+    Win_Draw(x, y, 340, 288, 0xBDB59F6C, 0xBB402010, 8);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 200, -0x4F5000, gListTitles[LIST_TITLE_BAIT], 2, 1);
 }
 
-s32 Hud_ItemGetBusy(void);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Menu_DrawItemCountRow(s16 x, s16 y, u16 item, u32 color);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 mode, s32 item, u16 extra, s8 attr, u32 color);
-void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
 /* Draws the list at (x, y): the window, the page's bait with how many of
  * each are held, the cursor's bar, the selected bait's description under a
  * rule, and the help window at the bottom. Nothing while the item-get
@@ -410,36 +386,30 @@ void BaitMenu_DrawList(s16 x, s16 y)
     }
     BaitMenu_DrawWindow(x, y);
     Font_SetColor(0x807F7F7F);
-    y += 0x1E;
-    Font_SetSpacing(0x14, 0x14);
+    y += 30;
+    Font_SetSpacing(20, 20);
     left = x;
     barX = left + 10;
-    nameX = left + 0x3C;
+    nameX = left + 60;
     /* `row` steps through items[] one entry at a time as a BaitMenu
      * pointer: the game's loop advances its pointer this way */
     for (i = 0, row = menu; i < BAIT_MENU_ROWS; i++) {
         item = row->items[0];
         if (i == menu->cursor) {
             selItem = item;
-            Menu_DrawLine(barX, y - 1, 0x140, 0x18, 0);
+            Menu_DrawRowHighlight(barX, y - 1, 320, 24, 0);
         }
         Menu_DrawItemCountRow(nameX, y, item, 0x807F7F7F);
-        y += 0x16;
+        y += 22;
         row = (BaitMenu *)((u8 *)row + sizeof(menu->items[0]));
     }
-    Gfx_DrawLine(left + 0x14, y + 2, 0x12C, 2, 0xBDB59F6C);
-    ItemInfo_Draw((s16)(left + 0x3C) - 0x3C, y + 4, 0x154, menu->showInfo, selItem, 0, -1, 0x807F7F7F);
-    Win_DrawText(0x118, 0x15E, 0x154, 0x50, 0xBDB59F6C, 0xC0101010, gTownLabels[TOWN_LABEL_BAIT_HELP]);
+    Gfx_DrawLine(left + 20, y + 2, 300, 2, 0xBDB59F6C);
+    ItemInfo_Draw((s16)(left + 60) - 60, y + 4, 340, menu->showInfo, selItem, 0, -1, 0x807F7F7F);
+    Win_DrawText(280, 350, 340, 80, 0xBDB59F6C, 0xC0101010, gTownLabels[TOWN_LABEL_BAIT_HELP]);
 }
 
-s32 sprintf(char *buf, const char *fmt, ...);
 extern char *gItemNames[];
 extern char gBaitHintFmt[];
-s32 Lobby_StrLength(char *);
-void Gfx_DrawPulseGradient(s16 x, s16 y, s16 w, s16 h, u32 color, u8 dir);
-s16 Lobby_DrawButtonIcon(s16, s16, s32);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
 
 /* Draws, before a cast, the two bars at the left: the bait in use with how
  * many are held, and the cast and cancel help with their button icons.
@@ -447,21 +417,21 @@ void Text_PrintfColored(const char *fmt, ...);
 void BaitMenu_DrawCastHint(void)
 {
     BaitMenu *menu = (BaitMenu *)gMenuWork;
-    char buf[0x40];
+    char buf[64];
 
     if (Hud_ItemGetBusy() == 1) {
         return;
     }
     Font_SetColor(0x807F7F7F);
     sprintf(buf, gListTitles[LIST_TITLE_FISHING_FMT], gItemNames[menu->bait], Items_Total(menu->bait));
-    Gfx_DrawPulseGradient(0, 0x6F, Lobby_StrLength(buf) * 9 + 0x50, 0x1E, 0x80006000, 0);
-    Gfx_DrawPulseGradient(0, 0x8F, 0xC8, 0x1E, 0x80006000, 0);
-    Lobby_DrawButtonIcon(0x14, 0x72, 0);
-    Lobby_DrawButtonIcon(0x14, 0x92, 1);
-    Font_SetSpacing(0x14, 0x14);
-    Font_SetPos(0x38, 0x73);
+    Gfx_DrawPulseGradient(0, 111, Lobby_StrLength(buf) * 9 + 80, 30, 0x80006000, 0);
+    Gfx_DrawPulseGradient(0, 143, 200, 30, 0x80006000, 0);
+    Lobby_DrawButtonIcon(20, 114, 0);
+    Lobby_DrawButtonIcon(20, 146, 1);
+    Font_SetSpacing(20, 20);
+    Font_SetPos(56, 115);
     Text_PrintfColored(buf);
-    Font_SetPos(0x38, 0x93);
+    Font_SetPos(56, 147);
     Text_PrintfColored(gBaitHintFmt, gListTitles[LIST_TITLE_BACK_TO_BAIT]);
 }
 
@@ -475,10 +445,10 @@ void BaitMenu_Draw(MenuTask *task)
     Font_SetColor(0x80101010);
     switch (menu->step) {
     case BAIT_STEP_OPEN:
-        BaitMenu_DrawWindow(menu->win.pos, 0x34);
+        BaitMenu_DrawWindow(menu->win.pos, 52);
         break;
     case BAIT_STEP_LIST:
-        BaitMenu_DrawList(menu->win.pos, 0x34);
+        BaitMenu_DrawList(menu->win.pos, 52);
         break;
     case BAIT_STEP_FISH:
         if (menu->fishStep == BAIT_FISH_READY) {
@@ -496,7 +466,7 @@ f32 gFishingSpotPos[2][3] = {
 
 /* The cast help's format. */
 #pragma rodata on
-char gBaitHintFmt[0x10] = {
+char gBaitHintFmt[16] = {
 #include "lobby/00826040.inc"
 };
 #pragma rodata off

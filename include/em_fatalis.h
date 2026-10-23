@@ -1,17 +1,17 @@
 #ifndef EM_FATALIS_H
 #define EM_FATALIS_H
+#include "em.h"
 
 /*
- * The Fatalis family's vocabulary (src/game/em_rathalos.c, EmFatalis_*; its
- * Set*State, ChangeState and curve functions are in src/game/em_bulldrome.c).
- * Kinds EM_KIND_FATALIS, EM_KIND_FATALIS_B and EM_KIND_FATALIS_C share one
- * set of states; the first has a motion table of its own, the other two
- * share one.
+ * The Fatalis family's vocabulary (EmFatalis_*: its states, motions, bones
+ * and sounds). Kinds EM_KIND_FATALIS, EM_KIND_FATALIS_B and
+ * EM_KIND_FATALIS_C share one set of states; the first has a motion table of
+ * its own, the other two share one.
  *
  * Motions: both motion tables have row N play motion N, so one number serves
  * Em_SetMotion's row and the motion id EM_MOTION_ID(layer, motion) kept in
  * Em.motionId. The names say what the states that play a motion show;
- * motions no state explains stay numbers (0x12, 0x13, 0x1E, 0x29).
+ * motions no state explains stay numbers (18, 19, 30, 41).
  */
 enum EmFatalisMotion {
     FAT_MOT_IDLE = 0x01,                /* the standing loop; layers 0-2 idle with EM_MOTION_ID(layer, 1) */
@@ -19,11 +19,11 @@ enum EmFatalisMotion {
     FAT_MOT_TURN_LEFT = 0x03,           /* turning to the goal, rotY falling 372 a frame up to frame 89 */
     FAT_MOT_TURN_RIGHT = 0x04,          /* turning to the goal, rotY rising 372 a frame up to frame 89 */
     FAT_MOT_CHARGE_START = 0x05,        /* before a charge */
-    FAT_MOT_TURN_SMALL = 0x06,          /* turning to a goal less than 0x2000 away, 91 a frame */
+    FAT_MOT_TURN_SMALL = 0x06,          /* turning to a goal less than an eighth of a turn away, 91 a frame */
     FAT_MOT_CHARGE = 0x07,              /* running at the goal (Em_StepToGoal), with FatalisAttack 2 */
     FAT_MOT_RECOVER = 0x08,             /* back to standing after a landing, an attack, a status or a reaction */
     FAT_MOT_TAKE_OFF = 0x09,            /* airborne (stance 2) from frame 134, along curve 0 or 6 */
-    FAT_MOT_FLY = 0x0A,                 /* flying and hovering; layers 0-2 hover with EM_MOTION_ID(layer, 0xA) */
+    FAT_MOT_FLY = 0x0A,                 /* flying and hovering; layers 0-2 hover with EM_MOTION_ID(layer, FAT_MOT_FLY) */
     FAT_MOT_DESCEND = 0x0B,             /* the last stretch of a landing, down to the floor */
     FAT_MOT_TOUCH_DOWN = 0x0C,          /* on the floor again (stance 0), with a camera shake */
     FAT_MOT_FIREBALL = 0x0D,            /* a fireball on the ground at frame 102 (EmFatalis_SpawnFireball) */
@@ -92,18 +92,18 @@ enum EmFatalisFlyState {
 
 /* Group 3, EM_GROUP_ATTACK (EmFatalis_RunAttackState). */
 enum EmFatalisAttackState {
-    FAT_ATK_SINGLE_A = 0x00,            /* motion 0x12 */
-    FAT_ATK_SINGLE_B = 0x01,            /* motion 0x13 */
+    FAT_ATK_SINGLE_A = 0x00,            /* motion 18 */
+    FAT_ATK_SINGLE_B = 0x01,            /* motion 19 */
     FAT_ATK_FIREBALL = 0x02,
     FAT_ATK_FIREBALL_B = 0x03,
     FAT_ATK_SWEEP_NO_EFFECT = 0x04,     /* the sweep's motion with no effects */
-    FAT_ATK_AIR_FIREBALL = 0x05,        /* the fireball's pitch 0x38E4 */
+    FAT_ATK_AIR_FIREBALL = 0x05,        /* the fireball's pitch 14564 */
     FAT_ATK_CHARGE = 0x06,
     FAT_ATK_HOP_FIREBALL = 0x07,
     FAT_ATK_CHARGE_START = 0x08,        /* the charge's first motion only */
-    FAT_ATK_AIR_FIREBALL_TRIPLE = 0x09, /* three fireballs, pitched 0x1E94, 0x2AAB and 0x38E4 */
-    FAT_ATK_AIR_FIREBALL_B = 0x0A,      /* pitch 0x2AAB */
-    FAT_ATK_AIR_FIREBALL_C = 0x0B,      /* pitch 0x1E94 */
+    FAT_ATK_AIR_FIREBALL_TRIPLE = 0x09, /* three fireballs, pitched 7828, 10923 and 14564 */
+    FAT_ATK_AIR_FIREBALL_B = 0x0A,      /* pitch 10923 */
+    FAT_ATK_AIR_FIREBALL_C = 0x0B,      /* pitch 7828 */
     FAT_ATK_GLIDE = 0x0C,
     FAT_ATK_DIVE = 0x0D,                /* pulls out 850 above the floor */
     FAT_ATK_SWEEP_A = 0x0E,             /* the sweeps A-D take rows 1-4 of EmFatalis_SweepSpots */
@@ -111,7 +111,7 @@ enum EmFatalisAttackState {
     FAT_ATK_SWEEP_C = 0x10,
     FAT_ATK_SWEEP_D = 0x11,
     FAT_ATK_SWEEP_DOUBLE = 0x12,        /* two sweeps along row 5 */
-    FAT_ATK_SINGLE_C = 0x13,            /* FAT_ATK_SINGLE_A's state with motion 0x29 */
+    FAT_ATK_SINGLE_C = 0x13,            /* FAT_ATK_SINGLE_A's state with motion 41 */
     FAT_ATK_DIVE_B = 0x14,              /* pulls out at the height 1050 */
     FAT_ATK_BLASTS = 0x15               /* after FAT_FLY_LAND_AT_HEIGHT: 24 effects along row 6 or 7 */
 };
@@ -148,5 +148,108 @@ enum EmFatalisEventState {
     FAT_EVENT_GET_UP = 0x03,            /* EM_KIND_FATALIS_B's scene in AREA_BATTLEFIELD_1 (EVENT_FLAG_FATALIS_BATTLEFIELD_SCENE) */
     FAT_EVENT_DESCEND = 0x04            /* EM_KIND_FATALIS_C's scene in AREA_TOWER_0x7C (EVENT_FLAG_FATALIS_TOWER_SCENE) */
 };
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * three kinds share one skeleton's numbers: they share the attack table and
+ * the sound and effect code. The names say what the family's code shows a
+ * bone to be: the bones of the attack hit shapes FatalisAttack_Create makes
+ * on given frames of a motion (FatalisAttack_HitShapes, by the attack rows'
+ * hit lists), where the fireballs and the sweeps start, the bones the wing
+ * beats take turns at, and the four legs, whose step sounds and ground
+ * effects take turns in FAT_MOT_CHARGE (leg C, B, D, then A). Each leg has
+ * two bones: the step sounds play at the upper one, and the ground effects
+ * (PartFx_SpawnForEmScaled) rise at the lower one, the foot. "A" to "D" tell
+ * the legs apart; which is left, right, front or hind the code doesn't show.
+ * Bones no code explains stay numbers:
+ * - 2: a large sphere with FAT_BONE_BREATH's in the charge (FatalisAttack 2)
+ *   and the sweep (FatalisAttack 3);
+ * - 11 to 15: a chain of five spheres (FatalisAttack 19 to 27) in the flight
+ *   motions and on frame 60 of the turns, when sound 26 plays at bone 17;
+ * - 17: sounds only (as at 11);
+ * - 20 and 55: the glide's spheres (FatalisAttack 30); 22 and 27: spheres
+ *   with FAT_BONE_LEG_C's and FAT_BONE_LEG_D's in motions 18 and 41;
+ * - 31: a large ground effect as FAT_MOT_HOP_FIREBALL leaves the floor;
+ * - the carcass's mine points (EmFatalis_MinePtBones, data).
+ */
+enum EmFatalisBone {
+    FAT_BONE_ROOT = 0,          /* the skeleton's first bone: the sweeps' fire starts here (EMRANGED_FATALIS_SWEEP) */
+    FAT_BONE_BODY = 1,          /* the body's sphere in FAT_MOT_CHARGE_START and FAT_MOT_TOUCH_DOWN (FatalisAttack 12 to 14), and the roar's wide sphere in FAT_MOT_ROAR (FatalisAttack 16) */
+    FAT_BONE_LEG_A = 5,         /* the walk's and the turns' step sounds take turns here and at FAT_BONE_LEG_B, as do their step spheres (FatalisAttack 5 to 11) */
+    FAT_BONE_FOOT_A = 6,        /* leg A's foot: its ground effects in the turns and the charge, its sphere in FAT_MOT_TURN_SMALL (FatalisAttack 33) */
+    FAT_BONE_LEG_B = 9,
+    FAT_BONE_FOOT_B = 10,       /* the same for leg B (FatalisAttack 34) */
+    FAT_BONE_LEG_C = 24,        /* leg C's step sounds in the charge; its sphere in motions 18 and 41 (FatalisAttack 28, 32) */
+    FAT_BONE_FOOT_C = 25,       /* leg C's foot: its ground effects in the charge, the flinches, lying down and getting up */
+    FAT_BONE_LEG_D = 29,        /* the same for leg D (FatalisAttack 4, 29, 31) */
+    FAT_BONE_FOOT_D = 30,
+    FAT_BONE_WING_A = 34,       /* the wing beats play here and at FAT_BONE_WING_B, four frames apart, above all in the flight motions */
+    FAT_BONE_WING_B = 40,
+    FAT_BONE_BREATH = 51,       /* where the fireballs start (EMRANGED_FATALIS_FIREBALL and the two bursts) and the lying puffs; a sphere in motion 19 (FatalisAttack 1) and the ground and air fireballs' motions (FatalisAttack 17, 18) */
+    FAT_BONE_HEAD = 52          /* the voice sounds play here; the head's sphere in EM_KIND_FATALIS_C's charge start (FatalisAttack 35) */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBoneOnFrame and the other helpers). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers: the fireballs' sound 27
+ * plays on the fireball's frame in FAT_MOT_HOP_FIREBALL only (4 to 10 frames
+ * before it in the others), and sound 85, played only in FAT_MOT_ROAR, plays
+ * at frame 4, long before the roar's rings (frame 66).
+ */
+enum EmFatalisSe {
+    FAT_SE_STEP = 1             /* a step: only at FAT_BONE_LEG_A and _B; on the frame of the camera shake in FAT_MOT_TURN_RIGHT (94), FAT_MOT_FLINCH_B (26) and FAT_MOT_DIE (130), two frames after each of FAT_MOT_WALK's (14, 84) */
+};
+
+extern void *EmFatalis_Callbacks[8];
+void EmFatalis_Init(Em *em);
+void EmFatalis_UpdateRageTimer(Em *em);
+void EmFatalis_AddMinePoints(Em *em);
+void EmFatalis_UpdateMinePoints(Em *em);
+void EmFatalis_RemoveMinePoints(Em *em);
+void EmFatalis_EndAirState(Em *em, u8 next);
+void EmFatalis_Update(Em *em);
+void EmFatalis_Status2Lie(Em *em, EmWork *work);
+void EmFatalis_TurnToGoal(Em *em, EmWork *work);
+void EmFatalis_Hover(Em *em, EmWork *work);
+void EmFatalis_Sweep(Em *em, EmWork *work, s32 variant);
+void EmFatalis_Dive(Em *em, EmWork *work);
+void EmFatalis_SweepDouble(Em *em, EmWork *work, s32 variant);
+void EmFatalis_DiveB(Em *em, EmWork *work);
+void EmFatalis_Blasts(Em *em);
+void EmFatalis_Fall(Em *em, EmWork *work);
+void EmFatalis_KnockDown(Em *em, EmWork *work);
+void EmFatalis_FallB(Em *em, EmWork *work);
+void EmFatalis_Die(Em *em, EmWork *work);
+void EmFatalis_DieB(Em *em, EmWork *work);
+void EmFatalis_DieFalling(Em *em, EmWork *work);
+void EmFatalis_EventLeave(Em *em, EmWork *work);
+void EmFatalis_EventFlyIn(Em *em, EmWork *work);
+void EmFatalis_EventGetUp(Em *em, EmWork *work);
+void EmFatalis_EventDescend(Em *em, EmWork *work);
+void EmFatalis_RunState(Em *em, EmWork *work);
+void EmFatalis_MotionEffects(Em *em, EmFatalisWork *work);
+void EmFatalis_ShakeOnFrame(void *em, s32 frame, s32 strength);
+
+void EmFatalis_SetIdleState(Em *em, u16 state, u8 mode);
+void EmFatalis_SetMoveState(Em *em, u16 state, u8 mode);
+void EmFatalis_SetFlyState(Em *em, u16 state, u8 mode);
+void EmFatalis_SetAttackState(Em *em, u16 state, u8 mode);
+void EmFatalis_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmFatalis_MoveByVelYCurve(Em *em, s32 kind);
+void EmFatalis_StartCurves(Em *em, u8 kind);
+
+/*
+ * The block that holds EmFatalis_SweepSpots' row 7 and the table's rows 0 to
+ * 4 (EmFatalis_SweepSpots_7): the linker's EmFatalis_SweepSpots names the
+ * second field (config/ld/game_aliases.ld); rows 5 to 8 are
+ * EmFatalis_SweepSpotsTail, the next object.
+ */
+typedef struct EmFatalisSweepBlock {
+    s8 row7[28];        /* 0x00: row 7's spots (EmFatalis_SweepSpotsTail's third entry) */
+    s8 *rows[5];        /* 0x1C: EmFatalis_SweepSpots' rows 0 to 4 (row 0 is NULL) */
+} EmFatalisSweepBlock;
 
 #endif /* EM_FATALIS_H */

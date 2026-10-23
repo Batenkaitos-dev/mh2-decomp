@@ -1,49 +1,56 @@
 /*
- * Five kinds of stage objects drawn as effects, with parts of two more. Each
- * kind's
- *
- * update steps through four states by obj->state: set-up, run (every frame
- * while it
- *
+ * Six kinds of stage objects drawn as effects. Each kind's update steps
+ * through four states by obj->state: set-up, run (every frame while it
  * lasts), end (frees its draw slots) and free; each part has a draw slot
- * whose draw
+ * whose draw callback runs when the depth-sorted draw tables are drawn.
  *
- * callback runs when the depth-sorted draw tables are drawn.
- *
- * AttackBurst (kind 0x11): only its rock type, its end states and its
- * creators are here.
- *
- * ShotFlash (kind 0x12): the flash, smoke, sparks and pieces of a shot and of
- * an impact.
- *
- * AlertMark (kind 0x13): the mark over a monster. DustCloud (kind 0x14): the
- * ground
- *
- * puffs of monsters and players, and the puffs at a monster's mouth.
- * FallingDebris
- *
- * (kind 0x15), StunStars (kind 0x18), and the update and set-up of MashDebris
- * (kind 0x1B).
+ * - ShotFlash (STAGEOBJ_KIND_SHOT_FLASH): the flash, smoke, sparks and
+ *   pieces of a shot and of an impact.
+ * - AlertMark (STAGEOBJ_KIND_ALERT_MARK): the mark over a monster.
+ * - DustCloud (STAGEOBJ_KIND_DUST_CLOUD): the ground puffs of monsters and
+ *   players, and the puffs at a monster's mouth.
+ * - FallingDebris (STAGEOBJ_KIND_FALLING_DEBRIS) and StunStars
+ *   (STAGEOBJ_KIND_STUN_STARS: the stars over a stunned hunter or monster).
+ * - MashDebris (STAGEOBJ_KIND_MASH_DEBRIS): the pieces a player sheds in the
+ *   mash status.
  *
  * Each object keeps its parts in its blocks of the object buffer (obj->buf)
- * as
- *
- * AttackBurstRock, ShotFlashPuff, ShotFlashPiece, DustCloudPuff,
- * FallingDebrisPiece or
- *
- * StunWork; most parts take their size, offset, alpha or color from key
- * curves in the
- *
- * kind's tables at the end of the file (Key_LerpVec3, Key_LerpFloat,
- * Color_EvalKeys).
+ * as ShotFlashPuff, ShotFlashPiece, DustCloudPuff, FallingDebrisPiece,
+ * StunWork or MashDebrisPiece; most parts take their size, offset, alpha or
+ * color from key curves in the kind's tables at the end of the file
+ * (Key_LerpVec3, Key_LerpFloat, Color_EvalKeys).
  */
 #include "common.h"
 #include "sprite.h"
 #include "em.h"
+#include "em_apceros.h"
+#include "em_blangonga.h"
+#include "em_bulldrome.h"
+#include "em_chameleos.h"
+#include "em_fatalis.h"
+#include "em_hermitaur.h"
+#include "em_kushala.h"
+#include "em_shengaoren.h"
 #include "player.h"
 #include "stageobj.h"
 #include "lobby_vobj.h"
 #include "scene.h"
+#include "render_state.h"
+#include "area.h"
+#include "card.h"
+#include "fishing.h"
+#include "sound.h"
+#include "text.h"
+#include "dust_flash_effects.h"
+#include "attack_objects.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "libc.h"
+#include "spark_fx.h"
+#include "vec_math.h"
 
 /* the work block of StunStars */
 typedef struct StunWork {
@@ -57,7 +64,7 @@ typedef struct StunWork {
     s16 limit;                  /* 0x32: frames (monsters) */
 } StunWork;
 
-/* a piece of a ShotFlash of the pieces type: one of two thrown off a spent bowgun shot (0x28 bytes) */
+/* a piece of a ShotFlash of the pieces type: one of two thrown off a spent bowgun shot (40 bytes) */
 typedef struct ShotFlashPiece {
     u8 alive;                   /* 0x00 */
     u8 unk01;                   /* 0x01 */
@@ -66,10 +73,10 @@ typedef struct ShotFlashPiece {
     f32 vel[3];                 /* 0x08 */
     f32 pos[3];                 /* 0x14 */
     u16 rot[3];                 /* 0x20 */
-    u8 unk26[0x28 - 0x26];
+    u8 unk26[40 - 38];
 } ShotFlashPiece;
 
-/* a piece of a FallingDebris (0x34 bytes, three in its blocks) */
+/* a piece of a FallingDebris (52 bytes, three in its blocks) */
 typedef struct FallingDebrisPiece {
     u8 alive;                   /* 0x00 */
     u8 visible;                 /* 0x01 */
@@ -84,21 +91,7 @@ typedef struct FallingDebrisPiece {
     f32 scale;                  /* 0x30 */
 } FallingDebrisPiece;
 
-/* a rock of an AttackBurst of the rock type (0x30 bytes, ten in its blocks) */
-typedef struct AttackBurstRock {
-    s16 slot;                   /* 0x00: its draw slot */
-    s16 bounces;                /* 0x02: bounces left (0..2), -1: done */
-    f32 vel[3];                 /* 0x04 */
-    f32 pos[3];                 /* 0x10 */
-    f32 scale;                  /* 0x1C */
-    s16 unk20;                  /* 0x20 */
-    u16 rot[3];                 /* 0x22 */
-    s16 spin;                   /* 0x28: added to rot[2] each frame */
-    u8 unk2A[0x2C - 0x2A];
-    DrawSlot *node;                /* 0x2C */
-} AttackBurstRock;
-
-/* a puff of a ShotFlash of the puff types (0x2C bytes, after the direction matrix in its blocks) */
+/* a puff of a ShotFlash of the puff types (44 bytes, after the direction matrix in its blocks) */
 typedef struct ShotFlashPuff {
     f32 sc[3];                  /* 0x00: its scale (types 1 and 11: ShotFlash_FirePuffScales by pair) */
     f32 alpha;                  /* 0x0C: 1.0 at first, then from a curve */
@@ -112,9 +105,9 @@ typedef struct ShotFlashPuff {
     s16 spin;                   /* 0x2A */
 } ShotFlashPuff;
 
-/* a puff of a DustCloud (0x30 bytes, in its blocks) */
+/* a puff of a DustCloud (48 bytes, in its blocks) */
 typedef struct DustCloudPuff {
-    s8 flag;                    /* 0x00: its index or look within the type; -1: gone (type 0x10, once the owner is gone) */
+    s8 flag;                    /* 0x00: its index or look within the type; -1: gone (type 16, once the owner is gone) */
     u8 fixedAlpha;                   /* 0x01: nonzero: no alpha curve */
     s16 slot;                   /* 0x02: its draw slot */
     f32 sc[3];                  /* 0x04: its scale, from a curve */
@@ -123,146 +116,43 @@ typedef struct DustCloudPuff {
     s16 time;                   /* 0x20: frames since it started (negative: a delay) */
     u16 rot;                    /* 0x22 */
     s16 rotv;                   /* 0x24: added to rot every frame */
-    u8 unk26[0x28 - 0x26];
+    u8 unk26[40 - 38];
     f32 size;                   /* 0x28: the object scale, with a random factor in some types */
     DrawSlot *node;                /* 0x2C: DrawSlot_Get(slot) */
 } DustCloudPuff;
 
 /* prototypes */
-extern u8 MashDebris_PartCounts[];
-extern u8 MashDebris_Models[];
-extern u16 MashDebris_Lives[];
-void MashDebris_Draw(void *arg);
-void *memset(void *p, s32 c, u32 n);
 extern s16 ShotFlash_CurveIdx[];
 extern s16 ShotFlash_FirePuffDurations[];
 extern s16 ShotFlash_ColorFlashDurations[];
 extern s16 ShotFlash_BurstDurations[];
 extern void *ShotFlash_Curves[];
 extern f32 ShotFlash_FirePuffSpin[];
-void ShotFlash_PlaySound(StageObj *o, f32 *pos);
-void PartFx_SpawnAt(f32 *pos, s32 a, f32 f);
 extern s16 ShotFlash_BurstDelays[];
 extern f32 ShotFlash_FirePuffScales[];
-void Vec_RotateY(f32 *v, f32 angle);
-extern f32 AlertMark_MoveKeys[];
+extern Vec3Key AlertMark_MoveKeys[];
 extern f32 *AlertMark_OffsetsByEmKind[];
 extern f32 *AlertMark_PlayerOffset;
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-f32 StageObj_RandUnit(void);
-f32 StageObj_RandSigned(void);
-void AttackBurst_Draw(DrawSlot *node);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
-void Mtx_TurnY(f32 *m, f32 a);
-void FallingDebris_Draw(DrawSlot *node);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
-u16 Rand_Next(s32 stream);
-extern f32 AlertMark_ScaleKeys[];
+extern Vec3Key AlertMark_ScaleKeys[];
 extern f32 AlertMark_FixedMarkScaleKeys[];
 extern s16 AlertMark_MarkMeshes[];
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void Draw_ApplyStates(u32 a);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-f32 AreaGrid2_GetFloorY(f32 *pos);
-void Vec_RotateX(f32 *v, f32 a);
-void ShotFlash_Draw(DrawSlot *node);
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
-void Gfx_SetBlend(s32 a, s32 b);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-void Mtx_Identity(f32 *m);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Mtx_TurnZ(f32 *m, f32 a);
-s32 Effect_DrawModel(void *mdl, f32 *m, s32 color, u16 flags, void *a4);
-extern void *D_008D0F34;
-extern void *D_008D0F38;
 /* unit's own declaration: group and state declared s32 as StunStars_Run passes them; with the definition's u8 that call compiles differently */
 s16 Player_IsState(void *obj, s32 group, s32 state);
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void StunStars_Draw(DrawSlot *node);
-void Vec_RotateY(f32 *v, f32 a);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *n);
-s32 Gs_SetState(u8 a, u32 b);
-s32 Effect_DrawModelAdd(void *list, f32 *v, void *base);
 extern f32 gCamMatrix[];
 extern s16 DustCloud_SurfaceFx[];
 extern s16 gAreaKinds[];
 u8 AreaGrid2_GetFloorHeight(f32 *pos, f32 *y);
-f32 Area_GroundOffset(u16 area);
-void Effect08_Spawn(f32 *pos, s32 a, s32 b, f32 f);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 k, s16 c);
 void RathalosAttack_CreateAt(Em *em, f32 *pos, s32 kind); /* unit's own declaration: kind declared s32 as the callers pass it; with the definition's s8, DustCloud_PlaceAtEm compiles differently */
 s8 DustCloud_SpawnSurfaceFx(Em *em, f32 *pos, s32 mode, f32 scale);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_GetTrans(f32 *out, f32 *m);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void AlertMark_Draw(DrawSlot *node);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 extern s16 ShotFlash_Lifetimes[];
-void FallingDebris_Update(StageObj *o);
-void StunStars_Update(StageObj *o);
-void ShotFlash_Setup(StageObj *o);
-void ShotFlash_Run(StageObj *o);
-void ShotFlash_End(StageObj *o);
-void ShotFlash_Free(StageObj *o);
-StageObj *ShotFlash_Alloc(s32 k);
-void AlertMark_Setup(StageObj *o);
-void AlertMark_Run(StageObj *o);
-void AlertMark_End(StageObj *o);
-void AlertMark_Free(StageObj *o);
-void DustCloud_Setup(StageObj *o);
-void DustCloud_Run(StageObj *o);
-void DustCloud_End(StageObj *o);
-void DustCloud_Free(StageObj *o);
-void FallingDebris_Setup(StageObj *o);
-void FallingDebris_Run(StageObj *o);
-void FallingDebris_End(StageObj *o);
-void FallingDebris_Free(StageObj *o);
-void StunStars_Setup(StageObj *o);
-void StunStars_Run(StageObj *o);
-void StunStars_End(StageObj *o);
-void StunStars_Free(StageObj *o);
-void MashDebris_Setup(StageObj *o);
-void MashDebris_Run(StageObj *o);
-void MashDebris_End(StageObj *o);
-void MashDebris_Free(StageObj *o);
-s32 Obj_InCurrentArea(void *);
-void ShotFlash_SetupPuffs(StageObj *o);
-void ShotFlash_SetupSpark(StageObj *o);
-void ShotFlash_SetupPieces(StageObj *o);
-void ShotFlash_DrawPuff(DrawSlot *node);
-void ShotFlash_DrawSpark(DrawSlot *node);
-void ShotFlash_DrawPiece(DrawSlot *node);
-void ShotFlash_RunPuffs(StageObj *o);
-void ShotFlash_RunSpark(StageObj *o);
-void ShotFlash_RunPieces(StageObj *o);
-void Vec_Copy(f32 *dst, f32 *src);
-void DrawSlot_Free(s32 i);
-void AttackBurst_Update(StageObj *o);
-f32 Vec_Distance(f32 *a, f32 *b);
 extern s16 DustCloud_PartCounts[];
-extern s16 AttackBurst_PartCounts[];
 extern s16 ShotFlash_PartCounts[];
 extern u8 ShotFlash_GunlanceShellDelays[];
-u8 Player_InCurrentArea(void *obj);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-void Mtx_Billboard(f32 *m, f32 *pos);
-s32 Gs_SetState(u8 a, u32 b);
-extern u8 **ShotFlash_ColorFlashKeys[];
-extern u8 *ShotFlash_ColorSmokeKeys[];
-extern u8 *ShotFlash_ImpactKeys[];
-extern u8 *ShotFlash_BurstKeys[];
+extern ColorKey **ShotFlash_ColorFlashKeys[];
+extern ColorKey *ShotFlash_ColorSmokeKeys[];
+extern ColorKey *ShotFlash_ImpactKeys[];
+extern ColorKey *ShotFlash_BurstKeys[];
 extern u16 DustCloud_Lifetimes[];
 extern u16 *DustCloud_PuffDurations[];
 extern s16 DustCloud_CurvesPerPuff[];
@@ -270,398 +160,18 @@ extern s16 DustCloud_CurveIdx[];
 extern void *DustCloud_Curves[];
 extern f32 DustCloud_SideOffsets[];
 extern s16 DustCloud_PuffSectors[];
-u16 Mtx_Heading(f32 *m);
-void FatalisAttack_CreateOnObj(StageObj *s, s8 kind);
-void RathalosAttack_CreateOnObj(StageObj *s, s8 kind);
 s32 Em_TypeUsesK14(u8 type);
 extern s16 *DustCloud_StartTimes[];
 extern f32 DustCloud_PuffSizes[];
-void DustCloud_Draw(DrawSlot *node);
+extern FloatKey *MashDebris_AlphaKeys[];
+extern u16 MashDebris_Lives[];
+extern u8 MashDebris_Models[];
+extern u8 MashDebris_PartCounts[];
+extern u8 MashDebris_PartFalls[];
+extern Vec3Key *MashDebris_ScaleKeys[];
+extern f32 MashDebris_SpinDeg[];
+extern Vec3Key MashDebris_TrickleScaleKeys[];
 /* end of prototypes */
-
-/*
- * Sets up an AttackBurst of the rock type (type 8): ten rocks, each with a
- * draw slot, 0 to 2 bounces, a random size (1.5 times obj->scale, times 1
- * plus a random unit), a random spin, and a throw speed: sideways a random
- * signed 40 (the first five) or 80 (the others) times the scale, upward 100
- * plus a random 70 times the scale, divided by the rock's size. A rock gets
- * no draw slot when none is free.
- */
-void AttackBurst_SetupRocks(StageObj *obj)
-{
-    AttackBurstRock *rock = (AttackBurstRock *) obj->buf;
-    s16 i;
-    f32 riseRange;
-
-    switch (obj->type) {
-    case 8:
-        riseRange = 70.0f;
-        break;
-    }
-    obj->timer = 0;
-    for (i = 0; i < 10; i++, rock++) {
-        rock->slot = DrawSlot_Alloc();
-        if (rock->slot != -1) {
-            rock->bounces = Rand_Next(1) % 3;
-            rock->unk20 = 0;
-            Vec_Copy(rock->pos, obj->pos);
-            rock->scale = obj->scale * (1.5f * (1.0f + StageObj_RandUnit()));
-            if (i < 5) {
-                rock->vel[0] = 40.0f * obj->scale * StageObj_RandSigned();
-                rock->vel[1] = (obj->scale * (100.0f + riseRange * StageObj_RandUnit())) / rock->scale;
-                rock->vel[2] = 40.0f * obj->scale * StageObj_RandSigned();
-            } else {
-                rock->vel[0] = 80.0f * obj->scale * StageObj_RandSigned();
-                rock->vel[1] = (obj->scale * (100.0f + riseRange * StageObj_RandUnit())) / rock->scale;
-                rock->vel[2] = 80.0f * obj->scale * StageObj_RandSigned();
-            }
-            rock->rot[0] = Rand_Next(1);
-            rock->rot[1] = Rand_Next(1);
-            rock->rot[2] = Rand_Next(1);
-            rock->spin = (Rand_Next(1) & 0xFFF) - 0x7FF;
-            rock->node = DrawSlot_Get(rock->slot);
-            rock->node->owner = obj;
-            rock->node->part = i;
-            rock->node->draw = AttackBurst_Draw;
-        } else {
-            rock->node = NULL;
-        }
-    }
-}
-
-/*
- * Moves the rocks of a rock-type AttackBurst: each falls (9.8 a frame),
- * spins, and bounces off the floor at half its fall speed until its bounces
- * run out, then stops; a moving rock is queued for drawing. Moves to the end
- * state after 150 frames or once every rock has stopped.
- */
-void AttackBurst_RunRocks(StageObj *obj)
-{
-    AttackBurstRock *rock = (AttackBurstRock *) obj->buf;
-    s16 i;
-    s16 done;
-    f32 y;
-
-    if (++obj->timer > 150) {
-        obj->state++;
-        obj->visible = 0;
-        return;
-    }
-    done = 0;
-    for (i = 0; i < 10; i++) {
-        if (rock->bounces == -1) {
-            rock++;
-            done++;
-            continue;
-        }
-        rock->pos[0] += rock->vel[0];
-        rock->pos[1] += rock->vel[1];
-        rock->pos[2] += rock->vel[2];
-        rock->vel[1] += -9.8f;
-        rock->rot[2] += rock->spin;
-        y = AreaGrid2_GetFloorY(rock->pos);
-        if (rock->pos[1] <= y) {
-            rock->bounces--;
-            if (rock->bounces < 0) {
-                rock++;
-                continue;
-            }
-            rock->pos[1] = y;
-            rock->vel[1] *= -0.5f;
-        }
-        if (rock->node != NULL) {
-            rock->node->pos[0] = rock->pos[0];
-            rock->node->pos[1] = rock->pos[1];
-            rock->node->pos[2] = rock->pos[2];
-            OT_AddByDepth(gDrawOt32, rock->node, 0x20, 0);
-        }
-        rock++;
-    }
-    if (done >= 10) {
-        obj->state++;
-        obj->visible = 0;
-    }
-}
-
-/*
- * Draw callback of one rock of a rock-type AttackBurst (node->part picks it):
- * mesh 73 of the stage model set at the rock's rotation and size.
- */
-void AttackBurst_DrawRock(DrawSlot *node)
-{
-    f32 rot[3];
-    f32 scale[3];
-    f32 mtx[16];
-    ModelMat *tex;
-    ModelMatSet *model;
-    Model *set = gStageModelSet;
-    AttackBurstRock *rock = (AttackBurstRock *) ((StageObj *) node->owner)->buf + node->part;
-
-    if (set != NULL && set->active != 0) {
-        tex = set->mats;
-        rot[0] = (6.2831855f * rock->rot[0]) / 65536.0f;
-        rot[1] = (6.2831855f * rock->rot[1]) / 65536.0f;
-        rot[2] = (6.2831855f * rock->rot[2]) / 65536.0f;
-        scale[0] = rock->scale;
-        scale[1] = rock->scale;
-        scale[2] = rock->scale;
-        Mtx_FromScaleRotTrans(scale, rot, node->pos, 6, mtx);
-        Mtx_Concat3x3(mtx, gCamMatrix);
-        Gs_SetState(0x67, -1);
-        model = &set->matSets[73];
-        if (model != NULL && model->id != -1) {
-            Gs_SetState(0x60, 0x80);
-            Gs_SetState(0x1A, (s32) mtx);
-            Gs_SetLightList(tex, model);
-            Draw_ApplyStates(model->flags);
-            Model_Draw(model->id, 0);
-        }
-        Draw_SetDefaultState();
-    }
-}
-
-/*
- * End state of the AttackBurst types other than the rocks: frees each part's
- * draw slot (AttackBurst_PartCounts by type; the trail has var0 parts, at
- * least one) and moves to the free state.
- */
-void AttackBurst_EndParts(StageObj *obj)
-{
-    u8 *cursor = obj->buf;
-    s16 count;
-    s16 i;
-
-    obj->state++;
-    count = AttackBurst_PartCounts[obj->type];
-    switch (obj->type) {
-    case 3:
-        if (obj->var0 == 0) {
-            count = 1;
-        } else {
-            count = obj->var0;
-        }
-        break;
-    }
-    for (i = 0; i < count; i++) {
-        if (*(s32 *) (cursor + 0x2C) != 0) {
-            DrawSlot_Free(*(s16 *) cursor);
-        }
-        cursor += 0x30;
-    }
-}
-
-/*
- * End state of a rock-type AttackBurst: frees the draw slots of its ten rocks
- * and moves to the free state.
- */
-void AttackBurst_EndRocks(StageObj *obj)
-{
-    u8 *cursor = obj->buf;
-    s16 i;
-
-    obj->state++;
-    for (i = 0; i < 10; i++) {
-        if (*(s32 *) (cursor + 0x2C) != 0) {
-            DrawSlot_Free(*(s16 *) cursor);
-        }
-        cursor += 0x30;
-    }
-}
-
-/* Free state of an AttackBurst: frees the object. */
-void AttackBurst_Free(StageObj *obj)
-{
-    StageObj_Free(obj);
-}
-
-/*
- * Puts an AttackBurst (the type that stays on its owner) at a bone of its
- * owner, a monster: Rajang's bone 1 at an offset of (0, 180, 330), the
- * others' bone 0x25 at (0, -60, 140), the offset turned by the bone's matrix.
- */
-void AttackBurst_PlaceAtBone(StageObj *obj)
-{
-    Em *em = obj->owner;
-    void *boneMtx;
-    f32 ofs[3];
-
-    if (em->type == EM_KIND_RAJANG) {
-        boneMtx = Em_Bone(em, 1);
-        ofs[0] = 0.0f;
-        ofs[1] = 180.0f;
-        ofs[2] = 330.0f;
-    } else {
-        boneMtx = Em_Bone(em, 0x25);
-        ofs[0] = 0.0f;
-        ofs[1] = -60.0f;
-        ofs[2] = 140.0f;
-    }
-    Vec_RotateSelf(ofs, boneMtx);
-    Mtx_GetTrans(obj->pos, boneMtx);
-    obj->pos[0] += ofs[0];
-    obj->pos[1] += ofs[1];
-    obj->pos[2] += ofs[2];
-}
-
-/*
- * Returns 1 while the owner (a monster) is active and its layer-0 motion is
- * still the one recorded at creation (angle2) or motion 0x45A; else 0.
- */
-s32 AttackBurst_OwnerInMotion(StageObj *obj)
-{
-    Em *em = obj->owner;
-
-    if (em->active == 0 || (em->motionId[0] != obj->angle2 && em->motionId[0] != 0x45A)) {
-        return 0;
-    }
-    return 1;
-}
-
-/*
- * Allocates an AttackBurst (one block) of type objType with obj->angle set to
- * angleOrBone (a yaw, or the bone for the types made at one). Returns it, or
- * NULL when no object is free.
- */
-StageObj *AttackBurst_Alloc(s16 objType, s16 angleOrBone)
-{
-    StageObj *obj = StageObj_Alloc(1);
-
-    if (obj == NULL) {
-        return NULL;
-    }
-    obj->kind = STAGEOBJ_KIND_ATTACK_BURST;
-    obj->update = AttackBurst_Update;
-    obj->type = objType;
-    obj->angle = angleOrBone;
-    return obj;
-}
-
-/*
- * Creates an AttackBurst of type objType at a bone of a monster, owned by it,
- * when a player is in its area. sizeCode (kept in var0) sizes types 1 and 2
- * (0: 1.0, 1: 1.5, else 0.5); type 7 is moved by AttackBurst_PlaceAtBone and
- * keeps the monster's motion (angle2) and kind (var2), at 0.3. Rathalos' and
- * Garuga's fireball states make types 1 and 2 at bone 0x24,
- * EmRangedAttack_Run type 7.
- */
-void AttackBurst_CreateAtBone(Em *em, s16 bone, s16 objType, u16 sizeCode)
-{
-    StageObj *obj;
-
-    if (Player_InCurrentArea(em) & 0xFF) {
-        if ((obj = AttackBurst_Alloc(objType, bone)) != NULL) {
-            obj->var0 = sizeCode;
-            Em_BonePos(em, bone, obj->pos);
-            obj->owner = em;
-            switch (objType) {
-            case 1:
-            case 2:
-                if (sizeCode == 0) {
-                    obj->scale = 1.0f;
-                } else if (sizeCode == 1) {
-                    obj->scale = 1.5f;
-                } else {
-                    obj->scale = 0.5f;
-                }
-                break;
-            case 7:
-                AttackBurst_PlaceAtBone(obj);
-                obj->angle2 = em->motionId[0];
-                obj->var2 = em->type;
-                obj->scale = 0.3f;
-                break;
-            default:
-                obj->scale = 1.0f;
-                break;
-            }
-        }
-    }
-}
-
-/*
- * Creates the trail type (3) of AttackBurst at pos, without owner: pitch and
- * yaw are a projectile's angles (kept in timer and angle), count its number
- * of parts (0: one) and emKind the monster kind (var2). EmRangedAttack_Run
- * makes one every frame of a projectile's flight.
- */
-void AttackBurst_CreateTrail(f32 *pos, u16 pitch, u16 yaw, u8 count, u8 emKind)
-{
-    StageObj *obj = AttackBurst_Alloc(3, yaw);
-
-    if (obj != NULL) {
-        obj->var0 = count;
-        obj->timer = pitch;
-        obj->var2 = emKind;
-        obj->scale = 1.0f;
-        obj->owner = NULL;
-        Vec_Copy(obj->pos, pos);
-    }
-}
-
-/*
- * Creates an AttackBurst of type objType at pos with a yaw and a size,
- * without owner. Many monster states and attack objects make their impact
- * bursts and rocks with it.
- */
-void AttackBurst_CreateAtScaled(f32 *pos, s32 yaw, s16 objType, f32 scale)
-{
-    StageObj *obj = AttackBurst_Alloc(objType, yaw);
-
-    if (obj != NULL) {
-        obj->scale = scale;
-        obj->owner = NULL;
-        Vec_Copy(obj->pos, pos);
-    }
-}
-
-/*
- * Creates an AttackBurst of type objType at a bone of a monster, owned by it,
- * when a player is in its area; the high byte of tilt (an angle) goes to
- * var0, by which type 12's set-up turns it about X. Cephadrome's states make
- * type 0xC with it.
- */
-void AttackBurst_CreateAtBoneTilted(Em *em, s16 bone, s16 objType, u16 tilt)
-{
-    StageObj *obj;
-
-    if (Player_InCurrentArea(em) & 0xFF) {
-        if ((obj = AttackBurst_Alloc(objType, bone)) != NULL) {
-            obj->var0 = tilt >> 8;
-            Em_BonePos(em, bone, obj->pos);
-            obj->owner = em;
-            obj->scale = 1.0f;
-        }
-    }
-}
-
-/*
- * Creates an AttackBurst of type objType at pos, without owner, with the
- * monster kind emKind (var2) and a size.
- */
-void AttackBurst_CreateAt(f32 *pos, s16 objType, u8 emKind, f32 scale)
-{
-    StageObj *obj;
-
-    if ((obj = AttackBurst_Alloc(objType, 0)) != NULL) {
-        obj->var2 = emKind;
-        Vec_Copy(obj->pos, pos);
-        obj->owner = NULL;
-        obj->scale = scale;
-    }
-}
-
-/* As AttackBurst_CreateAt, with a yaw. */
-void AttackBurst_CreateAtYaw(f32 *pos, s16 objType, u8 emKind, s32 yaw, f32 scale)
-{
-    StageObj *obj;
-
-    if ((obj = AttackBurst_Alloc(objType, yaw)) != NULL) {
-        obj->var2 = emKind;
-        Vec_Copy(obj->pos, pos);
-        obj->owner = NULL;
-        obj->scale = scale;
-    }
-}
 
 /*
  * Update of a ShotFlash: runs its set-up, run, end and free states by
@@ -761,7 +271,7 @@ void ShotFlash_SetupPuffs(StageObj *obj)
     u8 *dirMtx = obj->buf;
     Em *em = obj->owner;
     s16 count = ShotFlash_PartCounts[obj->type];
-    ShotFlashPuff *puff = (ShotFlashPuff *) (dirMtx + 0x40);
+    ShotFlashPuff *puff = (ShotFlashPuff *) (dirMtx + 64);
     s16 i;
     s16 pair;
     u16 pairAngle;
@@ -874,11 +384,11 @@ void ShotFlash_SetupPuffs(StageObj *obj)
             } else {
                 puff->idx = i;
                 puff->angle = Rand_Next(1);
-                puff->spin = (Rand_Next(1) & 0x1FF) - 0x100;
+                puff->spin = (Rand_Next(1) & 0x1FF) - 256;
                 puff->delay = -6 - (i - 1) * 5;
-                puff->pos[0] = obj->pos[0] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                puff->pos[1] = obj->pos[1] + 5.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                puff->pos[2] = obj->pos[2] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 0x200);
+                puff->pos[0] = obj->pos[0] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 512);
+                puff->pos[1] = obj->pos[1] + 5.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 512);
+                puff->pos[2] = obj->pos[2] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 512);
             }
             break;
         case 8:
@@ -902,11 +412,11 @@ void ShotFlash_SetupPuffs(StageObj *obj)
         case 9:
             puff->idx = i + 1;
             puff->angle = Rand_Next(1);
-            puff->spin = (Rand_Next(1) & 0x1FF) - 0x100;
+            puff->spin = (Rand_Next(1) & 0x1FF) - 256;
             puff->delay = -6 - (i - 1) * 5;
-            puff->pos[0] = obj->pos[0] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 0x200);
-            puff->pos[1] = obj->pos[1] + 5.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 0x200);
-            puff->pos[2] = obj->pos[2] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 0x200);
+            puff->pos[0] = obj->pos[0] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 512);
+            puff->pos[1] = obj->pos[1] + 5.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 512);
+            puff->pos[2] = obj->pos[2] + 10.0f * 0.001f * ((Rand_Next(1) & 0x3FF) - 512);
             break;
         }
     }
@@ -929,7 +439,7 @@ void ShotFlash_RunPuffs(StageObj *obj)
     f32 boneMtx[16];
     u8 *dirMtx = obj->buf;
     s16 count = 0;
-    ShotFlashPuff *p = (ShotFlashPuff *) (dirMtx + 0x40);
+    ShotFlashPuff *p = (ShotFlashPuff *) (dirMtx + 64);
     s16 puffCount = ShotFlash_PartCounts[obj->type];
     s16 curveIdx = ShotFlash_CurveIdx[obj->type];
     s16 limit = ShotFlash_Lifetimes[obj->type];
@@ -953,14 +463,14 @@ void ShotFlash_RunPuffs(StageObj *obj)
         break;
     case 2:
     case 12:
-        dur = 0x14;
+        dur = 20;
         step = 3;
         break;
     case 5:
         step = 1;
         break;
     case 6:
-        dur = 0x11;
+        dur = 17;
         step = 1;
         break;
     case 7:
@@ -972,11 +482,11 @@ void ShotFlash_RunPuffs(StageObj *obj)
     case 8:
         step = 1;
         if (obj->timer == limit - 1) {
-            PartFx_SpawnAt(obj->pos, 0x1D, 1.0f);
+            PartFx_SpawnAt(obj->pos, 29, 1.0f);
         }
         break;
     case 9:
-        dur = 0x1E;
+        dur = 30;
         step = 1;
         break;
     }
@@ -993,19 +503,19 @@ void ShotFlash_RunPuffs(StageObj *obj)
             break;
         case 2:
         case 12:
-            curveIdx = 0xE;
+            curveIdx = 14;
             break;
         case 5:
             dur = ShotFlash_ColorFlashDurations[i];
             break;
         case 6:
-            curveIdx = 0x18;
+            curveIdx = 24;
             break;
         case 7:
             if (p->idx == 0) {
                 dur = 4;
             } else {
-                dur = 0x1E;
+                dur = 30;
             }
             break;
         case 8:
@@ -1069,7 +579,7 @@ void ShotFlash_RunPuffs(StageObj *obj)
                 p->node->pos[0] = obj->pos[0];
                 p->node->pos[1] = obj->pos[1];
                 p->node->pos[2] = obj->pos[2];
-                OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, p->node, 64, 0);
             }
             break;
         case 1:
@@ -1098,7 +608,7 @@ void ShotFlash_RunPuffs(StageObj *obj)
                 p->node->pos[0] = obj->pos[0] + ofs[0];
                 p->node->pos[1] = obj->pos[1] + ofs[1];
                 p->node->pos[2] = obj->pos[2] + ofs[2];
-                OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, p->node, 64, 0);
             }
             break;
         case 2:
@@ -1112,11 +622,11 @@ void ShotFlash_RunPuffs(StageObj *obj)
             Key_LerpFloat(ShotFlash_Curves[(s16) (curveBase + 2)], &p->alpha, p->delay);
             if (p->node != NULL) {
                 p->node->pos[1] += 0.5f;
-                OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, p->node, 64, 0);
             }
             break;
         case 6:
-            p->angle += 0xA1;
+            p->angle += 161;
             curve = ShotFlash_Curves[curveIdx++];
             Key_LerpVec3(curve, p->sc, p->delay);
             shrink = 1.4f - 0.2f * i;
@@ -1131,7 +641,7 @@ void ShotFlash_RunPuffs(StageObj *obj)
                 p->node->pos[0] += ofs[0];
                 p->node->pos[1] += ofs[1];
                 p->node->pos[2] += ofs[2];
-                OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, p->node, 64, 0);
             }
             break;
         case 7:
@@ -1160,7 +670,7 @@ void ShotFlash_RunPuffs(StageObj *obj)
                     p->node->pos[1] = p->pos[1] + ofs[1];
                     p->node->pos[2] = p->pos[2] + ofs[2];
                 }
-                OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, p->node, 64, 0);
             }
             break;
         case 8:
@@ -1170,7 +680,7 @@ void ShotFlash_RunPuffs(StageObj *obj)
                 p->node->pos[0] = p->pos[0];
                 p->node->pos[1] = p->pos[1];
                 p->node->pos[2] = p->pos[2];
-                OT_AddByDepth(gDrawOtSorted, p->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, p->node, 64, 0);
             }
             break;
         }
@@ -1191,8 +701,8 @@ void ShotFlash_DrawPuff(DrawSlot *node)
     StageObj *obj = node->owner;
     ModelMat *mats;
     f32 *dirMtx = (f32 *) obj->buf;
-    ShotFlashPuff *puff = (ShotFlashPuff *) ((u8 *) dirMtx + node->part * sizeof(ShotFlashPuff) + 0x40);
-    u8 **tbl;
+    ShotFlashPuff *puff = (ShotFlashPuff *) ((u8 *) dirMtx + node->part * sizeof(ShotFlashPuff) + 64);
+    ColorKey **tbl;
     s16 meshIdx;
     u16 mode = 0;
     Model *set = gStageModelSet;
@@ -1211,11 +721,11 @@ void ShotFlash_DrawPuff(DrawSlot *node)
         case 0:
         case 10:
             mode |= 2;
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             switch (puff->idx) {
             case 0:
                 rot[0] = 0.0f;
-                meshIdx = 0x10;
+                meshIdx = 16;
                 rot[1] = 0.0f;
                 rot[2] = 0.0f;
                 Mtx_FromScaleRotTrans(puff->sc, rot, node->pos, 0, mtx);
@@ -1223,9 +733,9 @@ void ShotFlash_DrawPuff(DrawSlot *node)
                 break;
             case 1:
                 if (puff->delay == 4) {
-                    meshIdx = 0x12;
+                    meshIdx = 18;
                 } else {
-                    meshIdx = 0x11;
+                    meshIdx = 17;
                 }
                 Mtx_Copy(mtx, dirMtx);
                 Mtx_Billboard(mtx, obj->pos);
@@ -1245,14 +755,14 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             break;
         case 1:
         case 11:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             if (puff->idx == 0) {
                 mode |= 2;
-                meshIdx = 0x4E;
+                meshIdx = 78;
                 Mtx_Translation(uvMtx, 0.25f * (puff->cell & 3), 0.25f * (puff->cell / 4), 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             } else {
-                meshIdx = 0x14;
+                meshIdx = 20;
             }
             rot[2] = (6.2831855f * puff->angle) / 65536.0f;
             Mtx_FromScaleRotTrans(puff->sc, rot, node->pos, 3, mtx);
@@ -1261,7 +771,7 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             break;
         case 2:
         case 12:
-            meshIdx = 0x14;
+            meshIdx = 20;
             if (obj->type == 12) {
                 scale[0] = 2.0f * puff->sc[0];
                 scale[1] = 2.0f * puff->sc[1];
@@ -1276,7 +786,7 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             break;
         case 5:
             mode |= 2;
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             scaleY = &scale[1];
             scaleZ = &scale[2];
             scale[0] = 3.0f * puff->sc[0];
@@ -1291,7 +801,7 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             switch (puff->idx) {
             case 0:
             case 1:
-                meshIdx = 0x79;
+                meshIdx = 121;
                 Mtx_Copy(mtx, dirMtx);
                 Mtx_Billboard(mtx, obj->pos);
                 mtx[0] *= scale[0];
@@ -1308,21 +818,21 @@ void ShotFlash_DrawPuff(DrawSlot *node)
                 Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
                 break;
             case 2:
-                meshIdx = 0x42;
+                meshIdx = 66;
                 rot[2] = (6.2831855f * puff->angle) / 65536.0f;
                 Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
                 Mtx_Concat3x3(mtx, gCamMatrix);
                 Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
             case 3:
-                meshIdx = 0x40;
+                meshIdx = 64;
                 rot[2] = (6.2831855f * puff->angle) / 65536.0f;
                 Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
                 Mtx_Concat3x3(mtx, gCamMatrix);
                 break;
             case 4:
-                meshIdx = 0x23;
+                meshIdx = 35;
                 rot[2] = (6.2831855f * puff->angle) / 65536.0f;
                 Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
                 Mtx_Concat3x3(mtx, gCamMatrix);
@@ -1345,7 +855,7 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             scale[0] = 3.0f * puff->sc[0];
             scale[1] = 3.0f * puff->sc[1];
             scale[2] = 3.0f * puff->sc[2];
-            meshIdx = 0x48;
+            meshIdx = 72;
             rot[2] = (6.2831855f * puff->angle) / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -1366,14 +876,14 @@ void ShotFlash_DrawPuff(DrawSlot *node)
         case 7:
         case 9:
             if (puff->idx == 0) {
-                meshIdx = 0x40;
+                meshIdx = 64;
                 mode |= 2;
                 color = 0xFFFFFF7F;
                 scale[0] = 4.0f * puff->sc[0];
                 scale[1] = 4.0f * puff->sc[1];
                 scale[2] = 4.0f * puff->sc[2];
             } else {
-                meshIdx = 0x48;
+                meshIdx = 72;
                 Color_EvalKeys((s32 *) ShotFlash_ImpactKeys[obj->var2], puff->delay, &color);
                 scale[0] = 2.0f * (1.0f - 0.1f * (puff->idx - 1)) * puff->sc[0];
                 scale[1] = 2.0f * (1.0f - 0.1f * (puff->idx - 1)) * puff->sc[1];
@@ -1387,13 +897,13 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             mode |= 2;
             switch (puff->idx) {
             case 0:
-                meshIdx = 0x40;
+                meshIdx = 64;
                 break;
             case 1:
-                meshIdx = 0x58;
+                meshIdx = 88;
                 break;
             case 2:
-                meshIdx = 0x7A;
+                meshIdx = 122;
                 break;
             }
             Color_EvalKeys((s32 *) ShotFlash_BurstKeys[puff->idx], puff->delay, &color);
@@ -1403,8 +913,8 @@ void ShotFlash_DrawPuff(DrawSlot *node)
             break;
         }
         Effect_DrawModel(&set->matSets[meshIdx], mtx, color, mode, mats);
-        Gfx_SetBlend(4, 5);
-        Gs_SetState(0x6C, 1);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
@@ -1438,13 +948,13 @@ void ShotFlash_RunSpark(StageObj *obj)
         obj->visible = 0;
         return;
     }
-    OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+    OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
 }
 
 /*
  * Draw callback of a ShotFlash spark: mesh 88 of the common model set facing
- * the camera, its size and alpha from ShotFlash_SparkScaleCurve and
- * ShotFlash_SparkAlphaCurve by its frame.
+ * the camera, its size and alpha from the tracks ShotFlash_Curves[17] (a scale)
+ * and ShotFlash_Curves[18] (an alpha) by its frame.
  */
 void ShotFlash_DrawSpark(DrawSlot *node)
 {
@@ -1459,15 +969,15 @@ void ShotFlash_DrawSpark(DrawSlot *node)
 
     if (mdl != NULL && mdl->active != 0) {
         mats = mdl->mats;
-        Key_LerpVec3(D_008D0F34, scale, obj->timer);
-        Key_LerpFloat(D_008D0F38, &alpha, obj->timer);
+        Key_LerpVec3(ShotFlash_Curves[17], scale, obj->timer);
+        Key_LerpFloat(ShotFlash_Curves[18], &alpha, obj->timer);
         rot[2] = (6.2831855f * obj->angle) / 65536.0f;
         Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
         Mtx_Concat3x3(mtx, gCamMatrix);
         mesh = &mdl->matSets[88];
-        Gfx_SetBlend(4, 1);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
         Effect_DrawModel(mesh, mtx, ((u8) (255.0f * alpha) << 24) | 0xFFFFFF, 2, mats);
-        Gfx_SetBlend(4, 5);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     }
 }
 
@@ -1508,7 +1018,7 @@ void ShotFlash_SetupPieces(StageObj *obj)
             if (i == 0) {
                 piece->rot[2] = 0;
             } else {
-                piece->rot[2] = 0x8000;
+                piece->rot[2] = ANGLE_TURN / 2;
             }
             Vec_Copy(piece->pos, obj->pos);
             sidePush[0] = 0.0f;
@@ -1569,7 +1079,7 @@ void ShotFlash_RunPieces(StageObj *obj)
         }
         if (piece->node != NULL) {
             Vec_Copy(piece->node->pos, piece->pos);
-            OT_AddByDepth(gDrawOt32, piece->node, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, piece->node, 32, 0);
         }
         piece++;
     }
@@ -1615,7 +1125,7 @@ void ShotFlash_End(StageObj *obj)
     s16 count;
     s16 i;
 
-    puff = (ShotFlashPuff *) (cursor + 0x40);
+    puff = (ShotFlashPuff *) (cursor + 64);
     obj->state++;
     count = ShotFlash_PartCounts[obj->type];
     if (count == 0) {
@@ -1626,7 +1136,7 @@ void ShotFlash_End(StageObj *obj)
                 if (((ShotFlashPiece *) cursor)->node != NULL) {
                     DrawSlot_Free(((ShotFlashPiece *) cursor)->slot);
                 }
-                cursor += 0x28;
+                cursor += 40;
             } else {
                 if (puff->node != NULL) {
                     DrawSlot_Free(puff->slot);
@@ -1645,7 +1155,7 @@ void ShotFlash_Free(StageObj *obj)
 
 /*
  * Plays a ShotFlash's sound at pos: only type 7 with color set 1 to 5 has one
- * (sound 0x26).
+ * (sound 38).
  */
 void ShotFlash_PlaySound(StageObj *obj, f32 *pos)
 {
@@ -1659,7 +1169,7 @@ void ShotFlash_PlaySound(StageObj *obj, f32 *pos)
         case 3:
         case 4:
         case 5:
-            Sound_PlaySeAtPosChecked(1, 0x26, 0, pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 38, 0, pos, 1, 0);
             break;
         }
         break;
@@ -1746,11 +1256,11 @@ void ShotFlash_CreateFromShot(u8 *shot, s32 objType, u8 colorSet)
     StageObj *obj;
 
     if ((obj = ShotFlash_Alloc(objType)) != NULL) {
-        obj->var0 = *(s32 *) (shot + 0x24) >> 8;
-        obj->var1 = *(s32 *) (shot + 0x28) >> 8;
+        obj->var0 = *(s32 *) (shot + 36) >> 8;
+        obj->var1 = *(s32 *) (shot + 40) >> 8;
         obj->var2 = colorSet;
-        Vec_Copy(obj->pos, (f32 *) (shot + 0x30));
-        obj->scale = 0.5f * Vec_Distance((f32 *) (shot + 0x30), (f32 *) (shot + 0x3C));
+        Vec_Copy(obj->pos, (f32 *) (shot + 48));
+        obj->scale = 0.5f * Vec_Distance((f32 *) (shot + 48), (f32 *) (shot + 60));
     }
 }
 
@@ -1794,13 +1304,13 @@ void ShotFlash_CreateAtAngles(f32 *pos, s32 objType, u16 pitch, u16 yaw)
 }
 
 /*
- * Creates the gunlance shell's ShotFlash (type 12) at bone 0xE of the player;
+ * Creates the gunlance shell's ShotFlash (type 12) at the player's PL_BONE_HAND;
  * the shelling variant picks the puffs' start delay
  * (ShotFlash_GunlanceShellDelays).
  */
 void ShotFlash_CreateGunlanceShell(Player *pl, s16 variant)
 {
-    ShotFlash_CreateOnBoneColored(pl, 0xE, 0xC, ShotFlash_GunlanceShellDelays[variant]);
+    ShotFlash_CreateOnBoneColored(pl, 14, 12, ShotFlash_GunlanceShellDelays[variant]);
 }
 
 /*
@@ -1836,7 +1346,7 @@ void AlertMark_Setup(StageObj *obj)
     obj->draw = NULL;
     if (obj->type == 0) {
         obj->var0 = 0;
-        obj->timer = 0xF;
+        obj->timer = 15;
     } else if (obj->type == 1) {
         obj->var0 = 3;
         obj->timer = 0;
@@ -1887,24 +1397,24 @@ void AlertMark_Run(StageObj *obj)
     move[1] = 0.0f;
     move[2] = 0.0f;
     if (obj->var2 != 0) {
-        if (*((s8 *) em + 0x7D8) == 0 && *((s8 *) em + 0x7D9) == 0) {
+        if (*((s8 *) em + 2008) == 0 && *((s8 *) em + 2009) == 0) {
             mark = 0;
-        } else if (*((s8 *) em + 0x7D9) != 0) {
+        } else if (*((s8 *) em + 2009) != 0) {
             mark = 2;
-        } else if (*((s8 *) em + 0x7D8) != 0) {
+        } else if (*((s8 *) em + 2008) != 0) {
             mark = 1;
         } else {
             mark = 0;
         }
         if (mark == 0) {
-            if (++obj->timer > 0x3C || obj->var0 == 0) {
-                obj->timer = 0x3C;
+            if (++obj->timer > 60 || obj->var0 == 0) {
+                obj->timer = 60;
                 obj->var0 = 0;
                 return;
             }
             frame = obj->timer;
-            frame = (frame > 0xF) ? 0xF : frame;
-            Key_LerpVec3(AlertMark_MoveKeys, move, frame);
+            frame = (frame > 15) ? 15 : frame;
+            Key_LerpVec3((f32 *) AlertMark_MoveKeys, move, frame);
         } else {
             obj->var0 = mark;
             obj->timer = 0;
@@ -1913,7 +1423,7 @@ void AlertMark_Run(StageObj *obj)
         Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, obj->angle)));
         ofs = AlertMark_OffsetsByEmKind[em->type];
     } else {
-        if (++obj->timer > 0x3C) {
+        if (++obj->timer > 60) {
             obj->state++;
             return;
         }
@@ -1929,7 +1439,7 @@ void AlertMark_Run(StageObj *obj)
         obj->node->pos[0] = pos[0] + move[0];
         obj->node->pos[1] = pos[1] + move[1];
         obj->node->pos[2] = pos[2] + move[2];
-        OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+        OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
     }
 }
 
@@ -1971,8 +1481,8 @@ void AlertMark_Draw(DrawSlot *node)
         tex = mdl->mats;
         switch (obj->type) {
         case 0:
-            frame = (obj->timer > 0xF) ? 0xF : obj->timer;
-            Key_LerpVec3(AlertMark_ScaleKeys, scale, frame);
+            frame = (obj->timer > 15) ? 15 : obj->timer;
+            Key_LerpVec3((f32 *) AlertMark_ScaleKeys, scale, frame);
             scale[0] *= 1.5f;
             scale[1] *= 1.5f;
             scale[2] *= 1.5f;
@@ -1986,9 +1496,9 @@ void AlertMark_Draw(DrawSlot *node)
         Mtx_Concat3x3(mtx, gCamMatrix);
         model = &mdl->matSets[AlertMark_MarkMeshes[obj->var0]];
         if (model != NULL && model->id != -1) {
-            Gs_SetState(0x60, 0);
-            Gs_SetState(0x1A, (s32) mtx);
-            Gs_SetState(0x67, -1);
+            Gs_SetState(RS_ALPHA_REF, 0);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+            Gs_SetState(RS_COLOR2, -1);
             Gs_SetLightList(tex, model);
             Draw_ApplyStates(model->flags);
             Model_Draw(model->id, 0);
@@ -2000,7 +1510,7 @@ void AlertMark_Draw(DrawSlot *node)
 /*
  * Creates an AlertMark of type objType for a monster at its bone bone (var2
  * 1: a monster owner). Ten monster families (EmRathalos_SpawnEffects and the
- * like) create type 0 at bone 0x22.
+ * like) create type 0 at bone 34.
  */
 void AlertMark_Create(void *owner, s16 bone, u8 objType)
 {
@@ -2091,7 +1601,7 @@ void DustCloud_Setup(StageObj *obj)
                     if (makeAttack) {
                         switch (obj->type) {
                         case 1:
-                            FatalisAttack_CreateOnObj(obj, 0x15);
+                            FatalisAttack_CreateOnObj(obj, 21);
                             break;
                         }
                     }
@@ -2124,23 +1634,23 @@ void DustCloud_Setup(StageObj *obj)
                         switch (obj->type) {
                         case 1:
                             if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                                RathalosAttack_CreateOnObj(obj, 0x21);
+                                RathalosAttack_CreateOnObj(obj, 33);
                             } else {
-                                RathalosAttack_CreateOnObj(obj, 0x2C);
+                                RathalosAttack_CreateOnObj(obj, 44);
                             }
                             break;
                         case 9:
                             if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                                RathalosAttack_CreateOnObj(obj, 0x27);
+                                RathalosAttack_CreateOnObj(obj, 39);
                             } else {
-                                RathalosAttack_CreateOnObj(obj, 0x2E);
+                                RathalosAttack_CreateOnObj(obj, 46);
                             }
                             break;
                         case 11:
                             if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                                RathalosAttack_CreateOnObj(obj, 0x26);
+                                RathalosAttack_CreateOnObj(obj, 38);
                             } else {
-                                RathalosAttack_CreateOnObj(obj, 0x2D);
+                                RathalosAttack_CreateOnObj(obj, 45);
                             }
                             break;
                         }
@@ -2151,16 +1661,16 @@ void DustCloud_Setup(StageObj *obj)
             case 2:
             case 3:
                 switch (obj->var2) {
-                case 0x1B:
-                case 0x1C:
-                case 0x21:
-                case 0x22:
-                case 0x23:
-                case 0x24:
-                case 0x1E:
-                case 0x2B:
-                case 0x2F:
-                    obj->angle += (s16) 0x8000;
+                case 27:
+                case 28:
+                case 33:
+                case 34:
+                case 35:
+                case 36:
+                case 30:
+                case 43:
+                case 47:
+                    obj->angle += (s16) (ANGLE_TURN / 2);
                     break;
                 }
                 break;
@@ -2173,12 +1683,12 @@ void DustCloud_Setup(StageObj *obj)
                 case EM_KIND_FATALIS_B:
                 case EM_KIND_FATALIS_C:
                     if (makeAttack) {
-                        FatalisAttack_CreateOnObj(obj, 0x15);
+                        FatalisAttack_CreateOnObj(obj, 21);
                     }
                     switch (obj->var2) {
-                    case 0xB:
-                    case 0x30:
-                        obj->angle += (s16) 0x8000;
+                    case 11:
+                    case 48:
+                        obj->angle += (s16) (ANGLE_TURN / 2);
                         break;
                     }
                     break;
@@ -2208,9 +1718,9 @@ void DustCloud_Setup(StageObj *obj)
                 case EM_KIND_YIAN_GARUGA:
                     if (makeAttack) {
                         if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                            RathalosAttack_CreateOnObj(obj, 0x20);
+                            RathalosAttack_CreateOnObj(obj, 32);
                         } else {
-                            RathalosAttack_CreateOnObj(obj, 0x30);
+                            RathalosAttack_CreateOnObj(obj, 48);
                         }
                     }
                     break;
@@ -2219,28 +1729,28 @@ void DustCloud_Setup(StageObj *obj)
             case 25:
                 obj->var0 = Rand_Next(1) & 1;
                 obj->var1 = em->type;
-                if (obj->var1 == 2 || obj->var1 == 0x24 || obj->var1 == 0x47) {
-                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 0x33)));
+                if (obj->var1 == 2 || obj->var1 == 36 || obj->var1 == 71) {
+                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 51)));
                 } else {
-                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 0x24)));
+                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 36)));
                 }
-                obj->angle = Mtx_Heading(headMtx) + 0x4000;
+                obj->angle = Mtx_Heading(headMtx) + ANGLE_TURN / 4;
                 break;
             case 26:
                 obj->var1 = em->type;
-                if (obj->var1 == 2 || obj->var1 == 0x24 || obj->var1 == 0x47) {
-                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 0x33)));
+                if (obj->var1 == 2 || obj->var1 == 36 || obj->var1 == 71) {
+                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 51)));
                 } else {
-                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 0x24)));
-                    if (obj->var1 == 0x16) {
-                        if (em->stateGroup == 3 && em->state == 4 && em->motionId[0] == 0x456) {
+                    Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(em, 36)));
+                    if (obj->var1 == 22) {
+                        if (em->stateGroup == 3 && em->state == 4 && em->motionId[0] == 1110) {
                             obj->var0 = 1;
                         } else {
                             obj->var0 = 0;
                         }
                     }
                 }
-                obj->angle = Mtx_Heading(headMtx) + 0x4000;
+                obj->angle = Mtx_Heading(headMtx) + ANGLE_TURN / 4;
                 break;
             }
         }
@@ -2262,7 +1772,7 @@ void DustCloud_Setup(StageObj *obj)
         case 1:
             puff->flag = i;
             puff->rot = Rand_Next(1);
-            puff->rotv = 0.5f + (65536.0f * (0.15f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+            puff->rotv = 0.5f + (65536.0f * (0.15f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             puff->size = 10.0f * obj->scale;
             break;
         case 2:
@@ -2270,33 +1780,33 @@ void DustCloud_Setup(StageObj *obj)
             puff->rot = Rand_Next(1);
             if (i < 2) {
                 puff->flag = 0;
-                puff->rotv = 0.5f + (65536.0f * (0.4f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.4f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             } else {
                 puff->flag = 1;
                 if (obj->var1 == 1) {
                     puff->size *= 0.4f;
                 }
-                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             }
             break;
         case 4:
             puff->rot = Rand_Next(1);
             if (i == 0) {
                 puff->flag = 0;
-                puff->rotv = 0.5f + (65536.0f * (0.3f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.3f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             } else {
                 puff->flag = 1;
-                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             }
             break;
         case 5:
             puff->rot = Rand_Next(1);
             if (i < 5) {
                 puff->flag = 0;
-                puff->rotv = 0.5f + (65536.0f * (0.4f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.4f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             } else {
                 puff->flag = 1;
-                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             }
             break;
         case 6:
@@ -2316,7 +1826,7 @@ void DustCloud_Setup(StageObj *obj)
         case 9:
             puff->flag = i;
             puff->rot = Rand_Next(1);
-            puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+            puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             puff->size = 0.8f + 0.00020000001f * (Rand_Next(1) & 0x3FF);
             break;
         case 10:
@@ -2330,16 +1840,16 @@ void DustCloud_Setup(StageObj *obj)
             }
             puff->rot = Rand_Next(1);
             if (i == 0) {
-                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             } else {
-                puff->rotv = 0.5f + (65536.0f * (0.03f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+                puff->rotv = 0.5f + (65536.0f * (0.03f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             }
             puff->size = obj->scale * (0.8f + 0.00040000002f * (Rand_Next(1) & 0x3FF));
             break;
         case 11:
             puff->flag = i;
             puff->rot = Rand_Next(1);
-            puff->rotv = 0.5f + (65536.0f * (0.15f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+            puff->rotv = 0.5f + (65536.0f * (0.15f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             break;
         case 12:
             puff->rot = 0;
@@ -2352,7 +1862,7 @@ void DustCloud_Setup(StageObj *obj)
         case 19:
             puff->flag = i;
             puff->rot = Rand_Next(1);
-            puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+            puff->rotv = 0.5f + (65536.0f * (0.1f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             break;
         case 14:
         case 15:
@@ -2369,16 +1879,16 @@ void DustCloud_Setup(StageObj *obj)
             puff->flag = i;
             puff->rot = Rand_Next(1);
             if (i < 2) {
-                puff->rotv = (Rand_Next(1) & 0x1FF) - 0x100;
+                puff->rotv = (Rand_Next(1) & 0x1FF) - 256;
             } else {
-                puff->rotv = (Rand_Next(1) & 0xFF) - 0x80;
+                puff->rotv = (Rand_Next(1) & 0xFF) - 128;
             }
             puff->size = obj->scale * (0.8f * DustCloud_PuffSizes[i]);
             break;
         case 21:
             puff->time = -i;
             puff->rot = Rand_Next(1);
-            puff->rotv = (Rand_Next(1) & 0xFF) - 0x80;
+            puff->rotv = (Rand_Next(1) & 0xFF) - 128;
             puff->flag = i;
             puff->fixedAlpha = 1;
             puff->size = obj->scale * (1.0f + 0.0005f * (Rand_Next(1) & 0x3FF));
@@ -2389,7 +1899,7 @@ void DustCloud_Setup(StageObj *obj)
             puff->fixedAlpha = 1;
             puff->alpha = 1.0f;
             puff->rot = Rand_Next(1);
-            puff->rotv = 0.5f + (65536.0f * (0.2f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200)))) / 360.0f;
+            puff->rotv = 0.5f + (65536.0f * (0.2f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512)))) / 360.0f;
             puff->size = obj->scale * (0.8f + 0.00070000003f * (Rand_Next(1) & 0x3FF));
             Vec_Copy(puff->pos, &((Em *) obj->owner)->posX);
             break;
@@ -2398,18 +1908,18 @@ void DustCloud_Setup(StageObj *obj)
             puff->fixedAlpha = 1;
             puff->alpha = 1.0f;
             puff->rot = Rand_Next(1);
-            puff->rotv = (Rand_Next(1) & 0x3FF) - 0x200;
+            puff->rotv = (Rand_Next(1) & 0x3FF) - 512;
             puff->size = obj->scale * (1.0f + 0.00080000004f * (Rand_Next(1) & 0x3FF));
             break;
         case 28:
             puff->rot = Rand_Next(1);
             puff->size = 1.2f;
-            puff->rotv = 0.5f + (65536.0f * (0.001f * ((Rand_Next(1) & 0x3FF) - 0x200))) / 360.0f;
+            puff->rotv = 0.5f + (65536.0f * (0.001f * ((Rand_Next(1) & 0x3FF) - 512))) / 360.0f;
             break;
         case 29:
             puff->time = -i * 4;
             puff->rot = Rand_Next(1);
-            puff->rotv = (Rand_Next(1) & 0x3FF) - 0x200;
+            puff->rotv = (Rand_Next(1) & 0x3FF) - 512;
             puff->flag = i;
             puff->fixedAlpha = 1;
             puff->size = obj->scale * (1.5f + 0.0005f * (Rand_Next(1) & 0x3FF));
@@ -2425,7 +1935,7 @@ void DustCloud_Setup(StageObj *obj)
             puff->node = NULL;
         }
     }
-    if (obj->type == 0x16 || obj->type == 0x19) {
+    if (obj->type == 22 || obj->type == 25) {
         DustCloud_Run(obj);
     }
 }
@@ -2438,7 +1948,7 @@ void DustCloud_Setup(StageObj *obj)
  * yaw; spread on a circle in some types) and alpha from the type's
  * DustCloud_Curves and is queued for drawing. Type 16's puffs start at the
  * head with a random jitter and fall; their gone check compares the signed
- * flag with 0xFF, which never matches.
+ * flag with 255, which never matches.
  */
 void DustCloud_Run(StageObj *obj)
 {
@@ -2471,25 +1981,25 @@ void DustCloud_Run(StageObj *obj)
         dur = total;
         break;
     case 0:
-        dur = 0x41;
+        dur = 65;
         break;
     case 1:
-        dur = 0x24;
+        dur = 36;
         break;
     case 11:
-        dur = 0x42;
+        dur = 66;
         break;
     case 16:
-        dur = 0x18;
+        dur = 24;
         break;
     case 18:
-        dur = 0x26;
+        dur = 38;
         break;
     case 29:
-        dur = 0x13;
+        dur = 19;
         break;
     case 21:
-        dur = 0x2D;
+        dur = 45;
         break;
     case 25:
         curveSet = (u32) obj->var2 >> 1;
@@ -2501,27 +2011,27 @@ void DustCloud_Run(StageObj *obj)
         obj->visible = 0;
         return;
     }
-    if (obj->type == 0x10) {
+    if (obj->type == 16) {
         if (((Em *) obj->owner)->active == 0 || ((Em *) obj->owner)->taskPhase == 3) {
             for (i = 0; i < count; i++) {
                 puff[i].flag = -1;
             }
         }
-    } else if (obj->type == 0x19) {
+    } else if (obj->type == 25) {
         if (((Em *) obj->owner)->active == 0 || ((Em *) obj->owner)->taskPhase == 3) {
             obj->state++;
             obj->visible = 0;
             return;
         }
         if (curveSet != 3) {
-            Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(obj->owner, 0x24)));
+            Mtx_Copy((f32 *) headMtx, (f32 *) (Em_GetBone(obj->owner, 36)));
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
             ofs[2] = 80.0f;
             Vec_RotateSelf(ofs, headMtx);
             obj->pos[0] = headMtx[12] + ofs[0];
             obj->pos[2] = headMtx[14] + ofs[2];
-            obj->angle = Mtx_Heading(headMtx) + 0x4000;
+            obj->angle = Mtx_Heading(headMtx) + ANGLE_TURN / 4;
         }
     }
     for (i = 0; i < count; i++, puff++) {
@@ -2559,12 +2069,12 @@ void DustCloud_Run(StageObj *obj)
         } else if (puff->time > (u16) dur) {
             curveIdx += step;
         } else {
-            if (obj->type == 0x10 && puff->time == 1) {
-                if (puff->flag != 0xFF) {
-                    Em_BonePos(obj->owner, 0x24, puff->pos);
-                    puff->pos[0] += 0.05f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                    puff->pos[1] += 0.05f * ((Rand_Next(1) & 0x3FF) - 0x200);
-                    puff->pos[2] += 0.05f * ((Rand_Next(1) & 0x3FF) - 0x200);
+            if (obj->type == 16 && puff->time == 1) {
+                if (puff->flag != 255) {
+                    Em_BonePos(obj->owner, 36, puff->pos);
+                    puff->pos[0] += 0.05f * ((Rand_Next(1) & 0x3FF) - 512);
+                    puff->pos[1] += 0.05f * ((Rand_Next(1) & 0x3FF) - 512);
+                    puff->pos[2] += 0.05f * ((Rand_Next(1) & 0x3FF) - 512);
                 } else {
                     curveIdx += step;
                     continue;
@@ -2736,7 +2246,7 @@ void DustCloud_Run(StageObj *obj)
             Key_LerpFloat(curve, &puff->alpha, puff->time);
         }
         if (puff->node != NULL) {
-            if (obj->type == 0x10) {
+            if (obj->type == 16) {
                 puff->node->pos[0] = puff->pos[0];
                 puff->node->pos[1] = puff->pos[1];
                 puff->node->pos[2] = puff->pos[2];
@@ -2745,7 +2255,7 @@ void DustCloud_Run(StageObj *obj)
                 puff->node->pos[1] = obj->pos[1] + ofs[1];
                 puff->node->pos[2] = obj->pos[2] + ofs[2];
             }
-            OT_AddByDepth(gDrawOtSorted, puff->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, puff->node, 64, 0);
         }
         }
     }
@@ -2764,10 +2274,10 @@ void DustCloud_End(StageObj *obj)
     obj->state++;
     count = DustCloud_PartCounts[obj->type];
     for (i = 0; i < count; i++) {
-        if (*(s32 *) (cursor + 0x2C) != 0) {
+        if (*(s32 *) (cursor + 44) != 0) {
             DrawSlot_Free(*(s16 *) (cursor + 2));
         }
-        cursor += 0x30;
+        cursor += 48;
     }
 }
 
@@ -2777,41 +2287,37 @@ void DustCloud_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-s16 Effect_MapTexId(s16 id);
-void Effect_GetColor(s32 area, u8 *r, u8 *g, u8 *b, u8 *a);
-s32 Model_DrawFade(void *mdl, f32 *m, u16 flags, void *a3, f32 alpha);
-s16 EmSlot_FindKind(s16 k);
-extern u8 DustCloud_FlatPuffColors[];
-extern u8 DustCloud_RingColors[];
-extern u8 DustCloud_RingColorsAlt[];
-extern u8 DustCloud_BreathRathalosCore[];
-extern u8 DustCloud_BreathRathalosTrail[];
-extern u8 DustCloud_BreathGypcerosCore[];
-extern u8 DustCloud_BreathGypcerosTrail[];
-extern u8 DustCloud_BreathKutKuCore[];
-extern u8 DustCloud_BreathKutKuTrail[];
-extern u8 DustCloud_BreathKhezuCore[];
-extern u8 DustCloud_BreathKhezuTrail[];
-extern u8 DustCloud_BreathGraviosCore[];
-extern u8 DustCloud_BreathGraviosTrail[];
-extern u8 DustCloud_BreathBasariosCore[];
-extern u8 DustCloud_BreathBasariosTrail[];
-extern u8 DustCloud_BreathOtherCore[];
-extern u8 DustCloud_BreathOtherTrail[];
-extern u8 DustCloud_PuffRathalosFlame[];
-extern u8 DustCloud_PuffRathalosSmoke[];
-extern u8 DustCloud_PuffGypceros[];
-extern u8 DustCloud_PuffKutKuFlame[];
-extern u8 DustCloud_PuffKutKuSmoke[];
-extern u8 DustCloud_PuffKhezu[];
-extern u8 DustCloud_PuffPlesioth[];
-extern u8 DustCloud_PuffCephadrome[];
-extern u8 DustCloud_PuffGravios[];
-extern u8 DustCloud_PuffBasarios[];
-extern u8 DustCloud_PuffOther[];
-extern u8 DustCloud_PuffFatalisFlame[];
-extern u8 DustCloud_PuffFatalisSmoke[];
-extern u8 *DustCloud_SectorColors[];
+extern ColorKey DustCloud_FlatPuffColors[];
+extern ColorKey DustCloud_RingColors[];
+extern ColorKey DustCloud_RingColorsAlt[];
+extern ColorKey DustCloud_BreathRathalosCore[];
+extern ColorKey DustCloud_BreathRathalosTrail[];
+extern ColorKey DustCloud_BreathGypcerosCore[];
+extern ColorKey DustCloud_BreathGypcerosTrail[];
+extern ColorKey DustCloud_BreathKutKuCore[];
+extern ColorKey DustCloud_BreathKutKuTrail[];
+extern ColorKey DustCloud_BreathKhezuCore[];
+extern ColorKey DustCloud_BreathKhezuTrail[];
+extern ColorKey DustCloud_BreathGraviosCore[];
+extern ColorKey DustCloud_BreathGraviosTrail[];
+extern ColorKey DustCloud_BreathBasariosCore[];
+extern ColorKey DustCloud_BreathBasariosTrail[];
+extern ColorKey DustCloud_BreathOtherCore[];
+extern ColorKey DustCloud_BreathOtherTrail[];
+extern ColorKey DustCloud_PuffRathalosFlame[];
+extern ColorKey DustCloud_PuffRathalosSmoke[];
+extern ColorKey DustCloud_PuffGypceros[];
+extern ColorKey DustCloud_PuffKutKuFlame[];
+extern ColorKey DustCloud_PuffKutKuSmoke[];
+extern ColorKey DustCloud_PuffKhezu[];
+extern ColorKey DustCloud_PuffPlesioth[];
+extern ColorKey DustCloud_PuffCephadrome[];
+extern ColorKey DustCloud_PuffGravios[];
+extern ColorKey DustCloud_PuffBasarios[];
+extern ColorKey DustCloud_PuffOther[];
+extern ColorKey DustCloud_PuffFatalisFlame[];
+extern ColorKey DustCloud_PuffFatalisSmoke[];
+extern ColorKey *DustCloud_SectorColors[];
 
 /*
  * Draw callback of one DustCloud puff, by type: mostly a puff texture of the
@@ -2831,7 +2337,7 @@ void DustCloud_Draw(DrawSlot *node)
     Model *set = gStageModelSet;
     Model *kindModel;
     void *mesh;
-    u8 *curve;
+    ColorKey *curve;
     s32 index;
     s16 tex;
     f32 alphaScale;
@@ -2862,22 +2368,22 @@ void DustCloud_Draw(DrawSlot *node)
             rot[2] = (6.2831855f * puff->rot) / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
-            if (obj->type == 0xE) {
-                if ((index = Effect_MapTexId(0x23)) != -1) {
+            if (obj->type == 14) {
+                if ((index = Effect_MapTexId(35)) != -1) {
                     Effect_DrawModel(&set->matSets[index], mtx, ((u8) (255.0f * alphaScale * puff->alpha) << 24) | (red << 16) | (green << 8) | blue, 0, mats);
                 }
             } else {
-                if ((index = Effect_MapTexId(0x4A)) != -1) {
+                if ((index = Effect_MapTexId(74)) != -1) {
                     mesh = &set->matSets[index];
-                    if (obj->type == 0xC) {
-                        red = 0xFF;
-                        green = 0xFF;
-                        blue = 0xFF;
+                    if (obj->type == 12) {
+                        red = 255;
+                        green = 255;
+                        blue = 255;
                         alphaScale = 1.0f;
-                    } else if (obj->type == 0x14) {
-                        red = 0x7F;
-                        green = 0x6D;
-                        blue = 0x54;
+                    } else if (obj->type == 20) {
+                        red = 127;
+                        green = 109;
+                        blue = 84;
                         alphaScale = 1.0f;
                     }
                     Effect_DrawModel(mesh, mtx, ((u8) (255.0f * alphaScale * puff->alpha) << 24) | (red << 16) | (green << 8) | blue, 0, mats);
@@ -2896,11 +2402,11 @@ void DustCloud_Draw(DrawSlot *node)
             }
             Mtx_Concat3x3(mtx, gCamMatrix);
             if (puff->flag == 0) {
-                if ((index = Effect_MapTexId(0x4A)) != -1) {
+                if ((index = Effect_MapTexId(74)) != -1) {
                     Effect_DrawModel(&set->matSets[index], mtx, ((u8) (255.0f * alphaScale * puff->alpha) << 24) | (red << 16) | (green << 8) | blue, 0, mats);
                 }
             } else {
-                if ((index = Effect_MapTexId(0x23)) != -1) {
+                if ((index = Effect_MapTexId(35)) != -1) {
                     Effect_DrawModel(&set->matSets[index], mtx, ((u8) (255.0f * puff->alpha) << 24) | (red << 16) | (green << 8) | blue, 0, mats);
                 }
             }
@@ -2911,11 +2417,11 @@ void DustCloud_Draw(DrawSlot *node)
             Mtx_FromScaleRotTrans(puff->sc, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
             if (puff->flag == 0) {
-                if ((index = Effect_MapTexId(0x4A)) != -1) {
+                if ((index = Effect_MapTexId(74)) != -1) {
                     Effect_DrawModel(&set->matSets[index], mtx, ((u8) (255.0f * alphaScale * puff->alpha) << 24) | (red << 16) | (green << 8) | blue, 0, mats);
                 }
             } else {
-                if ((index = Effect_MapTexId(0x23)) != -1) {
+                if ((index = Effect_MapTexId(35)) != -1) {
                     Effect_DrawModel(&set->matSets[index], mtx, ((u8) (255.0f * puff->alpha) << 24) | 0x555555, 0, mats);
                 }
             }
@@ -2929,21 +2435,21 @@ void DustCloud_Draw(DrawSlot *node)
             scale[2] = puff->size * puff->sc[2];
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
-            if ((index = Effect_MapTexId(0x55)) != -1) {
+            if ((index = Effect_MapTexId(85)) != -1) {
                 Model_DrawFade(&set->matSets[index], mtx, 0, mats, puff->alpha);
             }
             break;
         case 7:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             scale[0] = puff->size * puff->sc[0];
             scale[1] = puff->size * puff->sc[1];
             scale[2] = puff->size * puff->sc[2];
             rot[1] = (6.2831855f * puff->rot) / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, obj->pos, 2, mtx);
-            if ((index = Effect_MapTexId(0x5D)) != -1) {
+            if ((index = Effect_MapTexId(93)) != -1) {
                 mesh = &set->matSets[index];
                 Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 Model_DrawFade(mesh, mtx, 0, mats, puff->alpha);
             }
             break;
@@ -2956,23 +2462,23 @@ void DustCloud_Draw(DrawSlot *node)
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
             if (puff->flag == 0) {
-                if ((index = Effect_MapTexId(0x4A)) != -1) {
+                if ((index = Effect_MapTexId(74)) != -1) {
                     Effect_DrawModel(&set->matSets[index], mtx, ((u8) (255.0f * alphaScale * puff->alpha) << 24) | (red << 16) | (green << 8) | blue, 0, mats);
                 }
             } else {
-                if ((index = Effect_MapTexId(0x23)) != -1) {
+                if ((index = Effect_MapTexId(35)) != -1) {
                     Model_DrawFade(&set->matSets[index], mtx, 0, mats, puff->alpha);
                 }
             }
             break;
         case 13:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             scale[0] = puff->size * puff->sc[0];
             scale[1] = puff->size * puff->sc[1];
             scale[2] = puff->size * puff->sc[2];
             rot[1] = (6.2831855f * puff->rot) / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 2, mtx);
-            if ((index = Effect_MapTexId(0x2A)) != -1) {
+            if ((index = Effect_MapTexId(42)) != -1) {
                 mesh = &set->matSets[index];
                 Color_EvalKeys((s32 *) DustCloud_FlatPuffColors, puff->time, &color);
                 Effect_DrawModel(mesh, mtx, color, 2, mats);
@@ -2989,7 +2495,7 @@ void DustCloud_Draw(DrawSlot *node)
             }
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 2, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
-            if ((index = Effect_MapTexId(0x24)) != -1) {
+            if ((index = Effect_MapTexId(36)) != -1) {
                 Model_DrawFade(&set->matSets[index], mtx, 0, mats, puff->alpha);
             }
             break;
@@ -3000,7 +2506,7 @@ void DustCloud_Draw(DrawSlot *node)
             rot[2] = (6.2831855f * puff->rot) / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
-            if ((index = Effect_MapTexId(0x4A)) != -1) {
+            if ((index = Effect_MapTexId(74)) != -1) {
                 mesh = &set->matSets[index];
                 switch (obj->var2) {
                 default:
@@ -3039,10 +2545,10 @@ void DustCloud_Draw(DrawSlot *node)
                     mesh = &kindModel->matSets[2];
                     mats = kindModel->mats;
                     Mtx_Translation(uvMtx, 0.25f * obj->var0, 0.0f, 0.0f);
-                    Gs_SetState(0x19, (s32) uvMtx);
+                    Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                     mode |= 2;
                 } else {
-                    if ((index = Effect_MapTexId(0x4A)) == -1) {
+                    if ((index = Effect_MapTexId(74)) == -1) {
                         goto end;
                     }
                     mesh = &set->matSets[index];
@@ -3051,7 +2557,7 @@ void DustCloud_Draw(DrawSlot *node)
                 }
                 break;
             case 20:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3074,7 +2580,7 @@ void DustCloud_Draw(DrawSlot *node)
                     curve = DustCloud_BreathKutKuCore;
                     mesh = &kindModel->matSets[2];
                 } else {
-                    if ((index = Effect_MapTexId(0x4A)) == -1) {
+                    if ((index = Effect_MapTexId(74)) == -1) {
                         goto end;
                     }
                     mesh = &set->matSets[index];
@@ -3083,7 +2589,7 @@ void DustCloud_Draw(DrawSlot *node)
                 }
                 break;
             case 15:
-                if ((index = Effect_MapTexId(0x84)) == -1) {
+                if ((index = Effect_MapTexId(132)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3096,7 +2602,7 @@ void DustCloud_Draw(DrawSlot *node)
                 }
                 break;
             case 17:
-                if ((index = Effect_MapTexId(0x84)) == -1) {
+                if ((index = Effect_MapTexId(132)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3109,7 +2615,7 @@ void DustCloud_Draw(DrawSlot *node)
                 }
                 break;
             case 22:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3123,7 +2629,7 @@ void DustCloud_Draw(DrawSlot *node)
             case 14:
             case 26:
             default:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3151,11 +2657,11 @@ void DustCloud_Draw(DrawSlot *node)
             Mtx_Concat3x3(mtx, gCamMatrix);
             switch (obj->var1) {
             case 1:
-            case 0x2A:
-            case 0x25:
-            case 0xB:
-            case 0x29:
-            case 0x31:
+            case 42:
+            case 37:
+            case 11:
+            case 41:
+            case 49:
                 if (kindModel == NULL) {
                     return;
                 }
@@ -3169,7 +2675,7 @@ void DustCloud_Draw(DrawSlot *node)
                     mesh = &kindModel->matSets[2];
                     Mtx_Translation(uvMtx, 0.25f, 0.0f, 0.0f);
                 } else {
-                    if ((index = Effect_MapTexId(0x4A)) == -1) {
+                    if ((index = Effect_MapTexId(74)) == -1) {
                         goto end;
                     }
                     mesh = &set->matSets[index];
@@ -3177,9 +2683,9 @@ void DustCloud_Draw(DrawSlot *node)
                     mats = set->mats;
                 }
                 break;
-            case 0x14:
-            case 0x27:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+            case 20:
+            case 39:
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3187,7 +2693,7 @@ void DustCloud_Draw(DrawSlot *node)
                 mats = set->mats;
                 break;
             case 6:
-            case 0x26:
+            case 38:
                 if (kindModel == NULL) {
                     return;
                 }
@@ -3200,26 +2706,26 @@ void DustCloud_Draw(DrawSlot *node)
                     mesh = &kindModel->matSets[2];
                 } else {
                     mats = set->mats;
-                    if ((index = Effect_MapTexId(0x4A)) == -1) {
+                    if ((index = Effect_MapTexId(74)) == -1) {
                         goto end;
                     }
                     mesh = &set->matSets[index];
                     curve = DustCloud_PuffKutKuSmoke;
                 }
                 break;
-            case 0xF:
-            case 0x2D:
+            case 15:
+            case 45:
                 mode |= 2;
-                if ((index = Effect_MapTexId(0x84)) == -1) {
+                if ((index = Effect_MapTexId(132)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
                 curve = DustCloud_PuffKhezu;
                 mats = set->mats;
                 break;
-            case 0x15:
-            case 0x2E:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+            case 21:
+            case 46:
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3227,32 +2733,32 @@ void DustCloud_Draw(DrawSlot *node)
                 mats = set->mats;
                 break;
             case 8:
-            case 0x22:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+            case 34:
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
                 curve = DustCloud_PuffCephadrome;
                 mats = set->mats;
                 break;
-            case 0x11:
-            case 0x2F:
+            case 17:
+            case 47:
                 mode |= 2;
-                if ((index = Effect_MapTexId(0x84)) == -1) {
+                if ((index = Effect_MapTexId(132)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
                 curve = DustCloud_PuffGravios;
                 mats = set->mats;
                 break;
-            case 0x16:
+            case 22:
                 mats = set->mats;
                 if (obj->var0 != 0) {
-                    tex = 0x84;
+                    tex = 132;
                     mode |= 2;
                     curve = DustCloud_PuffGravios;
                 } else {
-                    tex = 0x4A;
+                    tex = 74;
                     curve = DustCloud_PuffBasarios;
                 }
                 if ((index = Effect_MapTexId(tex)) == -1) {
@@ -3260,13 +2766,13 @@ void DustCloud_Draw(DrawSlot *node)
                 }
                 mesh = &set->matSets[index];
                 break;
-            case 0xE:
-            case 0x2B:
-            case 0x1A:
-            case 0x2C:
-            case 0x47:
+            case 14:
+            case 43:
+            case 26:
+            case 44:
+            case 71:
             default:
-                if ((index = Effect_MapTexId(0x4A)) == -1) {
+                if ((index = Effect_MapTexId(74)) == -1) {
                     goto end;
                 }
                 mesh = &set->matSets[index];
@@ -3274,7 +2780,7 @@ void DustCloud_Draw(DrawSlot *node)
                 mats = set->mats;
                 break;
             case 2:
-            case 0x24:
+            case 36:
                 if (kindModel == NULL) {
                     return;
                 }
@@ -3289,7 +2795,7 @@ void DustCloud_Draw(DrawSlot *node)
                     Mtx_Translation(uvMtx, 0.25f, 0.0f, 0.0f);
                 } else {
                     mats = set->mats;
-                    if ((index = Effect_MapTexId(0x4A)) == -1) {
+                    if ((index = Effect_MapTexId(74)) == -1) {
                         goto end;
                     }
                     mesh = &set->matSets[index];
@@ -3297,7 +2803,7 @@ void DustCloud_Draw(DrawSlot *node)
                 }
                 break;
             }
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             Color_EvalKeys((s32 *) curve, puff->time, &color);
             Effect_DrawModel(mesh, mtx, color, mode, mats);
             break;
@@ -3308,7 +2814,7 @@ void DustCloud_Draw(DrawSlot *node)
             rot[2] = (6.2831855f * puff->rot) / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
-            if ((index = Effect_MapTexId(0x4A)) != -1) {
+            if ((index = Effect_MapTexId(74)) != -1) {
                 mesh = &set->matSets[index];
                 Color_EvalKeys((s32 *) DustCloud_SectorColors[obj->var2], puff->time, &color);
                 Effect_DrawModel(mesh, mtx, color, 0, mats);
@@ -3318,7 +2824,7 @@ void DustCloud_Draw(DrawSlot *node)
             break;
         }
     end:
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
@@ -3361,7 +2867,7 @@ s16 DustCloud_FindGround(Em *em, f32 *pos, s16 objType)
 /*
  * Puts in pos where a DustCloud of type objType with place code place goes
  * for a monster: by type and kind, under a bone on the floor, at the monster,
- * at an offset of its head (types 25, 26) or ahead of bone 0x23 (types 6 to
+ * at an offset of its head (types 25, 26) or ahead of bone 35 (types 6 to
  * 8, 15). For types 1, 9, 10 and 11 of the wyvern kinds it picks a ground
  * attack kind (none with bit 0x80 of place), made here with
  * RathalosAttack_CreateAt when the place has a special surface. Returns
@@ -3398,10 +2904,10 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         case EM_KIND_FATALIS_C:
             switch (place) {
             case 0:
-                Em_BonePos(em, 0x1F, pos);
+                Em_BonePos(em, 31, pos);
                 break;
             default:
-                Em_BonePos(em, 0x13, pos);
+                Em_BonePos(em, 19, pos);
                 break;
             }
             pos[1] = em->floorY;
@@ -3413,13 +2919,13 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         case EM_KIND_CONGA:
             switch (place) {
             case 19:
-                Em_BonePos(em, 0x10, pos);
+                Em_BonePos(em, 16, pos);
                 break;
             case 17:
-                Em_BonePos(em, 0xE, pos);
+                Em_BonePos(em, BLANG_BONE_HAND_B, pos);
                 break;
             case 20:
-                Em_BonePos(em, 4, pos);
+                Em_BonePos(em, BLANG_BONE_BODY, pos);
                 break;
             default:
                 pos[0] = em->posX;
@@ -3434,13 +2940,13 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         case EM_KIND_SHOGUN_CEANATAUR:
             switch (place) {
             case 21:
-                Em_BonePos(em, 0xC, pos);
+                Em_BonePos(em, HERM_BONE_SIDE_B, pos);
                 break;
             case 24:
-                Em_BonePos(em, 0xB, pos);
+                Em_BonePos(em, HERM_BONE_SIDE_A, pos);
                 break;
             case 37:
-                Em_BonePos(em, 0xD, pos);
+                Em_BonePos(em, 13, pos);
                 break;
             default:
                 pos[0] = em->posX;
@@ -3455,10 +2961,10 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         case EM_KIND_TEOSTRA:
             switch (place) {
             case 25:
-                Em_BonePos(em, 0x1F, pos);
+                Em_BonePos(em, KUSH_BONE_FOOT_C, pos);
                 break;
             case 29:
-                Em_BonePos(em, 0x1F, pos);
+                Em_BonePos(em, KUSH_BONE_FOOT_C, pos);
                 break;
             default:
                 pos[0] = em->posX;
@@ -3470,10 +2976,10 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         case EM_KIND_SHEN_GAOREN:
             switch (place) {
             case 38:
-                Em_BonePos(em, 0xA, pos);
+                Em_BonePos(em, SHEN_BONE_ARM_A_TIP, pos);
                 break;
             case 39:
-                Em_BonePos(em, 6, pos);
+                Em_BonePos(em, SHEN_BONE_ARM_B_TIP, pos);
                 break;
             case 40:
                 Em_BonePos(em, 2, pos);
@@ -3499,55 +3005,55 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
             }
             if (makeAttack) {
                 switch (em->type) {
-                case 2:
-                case 0x24:
-                case 0x47:
+                case EM_KIND_FATALIS:
+                case EM_KIND_FATALIS_B:
+                case EM_KIND_FATALIS_C:
                     if (makeAttack) { break; }
                     break;
-                case 0x1:
-                case 0x2A:
-                case 0x25:
-                case 0x6:
-                case 0x26:
-                case 0x8:
-                case 0xB:
-                case 0x29:
-                case 0x31:
-                case 0xE:
-                case 0x2B:
-                case 0xF:
-                case 0x2D:
-                case 0x11:
-                case 0x2F:
-                case 0x14:
-                case 0x27:
-                case 0x15:
-                case 0x2E:
-                case 0x16:
-                case 0x1A:
-                case 0x2C:
-                case 0x22:
-                case 0x28:
+                case EM_KIND_RATHIAN:
+                case EM_KIND_GOLD_RATHIAN:
+                case EM_KIND_PINK_RATHIAN:
+                case EM_KIND_YIAN_KUT_KU:
+                case EM_KIND_BLUE_YIAN_KUT_KU:
+                case EM_KIND_CEPHADROME:
+                case EM_KIND_RATHALOS:
+                case EM_KIND_SILVER_RATHALOS:
+                case EM_KIND_AZURE_RATHALOS:
+                case EM_KIND_DIABLOS:
+                case EM_KIND_BLACK_DIABLOS:
+                case EM_KIND_KHEZU:
+                case EM_KIND_RED_KHEZU:
+                case EM_KIND_GRAVIOS:
+                case EM_KIND_BLACK_GRAVIOS:
+                case EM_KIND_GYPCEROS:
+                case EM_KIND_PURPLE_GYPCEROS:
+                case EM_KIND_PLESIOTH:
+                case EM_KIND_GREEN_PLESIOTH:
+                case EM_KIND_BASARIOS:
+                case EM_KIND_MONOBLOS:
+                case EM_KIND_WHITE_MONOBLOS:
+                case EM_KIND_CEPHALOS:
+                case EM_KIND_YIAN_GARUGA:
                     switch (objType) {
                     case 1:
                         if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                            attackKind = 0x21;
+                            attackKind = 33;
                         } else {
-                            attackKind = 0x2C;
+                            attackKind = 44;
                         }
                         break;
                     case 9:
                         if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                            attackKind = 0x27;
+                            attackKind = 39;
                         } else {
-                            attackKind = 0x2E;
+                            attackKind = 46;
                         }
                         break;
                     case 11:
                         if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                            attackKind = 0x26;
+                            attackKind = 38;
                         } else {
-                            attackKind = 0x2D;
+                            attackKind = 45;
                         }
                         break;
                     }
@@ -3561,7 +3067,7 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
     case 3:
         switch (place) {
         case 4:
-            Em_BonePos(em, 0xA, pos);
+            Em_BonePos(em, 10, pos);
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
             ofs[2] = 20.0f;
@@ -3588,13 +3094,13 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
             Em_BonePos(em, 2, pos);
             break;
         case 8:
-            Em_BonePos(em, 0x1C, pos);
+            Em_BonePos(em, 28, pos);
             break;
         case 11:
-            Em_BonePos(em, 0x1E, pos);
+            Em_BonePos(em, FAT_BONE_FOOT_D, pos);
             break;
         case 48:
-            Em_BonePos(em, 0x19, pos);
+            Em_BonePos(em, FAT_BONE_FOOT_C, pos);
             break;
         case 12:
             Em_BonePos(em, 2, pos);
@@ -3603,74 +3109,74 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
             Em_BonePos(em, 1, pos);
             break;
         case 16:
-            Em_BonePos(em, 0x17, pos);
+            Em_BonePos(em, BLANG_BONE_FOOT_B, pos);
             break;
         case 18:
         case 34:
-            Em_BonePos(em, 9, pos);
+            Em_BonePos(em, BLANG_BONE_HAND_A, pos);
             break;
         case 15:
-            Em_BonePos(em, 0x1B, pos);
+            Em_BonePos(em, BLANG_BONE_FOOT_A, pos);
             break;
         case 17:
         case 33:
-            Em_BonePos(em, 0xE, pos);
+            Em_BonePos(em, BLANG_BONE_HAND_B, pos);
             break;
         case 23:
         case 36:
-            Em_BonePos(em, 6, pos);
+            Em_BonePos(em, HERM_BONE_CLAW_A, pos);
             break;
         case 22:
         case 35:
-            Em_BonePos(em, 0xA, pos);
+            Em_BonePos(em, HERM_BONE_CLAW_B, pos);
             break;
         case 25:
-            Em_BonePos(em, 8, pos);
+            Em_BonePos(em, KUSH_BONE_FOOT_D, pos);
             break;
         case 26:
-            Em_BonePos(em, 0xD, pos);
+            Em_BonePos(em, KUSH_BONE_FOOT_B, pos);
             break;
         case 28:
-            Em_BonePos(em, 0x1A, pos);
+            Em_BonePos(em, KUSH_BONE_FOOT_A, pos);
             break;
         case 29:
         case 30:
-            Em_BonePos(em, 0x1F, pos);
+            Em_BonePos(em, KUSH_BONE_FOOT_C, pos);
             break;
         case 31:
-            Em_BonePos(em, 0x27, pos);
+            Em_BonePos(em, KUSH_BONE_BLAST, pos);
             break;
         case 32:
-            Em_BonePos(em, 0x12, pos);
+            Em_BonePos(em, 18, pos);
             break;
         case 38:
-            Em_BonePos(em, 0xA, pos);
+            Em_BonePos(em, SHEN_BONE_ARM_A_TIP, pos);
             break;
         case 39:
-            Em_BonePos(em, 6, pos);
+            Em_BonePos(em, SHEN_BONE_ARM_B_TIP, pos);
             break;
         case 41:
-            Em_BonePos(em, 0xD, pos);
+            Em_BonePos(em, CHAM_BONE_FOOT_B, pos);
             break;
         case 42:
         case 47:
-            Em_BonePos(em, 0x1F, pos);
+            Em_BonePos(em, CHAM_BONE_FOOT_D, pos);
             break;
         case 43:
-            Em_BonePos(em, 0x29, pos);
+            Em_BonePos(em, CHAM_BONE_TONGUE, pos);
             break;
         case 44:
-            Em_BonePos(em, 0x17, pos);
+            Em_BonePos(em, APC_BONE_FOOT_B2, pos);
             break;
         case 45:
-            Em_BonePos(em, 6, pos);
+            Em_BonePos(em, BULL_BONE_FOOT_A, pos);
             break;
         case 46:
-            Em_BonePos(em, 9, pos);
+            Em_BonePos(em, BULL_BONE_FOOT_B, pos);
             break;
         default:
             if (objType == 2) {
-                Em_BonePos(em, 0x1A, pos);
+                Em_BonePos(em, 26, pos);
                 if (place == 2) {
                     ofs[0] = 0.0f;
                     ofs[1] = 0.0f;
@@ -3680,7 +3186,7 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
                     pos[2] += ofs[2];
                 }
             } else {
-                Em_BonePos(em, 0x14, pos);
+                Em_BonePos(em, 20, pos);
             }
             break;
         }
@@ -3690,19 +3196,19 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         break;
     case 4:
         if (place == 0) {
-            Em_BonePos(em, 0x15, pos);
+            Em_BonePos(em, 21, pos);
         } else {
-            Em_BonePos(em, 0x1B, pos);
+            Em_BonePos(em, 27, pos);
         }
         pos[1] = em->floorY;
         break;
     case 5:
-        Em_BonePos(em, 0x1B, pos);
+        Em_BonePos(em, 27, pos);
         pos[1] = em->floorY;
         break;
     case 6:
     case 15:
-        Em_BonePos(em, 0x23, pos);
+        Em_BonePos(em, 35, pos);
         ofs[0] = 0.0f;
         ofs[1] = 0.0f;
         ofs[2] = 60.0f;
@@ -3713,7 +3219,7 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         pos[1] = AreaGrid2_GetFloorY(pos);
         break;
     case 8:
-        Em_BonePos(em, 0x23, pos);
+        Em_BonePos(em, 35, pos);
         ofs[0] = 0.0f;
         ofs[1] = 0.0f;
         ofs[2] = 30.0f;
@@ -3724,10 +3230,10 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         pos[1] = AreaGrid2_GetFloorY(pos);
         break;
     case 7:
-        Em_BonePos(em, 0x23, pos);
-        ofs[0] = 0.1f * ((Rand_Next(1) & 0x3FF) - 0x200);
+        Em_BonePos(em, 35, pos);
+        ofs[0] = 0.1f * ((Rand_Next(1) & 0x3FF) - 512);
         ofs[1] = 0.0f;
-        ofs[2] = 80.0f + 0.1f * ((Rand_Next(1) & 0x3FF) - 0x200);
+        ofs[2] = 80.0f + 0.1f * ((Rand_Next(1) & 0x3FF) - 512);
         Vec_RotateY(ofs, (6.2831855f * em->rotY) / 65536.0f);
         pos[0] += ofs[0];
         pos[2] += ofs[2];
@@ -3735,13 +3241,13 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         pos[1] += -5.0f;
         break;
     case 10:
-        if (place != 0x30) {
-            if (place != 0xB) {
+        if (place != 48) {
+            if (place != 11) {
                 switch (em->type) {
                 case EM_KIND_FATALIS:
                 case EM_KIND_FATALIS_B:
                 case EM_KIND_FATALIS_C:
-                    Em_BonePos(em, 1, pos);
+                    Em_BonePos(em, FAT_BONE_BODY, pos);
                     pos[1] = AreaGrid2_GetFloorY(pos);
                     break;
                 case EM_KIND_RATHIAN:
@@ -3768,23 +3274,23 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
                 case EM_KIND_WHITE_MONOBLOS:
                 case EM_KIND_CEPHALOS:
                 case EM_KIND_YIAN_GARUGA:
-                    Em_BonePos(em, 0x29, pos);
+                    Em_BonePos(em, 41, pos);
                     pos[1] = AreaGrid2_GetFloorY(pos);
                     if (makeAttack) {
                         if (!(Em_TypeUsesK14(em->type) & 0xFF)) {
-                            attackKind = 0x20;
+                            attackKind = 32;
                         } else {
-                            attackKind = 0x30;
+                            attackKind = 48;
                         }
                     }
                     break;
                 }
             } else {
-                Em_BonePos(em, 0x1E, pos);
+                Em_BonePos(em, FAT_BONE_FOOT_D, pos);
                 pos[1] = AreaGrid2_GetFloorY(pos);
             }
         } else {
-            Em_BonePos(em, 0x19, pos);
+            Em_BonePos(em, FAT_BONE_FOOT_C, pos);
             pos[1] = AreaGrid2_GetFloorY(pos);
         }
         break;
@@ -3797,9 +3303,9 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         break;
     case 25:
         if (em->type == EM_KIND_FATALIS || em->type == EM_KIND_FATALIS_B || em->type == EM_KIND_FATALIS_C) {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, 0x33)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, FAT_BONE_BREATH)));
         } else {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, 0x24)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, 36)));
         }
         Mtx_GetTrans(pos, boneMtx);
         ofs[0] = 0.0f;
@@ -3812,12 +3318,12 @@ s16 DustCloud_PlaceAtEm(f32 *pos, Em *em, s16 objType, s16 place)
         break;
     case 26:
         if (em->type == EM_KIND_FATALIS || em->type == EM_KIND_FATALIS_B || em->type == EM_KIND_FATALIS_C) {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, 0x33)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, FAT_BONE_BREATH)));
             ofs[0] = 0.0f;
             ofs[1] = -23.7f;
             ofs[2] = 151.9f;
         } else {
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, 0x24)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_Bone(em, 36)));
             ofs[0] = 0.0f;
             ofs[1] = 0.0f;
             ofs[2] = 50.0f * em->scaleZ;
@@ -3990,8 +3496,8 @@ void DustCloud_CreateAt(f32 *pos, u8 objType, u8 variant, f32 scale)
 /*
  * Shows the surface effects at pos in place of a DustCloud. mode is
  * DustCloud_FindGround's result: 0 shows nothing and returns 0; otherwise a
- * set of Effect08 particles sized by scale (mode 2 and 3 their own sets) and
- * sound 0x76, or 0x70 when the last size is at most 4; returns 1. em is
+ * set of SparkFx particles sized by scale (mode 2 and 3 their own sets) and
+ * sound 118, or 112 when the last size is at most 4; returns 1. em is
  * unused.
  */
 s8 DustCloud_SpawnSurfaceFx(Em *em, f32 *pos, s32 mode, f32 scale)
@@ -4004,26 +3510,26 @@ s8 DustCloud_SpawnSurfaceFx(Em *em, f32 *pos, s32 mode, f32 scale)
     default:
     case 1:
         size = 5.0f * scale;
-        Effect08_Spawn(pos, 4, 0, size);
+        SparkFx_Spawn(pos, 4, 0, size);
         pos[1] += 5.0f;
-        Effect08_Spawn(pos, 5, 0, size);
+        SparkFx_Spawn(pos, 5, 0, size);
         break;
     case 2:
-        Effect08_Spawn(pos, 4, 0, 5.0f * scale);
+        SparkFx_Spawn(pos, 4, 0, 5.0f * scale);
         pos[1] += 5.0f;
         size = 4.5f * scale;
-        Effect08_Spawn(pos, 1, 0, size);
+        SparkFx_Spawn(pos, 1, 0, size);
         break;
     case 3:
         size = 10.0f * scale;
         pos[1] += 5.0f;
-        Effect08_Spawn(pos, 2, 0, size);
+        SparkFx_Spawn(pos, 2, 0, size);
         break;
     }
     if (!(size <= 4.0f)) {
-        Sound_PlaySeAtPosChecked(1, 0x76, 0, pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 118, 0, pos, 1, 0);
     } else {
-        Sound_PlaySeAtPosChecked(1, 0x70, 0, pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 112, 0, pos, 1, 0);
     }
     return 1;
 }
@@ -4071,9 +3577,9 @@ void FallingDebris_Update(StageObj *obj)
 }
 
 /*
- * Set-up state of a FallingDebris: the start point is bone 0xA (type 0),
- * Gravios' bone 0x24 or an offset of Kushala Daora's bone 0x25 (type 1; other
- * kinds free the object), or an offset of bone 0x27 (type 2). Three pieces
+ * Set-up state of a FallingDebris: the start point is bone 10 (type 0),
+ * Gravios' bone 36 or an offset of Kushala Daora's KUSH_BONE_BREATH (type 1; other
+ * kinds free the object), or an offset of bone 39 (type 2). Three pieces
  * start around it with a random size, wait, rotation and a slow push along
  * the bone's direction, each with a draw slot; obj->pos[1] becomes the floor
  * height. Frees the object when no piece got a draw slot.
@@ -4094,7 +3600,7 @@ void FallingDebris_Setup(StageObj *obj)
     obj->draw = NULL;
     switch (obj->type) {
     default:
-        Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 0xA)));
+        Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 10)));
         sizeFactor = 1.0f;
         Mtx_GetTrans(obj->pos, boneMtx);
         break;
@@ -4102,13 +3608,13 @@ void FallingDebris_Setup(StageObj *obj)
         switch (em->type) {
         case EM_KIND_GRAVIOS:
         case EM_KIND_BLACK_GRAVIOS:
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 0x24)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 36)));
             sizeFactor = 1.5f;
             Mtx_GetTrans(obj->pos, boneMtx);
             break;
         case EM_KIND_KUSHALA_DAORA:
         case EM_KIND_RUSTED_KUSHALA_DAORA:
-            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 0x25)));
+            Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 37)));
             ofs[0] = 0.0f;
             sizeFactor = 1.5f;
             ofs[1] = -45.0f;
@@ -4125,7 +3631,7 @@ void FallingDebris_Setup(StageObj *obj)
         }
         break;
     case 2:
-        Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 0x27)));
+        Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, 39)));
         sizeFactor = 1.5f;
         ofs[0] = 0.0f;
         ofs[1] = 30.0f;
@@ -4240,7 +3746,7 @@ void FallingDebris_Run(StageObj *obj)
                 piece->node->pos[0] = piece->pos[0];
                 piece->node->pos[1] = piece->pos[1];
                 piece->node->pos[2] = piece->pos[2];
-                OT_AddByDepth(gDrawOtSorted, piece->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
             }
             piece++;
         }
@@ -4264,7 +3770,7 @@ void FallingDebris_End(StageObj *obj)
         if (*(s16 *) (cursor + 6) != -1) {
             DrawSlot_Free(*(s16 *) (cursor + 6));
         }
-        cursor += 0x34;
+        cursor += 52;
     }
 }
 
@@ -4296,16 +3802,16 @@ void FallingDebris_Draw(DrawSlot *node)
         switch (obj->type) {
         case 0:
             model = &set->matSets[43];
-            Gs_SetState(0x67, -1);
+            Gs_SetState(RS_COLOR2, -1);
             break;
         case 1:
         default:
             model = &set->matSets[41];
-            Gs_SetState(0x67, -1);
+            Gs_SetState(RS_COLOR2, -1);
             break;
         case 2:
             model = &set->matSets[41];
-            Gs_SetState(0x67, 0xFFD08E65);
+            Gs_SetState(RS_COLOR2, 0xFFD08E65);
             break;
         }
         mats = set->mats;
@@ -4314,14 +3820,14 @@ void FallingDebris_Draw(DrawSlot *node)
         Mtx_SetRotXYZ(mtx, (6.2831855f * piece->rot[0]) / 65536.0f, (6.2831855f * piece->rot[1]) / 65536.0f,
                       (6.2831855f * piece->rot[2]) / 65536.0f);
         Mtx_Concat3x3(mtx, scaleMtx);
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         if (model != NULL && model->id != -1) {
             for (i = 0; i < model->count; i++) {
                 mat = &mats[model->mat[i]];
                 mat->rgb[0] = 1.0f;
                 mat->rgb[1] = 1.0f;
                 mat->rgb[2] = 1.0f;
-                Gs_SetState((u8) (i + 0x3A), (s32) mat);
+                Gs_SetState((u8) (i + 58), (s32) mat);
             }
             Draw_ApplyStates(model->flags);
             Model_Draw(model->id, 0);
@@ -4332,7 +3838,7 @@ void FallingDebris_Draw(DrawSlot *node)
 
 /*
  * Creates the StunStars of a player in the current area: type 0, circling
- * bone 0x14 with the offset (0, 30, 25), at size 1.0.
+ * bone 20 with the offset (0, 30, 25), at size 1.0.
  */
 void StunStars_CreatePlayer(Player *pl, u8 objType)
 {
@@ -4351,7 +3857,7 @@ void StunStars_CreatePlayer(Player *pl, u8 objType)
             obj->pos[1] = 30.0f;
             obj->pos[2] = 25.0f;
             obj->scale = 1.0f;
-            obj->angle = 0x14;
+            obj->angle = 20;
         }
     }
 }
@@ -4426,7 +3932,7 @@ void StunStars_Setup(StageObj *obj)
     switch (obj->type) {
     case 0:
         w->group = 2;
-        w->state = 0x13;
+        w->state = 19;
         break;
     case 1:
         w->limit = obj->timer;
@@ -4461,8 +3967,8 @@ void StunStars_Setup(StageObj *obj)
  * Run state of StunStars: ends when the owner is inactive or leaves the
  * recorded state (type 2: when the monster is defeated or its blindTimer runs
  * out), and for types 1 and 2 after the frame limit. A player gets as many
- * stars as his stateVar1 (at most five; none ends it) and sound 0x38 every 23
- * frames, a monster five; they turn around the bone 0x800 a frame, evenly
+ * stars as his stateVar1 (at most five; none ends it) and sound 56 every 23
+ * frames, a monster five; they turn around the bone ANGLE_TURN / 32 a frame, evenly
  * spaced, and are queued for drawing.
  */
 void StunStars_Run(StageObj *obj)
@@ -4494,7 +4000,7 @@ void StunStars_Run(StageObj *obj)
     case 0:
         count = em->stateVar1;
         if (obj->timer % 23 == 1) {
-            Sound_PlaySeAtPosChecked(1, 0x38, 0, &em->posX, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 56, 0, &em->posX, 1, 0);
         }
         break;
     case 1:
@@ -4517,7 +4023,7 @@ void StunStars_Run(StageObj *obj)
     }
     Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(em, w->bone)));
     Mtx_GetTrans(obj->pos, boneMtx);
-    obj->angle += 0x800;
+    obj->angle += ANGLE_TURN / 32;
     for (i = 0; i < count; i++) {
         if (w->node[i] != NULL) {
             Vec_Copy(w->node[i]->pos, w->ofs);
@@ -4526,12 +4032,12 @@ void StunStars_Run(StageObj *obj)
             w->node[i]->pos[0] += obj->pos[0];
             w->node[i]->pos[1] += obj->pos[1];
             w->node[i]->pos[2] += obj->pos[2];
-            OT_AddByDepth(gDrawOt32, w->node[i], 0x20, 0);
+            OT_AddByDepth(gDrawOt32, w->node[i], 32, 0);
         }
     }
 }
 
-typedef struct StunSlotsView { s16 id[5]; u8 unkA[0xC - 0xA]; s32 h[5]; } StunSlotsView;
+typedef struct StunSlotsView { s16 id[5]; u8 unkA[12 - 10]; s32 h[5]; } StunSlotsView;
 
 /*
  * End state of StunStars: frees the five draw slots and moves to the free
@@ -4576,7 +4082,7 @@ void StunStars_Draw(DrawSlot *node)
     Mtx_Scale(mtx, obj->scale, obj->scale, obj->scale);
     Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
     Mtx_Concat3x3(mtx, gCamMatrix);
-    Gs_SetState(0x67, -1);
+    Gs_SetState(RS_COLOR2, -1);
     Effect_DrawModelAdd(mesh, mtx, tex);
 }
 
@@ -4626,14 +4132,14 @@ void MashDebris_Setup(StageObj *obj)
     Rand_Next(1);
     switch (obj->type) {
     case 0:
-        Sound_PlaySeAtPosChecked(1, 0x8D, 0, bonePos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 141, 0, bonePos, 1, 0);
         break;
     }
     for (i = 0; i < MashDebris_PartCounts[obj->type]; i++) {
         switch (obj->type) {
         case 0:
-            memset(piece, 0, 0x40);
-            piece->alpha = 0xFF;
+            memset(piece, 0, 64);
+            piece->alpha = 255;
             piece->model = MashDebris_Models[i];
             piece->life = MashDebris_Lives[i];
             switch (i) {
@@ -4649,7 +4155,7 @@ void MashDebris_Setup(StageObj *obj)
                     yaw = piece->rot[1];
                 }
                 if (i == 4) {
-                    piece->rot[1] = yaw + 0x6000 + (Rand_Next(1) & 0x1FFF);
+                    piece->rot[1] = yaw + (ANGLE_TURN * 3 / 8) + (Rand_Next(1) & 0x1FFF);
                 }
                 piece->rot[2] = Rand_Next(1) % 0x1C72;
                 piece->scale[0] = piece->scale[1] = piece->scale[2] = 1.0f + 0.01f * (Rand_Next(1) % 20);
@@ -4664,7 +4170,7 @@ void MashDebris_Setup(StageObj *obj)
                 piece->vel[0] = launchVel[0];
                 piece->vel[1] = launchVel[1];
                 piece->vel[2] = launchVel[2];
-                piece->rot[1] -= 0x4000;
+                piece->rot[1] -= ANGLE_TURN / 4;
                 break;
             case 1:
                 piece->scale[2] = 1.0f;
@@ -4697,9 +4203,9 @@ void MashDebris_Setup(StageObj *obj)
             piece->pos[2] += bonePos[2];
             break;
         case 1:
-            memset(piece, 0, 0x40);
-            piece->alpha = 0xFF;
-            piece->model = (Rand_Next(1) & 1) + 0x92;
+            memset(piece, 0, 64);
+            piece->alpha = 255;
+            piece->model = (Rand_Next(1) & 1) + 146;
             piece->t = -(Rand_Next(1) % 5);
             piece->pos[2] = 20.0f + (u32) (Rand_Next(1) % 10U);
             Vec_RotateY(piece->pos, (6.2831855f * (s32) Rand_Next(1)) / 65536.0f);
@@ -4727,84 +4233,266 @@ void MashDebris_Setup(StageObj *obj)
     MashDebris_Run(obj);
 }
 
+/*
+ * Runs a MashDebris object each frame. With no owner it ends at once (state
+ * 2); it also ends, hidden, when every piece has lived its frames (life). A
+ * burst (type 0) fades its pieces by their alpha keys, sizes them by their
+ * scale keys, spins them (var0 picks the way) and moves them by their
+ * velocity and fall; pieces 0 and 4 end when they drop 20 below their floor.
+ * A trickle piece (type 1) moves to the owner's bone 2 on its first frame,
+ * then falls faster and faster with MashDebris_TrickleScaleKeys.
+ */
+void MashDebris_Run(StageObj *obj)
+{
+    f32 alphaKey;
+    f32 bonePos[3];
+    MashDebrisPiece *piece = (MashDebrisPiece *) obj->buf;
+    u8 done = 0;
+    u8 i;
+
+    if (obj->owner == NULL) {
+        obj->state++;
+        return;
+    }
+    for (i = 0; i < MashDebris_PartCounts[obj->type]; i++) {
+        if (++piece->t >= piece->life) {
+            piece++;
+            if (++done == MashDebris_PartCounts[obj->type]) {
+                obj->state++;
+                obj->visible = 0;
+                return;
+            }
+            continue;
+        }
+        switch (obj->type) {
+        case 0:
+            if (i == 0 || i == 4) {
+                if (piece->pos[1] < piece->ground - 20.0f) {
+                    piece->life = 0;
+                }
+            }
+            if (MashDebris_ScaleKeys[i] != NULL) {
+                Key_LerpVec3((f32 *) MashDebris_ScaleKeys[i], piece->scale, piece->t);
+            }
+            Key_LerpFloat((f32 *) MashDebris_AlphaKeys[i], &alphaKey, piece->t);
+            piece->alpha = 255.0f * alphaKey;
+            if (obj->var0 == 0) {
+                piece->rot[2] += (u16) (s32) (0.5f + (65536.0f * MashDebris_SpinDeg[i]) / 360.0f);
+            } else {
+                piece->rot[2] -= (u16) (s32) (0.5f + (65536.0f * MashDebris_SpinDeg[i]) / 360.0f);
+            }
+            if (MashDebris_PartFalls[i] != 0) {
+                piece->pos[1] -= piece->fall;
+                if (piece->fall < 20.0f) {
+                    piece->fall += 2.0f;
+                }
+            }
+            piece->pos[1] -= piece->fall;
+            piece->pos[0] += piece->vel[0];
+            piece->pos[1] += piece->vel[1];
+            piece->pos[2] += piece->vel[2];
+            break;
+        case 1:
+            if (piece->t > 0) {
+                if (piece->t == 1) {
+                    Em_GetBonePos(obj->owner, 2, bonePos);
+                    piece->pos[0] += bonePos[0];
+                    piece->pos[1] += bonePos[1] - 50.0f;
+                    piece->pos[2] += bonePos[2];
+                }
+                piece->pos[1] -= piece->fall;
+                if (piece->fall < 8.0f) {
+                    piece->fall += 0.5f;
+                }
+                Key_LerpVec3((f32 *)MashDebris_TrickleScaleKeys, piece->scale, piece->t);
+            }
+            break;
+        }
+        if (piece->node != NULL) {
+            piece->node->pos[0] = piece->pos[0];
+            piece->node->pos[1] = piece->pos[1];
+            piece->node->pos[2] = piece->pos[2];
+            if (obj->type == 0 && i == 0) {
+                OT_AddByDepth(gDrawOt32, piece->node, 32, 0);
+            } else {
+                OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
+            }
+        }
+        piece++;
+    }
+}
+
+/*
+ * Frees the draw slots of the object's pieces and moves it to its free state.
+ */
+void MashDebris_End(StageObj *obj)
+{
+    MashDebrisPiece *piece = (MashDebrisPiece *) obj->buf;
+    u8 i;
+
+    obj->state++;
+    for (i = 0; i < MashDebris_PartCounts[obj->type]; i++) {
+        if (piece->node != NULL) {
+            DrawSlot_Free(piece->slot);
+        }
+        piece++;
+    }
+}
+
+/* Frees the object (StageObj_Free). */
+void MashDebris_Free(StageObj *obj)
+{
+    StageObj_Free(obj);
+}
+
+/*
+ * Draws one piece (arg is its DrawSlot) from the stage's effect model set,
+ * scaled, rotated by the piece's angles and turned to face the camera, in the
+ * piece's alpha. The burst's pieces 0 and 4 do not face the camera and are
+ * drawn by Effect_DrawModelAdd in white (RS_COLOR2). Nothing is drawn while
+ * the set is not loaded or the object is hidden.
+ */
+void MashDebris_Draw(void *slotArg)
+{
+    ModelMat *mats;
+    ModelMatSet *model;
+    u8 faceCamera = 1;
+    s32 color;
+    DrawSlot *node = slotArg;
+    StageObj *obj = node->owner;
+    Model *modelSet = gStageModelSet;
+    MashDebrisPiece *piece = (MashDebrisPiece *) obj->buf + node->part;
+    f32 scale[3];
+    f32 rot[3];
+    f32 mtx[16];
+
+    if (modelSet != NULL && modelSet->active != 0 && obj->visible != 0) {
+        color = (piece->alpha << 24) | 0xFFFFFF;
+        mats = modelSet->mats;
+        model = &modelSet->matSets[piece->model];
+        scale[0] = piece->scale[0];
+        scale[1] = piece->scale[1];
+        scale[2] = piece->scale[2];
+        rot[0] = (6.2831855f * piece->rot[0]) / 65536.0f;
+        rot[1] = (6.2831855f * piece->rot[1]) / 65536.0f;
+        rot[2] = (6.2831855f * piece->rot[2]) / 65536.0f;
+        Mtx_FromScaleRotTrans(scale, rot, node->pos, 7, mtx);
+        switch (obj->type) {
+        case 0:
+            if (node->part == 0 || node->part == 4) {
+                faceCamera = 0;
+            }
+            break;
+        }
+        if (faceCamera) {
+            Mtx_Concat3x3(mtx, gCamMatrix);
+        }
+        if (obj->type == 0 && (node->part == 0 || node->part == 4)) {
+            Gs_SetState(RS_COLOR2, -1);
+            Effect_DrawModelAdd(model, mtx, mats);
+        } else {
+            Effect_DrawModel(model, mtx, color, 0, mats);
+        }
+    }
+}
+
+/*
+ * Creates a MashDebris object of type k (0: the burst, 1: a trickle piece) on
+ * the player arg, when he is in the current area.
+ */
+void MashDebris_Create(s8 variant, s16 *player)
+{
+    StageObj *obj;
+
+    if (Obj_InCurrentArea(player) & 0xFF) {
+        obj = StageObj_Alloc(1);
+        if (obj != NULL) {
+            obj->kind = STAGEOBJ_KIND_MASH_DEBRIS;
+            obj->update = MashDebris_Update;
+            obj->type = variant;
+            obj->owner = (void *) player;
+        }
+    }
+}
+
 /* The file's data. */
 extern u32 D_008F5CD8[];
-u32 ShotFlash_Curves_0[36] = {
+Vec3Key ShotFlash_Curves_0[9] = {
 #include "game/008D0820.inc"
 };
-u32 ShotFlash_Curves_1[36] = {
+Vec3Key ShotFlash_Curves_1[9] = {
 #include "game/008D08B0.inc"
 };
-u32 ShotFlash_Curves_4[16] = {
+Vec3Key ShotFlash_Curves_4[4] = {
 #include "game/008D0940.inc"
 };
-u32 ShotFlash_Curves_8[16] = {
+Vec3Key ShotFlash_Curves_8[4] = {
 #include "game/008D0980.inc"
 };
-u32 ShotFlash_Curves_12[16] = {
+Vec3Key ShotFlash_Curves_12[4] = {
 #include "game/008D09C0.inc"
 };
-u32 ShotFlash_Curves_2[12] = {
+Vec3Key ShotFlash_Curves_2[3] = {
 #include "game/008D0A00.inc"
 };
-u32 ShotFlash_Curves_6[12] = {
+Vec3Key ShotFlash_Curves_6[3] = {
 #include "game/008D0A30.inc"
 };
-u32 ShotFlash_Curves_10[12] = {
+Vec3Key ShotFlash_Curves_10[3] = {
 #include "game/008D0A60.inc"
 };
-u32 ShotFlash_Curves_5[8] = {
+FloatKey ShotFlash_Curves_5[4] = {
 #include "game/008D0A90.inc"
 };
-u32 ShotFlash_Curves_9[8] = {
+FloatKey ShotFlash_Curves_9[4] = {
 #include "game/008D0AB0.inc"
 };
-u32 ShotFlash_Curves_13[8] = {
+FloatKey ShotFlash_Curves_13[4] = {
 #include "game/008D0AD0.inc"
 };
-u32 ShotFlash_Curves_15[12] = {
+Vec3Key ShotFlash_Curves_15[3] = {
 #include "game/008D0AF0.inc"
 };
-u32 ShotFlash_Curves_14[12] = {
+Vec3Key ShotFlash_Curves_14[3] = {
 #include "game/008D0B20.inc"
 };
-u32 ShotFlash_Curves_16[8] = {
+FloatKey ShotFlash_Curves_16[4] = {
 #include "game/008D0B50.inc"
 };
-u32 ShotFlash_Curves_17[20] = {
+Vec3Key ShotFlash_Curves_17[5] = {
 #include "game/008D0B70.inc"
 };
-u32 ShotFlash_Curves_18[8] = {
+FloatKey ShotFlash_Curves_18[4] = {
 #include "game/008D0BC0.inc"
 };
-u32 ShotFlash_Curves_19[24] = {
+Vec3Key ShotFlash_Curves_19[6] = {
 #include "game/008D0BE0.inc"
 };
-u32 ShotFlash_Curves_21[28] = {
+Vec3Key ShotFlash_Curves_21[7] = {
 #include "game/008D0C40.inc"
 };
-u32 ShotFlash_Curves_22[20] = {
+Vec3Key ShotFlash_Curves_22[5] = {
 #include "game/008D0CB0.inc"
 };
-u32 ShotFlash_Curves_23[16] = {
+Vec3Key ShotFlash_Curves_23[4] = {
 #include "game/008D0D00.inc"
 };
-u32 ShotFlash_Curves_24[12] = {
+Vec3Key ShotFlash_Curves_24[3] = {
 #include "game/008D0D40.inc"
 };
-u32 ShotFlash_Curves_25[20] = {
+Vec3Key ShotFlash_Curves_25[5] = {
 #include "game/008D0D70.inc"
 };
-u32 ShotFlash_Curves_26[20] = {
+Vec3Key ShotFlash_Curves_26[5] = {
 #include "game/008D0DC0.inc"
 };
-u32 ShotFlash_Curves_29[12] = {
+Vec3Key ShotFlash_Curves_29[3] = {
 #include "game/008D0E10.inc"
 };
-u32 ShotFlash_Curves_30[16] = {
+Vec3Key ShotFlash_Curves_30[4] = {
 #include "game/008D0E40.inc"
 };
-u32 ShotFlash_Curves_31[18] = {
+f32 ShotFlash_Curves_31[18] = {
 #include "game/008D0E80.inc"
 };
 s16 ShotFlash_BurstDelays[6] = {
@@ -4836,290 +4524,290 @@ f32 ShotFlash_FirePuffScales[3] = {
 f32 ShotFlash_FirePuffSpin[3] = {
 #include "game/008D0F98.inc"
 };
-u32 ShotFlash_Tbls_0_0[8] = {
+ColorKey ShotFlash_Tbls_0_0[4] = {
 #include "game/008D0FB0.inc"
 };
-u32 ShotFlash_Tbls_2_0[8] = {
+ColorKey ShotFlash_Tbls_2_0[4] = {
 #include "game/008D0FD0.inc"
 };
-u32 ShotFlash_Tbls_3_0[12] = {
+ColorKey ShotFlash_Tbls_3_0[6] = {
 #include "game/008D0FF0.inc"
 };
-u32 ShotFlash_Tbls_4_0[8] = {
+ColorKey ShotFlash_Tbls_4_0[4] = {
 #include "game/008D1020.inc"
 };
-u32 ShotFlash_Tbls_0_1[8] = {
+ColorKey ShotFlash_Tbls_0_1[4] = {
 #include "game/008D1040.inc"
 };
-u32 ShotFlash_Tbls_2_1[8] = {
+ColorKey ShotFlash_Tbls_2_1[4] = {
 #include "game/008D1060.inc"
 };
-u32 ShotFlash_Tbls_3_1[12] = {
+ColorKey ShotFlash_Tbls_3_1[6] = {
 #include "game/008D1080.inc"
 };
-u32 ShotFlash_Tbls_4_1[8] = {
+ColorKey ShotFlash_Tbls_4_1[4] = {
 #include "game/008D10B0.inc"
 };
-u32 ShotFlash_Tbls_0_2[8] = {
+ColorKey ShotFlash_Tbls_0_2[4] = {
 #include "game/008D10D0.inc"
 };
-u32 ShotFlash_Tbls_2_2[8] = {
+ColorKey ShotFlash_Tbls_2_2[4] = {
 #include "game/008D10F0.inc"
 };
-u32 ShotFlash_Tbls_3_2[12] = {
+ColorKey ShotFlash_Tbls_3_2[6] = {
 #include "game/008D1110.inc"
 };
-u32 ShotFlash_Tbls_4_2[8] = {
+ColorKey ShotFlash_Tbls_4_2[4] = {
 #include "game/008D1140.inc"
 };
-u32 ShotFlash_Tbls_0_3[8] = {
+ColorKey ShotFlash_Tbls_0_3[4] = {
 #include "game/008D1160.inc"
 };
-u32 ShotFlash_Tbls_2_3[8] = {
+ColorKey ShotFlash_Tbls_2_3[4] = {
 #include "game/008D1180.inc"
 };
-u32 ShotFlash_Tbls_3_3[12] = {
+ColorKey ShotFlash_Tbls_3_3[6] = {
 #include "game/008D11A0.inc"
 };
-u32 ShotFlash_Tbls_4_3[8] = {
+ColorKey ShotFlash_Tbls_4_3[4] = {
 #include "game/008D11D0.inc"
 };
-u32 ShotFlash_Tbls_0_4[8] = {
+ColorKey ShotFlash_Tbls_0_4[4] = {
 #include "game/008D11F0.inc"
 };
-u32 ShotFlash_Tbls_2_4[8] = {
+ColorKey ShotFlash_Tbls_2_4[4] = {
 #include "game/008D1210.inc"
 };
-u32 ShotFlash_Tbls_3_4[12] = {
+ColorKey ShotFlash_Tbls_3_4[6] = {
 #include "game/008D1230.inc"
 };
-u32 ShotFlash_Tbls_4_4[8] = {
+ColorKey ShotFlash_Tbls_4_4[4] = {
 #include "game/008D1260.inc"
 };
-u32 ShotFlash_Tbls_0_5[8] = {
+ColorKey ShotFlash_Tbls_0_5[4] = {
 #include "game/008D1280.inc"
 };
-u32 ShotFlash_Tbls_2_5[8] = {
+ColorKey ShotFlash_Tbls_2_5[4] = {
 #include "game/008D12A0.inc"
 };
-u32 ShotFlash_Tbls_3_5[12] = {
+ColorKey ShotFlash_Tbls_3_5[6] = {
 #include "game/008D12C0.inc"
 };
-u32 ShotFlash_Tbls_4_5[8] = {
+ColorKey ShotFlash_Tbls_4_5[4] = {
 #include "game/008D12F0.inc"
 };
-u32 ShotFlash_Tbls_0_6[8] = {
+ColorKey ShotFlash_Tbls_0_6[4] = {
 #include "game/008D1310.inc"
 };
-u32 ShotFlash_Tbls_2_6[8] = {
+ColorKey ShotFlash_Tbls_2_6[4] = {
 #include "game/008D1330.inc"
 };
-u32 ShotFlash_Tbls_3_6[12] = {
+ColorKey ShotFlash_Tbls_3_6[6] = {
 #include "game/008D1350.inc"
 };
-u32 ShotFlash_Tbls_4_6[8] = {
+ColorKey ShotFlash_Tbls_4_6[4] = {
 #include "game/008D1380.inc"
 };
-u32 ShotFlash_Tbls_0_7[8] = {
+ColorKey ShotFlash_Tbls_0_7[4] = {
 #include "game/008D13A0.inc"
 };
-u32 ShotFlash_Tbls_2_7[8] = {
+ColorKey ShotFlash_Tbls_2_7[4] = {
 #include "game/008D13C0.inc"
 };
-u32 ShotFlash_Tbls_3_7[12] = {
+ColorKey ShotFlash_Tbls_3_7[6] = {
 #include "game/008D13E0.inc"
 };
-u32 ShotFlash_Tbls_4_7[8] = {
+ColorKey ShotFlash_Tbls_4_7[4] = {
 #include "game/008D1410.inc"
 };
-u32 ShotFlash_Tbls_0_8[8] = {
+ColorKey ShotFlash_Tbls_0_8[4] = {
 #include "game/008D1430.inc"
 };
-u32 ShotFlash_Tbls_2_8[8] = {
+ColorKey ShotFlash_Tbls_2_8[4] = {
 #include "game/008D1450.inc"
 };
-u32 ShotFlash_Tbls_3_8[12] = {
+ColorKey ShotFlash_Tbls_3_8[6] = {
 #include "game/008D1470.inc"
 };
-u32 ShotFlash_Tbls_4_8[8] = {
+ColorKey ShotFlash_Tbls_4_8[4] = {
 #include "game/008D14A0.inc"
 };
-u32 ShotFlash_Tbls_0_9[8] = {
+ColorKey ShotFlash_Tbls_0_9[4] = {
 #include "game/008D14C0.inc"
 };
-u32 ShotFlash_Tbls_2_9[8] = {
+ColorKey ShotFlash_Tbls_2_9[4] = {
 #include "game/008D14E0.inc"
 };
-u32 ShotFlash_Tbls_3_9[12] = {
+ColorKey ShotFlash_Tbls_3_9[6] = {
 #include "game/008D1500.inc"
 };
-u32 ShotFlash_Tbls_4_9[8] = {
+ColorKey ShotFlash_Tbls_4_9[4] = {
 #include "game/008D1530.inc"
 };
-u32 ShotFlash_Tbls_0_10[8] = {
+ColorKey ShotFlash_Tbls_0_10[4] = {
 #include "game/008D1550.inc"
 };
-u32 ShotFlash_Tbls_2_10[8] = {
+ColorKey ShotFlash_Tbls_2_10[4] = {
 #include "game/008D1570.inc"
 };
-u32 ShotFlash_Tbls_3_10[12] = {
+ColorKey ShotFlash_Tbls_3_10[6] = {
 #include "game/008D1590.inc"
 };
-u32 ShotFlash_Tbls_4_10[8] = {
+ColorKey ShotFlash_Tbls_4_10[4] = {
 #include "game/008D15C0.inc"
 };
-u32 ShotFlash_Tbls_0_11[8] = {
+ColorKey ShotFlash_Tbls_0_11[4] = {
 #include "game/008D15E0.inc"
 };
-u32 ShotFlash_Tbls_2_11[8] = {
+ColorKey ShotFlash_Tbls_2_11[4] = {
 #include "game/008D1600.inc"
 };
-u32 ShotFlash_Tbls_3_11[12] = {
+ColorKey ShotFlash_Tbls_3_11[6] = {
 #include "game/008D1620.inc"
 };
-u32 ShotFlash_Tbls_4_11[8] = {
+ColorKey ShotFlash_Tbls_4_11[4] = {
 #include "game/008D1650.inc"
 };
-u32 ShotFlash_Tbls_0_12[8] = {
+ColorKey ShotFlash_Tbls_0_12[4] = {
 #include "game/008D1670.inc"
 };
-u32 ShotFlash_Tbls_2_12[8] = {
+ColorKey ShotFlash_Tbls_2_12[4] = {
 #include "game/008D1690.inc"
 };
-u32 ShotFlash_Tbls_3_12[12] = {
+ColorKey ShotFlash_Tbls_3_12[6] = {
 #include "game/008D16B0.inc"
 };
-u32 ShotFlash_Tbls_4_12[8] = {
+ColorKey ShotFlash_Tbls_4_12[4] = {
 #include "game/008D16E0.inc"
 };
-u32 ShotFlash_Tbls_0_13[8] = {
+ColorKey ShotFlash_Tbls_0_13[4] = {
 #include "game/008D1700.inc"
 };
-u32 ShotFlash_Tbls_2_13[8] = {
+ColorKey ShotFlash_Tbls_2_13[4] = {
 #include "game/008D1720.inc"
 };
-u32 ShotFlash_Tbls_3_13[12] = {
+ColorKey ShotFlash_Tbls_3_13[6] = {
 #include "game/008D1740.inc"
 };
-u32 ShotFlash_Tbls_4_13[8] = {
+ColorKey ShotFlash_Tbls_4_13[4] = {
 #include "game/008D1770.inc"
 };
-u8 *ShotFlash_Tbls_0[16] = {
-    (u8 *)ShotFlash_Tbls_0_0, (u8 *)ShotFlash_Tbls_0_1, (u8 *)ShotFlash_Tbls_0_2, (u8 *)ShotFlash_Tbls_0_3,
-    (u8 *)ShotFlash_Tbls_0_4, (u8 *)ShotFlash_Tbls_0_5, (u8 *)ShotFlash_Tbls_0_6, (u8 *)ShotFlash_Tbls_0_7,
-    (u8 *)ShotFlash_Tbls_0_8, (u8 *)ShotFlash_Tbls_0_9, (u8 *)ShotFlash_Tbls_0_10, (u8 *)ShotFlash_Tbls_0_11,
-    (u8 *)ShotFlash_Tbls_0_12, (u8 *)ShotFlash_Tbls_0_13, NULL, NULL,
+ColorKey *ShotFlash_Tbls_0[16] = {
+    ShotFlash_Tbls_0_0, ShotFlash_Tbls_0_1, ShotFlash_Tbls_0_2, ShotFlash_Tbls_0_3,
+    ShotFlash_Tbls_0_4, ShotFlash_Tbls_0_5, ShotFlash_Tbls_0_6, ShotFlash_Tbls_0_7,
+    ShotFlash_Tbls_0_8, ShotFlash_Tbls_0_9, ShotFlash_Tbls_0_10, ShotFlash_Tbls_0_11,
+    ShotFlash_Tbls_0_12, ShotFlash_Tbls_0_13, NULL, NULL,
 };
-u8 *ShotFlash_Tbls_2[16] = {
-    (u8 *)ShotFlash_Tbls_2_0, (u8 *)ShotFlash_Tbls_2_1, (u8 *)ShotFlash_Tbls_2_2, (u8 *)ShotFlash_Tbls_2_3,
-    (u8 *)ShotFlash_Tbls_2_4, (u8 *)ShotFlash_Tbls_2_5, (u8 *)ShotFlash_Tbls_2_6, (u8 *)ShotFlash_Tbls_2_7,
-    (u8 *)ShotFlash_Tbls_2_8, (u8 *)ShotFlash_Tbls_2_9, (u8 *)ShotFlash_Tbls_2_10, (u8 *)ShotFlash_Tbls_2_11,
-    (u8 *)ShotFlash_Tbls_2_12, (u8 *)ShotFlash_Tbls_2_13, NULL, NULL,
+ColorKey *ShotFlash_Tbls_2[16] = {
+    ShotFlash_Tbls_2_0, ShotFlash_Tbls_2_1, ShotFlash_Tbls_2_2, ShotFlash_Tbls_2_3,
+    ShotFlash_Tbls_2_4, ShotFlash_Tbls_2_5, ShotFlash_Tbls_2_6, ShotFlash_Tbls_2_7,
+    ShotFlash_Tbls_2_8, ShotFlash_Tbls_2_9, ShotFlash_Tbls_2_10, ShotFlash_Tbls_2_11,
+    ShotFlash_Tbls_2_12, ShotFlash_Tbls_2_13, NULL, NULL,
 };
-u8 *ShotFlash_Tbls_3[16] = {
-    (u8 *)ShotFlash_Tbls_3_0, (u8 *)ShotFlash_Tbls_3_1, (u8 *)ShotFlash_Tbls_3_2, (u8 *)ShotFlash_Tbls_3_3,
-    (u8 *)ShotFlash_Tbls_3_4, (u8 *)ShotFlash_Tbls_3_5, (u8 *)ShotFlash_Tbls_3_6, (u8 *)ShotFlash_Tbls_3_7,
-    (u8 *)ShotFlash_Tbls_3_8, (u8 *)ShotFlash_Tbls_3_9, (u8 *)ShotFlash_Tbls_3_10, (u8 *)ShotFlash_Tbls_3_11,
-    (u8 *)ShotFlash_Tbls_3_12, (u8 *)ShotFlash_Tbls_3_13, NULL, NULL,
+ColorKey *ShotFlash_Tbls_3[16] = {
+    ShotFlash_Tbls_3_0, ShotFlash_Tbls_3_1, ShotFlash_Tbls_3_2, ShotFlash_Tbls_3_3,
+    ShotFlash_Tbls_3_4, ShotFlash_Tbls_3_5, ShotFlash_Tbls_3_6, ShotFlash_Tbls_3_7,
+    ShotFlash_Tbls_3_8, ShotFlash_Tbls_3_9, ShotFlash_Tbls_3_10, ShotFlash_Tbls_3_11,
+    ShotFlash_Tbls_3_12, ShotFlash_Tbls_3_13, NULL, NULL,
 };
-u8 *ShotFlash_Tbls_4[16] = {
-    (u8 *)ShotFlash_Tbls_4_0, (u8 *)ShotFlash_Tbls_4_1, (u8 *)ShotFlash_Tbls_4_2, (u8 *)ShotFlash_Tbls_4_3,
-    (u8 *)ShotFlash_Tbls_4_4, (u8 *)ShotFlash_Tbls_4_5, (u8 *)ShotFlash_Tbls_4_6, (u8 *)ShotFlash_Tbls_4_7,
-    (u8 *)ShotFlash_Tbls_4_8, (u8 *)ShotFlash_Tbls_4_9, (u8 *)ShotFlash_Tbls_4_10, (u8 *)ShotFlash_Tbls_4_11,
-    (u8 *)ShotFlash_Tbls_4_12, (u8 *)ShotFlash_Tbls_4_13, NULL, NULL,
+ColorKey *ShotFlash_Tbls_4[16] = {
+    ShotFlash_Tbls_4_0, ShotFlash_Tbls_4_1, ShotFlash_Tbls_4_2, ShotFlash_Tbls_4_3,
+    ShotFlash_Tbls_4_4, ShotFlash_Tbls_4_5, ShotFlash_Tbls_4_6, ShotFlash_Tbls_4_7,
+    ShotFlash_Tbls_4_8, ShotFlash_Tbls_4_9, ShotFlash_Tbls_4_10, ShotFlash_Tbls_4_11,
+    ShotFlash_Tbls_4_12, ShotFlash_Tbls_4_13, NULL, NULL,
 };
-u8* *ShotFlash_ColorFlashKeys[6] = {
+ColorKey **ShotFlash_ColorFlashKeys[6] = {
     ShotFlash_Tbls_0, NULL, ShotFlash_Tbls_2, ShotFlash_Tbls_3,
     ShotFlash_Tbls_4, NULL,
 };
 s16 ShotFlash_ColorFlashDurations[6] = {
 #include "game/008D18A8.inc"
 };
-u8 ShotFlash_ColorKeysA_0[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_0[6] = {
 #include "game/008D18C0.inc"
 };
-u8 ShotFlash_ColorKeysA_1[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_1[6] = {
 #include "game/008D18F0.inc"
 };
-u8 ShotFlash_ColorKeysA_2[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_2[6] = {
 #include "game/008D1920.inc"
 };
-u8 ShotFlash_ColorKeysA_3[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_3[6] = {
 #include "game/008D1950.inc"
 };
-u8 ShotFlash_ColorKeysA_4[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_4[6] = {
 #include "game/008D1980.inc"
 };
-u8 ShotFlash_ColorKeysA_5[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_5[6] = {
 #include "game/008D19B0.inc"
 };
-u8 ShotFlash_ColorKeysA_6[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_6[6] = {
 #include "game/008D19E0.inc"
 };
-u8 ShotFlash_ColorKeysA_7[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_7[6] = {
 #include "game/008D1A10.inc"
 };
-u8 ShotFlash_ColorKeysA_8[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_8[6] = {
 #include "game/008D1A40.inc"
 };
-u8 ShotFlash_ColorKeysA_9[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_9[6] = {
 #include "game/008D1A70.inc"
 };
-u8 ShotFlash_ColorKeysA_12[48] = {
+ColorKey ShotFlash_ColorSmokeKeys_12[6] = {
 #include "game/008D1AA0.inc"
 };
-u8 *ShotFlash_ColorSmokeKeys[16] = {
-    ShotFlash_ColorKeysA_0, ShotFlash_ColorKeysA_1, ShotFlash_ColorKeysA_2, ShotFlash_ColorKeysA_3,
-    ShotFlash_ColorKeysA_4, ShotFlash_ColorKeysA_5, ShotFlash_ColorKeysA_6, ShotFlash_ColorKeysA_7,
-    ShotFlash_ColorKeysA_8, ShotFlash_ColorKeysA_9, ShotFlash_ColorKeysA_9, ShotFlash_ColorKeysA_9,
-    ShotFlash_ColorKeysA_12, NULL, NULL, NULL,
+ColorKey *ShotFlash_ColorSmokeKeys[16] = {
+    ShotFlash_ColorSmokeKeys_0, ShotFlash_ColorSmokeKeys_1, ShotFlash_ColorSmokeKeys_2, ShotFlash_ColorSmokeKeys_3,
+    ShotFlash_ColorSmokeKeys_4, ShotFlash_ColorSmokeKeys_5, ShotFlash_ColorSmokeKeys_6, ShotFlash_ColorSmokeKeys_7,
+    ShotFlash_ColorSmokeKeys_8, ShotFlash_ColorSmokeKeys_9, ShotFlash_ColorSmokeKeys_9, ShotFlash_ColorSmokeKeys_9,
+    ShotFlash_ColorSmokeKeys_12, NULL, NULL, NULL,
 };
-u8 ShotFlash_ColorKeysB_0[48] = {
+ColorKey ShotFlash_ImpactKeys_0[6] = {
 #include "game/008D1B10.inc"
 };
-u8 ShotFlash_ColorKeysB_1[48] = {
+ColorKey ShotFlash_ImpactKeys_1[6] = {
 #include "game/008D1B40.inc"
 };
-u8 ShotFlash_ColorKeysB_2[48] = {
+ColorKey ShotFlash_ImpactKeys_2[6] = {
 #include "game/008D1B70.inc"
 };
-u8 ShotFlash_ColorKeysB_3[48] = {
+ColorKey ShotFlash_ImpactKeys_3[6] = {
 #include "game/008D1BA0.inc"
 };
-u8 ShotFlash_ColorKeysB_4[48] = {
+ColorKey ShotFlash_ImpactKeys_4[6] = {
 #include "game/008D1BD0.inc"
 };
-u8 ShotFlash_ColorKeysB_5[48] = {
+ColorKey ShotFlash_ImpactKeys_5[6] = {
 #include "game/008D1C00.inc"
 };
-u8 ShotFlash_ColorKeysB_6[48] = {
+ColorKey ShotFlash_ImpactKeys_6[6] = {
 #include "game/008D1C30.inc"
 };
-u8 ShotFlash_ColorKeysB_7[48] = {
+ColorKey ShotFlash_ImpactKeys_7[6] = {
 #include "game/008D1C60.inc"
 };
-u8 ShotFlash_ColorKeysB_8[48] = {
+ColorKey ShotFlash_ImpactKeys_8[6] = {
 #include "game/008D1C90.inc"
 };
-u8 *ShotFlash_ImpactKeys[12] = {
-    ShotFlash_ColorKeysB_0, ShotFlash_ColorKeysB_1, ShotFlash_ColorKeysB_2, ShotFlash_ColorKeysB_3,
-    ShotFlash_ColorKeysB_4, ShotFlash_ColorKeysB_5, ShotFlash_ColorKeysB_6, ShotFlash_ColorKeysB_7,
-    ShotFlash_ColorKeysB_8, NULL, NULL, NULL,
+ColorKey *ShotFlash_ImpactKeys[12] = {
+    ShotFlash_ImpactKeys_0, ShotFlash_ImpactKeys_1, ShotFlash_ImpactKeys_2, ShotFlash_ImpactKeys_3,
+    ShotFlash_ImpactKeys_4, ShotFlash_ImpactKeys_5, ShotFlash_ImpactKeys_6, ShotFlash_ImpactKeys_7,
+    ShotFlash_ImpactKeys_8, NULL, NULL, NULL,
 };
-u8 ShotFlash_ColorKeysC_0[32] = {
+ColorKey ShotFlash_BurstKeys_0[4] = {
 #include "game/008D1CF0.inc"
 };
-u8 ShotFlash_ColorKeysC_1[32] = {
+ColorKey ShotFlash_BurstKeys_1[4] = {
 #include "game/008D1D10.inc"
 };
-u8 ShotFlash_ColorKeysC_2[48] = {
+ColorKey ShotFlash_BurstKeys_2[6] = {
 #include "game/008D1D30.inc"
 };
-u8 ShotFlash_ColorKeysC_3[32] = {
+ColorKey ShotFlash_BurstKeys_3[4] = {
 #include "game/008D1D60.inc"
 };
-u8 *ShotFlash_BurstKeys[4] = {
-    ShotFlash_ColorKeysC_0, ShotFlash_ColorKeysC_1, ShotFlash_ColorKeysC_2, ShotFlash_ColorKeysC_3,
+ColorKey *ShotFlash_BurstKeys[4] = {
+    ShotFlash_BurstKeys_0, ShotFlash_BurstKeys_1, ShotFlash_BurstKeys_2, ShotFlash_BurstKeys_3,
 };
 s16 ShotFlash_PartCounts[16] = {
 #include "game/008D1D90.inc"
@@ -5164,10 +4852,10 @@ f32 D_008D1F48[3] = {
 #include "game/008D1F48.inc"
 };
 f32 *AlertMark_PlayerOffset = D_008D1F48;
-f32 AlertMark_ScaleKeys[32] = {
+Vec3Key AlertMark_ScaleKeys[8] = {
 #include "game/008D1F60.inc"
 };
-f32 AlertMark_MoveKeys[36] = {
+Vec3Key AlertMark_MoveKeys[9] = {
 #include "game/008D1FE0.inc"
 };
 f32 AlertMark_FixedMarkScaleKeys[22] = {
@@ -5176,638 +4864,638 @@ f32 AlertMark_FixedMarkScaleKeys[22] = {
 s16 AlertMark_MarkMeshes[4] = {
 #include "game/008D20C8.inc"
 };
-u32 DustCloud_Curves_0[20] = {
+Vec3Key DustCloud_Curves_0[5] = {
 #include "game/008D20D0.inc"
 };
-u32 DustCloud_Curves_1[12] = {
+Vec3Key DustCloud_Curves_1[3] = {
 #include "game/008D2120.inc"
 };
-u32 DustCloud_Curves_2[8] = {
+FloatKey DustCloud_Curves_2[4] = {
 #include "game/008D2150.inc"
 };
-u32 DustCloud_Curves_3[20] = {
+Vec3Key DustCloud_Curves_3[5] = {
 #include "game/008D2170.inc"
 };
-u32 DustCloud_Curves_4[20] = {
+Vec3Key DustCloud_Curves_4[5] = {
 #include "game/008D21C0.inc"
 };
-u32 DustCloud_Curves_5[10] = {
+FloatKey DustCloud_Curves_5[5] = {
 #include "game/008D2210.inc"
 };
-s16 DustCloud_DelayLists_1[6] = {
+s16 DustCloud_StartTimes_1[6] = {
 #include "game/008D2238.inc"
 };
-u32 DustCloud_Curves_6[20] = {
+Vec3Key DustCloud_Curves_6[5] = {
 #include "game/008D2250.inc"
 };
-u32 DustCloud_Curves_9[20] = {
+Vec3Key DustCloud_Curves_9[5] = {
 #include "game/008D22A0.inc"
 };
-u32 DustCloud_Curves_12[24] = {
+Vec3Key DustCloud_Curves_12[6] = {
 #include "game/008D22F0.inc"
 };
-u32 DustCloud_Curves_15[20] = {
+Vec3Key DustCloud_Curves_15[5] = {
 #include "game/008D2350.inc"
 };
-u32 DustCloud_Curves_7[16] = {
+Vec3Key DustCloud_Curves_7[4] = {
 #include "game/008D23A0.inc"
 };
-u32 DustCloud_Curves_10[16] = {
+Vec3Key DustCloud_Curves_10[4] = {
 #include "game/008D23E0.inc"
 };
-u32 DustCloud_Curves_13[24] = {
+Vec3Key DustCloud_Curves_13[6] = {
 #include "game/008D2420.inc"
 };
-u32 DustCloud_Curves_16[20] = {
+Vec3Key DustCloud_Curves_16[5] = {
 #include "game/008D2480.inc"
 };
-u32 DustCloud_Curves_8[8] = {
+FloatKey DustCloud_Curves_8[4] = {
 #include "game/008D24D0.inc"
 };
-u32 DustCloud_Curves_11[8] = {
+FloatKey DustCloud_Curves_11[4] = {
 #include "game/008D24F0.inc"
 };
-u32 DustCloud_Curves_14[8] = {
+FloatKey DustCloud_Curves_14[4] = {
 #include "game/008D2510.inc"
 };
-u32 DustCloud_Curves_17[10] = {
+FloatKey DustCloud_Curves_17[5] = {
 #include "game/008D2530.inc"
 };
-s16 DustCloud_DelayLists_2[4] = {
+s16 DustCloud_StartTimes_2[4] = {
 #include "game/008D2558.inc"
 };
-u16 DustCloud_DurLists_2[8] = {
+u16 DustCloud_PuffDurations_2[8] = {
 #include "game/008D2560.inc"
 };
-u32 DustCloud_Curves_18[24] = {
+Vec3Key DustCloud_Curves_18[6] = {
 #include "game/008D2570.inc"
 };
-u32 DustCloud_Curves_21[24] = {
+Vec3Key DustCloud_Curves_21[6] = {
 #include "game/008D25D0.inc"
 };
-u32 DustCloud_Curves_19[12] = {
+Vec3Key DustCloud_Curves_19[3] = {
 #include "game/008D2630.inc"
 };
-u32 DustCloud_Curves_22[16] = {
+Vec3Key DustCloud_Curves_22[4] = {
 #include "game/008D2660.inc"
 };
-u32 DustCloud_Curves_20[12] = {
+f32 DustCloud_Curves_20[12] = {
 #include "game/008D26A0.inc"
 };
-u32 DustCloud_Curves_23[10] = {
+FloatKey DustCloud_Curves_23[5] = {
 #include "game/008D26D0.inc"
 };
-s16 DustCloud_DelayLists_4[4] = {
+s16 DustCloud_StartTimes_4[4] = {
 #include "game/008D26F8.inc"
 };
-u16 DustCloud_DurLists_4[8] = {
+u16 DustCloud_PuffDurations_4[8] = {
 #include "game/008D2700.inc"
 };
-u32 DustCloud_Curves_24[24] = {
+Vec3Key DustCloud_Curves_24[6] = {
 #include "game/008D2710.inc"
 };
-u32 DustCloud_Curves_27[24] = {
+Vec3Key DustCloud_Curves_27[6] = {
 #include "game/008D2770.inc"
 };
-u32 DustCloud_Curves_30[24] = {
+Vec3Key DustCloud_Curves_30[6] = {
 #include "game/008D27D0.inc"
 };
-u32 DustCloud_Curves_33[24] = {
+Vec3Key DustCloud_Curves_33[6] = {
 #include "game/008D2830.inc"
 };
-u32 DustCloud_Curves_36[24] = {
+Vec3Key DustCloud_Curves_36[6] = {
 #include "game/008D2890.inc"
 };
-u32 DustCloud_Curves_39[24] = {
+Vec3Key DustCloud_Curves_39[6] = {
 #include "game/008D28F0.inc"
 };
-u32 DustCloud_Curves_42[24] = {
+Vec3Key DustCloud_Curves_42[6] = {
 #include "game/008D2950.inc"
 };
-u32 DustCloud_Curves_25[16] = {
+Vec3Key DustCloud_Curves_25[4] = {
 #include "game/008D29B0.inc"
 };
-u32 DustCloud_Curves_28[16] = {
+Vec3Key DustCloud_Curves_28[4] = {
 #include "game/008D29F0.inc"
 };
-u32 DustCloud_Curves_31[24] = {
+Vec3Key DustCloud_Curves_31[6] = {
 #include "game/008D2A30.inc"
 };
-u32 DustCloud_Curves_34[24] = {
+Vec3Key DustCloud_Curves_34[6] = {
 #include "game/008D2A90.inc"
 };
-u32 DustCloud_Curves_37[24] = {
+Vec3Key DustCloud_Curves_37[6] = {
 #include "game/008D2AF0.inc"
 };
-u32 DustCloud_Curves_40[20] = {
+Vec3Key DustCloud_Curves_40[5] = {
 #include "game/008D2B50.inc"
 };
-u32 DustCloud_Curves_43[20] = {
+Vec3Key DustCloud_Curves_43[5] = {
 #include "game/008D2BA0.inc"
 };
-u32 DustCloud_Curves_26[12] = {
+f32 DustCloud_Curves_26[12] = {
 #include "game/008D2BF0.inc"
 };
-u32 DustCloud_Curves_29[12] = {
+f32 DustCloud_Curves_29[12] = {
 #include "game/008D2C20.inc"
 };
-u32 DustCloud_Curves_32[12] = {
+f32 DustCloud_Curves_32[12] = {
 #include "game/008D2C50.inc"
 };
-u32 DustCloud_Curves_35[12] = {
+f32 DustCloud_Curves_35[12] = {
 #include "game/008D2C80.inc"
 };
-u32 DustCloud_Curves_38[12] = {
+f32 DustCloud_Curves_38[12] = {
 #include "game/008D2CB0.inc"
 };
-u32 DustCloud_Curves_41[12] = {
+f32 DustCloud_Curves_41[12] = {
 #include "game/008D2CE0.inc"
 };
 u32 DustCloud_Curves_44[20] = {
 #include "game/008D2D10.inc"
 };
-u32 DustCloud_Curves_45[24] = {
+Vec3Key DustCloud_Curves_45[6] = {
 #include "game/008D2D60.inc"
 };
-u32 DustCloud_Curves_48[24] = {
+Vec3Key DustCloud_Curves_48[6] = {
 #include "game/008D2DC0.inc"
 };
-u32 DustCloud_Curves_51[24] = {
+Vec3Key DustCloud_Curves_51[6] = {
 #include "game/008D2E20.inc"
 };
-u32 DustCloud_Curves_46[20] = {
+Vec3Key DustCloud_Curves_46[5] = {
 #include "game/008D2E80.inc"
 };
-u32 DustCloud_Curves_49[20] = {
+Vec3Key DustCloud_Curves_49[5] = {
 #include "game/008D2ED0.inc"
 };
-u32 DustCloud_Curves_52[20] = {
+Vec3Key DustCloud_Curves_52[5] = {
 #include "game/008D2F20.inc"
 };
-u32 DustCloud_Curves_47[8] = {
+FloatKey DustCloud_Curves_47[4] = {
 #include "game/008D2F70.inc"
 };
-u32 DustCloud_Curves_50[8] = {
+FloatKey DustCloud_Curves_50[4] = {
 #include "game/008D2F90.inc"
 };
-u32 DustCloud_Curves_53[8] = {
+FloatKey DustCloud_Curves_53[4] = {
 #include "game/008D2FB0.inc"
 };
-s16 DustCloud_DelayLists_6[4] = {
+s16 DustCloud_StartTimes_6[4] = {
 #include "game/008D2FD0.inc"
 };
-u16 DustCloud_DurLists_6[4] = {
+u16 DustCloud_PuffDurations_6[4] = {
 #include "game/008D2FD8.inc"
 };
-u32 DustCloud_Curves_54[24] = {
+Vec3Key DustCloud_Curves_54[6] = {
 #include "game/008D2FE0.inc"
 };
-u32 DustCloud_Curves_55[8] = {
+FloatKey DustCloud_Curves_55[4] = {
 #include "game/008D3040.inc"
 };
-u32 DustCloud_Curves_56[28] = {
+Vec3Key DustCloud_Curves_56[7] = {
 #include "game/008D3060.inc"
 };
-u32 DustCloud_Curves_59[28] = {
+Vec3Key DustCloud_Curves_59[7] = {
 #include "game/008D30D0.inc"
 };
-u32 DustCloud_Curves_62[28] = {
+Vec3Key DustCloud_Curves_62[7] = {
 #include "game/008D3140.inc"
 };
-u32 DustCloud_Curves_65[28] = {
+Vec3Key DustCloud_Curves_65[7] = {
 #include "game/008D31B0.inc"
 };
-u32 DustCloud_Curves_68[28] = {
+Vec3Key DustCloud_Curves_68[7] = {
 #include "game/008D3220.inc"
 };
-u32 DustCloud_Curves_57[28] = {
+Vec3Key DustCloud_Curves_57[7] = {
 #include "game/008D3290.inc"
 };
-u32 DustCloud_Curves_60[28] = {
+Vec3Key DustCloud_Curves_60[7] = {
 #include "game/008D3300.inc"
 };
-u32 DustCloud_Curves_63[28] = {
+Vec3Key DustCloud_Curves_63[7] = {
 #include "game/008D3370.inc"
 };
-u32 DustCloud_Curves_66[16] = {
+Vec3Key DustCloud_Curves_66[4] = {
 #include "game/008D33E0.inc"
 };
-u32 DustCloud_Curves_69[16] = {
+Vec3Key DustCloud_Curves_69[4] = {
 #include "game/008D3420.inc"
 };
-u32 DustCloud_Curves_58[8] = {
+FloatKey DustCloud_Curves_58[4] = {
 #include "game/008D3460.inc"
 };
-u32 DustCloud_Curves_61[8] = {
+FloatKey DustCloud_Curves_61[4] = {
 #include "game/008D3480.inc"
 };
-u32 DustCloud_Curves_64[8] = {
+FloatKey DustCloud_Curves_64[4] = {
 #include "game/008D34A0.inc"
 };
-u32 DustCloud_Curves_67[8] = {
+FloatKey DustCloud_Curves_67[4] = {
 #include "game/008D34C0.inc"
 };
-u32 DustCloud_Curves_70[8] = {
+FloatKey DustCloud_Curves_70[4] = {
 #include "game/008D34E0.inc"
 };
-s16 DustCloud_DelayLists_8[8] = {
+s16 DustCloud_StartTimes_8[8] = {
 #include "game/008D3500.inc"
 };
-u16 DustCloud_DurLists_8[8] = {
+u16 DustCloud_PuffDurations_8[8] = {
 #include "game/008D3510.inc"
 };
-u32 DustCloud_Curves_71[16] = {
+Vec3Key DustCloud_Curves_71[4] = {
 #include "game/008D3520.inc"
 };
-u32 DustCloud_Curves_74[16] = {
+Vec3Key DustCloud_Curves_74[4] = {
 #include "game/008D3560.inc"
 };
-u32 DustCloud_Curves_80[16] = {
+Vec3Key DustCloud_Curves_80[4] = {
 #include "game/008D35A0.inc"
 };
-u32 DustCloud_Curves_86[16] = {
+Vec3Key DustCloud_Curves_86[4] = {
 #include "game/008D35E0.inc"
 };
-u32 DustCloud_Curves_72[12] = {
+Vec3Key DustCloud_Curves_72[3] = {
 #include "game/008D3620.inc"
 };
-u32 DustCloud_Curves_75[12] = {
+Vec3Key DustCloud_Curves_75[3] = {
 #include "game/008D3650.inc"
 };
-u32 DustCloud_Curves_78[12] = {
+Vec3Key DustCloud_Curves_78[3] = {
 #include "game/008D3680.inc"
 };
-u32 DustCloud_Curves_81[12] = {
+Vec3Key DustCloud_Curves_81[3] = {
 #include "game/008D36B0.inc"
 };
-u32 DustCloud_Curves_84[12] = {
+Vec3Key DustCloud_Curves_84[3] = {
 #include "game/008D36E0.inc"
 };
-u32 DustCloud_Curves_87[12] = {
+Vec3Key DustCloud_Curves_87[3] = {
 #include "game/008D3710.inc"
 };
-u32 DustCloud_Curves_90[12] = {
+Vec3Key DustCloud_Curves_90[3] = {
 #include "game/008D3740.inc"
 };
-u32 DustCloud_Curves_93[12] = {
+Vec3Key DustCloud_Curves_93[3] = {
 #include "game/008D3770.inc"
 };
-u32 DustCloud_Curves_73[8] = {
+FloatKey DustCloud_Curves_73[4] = {
 #include "game/008D37A0.inc"
 };
-u32 DustCloud_Curves_76[8] = {
+FloatKey DustCloud_Curves_76[4] = {
 #include "game/008D37C0.inc"
 };
-u32 DustCloud_Curves_82[8] = {
+FloatKey DustCloud_Curves_82[4] = {
 #include "game/008D37E0.inc"
 };
-u32 DustCloud_Curves_88[8] = {
+FloatKey DustCloud_Curves_88[4] = {
 #include "game/008D3800.inc"
 };
-s16 DustCloud_DelayLists_9[8] = {
+s16 DustCloud_StartTimes_9[8] = {
 #include "game/008D3820.inc"
 };
-u16 DustCloud_DurLists_9[8] = {
+u16 DustCloud_PuffDurations_9[8] = {
 #include "game/008D3830.inc"
 };
-u32 DustCloud_Curves_95[24] = {
+Vec3Key DustCloud_Curves_95[6] = {
 #include "game/008D3840.inc"
 };
-u32 DustCloud_Curves_98[20] = {
+Vec3Key DustCloud_Curves_98[5] = {
 #include "game/008D38A0.inc"
 };
-u32 DustCloud_Curves_96[16] = {
+Vec3Key DustCloud_Curves_96[4] = {
 #include "game/008D38F0.inc"
 };
-u32 DustCloud_Curves_99[20] = {
+Vec3Key DustCloud_Curves_99[5] = {
 #include "game/008D3930.inc"
 };
-u32 DustCloud_Curves_97[12] = {
+FloatKey DustCloud_Curves_97[6] = {
 #include "game/008D3980.inc"
 };
-u32 DustCloud_Curves_100[8] = {
+FloatKey DustCloud_Curves_100[4] = {
 #include "game/008D39B0.inc"
 };
-u16 DustCloud_DurLists_10[8] = {
+u16 DustCloud_PuffDurations_10[8] = {
 #include "game/008D39D0.inc"
 };
-u32 DustCloud_Curves_101[20] = {
+Vec3Key DustCloud_Curves_101[5] = {
 #include "game/008D39E0.inc"
 };
-u32 DustCloud_Curves_102[20] = {
+Vec3Key DustCloud_Curves_102[5] = {
 #include "game/008D3A30.inc"
 };
-u32 DustCloud_Curves_103[10] = {
+FloatKey DustCloud_Curves_103[5] = {
 #include "game/008D3A80.inc"
 };
-s16 DustCloud_DelayLists_11[6] = {
+s16 DustCloud_StartTimes_11[6] = {
 #include "game/008D3AA8.inc"
 };
-u32 DustCloud_Curves_104[16] = {
+Vec3Key DustCloud_Curves_104[4] = {
 #include "game/008D3AC0.inc"
 };
-u32 DustCloud_Curves_105[16] = {
+Vec3Key DustCloud_Curves_105[4] = {
 #include "game/008D3B00.inc"
 };
-u32 DustCloud_Curves_106[8] = {
+FloatKey DustCloud_Curves_106[4] = {
 #include "game/008D3B40.inc"
 };
-u32 DustCloud_Curves_107[12] = {
+Vec3Key DustCloud_Curves_107[3] = {
 #include "game/008D3B60.inc"
 };
-u32 DustCloud_Curves_108[12] = {
+Vec3Key DustCloud_Curves_108[3] = {
 #include "game/008D3B90.inc"
 };
-u8 DustCloud_FlatPuffColors[32] = {
+ColorKey DustCloud_FlatPuffColors[4] = {
 #include "game/008D3BC0.inc"
 };
-u32 DustCloud_Curves_109[20] = {
+Vec3Key DustCloud_Curves_109[5] = {
 #include "game/008D3BE0.inc"
 };
-u32 DustCloud_Curves_112[20] = {
+Vec3Key DustCloud_Curves_112[5] = {
 #include "game/008D3C30.inc"
 };
-u32 DustCloud_Curves_110[16] = {
+Vec3Key DustCloud_Curves_110[4] = {
 #include "game/008D3C80.inc"
 };
-u32 DustCloud_Curves_113[12] = {
+Vec3Key DustCloud_Curves_113[3] = {
 #include "game/008D3CC0.inc"
 };
-u32 DustCloud_Curves_111[8] = {
+FloatKey DustCloud_Curves_111[4] = {
 #include "game/008D3CF0.inc"
 };
-u32 DustCloud_Curves_114[8] = {
+FloatKey DustCloud_Curves_114[4] = {
 #include "game/008D3D10.inc"
 };
-s16 DustCloud_DelayLists_14[4] = {
+s16 DustCloud_StartTimes_14[4] = {
 #include "game/008D3D30.inc"
 };
-u16 DustCloud_DurLists_14[4] = {
+u16 DustCloud_PuffDurations_14[4] = {
 #include "game/008D3D38.inc"
 };
-u32 DustCloud_Curves_115[28] = {
+Vec3Key DustCloud_Curves_115[7] = {
 #include "game/008D3D40.inc"
 };
-u32 DustCloud_Curves_118[28] = {
+Vec3Key DustCloud_Curves_118[7] = {
 #include "game/008D3DB0.inc"
 };
-u32 DustCloud_Curves_121[28] = {
+Vec3Key DustCloud_Curves_121[7] = {
 #include "game/008D3E20.inc"
 };
-u32 DustCloud_Curves_116[28] = {
+Vec3Key DustCloud_Curves_116[7] = {
 #include "game/008D3E90.inc"
 };
-u32 DustCloud_Curves_119[28] = {
+Vec3Key DustCloud_Curves_119[7] = {
 #include "game/008D3F00.inc"
 };
-u32 DustCloud_Curves_122[28] = {
+Vec3Key DustCloud_Curves_122[7] = {
 #include "game/008D3F70.inc"
 };
-u32 DustCloud_Curves_117[8] = {
+f32 DustCloud_Curves_117[8] = {
 #include "game/008D3FE0.inc"
 };
-u32 DustCloud_Curves_120[8] = {
+f32 DustCloud_Curves_120[8] = {
 #include "game/008D4000.inc"
 };
-u32 DustCloud_Curves_123[6] = {
+FloatKey DustCloud_Curves_123[3] = {
 #include "game/008D4020.inc"
 };
-s16 DustCloud_DelayLists_15[4] = {
+s16 DustCloud_StartTimes_15[4] = {
 #include "game/008D4038.inc"
 };
-u16 DustCloud_DurLists_15[8] = {
+u16 DustCloud_PuffDurations_15[8] = {
 #include "game/008D4040.inc"
 };
-u32 DustCloud_Curves_124[12] = {
+Vec3Key DustCloud_Curves_124[3] = {
 #include "game/008D4050.inc"
 };
-u32 DustCloud_Curves_125[12] = {
+f32 DustCloud_Curves_125[12] = {
 #include "game/008D4080.inc"
 };
-u32 DustCloud_Curves_126[24] = {
+Vec3Key DustCloud_Curves_126[6] = {
 #include "game/008D40B0.inc"
 };
-u32 DustCloud_Curves_127[16] = {
+Vec3Key DustCloud_Curves_127[4] = {
 #include "game/008D4110.inc"
 };
-u32 DustCloud_Curves_128[12] = {
+FloatKey DustCloud_Curves_128[6] = {
 #include "game/008D4150.inc"
 };
 f32 DustCloud_SideOffsets[4] = {
 #include "game/008D4180.inc"
 };
-u32 DustCloud_Curves_129[28] = {
+Vec3Key DustCloud_Curves_129[7] = {
 #include "game/008D4190.inc"
 };
-u32 DustCloud_Curves_132[20] = {
+Vec3Key DustCloud_Curves_132[5] = {
 #include "game/008D4200.inc"
 };
-u32 DustCloud_Curves_135[28] = {
+Vec3Key DustCloud_Curves_135[7] = {
 #include "game/008D4250.inc"
 };
-u32 DustCloud_Curves_130[20] = {
+Vec3Key DustCloud_Curves_130[5] = {
 #include "game/008D42C0.inc"
 };
-u32 DustCloud_Curves_133[20] = {
+Vec3Key DustCloud_Curves_133[5] = {
 #include "game/008D4310.inc"
 };
-u32 DustCloud_Curves_136[20] = {
+Vec3Key DustCloud_Curves_136[5] = {
 #include "game/008D4360.inc"
 };
-u32 DustCloud_Curves_131[8] = {
+FloatKey DustCloud_Curves_131[4] = {
 #include "game/008D43B0.inc"
 };
-u32 DustCloud_Curves_134[8] = {
+FloatKey DustCloud_Curves_134[4] = {
 #include "game/008D43D0.inc"
 };
-u32 DustCloud_Curves_137[8] = {
+FloatKey DustCloud_Curves_137[4] = {
 #include "game/008D43F0.inc"
 };
-u16 DustCloud_DurLists_19[8] = {
+u16 DustCloud_PuffDurations_19[8] = {
 #include "game/008D4410.inc"
 };
-u32 DustCloud_Curves_138[24] = {
+Vec3Key DustCloud_Curves_138[6] = {
 #include "game/008D4420.inc"
 };
-u32 DustCloud_Curves_141[16] = {
+Vec3Key DustCloud_Curves_141[4] = {
 #include "game/008D4480.inc"
 };
-u32 DustCloud_Curves_139[28] = {
+Vec3Key DustCloud_Curves_139[7] = {
 #include "game/008D44C0.inc"
 };
-u32 DustCloud_Curves_142[12] = {
+Vec3Key DustCloud_Curves_142[3] = {
 #include "game/008D4530.inc"
 };
-u32 DustCloud_Curves_140[12] = {
+f32 DustCloud_Curves_140[12] = {
 #include "game/008D4560.inc"
 };
-u32 DustCloud_Curves_143[8] = {
+FloatKey DustCloud_Curves_143[4] = {
 #include "game/008D4590.inc"
 };
-s16 DustCloud_DelayLists_20[4] = {
+s16 DustCloud_StartTimes_20[4] = {
 #include "game/008D45B0.inc"
 };
-u16 DustCloud_DurLists_20[4] = {
+u16 DustCloud_PuffDurations_20[4] = {
 #include "game/008D45B8.inc"
 };
 f32 DustCloud_PuffSizes[4] = {
 #include "game/008D45C0.inc"
 };
-u32 DustCloud_Curves_150[16] = {
+Vec3Key DustCloud_Curves_150[4] = {
 #include "game/008D45D0.inc"
 };
-u32 DustCloud_Curves_151[16] = {
+Vec3Key DustCloud_Curves_151[4] = {
 #include "game/008D4610.inc"
 };
-u8 DustCloud_RingColors[48] = {
+ColorKey DustCloud_RingColors[6] = {
 #include "game/008D4650.inc"
 };
-u8 DustCloud_RingColorsAlt[48] = {
+ColorKey DustCloud_RingColorsAlt[6] = {
 #include "game/008D4680.inc"
 };
-u32 DustCloud_Curves_152[20] = {
+Vec3Key DustCloud_Curves_152[5] = {
 #include "game/008D46B0.inc"
 };
-u32 DustCloud_Curves_154[20] = {
+Vec3Key DustCloud_Curves_154[5] = {
 #include "game/008D4700.inc"
 };
-u32 DustCloud_Curves_153[12] = {
+Vec3Key DustCloud_Curves_153[3] = {
 #include "game/008D4750.inc"
 };
-u32 DustCloud_Curves_155[12] = {
+Vec3Key DustCloud_Curves_155[3] = {
 #include "game/008D4780.inc"
 };
-u32 DustCloud_Curves_157[12] = {
+Vec3Key DustCloud_Curves_157[3] = {
 #include "game/008D47B0.inc"
 };
-u32 DustCloud_Curves_159[12] = {
+Vec3Key DustCloud_Curves_159[3] = {
 #include "game/008D47E0.inc"
 };
-u32 DustCloud_Curves_161[12] = {
+Vec3Key DustCloud_Curves_161[3] = {
 #include "game/008D4810.inc"
 };
-u32 DustCloud_Curves_163[12] = {
+Vec3Key DustCloud_Curves_163[3] = {
 #include "game/008D4840.inc"
 };
-u32 DustCloud_Curves_165[12] = {
+Vec3Key DustCloud_Curves_165[3] = {
 #include "game/008D4870.inc"
 };
-u32 DustCloud_Curves_167[12] = {
+Vec3Key DustCloud_Curves_167[3] = {
 #include "game/008D48A0.inc"
 };
-u8 DustCloud_BreathRathalosCore[32] = {
+ColorKey DustCloud_BreathRathalosCore[4] = {
 #include "game/008D48D0.inc"
 };
-u8 DustCloud_BreathRathalosTrail[32] = {
+ColorKey DustCloud_BreathRathalosTrail[4] = {
 #include "game/008D48F0.inc"
 };
-u8 DustCloud_BreathGypcerosCore[32] = {
+ColorKey DustCloud_BreathGypcerosCore[4] = {
 #include "game/008D4910.inc"
 };
-u8 DustCloud_BreathGypcerosTrail[32] = {
+ColorKey DustCloud_BreathGypcerosTrail[4] = {
 #include "game/008D4930.inc"
 };
-u8 DustCloud_BreathKutKuCore[32] = {
+ColorKey DustCloud_BreathKutKuCore[4] = {
 #include "game/008D4950.inc"
 };
-u8 DustCloud_BreathKutKuTrail[32] = {
+ColorKey DustCloud_BreathKutKuTrail[4] = {
 #include "game/008D4970.inc"
 };
-u8 DustCloud_BreathKhezuCore[32] = {
+ColorKey DustCloud_BreathKhezuCore[4] = {
 #include "game/008D4990.inc"
 };
-u8 DustCloud_BreathKhezuTrail[32] = {
+ColorKey DustCloud_BreathKhezuTrail[4] = {
 #include "game/008D49B0.inc"
 };
-u8 DustCloud_BreathGraviosCore[32] = {
+ColorKey DustCloud_BreathGraviosCore[4] = {
 #include "game/008D49D0.inc"
 };
-u8 DustCloud_BreathGraviosTrail[32] = {
+ColorKey DustCloud_BreathGraviosTrail[4] = {
 #include "game/008D49F0.inc"
 };
-u8 DustCloud_BreathBasariosCore[32] = {
+ColorKey DustCloud_BreathBasariosCore[4] = {
 #include "game/008D4A10.inc"
 };
-u8 DustCloud_BreathBasariosTrail[32] = {
+ColorKey DustCloud_BreathBasariosTrail[4] = {
 #include "game/008D4A30.inc"
 };
-u8 DustCloud_BreathOtherCore[32] = {
+ColorKey DustCloud_BreathOtherCore[4] = {
 #include "game/008D4A50.inc"
 };
-u8 DustCloud_BreathOtherTrail[32] = {
+ColorKey DustCloud_BreathOtherTrail[4] = {
 #include "game/008D4A70.inc"
 };
-u16 DustCloud_DurLists_25[8] = {
+u16 DustCloud_PuffDurations_25[8] = {
 #include "game/008D4A90.inc"
 };
-u32 DustCloud_Curves_168[16] = {
+Vec3Key DustCloud_Curves_168[4] = {
 #include "game/008D4AA0.inc"
 };
-u8 DustCloud_PuffRathalosFlame[32] = {
+ColorKey DustCloud_PuffRathalosFlame[4] = {
 #include "game/008D4AE0.inc"
 };
-u8 DustCloud_PuffRathalosSmoke[32] = {
+ColorKey DustCloud_PuffRathalosSmoke[4] = {
 #include "game/008D4B00.inc"
 };
-u8 DustCloud_PuffGypceros[32] = {
+ColorKey DustCloud_PuffGypceros[4] = {
 #include "game/008D4B20.inc"
 };
-u8 DustCloud_PuffKutKuFlame[32] = {
+ColorKey DustCloud_PuffKutKuFlame[4] = {
 #include "game/008D4B40.inc"
 };
-u8 DustCloud_PuffKutKuSmoke[32] = {
+ColorKey DustCloud_PuffKutKuSmoke[4] = {
 #include "game/008D4B60.inc"
 };
-u8 DustCloud_PuffKhezu[32] = {
+ColorKey DustCloud_PuffKhezu[4] = {
 #include "game/008D4B80.inc"
 };
-u8 DustCloud_PuffPlesioth[32] = {
+ColorKey DustCloud_PuffPlesioth[4] = {
 #include "game/008D4BA0.inc"
 };
-u8 DustCloud_PuffCephadrome[32] = {
+ColorKey DustCloud_PuffCephadrome[4] = {
 #include "game/008D4BC0.inc"
 };
-u8 DustCloud_PuffGravios[32] = {
+ColorKey DustCloud_PuffGravios[4] = {
 #include "game/008D4BE0.inc"
 };
-u8 DustCloud_PuffBasarios[32] = {
+ColorKey DustCloud_PuffBasarios[4] = {
 #include "game/008D4C00.inc"
 };
-u8 DustCloud_PuffOther[32] = {
+ColorKey DustCloud_PuffOther[4] = {
 #include "game/008D4C20.inc"
 };
-u8 DustCloud_PuffFatalisFlame[32] = {
+ColorKey DustCloud_PuffFatalisFlame[4] = {
 #include "game/008D4C40.inc"
 };
-u8 DustCloud_PuffFatalisSmoke[32] = {
+ColorKey DustCloud_PuffFatalisSmoke[4] = {
 #include "game/008D4C60.inc"
 };
-u32 DustCloud_Curves_169[24] = {
+Vec3Key DustCloud_Curves_169[6] = {
 #include "game/008D4C80.inc"
 };
-u32 DustCloud_Curves_170[16] = {
+Vec3Key DustCloud_Curves_170[4] = {
 #include "game/008D4CE0.inc"
 };
-u32 DustCloud_Curves_171[8] = {
+FloatKey DustCloud_Curves_171[4] = {
 #include "game/008D4D20.inc"
 };
-u32 DustCloud_Curves_172[20] = {
+Vec3Key DustCloud_Curves_172[5] = {
 #include "game/008D4D40.inc"
 };
-u32 DustCloud_Curves_173[20] = {
+Vec3Key DustCloud_Curves_173[5] = {
 #include "game/008D4D90.inc"
 };
-u8 DustCloud_ColorKeysByVar_0[48] = {
+ColorKey DustCloud_SectorColors_0[6] = {
 #include "game/008D4DE0.inc"
 };
-u8 DustCloud_ColorKeysByVar_1[48] = {
+ColorKey DustCloud_SectorColors_1[6] = {
 #include "game/008D4E10.inc"
 };
-u8 DustCloud_ColorKeysByVar_2[40] = {
+ColorKey DustCloud_SectorColors_2[5] = {
 #include "game/008D4E40.inc"
 };
-u8 *DustCloud_SectorColors[3] = {
-    DustCloud_ColorKeysByVar_0, DustCloud_ColorKeysByVar_1, DustCloud_ColorKeysByVar_2,
+ColorKey *DustCloud_SectorColors[3] = {
+    DustCloud_SectorColors_0, DustCloud_SectorColors_1, DustCloud_SectorColors_2,
 };
 s16 DustCloud_PuffSectors[6] = {
 #include "game/008D4E78.inc"
@@ -5865,23 +5553,23 @@ u16 DustCloud_Lifetimes[32] = {
 #include "game/008D5190.inc"
 };
 s16 *DustCloud_StartTimes[32] = {
-    NULL, DustCloud_DelayLists_1, DustCloud_DelayLists_2, DustCloud_DelayLists_2,
-    DustCloud_DelayLists_4, (s16 *)&DustCloud_Curves_44[10], DustCloud_DelayLists_6, NULL,
-    DustCloud_DelayLists_8, DustCloud_DelayLists_9, NULL, DustCloud_DelayLists_11,
-    NULL, NULL, DustCloud_DelayLists_14, DustCloud_DelayLists_15,
+    NULL, DustCloud_StartTimes_1, DustCloud_StartTimes_2, DustCloud_StartTimes_2,
+    DustCloud_StartTimes_4, (s16 *)&DustCloud_Curves_44[10], DustCloud_StartTimes_6, NULL,
+    DustCloud_StartTimes_8, DustCloud_StartTimes_9, NULL, DustCloud_StartTimes_11,
+    NULL, NULL, DustCloud_StartTimes_14, DustCloud_StartTimes_15,
     NULL, NULL, NULL, NULL,
-    DustCloud_DelayLists_20, NULL, NULL, NULL,
+    DustCloud_StartTimes_20, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,
 };
 u16 *DustCloud_PuffDurations[32] = {
-    NULL, NULL, DustCloud_DurLists_2, DustCloud_DurLists_2,
-    DustCloud_DurLists_4, (u16 *)&DustCloud_Curves_44[14], DustCloud_DurLists_6, NULL,
-    DustCloud_DurLists_8, DustCloud_DurLists_9, DustCloud_DurLists_10, NULL,
-    NULL, NULL, DustCloud_DurLists_14, DustCloud_DurLists_15,
-    NULL, NULL, NULL, DustCloud_DurLists_19,
-    DustCloud_DurLists_20, NULL, NULL, NULL,
-    NULL, DustCloud_DurLists_25, NULL, NULL,
+    NULL, NULL, DustCloud_PuffDurations_2, DustCloud_PuffDurations_2,
+    DustCloud_PuffDurations_4, (u16 *)&DustCloud_Curves_44[14], DustCloud_PuffDurations_6, NULL,
+    DustCloud_PuffDurations_8, DustCloud_PuffDurations_9, DustCloud_PuffDurations_10, NULL,
+    NULL, NULL, DustCloud_PuffDurations_14, DustCloud_PuffDurations_15,
+    NULL, NULL, NULL, DustCloud_PuffDurations_19,
+    DustCloud_PuffDurations_20, NULL, NULL, NULL,
+    NULL, DustCloud_PuffDurations_25, NULL, NULL,
     NULL, NULL, NULL, NULL,
 };
 s16 DustCloud_CurveIdx[32] = {
@@ -5893,12 +5581,70 @@ s16 DustCloud_CurvesPerPuff[32] = {
 s16 DustCloud_SurfaceFx[32] = {
 #include "game/008D5350.inc"
 };
+
+/* The file's data. */
 u8 MashDebris_PartCounts[8] = {
 #include "game/008D5390.inc"
 };
+
 u8 MashDebris_Models[8] = {
 #include "game/008D5398.inc"
 };
+
 u16 MashDebris_Lives[8] = {
 #include "game/008D53A0.inc"
+};
+
+f32 MashDebris_SpinDeg[6] = {
+#include "game/008D53B0.inc"
+};
+
+u8 MashDebris_PartFalls[8] = {
+#include "game/008D53C8.inc"
+};
+
+FloatKey MashDebris_AlphaKeys_0[4] = {
+#include "game/008D53D0.inc"
+};
+
+FloatKey MashDebris_AlphaKeys_1[4] = {
+#include "game/008D53F0.inc"
+};
+
+FloatKey MashDebris_AlphaKeys_2[6] = {
+#include "game/008D5410.inc"
+};
+
+FloatKey MashDebris_AlphaKeys_3[4] = {
+#include "game/008D5440.inc"
+};
+
+FloatKey MashDebris_AlphaKeys_4[4] = {
+#include "game/008D5460.inc"
+};
+
+FloatKey *MashDebris_AlphaKeys[8] = {
+    MashDebris_AlphaKeys_0, MashDebris_AlphaKeys_1, MashDebris_AlphaKeys_2, MashDebris_AlphaKeys_3,
+    MashDebris_AlphaKeys_4, NULL, NULL, NULL,
+};
+
+Vec3Key MashDebris_ScaleKeys_1[4] = {
+#include "game/008D54A0.inc"
+};
+
+Vec3Key MashDebris_ScaleKeys_2[4] = {
+#include "game/008D54E0.inc"
+};
+
+Vec3Key MashDebris_ScaleKeys_3[4] = {
+#include "game/008D5520.inc"
+};
+
+Vec3Key *MashDebris_ScaleKeys[8] = {
+    NULL, MashDebris_ScaleKeys_1, MashDebris_ScaleKeys_2, MashDebris_ScaleKeys_3,
+    NULL, NULL, NULL, NULL,
+};
+
+Vec3Key MashDebris_TrickleScaleKeys[3] = {
+#include "game/008D5580.inc"
 };

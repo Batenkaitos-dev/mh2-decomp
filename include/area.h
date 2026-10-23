@@ -2,19 +2,22 @@
 #define AREA_H
 
 /*
- * The state of the current area: gAreaState (0x5EC460, 0x120 bytes). Area_ClearState
+ * The state of the current area: gAreaState (0x5EC460, 288 bytes). Area_ClearState
  * clears it, Area_Enter and Area_Load set it up, the area pack's part 2 fills its fog, lights
  * and sky (AreaPack_ReadPart2), Area_UpdateTimers runs it each frame (sub_main area_update.c,
  * area_anim.c), and the area's sky and props draw from it (area_draw.c).
  */
 
 #include "common.h"
+#include "obj.h"
+#include "sprite.h"
+#include "objhead.h"
 
-/* Fog parameters (Area_ApplyFog: render states 0xF, 0x10, 0x11; gFogDefault, gFogHouse, the
+/* Fog parameters (Area_ApplyFog: RS_FOG_COLOR, RS_FOG_NEAR, RS_FOG_FAR; gFogDefault, gFogHouse, the
  * area pack's part 0: the colour first, then the two distances). */
 typedef struct FogParam {
-    f32 nearDist;               /* 0x0: render state 0x10 (gGsFogNear) */
-    f32 farDist;                /* 0x4: render state 0x11 (gGsFogFar) */
+    f32 nearDist;               /* 0x0: RS_FOG_NEAR (gGsFogNear) */
+    f32 farDist;                /* 0x4: RS_FOG_FAR (gGsFogFar) */
     u8 r;                       /* 0x8 */
     u8 g;                       /* 0x9 */
     u8 b;                       /* 0xA */
@@ -68,16 +71,16 @@ typedef struct AreaState {
                                  * its sound there, Shadow_Draw turns a player's two part
                                  * shadows by the heading to it */
     SkyBand band;               /* 0x0D4: the sky band (Sky_Draw) */
-    u8 look[4];                 /* 0x0F8: [0] the night level (0 day .. 0xFF night: online it follows
-                                 * LobbyTime_IsAm, 0xC a frame; darkens the props and notices);
-                                 * [1] the area's variant (the season of AREA_HUB_0x83, the house level
-                                 * of 0xAD-0xAF; Area_DrawProp's props of one variant);
+    u8 look[4];                 /* 0x0F8: [0] the night level (0 day .. 255 night: online it follows
+                                 * LobbyTime_IsAm, 12 a frame; darkens the props and notices);
+                                 * [1] the area's variant (the season of AREA_ONLINE_VILLAGE, the house level
+                                 * of AREA_ONLINE_HOUSE_0 to AREA_ONLINE_HOUSE_2; Area_DrawProp's props of one variant);
                                  * [1..3] the facility levels of AREA_HUB_0x89 (Area_Enter) */
     u8 monsterState;            /* 0x0FC: cached result of Area_MonsterState (0-2) */
-    u8 flyer;                   /* 0x0FD: set while a kind 0x1D object exists (AreaFlyer_Create) */
+    u8 flyer;                   /* 0x0FD: set while a kind 29 object exists (AreaFlyer_Create) */
     u16 propTimer;              /* 0x0FE: the frames of the moving props' state (AREA_HUB_0x89, Area_Update) */
     f32 propOfs[3];             /* 0x100: the moving props' offset (Area_DrawProp's kind 13) */
-    f32 flyerPos[3];            /* 0x10C: the kind 0x1D object's position (AreaFlyer_Run) */
+    f32 flyerPos[3];            /* 0x10C: the kind 29 object's position (AreaFlyer_Run) */
     u8 propState;               /* 0x118: the moving props' state, from the lobby's (1 out, 2 back) */
     u8 propHold;                /* 0x119: frames state 1 is held after the lobby's state left it */
     u8 unk11A[0x120 - 0x11A];
@@ -374,7 +377,11 @@ enum AreaId {
     /* the hub areas: in no map's list, neither day nor night (gAreaTimeOfDay 2) */
     AREA_HOUSE                    = 0x56,   /* the house offline (Area_IsHouse, MyHouse_InOwnHouse) */
     AREA_HUB_0x57                 = 0x57,   /* seen: with AREA_HOUSE, Pet_AreaKind 2; the way in and out of the house */
-    AREA_HUB_0x83                 = 0x83,   /* seen: Pet_AreaKind 1; gathering kind 1; its own area packs (gArea83PackFiles) */
+    /* The village online: the player's area between the network's lists and a town
+     * (LOBBY_ENTER_VILLAGE; the login starts the player there). Its look and music follow the
+     * lobby's season; the care pet lives there (PET_AREA_CARE); chat goes to the whole lobby
+     * and the game menu has no quest page there. */
+    AREA_ONLINE_VILLAGE           = 0x83,
     AREA_HUB_0x84                 = 0x84,   /* seen: the town's players are loaded there (Area_HasTownPcs) */
     AREA_HUB_0x85                 = 0x85,
     /* The town's three halls, the places a quest can bring the player back to
@@ -414,9 +421,9 @@ enum AreaId {
 #define AREA_TEMP_VERY_HOT      3
 #define AREA_TEMP_VERY_COLD     4
 
-/* The header of an area's grid (the two parts of its table file, gAreaTableFiles;
- * Area_LoadTables and AreaTable_Relocate in scene.c): the grid's offsets are
- * from this header. */
+/* The header of an area's grid (the two parts of its table file, gAreaTableFiles,
+ * loaded by Area_LoadTables and relocated by AreaTable_Relocate): the grid's
+ * offsets are from this header. */
 typedef struct AreaGridHeader {
     u32 cellX;          /* 0x00: gAreaGridCellX */
     u32 cellZ;          /* 0x04: gAreaGridCellZ */
@@ -428,7 +435,7 @@ typedef struct AreaGridHeader {
 } AreaGridHeader;
 
 /* A triangle of the area's collision: an entry of the grid's cell lists
- * (gAreaGridCells, gAreaGrid2Cells), 0x38 bytes. */
+ * (gAreaGridCells, gAreaGrid2Cells), 56 bytes. */
 typedef struct AreaTri {
     u8 kind;            /* 0x00: its kind: the row of the area's gAreaKindFlags and gAreaTriKindFlags */
     u8 seArg;           /* 0x01: the sound argument of the surface (WallContact.seArg, Em.floorArg: passed with the voice sounds) */
@@ -459,7 +466,7 @@ typedef struct TriHdr {
 #define AREA_SEEN_TRIS          10      /* the triangles a sweep remembers as tested (a ring of them) */
 #define AREA_RAY_TRIS           10      /* the triangles a segment test collects */
 #define AREA_FLOOR_CANDIDATES   5       /* the floor heights a floor test collects under a point */
-#define FLOOR_SLIDE_SLOPE       0x1500  /* the least slope (0x10000 per turn: about 30 degrees) Tri_PushOut pushes off */
+#define FLOOR_SLIDE_SLOPE       0x1500  /* the least slope (ANGLE_TURN to a turn: about 30 degrees) Tri_PushOut pushes off */
 
 /* A row of gAreaKindFlags: what a triangle kind of the area's floor does
  * (one table of rows per area, indexed by AreaTri.kind). */
@@ -491,5 +498,209 @@ typedef struct AreaLightZone {
     u16 nearColors;     /* 0x14 */
     u16 farColors;      /* 0x16 */
 } AreaLightZone;
+
+void LightShaft_Create(void);
+void LightShaft_Update(Obj *obj);
+void LightShaft_Setup(Obj *obj);
+void LightShaft_Run(Obj *obj);
+void LightShaft_End(Obj *obj);
+void LightShaft_Free(Obj *obj);
+void LightShaft_Draw(DrawSlot *drawSlot);
+void SkyStreak_Create(u8 streakType);
+void SkyStreak_Update(Obj *obj);
+void SkyStreak_Setup(Obj *obj);
+void SkyStreak_Run(Obj *obj);
+void SkyStreak_End(Obj *obj);
+void SkyStreak_Free(Obj *obj);
+void SkyStreak_Draw(DrawSlot *drawSlot);
+void AreaDrop_Create(void);
+void AreaDrop_Update(Obj *obj);
+void AreaDrop_Setup(Obj *obj);
+void AreaDrop_Run(Obj *obj);
+void AreaDrop_RunDrip(Obj *obj);
+void AreaDrop_RunWeaponBurst(Obj *obj);
+void AreaDrop_End(Obj *obj);
+void AreaDrop_Free(Obj *obj);
+void AreaDrop_Draw(DrawSlot *drawSlot);
+void AreaFlag_Create(void);
+void AreaFlag_Update(Obj *obj);
+void AreaFlag_Setup(Obj *obj);
+void AreaFlag_Run(Obj *obj);
+void AreaFlag_End(Obj *obj);
+void AreaFlag_Free(Obj *obj);
+void AreaFlag_Draw(DrawSlot *drawSlot);
+void AreaWeapon_Create(u8 weaponSet);
+void AreaWeapon_Update(Obj *obj);
+void AreaWeapon_Setup(Obj *obj);
+void AreaWeapon_Run(Obj *obj);
+void AreaWeapon_End(Obj *obj);
+void AreaWeapon_Free(Obj *obj);
+void AreaWeapon_Draw(DrawSlot *drawSlot);
+s32 AreaWeapon_GunIndex(Obj *obj);
+void AnimatedProps_Create(void);
+void AnimatedProps_Update(Obj *obj);
+void AnimatedProps_Setup(void *objArg);
+void AnimatedProps_Run(Obj *obj);
+void AnimatedProps_End(Obj *obj);
+void AnimatedProps_Free(Obj *obj);
+void AnimatedProps_Draw(DrawSlot *drawSlot);
+void AnimatedGroundTiles_Create(void);
+void AnimatedGroundTiles_Update(Obj *obj);
+void AnimatedGroundTiles_Setup(Obj *obj);
+void AnimatedGroundTiles_Run(Obj *obj);
+void AnimatedGroundTiles_End(Obj *obj);
+void AnimatedGroundTiles_Free(Obj *obj);
+void AnimatedGroundTiles_Draw(DrawSlot *drawSlot);
+void FortressTremor_Create(void);
+void FortressTremor_Update(Obj *obj);
+void FortressTremor_Setup(Obj *obj);
+void FortressTremor_Run(Obj *obj);
+void FortressTremor_End(Obj *obj);
+void FortressTremor_Free(Obj *obj);
+void FortressTremor_Draw(DrawSlot *drawSlot);
+void BreakableStructure_Create(void);
+void BreakableStructure_Update(Obj *obj);
+void BreakableStructure_Setup(Obj *obj);
+void BreakableStructure_Run(Obj *obj);
+void BreakableStructure_End(Obj *obj);
+void BreakableStructure_Free(Obj *obj);
+void BreakableStructure_Draw(DrawSlot *drawSlot);
+void ScrollingOverlay_Create(void);
+void ScrollingOverlay_Update(Obj *obj);
+void ScrollingOverlay_Setup(Obj *obj);
+void ScrollingOverlay_Run(Obj *obj);
+void ScrollingOverlay_End(Obj *obj);
+void ScrollingOverlay_Free(Obj *obj);
+void ScrollingOverlay_Draw(DrawSlot *drawSlot);
+void TurningProp_Create(void);
+void TurningProp_Update(Obj *obj);
+void TurningProp_Setup(Obj *obj);
+void TurningProp_Run(Obj *obj);
+void TurningProp_End(Obj *obj);
+void TurningProp_Free(Obj *obj);
+void TurningProp_Draw(DrawSlot *drawSlot);
+void GroundTileGrid_Create(void);
+void GroundTileGrid_Update(Obj *obj);
+void GroundTileGrid_Setup(Obj *obj);
+u32 GroundTileGrid_Run(Obj *obj);
+void GroundTileGrid_End(Obj *obj);
+void GroundTileGrid_Free(Obj *obj);
+void GroundTileGrid_Draw(DrawSlot *drawSlot);
+void AnimatedScenery_Create(u8 setId);
+void AnimatedScenery_Update(Obj *obj);
+void AnimatedScenery_Setup(Obj *obj);
+u32 AnimatedScenery_Run(Obj *obj);
+void AnimatedScenery_End(Obj *obj);
+void AnimatedScenery_Free(Obj *obj);
+void AnimatedScenery_Draw(DrawSlot *drawSlot);
+void CastleGate_Create(u8 gateType);
+void CastleGate_Update(Obj *obj);
+void CastleGate_Setup(Obj *obj);
+void CastleGate_Run(Obj *obj);
+void CastleGate_End(Obj *obj);
+void CastleGate_Free(Obj *obj);
+void CastleGate_Draw(DrawSlot *drawSlot);
+void DistantLightning_Create(void);
+void DistantLightning_Update(Obj *obj);
+void DistantLightning_Setup(Obj *obj);
+void DistantLightning_Run(Obj *obj);
+void DistantLightning_End(Obj *obj);
+void DistantLightning_Free(Obj *obj);
+void DistantLightning_Draw(DrawSlot *drawSlot);
+void AreaObj_K17_Create(u8 phase);
+void AreaObj_K17_Update(Obj *obj);
+void AreaObj_K17_Setup(Obj *obj);
+void AreaObj_K17_Run(Obj *obj);
+void AreaObj_K17_End(Obj *obj);
+void AreaObj_K17_Free(Obj *obj);
+void AreaObj_K17_Draw(DrawSlot *slot);
+void AreaObj_K19_Create(void);
+void AreaObj_K19_Update(Obj *obj);
+void AreaObj_K19_Setup(Obj *obj);
+void AreaObj_K19_Run(Obj *obj);
+void AreaObj_K19_End(Obj *obj);
+void AreaObj_K19_Free(Obj *obj);
+s32 AreaObj_K19_GetPoints(u16 area);
+s16 AreaObj_K19_PointCount(u16 area);
+extern f32 FortressTremor_PosX;
+extern f32 FortressTremor_PosZ;
+extern f32 FortressTremor_ImpactOffsets[12];
+extern s16 BreakableStructure_ModelsDay[8];
+extern u16 BreakableStructure_Yaw[8];
+extern f32 BreakableStructure_Rise[6];
+extern s16 BreakableStructure_Tilt[6];
+extern f32 BreakableStructure_SoundPos[8];
+extern s16 BreakableStructure_ModelsNight[6];
+extern f32 TurningProp_Scales[6];
+extern s16 TurningProp_Models[6];
+extern u8 GroundTileGrid_Jungle1Tiles[32];
+extern u8 GroundTileGrid_Jungle6Tiles[80];
+extern u16 GroundTileGrid_Jungle6Turns[72];
+extern f32 *AnimatedScenery_Positions[56];
+extern s16 CastleGate_Models[4];
+extern s16 AreaObj_K17_AngleTbl[6];
+
+void Area_LoadTables(s32 id);
+void AreaTable_Relocate(u8 *file);
+void AreaTable2_Relocate(u8 *file);
+s32 AreaGrid_SweepCells(f32 *from, f32 *target, f32 *out, u16 mask, f32 radius);
+s32 List_Contains(s32 id, s32 *list, u32 n);
+s32 AreaHitTris_Contains(s32 id, u32 n);
+s32 AreaGrid_Quadrant(f32 *pos);
+s32 AreaGrid2_Contains(f32 *pos);
+s32 AreaGrid_Contains(f32 *pos);
+s32 Area_ContainsPos(s32 id, f32 *pos);
+s32 AreaGrid_ClampSegment(f32 *out, f32 *target, f32 *from);
+s32 *AreaGrid_GetCell(f32 *pos);
+s32 Capsule_TestTriLevel(f32 *cap, AreaTri *tri, f32 *from);
+s32 Capsule_TestTri(f32 *cap, AreaTri *tri);
+s32 Tri_ContainsPoint(f32 *point, f32 *tri, f32 *n);
+s32 AreaHit_Resolve(f32 *cap, f32 *out, u8 *flag);
+void Box_Accumulate(f32 *push, f32 *box, f32 lim);
+f32 AreaGrid2_GetFloorY(f32 *pos);
+f32 AreaGrid2_GetFloorYFiltered(f32 *pos);
+s32 Em_GetFloorY(Em *em, f32 *pos, f32 *out);
+s32 Em_GetFloorYAbove(Em *em, f32 *pos, f32 *out);
+s32 Em_GetFloorInfo(Em *em, f32 *pos, TriHdr *info, f32 *out, s32 *surfaceY);
+s32 Em_GetFloorInfoEx(Em *em, f32 *pos, TriHdr *info, f32 *out, f32 *depth);
+u8 AreaGrid2_OnFlaggedFloor(f32 *pos);
+s32 *AreaGrid2_GetCell(f32 *pos);
+s32 AreaGrid_TestSegment(Em *em, f32 *start, f32 *end, f32 *out, u16 mask);
+s32 Em_FindFloorTri(Em *em, f32 *out, s32 apply);
+u8 Tri_PushOut(f32 *tri, Em *obj, s32 *slope, f32 *out, f32 dropScale);
+void Vec_AngleToUp(f32 *dir, s32 *out);
+void Obj_UpdateLightColors(u8 floorKind, f32 *pos, ObjHead *obj);
+void Obj_UpdateFloorEffects(ObjHead *obj);
+void Em_UpdateLightColors(Em *em);
+u8 Obj_OnPassThroughFloor(void *obj);
+void Em_CollideField(Em *em, u8 keep);
+extern f32 gPlayerBodySpheres[8];
+
+void Area_Enter(u16 area);
+void Area_ApplyFog(u16 area);
+void Area_StartObjects(u16 area);
+s16 Area_SubModelCount(u16 area);
+void Player_CheckActionSpot(void);
+void Area_ClearState(void);
+void Area_ResetFade(void);
+s16 Area_Temperature(u16 area);
+u16 Map_DayId(u16 map);
+s32 Area_IsDay(u16 area);
+u16 Area_OtherTimeId(u16 area);
+u16 Area_DayId(u16 area);
+u16 Map_AreaIndex(u16 map, u16 area);
+u16 Map_AreaAt(u16 map, u16 index);
+s32 Area_NoBarrelBombs(u16 area);
+f32 Area_GroundOffset(u16 area);
+s32 Area_HasFlyer(void);
+void Area_GetFlyerPos(f32 *out, u16 area);
+void Area_StartTimers(AreaState *state);
+void Area_UpdateAmbientSounds(AreaState *state);
+void Area_Update(AreaState *state);
+
+s32 Obj_InCurrentArea(void *obj);
+u8 Player_InCurrentArea(void *obj);
+void Player_UpdateAreaPos(void *obj);
+void Area_ToWorld(s32 area, f32 *pos, f32 *out);
 
 #endif /* AREA_H */

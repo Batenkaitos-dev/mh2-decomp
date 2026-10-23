@@ -2,9 +2,10 @@
 #define MOTION_H
 
 #include "common.h"
+#include "model.h"
 
 /*
- * A motion layer (0x50 bytes): four from +0x154 of a player (Player.motion)
+ * A motion layer (80 bytes): four from +0x154 of a player (Player.motion)
  * and of a monster (Em.motion). Player_SetLayerMotion and Em_SetMotion start
  * a motion on a layer, blending into it over blendFrames frames when the
  * layer was playing; Player_UpdateMotion steps the frames and the blend, and
@@ -116,7 +117,7 @@ typedef struct AnimFileCurve {
 #define ANIM_FILE_POSE_BITS 0x1FF       /* one bit, 1 << n, for the pose value n (AnimCurve.idx) it drives */
 
 /*
- * An animation set (0x20 bytes): the animations of one file, converted by
+ * An animation set (32 bytes): the animations of one file, converted by
  * Anim_LoadSet into a buffer that starts with the set
  * itself. The Anim_Setup* loaders copy that block into a
  * memory handle of its own (AnimSet_CopyToHandle): gMotions[] holds them.
@@ -172,5 +173,19 @@ typedef struct Key3 {
     f32 t;
     f32 v[3];
 } Key3;
+
+void Anim_SetupCommon(void);
+void Anim_SetupPlayer(s32 slot);
+void Anim_SetupEm(s32 slot, s32 kind);
+void Anim_SetupEmSlot(s32 slot);
+u8 *MotionPack_GetEntry(u8 *pack, s32 index);
+s32 MotionPack_GroupCount(u8 *pack, s32 group);
+void Bone_GetAnimMoveFrom(f32 fromFrame, f32 toFrame, f32 *out, EmBone *bone);
+void Vec_Blend(f32 *dst, f32 *first, f32 *second, f32 weightFirst, f32 weightSecond);
+s32 Motion_PassedFrame(void *obj, s32 layer, f32 frame);
+s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
+s32 EmMotion_ReachedFrame(void *em, s32 layer, f32 frame);
+s32 Motion_InFrameRange(void *obj, s32 layer, f32 from, f32 until);
+s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 until);
 
 #endif /* MOTION_H */

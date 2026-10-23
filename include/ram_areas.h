@@ -12,9 +12,9 @@
 #define SYS_HEAP_AREA_SIZE 0xF00000
 
 /* The patch area (PATCH_DATA to the end of PATCH_HEADER): a downloaded patch file is copied
- * here (Patch_InstallFile): its data (0x10000 bytes), the records
- * PatchExecCS applies (magic, count, records; 0x10000 bytes) and its header
- * (0x40 bytes: the version text at +0xA, the active flag at +0x14). */
+ * here (Patch_InstallFile): its data (65536 bytes), the records
+ * PatchExecCS applies (magic, count, records; 65536 bytes) and its header
+ * (64 bytes: the version text at +0xA, the active flag at +0x14). */
 #define PATCH_DATA ((u8 *)0xAA6780)
 #define PATCH_RECS ((u8 *)0xAB6780)
 #define PATCH_HEADER ((u8 *)0xAC6780)
@@ -28,7 +28,7 @@
 /* The memory layout Mem_InitLayout sets in
  * gSysSettings: values, not objects. */
 #define MEM_AREAS_ADDR 0xAC8000    /* gSysSettings.unk54 and unk60: the start of the areas below (0x55E000 bytes) */
-#define WORK_AREA_ADDR 0xC0A200    /* gSysSettings.workArea: the overlays' shared work area (0x18000 bytes) */
+#define WORK_AREA_ADDR 0xC0A200    /* gSysSettings.workArea: the overlays' shared work area (98304 bytes) */
 #define ANIM_AREA_ADDR 0xC2C200    /* gSysSettings.unk74: animation sets are loaded here */
 #define LOAD_BUF_ADDR 0xD88000     /* gSysSettings.loadBuf (gLoadBuf): overlay files and sound banks are read here */
 #define MEM_AREAS_SIZE 0x55E000    /* bytes Mem_InitLayout clears from MEM_AREAS_ADDR */

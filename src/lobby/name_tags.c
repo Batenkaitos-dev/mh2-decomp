@@ -13,7 +13,7 @@
  * townsperson, a member) with its button prompts; the members' names
  * window (LobbyMenu_DrawMemberNames) calls it first.
  * Then the small draws the lobby's menus share: a pulsing gradient bar
- * (Gfx_DrawPulseGradient), the button icons of texture 0x155
+ * (Gfx_DrawPulseGradient), the button icons of texture TEX_SLOT_ICONS
  * (Lobby_DrawButtonIcon), the icon sheet's weapon-class and online-mark icons
  * (Icon_DrawWeaponClass, Icon_DrawOnlineMark), an equipment piece's icon
  * (Lobby_DrawEquipIcon) and the square sprites of gLobbySpriteUVs
@@ -41,9 +41,24 @@
 #include "lobby_menu.h"
 #include "lobby_npc.h"
 #include "render_state.h"
+#include "card.h"
+#include "lobby_forge.h"
+#include "text.h"
+#include "name_tags.h"
+#include "menu_sheets.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_queries.h"
+#include "my_house.h"
+#include "place_info.h"
+#include "town_player_states.h"
+#include "town_players.h"
+#include "village_records.h"
 
 extern LobbyMenu *gLobbyMenu;
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
 
 /* Queues gLobbyMenu's layers 5-7 on the text draw lists: layer 5 (the house
  * label and the name tags) on gDrawListText6, layer 6 (the members' names
@@ -61,16 +76,8 @@ void LobbyMenu_AddHudLayers(void)
  * each corner whole from their tables (gButtonIconUVs, gLobbySpriteUVs). */
 extern IconUV gLobbySpriteUVs[];
 struct Sprite;
-s32 Sprite_Draw(struct Sprite *);
 
-void Text_PrintfColored(const char *, ...);
 void Win_Draw(s32 x, s32 y, s32 w, s32 h, s32 color, s32 color2, s16 kind);
-s32 MyHouse_InOwnHouse(void);
-s8 MyHouse_LocalSlot(void);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-s32 Game_IsOnline(void);
 extern char gHouseCloseFmt[];
 extern char gLabelNameFmt[];
 extern s32 gTownMode;
@@ -122,13 +129,9 @@ void MyHouse_DrawLabel(void)
     }
 }
 
-void Text_SetSize(s32);
-void MyHouse_DrawLabel(void);
-void NameTags_Draw(MenuTask *task);
 s32 Kbd_IsOpen(void); /* unit's own declaration: returning s32, though the keyboard's
  * definition returns s8: NameTags_Draw tests the whole return register, as the game's
  * code does; with s8 the compiler would sign-extend it first */
-extern s32 gTownMode;
 
 /* gLobbyMenu's layer 5 draw (t its MenuTask, for the text size): in the
  * modes that leave the town in view, the house label and the name tags;
@@ -158,7 +161,7 @@ void NameTags_DrawLayer(MenuTask *task)
     case TOWN_MODE_QUEST_COUNTER:
     case TOWN_MODE_SAVE:
     case TOWN_MODE_TALK:
-    case 0x5:
+    case 5:
     case TOWN_MODE_BAIT_MENU:
     case TOWN_MODE_PRICE_INFO:
     case TOWN_MODE_VILLAGE_BOARD:
@@ -177,38 +180,20 @@ void NameTags_DrawLayer(MenuTask *task)
     }
 }
 
-void Tex_Prepare(s32, s32);
-void Tex_Bind(s32);
-void Gfx_SetTexFilter(s32);
-s32 Gs_SetState(u8, u32);
-void Camera_ProjectPoint(f32 *out, f32 *pos);
-void Mtx_Identity(f32 *m);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 void Icon_Draw(); /* unit's own declaration: without parameters, so that NameTags_Draw passes the values
  * of its (s16) casts as whole ints, as the game's code does; a prototype with s32 or
  * s16 parameters makes the compiler convert them differently */
-s32 TownPc_IsInMyArea(Player *p);
-s32 NetUser_State(s8 i);
-s32 Lobby_StrLength(char *);
-s32 TownPc_IsSeatedState(u8, u8);
-f32 Player_NameTagRaise(Player *p);
-u32 Color_Cycle8(void);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void LobbySprite_Draw(s32 x, s16 y, s32 w, s32 color, s16 kind);
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
 void Icon_DrawWeaponClass(s32, s32, s32, s32, s16, s8);
 u8 Equip_GetClass(EquipItem *e);
-void NameTags_DrawNpcs(void);
-extern s32 gQuestCategoryColors[];
 extern s32 gPlayerColorWords[];
 
 /* Layer 5's name tags (t the layer's MenuTask, for the text size), in
  * TOWN_MODE_FREE, _SET_OUT, _SEAT_WAIT, and the game menu with the
- * keyboard closed. Over each member in the player's area (NetUser_State 0,
+ * keyboard closed. Over each member in the player's area (NET_USER_HERE,
  * not at the origin, not in TOWN_PC_SIT_DOWN or TOWN_PC_STAND_UP): the
  * name (its user id while names are hidden online), coloured by the hunter
  * card's HR (51 and up, 31 and up, below), 190 above the feet or 40 above
- * bone 0x14 when seated; before it the weapon class's icon (the local
+ * bone 20 when seated; before it the weapon class's icon (the local
  * player's from the save); above its middle the quest mark in its category's
  * colour (LOBBY_SPRITE_QUEST_PAID, or LOBBY_SPRITE_QUEST_TAKEN, which
  * blinks once QUEST_STATUS_SET_OUT is set); after it the symbol colour's
@@ -252,16 +237,16 @@ void NameTags_Draw(MenuTask *task)
     }
     {
         Text_SetSize(task->textSize);
-        Tex_Prepare(1, 0x155);
-        Tex_Bind(0x155);
-        Gfx_SetTexFilter(1);
+        Tex_Prepare(1, 341);
+        Tex_Bind(341);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
         Gs_SetState(RS_ALPHA_REF, 0);
         i = 0;
         pl = gPlayers;
         user = gNetUsers;
         memberOff = 0;
         do {
-            if (pl->active != 0 && pl->visible != 0 && (u8)TownPc_IsInMyArea(pl) != 0 && NetUser_State(i) == 0 &&
+            if (pl->active != 0 && pl->visible != 0 && (u8)TownPc_IsInMyArea(pl) != 0 && NetUser_State(i) == NET_USER_HERE &&
                 (pl->pos[0] != 0.0f || pl->pos[2] != 0.0f) &&
                 (pl->stateGroup != TOWN_PC_GROUP_ACTION || (u32)(pl->state - TOWN_PC_SIT_DOWN) > 1)) {
                 /* not TOWN_PC_SIT_DOWN or TOWN_PC_STAND_UP */
@@ -277,7 +262,7 @@ void NameTags_Draw(MenuTask *task)
                     pos[1] = 190.0f + pl->pos[1];
                     pos[2] = pl->pos[2];
                 } else {
-                    Em_GetBonePos(pl, 0x14, pos);
+                    Em_GetBonePos(pl, 20, pos);
                     pos[1] += 40.0f;
                 }
                 pos[1] += Player_NameTagRaise(pl);
@@ -288,9 +273,9 @@ void NameTags_Draw(MenuTask *task)
                     tagY = scr[1];
                     Font_SetSpacing(16, 16);
                     card = LOBBY_MEMBER_CARD_AT(memberOff);
-                    if (card->hr >= 0x33) {
+                    if (card->hr >= 51) {
                         nameColor = 2;
-                    } else if (card->hr >= 0x1F) {
+                    } else if (card->hr >= 31) {
                         nameColor = 6;
                     } else {
                         nameColor = 5;
@@ -298,35 +283,35 @@ void NameTags_Draw(MenuTask *task)
                     Text_DrawShadow(1.25f * (s32)scr[0], scr[1], 1, nameColor, name);
                     if (i == gScene.localPlayer) {
                         weaponClass = Equip_GetClass(gSave.equip);
-                        Icon_DrawWeaponClass((s16)(tagX - 0x16), (s16)(tagY - 4), 0x16, -1, weaponClass, 0);
+                        Icon_DrawWeaponClass((s16)(tagX - 22), (s16)(tagY - 4), 22, -1, weaponClass, 0);
                     } else {
-                        Icon_DrawWeaponClass((s16)(tagX - 0x16), (s16)(tagY - 4), 0x16, -1, card->weaponClass, 0);
+                        Icon_DrawWeaponClass((s16)(tagX - 22), (s16)(tagY - 4), 22, -1, card->weaponClass, 0);
                     }
                     if (card->questStatus & QUEST_STATUS_PAID) {
-                        LobbySprite_Draw((s16)(tagX + nameLen * 4 - 0xC), tagY - 0x1A, 0x16, gQuestCategoryColors[card->questStatus & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_PAID);
+                        LobbySprite_Draw((s16)(tagX + nameLen * 4 - 12), tagY - 26, 22, gQuestCategoryColors[card->questStatus & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_PAID);
                     } else if (card->questStatus & QUEST_STATUS_TAKEN) {
                         if (!(card->questStatus & QUEST_STATUS_SET_OUT) || (gFrameTick & 0x10)) {
-                            LobbySprite_Draw((s16)(tagX + nameLen * 4 - 0xC), tagY - 0x1A, 0x16, gQuestCategoryColors[card->questStatus & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_TAKEN);
+                            LobbySprite_Draw((s16)(tagX + nameLen * 4 - 12), tagY - 26, 22, gQuestCategoryColors[card->questStatus & QUEST_STATUS_CATEGORY], LOBBY_SPRITE_QUEST_TAKEN);
                         }
                     }
                     if (Game_IsOnline() == 1) {
                         symbolColor = card->symbolColor;
                     } else if (gSave.styleBits == 0) {
-                        symbolColor = 0xFF;
+                        symbolColor = 255;
                     } else {
                         symbolColor = gPlayers[gScene.localPlayer].style;
                     }
-                    if (symbolColor != 0xFF) {
+                    if (symbolColor != 255) {
                         if (symbolColor == SYMBOL_COLOR_CYCLE) {
-                            Icon_Draw((s16)(tagX + nameLen * 8 + 6), (s16)(tagY - 4), 0x14, 0x14, Color_Cycle8(), ICON_SYMBOL_COLOR);
+                            Icon_Draw((s16)(tagX + nameLen * 8 + 6), (s16)(tagY - 4), 20, 20, Color_Cycle8(), ICON_SYMBOL_COLOR);
                         } else {
-                            Icon_Draw((s16)(tagX + nameLen * 8 + 6), (s16)(tagY - 4), 0x14, 0x14, gPlayerColorWords[symbolColor], ICON_SYMBOL_COLOR);
+                            Icon_Draw((s16)(tagX + nameLen * 8 + 6), (s16)(tagY - 4), 20, 20, gPlayerColorWords[symbolColor], ICON_SYMBOL_COLOR);
                         }
                     }
                 }
             }
             pl++;
-            memberOff += 0x11C;
+            memberOff += 284;
             i++;
             user++;
         } while (i < 10);
@@ -334,7 +319,7 @@ void NameTags_Draw(MenuTask *task)
         i = 0;
         do {
             if (em->active != 0 && em->work == NPC_POOGIE && (s8)save->poogieName[0] != 0 && MyHouse_InOwnHouse() == 1) {
-                Em_BonePos(em, 0xA, pos);
+                Em_BonePos(em, 10, pos);
                 pos[1] += 50.0f;
                 Camera_ProjectPoint(scr, pos);
                 if (scr[0] < 700.0f && scr[0] > -60.0f && scr[1] < 500.0f && scr[1] > -20.0f && scr[3] > 0.0f) {
@@ -352,20 +337,9 @@ void NameTags_Draw(MenuTask *task)
     }
 }
 
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 void Icon_Draw(s32, s32, s32, s32, s32, s32); /* unit's own declaration: with s32 parameters, though the icon sheet's Icon_Draw takes s16 coordinates and sizes and a u32 colour: NameTags_DrawNpcs passes its values without narrowing them, as the game's code does */
-void Mtx_Identity(f32 *m);
 s32 Npc_IsFree(Em *arg0);
-void Vec_Copy(f32 *out, f32 *in);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 Vec_Length(f32 *v);
-s32 Village_HasGift(u16 kind);
-s32 Npc_HasSecondHead(Em *arg0);
-s32 Npc_IsAct51to55(Em *arg0);
-s32 Npc_IsPet(Em *arg0);
 u8 Area_GetSetIndex(u16 id);
-s32 Gs_SetState(u8, u32);
-void Camera_ProjectPoint(f32 *out, f32 *pos);
 
 extern u16 gFrameTick; /* sub_main: the frame counter */
 
@@ -409,13 +383,13 @@ void NameTags_DrawNpcs(void)
             Mtx_Identity(mtx);
             Gs_SetState(RS_MTX_SLOT(0), (s32)mtx);
             if (Npc_IsFree((Em *)((u8 *) em)) != 0) {
-                Em_GetBonePos(em, 0x14, bone);
+                Em_GetBonePos(em, 20, bone);
             } else if (Npc_IsAct51to55(em) != 0) {
-                Em_GetBonePos(em, 0xA, bone);
+                Em_GetBonePos(em, 10, bone);
             } else if (Npc_HasSecondHead((Em *)((u8 *) em)) != 0) {
-                Em_GetBonePos(em, 0xC, bone);
+                Em_GetBonePos(em, 12, bone);
             } else if (Npc_IsPet(em) != 0) {
-                Em_GetBonePos(em, 0xA, bone);
+                Em_GetBonePos(em, 10, bone);
                 bone[1] += 40.0f;
             } else {
                 bone[0] = em->posX;
@@ -431,11 +405,11 @@ void NameTags_DrawNpcs(void)
                 Vec_Copy(markPos, bone);
             }
             switch ((u8)Area_GetSetIndex(gScene.area)) {
-            case 0xA:
-            case 0xE:
-            case 0xB:
-            case 0xC:
-            case 0xD:
+            case 10:
+            case 14:
+            case 11:
+            case 12:
+            case 13:
                 markPos[1] += 40.0f * em->scaleY;
                 scale = 0.7f;
                 break;
@@ -457,7 +431,7 @@ void NameTags_DrawNpcs(void)
                 }
                 dist = Vec_Distance(localPl->pos, &em->posX);
                 if (dist <= 400.0f * scale) {
-                    alpha = 0xC0;
+                    alpha = 192;
                 } else if (dist <= (fadeEnd = 1000.0f * scale)) {
                     alpha = 192.0f * ((fadeEnd - dist) / (600.0f * scale));
                 } else {
@@ -477,13 +451,6 @@ void NameTags_DrawNpcs(void)
 }
 
 s32 sprintf(char *buf, char *fmt, ...);
-void *LobbyArea_GetName(u16 id);
-s32 TownPc_IsSeatedState(u8, u8);
-s32 Lobby_StrLength(char *);
-void Gfx_DrawPulseGradient(s16 x, s16 y, s16 w, s16 h, u32 color, u8 dir);
-s16 Lobby_DrawButtonIcon(s16 x, s16 y, s32 i);
-extern char *gSpotActionTexts[];
-extern char gLobbyStrFmt[];
 extern char gPoogieDefaultName[];
 extern s8 gTargetBannerCycle;
 extern u8 gTargetBannerHidden;
@@ -509,7 +476,7 @@ extern u8 gLockOnNoCycle;
  * (LobbyMenu_DrawMemberNames passes it), for the text size. */
 void TownPc_DrawTargetBanner(MenuTask *task)
 {
-    char buf[0x40];
+    char buf[64];
     Player *localPl = &gPlayers[gScene.localPlayer];
     u8 *save = (u8 *)&gSave;
     u8 *targetObj;
@@ -613,8 +580,8 @@ void TownPc_DrawTargetBanner(MenuTask *task)
         if (gTownMode == TOWN_MODE_SET_OUT) {
             return;
         }
-        w = (NpcWork *)(targetObj + 0x438);
-        if ((s8)((NpcWork *)(targetObj + 0x438))->noTalk == 1) {
+        w = (NpcWork *)(targetObj + 1080);
+        if ((s8)((NpcWork *)(targetObj + 1080))->noTalk == 1) {
             return;
         }
         sprintf(buf, gLobbyStrFmt, (s32)w->name);
@@ -637,36 +604,32 @@ void TownPc_DrawTargetBanner(MenuTask *task)
         }
         color = 0x80603000;
     }
-    Gfx_DrawPulseGradient(0, 0x6F, Lobby_StrLength(buf) * 9 + 0x50, 0x1E, color, 0);
+    Gfx_DrawPulseGradient(0, 111, Lobby_StrLength(buf) * 9 + 80, 30, color, 0);
     if (gTownMode != TOWN_MODE_SET_OUT && TownPc_IsSeatedState(localPl->stateGroup, localPl->state) == 0 && gLockOnNoCycle == 0) {
-        Gfx_DrawPulseGradient(0, 0x8F, 200, 0x1E, color, 0);
+        Gfx_DrawPulseGradient(0, 143, 200, 30, color, 0);
     }
     if (gPadState[0].pressed & PAD_CIRCLE) {
-        Lobby_DrawButtonIcon(20, 0x74, 0);
+        Lobby_DrawButtonIcon(20, 116, 0);
     } else {
-        Lobby_DrawButtonIcon(20, 0x72, 0);
+        Lobby_DrawButtonIcon(20, 114, 0);
     }
     if (gTownMode != TOWN_MODE_SET_OUT && TownPc_IsSeatedState(localPl->stateGroup, localPl->state) == 0 && gLockOnNoCycle == 0) {
         if (gPadState[0].pressed & (PAD_LEFT | PAD_RIGHT)) {
-            Lobby_DrawButtonIcon(20, 0x94, 16);
+            Lobby_DrawButtonIcon(20, 148, 16);
         } else {
-            Lobby_DrawButtonIcon(20, 0x92, 16);
+            Lobby_DrawButtonIcon(20, 146, 16);
         }
     }
-    Font_SetPos(0x38, 0x73);
+    Font_SetPos(56, 115);
     Text_PrintfColored(buf);
     if (gTownMode != TOWN_MODE_SET_OUT && TownPc_IsSeatedState(localPl->stateGroup, localPl->state) == 0 && gLockOnNoCycle == 0) {
-        Font_SetPos(0x38, 0x93);
+        Font_SetPos(56, 147);
         Text_PrintfColored(gLobbyStrFmt, gListTitles[LIST_TITLE_TARGET]);
     }
 }
 
-f32 Math_Sin(f32 x);
-s32 Gs_SetState(u8, u32);
-s32 Prim_FillGradRect(PrimGradRect *);
-
 /* A bar from (x, y), w by h, in color, its alpha fading across its width:
- * dir 0 from the left end, whose alpha pulses between 0x60 and 0xC0 over
+ * dir 0 from the left end, whose alpha pulses between 96 and 192 over
  * 64 frames (gFrameTick; the sine's argument is a 16-bit angle), to none
  * at the right end; dir 1 the other way. The lobby's banners and prompts
  * draw their bars with it. */
@@ -681,11 +644,11 @@ void Gfx_DrawPulseGradient(s16 x, s16 y, s16 width, s16 height, u32 color, u8 di
     rect.x1 = x + width;
     rect.y1 = y + height;
     if (dir == 0) {
-        rect.color[0] = (color & 0xFFFFFF) | (((s8)(48.0f * pulse) + 0x90) << 24);
+        rect.color[0] = (color & 0xFFFFFF) | (((s8)(48.0f * pulse) + 144) << 24);
         rect.color[1] = color & 0xFFFFFF;
     } else {
         rect.color[0] = color & 0xFFFFFF;
-        rect.color[1] = (color & 0xFFFFFF) | (((s8)(48.0f * pulse) + 0x90) << 24);
+        rect.color[1] = (color & 0xFFFFFF) | (((s8)(48.0f * pulse) + 144) << 24);
     }
     rect.color[2] = rect.color[0];
     rect.color[3] = rect.color[1];
@@ -694,12 +657,8 @@ void Gfx_DrawPulseGradient(s16 x, s16 y, s16 width, s16 height, u32 color, u8 di
 }
 
 extern IconUV gButtonIconUVs[];
-void Gfx_SetTexFilter(s32);
-s32 Gs_SetState(u8, u32);
-void Tex_Prepare(s32, s32);
-void Tex_Bind(s32);
 
-/* Draws icon i of the button icons (texture 0x155, gButtonIconUVs) at (x, y)
+/* Draws icon i of the button icons (texture TEX_SLOT_ICONS, gButtonIconUVs) at (x, y)
  * at its own size (icon 9 at 50 by 32) and returns the x just past it. Icon
  * 0 is the circle button (TownPc_DrawTargetBanner dips it while PAD_CIRCLE is
  * held), icon 16 the left and right buttons. */
@@ -708,9 +667,9 @@ s16 Lobby_DrawButtonIcon(s16 x, s16 y, s32 icon)
     TexRect spr;
     IconUV *iconUv = &gButtonIconUVs[icon];
 
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
-    Gfx_SetTexFilter(1);
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
     spr.y = y;
     spr.x = (f32)x;
@@ -741,8 +700,6 @@ void Icon_DrawWeaponClass(s32 x, s32 y, s32 size, s32 color, s16 weaponClass, s8
     }
 }
 
-s32 Forge_IsRandomWeapon(s16 id);
-u8 Weapon_GetClass(u8 type, u16 id);
 s32 Equip_GetRarity(s32 type, u16 id); /* unit's own declaration: with an s32 type and an s32 result, though the definition
  * takes and returns u8: Lobby_DrawEquipIcon passes and uses the values without
  * narrowing them, as the game's code does */
@@ -750,7 +707,7 @@ u32 Equip_Color(u8 idx, u8 alpha, s32 alt);
 void Icon_DrawEquip(s32, s32, s32, s32, s32, s32);
 
 /* An equipment piece's icon (Icon_DrawEquip) at (x, y), w by h: a weapon's
- * class icon (class + 5) in its rarity's colour, or icon 0x10 uncoloured
+ * class icon (class + 5) in its rarity's colour, or icon 16 uncoloured
  * for a random weapon (Forge_IsRandomWeapon); an armour piece's icon by
  * its type (head 0, body 1, waist 2, arms 3, legs 4) in its rarity's
  * colour. */
@@ -763,9 +720,9 @@ void Lobby_DrawEquipIcon(s32 x, s32 y, s32 width, s32 height, EquipItem *item)
     if (kind == EQUIP_GUN || kind == EQUIP_BLADE) {
         if (Forge_IsRandomWeapon(item->id) != 0) {
             color = -1;
-            spr = 0x10;
+            spr = 16;
         } else {
-            color = Equip_Color(Equip_GetRarity(item->type, item->id), 0xFF, 0);
+            color = Equip_Color(Equip_GetRarity(item->type, item->id), 255, 0);
             spr = Weapon_GetClass(item->type, item->id);
             spr += 5;
         }
@@ -787,7 +744,7 @@ void Lobby_DrawEquipIcon(s32 x, s32 y, s32 width, s32 height, EquipItem *item)
             spr = 2;
             break;
         }
-        color = Equip_Color(Equip_GetRarity(kind, item->id), 0xFF, 0);
+        color = Equip_Color(Equip_GetRarity(kind, item->id), 255, 0);
     }
     Icon_DrawEquip(x, y, width, height, color, spr);
 }
@@ -842,7 +799,7 @@ u32 gLabelIconsPos[20] = {
 u32 gFrameStripColors[8] = {
 #include "lobby/007FE910.inc"
 };
-u32 gStripTurnOffsets[32] = {
+SheetTurn gStripTurnOffsets[12] = {
 #include "lobby/007FE930.inc"
 };
 IconUV gLobbySpriteUVs[22] = {
@@ -855,16 +812,16 @@ IconUV gButtonIconUVs[18] = {
 /* The file's .rodata: the format strings of the house label and the
  * target banner, and the Poogie's default name. */
 #pragma rodata on
-char gHouseCloseFmt[0x8] = {
+char gHouseCloseFmt[8] = {
 #include "lobby/0083B7D0.inc"
 };
-char gLabelNameFmt[0x8] = {
+char gLabelNameFmt[8] = {
 #include "lobby/0083B7D8.inc"
 };
-char gLobbyStrFmt[0x8] = {
+char gLobbyStrFmt[8] = {
 #include "lobby/0083B7E0.inc"
 };
-char gPoogieDefaultName[0xC] = {
+char gPoogieDefaultName[12] = {
 #include "lobby/0083B7E8.inc"
 };
 #pragma rodata off

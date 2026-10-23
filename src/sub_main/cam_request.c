@@ -1,17 +1,29 @@
 /*
- * The requests of the state machine at gCamView (a request byte in
- * gCamCtl.request with its argument in gCamCtl.requestArg).
+ * The camera's script mode as the rest of the game drives it: the mode's
+ * two handlers and the requests they serve.
+ * - CamReq_Set and CamReq_Start request a script: its id in
+ *   gCamCtl.request, its argument in requestArg (CamReq_Start also marks
+ *   the script started, CAM_SCRIPT_STARTED, and tells the HUD).
+ *   CamReq_Change swaps the running script for another, CamReq_Cancel
+ *   stops it, and CamReq_State and CamReq_Started report on it.
+ * - CamScript_Init and CamScript_Update are the script mode's entries in
+ *   gCamModeInit and gCamModeUpdate: the update takes the request, runs
+ *   the script (CamScript_Run) until it ends, and keeps the script's
+ *   state in gCamCtl.script for CamReq_State.
+ *
+ * The two handlers open this file rather than end the fixed camera's code
+ * before it: they read and clear the same request and script work as the
+ * requests (gCamCtl.request, gCamCtl.script), which the fixed and focus
+ * views never touch. The file has no data of its own to tie them
+ * elsewhere.
  */
 #include "common.h"
 #include "em.h"
 #include "camera.h"
+#include "hud.h"
 
 /* prototypes */
 /* end of prototypes */
-
-
-void Hud_SetCamReqStarted(void);
-s32 CamScript_Run(CamCtl *cam, CamView *obj);
 
 /* The init handler of the script mode (gCamModeInit). */
 void CamScript_Init(CamCtl *ctl, CamView *view)
@@ -84,9 +96,6 @@ void CamReq_Start(s32 req, void *arg)
     gCamCtl.modes[CAM_MODE_SCRIPT].flags = CAM_SCRIPT_STARTED;
     Hud_SetCamReqStarted();
 }
-
-s32 CamReq_State(void);
-void CamReq_Cancel(void);
 
 /* While a script runs, replaces it with script req unless it is req
  * already. */

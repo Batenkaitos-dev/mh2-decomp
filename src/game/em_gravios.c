@@ -14,184 +14,58 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_gravios.h"
 #include "objattach.h"
 #include "player.h"
 #include "area.h"
+#include "capsule.h"
+#include "card.h"
+#include "save.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* prototypes of callees */
-s32 Versus_DefeatCamera(Em *pl);
-void Versus_RouteEmByTeam(Em *em);
-void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
 
 /* prototypes */
-void EmGravios_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
 void Em_AddHp(Em *em, s16 n);
-void Em_BeginStatus1(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-void QuestEm_Captured(Em *em);
-u16 Rand_Next(s32 stream);
-void EmRangedAttack_CreateAtBoneTimed(Em *, s32, s32, s32, s32, s32, s32);
-void Em_SelectSightRow(Em *em, u8 idx);
-void Em_MoveRotated(Em *em, void *src);
-void Em_MoveRotatedAccel(Em *, void *);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
-void Em_ClearLowHpNeed(Em *em);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetTrapTimeGoal(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void Em_ClearPoison(Em *em);
-void Em_SetHold2(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_PlaySeAtBoneOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag);
-s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmGravios_Reset(Em *);
-void EmGravios_BurrowToNextArea(Em *, EmWork *);
-void EmGravios_Turn(Em *, s32, s32);
-void EmGravios_TurnToGoal(Em *, EmWork *);
-void EmGravios_FlyHopToGoal(Em *em, EmWork *work);
-void EmGravios_Intro(Em *, EmWork *);
-void EmGravios_VsEatBait(Em *, EmWork *);
-void EmGravios_Die(Em *, EmWork *);
-void EmGravios_DieHeld(Em *, EmWork *);
-void EmGravios_DieFalling(Em *, EmWork *);
-void EmGravios_DieRising(Em *, EmWork *);
-void EmGravios_Reappear(Em *, EmWork *);
-void EmGravios_RunAttackState(Em *em, EmWork *work);
-void EmGravios_RunReactState(Em *em, EmWork *work);
-void EmGravios_MotionEffects(Em *em, EmGraviosWork *work);
-void EmGravios_MoveByVelYCurve(Em *em, s32 kind);
-void EmGravios_StartCurves(Em *em, u8 kind);
-u8 EmGravios_UpdateCurves(Em *em);
-void EmGravios_DownedPuffsAndSe(Em *em);
-void AlertMark_Create(void *owner, s16 v, u8 k);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale), the calls in EmGravios_DownedWhileHeld and EmGravios_Stun compile differently */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 Vec_Distance(f32 *a, f32 *b);
-void CamShake_ReqAIf(Em *obj, s32 i);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 Versus_BothDefeated(void);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Motion_InitTime(void *p, s16 step);
-void Shadow_Spawn(void *obj, s16 type);
 /* unit's own declaration: declared here as the callers use it; with the definition's s16 (void *obj, u8 state, u8 sub), the calls in EmGravios_IsHiding compile differently */
 s32 Player_IsState(void *obj, s32 group, s32 state);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *ofs, f32 scale);
-void Em_SetTargetAngle(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmGravios_ChangeState, EmGravios_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_TargetPlayerInRange(Em *);
-s32 Game_IsOnline(void);
-s32 EmGravios_IsHiding(Em *em);
-void Versus_MarkDefeat(Em *);
-s8 QuestEm_Appear(Em *em);
-void Em_ResetToBasePose(Em *em);
-void Em_BreakPart(Em *em, s32 part);
 void Em_EndAllStatus(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus5(Em *em);
-void EmGravios_SetIdleState(Em *em, u16 state, u8 mode);
-void EmGravios_SetMoveState(Em *em, u16 state, u8 mode);
-void EmGravios_SetFlyState(Em *em, u16 state, u8 mode);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_CheckRageByHp(Em *em, s16 n);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-void Em_BeginStatus2(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_StartRage(Em *em);
-void Em_StartPendingRage(Em *em);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-void Em_ResetNotice(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_ClearPart(Em *em, u16 part);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_AddNeed2(Em *em, s32 n);
-void Em_ClearNeed1State(Em *em);
-void Em_ClearNeed2State(Em *em);
-void MinePoint_Remove(s32);
-void Vec_Copy(f32 *out, f32 *in);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
 extern EmTurnParams EmGravios_TurnParams[1];
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-void Em_SetPartScaled(Em *em, s32 bit);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
 void EmTail_Create(Em *);
 void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
 extern u8 EmGravios_BasariosShotFrame;
 extern u8 EmGravios_BasariosShotPitch;
 extern Vec3f EmGravios_CarveThrowPt __attribute__((aligned(8)));
-void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
 extern EmCurveKey *EmGravios_MoveVelYCurves[];
-void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 variant);
-void EmGravios_Gas(Em *em, EmWork *work, s16 variant);
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-u16 Map_DayId(u16);
-u16 Area_DayId(u16 id);
-extern f32 gAreaGroundY[];
-s32 Em_UpdateCombatTimer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void Em_RaisePlayerAreaTriggerLax(Em *em);
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-void Em_SetTrapTime(Em *em, u8 *p);
-void Em_SetStatus1Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetKindTimer(Em *em);
-s32 Save_TestEventFlag(s32 flag);
-void EmGravios_RunState(Em *em, s32 arg1);
-void EmGravios_StartPart6Flinch(Em *em);
 struct EmIdEntry;
 struct EmIdEntry *Em_FindAreaEntry(Em *em, struct EmIdEntry *entry, s16 id);
-extern EmAreaPoints **gEmKindTables[];
+extern void **gEmKindTables[];
 extern f32 gStartPos[];
-void GraviosAttack_Create(Em *em, s8 kind);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
-void GmEm_ResetSize(Em *em);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
-u8 Player_InCurrentArea(void *obj);
-void FallingDebris_Create(Em *em, u8 k);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void PartFx_SpawnAt(f32 *pos, s32 a, f32 scale);
-void PartFx_SpawnForEm(Em *em, s32 a, s32 b);
-void EmGravios_MotionSounds(Em *em, EmWork *work);
-void ElementBurst_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
-void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-u8 AreaGrid2_OnFlaggedFloor(f32 *pos);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
 /* end of prototypes */
 
 /*
  * Plays sound seId at bone when the layer-0 motion passes frame
  * (EmMotion_PassedFrameScaled). On a flagged floor
- * (EmGraviosWork.onFlaggedFloor) the footsteps, on bones 0x14 and 0x1A, play
- * seId + 0x35 instead. Only EmGravios_MotionSounds calls it.
+ * (EmGraviosWork.onFlaggedFloor) the sounds at GRAV_BONE_STEP_A and
+ * GRAV_BONE_STEP_B play seId + 53 instead. Only EmGravios_MotionSounds calls it.
  */
 void EmGravios_PlaySeOnFrame(Em *em, s32 frame, s32 seId, s32 bone)
 {
@@ -199,8 +73,8 @@ void EmGravios_PlaySeOnFrame(Em *em, s32 frame, s32 seId, s32 bone)
 
     seOfs = 0;
     if (EmMotion_PassedFrameScaled(em, (f32) frame, 0U) != 0) {
-        if (((EmGraviosWork *)&em->work)->onFlaggedFloor == 1 && (bone == 0x14 || bone == 0x1A)) {
-            seOfs = 0x35;
+        if (((EmGraviosWork *)&em->work)->onFlaggedFloor == 1 && (bone == GRAV_BONE_STEP_A || bone == GRAV_BONE_STEP_B)) {
+            seOfs = 53;
         }
         Em_PlaySeAtBone(em, seId + seOfs, bone);
     }
@@ -209,7 +83,7 @@ void EmGravios_PlaySeOnFrame(Em *em, s32 frame, s32 seId, s32 bone)
 /*
  * Switches on work->sndMotion (the layer-0 motion id) and plays the sounds
  * of that motion at their frames through EmGravios_PlaySeOnFrame (steps on
- * bones 0x14/0x1A, voice on bone 0x23). GRAV_MOT_BEAM_SHORT has its own set
+ * GRAV_BONE_STEP_A/_B, voice at GRAV_BONE_HEAD). GRAV_MOT_BEAM_SHORT has its own set
  * in GRAV_VS_POSE_C. GRAV_MOT_BEAM has one set for the Gravios and the Black
  * Gravios in EM_GROUP_IDLE and EM_GROUP_EVENT, another for them in the other
  * groups, and a third for the
@@ -226,717 +100,717 @@ void EmGravios_MotionSounds(Em *em, EmWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_IDLE):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_WALK):
-        EmGravios_PlaySeOnFrame(em, 0x2C, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x74, 1, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 44, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 116, GRAV_SE_STEP, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TURN_RIGHT):
-        EmGravios_PlaySeOnFrame(em, 6, 0x48, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x19, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x38, 1, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 6, 72, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 25, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 56, GRAV_SE_STEP, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TURN_LEFT):
-        EmGravios_PlaySeOnFrame(em, 6, 0x48, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x19, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x38, 1, 0x14);
+        EmGravios_PlaySeOnFrame(em, 6, 72, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 25, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 56, GRAV_SE_STEP, GRAV_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_LIMP):
-        EmGravios_PlaySeOnFrame(em, 6, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 6, 4, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x4C, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 0x12, 0x14);
+        EmGravios_PlaySeOnFrame(em, 6, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 6, 4, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 76, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 28, 18, GRAV_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DESCEND):
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x46, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x42, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x7A, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x7E, 0xB, 0xC);
+        EmGravios_PlaySeOnFrame(em, 14, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 18, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 70, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 66, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 122, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 126, 11, GRAV_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0xD):
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x2C, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x28, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x42, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x46, 0xF, 0xC);
+    case EM_MOTION_ID(0, 13):
+        EmGravios_PlaySeOnFrame(em, 14, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 18, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 44, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 40, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 66, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 70, 15, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_HOVER):
-        EmGravios_PlaySeOnFrame(em, 4, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 8, 0xC, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x3A, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x8E, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x8A, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xD4, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0xD8, 0xB, 0xC);
+        EmGravios_PlaySeOnFrame(em, 4, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 8, 12, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 58, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 62, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 142, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 138, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 212, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 216, 11, GRAV_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x10):
+    case EM_MOTION_ID(0, 16):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_CHARGE):
-        EmGravios_PlaySeOnFrame(em, 6, 0x4F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xA0, 6, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xC0, 6, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 6, 79, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 28, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 160, 6, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 192, 6, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TAKE_OFF):
-        EmGravios_PlaySeOnFrame(em, 0x60, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x16, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 4, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x50, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x54, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x62, 7, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xA8, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0xAC, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xDE, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0xE2, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x110, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x114, 0xB, 0xC);
+        EmGravios_PlaySeOnFrame(em, 96, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 22, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 4, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 80, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 84, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 98, 7, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 168, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 172, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 222, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 226, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 272, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 276, 11, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TOUCH_DOWN):
-        EmGravios_PlaySeOnFrame(em, 2, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 6, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xC, 4, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 4, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xA8, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xC8, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xE, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x7C, 0x16, 0);
+        EmGravios_PlaySeOnFrame(em, 2, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 6, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 12, 4, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 4, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 168, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 200, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 14, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 124, 22, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_LEAD_IN):
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x13, 0);
-        EmGravios_PlaySeOnFrame(em, 2, 0x48, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0xE, 0xC);
-        EmGravios_PlaySeOnFrame(em, 8, 0xE, 6);
+        EmGravios_PlaySeOnFrame(em, 30, 19, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 2, 72, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 14, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 8, 14, GRAV_BONE_WING_A);
         break;
-    case EM_MOTION_ID(0, 0x1E):
+    case EM_MOTION_ID(0, 30):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_LIE):
-        EmGravios_PlaySeOnFrame(em, 0x24, 0x57, 0x23);
+        EmGravios_PlaySeOnFrame(em, 36, 87, GRAV_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x23):
-        EmGravios_PlaySeOnFrame(em, 0x32, 2, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x3A, 6, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x54, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x68, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x7C, 0x11, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xCC, 6, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xD2, 2, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xFE, 0x12, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x120, 2, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x20, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x24, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x80, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x84, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x122, 0xE, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x126, 0xE, 6);
-        EmGravios_PlaySeOnFrame(em, 2, 0x15, 0);
-        EmGravios_PlaySeOnFrame(em, 2, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x30, 0x21, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x80, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xB8, 0x24, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x120, 0x22, 0x23);
+    case EM_MOTION_ID(0, 35):
+        EmGravios_PlaySeOnFrame(em, 50, 2, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 58, 6, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 84, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 104, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 124, 17, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 204, 6, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 210, 2, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 254, 18, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 288, 2, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 32, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 36, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 128, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 132, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 290, 14, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 294, 14, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 2, 21, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 2, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 48, 33, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 128, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 184, 36, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 288, 34, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_ATTACK_A):
-        EmGravios_PlaySeOnFrame(em, 0x24, 0x24, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x14, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x28, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x3C, 0x15, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x3C, 0xC, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xC, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 0xA6, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 36, 36, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 20, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 40, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 60, 21, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 60, 12, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 12, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 166, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_GET_UP):
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x48, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xC, 0xC, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 2, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x2E, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x48, 1, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 30, 72, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 12, 12, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 28, 2, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 46, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 72, GRAV_SE_STEP, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_COLLAPSE):
-        EmGravios_PlaySeOnFrame(em, 4, 0x57, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x48, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0xA4, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x90, 3, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x88, 0xE, 6);
-        EmGravios_PlaySeOnFrame(em, 0xB2, 4, 0x22);
+        EmGravios_PlaySeOnFrame(em, 4, 87, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 72, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 164, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 144, 3, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 136, 14, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 178, 4, GRAV_BONE_BREATH);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_REST_LIE_DOWN):
-        EmGravios_PlaySeOnFrame(em, 2, 0x57, 0x23);
-        EmGravios_PlaySeOnFrame(em, 2, 0x17, 0);
-        EmGravios_PlaySeOnFrame(em, 0x40, 3, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x66, 0x10, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 2, 87, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 2, 23, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 64, 3, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 102, 16, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_SPIN_BASARIOS):
-        EmGravios_PlaySeOnFrame(em, 8, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x14, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x2A, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x48, 1, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 8, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 14, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 30, 20, 42);
+        EmGravios_PlaySeOnFrame(em, 42, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 72, GRAV_SE_STEP, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_SPIN):
-        EmGravios_PlaySeOnFrame(em, 8, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x14, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x2A, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x48, 1, 0x14);
+        EmGravios_PlaySeOnFrame(em, 8, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 14, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 30, 20, 42);
+        EmGravios_PlaySeOnFrame(em, 42, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 72, GRAV_SE_STEP, GRAV_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x2C):
-        EmGravios_PlaySeOnFrame(em, 0x1C, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x20, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 6, 0x1A, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x1B, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0x1B, 6);
-        EmGravios_PlaySeOnFrame(em, 0x26, 0x1A, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x2A, 0x1B, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x32, 0x1B, 6);
+    case EM_MOTION_ID(0, 44):
+        EmGravios_PlaySeOnFrame(em, 28, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 32, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 6, 26, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 10, 27, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 14, 27, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 38, 26, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 42, 27, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 50, 27, GRAV_BONE_WING_A);
         break;
-    case EM_MOTION_ID(0, 0x2F):
-        EmGravios_PlaySeOnFrame(em, 2, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 0x50, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x14, 0x28, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x4A, 0x29, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x4C, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x48, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xB4, 0x13, 6);
-        EmGravios_PlaySeOnFrame(em, 0xBB, 0x13, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xF0, 0x12, 0);
+    case EM_MOTION_ID(0, 47):
+        EmGravios_PlaySeOnFrame(em, 2, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 80, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 20, 40, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 74, 41, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 76, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 72, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 180, 19, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 187, 19, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 240, 18, GRAV_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x30):
-        EmGravios_PlaySeOnFrame(em, 2, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x22, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x40, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x72, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x10, 1, 0x14);
+    case EM_MOTION_ID(0, 48):
+        EmGravios_PlaySeOnFrame(em, 2, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 34, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 64, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 114, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 16, GRAV_SE_STEP, GRAV_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x31):
-        EmGravios_PlaySeOnFrame(em, 0x20, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x24, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x74, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x78, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xBE, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0xC2, 0xB, 0xC);
+    case EM_MOTION_ID(0, 49):
+        EmGravios_PlaySeOnFrame(em, 32, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 36, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 116, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 120, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 190, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 194, 11, GRAV_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x32):
-        EmGravios_PlaySeOnFrame(em, 0x4E, 0x29, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x78, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xA4, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x12, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 4, 0x13, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x40, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x40, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xFA, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x12A, 0x12, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x11E, 0x13, 0);
+    case EM_MOTION_ID(0, 50):
+        EmGravios_PlaySeOnFrame(em, 78, 41, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 78, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 120, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 164, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 18, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 4, 19, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 64, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 64, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 250, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 298, 18, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 286, 19, GRAV_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x33):
-        EmGravios_PlaySeOnFrame(em, 4, 0x13, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x26, 0x10, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x38, 0x12, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x58, 6, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x96, 0x2E, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x9A, 0x2E, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xEE, 0x16, 0);
+    case EM_MOTION_ID(0, 51):
+        EmGravios_PlaySeOnFrame(em, 4, 19, 42);
+        EmGravios_PlaySeOnFrame(em, 38, 16, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 56, 18, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 88, 6, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 150, 46, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 154, 46, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 238, 22, GRAV_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x34):
-        EmGravios_PlaySeOnFrame(em, 0x16, 0x28, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x48, 0x29, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x52, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 6, 0x14, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x16, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x3A, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x6A, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x6E, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xAC, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0xB0, 0xB, 0xC);
+    case EM_MOTION_ID(0, 52):
+        EmGravios_PlaySeOnFrame(em, 22, 40, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 72, 41, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 82, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 6, 20, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 22, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 58, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 62, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 106, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 110, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 172, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 176, 11, GRAV_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, GRAV_MOT_TURN_THREAT):
-        EmGravios_PlaySeOnFrame(em, 2, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 4, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x38, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 5, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x78, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x108, 4, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x16, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x20, 0x28, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x84, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x84, 0x51, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0xC, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x10, 0xC, 6);
+    case EM_MOTION_ID(0, GRAV_MOT_TURN_ROAR):
+        EmGravios_PlaySeOnFrame(em, 2, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 28, 4, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 56, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 28, 5, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 120, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 264, 4, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 22, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 32, 40, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 132, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 132, 81, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 10, 12, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 16, 12, GRAV_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_B):
-        EmGravios_PlaySeOnFrame(em, 6, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xD4, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x48, 0x13, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x30, 6, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x30, 0x11, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x30, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xAE, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xDE, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x34, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 0x38, 0xD, 0xC);
+        EmGravios_PlaySeOnFrame(em, 6, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 212, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 72, 19, 42);
+        EmGravios_PlaySeOnFrame(em, 48, 6, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 48, 17, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 48, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 174, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 222, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 52, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 56, 13, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_F):
-        EmGravios_PlaySeOnFrame(em, 6, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x12, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x26, 6, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x6E, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xAC, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x5A, 0x15, 0);
+        EmGravios_PlaySeOnFrame(em, 6, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 10, 18, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 38, 6, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 78, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 110, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 172, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 90, 21, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_SHAKE_OFF):
-        EmGravios_PlaySeOnFrame(em, 4, 0x4F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x56, 0x1F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x10, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 4, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 8, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x7E, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x62, 0x13, 0x2A);
+        EmGravios_PlaySeOnFrame(em, 4, 79, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 86, 31, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 16, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 4, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 8, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 126, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 98, 19, 42);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_D):
-        EmGravios_PlaySeOnFrame(em, 0xE, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 4, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x13, 0);
-        EmGravios_PlaySeOnFrame(em, 0x4C, 0x1F, 0x23);
+        EmGravios_PlaySeOnFrame(em, 14, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 4, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 19, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 76, 31, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_E):
-        EmGravios_PlaySeOnFrame(em, 4, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x13, 0);
-        EmGravios_PlaySeOnFrame(em, 0x44, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x78, 1, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 4, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 19, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 68, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 120, GRAV_SE_STEP, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_PART_BREAK):
-        EmGravios_PlaySeOnFrame(em, 4, 0x54, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 4, 0x2C);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0x12, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x2C, 6, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x3A, 0x10, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x4A, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x64, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0xC, 0xC);
+        EmGravios_PlaySeOnFrame(em, 4, 84, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 62, 4, GRAV_BONE_TAIL_B);
+        EmGravios_PlaySeOnFrame(em, 18, 18, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 44, 6, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 58, 16, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 62, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 74, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 100, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 14, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 18, 12, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_C):
-        EmGravios_PlaySeOnFrame(em, 4, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x13, 0);
+        EmGravios_PlaySeOnFrame(em, 4, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 19, GRAV_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x43):
-        EmGravios_PlaySeOnFrame(em, 0x46, 0x55, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x46, 0x17, 0);
+    case EM_MOTION_ID(0, 67):
+        EmGravios_PlaySeOnFrame(em, 70, 85, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 70, 23, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DIE):
-        EmGravios_PlaySeOnFrame(em, 0x1C, 2, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x30, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xDC, 0x10, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x108, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x108, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0x114, 0x17, 0);
-        EmGravios_PlaySeOnFrame(em, 0x180, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x18, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x8C, 0x28, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xB4, 0x2C, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x13A, 0x2F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x192, 0x2B, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x174, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x176, 0xE, 0xC);
+        EmGravios_PlaySeOnFrame(em, 28, 2, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 48, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 220, 16, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 30, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 264, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 264, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 276, 23, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 384, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 24, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 140, 40, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 180, 44, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 314, 47, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 402, 43, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 372, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 374, 14, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_KNOCK_DOWN_PART3):
     case EM_MOTION_ID(0, GRAV_MOT_KNOCK_DOWN):
-        EmGravios_PlaySeOnFrame(em, 4, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x16, 6, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 4, 0x12, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x10, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 0x1A, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x92, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x92, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0xBA, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0xEE, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0x11C, 8, 0);
-        EmGravios_PlaySeOnFrame(em, 0x11C, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0x6C, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0xF2, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x19A, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x1CA, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x1EE, 0, 0x14);
+        EmGravios_PlaySeOnFrame(em, 4, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 22, 6, 42);
+        EmGravios_PlaySeOnFrame(em, 4, 18, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 16, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 26, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 146, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 146, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 186, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 238, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 284, 8, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 284, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 108, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 242, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 410, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 458, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 494, 0, GRAV_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x46):
-    case EM_MOTION_ID(0, 0x4B):
-        EmGravios_PlaySeOnFrame(em, 8, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0x1F, 0x23);
+    case EM_MOTION_ID(0, 70):
+    case EM_MOTION_ID(0, 75):
+        EmGravios_PlaySeOnFrame(em, 8, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 31, GRAV_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x47):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x30, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x46, 1, 0x1A);
+    case EM_MOTION_ID(0, 71):
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 30, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 48, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 70, GRAV_SE_STEP, GRAV_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x48):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x30, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x46, 1, 0x14);
+    case EM_MOTION_ID(0, 72):
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 30, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 48, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 70, GRAV_SE_STEP, GRAV_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x49):
-        EmGravios_PlaySeOnFrame(em, 4, 0x1E, 0x22);
-        EmGravios_PlaySeOnFrame(em, 4, 0x1D, 6);
-        EmGravios_PlaySeOnFrame(em, 8, 0x1D, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x2A, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x4C, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x18, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 0x10, 0);
-        EmGravios_PlaySeOnFrame(em, 0x1E, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0x22, 7, 0);
+    case EM_MOTION_ID(0, 73):
+        EmGravios_PlaySeOnFrame(em, 4, 30, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 4, 29, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 8, 29, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 10, 42, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 76, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 24, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 30, 16, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 30, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 34, 7, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_STATUS4):
-        EmGravios_PlaySeOnFrame(em, 0x10, 0x5A, 0x23);
+        EmGravios_PlaySeOnFrame(em, 16, 90, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FALL):
-        EmGravios_PlaySeOnFrame(em, 4, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x14, 0xB, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x3A, 0x14, 0);
+        EmGravios_PlaySeOnFrame(em, 4, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 20, 11, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 58, 20, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FALL_LAND):
-        EmGravios_PlaySeOnFrame(em, 0xA, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0xA, 7, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0xC, 0x11, 0);
-        EmGravios_PlaySeOnFrame(em, 0x10, 0x54, 0x23);
+        EmGravios_PlaySeOnFrame(em, 10, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 10, 7, 42);
+        EmGravios_PlaySeOnFrame(em, 12, 17, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 16, 84, GRAV_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x4F):
-        EmGravios_PlaySeOnFrame(em, 0xC, 0x24, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x24, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x66, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xA4, 0x22, 0x23);
+    case EM_MOTION_ID(0, 79):
+        EmGravios_PlaySeOnFrame(em, 12, 36, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 36, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 102, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 164, 34, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_PAIR_A):
-        EmGravios_PlaySeOnFrame(em, 2, 0x16, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x64, 0x17, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x26, 0x55, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xC8, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 3, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x140, 3, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 2, 22, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 100, 23, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 38, 85, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 200, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 28, 3, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 320, 3, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_PAIR_B):
-        EmGravios_PlaySeOnFrame(em, 2, 0x16, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x64, 0x17, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x26, 0x55, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xC8, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x140, 3, 0x14);
+        EmGravios_PlaySeOnFrame(em, 2, 22, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 100, 23, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 38, 85, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 200, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 28, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 320, 3, GRAV_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DIE_FALLING):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x32, 0x2C, 0x23);
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 50, 44, GRAV_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x53):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0x17, 0);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x10, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x34, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x58, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x80, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xC6, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 4, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xA8, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xA2, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0xA6, 0xD, 0xC);
+    case EM_MOTION_ID(0, 83):
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 23, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 10, 16, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 10, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 28, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 52, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 88, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 128, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 198, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 4, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 168, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 162, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 166, 13, GRAV_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x54):
-        EmGravios_PlaySeOnFrame(em, 0x16, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x1A, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x34, 0xA, 6);
-        EmGravios_PlaySeOnFrame(em, 0x38, 0xE, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 0xE, 6);
-        EmGravios_PlaySeOnFrame(em, 0x4A, 0xA, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x58, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 0x5C, 0xC, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x20, 5, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 0, 0x14);
+    case EM_MOTION_ID(0, 84):
+        EmGravios_PlaySeOnFrame(em, 22, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 26, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 52, 10, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 56, 14, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 78, 14, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 74, 10, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 88, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 92, 12, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 32, 5, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 28, 0, GRAV_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x57):
-        EmGravios_PlaySeOnFrame(em, 4, 0x1A, 0x22);
-        EmGravios_PlaySeOnFrame(em, 8, 0x1B, 0xC);
-        EmGravios_PlaySeOnFrame(em, 4, 0x1B, 6);
-        EmGravios_PlaySeOnFrame(em, 0x22, 0x1C, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x40, 0x1C, 0x22);
+    case EM_MOTION_ID(0, 87):
+        EmGravios_PlaySeOnFrame(em, 4, 26, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 8, 27, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 4, 27, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 34, 28, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 64, 28, GRAV_BONE_BREATH);
         break;
-    case EM_MOTION_ID(0, 0x5A):
-        EmGravios_PlaySeOnFrame(em, 0x20, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x24, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x4A, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x7C, 0xB, 6);
-        EmGravios_PlaySeOnFrame(em, 0x80, 0xB, 0xC);
+    case EM_MOTION_ID(0, 90):
+        EmGravios_PlaySeOnFrame(em, 32, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 36, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 74, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 78, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 124, 11, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 128, 11, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TRAPPED):
-        EmGravios_PlaySeOnFrame(em, 4, 0x10, 0);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 0x14, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x52, 0x23);
+        EmGravios_PlaySeOnFrame(em, 4, 16, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 10, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 20, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 82, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_STRUGGLE):
-        EmGravios_PlaySeOnFrame(em, 0x16, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 0x48, 0x12, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0xC, 6);
-        EmGravios_PlaySeOnFrame(em, 8, 0xC, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x30, 0x13, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0x28, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x28, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0);
+        EmGravios_PlaySeOnFrame(em, 22, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 72, 18, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 12, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 8, 12, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 48, 19, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 40, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 40, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DOWNED):
-        EmGravios_PlaySeOnFrame(em, 0x22, 0x16, 6);
-        EmGravios_PlaySeOnFrame(em, 0x26, 0x16, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x62, 4, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x6C, 3, 0x22);
-        EmGravios_PlaySeOnFrame(em, 4, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x2C, 0x23);
+        EmGravios_PlaySeOnFrame(em, 34, 22, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 38, 22, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 98, 4, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 108, 3, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 4, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 44, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DOWNED_GET_UP):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 6);
-        EmGravios_PlaySeOnFrame(em, 8, 0x16, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x6C, 3, 0x22);
-        EmGravios_PlaySeOnFrame(em, 4, 0x50, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x46, 0x20, 0x23);
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 8, 22, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 108, 3, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 4, 80, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 70, 32, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_CHARGE_STOP):
-        EmGravios_PlaySeOnFrame(em, 0x16, 4, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x18, 8, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x1A, 0x10, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xC8, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xE0, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xA6, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x64, 0x20, 0x23);
+        EmGravios_PlaySeOnFrame(em, 22, 4, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 24, 8, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 26, 16, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 200, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 224, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 166, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 100, 32, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_ENRAGED):
-        EmGravios_PlaySeOnFrame(em, 4, 0x17, 0);
-        EmGravios_PlaySeOnFrame(em, 0x18C, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x32, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x7E, 0x57, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x178, 0x1F, 0x23);
+        EmGravios_PlaySeOnFrame(em, 4, 23, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 396, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 50, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 126, 87, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 376, 31, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_ACTION_A):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x68, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x92, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xCE, 0, 0x14);
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 104, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 146, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 206, 0, GRAV_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_EAT):
-        EmGravios_PlaySeOnFrame(em, 0x38, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xAE, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x118, 0x22, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x15E, 0x1F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1C, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x16E, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x196, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 56, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 174, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 280, 34, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 350, 31, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 28, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 366, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 406, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_BEAM_SHORT):
         if ((em->stateGroup == EM_GROUP_VERSUS) && (em->state == 3)) {
-            EmGravios_PlaySeOnFrame(em, 0x72, 0x27, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x3E, 0x24, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0xE, 0xD, 6);
-            EmGravios_PlaySeOnFrame(em, 0x12, 0xD, 0xC);
-            EmGravios_PlaySeOnFrame(em, 0x14, 6, 0x14);
-            EmGravios_PlaySeOnFrame(em, 0xFE, 1, 0x14);
-            EmGravios_PlaySeOnFrame(em, 0x122, 0, 0x14);
+            EmGravios_PlaySeOnFrame(em, 114, 39, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 62, 36, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 14, 13, GRAV_BONE_WING_A);
+            EmGravios_PlaySeOnFrame(em, 18, 13, GRAV_BONE_WING_B);
+            EmGravios_PlaySeOnFrame(em, 20, 6, GRAV_BONE_STEP_A);
+            EmGravios_PlaySeOnFrame(em, 254, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+            EmGravios_PlaySeOnFrame(em, 290, 0, GRAV_BONE_STEP_A);
             break;
         }
-        EmGravios_PlaySeOnFrame(em, 0x72, 0x51, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x5E, 0x1B, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x78, 0x1A, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x78, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x14, 6, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xFE, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x122, 0, 0x14);
+        EmGravios_PlaySeOnFrame(em, 114, 81, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 62, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 94, 27, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 120, 26, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 120, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 14, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 18, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 20, 6, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 254, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 290, 0, GRAV_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_ROAR):
-        EmGravios_PlaySeOnFrame(em, 0x30, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x6C, 0x56, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x12, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x196, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 48, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 108, GRAV_SE_ROAR, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 18, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 406, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_RISE_BURST):
-        EmGravios_PlaySeOnFrame(em, 0x68, 0x51, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x68, 0x15, 0);
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x26, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x48, 9, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 9, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 0x10, 0x22);
-        EmGravios_PlaySeOnFrame(em, 0x76, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x7E, 3, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x58, 0xF, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x5C, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0xF8, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 104, 81, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 104, 21, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 38, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 72, 9, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 78, 9, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 78, 16, GRAV_BONE_BREATH);
+        EmGravios_PlaySeOnFrame(em, 118, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 126, 3, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 88, 15, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 92, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 248, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_ATTACK_B):
-        EmGravios_PlaySeOnFrame(em, 4, 0x1F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x16, 0x12, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x1A, 3, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x8E, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x124, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x162, 3, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x5A, 0x13, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x4A, 0x15, 0);
-        EmGravios_PlaySeOnFrame(em, 0x4A, 8, 0);
-        EmGravios_PlaySeOnFrame(em, 0x98, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x56, 8, 0);
+        EmGravios_PlaySeOnFrame(em, 4, 31, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 22, 18, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 26, 3, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 142, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 292, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 354, 3, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 90, 19, 42);
+        EmGravios_PlaySeOnFrame(em, 74, 21, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 74, 8, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 152, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 86, 8, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_BEAM):
         type = em->type;
-        if ((type == 0x11) || (type == 0x2F)) {
+        if ((type == 17) || (type == 47)) {
             stateGroup = em->stateGroup;
             if ((stateGroup != EM_GROUP_IDLE) && (stateGroup != EM_GROUP_EVENT)) {
-                EmGravios_PlaySeOnFrame(em, 0x82, 0x51, 0x23);
-                EmGravios_PlaySeOnFrame(em, 0xE, 0xD, 6);
-                EmGravios_PlaySeOnFrame(em, 0x12, 0xD, 0xC);
-                EmGravios_PlaySeOnFrame(em, 0x1A, 6, 0x14);
-                EmGravios_PlaySeOnFrame(em, 0x3E, 0x27, 0x23);
-                EmGravios_PlaySeOnFrame(em, 0x68, 0x1B, 0x23);
-                EmGravios_PlaySeOnFrame(em, 0x68, 0x19, 0x23);
-                EmGravios_PlaySeOnFrame(em, 0x90, 0x1A, 0x23);
-                EmGravios_PlaySeOnFrame(em, 0x90, 0x18, 0x23);
+                EmGravios_PlaySeOnFrame(em, 130, 81, GRAV_BONE_HEAD);
+                EmGravios_PlaySeOnFrame(em, 14, 13, GRAV_BONE_WING_A);
+                EmGravios_PlaySeOnFrame(em, 18, 13, GRAV_BONE_WING_B);
+                EmGravios_PlaySeOnFrame(em, 26, 6, GRAV_BONE_STEP_A);
+                EmGravios_PlaySeOnFrame(em, 62, 39, GRAV_BONE_HEAD);
+                EmGravios_PlaySeOnFrame(em, 104, 27, GRAV_BONE_HEAD);
+                EmGravios_PlaySeOnFrame(em, 104, 25, GRAV_BONE_HEAD);
+                EmGravios_PlaySeOnFrame(em, 144, 26, GRAV_BONE_HEAD);
+                EmGravios_PlaySeOnFrame(em, 144, 24, GRAV_BONE_HEAD);
                 break;
             }
-            EmGravios_PlaySeOnFrame(em, 0x6E, 0x54, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0xE, 0xD, 6);
-            EmGravios_PlaySeOnFrame(em, 0x12, 0xD, 0xC);
-            EmGravios_PlaySeOnFrame(em, 0x1A, 6, 0x14);
-            EmGravios_PlaySeOnFrame(em, 0x3E, 0x27, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x82, 0x51, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x68, 0x1B, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x68, 0x19, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x90, 0x1A, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x90, 0x18, 0x23);
-            EmGravios_PlaySeOnFrame(em, 0x92, 0x1D, 0x23);
+            EmGravios_PlaySeOnFrame(em, 110, 84, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 14, 13, GRAV_BONE_WING_A);
+            EmGravios_PlaySeOnFrame(em, 18, 13, GRAV_BONE_WING_B);
+            EmGravios_PlaySeOnFrame(em, 26, 6, GRAV_BONE_STEP_A);
+            EmGravios_PlaySeOnFrame(em, 62, 39, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 130, 81, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 104, 27, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 104, 25, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 144, 26, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 144, 24, GRAV_BONE_HEAD);
+            EmGravios_PlaySeOnFrame(em, 146, 29, GRAV_BONE_HEAD);
             break;
         }
-        EmGravios_PlaySeOnFrame(em, 0x14, 6, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x3C, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x40, 0x26, 0x23);
+        EmGravios_PlaySeOnFrame(em, 20, 6, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 60, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 14, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 18, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 64, 38, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_GAS):
-        EmGravios_PlaySeOnFrame(em, 0x14, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x58, 0x24, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x7E, 0x56, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x14, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x44, 2, 0x14);
+        EmGravios_PlaySeOnFrame(em, 20, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 88, 36, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 126, GRAV_SE_ROAR, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 20, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 68, 2, GRAV_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_REAR_ATTACK):
-        EmGravios_PlaySeOnFrame(em, 0x32, 0x28, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x68, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x38, 4, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xF8, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x2E, 0x14, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x68, 0x14, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x9C, 0x14, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0xD2, 0x14, 0x2A);
-        EmGravios_PlaySeOnFrame(em, 0x112, 0x13, 0x2A);
+        EmGravios_PlaySeOnFrame(em, 50, 40, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 104, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 56, 4, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 248, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 46, 20, 42);
+        EmGravios_PlaySeOnFrame(em, 104, 20, 42);
+        EmGravios_PlaySeOnFrame(em, 156, 20, 42);
+        EmGravios_PlaySeOnFrame(em, 210, 20, 42);
+        EmGravios_PlaySeOnFrame(em, 274, 19, 42);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_GAS_END):
-        EmGravios_PlaySeOnFrame(em, 0x40, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x48, 0x4F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x70, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x98, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 64, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 72, 79, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 112, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 152, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_BEAM_END):
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 0x1C, 6);
-        EmGravios_PlaySeOnFrame(em, 0x42, 0x1C, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x7A, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x78, 0x1F, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xCA, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xE6, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 10, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 62, 28, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 66, 28, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 122, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 120, 31, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 202, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 230, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH):
-        EmGravios_PlaySeOnFrame(em, 4, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x32, 0x47, 0x23);
+        EmGravios_PlaySeOnFrame(em, 4, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 50, 71, GRAV_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_STUN):
-        EmGravios_PlaySeOnFrame(em, 4, 0x53, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x34, 0x29, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x15C, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x1BA, 0x52, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x20, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x98, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0xC0, 0x10, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xD2, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0xD6, 8, 0);
-        EmGravios_PlaySeOnFrame(em, 0x12C, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0x14E, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 0x15C, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x1C8, 0x16, 0);
+        EmGravios_PlaySeOnFrame(em, 4, 83, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 52, 41, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 348, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 442, 82, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 32, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 152, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 192, 16, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 210, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 214, 8, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 300, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 334, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 348, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 456, 22, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_BEAM_LONG):
-        EmGravios_PlaySeOnFrame(em, 0x72, 0x51, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0xD, 6);
-        EmGravios_PlaySeOnFrame(em, 8, 0xD, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x16, 6, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xA, 0x27, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x42, 0x1B, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x42, 0x19, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x72, 0x1A, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x72, 0x18, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x100, 0x20, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x136, 0xE, 6);
-        EmGravios_PlaySeOnFrame(em, 0x13A, 0xE, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x110, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x12E, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x152, 0, 0x1A);
+        EmGravios_PlaySeOnFrame(em, 114, 81, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 13, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 8, 13, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 22, 6, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 10, 39, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 66, 27, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 66, 25, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 114, 26, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 114, 24, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 256, 32, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 310, 14, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 314, 14, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 272, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 302, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 338, 0, GRAV_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_GET_UP_B):
-        EmGravios_PlaySeOnFrame(em, 0x18, 0x11, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x70, 1, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xA6, 0, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x28, 0x16, 0);
+        EmGravios_PlaySeOnFrame(em, 24, 17, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 112, GRAV_SE_STEP, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 166, 0, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 40, 22, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_LEAP):
-        EmGravios_PlaySeOnFrame(em, 0x16, 1, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0x12, 0x24, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0xC, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x3C, 0xF, 6);
-        EmGravios_PlaySeOnFrame(em, 0x40, 0xF, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 7, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x8A, 0xE, 6);
-        EmGravios_PlaySeOnFrame(em, 0x8E, 0xE, 0xC);
+        EmGravios_PlaySeOnFrame(em, 22, GRAV_SE_STEP, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 18, 36, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 12, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 60, 15, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 64, 15, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 62, 7, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 138, 14, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 142, 14, GRAV_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_BURROW):
-        EmGravios_PlaySeOnFrame(em, 0x10, 0x11, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0x4E, 0x10, 0x14);
-        EmGravios_PlaySeOnFrame(em, 0xE, 0x31, 6);
-        EmGravios_PlaySeOnFrame(em, 0x2C, 0x31, 0xC);
-        EmGravios_PlaySeOnFrame(em, 0x3E, 0x31, 6);
-        EmGravios_PlaySeOnFrame(em, 0x68, 0x33, 0);
-        EmGravios_PlaySeOnFrame(em, 0x82, 0x16, 0);
+        EmGravios_PlaySeOnFrame(em, 16, 17, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 78, 16, GRAV_BONE_STEP_A);
+        EmGravios_PlaySeOnFrame(em, 14, 49, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 44, 49, GRAV_BONE_WING_B);
+        EmGravios_PlaySeOnFrame(em, 62, 49, GRAV_BONE_WING_A);
+        EmGravios_PlaySeOnFrame(em, 104, 51, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 130, 22, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_SURFACE):
-        EmGravios_PlaySeOnFrame(em, 0x2E, 0x23, 0x23);
-        EmGravios_PlaySeOnFrame(em, 0x6E, 0x2D, 0x23);
-        EmGravios_PlaySeOnFrame(em, 4, 0x33, 0);
-        EmGravios_PlaySeOnFrame(em, 6, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x5A, 0x17, 0);
-        EmGravios_PlaySeOnFrame(em, 0xAE, 0x10, 0);
-        EmGravios_PlaySeOnFrame(em, 0xDA, 0x16, 0);
-        EmGravios_PlaySeOnFrame(em, 0x116, 0x16, 0);
+        EmGravios_PlaySeOnFrame(em, 46, 35, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 110, 45, GRAV_BONE_HEAD);
+        EmGravios_PlaySeOnFrame(em, 4, 51, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 6, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 90, 23, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 174, 16, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 218, 22, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 278, 22, GRAV_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, GRAV_MOT_LEAP_LAND):
-        EmGravios_PlaySeOnFrame(em, 2, 9, 0);
-        EmGravios_PlaySeOnFrame(em, 0xE, 7, 0);
-        EmGravios_PlaySeOnFrame(em, 0x82, 0, 0x1A);
-        EmGravios_PlaySeOnFrame(em, 0xAC, 0, 0x14);
+        EmGravios_PlaySeOnFrame(em, 2, 9, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 14, 7, GRAV_BONE_ROOT);
+        EmGravios_PlaySeOnFrame(em, 130, 0, GRAV_BONE_STEP_B);
+        EmGravios_PlaySeOnFrame(em, 172, 0, GRAV_BONE_STEP_A);
 
         break;
     }
@@ -966,18 +840,18 @@ void EmGravios_Setup(Em *em)
 
 /*
  * Callbacks[0] and [1]: creates the family's attached objects, the alert
- * mark (AlertMark_Create(em, 0x22, 0)) and the shadow (Shadow_Spawn(em, 0)),
+ * mark (AlertMark_Create(em, GRAV_BONE_BREATH, 0)) and the shadow (Shadow_Spawn(em, SHADOW_MODEL)),
  * as EmRathalos_SpawnEffects does.
  */
 void EmGravios_SpawnEffects(void *em)
 {
-    AlertMark_Create(em, 0x22, 0);
-    Shadow_Spawn((Player *) em, 0);
+    AlertMark_Create(em, GRAV_BONE_BREATH, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /*
  * Sets a monster up: the scaled parts 3, 4 and 8; in the stage with no quest
- * (gQuest.stage 0) it faces backward (rotY 0x8000) at x 5000 + 1500 per
+ * (gQuest.stage 0) it faces backward (rotY a half turn) at x 5000 + 1500 per
  * slot, z 9000. It starts in GRAV_IDLE_STAND with full hp (Em_ComputeMaxHp),
  * in the ground stance, with the flight work's goalYaw, pitch, turn and roll
  * speeds and moveAngB set. It keeps only bit 0 of fxFlags (set once the part
@@ -997,7 +871,7 @@ void EmGravios_Reset(Em *em)
     Em_SetPartScaled(em, 4);
     Em_SetPartScaled(em, 8);
     if (gQuest.stage == 0) {
-        em->rotY = 0x8000;
+        em->rotY = ANGLE_TURN / 2;
         slotNo = em->slotNo;
         slotF = (f32) (u32) slotNo;
         em->posX = 5000.0f + (1500.0f * slotF);
@@ -1017,9 +891,9 @@ void EmGravios_Reset(Em *em)
     em->painted = 0;
     ((EmWork *)w)->goalYaw = 0x4000;
     w->pitchStep = 0x100;
-    ((EmWork *)w)->turnSpeed = 0x200;
+    ((EmWork *)w)->turnSpeed = 512;
     w->rollSpeed = 0x100;
-    w->moveAngBY = 0x2000;
+    w->moveAngBY = ANGLE_TURN / 8;
     w->moveAngBX = 0;
     w->unk048 = 0;
     w->unk049 = 0;
@@ -1129,17 +1003,17 @@ void EmGravios_Stand(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         if (em->motionId[0] != EM_MOTION_ID(0, GRAV_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, GRAV_MOT_IDLE), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, GRAV_MOT_IDLE), 10, 0, 0);
         }
         /* Layers 1 and 2 are tested against 1101 and 1201, their idle's ids
          * at 100 a layer where the ids take 200 (EM_MOTION_ID), so the tests
          * always hold and both layers always restart. The Kut-Ku's stand
          * state has the same slip. */
         if (em->motionId[1] != 1101) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, GRAV_MOT_IDLE), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, GRAV_MOT_IDLE), 10, 0, 1);
         }
         if (em->motionId[2] != 1201) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, GRAV_MOT_IDLE), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, GRAV_MOT_IDLE), 10, 0, 2);
         }
         break;
     case 1:
@@ -1212,7 +1086,7 @@ void EmGravios_IdleTimedLoop(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, GRAV_MOT_IDLE_LOOP_B, 0, 0);
-        em->timer = (em->stateRand & 3) * 0x12C;
+        em->timer = (em->stateRand & 3) * 300;
         break;
     case 1:
         if (em->remote == 0) {
@@ -1260,8 +1134,8 @@ void EmGravios_UpperGestureA(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, GRAV_MOT_UPPER_A, 0, 0);
-        Em_SetLayerMotion(em, EM_MOTION_ID(0, GRAV_MOT_IDLE), 0xA, 0, 0);
-        Em_SetLayerMotion(em, EM_MOTION_ID(2, GRAV_MOT_IDLE), 0xA, 0, 2);
+        Em_SetLayerMotion(em, EM_MOTION_ID(0, GRAV_MOT_IDLE), 10, 0, 0);
+        Em_SetLayerMotion(em, EM_MOTION_ID(2, GRAV_MOT_IDLE), 10, 0, 2);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -1272,7 +1146,7 @@ void EmGravios_UpperGestureA(Em *em, EmWork *work)
     }
     EmGravios_KeepLayerIdle(em, 0);
     EmGravios_KeepLayerIdle(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x20, 0x57, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 32, 87, GRAV_BONE_HEAD, 1);
 }
 
 /*
@@ -1297,8 +1171,8 @@ void EmGravios_UpperGestureB(Em *em, EmWork *work)
     }
     EmGravios_KeepLayerIdle(em, 0);
     EmGravios_KeepLayerIdle(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x20, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0xA0, 0x17, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 32, 32, GRAV_BONE_HEAD, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 160, 23, GRAV_BONE_HEAD, 1);
 }
 
 /*
@@ -1323,7 +1197,7 @@ void EmGravios_UpperGestureE(Em *em, EmWork *work)
     }
     EmGravios_KeepLayerIdle(em, 0);
     EmGravios_KeepLayerIdle(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 4, 0x55, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 4, 85, GRAV_BONE_HEAD, 1);
 }
 
 /*
@@ -1341,7 +1215,7 @@ void EmGravios_RockPose(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_SetMotion(em, GRAV_MOT_ROCK_POSE, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = (em->stateRand & 3) * 0x12C;
+        em->timer = (em->stateRand & 3) * 300;
         break;
     case 1:
         if (em->remote == 0) {
@@ -1380,7 +1254,7 @@ void EmGravios_IdlePairA(Em *em, EmWork *work)
 }
 
 /*
- * GRAV_IDLE_TURN_TO_GOAL: plays GRAV_MOT_TURN_THREAT with goalYaw set to the
+ * GRAV_IDLE_TURN_TO_GOAL: plays GRAV_MOT_TURN_ROAR with goalYaw set to the
  * angle to the goal, and snaps rotY to it once within 0x200. From frame 60
  * it waits for layer 1 to stop, then calls EmGravios_EndState.
  */
@@ -1393,7 +1267,7 @@ void EmGravios_IdleTurnToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, GRAV_MOT_TURN_THREAT, 0, 0);
+        Em_SetMotion(em, GRAV_MOT_TURN_ROAR, 0, 0);
         work->goalYaw = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
@@ -1436,8 +1310,8 @@ void EmGravios_UpperGestureC(Em *em, EmWork *work)
     }
     EmGravios_KeepLayerIdle(em, 0);
     EmGravios_KeepLayerIdle(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x32, 0x23, 0x23, 1);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x68, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 50, 35, GRAV_BONE_HEAD, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 104, 31, GRAV_BONE_HEAD, 1);
 }
 
 /*
@@ -1490,13 +1364,13 @@ void EmGravios_UpperGestureD(Em *em, EmWork *work)
     }
     EmGravios_KeepLayerIdle(em, 0);
     EmGravios_KeepLayerIdle(em, 2);
-    Em_PlaySeAtBoneOnLayerFrame(em, 2, 0x20, 0x23, 1);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x4A, 0x1F, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 2, 32, GRAV_BONE_HEAD, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 74, 31, GRAV_BONE_HEAD, 1);
 }
 
 /*
  * GRAV_IDLE_TURN_AND_BEAM (setter: Em_SetTargetAngle): turns with
- * Em_TurnToTargetMotion (range 0xE38; walk, turn left, turn right), then
+ * Em_TurnToTargetMotion (range 3640; walk, turn left, turn right), then
  * plays GRAV_MOT_BEAM, then GRAV_MOT_BEAM_END (Gravios and Black Gravios
  * only). Ends with EmGravios_EndState. The same steps as
  * EmGravios_TurnAndBeamOrShot without its EmRangedAttack shots;
@@ -1510,7 +1384,7 @@ void EmGravios_IdleTurnAndBeam(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 2, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, 2, 6, 5) != 0) {
             if (em->type == EM_KIND_BASARIOS) {
                 em->step = 3;
             } else {
@@ -1576,8 +1450,8 @@ void EmGravios_IdlePairB(Em *em, EmWork *work)
         }
         break;
     }
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x20, 0x57, 0x23, 1);
-    Em_PlaySeAtBoneOnLayerFrame(em, 0x11A, 0x20, 0x23, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 32, 87, GRAV_BONE_HEAD, 1);
+    Em_PlaySeAtBoneOnLayerFrame(em, 282, 32, GRAV_BONE_HEAD, 1);
 }
 
 /*
@@ -1688,7 +1562,7 @@ void EmGravios_Rest(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_SetMotion(em, GRAV_MOT_REST_LIE_DOWN, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = 0x708;
+        em->timer = 1800;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1773,7 +1647,7 @@ void EmGravios_HideAsRock(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_SetMotion(em, GRAV_MOT_ROCK_POSE, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = 0x1518;
+        em->timer = 5400;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -1864,12 +1738,12 @@ void EmGravios_RehideAsRock(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_SetMotion(em, GRAV_MOT_ROCK_POSE, 0, 0);
         Em_LoadReactionSet(em, 1);
-        em->timer = 0x258;
+        em->timer = 600;
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = 0x1518;
+            em->timer = 5400;
         }
         break;
     case 2:
@@ -2112,7 +1986,7 @@ void EmGravios_Surface(Em *em, EmWork *work)
 
 /*
  * GRAV_IDLE_RAGE_START and GRAV_IDLE_PENDING_RAGE_START (setter:
- * Em_StartRage, Em_StartPendingRage): plays GRAV_MOT_TURN_THREAT and calls
+ * Em_StartRage, Em_StartPendingRage): plays GRAV_MOT_TURN_ROAR and calls
  * EmGravios_EndState when layer 1 stops.
  */
 void EmGravios_Enrage(Em *em, EmWork *work)
@@ -2122,7 +1996,7 @@ void EmGravios_Enrage(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, GRAV_MOT_TURN_THREAT, 0, 0);
+        Em_SetMotion(em, GRAV_MOT_TURN_ROAR, 0, 0);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -2136,7 +2010,7 @@ void EmGravios_Enrage(Em *em, EmWork *work)
 /*
  * GRAV_MOVE_WALK (variant 0), GRAV_MOVE_WALK_NO_HIT (1: noReact, senseDelay,
  * noHitTimer and noPushTimer every frame) and GRAV_MOVE_WALK_FAST (2:
- * speedBonus 150). Plays GRAV_MOT_WALK and steps with Em_StepToGoal(0x80) to
+ * speedBonus 150). Plays GRAV_MOT_WALK and steps with Em_StepToGoal(128) to
  * the goal, or until em->timer runs out with no goal; then
  * EmGravios_EndState.
  */
@@ -2157,13 +2031,13 @@ void EmGravios_Walk(Em *em, s32 unused, s32 variant)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         if (mode == 2) {
-            em->speedBonus = 0x96;
+            em->speedBonus = 150;
         }
         Em_SetMotion(em, GRAV_MOT_WALK, 0, 0);
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x80, 1) == 1) {
+            if (Em_StepToGoal(em, 128, 1) == 1) {
                 em->step++;
                 EmGravios_EndState(em, 0, 0);
                 break;
@@ -2242,7 +2116,7 @@ void EmGravios_Turn(Em *em, s32 unused, s32 variant)
 /*
  * GRAV_MOVE_CHARGE and GRAV_MOVE_CHARGE_SLOW (setter: motionSpeed 0.7):
  * plays GRAV_MOT_CHARGE. From frame 150 (where EmGravios_MotionEffects creates the
- * charge GraviosAttack) it steps with Em_StepToGoal(0x40) to
+ * charge GraviosAttack) it steps with Em_StepToGoal(64) to
  * the goal, or until em->timer runs out. Then it plays GRAV_MOT_CHARGE_STOP
  * and calls EmGravios_EndState.
  */
@@ -2262,7 +2136,7 @@ void EmGravios_Charge(Em *em)
         break;
     case 2:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 Em_SetMotion(em, GRAV_MOT_CHARGE_STOP, 0, 0);
                 break;
@@ -2286,7 +2160,7 @@ void EmGravios_Charge(Em *em)
 
 /*
  * GRAV_MOVE_WALK_B: plays GRAV_MOT_WALK with
- * Em_StepToGoal(0x40) (GRAV_MOVE_WALK uses 0x80) to the goal or
+ * Em_StepToGoal(64) (GRAV_MOVE_WALK uses 128) to the goal or
  * until em->timer runs out; then EmGravios_EndState.
  */
 void EmGravios_WalkB(Em *em)
@@ -2300,7 +2174,7 @@ void EmGravios_WalkB(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmGravios_EndState(em, 0, 0);
                 break;
@@ -2317,7 +2191,7 @@ void EmGravios_WalkB(Em *em)
 
 /*
  * GRAV_MOVE_LIMP (the setter picks it instead of WALK, WALK_B or WALK_FAST
- * below 30% hp): plays GRAV_MOT_LIMP with Em_StepToGoal(0x40)
+ * below 30% hp): plays GRAV_MOT_LIMP with Em_StepToGoal(64)
  * to the goal or until em->timer runs out; then EmGravios_EndState.
  */
 void EmGravios_Limp(Em *em)
@@ -2331,7 +2205,7 @@ void EmGravios_Limp(Em *em)
         break;
     case 1:
         if (em->hasGoal != 0) {
-            if (Em_StepToGoal(em, 0x40, 1) == 1) {
+            if (Em_StepToGoal(em, 64, 1) == 1) {
                 em->step++;
                 EmGravios_EndState(em, 0, 0);
                 break;
@@ -2348,7 +2222,7 @@ void EmGravios_Limp(Em *em)
 
 /*
  * GRAV_MOVE_TURN_TO_GOAL and GRAV_MOVE_TURN_TO_GOAL_RAGE_CHECK (setter:
- * Em_CheckRageByHp): plays GRAV_MOT_TURN_THREAT and steps rotY 0x200 a frame
+ * Em_CheckRageByHp): plays GRAV_MOT_TURN_ROAR and steps rotY 0x200 a frame
  * toward the goal (snapping within 0x200) up to frame 60. Then it waits for
  * layer 1 to stop and calls EmGravios_EndState.
  */
@@ -2363,7 +2237,7 @@ void EmGravios_TurnToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, GRAV_MOT_TURN_THREAT, 0, 0);
+        Em_SetMotion(em, GRAV_MOT_TURN_ROAR, 0, 0);
         work->goalYaw = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
@@ -2500,7 +2374,7 @@ void EmGravios_FlyLand(Em *em, EmWork *work)
             if (!(velY < 0.0f)) {
                 em->velY = -10.0f;
             }
-            em->timer = 0x1E;
+            em->timer = 30;
         }
         break;
     case 2:
@@ -2547,7 +2421,7 @@ void EmGravios_FlyHover(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GRAV_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2558,7 +2432,7 @@ void EmGravios_FlyHover(Em *em, EmWork *work)
             EmGravios_ChangeState(em, EM_GROUP_FLY, GRAV_FLY_LAND, EM_SYNC_SEND);
         }
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 1);
-        if (em->timer == 0x12C) {
+        if (em->timer == 300) {
             EmGravios_EndStateInAir(em, 0);
         }
         break;
@@ -2642,7 +2516,7 @@ void EmGravios_FlyHopToGoal(Em *em, EmWork *work)
         break;
     case 5:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGravios_EndState(em, 0, 0);
         }
@@ -2691,7 +2565,7 @@ void EmGravios_FlyHopForward(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGravios_EndState(em, 0, 0);
         }
@@ -2738,7 +2612,7 @@ void EmGravios_FlyHopBack(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGravios_EndState(em, 0, 0);
         }
@@ -2766,7 +2640,7 @@ void EmGravios_FlyHoverToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GRAV_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2837,11 +2711,11 @@ void EmGravios_FlyHoverTurn(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
         Em_SetMotion(em, GRAV_MOT_HOVER, 0, 0);
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         work->goalYaw = Math_AngleXZ(&em->posX, em->goal);
         work->goalYaw = work->goalYaw - em->rotY;
         work->flyGuard = 0;
-        em->timer = 0x96;
+        em->timer = 150;
         break;
     case 1:
         EmGravios_MoveByVelYCurve(em, GRAV_CURVE_HOVER);
@@ -2916,7 +2790,7 @@ void EmGravios_FlyStraightToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, GRAV_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2955,7 +2829,7 @@ void EmGravios_FlyTrapEscape(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, GRAV_MOT_TAKE_OFF, 0xA, 0x60);
+        Em_SetMotion(em, GRAV_MOT_TAKE_OFF, 10, 96);
         EmGravios_StartCurves(em, GRAV_CURVE_TAKE_OFF);
         em->stance = EM_STANCE_AIR;
         em->holdTimer = 0;
@@ -2999,7 +2873,7 @@ void EmGravios_FlyTrapEscape(Em *em, EmWork *work)
         break;
     case 4:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmGravios_EndState(em, 0, 0);
         }
@@ -3014,14 +2888,14 @@ void EmGravios_FlyTrapEscape(Em *em, EmWork *work)
 /*
  * GRAV_ATK_TURN_AND_ATTACK_A: turns to the target (Em_TurnToTargetMotion, 20
  * degrees), plays GRAV_MOT_ATTACK_A (EmGravios_MotionEffects creates
- * GraviosAttack 0x15 at frame 46, then 1 for the Gravios kinds or 0x19 for
+ * GraviosAttack 21 at frame 46, then 1 for the Gravios kinds or 25 for
  * the Basarios at frame 50), then EmGravios_EndState.
  */
 void EmGravios_TurnAndAttackA(Em *em)
 {
     switch (em->step) {
     case 0:
-        if (Em_TurnToTargetMotion(em, 0xE38, 2, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, 2, 6, 5) != 0) {
             em->step++;
             em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
@@ -3039,7 +2913,7 @@ void EmGravios_TurnAndAttackA(Em *em)
 
 /*
  * GRAV_ATK_TURN_AND_BEAM: turns to the target, plays GRAV_MOT_BEAM_SHORT and
- * at frame 122 creates the beam (EMRANGED_GRAVIOS_BEAM at bone 0x22, variant
+ * at frame 122 creates the beam (EMRANGED_GRAVIOS_BEAM at GRAV_BONE_BREATH, variant
  * 0, held 20 frames), then EmGravios_EndState.
  */
 void EmGravios_TurnAndBeam(Em *em)
@@ -3050,7 +2924,7 @@ void EmGravios_TurnAndBeam(Em *em)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 2, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, 2, 6, 5) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GRAV_MOT_BEAM_SHORT, 0, 0);
@@ -3058,7 +2932,7 @@ void EmGravios_TurnAndBeam(Em *em)
         break;
     case 2:
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, EMRANGED_GRAVIOS_BEAM, 0, 0, 0, 0x14);
+            EmRangedAttack_CreateAtBoneTimed(em, GRAV_BONE_BREATH, EMRANGED_GRAVIOS_BEAM, 0, 0, 0, 20);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3073,7 +2947,7 @@ void EmGravios_TurnAndBeam(Em *em)
  * GRAV_ATK_LEAP_SLAM: crouches (GRAV_MOT_LEAP); at frame 70 it jumps
  * straight ahead (velY 73, accelY -3.38, EM_STANCE_AIR), caps the fall at
  * velY -100, and within 100 * scaleY of the floor plays GRAV_MOT_LEAP_LAND
- * (GraviosAttack 0x1E at its frame 2) on the floor; then EmGravios_EndState.
+ * (GraviosAttack 30 at its frame 2) on the floor; then EmGravios_EndState.
  */
 void EmGravios_LeapSlam(Em *em, EmWork *work)
 {
@@ -3157,7 +3031,7 @@ void EmGravios_AttackALooking(Em *em)
  * GRAV_ATK_BEAM_OR_SHOT_A and _B (row 0 and 1): turns to the target and
  * plays GRAV_MOT_BEAM. The Gravios kinds breathe the beam (variant 1, held
  * 35 frames) at frame 136, then play GRAV_MOT_BEAM_END; the Basarios skips
- * both and fires one EMRANGED_GRAVIOS_SHOT from bone 0x22 at the frame and
+ * both and fires one EMRANGED_GRAVIOS_SHOT from GRAV_BONE_BREATH at the frame and
  * pitch of its row of EmGravios_BasariosShots. Ends with EmGravios_EndState.
  */
 void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 row)
@@ -3172,7 +3046,7 @@ void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 row)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 2, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, 2, 6, 5) != 0) {
             if (em->type == EM_KIND_BASARIOS) {
                 em->step = 3;
             } else {
@@ -3184,7 +3058,7 @@ void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 row)
         break;
     case 2:
         if (EmMotion_PassedFrameScaled(em, 136.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, EMRANGED_GRAVIOS_BEAM, 1, 0, 0, 0x23);
+            EmRangedAttack_CreateAtBoneTimed(em, GRAV_BONE_BREATH, EMRANGED_GRAVIOS_BEAM, 1, 0, 0, 35);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3201,7 +3075,7 @@ void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 row)
             rowFrame = *(u16 *) (&EmGravios_BasariosShotFrame + rowOfs);
             shotFrame = (f32) (u32) rowFrame;
             if (EmMotion_PassedFrameScaled(em, shotFrame, 0U) != 0) {
-                EmRangedAttack_CreateAtBone(em, 0x22, EMRANGED_GRAVIOS_SHOT, 0, (s32) *(u16 *) (&EmGravios_BasariosShotPitch + rowOfs), 0);
+                EmRangedAttack_CreateAtBone(em, GRAV_BONE_BREATH, EMRANGED_GRAVIOS_SHOT, 0, (s32) *(u16 *) (&EmGravios_BasariosShotPitch + rowOfs), 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -3215,8 +3089,8 @@ void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 row)
 
 /*
  * GRAV_ATK_GAS_A, _B and _C (variant 0 to 2): GRAV_MOT_GAS held 120 frames,
- * with a GraviosAttack at frame 196 (0xE, 0xC or 0x1F by variant) and, from
- * frame 124, a cloud every 24 frames (DustCloud kind 0x1D of the variant;
+ * with a GraviosAttack at frame 196 (14, 12 or 31 by variant) and, from
+ * frame 124, a cloud every 24 frames (DustCloud kind 29 of the variant;
  * variant 2 at 1.1 times the scale); then GRAV_MOT_GAS_END with the clouds
  * up to its frame 50, then EmGravios_EndState.
  */
@@ -3234,26 +3108,26 @@ void EmGravios_Gas(Em *em, EmWork *work, s16 variant)
         if (EmMotion_PassedFrameScaled(em, 196.0f, 0)) {
             switch (variant) {
             default:
-                GraviosAttack_Create(em, 0xE);
+                GraviosAttack_Create(em, 14);
                 break;
             case 1:
-                GraviosAttack_Create(em, 0xC);
+                GraviosAttack_Create(em, 12);
                 break;
             case 2:
-                GraviosAttack_Create(em, 0x1F);
+                GraviosAttack_Create(em, 31);
                 break;
             }
         }
         if (EmMotion_ReachedFrame(em, 0, 124.0f) && gScene.frame % 24 == 0) {
             switch (variant) {
             default:
-                DustCloud_Create(em, 0x1D, 0, em->scaleX);
+                DustCloud_Create(em, 29, 0, em->scaleX);
                 break;
             case 1:
-                DustCloud_Create(em, 0x1D, 1, em->scaleX);
+                DustCloud_Create(em, 29, 1, em->scaleX);
                 break;
             case 2:
-                DustCloud_Create(em, 0x1D, 2, 1.1f * em->scaleX);
+                DustCloud_Create(em, 29, 2, 1.1f * em->scaleX);
                 break;
             }
         }
@@ -3266,13 +3140,13 @@ void EmGravios_Gas(Em *em, EmWork *work, s16 variant)
         if (!EmMotion_ReachedFrame(em, 0, 50.0f) && gScene.frame % 24 == 0) {
             switch (variant) {
             case 0:
-                DustCloud_Create(em, 0x1D, 0, em->scaleX);
+                DustCloud_Create(em, 29, 0, em->scaleX);
                 break;
             case 1:
-                DustCloud_Create(em, 0x1D, 1, em->scaleX);
+                DustCloud_Create(em, 29, 1, em->scaleX);
                 break;
             case 2:
-                DustCloud_Create(em, 0x1D, 2, 1.1f * em->scaleX);
+                DustCloud_Create(em, 29, 2, 1.1f * em->scaleX);
                 break;
             }
         }
@@ -3337,7 +3211,7 @@ void EmGravios_Spin(Em *em)
 
 /*
  * GRAV_ATK_TURN_AND_ATTACK_B: turns to the target, plays GRAV_MOT_ATTACK_B
- * (GraviosAttack 2 for the Gravios kinds or 0x1A for the Basarios at frame
+ * (GraviosAttack 2 for the Gravios kinds or 26 for the Basarios at frame
  * 68), then EmGravios_EndState.
  */
 void EmGravios_TurnAndAttackB(Em *em)
@@ -3348,7 +3222,7 @@ void EmGravios_TurnAndAttackB(Em *em)
         em->stance = EM_STANCE_GROUND;
 
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 2, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, 2, 6, 5) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, GRAV_MOT_ATTACK_B, 0, 0);
@@ -3402,7 +3276,7 @@ void EmGravios_BeamLong(Em *em)
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 118.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, EMRANGED_GRAVIOS_BEAM, 0, 0, 0, 0x28);
+            EmRangedAttack_CreateAtBoneTimed(em, GRAV_BONE_BREATH, EMRANGED_GRAVIOS_BEAM, 0, 0, 0, 40);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3800,7 +3674,7 @@ void EmGravios_Trapped(Em *em)
         Em_RestartScript(em);
         Em_SetMotion(em, GRAV_MOT_TRAPPED, 0, 0);
         em->noReact = 1;
-        em->holdTimer = 0x32;
+        em->holdTimer = 50;
         em->blind = 2;
         break;
     case 1:
@@ -3889,7 +3763,7 @@ void EmGravios_DownedWhileHeld(Em *em, s32 work, s32 stunVariant)
         em->noReact = 1;
         Em_RestartScript(em);
         if (isStun == 1) {
-            StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+            StunStars_CreateEm(em, 1, 34, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         }
         break;
     case 1:
@@ -3952,7 +3826,7 @@ void EmGravios_Stun(Em *em)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, GRAV_MOT_STUN, 0, 0);
-        StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, 34, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -4055,7 +3929,7 @@ void EmGravios_Hold2(Em *em)
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, GRAV_MOT_STATUS4, 0xC, 0);
+            Em_SetMotion(em, GRAV_MOT_STATUS4, 12, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
@@ -4079,8 +3953,8 @@ void EmGravios_Hold2(Em *em)
  * facing a fixed goal, it walks to the goal on three layers (the layer-1
  * gesture GRAV_MOT_UPPER_B looped) until within 200 or for 300 frames, eats
  * at the wall (GRAV_MOT_EAT to frame 250, then again from frame 80 to 400)
- * with FallingDebris, an Effect02 and a PartFx at bone 0x24 on frames 68, 94
- * and 204, idles, turns (GRAV_MOT_TURN_LEFT), breathes the beam (bone 0x22,
+ * with FallingDebris, an Effect02 and a PartFx at bone 36 on frames 68, 94
+ * and 204, idles, turns (GRAV_MOT_TURN_LEFT), breathes the beam (GRAV_BONE_BREATH,
  * held 55 frames) at frame 136 of GRAV_MOT_BEAM, plays GRAV_MOT_BEAM_END,
  * and idles until the scene's event flag is set; then EmGravios_EndState.
  */
@@ -4131,21 +4005,21 @@ void EmGravios_Intro(Em *em, EmWork *work)
     case 3:
         if ((EmMotion_PassedFrameScaled(em, 68.0f, 0) || EmMotion_PassedFrameScaled(em, 94.0f, 0) || EmMotion_PassedFrameScaled(em, 204.0f, 0)) && ((s32)Player_InCurrentArea(em) & 0xFF)) {
             FallingDebris_Create(em, 1);
-            Em_BonePos(em, 0x24, bonePos);
+            Em_BonePos(em, 36, bonePos);
             HitSpark_SpawnForOwner(em, 0, 9, 0, bonePos, 1.0f);
-            PartFx_SpawnAt(bonePos, 0x14, 4.0f);
+            PartFx_SpawnAt(bonePos, 20, 4.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 250.0f, 0)) {
             em->step++;
-            Em_SetMotion(em, GRAV_MOT_EAT, 0, 0x50);
+            Em_SetMotion(em, GRAV_MOT_EAT, 0, 80);
         }
         break;
     case 4:
         if ((EmMotion_PassedFrameScaled(em, 68.0f, 0) || EmMotion_PassedFrameScaled(em, 94.0f, 0) || EmMotion_PassedFrameScaled(em, 204.0f, 0)) && ((s32)Player_InCurrentArea(em) & 0xFF)) {
             FallingDebris_Create(em, 1);
-            Em_BonePos(em, 0x24, bonePos);
+            Em_BonePos(em, 36, bonePos);
             HitSpark_SpawnForOwner(em, 0, 9, 0, bonePos, 1.0f);
-            PartFx_SpawnAt(bonePos, 0x14, 4.0f);
+            PartFx_SpawnAt(bonePos, 20, 4.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 400.0f, 0)) {
             em->step++;
@@ -4157,7 +4031,7 @@ void EmGravios_Intro(Em *em, EmWork *work)
     case 5:
         if (em->motion[1].playing == 0) {
             em->step++;
-            em->rotY -= 0x4000;
+            em->rotY -= ANGLE_TURN / 4;
             Em_SetMotion(em, GRAV_MOT_TURN_RIGHT, 0, 0);
         }
         break;
@@ -4172,7 +4046,7 @@ void EmGravios_Intro(Em *em, EmWork *work)
     case 7:
         if (EmMotion_PassedFrameScaled(em, 136.0f, 0)) {
             em->step++;
-            EmRangedAttack_CreateAtBoneTimed(em, 0x22, EMRANGED_GRAVIOS_BEAM, 1, 0, 0, 0x37);
+            EmRangedAttack_CreateAtBoneTimed(em, GRAV_BONE_BREATH, EMRANGED_GRAVIOS_BEAM, 1, 0, 0, 55);
         }
     case 8:
         if (em->motion[0].playing == 0) {
@@ -4220,7 +4094,7 @@ void EmGravios_Captured(Em *em, EmWork *work)
         Em_SetMotion(em, GRAV_MOT_DOWNED, 0, 0);
         Em_LoadReactionSet(em, 1);
         Em_ClearPoison(em);
-        em->timer = 0x708;
+        em->timer = 1800;
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -4232,7 +4106,7 @@ void EmGravios_Captured(Em *em, EmWork *work)
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
             }
         }
         break;
@@ -4281,14 +4155,14 @@ void EmGravios_CapturedHold2(Em *em, EmWork *work)
             em->step++;
             Em_SetMotion(em, GRAV_MOT_LIE, 0, 0);
             QuestEm_Captured(em);
-            em->timer = 0x708;
+            em->timer = 1800;
         }
         break;
     case 2:
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
                 break;
             }
         }
@@ -4474,7 +4348,7 @@ void EmGravios_VsEnd(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x5A;
+        em->timer = 90;
         if (em->motionId[0] != EM_MOTION_ID(0, GRAV_MOT_IDLE)) {
             Em_SetMotion(em, GRAV_MOT_IDLE, 0, 0);
         }
@@ -5512,11 +5386,11 @@ static void EmGravios_MotionEffectsDefault(Em *em)
  * EmGravios_PlaySeOnFrame), runs EmGravios_MotionSounds, then per motion
  * creates the GraviosAttack hit areas, dust clouds, PartFx, camera shakes
  * and roar bursts at fixed frames, and while enraged dust clouds of kind
- * 0x1A every 4th frame over frame ranges. The kinds differ: the Gravios and
- * the Black Gravios get GraviosAttack 0xB, 1, 0x17 and 2 where the Basarios
- * gets 0x1B, 0x19, 0x1D and 0x1A (GRAV_MOT_CHARGE, GRAV_MOT_ATTACK_A,
+ * 26 every 4th frame over frame ranges. The kinds differ: the Gravios and
+ * the Black Gravios get GraviosAttack 11, 1, 23 and 2 where the Basarios
+ * gets 27, 25, 29 and 26 (GRAV_MOT_CHARGE, GRAV_MOT_ATTACK_A,
  * GRAV_MOT_KNOCK_DOWN_PART3 and GRAV_MOT_KNOCK_DOWN, GRAV_MOT_ATTACK_B);
- * GRAV_MOT_BEAM (attack 0x18) and GRAV_MOT_GAS are the Gravios kinds' only,
+ * GRAV_MOT_BEAM (attack 24) and GRAV_MOT_GAS are the Gravios kinds' only,
  * GRAV_MOT_BURROW and GRAV_MOT_SURFACE the Basarios's only.
  */
 void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
@@ -5533,13 +5407,13 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_IDLE):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_WALK):
-        EmGravios_CamShakeOnFrame(em, 0x2C, 1);
-        EmGravios_CamShakeOnFrame(em, 0x74, 1);
+        EmGravios_CamShakeOnFrame(em, 44, 1);
+        EmGravios_CamShakeOnFrame(em, 116, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             GraviosAttack_Create(em, 9);
         }
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0xA);
+            GraviosAttack_Create(em, 10);
         }
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
             GraviosAttack_Create(em, 9);
@@ -5547,7 +5421,7 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TURN_RIGHT):
-        EmGravios_CamShakeOnFrame(em, 0x3C, 1);
+        EmGravios_CamShakeOnFrame(em, 60, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             GraviosAttack_Create(em, 5);
         }
@@ -5555,12 +5429,12 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             GraviosAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 26, 1, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TURN_LEFT):
-        EmGravios_CamShakeOnFrame(em, 0x3C, 1);
+        EmGravios_CamShakeOnFrame(em, 60, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             GraviosAttack_Create(em, 7);
         }
@@ -5568,29 +5442,29 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             GraviosAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 2.0f, 78.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 0, 1.0f);
+            DustCloud_Create(em, 26, 0, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_LIMP):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x13);
+            GraviosAttack_Create(em, 19);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x14);
+            GraviosAttack_Create(em, 20);
         }
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x14);
+            GraviosAttack_Create(em, 20);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DESCEND):
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 7, 5.0f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_BODY, 7, 5.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0xD):
+    case EM_MOTION_ID(0, 13):
         if ((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) {
             PartFx_SpawnForEmScaled(em, 1, 7, 5.0f);
             break;
@@ -5605,20 +5479,20 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 70.0f, 84.0f) || EmMotion_InFrameRange(em, 0, 146.0f, 156.0f) || EmMotion_InFrameRange(em, 0, 220.0f, 234.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
         }
         break;
-    case EM_MOTION_ID(0, 0x10):
+    case EM_MOTION_ID(0, 16):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_CHARGE):
         if (EmMotion_PassedFrameScaled(em, 150.0f, 0) != 0) {
             if (em->type == EM_KIND_GRAVIOS || em->type == EM_KIND_BLACK_GRAVIOS) {
-                GraviosAttack_Create(em, 0xB);
+                GraviosAttack_Create(em, 11);
             } else {
-                GraviosAttack_Create(em, 0x1B);
+                GraviosAttack_Create(em, 27);
             }
         }
         if ((EmMotion_PassedFrameScaled(em, 140.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 214.0f, 0) != 0)) {
@@ -5628,7 +5502,7 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             DustCloud_Create(em, 3, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 8.0f, 116.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
@@ -5640,43 +5514,43 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             DustCloud_Create(em, 1, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 14.0f, 86.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TOUCH_DOWN):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0xD);
+            GraviosAttack_Create(em, 13);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
-            DustCloud_Create(em, 0xB, 0, 1.0f);
+            DustCloud_Create(em, 11, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 18.0f, 44.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_LEAD_IN):
-    case EM_MOTION_ID(0, 0x1E):
+    case EM_MOTION_ID(0, 30):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_LIE):
         puffOfs[0] = 0.0f;
         puffOfs[1] = 10.0f;
         puffOfs[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
+        Em_SpawnLyingPuffs(em, GRAV_BONE_BREATH, puffOfs, 1.6f);
         break;
-    case EM_MOTION_ID(0, 0x23):
+    case EM_MOTION_ID(0, 35):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_ATTACK_A):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             if (em->type == EM_KIND_GRAVIOS || em->type == EM_KIND_BLACK_GRAVIOS) {
                 GraviosAttack_Create(em, 1);
             } else {
-                GraviosAttack_Create(em, 0x19);
+                GraviosAttack_Create(em, 25);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x15);
+            GraviosAttack_Create(em, 21);
             break;
         }
         break;
@@ -5684,7 +5558,7 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         break;
     case EM_MOTION_ID(0, GRAV_MOT_COLLAPSE):
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0xF);
+            GraviosAttack_Create(em, 15);
         }
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             DustCloud_Create(em, 0, 0, 1.0f);
@@ -5695,31 +5569,31 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         break;
     case EM_MOTION_ID(0, GRAV_MOT_SPIN_BASARIOS):
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x1C);
+            GraviosAttack_Create(em, 28);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_SPIN):
-        EmGravios_CamShakeOnFrame(em, 0x2C, 1);
-        EmGravios_CamShakeOnFrame(em, 0x49, 1);
+        EmGravios_CamShakeOnFrame(em, 44, 1);
+        EmGravios_CamShakeOnFrame(em, 73, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x10);
+            GraviosAttack_Create(em, 16);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x2C):
+    case EM_MOTION_ID(0, 44):
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 6.0f, 38.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 26, 1, 1.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x2F):
-    case EM_MOTION_ID(0, 0x30):
-    case EM_MOTION_ID(0, 0x31):
-    case EM_MOTION_ID(0, 0x32):
-    case EM_MOTION_ID(0, 0x33):
+    case EM_MOTION_ID(0, 47):
+    case EM_MOTION_ID(0, 48):
+    case EM_MOTION_ID(0, 49):
+    case EM_MOTION_ID(0, 50):
+    case EM_MOTION_ID(0, 51):
         break;
-    case EM_MOTION_ID(0, 0x34):
+    case EM_MOTION_ID(0, 52):
         if (EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) {
             DustCloud_Create(em, 4, 0, 1.0f);
         }
@@ -5731,25 +5605,25 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             break;
         }
         break;
-    case EM_MOTION_ID(0, GRAV_MOT_TURN_THREAT):
+    case EM_MOTION_ID(0, GRAV_MOT_TURN_ROAR):
         if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x11);
+            GraviosAttack_Create(em, 17);
         }
         if (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x12);
+            GraviosAttack_Create(em, 18);
             ElementBurst_CreateOnEm(em, 5, 4, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_B):
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            PartFx_SpawnForEm(em, 0x1B, 6);
+            PartFx_SpawnForEm(em, 27, 6);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_F):
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_STEP_B, 7, 1.0f);
             break;
         }
         break;
@@ -5759,18 +5633,18 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         break;
     case EM_MOTION_ID(0, GRAV_MOT_PART_BREAK):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            DustCloud_Create(em, 3, 0x80, 1.0f);
+            DustCloud_Create(em, 3, 128, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
-            DustCloud_Create(em, 3, 0x80, 0.6f);
+            DustCloud_Create(em, 3, 128, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            DustCloud_Create(em, 1, 0x80, 1.0f);
+            DustCloud_Create(em, 1, 128, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FLINCH_C):
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, 67):
         break;
     case EM_MOTION_ID(0, GRAV_MOT_DIE):
         if (EmMotion_PassedFrameScaled(em, 268.0f, 0) != 0) {
@@ -5782,32 +5656,32 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_KNOCK_DOWN):
         if (EmMotion_PassedFrameScaled(em, 162.0f, 0) != 0) {
             if (em->type == EM_KIND_GRAVIOS || em->type == EM_KIND_BLACK_GRAVIOS) {
-                GraviosAttack_Create(em, 0x17);
+                GraviosAttack_Create(em, 23);
             } else {
-                GraviosAttack_Create(em, 0x1D);
+                GraviosAttack_Create(em, 29);
             }
         }
         if (work->sndMotion == EM_MOTION_ID(0, GRAV_MOT_KNOCK_DOWN)) {
             if (EmMotion_PassedFrameScaled(em, 142.0f, 0) != 0) {
-                DustCloud_Create(em, 0x12, 0x81, 1.0f);
+                DustCloud_Create(em, 18, 129, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 142.0f, 0) != 0) {
-            DustCloud_Create(em, 0x12, 0x80, 1.0f);
+            DustCloud_Create(em, 18, 128, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 188.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 238.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 282.0f, 0) != 0)) {
-            DustCloud_Create(em, 1, 0x80, 1.0f);
+            DustCloud_Create(em, 1, 128, 1.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x46):
-    case EM_MOTION_ID(0, 0x4B):
-    case EM_MOTION_ID(0, 0x47):
-    case EM_MOTION_ID(0, 0x48):
+    case EM_MOTION_ID(0, 70):
+    case EM_MOTION_ID(0, 75):
+    case EM_MOTION_ID(0, 71):
+    case EM_MOTION_ID(0, 72):
         break;
-    case EM_MOTION_ID(0, 0x49):
-        EmGravios_CamShakeOnFrame(em, 0x1A, 2);
+    case EM_MOTION_ID(0, 73):
+        EmGravios_CamShakeOnFrame(em, 26, 2);
         if ((EmMotion_ReachedFrame(em, 0, 28.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 52.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0xA, 0x80, 1.0f);
+            DustCloud_Create(em, 10, 128, 1.0f);
             break;
         }
         break;
@@ -5816,41 +5690,41 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         break;
     case EM_MOTION_ID(0, GRAV_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            DustCloud_Create(em, 0xB, 0, 1.0f);
+            DustCloud_Create(em, 11, 0, 1.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x4F):
+    case EM_MOTION_ID(0, 79):
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_PAIR_A):
     case EM_MOTION_ID(0, GRAV_MOT_IDLE_PAIR_B):
     case EM_MOTION_ID(0, GRAV_MOT_DIE_FALLING):
-    case EM_MOTION_ID(0, 0x53):
+    case EM_MOTION_ID(0, 83):
         break;
-    case EM_MOTION_ID(0, 0x54):
+    case EM_MOTION_ID(0, 84):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) || EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 80.0f, 0)) {
             DustCloud_Create(em, 1, 0, 1.0f);
             break;
         }
         break;
-    case EM_MOTION_ID(0, 0x57):
+    case EM_MOTION_ID(0, 87):
         break;
-    case EM_MOTION_ID(0, 0x5A):
+    case EM_MOTION_ID(0, 90):
         if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             DustCloud_Create(em, 9, 0, 1.0f);
-            DustCloud_Create(em, 0xE, 0, 1.0f);
+            DustCloud_Create(em, 14, 0, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             DustCloud_Create(em, 9, 0, 1.0f);
-            DustCloud_Create(em, 0xE, 0, 1.0f);
+            DustCloud_Create(em, 14, 0, 1.0f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_TRAPPED):
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            DustCloud_Create(em, 0xB, 0x80, 1.0f);
+            DustCloud_Create(em, 11, 128, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 4.0f, 60.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
@@ -5858,7 +5732,7 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 12.0f, 24.0f) || EmMotion_InFrameRange(em, 0, 46.0f, 90.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
@@ -5872,7 +5746,7 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             DustCloud_Create(em, 2, 6, 1.8f);
         }
         if ((EmMotion_InFrameRange(em, 0, 54.0f, 120.0f) != 0) && !(gScene.frame & 3)) {
-            PartFx_SpawnForEmScaled(em, 2, 3, 7.0f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_BODY, 3, 7.0f);
             break;
         }
         break;
@@ -5880,7 +5754,7 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 58.0f, 270.0f) || EmMotion_InFrameRange(em, 0, 410.0f, 440.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+                    DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
                     break;
                 }
             }
@@ -5892,24 +5766,24 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_BEAM_SHORT):
         if (em->stateGroup != EM_GROUP_VERSUS) {
             if (EmMotion_PassedFrameScaled(em, 106.0f, 0) != 0) {
-                GraviosAttack_Create(em, 0x18);
+                GraviosAttack_Create(em, 24);
             }
             if ((EmMotion_InFrameRange(em, 0, 64.0f, 88.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 26, 0, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 208.0f, 268.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 26, 1, 1.0f);
                 break;
             }
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_ROAR):
         if (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x12);
-            ElementBurst_CreateOnEm(em, 5, 0xE, 1.0f);
+            GraviosAttack_Create(em, 18);
+            ElementBurst_CreateOnEm(em, 5, 14, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_InFrameRange(em, 0, 64.0f, 468.0f) != 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (s16) (Rand_Next(1) & 1), 1.0f);
+            DustCloud_Create(em, 26, (s16) (Rand_Next(1) & 1), 1.0f);
             break;
         }
         break;
@@ -5918,18 +5792,18 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             GraviosAttack_Create(em, 3);
         }
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 0x13, 1.4f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_BODY, 19, 1.4f);
             if (Player_InCurrentArea(em)) {
-                Em_BonePos(em, 2, bonePos);
+                Em_BonePos(em, GRAV_BONE_BODY, bonePos);
                 bonePos[1] = em->floorY;
                 AttackBurst_CreateAtScaled(bonePos, *(u16 *) &em->rotY, 8, 1.0f);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0xC, 0x14, 8.0f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_WING_B, 20, 8.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 32.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 6, 0x14, 8.0f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_WING_A, 20, 8.0f);
             break;
         }
         break;
@@ -5938,34 +5812,34 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
             if (em->type == EM_KIND_GRAVIOS || em->type == EM_KIND_BLACK_GRAVIOS) {
                 GraviosAttack_Create(em, 2);
             } else {
-                GraviosAttack_Create(em, 0x1A);
+                GraviosAttack_Create(em, 26);
             }
         }
         if (EmMotion_PassedFrameScaled(em, 76.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x14, 3, 2.5f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_STEP_A, 3, 2.5f);
         }
         if ((EmMotion_PassedFrameScaled(em, 72.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0x14, 3, 2.5f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_STEP_A, 3, 2.5f);
             break;
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_BEAM):
         if (em->type == EM_KIND_GRAVIOS || em->type == EM_KIND_BLACK_GRAVIOS) {
             if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
-                GraviosAttack_Create(em, 0x18);
+                GraviosAttack_Create(em, 24);
             }
             if ((EmMotion_InFrameRange(em, 0, 64.0f, 88.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 26, 0, 1.0f);
             }
             if ((EmMotion_InFrameRange(em, 0, 208.0f, 268.0f) != 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 26, 1, 1.0f);
                 break;
             }
         }
         break;
     case EM_MOTION_ID(0, GRAV_MOT_GAS):
         if ((em->type == EM_KIND_GRAVIOS || em->type == EM_KIND_BLACK_GRAVIOS) && !(em->fxFlags & 1) && (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0)) {
-            PartFx_SpawnForEmScaled(em, 0x2C, 7, 2.0f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_TAIL_B, 7, 2.0f);
             break;
         }
         break;
@@ -5980,13 +5854,13 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_BEAM_END):
         if ((gScene.eventRunning == 0) && (em->stateGroup != EM_GROUP_VERSUS)) {
             if (EmMotion_PassedFrameScaled(em, 94.0f, 0) != 0) {
-                GraviosAttack_Create(em, 0x20);
+                GraviosAttack_Create(em, 32);
             }
             if (EmMotion_PassedFrameScaled(em, 64.0f, 0) != 0) {
-                DustCloud_Create(em, 0xD, 0, em->scaleX);
+                DustCloud_Create(em, 13, 0, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 66.0f, 0) != 0) {
-                DustCloud_Create(em, 0x15, 0, em->scaleX);
+                DustCloud_Create(em, 21, 0, em->scaleX);
                 break;
             }
         }
@@ -6011,10 +5885,10 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
                 DustCloud_Create(em, 3, 0, 1.5f);
             }
             if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
-                PartFx_SpawnForEmScaled(em, 2, 0x13, 1.0f);
+                PartFx_SpawnForEmScaled(em, GRAV_BONE_BODY, 19, 1.0f);
             }
             if (EmMotion_PassedFrameScaled(em, 170.0f, 0) != 0) {
-                DustCloud_Create(em, 0xB, 0x80, 0.8f);
+                DustCloud_Create(em, 11, 128, 0.8f);
                 break;
             }
         }
@@ -6022,15 +5896,15 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_SURFACE):
         if (em->type == EM_KIND_BASARIOS) {
             if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-                PartFx_SpawnForEmScaled(em, 2, 0x13, 1.0f);
+                PartFx_SpawnForEmScaled(em, GRAV_BONE_BODY, 19, 1.0f);
                 if (Player_InCurrentArea(em)) {
-                    Em_BonePos(em, 2, bonePos);
+                    Em_BonePos(em, GRAV_BONE_BODY, bonePos);
                     bonePos[1] = em->floorY;
                     AttackBurst_CreateAtScaled(bonePos, *(u16 *) &em->rotY, 8, 1.0f);
                 }
             }
             if (EmMotion_PassedFrameScaled(em, 206.0f, 0) != 0) {
-                DustCloud_Create(em, 0xB, 0x80, 0.5f);
+                DustCloud_Create(em, 11, 128, 0.5f);
                 break;
             }
         }
@@ -6038,10 +5912,10 @@ void EmGravios_MotionEffects(Em *em, EmGraviosWork *work)
     case EM_MOTION_ID(0, GRAV_MOT_LEAP_LAND):
         EmGravios_CamShakeOnFrame(em, 2, 5);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            GraviosAttack_Create(em, 0x1E);
+            GraviosAttack_Create(em, 30);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 0x13, 1.4f);
+            PartFx_SpawnForEmScaled(em, GRAV_BONE_BODY, 19, 1.4f);
             break;
         }
         break;
@@ -6432,7 +6306,7 @@ void EmGravios_ChangeState(Em *em, u16 group, u16 state, u8 mode)
         EmGravios_SetAttackState(em, state, mode);
         break;
     case EM_GROUP_VERSUS:
-        if (state == 0x98) {
+        if (state == 152) {
             Versus_MarkDefeat(em);
         }
         em->motionSpeed = 1.0f;
@@ -6559,21 +6433,21 @@ void EmGravios_StartCurves(Em *em, u8 kind)
     switch (w->curveKind) {
     case 2:
         w->curveVelY = 1;
-        w->curveFrame = 0x60;
+        w->curveFrame = 96;
         break;
     case 3:
         w->curveVelY = 1;
-        w->curveFrame = 0x1E;
+        w->curveFrame = 30;
         break;
     case 5:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x3C;
+        w->curveFrame = 60;
         break;
     case 8:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x4C;
+        w->curveFrame = 76;
         break;
     case 9:
         w->curveVelY = 1;
@@ -6583,7 +6457,7 @@ void EmGravios_StartCurves(Em *em, u8 kind)
     case 10:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x5C;
+        w->curveFrame = 92;
         break;
     case 11:
         w->curveVelY = 1;
@@ -6591,7 +6465,7 @@ void EmGravios_StartCurves(Em *em, u8 kind)
         break;
     case 12:
         w->curveVelY = 1;
-        w->curveFrame = 0x2C;
+        w->curveFrame = 44;
         break;
     case 13:
         w->curveVelY = 1;
@@ -6738,15 +6612,15 @@ u8 EmGravios_UpdateCurves(Em *em)
  */
 s32 EmGravios_IsHiding(Em *em)
 {
-    if ((s16) Player_IsState(em, 0, 0x16) || (s16) Player_IsState(em, 0, 0x1A)) {
+    if ((s16) Player_IsState(em, 0, 22) || (s16) Player_IsState(em, 0, 26)) {
         return 1;
     }
     return 0;
 }
 
 /*
- * The lying puffs at bone 0x22 (offset 0, 10, 140, scale 1.6) and sound 0x57
- * at bone 0x23 whenever em->timer is a multiple of 135;
+ * The lying puffs at GRAV_BONE_BREATH (offset 0, 10, 140, scale 1.6) and sound 87
+ * at GRAV_BONE_HEAD whenever em->timer is a multiple of 135;
  * GRAV_IDLE_STATUS2_DOWNED, GRAV_IDLE_STATUS1_DOWNED and EmGravios_Captured
  * call it every frame.
  */
@@ -6757,9 +6631,9 @@ void EmGravios_DownedPuffsAndSe(Em *em)
     puffOfs[1] = 10.0f;
     puffOfs[2] = 140.0f;
     puffOfs[0] = 0.0f;
-    Em_SpawnLyingPuffs(em, 0x22, puffOfs, 1.6f);
+    Em_SpawnLyingPuffs(em, GRAV_BONE_BREATH, puffOfs, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, GRAV_BONE_HEAD);
     }
 }
 
@@ -6773,7 +6647,6 @@ EmTurnParams EmGravios_TurnParams[1] = {
 Vec3f EmGravios_CarveThrowPt = {
 #include "game/008C4B60.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmGravios_Callbacks[8] = {
     EmGravios_SpawnEffects, EmGravios_SpawnEffects, EmGravios_TableNop, EmGravios_UpdateMotionEffects,
     GmEm_ReturnZero, EmGravios_Reinit, EmGravios_AllowPartBreak, NULL,

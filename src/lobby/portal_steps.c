@@ -11,8 +11,8 @@
  *   answered, the images asked for, the scroll set on the URL's anchor);
  *   then the page shown with its dialogs, and the steps a dialog or the
  *   pad leads to: the page shown again, the history moves, a reload, a
- *   URL opened, back, the game's menu, the cancel, and the waits for a
- *   request or for the images before the leave dialog.
+ *   URL opened, back, the game's menu, the cancel, the waits for a
+ *   request or for the images before the leave dialog, and the failure.
  * The page's load state through these steps is BrowserState.page (enum
  * PageLoad).
  */
@@ -20,6 +20,7 @@
 #include "browser.h"
 #include "html.h"
 #include "pad.h"
+#include "render_state.h"
 #include "net_save.h"
 #include "m2c_macros.h"
 #include "lobby_globals.h"
@@ -29,16 +30,10 @@
 #include "em.h"
 #include "player.h"
 #include "save.h"
-#include "pad.h"
+#include "text.h"
+#include "font.h"
 
 void *memset(void *dst, s32 c, u32 n);
-void Gfx_SetTexFilter(s32 on);                  /* sub_main */
-void Browser_SetRenderState(s32 state, u32 value);
-void Draw_Title(u8 *text);
-void Page_FreeObjs(void);
-void Page_AllocObjs(void);
-BrowserObj *PageObj_Alloc(s32 layer, s32 atTail);
-void PageObj_Nop(void);
 /* The portal's start steps and its page steps. The two tables keep their
  * address names: the port's recompiler takes a table the code calls
  * through as a jump table, and finds it by that name. */
@@ -47,50 +42,13 @@ u32 strlen(const char *s);
 s32 memcmp(const char *a, const char *b, u32 n);
 s32 strcmp(const char *a, const char *b);
 char *strncpy(char *dst, const char *src, u32 n);
-void Font_ResetState(void);
-void PageObj_Free(BrowserObj *o);
-void Html_ResetLoad(void);
-void Html_StartLoad(char *src);
-void Url_ClearBase(void);
-void Browser_UpdateFrame(void);
 /* Declared as s32 and each call cast to s8: the callers read the result
  * as a signed byte, and compile as the game's only so. */
-s32 Page_Load(void);
-char *BrowserHist_CurUrl(void);
-void Browser_Go(char *url);
-void Browser_Fail(u8 page);
-void Browser_ShowPage(void);
-void Browser_ShowList(s32 unused0);
-void Browser_SetStep(s8 step);
-void Browser_Reload(void);
-s32 Browser_Retry(void);
-void Browser_LoadFrame(s32 mode, u8 *step);
-void Page_CreateFrame(void);
-void Dialog_Reset(void);
-void BrowserReq_Page(char **url);
-s32 Portal_SetIds(void);
-void Browser_OpenPage(void);
 extern void (*jtbl_007EEB20[])(void);
 extern char gBrowserUrl[];     /* the start URL */
-extern char gLbsScheme[];      /* the lobby server's URL scheme */
 /* The file is compiled at optimization level 4 (the pragma above):
  * Portal_ParseStep compiles as the game's only at that level, the others
  * at it or the default. */
-void Browser_UpdateFrame(void);
-s8 Page_CheckImages(void);
-void Browser_GoForward(void);
-void Browser_GoBack(void);
-void Portal_Back(void);
-s32 Browser_Timers(void);
-void BrowserHist_Undo(void);
-void Browser_SetUrl(BrowserWork *w, char *url);
-void BrowserReq_Post(char **url);
-s16 *Html_LoadStep(s32 arg);
-void Html_StopLoad(void);
-s8 Portal_HandleData(void);        /* the lobby server's data in the page */
-s8 Browser_GameStartError(void);
-void Page_RequestImages(void);
-BrowserResult *BrowserReq_Poll(char **url);
 
 /* Clears the page: the keyboard's text, its objects, textures and draw
  * commands (an empty title first), the view (at 0, 0, the view's size),
@@ -119,10 +77,11 @@ void Page_New(void)
     gBrowserState->pageKind = PAGE_KIND_NONE;
     gBrowserWork->focus = 0;
     gBrowserWork->texCount = 0;
-    Browser_SetRenderState(0x60, BROWSER_BLACK);
-    Browser_SetRenderState(0x5F, 5);
-    Browser_SetRenderState(0x5E, 1);
-    Gfx_SetTexFilter(0);
+    /* opaque draws; the alpha test passes what differs from the reference */
+    Browser_SetRenderState(RS_ALPHA_REF, BROWSER_BLACK);
+    Browser_SetRenderState(RS_ALPHA_TEST, RS_CMP_NOTEQUAL);
+    Browser_SetRenderState(RS_BLEND, RS_BLEND_OPAQUE);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
 }
 
 /* The portal's BMODE_START: its step's function. */
@@ -155,8 +114,6 @@ void Page_AllocObjs(void)
 }
 
 /* The start steps. */
-void Portal_Start0(void);
-void Portal_Start1(void);
 void (*jtbl_007EEB10[4])(void) = {
     Portal_Start0, Portal_Start1, NULL, NULL,
 };
@@ -176,11 +133,11 @@ void Page_FreeObjs(void)
 }
 
 /* BMODE_START's first step: marks whether the start URL is one of the
- * MMBB data's (f4 or the next URL), then the draw commands start over. */
+ * MMBB data's (the session URL or the next URL), then the draw commands start over. */
 void Portal_Start0(void)
 {
     gBrowserWork->result = BROWSER_RUNNING;
-    if (strcmp(gBrowserUrl, gMmbbData->f4) == 0 || strcmp(gBrowserUrl, gMmbbData->nextUrl) == 0) {
+    if (strcmp(gBrowserUrl, gMmbbData->sessionUrl) == 0 || strcmp(gBrowserUrl, gMmbbData->nextUrl) == 0) {
         gBrowserWork->atMmbbUrl = 1;
     } else {
         gBrowserWork->atMmbbUrl = 0;
@@ -222,7 +179,7 @@ void Portal_Start1(void)
         strncpy((char *)gBrowserState->password, gNetSaveData.mmbbPassword, sizeof(gNetSaveData.mmbbPassword) - 1);
         gBrowserState->page = PAGE_LOAD_NONE;
         gBrowserWork->dlgInputState = BDLG_INPUT_IDLE;
-        Browser_SetRenderState(0x14, BROWSER_BLACK);
+        Browser_SetRenderState(RS_BG_COLOR, BROWSER_BLACK);
         Browser_Reload();
     }
 }
@@ -271,7 +228,7 @@ void Portal_LoadPage(void)
     switch ((s8)Page_Load()) {
     case -2:
         gBrowserWork->endReason = BROWSER_END_LEAVE;
-        Browser_ShowList(0);
+        Browser_OpenLeaveDialog(0);
         gBrowserSub->dlgCursor = 1;
         gBrowserState->step++;
         break;
@@ -331,19 +288,6 @@ void Portal_ParsePage(void)
 }
 
 /* The page steps. */
-void Portal_BackStep(void);
-void Portal_CancelStep(void);
-void Portal_DialogStep(void);
-void Portal_FailStep(void);
-void Portal_GameMenuStep(void);
-void Portal_HistoryStep(void);
-void Portal_OpenStep(void);
-void Portal_PageReady(void);
-void Portal_ParseStep(void);
-void Portal_ReloadStep(void);
-void Portal_ReshowStep(void);
-void Portal_WaitReqStep(void);
-void Portal_ImagesStep(void);
 void (*jtbl_007EEB20[16])(void) = {
     Portal_PageStart, Portal_LoadPage, Portal_ParsePage, Portal_ParseStep,
     Portal_PageReady, Portal_DialogStep, Portal_ReshowStep, Portal_HistoryStep,
@@ -683,7 +627,7 @@ void Portal_WaitReqStep(void)
 {
     if (BrowserReq_Poll(&gBrowserWork->url) != 0) {
         gBrowserWork->reqBusy = 0;
-        Browser_ShowList(0);
+        Browser_OpenLeaveDialog(0);
         gBrowserSub->dlgCursor = 1;
         gBrowserState->step = PAGE_STEP_DIALOG;
     }
@@ -700,9 +644,20 @@ void Portal_ImagesStep(void)
         Page_CheckImages();
         break;
     case PAGE_LOAD_DONE:
-        Browser_ShowList(0);
+        Browser_OpenLeaveDialog(0);
         gBrowserSub->dlgCursor = 1;
         gBrowserState->step = PAGE_STEP_DIALOG;
         break;
+    }
+}
+
+/* PAGE_STEP_FAIL: once the request is answered, the portal fails (BMODE_END). */
+void Portal_FailStep(void)
+{
+    if (BrowserReq_Poll(&gBrowserWork->url) != NULL) {
+        gBrowserWork->reqBusy = 0;
+        Browser_Fail(0);
+        gBrowserState->mode = BMODE_END;
+        gBrowserState->step = PORTAL_END_START;
     }
 }

@@ -1,13 +1,14 @@
 /*
- * Monster kind 0x1D (no code shows its species). Its functions are few:
- * EmKind1D_Init sets the monster up from its variant's row of
- * EmKind1D_Variants (hit points, size and the one of its five meshes shown;
- * with no hit points in the row it gets 4000) and, at the quest's stage 0,
- * places it by its slot number (in a grid in AREA_SNOWY_MOUNTAINS_NIGHT_9,
- * in a row elsewhere). EmKind1D_Update and the groups' dispatchers run its
- * few states (em_kind1d.h): it never moves or attacks, a flinch lasts 10
- * frames, and its death (EmKind1D_Die) plays its variant's sound and
- * effects. Its rows have the dromes' layout (EmDromeKindEntry).
+ * Monster kind 29 (the names EmKind1D_* give it in hex; no code shows its
+ * species). Its functions are few: EmKind1D_Init sets the monster up from its
+ * variant's row of EmKind1D_Variants (hit points, size and the one of its
+ * five meshes shown; with no hit points in the row it gets 4000) and, at the
+ * quest's stage 0, places it by its slot number (in a grid in
+ * AREA_SNOWY_MOUNTAINS_NIGHT_9, in a row elsewhere). EmKind1D_Update and the
+ * groups' dispatchers run its few states (em_kind1d.h): it never moves or
+ * attacks, a flinch lasts 10 frames, and its death (EmKind1D_Die) plays its
+ * variant's sound and effects. Its rows have the dromes' layout
+ * (EmDromeKindEntry).
  */
 #include "common.h"
 #include "scene.h"
@@ -17,32 +18,21 @@
 #include "em_drome.h"
 #include "objattach.h"
 #include "area.h"
-void Em_EndStatus5(Em *em);
-void Em_ResetPartHp(Em *em, u32 i);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void EmKind1D_Die(Em *);
-void EmKind1D_RunState(Em *em);
-void Em_InitParts(Em *em);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-u16 Area_DayId(u16 id);
-void Em_PlaySe(Em *em, s32 se);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void PartFx_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
-void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
+#include "capsule.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "hit_spark.h"
 extern EmDromeKindEntry EmKind1D_Variants[];
-void GmEm_ApplySize(Em *em);
 /* end of prototypes */
 
-/* Kind 0x1D's own meaning of a work-area field (Em.work; EmWork has the shared ones). */
+/* Kind 29's own meaning of a work-area field (Em.work; EmWork has the shared ones). */
 typedef struct EmKind1DWork {
     u8 fxStep;                  /* 0x000: as EmWork's */
-    u8 unk001[0x004 - 0x001];
+    u8 unk001[4 - 1];
     s16 noHp;                   /* 0x004: Init: 1 when the variant's hp is 0 (the monster then gets 4000), else 0 */
-    u8 unk006[0x100 - 0x006];
+    u8 unk006[256 - 6];
 } EmKind1DWork;
 typedef char EmKind1DWork_size_check[(sizeof(EmKind1DWork) == sizeof(EmWork)) ? 1 : -1];
 
@@ -216,7 +206,7 @@ void EmKind1D_Die(Em *em)
         Em_PlaySe(em, row->se);
         HitSpark_SpawnForOwner(em, 0, 9, 0, &em->posX, em->scaleX);
         HitSpark_SpawnForOwner(em, 0, 9, 1, &em->posX, em->scaleX);
-        PartFx_SpawnIfHere(em, &em->posX, 0x22, 5.0f * em->scaleX);
+        PartFx_SpawnIfHere(em, &em->posX, 34, 5.0f * em->scaleX);
         if (em->variant == 4) {
             if (em->area == gScene.area) {
                 FireBlast_CreateScaled(&em->posX, 0, 3.0f);
@@ -345,7 +335,6 @@ void EmKind1D_TableNop(void)
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 EmDromeKindEntry EmKind1D_Variants[8] = {
 #include "game/008C4140.inc"
 };

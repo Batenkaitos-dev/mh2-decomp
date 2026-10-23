@@ -1,55 +1,23 @@
-/* The HTML tag handlers: <META>'s attributes, <PRE>, <DIV>, <SMALL>,
- * <BIG>, the entities, <TABLE>, <TR>, <TH>, <TD> and their attributes. */
+/* The HTML tag handlers: <META ...> and its attributes, <PRE>, <DIV>, <SMALL>,
+ * <BIG>, the entities, <TABLE>, <TR>, <TH>, <TD> and their attributes, and
+ * </TD>. */
 #include "common.h"
 #include "html.h"
+#include "browser.h"
+#include "libc.h"
 
-s32 strncmp(const char *a, const char *b, s32 n);
-
-void Html_Refresh(s32 seconds, char *url);
-void Html_SetCharWidths(u8 bold);
-void Html_NoteBottom(HtmlPen *pen);
-void Html_ReadAttrValue(u8 **cur, char *buf, s32 size);
-void Html_ReadAttrKeyword(u8 **cur, char *buf, s32 size);
-void Html_ReadMetaContent(u8 **cur, char *buf, s32 size);
 s32 Html_ParseColor(char *s);
-s32 Html_ParseNumber(char *s);
-s32 Html_ParseLength(char *s, s32 whole);
-u8 Html_LookupKeyword(char *s, HtmlKeyword *table, u32 size);
-void Layout_TextFull(u8 *text);
-void Layout_Flush(u8 *text);
-void Layout_FlushBreak(u8 *text);
-void Layout_FlushBlock(u8 *text);
-void Html_ClearFontAttrs(void);
-void Html_PushFont(void);
-void Html_ClearTableAttrs(void);
-void Html_ClearTrAttrs(void);
-void Html_ClearTdAttrs(void);
-void Layout_CellValign(HtmlCell *cell);
-void Layout_CellAlign(HtmlCell *cell);
-s32 Layout_OpenCell(s32 kind);
-void Layout_PushBackground(char *background);
-void Layout_TableFromAttrs(HtmlCell *cell);
-s32 Layout_TableOrigin(HtmlCell *);
-void Layout_RowFromTable(HtmlCell *cell, HtmlCell *parent);
-void Layout_RowOrigin(HtmlCell *cell, HtmlCell *parent);
-void Layout_CellFromRow(HtmlCell *cell, HtmlCell *parent);
-void Layout_CellSize(HtmlCell *cell, HtmlCell *parent);
-void Layout_CellOrigin(HtmlCell *cell, HtmlCell *parent);
-void Layout_CellPenStart(HtmlCell *cell, HtmlCell *parent);
-s32 Layout_CellSpanNext(void);
-u16 Layout_MeasureColumns(HtmlCell *cell, s32 measure);
-void Layout_DrawCell(HtmlCell *cell);
-void Layout_NextLine(void);
-s32 Layout_BeforeOpen(u8 **cur, u8 *text, u8 kind);
-s32 Layout_BeforeClose(u8 **cur, u8 *text, u8 kind);
-
-void Html_TagTableEnd(u8 **cur, u8 *text);
-s32 Html_TagTrEnd(u8 **cur, u8 *text);
-s32 Html_TagTdEnd(u8 **cur, u8 *text);
 
 extern HtmlKeyword gHtmlAlignKeywords[4]; /* ALIGN: LEFT CENTER MIDDLE RIGHT */
 extern HtmlKeyword gHtmlValignKeywords[4]; /* VALIGN: MIDDLE CENTER TOP BOTTOM */
 extern char gHtmlRefresh[]; /* "REFRESH" */
+
+/* <META ...> */
+s32 Html_TagMeta(u8 **cur, u8 *text)
+{
+    memset(&gHtml->meta, 0, sizeof(HtmlMeta));
+    return 0;
+}
 
 /* Raises *p to v (inlined: the game's callers keep p in a register of its
  * own for the store). */
@@ -917,12 +885,94 @@ s32 Html_AttrTdNowrap(u8 **cur, u8 *text)
     return 0;
 }
 
+/* <TD BACKGROUND=...> */
+s32 Html_AttrTdBackground(u8 **cur, u8 *text)
+{
+    Html_ReadAttrValue(cur, gHtml->tdAttr.background, sizeof(gHtml->tdAttr.background));
+    return 0;
+}
+
+/* </TD>, </TH> */
+s32 Html_TagEndTd(u8 **cur, u8 *text)
+{
+    HtmlCell *cell;
+    HtmlCell *parent;
+    s32 n;
+
+    if (gHtml->tableDepth == 0) {
+        return 0;
+    }
+    if (Layout_BeforeClose(cur, text, HTML_CELL_TD) < 0) {
+        return -1;
+    }
+    gHtml->curCell = gHtml->cellStack[gHtml->tableDepth];
+    cell = &gHtml->cells[gHtml->curCell];
+    parent = cell->parent;
+    if (parent == NULL) {
+        return -1;
+    }
+    Html_SetCharWidths(cell->bold);
+    cell->open = 0;
+    Layout_FlushBlock(text);
+    gHtml->cells[gHtml->curCell].flags &= ~HTML_FLAG_PRE;
+    gHtml->pre = 0;
+    gHtml->cells[gHtml->curCell].bold = 0;
+    if (gHtml->measure == HTML_PASS_MEASURE && cell->colSpan) {
+        n = (cell->colSpan - 1) * (cell->spacing + cell->padding * 2);
+        if (cell->minW < n) {
+            cell->minW = n;
+        }
+    }
+    if (cell->w < cell->minW) {
+        cell->w = cell->minW;
+    }
+    if (cell->rowSpan == 0) {
+        Html_MaxU16(&cell->h, gHtml->cellPen.runY);
+        if (cell->h < cell->innerH) {
+            cell->h = cell->innerH;
+        }
+    } else if (gHtml->measure != HTML_PASS_DRAW) {
+        cell->spanH = gHtml->cellPen.runY;
+    }
+    cell->textH = gHtml->cellPen.runY;
+    n = cell->h + cell->padding * 2;
+    if (parent->h < n) {
+        parent->h = n;
+    }
+    if (cell->colSpan == 0) {
+        parent->penX += cell->spacing + (cell->w + cell->padding * 2);
+        if (gHtml->measure == HTML_PASS_MEASURE) {
+            parent->minW += cell->spacing + (cell->w + cell->padding * 2);
+            parent->cellCount++;
+        }
+    }
+    if (gHtml->measure == HTML_PASS_MEASURE) {
+        parent->maxW += cell->spacing + (cell->maxW + cell->padding * 2);
+    }
+    Layout_DrawCellBox(cell);
+    if (gHtml->measure == HTML_PASS_MEASURE) {
+        Html_MaxU16(&gHtml->pageWidth, cell->x + cell->w);
+    }
+    if (gHtml->tableDepth != 0) {
+        gHtml->tableDepth--;
+    } else {
+        return -1;
+    }
+    if (Layout_CellColSpan(cell) < 0) {
+        return -1;
+    }
+    Layout_CellAlign(cell);
+    Layout_NextLine();
+    Layout_CellAlign(cell);
+    return 0;
+}
+
 /* The keyword tables (data), then the strings they point at. */
 extern char D_00839E68[];
-extern char D_00839E70[];
-extern char D_00839E78[];
-extern char D_00839E80[];
-extern char D_00839E88[];
+extern char gHtmlAlignKeywords_4[];
+extern char gHtmlAlignKeywords_3[];
+extern char gHtmlValignKeywords_2[];
+extern char gHtmlValignKeywords_3[];
 extern char gHtmlAlignKeywords_0[];
 HtmlKeyword gHtmlAlignKeywords[4] = {
 #include "lobby/007EFEC0.inc"
@@ -933,19 +983,19 @@ HtmlKeyword gHtmlValignKeywords[4] = {
 
 /* The keywords' strings (read-only data). */
 #pragma rodata on
-char D_00839E68[0x8] = {
+char D_00839E68[8] = {
 #include "lobby/00839E68.inc"
 };
-char D_00839E70[0x8] = {
+char gHtmlAlignKeywords_4[8] = {
 #include "lobby/00839E70.inc"
 };
-char D_00839E78[0x8] = {
+char gHtmlAlignKeywords_3[8] = {
 #include "lobby/00839E78.inc"
 };
-char D_00839E80[0x8] = {
+char gHtmlValignKeywords_2[8] = {
 #include "lobby/00839E80.inc"
 };
-char D_00839E88[0x8] = {
+char gHtmlValignKeywords_3[8] = {
 #include "lobby/00839E88.inc"
 };
 #pragma rodata off

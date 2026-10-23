@@ -10,31 +10,215 @@
  * - The weapon: Player_MotionPhase says where it is in the current motion
  *   (in a hand or on the back, WP_PHASE_*), the WpPose tables place it on its
  *   bone, and keyframe tracks (Key1, Key2, Key3) move its moving bones in the
- *   weapon's own motions.
- * - The equipment preview of the menus (EquipPreview_*, gEquipPreview): a
- *   window that shows one piece of equipment, posed by its type, with its
- *   own lights (LightSet_SetupSet).
- * - The monsters' models (Em_DrawParts, their draw slots' function), the
- *   players' world matrices (Player_UpdateWorldMatrix) and the bone scaling
- *   the hunters' models use (Player_ScaleBones).
- * The data tables these read (the poses, keyframes, light sets and the
- * parts each object kind skips) are defined at the end of the file.
+ *   weapon's own motions: Key1_Eval to Key3_Eval read one to three floats
+ *   per time (a time of -1 ends a track), and Key3_EvalByTimer runs on the
+ *   long sword's gauge timer.
+ * - Bone_SetMatrices and Bone_SetMatricesRel (under a parent matrix) fill
+ *   the matrix slots of a bone tree, for the armour pieces placed by their
+ *   bones.
+ * The data tables these read (the poses and keyframes, the bone markers'
+ * directions, the cycling colours) are defined at the end of the file.
  */
 #include "common.h"
-#include "scene.h"
 #include "em.h"
-#include "camera.h"
 #include "player.h"
-#include "objhead.h"
-#include "stageobj.h"
-#include "sprite.h"
 #include "chredit.h"
+#include "camera.h"
+#include "objhead.h"
+#include "sprite.h"
 #include "area.h"
 #include "pad.h"
 #include "render_state.h"
-#include "item.h"
 #include "light.h"
 #include "equip_preview.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "save.h"
+#include "text.h"
+#include "window.h"
+#include "model.h"
+#include "cam_helpers.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "libc.h"
+#include "engine_util.h"
+#include "vec_math.h"
+
+/* A keyframe track's clock: the callers pass a Player, whose motion layer
+ * 0's frame (Player.motion[0].frame, at +0x15C) is the time. The callers cast
+ * their Player to it. */
+typedef struct KeyClock {
+    u8 pad[348];
+    f32 time;
+} KeyClock;
+
+/* The owner of the bones that a tree node can copy (by index & 0x3F): the
+ * callers pass a Player, whose part records (Player.partRecs, at +0xD0) are
+ * read here as bones (only the matrix at +0x40, EmBone.local). The callers
+ * cast their Player to it. */
+typedef struct BoneRoot {
+    u8 pad[208];
+    EmBone *bones[64];            /* 0xD0 */
+} BoneRoot;
+
+extern s16 *gBoneMtxSlotMaps[];       /* per table: a bone index per node, 0 none, bit 6 relative */
+/* Sets the matrix slot of each bone of a tree (RS_MTX_SLOT(index)): skin
+ * times a matrix that gBoneMtxSlotMaps[table] picks per bone: a bone of
+ * root (below 64), the bone's world matrix with that bone's rotation
+ * (64 and up), or only the bone's position (0). unused is passed down
+ * unread. */
+void Bone_SetMatrices(EmBone *bone, BoneRoot *root, s16 table, s32 unused)
+{
+    f32 out[16];
+    f32 mtx[16];
+    s16 slot = gBoneMtxSlotMaps[table][bone->index];
+
+    if (slot > 0) {
+        if (slot < 64) {
+            Mtx_Copy(mtx, root->bones[slot & 0x3F]->local);
+        } else {
+            EmBone **srcBone;
+
+            Mtx_Copy(mtx, bone->world);
+            srcBone = (EmBone **)(((slot & 0x3F) << 2) + (u32)root + 208);
+            Mtx_Copy3x3(mtx, (*srcBone)->local);
+            Mtx_Mul3x3(mtx, bone->local, (*srcBone)->local);
+        }
+    } else {
+        Mtx_Identity(mtx);
+        mtx[12] = bone->world[12];
+        mtx[13] = bone->world[13];
+        mtx[14] = bone->world[14];
+    }
+    Mtx_Mul(out, bone->skin, mtx);
+    Gs_SetState(RS_MTX_SLOT(bone->index), (u32)out);
+    if (bone->child != NULL) {
+        Bone_SetMatrices(bone->child, root, table, unused);
+    }
+    if (bone->sibling != NULL) {
+        Bone_SetMatrices(bone->sibling, root, table, unused);
+    }
+}
+
+/* As Bone_SetMatrices, but a bone mapped 64 and up takes its local
+ * matrix times parent, the matrix its parent bone used. */
+void Bone_SetMatricesRel(EmBone *bone, BoneRoot *root, s16 table, s32 unused, f32 *parent)
+{
+    f32 out[16];
+    f32 mtx[16];
+    s16 slot = gBoneMtxSlotMaps[table][bone->index];
+
+    if (slot > 0) {
+        if (slot < 64) {
+            Mtx_Copy(mtx, root->bones[slot & 0x3F]->local);
+        } else {
+            Mtx_Mul(mtx, bone->local, parent);
+        }
+    } else {
+        Mtx_Identity(mtx);
+        mtx[12] = bone->world[12];
+        mtx[13] = bone->world[13];
+        mtx[14] = bone->world[14];
+    }
+    Mtx_Mul(out, bone->skin, mtx);
+    Gs_SetState(RS_MTX_SLOT(bone->index), (u32)out);
+    if (bone->child != NULL) {
+        Bone_SetMatricesRel(bone->child, root, table, unused, mtx);
+    }
+    if (bone->sibling != NULL) {
+        Bone_SetMatricesRel(bone->sibling, root, table, unused, parent);
+    }
+}
+
+/* The value of a one-float track at the clock's time: interpolated
+ * between the two keys around it, or the last key's from its time on. */
+f32 Key1_Eval(KeyClock *clock, Key1 *key)
+{
+    for (;; key++) {
+        if (key->t == -1.0f) {
+            return key->v;
+        }
+        if (Motion_ReachedFrame(clock, 0, key->t) != 0 && Motion_ReachedFrame(clock, 0, key[1].t) == 0) {
+            return key->v + (key[1].v - key->v) * ((clock->time - key->t) / (key[1].t - key->t));
+        }
+    }
+}
+
+/* As Key1_Eval for a three-float track, into out. */
+void Key3_Eval(KeyClock *clock, Key3 *key, f32 *out)
+{
+    for (;; key++) {
+        if (key->t == -1.0f) {
+            out[0] = key->v[0];
+            out[1] = key->v[1];
+            out[2] = key->v[2];
+            return;
+        }
+        if (Motion_ReachedFrame(clock, 0, key->t) != 0 && Motion_ReachedFrame(clock, 0, key[1].t) == 0) {
+            out[0] = key->v[0] + (key[1].v[0] - key->v[0]) * ((clock->time - key->t) / (key[1].t - key->t));
+            out[1] = key->v[1] + (key[1].v[1] - key->v[1]) * ((clock->time - key->t) / (key[1].t - key->t));
+            out[2] = key->v[2] + (key[1].v[2] - key->v[2]) * ((clock->time - key->t) / (key[1].t - key->t));
+            return;
+        }
+    }
+}
+
+/* As Key1_Eval for a two-float track, into firstOut and secondOut. */
+void Key2_Eval(KeyClock *clock, Key2 *key, f32 *firstOut, f32 *secondOut)
+{
+    for (;; key++) {
+        if (key->t == -1.0f) {
+            *firstOut = key->v[0];
+            *secondOut = key->v[1];
+            return;
+        }
+        if (Motion_ReachedFrame(clock, 0, key->t) != 0 && Motion_ReachedFrame(clock, 0, key[1].t) == 0) {
+            *firstOut = key->v[0] + (key[1].v[0] - key->v[0]) * ((clock->time - key->t) / (key[1].t - key->t));
+            *secondOut = key->v[1] + (key[1].v[1] - key->v[1]) * ((clock->time - key->t) / (key[1].t - key->t));
+            return;
+        }
+    }
+}
+
+/* As Key3_Eval, with the time 10 less the long sword's gauge timer. */
+void Key3_EvalByTimer(Player *pl, Key3 *key, f32 *out)
+{
+    f32 elapsed = 10.0f - pl->swordGaugeTimer;
+    f32 ratio;
+    f32 delta;
+
+    for (;; key++) {
+        if (key->t == -1.0f) {
+            out[0] = key->v[0];
+            out[1] = key->v[1];
+            out[2] = key->v[2];
+            return;
+        }
+        if (!(elapsed < key->t) && elapsed < key[1].t) {
+            /* Each channel repeats an empty check of its key interval after
+             * the ratio. The compiler drops the checks but still orders the
+             * statements around them as the game's code does; without them
+             * out[1] and out[2] get other registers. */
+            ratio = (elapsed - key->t) / (key[1].t - key->t);
+            if (key[1].t == key->t || elapsed < key->t) { /* compiled-out check */
+            }
+            delta = key[1].v[0] - key->v[0];
+            out[0] = key->v[0] + delta * ratio;
+            ratio = (elapsed - key->t) / (key[1].t - key->t);
+            if (key[1].t == key->t || elapsed < key->t) { /* compiled-out check */
+            }
+            delta = key[1].v[1] - key->v[1];
+            out[1] = key->v[1] + delta * ratio;
+            ratio = (elapsed - key->t) / (key[1].t - key->t);
+            if (key[1].t == key->t || elapsed < key->t) { /* compiled-out check */
+            }
+            delta = key[1].v[2] - key->v[2];
+            out[2] = key->v[2] + delta * ratio;
+            return;
+        }
+    }
+}
 
 /* Where the weapon is drawn (Player_MotionPhase, Player_DrawWeapon). */
 #define WP_PHASE_OTHER_HAND 0   /* in the other hand (PL_BONE_OTHER_HAND, gWpPoseDrawnAlt) */
@@ -44,27 +228,14 @@
 /* The hunter's hand bones, which are also the indices of their part records (Player.partRecs,
  * Player_ScaleBones). */
 
-
-u8 Player_PartFlags(Player *pl, u8 slot);
-u32 Color_Cycle8(void);
-s32 Gs_SetState(u8 reg, u32 v);
-void Vec_AnglesToRad(s32 *in, f32 *out);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateYXZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Copy(f32 *dst, f32 *src);
 struct EmBone;
-void Bone_UpdateWorld(struct EmBone *b, f32 *m);
-void Player_ScaleBones(Player *pl, EmBone *bones, f32 *parent);
-
-s32 Motion_ReachedFrame(void *o, s32 layer, f32 frame);
 
 /* Where the player's weapon is drawn in its current motion (motionId[0]): WP_PHASE_HAND,
  * WP_PHASE_OTHER_HAND or WP_PHASE_SHEATHED, by weapon type and the frame the motion has
- * reached (the weapon's own motions, 0x3E8 and up, draw and sheathe it), then by the shared
- * motions (the gestures, the sharpening 0x19D ...), which override it. secondPart picks the
+ * reached (the weapon's own motions, 1000 and up, draw and sheathe it), then by the shared
+ * motions (the gestures, PL_MOT_SHARPEN ...), which override it. secondPart picks the
  * dual swords' second blade's frames; otherPlayer (set when Player_Draw draws another player's
- * hunter) keeps motion 0x349's weapon on the back. The arms
+ * hunter) keeps motion 841's weapon on the back. The arms
  * that set WP_PHASE_SHEATHED where it already is are the game's own: the compiler drops the
  * store but keeps the branch. */
 s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
@@ -74,17 +245,17 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
     switch (pl->weaponType) {
     case WEAPON_HAMMER:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 6.0f)) phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 48.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F1:
+        case 1009:
             if (Motion_ReachedFrame(pl, 0, 50.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F2:
+        case 1010:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
         default:
@@ -94,31 +265,31 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_HUNTING_HORN:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 68.0f)) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 14.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 50.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3ED:
+        case 1005:
             if (Motion_ReachedFrame(pl, 0, 50.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3EE:
+        case 1006:
             if (Motion_ReachedFrame(pl, 0, 16.0f)) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 6.0f)) phase = WP_PHASE_OTHER_HAND; else phase = WP_PHASE_SHEATHED;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x57C:
+        case 1404:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 54.0f)) phase = WP_PHASE_HAND;
             else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x588:
+        case 1416:
             phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x597:
+        case 1431:
             if (Motion_ReachedFrame(pl, 0, 10.0f)) phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
@@ -130,21 +301,21 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
     case WEAPON_LANCE:
     case WEAPON_GUNLANCE:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             else if (pl->weaponType == WEAPON_LANCE) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 14.0f)) phase = WP_PHASE_HAND;
             break;
-        case 0x3FA:
+        case 1018:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 60.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F1:
+        case 1009:
             if (Motion_ReachedFrame(pl, 0, 66.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F2:
+        case 1010:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
         default:
@@ -154,25 +325,25 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_SWORD_SHIELD:
         switch (pl->motionId[0]) {
-        case 0x3EA:
-        case 0x3FA:
-        case 0x3F2:
+        case 1002:
+        case 1018:
+        case 1010:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 32.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F1:
+        case 1009:
             if (Motion_ReachedFrame(pl, 0, 30.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F8:
+        case 1016:
             if (Motion_ReachedFrame(pl, 0, 14.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3F9:
+        case 1017:
             if (Motion_ReachedFrame(pl, 0, 44.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x582:
+        case 1410:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
         default:
@@ -182,20 +353,20 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_DUAL_SWORDS:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, secondPart == 0 ? 8.0f : 10.0f)) phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, secondPart == 0 ? 20.0f : 28.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F1:
+        case 1009:
             if (Motion_ReachedFrame(pl, 0, secondPart == 0 ? 18.0f : 30.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             break;
-        case 0x3F9:
+        case 1017:
             if (Motion_ReachedFrame(pl, 0, 44.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x585:
+        case 1413:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             else if (Motion_ReachedFrame(pl, 0, 4.0f)) phase = WP_PHASE_HAND; else phase = WP_PHASE_SHEATHED;
             break;
@@ -206,30 +377,30 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     default:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 16.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 38.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x3F8:
+        case 1016:
             if (Motion_ReachedFrame(pl, 0, 14.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3F9:
+        case 1017:
             if (Motion_ReachedFrame(pl, 0, 44.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x584:
-        case 0x585:
-        case 0x586:
-        case 0x587:
+        case 1412:
+        case 1413:
+        case 1414:
+        case 1415:
             phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x582:
+        case 1410:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x597:
+        case 1431:
             if (Motion_ReachedFrame(pl, 0, 20.0f)) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 6.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
@@ -241,24 +412,24 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_LONG_SWORD:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 56.0f)) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 16.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 52.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
-        case 0x587:
+        case 1415:
             if (Motion_ReachedFrame(pl, 0, 28.0f)) phase = WP_PHASE_HAND;
             else if (Motion_ReachedFrame(pl, 0, 8.0f)) phase = WP_PHASE_OTHER_HAND; else phase = WP_PHASE_SHEATHED;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x592:
+        case 1426:
             if (Motion_ReachedFrame(pl, 0, 4.0f)) phase = WP_PHASE_OTHER_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3ED:
+        case 1005:
             if (Motion_ReachedFrame(pl, 0, 44.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_OTHER_HAND;
             break;
         default:
@@ -268,23 +439,23 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_BOW:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 18.0f)) phase = WP_PHASE_HAND;
             break;
-        case 0x3F2:
+        case 1010:
             if (Motion_ReachedFrame(pl, 0, 12.0f)) phase = WP_PHASE_HAND;
             break;
         case PL_MOT_BOW_CHARGE_FROM_DRAW:
             if (Motion_ReachedFrame(pl, 0, 6.0f)) phase = WP_PHASE_HAND;
             break;
-        case 0x3F6:
+        case 1014:
             if (Motion_ReachedFrame(pl, 0, 4.0f)) phase = WP_PHASE_HAND;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 64.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_HAND;
             break;
-        case 0x3ED:
+        case 1005:
             if (Motion_ReachedFrame(pl, 0, 78.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_HAND;
             break;
@@ -295,14 +466,14 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_HEAVY_BOWGUN:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 2.0f)) phase = WP_PHASE_HAND;
             break;
-        case 0x3EB:
+        case 1003:
             if (Motion_ReachedFrame(pl, 0, 110.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_HAND;
             break;
-        case 0x3F1:
+        case 1009:
             if (Motion_ReachedFrame(pl, 0, 92.0f)) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_HAND;
             break;
@@ -313,24 +484,24 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
         break;
     case WEAPON_LIGHT_BOWGUN:
         switch (pl->motionId[0]) {
-        case 0x3EA:
+        case 1002:
             if (Motion_ReachedFrame(pl, 0, 28.0f)) phase = WP_PHASE_OTHER_HAND; else phase = WP_PHASE_SHEATHED;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x58E:
+        case 1422:
             if (Motion_ReachedFrame(pl, 0, 26.0f)) phase = WP_PHASE_HAND; else phase = WP_PHASE_SHEATHED;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x58F:
+        case 1423:
             if (Motion_ReachedFrame(pl, 0, 24.0f)) phase = WP_PHASE_HAND; else phase = WP_PHASE_SHEATHED;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3F2:
+        case 1010:
             if (Motion_ReachedFrame(pl, 0, 22.0f)) phase = WP_PHASE_OTHER_HAND; else phase = WP_PHASE_SHEATHED;
             if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
             break;
-        case 0x3EB:
-        case 0x3F1:
+        case 1003:
+        case 1009:
             if (pl->motion[0].blend == 1) phase = WP_PHASE_HAND; else phase = WP_PHASE_SHEATHED;
             break;
         default:
@@ -341,71 +512,65 @@ s16 Player_MotionPhase(Player *pl, s32 secondPart, s32 otherPlayer)
     }
 
     switch (pl->motionId[0]) {
-    case 0xCA:
-    case 0xCC:
+    case 202:
+    case 204:
         if (pl->weaponOut) phase = WP_PHASE_HAND;
         break;
-    case 0xCF:
-    case 0xD8:
+    case 207:
+    case 216:
         if (pl->weaponOut) {
             if (pl->stateGroup == PL_GROUP_GESTURE) phase = WP_PHASE_SHEATHED; else phase = WP_PHASE_HAND;
         }
         break;
-    case 0x3C:
-    case 0x3D:
-    case 0x280:
-    case 0x26C:
-    case 0x26D:
-    case 0x26E:
-    case 0x26F:
-    case 0x270:
-    case 0x271:
-    case 0x272:
-    case 0x273:
-    case 0x274:
-    case 0x275:
-    case 0x276:
-    case 0x277:
-    case 0x278:
-    case 0x279:
+    case 60:
+    case 61:
+    case 640:
+    case 620:
+    case 621:
+    case 622:
+    case 623:
+    case 624:
+    case 625:
+    case 626:
+    case 627:
+    case 628:
+    case 629:
+    case 630:
+    case 631:
+    case 632:
+    case 633:
         phase = WP_PHASE_SHEATHED;
         break;
-    case 0xCD:
-    case 0xCE:
-    case 0xD0:
-    case 0xD1:
-    case 0xD3:
-    case 0xD4:
-    case 0xD5:
-    case 0xD6:
-    case 0xD7:
-    case 0xDB:
-    case 0xDC:
+    case 205:
+    case 206:
+    case 208:
+    case 209:
+    case 211:
+    case 212:
+    case 213:
+    case 214:
+    case 215:
+    case 219:
+    case 220:
         phase = WP_PHASE_SHEATHED;
         break;
-    case 0xD2:
+    case 210:
         if (pl->stateGroup == PL_GROUP_GESTURE) phase = WP_PHASE_SHEATHED;
         break;
-    case 0x19D:
+    case 413:
         if (Motion_ReachedFrame(pl, 0, 328.0f)) phase = WP_PHASE_SHEATHED;
         else if (Motion_ReachedFrame(pl, 0, 22.0f)) phase = WP_PHASE_HAND;
         else phase = WP_PHASE_SHEATHED;
         if (pl->motion[0].blend == 1) phase = WP_PHASE_SHEATHED;
         break;
-    case 0x349:
+    case 841:
         if (otherPlayer == 1) phase = WP_PHASE_SHEATHED;
         break;
     }
     return phase;
 }
 
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
-void Hud_DrawTargetMarker(f32 *pos);
 extern f32 gBoneMarkerDirs[][3];
-void Mtx_Identity(f32 *m);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
 extern f32 gObjMarkerOffset[];
 
 /* Draws the target marker (Hud_DrawTargetMarker) at bone record 14 of the player, moved
@@ -440,8 +605,6 @@ void Hud_DrawObjMarker(Player *pl)
 extern u8 gFishColors[][3];
 extern u8 gFoodMat0Colors[][3];
 extern u8 gFoodMat1Colors[][3];
-void Draw_ApplyStates(u32 a);
-s32 Model_Draw(u32 h, s32 flags);
 
 /* Draws one part of a held prop with the matrix mtx and its materials (lights: the model's
  * ModelMat array, read as bytes), each with the player's alpha. mode colours them: 1 and 2 the
@@ -496,13 +659,13 @@ void Player_DrawPartLit(Player *pl, ModelMatSet *part, f32 *mtx, u8 *lights, u8 
             }
             break;
         case 3:
-            red = green = blue = 0x3F;
+            red = green = blue = 63;
             break;
         case 4:
-            red = green = blue = 0xFF;
+            red = green = blue = 255;
             break;
         case 5:
-            red = green = blue = 0x9F;
+            red = green = blue = 159;
             break;
         case 6:
             Gs_SetState(RS_COLOR2, 0xFF000000 | gFishColors[3][0] << 16 | gFishColors[3][1] << 8 | gFishColors[3][2]);
@@ -510,7 +673,7 @@ void Player_DrawPartLit(Player *pl, ModelMatSet *part, f32 *mtx, u8 *lights, u8 
         }
         Gs_SetState(RS_MTX_SLOT(0), (u32)mtx);
         for (i = 0; i < part->count; i++) {
-            light = (f32 *)(lights + part->mat[i] * 0x4C);
+            light = (f32 *)(lights + part->mat[i] * 76);
             light[4] = pl->alpha;
             switch (mode) {
             case 1:
@@ -547,10 +710,8 @@ void Player_DrawPartLit(Player *pl, ModelMatSet *part, f32 *mtx, u8 *lights, u8 
     }
 }
 
-s32 Motion_ReachedFrame(void *obj, s32 layer, f32 frame);
-s16 Effect_MapTexId(s16 id);
 
-/* Picks the sound or effect (Effect_MapTexId) of motions 0x327-0x32A by the frames reached, and returns
+/* Picks the sound or effect (Effect_MapTexId) of motions PL_MOT_FISH_REEL to PL_MOT_FISH_PULLED_DOWN by the frames reached, and returns
  * its (s16) result. */
 s16 Player_HeldPartForMotion(void *obj)
 {
@@ -558,76 +719,67 @@ s16 Player_HeldPartForMotion(void *obj)
     s16 texId;
 
     switch (head->motionId[0]) {
-    case 0x327:
+    case 807:
         if (Motion_ReachedFrame(head, 0, 20.0f) == 0) {
-            texId = 0x44;
+            texId = 68;
         } else if (Motion_ReachedFrame(head, 0, 30.0f) == 0) {
-            texId = 0x83;
+            texId = 131;
         } else {
-            texId = 0x82;
+            texId = 130;
         }
         break;
-    case 0x328:
+    case 808:
         if (Motion_ReachedFrame(head, 0, 20.0f) == 0) {
-            texId = 0x83;
+            texId = 131;
         } else if (Motion_ReachedFrame(head, 0, 26.0f) == 0) {
-            texId = 0x82;
+            texId = 130;
         } else if (Motion_ReachedFrame(head, 0, 28.0f) == 0) {
-            texId = 0x83;
+            texId = 131;
         } else {
-            texId = 0x44;
+            texId = 68;
         }
         break;
-    case 0x329:
+    case 809:
         if (Motion_ReachedFrame(head, 0, 36.0f) == 0) {
-            texId = 0x83;
+            texId = 131;
         } else if (Motion_ReachedFrame(head, 0, 40.0f) == 0) {
-            texId = 0x82;
+            texId = 130;
         } else if (Motion_ReachedFrame(head, 0, 42.0f) == 0) {
-            texId = 0x83;
+            texId = 131;
         } else {
-            texId = 0x44;
+            texId = 68;
         }
         break;
-    case 0x32A:
+    case 810:
         if (Motion_ReachedFrame(head, 0, 20.0f) == 0) {
-            texId = 0x83;
+            texId = 131;
         } else if (Motion_ReachedFrame(head, 0, 22.0f) != 0) {
-            texId = 0x82;
+            texId = 130;
         } else if (Motion_ReachedFrame(head, 0, 24.0f) != 0) {
-            texId = 0x83;
+            texId = 131;
         } else {
-            texId = 0x44;
+            texId = 68;
         }
         break;
     default:
-        texId = 0x44;
+        texId = 68;
         break;
     }
     return Effect_MapTexId(texId);
 }
 
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-struct EmBone *Em_GetBone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Draw_SetDefaultState(void);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-void Vec_RotateY(f32 *v, f32 a);
-f32 Math_Atan2(f32 y, f32 x);
 
 /* Draws the prop the player holds, a part of the stage's model set (gStageModelSet) placed at
  * a bone: the carried item (Player.carry: its kind picks the part, size and colour), the mash
  * status's prop (PL_STATUS_ICON_MASH), or the prop of the motion playing: the item motions
- * 0x19F to 0x1A9 (0x1A0, eating: the food by useItem), the spit roast (0x320 to 0x323: the
- * meat, with the roaster standing on the ground in front of the player), motions 0x324 to
- * 0x32A (the part Player_HeldPartForMotion picks), and the bow's arrow in its motions. */
+ * PL_MOT_PICKAXE_SWING to PL_MOT_TEAM_ITEM_END (PL_MOT_EATING: the food by useItem), the spit roast (PL_MOT_SPIT_ROAST_START to PL_MOT_SPIT_ROAST_TURN: the
+ * meat, with the roaster standing on the ground in front of the player), motions PL_MOT_FISH_READY to
+ * PL_MOT_FISH_PULLED_DOWN (the part Player_HeldPartForMotion picks), and the bow's arrow in its motions. */
 /* The player comes in as `void *obj`, read through `Player *pl = obj;`, as the other player
  * helpers take it: with a Player * parameter the compiler swaps the two registers that hold
  * the player and the model set.
- * FAKEMATCH: the spit roast's last motion (0x323) reaches off[1] and off[2] through the
+ * FAKEMATCH: the spit roast's last motion (PL_MOT_SPIT_ROAST_TURN) reaches off[1] and off[2] through the
  * pointers offY and offZ. Written as off[1] and off[2], the compiler gives that block its own
  * copies of their addresses, 4 instructions more than the game's
  * (docs/notes/nm/Player_DrawHeldProp.md). */
@@ -672,7 +824,7 @@ void Player_DrawHeldProp(void *obj)
         scaleY = scaleX;
         scaleZ = scaleX;
         if (pl->carry & PL_CARRY_HOLD_MASK) {
-            if (Player_IsState((u8 *)pl, PL_GROUP_CARRY, PL_CARRY_PICKED_UP) != 0 && pl->motionId[0] == 0x33 && pl->motion[0].blend != 0) {
+            if (Player_IsState((u8 *)pl, PL_GROUP_CARRY, PL_CARRY_PICKED_UP) != 0 && pl->motionId[0] == 51 && pl->motion[0].blend != 0) {
                 return;
             }
             switch ((pl->carry & PL_CARRY_KIND_MASK) >> PL_CARRY_KIND_SHIFT) {
@@ -743,8 +895,8 @@ void Player_DrawHeldProp(void *obj)
             off[0] = 0.0f;
         } else {
             switch (pl->motionId[0]) {
-            case 0x19F:
-                part = &set->matSets[Effect_MapTexId(0x46)];
+            case 415:
+                part = &set->matSets[Effect_MapTexId(70)];
                 bone = PL_BONE_HAND;
                 rotX = 0.36651915f;
                 rotY = 0.17453294f;
@@ -753,7 +905,7 @@ void Player_DrawHeldProp(void *obj)
                 off[1] = 0.9f;
                 off[2] = 22.0f;
                 break;
-            case 0x1A0:
+            case 416:
                 if ((pl->motion[0].blend == 0 || pl->stateVar1 == 0)
                     && (Motion_ReachedFrame(pl, 0, 16.0f) == 0 || Motion_ReachedFrame(pl, 0, 164.0f) != 0)) {
                     return;
@@ -804,7 +956,7 @@ void Player_DrawHeldProp(void *obj)
                     break;
                 }
                 break;
-            case 0x1A2:
+            case 418:
                 if (Motion_ReachedFrame(pl, 0, 118.0f) != 0) {
                     return;
                 }
@@ -817,15 +969,15 @@ void Player_DrawHeldProp(void *obj)
                 off[1] = -1.0f;
                 off[2] = 65.0f;
                 break;
-            case 0x1A3:
-            case 0x1A6:
+            case 419:
+            case 422:
                 switch (pl->motionId[0]) {
-                case 0x1A3:
+                case 419:
                     if (Motion_ReachedFrame(pl, 0, 26.0f) == 0 || Motion_ReachedFrame(pl, 0, 248.0f) != 0) {
                         return;
                     }
                     break;
-                case 0x1A6:
+                case 422:
                     if (Motion_ReachedFrame(pl, 0, 20.0f) == 0) {
                         return;
                     }
@@ -840,13 +992,13 @@ void Player_DrawHeldProp(void *obj)
                 off[1] = 0.0f;
                 off[2] = -6.0f;
                 break;
-            case 0x1A4:
-            case 0x1A5:
-                if (pl->motionId[0] == 0x1A4) {
+            case 420:
+            case 421:
+                if (pl->motionId[0] == 420) {
                     if (Motion_ReachedFrame(pl, 0, 6.0f) == 0) {
                         return;
                     }
-                } else if (pl->motionId[0] == 0x1A5) {
+                } else if (pl->motionId[0] == 421) {
                     if (Motion_ReachedFrame(pl, 0, 34.0f) != 0) {
                         return;
                     }
@@ -860,9 +1012,9 @@ void Player_DrawHeldProp(void *obj)
                 off[1] = -3.8f;
                 off[2] = -5.2f;
                 break;
-            case 0x1A8:
-            case 0x1A9:
-                if (pl->motionId[0] == 0x1A8) {
+            case 424:
+            case 425:
+                if (pl->motionId[0] == 424) {
                     if (pl->motion[0].blend != 0) {
                         return;
                     }
@@ -878,33 +1030,33 @@ void Player_DrawHeldProp(void *obj)
                 off[1] = -7.0f;
                 off[2] = -3.0f;
                 break;
-            case 0x320:
-            case 0x321:
-            case 0x322:
-            case 0x323:
+            case 800:
+            case 801:
+            case 802:
+            case 803:
                 switch (pl->useItem) {
-                case 0xA3:
-                case 0xA4:
-                case 0xA5:
-                case 0xA6:
-                case 0xA7:
+                case 163:
+                case 164:
+                case 165:
+                case 166:
+                case 167:
                 default:
-                    idx = 0x3A;
+                    idx = 58;
                     break;
-                case 0xA8:
-                case 0xA9:
-                    idx = 0x80;
+                case 168:
+                case 169:
+                    idx = 128;
                     break;
                 }
                 stand = 1;
                 switch (pl->motionId[0]) {
-                case 0x320:
+                case 800:
                     if (Motion_ReachedFrame(pl, 0, 26.0f) == 0) {
                         return;
                     }
                     onBone = 0;
                     break;
-                case 0x321:
+                case 801:
                     if (Motion_ReachedFrame(pl, 0, 106.0f) != 0) {
                         return;
                     }
@@ -913,7 +1065,7 @@ void Player_DrawHeldProp(void *obj)
                     }
                     onBone = 1;
                     break;
-                case 0x322:
+                case 802:
                     if (Motion_ReachedFrame(pl, 0, 100.0f) != 0) {
                         return;
                     }
@@ -962,7 +1114,7 @@ void Player_DrawHeldProp(void *obj)
                     x = pos[0] + off[0];
                     y = pos[1] + off[1];
                     z = pos[2] + off[2];
-                    if (pl->motionId[0] == 0x323) {
+                    if (pl->motionId[0] == 803) {
                         offY = &off[1]; /* FAKEMATCH: see above */
                         offZ = &off[2];
                         off[0] = 12.0f;
@@ -995,16 +1147,16 @@ void Player_DrawHeldProp(void *obj)
                 }
                 mode = 1;
                 break;
-            case 0x32A:
+            case 810:
                 if (Motion_ReachedFrame(pl, 0, 22.0f) != 0) {
                     return;
                 }
-            case 0x324:
-            case 0x325:
-            case 0x326:
-            case 0x327:
-            case 0x328:
-            case 0x329:
+            case 804:
+            case 805:
+            case 806:
+            case 807:
+            case 808:
+            case 809:
                 part = &set->matSets[Player_HeldPartForMotion(pl)];
                 bone = PL_BONE_OTHER_HAND;
                 rotZ = -1.5707964f;
@@ -1014,11 +1166,11 @@ void Player_DrawHeldProp(void *obj)
                 rotY = rotX;
                 off[2] = 12.0f;
                 break;
-            case 0x3F1:
-            case 0x3F4:
-            case 0x3F5:
-            case 0x57D:
-            case 0x58A:
+            case 1009:
+            case 1012:
+            case 1013:
+            case 1405:
+            case 1418:
                 if (pl->weaponType == WEAPON_BOW) {
                     switch (pl->motionId[0]) {
                     case PL_MOT_BOW_CHARGE_FROM_DRAW:
@@ -1057,28 +1209,28 @@ void Player_DrawHeldProp(void *obj)
                     return;
                 }
                 break;
-            case 0x3F6:
-            case 0x583:
-            case 0x585:
-            case 0x586:
+            case 1014:
+            case 1411:
+            case 1413:
+            case 1414:
                 if (pl->weaponType == WEAPON_BOW) {
                     switch (pl->motionId[0]) {
-                    case 0x3F6:
+                    case 1014:
                         if (Motion_ReachedFrame(pl, 0, 12.0f) == 0) {
                             return;
                         }
                         break;
-                    case 0x583:
+                    case 1411:
                         if (Motion_ReachedFrame(pl, 0, 76.0f) != 0) {
                             return;
                         }
                         break;
-                    case 0x585:
+                    case 1413:
                         if (Motion_ReachedFrame(pl, 0, 12.0f) == 0 || Motion_ReachedFrame(pl, 0, 98.0f) != 0) {
                             return;
                         }
                         break;
-                    case 0x586:
+                    case 1414:
                         if (Motion_ReachedFrame(pl, 0, 100.0f) != 0) {
                             return;
                         }
@@ -1127,21 +1279,6 @@ typedef struct WpPose {
     f32 rot[3];
 } WpPose;
 
-void Bone_StoreMatrices(struct EmBone *b);
-void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
-s32 Model_Draw(u32 h, s32 flags);
-void Vec_Set(f32 *v, f32 x, f32 y, f32 z);
-void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Tex_Prepare(s32 n, s32 tex);
-struct KeyClock;
-f32 Key1_Eval(struct KeyClock *c, Key1 *k);
-void Key2_Eval(struct KeyClock *c, Key2 *k, f32 *a, f32 *b);
-void Key3_Eval(struct KeyClock *c, Key3 *k, f32 *out);
-void Key3_EvalByTimer(Player *p, Key3 *k, f32 *out);
-void Mtx_AddTrans(f32 *m, f32 *v);
-s32 Bowgun_HasBarrel(Player *p);
-s32 HeavyBowgun_HasShield(Player *p);
-s32 LightBowgun_HasSilencer(Player *p);
 extern WpPose gWpPoseDrawnAlt[];
 extern WpPose gWpPoseDrawn[];
 extern WpPose gWpPoseSheathed[];
@@ -1228,7 +1365,7 @@ extern Key1 gBowKey58AScaleZ[];
 /*
  * Draws the player's weapon (weaponModel) at the alpha given:
  * - places it by Player_MotionPhase: on the hand's bone (PL_BONE_HAND, PL_BONE_OTHER_HAND) with
- *   gWpPoseDrawn/DrawnAlt (gWpPoseSharpen while sharpening, motion 0x19D), or sheathed on part
+ *   gWpPoseDrawn/DrawnAlt (gWpPoseSharpen while sharpening, PL_MOT_SHARPEN), or sheathed on part
  *   record 9 (the sword and shield, the dual swords) or 10 (the others) with gWpPoseSheathed,
  *   scaled per weapon;
  * - scales and turns its moving bones by weapon type and motion, from keyframe tracks of the
@@ -1236,7 +1373,7 @@ extern Key1 gBowKey58AScaleZ[];
  *   materials show by its parts (Bowgun_HasBarrel, HeavyBowgun_HasShield,
  *   LightBowgun_HasSilencer);
  * - draws its material sets, the second one of a lance, a sword and shield or dual swords (the
- *   shield or the other blade) on bone 0x11, by the second part's phase;
+ *   shield or the other blade) on bone 17, by the second part's phase;
  * - then, for the long sword, the bow and the gunlance, draws again the materials that stay on
  *   the back while the weapon is out, on part record 10 by gWpPoseSheathed.
  * otherPlayer is set when Player_Draw draws another player's hunter (Player_MotionPhase).
@@ -1269,7 +1406,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         return;
     }
     Gs_SetState(RS_COLOR2, -1);
-    Tex_Prepare(4, pl->index + 0x21);
+    Tex_Prepare(4, pl->index + 33);
     phase = Player_MotionPhase(pl, 0, otherPlayer);
     scale = 1.0f;
     wpModel = pl->weaponModel;
@@ -1282,7 +1419,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         } else {
             pose = &gWpPoseDrawn[pl->weaponType];
         }
-        if (pl->motionId[0] == 0x19D) {
+        if (pl->motionId[0] == 413) {
             pose = &gWpPoseSharpen[pl->weaponType];
         }
         poseSrc = pose->off;
@@ -1313,25 +1450,25 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
             break;
         }
         if ((s32)pl->weaponType == WEAPON_LIGHT_BOWGUN
-            && (pl->motionId[0] == 0x58E || pl->motionId[0] == 0x58F || pl->motionId[0] == 0x3EA || pl->motionId[0] == 0x3EB
-                || pl->motionId[0] == 0x3F1 || pl->motionId[0] == 0x3F2)
+            && (pl->motionId[0] == 1422 || pl->motionId[0] == 1423 || pl->motionId[0] == 1002 || pl->motionId[0] == 1003
+                || pl->motionId[0] == 1009 || pl->motionId[0] == 1010)
             && pl->motion[0].blend == 0) {
             switch (pl->motionId[0]) {
-            case 0x3EA:
-            case 0x58E:
-            case 0x58F:
+            case 1002:
+            case 1422:
+            case 1423:
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3EAOff, off);
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3EARot, rot);
                 break;
-            case 0x3EB:
+            case 1003:
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3EBOff, off);
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3EBRot, rot);
                 break;
-            case 0x3F1:
+            case 1009:
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3F1Off, off);
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3F1Rot, rot);
                 break;
-            case 0x3F2:
+            case 1010:
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3F2Off, off);
                 Key3_Eval((struct KeyClock *)pl, gLbgKey3F2Rot, rot);
                 break;
@@ -1400,14 +1537,14 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
             boneScale[0] = 1.5f;
         }
         switch (pl->motionId[0]) {
-        case 0x57C:
+        case 1404:
             if (pl->motion[0].blend == 0) {
                 boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHammerKey57CScale);
             } else {
                 boneScale[0] = 1.5f;
             }
             break;
-        case 0x57E:
+        case 1406:
             if (pl->motion[0].blend == 0) {
                 boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHammerKey57EScale);
             } else {
@@ -1424,9 +1561,9 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         Vec_Set(rot, 0.0f, 0.0f, 0.0f);
         Vec_Set(boneScale, 1.0f, 1.0f, 1.0f);
         switch (pl->motionId[0]) {
-        case 0x57D:
-        case 0x57E:
-        case 0x57F:
+        case 1405:
+        case 1406:
+        case 1407:
             Key2_Eval((struct KeyClock *)pl, gHornKey57DRot, &rot[0], &rot[2]);
             Key3_Eval((struct KeyClock *)pl, gHornKey57DScale, boneScale);
             break;
@@ -1450,7 +1587,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
             Vec_Set(boneScale2, 2.6f, 1.0f, 2.5f);
         }
         switch (pl->motionId[0]) {
-        case 0x19D:
+        case 413:
             if (pl->motion[0].blend == 0) {
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gGsKey19DScaleZ);
                 Key2_Eval((struct KeyClock *)pl, gGsKey19DScaleXZ, &boneScale2[0], &boneScale2[2]);
@@ -1458,11 +1595,11 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 boneScale[2] = 0.73f;
             }
             break;
-        case 0x3EA:
-        case 0x3F8:
-        case 0x582:
+        case 1002:
+        case 1016:
+        case 1410:
             if (pl->motion[0].blend == 0) {
-                if (pl->motionId[0] != 0x582) {
+                if (pl->motionId[0] != 1410) {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gGsKey3EAScaleZ);
                     Key2_Eval((struct KeyClock *)pl, gGsKey3EAScaleXZ, &boneScale2[0], &boneScale2[2]);
                 } else {
@@ -1474,10 +1611,10 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 Vec_Set(boneScale2, 1.0f, 1.0f, 1.0f);
             }
             break;
-        case 0x3EB:
-        case 0x3F9:
+        case 1003:
+        case 1017:
             if (pl->motion[0].blend == 0) {
-                if (pl->motionId[0] == 0x3EB) {
+                if (pl->motionId[0] == 1003) {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gGsKey3EBScaleZ);
                     Key2_Eval((struct KeyClock *)pl, gGsKey3EBScaleXZ, &boneScale2[0], &boneScale2[2]);
                 } else {
@@ -1512,17 +1649,17 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
     case WEAPON_LANCE:
         Mtx_GetTrans(pos, bones[2].local);
         switch (pl->motionId[0]) {
-        case 0x19D:
+        case 413:
             if (pl->motion[0].blend == 0) {
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLanceKey19DScaleZ);
             } else {
                 boneScale[2] = 0.45f;
             }
             break;
-        case 0x3EA:
-        case 0x3F2:
+        case 1002:
+        case 1010:
             if (pl->motion[0].blend == 0) {
-                if (pl->motionId[0] != 0x3F2) {
+                if (pl->motionId[0] != 1010) {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLanceKey3EAScaleZ);
                 } else {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLanceKey3F2ScaleZ);
@@ -1531,10 +1668,10 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 boneScale[2] = 0.45f;
             }
             break;
-        case 0x3EB:
-        case 0x3F1:
+        case 1003:
+        case 1009:
             if (pl->motion[0].blend == 0) {
-                if (pl->motionId[0] == 0x3EB) {
+                if (pl->motionId[0] == 1003) {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLanceKey3EBScaleZ);
                 } else {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLanceKey3F1ScaleZ);
@@ -1543,7 +1680,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 boneScale[2] = 1.0f;
             }
             break;
-        case 0x3FA:
+        case 1018:
             if (pl->motion[0].blend == 0) {
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLanceKey3FAScaleZ);
             } else {
@@ -1567,36 +1704,36 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         Mtx_GetTrans(pos, bones[2].local);
         Mtx_GetTrans(off, bones[3].local);
         switch (pl->motionId[0]) {
-        case 0x19D:
+        case 413:
             if (pl->motion[0].blend == 0) {
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gGlKey19DRotX);
             } else {
                 rot[0] = 180.0f;
             }
             break;
-        case 0x3EA:
+        case 1002:
             if (pl->motion[0].blend == 0) {
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gGlKey3EARotX);
             } else {
                 rot[0] = 180.0f;
             }
             break;
-        case 0x3F2:
+        case 1010:
             if (pl->motion[0].blend == 0) {
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gGlKey3F2RotX);
             } else {
                 rot[0] = 180.0f;
             }
             break;
-        case 0x3EB:
-        case 0x3F1:
+        case 1003:
+        case 1009:
             if (pl->motion[0].blend == 0) {
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gGlKey3EBRotX);
             } else {
                 rot[0] = 0.0f;
             }
             break;
-        case 0x57C:
+        case 1404:
             if (pl->motion[0].blend == 0) {
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gGlKey57CRotX);
             } else {
@@ -1616,7 +1753,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         if (gScene.inLobby != 0) {
             Vec_Set(rot, 0.0f, 0.0f, 0.0f);
         } else if (pl->weaponTimer > 0) {
-            if (pl->motionId[0] == 0x580) {
+            if (pl->motionId[0] == 1408) {
                 Key3_Eval((struct KeyClock *)pl, gGlKey580Rot, rot);
             } else {
                 Vec_Set(rot, 69.0f, -43.0f, -30.0f);
@@ -1637,16 +1774,16 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         Vec_Set(rot, 0.0f, 0.0f, 0.0f);
         if (pl->motion[0].blend == 0) {
             switch (pl->motionId[0]) {
-            case 0x3EA:
-            case 0x3F2:
+            case 1002:
+            case 1010:
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey3EARotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey3EAScaleZ);
                 break;
-            case 0x3EB:
+            case 1003:
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey3EBRotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey3EBScaleZ);
                 break;
-            case 0x3ED:
+            case 1005:
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey3EDRotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey3EDScaleZ);
                 break;
@@ -1658,7 +1795,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey3F4RotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey3F4ScaleZ);
                 break;
-            case 0x3F6:
+            case 1014:
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey3F6RotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey3F6ScaleZ);
                 break;
@@ -1666,11 +1803,11 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey57DRotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey57DScaleZ);
                 break;
-            case 0x580:
+            case 1408:
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey580RotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey580ScaleZ);
                 break;
-            case 0x587:
+            case 1415:
                 rot[0] = Key1_Eval((struct KeyClock *)pl, gBowKey587RotX);
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowKey587ScaleZ);
                 break;
@@ -1687,13 +1824,13 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 break;
             }
         } else {
-            if ((pl->motionId[0] != 0x3EB && pl->motionId[0] != 0x3ED && (pl->weaponOut == 0 || phase == WP_PHASE_SHEATHED))
-                || pl->motionId[0] == 0x3EA) {
+            if ((pl->motionId[0] != 1003 && pl->motionId[0] != 1005 && (pl->weaponOut == 0 || phase == WP_PHASE_SHEATHED))
+                || pl->motionId[0] == 1002) {
                 rot[0] = 0.0f;
             } else {
                 rot[0] = 155.0f;
             }
-            if (pl->motionId[0] == 0x580) {
+            if (pl->motionId[0] == 1408) {
                 rot[0] = 110.0f;
                 boneScale[2] = 2.7f;
             }
@@ -1716,7 +1853,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
         boneScale[2] = 1.0f;
         if (pl->motion[0].blend == 0) {
             switch (pl->motionId[0]) {
-            case 0x579:
+            case 1401:
                 if (pl->weaponType == WEAPON_LIGHT_BOWGUN) {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLbgKey579ScaleZ);
                     boneScale[1] = Key1_Eval((struct KeyClock *)pl, gLbgKey579ScaleY);
@@ -1725,7 +1862,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                     boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHbgKey579ScaleX);
                 }
                 break;
-            case 0x57D:
+            case 1405:
                 if (pl->roundsLoaded == 0) {
                     if (pl->weaponType == WEAPON_LIGHT_BOWGUN) {
                         boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLbgKey57DEmptyScaleZ);
@@ -1742,7 +1879,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                     boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHbgKey57DScaleX);
                 }
                 break;
-            case 0x580:
+            case 1408:
                 boneScale[2] = Key1_Eval((struct KeyClock *)pl, gBowgunKey580ScaleZ);
                 if (pl->weaponType == WEAPON_LIGHT_BOWGUN) {
                     boneScale[1] = Key1_Eval((struct KeyClock *)pl, gBowgunKey580Scale2);
@@ -1750,7 +1887,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                     boneScale[0] = Key1_Eval((struct KeyClock *)pl, gBowgunKey580Scale2);
                 }
                 break;
-            case 0x57C:
+            case 1404:
                 if (pl->weaponType == WEAPON_LIGHT_BOWGUN) {
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gLbgKey57CScaleZ);
                     boneScale[1] = Key1_Eval((struct KeyClock *)pl, gLbgKey57CScaleY);
@@ -1759,22 +1896,22 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                     boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHbgKey57CScaleX);
                 }
                 break;
-            case 0x3EA:
-            case 0x58E:
-            case 0x58F:
+            case 1002:
+            case 1422:
+            case 1423:
                 if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(bones[2].local, 6.2831855f * Key1_Eval((struct KeyClock *)pl, gHbgKey3EARotX) / 360.0f, 0.0f, 0.0f);
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gHbgKey3EAScaleZ);
                     boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHbgKey3EAScaleX);
                 }
                 break;
-            case 0x3EB:
+            case 1003:
                 if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(bones[2].local, 6.2831855f * Key1_Eval((struct KeyClock *)pl, gHbgKey3EBRotX) / 360.0f, 0.0f, 0.0f);
                     boneScale[0] = Key1_Eval((struct KeyClock *)pl, gHbgKey3EBScaleX);
                 }
                 break;
-            case 0x3F1:
+            case 1009:
                 if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(bones[2].local, 6.2831855f * Key1_Eval((struct KeyClock *)pl, gHbgKey3EBRotX) / 360.0f, 0.0f, 0.0f);
                     boneScale[2] = Key1_Eval((struct KeyClock *)pl, gHbgKey3F1ScaleZ);
@@ -1809,7 +1946,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                 break;
             }
         } else {
-            if ((pl->roundsLoaded != 0 && pl->motionId[0] != 0x57C) || pl->motionId[0] == 0x579) {
+            if ((pl->roundsLoaded != 0 && pl->motionId[0] != 1404) || pl->motionId[0] == 1401) {
                 if (pl->weaponType == WEAPON_LIGHT_BOWGUN) {
                     boneScale[1] = 0.55f;
                     boneScale[2] = 2.0f;
@@ -1818,8 +1955,8 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
                     boneScale[2] = 3.0f;
                 }
             }
-            if ((pl->motionId[0] != 0x3EB && pl->motionId[0] != 0x3F1 && (pl->weaponOut == 0 || phase == WP_PHASE_SHEATHED))
-                || pl->motionId[0] == 0x3EA || pl->motionId[0] == 0x58E || pl->motionId[0] == 0x58F) {
+            if ((pl->motionId[0] != 1003 && pl->motionId[0] != 1009 && (pl->weaponOut == 0 || phase == WP_PHASE_SHEATHED))
+                || pl->motionId[0] == 1002 || pl->motionId[0] == 1422 || pl->motionId[0] == 1423) {
                 Mtx_SetRotXYZ(bones[1].local, 0.0f, 0.0f, 0.0f);
                 if (pl->weaponType == WEAPON_HEAVY_BOWGUN) {
                     Mtx_SetRotXYZ(bones[2].local, 0.0f, 0.0f, 0.0f);
@@ -1845,7 +1982,7 @@ void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha)
     for (i = 0; i < wpModel->matSetCount; i++, set++) {
         if (i != 0 && (pl->weaponType == WEAPON_LANCE || pl->weaponType == WEAPON_SWORD_SHIELD || pl->weaponType == WEAPON_DUAL_SWORDS)) {
             bones = wpModel->partBones[1];
-            Mtx_Copy(mtx, (void *)Em_GetBone(pl, 0x11));
+            Mtx_Copy(mtx, (void *)Em_GetBone(pl, 17));
             Vec_Set(rot, 0.0f, 0.0f, 0.0f);
             switch (pl->weaponType) {
             case WEAPON_SWORD_SHIELD:
@@ -2139,7 +2276,7 @@ u32 Color_Cycle8(void)
  * (EQUIP_LEGS is the skeleton's own model) or EQUIP_SLOT_FACE.
  * - The head's first material takes the hair colour.
  * - The second material of the first set of a part whose Player_PartFlags has bit 0 takes the
- *   style colour (the cycling Color_Cycle8 for style 0xB).
+ *   style colour (the cycling Color_Cycle8 for style 11).
  * - The face is hidden (alpha 0) by the head armour's flags: bit 2 hides its first material,
  *   bit 4 all of it. With headAltModel set, neither the face nor the head's style colour is
  *   touched.
@@ -2149,7 +2286,7 @@ void Player_SetLight(Player *pl, u8 slot, s32 setIndex, s32 matIndex, ModelMat *
     u32 color;
     u8 headFlags;
 
-    if (pl->style == 0xB) {
+    if (pl->style == 11) {
         color = Color_Cycle8();
     } else {
         color = pl->styleColor;
@@ -2192,32 +2329,6 @@ void Player_SetLight(Player *pl, u8 slot, s32 setIndex, s32 matIndex, ModelMat *
     Gs_SetState((u8)RS_MATERIAL(matIndex), (u32)mat);
 }
 
-s32 Player_IsLocal(void *obj);
-s32 CamCtl_IsAiming(Player *pl);
-s32 Scene_InField(void);
-s32 CamCtl_GetPlayerFade(f32 *out);
-f32 Math_Absf(f32 x);
-void Player_DrawHeldProp(void *obj);
-s16 Player_IsState(void *obj, u8 state, u8 sub);
-void LightSet_SetColors(void *obj, s32 n);
-void LightSet_FadeColors(void *obj);
-void Bone_StoreMatrices(struct EmBone *b);
-void Draw_ApplyStates(u32 a);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-void LightSet_ResetColors(s32 a);
-void LightSet_Apply(s32 a);
-void Gfx_SetTexFilter(s32 a);
-void Tex_Prepare(s32 n, s32 tex);
-s32 Debug_IsOn(s32 unused0);
-void Player_DrawWeapon(Player *pl, s32 otherPlayer, f32 alpha);
-void Player_DrawHeldItem(void *obj);
-void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
-void Mtx_Identity(f32 *m);
-struct BoneRoot;
-void Bone_SetMatricesRel(struct EmBone *b, struct BoneRoot *r, s16 tbl, s32 a3, f32 *parent);
-void Bone_SetMatrices(struct EmBone *b, struct BoneRoot *r, s16 tbl, s32 a3);
-void Player_SetLight(Player *pl, u8 slot, s32 a, s32 b, ModelMat *light, f32 f);
 extern u16 gPlPartRootBone[];
 
 /*
@@ -2232,7 +2343,7 @@ extern u16 gPlPartRootBone[];
  * - the held prop (Player_DrawHeldProp);
  * - the aiming markers: Hud_DrawObjMarker on the mounted gun with L1 held, Player_DrawBoneMarker
  *   for a loaded bowgun aimed with L1.
- * The body's textures take 2 slots per player from 0xD, the parts' 12 per player from 0x2B.
+ * The body's textures take 2 slots per player from 13, the parts' 12 per player from 43.
  */
 void Player_DrawLocal(Player *pl, s32 unused /* a1: DrawCb_LocalPlayer passes 0 */)
 {
@@ -2264,12 +2375,12 @@ void Player_DrawLocal(Player *pl, s32 unused /* a1: DrawCb_LocalPlayer passes 0 
     LightSet_SetColors(pl, 1);
     LightSet_FadeColors(pl);
     Gs_SetState(RS_COLOR2, -1);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     if (pl->nearCamera != 0) {
         Gs_SetState(RS_ALPHA_REF, 0);
         alpha = 0.2f;
     } else {
-        Gs_SetState(RS_ALPHA_REF, 0xC0);
+        Gs_SetState(RS_ALPHA_REF, 192);
         alpha = pl->alpha;
     }
     if (Player_IsLocal(pl) == 1 && Scene_InField() == 1) {
@@ -2278,15 +2389,15 @@ void Player_DrawLocal(Player *pl, s32 unused /* a1: DrawCb_LocalPlayer passes 0 
             if (Math_Absf(alpha - targetAlpha) <= 0.1f) {
                 alpha = targetAlpha;
             }
-            Gs_SetState(RS_ALPHA_REF, alpha < 1.0f ? 0 : 0xC0);
+            Gs_SetState(RS_ALPHA_REF, alpha < 1.0f ? 0 : 192);
             pl->fadeAlpha = alpha;
         } else {
             pl->fadeAlpha = 1.0f;
-            Gs_SetState(RS_ALPHA_REF, 0xC0);
+            Gs_SetState(RS_ALPHA_REF, 192);
             alpha = pl->alpha;
         }
     }
-    Tex_Prepare(2, pl->index * 2 + 0xD);
+    Tex_Prepare(2, pl->index * 2 + 13);
     bodySet = body->matSets;
     Mtx_Copy(world, pl->worldMtx[0]);
     Bone_StoreMatrices(body->bones);
@@ -2304,11 +2415,11 @@ void Player_DrawLocal(Player *pl, s32 unused /* a1: DrawCb_LocalPlayer passes 0 
         Model_Draw(bodySet->id, 0);
     }
     Draw_SetDefaultState();
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     if (pl->weaponShown != 0) {
         Player_DrawWeapon(pl, 0, alpha);
     }
-    Tex_Prepare(0xC, pl->index * 12 + 0x2B);
+    Tex_Prepare(12, pl->index * 12 + 43);
     for (slot = EQUIP_SLOT_FACE, rootBone = &gPlPartRootBone[EQUIP_SLOT_FACE]; slot < EQUIP_SLOT_WEAPON; slot++, rootBone++) {
         variant = pl->armourKind[slot];
         partModel = pl->partModels[slot];
@@ -2376,28 +2487,18 @@ void Player_DrawLocal(Player *pl, s32 unused /* a1: DrawCb_LocalPlayer passes 0 
     }
 }
 
-s16 Player_IsState(void *obj, u8 state, u8 sub);
-s32 Motion_InFrameRange(void *obj, s32 layer, f32 from, f32 to);
-struct EmBone *Em_GetBone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void Draw_ApplyStates(u32 a);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-
 /*
  * Draws the prop the player holds in some motions: a material set of gCommonModels[0] (lit by its
  * own materials) or of gAreaSubModels[0], placed at a bone with an offset and a turn.
- * - Crouched in AREA_TAVERN to AREA_ELDER_HALL or in AREA_HUB_0x89 (not in motions 0x260 and
- *   0x296, nor in the town's action state 0x80): common set 0x28 at bone 0x12.
- * - Motion 0xFA in AREA_HUB_0xAC, frames 152 to 406: area set 5.
- * - Motion 0x19F: the common set of Effect_MapTexId(0x46) at bone 0xE.
- * - Motion 0x287 in AREA_HUB_0x57, frames 232 to 578: area set 0.
- * - Motions 0x324 to 0x329: the common set Player_HeldPartForMotion picks.
- * - Motion 0x349: common set 0x22 at bone 0xE, posed as the drawn heavy bowgun (gWpPoseDrawn),
+ * - Crouched in AREA_TAVERN to AREA_ELDER_HALL or in AREA_HUB_0x89 (not in motions PL_MOT_TOWN_SIT and
+ *   662, nor in the town's action state TOWN_PC_POOGIE_DIG): common set 40 at bone 18.
+ * - Motion 250 in AREA_HUB_0xAC, frames 152 to 406: area set 5.
+ * - PL_MOT_PICKAXE_SWING: the common set of Effect_MapTexId(70) at bone 14.
+ * - Motion 647 in AREA_HUB_0x57, frames 232 to 578: area set 0.
+ * - Motions PL_MOT_FISH_READY to PL_MOT_FISH_REEL_EMPTY: the common set Player_HeldPartForMotion picks.
+ * - Motion 841: common set 34 at bone 14, posed as the drawn heavy bowgun (gWpPoseDrawn),
  *   10 lower.
- * The misses of motions 0xFA and 0x287 jump to the end instead of returning: only that way does
+ * The misses of motions 250 and 647 jump to the end instead of returning: only that way does
  * the compiler lay the function out as the game's.
  */
 void Player_DrawHeldItem(void *obj)
@@ -2418,11 +2519,11 @@ void Player_DrawHeldItem(void *obj)
     f32 *pose;
 
     fromCommon = 0;
-    if (pl->action == PL_POSTURE_CROUCHED && pl->motionId[0] != 0x260 && pl->motionId[0] != 0x296
-        && Player_IsState(pl, PL_GROUP_ACTION, 0x80) == 0
+    if (pl->action == PL_POSTURE_CROUCHED && pl->motionId[0] != 608 && pl->motionId[0] != 662
+        && Player_IsState(pl, PL_GROUP_ACTION, 128) == 0
         && ((u32)(gScene.area - AREA_TAVERN) <= AREA_ELDER_HALL - AREA_TAVERN || gScene.area == AREA_HUB_0x89)) {
         fromCommon = 1;
-        setIndex = 0x28;
+        setIndex = 40;
         bone = PL_BONE_OTHER_HAND;
         rotX = 1.5707964f;
         off[0] = -23.5f;
@@ -2432,7 +2533,7 @@ void Player_DrawHeldItem(void *obj)
         rotZ = 0.0f;
     } else {
         switch (pl->motionId[0]) {
-        case 0xFA:
+        case 250:
             if (gScene.area == AREA_HUB_0xAC && Motion_InFrameRange(pl, 0, 152.0f, 406.0f) != 0) {
                 setIndex = 5;
                 bone = PL_BONE_OTHER_HAND;
@@ -2446,9 +2547,9 @@ void Player_DrawHeldItem(void *obj)
                 goto end;
             }
             break;
-        case 0x19F:
+        case 415:
             fromCommon = 1;
-            setIndex = Effect_MapTexId(0x46);
+            setIndex = Effect_MapTexId(70);
             bone = PL_BONE_HAND;
             rotX = 0.36651915f;
             rotY = 0.17453294f;
@@ -2457,7 +2558,7 @@ void Player_DrawHeldItem(void *obj)
             off[1] = 0.9f;
             off[2] = 22.0f;
             break;
-        case 0x287:
+        case 647:
             if (gScene.area == AREA_HUB_0x57 && Motion_InFrameRange(pl, 0, 232.0f, 578.0f) != 0) {
                 setIndex = 0;
                 bone = PL_BONE_OTHER_HAND;
@@ -2471,12 +2572,12 @@ void Player_DrawHeldItem(void *obj)
                 goto end;
             }
             break;
-        case 0x324:
-        case 0x325:
-        case 0x326:
-        case 0x327:
-        case 0x328:
-        case 0x329:
+        case 804:
+        case 805:
+        case 806:
+        case 807:
+        case 808:
+        case 809:
             fromCommon = 1;
             setIndex = Player_HeldPartForMotion(pl);
             bone = PL_BONE_OTHER_HAND;
@@ -2487,10 +2588,10 @@ void Player_DrawHeldItem(void *obj)
             off[1] = -1.7f;
             off[2] = 12.0f;
             break;
-        case 0x349:
+        case 841:
             bone = PL_BONE_HAND;
             fromCommon = 1;
-            setIndex = 0x22;
+            setIndex = 34;
             pose = (f32 *)&gWpPoseDrawn[WEAPON_HEAVY_BOWGUN];
             off[0] = *pose++;
             off[1] = *pose++;
@@ -2535,10 +2636,9 @@ end:
     ;
 }
 
-
 /* Draws another player's hunter as Player_DrawLocal draws the local one, without the camera's fade
- * and the markers: the skeleton's own model (alpha 0.2 while nearCamera, unless debug switch 0x7B
- * is on), the weapon (Player_DrawWeapon, not in motion 0x349, where Player_DrawHeldItem draws it),
+ * and the markers: the skeleton's own model (alpha 0.2 while nearCamera, unless debug switch 123
+ * is on), the weapon (Player_DrawWeapon, not in motion 841, where Player_DrawHeldItem draws it),
  * the face and the four other armour pieces, then the held item (Player_DrawHeldItem). */
 void Player_Draw(Player *pl, s32 unused /* a1: DrawCb_Player passes 0 */)
 {
@@ -2567,15 +2667,15 @@ void Player_Draw(Player *pl, s32 unused /* a1: DrawCb_Player passes 0 */)
     LightSet_SetColors(pl, 1);
     LightSet_FadeColors(pl);
     Gs_SetState(RS_COLOR2, -1);
-    Gfx_SetTexFilter(1);
-    if (pl->nearCamera != 0 && Debug_IsOn(0x7B) == 0) {
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    if (pl->nearCamera != 0 && Debug_IsOn(123) == 0) {
         Gs_SetState(RS_ALPHA_REF, 0);
         alpha = 0.2f;
     } else {
-        Gs_SetState(RS_ALPHA_REF, 0xC0);
+        Gs_SetState(RS_ALPHA_REF, 192);
         alpha = pl->alpha;
     }
-    Tex_Prepare(2, pl->index * 2 + 0xD);
+    Tex_Prepare(2, pl->index * 2 + 13);
     bodySet = body->matSets;
     Mtx_Copy(world, pl->worldMtx[0]);
     Bone_StoreMatrices(body->bones);
@@ -2595,11 +2695,11 @@ void Player_Draw(Player *pl, s32 unused /* a1: DrawCb_Player passes 0 */)
         Model_Draw(bodySet->id, 0);
     }
     Draw_SetDefaultState();
-    Gfx_SetTexFilter(1);
-    if (pl->weaponShown != 0 && pl->motionId[0] != 0x349) {
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    if (pl->weaponShown != 0 && pl->motionId[0] != 841) {
         Player_DrawWeapon(pl, 1, alpha);
     }
-    Tex_Prepare(0xC, pl->index * 12 + 0x2B);
+    Tex_Prepare(12, pl->index * 12 + 43);
     for (slot = EQUIP_SLOT_FACE, rootBone = &gPlPartRootBone[EQUIP_SLOT_FACE]; slot < EQUIP_SLOT_WEAPON; slot++, rootBone++) {
         variant = pl->armourKind[slot];
         partModel = pl->partModels[slot];
@@ -2651,15 +2751,6 @@ void Player_Draw(Player *pl, s32 unused /* a1: DrawCb_Player passes 0 */)
 
 extern Model *gAreaSubModel;
 extern u8 gFaceBodyTypeMale[];
-void LightSet_SetColors(void *obj, s32 n);
-void LightSet_FadeColors(void *obj);
-void Bone_StoreMatrices(struct EmBone *b);
-void Draw_ApplyStates(u32 a);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-void LightSet_ResetColors(s32 a);
-void LightSet_Apply(s32 a);
-void Gfx_SetTexFilter(s32 a);
 
 /* The character maker's parts model (gAreaSubModel) holds one material set per part: the bodies
  * (four per type, by gFaceBodyTypeMale's variant), then the faces, then the hair styles. */
@@ -2687,10 +2778,10 @@ void CharMake_DrawHunter(Player *pl, s32 unused /* a1: DrawCb_CharMake passes 0 
     LightSet_SetColors(pl, 1);
     LightSet_FadeColors(pl);
     Gs_SetState(RS_COLOR2, -1);
-    Gs_SetState(RS_ALPHA_REF, 0xC0);
+    Gs_SetState(RS_ALPHA_REF, 192);
     Mtx_Copy(world, pl->worldMtx[0]);
     Bone_StoreMatrices(skeleton->bones);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     bodySet = 3 - gFaceBodyTypeMale[edit->face];
     typeBase = edit->type * 4;
     bodySet = bodySet + typeBase;
@@ -2732,688 +2823,9 @@ void CharMake_DrawHunter(Player *pl, s32 unused /* a1: DrawCb_CharMake passes 0 
     LightSet_Apply(1);
 }
 
-void *memset(void *p, s32 c, u32 n);
-extern f32 gLightSetDirs[][3];
-extern f32 gLightSetColors[][3];
-extern f32 gLightSetAmbients[][3];
-extern f32 gCamMatrix[];
 
-/* Sets up the three lights of set k: directions gLightSetDirs turned by the camera gCamMatrix, colours
- * gLightSetColors and gLightSetAmbients. */
-void LightSet_SetupSet(s32 setIndex)
-{
-    Light lights[3];
-    f32 lightDir[3];
-    f32 viewDir[3];
-    s16 i;
-    s32 row;
-    Light *light;
-
-    for (i = 0, light = lights; i < 3; i++, light++) {
-        row = setIndex * 3 + i;
-        memset(light, 0, sizeof(Light));
-        lightDir[0] = gLightSetDirs[row][0];
-        lightDir[1] = gLightSetDirs[row][1];
-        lightDir[2] = gLightSetDirs[row][2];
-        Vec_Rotate(viewDir, lightDir, gCamMatrix);
-        light->color[0] = gLightSetColors[row][0];
-        light->color[1] = gLightSetColors[row][1];
-        light->color[2] = gLightSetColors[row][2];
-        light->ambient[0] = gLightSetAmbients[row][0];
-        light->ambient[1] = gLightSetAmbients[row][1];
-        light->ambient[2] = gLightSetAmbients[row][2];
-        light->unk14[0] = 1.0f;
-        light->unk14[1] = 1.0f;
-        light->unk14[2] = 1.0f;
-        light->dir[0] = viewDir[0];
-        light->dir[1] = viewDir[1];
-        light->dir[2] = viewDir[2];
-    }
-    Gs_SetState(RS_LIGHT(0), (u32)&lights[0]);
-    Gs_SetState(RS_LIGHT(1), (u32)&lights[1]);
-    Gs_SetState(RS_LIGHT(2), (u32)&lights[2]);
-}
-
-/* Puts the equipment preview's view back to the start: no pan, no zoom. */
-void EquipPreview_Reset(void)
-{
-    gEquipPreview.zoom = 0.0f;
-    gEquipPreview.panX = 0.0f;
-    gEquipPreview.panY = 0.0f;
-    gEquipPreview.unk20 = 0.0f;
-}
-
-void Camera_SetPerspective(s32 i, f32 n, f32 f, f32 fov, f32 aspect);
-
-/* The lobby's menu offsets (lobby .bss), which place the preview window. */
-extern s16 gMenuOffsetY;
-extern s16 gMenuOffsetX;
-
-/* Sets the view and the projection: the camera's own (mode 0), or the preview's window: the fixed
- * one for EQUIP_PREVIEW_FIXED, else one placed by the lobby's menu offsets with the field of view
- * widened by the preview's zoom. The camera's own near and far values stay. */
-void EquipPreview_SetViewport(s16 mode)
-{
-    GsViewport view;
-    EquipPreview *preview = &gEquipPreview;
-
-    if (mode == 0) {
-        Gs_SetState(RS_ORTHO, (u32)gCamera->viewport);
-        Camera_SetPerspective(0x20, gCamera->farZ, gCamera->nearZ, gCamera->fov, 1.4285715f);
-        return;
-    }
-    view.nearZ = 0;
-    view.farZ = 1.0f;
-    if (preview->equipType == EQUIP_PREVIEW_FIXED) {
-        gCamera->fov = 0.08726647f;
-        view.x = 0x108;
-        view.y = 0x3A;
-        view.width = 0xE8;
-        view.height = 0x118;
-        Gs_SetState(RS_ORTHO, (u32)&view);
-        Camera_SetPerspective(0x20, gCamera->farZ, gCamera->nearZ, gCamera->fov, 1.0f);
-    } else {
-        gCamera->fov = 6.2831855f * (5.0f * (1.0f + preview->zoom / 100.0f)) / 360.0f;
-        view.x = 0.8f * (f32)(gMenuOffsetX + 0x136);
-        view.y = gMenuOffsetY + 0x36;
-        view.width = 0xF4;
-        view.height = 0x96;
-        Gs_SetState(RS_ORTHO, (u32)&view);
-        Camera_SetPerspective(0x20, gCamera->farZ, gCamera->nearZ, gCamera->fov, 2.0f);
-    }
-}
-
-/* unit's own declaration: s32 here, where the definition returns s8: with s8 the compiler adds a sign extension after the call that the game's code doesn't have */
-s32 Kbd_IsOpen(void);
-s32 Gs_ClearColor(u8 mode, u32 color);
-void Gfx_SetBlend(s32 a, s32 b);
-void Vec_Set(f32 *v, f32 x, f32 y, f32 z);
-void Mtx_LookAt(f32 *m, f32 *eye, f32 *at, f32 *up);
-struct MtxSlot;
-void MtxSlot_Load(struct MtxSlot *m, s32 i);
-void Mtx_Inverse(f32 *dst, f32 *src);
-void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Effect_RunList(EquipFxSwing *a, struct EmBone *b3, struct EmBone *b1, struct EmBone *b0, u16 key, u8 alt, u8 kind);
-void Camera_RestoreFov(void);
-extern s32 gPreviewHideTex;
-extern u16 gFrameTick;
-extern f32 gViewMatrix[];
-extern u8 gWeaponKindClass[];
-extern EquipPreviewEye gEquipPreviewEyes[];
-extern f32 gEquipPreviewWpEyeZ[];
-extern f32 gEquipPreviewWpPos[][3];
-extern f32 gEquipPreviewSubPos[][3];
-extern f32 gEquipPreviewWpRot[][3];
-extern f32 gEquipPreviewSubRot[][3];
-extern f32 gEquipPreviewWaistBones[][3];
-extern f32 gEquipPreviewArmsBones[][3];
-extern f32 gEquipPreviewBodyBones[][3];
-
-#pragma optimization_level 4
-/*
- * Draws the equipment preview (gEquipPreview) in its window, when a model is loaded:
- * - the pad pans it (the d-pad) and zooms it (L1, L2) unless the keyboard is open or the view is
- *   the fixed one, and L3 resets the view;
- * - the eye looks straight along z from the piece's eye point (gEquipPreviewEyes; a weapon's
- *   distance by its WeaponType), lit by light set 1 in the fixed window, else set 0;
- * - the model turns with the frame counter in the fixed window, an armour piece is turned 30
- *   degrees (the arms also tilted 45); its bones are posed by piece (the waist, the arms and the
- *   body from their tables; the head's swinging parts settle over ten passes the first time) or
- *   by weapon (gEquipPreviewWpRot/WpPos);
- * - each material is drawn opaque, apart from the texture gPreviewHideTex and, per weapon, the
- *   materials of its second part, which the second pass draws (a bowgun's materials 1 and 2 are
- *   not drawn at all); the head takes the player's hair colour, the fixed model the preview's;
- * - a weapon of two parts then draws its second part on partBones[1] (a lance, a sword and
- *   shield, dual swords) or again on partBones[0] (a long sword, a gunlance, a bow), placed by
- *   gEquipPreviewSubRot/SubPos;
- * - the camera, its view and its field of view are put back.
- * subType is unsigned: with a signed one the compiler moves the conversion of the parts loop's
- * test out of the loop into a saved register, where the game's code redoes it on each pass.
- */
-void EquipPreview_Draw(void)
-{
-    EquipPreview *preview;
-    u8 weaponType;
-    Model *pieceModel;
-    EmBone *bones;
-    ModelMatSet *set;
-    ModelMat *materials;
-    ModelMat *material;
-    s32 i;
-    s32 j;
-    Player *pl;
-    u32 subType;
-    f32 rotX;
-    f32 rotY;
-    f32 rotZ;
-    f32 *trans;
-
-    f32 eye[3];
-    f32 target[3];
-    f32 upDir[3];
-    f32 pos[3];
-    f32 mtx[16];
-    f32 view[16];
-
-    pl = &gPlayers[gScene.localPlayer];
-    preview = &gEquipPreview;
-    if (preview->active == 0) {
-        return;
-    }
-    Gs_SetState(RS_COLOR2, -1);
-    if (Kbd_IsOpen() == 0 && preview->equipType != EQUIP_PREVIEW_FIXED) {
-        if (gPadState[0].dir & PAD_L2) {
-            if ((preview->zoom -= 2.0f) <= -30.0f) {
-                preview->zoom = -30.0f;
-            }
-        } else if (gPadState[0].dir & PAD_L1) {
-            if ((preview->zoom += 2.0f) >= 30.0f) {
-                preview->zoom = 30.0f;
-            }
-        }
-        if (gPadState[0].dir & PAD_RIGHT) {
-            if ((preview->panX -= 4.0f) <= -60.0f) {
-                preview->panX = -60.0f;
-            }
-        } else if (gPadState[0].dir & PAD_LEFT) {
-            if ((preview->panX += 4.0f) >= 60.0f) {
-                preview->panX = 60.0f;
-            }
-        }
-        if (gPadState[0].dir & PAD_UP) {
-            if ((preview->panY -= 2.0f) <= -30.0f) {
-                preview->panY = -30.0f;
-            }
-        } else if (gPadState[0].dir & PAD_DOWN) {
-            if ((preview->panY += 2.0f) >= 30.0f) {
-                preview->panY = 30.0f;
-            }
-        }
-        if (gPadState[0].pressed & PAD_L3) {
-            EquipPreview_Reset();
-        }
-    }
-    pieceModel = preview->model;
-    EquipPreview_SetViewport(1);
-    Gs_SetState(RS_ZWRITE, 1);
-    Gs_ClearColor(0, 0);
-    Gs_SetState(RS_COLOR2, -1);
-    Gfx_SetBlend(4, 5);
-    Gs_SetState(RS_ZTEST, RS_CMP_LEQUAL);
-    Gs_SetState(RS_ALPHA_TEST, RS_CMP_GREATER);
-    Vec_Set(upDir, 0.0f, 1.0f, 0.0f);
-    switch (preview->equipType) {
-    case EQUIP_PREVIEW_FIXED:
-        *(EquipPreviewEye *)eye = gEquipPreviewEyes[1];
-        break;
-    case EQUIP_BLADE:
-    case EQUIP_GUN:
-        weaponType = gWeaponKindClass[preview->equipId];
-        eye[0] = 0.0f;
-        eye[1] = 0.0f;
-        eye[2] = gEquipPreviewWpEyeZ[weaponType];
-        target[0] = 0.0f;
-        target[1] = 0.0f;
-        break;
-    default:
-        *(EquipPreviewEye *)eye = gEquipPreviewEyes[preview->equipType];
-        break;
-    }
-    if (preview->equipType != EQUIP_PREVIEW_FIXED) {
-        eye[0] += preview->panX;
-        eye[1] += preview->panY;
-        eye[2] *= 6.0f;
-    }
-    target[0] = eye[0];
-    target[1] = eye[1];
-    target[2] = 0.0f;
-    Mtx_LookAt(mtx, eye, target, upDir);
-    Gs_SetState(RS_VIEW_MTX, (u32)mtx);
-    MtxSlot_Load((struct MtxSlot *)view, 0x21);
-    Mtx_Inverse(gCamMatrix, view);
-    if (preview->equipType == EQUIP_PREVIEW_FIXED) {
-        LightSet_SetupSet(1);
-    } else {
-        LightSet_SetupSet(0);
-    }
-    Mtx_Identity(mtx);
-    if (preview->equipType != EQUIP_BLADE && preview->equipType != EQUIP_GUN) {
-        if (preview->equipType == EQUIP_PREVIEW_FIXED) {
-            Mtx_RotateXYZ(mtx, 0.0f, 6.2831855f * (f32)((u8)gFrameTick << 8) / 65536.0f, 0.0f);
-        } else if (preview->equipType == EQUIP_ARMS) {
-            Mtx_RotateXYZ(mtx, -0.7853982f, -0.5235988f, 0.0f);
-        } else {
-            Mtx_RotateXYZ(mtx, 0.0f, -0.5235988f, 0.0f);
-        }
-    } else {
-        Mtx_RotateXYZ(mtx, 0.0f, 0.0f, 0.0f);
-    }
-    bones = pieceModel->partBones[0];
-    Mtx_SetTrans(bones[0].local, 0.0f, 0.0f, 0.0f);
-    switch (preview->equipType) {
-    case EQUIP_PREVIEW_FIXED:
-    case EQUIP_LEGS:
-        break;
-    case EQUIP_WAIST:
-        trans = gEquipPreviewWaistBones[0];
-        for (i = 1; i < 7; i++) {
-            Mtx_SetTrans(bones[i].local, trans[0], trans[1], trans[2]);
-            trans += 3;
-        }
-        break;
-    case EQUIP_ARMS:
-        Mtx_SetRotXYZ(bones[1].local, 0.0f, 0.0f, 0.0f);
-        Mtx_SetRotXYZ(bones[2].local, 0.0f, 0.0f, -0.34906587f);
-        Mtx_SetRotXYZ(bones[3].local, 1.5707964f, 0.0f, -1.2217306f);
-        Mtx_SetRotXYZ(bones[6].local, 0.0f, 0.0f, 0.34906587f);
-        Mtx_SetRotXYZ(bones[7].local, 1.5707964f, 0.0f, 1.2217306f);
-        for (i = 1, trans = gEquipPreviewArmsBones[0]; i < 10; i++) {
-            Mtx_SetTrans(bones[i].local, trans[0], trans[1], trans[2]);
-            trans += 3;
-        }
-        break;
-    case EQUIP_BODY:
-        Mtx_SetRotXYZ(bones[4].local, 0.0f, 0.0f, -0.34906587f);
-        Mtx_SetRotXYZ(bones[5].local, 0.0f, 0.0f, -1.2217306f);
-        Mtx_SetRotXYZ(bones[6].local, 0.0f, 0.0f, 0.34906587f);
-        Mtx_SetRotXYZ(bones[7].local, 0.0f, 0.0f, 1.2217306f);
-        for (i = 1, trans = gEquipPreviewBodyBones[0]; i < 10; i++) {
-            Mtx_SetTrans(bones[i].local, trans[0], trans[1], trans[2]);
-            trans += 3;
-        }
-        break;
-    case EQUIP_HEAD:
-        Mtx_SetTrans(bones[1].local, 0.0f, 0.0f, 0.0f);
-        Mtx_SetTrans(bones[2].local, 0.0f, 22.699997f, -5.499998f);
-        Mtx_SetTrans(bones[3].local, 0.0f, 12.300014f, 3.499999f);
-        Bone_UpdateWorldScaledRoot(pieceModel->partBones[0], mtx);
-        if (preview->settled == 0) {
-            preview->settled = 1;
-            for (i = 0; i < 10; i++) {
-                Effect_RunList(preview->equipFx, &bones[3], &bones[1], bones, preview->equipId, 1, preview->female);
-                Bone_UpdateWorldScaledRoot(pieceModel->partBones[0], mtx);
-            }
-        } else {
-            Effect_RunList(preview->equipFx, &bones[3], &bones[1], bones, preview->equipId, 1, preview->female);
-            Bone_UpdateWorldScaledRoot(pieceModel->partBones[0], mtx);
-        }
-        break;
-    case EQUIP_BLADE:
-    case EQUIP_GUN:
-        rotX = gEquipPreviewWpRot[weaponType][0];
-        rotY = gEquipPreviewWpRot[weaponType][1];
-        rotZ = gEquipPreviewWpRot[weaponType][2];
-        eye[0] = gEquipPreviewWpPos[weaponType][0];
-        eye[1] = gEquipPreviewWpPos[weaponType][1];
-        eye[2] = gEquipPreviewWpPos[weaponType][2];
-        Mtx_Identity(mtx);
-        Mtx_RotateXYZ(mtx, 6.2831855f * rotX / 360.0f, 6.2831855f * rotY / 360.0f, 6.2831855f * rotZ / 360.0f);
-        Mtx_SetTrans(mtx, eye[0], eye[1], eye[2]);
-        switch (weaponType) {
-        case WEAPON_GREAT_SWORD:
-            Mtx_GetTrans(pos, bones[3].local);
-            Mtx_Scale(bones[3].local, 2.6f, 1.0f, 2.5f);
-            Mtx_SetTrans(bones[3].local, pos[0], pos[1], pos[2]);
-            break;
-        case WEAPON_HEAVY_BOWGUN:
-            Mtx_SetRotXYZ(bones[2].local, 3.1415927f, 0.0f, 0.0f);
-            break;
-        case WEAPON_BOW:
-            Mtx_SetRotXYZ(bones[2].local, 2.7052603f, 0.0f, 0.0f);
-            break;
-        }
-        break;
-    }
-    set = pieceModel->matSets;
-    Bone_UpdateWorldScaledRoot(pieceModel->partBones[0], mtx);
-    Bone_StoreMatrices(pieceModel->partBones[0]);
-    materials = pieceModel->mats;
-    for (i = 0; i < pieceModel->matSetCount; i++, set++) {
-        if (preview->equipType == EQUIP_BLADE) {
-            switch (weaponType) {
-            case WEAPON_SWORD_SHIELD:
-            case WEAPON_LANCE:
-            case WEAPON_DUAL_SWORDS:
-                if (i == 1) {
-                    continue;
-                }
-            }
-        }
-        if (set == NULL || set->id == -1) {
-            continue;
-        }
-        for (j = 0; j < set->count; j++) {
-            material = &materials[set->mat[j]];
-            material->alpha = 1.0f;
-            switch (preview->equipType) {
-            default:
-                if (gPreviewHideTex != 0 && gPreviewHideTex == material->tex) {
-                    material->alpha = 0.0f;
-                }
-                break;
-            case EQUIP_HEAD:
-                if (gPreviewHideTex != 0 && gPreviewHideTex == material->tex) {
-                    material->alpha = 0.0f;
-                }
-                if (i == 0 && j == 0) {
-                    material->rgb[0] = (pl->hairColor >> 16 & 0xFF) / 255.0f;
-                    material->rgb[1] = (pl->hairColor >> 8 & 0xFF) / 255.0f;
-                    material->rgb[2] = (pl->hairColor & 0xFF) / 255.0f;
-                }
-                break;
-            case EQUIP_PREVIEW_FIXED:
-                if (i == 0) {
-                    switch (j) {
-                    case 1:
-                    case 3:
-                    case 4:
-                        material->rgb[0] = (preview->color >> 16 & 0xFF) / 255.0f;
-                        material->rgb[1] = (preview->color >> 8 & 0xFF) / 255.0f;
-                        material->rgb[2] = (preview->color & 0xFF) / 255.0f;
-                        break;
-                    }
-                }
-                break;
-            case EQUIP_BLADE:
-            case EQUIP_GUN:
-                switch (weaponType) {
-                case WEAPON_LONG_SWORD:
-                    if (j >= 3) {
-                        material->alpha = 0.0f;
-                    }
-                    break;
-                case WEAPON_BOW:
-                    if (j == 0) {
-                        material->alpha = 0.0f;
-                    }
-                    break;
-                case WEAPON_GUNLANCE:
-                    if (j == 0) {
-                        material->alpha = 0.0f;
-                    }
-                    break;
-                case WEAPON_HEAVY_BOWGUN:
-                case WEAPON_LIGHT_BOWGUN:
-                    if (j == 1 || j == 2) {
-                        material->alpha = 0.0f;
-                    }
-                    break;
-                }
-                break;
-            }
-            Gs_SetState((u8)RS_MATERIAL(j), (u32)material);
-        }
-        Draw_ApplyStates(set->flags);
-        Model_Draw(set->id, 0);
-    }
-    switch (preview->equipType) {
-    case EQUIP_BLADE:
-    case EQUIP_GUN:
-        subType = weaponType;
-        rotX = gEquipPreviewSubRot[subType][0];
-        rotY = gEquipPreviewSubRot[subType][1];
-        rotZ = gEquipPreviewSubRot[subType][2];
-        eye[0] = gEquipPreviewSubPos[subType][0] + gEquipPreviewWpPos[subType][0];
-        eye[1] = gEquipPreviewSubPos[subType][1] + gEquipPreviewWpPos[subType][1];
-        eye[2] = gEquipPreviewSubPos[subType][2] + gEquipPreviewWpPos[subType][2];
-        Mtx_Identity(mtx);
-        Mtx_RotateXYZ(mtx, 6.2831855f * rotX / 360.0f, 6.2831855f * rotY / 360.0f, 6.2831855f * rotZ / 360.0f);
-        Mtx_SetTrans(mtx, eye[0], eye[1], eye[2]);
-        switch (subType) {
-        case WEAPON_LANCE:
-        case WEAPON_SWORD_SHIELD:
-        case WEAPON_DUAL_SWORDS:
-            Bone_UpdateWorldScaledRoot(pieceModel->partBones[1], mtx);
-            Bone_StoreMatrices(pieceModel->partBones[1]);
-            break;
-        case WEAPON_LONG_SWORD:
-        case WEAPON_GUNLANCE:
-        case WEAPON_BOW:
-            Bone_UpdateWorldScaledRoot(pieceModel->partBones[0], mtx);
-            Bone_StoreMatrices(pieceModel->partBones[0]);
-            break;
-        default:
-            goto done; /* no second part */
-        }
-        set = pieceModel->matSets;
-        materials = pieceModel->mats;
-        for (i = 0; i < pieceModel->matSetCount; i++) {
-            if ((subType == WEAPON_LANCE || subType == WEAPON_SWORD_SHIELD || subType == WEAPON_DUAL_SWORDS) && i == 0) {
-                set++;
-                continue;
-            }
-            if (set != NULL) {
-                if (set->id != -1) {
-                    for (j = 0; j < set->count; j++) {
-                        material = &materials[set->mat[j]];
-                        material->alpha = 1.0f;
-                        switch (subType) {
-                        case WEAPON_LONG_SWORD:
-                            if (j < 3) {
-                                material->alpha = 0.0f;
-                            }
-                            break;
-                        case WEAPON_BOW:
-                            if (j != 0) {
-                                material->alpha = 0.0f;
-                            }
-                            break;
-                        case WEAPON_GUNLANCE:
-                            if (j != 0) {
-                                material->alpha = 0.0f;
-                            }
-                            break;
-                        }
-                        Gs_SetState((u8)RS_MATERIAL(j), (u32)material);
-                    }
-                }
-                Draw_ApplyStates(set->flags);
-                Model_Draw(set->id, 0);
-            }
-            set++;
-        }
-        break;
-    }
-done:
-    EquipPreview_SetViewport(0);
-    Mtx_LookAt(mtx, gCamera->eye, gCamera->at, gCamera->up);
-    Gs_SetState(RS_VIEW_MTX, (u32)mtx);
-    MtxSlot_Load((struct MtxSlot *)gViewMatrix, 0x21);
-    Mtx_Inverse(gCamMatrix, gViewMatrix);
-    Camera_RestoreFov();
-    LightSet_ResetColors(1);
-}
-#pragma optimization_level reset
-
-void LightSet_SetColors(void *obj, s32 n);
-void LightSet_FadeColors(void *obj);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Bone_StoreMatrices(struct EmBone *b);
-struct MtxSlot;
-void Bone_StoreMatricesTo(struct MtxSlot *tbl, struct EmBone *b);
-s32 EmBlangonga_RageTimerFull(Em *em);
-s32 GmEm_SetMeshSetUv(Em *em, s32 i);
-struct EmMelynxMeshSet;    /* the Melynx's mesh sets, in the game overlay */
-struct EmKutkuMeshSet;     /* the Yian Kut-Ku's mesh sets, in the game overlay */
-void EmMelynx_SetMeshSetAlpha(Em *em, s32 kind, struct EmMelynxMeshSet *sets);
-void EmKutku_SetMeshSetAlpha(Em *em, s32 kind, struct EmKutkuMeshSet *sets);
-void GmEm_PrepareMeshSet(Em *em, s32 mode, ModelMatSet *sets);
-void Draw_ApplyStates(u32 a);
-void MtxSlot_LoadList(s16 *list, struct MtxSlot *tbl);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
-void LightSet_ResetColors(s32 a);
-void LightSet_Apply(s32 a);
-void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetTexFilter(s32 a);
-void Mtx_Identity(f32 *m);
-extern s16 *gEmNoAlphaTestLists[];
-extern u8 gBoneMatrixBuf[];
-extern u8 gModelPartLists[][0x420];
-
-/*
- * Draws the monster of a draw slot (Em.drawSlot's draw function): its world matrix from its scale,
- * angles and position (kept in worldMtx), its bones, then each material set it shows
- * (meshShown). The Kelbi and the Anteka draw only the set of their gender. Each set is lit by
- * the monster family's own function (EmMelynx_SetMeshSetAlpha, EmKutku_SetMeshSetAlpha, else
- * GmEm_PrepareMeshSet) and drawn without the alpha test when the monster fades, when its kind's
- * gEmNoAlphaTestLists entry lists it, or for set 5 of a calm EM_KIND_RAJANG
- * (EmBlangonga_RageTimerFull). A model of more than 32 bones keeps its matrices in gBoneMatrixBuf
- * and loads each set's list of them (gModelPartLists) before drawing it.
- */
-void Em_DrawParts(DrawSlot *drawSlot)
-{
-    Em *em;
-    ModelMatSet *set;
-    f32 world[16];
-    Model *emModel;
-    s32 i;
-    ModelMatSet *sets;
-    s32 angles[3];
-    s16 *skipList;
-    s32 setCount;
-    s32 manyBones;
-    f32 uvMtx[16];
-    EmBone *bones;
-    s16 nextSkip;
-    f32 scaleMtx[16];
-
-    em = drawSlot->owner;
-    emModel = em->model;
-    if (em->active == 0 || em->visible == 0) {
-        return;
-    }
-    LightSet_SetColors(em, 1);
-    LightSet_FadeColors(em);
-    Vec_AnglesToRad(&em->rotX, (f32 *)angles);
-    Mtx_Scale(scaleMtx, em->scaleX, em->scaleY, em->scaleZ);
-    Mtx_FromAnglesYXZ(&em->rotX, world);
-    Mtx_SetTrans(world, em->posX, em->posY, em->posZ);
-    Mtx_Concat3x3(world, scaleMtx);
-    Mtx_Copy(&em->worldMtx[0][0], world);
-    Gfx_SetTexFilter(1);
-    nextSkip = *(skipList = gEmNoAlphaTestLists[em->type]);
-    if (em->type == EM_KIND_KELBI || em->type == EM_KIND_ANTEKA) {
-        setCount = 1;
-        sets = emModel->matSets + em->gender;
-    } else {
-        sets = emModel->matSets;
-        setCount = emModel->matSetCount;
-    }
-    bones = emModel->bones;
-    manyBones = bones->count >= 0x21;
-    if (manyBones == 0) {
-        Bone_StoreMatrices(bones);
-    } else {
-        Bone_StoreMatricesTo((struct MtxSlot *) gBoneMatrixBuf, bones);
-    }
-    Mtx_Identity(uvMtx);
-    Gs_SetState(RS_UV_MTX, (u32)uvMtx);
-    Tex_Prepare(0xA, em->modelSlot * 20 + 0xA3);
-    for (i = 0; i < setCount; i++) {
-        set = sets + i;
-        if ((s8)em->meshShown[i] == 0) {
-            continue;
-        }
-        while (nextSkip != -1) {
-            if (!(i > nextSkip)) {
-                break;
-            }
-            nextSkip = *++skipList;
-        }
-        if (nextSkip == i || em->alpha != 1.0f || (em->type == EM_KIND_RAJANG && i == 5 && EmBlangonga_RageTimerFull(em) == 0)) {
-            Gs_SetState(RS_ALPHA_REF, 0);
-            nextSkip = *++skipList;
-        } else {
-            Gs_SetState(RS_ALPHA_REF, 0xC0);
-        }
-        if (GmEm_SetMeshSetUv(em, i) == 0) {
-            continue;
-        }
-        Gs_SetState(RS_COLOR2, -1);
-        if (set->id == -1) {
-            continue;
-        }
-        switch (em->type) {
-        case 9:
-        case EM_KIND_MELYNX:
-        case EM_KIND_FELYNE_CART:
-            EmMelynx_SetMeshSetAlpha(em, i, (struct EmMelynxMeshSet *)sets);
-            break;
-        case EM_KIND_GYPCEROS:
-        case EM_KIND_PURPLE_GYPCEROS:
-            EmKutku_SetMeshSetAlpha(em, i, (struct EmKutkuMeshSet *)sets);
-            break;
-        default:
-            GmEm_PrepareMeshSet(em, i, sets);
-            break;
-        }
-        Draw_ApplyStates(set->flags);
-        if (manyBones == 1) {
-            MtxSlot_LoadList((s16 *) (gModelPartLists[em->modelSlot] + i * 0x42), (struct MtxSlot *) gBoneMatrixBuf);
-        }
-        Model_Draw(set->id, 0);
-    }
-    Draw_SetDefaultState();
-    Gs_SetState(RS_ALPHA_REF, 0);
-    LightSet_ResetColors(1);
-    LightSet_Apply(1);
-}
-
-void Player_TwistBoneToLook(Player *p, s16 kind);
-void Mtx_Mul(f32 *dst, f32 *a, f32 *b);
-void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
-void Bone_StoreMatrices(struct EmBone *b);
-
-/* Scales the player's first 21 bones each by its part's scale (partRecs[i]->scale), after
- * Player_TwistBoneToLook turns it, updates them under the matrix parent, and copies each bone's
- * world matrix back into its part's record (m1). */
-void Player_ScaleBones(Player *pl, EmBone *bones, f32 *parent)
-{
-    f32 scaleMtx[16];
-    f32 scaled[16];
-    s32 i;
-    EmBone *bone;
-
-    for (i = 0, bone = bones; i < 21; i++, bone++) {
-        Player_TwistBoneToLook(pl, bone->index);
-        Mtx_Scale(scaleMtx, pl->partRecs[i]->scale[0], pl->partRecs[i]->scale[1], pl->partRecs[i]->scale[2]);
-        Mtx_Mul(scaled, bone->local, scaleMtx);
-        bone->local[12] = scaled[12];
-        bone->local[13] = scaled[13];
-        bone->local[14] = scaled[14];
-    }
-    Bone_UpdateWorldScaledRoot(bones, parent);
-    Bone_StoreMatrices(bones);
-    for (i = 0; i < 21; i++, bones++) {
-        Mtx_Copy(pl->partRecs[bones->index]->m1, bones->world);
-    }
-}
-
-/* For a player being drawn (visible): its world matrix from its scale, angles and position, kept
- * in worldMtx[0], then its bones placed under it (Player_ScaleBones). */
-void Player_UpdateWorldMatrix(Player *pl)
-{
-    f32 world[16];
-    f32 angles[3];
-    Model *model;
-
-    if (pl->visible == 0) {
-        return;
-    }
-    model = pl->model;
-    Vec_AnglesToRad(pl->rot, angles);
-    Mtx_Scale(world, pl->scale[0], pl->scale[1], pl->scale[2]);
-    Mtx_RotateYXZ(world, angles[0], angles[1], angles[2]);
-    Mtx_SetTrans(world, pl->pos[0], pl->pos[1], pl->pos[2]);
-    Mtx_Copy(pl->worldMtx[0], world);
-    Bone_UpdateWorld(model->partBones[0], world);
-    Player_ScaleBones(pl, model->partBones[0], world);
-}
-
-/* The file's data: the weapon poses and keyframe tracks, the part bones, the light sets, the
- * equipment preview's tables and the monsters' alpha-test lists. */
+/* The file's data: the weapon poses and keyframe tracks, the bone matrix slot maps, the bone
+ * markers' directions, the cycling colours and the part bones. */
 WpPose gWpPoseDrawnAlt[11] = {
 #include "sub_main/0043CA30.inc"
 };
@@ -3657,27 +3069,27 @@ Key1 gBowKey587ScaleZ[6] = {
 Key1 gBowKey58AScaleZ[5] = {
 #include "sub_main/0043E4F0.inc"
 };
-u32 gBoneMtxSlotMaps_0[2] = {
+s16 gBoneMtxSlotMaps_0[4] = {
 #include "sub_main/0043E518.inc"
 };
-u32 gBoneMtxSlotMaps_1[4] = {
+s16 gBoneMtxSlotMaps_1[8] = {
 #include "sub_main/0043E520.inc"
 };
-u32 gBoneMtxSlotMaps_2[8] = {
+s16 gBoneMtxSlotMaps_2[16] = {
 #include "sub_main/0043E530.inc"
 };
-u32 gBoneMtxSlotMaps_3[8] = {
+s16 gBoneMtxSlotMaps_3[16] = {
 #include "sub_main/0043E550.inc"
 };
-u32 gBoneMtxSlotMaps_4[8] = {
+s16 gBoneMtxSlotMaps_4[16] = {
 #include "sub_main/0043E570.inc"
 };
-u32 gBoneMtxSlotMaps_5[8] = {
+s16 gBoneMtxSlotMaps_5[16] = {
 #include "sub_main/0043E590.inc"
 };
-u32 gBoneMtxSlotMaps[8] = {
-    (u32)gBoneMtxSlotMaps_0, (u32)gBoneMtxSlotMaps_1, (u32)gBoneMtxSlotMaps_2, (u32)gBoneMtxSlotMaps_3,
-    (u32)gBoneMtxSlotMaps_4, (u32)gBoneMtxSlotMaps_5, 0, 0,
+s16 *gBoneMtxSlotMaps[8] = {
+    gBoneMtxSlotMaps_0, gBoneMtxSlotMaps_1, gBoneMtxSlotMaps_2, gBoneMtxSlotMaps_3,
+    gBoneMtxSlotMaps_4, gBoneMtxSlotMaps_5, NULL, NULL,
 };
 f32 gBoneMarkerDirs[6][3] = {
 #include "sub_main/0043E5D0.inc"
@@ -3688,91 +3100,4 @@ u32 gCycleColors[8] = {
 /* The bone each part slot (EQUIP_SLOT_FACE to EQUIP_WAIST) hangs from (Player_DrawLocal). */
 u16 gPlPartRootBone[8] = {
 #include "sub_main/0043E640.inc"
-};
-f32 gLightSetDirs[6][3] = {
-#include "sub_main/0043E650.inc"
-};
-f32 gLightSetColors[6][3] = {
-#include "sub_main/0043E6A0.inc"
-};
-f32 gLightSetAmbients[6][3] = {
-#include "sub_main/0043E6F0.inc"
-};
-EquipPreviewEye gEquipPreviewEyes[6] = {
-#include "sub_main/0043E740.inc"
-};
-f32 gEquipPreviewWpEyeZ[12] = {
-#include "sub_main/0043E790.inc"
-};
-f32 gEquipPreviewWpPos[22][3] = {
-#include "sub_main/0043E7C0.inc"
-};
-f32 gEquipPreviewPoses[154] = {
-#include "sub_main/0043E8D0.inc"
-};
-s16 gEmNoAlphaTestLists_0[4] = {
-#include "sub_main/0043EB38.inc"
-};
-s16 gEmNoAlphaTestLists_14[4] = {
-#include "sub_main/0043EB40.inc"
-};
-s16 gEmNoAlphaTestLists_15[6] = {
-#include "sub_main/0043EB48.inc"
-};
-s16 gEmNoAlphaTestLists_17[4] = {
-#include "sub_main/0043EB58.inc"
-};
-s16 gEmNoAlphaTestLists_20[4] = {
-#include "sub_main/0043EB60.inc"
-};
-s16 gEmNoAlphaTestLists_19[4] = {
-#include "sub_main/0043EB68.inc"
-};
-s16 gEmNoAlphaTestLists_21[4] = {
-#include "sub_main/0043EB70.inc"
-};
-s16 gEmNoAlphaTestLists_22[4] = {
-#include "sub_main/0043EB78.inc"
-};
-s16 gEmNoAlphaTestLists_24[4] = {
-#include "sub_main/0043EB80.inc"
-};
-s16 gEmNoAlphaTestLists_26[4] = {
-#include "sub_main/0043EB88.inc"
-};
-s16 gEmNoAlphaTestLists_33[4] = {
-#include "sub_main/0043EB90.inc"
-};
-s16 gEmNoAlphaTestLists_53[4] = {
-#include "sub_main/0043EB98.inc"
-};
-s16 gEmNoAlphaTestLists_55[4] = {
-#include "sub_main/0043EBA0.inc"
-};
-s16 gEmNoAlphaTestLists_59[4] = {
-#include "sub_main/0043EBA8.inc"
-};
-s16 gEmNoAlphaTestLists_71[8] = {
-#include "sub_main/0043EBB0.inc"
-};
-s16 *gEmNoAlphaTestLists[76] = {
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_14, gEmNoAlphaTestLists_15,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_17, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_19,
-    gEmNoAlphaTestLists_20, gEmNoAlphaTestLists_21, gEmNoAlphaTestLists_22, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_24, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_26, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_33, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_20,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_14,
-    gEmNoAlphaTestLists_26, gEmNoAlphaTestLists_15, gEmNoAlphaTestLists_21, gEmNoAlphaTestLists_17,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_53, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_55,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_59,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_71,
-    gEmNoAlphaTestLists_0, gEmNoAlphaTestLists_0, NULL, NULL,
 };

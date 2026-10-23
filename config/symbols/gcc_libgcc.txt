@@ -1,22 +1,24 @@
-// Symbols for the boot ELF (SLPM_662.80): the EE toolchain's libgcc, text 0x10FC18-0x1126E0; asm piece gcc/libgcc
-// __muldi3, __divdi3, __moddi3, __udivdi3, __umoddi3 (GCC 2.9x: each of the last four
-// has its own copy of the 256-byte __clz_tab in .rodata, 0x1BDE90-0x1BE290), then the
-// soft double-precision routines under the names both compilers call (dpadd, litodp...)
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): the EE toolchain's libgcc, text
+// 0x10FC18-0x1126E0; asm piece gcc/libgcc. __muldi3, __divdi3, __moddi3,
+// __udivdi3, __umoddi3 (GCC 2.9x: each of the last four has its own copy
+// of the 256-byte __clz_tab in .rodata, 0x1BDE90-0x1BE290), then the soft
+// double-precision routines under the names both compilers call (dpadd,
+// litodp ...).
+// Library code, kept as assembly: public API names only, where the binary
+// shows them. Format: name = 0xADDRESS; // attributes
 
 // The double-precision routines, under the names MWCC calls them by (C with
-// double arithmetic compiles to jal litodp etc.; the pad code's calls are at
-// these addresses).
+// double arithmetic compiles to calls of litodp and the others; the pad
+// code's calls go to these addresses).
 litodp = 0x00112460; // type:func
 dptofp = 0x001125E8; // type:func
 fptodp = 0x00111A30; // type:func
 dpadd = 0x00111E68; // type:func
-// dpsub: MWCC compiles a double subtraction to `jal dpsub`; lobby's Browser_ReadPad calls 0x111EC0 there
+// dpsub: MWCC compiles a double subtraction to a call of dpsub
+// (Browser_ReadPad makes one).
 dpsub = 0x00111EC0; // type:func
 dptoli = 0x00112518; // type:func
 
-// The 64-bit unsigned modulo, under the name MWCC calls it by
-// (lobby's adler32: `s1 %= BASE` on an unsigned long); lobby_browser.txt named it
-// until round 8
+// The 64-bit unsigned modulo, under the name MWCC calls it by (adler32's
+// modulo on an unsigned long).
 __umoddi3 = 0x00110F38; // type:func

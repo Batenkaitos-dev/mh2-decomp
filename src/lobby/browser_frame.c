@@ -23,50 +23,28 @@
 #include "lobby_globals.h"
 #include "kbd.h"
 #include "m2c_macros.h"
+#include "net_mode.h"
+#include "nethttp.h"
+#include "text.h"
+#include "draw_helpers.h"
+#include "font.h"
+#include "frame.h"
+#include "main.h"
+#include "mem_util.h"
+#include "libkernl.h"
 
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
-void *Mem_Alloc(u32 size, s32 flag);
-void *Mem_GetAddr(void *handle);
-s32 NetOverlay_Request(s32); /* the lobby */
-void Http_LoadAfsPartition(void);                 /* nethttp */
-s32 Http_ReadBrdata(void *buf, s32 id);      /* nethttp */
-s32 Http_Init(void);                  /* nethttp */
-void BrowserCache_Init(void);
-void Html_ResetLoad(void);
-void PageTex_ReleaseAll(void);
-void PageObj_InitPool(void);
-void Font_ResetState(void);       /* sub_main */
-void Browser_InitHook(void);
 void Page_SetMargins(s32 a, s32 b); /* unit's own declaration: the definition takes three
  * arguments and reads none; Browser_Init passes two, and with a third the call compiles differently */
 extern u8 gBrowserWorkMem[];                 /* the work area */
 extern MmbbData gAccountData;               /* sub_main: the MMBB data */
 extern u8 gLobbyPageData[];                 /* the registration record kept */
-void BrowserCache_Shutdown(void);
-void Mem_Free(void *handle);
-void Mem_Compact(void);
-void Overlay_LoadGmSub(void);
-s32 Http_Term(void);
 int strncmp(const char *, const char *, unsigned int);
 u32 strlen(const char *s);
 s32 strncmp(const char *a, const char *b, u32 n);
-void Callbacks_Clear(void);
-void Text_Reset(void);
-void Loading_Request(void);
-s32 NetIf_GetError(void);                  /* sub_main: the network state? */
-void Browser_ReadPad(void);
-void BrowserReq_UpdateAll(void);
-void Dialog_Run(void);
-void BrowserReq_CancelAll(void);
-void Browser_SetStep(s8 step);
-void Browser_Fail(u8 page);
-void Browser_ShowList(s32 unused0);
-void Browser_SetUrl(BrowserWork *w, char *url);
 s32 BrowserForm_Add(const char *name, char *value);
-void BrowserReq_Post(char **url);
 extern u8 gConnCheckState;                   /* the lobby's link, lost while a page shows: CONN_LOST_* */
-extern char gLbsScheme[];                    /* the lobby server's URL scheme (URL_LBS) */
 extern char gBrowserUrl[];                 /* the start URL */
 /* The mode tables: the top modes' (BROWSER_TOP_*), the portal's and the
  * lobby's pages' modes (enum BrowserMode), and the lobby's pages' steps. */
@@ -77,16 +55,12 @@ extern void (*gBrowserLobbySteps[])(void);
  * recompiler takes a table it calls through as a jump table, and finds it
  * by that name. */
 extern void (*jtbl_007EEAE0[])(void);
-void BrowserForm_Clear(void);
-BrowserResult *BrowserReq_Poll(char **url);
-void Browser_Exit(s8 result);
-void scePrintf(const char *fmt, ...);
 extern char gBrowserErrorMsg[];              /* the debug message Browser_RunError prints */
 
 /*
  * Starts the browser: the work area and its two heaps (64 KB and 512 KB),
  * the two certificates (read from the browser's data files into 4 KB
- * that start 0x2800 bytes below gMemAreas), the caches and the HTTP
+ * that start 10240 bytes below gMemAreas), the caches and the HTTP
  * layer. Under
  * BROWSER_TOP_LOBBY only the page state is cleared: the page objects and
  * textures stay. Otherwise the page starts empty, with the default style
@@ -103,7 +77,7 @@ void Browser_Init(u8 mode)
     gBrowserWork = (BrowserWork *)gBrowserWorkMem;
     memset(gBrowserWork, 0, sizeof(BrowserWork));
     Http_LoadAfsPartition();
-    certBuf = gMemAreas - 0x2800;
+    certBuf = gMemAreas - 10240;
     memset(certBuf, 0, 2 * BROWSER_CERT_SIZE);
     gBrowserWork->cert0 = certBuf;
     gBrowserWork->cert1 = certBuf + BROWSER_CERT_SIZE;
@@ -277,7 +251,7 @@ void Browser_CheckNetwork(void)
                 Browser_SetStep(PAGE_STEP_IMAGES);
                 return;
             }
-            Browser_ShowList(0);
+            Browser_OpenLeaveDialog(0);
             gBrowserSub->dlgCursor = 1;
             return;
         case BROWSER_TOP_LOBBY:
@@ -361,18 +335,6 @@ void Browser_LobbyStart(void)
 }
 
 /* The mode and step tables. */
-void Browser_LobbyEnd(void);
-void Browser_LobbyExit(void);
-void Browser_LobbyStep1(void);
-void Browser_LobbyStep2(void);
-void Browser_LobbyStep3(void);
-void Browser_LobbyStep4(void);
-void Browser_LobbyWait(void);
-void Browser_ModeDone(void);
-void Browser_RunEnd(void);
-void Browser_RunError(void);
-void Browser_RunPage(void);
-void Browser_RunStart(void);
 void (*gBrowserTopModes[4])(void) = {
     Browser_RunPortal, Browser_RunLobby, Browser_RunError, NULL,
 };
@@ -389,7 +351,7 @@ void (*gBrowserLobbySteps[8])(void) = {
 
 /* The lobby server's URL scheme and the id fields' names. */
 #pragma rodata on
-char gLbsScheme[0x8] = {
+char gLbsScheme[8] = {
 #include "lobby/00839058.inc"
 };
 IdFieldNames gIdFieldNames = {
@@ -483,7 +445,7 @@ void Browser_ModeDone(void)
 
 /* Browser_RunError's message. */
 #pragma rodata on
-char gBrowserErrorMsg[0x18] = {
+char gBrowserErrorMsg[24] = {
 #include "lobby/00839080.inc"
 };
 #pragma rodata off

@@ -8,13 +8,19 @@
 #include "common.h"
 #include "lobby_net.h"
 
-void NetList_Select(s32 level, u16 id);
-void NetList_Leave(u8 level);
-void NetList_Enter(u8 level);
-s32 LobbyPkt_EnterLevels(u16 a, u16 b, u16 c);
-s32 LobbyPkt_Leave(u16 kind);
-void LobbyMsg_ReadU16Array(u16 *, u16, u16 *);
-void LobbyMsg_ReadErrText(void);
+/* 6305: enters second-level entry id (with a password, NULL for none) */
+s32 LobbyReq_Level1Enter(u16 id, char *pass, void (*onReply)(NetMsg, NetMsg *))
+{
+    s32 i;
+
+    i = NetReq_Alloc(1, NULL, onReply);
+    if (i != -1) {
+        NetList_Select(1, id);
+        gLobbyNet.req[i].seq = LobbyPkt_Level1Enter(id, pass);
+        return i;
+    }
+    return -1;
+}
 
 /* the reply to 6305: the second-level entry was entered */
 void LobbyReply_Level1Enter(void)
@@ -48,19 +54,19 @@ void LobbyReply_Level1Leave(void)
 }
 
 /* a user entered (kind 0, 2, 4: blob id, blob name, blob text) or left
- * (kind 1, 3, 5: blob id); a notification is routed to 0x1A + kind ... */
+ * (kind 1, 3, 5: blob id); a notification is routed to NET_ROUTE_LEVEL1_USER_IN + kind ... */
 void LobbyNotify_UserInOut(u8 kind)
 {
     u8 *cur;
 
     if (gLobbyNet.replyErr == 0) {
-        memset(&gLobbyNet.userInOut, 0, 0x11C);
+        memset(&gLobbyNet.userInOut, 0, 284);
         cur = LobbyMsg_GetBlob(gLobbyNet.userInOut.id, 8, gLobbyRecvData);
         switch (kind) {
         case 0:
         case 2:
         case 4:
-            LobbyMsg_GetBlob(gLobbyNet.userInOut.text, 0x100, LobbyMsg_GetBlob(gLobbyNet.userInOut.name, 0x10, cur));
+            LobbyMsg_GetBlob(gLobbyNet.userInOut.text, 256, LobbyMsg_GetBlob(gLobbyNet.userInOut.name, 16, cur));
             break;
         }
     }
@@ -168,7 +174,7 @@ s32 LobbyNet_GetLastId(u16 *id)
     return 0;
 }
 
-/* 6202, notification and reply; route 0xF */
+/* 6202, notification and reply; route NET_ROUTE_6202 */
 void LobbyReply_6202(void)
 {
     Lobby_RouteMessage(NET_ROUTE_6202);

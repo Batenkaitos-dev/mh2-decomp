@@ -10,8 +10,8 @@
  * them, and from the shape of the ADX API.
  */
 
-typedef void *ADXT;     /* player: 0xC4-byte object, 16 of them at 0x19DF20 */
-typedef void *ADXF;     /* file: 0x44-byte object */
+typedef void *ADXT;     /* player: 196-byte object, 16 of them at 0x19DF20 */
+typedef void *ADXF;     /* file: 68-byte object */
 
 /* ADXF_GetStat, ADXF_GetPtStat */
 #define ADXF_STAT_STOP 1
@@ -31,6 +31,7 @@ typedef void *ADXF;     /* file: 0x44-byte object */
 /* ADXERR_CallErrFunc1 calls func(obj, message): a0 = obj, a1 = its copy of the message. */
 void ADXERR_EntryErrFunc(void (*func)(void *obj, char *msg), void *obj);
 void ADXERR_CallErrFunc1(char *msg);
+s32 ADXF_LoadPartitionNw(s32 ptid, char *fname, void *dir, void *ptinfo);
 
 ADXF ADXF_Open(char *fname, void *atr);
 ADXF ADXF_OpenAfs(s32 ptid, s32 flid);

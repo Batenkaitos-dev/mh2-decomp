@@ -21,7 +21,8 @@
  * only with Armor_GetData static, defined earlier in the same unit. The
  * "----" lines mark where its last two parts begin. The code is compiled
  * at optimization level 4 up to the second part and at the default (3)
- * from there (Equip_CompactDecorations needs 3).
+ * from there (Equip_CompactDecorations needs 3). Its data interleave through it as well: no
+ * cut before its last four functions keeps each side's data together.
  */
 #include "common.h"
 #include "player.h"
@@ -33,49 +34,31 @@
 #include "syssettings.h"
 #include "lobby_state.h"
 #include "quest.h"
+#include "area.h"
 #include "award.h"
+#include "bone_effects.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "hud.h"
+#include "menu_steps.h"
+#include "window.h"
 
 #pragma optimization_level 4
 
-extern ArmorData *gArmorTables[];
-
-extern u8 gWeaponKindClass[];         /* weapon kind -> weapon class */
-extern u8 D_0044BF3B[];         /* class of the ids from 0x385 */
+extern u8 D_0044BF3B[];         /* class of the ids from 901 */
 extern u8 gWeaponClassInfo[][2];      /* per weapon class: gunner flag, unk774 */
 extern u8 gWeaponClassAttack[][2];      /* per weapon class: unk8A2, unk8A3 */
 extern SaveData *gCardSlots;    /* the save slots read from the memory card */
 
 extern u16 gRandSeeds[];
 
-s32 Player_HasSkill(Player *p, u8 skill);
-s32 Player_IsLocal(void *obj);
 /* As Equip_SetFlag on save. */
-void Save_SetEquipFlag(SaveData *save, EquipItem *item, s16 bit);
 s32 Player_HasSongEffect(Player *pl, s16 kind);
-void Effect06_SpawnAtBone(Player *p, s16 type, u8 sub, s16 bone, f32 scale);
-void PspLink_ClearFlags(void);
-void Equip_Refresh(SaveData *save);
-void Player_SetColorWord(Player *p, u8 i);
-s32 Byte_HighNibble(u8 x);
-s32 Game_IsOnline(void);
 char *strcpy(char *dst, char *src);    /* strcpy */
 s32 Award_Grant(s32 arg0);
-s32 Save_HrGateCleared(s32 n);
-f32 Math_Absf(f32 x);
-s32 Item_IsOnePerPouch(u16 item);
-s16 Box_GetCapacity(SaveData *save);
-void Save_MarkItemObtained(SaveData *save, u16 item);
-s32 Save_IsItemObtained(SaveData *save, u16 item);
-s32 Item_IsRecordOnly(u16 item);
-u32 Hr_PointsForRank(u16 hr);
-u16 Save_RankFromPoints(SaveData *s);
-void Save_SetRankCapPoints(SaveData *s, s32 hr);
-s32 Save_AddHrPoints(SaveData *s, s32 n);
-s32 SavePouch_HasSpecial(SaveData *s);
-u32 ItemBox_AddTo(SaveData *s, u16 item, u32 count);
 
 /* A band of hunter ranks above 50 (gHrPointSteps, Hr_PointsForRank): the band's last rank and
- * the points each of its ranks adds. The list ends with a limit of 0xFFFF; the ranks up to 50
+ * the points each of its ranks adds. The list ends with a limit of 65535; the ranks up to 50
  * have their points in gHrRankPoints. */
 typedef struct HrStep {
     s32 limit;                  /* the band's last rank */
@@ -91,7 +74,7 @@ extern char gMyName[];
  * (sideIds: the lobby copies 6 bytes per side there). Players_UpdateSides reads them from a base
  * at +4 with the offset 0x42, so the view keeps that base for the match. */
 typedef struct SideIdsView {
-    u8 teams[0x42];             /* NextQuest.teams, teamItems, unk44 */
+    u8 teams[66];             /* NextQuest.teams, teamItems, unk44 */
     s8 ids[4][6];               /* NextQuest.sideIds */
 } SideIdsView;
 
@@ -101,26 +84,12 @@ extern char gMemberNames[][17];   /* the preset names */
 extern s8 gPlayerIds[][8];      /* the preset ids */
 extern NextQuest gNextQuest;
 extern s8 gMyUserId[8];
-/* gScene.userIds as its own symbol: with gScene.userIds[i] MWCC folds 0x276 into the stores. */
+/* gScene.userIds as its own symbol: with gScene.userIds[i] MWCC folds the field's offset 0x276 into the stores. */
 extern s8 D_006ADF26[][8];
 
 void *memcpy(void *dst, void *src, u32 n);
-void MonsterNote_OnItemGet(u16 item);
-s32 Menu_PushNoticeOnce(s32 n);
-s32 Quest_IsVersus(void);
-s16 Pouch_Count(Player *p, u16 item);
-s32 SavePouch_ClearSlot(s16 slot);
 s32 SavePouch_Count(u16 item);
-s16 PouchBackup_Count(u16 item);
-s8 Preset_Find(s8 *id);
-s32 Quest_IsDrill(void);
-s32 Quest_IsTraining(void);
-s16 EquipView_GetStat(s32 kind);
-void EquipView_FromPlayer(Player *p);
-s32 QuestGoal_IsDone(s32 n);
-u16 ClearList_IndexOf(u16 item);
 void Em_BonePos(void *obj, s16 bone, f32 *out);
-f32 Vec_Distance(f32 *a, f32 *b);
 
 extern Em gEms[];
 
@@ -129,7 +98,7 @@ extern EquipItem gEquipShown[7]; /* the equipment shown: [0] the weapon, [1 + ty
 extern s16 gSilencerBonus;
 extern s16 gBarrelBonusHeavy[];
 extern s16 gBarrelBonusLight[];
-extern u16 gClearListQuests[];        /* item ids, ended by 0xEA60 (bits in gSave unk1FFC) */
+extern u16 gClearListQuests[];        /* item ids, ended by 60000 (bits in gSave unk1FFC) */
 
 
 /* The data record of a piece of equipment (its BladeData, GunData or ArmorData, by its type), NULL
@@ -187,12 +156,12 @@ u8 Equip_GetBladeSpecial(EquipItem *item)
     return 0;
 }
 
-/* The weapon class (WEAPON_*) of a weapon by its type and id. Ids above 0x384 read the byte table
- * that starts 0xB bytes into gStageFileTbls_4, at the id: no weapon table goes that far.
+/* The weapon class (WEAPON_*) of a weapon by its type and id. Ids above 900 read the byte table
+ * that starts 11 bytes into gStageFileTbls_4, at the id: no weapon table goes that far.
  */
 u8 Weapon_GetClass(u8 type, u16 id)
 {
-    if (id > 0x384) {
+    if (id > 900) {
         return D_0044BF3B[id];
     }
     if (type == EQUIP_BLADE) {
@@ -237,14 +206,6 @@ u32 Equip_GetPrice(u8 type, u16 id)
     }
     return 9999999;
 }
-
-extern char *gArmorLegsNames[];
-extern char *gArmorHeadNames[];
-extern char *gArmorBodyNames[];
-extern char *gArmorArmsNames[];
-extern char *gArmorWaistNames[];
-extern char *gBladeNames[];
-extern char *gGunNames[];
 
 /* The name of a piece of equipment by its type and id (the name tables at the end of this file);
  * NULL for an unknown type. */
@@ -292,23 +253,23 @@ u8 Equip_GetRarity(u8 type, u16 id)
     return 0;
 }
 
-/* The carried item in the player's pouch (one of the items 0x29C, 0x29E-0x2A3, which Item_CarryKind
- * knows), 0xFFFF if none; with more than one, the last slot's. */
+/* The carried item in the player's pouch (ITEM_ID_CANNON_AMMO, the items 670-674 or ITEM_ID_DELIVERY_CARRIED, which Item_CarryKind
+ * knows), 65535 if none; with more than one, the last slot's. */
 u16 Pouch_FindCarryItem(Player *pl)
 {
-    u16 found = 0xFFFF;
+    u16 found = 65535;
     s16 i;
 
     for (i = 0; i < POUCH_SLOTS; i++) {
         if (pl->pouch[i].count != 0) {
             switch (pl->pouch[i].item) {
-            case 0x29C:
-            case 0x29E:
-            case 0x29F:
-            case 0x2A0:
-            case 0x2A1:
-            case 0x2A2:
-            case 0x2A3:
+            case ITEM_ID_CANNON_AMMO:
+            case 670:
+            case 671:
+            case 672:
+            case 673:
+            case 674:
+            case ITEM_ID_DELIVERY_CARRIED:
                 found = pl->pouch[i].item;
                 break;
             }
@@ -317,35 +278,35 @@ u16 Pouch_FindCarryItem(Player *pl)
     return found;
 }
 
-/* The kind of a carried item (Player.carry: 1-7 for the items 0x29C, 0x29E-0x2A3, in the order the
+/* The kind of a carried item (Player.carry: 1-7 for ITEM_ID_CANNON_AMMO, the items 670-674 and ITEM_ID_DELIVERY_CARRIED, in the order the
  * switch gives), 0 for any other item. */
 u8 Item_CarryKind(u16 item)
 {
     switch (item) {
-    case 0x29E:
+    case 670:
         return 1;
-    case 0x29F:
+    case 671:
         return 2;
-    case 0x29C:
+    case ITEM_ID_CANNON_AMMO:
         return 3;
-    case 0x2A2:
+    case 674:
         return 4;
-    case 0x2A1:
+    case 673:
         return 5;
-    case 0x2A3:
+    case ITEM_ID_DELIVERY_CARRIED:
         return 6;
-    case 0x2A0:
+    case 672:
         return 7;
     }
     return 0;
 }
 
-/* 1 when the player carries well: with skill 0x5F, or carrying an item of kind 6 (Player.carry's
+/* 1 when the player carries well: with SKILL_CARRY_BONUS, or carrying an item of kind 6 (Player.carry's
  * high nibble). Seen: the carry walk takes a longer stride, and a fall must last longer before the
  * item drops (the game's carry states). */
 s32 Player_HasCarryBonus(Player *pl)
 {
-    if (Player_HasSkill(pl, 0x5F) == 1) {
+    if (Player_HasSkill(pl, SKILL_CARRY_BONUS) == 1) {
         return 1;
     }
     if ((u8)Byte_HighNibble(pl->carry) == 6) {
@@ -416,25 +377,25 @@ s32 Bowgun_HasBarrel(Player *pl)
 }
 
 /* How slowly the gun reloads an ammo kind: 0, 1 or 2 (the reload text's row). The ammo's own value
- * (gAmmoLevels[ammo][1]) less the gun's GunData.reload, less 1, 2 or 3 for the skills 0x2E-0x30 and
- * plus 1 or 3 for 0x31 and 0x32; up to 4 gives 0, up to 7 gives 1. */
+ * (gAmmoLevels[ammo][1]) less the gun's GunData.reload, less 1, 2 or 3 for SKILL_RELOAD_PLUS1, _PLUS2 and _PLUS3, and
+ * plus 1 or 3 for SKILL_RELOAD_MINUS1 and _MINUS3; up to 4 gives 0, up to 7 gives 1. */
 u8 Bowgun_ReloadLevel(Player *pl, u8 ammo)
 {
     s16 level = gAmmoLevels[ammo][1] - gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].reload;
 
-    if (Player_HasSkill(pl, 0x2E) == 1) {
+    if (Player_HasSkill(pl, SKILL_RELOAD_PLUS1) == 1) {
         level -= 1;
     }
-    if (Player_HasSkill(pl, 0x2F) == 1) {
+    if (Player_HasSkill(pl, SKILL_RELOAD_PLUS2) == 1) {
         level -= 2;
     }
-    if (Player_HasSkill(pl, 0x30) == 1) {
+    if (Player_HasSkill(pl, SKILL_RELOAD_PLUS3) == 1) {
         level -= 3;
     }
-    if (Player_HasSkill(pl, 0x31) == 1) {
+    if (Player_HasSkill(pl, SKILL_RELOAD_MINUS1) == 1) {
         level += 1;
     }
-    if (Player_HasSkill(pl, 0x32) == 1) {
+    if (Player_HasSkill(pl, SKILL_RELOAD_MINUS3) == 1) {
         level += 3;
     }
     if (level <= 4) {
@@ -446,8 +407,8 @@ u8 Bowgun_ReloadLevel(Player *pl, u8 ammo)
 }
 
 /* How hard an ammo kind kicks back with the player's gun: 0, 1 or 2 (the recoil text's row); 2
- * without a gun. The ammo's own value (gAmmoLevels[ammo][0]), and unless skill 0x33 cancels it,
- * less the gun's GunData.recoil and less 2 or 4 for the skills 0x34 or 0x35; up to 8 gives 0, up to
+ * without a gun. The ammo's own value (gAmmoLevels[ammo][0]), and unless SKILL_FREE_SHOTS cancels it,
+ * less the gun's GunData.recoil and less 2 or 4 for SKILL_RECOIL_DOWN1 or _DOWN2; up to 8 gives 0, up to
  * 10 gives 1. */
 s16 Bowgun_RecoilLevel(Player *pl, u8 ammo)
 {
@@ -457,11 +418,11 @@ s16 Bowgun_RecoilLevel(Player *pl, u8 ammo)
         return 2;
     }
     level = gAmmoLevels[ammo][0];
-    if (Player_HasSkill(pl, 0x33) == 0) {
+    if (Player_HasSkill(pl, SKILL_FREE_SHOTS) == 0) {
         level -= gGunData[pl->equip[EQUIP_SLOT_WEAPON].id].recoil;
-        if (Player_HasSkill(pl, 0x34) == 1) {
+        if (Player_HasSkill(pl, SKILL_RECOIL_DOWN1) == 1) {
             level -= 2;
-        } else if (Player_HasSkill(pl, 0x35) == 1) {
+        } else if (Player_HasSkill(pl, SKILL_RECOIL_DOWN2) == 1) {
             level -= 4;
         }
     }
@@ -484,9 +445,7 @@ void Player_ResetAim(Player *pl)
     pl->aimPitch = 0;
 }
 
-s32 Side_Match(u8 a, u8 b, u8 none);
-
-/* Which horn item a player on side sideWanted is playing: 1-7 for the items 0x2B0-0x2B6, from the
+/* Which horn item a player on side sideWanted is playing: 1-7 for ITEM_ID_HORN_ITEM_A to ITEM_ID_HORN_ITEM_LONG_B, from the
  * first of the four players on that side (and not flagged by unk69E[0]) whose state is
  * PL_ACT_HORN_ITEM_PLAY (the group isn't checked); 0 if none. Players with no side don't count. */
 u16 Side_HornItemPlaying(u8 sideWanted)
@@ -508,25 +467,25 @@ u16 Side_HornItemPlaying(u8 sideWanted)
         switch (pl->state) {
         case PL_ACT_HORN_ITEM_PLAY:
             switch (pl->useItem) {
-            case 0x2B0:
+            case ITEM_ID_HORN_ITEM_A:
                 played = 1;
                 break;
-            case 0x2B1:
+            case ITEM_ID_HORN_ITEM_B:
                 played = 2;
                 break;
-            case 0x2B2:
+            case ITEM_ID_HORN_ITEM_SHORT:
                 played = 3;
                 break;
-            case 0x2B3:
+            case ITEM_ID_HORN_ITEM_LONG:
                 played = 4;
                 break;
-            case 0x2B4:
+            case ITEM_ID_HORN_ITEM_C:
                 played = 5;
                 break;
-            case 0x2B5:
+            case ITEM_ID_HORN_ITEM_D:
                 played = 6;
                 break;
-            case 0x2B6:
+            case ITEM_ID_HORN_ITEM_LONG_B:
                 played = 7;
                 break;
             }
@@ -635,47 +594,47 @@ f32 Player_NameTagRaise(Player *pl)
 
     if (pl->gender == 0) {
         switch (head->modelMale) {
-        case 0x02:
-        case 0x14:
-        case 0x20:
-        case 0x24:
-        case 0x4E:
-        case 0x58:
-        case 0x63:
-        case 0x64:
-        case 0x6B:
-        case 0x6C:
-        case 0x77:
-        case 0x8B:
-        case 0xAB:
-        case 0xB9:
-        case 0xBF:
-        case 0xC9:
-        case 0xCB:
-        case 0xD8:
-        case 0xD9:
-        case 0xDA:
+        case 2:
+        case 20:
+        case 32:
+        case 36:
+        case 78:
+        case 88:
+        case 99:
+        case 100:
+        case 107:
+        case 108:
+        case 119:
+        case 139:
+        case 171:
+        case 185:
+        case 191:
+        case 201:
+        case 203:
+        case 216:
+        case 217:
+        case 218:
             raise = 40.0f;
             break;
         }
     } else {
         switch (head->modelFemale) {
-        case 0x20:
-        case 0x2A:
-        case 0x6B:
-        case 0x6C:
-        case 0x7A:
-        case 0x7C:
-        case 0x7F:
-        case 0x8B:
-        case 0x8C:
-        case 0x90:
-        case 0x95:
-        case 0xC9:
-        case 0xCB:
-        case 0xD8:
-        case 0xD9:
-        case 0xDA:
+        case 32:
+        case 42:
+        case 107:
+        case 108:
+        case 122:
+        case 124:
+        case 127:
+        case 139:
+        case 140:
+        case 144:
+        case 149:
+        case 201:
+        case 203:
+        case 216:
+        case 217:
+        case 218:
             raise = 40.0f;
             break;
         }
@@ -824,7 +783,7 @@ void Save_RestorePouch(Player *pl)
 }
 
 /* Adds money (or takes it, with a negative amount), within 0 to 9,999,999. Having 2,000,000 or more
- * grants award 0x1E. */
+ * grants AWARD_MONEY. */
 void Save_AddMoney(s32 n)
 {
     gSave.money += n;
@@ -834,7 +793,7 @@ void Save_AddMoney(s32 n)
     if (gSave.money < 0) {
         gSave.money = 0;
     } else if (gSave.money >= 2000000) {
-        Award_Grant(0x1E);
+        Award_Grant(AWARD_MONEY);
     }
 }
 
@@ -1018,11 +977,11 @@ s32 Hr_AddPoints(s32 points)
     return Save_AddHrPoints(&gSave, points);
 }
 
-/* 1 for the items 0x271-0x28E, which are never carried: getting one only marks it obtained
+/* 1 for the items 625-654, which are never carried: getting one only marks it obtained
  * (SavePouch_Add). */
 s32 Item_IsRecordOnly(u16 item)
 {
-    if (item >= 0x271 && item < 0x28F) {
+    if (item >= 625 && item < 655) {
         return 1;
     }
     return 0;
@@ -1050,8 +1009,8 @@ u8 SavePouch_Add(u16 item, s16 amount)
         }
         return 0;
     }
-    if (gItemData[item].max == 0xFF) {
-        amount = 0xFF;
+    if (gItemData[item].max == 255) {
+        amount = 255;
     }
     if (SavePouch_Count(item) == 0) {
         result = 5;
@@ -1081,7 +1040,7 @@ u8 SavePouch_Add(u16 item, s16 amount)
                     result = 3;
                     break;
                 }
-                if (amount < 0 && gItemData[item].max == 0xFF) {
+                if (amount < 0 && gItemData[item].max == 255) {
                     result = 1;
                     break;
                 }
@@ -1140,7 +1099,7 @@ s32 SavePouch_Count(u16 item)
 }
 
 /* How many more of an item fit in gSave's pouch's stack of it (the full stack size when there is
- * none; 0xFF for an item with no limit); for a special item, 1 when the pouch holds none. */
+ * none; ITEM_MAX_UNLIMITED for an item with no limit); for a special item, 1 when the pouch holds none. */
 s32 SavePouch_Room(u16 item)
 {
     SaveData *save = &gSave;
@@ -1151,8 +1110,8 @@ s32 SavePouch_Room(u16 item)
     }
     for (i = 0; i < POUCH_SLOTS; i++) {
         if (save->pouch[i].item == item) {
-            if (gItemData[item].max == 0xFF) {
-                return 0xFF;
+            if (gItemData[item].max == ITEM_MAX_UNLIMITED) {
+                return ITEM_MAX_UNLIMITED;
             }
             /* A return in both branches, as the game has it (each jumps to the
              * epilogue): the first probably held a print compiled out. */
@@ -1182,8 +1141,8 @@ s32 SavePouch_Space(u16 item)
     empty = 0;
     for (i = 0; i < POUCH_SLOTS; i++) {
         if (save->pouch[i].item == item) {
-            if (gItemData[item].max == 0xFF) {
-                return 0xFF;
+            if (gItemData[item].max == 255) {
+                return 255;
             }
             /* A return in both branches, as the game has it (each jumps to the
              * epilogue): the first probably held a print compiled out. */
@@ -1258,7 +1217,7 @@ s32 ItemBox_Count(u16 item)
 
     for (i = 0; i < capacity; i++) {
         if (save->itemBox[i].item == item) {
-            return gItemData[item].max == 0xFF ? 999 : save->itemBox[i].count;
+            return gItemData[item].max == 255 ? 999 : save->itemBox[i].count;
         }
     }
     return 0;
@@ -1274,7 +1233,7 @@ s32 ItemBox_Total(u16 item)
 
     for (i = 0; i < capacity; i++) {
         if (save->itemBox[i].item == item) {
-            if (gItemData[item].max == 0xFF) {
+            if (gItemData[item].max == 255) {
                 return 999;
             }
             total += save->itemBox[i].count;
@@ -1292,7 +1251,7 @@ s32 ItemBox_Room(u16 item)
     s16 capacity;
     s32 room;
 
-    if (item == 0 || gItemData[item].max == 0xFF) {
+    if (item == 0 || gItemData[item].max == 255) {
         return 0;
     }
     capacity = Box_GetCapacity(save);
@@ -1328,7 +1287,7 @@ s32 ItemBox_Fits(u16 item)
         if (stack->item == 0) {
             return max;
         }
-        if (stack->item == item && max != 0xFF) {
+        if (stack->item == item && max != 255) {
             wanted -= max - stack->count;
             if (wanted <= 0) {
                 return max;
@@ -1350,7 +1309,7 @@ s16 ItemBox_Remove(u16 item, s16 count)
     if (count < 0) {
         return 0;
     }
-    if (item == 0 || gItemData[item].max == 0xFF) {
+    if (item == 0 || gItemData[item].max == 255) {
         return 0;
     }
     capacity = Box_GetCapacity(save);
@@ -1391,7 +1350,7 @@ u32 ItemBox_AddTo(SaveData *save, u16 item, u32 count)
     if (count > max) {
         count = max;
     }
-    if (max != 0xFF) {
+    if (max != 255) {
         stack = save->itemBox;
         for (i = capacity; i != 0; i--, stack++) {
             if (stack->item == item && stack->count < max) {
@@ -1439,7 +1398,7 @@ u16 ItemList_Add(ItemStack *list, u16 item, u16 count)
     if (count > max) {
         count = max;
     }
-    if (max != 0xFF) {
+    if (max != 255) {
         stack = list;
         for (i = capacity; i != 0; i--, stack++) {
             if (stack->item == item && stack->count < max) {
@@ -1467,7 +1426,7 @@ u16 ItemList_Add(ItemStack *list, u16 item, u16 count)
 
 /* Adds count of an item to gSave's item box: first onto its stacks that have room, then into the
  * empty slots, a full stack each. An item with no limit takes one empty slot per unit, each with
- * the count 0xFF. Returns how many found no place (0 when all did). */
+ * the count 255. Returns how many found no place (0 when all did). */
 u32 ItemBox_AddStacks(u16 item, u32 count)
 {
     SaveData *save = &gSave;
@@ -1483,7 +1442,7 @@ u32 ItemBox_AddStacks(u16 item, u32 count)
     capacity = Box_GetCapacity(save);
     stack = save->itemBox;
     for (i = 0; i < capacity; i++, stack++) {
-        if (stack->item == item && stack->count < stackMax && stackMax != 0xFF) {
+        if (stack->item == item && stack->count < stackMax && stackMax != 255) {
             u32 room = stackMax - stack->count;
 
             if (room >= count) {
@@ -1500,8 +1459,8 @@ u32 ItemBox_AddStacks(u16 item, u32 count)
         if (stack->item == 0) {
             Save_MarkItemObtained(save, item);
             stack->item = item;
-            if (stackMax == 0xFF) {
-                stack->count = 0xFF;
+            if (stackMax == 255) {
+                stack->count = 255;
                 count--;
             } else if (count <= stackMax) {
                 stack->count = count;
@@ -1538,7 +1497,7 @@ s16 PouchBackup_Count(u16 item)
 
 /* Takes amount (zero or less) of an item from gPouchBackup when the pouch uses it up. When the
  * pouch holds more than the backup, that extra goes first: 5 when it covers it all. Returns 4 when
- * the backup's stack ran out, 1 when some is left, and 0xFF for a positive amount, an item with no
+ * the backup's stack ran out, 1 when some is left, and 255 for a positive amount, an item with no
  * limit, or an item neither holds. */
 u8 PouchBackup_Use(Player *pl, u16 item, s16 amount)
 {
@@ -1548,15 +1507,15 @@ u8 PouchBackup_Use(Player *pl, u16 item, s16 amount)
     u8 result;
 
     if (amount > 0) {
-        return 0xFF;
+        return 255;
     }
-    if (gItemData[item].max == 0xFF) {
-        return 0xFF;
+    if (gItemData[item].max == 255) {
+        return 255;
     }
     backupCount = PouchBackup_Count(item);
     pouchCount = Pouch_Count(pl, item);
     if (backupCount == 0 && pouchCount == 0) {
-        return 0xFF;
+        return 255;
     }
     if (pouchCount > backupCount) {
         s16 extra = pouchCount - backupCount;
@@ -1731,8 +1690,8 @@ s32 Weapon_StatusValue(u16 type, u16 id, u16 status)
 /* A stat of the player's weapon by kind (WSTAT_*): an element's value when the weapon has that
  * element (BladeData/GunData.elementType 1-4 for WSTAT_FIRE to WSTAT_ICE, 5 for WSTAT_DRAGON), a
  * status's when a blade has that status (statusType 1-3), else 0; or the affinity, plus 5, 10 or 15
- * for the skills 0x23-0x25, and for a blade 5 at sharpness level 4 or 10 above it when positive.
- * The skill 0x47 raises the statuses and the dragon element (WSTAT_POISON to WSTAT_DRAGON) by an
+ * for SKILL_AFFINITY_PLUS5, _PLUS10_NO_BOUNCE and _PLUS15_NO_BOUNCE, and for a blade 5 at sharpness level 4 or 10 above it when positive.
+ * SKILL_STATUS_PLUS raises the statuses and the dragon element (WSTAT_POISON to WSTAT_DRAGON) by an
  * eighth. */
 s16 Player_GetWeaponStat(Player *pl, u8 kind)
 {
@@ -1802,11 +1761,11 @@ s16 Player_GetWeaponStat(Player *pl, u8 kind)
         break;
     case WSTAT_AFFINITY:
         result = aff;
-        if (Player_HasSkill(pl, 0x23) == 1) {
+        if (Player_HasSkill(pl, SKILL_AFFINITY_PLUS5) == 1) {
             result += 5;
-        } else if (Player_HasSkill(pl, 0x24) == 1) {
+        } else if (Player_HasSkill(pl, SKILL_AFFINITY_PLUS10_NO_BOUNCE) == 1) {
             result += 10;
-        } else if (Player_HasSkill(pl, 0x25) == 1) {
+        } else if (Player_HasSkill(pl, SKILL_AFFINITY_PLUS15_NO_BOUNCE) == 1) {
             result += 15;
         }
         if (result > 0) {
@@ -1830,13 +1789,11 @@ s16 Player_GetWeaponStat(Player *pl, u8 kind)
         }
         return result;
     }
-    if (Player_HasSkill(pl, 0x47) == 1 && result > 0 && kind >= WSTAT_POISON && kind < WSTAT_AFFINITY) {
+    if (Player_HasSkill(pl, SKILL_STATUS_PLUS) == 1 && result > 0 && kind >= WSTAT_POISON && kind < WSTAT_AFFINITY) {
         result = 1.125f * result;
     }
     return result;
 }
-
-u32 Armor_GetDefense(EquipItem *item);
 
 /* A stat of the equipment shown (gEquipShown) by kind (EQUIP_STAT_*, save.h): the attack (a gun's
  * with its level row and options), the defense, a resistance summed over the armour, or the
@@ -2004,7 +1961,7 @@ s16 Gun_GetAttack(EquipItem *item)
     return total;
 }
 
-/* The index of a quest id in gClearListQuests (its bit in SaveData.clearedQuests), 0xFFFF if it
+/* The index of a quest id in gClearListQuests (its bit in SaveData.clearedQuests), 65535 if it
  * isn't listed. */
 u16 ClearList_IndexOf(u16 quest)
 {
@@ -2020,7 +1977,7 @@ u16 ClearList_IndexOf(u16 quest)
         i++;
         key = *entry;
     }
-    return 0xFFFF;
+    return 65535;
 }
 
 /* Records a quest as cleared in gSave (its bit in clearedQuests) when the quest's main goal is done
@@ -2153,9 +2110,9 @@ static s32 Equip_IsValidId(EquipItem *item)
  * sell price).
  */
 
-/* Armor data (0x28 bytes), one table per armor type (gArmorTables). */
+/* Armor data (40 bytes), one table per armor type (gArmorTables). */
 
-/* A forging recipe (0x18 bytes): the tables gArmorRecipes and gWeaponRecipes are outside
+/* A forging recipe (24 bytes): the tables gArmorRecipes and gWeaponRecipes are outside
  * sub_main (Forge_CheckRecipe). The lobby's forge menus view it as their own ForgeRecipe. */
 typedef struct ForgeRecipe {
     u8 type;                    /* 0x0: gWeaponRecipes: EQUIP_BLADE or EQUIP_GUN */
@@ -2165,7 +2122,7 @@ typedef struct ForgeRecipe {
     u8 cond[4];                 /* 0x14: per material, the condition that unlocks the recipe (Forge_CheckRecipe) */
 } ForgeRecipe;
 
-/* One page of the box (25 entries), built by Save_BuildSummary (0x19C bytes). */
+/* One page of the box (25 entries), built by Save_BuildSummary (412 bytes). */
 typedef struct BoxPage {
     u16 id[SUMMARY_BOX_SLOTS];                 /* 0x000 */
     u16 level[SUMMARY_BOX_SLOTS];              /* 0x032 */
@@ -2175,10 +2132,10 @@ typedef struct BoxPage {
     s32 hrPoints;               /* 0x0FC */
     u32 itemBits[ITEM_BITS_WORDS];           /* 0x100: SaveData.itemBits */
     u16 hr;                     /* 0x180 */
-    u8 type[SUMMARY_BOX_SLOTS];                /* 0x182: EquipItem.type, 0xFF for an empty slot */
+    u8 type[SUMMARY_BOX_SLOTS];                /* 0x182: EquipItem.type, 255 for an empty slot */
 } BoxPage;
 
-/* The equipped items, built by Save_BuildSummary (0xC4 bytes). */
+/* The equipped items, built by Save_BuildSummary (196 bytes). */
 typedef struct EquipSummary {
     u8 weaponType;              /* 0x00 */
     u8 headId;                  /* 0x01 */
@@ -2197,46 +2154,17 @@ typedef struct EquipSummary {
     u16 hr;                     /* 0xC0 */
 } EquipSummary;
 
-extern ItemStack gPouchBackup[20];
 extern EquipSummary gSaveSummaryEquip;
 extern BoxPage gSaveSummaryBox;
-extern u8 *gMonsterGroups[];
 extern f32 gMonsterBaseSize[];
 extern u16 gObtainFlagItems[];
 extern u32 gPlayerColorWords[];
 extern u8 *gPlayerPartFlagTbls[];
-extern u8 gWeaponKindClass[];
 extern f32 gArmorLevelDefense[];
 extern f32 gArmorLevelCost[];
 extern u8 gArmorLevelSlots[];
-extern s32 gWeaponClassMultipliers[];        /* per weapon class: attack multiplier x 100 */
 extern ForgeRecipe gArmorRecipes[];
 extern ForgeRecipe gWeaponRecipes[];
-
-void *memcpy(void *dst, void *src, u32 n);
-s32 Award_Grant(s32 arg0);
-f32 Math_Floor(f32 x);
-void Save_PickBestCounter(EquipItem *unused0, u8 unused1);
-void Player_CalcAttack(Player *pl);
-void Player_CalcDefense(Player *pl);
-void Player_CalcResists(Player *pl);
-void Player_CalcSkills(Player *pl);
-u32 Bowgun_GetAmmoMask(Player *p);
-u8 Weapon_GetClass(u8 a, u16 weapon);
-s32 SavePouch_Count(u16 item);
-s32 ItemBox_Count(u16 item);
-s32 ItemBox_Total(u16 item);
-s32 Save_TestEventFlag(s32 n);
-s32 Equip_IsSlotEquipped(SaveData *save, s32 idx);
-u16 Record_GroupHunted(SaveData *save, u8 group);
-u16 Record_GroupCaptured(SaveData *save, u8 group);
-s16 Box_GetPageCount(SaveData *save);
-s16 Box_GetCapacity(SaveData *save);
-void Save_SetItemObtained(SaveData *save, u16 item);
-s32 Save_IsItemObtained(SaveData *save, u16 item);
-s32 Save_HasTitle(s32 n);
-void EquipCollect_CheckWeapons(void);
-void EquipCollect_CheckArmor(void);
 
 /* Sets bit bit of item's flag byte in gSave, then the equipment collection awards. */
 void Equip_SetFlag(EquipItem *item, s16 bit)
@@ -2317,7 +2245,7 @@ s32 Equip_TestFlag(EquipItem *item, s16 bit)
     return EquipFlags_Test(flags, item, bit);
 }
 
-/* The first free box slot of gSave, 0xFFFF when full. */
+/* The first free box slot of gSave, 65535 when full. */
 u16 Box_FindFreeSlot(void *unused0)
 {
     SaveData *save = &gSave;
@@ -2332,7 +2260,7 @@ u16 Box_FindFreeSlot(void *unused0)
     return BOX_NONE;
 }
 
-/* Puts an item in the first free box slot and flags it seen; its index or 0xFFFF. */
+/* Puts an item in the first free box slot and flags it seen; its index or 65535. */
 u16 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level)
 {
     s16 capacity = Box_GetCapacity(save);
@@ -2497,7 +2425,7 @@ static s32 Box_SlotHasType(SaveData *save, u16 idx, u8 typeA, u8 typeB)
     return 1;
 }
 
-/* Copies the equipped box slots into save->equip (no weapon: blade weapon 0x9B). */
+/* Copies the equipped box slots into save->equip (no weapon: blade weapon 155). */
 void Equip_Refresh(SaveData *save)
 {
     if (Box_SlotHasType(save, save->equipIdx[SAVE_EQUIP_WEAPON], EQUIP_BLADE, EQUIP_GUN) == 1) {
@@ -2505,7 +2433,7 @@ void Equip_Refresh(SaveData *save)
     } else {
         save->equip[SAVE_EQUIP_WEAPON].used = save->box[save->equipIdx[SAVE_EQUIP_WEAPON]].used;
         save->equip[SAVE_EQUIP_WEAPON].type = EQUIP_BLADE;
-        save->equip[SAVE_EQUIP_WEAPON].id = 0x9B;
+        save->equip[SAVE_EQUIP_WEAPON].id = 155;
         save->equip[SAVE_EQUIP_WEAPON].level = 0;
         save->equip[SAVE_EQUIP_WEAPON].deco[0] = 0;
         save->equip[SAVE_EQUIP_WEAPON].deco[1] = 0;
@@ -2613,8 +2541,8 @@ s32 Box_IsSlotFree(SaveData *save, s32 idx)
 }
 
 /* 1 when a forging condition is met (BladeData.forgeCond, GunData.forgeCond; the same values as
- * ForgeRecipe.cond): 0 and 1 always; 2 a hunter rank above 0; 3, 4 and 5 the event flags 0x7F, 0x82
- * and 0x83; 6 a monster of group 0xB hunted or captured; 7 both 2 and 6. */
+ * ForgeRecipe.cond): 0 and 1 always; 2 a hunter rank above 0; 3, 4 and 5 EVENT_FLAG_PSP_LINK_7, _8
+ * and _9; 6 a monster of group 11 hunted or captured; 7 both 2 and 6. */
 s32 Forge_CheckCondition(s16 cond)
 {
     u8 ok = 0;
@@ -2632,30 +2560,30 @@ s32 Forge_CheckCondition(s16 cond)
         }
         break;
     case 3:
-        if (Save_TestEventFlag(0x7F)) {
+        if (Save_TestEventFlag(EVENT_FLAG_PSP_LINK_7)) {
             ok = 1;
         }
         break;
     case 4:
-        if (Save_TestEventFlag(0x82)) {
+        if (Save_TestEventFlag(EVENT_FLAG_PSP_LINK_8)) {
             ok = 1;
         }
         break;
     case 5:
-        if (Save_TestEventFlag(0x83)) {
+        if (Save_TestEventFlag(EVENT_FLAG_PSP_LINK_9)) {
             ok = 1;
         }
         break;
     case 6:
-        if (Record_GroupHunted(&gSave, 0xB) > 0
-            || Record_GroupCaptured(&gSave, 0xB) > 0) {
+        if (Record_GroupHunted(&gSave, 11) > 0
+            || Record_GroupCaptured(&gSave, 11) > 0) {
             ok = 1;
         }
         break;
     case 7:
         if (gSave.hr > 0
-            && (Record_GroupHunted(&gSave, 0xB) > 0
-                || Record_GroupCaptured(&gSave, 0xB) > 0)) {
+            && (Record_GroupHunted(&gSave, 11) > 0
+                || Record_GroupCaptured(&gSave, 11) > 0)) {
             ok = 1;
         }
         break;
@@ -2755,31 +2683,31 @@ s32 Forge_CheckRecipe(u16 list, s16 idx, s32 where)
                 }
                 break;
             case 3:
-                if (Save_TestEventFlag(0x7F)) {
+                if (Save_TestEventFlag(127)) {
                     unlocked = 1;
                 }
                 break;
             case 4:
-                if (Save_TestEventFlag(0x82)) {
+                if (Save_TestEventFlag(130)) {
                     unlocked = 1;
                 }
                 break;
             case 5:
-                if (Save_TestEventFlag(0x83)) {
+                if (Save_TestEventFlag(131)) {
                     unlocked = 1;
                 }
                 break;
             case 6:
                 if (obtained > 0
-                    && (Record_GroupHunted(&gSave, 0xB) > 0
-                        || Record_GroupCaptured(&gSave, 0xB) > 0)) {
+                    && (Record_GroupHunted(&gSave, 11) > 0
+                        || Record_GroupCaptured(&gSave, 11) > 0)) {
                     unlocked = 1;
                 }
                 break;
             case 7:
                 if (obtained > 0 && gSave.hr > 0
-                    && (Record_GroupHunted(&gSave, 0xB) > 0
-                        || Record_GroupCaptured(&gSave, 0xB) > 0)) {
+                    && (Record_GroupHunted(&gSave, 11) > 0
+                        || Record_GroupCaptured(&gSave, 11) > 0)) {
                     unlocked = 1;
                 }
                 break;
@@ -2790,7 +2718,7 @@ s32 Forge_CheckRecipe(u16 list, s16 idx, s32 where)
         }
     }
     if (numCond == 0 || unlocked != 0) {
-        if (okMask == 0xF) {
+        if (okMask == 15) {
             return 2;
         }
         if (unlocked != 0) {
@@ -2836,12 +2764,12 @@ s32 Box_GetGunLevel(SaveData *save, s16 idx)
     return save->box[idx].level & GUN_LEVEL_MASK;
 }
 
-/* 1 when the gun in box slot idx has the option bits in mask (GUN_OPT_*), 0 when not; 0xFF when the
+/* 1 when the gun in box slot idx has the option bits in mask (GUN_OPT_*), 0 when not; 255 when the
  * slot holds no gun. */
 s32 Box_TestGunOption(SaveData *save, s16 idx, s32 mask)
 {
     if (Box_SlotIsGun(save, idx) == 0) {
-        return 0xFF;
+        return 255;
     }
     if (save->box[idx].level & mask) {
         return 1;
@@ -2962,7 +2890,7 @@ s32 Equip_CanWear(SaveData *save, EquipItem *item)
 }
 
 /* Who can wear an item of equipment: its armour piece's ArmorData.flags (1 male, 2 female, 4
- * blademaster, 8 gunner); 0xF for a weapon, 0 for an unknown type. */
+ * blademaster, 8 gunner); the whole mask 0xF for a weapon, 0 for an unknown type. */
 u8 Equip_GetWearMask(SaveData *save, EquipItem *item)
 {
     switch (item->type) {
@@ -2978,7 +2906,7 @@ u8 Equip_GetWearMask(SaveData *save, EquipItem *item)
         return gArmorLegsData[item->id].flags;
     case EQUIP_BLADE:
     case EQUIP_GUN:
-        return 0xF;
+        return 15;
     }
     return 0;
 }
@@ -3041,7 +2969,7 @@ f32 Monster_SizeFromPercent(u8 kind, u16 x)
 
 /*
  * The largest size in a monster group (gMonsterGroups: the monster, then its
- * variants, 0xFF-terminated), and which monster it was.
+ * variants, ended by 255), and which monster it was.
  */
 u16 Record_GroupLargest(SaveData *save, u8 group, u8 *out)
 {
@@ -3049,7 +2977,7 @@ u16 Record_GroupLargest(SaveData *save, u8 group, u8 *out)
     u8 *member = gMonsterGroups[group];
     u16 size;
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         size = Record_GetLargest(save, *member);
         if (best < size) {
             best = size;
@@ -3068,7 +2996,7 @@ u16 MonsterGroup_Max(u16 *sizes, u8 group, u8 *out)
     u8 *member = gMonsterGroups[group];
     u16 size;
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         size = sizes[*member];
         if (best < size) {
             best = size;
@@ -3092,7 +3020,7 @@ u16 Record_GroupSmallest(SaveData *save, u8 group, u8 *out)
     if (best == 0) {
         return 0;
     }
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         size = Record_GetSmallest(save, *member);
         if (size != 0) {
             if (best == 0) {
@@ -3119,7 +3047,7 @@ u16 MonsterGroup_MinNonzero(u16 *sizes, u8 group, u8 *out)
     u8 *member = gMonsterGroups[group];
     u16 size;
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         size = sizes[*member];
         if (size != 0) {
             if (best == 0) {
@@ -3144,7 +3072,7 @@ u16 MonsterGroup_Sum(u16 *counts, u8 group, s32 unused)
     u16 sum = 0;
     u8 *member = gMonsterGroups[group];
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         sum += counts[*member];
     }
     if (sum > RECORD_COUNT_MAX) {
@@ -3159,7 +3087,7 @@ u16 Records_HuntedTotal(SaveData *save, u8 group, u8 captured)
     u16 sum = 0;
     u8 *member = gMonsterGroups[group];
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         sum += save->hunted[*member];
         if (captured == 1) {
             sum += save->captured[*member];
@@ -3177,7 +3105,7 @@ u16 Record_GroupHunted(SaveData *save, u8 group)
     u16 sum = 0;
     u8 *member = gMonsterGroups[group];
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         sum += Record_GetHunted(save, *member);
     }
     if (sum > RECORD_COUNT_MAX) {
@@ -3192,7 +3120,7 @@ u16 Record_GroupCaptured(SaveData *save, u8 group)
     u16 sum = 0;
     u8 *member = gMonsterGroups[group];
 
-    for (; *member != 0xFF; member++) {
+    for (; *member != 255; member++) {
         sum += Record_GetCaptured(save, *member);
     }
     if (sum > RECORD_COUNT_MAX) {
@@ -3253,7 +3181,7 @@ s32 Save_SummarySize(s32 mode)
 }
 
 /* Builds a summary of the save data for the lobby and returns it: in mode
- * SAVE_SUMMARY_BOX, SUMMARY_BOX_SLOTS slots of the box from page * SUMMARY_BOX_SLOTS (type 0xFF for
+ * SAVE_SUMMARY_BOX, SUMMARY_BOX_SLOTS slots of the box from page * SUMMARY_BOX_SLOTS (type 255 for
  * an empty one); in SAVE_SUMMARY_EQUIPPED, the equipped items and the play time. Both carry the item
  * bits, the hunter rank and its points. NULL for another mode. */
 void *Save_BuildSummary(s32 mode, s32 page)
@@ -3270,7 +3198,7 @@ void *Save_BuildSummary(s32 mode, s32 page)
         slot = page * SUMMARY_BOX_SLOTS;
         for (i = 0; i < SUMMARY_BOX_SLOTS; i++, slot++) {
             if (slot >= capacity || save->box[slot].used == 0) {
-                boxPage->type[i] = 0xFF;
+                boxPage->type[i] = 255;
                 boxPage->id[i] = 0;
                 boxPage->level[i] = 0;
                 boxPage->deco0[i] = 0;
@@ -3345,13 +3273,13 @@ void Player_BackupPouch(Player *pl, s32 load)
     }
 }
 
-/* Box pages owned: 1 + items 0x26D-0x270 obtained (reads gSave, not save). */
+/* Box pages owned: 1 + how many of the items ITEM_ID_BOX_UPGRADE_1 to ITEM_ID_HOUSE_UPGRADE_2 are obtained (reads gSave, not save). */
 s16 Box_GetPageCount(SaveData *save)
 {
     s32 n = 1;
     s32 i;
 
-    for (i = 0x26D; i <= 0x270; i++) {
+    for (i = ITEM_ID_BOX_UPGRADE_1; i <= ITEM_ID_HOUSE_UPGRADE_2; i++) {
         if (Save_IsItemObtained(&gSave, i) == 1) {
             n++;
         }
@@ -3389,7 +3317,7 @@ s16 Box_WrapIndex(SaveData *save, s16 idx)
  * class's multiplier) at least or at most value; 2 and 3 the defense; 4/5, 6/7, 8/9, 10/11 and
  * 14/15 the resistances 0, 1, 2, 3 and 4 (the even kind: at least; the odd: at most); 12 no armour
  * worn; 13 an empty pouch; 16 nothing in the pouch but items with ItemData.flags 2 or 4; 17 none of
- * the items 0x27, 0x45, 0x50 and 0x82. Returns 1 when met, 0 when not or for another kind. */
+ * the items 39, ITEM_ID_LOBBED_NO_VERSUS, ITEM_ID_THROWN_NO_VERSUS and 130. Returns 1 when met, 0 when not or for another kind. */
 s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
 {
     s32 stat;
@@ -3486,10 +3414,10 @@ s32 Player_CheckRequirement(Player *pl, u16 kind, s32 value)
         for (i = 0; i < POUCH_SLOTS; i++) {
             if (pl->pouch[i].item != 0 && pl->pouch[i].count > 0) {
                 switch (pl->pouch[i].item) {
-                case 0x50:
-                case 0x45:
-                case 0x82:
-                case 0x27:
+                case ITEM_ID_THROWN_NO_VERSUS:
+                case ITEM_ID_LOBBED_NO_VERSUS:
+                case 130:
+                case 39:
                     return 0;
                 }
             }
@@ -3587,7 +3515,7 @@ void Save_SetItemObtained(SaveData *save, u16 item)
     if (item != 0xFFFF && item < ITEM_ID_COUNT) {
         save->itemBits[item / 32] |= 1 << (item & 0x1F);
     }
-    if (Save_HasTitle(0x27) != 1) {
+    if (Save_HasTitle(39) != 1) {
         entry = gObtainFlagItems;
         if (gObtainFlagItems[0] != 0xFFFF) {
             do {
@@ -3597,26 +3525,26 @@ void Save_SetItemObtained(SaveData *save, u16 item)
             } while (*entry != 0xFFFF);
         }
         if (count >= 15) {
-            Award_Grant(0x27);
+            Award_Grant(39);
         }
     }
 }
 
-/* 1 when item's bit is set in the bits given (one per item id), 0 when not; 0xFFFF for an id out of
- * range (0xFFFF or ITEM_ID_COUNT and above). */
+/* 1 when item's bit is set in the bits given (one per item id), 0 when not; 65535 for an id out of
+ * range (65535 or ITEM_ID_COUNT and above). */
 s32 ItemBits_Test(u32 *bits, u16 item)
 {
     if (item == 0xFFFF || item >= ITEM_ID_COUNT) {
-        return 0xFFFF;
+        return 65535;
     }
     return (bits[item / 32] & (1 << (item & 0x1F))) != 0;
 }
 
-/* 1 when the save has obtained an item (SaveData.itemBits); 0xFFFF for an id out of range. */
+/* 1 when the save has obtained an item (SaveData.itemBits); 65535 for an id out of range. */
 s32 Save_IsItemObtained(SaveData *save, u16 item)
 {
     if (item == 0xFFFF || item >= ITEM_ID_COUNT) {
-        return 0xFFFF;
+        return 65535;
     }
     return ItemBits_Test(save->itemBits, item);
 }
@@ -3731,1809 +3659,1805 @@ s32 Armor_GetSellPrice(EquipItem *item)
 }
 
 /* The equipment's initialised data: the stage file lists, the equipment tables and their names. */
-extern u32 gStageFileTbls_0[];
-extern u32 gStageFileTbls_1[];
-extern u32 gStageFileTbls_2[];
-extern u32 gStageFileTbls_3[];
 extern char D_004A00E8[];
 extern char gBladeNames_1[];
-extern char D_004A0110[];
-extern char D_004A0128[];
-extern char D_004A0140[];
-extern char D_004A0158[];
-extern char D_004A0170[];
-extern char D_004A0188[];
-extern char D_004A01A0[];
-extern char D_004A01C0[];
-extern char D_004A01D8[];
-extern char D_004A01E0[];
-extern char D_004A01F0[];
-extern char D_004A0200[];
-extern char D_004A0210[];
-extern char D_004A0220[];
-extern char D_004A0230[];
-extern char D_004A0240[];
-extern char D_004A0250[];
-extern char D_004A0260[];
-extern char D_004A0270[];
-extern char D_004A0280[];
-extern char D_004A0290[];
-extern char D_004A02A0[];
-extern char D_004A02B0[];
-extern char D_004A02D0[];
-extern char D_004A02E8[];
-extern char D_004A0300[];
-extern char D_004A0318[];
-extern char D_004A0330[];
-extern char D_004A0348[];
-extern char D_004A0350[];
-extern char D_004A0360[];
-extern char D_004A0370[];
-extern char D_004A0390[];
-extern char D_004A03B0[];
-extern char D_004A03C8[];
-extern char D_004A03D8[];
-extern char D_004A03E8[];
-extern char D_004A03F8[];
-extern char D_004A0408[];
-extern char D_004A0418[];
-extern char D_004A0428[];
-extern char D_004A0438[];
-extern char D_004A0448[];
-extern char D_004A0458[];
-extern char D_004A0470[];
-extern char D_004A0490[];
-extern char D_004A04A8[];
-extern char D_004A04B0[];
-extern char D_004A04C0[];
-extern char D_004A04D0[];
-extern char D_004A04E0[];
-extern char D_004A04F0[];
-extern char D_004A0508[];
-extern char D_004A0520[];
-extern char D_004A0540[];
-extern char D_004A0558[];
-extern char D_004A0568[];
-extern char D_004A0570[];
-extern char D_004A0580[];
-extern char D_004A05A0[];
-extern char D_004A05C0[];
-extern char D_004A05E0[];
-extern char D_004A0600[];
-extern char D_004A0620[];
-extern char D_004A0640[];
-extern char D_004A0660[];
-extern char D_004A0680[];
-extern char D_004A06A0[];
-extern char D_004A06B8[];
-extern char D_004A06C8[];
-extern char D_004A06E0[];
-extern char D_004A0700[];
-extern char D_004A0718[];
-extern char D_004A0730[];
-extern char D_004A0748[];
-extern char D_004A0760[];
-extern char D_004A0778[];
-extern char D_004A0790[];
-extern char D_004A07B0[];
-extern char D_004A07C8[];
-extern char D_004A07E0[];
-extern char D_004A0800[];
-extern char D_004A0820[];
-extern char D_004A0838[];
-extern char D_004A0848[];
-extern char D_004A0860[];
-extern char D_004A0878[];
-extern char D_004A0888[];
-extern char D_004A08A0[];
-extern char D_004A08C0[];
-extern char D_004A08D8[];
-extern char D_004A08F0[];
-extern char D_004A0910[];
-extern char D_004A0928[];
-extern char D_004A0938[];
-extern char D_004A0948[];
-extern char D_004A0950[];
-extern char D_004A0960[];
-extern char D_004A0968[];
-extern char D_004A0970[];
-extern char D_004A0990[];
-extern char D_004A09A8[];
-extern char D_004A09C0[];
-extern char D_004A09D8[];
-extern char D_004A09E8[];
-extern char D_004A0A00[];
-extern char D_004A0A20[];
-extern char D_004A0A38[];
-extern char D_004A0A50[];
-extern char D_004A0A68[];
-extern char D_004A0A70[];
-extern char D_004A0A80[];
-extern char D_004A0A98[];
-extern char D_004A0AA8[];
-extern char D_004A0AB8[];
-extern char D_004A0AD0[];
-extern char D_004A0AE8[];
-extern char D_004A0AF8[];
-extern char D_004A0B10[];
-extern char D_004A0B28[];
-extern char D_004A0B38[];
-extern char D_004A0B48[];
-extern char D_004A0B58[];
-extern char D_004A0B70[];
-extern char D_004A0B90[];
-extern char D_004A0BA8[];
-extern char D_004A0BB8[];
-extern char D_004A0BC8[];
-extern char D_004A0BE0[];
-extern char D_004A0BF8[];
-extern char D_004A0C10[];
-extern char D_004A0C28[];
-extern char D_004A0C38[];
-extern char D_004A0C48[];
-extern char D_004A0C58[];
-extern char D_004A0C70[];
-extern char D_004A0C88[];
-extern char D_004A0C98[];
-extern char D_004A0CB0[];
-extern char D_004A0CD0[];
-extern char D_004A0CF0[];
-extern char D_004A0D10[];
-extern char D_004A0D28[];
-extern char D_004A0D40[];
-extern char D_004A0D60[];
-extern char D_004A0D78[];
-extern char D_004A0D90[];
-extern char D_004A0DB0[];
-extern char D_004A0DC8[];
-extern char D_004A0DD8[];
-extern char D_004A0DF0[];
-extern char D_004A0E08[];
-extern char D_004A0E18[];
-extern char D_004A0E28[];
-extern char D_004A0E38[];
-extern char D_004A0E50[];
-extern char D_004A0E70[];
-extern char D_004A0E90[];
-extern char D_004A0EB0[];
-extern char D_004A0EC8[];
-extern char D_004A0ED0[];
-extern char D_004A0ED8[];
-extern char D_004A0EE8[];
-extern char D_004A0F00[];
-extern char D_004A0F20[];
-extern char D_004A0F40[];
-extern char D_004A0F58[];
-extern char D_004A0F68[];
-extern char D_004A0F78[];
-extern char D_004A0F90[];
-extern char D_004A0FB0[];
-extern char D_004A0FC8[];
-extern char D_004A0FE0[];
-extern char D_004A1000[];
-extern char D_004A1020[];
-extern char D_004A1040[];
-extern char D_004A1058[];
-extern char D_004A1068[];
-extern char D_004A1078[];
-extern char D_004A1088[];
-extern char D_004A1098[];
-extern char D_004A10A8[];
-extern char D_004A10C0[];
-extern char D_004A10D8[];
-extern char D_004A10F0[];
-extern char D_004A1110[];
-extern char D_004A1128[];
-extern char D_004A1130[];
-extern char D_004A1150[];
-extern char D_004A1168[];
-extern char D_004A1178[];
-extern char D_004A1190[];
-extern char D_004A11A8[];
-extern char D_004A11C0[];
-extern char D_004A11E0[];
-extern char D_004A11F8[];
-extern char D_004A1208[];
-extern char D_004A1218[];
-extern char D_004A1230[];
-extern char D_004A1248[];
-extern char D_004A1250[];
-extern char D_004A1260[];
-extern char D_004A1278[];
-extern char D_004A1288[];
-extern char D_004A12A0[];
-extern char D_004A12B8[];
-extern char D_004A12C8[];
-extern char D_004A12D0[];
-extern char D_004A12E0[];
-extern char D_004A1300[];
-extern char D_004A1318[];
-extern char D_004A1330[];
-extern char D_004A1350[];
-extern char D_004A1368[];
-extern char D_004A1380[];
-extern char D_004A13A0[];
-extern char D_004A13C0[];
-extern char D_004A13D8[];
-extern char D_004A13E0[];
-extern char D_004A13F0[];
-extern char D_004A13F8[];
-extern char D_004A1400[];
-extern char D_004A1410[];
-extern char D_004A1420[];
-extern char D_004A1430[];
-extern char D_004A1440[];
-extern char D_004A1448[];
-extern char D_004A1458[];
-extern char D_004A1470[];
-extern char D_004A1488[];
-extern char D_004A14A0[];
-extern char D_004A14B8[];
-extern char D_004A14C8[];
-extern char D_004A14E0[];
-extern char D_004A14F8[];
-extern char D_004A1508[];
-extern char D_004A1518[];
-extern char D_004A1530[];
-extern char D_004A1550[];
-extern char D_004A1570[];
-extern char D_004A1588[];
-extern char D_004A15A0[];
-extern char D_004A15C0[];
-extern char D_004A15D8[];
-extern char D_004A15E8[];
-extern char D_004A1600[];
-extern char D_004A1618[];
-extern char D_004A1630[];
-extern char D_004A1648[];
-extern char D_004A1658[];
-extern char D_004A1670[];
-extern char D_004A1690[];
-extern char D_004A16A8[];
-extern char D_004A16C0[];
-extern char D_004A16E0[];
-extern char D_004A16F8[];
-extern char D_004A1700[];
-extern char D_004A1710[];
-extern char D_004A1730[];
-extern char D_004A1748[];
-extern char D_004A1758[];
-extern char D_004A1770[];
-extern char D_004A1790[];
-extern char D_004A17B0[];
-extern char D_004A17D0[];
-extern char D_004A17F0[];
-extern char D_004A1810[];
-extern char D_004A1828[];
-extern char D_004A1838[];
-extern char D_004A1848[];
-extern char D_004A1850[];
-extern char D_004A1860[];
-extern char D_004A1878[];
-extern char D_004A1888[];
-extern char D_004A1898[];
-extern char D_004A18A8[];
-extern char D_004A18B8[];
-extern char D_004A18D0[];
-extern char D_004A18E8[];
-extern char D_004A1900[];
-extern char D_004A1918[];
-extern char D_004A1928[];
-extern char D_004A1938[];
-extern char D_004A1948[];
-extern char D_004A1950[];
-extern char D_004A1970[];
-extern char D_004A1990[];
-extern char D_004A19B0[];
-extern char D_004A19D0[];
-extern char D_004A19E8[];
-extern char D_004A19F8[];
-extern char D_004A1A10[];
-extern char D_004A1A28[];
-extern char D_004A1A38[];
-extern char D_004A1A50[];
-extern char D_004A1A70[];
-extern char D_004A1A88[];
-extern char D_004A1A90[];
-extern char D_004A1AA0[];
-extern char D_004A1AB0[];
-extern char D_004A1AC0[];
-extern char D_004A1AD8[];
-extern char D_004A1AE0[];
-extern char D_004A1AF0[];
-extern char D_004A1B00[];
-extern char D_004A1B10[];
-extern char D_004A1B30[];
-extern char D_004A1B50[];
-extern char D_004A1B68[];
-extern char D_004A1B78[];
-extern char D_004A1B90[];
-extern char D_004A1BB0[];
-extern char D_004A1BC8[];
-extern char D_004A1BD8[];
-extern char D_004A1BE8[];
-extern char D_004A1BF8[];
-extern char D_004A1C08[];
-extern char D_004A1C10[];
-extern char D_004A1C20[];
-extern char D_004A1C40[];
-extern char D_004A1C58[];
-extern char D_004A1C70[];
-extern char D_004A1C88[];
-extern char D_004A1C90[];
-extern char D_004A1CA0[];
-extern char D_004A1CB0[];
-extern char D_004A1CD0[];
-extern char D_004A1CE8[];
-extern char D_004A1CF8[];
-extern char D_004A1D08[];
-extern char D_004A1D18[];
-extern char D_004A1D28[];
-extern char D_004A1D38[];
-extern char D_004A1D48[];
-extern char D_004A1D60[];
-extern char D_004A1D80[];
-extern char D_004A1D98[];
-extern char D_004A1DB0[];
-extern char D_004A1DD0[];
-extern char D_004A1DF0[];
-extern char D_004A1E08[];
-extern char D_004A1E18[];
-extern char D_004A1E20[];
-extern char D_004A1E30[];
-extern char D_004A1E38[];
-extern char D_004A1E50[];
-extern char D_004A1E70[];
-extern char D_004A1E88[];
-extern char D_004A1EA0[];
-extern char D_004A1EC0[];
-extern char D_004A1ED8[];
-extern char D_004A1EE8[];
-extern char D_004A1EF8[];
-extern char D_004A1F10[];
-extern char D_004A1F28[];
-extern char D_004A1F38[];
-extern char D_004A1F48[];
-extern char D_004A1F60[];
-extern char D_004A1F80[];
-extern char D_004A1FA0[];
-extern char D_004A1FC0[];
-extern char D_004A1FD8[];
-extern char D_004A1FF0[];
-extern char D_004A2010[];
-extern char D_004A2028[];
-extern char D_004A2038[];
-extern char D_004A2050[];
-extern char D_004A2070[];
-extern char D_004A2088[];
-extern char D_004A2098[];
-extern char D_004A20A0[];
-extern char D_004A20C0[];
-extern char D_004A20D8[];
-extern char D_004A20F0[];
-extern char D_004A2108[];
-extern char D_004A2118[];
-extern char D_004A2128[];
-extern char D_004A2138[];
-extern char D_004A2150[];
-extern char D_004A2170[];
-extern char D_004A2190[];
-extern char D_004A21A8[];
-extern char D_004A21B8[];
-extern char D_004A21D0[];
-extern char D_004A21F0[];
-extern char D_004A2210[];
-extern char D_004A2230[];
-extern char D_004A2248[];
-extern char D_004A2258[];
-extern char D_004A2268[];
-extern char D_004A2278[];
-extern char D_004A2288[];
-extern char D_004A22A0[];
-extern char D_004A22C0[];
-extern char D_004A22E0[];
-extern char D_004A2300[];
-extern char D_004A2318[];
-extern char D_004A2330[];
-extern char D_004A2348[];
-extern char D_004A2360[];
-extern char D_004A2380[];
-extern char D_004A23A0[];
-extern char D_004A23C0[];
-extern char D_004A23E0[];
-extern char D_004A23F8[];
-extern char D_004A2408[];
-extern char D_004A2420[];
-extern char D_004A2440[];
-extern char D_004A2460[];
-extern char D_004A2478[];
-extern char D_004A2488[];
-extern char D_004A24A0[];
-extern char D_004A24C0[];
-extern char D_004A24D8[];
-extern char D_004A24F0[];
-extern char D_004A2510[];
-extern char D_004A2530[];
-extern char D_004A2550[];
-extern char D_004A2570[];
-extern char D_004A2590[];
-extern char D_004A25B0[];
-extern char D_004A25D0[];
-extern char D_004A25F0[];
-extern char D_004A2610[];
-extern char D_004A2628[];
-extern char D_004A2640[];
-extern char D_004A2658[];
-extern char D_004A2670[];
-extern char D_004A2690[];
-extern char D_004A26B0[];
-extern char D_004A26C8[];
-extern char D_004A26E0[];
-extern char D_004A2700[];
-extern char D_004A2720[];
-extern char D_004A2740[];
-extern char D_004A2760[];
-extern char D_004A2780[];
-extern char D_004A27A0[];
-extern char D_004A27C0[];
-extern char D_004A27D8[];
-extern char D_004A27F0[];
-extern char D_004A2808[];
-extern char D_004A2820[];
-extern char D_004A2838[];
-extern char D_004A2848[];
-extern char D_004A2860[];
-extern char D_004A2878[];
-extern char D_004A2888[];
-extern char D_004A28A0[];
-extern char D_004A28C0[];
-extern char D_004A28E0[];
-extern char D_004A28F8[];
-extern char D_004A2908[];
-extern char D_004A2920[];
-extern char D_004A2940[];
-extern char D_004A2958[];
-extern char D_004A2968[];
-extern char D_004A2978[];
-extern char D_004A2988[];
-extern char D_004A29A0[];
-extern char D_004A29C0[];
-extern char D_004A29D8[];
-extern char D_004A29E0[];
-extern char D_004A29F0[];
-extern char D_004A2A10[];
-extern char D_004A2A28[];
-extern char D_004A2A40[];
-extern char D_004A2A60[];
-extern char D_004A2A80[];
-extern char D_004A2A98[];
-extern char D_004A2AA0[];
-extern char D_004A2AB8[];
-extern char D_004A2AC8[];
-extern char D_004A2AE0[];
-extern char D_004A2B00[];
-extern char D_004A2B18[];
-extern char D_004A2B28[];
-extern char D_004A2B38[];
-extern char D_004A2B40[];
-extern char D_004A2B50[];
-extern char D_004A2B70[];
-extern char D_004A2B90[];
-extern char D_004A2BA8[];
-extern char D_004A2BB8[];
-extern char D_004A2BC8[];
-extern char D_004A2BE0[];
-extern char D_004A2BF8[];
-extern char D_004A2C10[];
-extern char D_004A2C30[];
-extern char D_004A2C50[];
-extern char D_004A2C70[];
-extern char D_004A2C90[];
-extern char D_004A2CB0[];
-extern char D_004A2CD0[];
-extern char D_004A2CF0[];
-extern char D_004A2D10[];
-extern char D_004A2D28[];
-extern char D_004A2D38[];
-extern char D_004A2D48[];
-extern char D_004A2D60[];
-extern char D_004A2D80[];
-extern char D_004A2D98[];
-extern char D_004A2DB0[];
-extern char D_004A2DC8[];
-extern char D_004A2DD8[];
-extern char D_004A2DF0[];
-extern char D_004A2E08[];
-extern char D_004A2E18[];
-extern char D_004A2E20[];
-extern char D_004A2E38[];
-extern char D_004A2E50[];
-extern char D_004A2E70[];
-extern char D_004A2E90[];
-extern char D_004A2EB0[];
-extern char D_004A2ED0[];
-extern char D_004A2EF0[];
-extern char D_004A2F10[];
-extern char D_004A2F30[];
-extern char D_004A2F50[];
-extern char D_004A2F70[];
-extern char D_004A2F88[];
-extern char D_004A2F98[];
-extern char D_004A2FB0[];
-extern char D_004A2FC8[];
-extern char D_004A2FD8[];
-extern char D_004A2FF0[];
-extern char D_004A3010[];
-extern char D_004A3030[];
-extern char D_004A3050[];
-extern char D_004A3070[];
-extern char D_004A3088[];
-extern char D_004A30A0[];
-extern char D_004A30C0[];
-extern char D_004A30E0[];
-extern char D_004A3100[];
-extern char D_004A3120[];
-extern char D_004A3138[];
-extern char D_004A3148[];
-extern char D_004A3160[];
-extern char D_004A3180[];
-extern char D_004A3198[];
-extern char D_004A31A0[];
-extern char D_004A31C0[];
-extern char D_004A31E0[];
-extern char D_004A3200[];
-extern char D_004A3218[];
-extern char D_004A3228[];
-extern char D_004A3240[];
-extern char D_004A3260[];
-extern char D_004A3280[];
-extern char D_004A32A0[];
-extern char D_004A32C0[];
-extern char D_004A32D8[];
-extern char D_004A32E8[];
-extern char D_004A3300[];
-extern char D_004A3318[];
-extern char D_004A3328[];
-extern char D_004A3338[];
-extern char D_004A3348[];
-extern char D_004A3360[];
+extern char gBladeNames_2[];
+extern char gBladeNames_3[];
+extern char gBladeNames_4[];
+extern char gBladeNames_5[];
+extern char gBladeNames_6[];
+extern char gBladeNames_7[];
+extern char gBladeNames_8[];
+extern char gBladeNames_9[];
+extern char gBladeNames_10[];
+extern char gBladeNames_11[];
+extern char gBladeNames_12[];
+extern char gBladeNames_13[];
+extern char gBladeNames_14[];
+extern char gBladeNames_15[];
+extern char gBladeNames_16[];
+extern char gBladeNames_17[];
+extern char gBladeNames_18[];
+extern char gBladeNames_19[];
+extern char gBladeNames_20[];
+extern char gBladeNames_21[];
+extern char gBladeNames_22[];
+extern char gBladeNames_23[];
+extern char gBladeNames_24[];
+extern char gBladeNames_25[];
+extern char gBladeNames_26[];
+extern char gBladeNames_27[];
+extern char gBladeNames_28[];
+extern char gBladeNames_29[];
+extern char gBladeNames_30[];
+extern char gBladeNames_31[];
+extern char gBladeNames_32[];
+extern char gBladeNames_33[];
+extern char gBladeNames_34[];
+extern char gBladeNames_35[];
+extern char gBladeNames_36[];
+extern char gBladeNames_37[];
+extern char gBladeNames_38[];
+extern char gBladeNames_39[];
+extern char gBladeNames_40[];
+extern char gBladeNames_41[];
+extern char gBladeNames_42[];
+extern char gBladeNames_43[];
+extern char gBladeNames_44[];
+extern char gBladeNames_45[];
+extern char gBladeNames_46[];
+extern char gBladeNames_47[];
+extern char gBladeNames_48[];
+extern char gBladeNames_49[];
+extern char gBladeNames_50[];
+extern char gBladeNames_51[];
+extern char gBladeNames_52[];
+extern char gBladeNames_53[];
+extern char gBladeNames_54[];
+extern char gBladeNames_55[];
+extern char gBladeNames_56[];
+extern char gBladeNames_57[];
+extern char gBladeNames_58[];
+extern char gBladeNames_59[];
+extern char gBladeNames_60[];
+extern char gBladeNames_61[];
+extern char gBladeNames_62[];
+extern char gBladeNames_63[];
+extern char gBladeNames_64[];
+extern char gBladeNames_65[];
+extern char gBladeNames_66[];
+extern char gBladeNames_67[];
+extern char gBladeNames_68[];
+extern char gBladeNames_69[];
+extern char gBladeNames_70[];
+extern char gBladeNames_71[];
+extern char gBladeNames_72[];
+extern char gBladeNames_73[];
+extern char gBladeNames_74[];
+extern char gBladeNames_75[];
+extern char gBladeNames_76[];
+extern char gBladeNames_77[];
+extern char gBladeNames_78[];
+extern char gBladeNames_79[];
+extern char gBladeNames_80[];
+extern char gBladeNames_81[];
+extern char gBladeNames_82[];
+extern char gBladeNames_83[];
+extern char gBladeNames_84[];
+extern char gBladeNames_85[];
+extern char gBladeNames_86[];
+extern char gBladeNames_87[];
+extern char gBladeNames_88[];
+extern char gBladeNames_89[];
+extern char gBladeNames_90[];
+extern char gBladeNames_91[];
+extern char gBladeNames_92[];
+extern char gBladeNames_93[];
+extern char gBladeNames_94[];
+extern char gBladeNames_95[];
+extern char gBladeNames_96[];
+extern char gBladeNames_97[];
+extern char gBladeNames_98[];
+extern char gBladeNames_99[];
+extern char gBladeNames_100[];
+extern char gBladeNames_101[];
+extern char gBladeNames_102[];
+extern char gBladeNames_103[];
+extern char gBladeNames_104[];
+extern char gBladeNames_105[];
+extern char gBladeNames_106[];
+extern char gBladeNames_107[];
+extern char gBladeNames_108[];
+extern char gBladeNames_109[];
+extern char gBladeNames_110[];
+extern char gBladeNames_111[];
+extern char gBladeNames_112[];
+extern char gBladeNames_113[];
+extern char gBladeNames_114[];
+extern char gBladeNames_115[];
+extern char gBladeNames_116[];
+extern char gBladeNames_117[];
+extern char gBladeNames_118[];
+extern char gBladeNames_119[];
+extern char gBladeNames_120[];
+extern char gBladeNames_121[];
+extern char gBladeNames_122[];
+extern char gBladeNames_123[];
+extern char gBladeNames_124[];
+extern char gBladeNames_125[];
+extern char gBladeNames_126[];
+extern char gBladeNames_127[];
+extern char gBladeNames_128[];
+extern char gBladeNames_129[];
+extern char gBladeNames_130[];
+extern char gBladeNames_131[];
+extern char gBladeNames_132[];
+extern char gBladeNames_133[];
+extern char gBladeNames_134[];
+extern char gBladeNames_135[];
+extern char gBladeNames_136[];
+extern char gBladeNames_137[];
+extern char gBladeNames_138[];
+extern char gBladeNames_139[];
+extern char gBladeNames_140[];
+extern char gBladeNames_141[];
+extern char gBladeNames_142[];
+extern char gBladeNames_143[];
+extern char gBladeNames_144[];
+extern char gBladeNames_145[];
+extern char gBladeNames_146[];
+extern char gBladeNames_147[];
+extern char gBladeNames_148[];
+extern char gBladeNames_149[];
+extern char gBladeNames_150[];
+extern char gBladeNames_151[];
+extern char gBladeNames_152[];
+extern char gBladeNames_153[];
+extern char gBladeNames_154[];
+extern char gBladeNames_155[];
+extern char gBladeNames_156[];
+extern char gBladeNames_157[];
+extern char gBladeNames_158[];
+extern char gBladeNames_159[];
+extern char gBladeNames_160[];
+extern char gBladeNames_161[];
+extern char gBladeNames_162[];
+extern char gBladeNames_163[];
+extern char gBladeNames_164[];
+extern char gBladeNames_165[];
+extern char gBladeNames_166[];
+extern char gBladeNames_167[];
+extern char gBladeNames_168[];
+extern char gBladeNames_169[];
+extern char gBladeNames_170[];
+extern char gBladeNames_171[];
+extern char gBladeNames_172[];
+extern char gBladeNames_173[];
+extern char gBladeNames_174[];
+extern char gBladeNames_175[];
+extern char gBladeNames_176[];
+extern char gBladeNames_177[];
+extern char gBladeNames_178[];
+extern char gBladeNames_179[];
+extern char gBladeNames_180[];
+extern char gBladeNames_181[];
+extern char gBladeNames_182[];
+extern char gBladeNames_183[];
+extern char gBladeNames_184[];
+extern char gBladeNames_185[];
+extern char gBladeNames_186[];
+extern char gBladeNames_187[];
+extern char gBladeNames_188[];
+extern char gBladeNames_189[];
+extern char gBladeNames_190[];
+extern char gBladeNames_191[];
+extern char gBladeNames_192[];
+extern char gBladeNames_193[];
+extern char gBladeNames_194[];
+extern char gBladeNames_195[];
+extern char gBladeNames_196[];
+extern char gBladeNames_197[];
+extern char gBladeNames_198[];
+extern char gBladeNames_199[];
+extern char gBladeNames_200[];
+extern char gBladeNames_201[];
+extern char gBladeNames_202[];
+extern char gBladeNames_203[];
+extern char gBladeNames_204[];
+extern char gBladeNames_205[];
+extern char gBladeNames_206[];
+extern char gBladeNames_207[];
+extern char gBladeNames_208[];
+extern char gBladeNames_209[];
+extern char gBladeNames_210[];
+extern char gBladeNames_211[];
+extern char gBladeNames_212[];
+extern char gBladeNames_213[];
+extern char gBladeNames_214[];
+extern char gBladeNames_215[];
+extern char gBladeNames_216[];
+extern char gBladeNames_217[];
+extern char gBladeNames_218[];
+extern char gBladeNames_219[];
+extern char gBladeNames_220[];
+extern char gBladeNames_221[];
+extern char gBladeNames_222[];
+extern char gBladeNames_223[];
+extern char gBladeNames_224[];
+extern char gBladeNames_225[];
+extern char gBladeNames_226[];
+extern char gBladeNames_227[];
+extern char gBladeNames_228[];
+extern char gBladeNames_229[];
+extern char gBladeNames_230[];
+extern char gBladeNames_231[];
+extern char gBladeNames_232[];
+extern char gBladeNames_233[];
+extern char gBladeNames_234[];
+extern char gBladeNames_235[];
+extern char gBladeNames_236[];
+extern char gBladeNames_237[];
+extern char gBladeNames_238[];
+extern char gBladeNames_239[];
+extern char gBladeNames_240[];
+extern char gBladeNames_241[];
+extern char gBladeNames_242[];
+extern char gBladeNames_243[];
+extern char gBladeNames_244[];
+extern char gBladeNames_245[];
+extern char gBladeNames_246[];
+extern char gBladeNames_247[];
+extern char gBladeNames_248[];
+extern char gBladeNames_249[];
+extern char gBladeNames_250[];
+extern char gBladeNames_251[];
+extern char gBladeNames_252[];
+extern char gBladeNames_253[];
+extern char gBladeNames_254[];
+extern char gBladeNames_255[];
+extern char gBladeNames_256[];
+extern char gBladeNames_257[];
+extern char gBladeNames_258[];
+extern char gBladeNames_259[];
+extern char gBladeNames_260[];
+extern char gBladeNames_261[];
+extern char gBladeNames_262[];
+extern char gBladeNames_263[];
+extern char gBladeNames_264[];
+extern char gBladeNames_265[];
+extern char gBladeNames_266[];
+extern char gBladeNames_267[];
+extern char gBladeNames_268[];
+extern char gBladeNames_269[];
+extern char gBladeNames_270[];
+extern char gBladeNames_271[];
+extern char gBladeNames_272[];
+extern char gBladeNames_273[];
+extern char gBladeNames_274[];
+extern char gBladeNames_275[];
+extern char gBladeNames_276[];
+extern char gBladeNames_277[];
+extern char gBladeNames_278[];
+extern char gBladeNames_279[];
+extern char gBladeNames_280[];
+extern char gBladeNames_281[];
+extern char gBladeNames_282[];
+extern char gBladeNames_283[];
+extern char gBladeNames_284[];
+extern char gBladeNames_285[];
+extern char gBladeNames_286[];
+extern char gBladeNames_287[];
+extern char gBladeNames_288[];
+extern char gBladeNames_289[];
+extern char gBladeNames_290[];
+extern char gBladeNames_291[];
+extern char gBladeNames_292[];
+extern char gBladeNames_293[];
+extern char gBladeNames_294[];
+extern char gBladeNames_295[];
+extern char gBladeNames_296[];
+extern char gBladeNames_297[];
+extern char gBladeNames_298[];
+extern char gBladeNames_299[];
+extern char gBladeNames_300[];
+extern char gBladeNames_301[];
+extern char gBladeNames_302[];
+extern char gBladeNames_303[];
+extern char gBladeNames_304[];
+extern char gBladeNames_305[];
+extern char gBladeNames_306[];
+extern char gBladeNames_307[];
+extern char gBladeNames_308[];
+extern char gBladeNames_309[];
+extern char gBladeNames_310[];
+extern char gBladeNames_311[];
+extern char gBladeNames_312[];
+extern char gBladeNames_313[];
+extern char gBladeNames_314[];
+extern char gBladeNames_315[];
+extern char gBladeNames_316[];
+extern char gBladeNames_317[];
+extern char gBladeNames_318[];
+extern char gBladeNames_319[];
+extern char gBladeNames_320[];
+extern char gBladeNames_321[];
+extern char gBladeNames_322[];
+extern char gBladeNames_323[];
+extern char gBladeNames_324[];
+extern char gBladeNames_325[];
+extern char gBladeNames_326[];
+extern char gBladeNames_327[];
+extern char gBladeNames_328[];
+extern char gBladeNames_329[];
+extern char gBladeNames_330[];
+extern char gBladeNames_331[];
+extern char gBladeNames_332[];
+extern char gBladeNames_333[];
+extern char gBladeNames_334[];
+extern char gBladeNames_335[];
+extern char gBladeNames_336[];
+extern char gBladeNames_337[];
+extern char gBladeNames_338[];
+extern char gBladeNames_339[];
+extern char gBladeNames_340[];
+extern char gBladeNames_341[];
+extern char gBladeNames_342[];
+extern char gBladeNames_343[];
+extern char gBladeNames_344[];
+extern char gBladeNames_345[];
+extern char gBladeNames_346[];
+extern char gBladeNames_347[];
+extern char gBladeNames_348[];
+extern char gBladeNames_349[];
+extern char gBladeNames_350[];
+extern char gBladeNames_351[];
+extern char gBladeNames_352[];
+extern char gBladeNames_353[];
+extern char gBladeNames_354[];
+extern char gBladeNames_355[];
+extern char gBladeNames_356[];
+extern char gBladeNames_357[];
+extern char gBladeNames_358[];
+extern char gBladeNames_359[];
+extern char gBladeNames_360[];
+extern char gBladeNames_361[];
+extern char gBladeNames_362[];
+extern char gBladeNames_363[];
+extern char gBladeNames_364[];
+extern char gBladeNames_365[];
+extern char gBladeNames_366[];
+extern char gBladeNames_367[];
+extern char gBladeNames_368[];
+extern char gBladeNames_369[];
+extern char gBladeNames_370[];
+extern char gBladeNames_371[];
+extern char gBladeNames_372[];
+extern char gBladeNames_373[];
+extern char gBladeNames_374[];
+extern char gBladeNames_375[];
+extern char gBladeNames_376[];
+extern char gBladeNames_377[];
+extern char gBladeNames_378[];
+extern char gBladeNames_379[];
+extern char gBladeNames_380[];
+extern char gBladeNames_381[];
+extern char gBladeNames_382[];
+extern char gBladeNames_383[];
+extern char gBladeNames_384[];
+extern char gBladeNames_385[];
+extern char gBladeNames_386[];
+extern char gBladeNames_387[];
+extern char gBladeNames_388[];
+extern char gBladeNames_389[];
+extern char gBladeNames_390[];
+extern char gBladeNames_391[];
+extern char gBladeNames_392[];
+extern char gBladeNames_393[];
+extern char gBladeNames_394[];
+extern char gBladeNames_395[];
+extern char gBladeNames_396[];
+extern char gBladeNames_397[];
+extern char gBladeNames_398[];
+extern char gBladeNames_399[];
+extern char gBladeNames_400[];
+extern char gBladeNames_401[];
+extern char gBladeNames_402[];
+extern char gBladeNames_403[];
+extern char gBladeNames_404[];
+extern char gBladeNames_405[];
+extern char gBladeNames_406[];
+extern char gBladeNames_407[];
+extern char gBladeNames_408[];
+extern char gBladeNames_409[];
+extern char gBladeNames_410[];
+extern char gBladeNames_411[];
+extern char gBladeNames_412[];
+extern char gBladeNames_413[];
+extern char gBladeNames_414[];
+extern char gBladeNames_415[];
+extern char gBladeNames_416[];
+extern char gBladeNames_417[];
+extern char gBladeNames_418[];
+extern char gBladeNames_419[];
+extern char gBladeNames_420[];
+extern char gBladeNames_421[];
+extern char gBladeNames_422[];
+extern char gBladeNames_423[];
+extern char gBladeNames_424[];
+extern char gBladeNames_425[];
+extern char gBladeNames_426[];
+extern char gBladeNames_427[];
+extern char gBladeNames_428[];
+extern char gBladeNames_429[];
+extern char gBladeNames_430[];
+extern char gBladeNames_431[];
+extern char gBladeNames_432[];
+extern char gBladeNames_433[];
+extern char gBladeNames_434[];
+extern char gBladeNames_435[];
+extern char gBladeNames_436[];
+extern char gBladeNames_437[];
+extern char gBladeNames_438[];
+extern char gBladeNames_439[];
+extern char gBladeNames_440[];
+extern char gBladeNames_441[];
+extern char gBladeNames_442[];
+extern char gBladeNames_443[];
+extern char gBladeNames_444[];
+extern char gBladeNames_445[];
+extern char gBladeNames_446[];
+extern char gBladeNames_447[];
+extern char gBladeNames_448[];
+extern char gBladeNames_449[];
+extern char gBladeNames_450[];
+extern char gBladeNames_451[];
+extern char gBladeNames_452[];
+extern char gBladeNames_453[];
+extern char gBladeNames_454[];
+extern char gBladeNames_455[];
+extern char gBladeNames_456[];
+extern char gBladeNames_457[];
+extern char gBladeNames_458[];
+extern char gBladeNames_459[];
+extern char gBladeNames_460[];
+extern char gBladeNames_461[];
+extern char gBladeNames_462[];
+extern char gBladeNames_463[];
+extern char gBladeNames_464[];
+extern char gBladeNames_465[];
+extern char gBladeNames_466[];
+extern char gBladeNames_467[];
+extern char gBladeNames_468[];
+extern char gBladeNames_469[];
+extern char gBladeNames_470[];
+extern char gBladeNames_471[];
+extern char gBladeNames_472[];
+extern char gBladeNames_473[];
+extern char gBladeNames_474[];
+extern char gBladeNames_475[];
+extern char gBladeNames_476[];
+extern char gBladeNames_477[];
+extern char gBladeNames_478[];
+extern char gBladeNames_479[];
+extern char gBladeNames_480[];
+extern char gBladeNames_481[];
+extern char gBladeNames_482[];
+extern char gBladeNames_483[];
+extern char gBladeNames_484[];
+extern char gBladeNames_485[];
+extern char gGunNames_1[];
+extern char gGunNames_2[];
+extern char gGunNames_3[];
+extern char gGunNames_4[];
+extern char gGunNames_5[];
+extern char gGunNames_6[];
+extern char gGunNames_7[];
+extern char gGunNames_8[];
+extern char gGunNames_9[];
+extern char gGunNames_10[];
+extern char gGunNames_11[];
+extern char gGunNames_12[];
+extern char gGunNames_13[];
+extern char gGunNames_14[];
+extern char gGunNames_15[];
+extern char gGunNames_16[];
+extern char gGunNames_17[];
+extern char gGunNames_18[];
+extern char gGunNames_19[];
+extern char gGunNames_20[];
+extern char gGunNames_21[];
+extern char gGunNames_22[];
+extern char gGunNames_23[];
+extern char gGunNames_24[];
+extern char gGunNames_25[];
+extern char gGunNames_26[];
+extern char gGunNames_27[];
+extern char gGunNames_28[];
+extern char gGunNames_29[];
+extern char gGunNames_30[];
+extern char gGunNames_31[];
+extern char gGunNames_32[];
+extern char gGunNames_33[];
+extern char gGunNames_34[];
+extern char gGunNames_35[];
+extern char gGunNames_36[];
+extern char gGunNames_37[];
+extern char gGunNames_38[];
+extern char gGunNames_39[];
+extern char gGunNames_40[];
+extern char gGunNames_41[];
+extern char gGunNames_42[];
+extern char gGunNames_43[];
+extern char gGunNames_44[];
+extern char gGunNames_45[];
+extern char gGunNames_46[];
+extern char gGunNames_47[];
+extern char gGunNames_48[];
+extern char gGunNames_49[];
+extern char gGunNames_50[];
+extern char gGunNames_51[];
+extern char gGunNames_52[];
+extern char gGunNames_53[];
+extern char gGunNames_54[];
+extern char gGunNames_55[];
+extern char gGunNames_56[];
+extern char gGunNames_57[];
+extern char gGunNames_58[];
+extern char gGunNames_59[];
+extern char gGunNames_60[];
+extern char gGunNames_61[];
+extern char gGunNames_62[];
+extern char gGunNames_63[];
+extern char gGunNames_64[];
+extern char gGunNames_65[];
+extern char gGunNames_66[];
+extern char gGunNames_67[];
+extern char gGunNames_68[];
+extern char gGunNames_69[];
+extern char gGunNames_70[];
+extern char gGunNames_71[];
+extern char gGunNames_72[];
+extern char gGunNames_73[];
+extern char gGunNames_74[];
+extern char gGunNames_75[];
+extern char gGunNames_76[];
 extern u32 D_004A3378[];
 extern u32 D_004A3388[];
 extern u32 D_004A3398[];
-extern char D_004A33B0[];
-extern char D_004A33D0[];
-extern char D_004A33F0[];
-extern char D_004A3410[];
+extern char gGunNames_80[];
+extern char gGunNames_81[];
+extern char gGunNames_82[];
+extern char gGunNames_83[];
 extern u32 D_004A3428[];
-extern char D_004A3440[];
-extern char D_004A3458[];
-extern char D_004A3470[];
-extern char D_004A3488[];
-extern char D_004A34A0[];
-extern char D_004A34C0[];
-extern char D_004A34D8[];
-extern char D_004A34E8[];
-extern char D_004A3500[];
-extern char D_004A3518[];
-extern char D_004A3528[];
-extern char D_004A3530[];
-extern char D_004A3540[];
-extern char D_004A3558[];
-extern char D_004A3568[];
-extern char D_004A3578[];
-extern char D_004A3590[];
-extern char D_004A35A8[];
-extern char D_004A35C0[];
-extern char D_004A35E0[];
-extern char D_004A35F8[];
-extern char D_004A3608[];
-extern char D_004A3620[];
+extern char gGunNames_85[];
+extern char gGunNames_86[];
+extern char gGunNames_87[];
+extern char gGunNames_88[];
+extern char gGunNames_89[];
+extern char gGunNames_90[];
+extern char gGunNames_91[];
+extern char gGunNames_92[];
+extern char gGunNames_93[];
+extern char gGunNames_94[];
+extern char gGunNames_95[];
+extern char gGunNames_96[];
+extern char gGunNames_97[];
+extern char gGunNames_98[];
+extern char gGunNames_99[];
+extern char gGunNames_100[];
+extern char gGunNames_101[];
+extern char gGunNames_102[];
+extern char gGunNames_103[];
+extern char gGunNames_104[];
+extern char gGunNames_105[];
+extern char gGunNames_106[];
+extern char gGunNames_107[];
 extern u32 D_004A3638[];
 extern u32 D_004A3648[];
 extern u32 D_004A3658[];
 extern u32 D_004A3668[];
-extern char D_004A3680[];
-extern char D_004A36A0[];
-extern char D_004A36C0[];
-extern char D_004A36E0[];
+extern char gGunNames_112[];
+extern char gGunNames_113[];
+extern char gGunNames_114[];
+extern char gGunNames_115[];
 extern u32 D_004A36F8[];
 extern u32 D_004A3708[];
-extern char D_004A3720[];
-extern char D_004A3738[];
-extern char D_004A3750[];
-extern char D_004A3770[];
-extern char D_004A3788[];
-extern char D_004A3790[];
-extern char D_004A37A0[];
-extern char D_004A37B0[];
-extern char D_004A37C0[];
-extern char D_004A37D8[];
-extern char D_004A37F0[];
-extern char D_004A3808[];
-extern char D_004A3818[];
-extern char D_004A3830[];
-extern char D_004A3848[];
-extern char D_004A3858[];
-extern char D_004A3868[];
-extern char D_004A3880[];
-extern char D_004A3898[];
-extern char D_004A38A8[];
-extern char D_004A38B8[];
-extern char D_004A38C8[];
-extern char D_004A38D8[];
-extern char D_004A38E8[];
-extern char D_004A38F8[];
-extern char D_004A3910[];
-extern char D_004A3928[];
-extern char D_004A3940[];
-extern char D_004A3958[];
-extern char D_004A3970[];
-extern char D_004A3988[];
-extern char D_004A39A0[];
-extern char D_004A39B8[];
-extern char D_004A39D0[];
-extern char D_004A39E8[];
-extern char D_004A39F8[];
-extern char D_004A3A08[];
-extern char D_004A3A20[];
-extern char D_004A3A38[];
-extern char D_004A3A48[];
-extern char D_004A3A58[];
-extern char D_004A3A68[];
-extern char D_004A3A80[];
-extern char D_004A3A98[];
-extern char D_004A3AA8[];
-extern char D_004A3AC0[];
-extern char D_004A3AE0[];
-extern char D_004A3B00[];
-extern char D_004A3B20[];
-extern char D_004A3B38[];
-extern char D_004A3B50[];
-extern char D_004A3B68[];
-extern char D_004A3B78[];
-extern char D_004A3B90[];
-extern char D_004A3BA8[];
-extern char D_004A3BC0[];
-extern char D_004A3BD8[];
-extern char D_004A3BF0[];
-extern char D_004A3C10[];
-extern char D_004A3C30[];
-extern char D_004A3C50[];
-extern char D_004A3C70[];
-extern char D_004A3C88[];
-extern char D_004A3C98[];
-extern char D_004A3CA8[];
-extern char D_004A3CB8[];
-extern char D_004A3CC8[];
-extern char D_004A3CD8[];
-extern char D_004A3CF0[];
-extern char D_004A3D10[];
-extern char D_004A3D28[];
-extern char D_004A3D38[];
-extern char D_004A3D48[];
-extern char D_004A3D58[];
-extern char D_004A3D70[];
-extern char D_004A3D90[];
-extern char D_004A3DA8[];
-extern char D_004A3DB8[];
-extern char D_004A3DC8[];
-extern char D_004A3DD8[];
-extern char D_004A3DE8[];
-extern char D_004A3E00[];
-extern char D_004A3E20[];
-extern char D_004A3E40[];
-extern char D_004A3E60[];
-extern char D_004A3E80[];
-extern char D_004A3E98[];
-extern char D_004A3EB0[];
-extern char D_004A3ED0[];
-extern char D_004A3EF0[];
-extern char D_004A3F08[];
-extern char D_004A3F20[];
-extern char D_004A3F38[];
-extern char D_004A3F50[];
-extern char D_004A3F68[];
-extern char D_004A3F80[];
-extern char D_004A3FA0[];
-extern char D_004A3FC0[];
-extern char D_004A3FE0[];
-extern char D_004A4000[];
-extern char D_004A4020[];
-extern char D_004A4040[];
-extern char D_004A4060[];
-extern char D_004A4080[];
-extern char D_004A40A0[];
-extern char D_004A40C0[];
-extern char D_004A40E0[];
-extern char D_004A4100[];
-extern char D_004A4120[];
-extern char D_004A4140[];
-extern char D_004A4160[];
-extern char D_004A4180[];
-extern char D_004A4198[];
-extern char D_004A41B0[];
-extern char D_004A41C8[];
-extern char D_004A41E0[];
-extern char D_004A4200[];
-extern char D_004A4220[];
-extern char D_004A4240[];
-extern char D_004A4260[];
-extern char D_004A4280[];
-extern char D_004A42A0[];
-extern char D_004A42B8[];
-extern char D_004A42C8[];
-extern char D_004A42E0[];
-extern char D_004A4300[];
-extern char D_004A4320[];
-extern char D_004A4340[];
-extern char D_004A4358[];
-extern char D_004A4370[];
-extern char D_004A4388[];
-extern char D_004A4398[];
-extern char D_004A43B0[];
-extern char D_004A43D0[];
-extern char D_004A43F0[];
-extern char D_004A4410[];
-extern char D_004A4430[];
-extern char D_004A4450[];
-extern char D_004A4470[];
-extern char D_004A4490[];
-extern char D_004A44B0[];
-extern char D_004A44D0[];
-extern char D_004A44E8[];
-extern char D_004A4500[];
-extern char D_004A4520[];
-extern char D_004A4540[];
-extern char D_004A4558[];
-extern char D_004A4570[];
-extern char D_004A4588[];
-extern char D_004A45A0[];
-extern char D_004A45B8[];
-extern char D_004A45D0[];
-extern char D_004A45F0[];
-extern char D_004A4610[];
-extern char D_004A4630[];
-extern char D_004A4650[];
-extern char D_004A4668[];
-extern char D_004A4680[];
-extern char D_004A46A0[];
-extern char D_004A46C0[];
-extern char D_004A46E0[];
-extern char D_004A4700[];
-extern char D_004A4720[];
-extern char D_004A4740[];
-extern char D_004A4758[];
-extern char D_004A4770[];
-extern char D_004A4790[];
-extern char D_004A47B0[];
-extern char D_004A47C8[];
-extern char D_004A47E0[];
-extern char D_004A47F8[];
-extern char D_004A4810[];
-extern char D_004A4828[];
-extern char D_004A4840[];
-extern char D_004A4860[];
-extern char D_004A4880[];
-extern char D_004A48A0[];
-extern char D_004A48C0[];
-extern char D_004A48E0[];
-extern char D_004A4900[];
-extern char D_004A4918[];
-extern char D_004A4928[];
-extern char D_004A4940[];
-extern char D_004A4960[];
-extern char D_004A4980[];
-extern char D_004A49A0[];
-extern char D_004A49B8[];
-extern char D_004A49D0[];
-extern char D_004A49E8[];
-extern char D_004A49F8[];
-extern char D_004A4A10[];
-extern char D_004A4A30[];
-extern char D_004A4A48[];
-extern char D_004A4A58[];
-extern char D_004A4A68[];
-extern char D_004A4A80[];
-extern char D_004A4A98[];
-extern char D_004A4AB0[];
-extern char D_004A4AC8[];
-extern char D_004A4AD8[];
-extern char D_004A4AE8[];
-extern char D_004A4B00[];
-extern char D_004A4B18[];
-extern char D_004A4B30[];
-extern char D_004A4B48[];
-extern char D_004A4B60[];
-extern char D_004A4B80[];
-extern char D_004A4BA0[];
-extern char D_004A4BC0[];
-extern char D_004A4BE0[];
-extern char D_004A4BF8[];
-extern char D_004A4C08[];
-extern char D_004A4C18[];
-extern char D_004A4C30[];
-extern char D_004A4C48[];
-extern char D_004A4C60[];
-extern char D_004A4C78[];
-extern char D_004A4C88[];
-extern char D_004A4C98[];
-extern char D_004A4CA8[];
-extern char D_004A4CB8[];
-extern char D_004A4CC8[];
-extern char D_004A4CE0[];
-extern char D_004A4D00[];
-extern char D_004A4D20[];
-extern char D_004A4D40[];
-extern char D_004A4D58[];
-extern char D_004A4D68[];
-extern char D_004A4D80[];
-extern char D_004A4D98[];
-extern char D_004A4DA8[];
-extern char D_004A4DB8[];
-extern char D_004A4DC8[];
-extern char D_004A4DD8[];
-extern char D_004A4DF0[];
-extern char D_004A4E10[];
-extern char D_004A4E30[];
-extern char D_004A4E50[];
-extern char D_004A4E70[];
-extern char D_004A4E90[];
-extern char D_004A4EB0[];
-extern char D_004A4ED0[];
-extern char D_004A4EF0[];
-extern char D_004A4F08[];
-extern char D_004A4F20[];
-extern char D_004A4F40[];
-extern char D_004A4F60[];
-extern char D_004A4F80[];
-extern char D_004A4FA0[];
-extern char D_004A4FB8[];
-extern char D_004A4FC8[];
-extern char D_004A4FD8[];
-extern char D_004A4FE8[];
-extern char D_004A4FF8[];
-extern char D_004A5008[];
-extern char D_004A5018[];
-extern char D_004A5028[];
-extern char D_004A5038[];
-extern char D_004A5048[];
-extern char D_004A5058[];
-extern char D_004A5070[];
-extern char D_004A5088[];
-extern char D_004A50A0[];
-extern char D_004A50B8[];
-extern char D_004A50C8[];
-extern char D_004A50E0[];
-extern char D_004A50F8[];
-extern char D_004A5108[];
-extern char D_004A5118[];
-extern char D_004A5130[];
-extern char D_004A5148[];
-extern char D_004A5158[];
-extern char D_004A5168[];
-extern char D_004A5178[];
-extern char D_004A5188[];
-extern char D_004A5198[];
-extern char D_004A51A8[];
-extern char D_004A51C0[];
-extern char D_004A51D8[];
-extern char D_004A51F0[];
-extern char D_004A5208[];
-extern char D_004A5218[];
-extern char D_004A5228[];
-extern char D_004A5240[];
-extern char D_004A5258[];
-extern char D_004A5270[];
-extern char D_004A5288[];
-extern char D_004A52A0[];
-extern char D_004A52C0[];
-extern char D_004A52D8[];
-extern char D_004A52E8[];
-extern char D_004A52F8[];
-extern char D_004A5310[];
-extern char D_004A5328[];
-extern char D_004A5338[];
-extern char D_004A5348[];
-extern char D_004A5358[];
-extern char D_004A5370[];
-extern char D_004A5390[];
-extern char D_004A53A8[];
-extern char D_004A53B8[];
-extern char D_004A53D0[];
-extern char D_004A53F0[];
-extern char D_004A5410[];
-extern char D_004A5430[];
-extern char D_004A5448[];
-extern char D_004A5460[];
-extern char D_004A5478[];
-extern char D_004A5488[];
-extern char D_004A54A0[];
-extern char D_004A54C0[];
-extern char D_004A54D8[];
-extern char D_004A54F0[];
-extern char D_004A5510[];
-extern char D_004A5530[];
-extern char D_004A5548[];
-extern char D_004A5558[];
-extern char D_004A5570[];
-extern char D_004A5590[];
-extern char D_004A55A8[];
-extern char D_004A55B8[];
-extern char D_004A55C8[];
-extern char D_004A55E0[];
-extern char D_004A55F8[];
-extern char D_004A5608[];
-extern char D_004A5618[];
-extern char D_004A5628[];
-extern char D_004A5638[];
-extern char D_004A5648[];
-extern char D_004A5660[];
-extern char D_004A5680[];
-extern char D_004A56A0[];
-extern char D_004A56C0[];
-extern char D_004A56D8[];
-extern char D_004A56F0[];
-extern char D_004A5710[];
-extern char D_004A5730[];
-extern char D_004A5748[];
-extern char D_004A5760[];
-extern char D_004A5778[];
-extern char D_004A5790[];
-extern char D_004A57A8[];
-extern char D_004A57C0[];
-extern char D_004A57E0[];
-extern char D_004A5800[];
-extern char D_004A5820[];
-extern char D_004A5840[];
-extern char D_004A5858[];
-extern char D_004A5870[];
-extern char D_004A5890[];
-extern char D_004A58B0[];
-extern char D_004A58D0[];
-extern char D_004A58F0[];
-extern char D_004A5910[];
-extern char D_004A5930[];
-extern char D_004A5950[];
-extern char D_004A5970[];
-extern char D_004A5990[];
-extern char D_004A59B0[];
-extern char D_004A59D0[];
-extern char D_004A59F0[];
-extern char D_004A5A10[];
-extern char D_004A5A28[];
-extern char D_004A5A40[];
-extern char D_004A5A58[];
-extern char D_004A5A70[];
-extern char D_004A5A90[];
-extern char D_004A5AB0[];
-extern char D_004A5AD0[];
-extern char D_004A5AF0[];
-extern char D_004A5B10[];
-extern char D_004A5B30[];
-extern char D_004A5B48[];
-extern char D_004A5B58[];
-extern char D_004A5B70[];
-extern char D_004A5B90[];
-extern char D_004A5BB0[];
-extern char D_004A5BD0[];
-extern char D_004A5BF0[];
-extern char D_004A5C10[];
-extern char D_004A5C30[];
-extern char D_004A5C50[];
-extern char D_004A5C70[];
-extern char D_004A5C90[];
-extern char D_004A5CB0[];
-extern char D_004A5CD0[];
-extern char D_004A5CF0[];
-extern char D_004A5D10[];
-extern char D_004A5D30[];
-extern char D_004A5D50[];
-extern char D_004A5D70[];
-extern char D_004A5D90[];
-extern char D_004A5DA8[];
-extern char D_004A5DC0[];
-extern char D_004A5DE0[];
-extern char D_004A5E00[];
-extern char D_004A5E18[];
-extern char D_004A5E30[];
-extern char D_004A5E48[];
-extern char D_004A5E60[];
-extern char D_004A5E78[];
-extern char D_004A5E90[];
-extern char D_004A5EB0[];
-extern char D_004A5ED0[];
-extern char D_004A5EF0[];
-extern char D_004A5F10[];
-extern char D_004A5F28[];
-extern char D_004A5F40[];
-extern char D_004A5F60[];
-extern char D_004A5F80[];
-extern char D_004A5FA0[];
-extern char D_004A5FC0[];
-extern char D_004A5FE0[];
-extern char D_004A6000[];
-extern char D_004A6020[];
-extern char D_004A6038[];
-extern char D_004A6050[];
-extern char D_004A6070[];
-extern char D_004A6090[];
-extern char D_004A60A8[];
-extern char D_004A60C0[];
-extern char D_004A60D8[];
-extern char D_004A60F0[];
-extern char D_004A6108[];
-extern char D_004A6120[];
-extern char D_004A6140[];
-extern char D_004A6160[];
-extern char D_004A6180[];
-extern char D_004A61A0[];
-extern char D_004A61C0[];
-extern char D_004A61E0[];
-extern char D_004A61F8[];
-extern char D_004A6208[];
+extern char gGunNames_118[];
+extern char gGunNames_119[];
+extern char gGunNames_120[];
+extern char gGunNames_121[];
+extern char gGunNames_122[];
+extern char gGunNames_123[];
+extern char gGunNames_124[];
+extern char gGunNames_125[];
+extern char gGunNames_126[];
+extern char gGunNames_127[];
+extern char gArmorHeadNames_1[];
+extern char gArmorHeadNames_2[];
+extern char gArmorHeadNames_3[];
+extern char gArmorHeadNames_4[];
+extern char gArmorHeadNames_5[];
+extern char gArmorHeadNames_6[];
+extern char gArmorHeadNames_7[];
+extern char gArmorHeadNames_8[];
+extern char gArmorHeadNames_9[];
+extern char gArmorHeadNames_10[];
+extern char gArmorHeadNames_11[];
+extern char gArmorHeadNames_12[];
+extern char gArmorHeadNames_13[];
+extern char gArmorHeadNames_14[];
+extern char gArmorHeadNames_15[];
+extern char gArmorHeadNames_16[];
+extern char gArmorHeadNames_17[];
+extern char gArmorHeadNames_18[];
+extern char gArmorHeadNames_19[];
+extern char gArmorHeadNames_20[];
+extern char gArmorHeadNames_21[];
+extern char gArmorHeadNames_22[];
+extern char gArmorHeadNames_23[];
+extern char gArmorHeadNames_24[];
+extern char gArmorHeadNames_25[];
+extern char gArmorHeadNames_26[];
+extern char gArmorHeadNames_27[];
+extern char gArmorHeadNames_28[];
+extern char gArmorHeadNames_29[];
+extern char gArmorHeadNames_30[];
+extern char gArmorHeadNames_31[];
+extern char gArmorHeadNames_32[];
+extern char gArmorHeadNames_33[];
+extern char gArmorHeadNames_34[];
+extern char gArmorHeadNames_35[];
+extern char gArmorHeadNames_36[];
+extern char gArmorHeadNames_37[];
+extern char gArmorHeadNames_38[];
+extern char gArmorHeadNames_39[];
+extern char gArmorHeadNames_40[];
+extern char gArmorHeadNames_41[];
+extern char gArmorHeadNames_42[];
+extern char gArmorHeadNames_43[];
+extern char gArmorHeadNames_44[];
+extern char gArmorHeadNames_45[];
+extern char gArmorHeadNames_46[];
+extern char gArmorHeadNames_47[];
+extern char gArmorHeadNames_48[];
+extern char gArmorHeadNames_49[];
+extern char gArmorHeadNames_50[];
+extern char gArmorHeadNames_51[];
+extern char gArmorHeadNames_52[];
+extern char gArmorHeadNames_53[];
+extern char gArmorHeadNames_54[];
+extern char gArmorHeadNames_55[];
+extern char gArmorHeadNames_56[];
+extern char gArmorHeadNames_57[];
+extern char gArmorHeadNames_58[];
+extern char gArmorHeadNames_59[];
+extern char gArmorHeadNames_60[];
+extern char gArmorHeadNames_61[];
+extern char gArmorHeadNames_62[];
+extern char gArmorHeadNames_63[];
+extern char gArmorHeadNames_64[];
+extern char gArmorHeadNames_65[];
+extern char gArmorHeadNames_66[];
+extern char gArmorHeadNames_67[];
+extern char gArmorHeadNames_68[];
+extern char gArmorHeadNames_69[];
+extern char gArmorHeadNames_70[];
+extern char gArmorHeadNames_71[];
+extern char gArmorHeadNames_72[];
+extern char gArmorHeadNames_73[];
+extern char gArmorHeadNames_74[];
+extern char gArmorHeadNames_75[];
+extern char gArmorHeadNames_76[];
+extern char gArmorHeadNames_77[];
+extern char gArmorHeadNames_78[];
+extern char gArmorHeadNames_79[];
+extern char gArmorHeadNames_80[];
+extern char gArmorHeadNames_81[];
+extern char gArmorHeadNames_82[];
+extern char gArmorHeadNames_83[];
+extern char gArmorHeadNames_84[];
+extern char gArmorHeadNames_85[];
+extern char gArmorHeadNames_86[];
+extern char gArmorHeadNames_87[];
+extern char gArmorHeadNames_88[];
+extern char gArmorHeadNames_89[];
+extern char gArmorHeadNames_90[];
+extern char gArmorHeadNames_91[];
+extern char gArmorHeadNames_92[];
+extern char gArmorHeadNames_93[];
+extern char gArmorHeadNames_94[];
+extern char gArmorHeadNames_95[];
+extern char gArmorHeadNames_96[];
+extern char gArmorHeadNames_97[];
+extern char gArmorHeadNames_98[];
+extern char gArmorHeadNames_99[];
+extern char gArmorHeadNames_100[];
+extern char gArmorHeadNames_101[];
+extern char gArmorHeadNames_102[];
+extern char gArmorHeadNames_103[];
+extern char gArmorHeadNames_104[];
+extern char gArmorHeadNames_105[];
+extern char gArmorHeadNames_106[];
+extern char gArmorHeadNames_107[];
+extern char gArmorHeadNames_108[];
+extern char gArmorHeadNames_109[];
+extern char gArmorHeadNames_110[];
+extern char gArmorHeadNames_111[];
+extern char gArmorHeadNames_112[];
+extern char gArmorHeadNames_113[];
+extern char gArmorHeadNames_114[];
+extern char gArmorHeadNames_115[];
+extern char gArmorHeadNames_116[];
+extern char gArmorHeadNames_117[];
+extern char gArmorHeadNames_118[];
+extern char gArmorHeadNames_119[];
+extern char gArmorHeadNames_120[];
+extern char gArmorHeadNames_121[];
+extern char gArmorHeadNames_122[];
+extern char gArmorHeadNames_123[];
+extern char gArmorHeadNames_124[];
+extern char gArmorHeadNames_125[];
+extern char gArmorHeadNames_126[];
+extern char gArmorHeadNames_127[];
+extern char gArmorHeadNames_128[];
+extern char gArmorHeadNames_129[];
+extern char gArmorHeadNames_130[];
+extern char gArmorHeadNames_131[];
+extern char gArmorHeadNames_132[];
+extern char gArmorHeadNames_133[];
+extern char gArmorHeadNames_134[];
+extern char gArmorHeadNames_135[];
+extern char gArmorHeadNames_136[];
+extern char gArmorHeadNames_137[];
+extern char gArmorHeadNames_138[];
+extern char gArmorHeadNames_139[];
+extern char gArmorHeadNames_140[];
+extern char gArmorHeadNames_141[];
+extern char gArmorHeadNames_142[];
+extern char gArmorHeadNames_143[];
+extern char gArmorHeadNames_144[];
+extern char gArmorHeadNames_145[];
+extern char gArmorHeadNames_146[];
+extern char gArmorHeadNames_147[];
+extern char gArmorHeadNames_148[];
+extern char gArmorHeadNames_149[];
+extern char gArmorHeadNames_150[];
+extern char gArmorHeadNames_151[];
+extern char gArmorHeadNames_152[];
+extern char gArmorHeadNames_153[];
+extern char gArmorHeadNames_154[];
+extern char gArmorHeadNames_155[];
+extern char gArmorHeadNames_156[];
+extern char gArmorHeadNames_157[];
+extern char gArmorHeadNames_158[];
+extern char gArmorHeadNames_159[];
+extern char gArmorHeadNames_160[];
+extern char gArmorHeadNames_161[];
+extern char gArmorHeadNames_162[];
+extern char gArmorHeadNames_163[];
+extern char gArmorHeadNames_164[];
+extern char gArmorHeadNames_165[];
+extern char gArmorHeadNames_166[];
+extern char gArmorHeadNames_167[];
+extern char gArmorHeadNames_168[];
+extern char gArmorHeadNames_169[];
+extern char gArmorHeadNames_170[];
+extern char gArmorHeadNames_171[];
+extern char gArmorHeadNames_172[];
+extern char gArmorHeadNames_173[];
+extern char gArmorHeadNames_174[];
+extern char gArmorHeadNames_175[];
+extern char gArmorHeadNames_176[];
+extern char gArmorHeadNames_177[];
+extern char gArmorHeadNames_178[];
+extern char gArmorHeadNames_179[];
+extern char gArmorHeadNames_180[];
+extern char gArmorHeadNames_181[];
+extern char gArmorHeadNames_182[];
+extern char gArmorHeadNames_183[];
+extern char gArmorHeadNames_184[];
+extern char gArmorHeadNames_185[];
+extern char gArmorHeadNames_186[];
+extern char gArmorHeadNames_187[];
+extern char gArmorHeadNames_188[];
+extern char gArmorHeadNames_189[];
+extern char gArmorHeadNames_190[];
+extern char gArmorHeadNames_191[];
+extern char gArmorHeadNames_192[];
+extern char gArmorHeadNames_193[];
+extern char gArmorHeadNames_194[];
+extern char gArmorHeadNames_195[];
+extern char gArmorHeadNames_196[];
+extern char gArmorHeadNames_197[];
+extern char gArmorHeadNames_198[];
+extern char gArmorHeadNames_199[];
+extern char gArmorHeadNames_200[];
+extern char gArmorHeadNames_201[];
+extern char gArmorHeadNames_202[];
+extern char gArmorHeadNames_203[];
+extern char gArmorHeadNames_204[];
+extern char gArmorHeadNames_205[];
+extern char gArmorHeadNames_206[];
+extern char gArmorHeadNames_207[];
+extern char gArmorHeadNames_208[];
+extern char gArmorHeadNames_209[];
+extern char gArmorHeadNames_210[];
+extern char gArmorHeadNames_211[];
+extern char gArmorHeadNames_212[];
+extern char gArmorHeadNames_213[];
+extern char gArmorHeadNames_214[];
+extern char gArmorHeadNames_215[];
+extern char gArmorHeadNames_216[];
+extern char gArmorHeadNames_217[];
+extern char gArmorHeadNames_218[];
+extern char gArmorHeadNames_219[];
+extern char gArmorHeadNames_220[];
+extern char gArmorHeadNames_221[];
+extern char gArmorHeadNames_222[];
+extern char gArmorHeadNames_223[];
+extern char gArmorHeadNames_224[];
+extern char gArmorHeadNames_225[];
+extern char gArmorHeadNames_226[];
+extern char gArmorHeadNames_227[];
+extern char gArmorHeadNames_228[];
+extern char gArmorHeadNames_229[];
+extern char gArmorHeadNames_230[];
+extern char gArmorHeadNames_231[];
+extern char gArmorHeadNames_232[];
+extern char gArmorHeadNames_233[];
+extern char gArmorHeadNames_234[];
+extern char gArmorHeadNames_235[];
+extern char gArmorHeadNames_236[];
+extern char gArmorHeadNames_237[];
+extern char gArmorHeadNames_238[];
+extern char gArmorHeadNames_239[];
+extern char gArmorHeadNames_240[];
+extern char gArmorHeadNames_241[];
+extern char gArmorHeadNames_242[];
+extern char gArmorHeadNames_243[];
+extern char gArmorHeadNames_244[];
+extern char gArmorHeadNames_245[];
+extern char gArmorHeadNames_246[];
+extern char gArmorHeadNames_247[];
+extern char gArmorHeadNames_248[];
+extern char gArmorHeadNames_249[];
+extern char gArmorHeadNames_250[];
+extern char gArmorHeadNames_251[];
+extern char gArmorHeadNames_252[];
+extern char gArmorBodyNames_1[];
+extern char gArmorBodyNames_2[];
+extern char gArmorBodyNames_3[];
+extern char gArmorBodyNames_4[];
+extern char gArmorBodyNames_5[];
+extern char gArmorBodyNames_6[];
+extern char gArmorBodyNames_7[];
+extern char gArmorBodyNames_8[];
+extern char gArmorBodyNames_9[];
+extern char gArmorBodyNames_10[];
+extern char gArmorBodyNames_11[];
+extern char gArmorBodyNames_12[];
+extern char gArmorBodyNames_13[];
+extern char gArmorBodyNames_14[];
+extern char gArmorBodyNames_15[];
+extern char gArmorBodyNames_16[];
+extern char gArmorBodyNames_17[];
+extern char gArmorBodyNames_18[];
+extern char gArmorBodyNames_19[];
+extern char gArmorBodyNames_20[];
+extern char gArmorBodyNames_21[];
+extern char gArmorBodyNames_22[];
+extern char gArmorBodyNames_23[];
+extern char gArmorBodyNames_24[];
+extern char gArmorBodyNames_25[];
+extern char gArmorBodyNames_26[];
+extern char gArmorBodyNames_27[];
+extern char gArmorBodyNames_28[];
+extern char gArmorBodyNames_29[];
+extern char gArmorBodyNames_30[];
+extern char gArmorBodyNames_31[];
+extern char gArmorBodyNames_32[];
+extern char gArmorBodyNames_33[];
+extern char gArmorBodyNames_34[];
+extern char gArmorBodyNames_35[];
+extern char gArmorBodyNames_36[];
+extern char gArmorBodyNames_37[];
+extern char gArmorBodyNames_38[];
+extern char gArmorBodyNames_39[];
+extern char gArmorBodyNames_40[];
+extern char gArmorBodyNames_41[];
+extern char gArmorBodyNames_42[];
+extern char gArmorBodyNames_43[];
+extern char gArmorBodyNames_44[];
+extern char gArmorBodyNames_45[];
+extern char gArmorBodyNames_46[];
+extern char gArmorBodyNames_47[];
+extern char gArmorBodyNames_48[];
+extern char gArmorBodyNames_49[];
+extern char gArmorBodyNames_50[];
+extern char gArmorBodyNames_51[];
+extern char gArmorBodyNames_52[];
+extern char gArmorBodyNames_53[];
+extern char gArmorBodyNames_54[];
+extern char gArmorBodyNames_55[];
+extern char gArmorBodyNames_56[];
+extern char gArmorBodyNames_57[];
+extern char gArmorBodyNames_58[];
+extern char gArmorBodyNames_59[];
+extern char gArmorBodyNames_60[];
+extern char gArmorBodyNames_61[];
+extern char gArmorBodyNames_62[];
+extern char gArmorBodyNames_63[];
+extern char gArmorBodyNames_64[];
+extern char gArmorBodyNames_65[];
+extern char gArmorBodyNames_66[];
+extern char gArmorBodyNames_67[];
+extern char gArmorBodyNames_68[];
+extern char gArmorBodyNames_69[];
+extern char gArmorBodyNames_70[];
+extern char gArmorBodyNames_71[];
+extern char gArmorBodyNames_72[];
+extern char gArmorBodyNames_73[];
+extern char gArmorBodyNames_74[];
+extern char gArmorBodyNames_75[];
+extern char gArmorBodyNames_76[];
+extern char gArmorBodyNames_77[];
+extern char gArmorBodyNames_78[];
+extern char gArmorBodyNames_79[];
+extern char gArmorBodyNames_80[];
+extern char gArmorBodyNames_81[];
+extern char gArmorBodyNames_82[];
+extern char gArmorBodyNames_83[];
+extern char gArmorBodyNames_84[];
+extern char gArmorBodyNames_85[];
+extern char gArmorBodyNames_86[];
+extern char gArmorBodyNames_87[];
+extern char gArmorBodyNames_88[];
+extern char gArmorBodyNames_89[];
+extern char gArmorBodyNames_90[];
+extern char gArmorBodyNames_91[];
+extern char gArmorBodyNames_92[];
+extern char gArmorBodyNames_93[];
+extern char gArmorBodyNames_94[];
+extern char gArmorBodyNames_95[];
+extern char gArmorBodyNames_96[];
+extern char gArmorBodyNames_97[];
+extern char gArmorBodyNames_98[];
+extern char gArmorBodyNames_99[];
+extern char gArmorBodyNames_100[];
+extern char gArmorBodyNames_101[];
+extern char gArmorBodyNames_102[];
+extern char gArmorBodyNames_103[];
+extern char gArmorBodyNames_104[];
+extern char gArmorBodyNames_105[];
+extern char gArmorBodyNames_106[];
+extern char gArmorBodyNames_107[];
+extern char gArmorBodyNames_108[];
+extern char gArmorBodyNames_109[];
+extern char gArmorBodyNames_110[];
+extern char gArmorBodyNames_111[];
+extern char gArmorBodyNames_112[];
+extern char gArmorBodyNames_113[];
+extern char gArmorBodyNames_114[];
+extern char gArmorBodyNames_115[];
+extern char gArmorBodyNames_116[];
+extern char gArmorBodyNames_117[];
+extern char gArmorBodyNames_118[];
+extern char gArmorBodyNames_119[];
+extern char gArmorBodyNames_120[];
+extern char gArmorBodyNames_121[];
+extern char gArmorBodyNames_122[];
+extern char gArmorBodyNames_123[];
+extern char gArmorBodyNames_124[];
+extern char gArmorBodyNames_125[];
+extern char gArmorBodyNames_126[];
+extern char gArmorBodyNames_127[];
+extern char gArmorBodyNames_128[];
+extern char gArmorBodyNames_129[];
+extern char gArmorBodyNames_130[];
+extern char gArmorBodyNames_131[];
+extern char gArmorBodyNames_132[];
+extern char gArmorBodyNames_133[];
+extern char gArmorBodyNames_134[];
+extern char gArmorBodyNames_135[];
+extern char gArmorBodyNames_136[];
+extern char gArmorBodyNames_137[];
+extern char gArmorBodyNames_138[];
+extern char gArmorBodyNames_139[];
+extern char gArmorBodyNames_140[];
+extern char gArmorBodyNames_141[];
+extern char gArmorBodyNames_142[];
+extern char gArmorBodyNames_143[];
+extern char gArmorBodyNames_144[];
+extern char gArmorBodyNames_145[];
+extern char gArmorBodyNames_146[];
+extern char gArmorBodyNames_147[];
+extern char gArmorBodyNames_148[];
+extern char gArmorBodyNames_149[];
+extern char gArmorBodyNames_150[];
+extern char gArmorBodyNames_151[];
+extern char gArmorBodyNames_152[];
+extern char gArmorBodyNames_153[];
+extern char gArmorBodyNames_154[];
+extern char gArmorBodyNames_155[];
+extern char gArmorBodyNames_156[];
+extern char gArmorBodyNames_157[];
+extern char gArmorBodyNames_158[];
+extern char gArmorBodyNames_159[];
+extern char gArmorBodyNames_160[];
+extern char gArmorBodyNames_161[];
+extern char gArmorBodyNames_162[];
+extern char gArmorBodyNames_163[];
+extern char gArmorBodyNames_164[];
+extern char gArmorBodyNames_165[];
+extern char gArmorBodyNames_166[];
+extern char gArmorBodyNames_167[];
+extern char gArmorBodyNames_168[];
+extern char gArmorBodyNames_169[];
+extern char gArmorBodyNames_170[];
+extern char gArmorBodyNames_171[];
 extern char D_004A6220[];
 extern char D_004A6240[];
-extern char D_004A6260[];
-extern char D_004A6280[];
-extern char D_004A62A0[];
-extern char D_004A62C0[];
-extern char D_004A62E0[];
-extern char D_004A6300[];
-extern char D_004A6318[];
-extern char D_004A6328[];
-extern char D_004A6338[];
-extern char D_004A6350[];
-extern char D_004A6368[];
-extern char D_004A6380[];
-extern char D_004A6398[];
-extern char D_004A63A8[];
-extern char D_004A63B8[];
-extern char D_004A63D0[];
-extern char D_004A63E8[];
-extern char D_004A6400[];
-extern char D_004A6418[];
-extern char D_004A6430[];
-extern char D_004A6450[];
-extern char D_004A6470[];
-extern char D_004A6490[];
-extern char D_004A64B0[];
-extern char D_004A64C8[];
-extern char D_004A64D8[];
-extern char D_004A64E8[];
-extern char D_004A6500[];
-extern char D_004A6518[];
-extern char D_004A6530[];
-extern char D_004A6548[];
-extern char D_004A6558[];
-extern char D_004A6568[];
-extern char D_004A6578[];
-extern char D_004A6590[];
-extern char D_004A65A8[];
-extern char D_004A65C0[];
-extern char D_004A65E0[];
-extern char D_004A6600[];
-extern char D_004A6620[];
-extern char D_004A6638[];
-extern char D_004A6648[];
-extern char D_004A6658[];
-extern char D_004A6670[];
-extern char D_004A6688[];
-extern char D_004A6698[];
-extern char D_004A66A8[];
-extern char D_004A66B8[];
-extern char D_004A66D0[];
-extern char D_004A66F0[];
-extern char D_004A6710[];
-extern char D_004A6730[];
-extern char D_004A6750[];
-extern char D_004A6770[];
-extern char D_004A6790[];
-extern char D_004A67B0[];
-extern char D_004A67C8[];
-extern char D_004A67E0[];
-extern char D_004A67F8[];
-extern char D_004A6810[];
+extern char gArmorBodyNames_176[];
+extern char gArmorBodyNames_177[];
+extern char gArmorBodyNames_178[];
+extern char gArmorBodyNames_179[];
+extern char gArmorBodyNames_180[];
+extern char gArmorBodyNames_181[];
+extern char gArmorBodyNames_182[];
+extern char gArmorBodyNames_183[];
+extern char gArmorBodyNames_184[];
+extern char gArmorBodyNames_185[];
+extern char gArmorBodyNames_186[];
+extern char gArmorBodyNames_187[];
+extern char gArmorBodyNames_188[];
+extern char gArmorBodyNames_189[];
+extern char gArmorBodyNames_190[];
+extern char gArmorBodyNames_191[];
+extern char gArmorBodyNames_192[];
+extern char gArmorBodyNames_193[];
+extern char gArmorBodyNames_194[];
+extern char gArmorBodyNames_195[];
+extern char gArmorBodyNames_196[];
+extern char gArmorBodyNames_197[];
+extern char gArmorBodyNames_198[];
+extern char gArmorBodyNames_199[];
+extern char gArmorBodyNames_200[];
+extern char gArmorBodyNames_201[];
+extern char gArmorBodyNames_202[];
+extern char gArmorBodyNames_203[];
+extern char gArmorBodyNames_204[];
+extern char gArmorBodyNames_205[];
+extern char gArmorBodyNames_206[];
+extern char gArmorBodyNames_207[];
+extern char gArmorBodyNames_208[];
+extern char gArmorBodyNames_209[];
+extern char gArmorBodyNames_210[];
+extern char gArmorBodyNames_211[];
+extern char gArmorBodyNames_212[];
+extern char gArmorBodyNames_213[];
+extern char gArmorBodyNames_214[];
+extern char gArmorBodyNames_215[];
+extern char gArmorBodyNames_216[];
+extern char gArmorBodyNames_217[];
+extern char gArmorBodyNames_218[];
+extern char gArmorBodyNames_219[];
+extern char gArmorBodyNames_220[];
+extern char gArmorBodyNames_221[];
+extern char gArmorBodyNames_222[];
+extern char gArmorBodyNames_223[];
+extern char gArmorBodyNames_224[];
+extern char gArmorBodyNames_225[];
+extern char gArmorBodyNames_226[];
+extern char gArmorBodyNames_227[];
+extern char gArmorBodyNames_228[];
+extern char gArmorBodyNames_229[];
+extern char gArmorBodyNames_230[];
+extern char gArmorBodyNames_231[];
+extern char gArmorBodyNames_232[];
+extern char gArmorBodyNames_233[];
+extern char gArmorBodyNames_234[];
+extern char gArmorBodyNames_235[];
 extern char D_004A6830[];
 extern char D_004A6850[];
-extern char D_004A6868[];
-extern char D_004A6878[];
-extern char D_004A6890[];
-extern char D_004A68B0[];
-extern char D_004A68C8[];
-extern char D_004A68D8[];
-extern char D_004A68E8[];
-extern char D_004A68F8[];
-extern char D_004A6908[];
-extern char D_004A6918[];
-extern char D_004A6928[];
-extern char D_004A6938[];
-extern char D_004A6948[];
-extern char D_004A6958[];
-extern char D_004A6968[];
-extern char D_004A6978[];
-extern char D_004A6988[];
-extern char D_004A6998[];
-extern char D_004A69A8[];
-extern char D_004A69B8[];
-extern char D_004A69C8[];
-extern char D_004A69D8[];
-extern char D_004A69E8[];
-extern char D_004A69F8[];
-extern char D_004A6A08[];
-extern char D_004A6A18[];
-extern char D_004A6A28[];
-extern char D_004A6A38[];
-extern char D_004A6A48[];
-extern char D_004A6A60[];
-extern char D_004A6A78[];
-extern char D_004A6A88[];
-extern char D_004A6A98[];
-extern char D_004A6AA8[];
-extern char D_004A6AB8[];
-extern char D_004A6AC8[];
-extern char D_004A6AD8[];
-extern char D_004A6AE8[];
-extern char D_004A6B00[];
-extern char D_004A6B20[];
-extern char D_004A6B38[];
-extern char D_004A6B48[];
-extern char D_004A6B60[];
-extern char D_004A6B80[];
-extern char D_004A6BA0[];
-extern char D_004A6BC0[];
-extern char D_004A6BD8[];
-extern char D_004A6BE8[];
-extern char D_004A6BF8[];
-extern char D_004A6C08[];
-extern char D_004A6C20[];
-extern char D_004A6C40[];
-extern char D_004A6C60[];
-extern char D_004A6C80[];
-extern char D_004A6C98[];
-extern char D_004A6CA8[];
-extern char D_004A6CC0[];
-extern char D_004A6CE0[];
-extern char D_004A6CF8[];
-extern char D_004A6D08[];
-extern char D_004A6D18[];
-extern char D_004A6D28[];
-extern char D_004A6D38[];
-extern char D_004A6D48[];
-extern char D_004A6D58[];
-extern char D_004A6D68[];
-extern char D_004A6D78[];
-extern char D_004A6D90[];
-extern char D_004A6DB0[];
-extern char D_004A6DD0[];
-extern char D_004A6DF0[];
-extern char D_004A6E10[];
-extern char D_004A6E28[];
-extern char D_004A6E38[];
-extern char D_004A6E50[];
-extern char D_004A6E70[];
-extern char D_004A6E88[];
-extern char D_004A6E98[];
-extern char D_004A6EA8[];
-extern char D_004A6EB8[];
-extern char D_004A6EC8[];
-extern char D_004A6ED8[];
-extern char D_004A6EF0[];
-extern char D_004A6F10[];
-extern char D_004A6F30[];
-extern char D_004A6F50[];
-extern char D_004A6F68[];
-extern char D_004A6F78[];
-extern char D_004A6F90[];
-extern char D_004A6FB0[];
-extern char D_004A6FD0[];
-extern char D_004A6FF0[];
-extern char D_004A7010[];
-extern char D_004A7030[];
-extern char D_004A7050[];
-extern char D_004A7070[];
-extern char D_004A7090[];
-extern char D_004A70B0[];
-extern char D_004A70D0[];
-extern char D_004A70F0[];
-extern char D_004A7110[];
-extern char D_004A7128[];
-extern char D_004A7138[];
-extern char D_004A7148[];
-extern char D_004A7158[];
-extern char D_004A7170[];
-extern char D_004A7190[];
-extern char D_004A71B0[];
-extern char D_004A71D0[];
-extern char D_004A71F0[];
-extern char D_004A7210[];
-extern char D_004A7228[];
-extern char D_004A7238[];
-extern char D_004A7250[];
-extern char D_004A7270[];
-extern char D_004A7290[];
-extern char D_004A72B0[];
-extern char D_004A72D0[];
-extern char D_004A72F0[];
-extern char D_004A7308[];
-extern char D_004A7318[];
-extern char D_004A7330[];
-extern char D_004A7350[];
-extern char D_004A7370[];
-extern char D_004A7390[];
-extern char D_004A73B0[];
-extern char D_004A73D0[];
-extern char D_004A73F0[];
-extern char D_004A7410[];
-extern char D_004A7430[];
-extern char D_004A7450[];
-extern char D_004A7468[];
-extern char D_004A7478[];
-extern char D_004A7490[];
-extern char D_004A74B0[];
-extern char D_004A74C8[];
-extern char D_004A74D8[];
-extern char D_004A74E8[];
-extern char D_004A74F8[];
-extern char D_004A7508[];
-extern char D_004A7518[];
-extern char D_004A7530[];
-extern char D_004A7550[];
-extern char D_004A7570[];
-extern char D_004A7590[];
-extern char D_004A75A8[];
-extern char D_004A75B8[];
-extern char D_004A75D0[];
-extern char D_004A75F0[];
-extern char D_004A7610[];
-extern char D_004A7630[];
-extern char D_004A7650[];
-extern char D_004A7670[];
-extern char D_004A7690[];
-extern char D_004A76A8[];
-extern char D_004A76B8[];
-extern char D_004A76D0[];
-extern char D_004A76F0[];
-extern char D_004A7708[];
-extern char D_004A7718[];
-extern char D_004A7728[];
-extern char D_004A7738[];
-extern char D_004A7748[];
-extern char D_004A7758[];
-extern char D_004A7770[];
-extern char D_004A7790[];
-extern char D_004A77B0[];
-extern char D_004A77D0[];
-extern char D_004A77F0[];
-extern char D_004A7810[];
-extern char D_004A7828[];
-extern char D_004A7838[];
+extern char gArmorBodyNames_240[];
+extern char gArmorBodyNames_241[];
+extern char gArmorBodyNames_242[];
+extern char gArmorArmsNames_1[];
+extern char gArmorArmsNames_2[];
+extern char gArmorArmsNames_3[];
+extern char gArmorArmsNames_4[];
+extern char gArmorArmsNames_5[];
+extern char gArmorArmsNames_6[];
+extern char gArmorArmsNames_7[];
+extern char gArmorArmsNames_8[];
+extern char gArmorArmsNames_9[];
+extern char gArmorArmsNames_10[];
+extern char gArmorArmsNames_11[];
+extern char gArmorArmsNames_12[];
+extern char gArmorArmsNames_13[];
+extern char gArmorArmsNames_14[];
+extern char gArmorArmsNames_15[];
+extern char gArmorArmsNames_16[];
+extern char gArmorArmsNames_17[];
+extern char gArmorArmsNames_18[];
+extern char gArmorArmsNames_19[];
+extern char gArmorArmsNames_20[];
+extern char gArmorArmsNames_21[];
+extern char gArmorArmsNames_22[];
+extern char gArmorArmsNames_23[];
+extern char gArmorArmsNames_24[];
+extern char gArmorArmsNames_25[];
+extern char gArmorArmsNames_26[];
+extern char gArmorArmsNames_27[];
+extern char gArmorArmsNames_28[];
+extern char gArmorArmsNames_29[];
+extern char gArmorArmsNames_30[];
+extern char gArmorArmsNames_31[];
+extern char gArmorArmsNames_32[];
+extern char gArmorArmsNames_33[];
+extern char gArmorArmsNames_34[];
+extern char gArmorArmsNames_35[];
+extern char gArmorArmsNames_36[];
+extern char gArmorArmsNames_37[];
+extern char gArmorArmsNames_38[];
+extern char gArmorArmsNames_39[];
+extern char gArmorArmsNames_40[];
+extern char gArmorArmsNames_41[];
+extern char gArmorArmsNames_42[];
+extern char gArmorArmsNames_43[];
+extern char gArmorArmsNames_44[];
+extern char gArmorArmsNames_45[];
+extern char gArmorArmsNames_46[];
+extern char gArmorArmsNames_47[];
+extern char gArmorArmsNames_48[];
+extern char gArmorArmsNames_49[];
+extern char gArmorArmsNames_50[];
+extern char gArmorArmsNames_51[];
+extern char gArmorArmsNames_52[];
+extern char gArmorArmsNames_53[];
+extern char gArmorArmsNames_54[];
+extern char gArmorArmsNames_55[];
+extern char gArmorArmsNames_56[];
+extern char gArmorArmsNames_57[];
+extern char gArmorArmsNames_58[];
+extern char gArmorArmsNames_59[];
+extern char gArmorArmsNames_60[];
+extern char gArmorArmsNames_61[];
+extern char gArmorArmsNames_62[];
+extern char gArmorArmsNames_63[];
+extern char gArmorArmsNames_64[];
+extern char gArmorArmsNames_65[];
+extern char gArmorArmsNames_66[];
+extern char gArmorArmsNames_67[];
+extern char gArmorArmsNames_68[];
+extern char gArmorArmsNames_69[];
+extern char gArmorArmsNames_70[];
+extern char gArmorArmsNames_71[];
+extern char gArmorArmsNames_72[];
+extern char gArmorArmsNames_73[];
+extern char gArmorArmsNames_74[];
+extern char gArmorArmsNames_75[];
+extern char gArmorArmsNames_76[];
+extern char gArmorArmsNames_77[];
+extern char gArmorArmsNames_78[];
+extern char gArmorArmsNames_79[];
+extern char gArmorArmsNames_80[];
+extern char gArmorArmsNames_81[];
+extern char gArmorArmsNames_82[];
+extern char gArmorArmsNames_83[];
+extern char gArmorArmsNames_84[];
+extern char gArmorArmsNames_85[];
+extern char gArmorArmsNames_86[];
+extern char gArmorArmsNames_87[];
+extern char gArmorArmsNames_88[];
+extern char gArmorArmsNames_89[];
+extern char gArmorArmsNames_90[];
+extern char gArmorArmsNames_91[];
+extern char gArmorArmsNames_92[];
+extern char gArmorArmsNames_93[];
+extern char gArmorArmsNames_94[];
+extern char gArmorArmsNames_95[];
+extern char gArmorArmsNames_96[];
+extern char gArmorArmsNames_97[];
+extern char gArmorArmsNames_98[];
+extern char gArmorArmsNames_99[];
+extern char gArmorArmsNames_100[];
+extern char gArmorArmsNames_101[];
+extern char gArmorArmsNames_102[];
+extern char gArmorArmsNames_103[];
+extern char gArmorArmsNames_104[];
+extern char gArmorArmsNames_105[];
+extern char gArmorArmsNames_106[];
+extern char gArmorArmsNames_107[];
+extern char gArmorArmsNames_108[];
+extern char gArmorArmsNames_109[];
+extern char gArmorArmsNames_110[];
+extern char gArmorArmsNames_111[];
+extern char gArmorArmsNames_112[];
+extern char gArmorArmsNames_113[];
+extern char gArmorArmsNames_114[];
+extern char gArmorArmsNames_115[];
+extern char gArmorArmsNames_116[];
+extern char gArmorArmsNames_117[];
+extern char gArmorArmsNames_118[];
+extern char gArmorArmsNames_119[];
+extern char gArmorArmsNames_120[];
+extern char gArmorArmsNames_121[];
+extern char gArmorArmsNames_122[];
+extern char gArmorArmsNames_123[];
+extern char gArmorArmsNames_124[];
+extern char gArmorArmsNames_125[];
+extern char gArmorArmsNames_126[];
+extern char gArmorArmsNames_127[];
+extern char gArmorArmsNames_128[];
+extern char gArmorArmsNames_129[];
+extern char gArmorArmsNames_130[];
+extern char gArmorArmsNames_131[];
+extern char gArmorArmsNames_132[];
+extern char gArmorArmsNames_133[];
+extern char gArmorArmsNames_134[];
+extern char gArmorArmsNames_135[];
+extern char gArmorArmsNames_136[];
+extern char gArmorArmsNames_137[];
+extern char gArmorArmsNames_138[];
+extern char gArmorArmsNames_139[];
+extern char gArmorArmsNames_140[];
+extern char gArmorArmsNames_141[];
+extern char gArmorArmsNames_142[];
+extern char gArmorArmsNames_143[];
+extern char gArmorArmsNames_144[];
+extern char gArmorArmsNames_145[];
+extern char gArmorArmsNames_146[];
+extern char gArmorArmsNames_147[];
+extern char gArmorArmsNames_148[];
+extern char gArmorArmsNames_149[];
+extern char gArmorArmsNames_150[];
+extern char gArmorArmsNames_151[];
+extern char gArmorArmsNames_152[];
+extern char gArmorArmsNames_153[];
+extern char gArmorArmsNames_154[];
+extern char gArmorArmsNames_155[];
+extern char gArmorArmsNames_156[];
+extern char gArmorArmsNames_157[];
+extern char gArmorArmsNames_158[];
+extern char gArmorArmsNames_159[];
+extern char gArmorArmsNames_160[];
+extern char gArmorArmsNames_161[];
+extern char gArmorArmsNames_162[];
+extern char gArmorArmsNames_163[];
+extern char gArmorArmsNames_164[];
+extern char gArmorArmsNames_165[];
+extern char gArmorArmsNames_166[];
+extern char gArmorArmsNames_167[];
+extern char gArmorArmsNames_168[];
+extern char gArmorArmsNames_169[];
 extern char D_004A7850[];
 extern char D_004A7870[];
-extern char D_004A7890[];
-extern char D_004A78B0[];
-extern char D_004A78C8[];
-extern char D_004A78D8[];
-extern char D_004A78F0[];
-extern char D_004A7910[];
-extern char D_004A7928[];
-extern char D_004A7938[];
-extern char D_004A7948[];
-extern char D_004A7958[];
-extern char D_004A7968[];
-extern char D_004A7978[];
-extern char D_004A7988[];
-extern char D_004A7998[];
-extern char D_004A79A8[];
-extern char D_004A79B8[];
-extern char D_004A79C8[];
-extern char D_004A79D8[];
-extern char D_004A79E8[];
-extern char D_004A79F8[];
-extern char D_004A7A10[];
-extern char D_004A7A30[];
-extern char D_004A7A50[];
-extern char D_004A7A70[];
-extern char D_004A7A88[];
-extern char D_004A7A98[];
-extern char D_004A7AA8[];
-extern char D_004A7AB8[];
-extern char D_004A7AC8[];
-extern char D_004A7AD8[];
-extern char D_004A7AF0[];
-extern char D_004A7B08[];
-extern char D_004A7B20[];
-extern char D_004A7B40[];
-extern char D_004A7B60[];
-extern char D_004A7B80[];
-extern char D_004A7B98[];
-extern char D_004A7BB0[];
-extern char D_004A7BD0[];
-extern char D_004A7BF0[];
-extern char D_004A7C08[];
-extern char D_004A7C18[];
-extern char D_004A7C28[];
-extern char D_004A7C38[];
-extern char D_004A7C48[];
-extern char D_004A7C58[];
-extern char D_004A7C68[];
-extern char D_004A7C78[];
-extern char D_004A7C90[];
-extern char D_004A7CB0[];
-extern char D_004A7CD0[];
-extern char D_004A7CF0[];
-extern char D_004A7D10[];
-extern char D_004A7D30[];
-extern char D_004A7D50[];
-extern char D_004A7D68[];
-extern char D_004A7D80[];
+extern char gArmorArmsNames_174[];
+extern char gArmorArmsNames_175[];
+extern char gArmorArmsNames_176[];
+extern char gArmorArmsNames_177[];
+extern char gArmorArmsNames_178[];
+extern char gArmorArmsNames_179[];
+extern char gArmorArmsNames_180[];
+extern char gArmorArmsNames_181[];
+extern char gArmorArmsNames_182[];
+extern char gArmorArmsNames_183[];
+extern char gArmorArmsNames_184[];
+extern char gArmorArmsNames_185[];
+extern char gArmorArmsNames_186[];
+extern char gArmorArmsNames_187[];
+extern char gArmorArmsNames_188[];
+extern char gArmorArmsNames_189[];
+extern char gArmorArmsNames_190[];
+extern char gArmorArmsNames_191[];
+extern char gArmorArmsNames_192[];
+extern char gArmorArmsNames_193[];
+extern char gArmorArmsNames_194[];
+extern char gArmorArmsNames_195[];
+extern char gArmorArmsNames_196[];
+extern char gArmorArmsNames_197[];
+extern char gArmorArmsNames_198[];
+extern char gArmorArmsNames_199[];
+extern char gArmorArmsNames_200[];
+extern char gArmorArmsNames_201[];
+extern char gArmorArmsNames_202[];
+extern char gArmorArmsNames_203[];
+extern char gArmorArmsNames_204[];
+extern char gArmorArmsNames_205[];
+extern char gArmorArmsNames_206[];
+extern char gArmorArmsNames_207[];
+extern char gArmorArmsNames_208[];
+extern char gArmorArmsNames_209[];
+extern char gArmorArmsNames_210[];
+extern char gArmorArmsNames_211[];
+extern char gArmorArmsNames_212[];
+extern char gArmorArmsNames_213[];
+extern char gArmorArmsNames_214[];
+extern char gArmorArmsNames_215[];
+extern char gArmorArmsNames_216[];
+extern char gArmorArmsNames_217[];
+extern char gArmorArmsNames_218[];
+extern char gArmorArmsNames_219[];
+extern char gArmorArmsNames_220[];
+extern char gArmorArmsNames_221[];
+extern char gArmorArmsNames_222[];
+extern char gArmorArmsNames_223[];
+extern char gArmorArmsNames_224[];
+extern char gArmorArmsNames_225[];
+extern char gArmorArmsNames_226[];
+extern char gArmorArmsNames_227[];
+extern char gArmorArmsNames_228[];
+extern char gArmorArmsNames_229[];
+extern char gArmorArmsNames_230[];
 extern char D_004A7DA0[];
 extern char D_004A7DC0[];
-extern char D_004A7DD8[];
-extern char D_004A7DE8[];
-extern char D_004A7DF8[];
-extern char D_004A7E10[];
-extern char D_004A7E30[];
-extern char D_004A7E50[];
-extern char D_004A7E68[];
-extern char D_004A7E80[];
-extern char D_004A7E98[];
-extern char D_004A7EB0[];
-extern char D_004A7EC8[];
-extern char D_004A7EE0[];
-extern char D_004A7EF8[];
-extern char D_004A7F10[];
-extern char D_004A7F28[];
-extern char D_004A7F38[];
-extern char D_004A7F50[];
-extern char D_004A7F68[];
-extern char D_004A7F80[];
-extern char D_004A7F98[];
-extern char D_004A7FB0[];
-extern char D_004A7FC8[];
-extern char D_004A7FE0[];
-extern char D_004A7FF8[];
-extern char D_004A8010[];
-extern char D_004A8030[];
-extern char D_004A8048[];
-extern char D_004A8060[];
-extern char D_004A8078[];
-extern char D_004A8090[];
-extern char D_004A80A8[];
-extern char D_004A80C0[];
-extern char D_004A80D8[];
-extern char D_004A80F0[];
-extern char D_004A8110[];
-extern char D_004A8128[];
-extern char D_004A8140[];
-extern char D_004A8158[];
-extern char D_004A8170[];
-extern char D_004A8188[];
-extern char D_004A81A0[];
-extern char D_004A81B8[];
-extern char D_004A81D0[];
-extern char D_004A81F0[];
-extern char D_004A8210[];
-extern char D_004A8230[];
-extern char D_004A8250[];
-extern char D_004A8268[];
-extern char D_004A8280[];
-extern char D_004A8298[];
-extern char D_004A82A8[];
-extern char D_004A82C0[];
-extern char D_004A82D8[];
-extern char D_004A82E8[];
-extern char D_004A8300[];
-extern char D_004A8320[];
-extern char D_004A8340[];
-extern char D_004A8358[];
-extern char D_004A8370[];
-extern char D_004A8388[];
-extern char D_004A8398[];
-extern char D_004A83A8[];
-extern char D_004A83B8[];
-extern char D_004A83C8[];
-extern char D_004A83D8[];
-extern char D_004A83E8[];
-extern char D_004A8400[];
-extern char D_004A8418[];
-extern char D_004A8430[];
-extern char D_004A8450[];
-extern char D_004A8470[];
-extern char D_004A8490[];
-extern char D_004A84B0[];
-extern char D_004A84C8[];
-extern char D_004A84E0[];
-extern char D_004A8500[];
-extern char D_004A8520[];
-extern char D_004A8538[];
-extern char D_004A8550[];
-extern char D_004A8568[];
-extern char D_004A8580[];
-extern char D_004A8598[];
-extern char D_004A85B0[];
-extern char D_004A85D0[];
-extern char D_004A85F0[];
-extern char D_004A8610[];
-extern char D_004A8630[];
-extern char D_004A8648[];
-extern char D_004A8660[];
-extern char D_004A8680[];
-extern char D_004A86A0[];
-extern char D_004A86C0[];
-extern char D_004A86E0[];
-extern char D_004A8700[];
-extern char D_004A8720[];
-extern char D_004A8740[];
-extern char D_004A8760[];
-extern char D_004A8780[];
-extern char D_004A87A0[];
-extern char D_004A87C0[];
-extern char D_004A87E0[];
-extern char D_004A8800[];
-extern char D_004A8818[];
-extern char D_004A8830[];
-extern char D_004A8850[];
-extern char D_004A8870[];
-extern char D_004A8890[];
-extern char D_004A88B0[];
-extern char D_004A88D0[];
-extern char D_004A88E8[];
-extern char D_004A88F8[];
-extern char D_004A8910[];
-extern char D_004A8930[];
-extern char D_004A8950[];
-extern char D_004A8970[];
-extern char D_004A8990[];
-extern char D_004A89B0[];
-extern char D_004A89D0[];
-extern char D_004A89F0[];
-extern char D_004A8A10[];
-extern char D_004A8A30[];
-extern char D_004A8A50[];
-extern char D_004A8A70[];
-extern char D_004A8A90[];
-extern char D_004A8AB0[];
-extern char D_004A8AD0[];
-extern char D_004A8AF0[];
-extern char D_004A8B10[];
-extern char D_004A8B30[];
-extern char D_004A8B50[];
-extern char D_004A8B68[];
-extern char D_004A8B80[];
-extern char D_004A8BA0[];
-extern char D_004A8BC0[];
-extern char D_004A8BD8[];
-extern char D_004A8BF0[];
-extern char D_004A8C08[];
-extern char D_004A8C20[];
-extern char D_004A8C38[];
-extern char D_004A8C50[];
-extern char D_004A8C70[];
-extern char D_004A8C90[];
-extern char D_004A8CB0[];
-extern char D_004A8CD0[];
-extern char D_004A8CE8[];
-extern char D_004A8D00[];
-extern char D_004A8D20[];
-extern char D_004A8D40[];
-extern char D_004A8D60[];
-extern char D_004A8D80[];
-extern char D_004A8DA0[];
-extern char D_004A8DC0[];
-extern char D_004A8DE0[];
-extern char D_004A8DF8[];
-extern char D_004A8E10[];
-extern char D_004A8E30[];
-extern char D_004A8E50[];
-extern char D_004A8E68[];
-extern char D_004A8E80[];
-extern char D_004A8E98[];
-extern char D_004A8EB0[];
-extern char D_004A8ED0[];
-extern char D_004A8EF0[];
-extern char D_004A8F10[];
-extern char D_004A8F30[];
-extern char D_004A8F50[];
-extern char D_004A8F68[];
-extern char D_004A8F78[];
+extern char gArmorArmsNames_235[];
+extern char gArmorArmsNames_236[];
+extern char gArmorArmsNames_237[];
+extern char gArmorWaistNames_1[];
+extern char gArmorWaistNames_2[];
+extern char gArmorWaistNames_3[];
+extern char gArmorWaistNames_4[];
+extern char gArmorWaistNames_5[];
+extern char gArmorWaistNames_6[];
+extern char gArmorWaistNames_7[];
+extern char gArmorWaistNames_8[];
+extern char gArmorWaistNames_9[];
+extern char gArmorWaistNames_10[];
+extern char gArmorWaistNames_11[];
+extern char gArmorWaistNames_12[];
+extern char gArmorWaistNames_13[];
+extern char gArmorWaistNames_14[];
+extern char gArmorWaistNames_15[];
+extern char gArmorWaistNames_16[];
+extern char gArmorWaistNames_17[];
+extern char gArmorWaistNames_18[];
+extern char gArmorWaistNames_19[];
+extern char gArmorWaistNames_20[];
+extern char gArmorWaistNames_21[];
+extern char gArmorWaistNames_22[];
+extern char gArmorWaistNames_23[];
+extern char gArmorWaistNames_24[];
+extern char gArmorWaistNames_25[];
+extern char gArmorWaistNames_26[];
+extern char gArmorWaistNames_27[];
+extern char gArmorWaistNames_28[];
+extern char gArmorWaistNames_29[];
+extern char gArmorWaistNames_30[];
+extern char gArmorWaistNames_31[];
+extern char gArmorWaistNames_32[];
+extern char gArmorWaistNames_33[];
+extern char gArmorWaistNames_34[];
+extern char gArmorWaistNames_35[];
+extern char gArmorWaistNames_36[];
+extern char gArmorWaistNames_37[];
+extern char gArmorWaistNames_38[];
+extern char gArmorWaistNames_39[];
+extern char gArmorWaistNames_40[];
+extern char gArmorWaistNames_41[];
+extern char gArmorWaistNames_42[];
+extern char gArmorWaistNames_43[];
+extern char gArmorWaistNames_44[];
+extern char gArmorWaistNames_45[];
+extern char gArmorWaistNames_46[];
+extern char gArmorWaistNames_47[];
+extern char gArmorWaistNames_48[];
+extern char gArmorWaistNames_49[];
+extern char gArmorWaistNames_50[];
+extern char gArmorWaistNames_51[];
+extern char gArmorWaistNames_52[];
+extern char gArmorWaistNames_53[];
+extern char gArmorWaistNames_54[];
+extern char gArmorWaistNames_55[];
+extern char gArmorWaistNames_56[];
+extern char gArmorWaistNames_57[];
+extern char gArmorWaistNames_58[];
+extern char gArmorWaistNames_59[];
+extern char gArmorWaistNames_60[];
+extern char gArmorWaistNames_61[];
+extern char gArmorWaistNames_62[];
+extern char gArmorWaistNames_63[];
+extern char gArmorWaistNames_64[];
+extern char gArmorWaistNames_65[];
+extern char gArmorWaistNames_66[];
+extern char gArmorWaistNames_67[];
+extern char gArmorWaistNames_68[];
+extern char gArmorWaistNames_69[];
+extern char gArmorWaistNames_70[];
+extern char gArmorWaistNames_71[];
+extern char gArmorWaistNames_72[];
+extern char gArmorWaistNames_73[];
+extern char gArmorWaistNames_74[];
+extern char gArmorWaistNames_75[];
+extern char gArmorWaistNames_76[];
+extern char gArmorWaistNames_77[];
+extern char gArmorWaistNames_78[];
+extern char gArmorWaistNames_79[];
+extern char gArmorWaistNames_80[];
+extern char gArmorWaistNames_81[];
+extern char gArmorWaistNames_82[];
+extern char gArmorWaistNames_83[];
+extern char gArmorWaistNames_84[];
+extern char gArmorWaistNames_85[];
+extern char gArmorWaistNames_86[];
+extern char gArmorWaistNames_87[];
+extern char gArmorWaistNames_88[];
+extern char gArmorWaistNames_89[];
+extern char gArmorWaistNames_90[];
+extern char gArmorWaistNames_91[];
+extern char gArmorWaistNames_92[];
+extern char gArmorWaistNames_93[];
+extern char gArmorWaistNames_94[];
+extern char gArmorWaistNames_95[];
+extern char gArmorWaistNames_96[];
+extern char gArmorWaistNames_97[];
+extern char gArmorWaistNames_98[];
+extern char gArmorWaistNames_99[];
+extern char gArmorWaistNames_100[];
+extern char gArmorWaistNames_101[];
+extern char gArmorWaistNames_102[];
+extern char gArmorWaistNames_103[];
+extern char gArmorWaistNames_104[];
+extern char gArmorWaistNames_105[];
+extern char gArmorWaistNames_106[];
+extern char gArmorWaistNames_107[];
+extern char gArmorWaistNames_108[];
+extern char gArmorWaistNames_109[];
+extern char gArmorWaistNames_110[];
+extern char gArmorWaistNames_111[];
+extern char gArmorWaistNames_112[];
+extern char gArmorWaistNames_113[];
+extern char gArmorWaistNames_114[];
+extern char gArmorWaistNames_115[];
+extern char gArmorWaistNames_116[];
+extern char gArmorWaistNames_117[];
+extern char gArmorWaistNames_118[];
+extern char gArmorWaistNames_119[];
+extern char gArmorWaistNames_120[];
+extern char gArmorWaistNames_121[];
+extern char gArmorWaistNames_122[];
+extern char gArmorWaistNames_123[];
+extern char gArmorWaistNames_124[];
+extern char gArmorWaistNames_125[];
+extern char gArmorWaistNames_126[];
+extern char gArmorWaistNames_127[];
+extern char gArmorWaistNames_128[];
+extern char gArmorWaistNames_129[];
+extern char gArmorWaistNames_130[];
+extern char gArmorWaistNames_131[];
+extern char gArmorWaistNames_132[];
+extern char gArmorWaistNames_133[];
+extern char gArmorWaistNames_134[];
+extern char gArmorWaistNames_135[];
+extern char gArmorWaistNames_136[];
+extern char gArmorWaistNames_137[];
+extern char gArmorWaistNames_138[];
+extern char gArmorWaistNames_139[];
+extern char gArmorWaistNames_140[];
+extern char gArmorWaistNames_141[];
+extern char gArmorWaistNames_142[];
+extern char gArmorWaistNames_143[];
+extern char gArmorWaistNames_144[];
+extern char gArmorWaistNames_145[];
+extern char gArmorWaistNames_146[];
+extern char gArmorWaistNames_147[];
+extern char gArmorWaistNames_148[];
+extern char gArmorWaistNames_149[];
+extern char gArmorWaistNames_150[];
+extern char gArmorWaistNames_151[];
+extern char gArmorWaistNames_152[];
+extern char gArmorWaistNames_153[];
+extern char gArmorWaistNames_154[];
+extern char gArmorWaistNames_155[];
+extern char gArmorWaistNames_156[];
+extern char gArmorWaistNames_157[];
+extern char gArmorWaistNames_158[];
+extern char gArmorWaistNames_159[];
+extern char gArmorWaistNames_160[];
+extern char gArmorWaistNames_161[];
+extern char gArmorWaistNames_162[];
+extern char gArmorWaistNames_163[];
+extern char gArmorWaistNames_164[];
+extern char gArmorWaistNames_165[];
 extern char D_004A8F90[];
 extern char D_004A8FB0[];
-extern char D_004A8FD0[];
-extern char D_004A8FF0[];
-extern char D_004A9010[];
-extern char D_004A9030[];
-extern char D_004A9050[];
-extern char D_004A9070[];
-extern char D_004A9090[];
-extern char D_004A90A8[];
-extern char D_004A90C0[];
-extern char D_004A90D8[];
-extern char D_004A90F0[];
-extern char D_004A9108[];
-extern char D_004A9120[];
-extern char D_004A9138[];
-extern char D_004A9150[];
-extern char D_004A9168[];
-extern char D_004A9180[];
-extern char D_004A9198[];
-extern char D_004A91B0[];
-extern char D_004A91C8[];
-extern char D_004A91E0[];
-extern char D_004A9200[];
-extern char D_004A9220[];
-extern char D_004A9240[];
-extern char D_004A9260[];
-extern char D_004A9278[];
-extern char D_004A9290[];
-extern char D_004A92A8[];
-extern char D_004A92C0[];
-extern char D_004A92D8[];
-extern char D_004A92E8[];
-extern char D_004A92F8[];
-extern char D_004A9308[];
-extern char D_004A9320[];
-extern char D_004A9338[];
-extern char D_004A9348[];
-extern char D_004A9358[];
-extern char D_004A9370[];
-extern char D_004A9390[];
-extern char D_004A93B0[];
-extern char D_004A93C8[];
-extern char D_004A93D8[];
-extern char D_004A93F0[];
-extern char D_004A9408[];
-extern char D_004A9418[];
-extern char D_004A9428[];
-extern char D_004A9438[];
-extern char D_004A9448[];
-extern char D_004A9460[];
-extern char D_004A9480[];
-extern char D_004A94A0[];
-extern char D_004A94B8[];
-extern char D_004A94D0[];
-extern char D_004A94F0[];
-extern char D_004A9510[];
-extern char D_004A9530[];
-extern char D_004A9548[];
-extern char D_004A9560[];
+extern char gArmorWaistNames_170[];
+extern char gArmorWaistNames_171[];
+extern char gArmorWaistNames_172[];
+extern char gArmorWaistNames_173[];
+extern char gArmorWaistNames_174[];
+extern char gArmorWaistNames_175[];
+extern char gArmorWaistNames_176[];
+extern char gArmorWaistNames_177[];
+extern char gArmorWaistNames_178[];
+extern char gArmorWaistNames_179[];
+extern char gArmorWaistNames_180[];
+extern char gArmorWaistNames_181[];
+extern char gArmorWaistNames_182[];
+extern char gArmorWaistNames_183[];
+extern char gArmorWaistNames_184[];
+extern char gArmorWaistNames_185[];
+extern char gArmorWaistNames_186[];
+extern char gArmorWaistNames_187[];
+extern char gArmorWaistNames_188[];
+extern char gArmorWaistNames_189[];
+extern char gArmorWaistNames_190[];
+extern char gArmorWaistNames_191[];
+extern char gArmorWaistNames_192[];
+extern char gArmorWaistNames_193[];
+extern char gArmorWaistNames_194[];
+extern char gArmorWaistNames_195[];
+extern char gArmorWaistNames_196[];
+extern char gArmorWaistNames_197[];
+extern char gArmorWaistNames_198[];
+extern char gArmorWaistNames_199[];
+extern char gArmorWaistNames_200[];
+extern char gArmorWaistNames_201[];
+extern char gArmorWaistNames_202[];
+extern char gArmorWaistNames_203[];
+extern char gArmorWaistNames_204[];
+extern char gArmorWaistNames_205[];
+extern char gArmorWaistNames_206[];
+extern char gArmorWaistNames_207[];
+extern char gArmorWaistNames_208[];
+extern char gArmorWaistNames_209[];
+extern char gArmorWaistNames_210[];
+extern char gArmorWaistNames_211[];
+extern char gArmorWaistNames_212[];
+extern char gArmorWaistNames_213[];
+extern char gArmorWaistNames_214[];
+extern char gArmorWaistNames_215[];
+extern char gArmorWaistNames_216[];
+extern char gArmorWaistNames_217[];
+extern char gArmorWaistNames_218[];
+extern char gArmorWaistNames_219[];
+extern char gArmorWaistNames_220[];
+extern char gArmorWaistNames_221[];
+extern char gArmorWaistNames_222[];
+extern char gArmorWaistNames_223[];
+extern char gArmorWaistNames_224[];
+extern char gArmorWaistNames_225[];
+extern char gArmorWaistNames_226[];
+extern char gArmorWaistNames_227[];
 extern char D_004A9580[];
 extern char D_004A95A0[];
-extern char D_004A95C0[];
-extern char D_004A95E0[];
-extern char D_004A9600[];
-extern char D_004A9618[];
-extern char D_004A9628[];
-extern char D_004A9640[];
-extern char D_004A9660[];
-extern char D_004A9680[];
-extern char D_004A96A0[];
-extern char D_004A96B8[];
-extern char D_004A96C8[];
-extern char D_004A96E0[];
-extern char D_004A9700[];
-extern char D_004A9718[];
-extern char D_004A9728[];
-extern char D_004A9740[];
-extern char D_004A9758[];
-extern char D_004A9768[];
-extern char D_004A9778[];
-extern char D_004A9788[];
-extern char D_004A97A0[];
-extern char D_004A97C0[];
-extern char D_004A97E0[];
-extern char D_004A9800[];
-extern char D_004A9820[];
-extern char D_004A9840[];
-extern char D_004A9860[];
-extern char D_004A9880[];
-extern char D_004A98A0[];
-extern char D_004A98C0[];
-extern char D_004A98E0[];
-extern char D_004A9900[];
-extern char D_004A9920[];
-extern char D_004A9938[];
-extern char D_004A9948[];
-extern char D_004A9960[];
-extern char D_004A9980[];
-extern char D_004A9998[];
-extern char D_004A99A8[];
-extern char D_004A99B8[];
-extern char D_004A99C8[];
-extern char D_004A99D8[];
-extern char D_004A99E8[];
-extern char D_004A9A00[];
-extern char D_004A9A20[];
-extern char D_004A9A40[];
-extern char D_004A9A60[];
-extern char D_004A9A80[];
-extern char D_004A9AA0[];
-extern char D_004A9AC0[];
-extern char D_004A9AD8[];
-extern char D_004A9AF0[];
-extern char D_004A9B10[];
-extern char D_004A9B30[];
-extern char D_004A9B48[];
-extern char D_004A9B58[];
-extern char D_004A9B70[];
-extern char D_004A9B90[];
-extern char D_004A9BB0[];
-extern char D_004A9BD0[];
-extern char D_004A9BF0[];
-extern char D_004A9C10[];
-extern char D_004A9C28[];
-extern char D_004A9C38[];
-extern char D_004A9C48[];
-extern char D_004A9C58[];
-extern char D_004A9C68[];
-extern char D_004A9C78[];
-extern char D_004A9C88[];
-extern char D_004A9C98[];
-extern char D_004A9CB0[];
-extern char D_004A9CD0[];
-extern char D_004A9CF0[];
-extern char D_004A9D10[];
-extern char D_004A9D30[];
-extern char D_004A9D50[];
-extern char D_004A9D70[];
-extern char D_004A9D90[];
-extern char D_004A9DB0[];
-extern char D_004A9DD0[];
-extern char D_004A9DF0[];
-extern char D_004A9E10[];
-extern char D_004A9E30[];
-extern char D_004A9E50[];
-extern char D_004A9E70[];
-extern char D_004A9E90[];
-extern char D_004A9EB0[];
-extern char D_004A9ED0[];
-extern char D_004A9EF0[];
-extern char D_004A9F10[];
-extern char D_004A9F30[];
-extern char D_004A9F50[];
-extern char D_004A9F70[];
-extern char D_004A9F90[];
-extern char D_004A9FB0[];
-extern char D_004A9FD0[];
-extern char D_004A9FF0[];
-extern char D_004AA010[];
-extern char D_004AA030[];
-extern char D_004AA050[];
-extern char D_004AA070[];
-extern char D_004AA090[];
-extern char D_004AA0B0[];
-extern char D_004AA0D0[];
-extern char D_004AA0F0[];
-extern char D_004AA110[];
-extern char D_004AA130[];
-extern char D_004AA150[];
-extern char D_004AA170[];
-extern char D_004AA190[];
-extern char D_004AA1A8[];
-extern char D_004AA1B8[];
-extern char D_004AA1D0[];
-extern char D_004AA1F0[];
-extern char D_004AA210[];
-extern char D_004AA230[];
-extern char D_004AA250[];
-extern char D_004AA270[];
-extern char D_004AA288[];
-extern char D_004AA298[];
-extern char D_004AA2B0[];
-extern char D_004AA2D0[];
-extern char D_004AA2F0[];
-extern char D_004AA310[];
-extern char D_004AA330[];
-extern char D_004AA350[];
-extern char D_004AA370[];
-extern char D_004AA390[];
-extern char D_004AA3B0[];
-extern char D_004AA3D0[];
-extern char D_004AA3F0[];
-extern char D_004AA410[];
-extern char D_004AA430[];
-extern char D_004AA450[];
-extern char D_004AA470[];
-extern char D_004AA490[];
-extern char D_004AA4B0[];
-extern char D_004AA4D0[];
-extern char D_004AA4F0[];
-extern char D_004AA510[];
-extern char D_004AA530[];
-extern char D_004AA550[];
-extern char D_004AA570[];
-extern char D_004AA590[];
-extern char D_004AA5B0[];
-extern char D_004AA5D0[];
-extern char D_004AA5F0[];
-extern char D_004AA610[];
-extern char D_004AA630[];
-extern char D_004AA650[];
-extern char D_004AA670[];
-extern char D_004AA690[];
-extern char D_004AA6B0[];
-extern char D_004AA6D0[];
-extern char D_004AA6F0[];
-extern char D_004AA710[];
-extern char D_004AA730[];
-extern char D_004AA750[];
-extern char D_004AA770[];
-extern char D_004AA790[];
-extern char D_004AA7B0[];
-extern char D_004AA7D0[];
-extern char D_004AA7F0[];
-extern char D_004AA810[];
-extern char D_004AA830[];
-extern char D_004AA850[];
-extern char D_004AA870[];
-extern char D_004AA890[];
-extern char D_004AA8A8[];
-extern char D_004AA8B8[];
+extern char gArmorWaistNames_232[];
+extern char gArmorWaistNames_233[];
+extern char gArmorWaistNames_234[];
+extern char gArmorWaistNames_235[];
+extern char gArmorWaistNames_236[];
+extern char gArmorLegsNames_1[];
+extern char gArmorLegsNames_2[];
+extern char gArmorLegsNames_3[];
+extern char gArmorLegsNames_4[];
+extern char gArmorLegsNames_5[];
+extern char gArmorLegsNames_6[];
+extern char gArmorLegsNames_7[];
+extern char gArmorLegsNames_8[];
+extern char gArmorLegsNames_9[];
+extern char gArmorLegsNames_10[];
+extern char gArmorLegsNames_11[];
+extern char gArmorLegsNames_12[];
+extern char gArmorLegsNames_13[];
+extern char gArmorLegsNames_14[];
+extern char gArmorLegsNames_15[];
+extern char gArmorLegsNames_16[];
+extern char gArmorLegsNames_17[];
+extern char gArmorLegsNames_18[];
+extern char gArmorLegsNames_19[];
+extern char gArmorLegsNames_20[];
+extern char gArmorLegsNames_21[];
+extern char gArmorLegsNames_22[];
+extern char gArmorLegsNames_23[];
+extern char gArmorLegsNames_24[];
+extern char gArmorLegsNames_25[];
+extern char gArmorLegsNames_26[];
+extern char gArmorLegsNames_27[];
+extern char gArmorLegsNames_28[];
+extern char gArmorLegsNames_29[];
+extern char gArmorLegsNames_30[];
+extern char gArmorLegsNames_31[];
+extern char gArmorLegsNames_32[];
+extern char gArmorLegsNames_33[];
+extern char gArmorLegsNames_34[];
+extern char gArmorLegsNames_35[];
+extern char gArmorLegsNames_36[];
+extern char gArmorLegsNames_37[];
+extern char gArmorLegsNames_38[];
+extern char gArmorLegsNames_39[];
+extern char gArmorLegsNames_40[];
+extern char gArmorLegsNames_41[];
+extern char gArmorLegsNames_42[];
+extern char gArmorLegsNames_43[];
+extern char gArmorLegsNames_44[];
+extern char gArmorLegsNames_45[];
+extern char gArmorLegsNames_46[];
+extern char gArmorLegsNames_47[];
+extern char gArmorLegsNames_48[];
+extern char gArmorLegsNames_49[];
+extern char gArmorLegsNames_50[];
+extern char gArmorLegsNames_51[];
+extern char gArmorLegsNames_52[];
+extern char gArmorLegsNames_53[];
+extern char gArmorLegsNames_54[];
+extern char gArmorLegsNames_55[];
+extern char gArmorLegsNames_56[];
+extern char gArmorLegsNames_57[];
+extern char gArmorLegsNames_58[];
+extern char gArmorLegsNames_59[];
+extern char gArmorLegsNames_60[];
+extern char gArmorLegsNames_61[];
+extern char gArmorLegsNames_62[];
+extern char gArmorLegsNames_63[];
+extern char gArmorLegsNames_64[];
+extern char gArmorLegsNames_65[];
+extern char gArmorLegsNames_66[];
+extern char gArmorLegsNames_67[];
+extern char gArmorLegsNames_68[];
+extern char gArmorLegsNames_69[];
+extern char gArmorLegsNames_70[];
+extern char gArmorLegsNames_71[];
+extern char gArmorLegsNames_72[];
+extern char gArmorLegsNames_73[];
+extern char gArmorLegsNames_74[];
+extern char gArmorLegsNames_75[];
+extern char gArmorLegsNames_76[];
+extern char gArmorLegsNames_77[];
+extern char gArmorLegsNames_78[];
+extern char gArmorLegsNames_79[];
+extern char gArmorLegsNames_80[];
+extern char gArmorLegsNames_81[];
+extern char gArmorLegsNames_82[];
+extern char gArmorLegsNames_83[];
+extern char gArmorLegsNames_84[];
+extern char gArmorLegsNames_85[];
+extern char gArmorLegsNames_86[];
+extern char gArmorLegsNames_87[];
+extern char gArmorLegsNames_88[];
+extern char gArmorLegsNames_89[];
+extern char gArmorLegsNames_90[];
+extern char gArmorLegsNames_91[];
+extern char gArmorLegsNames_92[];
+extern char gArmorLegsNames_93[];
+extern char gArmorLegsNames_94[];
+extern char gArmorLegsNames_95[];
+extern char gArmorLegsNames_96[];
+extern char gArmorLegsNames_97[];
+extern char gArmorLegsNames_98[];
+extern char gArmorLegsNames_99[];
+extern char gArmorLegsNames_100[];
+extern char gArmorLegsNames_101[];
+extern char gArmorLegsNames_102[];
+extern char gArmorLegsNames_103[];
+extern char gArmorLegsNames_104[];
+extern char gArmorLegsNames_105[];
+extern char gArmorLegsNames_106[];
+extern char gArmorLegsNames_107[];
+extern char gArmorLegsNames_108[];
+extern char gArmorLegsNames_109[];
+extern char gArmorLegsNames_110[];
+extern char gArmorLegsNames_111[];
+extern char gArmorLegsNames_112[];
+extern char gArmorLegsNames_113[];
+extern char gArmorLegsNames_114[];
+extern char gArmorLegsNames_115[];
+extern char gArmorLegsNames_116[];
+extern char gArmorLegsNames_117[];
+extern char gArmorLegsNames_118[];
+extern char gArmorLegsNames_119[];
+extern char gArmorLegsNames_120[];
+extern char gArmorLegsNames_121[];
+extern char gArmorLegsNames_122[];
+extern char gArmorLegsNames_123[];
+extern char gArmorLegsNames_124[];
+extern char gArmorLegsNames_125[];
+extern char gArmorLegsNames_126[];
+extern char gArmorLegsNames_127[];
+extern char gArmorLegsNames_128[];
+extern char gArmorLegsNames_129[];
+extern char gArmorLegsNames_130[];
+extern char gArmorLegsNames_131[];
+extern char gArmorLegsNames_132[];
+extern char gArmorLegsNames_133[];
+extern char gArmorLegsNames_134[];
+extern char gArmorLegsNames_135[];
+extern char gArmorLegsNames_136[];
+extern char gArmorLegsNames_137[];
+extern char gArmorLegsNames_138[];
+extern char gArmorLegsNames_139[];
+extern char gArmorLegsNames_140[];
+extern char gArmorLegsNames_141[];
+extern char gArmorLegsNames_142[];
+extern char gArmorLegsNames_143[];
+extern char gArmorLegsNames_144[];
+extern char gArmorLegsNames_145[];
+extern char gArmorLegsNames_146[];
+extern char gArmorLegsNames_147[];
+extern char gArmorLegsNames_148[];
+extern char gArmorLegsNames_149[];
+extern char gArmorLegsNames_150[];
+extern char gArmorLegsNames_151[];
+extern char gArmorLegsNames_152[];
+extern char gArmorLegsNames_153[];
+extern char gArmorLegsNames_154[];
+extern char gArmorLegsNames_155[];
+extern char gArmorLegsNames_156[];
+extern char gArmorLegsNames_157[];
+extern char gArmorLegsNames_158[];
+extern char gArmorLegsNames_159[];
+extern char gArmorLegsNames_160[];
+extern char gArmorLegsNames_161[];
+extern char gArmorLegsNames_162[];
+extern char gArmorLegsNames_163[];
+extern char gArmorLegsNames_164[];
+extern char gArmorLegsNames_165[];
 extern char D_004AA8D0[];
 extern char D_004AA8F0[];
-extern char D_004AA910[];
-extern char D_004AA930[];
-extern char D_004AA948[];
-extern char D_004AA958[];
-extern char D_004AA970[];
-extern char D_004AA990[];
-extern char D_004AA9A8[];
-extern char D_004AA9B8[];
-extern char D_004AA9D0[];
-extern char D_004AA9F0[];
-extern char D_004AAA10[];
-extern char D_004AAA30[];
-extern char D_004AAA48[];
-extern char D_004AAA58[];
-extern char D_004AAA70[];
-extern char D_004AAA90[];
-extern char D_004AAAB0[];
-extern char D_004AAAD0[];
-extern char D_004AAAF0[];
-extern char D_004AAB10[];
-extern char D_004AAB30[];
-extern char D_004AAB50[];
-extern char D_004AAB70[];
-extern char D_004AAB90[];
-extern char D_004AABA8[];
-extern char D_004AABB8[];
-extern char D_004AABD0[];
-extern char D_004AABF0[];
-extern char D_004AAC10[];
-extern char D_004AAC30[];
-extern char D_004AAC48[];
-extern char D_004AAC58[];
-extern char D_004AAC70[];
-extern char D_004AAC88[];
-extern char D_004AAC98[];
-extern char D_004AACA8[];
-extern char D_004AACB8[];
-extern char D_004AACD0[];
-extern char D_004AACF0[];
-extern char D_004AAD10[];
-extern char D_004AAD28[];
-extern char D_004AAD38[];
-extern char D_004AAD50[];
-extern char D_004AAD70[];
-extern char D_004AAD88[];
-extern char D_004AAD98[];
-extern char D_004AADA8[];
-extern char D_004AADB8[];
-extern char D_004AADD0[];
-extern char D_004AADF0[];
-extern char D_004AAE10[];
-extern char D_004AAE30[];
-extern char D_004AAE50[];
-extern char D_004AAE70[];
-extern char D_004AAE90[];
-extern char D_004AAEB0[];
-extern char D_004AAED0[];
+extern char gArmorLegsNames_170[];
+extern char gArmorLegsNames_171[];
+extern char gArmorLegsNames_172[];
+extern char gArmorLegsNames_173[];
+extern char gArmorLegsNames_174[];
+extern char gArmorLegsNames_175[];
+extern char gArmorLegsNames_176[];
+extern char gArmorLegsNames_177[];
+extern char gArmorLegsNames_178[];
+extern char gArmorLegsNames_179[];
+extern char gArmorLegsNames_180[];
+extern char gArmorLegsNames_181[];
+extern char gArmorLegsNames_182[];
+extern char gArmorLegsNames_183[];
+extern char gArmorLegsNames_184[];
+extern char gArmorLegsNames_185[];
+extern char gArmorLegsNames_186[];
+extern char gArmorLegsNames_187[];
+extern char gArmorLegsNames_188[];
+extern char gArmorLegsNames_189[];
+extern char gArmorLegsNames_190[];
+extern char gArmorLegsNames_191[];
+extern char gArmorLegsNames_192[];
+extern char gArmorLegsNames_193[];
+extern char gArmorLegsNames_194[];
+extern char gArmorLegsNames_195[];
+extern char gArmorLegsNames_196[];
+extern char gArmorLegsNames_197[];
+extern char gArmorLegsNames_198[];
+extern char gArmorLegsNames_199[];
+extern char gArmorLegsNames_200[];
+extern char gArmorLegsNames_201[];
+extern char gArmorLegsNames_202[];
+extern char gArmorLegsNames_203[];
+extern char gArmorLegsNames_204[];
+extern char gArmorLegsNames_205[];
+extern char gArmorLegsNames_206[];
+extern char gArmorLegsNames_207[];
+extern char gArmorLegsNames_208[];
+extern char gArmorLegsNames_209[];
+extern char gArmorLegsNames_210[];
+extern char gArmorLegsNames_211[];
+extern char gArmorLegsNames_212[];
+extern char gArmorLegsNames_213[];
+extern char gArmorLegsNames_214[];
+extern char gArmorLegsNames_215[];
+extern char gArmorLegsNames_216[];
+extern char gArmorLegsNames_217[];
+extern char gArmorLegsNames_218[];
+extern char gArmorLegsNames_219[];
+extern char gArmorLegsNames_220[];
+extern char gArmorLegsNames_221[];
+extern char gArmorLegsNames_222[];
+extern char gArmorLegsNames_223[];
+extern char gArmorLegsNames_224[];
+extern char gArmorLegsNames_225[];
+extern char gArmorLegsNames_226[];
 extern char D_004AAEF0[];
 extern char D_004AAF10[];
-extern char D_004AAF30[];
-extern char D_004AAF50[];
-extern char D_004AAF70[];
-extern char D_004AAF90[];
-extern char D_004AAFB0[];
+extern char gArmorLegsNames_231[];
+extern char gArmorLegsNames_232[];
+extern char gArmorLegsNames_233[];
+extern char gArmorLegsNames_234[];
+extern char gArmorLegsNames_235[];
 extern u32 D_004AB180[];
 extern u32 D_004AB190[];
 extern u32 D_004AB1A0[];
@@ -6394,56 +6318,55 @@ extern u32 D_004AE570[];
 extern u32 D_004AE578[];
 extern u32 D_004AE580[];
 extern u32 D_004AE588[];
-extern ItemData gItemData[];
-u32 gStageFileTbls_4[6] = {
+s16 gStageFileTbls_4[12] = {
 #include "sub_main/0044BF30.inc"
 };
-u32 gStageFileTbls_5[2] = {
+s16 gStageFileTbls_5[4] = {
 #include "sub_main/0044BF48.inc"
 };
-u32 gStageFileTbls_6[6] = {
+s16 gStageFileTbls_6[12] = {
 #include "sub_main/0044BF50.inc"
 };
-u32 gStageFileTbls_7[3] = {
+s16 gStageFileTbls_7[6] = {
 #include "sub_main/0044BF68.inc"
 };
-u32 gStageFileTbls_8[36] = {
+s16 gStageFileTbls_8[72] = {
 #include "sub_main/0044BF80.inc"
 };
-u32 gStageFileTbls_9[44] = {
+s16 gStageFileTbls_9[88] = {
 #include "sub_main/0044C010.inc"
 };
-u32 gStageFileTbls_10[16] = {
+s16 gStageFileTbls_10[32] = {
 #include "sub_main/0044C0C0.inc"
 };
-u32 gStageFileTbls_11[6] = {
+s16 gStageFileTbls_11[12] = {
 #include "sub_main/0044C100.inc"
 };
-u32 gStageFileTbls_12[2] = {
+s16 gStageFileTbls_12[4] = {
 #include "sub_main/0044C118.inc"
 };
-u32 gStageFileTbls_13[28] = {
+s16 gStageFileTbls_13[56] = {
 #include "sub_main/0044C120.inc"
 };
-u32 gStageFileTbls[16] = {
-    (u32)gStageFileTbls_0, (u32)gStageFileTbls_1, (u32)gStageFileTbls_2, (u32)gStageFileTbls_3,
-    (u32)gStageFileTbls_4, (u32)gStageFileTbls_5, (u32)gStageFileTbls_6, (u32)gStageFileTbls_7,
-    (u32)gStageFileTbls_8, (u32)gStageFileTbls_9, (u32)gStageFileTbls_10, (u32)gStageFileTbls_11,
-    (u32)gStageFileTbls_12, (u32)gStageFileTbls_13, 0, 0,
+s16 *gStageFileTbls[16] = {
+    gStageFileTbls_0, gStageFileTbls_1, gStageFileTbls_2, gStageFileTbls_3,
+    gStageFileTbls_4, gStageFileTbls_5, gStageFileTbls_6, gStageFileTbls_7,
+    gStageFileTbls_8, gStageFileTbls_9, gStageFileTbls_10, gStageFileTbls_11,
+    gStageFileTbls_12, gStageFileTbls_13, NULL, NULL,
 };
-u32 gMonsterFlagBits[28] = {
+MonsterBit gMonsterFlagBits[28] = {
 #include "sub_main/0044C1D0.inc"
 };
-u32 gPartBreakEffects[24] = {
+PartBreakEffect gPartBreakEffects[6] = {
 #include "sub_main/0044C240.inc"
 };
-u32 gResistSongEffects[4] = {
+s16 gResistSongEffects[5] = {
 #include "sub_main/0044C2A0.inc"
 };
-/* gGestureStates holds two tables: its own bytes (0x1C), then the hunter rank points, read
+/* gGestureStates holds two tables: its own 28 bytes, then the hunter rank points, read
  * as gHrRankPoints (an alias at +0x1C). Defined as two arrays, they no longer match: sub_main
- * grows by 16 bytes. */
-u32 gGestureStates[60] = {
+ * grows by 16 bytes; one record of the two (GestureHrTables) keeps the layout. */
+GestureHrTables gGestureStates = {
 #include "sub_main/0044C2B0.inc"
 };
 u16 gClearListQuests[328] = {
@@ -6686,17 +6609,8 @@ u16 gEquipCollectKinds[6] = {
 BladeData gBladeData[486] = {
 #include "sub_main/0044CCA0.inc"
 };
-GunData gGunData[62] = {
+GunData gGunData[128] = {
 #include "sub_main/0044FA30.inc"
-};
-u32 D_00450000[64] = {
-#include "sub_main/00450000.inc"
-};
-u32 D_00450100[128] = {
-#include "sub_main/00450100.inc"
-};
-u32 D_00450300[204] = {
-#include "sub_main/00450300.inc"
 };
 ArmorData gArmorHeadData[253] = {
 #include "sub_main/00450630.inc"
@@ -6714,476 +6628,476 @@ ArmorData gArmorLegsData[236] = {
 #include "sub_main/00459E00.inc"
 };
 char *gBladeNames[488] = {
-    D_004A00E8, gBladeNames_1, D_004A0110, D_004A0128,
-    D_004A0140, D_004A0158, D_004A0170, D_004A0188,
-    D_004A01A0, D_004A01C0, D_004A01D8, D_004A01E0,
-    D_004A01F0, D_004A0200, D_004A0210, D_004A0220,
-    D_004A0230, D_004A0240, D_004A0250, D_004A0260,
-    D_004A0270, D_004A0280, D_004A0290, D_004A02A0,
-    D_004A02B0, D_004A02D0, D_004A02E8, D_004A0300,
-    D_004A0318, D_004A0330, D_004A0348, D_004A0350,
-    D_004A0360, D_004A0370, D_004A0390, D_004A03B0,
-    D_004A03C8, D_004A03D8, D_004A03E8, D_004A03F8,
-    D_004A0408, D_004A0418, D_004A0428, D_004A0438,
-    D_004A0448, D_004A0458, D_004A0470, D_004A0490,
-    D_004A04A8, D_004A04B0, D_004A04C0, D_004A04D0,
-    D_004A04E0, D_004A04F0, D_004A0508, D_004A0520,
-    D_004A0540, D_004A0558, D_004A0568, D_004A0570,
-    D_004A0580, D_004A05A0, D_004A05C0, D_004A05E0,
-    D_004A0600, D_004A0620, D_004A0640, D_004A0660,
-    D_004A0680, D_004A06A0, D_004A06B8, D_004A06C8,
-    D_004A06E0, D_004A0700, D_004A0718, D_004A0730,
-    D_004A0748, D_004A0760, D_004A0778, D_004A0790,
-    D_004A07B0, D_004A07C8, D_004A07E0, D_004A0800,
-    D_004A0820, D_004A0838, D_004A0848, D_004A0860,
-    D_004A0878, D_004A0888, D_004A08A0, D_004A08C0,
-    D_004A08D8, D_004A08F0, D_004A0910, D_004A0928,
-    D_004A0938, D_004A0948, D_004A0950, D_004A0960,
-    D_004A0968, D_004A0970, D_004A0990, D_004A09A8,
-    D_004A09C0, D_004A09D8, D_004A09E8, D_004A0A00,
-    D_004A0A20, D_004A0A38, D_004A0A50, D_004A0A68,
-    D_004A0A70, D_004A0A80, D_004A0A98, D_004A0AA8,
-    D_004A0AB8, D_004A0AD0, D_004A0AE8, D_004A0AF8,
-    D_004A0B10, D_004A0B28, D_004A0B38, D_004A0B48,
-    D_004A0B58, D_004A0B70, D_004A0B90, D_004A0BA8,
-    D_004A0BB8, D_004A0BC8, D_004A0BE0, D_004A0BF8,
-    D_004A0C10, D_004A0C28, D_004A0C38, D_004A0C48,
-    D_004A0C58, D_004A0C70, D_004A0C88, D_004A0C98,
-    D_004A0CB0, D_004A0CD0, D_004A0CF0, D_004A0D10,
-    D_004A0D28, D_004A0D40, D_004A0D60, D_004A0D78,
-    D_004A0D90, D_004A0DB0, D_004A0DC8, D_004A0DD8,
-    D_004A0DF0, D_004A0E08, D_004A0E18, D_004A0E28,
-    D_004A0E38, D_004A0E50, D_004A0E70, D_004A0E90,
-    D_004A0EB0, D_004A0EC8, D_004A0ED0, D_004A0ED8,
-    D_004A0EE8, D_004A0F00, D_004A0F20, D_004A0F40,
-    D_004A0F58, D_004A0F68, D_004A0F78, D_004A0F90,
-    D_004A0FB0, D_004A0FC8, D_004A0FE0, D_004A1000,
-    D_004A1020, D_004A1040, D_004A1058, D_004A1068,
-    D_004A1078, D_004A1088, D_004A1098, D_004A10A8,
-    D_004A10C0, D_004A10D8, D_004A10F0, D_004A1110,
-    D_004A1128, D_004A1130, D_004A1150, D_004A1168,
-    D_004A1178, D_004A1190, D_004A11A8, D_004A11C0,
-    D_004A11E0, D_004A11F8, D_004A1208, D_004A1218,
-    D_004A1230, D_004A1248, D_004A1250, D_004A1260,
-    D_004A1278, D_004A1288, D_004A12A0, D_004A12B8,
-    D_004A12C8, D_004A12D0, D_004A12E0, D_004A1300,
-    D_004A1318, D_004A1330, D_004A1350, D_004A1368,
-    D_004A1380, D_004A13A0, D_004A13C0, D_004A13D8,
-    D_004A13E0, D_004A13F0, D_004A13F8, D_004A1400,
-    D_004A1410, D_004A1420, D_004A1430, D_004A1440,
-    D_004A1448, D_004A1458, D_004A1470, D_004A1488,
-    D_004A14A0, D_004A14B8, D_004A14C8, D_004A14E0,
-    D_004A14F8, D_004A1508, D_004A1518, D_004A1530,
-    D_004A1550, D_004A1570, D_004A1588, D_004A15A0,
-    D_004A15C0, D_004A15D8, D_004A15E8, D_004A1600,
-    D_004A1618, D_004A1630, D_004A1648, D_004A1658,
-    D_004A1670, D_004A1690, D_004A16A8, D_004A16C0,
-    D_004A16E0, D_004A16F8, D_004A1700, D_004A1710,
-    D_004A1730, D_004A1748, D_004A1758, D_004A1770,
-    D_004A1790, D_004A17B0, D_004A17D0, D_004A17F0,
-    D_004A1810, D_004A1828, D_004A1838, D_004A1848,
-    D_004A1850, D_004A1860, D_004A1878, D_004A1888,
-    D_004A1898, D_004A18A8, D_004A18B8, D_004A18D0,
-    D_004A18E8, D_004A1900, D_004A1918, D_004A1928,
-    D_004A1938, D_004A1948, D_004A1950, D_004A1970,
-    D_004A1990, D_004A19B0, D_004A19D0, D_004A19E8,
-    D_004A19F8, D_004A1A10, D_004A1A28, D_004A1A38,
-    D_004A1A50, D_004A1A70, D_004A1A88, D_004A1A90,
-    D_004A1AA0, D_004A1AB0, D_004A1AC0, D_004A1AD8,
-    D_004A1AE0, D_004A1AF0, D_004A1B00, D_004A1B10,
-    D_004A1B30, D_004A1B50, D_004A1B68, D_004A1B78,
-    D_004A1B90, D_004A1BB0, D_004A1BC8, D_004A1BD8,
-    D_004A1BE8, D_004A1BF8, D_004A1C08, D_004A1C10,
-    D_004A1C20, D_004A1C40, D_004A1C58, D_004A1C70,
-    D_004A1C88, D_004A1C90, D_004A1CA0, D_004A1CB0,
-    D_004A1CD0, D_004A1CE8, D_004A1CF8, D_004A1D08,
-    D_004A1D18, D_004A1D28, D_004A1D38, D_004A1D48,
-    D_004A1D60, D_004A1D80, D_004A1D98, D_004A1DB0,
-    D_004A1DD0, D_004A1DF0, D_004A1E08, D_004A1E18,
-    D_004A1E20, D_004A1E30, D_004A1E38, D_004A1E50,
-    D_004A1E70, D_004A1E88, D_004A1EA0, D_004A1EC0,
-    D_004A1ED8, D_004A1EE8, D_004A1EF8, D_004A1F10,
-    D_004A1F28, D_004A1F38, D_004A1F48, D_004A1F60,
-    D_004A1F80, D_004A1FA0, D_004A1FC0, D_004A1FD8,
-    D_004A1FF0, D_004A2010, D_004A2028, D_004A2038,
-    D_004A2050, D_004A2070, D_004A2088, D_004A2098,
-    D_004A20A0, D_004A20C0, D_004A20D8, D_004A20F0,
-    D_004A2108, D_004A2118, D_004A2128, D_004A2138,
-    D_004A2150, D_004A2170, D_004A2190, D_004A21A8,
-    D_004A21B8, D_004A21D0, D_004A21F0, D_004A2210,
-    D_004A2230, D_004A2248, D_004A2258, D_004A2268,
-    D_004A2278, D_004A2288, D_004A22A0, D_004A22C0,
-    D_004A22E0, D_004A2300, D_004A2318, D_004A2330,
-    D_004A2348, D_004A2360, D_004A2380, D_004A23A0,
-    D_004A23C0, D_004A23E0, D_004A23F8, D_004A2408,
-    D_004A2420, D_004A2440, D_004A2460, D_004A2478,
-    D_004A2488, D_004A24A0, D_004A24C0, D_004A24D8,
-    D_004A24F0, D_004A2510, D_004A2530, D_004A2550,
-    D_004A2570, D_004A2590, D_004A25B0, D_004A25D0,
-    D_004A25F0, D_004A2610, D_004A2628, D_004A2640,
-    D_004A2658, D_004A2670, D_004A2690, D_004A26B0,
-    D_004A26C8, D_004A26E0, D_004A2700, D_004A2720,
-    D_004A2740, D_004A2760, D_004A2780, D_004A27A0,
-    D_004A27C0, D_004A27D8, D_004A27F0, D_004A2808,
-    D_004A2820, D_004A2838, D_004A2848, D_004A2860,
-    D_004A2878, D_004A2888, D_004A28A0, D_004A28C0,
-    D_004A28E0, D_004A28F8, D_004A2908, D_004A2920,
-    D_004A2940, D_004A2958, D_004A2968, D_004A2978,
-    D_004A2988, D_004A29A0, D_004A29C0, D_004A29D8,
-    D_004A29E0, D_004A29F0, D_004A2A10, D_004A2A28,
-    D_004A2A40, D_004A2A60, D_004A2A80, D_004A2A98,
-    D_004A2AA0, D_004A2AB8, D_004A2AC8, D_004A2AE0,
-    D_004A2B00, D_004A2B18, D_004A2B28, D_004A2B38,
-    D_004A2B40, D_004A2B50, D_004A2B70, D_004A2B90,
-    D_004A2BA8, D_004A2BB8, 0, 0,
+    D_004A00E8, gBladeNames_1, gBladeNames_2, gBladeNames_3,
+    gBladeNames_4, gBladeNames_5, gBladeNames_6, gBladeNames_7,
+    gBladeNames_8, gBladeNames_9, gBladeNames_10, gBladeNames_11,
+    gBladeNames_12, gBladeNames_13, gBladeNames_14, gBladeNames_15,
+    gBladeNames_16, gBladeNames_17, gBladeNames_18, gBladeNames_19,
+    gBladeNames_20, gBladeNames_21, gBladeNames_22, gBladeNames_23,
+    gBladeNames_24, gBladeNames_25, gBladeNames_26, gBladeNames_27,
+    gBladeNames_28, gBladeNames_29, gBladeNames_30, gBladeNames_31,
+    gBladeNames_32, gBladeNames_33, gBladeNames_34, gBladeNames_35,
+    gBladeNames_36, gBladeNames_37, gBladeNames_38, gBladeNames_39,
+    gBladeNames_40, gBladeNames_41, gBladeNames_42, gBladeNames_43,
+    gBladeNames_44, gBladeNames_45, gBladeNames_46, gBladeNames_47,
+    gBladeNames_48, gBladeNames_49, gBladeNames_50, gBladeNames_51,
+    gBladeNames_52, gBladeNames_53, gBladeNames_54, gBladeNames_55,
+    gBladeNames_56, gBladeNames_57, gBladeNames_58, gBladeNames_59,
+    gBladeNames_60, gBladeNames_61, gBladeNames_62, gBladeNames_63,
+    gBladeNames_64, gBladeNames_65, gBladeNames_66, gBladeNames_67,
+    gBladeNames_68, gBladeNames_69, gBladeNames_70, gBladeNames_71,
+    gBladeNames_72, gBladeNames_73, gBladeNames_74, gBladeNames_75,
+    gBladeNames_76, gBladeNames_77, gBladeNames_78, gBladeNames_79,
+    gBladeNames_80, gBladeNames_81, gBladeNames_82, gBladeNames_83,
+    gBladeNames_84, gBladeNames_85, gBladeNames_86, gBladeNames_87,
+    gBladeNames_88, gBladeNames_89, gBladeNames_90, gBladeNames_91,
+    gBladeNames_92, gBladeNames_93, gBladeNames_94, gBladeNames_95,
+    gBladeNames_96, gBladeNames_97, gBladeNames_98, gBladeNames_99,
+    gBladeNames_100, gBladeNames_101, gBladeNames_102, gBladeNames_103,
+    gBladeNames_104, gBladeNames_105, gBladeNames_106, gBladeNames_107,
+    gBladeNames_108, gBladeNames_109, gBladeNames_110, gBladeNames_111,
+    gBladeNames_112, gBladeNames_113, gBladeNames_114, gBladeNames_115,
+    gBladeNames_116, gBladeNames_117, gBladeNames_118, gBladeNames_119,
+    gBladeNames_120, gBladeNames_121, gBladeNames_122, gBladeNames_123,
+    gBladeNames_124, gBladeNames_125, gBladeNames_126, gBladeNames_127,
+    gBladeNames_128, gBladeNames_129, gBladeNames_130, gBladeNames_131,
+    gBladeNames_132, gBladeNames_133, gBladeNames_134, gBladeNames_135,
+    gBladeNames_136, gBladeNames_137, gBladeNames_138, gBladeNames_139,
+    gBladeNames_140, gBladeNames_141, gBladeNames_142, gBladeNames_143,
+    gBladeNames_144, gBladeNames_145, gBladeNames_146, gBladeNames_147,
+    gBladeNames_148, gBladeNames_149, gBladeNames_150, gBladeNames_151,
+    gBladeNames_152, gBladeNames_153, gBladeNames_154, gBladeNames_155,
+    gBladeNames_156, gBladeNames_157, gBladeNames_158, gBladeNames_159,
+    gBladeNames_160, gBladeNames_161, gBladeNames_162, gBladeNames_163,
+    gBladeNames_164, gBladeNames_165, gBladeNames_166, gBladeNames_167,
+    gBladeNames_168, gBladeNames_169, gBladeNames_170, gBladeNames_171,
+    gBladeNames_172, gBladeNames_173, gBladeNames_174, gBladeNames_175,
+    gBladeNames_176, gBladeNames_177, gBladeNames_178, gBladeNames_179,
+    gBladeNames_180, gBladeNames_181, gBladeNames_182, gBladeNames_183,
+    gBladeNames_184, gBladeNames_185, gBladeNames_186, gBladeNames_187,
+    gBladeNames_188, gBladeNames_189, gBladeNames_190, gBladeNames_191,
+    gBladeNames_192, gBladeNames_193, gBladeNames_194, gBladeNames_195,
+    gBladeNames_196, gBladeNames_197, gBladeNames_198, gBladeNames_199,
+    gBladeNames_200, gBladeNames_201, gBladeNames_202, gBladeNames_203,
+    gBladeNames_204, gBladeNames_205, gBladeNames_206, gBladeNames_207,
+    gBladeNames_208, gBladeNames_209, gBladeNames_210, gBladeNames_211,
+    gBladeNames_212, gBladeNames_213, gBladeNames_214, gBladeNames_215,
+    gBladeNames_216, gBladeNames_217, gBladeNames_218, gBladeNames_219,
+    gBladeNames_220, gBladeNames_221, gBladeNames_222, gBladeNames_223,
+    gBladeNames_224, gBladeNames_225, gBladeNames_226, gBladeNames_227,
+    gBladeNames_228, gBladeNames_229, gBladeNames_230, gBladeNames_231,
+    gBladeNames_232, gBladeNames_233, gBladeNames_234, gBladeNames_235,
+    gBladeNames_236, gBladeNames_237, gBladeNames_238, gBladeNames_239,
+    gBladeNames_240, gBladeNames_241, gBladeNames_242, gBladeNames_243,
+    gBladeNames_244, gBladeNames_245, gBladeNames_246, gBladeNames_247,
+    gBladeNames_248, gBladeNames_249, gBladeNames_250, gBladeNames_251,
+    gBladeNames_252, gBladeNames_253, gBladeNames_254, gBladeNames_255,
+    gBladeNames_256, gBladeNames_257, gBladeNames_258, gBladeNames_259,
+    gBladeNames_260, gBladeNames_261, gBladeNames_262, gBladeNames_263,
+    gBladeNames_264, gBladeNames_265, gBladeNames_266, gBladeNames_267,
+    gBladeNames_268, gBladeNames_269, gBladeNames_270, gBladeNames_271,
+    gBladeNames_272, gBladeNames_273, gBladeNames_274, gBladeNames_275,
+    gBladeNames_276, gBladeNames_277, gBladeNames_278, gBladeNames_279,
+    gBladeNames_280, gBladeNames_281, gBladeNames_282, gBladeNames_283,
+    gBladeNames_284, gBladeNames_285, gBladeNames_286, gBladeNames_287,
+    gBladeNames_288, gBladeNames_289, gBladeNames_290, gBladeNames_291,
+    gBladeNames_292, gBladeNames_293, gBladeNames_294, gBladeNames_295,
+    gBladeNames_296, gBladeNames_297, gBladeNames_298, gBladeNames_299,
+    gBladeNames_300, gBladeNames_301, gBladeNames_302, gBladeNames_303,
+    gBladeNames_304, gBladeNames_305, gBladeNames_306, gBladeNames_307,
+    gBladeNames_308, gBladeNames_309, gBladeNames_310, gBladeNames_311,
+    gBladeNames_312, gBladeNames_313, gBladeNames_314, gBladeNames_315,
+    gBladeNames_316, gBladeNames_317, gBladeNames_318, gBladeNames_319,
+    gBladeNames_320, gBladeNames_321, gBladeNames_322, gBladeNames_323,
+    gBladeNames_324, gBladeNames_325, gBladeNames_326, gBladeNames_327,
+    gBladeNames_328, gBladeNames_329, gBladeNames_330, gBladeNames_331,
+    gBladeNames_332, gBladeNames_333, gBladeNames_334, gBladeNames_335,
+    gBladeNames_336, gBladeNames_337, gBladeNames_338, gBladeNames_339,
+    gBladeNames_340, gBladeNames_341, gBladeNames_342, gBladeNames_343,
+    gBladeNames_344, gBladeNames_345, gBladeNames_346, gBladeNames_347,
+    gBladeNames_348, gBladeNames_349, gBladeNames_350, gBladeNames_351,
+    gBladeNames_352, gBladeNames_353, gBladeNames_354, gBladeNames_355,
+    gBladeNames_356, gBladeNames_357, gBladeNames_358, gBladeNames_359,
+    gBladeNames_360, gBladeNames_361, gBladeNames_362, gBladeNames_363,
+    gBladeNames_364, gBladeNames_365, gBladeNames_366, gBladeNames_367,
+    gBladeNames_368, gBladeNames_369, gBladeNames_370, gBladeNames_371,
+    gBladeNames_372, gBladeNames_373, gBladeNames_374, gBladeNames_375,
+    gBladeNames_376, gBladeNames_377, gBladeNames_378, gBladeNames_379,
+    gBladeNames_380, gBladeNames_381, gBladeNames_382, gBladeNames_383,
+    gBladeNames_384, gBladeNames_385, gBladeNames_386, gBladeNames_387,
+    gBladeNames_388, gBladeNames_389, gBladeNames_390, gBladeNames_391,
+    gBladeNames_392, gBladeNames_393, gBladeNames_394, gBladeNames_395,
+    gBladeNames_396, gBladeNames_397, gBladeNames_398, gBladeNames_399,
+    gBladeNames_400, gBladeNames_401, gBladeNames_402, gBladeNames_403,
+    gBladeNames_404, gBladeNames_405, gBladeNames_406, gBladeNames_407,
+    gBladeNames_408, gBladeNames_409, gBladeNames_410, gBladeNames_411,
+    gBladeNames_412, gBladeNames_413, gBladeNames_414, gBladeNames_415,
+    gBladeNames_416, gBladeNames_417, gBladeNames_418, gBladeNames_419,
+    gBladeNames_420, gBladeNames_421, gBladeNames_422, gBladeNames_423,
+    gBladeNames_424, gBladeNames_425, gBladeNames_426, gBladeNames_427,
+    gBladeNames_428, gBladeNames_429, gBladeNames_430, gBladeNames_431,
+    gBladeNames_432, gBladeNames_433, gBladeNames_434, gBladeNames_435,
+    gBladeNames_436, gBladeNames_437, gBladeNames_438, gBladeNames_439,
+    gBladeNames_440, gBladeNames_441, gBladeNames_442, gBladeNames_443,
+    gBladeNames_444, gBladeNames_445, gBladeNames_446, gBladeNames_447,
+    gBladeNames_448, gBladeNames_449, gBladeNames_450, gBladeNames_451,
+    gBladeNames_452, gBladeNames_453, gBladeNames_454, gBladeNames_455,
+    gBladeNames_456, gBladeNames_457, gBladeNames_458, gBladeNames_459,
+    gBladeNames_460, gBladeNames_461, gBladeNames_462, gBladeNames_463,
+    gBladeNames_464, gBladeNames_465, gBladeNames_466, gBladeNames_467,
+    gBladeNames_468, gBladeNames_469, gBladeNames_470, gBladeNames_471,
+    gBladeNames_472, gBladeNames_473, gBladeNames_474, gBladeNames_475,
+    gBladeNames_476, gBladeNames_477, gBladeNames_478, gBladeNames_479,
+    gBladeNames_480, gBladeNames_481, gBladeNames_482, gBladeNames_483,
+    gBladeNames_484, gBladeNames_485, 0, 0,
 };
 char *gGunNames[128] = {
-    D_004A00E8, D_004A2BC8, D_004A2BE0, D_004A2BF8,
-    D_004A2C10, D_004A2C30, D_004A2C50, D_004A2C70,
-    D_004A2C90, D_004A2CB0, D_004A2CD0, D_004A2CF0,
-    D_004A2D10, D_004A2D28, D_004A2D38, D_004A2D48,
-    D_004A2D60, D_004A2D80, D_004A2D98, D_004A2DB0,
-    D_004A2DC8, D_004A2DD8, D_004A2DF0, D_004A2E08,
-    D_004A2E18, D_004A2E20, D_004A2E38, D_004A2E50,
-    D_004A2E70, D_004A2E90, D_004A2EB0, D_004A2ED0,
-    D_004A2EF0, D_004A2F10, D_004A2F30, D_004A2F50,
-    D_004A2F70, D_004A2F88, D_004A2F98, D_004A2FB0,
-    D_004A2FC8, D_004A2FD8, D_004A2FF0, D_004A3010,
-    D_004A3030, D_004A3050, D_004A3070, D_004A3088,
-    D_004A30A0, D_004A30C0, D_004A30E0, D_004A3100,
-    D_004A3120, D_004A3138, D_004A3148, D_004A3160,
-    D_004A3180, D_004A3198, D_004A31A0, D_004A31C0,
-    D_004A31E0, D_004A3200, D_004A3218, D_004A3228,
-    D_004A3240, D_004A3260, D_004A3280, D_004A32A0,
-    D_004A32C0, D_004A32D8, D_004A32E8, D_004A3300,
-    D_004A3318, D_004A3328, D_004A3338, D_004A3348,
-    D_004A3360, (char *)D_004A3378, (char *)D_004A3388, (char *)D_004A3398,
-    D_004A33B0, D_004A33D0, D_004A33F0, D_004A3410,
-    (char *)D_004A3428, D_004A3440, D_004A3458, D_004A3470,
-    D_004A3488, D_004A34A0, D_004A34C0, D_004A34D8,
-    D_004A34E8, D_004A3500, D_004A3518, D_004A3528,
-    D_004A3530, D_004A3540, D_004A3558, D_004A3568,
-    D_004A3578, D_004A3590, D_004A35A8, D_004A35C0,
-    D_004A35E0, D_004A35F8, D_004A3608, D_004A3620,
+    D_004A00E8, gGunNames_1, gGunNames_2, gGunNames_3,
+    gGunNames_4, gGunNames_5, gGunNames_6, gGunNames_7,
+    gGunNames_8, gGunNames_9, gGunNames_10, gGunNames_11,
+    gGunNames_12, gGunNames_13, gGunNames_14, gGunNames_15,
+    gGunNames_16, gGunNames_17, gGunNames_18, gGunNames_19,
+    gGunNames_20, gGunNames_21, gGunNames_22, gGunNames_23,
+    gGunNames_24, gGunNames_25, gGunNames_26, gGunNames_27,
+    gGunNames_28, gGunNames_29, gGunNames_30, gGunNames_31,
+    gGunNames_32, gGunNames_33, gGunNames_34, gGunNames_35,
+    gGunNames_36, gGunNames_37, gGunNames_38, gGunNames_39,
+    gGunNames_40, gGunNames_41, gGunNames_42, gGunNames_43,
+    gGunNames_44, gGunNames_45, gGunNames_46, gGunNames_47,
+    gGunNames_48, gGunNames_49, gGunNames_50, gGunNames_51,
+    gGunNames_52, gGunNames_53, gGunNames_54, gGunNames_55,
+    gGunNames_56, gGunNames_57, gGunNames_58, gGunNames_59,
+    gGunNames_60, gGunNames_61, gGunNames_62, gGunNames_63,
+    gGunNames_64, gGunNames_65, gGunNames_66, gGunNames_67,
+    gGunNames_68, gGunNames_69, gGunNames_70, gGunNames_71,
+    gGunNames_72, gGunNames_73, gGunNames_74, gGunNames_75,
+    gGunNames_76, (char *)D_004A3378, (char *)D_004A3388, (char *)D_004A3398,
+    gGunNames_80, gGunNames_81, gGunNames_82, gGunNames_83,
+    (char *)D_004A3428, gGunNames_85, gGunNames_86, gGunNames_87,
+    gGunNames_88, gGunNames_89, gGunNames_90, gGunNames_91,
+    gGunNames_92, gGunNames_93, gGunNames_94, gGunNames_95,
+    gGunNames_96, gGunNames_97, gGunNames_98, gGunNames_99,
+    gGunNames_100, gGunNames_101, gGunNames_102, gGunNames_103,
+    gGunNames_104, gGunNames_105, gGunNames_106, gGunNames_107,
     (char *)D_004A3638, (char *)D_004A3648, (char *)D_004A3658, (char *)D_004A3668,
-    D_004A3680, D_004A36A0, D_004A36C0, D_004A36E0,
-    (char *)D_004A36F8, (char *)D_004A3708, D_004A3720, D_004A3738,
-    D_004A3750, D_004A3770, D_004A3788, D_004A3790,
-    D_004A37A0, D_004A37B0, D_004A37C0, D_004A37D8,
+    gGunNames_112, gGunNames_113, gGunNames_114, gGunNames_115,
+    (char *)D_004A36F8, (char *)D_004A3708, gGunNames_118, gGunNames_119,
+    gGunNames_120, gGunNames_121, gGunNames_122, gGunNames_123,
+    gGunNames_124, gGunNames_125, gGunNames_126, gGunNames_127,
 };
 char *gArmorHeadNames[256] = {
-    D_004A00E8, D_004A37F0, D_004A3808, D_004A3818,
-    D_004A3830, D_004A3848, D_004A3858, D_004A3868,
-    D_004A3880, D_004A3898, D_004A38A8, D_004A38B8,
-    D_004A38C8, D_004A38D8, D_004A38E8, D_004A38F8,
-    D_004A3910, D_004A3928, D_004A3940, D_004A3958,
-    D_004A3970, D_004A3988, D_004A39A0, D_004A39B8,
-    D_004A39D0, D_004A39E8, D_004A39F8, D_004A3A08,
-    D_004A3A20, D_004A3A38, D_004A3A48, D_004A3A58,
-    D_004A3A68, D_004A3A80, D_004A3A98, D_004A3AA8,
-    D_004A3AC0, D_004A3AE0, D_004A3B00, D_004A3B20,
-    D_004A3B38, D_004A3B50, D_004A3B68, D_004A3B78,
-    D_004A3B90, D_004A3BA8, D_004A3BC0, D_004A3BD8,
-    D_004A3BF0, D_004A3C10, D_004A3C30, D_004A3C50,
-    D_004A3C70, D_004A3C88, D_004A3C98, D_004A3CA8,
-    D_004A3CB8, D_004A3CC8, D_004A3CD8, D_004A3CF0,
-    D_004A3D10, D_004A3D28, D_004A3D38, D_004A3D48,
-    D_004A3D58, D_004A3D70, D_004A3D90, D_004A3DA8,
-    D_004A3DB8, D_004A3DC8, D_004A3DD8, D_004A3DE8,
-    D_004A3E00, D_004A3E20, D_004A3E40, D_004A3E60,
-    D_004A3E80, D_004A3E98, D_004A3EB0, D_004A3ED0,
-    D_004A3EF0, D_004A3F08, D_004A3F20, D_004A3F38,
-    D_004A3F50, D_004A3F68, D_004A3F80, D_004A3FA0,
-    D_004A3FC0, D_004A3FE0, D_004A4000, D_004A4020,
-    D_004A4040, D_004A4060, D_004A4080, D_004A40A0,
-    D_004A40C0, D_004A40E0, D_004A4100, D_004A4120,
-    D_004A4140, D_004A4160, D_004A4180, D_004A4198,
-    D_004A41B0, D_004A41C8, D_004A41E0, D_004A4200,
-    D_004A4220, D_004A4240, D_004A4260, D_004A4280,
-    D_004A42A0, D_004A42B8, D_004A42C8, D_004A42E0,
-    D_004A4300, D_004A4320, D_004A4340, D_004A4358,
-    D_004A4370, D_004A4388, D_004A4398, D_004A43B0,
-    D_004A43D0, D_004A43F0, D_004A4410, D_004A4430,
-    D_004A4450, D_004A4470, D_004A4490, D_004A44B0,
-    D_004A44D0, D_004A44E8, D_004A4500, D_004A4520,
-    D_004A4540, D_004A4558, D_004A4570, D_004A4588,
-    D_004A45A0, D_004A45B8, D_004A45D0, D_004A45F0,
-    D_004A4610, D_004A4630, D_004A4650, D_004A4668,
-    D_004A4680, D_004A46A0, D_004A46C0, D_004A46E0,
-    D_004A4700, D_004A4720, D_004A4740, D_004A4758,
-    D_004A4770, D_004A4790, D_004A47B0, D_004A47C8,
-    D_004A47E0, D_004A47F8, D_004A4810, D_004A4828,
-    D_004A4840, D_004A4860, D_004A4880, D_004A48A0,
-    D_004A48C0, D_004A48E0, D_004A4900, D_004A4918,
-    D_004A4928, D_004A4940, D_004A4960, D_004A4980,
-    D_004A49A0, D_004A49B8, D_004A49D0, D_004A49E8,
-    D_004A49F8, D_004A4A10, D_004A4A30, D_004A4A48,
-    D_004A4A58, D_004A4A68, D_004A4A80, D_004A4A98,
-    D_004A4AB0, D_004A4AC8, D_004A4AD8, D_004A4AE8,
-    D_004A4B00, D_004A4B18, D_004A4B30, D_004A4B48,
-    D_004A4B60, D_004A4B80, D_004A4BA0, D_004A4BC0,
-    D_004A4BE0, D_004A4BF8, D_004A4C08, D_004A4C18,
-    D_004A4C30, D_004A4C48, D_004A4C60, D_004A4C78,
-    D_004A4C88, D_004A4C98, D_004A4CA8, D_004A4CB8,
-    D_004A4CC8, D_004A4CE0, D_004A4D00, D_004A4D20,
-    D_004A4D40, D_004A4D58, D_004A4D68, D_004A4D80,
-    D_004A4D98, D_004A4DA8, D_004A4DB8, D_004A4DC8,
-    D_004A4DD8, D_004A4DF0, D_004A4E10, D_004A4E30,
-    D_004A4E50, D_004A4E70, D_004A4E90, D_004A4EB0,
-    D_004A4ED0, D_004A4EF0, D_004A4F08, D_004A4F20,
-    D_004A4F40, D_004A4F60, D_004A4F80, D_004A4FA0,
-    D_004A4FB8, D_004A4FC8, D_004A4FD8, D_004A4FE8,
-    D_004A4FF8, D_004A5008, D_004A5018, D_004A5028,
-    D_004A5038, D_004A5048, D_004A5058, D_004A5070,
-    D_004A5088, 0, 0, 0,
+    D_004A00E8, gArmorHeadNames_1, gArmorHeadNames_2, gArmorHeadNames_3,
+    gArmorHeadNames_4, gArmorHeadNames_5, gArmorHeadNames_6, gArmorHeadNames_7,
+    gArmorHeadNames_8, gArmorHeadNames_9, gArmorHeadNames_10, gArmorHeadNames_11,
+    gArmorHeadNames_12, gArmorHeadNames_13, gArmorHeadNames_14, gArmorHeadNames_15,
+    gArmorHeadNames_16, gArmorHeadNames_17, gArmorHeadNames_18, gArmorHeadNames_19,
+    gArmorHeadNames_20, gArmorHeadNames_21, gArmorHeadNames_22, gArmorHeadNames_23,
+    gArmorHeadNames_24, gArmorHeadNames_25, gArmorHeadNames_26, gArmorHeadNames_27,
+    gArmorHeadNames_28, gArmorHeadNames_29, gArmorHeadNames_30, gArmorHeadNames_31,
+    gArmorHeadNames_32, gArmorHeadNames_33, gArmorHeadNames_34, gArmorHeadNames_35,
+    gArmorHeadNames_36, gArmorHeadNames_37, gArmorHeadNames_38, gArmorHeadNames_39,
+    gArmorHeadNames_40, gArmorHeadNames_41, gArmorHeadNames_42, gArmorHeadNames_43,
+    gArmorHeadNames_44, gArmorHeadNames_45, gArmorHeadNames_46, gArmorHeadNames_47,
+    gArmorHeadNames_48, gArmorHeadNames_49, gArmorHeadNames_50, gArmorHeadNames_51,
+    gArmorHeadNames_52, gArmorHeadNames_53, gArmorHeadNames_54, gArmorHeadNames_55,
+    gArmorHeadNames_56, gArmorHeadNames_57, gArmorHeadNames_58, gArmorHeadNames_59,
+    gArmorHeadNames_60, gArmorHeadNames_61, gArmorHeadNames_62, gArmorHeadNames_63,
+    gArmorHeadNames_64, gArmorHeadNames_65, gArmorHeadNames_66, gArmorHeadNames_67,
+    gArmorHeadNames_68, gArmorHeadNames_69, gArmorHeadNames_70, gArmorHeadNames_71,
+    gArmorHeadNames_72, gArmorHeadNames_73, gArmorHeadNames_74, gArmorHeadNames_75,
+    gArmorHeadNames_76, gArmorHeadNames_77, gArmorHeadNames_78, gArmorHeadNames_79,
+    gArmorHeadNames_80, gArmorHeadNames_81, gArmorHeadNames_82, gArmorHeadNames_83,
+    gArmorHeadNames_84, gArmorHeadNames_85, gArmorHeadNames_86, gArmorHeadNames_87,
+    gArmorHeadNames_88, gArmorHeadNames_89, gArmorHeadNames_90, gArmorHeadNames_91,
+    gArmorHeadNames_92, gArmorHeadNames_93, gArmorHeadNames_94, gArmorHeadNames_95,
+    gArmorHeadNames_96, gArmorHeadNames_97, gArmorHeadNames_98, gArmorHeadNames_99,
+    gArmorHeadNames_100, gArmorHeadNames_101, gArmorHeadNames_102, gArmorHeadNames_103,
+    gArmorHeadNames_104, gArmorHeadNames_105, gArmorHeadNames_106, gArmorHeadNames_107,
+    gArmorHeadNames_108, gArmorHeadNames_109, gArmorHeadNames_110, gArmorHeadNames_111,
+    gArmorHeadNames_112, gArmorHeadNames_113, gArmorHeadNames_114, gArmorHeadNames_115,
+    gArmorHeadNames_116, gArmorHeadNames_117, gArmorHeadNames_118, gArmorHeadNames_119,
+    gArmorHeadNames_120, gArmorHeadNames_121, gArmorHeadNames_122, gArmorHeadNames_123,
+    gArmorHeadNames_124, gArmorHeadNames_125, gArmorHeadNames_126, gArmorHeadNames_127,
+    gArmorHeadNames_128, gArmorHeadNames_129, gArmorHeadNames_130, gArmorHeadNames_131,
+    gArmorHeadNames_132, gArmorHeadNames_133, gArmorHeadNames_134, gArmorHeadNames_135,
+    gArmorHeadNames_136, gArmorHeadNames_137, gArmorHeadNames_138, gArmorHeadNames_139,
+    gArmorHeadNames_140, gArmorHeadNames_141, gArmorHeadNames_142, gArmorHeadNames_143,
+    gArmorHeadNames_144, gArmorHeadNames_145, gArmorHeadNames_146, gArmorHeadNames_147,
+    gArmorHeadNames_148, gArmorHeadNames_149, gArmorHeadNames_150, gArmorHeadNames_151,
+    gArmorHeadNames_152, gArmorHeadNames_153, gArmorHeadNames_154, gArmorHeadNames_155,
+    gArmorHeadNames_156, gArmorHeadNames_157, gArmorHeadNames_158, gArmorHeadNames_159,
+    gArmorHeadNames_160, gArmorHeadNames_161, gArmorHeadNames_162, gArmorHeadNames_163,
+    gArmorHeadNames_164, gArmorHeadNames_165, gArmorHeadNames_166, gArmorHeadNames_167,
+    gArmorHeadNames_168, gArmorHeadNames_169, gArmorHeadNames_170, gArmorHeadNames_171,
+    gArmorHeadNames_172, gArmorHeadNames_173, gArmorHeadNames_174, gArmorHeadNames_175,
+    gArmorHeadNames_176, gArmorHeadNames_177, gArmorHeadNames_178, gArmorHeadNames_179,
+    gArmorHeadNames_180, gArmorHeadNames_181, gArmorHeadNames_182, gArmorHeadNames_183,
+    gArmorHeadNames_184, gArmorHeadNames_185, gArmorHeadNames_186, gArmorHeadNames_187,
+    gArmorHeadNames_188, gArmorHeadNames_189, gArmorHeadNames_190, gArmorHeadNames_191,
+    gArmorHeadNames_192, gArmorHeadNames_193, gArmorHeadNames_194, gArmorHeadNames_195,
+    gArmorHeadNames_196, gArmorHeadNames_197, gArmorHeadNames_198, gArmorHeadNames_199,
+    gArmorHeadNames_200, gArmorHeadNames_201, gArmorHeadNames_202, gArmorHeadNames_203,
+    gArmorHeadNames_204, gArmorHeadNames_205, gArmorHeadNames_206, gArmorHeadNames_207,
+    gArmorHeadNames_208, gArmorHeadNames_209, gArmorHeadNames_210, gArmorHeadNames_211,
+    gArmorHeadNames_212, gArmorHeadNames_213, gArmorHeadNames_214, gArmorHeadNames_215,
+    gArmorHeadNames_216, gArmorHeadNames_217, gArmorHeadNames_218, gArmorHeadNames_219,
+    gArmorHeadNames_220, gArmorHeadNames_221, gArmorHeadNames_222, gArmorHeadNames_223,
+    gArmorHeadNames_224, gArmorHeadNames_225, gArmorHeadNames_226, gArmorHeadNames_227,
+    gArmorHeadNames_228, gArmorHeadNames_229, gArmorHeadNames_230, gArmorHeadNames_231,
+    gArmorHeadNames_232, gArmorHeadNames_233, gArmorHeadNames_234, gArmorHeadNames_235,
+    gArmorHeadNames_236, gArmorHeadNames_237, gArmorHeadNames_238, gArmorHeadNames_239,
+    gArmorHeadNames_240, gArmorHeadNames_241, gArmorHeadNames_242, gArmorHeadNames_243,
+    gArmorHeadNames_244, gArmorHeadNames_245, gArmorHeadNames_246, gArmorHeadNames_247,
+    gArmorHeadNames_248, gArmorHeadNames_249, gArmorHeadNames_250, gArmorHeadNames_251,
+    gArmorHeadNames_252, 0, 0, 0,
 };
 char *gArmorBodyNames[244] = {
-    D_004A00E8, D_004A50A0, D_004A50B8, D_004A50C8,
-    D_004A50E0, D_004A50F8, D_004A5108, D_004A5118,
-    D_004A5130, D_004A5148, D_004A5158, D_004A5168,
-    D_004A5178, D_004A5188, D_004A5198, D_004A51A8,
-    D_004A51C0, D_004A51D8, D_004A51F0, D_004A5208,
-    D_004A5218, D_004A5228, D_004A5240, D_004A5258,
-    D_004A5270, D_004A5288, D_004A52A0, D_004A52C0,
-    D_004A52D8, D_004A52E8, D_004A52F8, D_004A5310,
-    D_004A5328, D_004A5338, D_004A5348, D_004A5358,
-    D_004A5370, D_004A5390, D_004A53A8, D_004A53B8,
-    D_004A53D0, D_004A53F0, D_004A5410, D_004A5430,
-    D_004A5448, D_004A5460, D_004A5478, D_004A5488,
-    D_004A54A0, D_004A54C0, D_004A54D8, D_004A54F0,
-    D_004A5510, D_004A5530, D_004A5548, D_004A5558,
-    D_004A5570, D_004A5590, D_004A55A8, D_004A55B8,
-    D_004A55C8, D_004A55E0, D_004A55F8, D_004A5608,
-    D_004A5618, D_004A5628, D_004A5638, D_004A5648,
-    D_004A5660, D_004A5680, D_004A56A0, D_004A56C0,
-    D_004A56D8, D_004A56F0, D_004A5710, D_004A5730,
-    D_004A5748, D_004A5760, D_004A5778, D_004A5790,
-    D_004A57A8, D_004A57C0, D_004A57E0, D_004A5800,
-    D_004A5820, D_004A5840, D_004A5858, D_004A5870,
-    D_004A5890, D_004A58B0, D_004A58D0, D_004A58F0,
-    D_004A5910, D_004A5930, D_004A5950, D_004A5970,
-    D_004A5990, D_004A59B0, D_004A59D0, D_004A59F0,
-    D_004A5A10, D_004A5A28, D_004A5A40, D_004A5A58,
-    D_004A5A70, D_004A5A90, D_004A5AB0, D_004A5AD0,
-    D_004A5AF0, D_004A5B10, D_004A5B30, D_004A5B48,
-    D_004A5B58, D_004A5B70, D_004A5B90, D_004A5BB0,
-    D_004A5BD0, D_004A5BF0, D_004A5C10, D_004A5C30,
-    D_004A5C50, D_004A5C70, D_004A5C90, D_004A5CB0,
-    D_004A5CD0, D_004A5CF0, D_004A5D10, D_004A5D30,
-    D_004A5D50, D_004A5D70, D_004A5D90, D_004A5DA8,
-    D_004A5DC0, D_004A5DE0, D_004A5E00, D_004A5E18,
-    D_004A5E30, D_004A5E48, D_004A5E60, D_004A5E78,
-    D_004A5E90, D_004A5EB0, D_004A5ED0, D_004A5EF0,
-    D_004A5F10, D_004A5F28, D_004A5F40, D_004A5F60,
-    D_004A5F80, D_004A5FA0, D_004A5FC0, D_004A5FE0,
-    D_004A6000, D_004A6020, D_004A6038, D_004A6050,
-    D_004A6070, D_004A6090, D_004A60A8, D_004A60C0,
-    D_004A60D8, D_004A60F0, D_004A6108, D_004A6120,
-    D_004A6140, D_004A6160, D_004A6180, D_004A61A0,
-    D_004A61C0, D_004A61E0, D_004A61F8, D_004A6208,
+    D_004A00E8, gArmorBodyNames_1, gArmorBodyNames_2, gArmorBodyNames_3,
+    gArmorBodyNames_4, gArmorBodyNames_5, gArmorBodyNames_6, gArmorBodyNames_7,
+    gArmorBodyNames_8, gArmorBodyNames_9, gArmorBodyNames_10, gArmorBodyNames_11,
+    gArmorBodyNames_12, gArmorBodyNames_13, gArmorBodyNames_14, gArmorBodyNames_15,
+    gArmorBodyNames_16, gArmorBodyNames_17, gArmorBodyNames_18, gArmorBodyNames_19,
+    gArmorBodyNames_20, gArmorBodyNames_21, gArmorBodyNames_22, gArmorBodyNames_23,
+    gArmorBodyNames_24, gArmorBodyNames_25, gArmorBodyNames_26, gArmorBodyNames_27,
+    gArmorBodyNames_28, gArmorBodyNames_29, gArmorBodyNames_30, gArmorBodyNames_31,
+    gArmorBodyNames_32, gArmorBodyNames_33, gArmorBodyNames_34, gArmorBodyNames_35,
+    gArmorBodyNames_36, gArmorBodyNames_37, gArmorBodyNames_38, gArmorBodyNames_39,
+    gArmorBodyNames_40, gArmorBodyNames_41, gArmorBodyNames_42, gArmorBodyNames_43,
+    gArmorBodyNames_44, gArmorBodyNames_45, gArmorBodyNames_46, gArmorBodyNames_47,
+    gArmorBodyNames_48, gArmorBodyNames_49, gArmorBodyNames_50, gArmorBodyNames_51,
+    gArmorBodyNames_52, gArmorBodyNames_53, gArmorBodyNames_54, gArmorBodyNames_55,
+    gArmorBodyNames_56, gArmorBodyNames_57, gArmorBodyNames_58, gArmorBodyNames_59,
+    gArmorBodyNames_60, gArmorBodyNames_61, gArmorBodyNames_62, gArmorBodyNames_63,
+    gArmorBodyNames_64, gArmorBodyNames_65, gArmorBodyNames_66, gArmorBodyNames_67,
+    gArmorBodyNames_68, gArmorBodyNames_69, gArmorBodyNames_70, gArmorBodyNames_71,
+    gArmorBodyNames_72, gArmorBodyNames_73, gArmorBodyNames_74, gArmorBodyNames_75,
+    gArmorBodyNames_76, gArmorBodyNames_77, gArmorBodyNames_78, gArmorBodyNames_79,
+    gArmorBodyNames_80, gArmorBodyNames_81, gArmorBodyNames_82, gArmorBodyNames_83,
+    gArmorBodyNames_84, gArmorBodyNames_85, gArmorBodyNames_86, gArmorBodyNames_87,
+    gArmorBodyNames_88, gArmorBodyNames_89, gArmorBodyNames_90, gArmorBodyNames_91,
+    gArmorBodyNames_92, gArmorBodyNames_93, gArmorBodyNames_94, gArmorBodyNames_95,
+    gArmorBodyNames_96, gArmorBodyNames_97, gArmorBodyNames_98, gArmorBodyNames_99,
+    gArmorBodyNames_100, gArmorBodyNames_101, gArmorBodyNames_102, gArmorBodyNames_103,
+    gArmorBodyNames_104, gArmorBodyNames_105, gArmorBodyNames_106, gArmorBodyNames_107,
+    gArmorBodyNames_108, gArmorBodyNames_109, gArmorBodyNames_110, gArmorBodyNames_111,
+    gArmorBodyNames_112, gArmorBodyNames_113, gArmorBodyNames_114, gArmorBodyNames_115,
+    gArmorBodyNames_116, gArmorBodyNames_117, gArmorBodyNames_118, gArmorBodyNames_119,
+    gArmorBodyNames_120, gArmorBodyNames_121, gArmorBodyNames_122, gArmorBodyNames_123,
+    gArmorBodyNames_124, gArmorBodyNames_125, gArmorBodyNames_126, gArmorBodyNames_127,
+    gArmorBodyNames_128, gArmorBodyNames_129, gArmorBodyNames_130, gArmorBodyNames_131,
+    gArmorBodyNames_132, gArmorBodyNames_133, gArmorBodyNames_134, gArmorBodyNames_135,
+    gArmorBodyNames_136, gArmorBodyNames_137, gArmorBodyNames_138, gArmorBodyNames_139,
+    gArmorBodyNames_140, gArmorBodyNames_141, gArmorBodyNames_142, gArmorBodyNames_143,
+    gArmorBodyNames_144, gArmorBodyNames_145, gArmorBodyNames_146, gArmorBodyNames_147,
+    gArmorBodyNames_148, gArmorBodyNames_149, gArmorBodyNames_150, gArmorBodyNames_151,
+    gArmorBodyNames_152, gArmorBodyNames_153, gArmorBodyNames_154, gArmorBodyNames_155,
+    gArmorBodyNames_156, gArmorBodyNames_157, gArmorBodyNames_158, gArmorBodyNames_159,
+    gArmorBodyNames_160, gArmorBodyNames_161, gArmorBodyNames_162, gArmorBodyNames_163,
+    gArmorBodyNames_164, gArmorBodyNames_165, gArmorBodyNames_166, gArmorBodyNames_167,
+    gArmorBodyNames_168, gArmorBodyNames_169, gArmorBodyNames_170, gArmorBodyNames_171,
     D_004A6220, D_004A6240, D_004A6220, D_004A6240,
-    D_004A6260, D_004A6280, D_004A62A0, D_004A62C0,
-    D_004A62E0, D_004A6300, D_004A6318, D_004A6328,
-    D_004A6338, D_004A6350, D_004A6368, D_004A6380,
-    D_004A6398, D_004A63A8, D_004A63B8, D_004A63D0,
-    D_004A63E8, D_004A6400, D_004A6418, D_004A6430,
-    D_004A6450, D_004A6470, D_004A6490, D_004A64B0,
-    D_004A64C8, D_004A64D8, D_004A64E8, D_004A6500,
-    D_004A6518, D_004A6530, D_004A6548, D_004A6558,
-    D_004A6568, D_004A6578, D_004A6590, D_004A65A8,
-    D_004A65C0, D_004A65E0, D_004A6600, D_004A6620,
-    D_004A6638, D_004A6648, D_004A6658, D_004A6670,
-    D_004A6688, D_004A6698, D_004A66A8, D_004A66B8,
-    D_004A66D0, D_004A66F0, D_004A6710, D_004A6730,
-    D_004A6750, D_004A6770, D_004A6790, D_004A67B0,
-    D_004A67C8, D_004A67E0, D_004A67F8, D_004A6810,
+    gArmorBodyNames_176, gArmorBodyNames_177, gArmorBodyNames_178, gArmorBodyNames_179,
+    gArmorBodyNames_180, gArmorBodyNames_181, gArmorBodyNames_182, gArmorBodyNames_183,
+    gArmorBodyNames_184, gArmorBodyNames_185, gArmorBodyNames_186, gArmorBodyNames_187,
+    gArmorBodyNames_188, gArmorBodyNames_189, gArmorBodyNames_190, gArmorBodyNames_191,
+    gArmorBodyNames_192, gArmorBodyNames_193, gArmorBodyNames_194, gArmorBodyNames_195,
+    gArmorBodyNames_196, gArmorBodyNames_197, gArmorBodyNames_198, gArmorBodyNames_199,
+    gArmorBodyNames_200, gArmorBodyNames_201, gArmorBodyNames_202, gArmorBodyNames_203,
+    gArmorBodyNames_204, gArmorBodyNames_205, gArmorBodyNames_206, gArmorBodyNames_207,
+    gArmorBodyNames_208, gArmorBodyNames_209, gArmorBodyNames_210, gArmorBodyNames_211,
+    gArmorBodyNames_212, gArmorBodyNames_213, gArmorBodyNames_214, gArmorBodyNames_215,
+    gArmorBodyNames_216, gArmorBodyNames_217, gArmorBodyNames_218, gArmorBodyNames_219,
+    gArmorBodyNames_220, gArmorBodyNames_221, gArmorBodyNames_222, gArmorBodyNames_223,
+    gArmorBodyNames_224, gArmorBodyNames_225, gArmorBodyNames_226, gArmorBodyNames_227,
+    gArmorBodyNames_228, gArmorBodyNames_229, gArmorBodyNames_230, gArmorBodyNames_231,
+    gArmorBodyNames_232, gArmorBodyNames_233, gArmorBodyNames_234, gArmorBodyNames_235,
     D_004A6830, D_004A6850, D_004A6830, D_004A6850,
-    D_004A6868, D_004A6878, D_004A6890, 0,
+    gArmorBodyNames_240, gArmorBodyNames_241, gArmorBodyNames_242, 0,
 };
 char *gArmorArmsNames[240] = {
-    D_004A00E8, D_004A68B0, D_004A68C8, D_004A68D8,
-    D_004A68E8, D_004A68F8, D_004A6908, D_004A6918,
-    D_004A6928, D_004A6938, D_004A6948, D_004A6958,
-    D_004A6968, D_004A6978, D_004A6988, D_004A6998,
-    D_004A69A8, D_004A69B8, D_004A69C8, D_004A69D8,
-    D_004A69E8, D_004A69F8, D_004A6A08, D_004A6A18,
-    D_004A6A28, D_004A6A38, D_004A6A48, D_004A6A60,
-    D_004A6A78, D_004A6A88, D_004A6A98, D_004A6AA8,
-    D_004A6AB8, D_004A6AC8, D_004A6AD8, D_004A6AE8,
-    D_004A6B00, D_004A6B20, D_004A6B38, D_004A6B48,
-    D_004A6B60, D_004A6B80, D_004A6BA0, D_004A6BC0,
-    D_004A6BD8, D_004A6BE8, D_004A6BF8, D_004A6C08,
-    D_004A6C20, D_004A6C40, D_004A6C60, D_004A6C80,
-    D_004A6C98, D_004A6CA8, D_004A6CC0, D_004A6CE0,
-    D_004A6CF8, D_004A6D08, D_004A6D18, D_004A6D28,
-    D_004A6D38, D_004A6D48, D_004A6D58, D_004A6D68,
-    D_004A6D78, D_004A6D90, D_004A6DB0, D_004A6DD0,
-    D_004A6DF0, D_004A6E10, D_004A6E28, D_004A6E38,
-    D_004A6E50, D_004A6E70, D_004A6E88, D_004A6E98,
-    D_004A6EA8, D_004A6EB8, D_004A6EC8, D_004A6ED8,
-    D_004A6EF0, D_004A6F10, D_004A6F30, D_004A6F50,
-    D_004A6F68, D_004A6F78, D_004A6F90, D_004A6FB0,
-    D_004A6FD0, D_004A6FF0, D_004A7010, D_004A7030,
-    D_004A7050, D_004A7070, D_004A7090, D_004A70B0,
-    D_004A70D0, D_004A70F0, D_004A7110, D_004A7128,
-    D_004A7138, D_004A7148, D_004A7158, D_004A7170,
-    D_004A7190, D_004A71B0, D_004A71D0, D_004A71F0,
-    D_004A7210, D_004A7228, D_004A7238, D_004A7250,
-    D_004A7270, D_004A7290, D_004A72B0, D_004A72D0,
-    D_004A72F0, D_004A7308, D_004A7318, D_004A7330,
-    D_004A7350, D_004A7370, D_004A7390, D_004A73B0,
-    D_004A73D0, D_004A73F0, D_004A7410, D_004A7430,
-    D_004A7450, D_004A7468, D_004A7478, D_004A7490,
-    D_004A74B0, D_004A74C8, D_004A74D8, D_004A74E8,
-    D_004A74F8, D_004A7508, D_004A7518, D_004A7530,
-    D_004A7550, D_004A7570, D_004A7590, D_004A75A8,
-    D_004A75B8, D_004A75D0, D_004A75F0, D_004A7610,
-    D_004A7630, D_004A7650, D_004A7670, D_004A7690,
-    D_004A76A8, D_004A76B8, D_004A76D0, D_004A76F0,
-    D_004A7708, D_004A7718, D_004A7728, D_004A7738,
-    D_004A7748, D_004A7758, D_004A7770, D_004A7790,
-    D_004A77B0, D_004A77D0, D_004A77F0, D_004A7810,
-    D_004A7828, D_004A7838, D_004A7850, D_004A7870,
-    D_004A7850, D_004A7870, D_004A7890, D_004A78B0,
-    D_004A78C8, D_004A78D8, D_004A78F0, D_004A7910,
-    D_004A7928, D_004A7938, D_004A7948, D_004A7958,
-    D_004A7968, D_004A7978, D_004A7988, D_004A7998,
-    D_004A79A8, D_004A79B8, D_004A79C8, D_004A79D8,
-    D_004A79E8, D_004A79F8, D_004A7A10, D_004A7A30,
-    D_004A7A50, D_004A7A70, D_004A7A88, D_004A7A98,
-    D_004A7AA8, D_004A7AB8, D_004A7AC8, D_004A7AD8,
-    D_004A7AF0, D_004A7B08, D_004A7B20, D_004A7B40,
-    D_004A7B60, D_004A7B80, D_004A7B98, D_004A7BB0,
-    D_004A7BD0, D_004A7BF0, D_004A7C08, D_004A7C18,
-    D_004A7C28, D_004A7C38, D_004A7C48, D_004A7C58,
-    D_004A7C68, D_004A7C78, D_004A7C90, D_004A7CB0,
-    D_004A7CD0, D_004A7CF0, D_004A7D10, D_004A7D30,
-    D_004A7D50, D_004A7D68, D_004A7D80, D_004A7DA0,
-    D_004A7DC0, D_004A7DA0, D_004A7DC0, D_004A7DD8,
-    D_004A7DE8, D_004A7DF8, 0, 0,
+    D_004A00E8, gArmorArmsNames_1, gArmorArmsNames_2, gArmorArmsNames_3,
+    gArmorArmsNames_4, gArmorArmsNames_5, gArmorArmsNames_6, gArmorArmsNames_7,
+    gArmorArmsNames_8, gArmorArmsNames_9, gArmorArmsNames_10, gArmorArmsNames_11,
+    gArmorArmsNames_12, gArmorArmsNames_13, gArmorArmsNames_14, gArmorArmsNames_15,
+    gArmorArmsNames_16, gArmorArmsNames_17, gArmorArmsNames_18, gArmorArmsNames_19,
+    gArmorArmsNames_20, gArmorArmsNames_21, gArmorArmsNames_22, gArmorArmsNames_23,
+    gArmorArmsNames_24, gArmorArmsNames_25, gArmorArmsNames_26, gArmorArmsNames_27,
+    gArmorArmsNames_28, gArmorArmsNames_29, gArmorArmsNames_30, gArmorArmsNames_31,
+    gArmorArmsNames_32, gArmorArmsNames_33, gArmorArmsNames_34, gArmorArmsNames_35,
+    gArmorArmsNames_36, gArmorArmsNames_37, gArmorArmsNames_38, gArmorArmsNames_39,
+    gArmorArmsNames_40, gArmorArmsNames_41, gArmorArmsNames_42, gArmorArmsNames_43,
+    gArmorArmsNames_44, gArmorArmsNames_45, gArmorArmsNames_46, gArmorArmsNames_47,
+    gArmorArmsNames_48, gArmorArmsNames_49, gArmorArmsNames_50, gArmorArmsNames_51,
+    gArmorArmsNames_52, gArmorArmsNames_53, gArmorArmsNames_54, gArmorArmsNames_55,
+    gArmorArmsNames_56, gArmorArmsNames_57, gArmorArmsNames_58, gArmorArmsNames_59,
+    gArmorArmsNames_60, gArmorArmsNames_61, gArmorArmsNames_62, gArmorArmsNames_63,
+    gArmorArmsNames_64, gArmorArmsNames_65, gArmorArmsNames_66, gArmorArmsNames_67,
+    gArmorArmsNames_68, gArmorArmsNames_69, gArmorArmsNames_70, gArmorArmsNames_71,
+    gArmorArmsNames_72, gArmorArmsNames_73, gArmorArmsNames_74, gArmorArmsNames_75,
+    gArmorArmsNames_76, gArmorArmsNames_77, gArmorArmsNames_78, gArmorArmsNames_79,
+    gArmorArmsNames_80, gArmorArmsNames_81, gArmorArmsNames_82, gArmorArmsNames_83,
+    gArmorArmsNames_84, gArmorArmsNames_85, gArmorArmsNames_86, gArmorArmsNames_87,
+    gArmorArmsNames_88, gArmorArmsNames_89, gArmorArmsNames_90, gArmorArmsNames_91,
+    gArmorArmsNames_92, gArmorArmsNames_93, gArmorArmsNames_94, gArmorArmsNames_95,
+    gArmorArmsNames_96, gArmorArmsNames_97, gArmorArmsNames_98, gArmorArmsNames_99,
+    gArmorArmsNames_100, gArmorArmsNames_101, gArmorArmsNames_102, gArmorArmsNames_103,
+    gArmorArmsNames_104, gArmorArmsNames_105, gArmorArmsNames_106, gArmorArmsNames_107,
+    gArmorArmsNames_108, gArmorArmsNames_109, gArmorArmsNames_110, gArmorArmsNames_111,
+    gArmorArmsNames_112, gArmorArmsNames_113, gArmorArmsNames_114, gArmorArmsNames_115,
+    gArmorArmsNames_116, gArmorArmsNames_117, gArmorArmsNames_118, gArmorArmsNames_119,
+    gArmorArmsNames_120, gArmorArmsNames_121, gArmorArmsNames_122, gArmorArmsNames_123,
+    gArmorArmsNames_124, gArmorArmsNames_125, gArmorArmsNames_126, gArmorArmsNames_127,
+    gArmorArmsNames_128, gArmorArmsNames_129, gArmorArmsNames_130, gArmorArmsNames_131,
+    gArmorArmsNames_132, gArmorArmsNames_133, gArmorArmsNames_134, gArmorArmsNames_135,
+    gArmorArmsNames_136, gArmorArmsNames_137, gArmorArmsNames_138, gArmorArmsNames_139,
+    gArmorArmsNames_140, gArmorArmsNames_141, gArmorArmsNames_142, gArmorArmsNames_143,
+    gArmorArmsNames_144, gArmorArmsNames_145, gArmorArmsNames_146, gArmorArmsNames_147,
+    gArmorArmsNames_148, gArmorArmsNames_149, gArmorArmsNames_150, gArmorArmsNames_151,
+    gArmorArmsNames_152, gArmorArmsNames_153, gArmorArmsNames_154, gArmorArmsNames_155,
+    gArmorArmsNames_156, gArmorArmsNames_157, gArmorArmsNames_158, gArmorArmsNames_159,
+    gArmorArmsNames_160, gArmorArmsNames_161, gArmorArmsNames_162, gArmorArmsNames_163,
+    gArmorArmsNames_164, gArmorArmsNames_165, gArmorArmsNames_166, gArmorArmsNames_167,
+    gArmorArmsNames_168, gArmorArmsNames_169, D_004A7850, D_004A7870,
+    D_004A7850, D_004A7870, gArmorArmsNames_174, gArmorArmsNames_175,
+    gArmorArmsNames_176, gArmorArmsNames_177, gArmorArmsNames_178, gArmorArmsNames_179,
+    gArmorArmsNames_180, gArmorArmsNames_181, gArmorArmsNames_182, gArmorArmsNames_183,
+    gArmorArmsNames_184, gArmorArmsNames_185, gArmorArmsNames_186, gArmorArmsNames_187,
+    gArmorArmsNames_188, gArmorArmsNames_189, gArmorArmsNames_190, gArmorArmsNames_191,
+    gArmorArmsNames_192, gArmorArmsNames_193, gArmorArmsNames_194, gArmorArmsNames_195,
+    gArmorArmsNames_196, gArmorArmsNames_197, gArmorArmsNames_198, gArmorArmsNames_199,
+    gArmorArmsNames_200, gArmorArmsNames_201, gArmorArmsNames_202, gArmorArmsNames_203,
+    gArmorArmsNames_204, gArmorArmsNames_205, gArmorArmsNames_206, gArmorArmsNames_207,
+    gArmorArmsNames_208, gArmorArmsNames_209, gArmorArmsNames_210, gArmorArmsNames_211,
+    gArmorArmsNames_212, gArmorArmsNames_213, gArmorArmsNames_214, gArmorArmsNames_215,
+    gArmorArmsNames_216, gArmorArmsNames_217, gArmorArmsNames_218, gArmorArmsNames_219,
+    gArmorArmsNames_220, gArmorArmsNames_221, gArmorArmsNames_222, gArmorArmsNames_223,
+    gArmorArmsNames_224, gArmorArmsNames_225, gArmorArmsNames_226, gArmorArmsNames_227,
+    gArmorArmsNames_228, gArmorArmsNames_229, gArmorArmsNames_230, D_004A7DA0,
+    D_004A7DC0, D_004A7DA0, D_004A7DC0, gArmorArmsNames_235,
+    gArmorArmsNames_236, gArmorArmsNames_237, 0, 0,
 };
 char *gArmorWaistNames[240] = {
-    D_004A00E8, D_004A7E10, D_004A7E30, D_004A7E50,
-    D_004A7E68, D_004A7E80, D_004A7E98, D_004A7EB0,
-    D_004A7EC8, D_004A7EE0, D_004A7EF8, D_004A7F10,
-    D_004A7F28, D_004A7F38, D_004A7F50, D_004A7F68,
-    D_004A7F80, D_004A7F98, D_004A7FB0, D_004A7FC8,
-    D_004A7FE0, D_004A7FF8, D_004A8010, D_004A8030,
-    D_004A8048, D_004A8060, D_004A8078, D_004A8090,
-    D_004A80A8, D_004A80C0, D_004A80D8, D_004A80F0,
-    D_004A8110, D_004A8128, D_004A8140, D_004A8158,
-    D_004A8170, D_004A8188, D_004A81A0, D_004A81B8,
-    D_004A81D0, D_004A81F0, D_004A8210, D_004A8230,
-    D_004A8250, D_004A8268, D_004A8280, D_004A8298,
-    D_004A82A8, D_004A82C0, D_004A82D8, D_004A82E8,
-    D_004A8300, D_004A8320, D_004A8340, D_004A8358,
-    D_004A8370, D_004A8388, D_004A8398, D_004A83A8,
-    D_004A83B8, D_004A83C8, D_004A83D8, D_004A83E8,
-    D_004A8400, D_004A8418, D_004A8430, D_004A8450,
-    D_004A8470, D_004A8490, D_004A84B0, D_004A84C8,
-    D_004A84E0, D_004A8500, D_004A8520, D_004A8538,
-    D_004A8550, D_004A8568, D_004A8580, D_004A8598,
-    D_004A85B0, D_004A85D0, D_004A85F0, D_004A8610,
-    D_004A8630, D_004A8648, D_004A8660, D_004A8680,
-    D_004A86A0, D_004A86C0, D_004A86E0, D_004A8700,
-    D_004A8720, D_004A8740, D_004A8760, D_004A8780,
-    D_004A87A0, D_004A87C0, D_004A87E0, D_004A8800,
-    D_004A8818, D_004A8830, D_004A8850, D_004A8870,
-    D_004A8890, D_004A88B0, D_004A88D0, D_004A88E8,
-    D_004A88F8, D_004A8910, D_004A8930, D_004A8950,
-    D_004A8970, D_004A8990, D_004A89B0, D_004A89D0,
-    D_004A89F0, D_004A8A10, D_004A8A30, D_004A8A50,
-    D_004A8A70, D_004A8A90, D_004A8AB0, D_004A8AD0,
-    D_004A8AF0, D_004A8B10, D_004A8B30, D_004A8B50,
-    D_004A8B68, D_004A8B80, D_004A8BA0, D_004A8BC0,
-    D_004A8BD8, D_004A8BF0, D_004A8C08, D_004A8C20,
-    D_004A8C38, D_004A8C50, D_004A8C70, D_004A8C90,
-    D_004A8CB0, D_004A8CD0, D_004A8CE8, D_004A8D00,
-    D_004A8D20, D_004A8D40, D_004A8D60, D_004A8D80,
-    D_004A8DA0, D_004A8DC0, D_004A8DE0, D_004A8DF8,
-    D_004A8E10, D_004A8E30, D_004A8E50, D_004A8E68,
-    D_004A8E80, D_004A8E98, D_004A8EB0, D_004A8ED0,
-    D_004A8EF0, D_004A8F10, D_004A8F30, D_004A8F50,
-    D_004A8F68, D_004A8F78, D_004A8F90, D_004A8FB0,
-    D_004A8F90, D_004A8FB0, D_004A8FD0, D_004A8FF0,
-    D_004A9010, D_004A9030, D_004A9050, D_004A9070,
-    D_004A9090, D_004A90A8, D_004A90C0, D_004A90D8,
-    D_004A90F0, D_004A9108, D_004A9120, D_004A9138,
-    D_004A9150, D_004A9168, D_004A9180, D_004A9198,
-    D_004A91B0, D_004A91C8, D_004A91E0, D_004A9200,
-    D_004A9220, D_004A9240, D_004A9260, D_004A9278,
-    D_004A9290, D_004A92A8, D_004A92C0, D_004A92D8,
-    D_004A92E8, D_004A92F8, D_004A9308, D_004A9320,
-    D_004A9338, D_004A9348, D_004A9358, D_004A9370,
-    D_004A9390, D_004A93B0, D_004A93C8, D_004A93D8,
-    D_004A93F0, D_004A9408, D_004A9418, D_004A9428,
-    D_004A9438, D_004A9448, D_004A9460, D_004A9480,
-    D_004A94A0, D_004A94B8, D_004A94D0, D_004A94F0,
-    D_004A9510, D_004A9530, D_004A9548, D_004A9560,
+    D_004A00E8, gArmorWaistNames_1, gArmorWaistNames_2, gArmorWaistNames_3,
+    gArmorWaistNames_4, gArmorWaistNames_5, gArmorWaistNames_6, gArmorWaistNames_7,
+    gArmorWaistNames_8, gArmorWaistNames_9, gArmorWaistNames_10, gArmorWaistNames_11,
+    gArmorWaistNames_12, gArmorWaistNames_13, gArmorWaistNames_14, gArmorWaistNames_15,
+    gArmorWaistNames_16, gArmorWaistNames_17, gArmorWaistNames_18, gArmorWaistNames_19,
+    gArmorWaistNames_20, gArmorWaistNames_21, gArmorWaistNames_22, gArmorWaistNames_23,
+    gArmorWaistNames_24, gArmorWaistNames_25, gArmorWaistNames_26, gArmorWaistNames_27,
+    gArmorWaistNames_28, gArmorWaistNames_29, gArmorWaistNames_30, gArmorWaistNames_31,
+    gArmorWaistNames_32, gArmorWaistNames_33, gArmorWaistNames_34, gArmorWaistNames_35,
+    gArmorWaistNames_36, gArmorWaistNames_37, gArmorWaistNames_38, gArmorWaistNames_39,
+    gArmorWaistNames_40, gArmorWaistNames_41, gArmorWaistNames_42, gArmorWaistNames_43,
+    gArmorWaistNames_44, gArmorWaistNames_45, gArmorWaistNames_46, gArmorWaistNames_47,
+    gArmorWaistNames_48, gArmorWaistNames_49, gArmorWaistNames_50, gArmorWaistNames_51,
+    gArmorWaistNames_52, gArmorWaistNames_53, gArmorWaistNames_54, gArmorWaistNames_55,
+    gArmorWaistNames_56, gArmorWaistNames_57, gArmorWaistNames_58, gArmorWaistNames_59,
+    gArmorWaistNames_60, gArmorWaistNames_61, gArmorWaistNames_62, gArmorWaistNames_63,
+    gArmorWaistNames_64, gArmorWaistNames_65, gArmorWaistNames_66, gArmorWaistNames_67,
+    gArmorWaistNames_68, gArmorWaistNames_69, gArmorWaistNames_70, gArmorWaistNames_71,
+    gArmorWaistNames_72, gArmorWaistNames_73, gArmorWaistNames_74, gArmorWaistNames_75,
+    gArmorWaistNames_76, gArmorWaistNames_77, gArmorWaistNames_78, gArmorWaistNames_79,
+    gArmorWaistNames_80, gArmorWaistNames_81, gArmorWaistNames_82, gArmorWaistNames_83,
+    gArmorWaistNames_84, gArmorWaistNames_85, gArmorWaistNames_86, gArmorWaistNames_87,
+    gArmorWaistNames_88, gArmorWaistNames_89, gArmorWaistNames_90, gArmorWaistNames_91,
+    gArmorWaistNames_92, gArmorWaistNames_93, gArmorWaistNames_94, gArmorWaistNames_95,
+    gArmorWaistNames_96, gArmorWaistNames_97, gArmorWaistNames_98, gArmorWaistNames_99,
+    gArmorWaistNames_100, gArmorWaistNames_101, gArmorWaistNames_102, gArmorWaistNames_103,
+    gArmorWaistNames_104, gArmorWaistNames_105, gArmorWaistNames_106, gArmorWaistNames_107,
+    gArmorWaistNames_108, gArmorWaistNames_109, gArmorWaistNames_110, gArmorWaistNames_111,
+    gArmorWaistNames_112, gArmorWaistNames_113, gArmorWaistNames_114, gArmorWaistNames_115,
+    gArmorWaistNames_116, gArmorWaistNames_117, gArmorWaistNames_118, gArmorWaistNames_119,
+    gArmorWaistNames_120, gArmorWaistNames_121, gArmorWaistNames_122, gArmorWaistNames_123,
+    gArmorWaistNames_124, gArmorWaistNames_125, gArmorWaistNames_126, gArmorWaistNames_127,
+    gArmorWaistNames_128, gArmorWaistNames_129, gArmorWaistNames_130, gArmorWaistNames_131,
+    gArmorWaistNames_132, gArmorWaistNames_133, gArmorWaistNames_134, gArmorWaistNames_135,
+    gArmorWaistNames_136, gArmorWaistNames_137, gArmorWaistNames_138, gArmorWaistNames_139,
+    gArmorWaistNames_140, gArmorWaistNames_141, gArmorWaistNames_142, gArmorWaistNames_143,
+    gArmorWaistNames_144, gArmorWaistNames_145, gArmorWaistNames_146, gArmorWaistNames_147,
+    gArmorWaistNames_148, gArmorWaistNames_149, gArmorWaistNames_150, gArmorWaistNames_151,
+    gArmorWaistNames_152, gArmorWaistNames_153, gArmorWaistNames_154, gArmorWaistNames_155,
+    gArmorWaistNames_156, gArmorWaistNames_157, gArmorWaistNames_158, gArmorWaistNames_159,
+    gArmorWaistNames_160, gArmorWaistNames_161, gArmorWaistNames_162, gArmorWaistNames_163,
+    gArmorWaistNames_164, gArmorWaistNames_165, D_004A8F90, D_004A8FB0,
+    D_004A8F90, D_004A8FB0, gArmorWaistNames_170, gArmorWaistNames_171,
+    gArmorWaistNames_172, gArmorWaistNames_173, gArmorWaistNames_174, gArmorWaistNames_175,
+    gArmorWaistNames_176, gArmorWaistNames_177, gArmorWaistNames_178, gArmorWaistNames_179,
+    gArmorWaistNames_180, gArmorWaistNames_181, gArmorWaistNames_182, gArmorWaistNames_183,
+    gArmorWaistNames_184, gArmorWaistNames_185, gArmorWaistNames_186, gArmorWaistNames_187,
+    gArmorWaistNames_188, gArmorWaistNames_189, gArmorWaistNames_190, gArmorWaistNames_191,
+    gArmorWaistNames_192, gArmorWaistNames_193, gArmorWaistNames_194, gArmorWaistNames_195,
+    gArmorWaistNames_196, gArmorWaistNames_197, gArmorWaistNames_198, gArmorWaistNames_199,
+    gArmorWaistNames_200, gArmorWaistNames_201, gArmorWaistNames_202, gArmorWaistNames_203,
+    gArmorWaistNames_204, gArmorWaistNames_205, gArmorWaistNames_206, gArmorWaistNames_207,
+    gArmorWaistNames_208, gArmorWaistNames_209, gArmorWaistNames_210, gArmorWaistNames_211,
+    gArmorWaistNames_212, gArmorWaistNames_213, gArmorWaistNames_214, gArmorWaistNames_215,
+    gArmorWaistNames_216, gArmorWaistNames_217, gArmorWaistNames_218, gArmorWaistNames_219,
+    gArmorWaistNames_220, gArmorWaistNames_221, gArmorWaistNames_222, gArmorWaistNames_223,
+    gArmorWaistNames_224, gArmorWaistNames_225, gArmorWaistNames_226, gArmorWaistNames_227,
     D_004A9580, D_004A95A0, D_004A9580, D_004A95A0,
-    D_004A95C0, D_004A95E0, D_004A9600, D_004A9618,
-    D_004A9628, 0, 0, 0,
+    gArmorWaistNames_232, gArmorWaistNames_233, gArmorWaistNames_234, gArmorWaistNames_235,
+    gArmorWaistNames_236, 0, 0, 0,
 };
 char *gArmorLegsNames[236] = {
-    D_004A00E8, D_004A9640, D_004A9660, D_004A9680,
-    D_004A96A0, D_004A96B8, D_004A96C8, D_004A96E0,
-    D_004A9700, D_004A9718, D_004A9728, D_004A9740,
-    D_004A9758, D_004A9768, D_004A9778, D_004A9788,
-    D_004A97A0, D_004A97C0, D_004A97E0, D_004A9800,
-    D_004A9820, D_004A9840, D_004A9860, D_004A9880,
-    D_004A98A0, D_004A98C0, D_004A98E0, D_004A9900,
-    D_004A9920, D_004A9938, D_004A9948, D_004A9960,
-    D_004A9980, D_004A9998, D_004A99A8, D_004A99B8,
-    D_004A99C8, D_004A99D8, D_004A99E8, D_004A9A00,
-    D_004A9A20, D_004A9A40, D_004A9A60, D_004A9A80,
-    D_004A9AA0, D_004A9AC0, D_004A9AD8, D_004A9AF0,
-    D_004A9B10, D_004A9B30, D_004A9B48, D_004A9B58,
-    D_004A9B70, D_004A9B90, D_004A9BB0, D_004A9BD0,
-    D_004A9BF0, D_004A9C10, D_004A9C28, D_004A9C38,
-    D_004A9C48, D_004A9C58, D_004A9C68, D_004A9C78,
-    D_004A9C88, D_004A9C98, D_004A9CB0, D_004A9CD0,
-    D_004A9CF0, D_004A9D10, D_004A9D30, D_004A9D50,
-    D_004A9D70, D_004A9D90, D_004A9DB0, D_004A9DD0,
-    D_004A9DF0, D_004A9E10, D_004A9E30, D_004A9E50,
-    D_004A9E70, D_004A9E90, D_004A9EB0, D_004A9ED0,
-    D_004A9EF0, D_004A9F10, D_004A9F30, D_004A9F50,
-    D_004A9F70, D_004A9F90, D_004A9FB0, D_004A9FD0,
-    D_004A9FF0, D_004AA010, D_004AA030, D_004AA050,
-    D_004AA070, D_004AA090, D_004AA0B0, D_004AA0D0,
-    D_004AA0F0, D_004AA110, D_004AA130, D_004AA150,
-    D_004AA170, D_004AA190, D_004AA1A8, D_004AA1B8,
-    D_004AA1D0, D_004AA1F0, D_004AA210, D_004AA230,
-    D_004AA250, D_004AA270, D_004AA288, D_004AA298,
-    D_004AA2B0, D_004AA2D0, D_004AA2F0, D_004AA310,
-    D_004AA330, D_004AA350, D_004AA370, D_004AA390,
-    D_004AA3B0, D_004AA3D0, D_004AA3F0, D_004AA410,
-    D_004AA430, D_004AA450, D_004AA470, D_004AA490,
-    D_004AA4B0, D_004AA4D0, D_004AA4F0, D_004AA510,
-    D_004AA530, D_004AA550, D_004AA570, D_004AA590,
-    D_004AA5B0, D_004AA5D0, D_004AA5F0, D_004AA610,
-    D_004AA630, D_004AA650, D_004AA670, D_004AA690,
-    D_004AA6B0, D_004AA6D0, D_004AA6F0, D_004AA710,
-    D_004AA730, D_004AA750, D_004AA770, D_004AA790,
-    D_004AA7B0, D_004AA7D0, D_004AA7F0, D_004AA810,
-    D_004AA830, D_004AA850, D_004AA870, D_004AA890,
-    D_004AA8A8, D_004AA8B8, D_004AA8D0, D_004AA8F0,
-    D_004AA8D0, D_004AA8F0, D_004AA910, D_004AA930,
-    D_004AA948, D_004AA958, D_004AA970, D_004AA990,
-    D_004AA9A8, D_004AA9B8, D_004AA9D0, D_004AA9F0,
-    D_004AAA10, D_004AAA30, D_004AAA48, D_004AAA58,
-    D_004AAA70, D_004AAA90, D_004AAAB0, D_004AAAD0,
-    D_004AAAF0, D_004AAB10, D_004AAB30, D_004AAB50,
-    D_004AAB70, D_004AAB90, D_004AABA8, D_004AABB8,
-    D_004AABD0, D_004AABF0, D_004AAC10, D_004AAC30,
-    D_004AAC48, D_004AAC58, D_004AAC70, D_004AAC88,
-    D_004AAC98, D_004AACA8, D_004AACB8, D_004AACD0,
-    D_004AACF0, D_004AAD10, D_004AAD28, D_004AAD38,
-    D_004AAD50, D_004AAD70, D_004AAD88, D_004AAD98,
-    D_004AADA8, D_004AADB8, D_004AADD0, D_004AADF0,
-    D_004AAE10, D_004AAE30, D_004AAE50, D_004AAE70,
-    D_004AAE90, D_004AAEB0, D_004AAED0, D_004AAEF0,
-    D_004AAF10, D_004AAEF0, D_004AAF10, D_004AAF30,
-    D_004AAF50, D_004AAF70, D_004AAF90, D_004AAFB0,
+    D_004A00E8, gArmorLegsNames_1, gArmorLegsNames_2, gArmorLegsNames_3,
+    gArmorLegsNames_4, gArmorLegsNames_5, gArmorLegsNames_6, gArmorLegsNames_7,
+    gArmorLegsNames_8, gArmorLegsNames_9, gArmorLegsNames_10, gArmorLegsNames_11,
+    gArmorLegsNames_12, gArmorLegsNames_13, gArmorLegsNames_14, gArmorLegsNames_15,
+    gArmorLegsNames_16, gArmorLegsNames_17, gArmorLegsNames_18, gArmorLegsNames_19,
+    gArmorLegsNames_20, gArmorLegsNames_21, gArmorLegsNames_22, gArmorLegsNames_23,
+    gArmorLegsNames_24, gArmorLegsNames_25, gArmorLegsNames_26, gArmorLegsNames_27,
+    gArmorLegsNames_28, gArmorLegsNames_29, gArmorLegsNames_30, gArmorLegsNames_31,
+    gArmorLegsNames_32, gArmorLegsNames_33, gArmorLegsNames_34, gArmorLegsNames_35,
+    gArmorLegsNames_36, gArmorLegsNames_37, gArmorLegsNames_38, gArmorLegsNames_39,
+    gArmorLegsNames_40, gArmorLegsNames_41, gArmorLegsNames_42, gArmorLegsNames_43,
+    gArmorLegsNames_44, gArmorLegsNames_45, gArmorLegsNames_46, gArmorLegsNames_47,
+    gArmorLegsNames_48, gArmorLegsNames_49, gArmorLegsNames_50, gArmorLegsNames_51,
+    gArmorLegsNames_52, gArmorLegsNames_53, gArmorLegsNames_54, gArmorLegsNames_55,
+    gArmorLegsNames_56, gArmorLegsNames_57, gArmorLegsNames_58, gArmorLegsNames_59,
+    gArmorLegsNames_60, gArmorLegsNames_61, gArmorLegsNames_62, gArmorLegsNames_63,
+    gArmorLegsNames_64, gArmorLegsNames_65, gArmorLegsNames_66, gArmorLegsNames_67,
+    gArmorLegsNames_68, gArmorLegsNames_69, gArmorLegsNames_70, gArmorLegsNames_71,
+    gArmorLegsNames_72, gArmorLegsNames_73, gArmorLegsNames_74, gArmorLegsNames_75,
+    gArmorLegsNames_76, gArmorLegsNames_77, gArmorLegsNames_78, gArmorLegsNames_79,
+    gArmorLegsNames_80, gArmorLegsNames_81, gArmorLegsNames_82, gArmorLegsNames_83,
+    gArmorLegsNames_84, gArmorLegsNames_85, gArmorLegsNames_86, gArmorLegsNames_87,
+    gArmorLegsNames_88, gArmorLegsNames_89, gArmorLegsNames_90, gArmorLegsNames_91,
+    gArmorLegsNames_92, gArmorLegsNames_93, gArmorLegsNames_94, gArmorLegsNames_95,
+    gArmorLegsNames_96, gArmorLegsNames_97, gArmorLegsNames_98, gArmorLegsNames_99,
+    gArmorLegsNames_100, gArmorLegsNames_101, gArmorLegsNames_102, gArmorLegsNames_103,
+    gArmorLegsNames_104, gArmorLegsNames_105, gArmorLegsNames_106, gArmorLegsNames_107,
+    gArmorLegsNames_108, gArmorLegsNames_109, gArmorLegsNames_110, gArmorLegsNames_111,
+    gArmorLegsNames_112, gArmorLegsNames_113, gArmorLegsNames_114, gArmorLegsNames_115,
+    gArmorLegsNames_116, gArmorLegsNames_117, gArmorLegsNames_118, gArmorLegsNames_119,
+    gArmorLegsNames_120, gArmorLegsNames_121, gArmorLegsNames_122, gArmorLegsNames_123,
+    gArmorLegsNames_124, gArmorLegsNames_125, gArmorLegsNames_126, gArmorLegsNames_127,
+    gArmorLegsNames_128, gArmorLegsNames_129, gArmorLegsNames_130, gArmorLegsNames_131,
+    gArmorLegsNames_132, gArmorLegsNames_133, gArmorLegsNames_134, gArmorLegsNames_135,
+    gArmorLegsNames_136, gArmorLegsNames_137, gArmorLegsNames_138, gArmorLegsNames_139,
+    gArmorLegsNames_140, gArmorLegsNames_141, gArmorLegsNames_142, gArmorLegsNames_143,
+    gArmorLegsNames_144, gArmorLegsNames_145, gArmorLegsNames_146, gArmorLegsNames_147,
+    gArmorLegsNames_148, gArmorLegsNames_149, gArmorLegsNames_150, gArmorLegsNames_151,
+    gArmorLegsNames_152, gArmorLegsNames_153, gArmorLegsNames_154, gArmorLegsNames_155,
+    gArmorLegsNames_156, gArmorLegsNames_157, gArmorLegsNames_158, gArmorLegsNames_159,
+    gArmorLegsNames_160, gArmorLegsNames_161, gArmorLegsNames_162, gArmorLegsNames_163,
+    gArmorLegsNames_164, gArmorLegsNames_165, D_004AA8D0, D_004AA8F0,
+    D_004AA8D0, D_004AA8F0, gArmorLegsNames_170, gArmorLegsNames_171,
+    gArmorLegsNames_172, gArmorLegsNames_173, gArmorLegsNames_174, gArmorLegsNames_175,
+    gArmorLegsNames_176, gArmorLegsNames_177, gArmorLegsNames_178, gArmorLegsNames_179,
+    gArmorLegsNames_180, gArmorLegsNames_181, gArmorLegsNames_182, gArmorLegsNames_183,
+    gArmorLegsNames_184, gArmorLegsNames_185, gArmorLegsNames_186, gArmorLegsNames_187,
+    gArmorLegsNames_188, gArmorLegsNames_189, gArmorLegsNames_190, gArmorLegsNames_191,
+    gArmorLegsNames_192, gArmorLegsNames_193, gArmorLegsNames_194, gArmorLegsNames_195,
+    gArmorLegsNames_196, gArmorLegsNames_197, gArmorLegsNames_198, gArmorLegsNames_199,
+    gArmorLegsNames_200, gArmorLegsNames_201, gArmorLegsNames_202, gArmorLegsNames_203,
+    gArmorLegsNames_204, gArmorLegsNames_205, gArmorLegsNames_206, gArmorLegsNames_207,
+    gArmorLegsNames_208, gArmorLegsNames_209, gArmorLegsNames_210, gArmorLegsNames_211,
+    gArmorLegsNames_212, gArmorLegsNames_213, gArmorLegsNames_214, gArmorLegsNames_215,
+    gArmorLegsNames_216, gArmorLegsNames_217, gArmorLegsNames_218, gArmorLegsNames_219,
+    gArmorLegsNames_220, gArmorLegsNames_221, gArmorLegsNames_222, gArmorLegsNames_223,
+    gArmorLegsNames_224, gArmorLegsNames_225, gArmorLegsNames_226, D_004AAEF0,
+    D_004AAF10, D_004AAEF0, D_004AAF10, gArmorLegsNames_231,
+    gArmorLegsNames_232, gArmorLegsNames_233, gArmorLegsNames_234, gArmorLegsNames_235,
 };
 u8 gWeaponKindClass[352] = {
 #include "sub_main/0045DF80.inc"
@@ -7191,31 +7105,31 @@ u8 gWeaponKindClass[352] = {
 u8 gAmmoLevels[36][4] = {
 #include "sub_main/0045E0E0.inc"
 };
-u32 gBowgunClipSizes[264] = {
+u8 gBowgunClipSizes[33][32] = {
 #include "sub_main/0045E170.inc"
 };
-u32 gBowgunClipShots[60] = {
+s16 gBowgunClipShots[30][4] = {
 #include "sub_main/0045E590.inc"
 };
-u32 gSharpnessTables_0[24] = {
+s16 gSharpnessTables_0[8][6] = {
 #include "sub_main/0045E680.inc"
 };
-u32 gSharpnessTables_2[24] = {
+s16 gSharpnessTables_2[8][6] = {
 #include "sub_main/0045E6E0.inc"
 };
-u32 gSharpnessTables_3[24] = {
+s16 gSharpnessTables_3[8][6] = {
 #include "sub_main/0045E740.inc"
 };
-u32 gSharpnessTables_4[24] = {
+s16 gSharpnessTables_4[8][6] = {
 #include "sub_main/0045E7A0.inc"
 };
-u32 gSharpnessTables_6[24] = {
+s16 gSharpnessTables_6[8][6] = {
 #include "sub_main/0045E800.inc"
 };
-u32 gSharpnessTables[12] = {
-    (u32)gSharpnessTables_0, (u32)gSharpnessTables_0, (u32)gSharpnessTables_2, (u32)gSharpnessTables_3,
-    (u32)gSharpnessTables_4, (u32)gSharpnessTables_0, (u32)gSharpnessTables_6, (u32)gSharpnessTables_0,
-    (u32)gSharpnessTables_2, (u32)gSharpnessTables_3, (u32)gSharpnessTables_0, 0,
+SharpRow *gSharpnessTables[12] = {
+    gSharpnessTables_0, gSharpnessTables_0, gSharpnessTables_2, gSharpnessTables_3,
+    gSharpnessTables_4, gSharpnessTables_0, gSharpnessTables_6, gSharpnessTables_0,
+    gSharpnessTables_2, gSharpnessTables_3, gSharpnessTables_0, NULL,
 };
 ArmorData *gArmorTables[16] = {
     gArmorLegsData, gArmorHeadData, gArmorHeadData, gArmorBodyData,
@@ -7260,41 +7174,32 @@ u8 gArmorLevelSlots[64] = {
 u8 gWeaponClassAttack[136][2] = {
 #include "sub_main/0045EE00.inc"
 };
-u32 gHitSeIds[44] = {
+s16 gHitSeIds[88] = {
 #include "sub_main/0045EF10.inc"
 };
-u32 gHitKindMvFactors[24] = {
+f32 gHitKindMvFactors[24] = {
 #include "sub_main/0045EFC0.inc"
 };
-u32 gSwordGaugeHitFactors[4] = {
+f32 gSwordGaugeHitFactors[4] = {
 #include "sub_main/0045F020.inc"
 };
-u32 gSharpnessRawMods[12] = {
+f32 gSharpnessRawMods[12] = {
 #include "sub_main/0045F030.inc"
 };
-u32 gSharpnessLossByHit[4] = {
+s16 gSharpnessLossByHit[8] = {
 #include "sub_main/0045F060.inc"
 };
-u32 gAreaKindFlags_170[4] = {
+AreaKindRow gAreaKindFlags_170[2] = {
 #include "sub_main/0045F070.inc"
 };
-u32 D_0045F080[12] = {
+AreaLightZone gAreaLightZones_170[2] = {
 #include "sub_main/0045F080.inc"
 };
-u32 gAreaLightColors_170[24] = {
+f32 gAreaLightColors_170[6][4] = {
 #include "sub_main/0045F0B0.inc"
 };
-ItemData gItemData[170] = {
+ItemData gItemData[921] = {
 #include "sub_main/0045F110.inc"
-};
-u32 D_00460100[12] = {
-#include "sub_main/00460100.inc"
-};
-u32 D_00460130[192] = {
-#include "sub_main/00460130.inc"
-};
-u32 D_00460430[4304] = {
-#include "sub_main/00460430.inc"
 };
 u32 gItemNames[924] = {
     (u32)D_004AB180, (u32)D_004AB190, (u32)D_004AB1A0, (u32)D_004AB1B0,
@@ -7532,5374 +7437,5374 @@ u32 gItemNames[924] = {
 
 /* The equipment's texts and constants, read-only. */
 #pragma rodata on
-char D_004A00E8[0xC] = {
+char D_004A00E8[12] = {
 #include "sub_main/004A00E8.inc"
 };
 char gBladeNames_1[8] = {
 #include "sub_main/004A00F8.inc"
 };
-u32 D_004A0100[4] = {
+char D_004A0100[16] = {
 #include "sub_main/004A0100.inc"
 };
-char D_004A0110[0x18] = {
+char gBladeNames_2[24] = {
 #include "sub_main/004A0110.inc"
 };
-char D_004A0128[15] = {
+char gBladeNames_3[15] = {
 #include "sub_main/004A0128.inc"
 };
-char D_004A0140[0x18] = {
+char gBladeNames_4[24] = {
 #include "sub_main/004A0140.inc"
 };
-char D_004A0158[0xC] = {
+char gBladeNames_5[12] = {
 #include "sub_main/004A0158.inc"
 };
-char D_004A0170[0x18] = {
+char gBladeNames_6[24] = {
 #include "sub_main/004A0170.inc"
 };
-char D_004A0188[15] = {
+char gBladeNames_7[15] = {
 #include "sub_main/004A0188.inc"
 };
-char D_004A01A0[0x20] = {
+char gBladeNames_8[32] = {
 #include "sub_main/004A01A0.inc"
 };
-char D_004A01C0[0x18] = {
+char gBladeNames_9[24] = {
 #include "sub_main/004A01C0.inc"
 };
-char D_004A01D8[0x8] = {
+char gBladeNames_10[8] = {
 #include "sub_main/004A01D8.inc"
 };
-char D_004A01E0[0x10] = {
+char gBladeNames_11[16] = {
 #include "sub_main/004A01E0.inc"
 };
-char D_004A01F0[0x10] = {
+char gBladeNames_12[16] = {
 #include "sub_main/004A01F0.inc"
 };
-char D_004A0200[0x10] = {
+char gBladeNames_13[16] = {
 #include "sub_main/004A0200.inc"
 };
-char D_004A0210[0x10] = {
+char gBladeNames_14[16] = {
 #include "sub_main/004A0210.inc"
 };
-char D_004A0220[0x10] = {
+char gBladeNames_15[16] = {
 #include "sub_main/004A0220.inc"
 };
-char D_004A0230[0x10] = {
+char gBladeNames_16[16] = {
 #include "sub_main/004A0230.inc"
 };
-char D_004A0240[0x10] = {
+char gBladeNames_17[16] = {
 #include "sub_main/004A0240.inc"
 };
-char D_004A0250[0x10] = {
+char gBladeNames_18[16] = {
 #include "sub_main/004A0250.inc"
 };
-char D_004A0260[0x10] = {
+char gBladeNames_19[16] = {
 #include "sub_main/004A0260.inc"
 };
-char D_004A0270[0x10] = {
+char gBladeNames_20[16] = {
 #include "sub_main/004A0270.inc"
 };
-char D_004A0280[0x10] = {
+char gBladeNames_21[16] = {
 #include "sub_main/004A0280.inc"
 };
-char D_004A0290[0x10] = {
+char gBladeNames_22[16] = {
 #include "sub_main/004A0290.inc"
 };
-char D_004A02A0[0x10] = {
+char gBladeNames_23[16] = {
 #include "sub_main/004A02A0.inc"
 };
-char D_004A02B0[0x20] = {
+char gBladeNames_24[32] = {
 #include "sub_main/004A02B0.inc"
 };
-char D_004A02D0[0x18] = {
+char gBladeNames_25[24] = {
 #include "sub_main/004A02D0.inc"
 };
-char D_004A02E8[13] = {
+char gBladeNames_26[13] = {
 #include "sub_main/004A02E8.inc"
 };
-char D_004A0300[0x18] = {
+char gBladeNames_27[24] = {
 #include "sub_main/004A0300.inc"
 };
-char D_004A0318[15] = {
+char gBladeNames_28[15] = {
 #include "sub_main/004A0318.inc"
 };
-char D_004A0330[0x18] = {
+char gBladeNames_29[24] = {
 #include "sub_main/004A0330.inc"
 };
-char D_004A0348[0x8] = {
+char gBladeNames_30[8] = {
 #include "sub_main/004A0348.inc"
 };
-char D_004A0350[0x10] = {
+char gBladeNames_31[16] = {
 #include "sub_main/004A0350.inc"
 };
-char D_004A0360[0x10] = {
+char gBladeNames_32[16] = {
 #include "sub_main/004A0360.inc"
 };
-char D_004A0370[0x20] = {
+char gBladeNames_33[32] = {
 #include "sub_main/004A0370.inc"
 };
-char D_004A0390[0x20] = {
+char gBladeNames_34[32] = {
 #include "sub_main/004A0390.inc"
 };
-char D_004A03B0[0x18] = {
+char gBladeNames_35[24] = {
 #include "sub_main/004A03B0.inc"
 };
-char D_004A03C8[13] = {
+char gBladeNames_36[13] = {
 #include "sub_main/004A03C8.inc"
 };
-char D_004A03D8[15] = {
+char gBladeNames_37[15] = {
 #include "sub_main/004A03D8.inc"
 };
-char D_004A03E8[13] = {
+char gBladeNames_38[13] = {
 #include "sub_main/004A03E8.inc"
 };
-char D_004A03F8[15] = {
+char gBladeNames_39[15] = {
 #include "sub_main/004A03F8.inc"
 };
-char D_004A0408[15] = {
+char gBladeNames_40[15] = {
 #include "sub_main/004A0408.inc"
 };
-char D_004A0418[15] = {
+char gBladeNames_41[15] = {
 #include "sub_main/004A0418.inc"
 };
-char D_004A0428[15] = {
+char gBladeNames_42[15] = {
 #include "sub_main/004A0428.inc"
 };
-char D_004A0438[15] = {
+char gBladeNames_43[15] = {
 #include "sub_main/004A0438.inc"
 };
-char D_004A0448[15] = {
+char gBladeNames_44[15] = {
 #include "sub_main/004A0448.inc"
 };
-char D_004A0458[0xC] = {
+char gBladeNames_45[12] = {
 #include "sub_main/004A0458.inc"
 };
-char D_004A0470[0x20] = {
+char gBladeNames_46[32] = {
 #include "sub_main/004A0470.inc"
 };
-char D_004A0490[0x18] = {
+char gBladeNames_47[24] = {
 #include "sub_main/004A0490.inc"
 };
-char D_004A04A8[0x8] = {
+char gBladeNames_48[8] = {
 #include "sub_main/004A04A8.inc"
 };
-char D_004A04B0[0x10] = {
+char gBladeNames_49[16] = {
 #include "sub_main/004A04B0.inc"
 };
-char D_004A04C0[0x10] = {
+char gBladeNames_50[16] = {
 #include "sub_main/004A04C0.inc"
 };
-char D_004A04D0[0x10] = {
+char gBladeNames_51[16] = {
 #include "sub_main/004A04D0.inc"
 };
-char D_004A04E0[0x10] = {
+char gBladeNames_52[16] = {
 #include "sub_main/004A04E0.inc"
 };
-char D_004A04F0[0x18] = {
+char gBladeNames_53[24] = {
 #include "sub_main/004A04F0.inc"
 };
-char D_004A0508[13] = {
+char gBladeNames_54[13] = {
 #include "sub_main/004A0508.inc"
 };
-char D_004A0520[0x20] = {
+char gBladeNames_55[32] = {
 #include "sub_main/004A0520.inc"
 };
-char D_004A0540[0x18] = {
+char gBladeNames_56[24] = {
 #include "sub_main/004A0540.inc"
 };
-char D_004A0558[15] = {
+char gBladeNames_57[15] = {
 #include "sub_main/004A0558.inc"
 };
-char D_004A0568[0x8] = {
+char gBladeNames_58[8] = {
 #include "sub_main/004A0568.inc"
 };
-char D_004A0570[0x10] = {
+char gBladeNames_59[16] = {
 #include "sub_main/004A0570.inc"
 };
-char D_004A0580[0x20] = {
+char gBladeNames_60[32] = {
 #include "sub_main/004A0580.inc"
 };
-char D_004A05A0[0x20] = {
+char gBladeNames_61[32] = {
 #include "sub_main/004A05A0.inc"
 };
-char D_004A05C0[0x20] = {
+char gBladeNames_62[32] = {
 #include "sub_main/004A05C0.inc"
 };
-char D_004A05E0[0x20] = {
+char gBladeNames_63[32] = {
 #include "sub_main/004A05E0.inc"
 };
-char D_004A0600[0x20] = {
+char gBladeNames_64[32] = {
 #include "sub_main/004A0600.inc"
 };
-char D_004A0620[0x20] = {
+char gBladeNames_65[32] = {
 #include "sub_main/004A0620.inc"
 };
-char D_004A0640[0x20] = {
+char gBladeNames_66[32] = {
 #include "sub_main/004A0640.inc"
 };
-char D_004A0660[0x20] = {
+char gBladeNames_67[32] = {
 #include "sub_main/004A0660.inc"
 };
-char D_004A0680[0x20] = {
+char gBladeNames_68[32] = {
 #include "sub_main/004A0680.inc"
 };
-char D_004A06A0[0x18] = {
+char gBladeNames_69[24] = {
 #include "sub_main/004A06A0.inc"
 };
-char D_004A06B8[13] = {
+char gBladeNames_70[13] = {
 #include "sub_main/004A06B8.inc"
 };
-char D_004A06C8[13] = {
+char gBladeNames_71[13] = {
 #include "sub_main/004A06C8.inc"
 };
-char D_004A06E0[0x20] = {
+char gBladeNames_72[32] = {
 #include "sub_main/004A06E0.inc"
 };
-char D_004A0700[0x18] = {
+char gBladeNames_73[24] = {
 #include "sub_main/004A0700.inc"
 };
-char D_004A0718[15] = {
+char gBladeNames_74[15] = {
 #include "sub_main/004A0718.inc"
 };
-char D_004A0730[0x18] = {
+char gBladeNames_75[24] = {
 #include "sub_main/004A0730.inc"
 };
-char D_004A0748[0xC] = {
+char gBladeNames_76[12] = {
 #include "sub_main/004A0748.inc"
 };
-char D_004A0760[0x18] = {
+char gBladeNames_77[24] = {
 #include "sub_main/004A0760.inc"
 };
-char D_004A0778[15] = {
+char gBladeNames_78[15] = {
 #include "sub_main/004A0778.inc"
 };
-char D_004A0790[0x20] = {
+char gBladeNames_79[32] = {
 #include "sub_main/004A0790.inc"
 };
-char D_004A07B0[0x18] = {
+char gBladeNames_80[24] = {
 #include "sub_main/004A07B0.inc"
 };
-char D_004A07C8[0xC] = {
+char gBladeNames_81[12] = {
 #include "sub_main/004A07C8.inc"
 };
-char D_004A07E0[0x20] = {
+char gBladeNames_82[32] = {
 #include "sub_main/004A07E0.inc"
 };
-char D_004A0800[0x20] = {
+char gBladeNames_83[32] = {
 #include "sub_main/004A0800.inc"
 };
-char D_004A0820[0x18] = {
+char gBladeNames_84[24] = {
 #include "sub_main/004A0820.inc"
 };
-char D_004A0838[13] = {
+char gBladeNames_85[13] = {
 #include "sub_main/004A0838.inc"
 };
-char D_004A0848[15] = {
+char gBladeNames_86[15] = {
 #include "sub_main/004A0848.inc"
 };
-char D_004A0860[0x18] = {
+char gBladeNames_87[24] = {
 #include "sub_main/004A0860.inc"
 };
-char D_004A0878[13] = {
+char gBladeNames_88[13] = {
 #include "sub_main/004A0878.inc"
 };
-char D_004A0888[13] = {
+char gBladeNames_89[13] = {
 #include "sub_main/004A0888.inc"
 };
-char D_004A08A0[0x20] = {
+char gBladeNames_90[32] = {
 #include "sub_main/004A08A0.inc"
 };
-char D_004A08C0[0x18] = {
+char gBladeNames_91[24] = {
 #include "sub_main/004A08C0.inc"
 };
-char D_004A08D8[15] = {
+char gBladeNames_92[15] = {
 #include "sub_main/004A08D8.inc"
 };
-char D_004A08F0[0x20] = {
+char gBladeNames_93[32] = {
 #include "sub_main/004A08F0.inc"
 };
-char D_004A0910[0x18] = {
+char gBladeNames_94[24] = {
 #include "sub_main/004A0910.inc"
 };
-char D_004A0928[13] = {
+char gBladeNames_95[13] = {
 #include "sub_main/004A0928.inc"
 };
-char D_004A0938[0xC] = {
+char gBladeNames_96[12] = {
 #include "sub_main/004A0938.inc"
 };
-char D_004A0948[0x8] = {
+char gBladeNames_97[8] = {
 #include "sub_main/004A0948.inc"
 };
-char D_004A0950[0x10] = {
+char gBladeNames_98[16] = {
 #include "sub_main/004A0950.inc"
 };
-char D_004A0960[0x8] = {
+char gBladeNames_99[8] = {
 #include "sub_main/004A0960.inc"
 };
-char D_004A0968[0x8] = {
+char gBladeNames_100[8] = {
 #include "sub_main/004A0968.inc"
 };
-char D_004A0970[0x20] = {
+char gBladeNames_101[32] = {
 #include "sub_main/004A0970.inc"
 };
-char D_004A0990[0x18] = {
+char gBladeNames_102[24] = {
 #include "sub_main/004A0990.inc"
 };
-char D_004A09A8[15] = {
+char gBladeNames_103[15] = {
 #include "sub_main/004A09A8.inc"
 };
-char D_004A09C0[0x18] = {
+char gBladeNames_104[24] = {
 #include "sub_main/004A09C0.inc"
 };
-char D_004A09D8[13] = {
+char gBladeNames_105[13] = {
 #include "sub_main/004A09D8.inc"
 };
-char D_004A09E8[13] = {
+char gBladeNames_106[13] = {
 #include "sub_main/004A09E8.inc"
 };
-char D_004A0A00[0x20] = {
+char gBladeNames_107[32] = {
 #include "sub_main/004A0A00.inc"
 };
-char D_004A0A20[0x18] = {
+char gBladeNames_108[24] = {
 #include "sub_main/004A0A20.inc"
 };
-char D_004A0A38[0xC] = {
+char gBladeNames_109[12] = {
 #include "sub_main/004A0A38.inc"
 };
-char D_004A0A50[0x18] = {
+char gBladeNames_110[24] = {
 #include "sub_main/004A0A50.inc"
 };
-char D_004A0A68[0x8] = {
+char gBladeNames_111[8] = {
 #include "sub_main/004A0A68.inc"
 };
-char D_004A0A70[0x10] = {
+char gBladeNames_112[16] = {
 #include "sub_main/004A0A70.inc"
 };
-char D_004A0A80[0x18] = {
+char gBladeNames_113[24] = {
 #include "sub_main/004A0A80.inc"
 };
-char D_004A0A98[15] = {
+char gBladeNames_114[15] = {
 #include "sub_main/004A0A98.inc"
 };
-char D_004A0AA8[13] = {
+char gBladeNames_115[13] = {
 #include "sub_main/004A0AA8.inc"
 };
-char D_004A0AB8[15] = {
+char gBladeNames_116[15] = {
 #include "sub_main/004A0AB8.inc"
 };
-char D_004A0AD0[0x18] = {
+char gBladeNames_117[24] = {
 #include "sub_main/004A0AD0.inc"
 };
-char D_004A0AE8[13] = {
+char gBladeNames_118[13] = {
 #include "sub_main/004A0AE8.inc"
 };
-char D_004A0AF8[13] = {
+char gBladeNames_119[13] = {
 #include "sub_main/004A0AF8.inc"
 };
-char D_004A0B10[0x18] = {
+char gBladeNames_120[24] = {
 #include "sub_main/004A0B10.inc"
 };
-char D_004A0B28[13] = {
+char gBladeNames_121[13] = {
 #include "sub_main/004A0B28.inc"
 };
-char D_004A0B38[15] = {
+char gBladeNames_122[15] = {
 #include "sub_main/004A0B38.inc"
 };
-char D_004A0B48[15] = {
+char gBladeNames_123[15] = {
 #include "sub_main/004A0B48.inc"
 };
-char D_004A0B58[0xC] = {
+char gBladeNames_124[12] = {
 #include "sub_main/004A0B58.inc"
 };
-char D_004A0B70[0x20] = {
+char gBladeNames_125[32] = {
 #include "sub_main/004A0B70.inc"
 };
-char D_004A0B90[0x18] = {
+char gBladeNames_126[24] = {
 #include "sub_main/004A0B90.inc"
 };
-char D_004A0BA8[13] = {
+char gBladeNames_127[13] = {
 #include "sub_main/004A0BA8.inc"
 };
-char D_004A0BB8[15] = {
+char gBladeNames_128[15] = {
 #include "sub_main/004A0BB8.inc"
 };
-char D_004A0BC8[13] = {
+char gBladeNames_129[13] = {
 #include "sub_main/004A0BC8.inc"
 };
-char D_004A0BE0[0x18] = {
+char gBladeNames_130[24] = {
 #include "sub_main/004A0BE0.inc"
 };
-char D_004A0BF8[13] = {
+char gBladeNames_131[13] = {
 #include "sub_main/004A0BF8.inc"
 };
-char D_004A0C10[0x18] = {
+char gBladeNames_132[24] = {
 #include "sub_main/004A0C10.inc"
 };
-char D_004A0C28[15] = {
+char gBladeNames_133[15] = {
 #include "sub_main/004A0C28.inc"
 };
-char D_004A0C38[15] = {
+char gBladeNames_134[15] = {
 #include "sub_main/004A0C38.inc"
 };
-char D_004A0C48[15] = {
+char gBladeNames_135[15] = {
 #include "sub_main/004A0C48.inc"
 };
-char D_004A0C58[13] = {
+char gBladeNames_136[13] = {
 #include "sub_main/004A0C58.inc"
 };
-char D_004A0C70[0x18] = {
+char gBladeNames_137[24] = {
 #include "sub_main/004A0C70.inc"
 };
-char D_004A0C88[0xC] = {
+char gBladeNames_138[12] = {
 #include "sub_main/004A0C88.inc"
 };
-char D_004A0C98[13] = {
+char gBladeNames_139[13] = {
 #include "sub_main/004A0C98.inc"
 };
-char D_004A0CB0[0x20] = {
+char gBladeNames_140[32] = {
 #include "sub_main/004A0CB0.inc"
 };
-char D_004A0CD0[0x20] = {
+char gBladeNames_141[32] = {
 #include "sub_main/004A0CD0.inc"
 };
-char D_004A0CF0[0x20] = {
+char gBladeNames_142[32] = {
 #include "sub_main/004A0CF0.inc"
 };
-char D_004A0D10[0x18] = {
+char gBladeNames_143[24] = {
 #include "sub_main/004A0D10.inc"
 };
-char D_004A0D28[15] = {
+char gBladeNames_144[15] = {
 #include "sub_main/004A0D28.inc"
 };
-char D_004A0D40[0x20] = {
+char gBladeNames_145[32] = {
 #include "sub_main/004A0D40.inc"
 };
-char D_004A0D60[0x18] = {
+char gBladeNames_146[24] = {
 #include "sub_main/004A0D60.inc"
 };
-char D_004A0D78[15] = {
+char gBladeNames_147[15] = {
 #include "sub_main/004A0D78.inc"
 };
-char D_004A0D90[0x20] = {
+char gBladeNames_148[32] = {
 #include "sub_main/004A0D90.inc"
 };
-char D_004A0DB0[0x18] = {
+char gBladeNames_149[24] = {
 #include "sub_main/004A0DB0.inc"
 };
-char D_004A0DC8[13] = {
+char gBladeNames_150[13] = {
 #include "sub_main/004A0DC8.inc"
 };
-char D_004A0DD8[0xC] = {
+char gBladeNames_151[12] = {
 #include "sub_main/004A0DD8.inc"
 };
-char D_004A0DF0[0x18] = {
+char gBladeNames_152[24] = {
 #include "sub_main/004A0DF0.inc"
 };
-char D_004A0E08[15] = {
+char gBladeNames_153[15] = {
 #include "sub_main/004A0E08.inc"
 };
-char D_004A0E18[15] = {
+char gBladeNames_154[15] = {
 #include "sub_main/004A0E18.inc"
 };
-char D_004A0E28[15] = {
+char gBladeNames_155[15] = {
 #include "sub_main/004A0E28.inc"
 };
-char D_004A0E38[15] = {
+char gBladeNames_156[15] = {
 #include "sub_main/004A0E38.inc"
 };
-char D_004A0E50[0x20] = {
+char gBladeNames_157[32] = {
 #include "sub_main/004A0E50.inc"
 };
-char D_004A0E70[0x20] = {
+char gBladeNames_158[32] = {
 #include "sub_main/004A0E70.inc"
 };
-char D_004A0E90[0x20] = {
+char gBladeNames_159[32] = {
 #include "sub_main/004A0E90.inc"
 };
-char D_004A0EB0[0x18] = {
+char gBladeNames_160[24] = {
 #include "sub_main/004A0EB0.inc"
 };
-char D_004A0EC8[0x8] = {
+char gBladeNames_161[8] = {
 #include "sub_main/004A0EC8.inc"
 };
-char D_004A0ED0[0x8] = {
+char gBladeNames_162[8] = {
 #include "sub_main/004A0ED0.inc"
 };
-char D_004A0ED8[0xC] = {
+char gBladeNames_163[12] = {
 #include "sub_main/004A0ED8.inc"
 };
-char D_004A0EE8[13] = {
+char gBladeNames_164[13] = {
 #include "sub_main/004A0EE8.inc"
 };
-char D_004A0F00[0x20] = {
+char gBladeNames_165[32] = {
 #include "sub_main/004A0F00.inc"
 };
-char D_004A0F20[0x20] = {
+char gBladeNames_166[32] = {
 #include "sub_main/004A0F20.inc"
 };
-char D_004A0F40[0x18] = {
+char gBladeNames_167[24] = {
 #include "sub_main/004A0F40.inc"
 };
-char D_004A0F58[0xC] = {
+char gBladeNames_168[12] = {
 #include "sub_main/004A0F58.inc"
 };
-char D_004A0F68[13] = {
+char gBladeNames_169[13] = {
 #include "sub_main/004A0F68.inc"
 };
-char D_004A0F78[15] = {
+char gBladeNames_170[15] = {
 #include "sub_main/004A0F78.inc"
 };
-char D_004A0F90[0x20] = {
+char gBladeNames_171[32] = {
 #include "sub_main/004A0F90.inc"
 };
-char D_004A0FB0[0x18] = {
+char gBladeNames_172[24] = {
 #include "sub_main/004A0FB0.inc"
 };
-char D_004A0FC8[15] = {
+char gBladeNames_173[15] = {
 #include "sub_main/004A0FC8.inc"
 };
-char D_004A0FE0[0x20] = {
+char gBladeNames_174[32] = {
 #include "sub_main/004A0FE0.inc"
 };
-char D_004A1000[0x20] = {
+char gBladeNames_175[32] = {
 #include "sub_main/004A1000.inc"
 };
-char D_004A1020[0x20] = {
+char gBladeNames_176[32] = {
 #include "sub_main/004A1020.inc"
 };
-char D_004A1040[0x18] = {
+char gBladeNames_177[24] = {
 #include "sub_main/004A1040.inc"
 };
-char D_004A1058[13] = {
+char gBladeNames_178[13] = {
 #include "sub_main/004A1058.inc"
 };
-char D_004A1068[15] = {
+char gBladeNames_179[15] = {
 #include "sub_main/004A1068.inc"
 };
-char D_004A1078[13] = {
+char gBladeNames_180[13] = {
 #include "sub_main/004A1078.inc"
 };
-char D_004A1088[15] = {
+char gBladeNames_181[15] = {
 #include "sub_main/004A1088.inc"
 };
-char D_004A1098[13] = {
+char gBladeNames_182[13] = {
 #include "sub_main/004A1098.inc"
 };
-char D_004A10A8[13] = {
+char gBladeNames_183[13] = {
 #include "sub_main/004A10A8.inc"
 };
-char D_004A10C0[0x18] = {
+char gBladeNames_184[24] = {
 #include "sub_main/004A10C0.inc"
 };
-char D_004A10D8[15] = {
+char gBladeNames_185[15] = {
 #include "sub_main/004A10D8.inc"
 };
-char D_004A10F0[0x20] = {
+char gBladeNames_186[32] = {
 #include "sub_main/004A10F0.inc"
 };
-char D_004A1110[0x18] = {
+char gBladeNames_187[24] = {
 #include "sub_main/004A1110.inc"
 };
-char D_004A1128[0x8] = {
+char gBladeNames_188[8] = {
 #include "sub_main/004A1128.inc"
 };
-char D_004A1130[0x20] = {
+char gBladeNames_189[32] = {
 #include "sub_main/004A1130.inc"
 };
-char D_004A1150[0x18] = {
+char gBladeNames_190[24] = {
 #include "sub_main/004A1150.inc"
 };
-char D_004A1168[15] = {
+char gBladeNames_191[15] = {
 #include "sub_main/004A1168.inc"
 };
-char D_004A1178[15] = {
+char gBladeNames_192[15] = {
 #include "sub_main/004A1178.inc"
 };
-char D_004A1190[0x18] = {
+char gBladeNames_193[24] = {
 #include "sub_main/004A1190.inc"
 };
-char D_004A11A8[0xC] = {
+char gBladeNames_194[12] = {
 #include "sub_main/004A11A8.inc"
 };
-char D_004A11C0[0x20] = {
+char gBladeNames_195[32] = {
 #include "sub_main/004A11C0.inc"
 };
-char D_004A11E0[0x18] = {
+char gBladeNames_196[24] = {
 #include "sub_main/004A11E0.inc"
 };
-char D_004A11F8[15] = {
+char gBladeNames_197[15] = {
 #include "sub_main/004A11F8.inc"
 };
-char D_004A1208[0xC] = {
+char gBladeNames_198[12] = {
 #include "sub_main/004A1208.inc"
 };
-char D_004A1218[15] = {
+char gBladeNames_199[15] = {
 #include "sub_main/004A1218.inc"
 };
-char D_004A1230[0x18] = {
+char gBladeNames_200[24] = {
 #include "sub_main/004A1230.inc"
 };
-char D_004A1248[0x8] = {
+char gBladeNames_201[8] = {
 #include "sub_main/004A1248.inc"
 };
-char D_004A1250[0x10] = {
+char gBladeNames_202[16] = {
 #include "sub_main/004A1250.inc"
 };
-char D_004A1260[0x18] = {
+char gBladeNames_203[24] = {
 #include "sub_main/004A1260.inc"
 };
-char D_004A1278[13] = {
+char gBladeNames_204[13] = {
 #include "sub_main/004A1278.inc"
 };
-char D_004A1288[13] = {
+char gBladeNames_205[13] = {
 #include "sub_main/004A1288.inc"
 };
-char D_004A12A0[0x18] = {
+char gBladeNames_206[24] = {
 #include "sub_main/004A12A0.inc"
 };
-char D_004A12B8[13] = {
+char gBladeNames_207[13] = {
 #include "sub_main/004A12B8.inc"
 };
-char D_004A12C8[0x8] = {
+char gBladeNames_208[8] = {
 #include "sub_main/004A12C8.inc"
 };
-char D_004A12D0[0x10] = {
+char gBladeNames_209[16] = {
 #include "sub_main/004A12D0.inc"
 };
-char D_004A12E0[0x20] = {
+char gBladeNames_210[32] = {
 #include "sub_main/004A12E0.inc"
 };
-char D_004A1300[0x18] = {
+char gBladeNames_211[24] = {
 #include "sub_main/004A1300.inc"
 };
-char D_004A1318[15] = {
+char gBladeNames_212[15] = {
 #include "sub_main/004A1318.inc"
 };
-char D_004A1330[0x20] = {
+char gBladeNames_213[32] = {
 #include "sub_main/004A1330.inc"
 };
-char D_004A1350[0x18] = {
+char gBladeNames_214[24] = {
 #include "sub_main/004A1350.inc"
 };
-char D_004A1368[0xC] = {
+char gBladeNames_215[12] = {
 #include "sub_main/004A1368.inc"
 };
-char D_004A1380[0x20] = {
+char gBladeNames_216[32] = {
 #include "sub_main/004A1380.inc"
 };
-char D_004A13A0[0x20] = {
+char gBladeNames_217[32] = {
 #include "sub_main/004A13A0.inc"
 };
-char D_004A13C0[0x18] = {
+char gBladeNames_218[24] = {
 #include "sub_main/004A13C0.inc"
 };
-char D_004A13D8[0x8] = {
+char gBladeNames_219[8] = {
 #include "sub_main/004A13D8.inc"
 };
-char D_004A13E0[0x10] = {
+char gBladeNames_220[16] = {
 #include "sub_main/004A13E0.inc"
 };
-char D_004A13F0[0x8] = {
+char gBladeNames_221[8] = {
 #include "sub_main/004A13F0.inc"
 };
-char D_004A13F8[0x8] = {
+char gBladeNames_222[8] = {
 #include "sub_main/004A13F8.inc"
 };
-char D_004A1400[0x10] = {
+char gBladeNames_223[16] = {
 #include "sub_main/004A1400.inc"
 };
-char D_004A1410[0x10] = {
+char gBladeNames_224[16] = {
 #include "sub_main/004A1410.inc"
 };
-char D_004A1420[0x10] = {
+char gBladeNames_225[16] = {
 #include "sub_main/004A1420.inc"
 };
-char D_004A1430[0x10] = {
+char gBladeNames_226[16] = {
 #include "sub_main/004A1430.inc"
 };
-char D_004A1440[0x8] = {
+char gBladeNames_227[8] = {
 #include "sub_main/004A1440.inc"
 };
-char D_004A1448[13] = {
+char gBladeNames_228[13] = {
 #include "sub_main/004A1448.inc"
 };
-char D_004A1458[15] = {
+char gBladeNames_229[15] = {
 #include "sub_main/004A1458.inc"
 };
-char D_004A1470[0x18] = {
+char gBladeNames_230[24] = {
 #include "sub_main/004A1470.inc"
 };
-char D_004A1488[0xC] = {
+char gBladeNames_231[12] = {
 #include "sub_main/004A1488.inc"
 };
-char D_004A14A0[0x18] = {
+char gBladeNames_232[24] = {
 #include "sub_main/004A14A0.inc"
 };
-char D_004A14B8[0xC] = {
+char gBladeNames_233[12] = {
 #include "sub_main/004A14B8.inc"
 };
-char D_004A14C8[13] = {
+char gBladeNames_234[13] = {
 #include "sub_main/004A14C8.inc"
 };
-char D_004A14E0[0x18] = {
+char gBladeNames_235[24] = {
 #include "sub_main/004A14E0.inc"
 };
-char D_004A14F8[0xC] = {
+char gBladeNames_236[12] = {
 #include "sub_main/004A14F8.inc"
 };
-char D_004A1508[15] = {
+char gBladeNames_237[15] = {
 #include "sub_main/004A1508.inc"
 };
-char D_004A1518[0xC] = {
+char gBladeNames_238[12] = {
 #include "sub_main/004A1518.inc"
 };
-char D_004A1530[0x20] = {
+char gBladeNames_239[32] = {
 #include "sub_main/004A1530.inc"
 };
-char D_004A1550[0x20] = {
+char gBladeNames_240[32] = {
 #include "sub_main/004A1550.inc"
 };
-char D_004A1570[0x18] = {
+char gBladeNames_241[24] = {
 #include "sub_main/004A1570.inc"
 };
-char D_004A1588[15] = {
+char gBladeNames_242[15] = {
 #include "sub_main/004A1588.inc"
 };
-char D_004A15A0[0x20] = {
+char gBladeNames_243[32] = {
 #include "sub_main/004A15A0.inc"
 };
-char D_004A15C0[0x18] = {
+char gBladeNames_244[24] = {
 #include "sub_main/004A15C0.inc"
 };
-char D_004A15D8[15] = {
+char gBladeNames_245[15] = {
 #include "sub_main/004A15D8.inc"
 };
-char D_004A15E8[15] = {
+char gBladeNames_246[15] = {
 #include "sub_main/004A15E8.inc"
 };
-char D_004A1600[0x18] = {
+char gBladeNames_247[24] = {
 #include "sub_main/004A1600.inc"
 };
-char D_004A1618[15] = {
+char gBladeNames_248[15] = {
 #include "sub_main/004A1618.inc"
 };
-char D_004A1630[0x18] = {
+char gBladeNames_249[24] = {
 #include "sub_main/004A1630.inc"
 };
-char D_004A1648[13] = {
+char gBladeNames_250[13] = {
 #include "sub_main/004A1648.inc"
 };
-char D_004A1658[15] = {
+char gBladeNames_251[15] = {
 #include "sub_main/004A1658.inc"
 };
-char D_004A1670[0x20] = {
+char gBladeNames_252[32] = {
 #include "sub_main/004A1670.inc"
 };
-char D_004A1690[0x18] = {
+char gBladeNames_253[24] = {
 #include "sub_main/004A1690.inc"
 };
-char D_004A16A8[15] = {
+char gBladeNames_254[15] = {
 #include "sub_main/004A16A8.inc"
 };
-char D_004A16C0[0x20] = {
+char gBladeNames_255[32] = {
 #include "sub_main/004A16C0.inc"
 };
-char D_004A16E0[0x18] = {
+char gBladeNames_256[24] = {
 #include "sub_main/004A16E0.inc"
 };
-char D_004A16F8[0x8] = {
+char gBladeNames_257[8] = {
 #include "sub_main/004A16F8.inc"
 };
-char D_004A1700[0x10] = {
+char gBladeNames_258[16] = {
 #include "sub_main/004A1700.inc"
 };
-char D_004A1710[0x20] = {
+char gBladeNames_259[32] = {
 #include "sub_main/004A1710.inc"
 };
-char D_004A1730[0x18] = {
+char gBladeNames_260[24] = {
 #include "sub_main/004A1730.inc"
 };
-char D_004A1748[15] = {
+char gBladeNames_261[15] = {
 #include "sub_main/004A1748.inc"
 };
-char D_004A1758[15] = {
+char gBladeNames_262[15] = {
 #include "sub_main/004A1758.inc"
 };
-char D_004A1770[0x20] = {
+char gBladeNames_263[32] = {
 #include "sub_main/004A1770.inc"
 };
-char D_004A1790[0x20] = {
+char gBladeNames_264[32] = {
 #include "sub_main/004A1790.inc"
 };
-char D_004A17B0[0x20] = {
+char gBladeNames_265[32] = {
 #include "sub_main/004A17B0.inc"
 };
-char D_004A17D0[0x20] = {
+char gBladeNames_266[32] = {
 #include "sub_main/004A17D0.inc"
 };
-char D_004A17F0[0x20] = {
+char gBladeNames_267[32] = {
 #include "sub_main/004A17F0.inc"
 };
-char D_004A1810[0x18] = {
+char gBladeNames_268[24] = {
 #include "sub_main/004A1810.inc"
 };
-char D_004A1828[15] = {
+char gBladeNames_269[15] = {
 #include "sub_main/004A1828.inc"
 };
-char D_004A1838[0xC] = {
+char gBladeNames_270[12] = {
 #include "sub_main/004A1838.inc"
 };
-char D_004A1848[0x8] = {
+char gBladeNames_271[8] = {
 #include "sub_main/004A1848.inc"
 };
-char D_004A1850[0x10] = {
+char gBladeNames_272[16] = {
 #include "sub_main/004A1850.inc"
 };
-char D_004A1860[0x18] = {
+char gBladeNames_273[24] = {
 #include "sub_main/004A1860.inc"
 };
-char D_004A1878[0xC] = {
+char gBladeNames_274[12] = {
 #include "sub_main/004A1878.inc"
 };
-char D_004A1888[13] = {
+char gBladeNames_275[13] = {
 #include "sub_main/004A1888.inc"
 };
-char D_004A1898[15] = {
+char gBladeNames_276[15] = {
 #include "sub_main/004A1898.inc"
 };
-char D_004A18A8[0xC] = {
+char gBladeNames_277[12] = {
 #include "sub_main/004A18A8.inc"
 };
-char D_004A18B8[13] = {
+char gBladeNames_278[13] = {
 #include "sub_main/004A18B8.inc"
 };
-char D_004A18D0[0x18] = {
+char gBladeNames_279[24] = {
 #include "sub_main/004A18D0.inc"
 };
-char D_004A18E8[13] = {
+char gBladeNames_280[13] = {
 #include "sub_main/004A18E8.inc"
 };
-char D_004A1900[0x18] = {
+char gBladeNames_281[24] = {
 #include "sub_main/004A1900.inc"
 };
-char D_004A1918[15] = {
+char gBladeNames_282[15] = {
 #include "sub_main/004A1918.inc"
 };
-char D_004A1928[0xC] = {
+char gBladeNames_283[12] = {
 #include "sub_main/004A1928.inc"
 };
-char D_004A1938[13] = {
+char gBladeNames_284[13] = {
 #include "sub_main/004A1938.inc"
 };
-char D_004A1948[0x8] = {
+char gBladeNames_285[8] = {
 #include "sub_main/004A1948.inc"
 };
-char D_004A1950[0x20] = {
+char gBladeNames_286[32] = {
 #include "sub_main/004A1950.inc"
 };
-char D_004A1970[0x20] = {
+char gBladeNames_287[32] = {
 #include "sub_main/004A1970.inc"
 };
-char D_004A1990[0x20] = {
+char gBladeNames_288[32] = {
 #include "sub_main/004A1990.inc"
 };
-char D_004A19B0[0x20] = {
+char gBladeNames_289[32] = {
 #include "sub_main/004A19B0.inc"
 };
-char D_004A19D0[0x18] = {
+char gBladeNames_290[24] = {
 #include "sub_main/004A19D0.inc"
 };
-char D_004A19E8[13] = {
+char gBladeNames_291[13] = {
 #include "sub_main/004A19E8.inc"
 };
-char D_004A19F8[15] = {
+char gBladeNames_292[15] = {
 #include "sub_main/004A19F8.inc"
 };
-char D_004A1A10[0x18] = {
+char gBladeNames_293[24] = {
 #include "sub_main/004A1A10.inc"
 };
-char D_004A1A28[13] = {
+char gBladeNames_294[13] = {
 #include "sub_main/004A1A28.inc"
 };
-char D_004A1A38[13] = {
+char gBladeNames_295[13] = {
 #include "sub_main/004A1A38.inc"
 };
-char D_004A1A50[0x20] = {
+char gBladeNames_296[32] = {
 #include "sub_main/004A1A50.inc"
 };
-char D_004A1A70[0x18] = {
+char gBladeNames_297[24] = {
 #include "sub_main/004A1A70.inc"
 };
-char D_004A1A88[0x8] = {
+char gBladeNames_298[8] = {
 #include "sub_main/004A1A88.inc"
 };
-char D_004A1A90[0x10] = {
+char gBladeNames_299[16] = {
 #include "sub_main/004A1A90.inc"
 };
-char D_004A1AA0[0x10] = {
+char gBladeNames_300[16] = {
 #include "sub_main/004A1AA0.inc"
 };
-char D_004A1AB0[0x10] = {
+char gBladeNames_301[16] = {
 #include "sub_main/004A1AB0.inc"
 };
-char D_004A1AC0[0x18] = {
+char gBladeNames_302[24] = {
 #include "sub_main/004A1AC0.inc"
 };
-char D_004A1AD8[0x8] = {
+char gBladeNames_303[8] = {
 #include "sub_main/004A1AD8.inc"
 };
-char D_004A1AE0[0x10] = {
+char gBladeNames_304[16] = {
 #include "sub_main/004A1AE0.inc"
 };
-char D_004A1AF0[0x10] = {
+char gBladeNames_305[16] = {
 #include "sub_main/004A1AF0.inc"
 };
-char D_004A1B00[0x10] = {
+char gBladeNames_306[16] = {
 #include "sub_main/004A1B00.inc"
 };
-char D_004A1B10[0x20] = {
+char gBladeNames_307[32] = {
 #include "sub_main/004A1B10.inc"
 };
-char D_004A1B30[0x20] = {
+char gBladeNames_308[32] = {
 #include "sub_main/004A1B30.inc"
 };
-char D_004A1B50[0x18] = {
+char gBladeNames_309[24] = {
 #include "sub_main/004A1B50.inc"
 };
-char D_004A1B68[15] = {
+char gBladeNames_310[15] = {
 #include "sub_main/004A1B68.inc"
 };
-char D_004A1B78[0xC] = {
+char gBladeNames_311[12] = {
 #include "sub_main/004A1B78.inc"
 };
-char D_004A1B90[0x20] = {
+char gBladeNames_312[32] = {
 #include "sub_main/004A1B90.inc"
 };
-char D_004A1BB0[0x18] = {
+char gBladeNames_313[24] = {
 #include "sub_main/004A1BB0.inc"
 };
-char D_004A1BC8[13] = {
+char gBladeNames_314[13] = {
 #include "sub_main/004A1BC8.inc"
 };
-char D_004A1BD8[15] = {
+char gBladeNames_315[15] = {
 #include "sub_main/004A1BD8.inc"
 };
-char D_004A1BE8[13] = {
+char gBladeNames_316[13] = {
 #include "sub_main/004A1BE8.inc"
 };
-char D_004A1BF8[0xC] = {
+char gBladeNames_317[12] = {
 #include "sub_main/004A1BF8.inc"
 };
-char D_004A1C08[0x8] = {
+char gBladeNames_318[8] = {
 #include "sub_main/004A1C08.inc"
 };
-char D_004A1C10[0x10] = {
+char gBladeNames_319[16] = {
 #include "sub_main/004A1C10.inc"
 };
-char D_004A1C20[0x20] = {
+char gBladeNames_320[32] = {
 #include "sub_main/004A1C20.inc"
 };
-char D_004A1C40[0x18] = {
+char gBladeNames_321[24] = {
 #include "sub_main/004A1C40.inc"
 };
-char D_004A1C58[0xC] = {
+char gBladeNames_322[12] = {
 #include "sub_main/004A1C58.inc"
 };
-char D_004A1C70[0x18] = {
+char gBladeNames_323[24] = {
 #include "sub_main/004A1C70.inc"
 };
-char D_004A1C88[0x8] = {
+char gBladeNames_324[8] = {
 #include "sub_main/004A1C88.inc"
 };
-char D_004A1C90[0x10] = {
+char gBladeNames_325[16] = {
 #include "sub_main/004A1C90.inc"
 };
-char D_004A1CA0[0x10] = {
+char gBladeNames_326[16] = {
 #include "sub_main/004A1CA0.inc"
 };
-char D_004A1CB0[0x20] = {
+char gBladeNames_327[32] = {
 #include "sub_main/004A1CB0.inc"
 };
-char D_004A1CD0[0x18] = {
+char gBladeNames_328[24] = {
 #include "sub_main/004A1CD0.inc"
 };
-char D_004A1CE8[15] = {
+char gBladeNames_329[15] = {
 #include "sub_main/004A1CE8.inc"
 };
-char D_004A1CF8[15] = {
+char gBladeNames_330[15] = {
 #include "sub_main/004A1CF8.inc"
 };
-char D_004A1D08[15] = {
+char gBladeNames_331[15] = {
 #include "sub_main/004A1D08.inc"
 };
-char D_004A1D18[15] = {
+char gBladeNames_332[15] = {
 #include "sub_main/004A1D18.inc"
 };
-char D_004A1D28[0xC] = {
+char gBladeNames_333[12] = {
 #include "sub_main/004A1D28.inc"
 };
-char D_004A1D38[13] = {
+char gBladeNames_334[13] = {
 #include "sub_main/004A1D38.inc"
 };
-char D_004A1D48[0xC] = {
+char gBladeNames_335[12] = {
 #include "sub_main/004A1D48.inc"
 };
-char D_004A1D60[0x20] = {
+char gBladeNames_336[32] = {
 #include "sub_main/004A1D60.inc"
 };
-char D_004A1D80[0x18] = {
+char gBladeNames_337[24] = {
 #include "sub_main/004A1D80.inc"
 };
-char D_004A1D98[15] = {
+char gBladeNames_338[15] = {
 #include "sub_main/004A1D98.inc"
 };
-char D_004A1DB0[0x20] = {
+char gBladeNames_339[32] = {
 #include "sub_main/004A1DB0.inc"
 };
-char D_004A1DD0[0x20] = {
+char gBladeNames_340[32] = {
 #include "sub_main/004A1DD0.inc"
 };
-char D_004A1DF0[0x18] = {
+char gBladeNames_341[24] = {
 #include "sub_main/004A1DF0.inc"
 };
-char D_004A1E08[15] = {
+char gBladeNames_342[15] = {
 #include "sub_main/004A1E08.inc"
 };
-char D_004A1E18[0x8] = {
+char gBladeNames_343[8] = {
 #include "sub_main/004A1E18.inc"
 };
-char D_004A1E20[0x10] = {
+char gBladeNames_344[16] = {
 #include "sub_main/004A1E20.inc"
 };
-char D_004A1E30[0x8] = {
+char gBladeNames_345[8] = {
 #include "sub_main/004A1E30.inc"
 };
-char D_004A1E38[15] = {
+char gBladeNames_346[15] = {
 #include "sub_main/004A1E38.inc"
 };
-char D_004A1E50[0x20] = {
+char gBladeNames_347[32] = {
 #include "sub_main/004A1E50.inc"
 };
-char D_004A1E70[0x18] = {
+char gBladeNames_348[24] = {
 #include "sub_main/004A1E70.inc"
 };
-char D_004A1E88[15] = {
+char gBladeNames_349[15] = {
 #include "sub_main/004A1E88.inc"
 };
-char D_004A1EA0[0x20] = {
+char gBladeNames_350[32] = {
 #include "sub_main/004A1EA0.inc"
 };
-char D_004A1EC0[0x18] = {
+char gBladeNames_351[24] = {
 #include "sub_main/004A1EC0.inc"
 };
-char D_004A1ED8[15] = {
+char gBladeNames_352[15] = {
 #include "sub_main/004A1ED8.inc"
 };
-char D_004A1EE8[15] = {
+char gBladeNames_353[15] = {
 #include "sub_main/004A1EE8.inc"
 };
-char D_004A1EF8[15] = {
+char gBladeNames_354[15] = {
 #include "sub_main/004A1EF8.inc"
 };
-char D_004A1F10[0x18] = {
+char gBladeNames_355[24] = {
 #include "sub_main/004A1F10.inc"
 };
-char D_004A1F28[15] = {
+char gBladeNames_356[15] = {
 #include "sub_main/004A1F28.inc"
 };
-char D_004A1F38[15] = {
+char gBladeNames_357[15] = {
 #include "sub_main/004A1F38.inc"
 };
-char D_004A1F48[13] = {
+char gBladeNames_358[13] = {
 #include "sub_main/004A1F48.inc"
 };
-char D_004A1F60[0x20] = {
+char gBladeNames_359[32] = {
 #include "sub_main/004A1F60.inc"
 };
-char D_004A1F80[0x20] = {
+char gBladeNames_360[32] = {
 #include "sub_main/004A1F80.inc"
 };
-char D_004A1FA0[0x20] = {
+char gBladeNames_361[32] = {
 #include "sub_main/004A1FA0.inc"
 };
-char D_004A1FC0[0x18] = {
+char gBladeNames_362[24] = {
 #include "sub_main/004A1FC0.inc"
 };
-char D_004A1FD8[13] = {
+char gBladeNames_363[13] = {
 #include "sub_main/004A1FD8.inc"
 };
-char D_004A1FF0[0x20] = {
+char gBladeNames_364[32] = {
 #include "sub_main/004A1FF0.inc"
 };
-char D_004A2010[0x18] = {
+char gBladeNames_365[24] = {
 #include "sub_main/004A2010.inc"
 };
-char D_004A2028[0xC] = {
+char gBladeNames_366[12] = {
 #include "sub_main/004A2028.inc"
 };
-char D_004A2038[13] = {
+char gBladeNames_367[13] = {
 #include "sub_main/004A2038.inc"
 };
-char D_004A2050[0x20] = {
+char gBladeNames_368[32] = {
 #include "sub_main/004A2050.inc"
 };
-char D_004A2070[0x18] = {
+char gBladeNames_369[24] = {
 #include "sub_main/004A2070.inc"
 };
-char D_004A2088[0xC] = {
+char gBladeNames_370[12] = {
 #include "sub_main/004A2088.inc"
 };
-char D_004A2098[0x8] = {
+char gBladeNames_371[8] = {
 #include "sub_main/004A2098.inc"
 };
-char D_004A20A0[0x20] = {
+char gBladeNames_372[32] = {
 #include "sub_main/004A20A0.inc"
 };
-char D_004A20C0[0x18] = {
+char gBladeNames_373[24] = {
 #include "sub_main/004A20C0.inc"
 };
-char D_004A20D8[0xC] = {
+char gBladeNames_374[12] = {
 #include "sub_main/004A20D8.inc"
 };
-char D_004A20F0[0x18] = {
+char gBladeNames_375[24] = {
 #include "sub_main/004A20F0.inc"
 };
-char D_004A2108[0xC] = {
+char gBladeNames_376[12] = {
 #include "sub_main/004A2108.inc"
 };
-char D_004A2118[15] = {
+char gBladeNames_377[15] = {
 #include "sub_main/004A2118.inc"
 };
-char D_004A2128[13] = {
+char gBladeNames_378[13] = {
 #include "sub_main/004A2128.inc"
 };
-char D_004A2138[13] = {
+char gBladeNames_379[13] = {
 #include "sub_main/004A2138.inc"
 };
-char D_004A2150[0x20] = {
+char gBladeNames_380[32] = {
 #include "sub_main/004A2150.inc"
 };
-char D_004A2170[0x20] = {
+char gBladeNames_381[32] = {
 #include "sub_main/004A2170.inc"
 };
-char D_004A2190[0x18] = {
+char gBladeNames_382[24] = {
 #include "sub_main/004A2190.inc"
 };
-char D_004A21A8[13] = {
+char gBladeNames_383[13] = {
 #include "sub_main/004A21A8.inc"
 };
-char D_004A21B8[15] = {
+char gBladeNames_384[15] = {
 #include "sub_main/004A21B8.inc"
 };
-char D_004A21D0[0x20] = {
+char gBladeNames_385[32] = {
 #include "sub_main/004A21D0.inc"
 };
-char D_004A21F0[0x20] = {
+char gBladeNames_386[32] = {
 #include "sub_main/004A21F0.inc"
 };
-char D_004A2210[0x20] = {
+char gBladeNames_387[32] = {
 #include "sub_main/004A2210.inc"
 };
-char D_004A2230[0x18] = {
+char gBladeNames_388[24] = {
 #include "sub_main/004A2230.inc"
 };
-char D_004A2248[13] = {
+char gBladeNames_389[13] = {
 #include "sub_main/004A2248.inc"
 };
-char D_004A2258[0xC] = {
+char gBladeNames_390[12] = {
 #include "sub_main/004A2258.inc"
 };
-char D_004A2268[13] = {
+char gBladeNames_391[13] = {
 #include "sub_main/004A2268.inc"
 };
-char D_004A2278[15] = {
+char gBladeNames_392[15] = {
 #include "sub_main/004A2278.inc"
 };
-char D_004A2288[15] = {
+char gBladeNames_393[15] = {
 #include "sub_main/004A2288.inc"
 };
-char D_004A22A0[0x20] = {
+char gBladeNames_394[32] = {
 #include "sub_main/004A22A0.inc"
 };
-char D_004A22C0[0x20] = {
+char gBladeNames_395[32] = {
 #include "sub_main/004A22C0.inc"
 };
-char D_004A22E0[0x20] = {
+char gBladeNames_396[32] = {
 #include "sub_main/004A22E0.inc"
 };
-char D_004A2300[0x18] = {
+char gBladeNames_397[24] = {
 #include "sub_main/004A2300.inc"
 };
-char D_004A2318[13] = {
+char gBladeNames_398[13] = {
 #include "sub_main/004A2318.inc"
 };
-char D_004A2330[0x18] = {
+char gBladeNames_399[24] = {
 #include "sub_main/004A2330.inc"
 };
-char D_004A2348[15] = {
+char gBladeNames_400[15] = {
 #include "sub_main/004A2348.inc"
 };
-char D_004A2360[0x20] = {
+char gBladeNames_401[32] = {
 #include "sub_main/004A2360.inc"
 };
-char D_004A2380[0x20] = {
+char gBladeNames_402[32] = {
 #include "sub_main/004A2380.inc"
 };
-char D_004A23A0[0x20] = {
+char gBladeNames_403[32] = {
 #include "sub_main/004A23A0.inc"
 };
-char D_004A23C0[0x20] = {
+char gBladeNames_404[32] = {
 #include "sub_main/004A23C0.inc"
 };
-char D_004A23E0[0x18] = {
+char gBladeNames_405[24] = {
 #include "sub_main/004A23E0.inc"
 };
-char D_004A23F8[13] = {
+char gBladeNames_406[13] = {
 #include "sub_main/004A23F8.inc"
 };
-char D_004A2408[15] = {
+char gBladeNames_407[15] = {
 #include "sub_main/004A2408.inc"
 };
-char D_004A2420[0x20] = {
+char gBladeNames_408[32] = {
 #include "sub_main/004A2420.inc"
 };
-char D_004A2440[0x20] = {
+char gBladeNames_409[32] = {
 #include "sub_main/004A2440.inc"
 };
-char D_004A2460[0x18] = {
+char gBladeNames_410[24] = {
 #include "sub_main/004A2460.inc"
 };
-char D_004A2478[15] = {
+char gBladeNames_411[15] = {
 #include "sub_main/004A2478.inc"
 };
-char D_004A2488[15] = {
+char gBladeNames_412[15] = {
 #include "sub_main/004A2488.inc"
 };
-char D_004A24A0[0x20] = {
+char gBladeNames_413[32] = {
 #include "sub_main/004A24A0.inc"
 };
-char D_004A24C0[0x18] = {
+char gBladeNames_414[24] = {
 #include "sub_main/004A24C0.inc"
 };
-char D_004A24D8[0xC] = {
+char gBladeNames_415[12] = {
 #include "sub_main/004A24D8.inc"
 };
-char D_004A24F0[0x20] = {
+char gBladeNames_416[32] = {
 #include "sub_main/004A24F0.inc"
 };
-char D_004A2510[0x20] = {
+char gBladeNames_417[32] = {
 #include "sub_main/004A2510.inc"
 };
-char D_004A2530[0x20] = {
+char gBladeNames_418[32] = {
 #include "sub_main/004A2530.inc"
 };
-char D_004A2550[0x20] = {
+char gBladeNames_419[32] = {
 #include "sub_main/004A2550.inc"
 };
-char D_004A2570[0x20] = {
+char gBladeNames_420[32] = {
 #include "sub_main/004A2570.inc"
 };
-char D_004A2590[0x20] = {
+char gBladeNames_421[32] = {
 #include "sub_main/004A2590.inc"
 };
-char D_004A25B0[0x20] = {
+char gBladeNames_422[32] = {
 #include "sub_main/004A25B0.inc"
 };
-char D_004A25D0[0x20] = {
+char gBladeNames_423[32] = {
 #include "sub_main/004A25D0.inc"
 };
-char D_004A25F0[0x20] = {
+char gBladeNames_424[32] = {
 #include "sub_main/004A25F0.inc"
 };
-char D_004A2610[0x18] = {
+char gBladeNames_425[24] = {
 #include "sub_main/004A2610.inc"
 };
-char D_004A2628[0xC] = {
+char gBladeNames_426[12] = {
 #include "sub_main/004A2628.inc"
 };
-char D_004A2640[0x18] = {
+char gBladeNames_427[24] = {
 #include "sub_main/004A2640.inc"
 };
-char D_004A2658[0xC] = {
+char gBladeNames_428[12] = {
 #include "sub_main/004A2658.inc"
 };
-char D_004A2670[0x20] = {
+char gBladeNames_429[32] = {
 #include "sub_main/004A2670.inc"
 };
-char D_004A2690[0x20] = {
+char gBladeNames_430[32] = {
 #include "sub_main/004A2690.inc"
 };
-char D_004A26B0[0x18] = {
+char gBladeNames_431[24] = {
 #include "sub_main/004A26B0.inc"
 };
-char D_004A26C8[15] = {
+char gBladeNames_432[15] = {
 #include "sub_main/004A26C8.inc"
 };
-char D_004A26E0[0x20] = {
+char gBladeNames_433[32] = {
 #include "sub_main/004A26E0.inc"
 };
-char D_004A2700[0x20] = {
+char gBladeNames_434[32] = {
 #include "sub_main/004A2700.inc"
 };
-char D_004A2720[0x20] = {
+char gBladeNames_435[32] = {
 #include "sub_main/004A2720.inc"
 };
-char D_004A2740[0x20] = {
+char gBladeNames_436[32] = {
 #include "sub_main/004A2740.inc"
 };
-char D_004A2760[0x20] = {
+char gBladeNames_437[32] = {
 #include "sub_main/004A2760.inc"
 };
-char D_004A2780[0x20] = {
+char gBladeNames_438[32] = {
 #include "sub_main/004A2780.inc"
 };
-char D_004A27A0[0x20] = {
+char gBladeNames_439[32] = {
 #include "sub_main/004A27A0.inc"
 };
-char D_004A27C0[0x18] = {
+char gBladeNames_440[24] = {
 #include "sub_main/004A27C0.inc"
 };
-char D_004A27D8[0xC] = {
+char gBladeNames_441[12] = {
 #include "sub_main/004A27D8.inc"
 };
-char D_004A27F0[0x18] = {
+char gBladeNames_442[24] = {
 #include "sub_main/004A27F0.inc"
 };
-char D_004A2808[13] = {
+char gBladeNames_443[13] = {
 #include "sub_main/004A2808.inc"
 };
-char D_004A2820[0x18] = {
+char gBladeNames_444[24] = {
 #include "sub_main/004A2820.inc"
 };
-char D_004A2838[0xC] = {
+char gBladeNames_445[12] = {
 #include "sub_main/004A2838.inc"
 };
-char D_004A2848[15] = {
+char gBladeNames_446[15] = {
 #include "sub_main/004A2848.inc"
 };
-char D_004A2860[0x18] = {
+char gBladeNames_447[24] = {
 #include "sub_main/004A2860.inc"
 };
-char D_004A2878[13] = {
+char gBladeNames_448[13] = {
 #include "sub_main/004A2878.inc"
 };
-char D_004A2888[0xC] = {
+char gBladeNames_449[12] = {
 #include "sub_main/004A2888.inc"
 };
-char D_004A28A0[0x20] = {
+char gBladeNames_450[32] = {
 #include "sub_main/004A28A0.inc"
 };
-char D_004A28C0[0x20] = {
+char gBladeNames_451[32] = {
 #include "sub_main/004A28C0.inc"
 };
-char D_004A28E0[0x18] = {
+char gBladeNames_452[24] = {
 #include "sub_main/004A28E0.inc"
 };
-char D_004A28F8[15] = {
+char gBladeNames_453[15] = {
 #include "sub_main/004A28F8.inc"
 };
-char D_004A2908[13] = {
+char gBladeNames_454[13] = {
 #include "sub_main/004A2908.inc"
 };
-char D_004A2920[0x20] = {
+char gBladeNames_455[32] = {
 #include "sub_main/004A2920.inc"
 };
-char D_004A2940[0x18] = {
+char gBladeNames_456[24] = {
 #include "sub_main/004A2940.inc"
 };
-char D_004A2958[0xC] = {
+char gBladeNames_457[12] = {
 #include "sub_main/004A2958.inc"
 };
-char D_004A2968[15] = {
+char gBladeNames_458[15] = {
 #include "sub_main/004A2968.inc"
 };
-char D_004A2978[0xC] = {
+char gBladeNames_459[12] = {
 #include "sub_main/004A2978.inc"
 };
-char D_004A2988[15] = {
+char gBladeNames_460[15] = {
 #include "sub_main/004A2988.inc"
 };
-char D_004A29A0[0x20] = {
+char gBladeNames_461[32] = {
 #include "sub_main/004A29A0.inc"
 };
-char D_004A29C0[0x18] = {
+char gBladeNames_462[24] = {
 #include "sub_main/004A29C0.inc"
 };
-char D_004A29D8[0x8] = {
+char gBladeNames_463[8] = {
 #include "sub_main/004A29D8.inc"
 };
-char D_004A29E0[0x10] = {
+char gBladeNames_464[16] = {
 #include "sub_main/004A29E0.inc"
 };
-char D_004A29F0[0x20] = {
+char gBladeNames_465[32] = {
 #include "sub_main/004A29F0.inc"
 };
-char D_004A2A10[0x18] = {
+char gBladeNames_466[24] = {
 #include "sub_main/004A2A10.inc"
 };
-char D_004A2A28[0xC] = {
+char gBladeNames_467[12] = {
 #include "sub_main/004A2A28.inc"
 };
-char D_004A2A40[0x20] = {
+char gBladeNames_468[32] = {
 #include "sub_main/004A2A40.inc"
 };
-char D_004A2A60[0x20] = {
+char gBladeNames_469[32] = {
 #include "sub_main/004A2A60.inc"
 };
-char D_004A2A80[0x18] = {
+char gBladeNames_470[24] = {
 #include "sub_main/004A2A80.inc"
 };
-char D_004A2A98[0x8] = {
+char gBladeNames_471[8] = {
 #include "sub_main/004A2A98.inc"
 };
-char D_004A2AA0[0x18] = {
+char gBladeNames_472[24] = {
 #include "sub_main/004A2AA0.inc"
 };
-char D_004A2AB8[13] = {
+char gBladeNames_473[13] = {
 #include "sub_main/004A2AB8.inc"
 };
-char D_004A2AC8[13] = {
+char gBladeNames_474[13] = {
 #include "sub_main/004A2AC8.inc"
 };
-char D_004A2AE0[0x20] = {
+char gBladeNames_475[32] = {
 #include "sub_main/004A2AE0.inc"
 };
-char D_004A2B00[0x18] = {
+char gBladeNames_476[24] = {
 #include "sub_main/004A2B00.inc"
 };
-char D_004A2B18[15] = {
+char gBladeNames_477[15] = {
 #include "sub_main/004A2B18.inc"
 };
-char D_004A2B28[13] = {
+char gBladeNames_478[13] = {
 #include "sub_main/004A2B28.inc"
 };
-char D_004A2B38[0x8] = {
+char gBladeNames_479[8] = {
 #include "sub_main/004A2B38.inc"
 };
-char D_004A2B40[0x10] = {
+char gBladeNames_480[16] = {
 #include "sub_main/004A2B40.inc"
 };
-char D_004A2B50[0x20] = {
+char gBladeNames_481[32] = {
 #include "sub_main/004A2B50.inc"
 };
-char D_004A2B70[0x20] = {
+char gBladeNames_482[32] = {
 #include "sub_main/004A2B70.inc"
 };
-char D_004A2B90[0x18] = {
+char gBladeNames_483[24] = {
 #include "sub_main/004A2B90.inc"
 };
-char D_004A2BA8[13] = {
+char gBladeNames_484[13] = {
 #include "sub_main/004A2BA8.inc"
 };
-char D_004A2BB8[13] = {
+char gBladeNames_485[13] = {
 #include "sub_main/004A2BB8.inc"
 };
-char D_004A2BC8[15] = {
+char gGunNames_1[15] = {
 #include "sub_main/004A2BC8.inc"
 };
-char D_004A2BE0[0x18] = {
+char gGunNames_2[24] = {
 #include "sub_main/004A2BE0.inc"
 };
-char D_004A2BF8[15] = {
+char gGunNames_3[15] = {
 #include "sub_main/004A2BF8.inc"
 };
-char D_004A2C10[0x20] = {
+char gGunNames_4[32] = {
 #include "sub_main/004A2C10.inc"
 };
-char D_004A2C30[0x20] = {
+char gGunNames_5[32] = {
 #include "sub_main/004A2C30.inc"
 };
-char D_004A2C50[0x20] = {
+char gGunNames_6[32] = {
 #include "sub_main/004A2C50.inc"
 };
-char D_004A2C70[0x20] = {
+char gGunNames_7[32] = {
 #include "sub_main/004A2C70.inc"
 };
-char D_004A2C90[0x20] = {
+char gGunNames_8[32] = {
 #include "sub_main/004A2C90.inc"
 };
-char D_004A2CB0[0x20] = {
+char gGunNames_9[32] = {
 #include "sub_main/004A2CB0.inc"
 };
-char D_004A2CD0[0x20] = {
+char gGunNames_10[32] = {
 #include "sub_main/004A2CD0.inc"
 };
-char D_004A2CF0[0x20] = {
+char gGunNames_11[32] = {
 #include "sub_main/004A2CF0.inc"
 };
-char D_004A2D10[0x18] = {
+char gGunNames_12[24] = {
 #include "sub_main/004A2D10.inc"
 };
-char D_004A2D28[13] = {
+char gGunNames_13[13] = {
 #include "sub_main/004A2D28.inc"
 };
-char D_004A2D38[15] = {
+char gGunNames_14[15] = {
 #include "sub_main/004A2D38.inc"
 };
-char D_004A2D48[13] = {
+char gGunNames_15[13] = {
 #include "sub_main/004A2D48.inc"
 };
-char D_004A2D60[0x20] = {
+char gGunNames_16[32] = {
 #include "sub_main/004A2D60.inc"
 };
-char D_004A2D80[0x18] = {
+char gGunNames_17[24] = {
 #include "sub_main/004A2D80.inc"
 };
-char D_004A2D98[15] = {
+char gGunNames_18[15] = {
 #include "sub_main/004A2D98.inc"
 };
-char D_004A2DB0[0x18] = {
+char gGunNames_19[24] = {
 #include "sub_main/004A2DB0.inc"
 };
-char D_004A2DC8[13] = {
+char gGunNames_20[13] = {
 #include "sub_main/004A2DC8.inc"
 };
-char D_004A2DD8[0xC] = {
+char gGunNames_21[12] = {
 #include "sub_main/004A2DD8.inc"
 };
-char D_004A2DF0[0x18] = {
+char gGunNames_22[24] = {
 #include "sub_main/004A2DF0.inc"
 };
-char D_004A2E08[15] = {
+char gGunNames_23[15] = {
 #include "sub_main/004A2E08.inc"
 };
-char D_004A2E18[0x8] = {
+char gGunNames_24[8] = {
 #include "sub_main/004A2E18.inc"
 };
-char D_004A2E20[0x18] = {
+char gGunNames_25[24] = {
 #include "sub_main/004A2E20.inc"
 };
-char D_004A2E38[15] = {
+char gGunNames_26[15] = {
 #include "sub_main/004A2E38.inc"
 };
-char D_004A2E50[0x20] = {
+char gGunNames_27[32] = {
 #include "sub_main/004A2E50.inc"
 };
-char D_004A2E70[0x20] = {
+char gGunNames_28[32] = {
 #include "sub_main/004A2E70.inc"
 };
-char D_004A2E90[0x20] = {
+char gGunNames_29[32] = {
 #include "sub_main/004A2E90.inc"
 };
-char D_004A2EB0[0x20] = {
+char gGunNames_30[32] = {
 #include "sub_main/004A2EB0.inc"
 };
-char D_004A2ED0[0x20] = {
+char gGunNames_31[32] = {
 #include "sub_main/004A2ED0.inc"
 };
-char D_004A2EF0[0x20] = {
+char gGunNames_32[32] = {
 #include "sub_main/004A2EF0.inc"
 };
-char D_004A2F10[0x20] = {
+char gGunNames_33[32] = {
 #include "sub_main/004A2F10.inc"
 };
-char D_004A2F30[0x20] = {
+char gGunNames_34[32] = {
 #include "sub_main/004A2F30.inc"
 };
-char D_004A2F50[0x20] = {
+char gGunNames_35[32] = {
 #include "sub_main/004A2F50.inc"
 };
-char D_004A2F70[0x18] = {
+char gGunNames_36[24] = {
 #include "sub_main/004A2F70.inc"
 };
-char D_004A2F88[0xC] = {
+char gGunNames_37[12] = {
 #include "sub_main/004A2F88.inc"
 };
-char D_004A2F98[0xC] = {
+char gGunNames_38[12] = {
 #include "sub_main/004A2F98.inc"
 };
-char D_004A2FB0[0x18] = {
+char gGunNames_39[24] = {
 #include "sub_main/004A2FB0.inc"
 };
-char D_004A2FC8[15] = {
+char gGunNames_40[15] = {
 #include "sub_main/004A2FC8.inc"
 };
-char D_004A2FD8[0xC] = {
+char gGunNames_41[12] = {
 #include "sub_main/004A2FD8.inc"
 };
-char D_004A2FF0[0x20] = {
+char gGunNames_42[32] = {
 #include "sub_main/004A2FF0.inc"
 };
-char D_004A3010[0x20] = {
+char gGunNames_43[32] = {
 #include "sub_main/004A3010.inc"
 };
-char D_004A3030[0x20] = {
+char gGunNames_44[32] = {
 #include "sub_main/004A3030.inc"
 };
-char D_004A3050[0x20] = {
+char gGunNames_45[32] = {
 #include "sub_main/004A3050.inc"
 };
-char D_004A3070[0x18] = {
+char gGunNames_46[24] = {
 #include "sub_main/004A3070.inc"
 };
-char D_004A3088[15] = {
+char gGunNames_47[15] = {
 #include "sub_main/004A3088.inc"
 };
-char D_004A30A0[0x20] = {
+char gGunNames_48[32] = {
 #include "sub_main/004A30A0.inc"
 };
-char D_004A30C0[0x20] = {
+char gGunNames_49[32] = {
 #include "sub_main/004A30C0.inc"
 };
-char D_004A30E0[0x20] = {
+char gGunNames_50[32] = {
 #include "sub_main/004A30E0.inc"
 };
-char D_004A3100[0x20] = {
+char gGunNames_51[32] = {
 #include "sub_main/004A3100.inc"
 };
-char D_004A3120[0x18] = {
+char gGunNames_52[24] = {
 #include "sub_main/004A3120.inc"
 };
-char D_004A3138[15] = {
+char gGunNames_53[15] = {
 #include "sub_main/004A3138.inc"
 };
-char D_004A3148[13] = {
+char gGunNames_54[13] = {
 #include "sub_main/004A3148.inc"
 };
-char D_004A3160[0x20] = {
+char gGunNames_55[32] = {
 #include "sub_main/004A3160.inc"
 };
-char D_004A3180[0x18] = {
+char gGunNames_56[24] = {
 #include "sub_main/004A3180.inc"
 };
-char D_004A3198[0x8] = {
+char gGunNames_57[8] = {
 #include "sub_main/004A3198.inc"
 };
-char D_004A31A0[0x20] = {
+char gGunNames_58[32] = {
 #include "sub_main/004A31A0.inc"
 };
-char D_004A31C0[0x20] = {
+char gGunNames_59[32] = {
 #include "sub_main/004A31C0.inc"
 };
-char D_004A31E0[0x20] = {
+char gGunNames_60[32] = {
 #include "sub_main/004A31E0.inc"
 };
-char D_004A3200[0x18] = {
+char gGunNames_61[24] = {
 #include "sub_main/004A3200.inc"
 };
-char D_004A3218[15] = {
+char gGunNames_62[15] = {
 #include "sub_main/004A3218.inc"
 };
-char D_004A3228[15] = {
+char gGunNames_63[15] = {
 #include "sub_main/004A3228.inc"
 };
-char D_004A3240[0x20] = {
+char gGunNames_64[32] = {
 #include "sub_main/004A3240.inc"
 };
-char D_004A3260[0x20] = {
+char gGunNames_65[32] = {
 #include "sub_main/004A3260.inc"
 };
-char D_004A3280[0x20] = {
+char gGunNames_66[32] = {
 #include "sub_main/004A3280.inc"
 };
-char D_004A32A0[0x20] = {
+char gGunNames_67[32] = {
 #include "sub_main/004A32A0.inc"
 };
-char D_004A32C0[0x18] = {
+char gGunNames_68[24] = {
 #include "sub_main/004A32C0.inc"
 };
-char D_004A32D8[15] = {
+char gGunNames_69[15] = {
 #include "sub_main/004A32D8.inc"
 };
-char D_004A32E8[15] = {
+char gGunNames_70[15] = {
 #include "sub_main/004A32E8.inc"
 };
-char D_004A3300[0x18] = {
+char gGunNames_71[24] = {
 #include "sub_main/004A3300.inc"
 };
-char D_004A3318[15] = {
+char gGunNames_72[15] = {
 #include "sub_main/004A3318.inc"
 };
-char D_004A3328[13] = {
+char gGunNames_73[13] = {
 #include "sub_main/004A3328.inc"
 };
-char D_004A3338[13] = {
+char gGunNames_74[13] = {
 #include "sub_main/004A3338.inc"
 };
-char D_004A3348[15] = {
+char gGunNames_75[15] = {
 #include "sub_main/004A3348.inc"
 };
-char D_004A3360[0x50] = {
+char gGunNames_76[80] = {
 #include "sub_main/004A3360.inc"
 };
-char D_004A33B0[0x20] = {
+char gGunNames_80[32] = {
 #include "sub_main/004A33B0.inc"
 };
-char D_004A33D0[0x20] = {
+char gGunNames_81[32] = {
 #include "sub_main/004A33D0.inc"
 };
-char D_004A33F0[0x20] = {
+char gGunNames_82[32] = {
 #include "sub_main/004A33F0.inc"
 };
-char D_004A3410[0x30] = {
+char gGunNames_83[48] = {
 #include "sub_main/004A3410.inc"
 };
-char D_004A3440[0x18] = {
+char gGunNames_85[24] = {
 #include "sub_main/004A3440.inc"
 };
-char D_004A3458[13] = {
+char gGunNames_86[13] = {
 #include "sub_main/004A3458.inc"
 };
-char D_004A3470[0x18] = {
+char gGunNames_87[24] = {
 #include "sub_main/004A3470.inc"
 };
-char D_004A3488[13] = {
+char gGunNames_88[13] = {
 #include "sub_main/004A3488.inc"
 };
-char D_004A34A0[0x20] = {
+char gGunNames_89[32] = {
 #include "sub_main/004A34A0.inc"
 };
-char D_004A34C0[0x18] = {
+char gGunNames_90[24] = {
 #include "sub_main/004A34C0.inc"
 };
-char D_004A34D8[15] = {
+char gGunNames_91[15] = {
 #include "sub_main/004A34D8.inc"
 };
-char D_004A34E8[0xC] = {
+char gGunNames_92[12] = {
 #include "sub_main/004A34E8.inc"
 };
-char D_004A3500[0x18] = {
+char gGunNames_93[24] = {
 #include "sub_main/004A3500.inc"
 };
-char D_004A3518[15] = {
+char gGunNames_94[15] = {
 #include "sub_main/004A3518.inc"
 };
-char D_004A3528[0x8] = {
+char gGunNames_95[8] = {
 #include "sub_main/004A3528.inc"
 };
-char D_004A3530[0x10] = {
+char gGunNames_96[16] = {
 #include "sub_main/004A3530.inc"
 };
-char D_004A3540[0x18] = {
+char gGunNames_97[24] = {
 #include "sub_main/004A3540.inc"
 };
-char D_004A3558[15] = {
+char gGunNames_98[15] = {
 #include "sub_main/004A3558.inc"
 };
-char D_004A3568[13] = {
+char gGunNames_99[13] = {
 #include "sub_main/004A3568.inc"
 };
-char D_004A3578[15] = {
+char gGunNames_100[15] = {
 #include "sub_main/004A3578.inc"
 };
-char D_004A3590[0x18] = {
+char gGunNames_101[24] = {
 #include "sub_main/004A3590.inc"
 };
-char D_004A35A8[15] = {
+char gGunNames_102[15] = {
 #include "sub_main/004A35A8.inc"
 };
-char D_004A35C0[0x20] = {
+char gGunNames_103[32] = {
 #include "sub_main/004A35C0.inc"
 };
-char D_004A35E0[0x18] = {
+char gGunNames_104[24] = {
 #include "sub_main/004A35E0.inc"
 };
-char D_004A35F8[0xC] = {
+char gGunNames_105[12] = {
 #include "sub_main/004A35F8.inc"
 };
-char D_004A3608[13] = {
+char gGunNames_106[13] = {
 #include "sub_main/004A3608.inc"
 };
-char D_004A3620[0x60] = {
+char gGunNames_107[96] = {
 #include "sub_main/004A3620.inc"
 };
-char D_004A3680[0x20] = {
+char gGunNames_112[32] = {
 #include "sub_main/004A3680.inc"
 };
-char D_004A36A0[0x20] = {
+char gGunNames_113[32] = {
 #include "sub_main/004A36A0.inc"
 };
-char D_004A36C0[0x20] = {
+char gGunNames_114[32] = {
 #include "sub_main/004A36C0.inc"
 };
-char D_004A36E0[0x40] = {
+char gGunNames_115[64] = {
 #include "sub_main/004A36E0.inc"
 };
-char D_004A3720[0x18] = {
+char gGunNames_118[24] = {
 #include "sub_main/004A3720.inc"
 };
-char D_004A3738[13] = {
+char gGunNames_119[13] = {
 #include "sub_main/004A3738.inc"
 };
-char D_004A3750[0x20] = {
+char gGunNames_120[32] = {
 #include "sub_main/004A3750.inc"
 };
-char D_004A3770[0x18] = {
+char gGunNames_121[24] = {
 #include "sub_main/004A3770.inc"
 };
-char D_004A3788[0x8] = {
+char gGunNames_122[8] = {
 #include "sub_main/004A3788.inc"
 };
-char D_004A3790[0x10] = {
+char gGunNames_123[16] = {
 #include "sub_main/004A3790.inc"
 };
-char D_004A37A0[0x10] = {
+char gGunNames_124[16] = {
 #include "sub_main/004A37A0.inc"
 };
-char D_004A37B0[0x10] = {
+char gGunNames_125[16] = {
 #include "sub_main/004A37B0.inc"
 };
-char D_004A37C0[0x18] = {
+char gGunNames_126[24] = {
 #include "sub_main/004A37C0.inc"
 };
-char D_004A37D8[15] = {
+char gGunNames_127[15] = {
 #include "sub_main/004A37D8.inc"
 };
-char D_004A37F0[0x18] = {
+char gArmorHeadNames_1[24] = {
 #include "sub_main/004A37F0.inc"
 };
-char D_004A3808[15] = {
+char gArmorHeadNames_2[15] = {
 #include "sub_main/004A3808.inc"
 };
-char D_004A3818[15] = {
+char gArmorHeadNames_3[15] = {
 #include "sub_main/004A3818.inc"
 };
-char D_004A3830[0x18] = {
+char gArmorHeadNames_4[24] = {
 #include "sub_main/004A3830.inc"
 };
-char D_004A3848[13] = {
+char gArmorHeadNames_5[13] = {
 #include "sub_main/004A3848.inc"
 };
-char D_004A3858[15] = {
+char gArmorHeadNames_6[15] = {
 #include "sub_main/004A3858.inc"
 };
-char D_004A3868[15] = {
+char gArmorHeadNames_7[15] = {
 #include "sub_main/004A3868.inc"
 };
-char D_004A3880[0x18] = {
+char gArmorHeadNames_8[24] = {
 #include "sub_main/004A3880.inc"
 };
-char D_004A3898[13] = {
+char gArmorHeadNames_9[13] = {
 #include "sub_main/004A3898.inc"
 };
-char D_004A38A8[15] = {
+char gArmorHeadNames_10[15] = {
 #include "sub_main/004A38A8.inc"
 };
-char D_004A38B8[13] = {
+char gArmorHeadNames_11[13] = {
 #include "sub_main/004A38B8.inc"
 };
-char D_004A38C8[15] = {
+char gArmorHeadNames_12[15] = {
 #include "sub_main/004A38C8.inc"
 };
-char D_004A38D8[13] = {
+char gArmorHeadNames_13[13] = {
 #include "sub_main/004A38D8.inc"
 };
-char D_004A38E8[15] = {
+char gArmorHeadNames_14[15] = {
 #include "sub_main/004A38E8.inc"
 };
-char D_004A38F8[15] = {
+char gArmorHeadNames_15[15] = {
 #include "sub_main/004A38F8.inc"
 };
-char D_004A3910[0x18] = {
+char gArmorHeadNames_16[24] = {
 #include "sub_main/004A3910.inc"
 };
-char D_004A3928[15] = {
+char gArmorHeadNames_17[15] = {
 #include "sub_main/004A3928.inc"
 };
-char D_004A3940[0x18] = {
+char gArmorHeadNames_18[24] = {
 #include "sub_main/004A3940.inc"
 };
-char D_004A3958[15] = {
+char gArmorHeadNames_19[15] = {
 #include "sub_main/004A3958.inc"
 };
-char D_004A3970[0x18] = {
+char gArmorHeadNames_20[24] = {
 #include "sub_main/004A3970.inc"
 };
-char D_004A3988[15] = {
+char gArmorHeadNames_21[15] = {
 #include "sub_main/004A3988.inc"
 };
-char D_004A39A0[0x18] = {
+char gArmorHeadNames_22[24] = {
 #include "sub_main/004A39A0.inc"
 };
-char D_004A39B8[15] = {
+char gArmorHeadNames_23[15] = {
 #include "sub_main/004A39B8.inc"
 };
-char D_004A39D0[0x18] = {
+char gArmorHeadNames_24[24] = {
 #include "sub_main/004A39D0.inc"
 };
-char D_004A39E8[13] = {
+char gArmorHeadNames_25[13] = {
 #include "sub_main/004A39E8.inc"
 };
-char D_004A39F8[15] = {
+char gArmorHeadNames_26[15] = {
 #include "sub_main/004A39F8.inc"
 };
-char D_004A3A08[15] = {
+char gArmorHeadNames_27[15] = {
 #include "sub_main/004A3A08.inc"
 };
-char D_004A3A20[0x18] = {
+char gArmorHeadNames_28[24] = {
 #include "sub_main/004A3A20.inc"
 };
-char D_004A3A38[13] = {
+char gArmorHeadNames_29[13] = {
 #include "sub_main/004A3A38.inc"
 };
-char D_004A3A48[15] = {
+char gArmorHeadNames_30[15] = {
 #include "sub_main/004A3A48.inc"
 };
-char D_004A3A58[13] = {
+char gArmorHeadNames_31[13] = {
 #include "sub_main/004A3A58.inc"
 };
-char D_004A3A68[15] = {
+char gArmorHeadNames_32[15] = {
 #include "sub_main/004A3A68.inc"
 };
-char D_004A3A80[0x18] = {
+char gArmorHeadNames_33[24] = {
 #include "sub_main/004A3A80.inc"
 };
-char D_004A3A98[13] = {
+char gArmorHeadNames_34[13] = {
 #include "sub_main/004A3A98.inc"
 };
-char D_004A3AA8[15] = {
+char gArmorHeadNames_35[15] = {
 #include "sub_main/004A3AA8.inc"
 };
-char D_004A3AC0[0x20] = {
+char gArmorHeadNames_36[32] = {
 #include "sub_main/004A3AC0.inc"
 };
-char D_004A3AE0[0x20] = {
+char gArmorHeadNames_37[32] = {
 #include "sub_main/004A3AE0.inc"
 };
-char D_004A3B00[0x20] = {
+char gArmorHeadNames_38[32] = {
 #include "sub_main/004A3B00.inc"
 };
-char D_004A3B20[0x18] = {
+char gArmorHeadNames_39[24] = {
 #include "sub_main/004A3B20.inc"
 };
-char D_004A3B38[15] = {
+char gArmorHeadNames_40[15] = {
 #include "sub_main/004A3B38.inc"
 };
-char D_004A3B50[0x18] = {
+char gArmorHeadNames_41[24] = {
 #include "sub_main/004A3B50.inc"
 };
-char D_004A3B68[15] = {
+char gArmorHeadNames_42[15] = {
 #include "sub_main/004A3B68.inc"
 };
-char D_004A3B78[13] = {
+char gArmorHeadNames_43[13] = {
 #include "sub_main/004A3B78.inc"
 };
-char D_004A3B90[0x18] = {
+char gArmorHeadNames_44[24] = {
 #include "sub_main/004A3B90.inc"
 };
-char D_004A3BA8[0xC] = {
+char gArmorHeadNames_45[12] = {
 #include "sub_main/004A3BA8.inc"
 };
-char D_004A3BC0[0x18] = {
+char gArmorHeadNames_46[24] = {
 #include "sub_main/004A3BC0.inc"
 };
-char D_004A3BD8[15] = {
+char gArmorHeadNames_47[15] = {
 #include "sub_main/004A3BD8.inc"
 };
-char D_004A3BF0[0x20] = {
+char gArmorHeadNames_48[32] = {
 #include "sub_main/004A3BF0.inc"
 };
-char D_004A3C10[0x20] = {
+char gArmorHeadNames_49[32] = {
 #include "sub_main/004A3C10.inc"
 };
-char D_004A3C30[0x20] = {
+char gArmorHeadNames_50[32] = {
 #include "sub_main/004A3C30.inc"
 };
-char D_004A3C50[0x20] = {
+char gArmorHeadNames_51[32] = {
 #include "sub_main/004A3C50.inc"
 };
-char D_004A3C70[0x18] = {
+char gArmorHeadNames_52[24] = {
 #include "sub_main/004A3C70.inc"
 };
-char D_004A3C88[13] = {
+char gArmorHeadNames_53[13] = {
 #include "sub_main/004A3C88.inc"
 };
-char D_004A3C98[13] = {
+char gArmorHeadNames_54[13] = {
 #include "sub_main/004A3C98.inc"
 };
-char D_004A3CA8[15] = {
+char gArmorHeadNames_55[15] = {
 #include "sub_main/004A3CA8.inc"
 };
-char D_004A3CB8[15] = {
+char gArmorHeadNames_56[15] = {
 #include "sub_main/004A3CB8.inc"
 };
-char D_004A3CC8[0xC] = {
+char gArmorHeadNames_57[12] = {
 #include "sub_main/004A3CC8.inc"
 };
-char D_004A3CD8[0xC] = {
+char gArmorHeadNames_58[12] = {
 #include "sub_main/004A3CD8.inc"
 };
-char D_004A3CF0[0x20] = {
+char gArmorHeadNames_59[32] = {
 #include "sub_main/004A3CF0.inc"
 };
-char D_004A3D10[0x18] = {
+char gArmorHeadNames_60[24] = {
 #include "sub_main/004A3D10.inc"
 };
-char D_004A3D28[15] = {
+char gArmorHeadNames_61[15] = {
 #include "sub_main/004A3D28.inc"
 };
-char D_004A3D38[15] = {
+char gArmorHeadNames_62[15] = {
 #include "sub_main/004A3D38.inc"
 };
-char D_004A3D48[15] = {
+char gArmorHeadNames_63[15] = {
 #include "sub_main/004A3D48.inc"
 };
-char D_004A3D58[15] = {
+char gArmorHeadNames_64[15] = {
 #include "sub_main/004A3D58.inc"
 };
-char D_004A3D70[0x20] = {
+char gArmorHeadNames_65[32] = {
 #include "sub_main/004A3D70.inc"
 };
-char D_004A3D90[0x18] = {
+char gArmorHeadNames_66[24] = {
 #include "sub_main/004A3D90.inc"
 };
-char D_004A3DA8[0xC] = {
+char gArmorHeadNames_67[12] = {
 #include "sub_main/004A3DA8.inc"
 };
-char D_004A3DB8[15] = {
+char gArmorHeadNames_68[15] = {
 #include "sub_main/004A3DB8.inc"
 };
-char D_004A3DC8[0xC] = {
+char gArmorHeadNames_69[12] = {
 #include "sub_main/004A3DC8.inc"
 };
-char D_004A3DD8[0xC] = {
+char gArmorHeadNames_70[12] = {
 #include "sub_main/004A3DD8.inc"
 };
-char D_004A3DE8[15] = {
+char gArmorHeadNames_71[15] = {
 #include "sub_main/004A3DE8.inc"
 };
-char D_004A3E00[0x20] = {
+char gArmorHeadNames_72[32] = {
 #include "sub_main/004A3E00.inc"
 };
-char D_004A3E20[0x20] = {
+char gArmorHeadNames_73[32] = {
 #include "sub_main/004A3E20.inc"
 };
-char D_004A3E40[0x20] = {
+char gArmorHeadNames_74[32] = {
 #include "sub_main/004A3E40.inc"
 };
-char D_004A3E60[0x20] = {
+char gArmorHeadNames_75[32] = {
 #include "sub_main/004A3E60.inc"
 };
-char D_004A3E80[0x18] = {
+char gArmorHeadNames_76[24] = {
 #include "sub_main/004A3E80.inc"
 };
-char D_004A3E98[15] = {
+char gArmorHeadNames_77[15] = {
 #include "sub_main/004A3E98.inc"
 };
-char D_004A3EB0[0x20] = {
+char gArmorHeadNames_78[32] = {
 #include "sub_main/004A3EB0.inc"
 };
-char D_004A3ED0[0x20] = {
+char gArmorHeadNames_79[32] = {
 #include "sub_main/004A3ED0.inc"
 };
-char D_004A3EF0[0x18] = {
+char gArmorHeadNames_80[24] = {
 #include "sub_main/004A3EF0.inc"
 };
-char D_004A3F08[15] = {
+char gArmorHeadNames_81[15] = {
 #include "sub_main/004A3F08.inc"
 };
-char D_004A3F20[0x18] = {
+char gArmorHeadNames_82[24] = {
 #include "sub_main/004A3F20.inc"
 };
-char D_004A3F38[15] = {
+char gArmorHeadNames_83[15] = {
 #include "sub_main/004A3F38.inc"
 };
-char D_004A3F50[0x18] = {
+char gArmorHeadNames_84[24] = {
 #include "sub_main/004A3F50.inc"
 };
-char D_004A3F68[15] = {
+char gArmorHeadNames_85[15] = {
 #include "sub_main/004A3F68.inc"
 };
-char D_004A3F80[0x20] = {
+char gArmorHeadNames_86[32] = {
 #include "sub_main/004A3F80.inc"
 };
-char D_004A3FA0[0x20] = {
+char gArmorHeadNames_87[32] = {
 #include "sub_main/004A3FA0.inc"
 };
-char D_004A3FC0[0x20] = {
+char gArmorHeadNames_88[32] = {
 #include "sub_main/004A3FC0.inc"
 };
-char D_004A3FE0[0x20] = {
+char gArmorHeadNames_89[32] = {
 #include "sub_main/004A3FE0.inc"
 };
-char D_004A4000[0x20] = {
+char gArmorHeadNames_90[32] = {
 #include "sub_main/004A4000.inc"
 };
-char D_004A4020[0x20] = {
+char gArmorHeadNames_91[32] = {
 #include "sub_main/004A4020.inc"
 };
-char D_004A4040[0x20] = {
+char gArmorHeadNames_92[32] = {
 #include "sub_main/004A4040.inc"
 };
-char D_004A4060[0x20] = {
+char gArmorHeadNames_93[32] = {
 #include "sub_main/004A4060.inc"
 };
-char D_004A4080[0x20] = {
+char gArmorHeadNames_94[32] = {
 #include "sub_main/004A4080.inc"
 };
-char D_004A40A0[0x20] = {
+char gArmorHeadNames_95[32] = {
 #include "sub_main/004A40A0.inc"
 };
-char D_004A40C0[0x20] = {
+char gArmorHeadNames_96[32] = {
 #include "sub_main/004A40C0.inc"
 };
-char D_004A40E0[0x20] = {
+char gArmorHeadNames_97[32] = {
 #include "sub_main/004A40E0.inc"
 };
-char D_004A4100[0x20] = {
+char gArmorHeadNames_98[32] = {
 #include "sub_main/004A4100.inc"
 };
-char D_004A4120[0x20] = {
+char gArmorHeadNames_99[32] = {
 #include "sub_main/004A4120.inc"
 };
-char D_004A4140[0x20] = {
+char gArmorHeadNames_100[32] = {
 #include "sub_main/004A4140.inc"
 };
-char D_004A4160[0x20] = {
+char gArmorHeadNames_101[32] = {
 #include "sub_main/004A4160.inc"
 };
-char D_004A4180[0x18] = {
+char gArmorHeadNames_102[24] = {
 #include "sub_main/004A4180.inc"
 };
-char D_004A4198[15] = {
+char gArmorHeadNames_103[15] = {
 #include "sub_main/004A4198.inc"
 };
-char D_004A41B0[0x18] = {
+char gArmorHeadNames_104[24] = {
 #include "sub_main/004A41B0.inc"
 };
-char D_004A41C8[15] = {
+char gArmorHeadNames_105[15] = {
 #include "sub_main/004A41C8.inc"
 };
-char D_004A41E0[0x20] = {
+char gArmorHeadNames_106[32] = {
 #include "sub_main/004A41E0.inc"
 };
-char D_004A4200[0x20] = {
+char gArmorHeadNames_107[32] = {
 #include "sub_main/004A4200.inc"
 };
-char D_004A4220[0x20] = {
+char gArmorHeadNames_108[32] = {
 #include "sub_main/004A4220.inc"
 };
-char D_004A4240[0x20] = {
+char gArmorHeadNames_109[32] = {
 #include "sub_main/004A4240.inc"
 };
-char D_004A4260[0x20] = {
+char gArmorHeadNames_110[32] = {
 #include "sub_main/004A4260.inc"
 };
-char D_004A4280[0x20] = {
+char gArmorHeadNames_111[32] = {
 #include "sub_main/004A4280.inc"
 };
-char D_004A42A0[0x18] = {
+char gArmorHeadNames_112[24] = {
 #include "sub_main/004A42A0.inc"
 };
-char D_004A42B8[0xC] = {
+char gArmorHeadNames_113[12] = {
 #include "sub_main/004A42B8.inc"
 };
-char D_004A42C8[0xC] = {
+char gArmorHeadNames_114[12] = {
 #include "sub_main/004A42C8.inc"
 };
-char D_004A42E0[0x20] = {
+char gArmorHeadNames_115[32] = {
 #include "sub_main/004A42E0.inc"
 };
-char D_004A4300[0x20] = {
+char gArmorHeadNames_116[32] = {
 #include "sub_main/004A4300.inc"
 };
-char D_004A4320[0x20] = {
+char gArmorHeadNames_117[32] = {
 #include "sub_main/004A4320.inc"
 };
-char D_004A4340[0x18] = {
+char gArmorHeadNames_118[24] = {
 #include "sub_main/004A4340.inc"
 };
-char D_004A4358[15] = {
+char gArmorHeadNames_119[15] = {
 #include "sub_main/004A4358.inc"
 };
-char D_004A4370[0x18] = {
+char gArmorHeadNames_120[24] = {
 #include "sub_main/004A4370.inc"
 };
-char D_004A4388[15] = {
+char gArmorHeadNames_121[15] = {
 #include "sub_main/004A4388.inc"
 };
-char D_004A4398[15] = {
+char gArmorHeadNames_122[15] = {
 #include "sub_main/004A4398.inc"
 };
-char D_004A43B0[0x20] = {
+char gArmorHeadNames_123[32] = {
 #include "sub_main/004A43B0.inc"
 };
-char D_004A43D0[0x20] = {
+char gArmorHeadNames_124[32] = {
 #include "sub_main/004A43D0.inc"
 };
-char D_004A43F0[0x20] = {
+char gArmorHeadNames_125[32] = {
 #include "sub_main/004A43F0.inc"
 };
-char D_004A4410[0x20] = {
+char gArmorHeadNames_126[32] = {
 #include "sub_main/004A4410.inc"
 };
-char D_004A4430[0x20] = {
+char gArmorHeadNames_127[32] = {
 #include "sub_main/004A4430.inc"
 };
-char D_004A4450[0x20] = {
+char gArmorHeadNames_128[32] = {
 #include "sub_main/004A4450.inc"
 };
-char D_004A4470[0x20] = {
+char gArmorHeadNames_129[32] = {
 #include "sub_main/004A4470.inc"
 };
-char D_004A4490[0x20] = {
+char gArmorHeadNames_130[32] = {
 #include "sub_main/004A4490.inc"
 };
-char D_004A44B0[0x20] = {
+char gArmorHeadNames_131[32] = {
 #include "sub_main/004A44B0.inc"
 };
-char D_004A44D0[0x18] = {
+char gArmorHeadNames_132[24] = {
 #include "sub_main/004A44D0.inc"
 };
-char D_004A44E8[15] = {
+char gArmorHeadNames_133[15] = {
 #include "sub_main/004A44E8.inc"
 };
-char D_004A4500[0x20] = {
+char gArmorHeadNames_134[32] = {
 #include "sub_main/004A4500.inc"
 };
-char D_004A4520[0x20] = {
+char gArmorHeadNames_135[32] = {
 #include "sub_main/004A4520.inc"
 };
-char D_004A4540[0x18] = {
+char gArmorHeadNames_136[24] = {
 #include "sub_main/004A4540.inc"
 };
-char D_004A4558[15] = {
+char gArmorHeadNames_137[15] = {
 #include "sub_main/004A4558.inc"
 };
-char D_004A4570[0x18] = {
+char gArmorHeadNames_138[24] = {
 #include "sub_main/004A4570.inc"
 };
-char D_004A4588[15] = {
+char gArmorHeadNames_139[15] = {
 #include "sub_main/004A4588.inc"
 };
-char D_004A45A0[0x18] = {
+char gArmorHeadNames_140[24] = {
 #include "sub_main/004A45A0.inc"
 };
-char D_004A45B8[15] = {
+char gArmorHeadNames_141[15] = {
 #include "sub_main/004A45B8.inc"
 };
-char D_004A45D0[0x20] = {
+char gArmorHeadNames_142[32] = {
 #include "sub_main/004A45D0.inc"
 };
-char D_004A45F0[0x20] = {
+char gArmorHeadNames_143[32] = {
 #include "sub_main/004A45F0.inc"
 };
-char D_004A4610[0x20] = {
+char gArmorHeadNames_144[32] = {
 #include "sub_main/004A4610.inc"
 };
-char D_004A4630[0x20] = {
+char gArmorHeadNames_145[32] = {
 #include "sub_main/004A4630.inc"
 };
-char D_004A4650[0x18] = {
+char gArmorHeadNames_146[24] = {
 #include "sub_main/004A4650.inc"
 };
-char D_004A4668[15] = {
+char gArmorHeadNames_147[15] = {
 #include "sub_main/004A4668.inc"
 };
-char D_004A4680[0x20] = {
+char gArmorHeadNames_148[32] = {
 #include "sub_main/004A4680.inc"
 };
-char D_004A46A0[0x20] = {
+char gArmorHeadNames_149[32] = {
 #include "sub_main/004A46A0.inc"
 };
-char D_004A46C0[0x20] = {
+char gArmorHeadNames_150[32] = {
 #include "sub_main/004A46C0.inc"
 };
-char D_004A46E0[0x20] = {
+char gArmorHeadNames_151[32] = {
 #include "sub_main/004A46E0.inc"
 };
-char D_004A4700[0x20] = {
+char gArmorHeadNames_152[32] = {
 #include "sub_main/004A4700.inc"
 };
-char D_004A4720[0x20] = {
+char gArmorHeadNames_153[32] = {
 #include "sub_main/004A4720.inc"
 };
-char D_004A4740[0x18] = {
+char gArmorHeadNames_154[24] = {
 #include "sub_main/004A4740.inc"
 };
-char D_004A4758[15] = {
+char gArmorHeadNames_155[15] = {
 #include "sub_main/004A4758.inc"
 };
-char D_004A4770[0x20] = {
+char gArmorHeadNames_156[32] = {
 #include "sub_main/004A4770.inc"
 };
-char D_004A4790[0x20] = {
+char gArmorHeadNames_157[32] = {
 #include "sub_main/004A4790.inc"
 };
-char D_004A47B0[0x18] = {
+char gArmorHeadNames_158[24] = {
 #include "sub_main/004A47B0.inc"
 };
-char D_004A47C8[15] = {
+char gArmorHeadNames_159[15] = {
 #include "sub_main/004A47C8.inc"
 };
-char D_004A47E0[0x18] = {
+char gArmorHeadNames_160[24] = {
 #include "sub_main/004A47E0.inc"
 };
-char D_004A47F8[15] = {
+char gArmorHeadNames_161[15] = {
 #include "sub_main/004A47F8.inc"
 };
-char D_004A4810[0x18] = {
+char gArmorHeadNames_162[24] = {
 #include "sub_main/004A4810.inc"
 };
-char D_004A4828[15] = {
+char gArmorHeadNames_163[15] = {
 #include "sub_main/004A4828.inc"
 };
-char D_004A4840[0x20] = {
+char gArmorHeadNames_164[32] = {
 #include "sub_main/004A4840.inc"
 };
-char D_004A4860[0x20] = {
+char gArmorHeadNames_165[32] = {
 #include "sub_main/004A4860.inc"
 };
-char D_004A4880[0x20] = {
+char gArmorHeadNames_166[32] = {
 #include "sub_main/004A4880.inc"
 };
-char D_004A48A0[0x20] = {
+char gArmorHeadNames_167[32] = {
 #include "sub_main/004A48A0.inc"
 };
-char D_004A48C0[0x20] = {
+char gArmorHeadNames_168[32] = {
 #include "sub_main/004A48C0.inc"
 };
-char D_004A48E0[0x20] = {
+char gArmorHeadNames_169[32] = {
 #include "sub_main/004A48E0.inc"
 };
-char D_004A4900[0x18] = {
+char gArmorHeadNames_170[24] = {
 #include "sub_main/004A4900.inc"
 };
-char D_004A4918[0xC] = {
+char gArmorHeadNames_171[12] = {
 #include "sub_main/004A4918.inc"
 };
-char D_004A4928[0xC] = {
+char gArmorHeadNames_172[12] = {
 #include "sub_main/004A4928.inc"
 };
-char D_004A4940[0x20] = {
+char gArmorHeadNames_173[32] = {
 #include "sub_main/004A4940.inc"
 };
-char D_004A4960[0x20] = {
+char gArmorHeadNames_174[32] = {
 #include "sub_main/004A4960.inc"
 };
-char D_004A4980[0x20] = {
+char gArmorHeadNames_175[32] = {
 #include "sub_main/004A4980.inc"
 };
-char D_004A49A0[0x18] = {
+char gArmorHeadNames_176[24] = {
 #include "sub_main/004A49A0.inc"
 };
-char D_004A49B8[15] = {
+char gArmorHeadNames_177[15] = {
 #include "sub_main/004A49B8.inc"
 };
-char D_004A49D0[0x18] = {
+char gArmorHeadNames_178[24] = {
 #include "sub_main/004A49D0.inc"
 };
-char D_004A49E8[15] = {
+char gArmorHeadNames_179[15] = {
 #include "sub_main/004A49E8.inc"
 };
-char D_004A49F8[15] = {
+char gArmorHeadNames_180[15] = {
 #include "sub_main/004A49F8.inc"
 };
-char D_004A4A10[0x20] = {
+char gArmorHeadNames_181[32] = {
 #include "sub_main/004A4A10.inc"
 };
-char D_004A4A30[0x18] = {
+char gArmorHeadNames_182[24] = {
 #include "sub_main/004A4A30.inc"
 };
-char D_004A4A48[13] = {
+char gArmorHeadNames_183[13] = {
 #include "sub_main/004A4A48.inc"
 };
-char D_004A4A58[15] = {
+char gArmorHeadNames_184[15] = {
 #include "sub_main/004A4A58.inc"
 };
-char D_004A4A68[15] = {
+char gArmorHeadNames_185[15] = {
 #include "sub_main/004A4A68.inc"
 };
-char D_004A4A80[0x18] = {
+char gArmorHeadNames_186[24] = {
 #include "sub_main/004A4A80.inc"
 };
-char D_004A4A98[15] = {
+char gArmorHeadNames_187[15] = {
 #include "sub_main/004A4A98.inc"
 };
-char D_004A4AB0[0x18] = {
+char gArmorHeadNames_188[24] = {
 #include "sub_main/004A4AB0.inc"
 };
-char D_004A4AC8[13] = {
+char gArmorHeadNames_189[13] = {
 #include "sub_main/004A4AC8.inc"
 };
-char D_004A4AD8[15] = {
+char gArmorHeadNames_190[15] = {
 #include "sub_main/004A4AD8.inc"
 };
-char D_004A4AE8[15] = {
+char gArmorHeadNames_191[15] = {
 #include "sub_main/004A4AE8.inc"
 };
-char D_004A4B00[0x18] = {
+char gArmorHeadNames_192[24] = {
 #include "sub_main/004A4B00.inc"
 };
-char D_004A4B18[15] = {
+char gArmorHeadNames_193[15] = {
 #include "sub_main/004A4B18.inc"
 };
-char D_004A4B30[0x18] = {
+char gArmorHeadNames_194[24] = {
 #include "sub_main/004A4B30.inc"
 };
-char D_004A4B48[15] = {
+char gArmorHeadNames_195[15] = {
 #include "sub_main/004A4B48.inc"
 };
-char D_004A4B60[0x20] = {
+char gArmorHeadNames_196[32] = {
 #include "sub_main/004A4B60.inc"
 };
-char D_004A4B80[0x20] = {
+char gArmorHeadNames_197[32] = {
 #include "sub_main/004A4B80.inc"
 };
-char D_004A4BA0[0x20] = {
+char gArmorHeadNames_198[32] = {
 #include "sub_main/004A4BA0.inc"
 };
-char D_004A4BC0[0x20] = {
+char gArmorHeadNames_199[32] = {
 #include "sub_main/004A4BC0.inc"
 };
-char D_004A4BE0[0x18] = {
+char gArmorHeadNames_200[24] = {
 #include "sub_main/004A4BE0.inc"
 };
-char D_004A4BF8[13] = {
+char gArmorHeadNames_201[13] = {
 #include "sub_main/004A4BF8.inc"
 };
-char D_004A4C08[15] = {
+char gArmorHeadNames_202[15] = {
 #include "sub_main/004A4C08.inc"
 };
-char D_004A4C18[15] = {
+char gArmorHeadNames_203[15] = {
 #include "sub_main/004A4C18.inc"
 };
-char D_004A4C30[0x18] = {
+char gArmorHeadNames_204[24] = {
 #include "sub_main/004A4C30.inc"
 };
-char D_004A4C48[15] = {
+char gArmorHeadNames_205[15] = {
 #include "sub_main/004A4C48.inc"
 };
-char D_004A4C60[0x18] = {
+char gArmorHeadNames_206[24] = {
 #include "sub_main/004A4C60.inc"
 };
-char D_004A4C78[13] = {
+char gArmorHeadNames_207[13] = {
 #include "sub_main/004A4C78.inc"
 };
-char D_004A4C88[13] = {
+char gArmorHeadNames_208[13] = {
 #include "sub_main/004A4C88.inc"
 };
-char D_004A4C98[15] = {
+char gArmorHeadNames_209[15] = {
 #include "sub_main/004A4C98.inc"
 };
-char D_004A4CA8[15] = {
+char gArmorHeadNames_210[15] = {
 #include "sub_main/004A4CA8.inc"
 };
-char D_004A4CB8[15] = {
+char gArmorHeadNames_211[15] = {
 #include "sub_main/004A4CB8.inc"
 };
-char D_004A4CC8[15] = {
+char gArmorHeadNames_212[15] = {
 #include "sub_main/004A4CC8.inc"
 };
-char D_004A4CE0[0x20] = {
+char gArmorHeadNames_213[32] = {
 #include "sub_main/004A4CE0.inc"
 };
-char D_004A4D00[0x20] = {
+char gArmorHeadNames_214[32] = {
 #include "sub_main/004A4D00.inc"
 };
-char D_004A4D20[0x20] = {
+char gArmorHeadNames_215[32] = {
 #include "sub_main/004A4D20.inc"
 };
-char D_004A4D40[0x18] = {
+char gArmorHeadNames_216[24] = {
 #include "sub_main/004A4D40.inc"
 };
-char D_004A4D58[0xC] = {
+char gArmorHeadNames_217[12] = {
 #include "sub_main/004A4D58.inc"
 };
-char D_004A4D68[0xC] = {
+char gArmorHeadNames_218[12] = {
 #include "sub_main/004A4D68.inc"
 };
-char D_004A4D80[0x18] = {
+char gArmorHeadNames_219[24] = {
 #include "sub_main/004A4D80.inc"
 };
-char D_004A4D98[15] = {
+char gArmorHeadNames_220[15] = {
 #include "sub_main/004A4D98.inc"
 };
-char D_004A4DA8[13] = {
+char gArmorHeadNames_221[13] = {
 #include "sub_main/004A4DA8.inc"
 };
-char D_004A4DB8[13] = {
+char gArmorHeadNames_222[13] = {
 #include "sub_main/004A4DB8.inc"
 };
-char D_004A4DC8[0xC] = {
+char gArmorHeadNames_223[12] = {
 #include "sub_main/004A4DC8.inc"
 };
-char D_004A4DD8[0xC] = {
+char gArmorHeadNames_224[12] = {
 #include "sub_main/004A4DD8.inc"
 };
-char D_004A4DF0[0x20] = {
+char gArmorHeadNames_225[32] = {
 #include "sub_main/004A4DF0.inc"
 };
-char D_004A4E10[0x20] = {
+char gArmorHeadNames_226[32] = {
 #include "sub_main/004A4E10.inc"
 };
-char D_004A4E30[0x20] = {
+char gArmorHeadNames_227[32] = {
 #include "sub_main/004A4E30.inc"
 };
-char D_004A4E50[0x20] = {
+char gArmorHeadNames_228[32] = {
 #include "sub_main/004A4E50.inc"
 };
-char D_004A4E70[0x20] = {
+char gArmorHeadNames_229[32] = {
 #include "sub_main/004A4E70.inc"
 };
-char D_004A4E90[0x20] = {
+char gArmorHeadNames_230[32] = {
 #include "sub_main/004A4E90.inc"
 };
-char D_004A4EB0[0x20] = {
+char gArmorHeadNames_231[32] = {
 #include "sub_main/004A4EB0.inc"
 };
-char D_004A4ED0[0x20] = {
+char gArmorHeadNames_232[32] = {
 #include "sub_main/004A4ED0.inc"
 };
-char D_004A4EF0[0x18] = {
+char gArmorHeadNames_233[24] = {
 #include "sub_main/004A4EF0.inc"
 };
-char D_004A4F08[15] = {
+char gArmorHeadNames_234[15] = {
 #include "sub_main/004A4F08.inc"
 };
-char D_004A4F20[0x20] = {
+char gArmorHeadNames_235[32] = {
 #include "sub_main/004A4F20.inc"
 };
-char D_004A4F40[0x20] = {
+char gArmorHeadNames_236[32] = {
 #include "sub_main/004A4F40.inc"
 };
-char D_004A4F60[0x20] = {
+char gArmorHeadNames_237[32] = {
 #include "sub_main/004A4F60.inc"
 };
-char D_004A4F80[0x20] = {
+char gArmorHeadNames_238[32] = {
 #include "sub_main/004A4F80.inc"
 };
-char D_004A4FA0[0x18] = {
+char gArmorHeadNames_239[24] = {
 #include "sub_main/004A4FA0.inc"
 };
-char D_004A4FB8[0xC] = {
+char gArmorHeadNames_240[12] = {
 #include "sub_main/004A4FB8.inc"
 };
-char D_004A4FC8[0xC] = {
+char gArmorHeadNames_241[12] = {
 #include "sub_main/004A4FC8.inc"
 };
-char D_004A4FD8[0xC] = {
+char gArmorHeadNames_242[12] = {
 #include "sub_main/004A4FD8.inc"
 };
-char D_004A4FE8[13] = {
+char gArmorHeadNames_243[13] = {
 #include "sub_main/004A4FE8.inc"
 };
-char D_004A4FF8[13] = {
+char gArmorHeadNames_244[13] = {
 #include "sub_main/004A4FF8.inc"
 };
-char D_004A5008[13] = {
+char gArmorHeadNames_245[13] = {
 #include "sub_main/004A5008.inc"
 };
-char D_004A5018[13] = {
+char gArmorHeadNames_246[13] = {
 #include "sub_main/004A5018.inc"
 };
-char D_004A5028[13] = {
+char gArmorHeadNames_247[13] = {
 #include "sub_main/004A5028.inc"
 };
-char D_004A5038[13] = {
+char gArmorHeadNames_248[13] = {
 #include "sub_main/004A5038.inc"
 };
-char D_004A5048[13] = {
+char gArmorHeadNames_249[13] = {
 #include "sub_main/004A5048.inc"
 };
-char D_004A5058[15] = {
+char gArmorHeadNames_250[15] = {
 #include "sub_main/004A5058.inc"
 };
-char D_004A5070[0x18] = {
+char gArmorHeadNames_251[24] = {
 #include "sub_main/004A5070.inc"
 };
-char D_004A5088[15] = {
+char gArmorHeadNames_252[15] = {
 #include "sub_main/004A5088.inc"
 };
-char D_004A50A0[0x18] = {
+char gArmorBodyNames_1[24] = {
 #include "sub_main/004A50A0.inc"
 };
-char D_004A50B8[15] = {
+char gArmorBodyNames_2[15] = {
 #include "sub_main/004A50B8.inc"
 };
-char D_004A50C8[15] = {
+char gArmorBodyNames_3[15] = {
 #include "sub_main/004A50C8.inc"
 };
-char D_004A50E0[0x18] = {
+char gArmorBodyNames_4[24] = {
 #include "sub_main/004A50E0.inc"
 };
-char D_004A50F8[13] = {
+char gArmorBodyNames_5[13] = {
 #include "sub_main/004A50F8.inc"
 };
-char D_004A5108[15] = {
+char gArmorBodyNames_6[15] = {
 #include "sub_main/004A5108.inc"
 };
-char D_004A5118[15] = {
+char gArmorBodyNames_7[15] = {
 #include "sub_main/004A5118.inc"
 };
-char D_004A5130[0x18] = {
+char gArmorBodyNames_8[24] = {
 #include "sub_main/004A5130.inc"
 };
-char D_004A5148[13] = {
+char gArmorBodyNames_9[13] = {
 #include "sub_main/004A5148.inc"
 };
-char D_004A5158[15] = {
+char gArmorBodyNames_10[15] = {
 #include "sub_main/004A5158.inc"
 };
-char D_004A5168[13] = {
+char gArmorBodyNames_11[13] = {
 #include "sub_main/004A5168.inc"
 };
-char D_004A5178[15] = {
+char gArmorBodyNames_12[15] = {
 #include "sub_main/004A5178.inc"
 };
-char D_004A5188[13] = {
+char gArmorBodyNames_13[13] = {
 #include "sub_main/004A5188.inc"
 };
-char D_004A5198[15] = {
+char gArmorBodyNames_14[15] = {
 #include "sub_main/004A5198.inc"
 };
-char D_004A51A8[15] = {
+char gArmorBodyNames_15[15] = {
 #include "sub_main/004A51A8.inc"
 };
-char D_004A51C0[0x18] = {
+char gArmorBodyNames_16[24] = {
 #include "sub_main/004A51C0.inc"
 };
-char D_004A51D8[15] = {
+char gArmorBodyNames_17[15] = {
 #include "sub_main/004A51D8.inc"
 };
-char D_004A51F0[0x18] = {
+char gArmorBodyNames_18[24] = {
 #include "sub_main/004A51F0.inc"
 };
-char D_004A5208[13] = {
+char gArmorBodyNames_19[13] = {
 #include "sub_main/004A5208.inc"
 };
-char D_004A5218[15] = {
+char gArmorBodyNames_20[15] = {
 #include "sub_main/004A5218.inc"
 };
-char D_004A5228[15] = {
+char gArmorBodyNames_21[15] = {
 #include "sub_main/004A5228.inc"
 };
-char D_004A5240[0x18] = {
+char gArmorBodyNames_22[24] = {
 #include "sub_main/004A5240.inc"
 };
-char D_004A5258[15] = {
+char gArmorBodyNames_23[15] = {
 #include "sub_main/004A5258.inc"
 };
-char D_004A5270[0x18] = {
+char gArmorBodyNames_24[24] = {
 #include "sub_main/004A5270.inc"
 };
-char D_004A5288[15] = {
+char gArmorBodyNames_25[15] = {
 #include "sub_main/004A5288.inc"
 };
-char D_004A52A0[0x20] = {
+char gArmorBodyNames_26[32] = {
 #include "sub_main/004A52A0.inc"
 };
-char D_004A52C0[0x18] = {
+char gArmorBodyNames_27[24] = {
 #include "sub_main/004A52C0.inc"
 };
-char D_004A52D8[13] = {
+char gArmorBodyNames_28[13] = {
 #include "sub_main/004A52D8.inc"
 };
-char D_004A52E8[15] = {
+char gArmorBodyNames_29[15] = {
 #include "sub_main/004A52E8.inc"
 };
-char D_004A52F8[15] = {
+char gArmorBodyNames_30[15] = {
 #include "sub_main/004A52F8.inc"
 };
-char D_004A5310[0x18] = {
+char gArmorBodyNames_31[24] = {
 #include "sub_main/004A5310.inc"
 };
-char D_004A5328[13] = {
+char gArmorBodyNames_32[13] = {
 #include "sub_main/004A5328.inc"
 };
-char D_004A5338[15] = {
+char gArmorBodyNames_33[15] = {
 #include "sub_main/004A5338.inc"
 };
-char D_004A5348[13] = {
+char gArmorBodyNames_34[13] = {
 #include "sub_main/004A5348.inc"
 };
-char D_004A5358[15] = {
+char gArmorBodyNames_35[15] = {
 #include "sub_main/004A5358.inc"
 };
-char D_004A5370[0x20] = {
+char gArmorBodyNames_36[32] = {
 #include "sub_main/004A5370.inc"
 };
-char D_004A5390[0x18] = {
+char gArmorBodyNames_37[24] = {
 #include "sub_main/004A5390.inc"
 };
-char D_004A53A8[13] = {
+char gArmorBodyNames_38[13] = {
 #include "sub_main/004A53A8.inc"
 };
-char D_004A53B8[15] = {
+char gArmorBodyNames_39[15] = {
 #include "sub_main/004A53B8.inc"
 };
-char D_004A53D0[0x20] = {
+char gArmorBodyNames_40[32] = {
 #include "sub_main/004A53D0.inc"
 };
-char D_004A53F0[0x20] = {
+char gArmorBodyNames_41[32] = {
 #include "sub_main/004A53F0.inc"
 };
-char D_004A5410[0x20] = {
+char gArmorBodyNames_42[32] = {
 #include "sub_main/004A5410.inc"
 };
-char D_004A5430[0x18] = {
+char gArmorBodyNames_43[24] = {
 #include "sub_main/004A5430.inc"
 };
-char D_004A5448[15] = {
+char gArmorBodyNames_44[15] = {
 #include "sub_main/004A5448.inc"
 };
-char D_004A5460[0x18] = {
+char gArmorBodyNames_45[24] = {
 #include "sub_main/004A5460.inc"
 };
-char D_004A5478[15] = {
+char gArmorBodyNames_46[15] = {
 #include "sub_main/004A5478.inc"
 };
-char D_004A5488[13] = {
+char gArmorBodyNames_47[13] = {
 #include "sub_main/004A5488.inc"
 };
-char D_004A54A0[0x20] = {
+char gArmorBodyNames_48[32] = {
 #include "sub_main/004A54A0.inc"
 };
-char D_004A54C0[0x18] = {
+char gArmorBodyNames_49[24] = {
 #include "sub_main/004A54C0.inc"
 };
-char D_004A54D8[15] = {
+char gArmorBodyNames_50[15] = {
 #include "sub_main/004A54D8.inc"
 };
-char D_004A54F0[0x20] = {
+char gArmorBodyNames_51[32] = {
 #include "sub_main/004A54F0.inc"
 };
-char D_004A5510[0x20] = {
+char gArmorBodyNames_52[32] = {
 #include "sub_main/004A5510.inc"
 };
-char D_004A5530[0x18] = {
+char gArmorBodyNames_53[24] = {
 #include "sub_main/004A5530.inc"
 };
-char D_004A5548[13] = {
+char gArmorBodyNames_54[13] = {
 #include "sub_main/004A5548.inc"
 };
-char D_004A5558[13] = {
+char gArmorBodyNames_55[13] = {
 #include "sub_main/004A5558.inc"
 };
-char D_004A5570[0x20] = {
+char gArmorBodyNames_56[32] = {
 #include "sub_main/004A5570.inc"
 };
-char D_004A5590[0x18] = {
+char gArmorBodyNames_57[24] = {
 #include "sub_main/004A5590.inc"
 };
-char D_004A55A8[15] = {
+char gArmorBodyNames_58[15] = {
 #include "sub_main/004A55A8.inc"
 };
-char D_004A55B8[15] = {
+char gArmorBodyNames_59[15] = {
 #include "sub_main/004A55B8.inc"
 };
-char D_004A55C8[15] = {
+char gArmorBodyNames_60[15] = {
 #include "sub_main/004A55C8.inc"
 };
-char D_004A55E0[0x18] = {
+char gArmorBodyNames_61[24] = {
 #include "sub_main/004A55E0.inc"
 };
-char D_004A55F8[15] = {
+char gArmorBodyNames_62[15] = {
 #include "sub_main/004A55F8.inc"
 };
-char D_004A5608[15] = {
+char gArmorBodyNames_63[15] = {
 #include "sub_main/004A5608.inc"
 };
-char D_004A5618[13] = {
+char gArmorBodyNames_64[13] = {
 #include "sub_main/004A5618.inc"
 };
-char D_004A5628[13] = {
+char gArmorBodyNames_65[13] = {
 #include "sub_main/004A5628.inc"
 };
-char D_004A5638[15] = {
+char gArmorBodyNames_66[15] = {
 #include "sub_main/004A5638.inc"
 };
-char D_004A5648[15] = {
+char gArmorBodyNames_67[15] = {
 #include "sub_main/004A5648.inc"
 };
-char D_004A5660[0x20] = {
+char gArmorBodyNames_68[32] = {
 #include "sub_main/004A5660.inc"
 };
-char D_004A5680[0x20] = {
+char gArmorBodyNames_69[32] = {
 #include "sub_main/004A5680.inc"
 };
-char D_004A56A0[0x20] = {
+char gArmorBodyNames_70[32] = {
 #include "sub_main/004A56A0.inc"
 };
-char D_004A56C0[0x18] = {
+char gArmorBodyNames_71[24] = {
 #include "sub_main/004A56C0.inc"
 };
-char D_004A56D8[15] = {
+char gArmorBodyNames_72[15] = {
 #include "sub_main/004A56D8.inc"
 };
-char D_004A56F0[0x20] = {
+char gArmorBodyNames_73[32] = {
 #include "sub_main/004A56F0.inc"
 };
-char D_004A5710[0x20] = {
+char gArmorBodyNames_74[32] = {
 #include "sub_main/004A5710.inc"
 };
-char D_004A5730[0x18] = {
+char gArmorBodyNames_75[24] = {
 #include "sub_main/004A5730.inc"
 };
-char D_004A5748[15] = {
+char gArmorBodyNames_76[15] = {
 #include "sub_main/004A5748.inc"
 };
-char D_004A5760[0x18] = {
+char gArmorBodyNames_77[24] = {
 #include "sub_main/004A5760.inc"
 };
-char D_004A5778[15] = {
+char gArmorBodyNames_78[15] = {
 #include "sub_main/004A5778.inc"
 };
-char D_004A5790[0x18] = {
+char gArmorBodyNames_79[24] = {
 #include "sub_main/004A5790.inc"
 };
-char D_004A57A8[15] = {
+char gArmorBodyNames_80[15] = {
 #include "sub_main/004A57A8.inc"
 };
-char D_004A57C0[0x20] = {
+char gArmorBodyNames_81[32] = {
 #include "sub_main/004A57C0.inc"
 };
-char D_004A57E0[0x20] = {
+char gArmorBodyNames_82[32] = {
 #include "sub_main/004A57E0.inc"
 };
-char D_004A5800[0x20] = {
+char gArmorBodyNames_83[32] = {
 #include "sub_main/004A5800.inc"
 };
-char D_004A5820[0x20] = {
+char gArmorBodyNames_84[32] = {
 #include "sub_main/004A5820.inc"
 };
-char D_004A5840[0x18] = {
+char gArmorBodyNames_85[24] = {
 #include "sub_main/004A5840.inc"
 };
-char D_004A5858[15] = {
+char gArmorBodyNames_86[15] = {
 #include "sub_main/004A5858.inc"
 };
-char D_004A5870[0x20] = {
+char gArmorBodyNames_87[32] = {
 #include "sub_main/004A5870.inc"
 };
-char D_004A5890[0x20] = {
+char gArmorBodyNames_88[32] = {
 #include "sub_main/004A5890.inc"
 };
-char D_004A58B0[0x20] = {
+char gArmorBodyNames_89[32] = {
 #include "sub_main/004A58B0.inc"
 };
-char D_004A58D0[0x20] = {
+char gArmorBodyNames_90[32] = {
 #include "sub_main/004A58D0.inc"
 };
-char D_004A58F0[0x20] = {
+char gArmorBodyNames_91[32] = {
 #include "sub_main/004A58F0.inc"
 };
-char D_004A5910[0x20] = {
+char gArmorBodyNames_92[32] = {
 #include "sub_main/004A5910.inc"
 };
-char D_004A5930[0x20] = {
+char gArmorBodyNames_93[32] = {
 #include "sub_main/004A5930.inc"
 };
-char D_004A5950[0x20] = {
+char gArmorBodyNames_94[32] = {
 #include "sub_main/004A5950.inc"
 };
-char D_004A5970[0x20] = {
+char gArmorBodyNames_95[32] = {
 #include "sub_main/004A5970.inc"
 };
-char D_004A5990[0x20] = {
+char gArmorBodyNames_96[32] = {
 #include "sub_main/004A5990.inc"
 };
-char D_004A59B0[0x20] = {
+char gArmorBodyNames_97[32] = {
 #include "sub_main/004A59B0.inc"
 };
-char D_004A59D0[0x20] = {
+char gArmorBodyNames_98[32] = {
 #include "sub_main/004A59D0.inc"
 };
-char D_004A59F0[0x20] = {
+char gArmorBodyNames_99[32] = {
 #include "sub_main/004A59F0.inc"
 };
-char D_004A5A10[0x18] = {
+char gArmorBodyNames_100[24] = {
 #include "sub_main/004A5A10.inc"
 };
-char D_004A5A28[15] = {
+char gArmorBodyNames_101[15] = {
 #include "sub_main/004A5A28.inc"
 };
-char D_004A5A40[0x18] = {
+char gArmorBodyNames_102[24] = {
 #include "sub_main/004A5A40.inc"
 };
-char D_004A5A58[15] = {
+char gArmorBodyNames_103[15] = {
 #include "sub_main/004A5A58.inc"
 };
-char D_004A5A70[0x20] = {
+char gArmorBodyNames_104[32] = {
 #include "sub_main/004A5A70.inc"
 };
-char D_004A5A90[0x20] = {
+char gArmorBodyNames_105[32] = {
 #include "sub_main/004A5A90.inc"
 };
-char D_004A5AB0[0x20] = {
+char gArmorBodyNames_106[32] = {
 #include "sub_main/004A5AB0.inc"
 };
-char D_004A5AD0[0x20] = {
+char gArmorBodyNames_107[32] = {
 #include "sub_main/004A5AD0.inc"
 };
-char D_004A5AF0[0x20] = {
+char gArmorBodyNames_108[32] = {
 #include "sub_main/004A5AF0.inc"
 };
-char D_004A5B10[0x20] = {
+char gArmorBodyNames_109[32] = {
 #include "sub_main/004A5B10.inc"
 };
-char D_004A5B30[0x18] = {
+char gArmorBodyNames_110[24] = {
 #include "sub_main/004A5B30.inc"
 };
-char D_004A5B48[13] = {
+char gArmorBodyNames_111[13] = {
 #include "sub_main/004A5B48.inc"
 };
-char D_004A5B58[13] = {
+char gArmorBodyNames_112[13] = {
 #include "sub_main/004A5B58.inc"
 };
-char D_004A5B70[0x20] = {
+char gArmorBodyNames_113[32] = {
 #include "sub_main/004A5B70.inc"
 };
-char D_004A5B90[0x20] = {
+char gArmorBodyNames_114[32] = {
 #include "sub_main/004A5B90.inc"
 };
-char D_004A5BB0[0x20] = {
+char gArmorBodyNames_115[32] = {
 #include "sub_main/004A5BB0.inc"
 };
-char D_004A5BD0[0x20] = {
+char gArmorBodyNames_116[32] = {
 #include "sub_main/004A5BD0.inc"
 };
-char D_004A5BF0[0x20] = {
+char gArmorBodyNames_117[32] = {
 #include "sub_main/004A5BF0.inc"
 };
-char D_004A5C10[0x20] = {
+char gArmorBodyNames_118[32] = {
 #include "sub_main/004A5C10.inc"
 };
-char D_004A5C30[0x20] = {
+char gArmorBodyNames_119[32] = {
 #include "sub_main/004A5C30.inc"
 };
-char D_004A5C50[0x20] = {
+char gArmorBodyNames_120[32] = {
 #include "sub_main/004A5C50.inc"
 };
-char D_004A5C70[0x20] = {
+char gArmorBodyNames_121[32] = {
 #include "sub_main/004A5C70.inc"
 };
-char D_004A5C90[0x20] = {
+char gArmorBodyNames_122[32] = {
 #include "sub_main/004A5C90.inc"
 };
-char D_004A5CB0[0x20] = {
+char gArmorBodyNames_123[32] = {
 #include "sub_main/004A5CB0.inc"
 };
-char D_004A5CD0[0x20] = {
+char gArmorBodyNames_124[32] = {
 #include "sub_main/004A5CD0.inc"
 };
-char D_004A5CF0[0x20] = {
+char gArmorBodyNames_125[32] = {
 #include "sub_main/004A5CF0.inc"
 };
-char D_004A5D10[0x20] = {
+char gArmorBodyNames_126[32] = {
 #include "sub_main/004A5D10.inc"
 };
-char D_004A5D30[0x20] = {
+char gArmorBodyNames_127[32] = {
 #include "sub_main/004A5D30.inc"
 };
-char D_004A5D50[0x20] = {
+char gArmorBodyNames_128[32] = {
 #include "sub_main/004A5D50.inc"
 };
-char D_004A5D70[0x20] = {
+char gArmorBodyNames_129[32] = {
 #include "sub_main/004A5D70.inc"
 };
-char D_004A5D90[0x18] = {
+char gArmorBodyNames_130[24] = {
 #include "sub_main/004A5D90.inc"
 };
-char D_004A5DA8[15] = {
+char gArmorBodyNames_131[15] = {
 #include "sub_main/004A5DA8.inc"
 };
-char D_004A5DC0[0x20] = {
+char gArmorBodyNames_132[32] = {
 #include "sub_main/004A5DC0.inc"
 };
-char D_004A5DE0[0x20] = {
+char gArmorBodyNames_133[32] = {
 #include "sub_main/004A5DE0.inc"
 };
-char D_004A5E00[0x18] = {
+char gArmorBodyNames_134[24] = {
 #include "sub_main/004A5E00.inc"
 };
-char D_004A5E18[15] = {
+char gArmorBodyNames_135[15] = {
 #include "sub_main/004A5E18.inc"
 };
-char D_004A5E30[0x18] = {
+char gArmorBodyNames_136[24] = {
 #include "sub_main/004A5E30.inc"
 };
-char D_004A5E48[15] = {
+char gArmorBodyNames_137[15] = {
 #include "sub_main/004A5E48.inc"
 };
-char D_004A5E60[0x18] = {
+char gArmorBodyNames_138[24] = {
 #include "sub_main/004A5E60.inc"
 };
-char D_004A5E78[15] = {
+char gArmorBodyNames_139[15] = {
 #include "sub_main/004A5E78.inc"
 };
-char D_004A5E90[0x20] = {
+char gArmorBodyNames_140[32] = {
 #include "sub_main/004A5E90.inc"
 };
-char D_004A5EB0[0x20] = {
+char gArmorBodyNames_141[32] = {
 #include "sub_main/004A5EB0.inc"
 };
-char D_004A5ED0[0x20] = {
+char gArmorBodyNames_142[32] = {
 #include "sub_main/004A5ED0.inc"
 };
-char D_004A5EF0[0x20] = {
+char gArmorBodyNames_143[32] = {
 #include "sub_main/004A5EF0.inc"
 };
-char D_004A5F10[0x18] = {
+char gArmorBodyNames_144[24] = {
 #include "sub_main/004A5F10.inc"
 };
-char D_004A5F28[15] = {
+char gArmorBodyNames_145[15] = {
 #include "sub_main/004A5F28.inc"
 };
-char D_004A5F40[0x20] = {
+char gArmorBodyNames_146[32] = {
 #include "sub_main/004A5F40.inc"
 };
-char D_004A5F60[0x20] = {
+char gArmorBodyNames_147[32] = {
 #include "sub_main/004A5F60.inc"
 };
-char D_004A5F80[0x20] = {
+char gArmorBodyNames_148[32] = {
 #include "sub_main/004A5F80.inc"
 };
-char D_004A5FA0[0x20] = {
+char gArmorBodyNames_149[32] = {
 #include "sub_main/004A5FA0.inc"
 };
-char D_004A5FC0[0x20] = {
+char gArmorBodyNames_150[32] = {
 #include "sub_main/004A5FC0.inc"
 };
-char D_004A5FE0[0x20] = {
+char gArmorBodyNames_151[32] = {
 #include "sub_main/004A5FE0.inc"
 };
-char D_004A6000[0x20] = {
+char gArmorBodyNames_152[32] = {
 #include "sub_main/004A6000.inc"
 };
-char D_004A6020[0x18] = {
+char gArmorBodyNames_153[24] = {
 #include "sub_main/004A6020.inc"
 };
-char D_004A6038[15] = {
+char gArmorBodyNames_154[15] = {
 #include "sub_main/004A6038.inc"
 };
-char D_004A6050[0x20] = {
+char gArmorBodyNames_155[32] = {
 #include "sub_main/004A6050.inc"
 };
-char D_004A6070[0x20] = {
+char gArmorBodyNames_156[32] = {
 #include "sub_main/004A6070.inc"
 };
-char D_004A6090[0x18] = {
+char gArmorBodyNames_157[24] = {
 #include "sub_main/004A6090.inc"
 };
-char D_004A60A8[15] = {
+char gArmorBodyNames_158[15] = {
 #include "sub_main/004A60A8.inc"
 };
-char D_004A60C0[0x18] = {
+char gArmorBodyNames_159[24] = {
 #include "sub_main/004A60C0.inc"
 };
-char D_004A60D8[15] = {
+char gArmorBodyNames_160[15] = {
 #include "sub_main/004A60D8.inc"
 };
-char D_004A60F0[0x18] = {
+char gArmorBodyNames_161[24] = {
 #include "sub_main/004A60F0.inc"
 };
-char D_004A6108[15] = {
+char gArmorBodyNames_162[15] = {
 #include "sub_main/004A6108.inc"
 };
-char D_004A6120[0x20] = {
+char gArmorBodyNames_163[32] = {
 #include "sub_main/004A6120.inc"
 };
-char D_004A6140[0x20] = {
+char gArmorBodyNames_164[32] = {
 #include "sub_main/004A6140.inc"
 };
-char D_004A6160[0x20] = {
+char gArmorBodyNames_165[32] = {
 #include "sub_main/004A6160.inc"
 };
-char D_004A6180[0x20] = {
+char gArmorBodyNames_166[32] = {
 #include "sub_main/004A6180.inc"
 };
-char D_004A61A0[0x20] = {
+char gArmorBodyNames_167[32] = {
 #include "sub_main/004A61A0.inc"
 };
-char D_004A61C0[0x20] = {
+char gArmorBodyNames_168[32] = {
 #include "sub_main/004A61C0.inc"
 };
-char D_004A61E0[0x18] = {
+char gArmorBodyNames_169[24] = {
 #include "sub_main/004A61E0.inc"
 };
-char D_004A61F8[13] = {
+char gArmorBodyNames_170[13] = {
 #include "sub_main/004A61F8.inc"
 };
-char D_004A6208[13] = {
+char gArmorBodyNames_171[13] = {
 #include "sub_main/004A6208.inc"
 };
-char D_004A6220[0x20] = {
+char D_004A6220[32] = {
 #include "sub_main/004A6220.inc"
 };
-char D_004A6240[0x20] = {
+char D_004A6240[32] = {
 #include "sub_main/004A6240.inc"
 };
-char D_004A6260[0x20] = {
+char gArmorBodyNames_176[32] = {
 #include "sub_main/004A6260.inc"
 };
-char D_004A6280[0x20] = {
+char gArmorBodyNames_177[32] = {
 #include "sub_main/004A6280.inc"
 };
-char D_004A62A0[0x20] = {
+char gArmorBodyNames_178[32] = {
 #include "sub_main/004A62A0.inc"
 };
-char D_004A62C0[0x20] = {
+char gArmorBodyNames_179[32] = {
 #include "sub_main/004A62C0.inc"
 };
-char D_004A62E0[0x20] = {
+char gArmorBodyNames_180[32] = {
 #include "sub_main/004A62E0.inc"
 };
-char D_004A6300[0x18] = {
+char gArmorBodyNames_181[24] = {
 #include "sub_main/004A6300.inc"
 };
-char D_004A6318[13] = {
+char gArmorBodyNames_182[13] = {
 #include "sub_main/004A6318.inc"
 };
-char D_004A6328[15] = {
+char gArmorBodyNames_183[15] = {
 #include "sub_main/004A6328.inc"
 };
-char D_004A6338[15] = {
+char gArmorBodyNames_184[15] = {
 #include "sub_main/004A6338.inc"
 };
-char D_004A6350[0x18] = {
+char gArmorBodyNames_185[24] = {
 #include "sub_main/004A6350.inc"
 };
-char D_004A6368[15] = {
+char gArmorBodyNames_186[15] = {
 #include "sub_main/004A6368.inc"
 };
-char D_004A6380[0x18] = {
+char gArmorBodyNames_187[24] = {
 #include "sub_main/004A6380.inc"
 };
-char D_004A6398[13] = {
+char gArmorBodyNames_188[13] = {
 #include "sub_main/004A6398.inc"
 };
-char D_004A63A8[15] = {
+char gArmorBodyNames_189[15] = {
 #include "sub_main/004A63A8.inc"
 };
-char D_004A63B8[15] = {
+char gArmorBodyNames_190[15] = {
 #include "sub_main/004A63B8.inc"
 };
-char D_004A63D0[0x18] = {
+char gArmorBodyNames_191[24] = {
 #include "sub_main/004A63D0.inc"
 };
-char D_004A63E8[15] = {
+char gArmorBodyNames_192[15] = {
 #include "sub_main/004A63E8.inc"
 };
-char D_004A6400[0x18] = {
+char gArmorBodyNames_193[24] = {
 #include "sub_main/004A6400.inc"
 };
-char D_004A6418[15] = {
+char gArmorBodyNames_194[15] = {
 #include "sub_main/004A6418.inc"
 };
-char D_004A6430[0x20] = {
+char gArmorBodyNames_195[32] = {
 #include "sub_main/004A6430.inc"
 };
-char D_004A6450[0x20] = {
+char gArmorBodyNames_196[32] = {
 #include "sub_main/004A6450.inc"
 };
-char D_004A6470[0x20] = {
+char gArmorBodyNames_197[32] = {
 #include "sub_main/004A6470.inc"
 };
-char D_004A6490[0x20] = {
+char gArmorBodyNames_198[32] = {
 #include "sub_main/004A6490.inc"
 };
-char D_004A64B0[0x18] = {
+char gArmorBodyNames_199[24] = {
 #include "sub_main/004A64B0.inc"
 };
-char D_004A64C8[13] = {
+char gArmorBodyNames_200[13] = {
 #include "sub_main/004A64C8.inc"
 };
-char D_004A64D8[15] = {
+char gArmorBodyNames_201[15] = {
 #include "sub_main/004A64D8.inc"
 };
-char D_004A64E8[15] = {
+char gArmorBodyNames_202[15] = {
 #include "sub_main/004A64E8.inc"
 };
-char D_004A6500[0x18] = {
+char gArmorBodyNames_203[24] = {
 #include "sub_main/004A6500.inc"
 };
-char D_004A6518[15] = {
+char gArmorBodyNames_204[15] = {
 #include "sub_main/004A6518.inc"
 };
-char D_004A6530[0x18] = {
+char gArmorBodyNames_205[24] = {
 #include "sub_main/004A6530.inc"
 };
-char D_004A6548[13] = {
+char gArmorBodyNames_206[13] = {
 #include "sub_main/004A6548.inc"
 };
-char D_004A6558[13] = {
+char gArmorBodyNames_207[13] = {
 #include "sub_main/004A6558.inc"
 };
-char D_004A6568[15] = {
+char gArmorBodyNames_208[15] = {
 #include "sub_main/004A6568.inc"
 };
-char D_004A6578[15] = {
+char gArmorBodyNames_209[15] = {
 #include "sub_main/004A6578.inc"
 };
-char D_004A6590[0x18] = {
+char gArmorBodyNames_210[24] = {
 #include "sub_main/004A6590.inc"
 };
-char D_004A65A8[15] = {
+char gArmorBodyNames_211[15] = {
 #include "sub_main/004A65A8.inc"
 };
-char D_004A65C0[0x20] = {
+char gArmorBodyNames_212[32] = {
 #include "sub_main/004A65C0.inc"
 };
-char D_004A65E0[0x20] = {
+char gArmorBodyNames_213[32] = {
 #include "sub_main/004A65E0.inc"
 };
-char D_004A6600[0x20] = {
+char gArmorBodyNames_214[32] = {
 #include "sub_main/004A6600.inc"
 };
-char D_004A6620[0x18] = {
+char gArmorBodyNames_215[24] = {
 #include "sub_main/004A6620.inc"
 };
-char D_004A6638[15] = {
+char gArmorBodyNames_216[15] = {
 #include "sub_main/004A6638.inc"
 };
-char D_004A6648[15] = {
+char gArmorBodyNames_217[15] = {
 #include "sub_main/004A6648.inc"
 };
-char D_004A6658[15] = {
+char gArmorBodyNames_218[15] = {
 #include "sub_main/004A6658.inc"
 };
-char D_004A6670[0x18] = {
+char gArmorBodyNames_219[24] = {
 #include "sub_main/004A6670.inc"
 };
-char D_004A6688[13] = {
+char gArmorBodyNames_220[13] = {
 #include "sub_main/004A6688.inc"
 };
-char D_004A6698[13] = {
+char gArmorBodyNames_221[13] = {
 #include "sub_main/004A6698.inc"
 };
-char D_004A66A8[0xC] = {
+char gArmorBodyNames_222[12] = {
 #include "sub_main/004A66A8.inc"
 };
-char D_004A66B8[0xC] = {
+char gArmorBodyNames_223[12] = {
 #include "sub_main/004A66B8.inc"
 };
-char D_004A66D0[0x20] = {
+char gArmorBodyNames_224[32] = {
 #include "sub_main/004A66D0.inc"
 };
-char D_004A66F0[0x20] = {
+char gArmorBodyNames_225[32] = {
 #include "sub_main/004A66F0.inc"
 };
-char D_004A6710[0x20] = {
+char gArmorBodyNames_226[32] = {
 #include "sub_main/004A6710.inc"
 };
-char D_004A6730[0x20] = {
+char gArmorBodyNames_227[32] = {
 #include "sub_main/004A6730.inc"
 };
-char D_004A6750[0x20] = {
+char gArmorBodyNames_228[32] = {
 #include "sub_main/004A6750.inc"
 };
-char D_004A6770[0x20] = {
+char gArmorBodyNames_229[32] = {
 #include "sub_main/004A6770.inc"
 };
-char D_004A6790[0x20] = {
+char gArmorBodyNames_230[32] = {
 #include "sub_main/004A6790.inc"
 };
-char D_004A67B0[0x18] = {
+char gArmorBodyNames_231[24] = {
 #include "sub_main/004A67B0.inc"
 };
-char D_004A67C8[13] = {
+char gArmorBodyNames_232[13] = {
 #include "sub_main/004A67C8.inc"
 };
-char D_004A67E0[0x18] = {
+char gArmorBodyNames_233[24] = {
 #include "sub_main/004A67E0.inc"
 };
-char D_004A67F8[13] = {
+char gArmorBodyNames_234[13] = {
 #include "sub_main/004A67F8.inc"
 };
-char D_004A6810[0x20] = {
+char gArmorBodyNames_235[32] = {
 #include "sub_main/004A6810.inc"
 };
-char D_004A6830[0x20] = {
+char D_004A6830[32] = {
 #include "sub_main/004A6830.inc"
 };
-char D_004A6850[0x18] = {
+char D_004A6850[24] = {
 #include "sub_main/004A6850.inc"
 };
-char D_004A6868[15] = {
+char gArmorBodyNames_240[15] = {
 #include "sub_main/004A6868.inc"
 };
-char D_004A6878[15] = {
+char gArmorBodyNames_241[15] = {
 #include "sub_main/004A6878.inc"
 };
-char D_004A6890[0x20] = {
+char gArmorBodyNames_242[32] = {
 #include "sub_main/004A6890.inc"
 };
-char D_004A68B0[0x18] = {
+char gArmorArmsNames_1[24] = {
 #include "sub_main/004A68B0.inc"
 };
-char D_004A68C8[15] = {
+char gArmorArmsNames_2[15] = {
 #include "sub_main/004A68C8.inc"
 };
-char D_004A68D8[15] = {
+char gArmorArmsNames_3[15] = {
 #include "sub_main/004A68D8.inc"
 };
-char D_004A68E8[15] = {
+char gArmorArmsNames_4[15] = {
 #include "sub_main/004A68E8.inc"
 };
-char D_004A68F8[13] = {
+char gArmorArmsNames_5[13] = {
 #include "sub_main/004A68F8.inc"
 };
-char D_004A6908[13] = {
+char gArmorArmsNames_6[13] = {
 #include "sub_main/004A6908.inc"
 };
-char D_004A6918[15] = {
+char gArmorArmsNames_7[15] = {
 #include "sub_main/004A6918.inc"
 };
-char D_004A6928[15] = {
+char gArmorArmsNames_8[15] = {
 #include "sub_main/004A6928.inc"
 };
-char D_004A6938[13] = {
+char gArmorArmsNames_9[13] = {
 #include "sub_main/004A6938.inc"
 };
-char D_004A6948[13] = {
+char gArmorArmsNames_10[13] = {
 #include "sub_main/004A6948.inc"
 };
-char D_004A6958[13] = {
+char gArmorArmsNames_11[13] = {
 #include "sub_main/004A6958.inc"
 };
-char D_004A6968[13] = {
+char gArmorArmsNames_12[13] = {
 #include "sub_main/004A6968.inc"
 };
-char D_004A6978[13] = {
+char gArmorArmsNames_13[13] = {
 #include "sub_main/004A6978.inc"
 };
-char D_004A6988[13] = {
+char gArmorArmsNames_14[13] = {
 #include "sub_main/004A6988.inc"
 };
-char D_004A6998[15] = {
+char gArmorArmsNames_15[15] = {
 #include "sub_main/004A6998.inc"
 };
-char D_004A69A8[15] = {
+char gArmorArmsNames_16[15] = {
 #include "sub_main/004A69A8.inc"
 };
-char D_004A69B8[15] = {
+char gArmorArmsNames_17[15] = {
 #include "sub_main/004A69B8.inc"
 };
-char D_004A69C8[15] = {
+char gArmorArmsNames_18[15] = {
 #include "sub_main/004A69C8.inc"
 };
-char D_004A69D8[13] = {
+char gArmorArmsNames_19[13] = {
 #include "sub_main/004A69D8.inc"
 };
-char D_004A69E8[13] = {
+char gArmorArmsNames_20[13] = {
 #include "sub_main/004A69E8.inc"
 };
-char D_004A69F8[15] = {
+char gArmorArmsNames_21[15] = {
 #include "sub_main/004A69F8.inc"
 };
-char D_004A6A08[15] = {
+char gArmorArmsNames_22[15] = {
 #include "sub_main/004A6A08.inc"
 };
-char D_004A6A18[15] = {
+char gArmorArmsNames_23[15] = {
 #include "sub_main/004A6A18.inc"
 };
-char D_004A6A28[15] = {
+char gArmorArmsNames_24[15] = {
 #include "sub_main/004A6A28.inc"
 };
-char D_004A6A38[15] = {
+char gArmorArmsNames_25[15] = {
 #include "sub_main/004A6A38.inc"
 };
-char D_004A6A48[15] = {
+char gArmorArmsNames_26[15] = {
 #include "sub_main/004A6A48.inc"
 };
-char D_004A6A60[0x18] = {
+char gArmorArmsNames_27[24] = {
 #include "sub_main/004A6A60.inc"
 };
-char D_004A6A78[13] = {
+char gArmorArmsNames_28[13] = {
 #include "sub_main/004A6A78.inc"
 };
-char D_004A6A88[13] = {
+char gArmorArmsNames_29[13] = {
 #include "sub_main/004A6A88.inc"
 };
-char D_004A6A98[15] = {
+char gArmorArmsNames_30[15] = {
 #include "sub_main/004A6A98.inc"
 };
-char D_004A6AA8[15] = {
+char gArmorArmsNames_31[15] = {
 #include "sub_main/004A6AA8.inc"
 };
-char D_004A6AB8[13] = {
+char gArmorArmsNames_32[13] = {
 #include "sub_main/004A6AB8.inc"
 };
-char D_004A6AC8[13] = {
+char gArmorArmsNames_33[13] = {
 #include "sub_main/004A6AC8.inc"
 };
-char D_004A6AD8[13] = {
+char gArmorArmsNames_34[13] = {
 #include "sub_main/004A6AD8.inc"
 };
-char D_004A6AE8[13] = {
+char gArmorArmsNames_35[13] = {
 #include "sub_main/004A6AE8.inc"
 };
-char D_004A6B00[0x20] = {
+char gArmorArmsNames_36[32] = {
 #include "sub_main/004A6B00.inc"
 };
-char D_004A6B20[0x18] = {
+char gArmorArmsNames_37[24] = {
 #include "sub_main/004A6B20.inc"
 };
-char D_004A6B38[13] = {
+char gArmorArmsNames_38[13] = {
 #include "sub_main/004A6B38.inc"
 };
-char D_004A6B48[13] = {
+char gArmorArmsNames_39[13] = {
 #include "sub_main/004A6B48.inc"
 };
-char D_004A6B60[0x20] = {
+char gArmorArmsNames_40[32] = {
 #include "sub_main/004A6B60.inc"
 };
-char D_004A6B80[0x20] = {
+char gArmorArmsNames_41[32] = {
 #include "sub_main/004A6B80.inc"
 };
-char D_004A6BA0[0x20] = {
+char gArmorArmsNames_42[32] = {
 #include "sub_main/004A6BA0.inc"
 };
-char D_004A6BC0[0x18] = {
+char gArmorArmsNames_43[24] = {
 #include "sub_main/004A6BC0.inc"
 };
-char D_004A6BD8[15] = {
+char gArmorArmsNames_44[15] = {
 #include "sub_main/004A6BD8.inc"
 };
-char D_004A6BE8[15] = {
+char gArmorArmsNames_45[15] = {
 #include "sub_main/004A6BE8.inc"
 };
-char D_004A6BF8[15] = {
+char gArmorArmsNames_46[15] = {
 #include "sub_main/004A6BF8.inc"
 };
-char D_004A6C08[0xC] = {
+char gArmorArmsNames_47[12] = {
 #include "sub_main/004A6C08.inc"
 };
-char D_004A6C20[0x20] = {
+char gArmorArmsNames_48[32] = {
 #include "sub_main/004A6C20.inc"
 };
-char D_004A6C40[0x20] = {
+char gArmorArmsNames_49[32] = {
 #include "sub_main/004A6C40.inc"
 };
-char D_004A6C60[0x20] = {
+char gArmorArmsNames_50[32] = {
 #include "sub_main/004A6C60.inc"
 };
-char D_004A6C80[0x18] = {
+char gArmorArmsNames_51[24] = {
 #include "sub_main/004A6C80.inc"
 };
-char D_004A6C98[13] = {
+char gArmorArmsNames_52[13] = {
 #include "sub_main/004A6C98.inc"
 };
-char D_004A6CA8[13] = {
+char gArmorArmsNames_53[13] = {
 #include "sub_main/004A6CA8.inc"
 };
-char D_004A6CC0[0x20] = {
+char gArmorArmsNames_54[32] = {
 #include "sub_main/004A6CC0.inc"
 };
-char D_004A6CE0[0x18] = {
+char gArmorArmsNames_55[24] = {
 #include "sub_main/004A6CE0.inc"
 };
-char D_004A6CF8[15] = {
+char gArmorArmsNames_56[15] = {
 #include "sub_main/004A6CF8.inc"
 };
-char D_004A6D08[15] = {
+char gArmorArmsNames_57[15] = {
 #include "sub_main/004A6D08.inc"
 };
-char D_004A6D18[15] = {
+char gArmorArmsNames_58[15] = {
 #include "sub_main/004A6D18.inc"
 };
-char D_004A6D28[15] = {
+char gArmorArmsNames_59[15] = {
 #include "sub_main/004A6D28.inc"
 };
-char D_004A6D38[13] = {
+char gArmorArmsNames_60[13] = {
 #include "sub_main/004A6D38.inc"
 };
-char D_004A6D48[13] = {
+char gArmorArmsNames_61[13] = {
 #include "sub_main/004A6D48.inc"
 };
-char D_004A6D58[0xC] = {
+char gArmorArmsNames_62[12] = {
 #include "sub_main/004A6D58.inc"
 };
-char D_004A6D68[0xC] = {
+char gArmorArmsNames_63[12] = {
 #include "sub_main/004A6D68.inc"
 };
-char D_004A6D78[15] = {
+char gArmorArmsNames_64[15] = {
 #include "sub_main/004A6D78.inc"
 };
-char D_004A6D90[0x20] = {
+char gArmorArmsNames_65[32] = {
 #include "sub_main/004A6D90.inc"
 };
-char D_004A6DB0[0x20] = {
+char gArmorArmsNames_66[32] = {
 #include "sub_main/004A6DB0.inc"
 };
-char D_004A6DD0[0x20] = {
+char gArmorArmsNames_67[32] = {
 #include "sub_main/004A6DD0.inc"
 };
-char D_004A6DF0[0x20] = {
+char gArmorArmsNames_68[32] = {
 #include "sub_main/004A6DF0.inc"
 };
-char D_004A6E10[0x18] = {
+char gArmorArmsNames_69[24] = {
 #include "sub_main/004A6E10.inc"
 };
-char D_004A6E28[15] = {
+char gArmorArmsNames_70[15] = {
 #include "sub_main/004A6E28.inc"
 };
-char D_004A6E38[15] = {
+char gArmorArmsNames_71[15] = {
 #include "sub_main/004A6E38.inc"
 };
-char D_004A6E50[0x20] = {
+char gArmorArmsNames_72[32] = {
 #include "sub_main/004A6E50.inc"
 };
-char D_004A6E70[0x18] = {
+char gArmorArmsNames_73[24] = {
 #include "sub_main/004A6E70.inc"
 };
-char D_004A6E88[15] = {
+char gArmorArmsNames_74[15] = {
 #include "sub_main/004A6E88.inc"
 };
-char D_004A6E98[15] = {
+char gArmorArmsNames_75[15] = {
 #include "sub_main/004A6E98.inc"
 };
-char D_004A6EA8[15] = {
+char gArmorArmsNames_76[15] = {
 #include "sub_main/004A6EA8.inc"
 };
-char D_004A6EB8[15] = {
+char gArmorArmsNames_77[15] = {
 #include "sub_main/004A6EB8.inc"
 };
-char D_004A6EC8[15] = {
+char gArmorArmsNames_78[15] = {
 #include "sub_main/004A6EC8.inc"
 };
-char D_004A6ED8[15] = {
+char gArmorArmsNames_79[15] = {
 #include "sub_main/004A6ED8.inc"
 };
-char D_004A6EF0[0x20] = {
+char gArmorArmsNames_80[32] = {
 #include "sub_main/004A6EF0.inc"
 };
-char D_004A6F10[0x20] = {
+char gArmorArmsNames_81[32] = {
 #include "sub_main/004A6F10.inc"
 };
-char D_004A6F30[0x20] = {
+char gArmorArmsNames_82[32] = {
 #include "sub_main/004A6F30.inc"
 };
-char D_004A6F50[0x18] = {
+char gArmorArmsNames_83[24] = {
 #include "sub_main/004A6F50.inc"
 };
-char D_004A6F68[15] = {
+char gArmorArmsNames_84[15] = {
 #include "sub_main/004A6F68.inc"
 };
-char D_004A6F78[15] = {
+char gArmorArmsNames_85[15] = {
 #include "sub_main/004A6F78.inc"
 };
-char D_004A6F90[0x20] = {
+char gArmorArmsNames_86[32] = {
 #include "sub_main/004A6F90.inc"
 };
-char D_004A6FB0[0x20] = {
+char gArmorArmsNames_87[32] = {
 #include "sub_main/004A6FB0.inc"
 };
-char D_004A6FD0[0x20] = {
+char gArmorArmsNames_88[32] = {
 #include "sub_main/004A6FD0.inc"
 };
-char D_004A6FF0[0x20] = {
+char gArmorArmsNames_89[32] = {
 #include "sub_main/004A6FF0.inc"
 };
-char D_004A7010[0x20] = {
+char gArmorArmsNames_90[32] = {
 #include "sub_main/004A7010.inc"
 };
-char D_004A7030[0x20] = {
+char gArmorArmsNames_91[32] = {
 #include "sub_main/004A7030.inc"
 };
-char D_004A7050[0x20] = {
+char gArmorArmsNames_92[32] = {
 #include "sub_main/004A7050.inc"
 };
-char D_004A7070[0x20] = {
+char gArmorArmsNames_93[32] = {
 #include "sub_main/004A7070.inc"
 };
-char D_004A7090[0x20] = {
+char gArmorArmsNames_94[32] = {
 #include "sub_main/004A7090.inc"
 };
-char D_004A70B0[0x20] = {
+char gArmorArmsNames_95[32] = {
 #include "sub_main/004A70B0.inc"
 };
-char D_004A70D0[0x20] = {
+char gArmorArmsNames_96[32] = {
 #include "sub_main/004A70D0.inc"
 };
-char D_004A70F0[0x20] = {
+char gArmorArmsNames_97[32] = {
 #include "sub_main/004A70F0.inc"
 };
-char D_004A7110[0x18] = {
+char gArmorArmsNames_98[24] = {
 #include "sub_main/004A7110.inc"
 };
-char D_004A7128[15] = {
+char gArmorArmsNames_99[15] = {
 #include "sub_main/004A7128.inc"
 };
-char D_004A7138[15] = {
+char gArmorArmsNames_100[15] = {
 #include "sub_main/004A7138.inc"
 };
-char D_004A7148[15] = {
+char gArmorArmsNames_101[15] = {
 #include "sub_main/004A7148.inc"
 };
-char D_004A7158[15] = {
+char gArmorArmsNames_102[15] = {
 #include "sub_main/004A7158.inc"
 };
-char D_004A7170[0x20] = {
+char gArmorArmsNames_103[32] = {
 #include "sub_main/004A7170.inc"
 };
-char D_004A7190[0x20] = {
+char gArmorArmsNames_104[32] = {
 #include "sub_main/004A7190.inc"
 };
-char D_004A71B0[0x20] = {
+char gArmorArmsNames_105[32] = {
 #include "sub_main/004A71B0.inc"
 };
-char D_004A71D0[0x20] = {
+char gArmorArmsNames_106[32] = {
 #include "sub_main/004A71D0.inc"
 };
-char D_004A71F0[0x20] = {
+char gArmorArmsNames_107[32] = {
 #include "sub_main/004A71F0.inc"
 };
-char D_004A7210[0x18] = {
+char gArmorArmsNames_108[24] = {
 #include "sub_main/004A7210.inc"
 };
-char D_004A7228[13] = {
+char gArmorArmsNames_109[13] = {
 #include "sub_main/004A7228.inc"
 };
-char D_004A7238[13] = {
+char gArmorArmsNames_110[13] = {
 #include "sub_main/004A7238.inc"
 };
-char D_004A7250[0x20] = {
+char gArmorArmsNames_111[32] = {
 #include "sub_main/004A7250.inc"
 };
-char D_004A7270[0x20] = {
+char gArmorArmsNames_112[32] = {
 #include "sub_main/004A7270.inc"
 };
-char D_004A7290[0x20] = {
+char gArmorArmsNames_113[32] = {
 #include "sub_main/004A7290.inc"
 };
-char D_004A72B0[0x20] = {
+char gArmorArmsNames_114[32] = {
 #include "sub_main/004A72B0.inc"
 };
-char D_004A72D0[0x20] = {
+char gArmorArmsNames_115[32] = {
 #include "sub_main/004A72D0.inc"
 };
-char D_004A72F0[0x18] = {
+char gArmorArmsNames_116[24] = {
 #include "sub_main/004A72F0.inc"
 };
-char D_004A7308[15] = {
+char gArmorArmsNames_117[15] = {
 #include "sub_main/004A7308.inc"
 };
-char D_004A7318[15] = {
+char gArmorArmsNames_118[15] = {
 #include "sub_main/004A7318.inc"
 };
-char D_004A7330[0x20] = {
+char gArmorArmsNames_119[32] = {
 #include "sub_main/004A7330.inc"
 };
-char D_004A7350[0x20] = {
+char gArmorArmsNames_120[32] = {
 #include "sub_main/004A7350.inc"
 };
-char D_004A7370[0x20] = {
+char gArmorArmsNames_121[32] = {
 #include "sub_main/004A7370.inc"
 };
-char D_004A7390[0x20] = {
+char gArmorArmsNames_122[32] = {
 #include "sub_main/004A7390.inc"
 };
-char D_004A73B0[0x20] = {
+char gArmorArmsNames_123[32] = {
 #include "sub_main/004A73B0.inc"
 };
-char D_004A73D0[0x20] = {
+char gArmorArmsNames_124[32] = {
 #include "sub_main/004A73D0.inc"
 };
-char D_004A73F0[0x20] = {
+char gArmorArmsNames_125[32] = {
 #include "sub_main/004A73F0.inc"
 };
-char D_004A7410[0x20] = {
+char gArmorArmsNames_126[32] = {
 #include "sub_main/004A7410.inc"
 };
-char D_004A7430[0x20] = {
+char gArmorArmsNames_127[32] = {
 #include "sub_main/004A7430.inc"
 };
-char D_004A7450[0x18] = {
+char gArmorArmsNames_128[24] = {
 #include "sub_main/004A7450.inc"
 };
-char D_004A7468[15] = {
+char gArmorArmsNames_129[15] = {
 #include "sub_main/004A7468.inc"
 };
-char D_004A7478[15] = {
+char gArmorArmsNames_130[15] = {
 #include "sub_main/004A7478.inc"
 };
-char D_004A7490[0x20] = {
+char gArmorArmsNames_131[32] = {
 #include "sub_main/004A7490.inc"
 };
-char D_004A74B0[0x18] = {
+char gArmorArmsNames_132[24] = {
 #include "sub_main/004A74B0.inc"
 };
-char D_004A74C8[15] = {
+char gArmorArmsNames_133[15] = {
 #include "sub_main/004A74C8.inc"
 };
-char D_004A74D8[15] = {
+char gArmorArmsNames_134[15] = {
 #include "sub_main/004A74D8.inc"
 };
-char D_004A74E8[15] = {
+char gArmorArmsNames_135[15] = {
 #include "sub_main/004A74E8.inc"
 };
-char D_004A74F8[15] = {
+char gArmorArmsNames_136[15] = {
 #include "sub_main/004A74F8.inc"
 };
-char D_004A7508[15] = {
+char gArmorArmsNames_137[15] = {
 #include "sub_main/004A7508.inc"
 };
-char D_004A7518[15] = {
+char gArmorArmsNames_138[15] = {
 #include "sub_main/004A7518.inc"
 };
-char D_004A7530[0x20] = {
+char gArmorArmsNames_139[32] = {
 #include "sub_main/004A7530.inc"
 };
-char D_004A7550[0x20] = {
+char gArmorArmsNames_140[32] = {
 #include "sub_main/004A7550.inc"
 };
-char D_004A7570[0x20] = {
+char gArmorArmsNames_141[32] = {
 #include "sub_main/004A7570.inc"
 };
-char D_004A7590[0x18] = {
+char gArmorArmsNames_142[24] = {
 #include "sub_main/004A7590.inc"
 };
-char D_004A75A8[15] = {
+char gArmorArmsNames_143[15] = {
 #include "sub_main/004A75A8.inc"
 };
-char D_004A75B8[15] = {
+char gArmorArmsNames_144[15] = {
 #include "sub_main/004A75B8.inc"
 };
-char D_004A75D0[0x20] = {
+char gArmorArmsNames_145[32] = {
 #include "sub_main/004A75D0.inc"
 };
-char D_004A75F0[0x20] = {
+char gArmorArmsNames_146[32] = {
 #include "sub_main/004A75F0.inc"
 };
-char D_004A7610[0x20] = {
+char gArmorArmsNames_147[32] = {
 #include "sub_main/004A7610.inc"
 };
-char D_004A7630[0x20] = {
+char gArmorArmsNames_148[32] = {
 #include "sub_main/004A7630.inc"
 };
-char D_004A7650[0x20] = {
+char gArmorArmsNames_149[32] = {
 #include "sub_main/004A7650.inc"
 };
-char D_004A7670[0x20] = {
+char gArmorArmsNames_150[32] = {
 #include "sub_main/004A7670.inc"
 };
-char D_004A7690[0x18] = {
+char gArmorArmsNames_151[24] = {
 #include "sub_main/004A7690.inc"
 };
-char D_004A76A8[15] = {
+char gArmorArmsNames_152[15] = {
 #include "sub_main/004A76A8.inc"
 };
-char D_004A76B8[15] = {
+char gArmorArmsNames_153[15] = {
 #include "sub_main/004A76B8.inc"
 };
-char D_004A76D0[0x20] = {
+char gArmorArmsNames_154[32] = {
 #include "sub_main/004A76D0.inc"
 };
-char D_004A76F0[0x18] = {
+char gArmorArmsNames_155[24] = {
 #include "sub_main/004A76F0.inc"
 };
-char D_004A7708[15] = {
+char gArmorArmsNames_156[15] = {
 #include "sub_main/004A7708.inc"
 };
-char D_004A7718[15] = {
+char gArmorArmsNames_157[15] = {
 #include "sub_main/004A7718.inc"
 };
-char D_004A7728[15] = {
+char gArmorArmsNames_158[15] = {
 #include "sub_main/004A7728.inc"
 };
-char D_004A7738[15] = {
+char gArmorArmsNames_159[15] = {
 #include "sub_main/004A7738.inc"
 };
-char D_004A7748[15] = {
+char gArmorArmsNames_160[15] = {
 #include "sub_main/004A7748.inc"
 };
-char D_004A7758[15] = {
+char gArmorArmsNames_161[15] = {
 #include "sub_main/004A7758.inc"
 };
-char D_004A7770[0x20] = {
+char gArmorArmsNames_162[32] = {
 #include "sub_main/004A7770.inc"
 };
-char D_004A7790[0x20] = {
+char gArmorArmsNames_163[32] = {
 #include "sub_main/004A7790.inc"
 };
-char D_004A77B0[0x20] = {
+char gArmorArmsNames_164[32] = {
 #include "sub_main/004A77B0.inc"
 };
-char D_004A77D0[0x20] = {
+char gArmorArmsNames_165[32] = {
 #include "sub_main/004A77D0.inc"
 };
-char D_004A77F0[0x20] = {
+char gArmorArmsNames_166[32] = {
 #include "sub_main/004A77F0.inc"
 };
-char D_004A7810[0x18] = {
+char gArmorArmsNames_167[24] = {
 #include "sub_main/004A7810.inc"
 };
-char D_004A7828[13] = {
+char gArmorArmsNames_168[13] = {
 #include "sub_main/004A7828.inc"
 };
-char D_004A7838[13] = {
+char gArmorArmsNames_169[13] = {
 #include "sub_main/004A7838.inc"
 };
-char D_004A7850[0x20] = {
+char D_004A7850[32] = {
 #include "sub_main/004A7850.inc"
 };
-char D_004A7870[0x20] = {
+char D_004A7870[32] = {
 #include "sub_main/004A7870.inc"
 };
-char D_004A7890[0x20] = {
+char gArmorArmsNames_174[32] = {
 #include "sub_main/004A7890.inc"
 };
-char D_004A78B0[0x18] = {
+char gArmorArmsNames_175[24] = {
 #include "sub_main/004A78B0.inc"
 };
-char D_004A78C8[15] = {
+char gArmorArmsNames_176[15] = {
 #include "sub_main/004A78C8.inc"
 };
-char D_004A78D8[15] = {
+char gArmorArmsNames_177[15] = {
 #include "sub_main/004A78D8.inc"
 };
-char D_004A78F0[0x20] = {
+char gArmorArmsNames_178[32] = {
 #include "sub_main/004A78F0.inc"
 };
-char D_004A7910[0x18] = {
+char gArmorArmsNames_179[24] = {
 #include "sub_main/004A7910.inc"
 };
-char D_004A7928[13] = {
+char gArmorArmsNames_180[13] = {
 #include "sub_main/004A7928.inc"
 };
-char D_004A7938[13] = {
+char gArmorArmsNames_181[13] = {
 #include "sub_main/004A7938.inc"
 };
-char D_004A7948[15] = {
+char gArmorArmsNames_182[15] = {
 #include "sub_main/004A7948.inc"
 };
-char D_004A7958[15] = {
+char gArmorArmsNames_183[15] = {
 #include "sub_main/004A7958.inc"
 };
-char D_004A7968[15] = {
+char gArmorArmsNames_184[15] = {
 #include "sub_main/004A7968.inc"
 };
-char D_004A7978[15] = {
+char gArmorArmsNames_185[15] = {
 #include "sub_main/004A7978.inc"
 };
-char D_004A7988[13] = {
+char gArmorArmsNames_186[13] = {
 #include "sub_main/004A7988.inc"
 };
-char D_004A7998[13] = {
+char gArmorArmsNames_187[13] = {
 #include "sub_main/004A7998.inc"
 };
-char D_004A79A8[15] = {
+char gArmorArmsNames_188[15] = {
 #include "sub_main/004A79A8.inc"
 };
-char D_004A79B8[15] = {
+char gArmorArmsNames_189[15] = {
 #include "sub_main/004A79B8.inc"
 };
-char D_004A79C8[15] = {
+char gArmorArmsNames_190[15] = {
 #include "sub_main/004A79C8.inc"
 };
-char D_004A79D8[15] = {
+char gArmorArmsNames_191[15] = {
 #include "sub_main/004A79D8.inc"
 };
-char D_004A79E8[15] = {
+char gArmorArmsNames_192[15] = {
 #include "sub_main/004A79E8.inc"
 };
-char D_004A79F8[15] = {
+char gArmorArmsNames_193[15] = {
 #include "sub_main/004A79F8.inc"
 };
-char D_004A7A10[0x20] = {
+char gArmorArmsNames_194[32] = {
 #include "sub_main/004A7A10.inc"
 };
-char D_004A7A30[0x20] = {
+char gArmorArmsNames_195[32] = {
 #include "sub_main/004A7A30.inc"
 };
-char D_004A7A50[0x20] = {
+char gArmorArmsNames_196[32] = {
 #include "sub_main/004A7A50.inc"
 };
-char D_004A7A70[0x18] = {
+char gArmorArmsNames_197[24] = {
 #include "sub_main/004A7A70.inc"
 };
-char D_004A7A88[13] = {
+char gArmorArmsNames_198[13] = {
 #include "sub_main/004A7A88.inc"
 };
-char D_004A7A98[13] = {
+char gArmorArmsNames_199[13] = {
 #include "sub_main/004A7A98.inc"
 };
-char D_004A7AA8[15] = {
+char gArmorArmsNames_200[15] = {
 #include "sub_main/004A7AA8.inc"
 };
-char D_004A7AB8[15] = {
+char gArmorArmsNames_201[15] = {
 #include "sub_main/004A7AB8.inc"
 };
-char D_004A7AC8[15] = {
+char gArmorArmsNames_202[15] = {
 #include "sub_main/004A7AC8.inc"
 };
-char D_004A7AD8[15] = {
+char gArmorArmsNames_203[15] = {
 #include "sub_main/004A7AD8.inc"
 };
-char D_004A7AF0[0x18] = {
+char gArmorArmsNames_204[24] = {
 #include "sub_main/004A7AF0.inc"
 };
-char D_004A7B08[15] = {
+char gArmorArmsNames_205[15] = {
 #include "sub_main/004A7B08.inc"
 };
-char D_004A7B20[0x20] = {
+char gArmorArmsNames_206[32] = {
 #include "sub_main/004A7B20.inc"
 };
-char D_004A7B40[0x20] = {
+char gArmorArmsNames_207[32] = {
 #include "sub_main/004A7B40.inc"
 };
-char D_004A7B60[0x20] = {
+char gArmorArmsNames_208[32] = {
 #include "sub_main/004A7B60.inc"
 };
-char D_004A7B80[0x18] = {
+char gArmorArmsNames_209[24] = {
 #include "sub_main/004A7B80.inc"
 };
-char D_004A7B98[15] = {
+char gArmorArmsNames_210[15] = {
 #include "sub_main/004A7B98.inc"
 };
-char D_004A7BB0[0x20] = {
+char gArmorArmsNames_211[32] = {
 #include "sub_main/004A7BB0.inc"
 };
-char D_004A7BD0[0x20] = {
+char gArmorArmsNames_212[32] = {
 #include "sub_main/004A7BD0.inc"
 };
-char D_004A7BF0[0x18] = {
+char gArmorArmsNames_213[24] = {
 #include "sub_main/004A7BF0.inc"
 };
-char D_004A7C08[13] = {
+char gArmorArmsNames_214[13] = {
 #include "sub_main/004A7C08.inc"
 };
-char D_004A7C18[13] = {
+char gArmorArmsNames_215[13] = {
 #include "sub_main/004A7C18.inc"
 };
-char D_004A7C28[15] = {
+char gArmorArmsNames_216[15] = {
 #include "sub_main/004A7C28.inc"
 };
-char D_004A7C38[15] = {
+char gArmorArmsNames_217[15] = {
 #include "sub_main/004A7C38.inc"
 };
-char D_004A7C48[13] = {
+char gArmorArmsNames_218[13] = {
 #include "sub_main/004A7C48.inc"
 };
-char D_004A7C58[13] = {
+char gArmorArmsNames_219[13] = {
 #include "sub_main/004A7C58.inc"
 };
-char D_004A7C68[0xC] = {
+char gArmorArmsNames_220[12] = {
 #include "sub_main/004A7C68.inc"
 };
-char D_004A7C78[0xC] = {
+char gArmorArmsNames_221[12] = {
 #include "sub_main/004A7C78.inc"
 };
-char D_004A7C90[0x20] = {
+char gArmorArmsNames_222[32] = {
 #include "sub_main/004A7C90.inc"
 };
-char D_004A7CB0[0x20] = {
+char gArmorArmsNames_223[32] = {
 #include "sub_main/004A7CB0.inc"
 };
-char D_004A7CD0[0x20] = {
+char gArmorArmsNames_224[32] = {
 #include "sub_main/004A7CD0.inc"
 };
-char D_004A7CF0[0x20] = {
+char gArmorArmsNames_225[32] = {
 #include "sub_main/004A7CF0.inc"
 };
-char D_004A7D10[0x20] = {
+char gArmorArmsNames_226[32] = {
 #include "sub_main/004A7D10.inc"
 };
-char D_004A7D30[0x20] = {
+char gArmorArmsNames_227[32] = {
 #include "sub_main/004A7D30.inc"
 };
-char D_004A7D50[0x18] = {
+char gArmorArmsNames_228[24] = {
 #include "sub_main/004A7D50.inc"
 };
-char D_004A7D68[13] = {
+char gArmorArmsNames_229[13] = {
 #include "sub_main/004A7D68.inc"
 };
-char D_004A7D80[0x20] = {
+char gArmorArmsNames_230[32] = {
 #include "sub_main/004A7D80.inc"
 };
-char D_004A7DA0[0x20] = {
+char D_004A7DA0[32] = {
 #include "sub_main/004A7DA0.inc"
 };
-char D_004A7DC0[0x18] = {
+char D_004A7DC0[24] = {
 #include "sub_main/004A7DC0.inc"
 };
-char D_004A7DD8[15] = {
+char gArmorArmsNames_235[15] = {
 #include "sub_main/004A7DD8.inc"
 };
-char D_004A7DE8[15] = {
+char gArmorArmsNames_236[15] = {
 #include "sub_main/004A7DE8.inc"
 };
-char D_004A7DF8[0xC] = {
+char gArmorArmsNames_237[12] = {
 #include "sub_main/004A7DF8.inc"
 };
-char D_004A7E10[0x20] = {
+char gArmorWaistNames_1[32] = {
 #include "sub_main/004A7E10.inc"
 };
-char D_004A7E30[0x20] = {
+char gArmorWaistNames_2[32] = {
 #include "sub_main/004A7E30.inc"
 };
-char D_004A7E50[0x18] = {
+char gArmorWaistNames_3[24] = {
 #include "sub_main/004A7E50.inc"
 };
-char D_004A7E68[15] = {
+char gArmorWaistNames_4[15] = {
 #include "sub_main/004A7E68.inc"
 };
-char D_004A7E80[0x18] = {
+char gArmorWaistNames_5[24] = {
 #include "sub_main/004A7E80.inc"
 };
-char D_004A7E98[15] = {
+char gArmorWaistNames_6[15] = {
 #include "sub_main/004A7E98.inc"
 };
-char D_004A7EB0[0x18] = {
+char gArmorWaistNames_7[24] = {
 #include "sub_main/004A7EB0.inc"
 };
-char D_004A7EC8[13] = {
+char gArmorWaistNames_8[13] = {
 #include "sub_main/004A7EC8.inc"
 };
-char D_004A7EE0[0x18] = {
+char gArmorWaistNames_9[24] = {
 #include "sub_main/004A7EE0.inc"
 };
-char D_004A7EF8[15] = {
+char gArmorWaistNames_10[15] = {
 #include "sub_main/004A7EF8.inc"
 };
-char D_004A7F10[0x18] = {
+char gArmorWaistNames_11[24] = {
 #include "sub_main/004A7F10.inc"
 };
-char D_004A7F28[13] = {
+char gArmorWaistNames_12[13] = {
 #include "sub_main/004A7F28.inc"
 };
-char D_004A7F38[13] = {
+char gArmorWaistNames_13[13] = {
 #include "sub_main/004A7F38.inc"
 };
-char D_004A7F50[0x18] = {
+char gArmorWaistNames_14[24] = {
 #include "sub_main/004A7F50.inc"
 };
-char D_004A7F68[13] = {
+char gArmorWaistNames_15[13] = {
 #include "sub_main/004A7F68.inc"
 };
-char D_004A7F80[0x18] = {
+char gArmorWaistNames_16[24] = {
 #include "sub_main/004A7F80.inc"
 };
-char D_004A7F98[13] = {
+char gArmorWaistNames_17[13] = {
 #include "sub_main/004A7F98.inc"
 };
-char D_004A7FB0[0x18] = {
+char gArmorWaistNames_18[24] = {
 #include "sub_main/004A7FB0.inc"
 };
-char D_004A7FC8[15] = {
+char gArmorWaistNames_19[15] = {
 #include "sub_main/004A7FC8.inc"
 };
-char D_004A7FE0[0x18] = {
+char gArmorWaistNames_20[24] = {
 #include "sub_main/004A7FE0.inc"
 };
-char D_004A7FF8[15] = {
+char gArmorWaistNames_21[15] = {
 #include "sub_main/004A7FF8.inc"
 };
-char D_004A8010[0x20] = {
+char gArmorWaistNames_22[32] = {
 #include "sub_main/004A8010.inc"
 };
-char D_004A8030[0x18] = {
+char gArmorWaistNames_23[24] = {
 #include "sub_main/004A8030.inc"
 };
-char D_004A8048[13] = {
+char gArmorWaistNames_24[13] = {
 #include "sub_main/004A8048.inc"
 };
-char D_004A8060[0x18] = {
+char gArmorWaistNames_25[24] = {
 #include "sub_main/004A8060.inc"
 };
-char D_004A8078[15] = {
+char gArmorWaistNames_26[15] = {
 #include "sub_main/004A8078.inc"
 };
-char D_004A8090[0x18] = {
+char gArmorWaistNames_27[24] = {
 #include "sub_main/004A8090.inc"
 };
-char D_004A80A8[15] = {
+char gArmorWaistNames_28[15] = {
 #include "sub_main/004A80A8.inc"
 };
-char D_004A80C0[0x18] = {
+char gArmorWaistNames_29[24] = {
 #include "sub_main/004A80C0.inc"
 };
-char D_004A80D8[15] = {
+char gArmorWaistNames_30[15] = {
 #include "sub_main/004A80D8.inc"
 };
-char D_004A80F0[0x20] = {
+char gArmorWaistNames_31[32] = {
 #include "sub_main/004A80F0.inc"
 };
-char D_004A8110[0x18] = {
+char gArmorWaistNames_32[24] = {
 #include "sub_main/004A8110.inc"
 };
-char D_004A8128[13] = {
+char gArmorWaistNames_33[13] = {
 #include "sub_main/004A8128.inc"
 };
-char D_004A8140[0x18] = {
+char gArmorWaistNames_34[24] = {
 #include "sub_main/004A8140.inc"
 };
-char D_004A8158[15] = {
+char gArmorWaistNames_35[15] = {
 #include "sub_main/004A8158.inc"
 };
-char D_004A8170[0x18] = {
+char gArmorWaistNames_36[24] = {
 #include "sub_main/004A8170.inc"
 };
-char D_004A8188[13] = {
+char gArmorWaistNames_37[13] = {
 #include "sub_main/004A8188.inc"
 };
-char D_004A81A0[0x18] = {
+char gArmorWaistNames_38[24] = {
 #include "sub_main/004A81A0.inc"
 };
-char D_004A81B8[13] = {
+char gArmorWaistNames_39[13] = {
 #include "sub_main/004A81B8.inc"
 };
-char D_004A81D0[0x20] = {
+char gArmorWaistNames_40[32] = {
 #include "sub_main/004A81D0.inc"
 };
-char D_004A81F0[0x20] = {
+char gArmorWaistNames_41[32] = {
 #include "sub_main/004A81F0.inc"
 };
-char D_004A8210[0x20] = {
+char gArmorWaistNames_42[32] = {
 #include "sub_main/004A8210.inc"
 };
-char D_004A8230[0x20] = {
+char gArmorWaistNames_43[32] = {
 #include "sub_main/004A8230.inc"
 };
-char D_004A8250[0x18] = {
+char gArmorWaistNames_44[24] = {
 #include "sub_main/004A8250.inc"
 };
-char D_004A8268[15] = {
+char gArmorWaistNames_45[15] = {
 #include "sub_main/004A8268.inc"
 };
-char D_004A8280[0x18] = {
+char gArmorWaistNames_46[24] = {
 #include "sub_main/004A8280.inc"
 };
-char D_004A8298[0xC] = {
+char gArmorWaistNames_47[12] = {
 #include "sub_main/004A8298.inc"
 };
-char D_004A82A8[15] = {
+char gArmorWaistNames_48[15] = {
 #include "sub_main/004A82A8.inc"
 };
-char D_004A82C0[0x18] = {
+char gArmorWaistNames_49[24] = {
 #include "sub_main/004A82C0.inc"
 };
-char D_004A82D8[0xC] = {
+char gArmorWaistNames_50[12] = {
 #include "sub_main/004A82D8.inc"
 };
-char D_004A82E8[0xC] = {
+char gArmorWaistNames_51[12] = {
 #include "sub_main/004A82E8.inc"
 };
-char D_004A8300[0x20] = {
+char gArmorWaistNames_52[32] = {
 #include "sub_main/004A8300.inc"
 };
-char D_004A8320[0x20] = {
+char gArmorWaistNames_53[32] = {
 #include "sub_main/004A8320.inc"
 };
-char D_004A8340[0x18] = {
+char gArmorWaistNames_54[24] = {
 #include "sub_main/004A8340.inc"
 };
-char D_004A8358[15] = {
+char gArmorWaistNames_55[15] = {
 #include "sub_main/004A8358.inc"
 };
-char D_004A8370[0x18] = {
+char gArmorWaistNames_56[24] = {
 #include "sub_main/004A8370.inc"
 };
-char D_004A8388[15] = {
+char gArmorWaistNames_57[15] = {
 #include "sub_main/004A8388.inc"
 };
-char D_004A8398[15] = {
+char gArmorWaistNames_58[15] = {
 #include "sub_main/004A8398.inc"
 };
-char D_004A83A8[15] = {
+char gArmorWaistNames_59[15] = {
 #include "sub_main/004A83A8.inc"
 };
-char D_004A83B8[13] = {
+char gArmorWaistNames_60[13] = {
 #include "sub_main/004A83B8.inc"
 };
-char D_004A83C8[13] = {
+char gArmorWaistNames_61[13] = {
 #include "sub_main/004A83C8.inc"
 };
-char D_004A83D8[15] = {
+char gArmorWaistNames_62[15] = {
 #include "sub_main/004A83D8.inc"
 };
-char D_004A83E8[15] = {
+char gArmorWaistNames_63[15] = {
 #include "sub_main/004A83E8.inc"
 };
-char D_004A8400[0x18] = {
+char gArmorWaistNames_64[24] = {
 #include "sub_main/004A8400.inc"
 };
-char D_004A8418[15] = {
+char gArmorWaistNames_65[15] = {
 #include "sub_main/004A8418.inc"
 };
-char D_004A8430[0x20] = {
+char gArmorWaistNames_66[32] = {
 #include "sub_main/004A8430.inc"
 };
-char D_004A8450[0x20] = {
+char gArmorWaistNames_67[32] = {
 #include "sub_main/004A8450.inc"
 };
-char D_004A8470[0x20] = {
+char gArmorWaistNames_68[32] = {
 #include "sub_main/004A8470.inc"
 };
-char D_004A8490[0x20] = {
+char gArmorWaistNames_69[32] = {
 #include "sub_main/004A8490.inc"
 };
-char D_004A84B0[0x18] = {
+char gArmorWaistNames_70[24] = {
 #include "sub_main/004A84B0.inc"
 };
-char D_004A84C8[15] = {
+char gArmorWaistNames_71[15] = {
 #include "sub_main/004A84C8.inc"
 };
-char D_004A84E0[0x20] = {
+char gArmorWaistNames_72[32] = {
 #include "sub_main/004A84E0.inc"
 };
-char D_004A8500[0x20] = {
+char gArmorWaistNames_73[32] = {
 #include "sub_main/004A8500.inc"
 };
-char D_004A8520[0x18] = {
+char gArmorWaistNames_74[24] = {
 #include "sub_main/004A8520.inc"
 };
-char D_004A8538[15] = {
+char gArmorWaistNames_75[15] = {
 #include "sub_main/004A8538.inc"
 };
-char D_004A8550[0x18] = {
+char gArmorWaistNames_76[24] = {
 #include "sub_main/004A8550.inc"
 };
-char D_004A8568[15] = {
+char gArmorWaistNames_77[15] = {
 #include "sub_main/004A8568.inc"
 };
-char D_004A8580[0x18] = {
+char gArmorWaistNames_78[24] = {
 #include "sub_main/004A8580.inc"
 };
-char D_004A8598[15] = {
+char gArmorWaistNames_79[15] = {
 #include "sub_main/004A8598.inc"
 };
-char D_004A85B0[0x20] = {
+char gArmorWaistNames_80[32] = {
 #include "sub_main/004A85B0.inc"
 };
-char D_004A85D0[0x20] = {
+char gArmorWaistNames_81[32] = {
 #include "sub_main/004A85D0.inc"
 };
-char D_004A85F0[0x20] = {
+char gArmorWaistNames_82[32] = {
 #include "sub_main/004A85F0.inc"
 };
-char D_004A8610[0x20] = {
+char gArmorWaistNames_83[32] = {
 #include "sub_main/004A8610.inc"
 };
-char D_004A8630[0x18] = {
+char gArmorWaistNames_84[24] = {
 #include "sub_main/004A8630.inc"
 };
-char D_004A8648[15] = {
+char gArmorWaistNames_85[15] = {
 #include "sub_main/004A8648.inc"
 };
-char D_004A8660[0x20] = {
+char gArmorWaistNames_86[32] = {
 #include "sub_main/004A8660.inc"
 };
-char D_004A8680[0x20] = {
+char gArmorWaistNames_87[32] = {
 #include "sub_main/004A8680.inc"
 };
-char D_004A86A0[0x20] = {
+char gArmorWaistNames_88[32] = {
 #include "sub_main/004A86A0.inc"
 };
-char D_004A86C0[0x20] = {
+char gArmorWaistNames_89[32] = {
 #include "sub_main/004A86C0.inc"
 };
-char D_004A86E0[0x20] = {
+char gArmorWaistNames_90[32] = {
 #include "sub_main/004A86E0.inc"
 };
-char D_004A8700[0x20] = {
+char gArmorWaistNames_91[32] = {
 #include "sub_main/004A8700.inc"
 };
-char D_004A8720[0x20] = {
+char gArmorWaistNames_92[32] = {
 #include "sub_main/004A8720.inc"
 };
-char D_004A8740[0x20] = {
+char gArmorWaistNames_93[32] = {
 #include "sub_main/004A8740.inc"
 };
-char D_004A8760[0x20] = {
+char gArmorWaistNames_94[32] = {
 #include "sub_main/004A8760.inc"
 };
-char D_004A8780[0x20] = {
+char gArmorWaistNames_95[32] = {
 #include "sub_main/004A8780.inc"
 };
-char D_004A87A0[0x20] = {
+char gArmorWaistNames_96[32] = {
 #include "sub_main/004A87A0.inc"
 };
-char D_004A87C0[0x20] = {
+char gArmorWaistNames_97[32] = {
 #include "sub_main/004A87C0.inc"
 };
-char D_004A87E0[0x20] = {
+char gArmorWaistNames_98[32] = {
 #include "sub_main/004A87E0.inc"
 };
-char D_004A8800[0x18] = {
+char gArmorWaistNames_99[24] = {
 #include "sub_main/004A8800.inc"
 };
-char D_004A8818[15] = {
+char gArmorWaistNames_100[15] = {
 #include "sub_main/004A8818.inc"
 };
-char D_004A8830[0x20] = {
+char gArmorWaistNames_101[32] = {
 #include "sub_main/004A8830.inc"
 };
-char D_004A8850[0x20] = {
+char gArmorWaistNames_102[32] = {
 #include "sub_main/004A8850.inc"
 };
-char D_004A8870[0x20] = {
+char gArmorWaistNames_103[32] = {
 #include "sub_main/004A8870.inc"
 };
-char D_004A8890[0x20] = {
+char gArmorWaistNames_104[32] = {
 #include "sub_main/004A8890.inc"
 };
-char D_004A88B0[0x20] = {
+char gArmorWaistNames_105[32] = {
 #include "sub_main/004A88B0.inc"
 };
-char D_004A88D0[0x18] = {
+char gArmorWaistNames_106[24] = {
 #include "sub_main/004A88D0.inc"
 };
-char D_004A88E8[0xC] = {
+char gArmorWaistNames_107[12] = {
 #include "sub_main/004A88E8.inc"
 };
-char D_004A88F8[0xC] = {
+char gArmorWaistNames_108[12] = {
 #include "sub_main/004A88F8.inc"
 };
-char D_004A8910[0x20] = {
+char gArmorWaistNames_109[32] = {
 #include "sub_main/004A8910.inc"
 };
-char D_004A8930[0x20] = {
+char gArmorWaistNames_110[32] = {
 #include "sub_main/004A8930.inc"
 };
-char D_004A8950[0x20] = {
+char gArmorWaistNames_111[32] = {
 #include "sub_main/004A8950.inc"
 };
-char D_004A8970[0x20] = {
+char gArmorWaistNames_112[32] = {
 #include "sub_main/004A8970.inc"
 };
-char D_004A8990[0x20] = {
+char gArmorWaistNames_113[32] = {
 #include "sub_main/004A8990.inc"
 };
-char D_004A89B0[0x20] = {
+char gArmorWaistNames_114[32] = {
 #include "sub_main/004A89B0.inc"
 };
-char D_004A89D0[0x20] = {
+char gArmorWaistNames_115[32] = {
 #include "sub_main/004A89D0.inc"
 };
-char D_004A89F0[0x20] = {
+char gArmorWaistNames_116[32] = {
 #include "sub_main/004A89F0.inc"
 };
-char D_004A8A10[0x20] = {
+char gArmorWaistNames_117[32] = {
 #include "sub_main/004A8A10.inc"
 };
-char D_004A8A30[0x20] = {
+char gArmorWaistNames_118[32] = {
 #include "sub_main/004A8A30.inc"
 };
-char D_004A8A50[0x20] = {
+char gArmorWaistNames_119[32] = {
 #include "sub_main/004A8A50.inc"
 };
-char D_004A8A70[0x20] = {
+char gArmorWaistNames_120[32] = {
 #include "sub_main/004A8A70.inc"
 };
-char D_004A8A90[0x20] = {
+char gArmorWaistNames_121[32] = {
 #include "sub_main/004A8A90.inc"
 };
-char D_004A8AB0[0x20] = {
+char gArmorWaistNames_122[32] = {
 #include "sub_main/004A8AB0.inc"
 };
-char D_004A8AD0[0x20] = {
+char gArmorWaistNames_123[32] = {
 #include "sub_main/004A8AD0.inc"
 };
-char D_004A8AF0[0x20] = {
+char gArmorWaistNames_124[32] = {
 #include "sub_main/004A8AF0.inc"
 };
-char D_004A8B10[0x20] = {
+char gArmorWaistNames_125[32] = {
 #include "sub_main/004A8B10.inc"
 };
-char D_004A8B30[0x20] = {
+char gArmorWaistNames_126[32] = {
 #include "sub_main/004A8B30.inc"
 };
-char D_004A8B50[0x18] = {
+char gArmorWaistNames_127[24] = {
 #include "sub_main/004A8B50.inc"
 };
-char D_004A8B68[15] = {
+char gArmorWaistNames_128[15] = {
 #include "sub_main/004A8B68.inc"
 };
-char D_004A8B80[0x20] = {
+char gArmorWaistNames_129[32] = {
 #include "sub_main/004A8B80.inc"
 };
-char D_004A8BA0[0x20] = {
+char gArmorWaistNames_130[32] = {
 #include "sub_main/004A8BA0.inc"
 };
-char D_004A8BC0[0x18] = {
+char gArmorWaistNames_131[24] = {
 #include "sub_main/004A8BC0.inc"
 };
-char D_004A8BD8[15] = {
+char gArmorWaistNames_132[15] = {
 #include "sub_main/004A8BD8.inc"
 };
-char D_004A8BF0[0x18] = {
+char gArmorWaistNames_133[24] = {
 #include "sub_main/004A8BF0.inc"
 };
-char D_004A8C08[15] = {
+char gArmorWaistNames_134[15] = {
 #include "sub_main/004A8C08.inc"
 };
-char D_004A8C20[0x18] = {
+char gArmorWaistNames_135[24] = {
 #include "sub_main/004A8C20.inc"
 };
-char D_004A8C38[15] = {
+char gArmorWaistNames_136[15] = {
 #include "sub_main/004A8C38.inc"
 };
-char D_004A8C50[0x20] = {
+char gArmorWaistNames_137[32] = {
 #include "sub_main/004A8C50.inc"
 };
-char D_004A8C70[0x20] = {
+char gArmorWaistNames_138[32] = {
 #include "sub_main/004A8C70.inc"
 };
-char D_004A8C90[0x20] = {
+char gArmorWaistNames_139[32] = {
 #include "sub_main/004A8C90.inc"
 };
-char D_004A8CB0[0x20] = {
+char gArmorWaistNames_140[32] = {
 #include "sub_main/004A8CB0.inc"
 };
-char D_004A8CD0[0x18] = {
+char gArmorWaistNames_141[24] = {
 #include "sub_main/004A8CD0.inc"
 };
-char D_004A8CE8[15] = {
+char gArmorWaistNames_142[15] = {
 #include "sub_main/004A8CE8.inc"
 };
-char D_004A8D00[0x20] = {
+char gArmorWaistNames_143[32] = {
 #include "sub_main/004A8D00.inc"
 };
-char D_004A8D20[0x20] = {
+char gArmorWaistNames_144[32] = {
 #include "sub_main/004A8D20.inc"
 };
-char D_004A8D40[0x20] = {
+char gArmorWaistNames_145[32] = {
 #include "sub_main/004A8D40.inc"
 };
-char D_004A8D60[0x20] = {
+char gArmorWaistNames_146[32] = {
 #include "sub_main/004A8D60.inc"
 };
-char D_004A8D80[0x20] = {
+char gArmorWaistNames_147[32] = {
 #include "sub_main/004A8D80.inc"
 };
-char D_004A8DA0[0x20] = {
+char gArmorWaistNames_148[32] = {
 #include "sub_main/004A8DA0.inc"
 };
-char D_004A8DC0[0x20] = {
+char gArmorWaistNames_149[32] = {
 #include "sub_main/004A8DC0.inc"
 };
-char D_004A8DE0[0x18] = {
+char gArmorWaistNames_150[24] = {
 #include "sub_main/004A8DE0.inc"
 };
-char D_004A8DF8[15] = {
+char gArmorWaistNames_151[15] = {
 #include "sub_main/004A8DF8.inc"
 };
-char D_004A8E10[0x20] = {
+char gArmorWaistNames_152[32] = {
 #include "sub_main/004A8E10.inc"
 };
-char D_004A8E30[0x20] = {
+char gArmorWaistNames_153[32] = {
 #include "sub_main/004A8E30.inc"
 };
-char D_004A8E50[0x18] = {
+char gArmorWaistNames_154[24] = {
 #include "sub_main/004A8E50.inc"
 };
-char D_004A8E68[15] = {
+char gArmorWaistNames_155[15] = {
 #include "sub_main/004A8E68.inc"
 };
-char D_004A8E80[0x18] = {
+char gArmorWaistNames_156[24] = {
 #include "sub_main/004A8E80.inc"
 };
-char D_004A8E98[15] = {
+char gArmorWaistNames_157[15] = {
 #include "sub_main/004A8E98.inc"
 };
-char D_004A8EB0[0x20] = {
+char gArmorWaistNames_158[32] = {
 #include "sub_main/004A8EB0.inc"
 };
-char D_004A8ED0[0x20] = {
+char gArmorWaistNames_159[32] = {
 #include "sub_main/004A8ED0.inc"
 };
-char D_004A8EF0[0x20] = {
+char gArmorWaistNames_160[32] = {
 #include "sub_main/004A8EF0.inc"
 };
-char D_004A8F10[0x20] = {
+char gArmorWaistNames_161[32] = {
 #include "sub_main/004A8F10.inc"
 };
-char D_004A8F30[0x20] = {
+char gArmorWaistNames_162[32] = {
 #include "sub_main/004A8F30.inc"
 };
-char D_004A8F50[0x18] = {
+char gArmorWaistNames_163[24] = {
 #include "sub_main/004A8F50.inc"
 };
-char D_004A8F68[0xC] = {
+char gArmorWaistNames_164[12] = {
 #include "sub_main/004A8F68.inc"
 };
-char D_004A8F78[0xC] = {
+char gArmorWaistNames_165[12] = {
 #include "sub_main/004A8F78.inc"
 };
-char D_004A8F90[0x20] = {
+char D_004A8F90[32] = {
 #include "sub_main/004A8F90.inc"
 };
-char D_004A8FB0[0x20] = {
+char D_004A8FB0[32] = {
 #include "sub_main/004A8FB0.inc"
 };
-char D_004A8FD0[0x20] = {
+char gArmorWaistNames_170[32] = {
 #include "sub_main/004A8FD0.inc"
 };
-char D_004A8FF0[0x20] = {
+char gArmorWaistNames_171[32] = {
 #include "sub_main/004A8FF0.inc"
 };
-char D_004A9010[0x20] = {
+char gArmorWaistNames_172[32] = {
 #include "sub_main/004A9010.inc"
 };
-char D_004A9030[0x20] = {
+char gArmorWaistNames_173[32] = {
 #include "sub_main/004A9030.inc"
 };
-char D_004A9050[0x20] = {
+char gArmorWaistNames_174[32] = {
 #include "sub_main/004A9050.inc"
 };
-char D_004A9070[0x20] = {
+char gArmorWaistNames_175[32] = {
 #include "sub_main/004A9070.inc"
 };
-char D_004A9090[0x18] = {
+char gArmorWaistNames_176[24] = {
 #include "sub_main/004A9090.inc"
 };
-char D_004A90A8[13] = {
+char gArmorWaistNames_177[13] = {
 #include "sub_main/004A90A8.inc"
 };
-char D_004A90C0[0x18] = {
+char gArmorWaistNames_178[24] = {
 #include "sub_main/004A90C0.inc"
 };
-char D_004A90D8[15] = {
+char gArmorWaistNames_179[15] = {
 #include "sub_main/004A90D8.inc"
 };
-char D_004A90F0[0x18] = {
+char gArmorWaistNames_180[24] = {
 #include "sub_main/004A90F0.inc"
 };
-char D_004A9108[15] = {
+char gArmorWaistNames_181[15] = {
 #include "sub_main/004A9108.inc"
 };
-char D_004A9120[0x18] = {
+char gArmorWaistNames_182[24] = {
 #include "sub_main/004A9120.inc"
 };
-char D_004A9138[13] = {
+char gArmorWaistNames_183[13] = {
 #include "sub_main/004A9138.inc"
 };
-char D_004A9150[0x18] = {
+char gArmorWaistNames_184[24] = {
 #include "sub_main/004A9150.inc"
 };
-char D_004A9168[15] = {
+char gArmorWaistNames_185[15] = {
 #include "sub_main/004A9168.inc"
 };
-char D_004A9180[0x18] = {
+char gArmorWaistNames_186[24] = {
 #include "sub_main/004A9180.inc"
 };
-char D_004A9198[15] = {
+char gArmorWaistNames_187[15] = {
 #include "sub_main/004A9198.inc"
 };
-char D_004A91B0[0x18] = {
+char gArmorWaistNames_188[24] = {
 #include "sub_main/004A91B0.inc"
 };
-char D_004A91C8[15] = {
+char gArmorWaistNames_189[15] = {
 #include "sub_main/004A91C8.inc"
 };
-char D_004A91E0[0x20] = {
+char gArmorWaistNames_190[32] = {
 #include "sub_main/004A91E0.inc"
 };
-char D_004A9200[0x20] = {
+char gArmorWaistNames_191[32] = {
 #include "sub_main/004A9200.inc"
 };
-char D_004A9220[0x20] = {
+char gArmorWaistNames_192[32] = {
 #include "sub_main/004A9220.inc"
 };
-char D_004A9240[0x20] = {
+char gArmorWaistNames_193[32] = {
 #include "sub_main/004A9240.inc"
 };
-char D_004A9260[0x18] = {
+char gArmorWaistNames_194[24] = {
 #include "sub_main/004A9260.inc"
 };
-char D_004A9278[13] = {
+char gArmorWaistNames_195[13] = {
 #include "sub_main/004A9278.inc"
 };
-char D_004A9290[0x18] = {
+char gArmorWaistNames_196[24] = {
 #include "sub_main/004A9290.inc"
 };
-char D_004A92A8[15] = {
+char gArmorWaistNames_197[15] = {
 #include "sub_main/004A92A8.inc"
 };
-char D_004A92C0[0x18] = {
+char gArmorWaistNames_198[24] = {
 #include "sub_main/004A92C0.inc"
 };
-char D_004A92D8[15] = {
+char gArmorWaistNames_199[15] = {
 #include "sub_main/004A92D8.inc"
 };
-char D_004A92E8[13] = {
+char gArmorWaistNames_200[13] = {
 #include "sub_main/004A92E8.inc"
 };
-char D_004A92F8[15] = {
+char gArmorWaistNames_201[15] = {
 #include "sub_main/004A92F8.inc"
 };
-char D_004A9308[15] = {
+char gArmorWaistNames_202[15] = {
 #include "sub_main/004A9308.inc"
 };
-char D_004A9320[0x18] = {
+char gArmorWaistNames_203[24] = {
 #include "sub_main/004A9320.inc"
 };
-char D_004A9338[15] = {
+char gArmorWaistNames_204[15] = {
 #include "sub_main/004A9338.inc"
 };
-char D_004A9348[15] = {
+char gArmorWaistNames_205[15] = {
 #include "sub_main/004A9348.inc"
 };
-char D_004A9358[15] = {
+char gArmorWaistNames_206[15] = {
 #include "sub_main/004A9358.inc"
 };
-char D_004A9370[0x20] = {
+char gArmorWaistNames_207[32] = {
 #include "sub_main/004A9370.inc"
 };
-char D_004A9390[0x20] = {
+char gArmorWaistNames_208[32] = {
 #include "sub_main/004A9390.inc"
 };
-char D_004A93B0[0x18] = {
+char gArmorWaistNames_209[24] = {
 #include "sub_main/004A93B0.inc"
 };
-char D_004A93C8[15] = {
+char gArmorWaistNames_210[15] = {
 #include "sub_main/004A93C8.inc"
 };
-char D_004A93D8[15] = {
+char gArmorWaistNames_211[15] = {
 #include "sub_main/004A93D8.inc"
 };
-char D_004A93F0[0x18] = {
+char gArmorWaistNames_212[24] = {
 #include "sub_main/004A93F0.inc"
 };
-char D_004A9408[15] = {
+char gArmorWaistNames_213[15] = {
 #include "sub_main/004A9408.inc"
 };
-char D_004A9418[13] = {
+char gArmorWaistNames_214[13] = {
 #include "sub_main/004A9418.inc"
 };
-char D_004A9428[13] = {
+char gArmorWaistNames_215[13] = {
 #include "sub_main/004A9428.inc"
 };
-char D_004A9438[0xC] = {
+char gArmorWaistNames_216[12] = {
 #include "sub_main/004A9438.inc"
 };
-char D_004A9448[0xC] = {
+char gArmorWaistNames_217[12] = {
 #include "sub_main/004A9448.inc"
 };
-char D_004A9460[0x20] = {
+char gArmorWaistNames_218[32] = {
 #include "sub_main/004A9460.inc"
 };
-char D_004A9480[0x20] = {
+char gArmorWaistNames_219[32] = {
 #include "sub_main/004A9480.inc"
 };
-char D_004A94A0[0x18] = {
+char gArmorWaistNames_220[24] = {
 #include "sub_main/004A94A0.inc"
 };
-char D_004A94B8[15] = {
+char gArmorWaistNames_221[15] = {
 #include "sub_main/004A94B8.inc"
 };
-char D_004A94D0[0x20] = {
+char gArmorWaistNames_222[32] = {
 #include "sub_main/004A94D0.inc"
 };
-char D_004A94F0[0x20] = {
+char gArmorWaistNames_223[32] = {
 #include "sub_main/004A94F0.inc"
 };
-char D_004A9510[0x20] = {
+char gArmorWaistNames_224[32] = {
 #include "sub_main/004A9510.inc"
 };
-char D_004A9530[0x18] = {
+char gArmorWaistNames_225[24] = {
 #include "sub_main/004A9530.inc"
 };
-char D_004A9548[15] = {
+char gArmorWaistNames_226[15] = {
 #include "sub_main/004A9548.inc"
 };
-char D_004A9560[0x20] = {
+char gArmorWaistNames_227[32] = {
 #include "sub_main/004A9560.inc"
 };
-char D_004A9580[0x20] = {
+char D_004A9580[32] = {
 #include "sub_main/004A9580.inc"
 };
-char D_004A95A0[0x20] = {
+char D_004A95A0[32] = {
 #include "sub_main/004A95A0.inc"
 };
-char D_004A95C0[0x20] = {
+char gArmorWaistNames_232[32] = {
 #include "sub_main/004A95C0.inc"
 };
-char D_004A95E0[0x20] = {
+char gArmorWaistNames_233[32] = {
 #include "sub_main/004A95E0.inc"
 };
-char D_004A9600[0x18] = {
+char gArmorWaistNames_234[24] = {
 #include "sub_main/004A9600.inc"
 };
-char D_004A9618[15] = {
+char gArmorWaistNames_235[15] = {
 #include "sub_main/004A9618.inc"
 };
-char D_004A9628[15] = {
+char gArmorWaistNames_236[15] = {
 #include "sub_main/004A9628.inc"
 };
-char D_004A9640[0x20] = {
+char gArmorLegsNames_1[32] = {
 #include "sub_main/004A9640.inc"
 };
-char D_004A9660[0x20] = {
+char gArmorLegsNames_2[32] = {
 #include "sub_main/004A9660.inc"
 };
-char D_004A9680[0x20] = {
+char gArmorLegsNames_3[32] = {
 #include "sub_main/004A9680.inc"
 };
-char D_004A96A0[0x18] = {
+char gArmorLegsNames_4[24] = {
 #include "sub_main/004A96A0.inc"
 };
-char D_004A96B8[15] = {
+char gArmorLegsNames_5[15] = {
 #include "sub_main/004A96B8.inc"
 };
-char D_004A96C8[15] = {
+char gArmorLegsNames_6[15] = {
 #include "sub_main/004A96C8.inc"
 };
-char D_004A96E0[0x20] = {
+char gArmorLegsNames_7[32] = {
 #include "sub_main/004A96E0.inc"
 };
-char D_004A9700[0x18] = {
+char gArmorLegsNames_8[24] = {
 #include "sub_main/004A9700.inc"
 };
-char D_004A9718[15] = {
+char gArmorLegsNames_9[15] = {
 #include "sub_main/004A9718.inc"
 };
-char D_004A9728[15] = {
+char gArmorLegsNames_10[15] = {
 #include "sub_main/004A9728.inc"
 };
-char D_004A9740[0x18] = {
+char gArmorLegsNames_11[24] = {
 #include "sub_main/004A9740.inc"
 };
-char D_004A9758[15] = {
+char gArmorLegsNames_12[15] = {
 #include "sub_main/004A9758.inc"
 };
-char D_004A9768[15] = {
+char gArmorLegsNames_13[15] = {
 #include "sub_main/004A9768.inc"
 };
-char D_004A9778[15] = {
+char gArmorLegsNames_14[15] = {
 #include "sub_main/004A9778.inc"
 };
-char D_004A9788[15] = {
+char gArmorLegsNames_15[15] = {
 #include "sub_main/004A9788.inc"
 };
-char D_004A97A0[0x20] = {
+char gArmorLegsNames_16[32] = {
 #include "sub_main/004A97A0.inc"
 };
-char D_004A97C0[0x20] = {
+char gArmorLegsNames_17[32] = {
 #include "sub_main/004A97C0.inc"
 };
-char D_004A97E0[0x20] = {
+char gArmorLegsNames_18[32] = {
 #include "sub_main/004A97E0.inc"
 };
-char D_004A9800[0x20] = {
+char gArmorLegsNames_19[32] = {
 #include "sub_main/004A9800.inc"
 };
-char D_004A9820[0x20] = {
+char gArmorLegsNames_20[32] = {
 #include "sub_main/004A9820.inc"
 };
-char D_004A9840[0x20] = {
+char gArmorLegsNames_21[32] = {
 #include "sub_main/004A9840.inc"
 };
-char D_004A9860[0x20] = {
+char gArmorLegsNames_22[32] = {
 #include "sub_main/004A9860.inc"
 };
-char D_004A9880[0x20] = {
+char gArmorLegsNames_23[32] = {
 #include "sub_main/004A9880.inc"
 };
-char D_004A98A0[0x20] = {
+char gArmorLegsNames_24[32] = {
 #include "sub_main/004A98A0.inc"
 };
-char D_004A98C0[0x20] = {
+char gArmorLegsNames_25[32] = {
 #include "sub_main/004A98C0.inc"
 };
-char D_004A98E0[0x20] = {
+char gArmorLegsNames_26[32] = {
 #include "sub_main/004A98E0.inc"
 };
-char D_004A9900[0x20] = {
+char gArmorLegsNames_27[32] = {
 #include "sub_main/004A9900.inc"
 };
-char D_004A9920[0x18] = {
+char gArmorLegsNames_28[24] = {
 #include "sub_main/004A9920.inc"
 };
-char D_004A9938[15] = {
+char gArmorLegsNames_29[15] = {
 #include "sub_main/004A9938.inc"
 };
-char D_004A9948[15] = {
+char gArmorLegsNames_30[15] = {
 #include "sub_main/004A9948.inc"
 };
-char D_004A9960[0x20] = {
+char gArmorLegsNames_31[32] = {
 #include "sub_main/004A9960.inc"
 };
-char D_004A9980[0x18] = {
+char gArmorLegsNames_32[24] = {
 #include "sub_main/004A9980.inc"
 };
-char D_004A9998[15] = {
+char gArmorLegsNames_33[15] = {
 #include "sub_main/004A9998.inc"
 };
-char D_004A99A8[15] = {
+char gArmorLegsNames_34[15] = {
 #include "sub_main/004A99A8.inc"
 };
-char D_004A99B8[15] = {
+char gArmorLegsNames_35[15] = {
 #include "sub_main/004A99B8.inc"
 };
-char D_004A99C8[15] = {
+char gArmorLegsNames_36[15] = {
 #include "sub_main/004A99C8.inc"
 };
-char D_004A99D8[15] = {
+char gArmorLegsNames_37[15] = {
 #include "sub_main/004A99D8.inc"
 };
-char D_004A99E8[15] = {
+char gArmorLegsNames_38[15] = {
 #include "sub_main/004A99E8.inc"
 };
-char D_004A9A00[0x20] = {
+char gArmorLegsNames_39[32] = {
 #include "sub_main/004A9A00.inc"
 };
-char D_004A9A20[0x20] = {
+char gArmorLegsNames_40[32] = {
 #include "sub_main/004A9A20.inc"
 };
-char D_004A9A40[0x20] = {
+char gArmorLegsNames_41[32] = {
 #include "sub_main/004A9A40.inc"
 };
-char D_004A9A60[0x20] = {
+char gArmorLegsNames_42[32] = {
 #include "sub_main/004A9A60.inc"
 };
-char D_004A9A80[0x20] = {
+char gArmorLegsNames_43[32] = {
 #include "sub_main/004A9A80.inc"
 };
-char D_004A9AA0[0x20] = {
+char gArmorLegsNames_44[32] = {
 #include "sub_main/004A9AA0.inc"
 };
-char D_004A9AC0[0x18] = {
+char gArmorLegsNames_45[24] = {
 #include "sub_main/004A9AC0.inc"
 };
-char D_004A9AD8[0xC] = {
+char gArmorLegsNames_46[12] = {
 #include "sub_main/004A9AD8.inc"
 };
-char D_004A9AF0[0x20] = {
+char gArmorLegsNames_47[32] = {
 #include "sub_main/004A9AF0.inc"
 };
-char D_004A9B10[0x20] = {
+char gArmorLegsNames_48[32] = {
 #include "sub_main/004A9B10.inc"
 };
-char D_004A9B30[0x18] = {
+char gArmorLegsNames_49[24] = {
 #include "sub_main/004A9B30.inc"
 };
-char D_004A9B48[13] = {
+char gArmorLegsNames_50[13] = {
 #include "sub_main/004A9B48.inc"
 };
-char D_004A9B58[13] = {
+char gArmorLegsNames_51[13] = {
 #include "sub_main/004A9B58.inc"
 };
-char D_004A9B70[0x20] = {
+char gArmorLegsNames_52[32] = {
 #include "sub_main/004A9B70.inc"
 };
-char D_004A9B90[0x20] = {
+char gArmorLegsNames_53[32] = {
 #include "sub_main/004A9B90.inc"
 };
-char D_004A9BB0[0x20] = {
+char gArmorLegsNames_54[32] = {
 #include "sub_main/004A9BB0.inc"
 };
-char D_004A9BD0[0x20] = {
+char gArmorLegsNames_55[32] = {
 #include "sub_main/004A9BD0.inc"
 };
-char D_004A9BF0[0x20] = {
+char gArmorLegsNames_56[32] = {
 #include "sub_main/004A9BF0.inc"
 };
-char D_004A9C10[0x18] = {
+char gArmorLegsNames_57[24] = {
 #include "sub_main/004A9C10.inc"
 };
-char D_004A9C28[13] = {
+char gArmorLegsNames_58[13] = {
 #include "sub_main/004A9C28.inc"
 };
-char D_004A9C38[13] = {
+char gArmorLegsNames_59[13] = {
 #include "sub_main/004A9C38.inc"
 };
-char D_004A9C48[0xC] = {
+char gArmorLegsNames_60[12] = {
 #include "sub_main/004A9C48.inc"
 };
-char D_004A9C58[0xC] = {
+char gArmorLegsNames_61[12] = {
 #include "sub_main/004A9C58.inc"
 };
-char D_004A9C68[0xC] = {
+char gArmorLegsNames_62[12] = {
 #include "sub_main/004A9C68.inc"
 };
-char D_004A9C78[0xC] = {
+char gArmorLegsNames_63[12] = {
 #include "sub_main/004A9C78.inc"
 };
-char D_004A9C88[15] = {
+char gArmorLegsNames_64[15] = {
 #include "sub_main/004A9C88.inc"
 };
-char D_004A9C98[15] = {
+char gArmorLegsNames_65[15] = {
 #include "sub_main/004A9C98.inc"
 };
-char D_004A9CB0[0x20] = {
+char gArmorLegsNames_66[32] = {
 #include "sub_main/004A9CB0.inc"
 };
-char D_004A9CD0[0x20] = {
+char gArmorLegsNames_67[32] = {
 #include "sub_main/004A9CD0.inc"
 };
-char D_004A9CF0[0x20] = {
+char gArmorLegsNames_68[32] = {
 #include "sub_main/004A9CF0.inc"
 };
-char D_004A9D10[0x20] = {
+char gArmorLegsNames_69[32] = {
 #include "sub_main/004A9D10.inc"
 };
-char D_004A9D30[0x20] = {
+char gArmorLegsNames_70[32] = {
 #include "sub_main/004A9D30.inc"
 };
-char D_004A9D50[0x20] = {
+char gArmorLegsNames_71[32] = {
 #include "sub_main/004A9D50.inc"
 };
-char D_004A9D70[0x20] = {
+char gArmorLegsNames_72[32] = {
 #include "sub_main/004A9D70.inc"
 };
-char D_004A9D90[0x20] = {
+char gArmorLegsNames_73[32] = {
 #include "sub_main/004A9D90.inc"
 };
-char D_004A9DB0[0x20] = {
+char gArmorLegsNames_74[32] = {
 #include "sub_main/004A9DB0.inc"
 };
-char D_004A9DD0[0x20] = {
+char gArmorLegsNames_75[32] = {
 #include "sub_main/004A9DD0.inc"
 };
-char D_004A9DF0[0x20] = {
+char gArmorLegsNames_76[32] = {
 #include "sub_main/004A9DF0.inc"
 };
-char D_004A9E10[0x20] = {
+char gArmorLegsNames_77[32] = {
 #include "sub_main/004A9E10.inc"
 };
-char D_004A9E30[0x20] = {
+char gArmorLegsNames_78[32] = {
 #include "sub_main/004A9E30.inc"
 };
-char D_004A9E50[0x20] = {
+char gArmorLegsNames_79[32] = {
 #include "sub_main/004A9E50.inc"
 };
-char D_004A9E70[0x20] = {
+char gArmorLegsNames_80[32] = {
 #include "sub_main/004A9E70.inc"
 };
-char D_004A9E90[0x20] = {
+char gArmorLegsNames_81[32] = {
 #include "sub_main/004A9E90.inc"
 };
-char D_004A9EB0[0x20] = {
+char gArmorLegsNames_82[32] = {
 #include "sub_main/004A9EB0.inc"
 };
-char D_004A9ED0[0x20] = {
+char gArmorLegsNames_83[32] = {
 #include "sub_main/004A9ED0.inc"
 };
-char D_004A9EF0[0x20] = {
+char gArmorLegsNames_84[32] = {
 #include "sub_main/004A9EF0.inc"
 };
-char D_004A9F10[0x20] = {
+char gArmorLegsNames_85[32] = {
 #include "sub_main/004A9F10.inc"
 };
-char D_004A9F30[0x20] = {
+char gArmorLegsNames_86[32] = {
 #include "sub_main/004A9F30.inc"
 };
-char D_004A9F50[0x20] = {
+char gArmorLegsNames_87[32] = {
 #include "sub_main/004A9F50.inc"
 };
-char D_004A9F70[0x20] = {
+char gArmorLegsNames_88[32] = {
 #include "sub_main/004A9F70.inc"
 };
-char D_004A9F90[0x20] = {
+char gArmorLegsNames_89[32] = {
 #include "sub_main/004A9F90.inc"
 };
-char D_004A9FB0[0x20] = {
+char gArmorLegsNames_90[32] = {
 #include "sub_main/004A9FB0.inc"
 };
-char D_004A9FD0[0x20] = {
+char gArmorLegsNames_91[32] = {
 #include "sub_main/004A9FD0.inc"
 };
-char D_004A9FF0[0x20] = {
+char gArmorLegsNames_92[32] = {
 #include "sub_main/004A9FF0.inc"
 };
-char D_004AA010[0x20] = {
+char gArmorLegsNames_93[32] = {
 #include "sub_main/004AA010.inc"
 };
-char D_004AA030[0x20] = {
+char gArmorLegsNames_94[32] = {
 #include "sub_main/004AA030.inc"
 };
-char D_004AA050[0x20] = {
+char gArmorLegsNames_95[32] = {
 #include "sub_main/004AA050.inc"
 };
-char D_004AA070[0x20] = {
+char gArmorLegsNames_96[32] = {
 #include "sub_main/004AA070.inc"
 };
-char D_004AA090[0x20] = {
+char gArmorLegsNames_97[32] = {
 #include "sub_main/004AA090.inc"
 };
-char D_004AA0B0[0x20] = {
+char gArmorLegsNames_98[32] = {
 #include "sub_main/004AA0B0.inc"
 };
-char D_004AA0D0[0x20] = {
+char gArmorLegsNames_99[32] = {
 #include "sub_main/004AA0D0.inc"
 };
-char D_004AA0F0[0x20] = {
+char gArmorLegsNames_100[32] = {
 #include "sub_main/004AA0F0.inc"
 };
-char D_004AA110[0x20] = {
+char gArmorLegsNames_101[32] = {
 #include "sub_main/004AA110.inc"
 };
-char D_004AA130[0x20] = {
+char gArmorLegsNames_102[32] = {
 #include "sub_main/004AA130.inc"
 };
-char D_004AA150[0x20] = {
+char gArmorLegsNames_103[32] = {
 #include "sub_main/004AA150.inc"
 };
-char D_004AA170[0x20] = {
+char gArmorLegsNames_104[32] = {
 #include "sub_main/004AA170.inc"
 };
-char D_004AA190[0x18] = {
+char gArmorLegsNames_105[24] = {
 #include "sub_main/004AA190.inc"
 };
-char D_004AA1A8[13] = {
+char gArmorLegsNames_106[13] = {
 #include "sub_main/004AA1A8.inc"
 };
-char D_004AA1B8[13] = {
+char gArmorLegsNames_107[13] = {
 #include "sub_main/004AA1B8.inc"
 };
-char D_004AA1D0[0x20] = {
+char gArmorLegsNames_108[32] = {
 #include "sub_main/004AA1D0.inc"
 };
-char D_004AA1F0[0x20] = {
+char gArmorLegsNames_109[32] = {
 #include "sub_main/004AA1F0.inc"
 };
-char D_004AA210[0x20] = {
+char gArmorLegsNames_110[32] = {
 #include "sub_main/004AA210.inc"
 };
-char D_004AA230[0x20] = {
+char gArmorLegsNames_111[32] = {
 #include "sub_main/004AA230.inc"
 };
-char D_004AA250[0x20] = {
+char gArmorLegsNames_112[32] = {
 #include "sub_main/004AA250.inc"
 };
-char D_004AA270[0x18] = {
+char gArmorLegsNames_113[24] = {
 #include "sub_main/004AA270.inc"
 };
-char D_004AA288[13] = {
+char gArmorLegsNames_114[13] = {
 #include "sub_main/004AA288.inc"
 };
-char D_004AA298[13] = {
+char gArmorLegsNames_115[13] = {
 #include "sub_main/004AA298.inc"
 };
-char D_004AA2B0[0x20] = {
+char gArmorLegsNames_116[32] = {
 #include "sub_main/004AA2B0.inc"
 };
-char D_004AA2D0[0x20] = {
+char gArmorLegsNames_117[32] = {
 #include "sub_main/004AA2D0.inc"
 };
-char D_004AA2F0[0x20] = {
+char gArmorLegsNames_118[32] = {
 #include "sub_main/004AA2F0.inc"
 };
-char D_004AA310[0x20] = {
+char gArmorLegsNames_119[32] = {
 #include "sub_main/004AA310.inc"
 };
-char D_004AA330[0x20] = {
+char gArmorLegsNames_120[32] = {
 #include "sub_main/004AA330.inc"
 };
-char D_004AA350[0x20] = {
+char gArmorLegsNames_121[32] = {
 #include "sub_main/004AA350.inc"
 };
-char D_004AA370[0x20] = {
+char gArmorLegsNames_122[32] = {
 #include "sub_main/004AA370.inc"
 };
-char D_004AA390[0x20] = {
+char gArmorLegsNames_123[32] = {
 #include "sub_main/004AA390.inc"
 };
-char D_004AA3B0[0x20] = {
+char gArmorLegsNames_124[32] = {
 #include "sub_main/004AA3B0.inc"
 };
-char D_004AA3D0[0x20] = {
+char gArmorLegsNames_125[32] = {
 #include "sub_main/004AA3D0.inc"
 };
-char D_004AA3F0[0x20] = {
+char gArmorLegsNames_126[32] = {
 #include "sub_main/004AA3F0.inc"
 };
-char D_004AA410[0x20] = {
+char gArmorLegsNames_127[32] = {
 #include "sub_main/004AA410.inc"
 };
-char D_004AA430[0x20] = {
+char gArmorLegsNames_128[32] = {
 #include "sub_main/004AA430.inc"
 };
-char D_004AA450[0x20] = {
+char gArmorLegsNames_129[32] = {
 #include "sub_main/004AA450.inc"
 };
-char D_004AA470[0x20] = {
+char gArmorLegsNames_130[32] = {
 #include "sub_main/004AA470.inc"
 };
-char D_004AA490[0x20] = {
+char gArmorLegsNames_131[32] = {
 #include "sub_main/004AA490.inc"
 };
-char D_004AA4B0[0x20] = {
+char gArmorLegsNames_132[32] = {
 #include "sub_main/004AA4B0.inc"
 };
-char D_004AA4D0[0x20] = {
+char gArmorLegsNames_133[32] = {
 #include "sub_main/004AA4D0.inc"
 };
-char D_004AA4F0[0x20] = {
+char gArmorLegsNames_134[32] = {
 #include "sub_main/004AA4F0.inc"
 };
-char D_004AA510[0x20] = {
+char gArmorLegsNames_135[32] = {
 #include "sub_main/004AA510.inc"
 };
-char D_004AA530[0x20] = {
+char gArmorLegsNames_136[32] = {
 #include "sub_main/004AA530.inc"
 };
-char D_004AA550[0x20] = {
+char gArmorLegsNames_137[32] = {
 #include "sub_main/004AA550.inc"
 };
-char D_004AA570[0x20] = {
+char gArmorLegsNames_138[32] = {
 #include "sub_main/004AA570.inc"
 };
-char D_004AA590[0x20] = {
+char gArmorLegsNames_139[32] = {
 #include "sub_main/004AA590.inc"
 };
-char D_004AA5B0[0x20] = {
+char gArmorLegsNames_140[32] = {
 #include "sub_main/004AA5B0.inc"
 };
-char D_004AA5D0[0x20] = {
+char gArmorLegsNames_141[32] = {
 #include "sub_main/004AA5D0.inc"
 };
-char D_004AA5F0[0x20] = {
+char gArmorLegsNames_142[32] = {
 #include "sub_main/004AA5F0.inc"
 };
-char D_004AA610[0x20] = {
+char gArmorLegsNames_143[32] = {
 #include "sub_main/004AA610.inc"
 };
-char D_004AA630[0x20] = {
+char gArmorLegsNames_144[32] = {
 #include "sub_main/004AA630.inc"
 };
-char D_004AA650[0x20] = {
+char gArmorLegsNames_145[32] = {
 #include "sub_main/004AA650.inc"
 };
-char D_004AA670[0x20] = {
+char gArmorLegsNames_146[32] = {
 #include "sub_main/004AA670.inc"
 };
-char D_004AA690[0x20] = {
+char gArmorLegsNames_147[32] = {
 #include "sub_main/004AA690.inc"
 };
-char D_004AA6B0[0x20] = {
+char gArmorLegsNames_148[32] = {
 #include "sub_main/004AA6B0.inc"
 };
-char D_004AA6D0[0x20] = {
+char gArmorLegsNames_149[32] = {
 #include "sub_main/004AA6D0.inc"
 };
-char D_004AA6F0[0x20] = {
+char gArmorLegsNames_150[32] = {
 #include "sub_main/004AA6F0.inc"
 };
-char D_004AA710[0x20] = {
+char gArmorLegsNames_151[32] = {
 #include "sub_main/004AA710.inc"
 };
-char D_004AA730[0x20] = {
+char gArmorLegsNames_152[32] = {
 #include "sub_main/004AA730.inc"
 };
-char D_004AA750[0x20] = {
+char gArmorLegsNames_153[32] = {
 #include "sub_main/004AA750.inc"
 };
-char D_004AA770[0x20] = {
+char gArmorLegsNames_154[32] = {
 #include "sub_main/004AA770.inc"
 };
-char D_004AA790[0x20] = {
+char gArmorLegsNames_155[32] = {
 #include "sub_main/004AA790.inc"
 };
-char D_004AA7B0[0x20] = {
+char gArmorLegsNames_156[32] = {
 #include "sub_main/004AA7B0.inc"
 };
-char D_004AA7D0[0x20] = {
+char gArmorLegsNames_157[32] = {
 #include "sub_main/004AA7D0.inc"
 };
-char D_004AA7F0[0x20] = {
+char gArmorLegsNames_158[32] = {
 #include "sub_main/004AA7F0.inc"
 };
-char D_004AA810[0x20] = {
+char gArmorLegsNames_159[32] = {
 #include "sub_main/004AA810.inc"
 };
-char D_004AA830[0x20] = {
+char gArmorLegsNames_160[32] = {
 #include "sub_main/004AA830.inc"
 };
-char D_004AA850[0x20] = {
+char gArmorLegsNames_161[32] = {
 #include "sub_main/004AA850.inc"
 };
-char D_004AA870[0x20] = {
+char gArmorLegsNames_162[32] = {
 #include "sub_main/004AA870.inc"
 };
-char D_004AA890[0x18] = {
+char gArmorLegsNames_163[24] = {
 #include "sub_main/004AA890.inc"
 };
-char D_004AA8A8[13] = {
+char gArmorLegsNames_164[13] = {
 #include "sub_main/004AA8A8.inc"
 };
-char D_004AA8B8[13] = {
+char gArmorLegsNames_165[13] = {
 #include "sub_main/004AA8B8.inc"
 };
-char D_004AA8D0[0x20] = {
+char D_004AA8D0[32] = {
 #include "sub_main/004AA8D0.inc"
 };
-char D_004AA8F0[0x20] = {
+char D_004AA8F0[32] = {
 #include "sub_main/004AA8F0.inc"
 };
-char D_004AA910[0x20] = {
+char gArmorLegsNames_170[32] = {
 #include "sub_main/004AA910.inc"
 };
-char D_004AA930[0x18] = {
+char gArmorLegsNames_171[24] = {
 #include "sub_main/004AA930.inc"
 };
-char D_004AA948[13] = {
+char gArmorLegsNames_172[13] = {
 #include "sub_main/004AA948.inc"
 };
-char D_004AA958[13] = {
+char gArmorLegsNames_173[13] = {
 #include "sub_main/004AA958.inc"
 };
-char D_004AA970[0x20] = {
+char gArmorLegsNames_174[32] = {
 #include "sub_main/004AA970.inc"
 };
-char D_004AA990[0x18] = {
+char gArmorLegsNames_175[24] = {
 #include "sub_main/004AA990.inc"
 };
-char D_004AA9A8[15] = {
+char gArmorLegsNames_176[15] = {
 #include "sub_main/004AA9A8.inc"
 };
-char D_004AA9B8[15] = {
+char gArmorLegsNames_177[15] = {
 #include "sub_main/004AA9B8.inc"
 };
-char D_004AA9D0[0x20] = {
+char gArmorLegsNames_178[32] = {
 #include "sub_main/004AA9D0.inc"
 };
-char D_004AA9F0[0x20] = {
+char gArmorLegsNames_179[32] = {
 #include "sub_main/004AA9F0.inc"
 };
-char D_004AAA10[0x20] = {
+char gArmorLegsNames_180[32] = {
 #include "sub_main/004AAA10.inc"
 };
-char D_004AAA30[0x18] = {
+char gArmorLegsNames_181[24] = {
 #include "sub_main/004AAA30.inc"
 };
-char D_004AAA48[15] = {
+char gArmorLegsNames_182[15] = {
 #include "sub_main/004AAA48.inc"
 };
-char D_004AAA58[15] = {
+char gArmorLegsNames_183[15] = {
 #include "sub_main/004AAA58.inc"
 };
-char D_004AAA70[0x20] = {
+char gArmorLegsNames_184[32] = {
 #include "sub_main/004AAA70.inc"
 };
-char D_004AAA90[0x20] = {
+char gArmorLegsNames_185[32] = {
 #include "sub_main/004AAA90.inc"
 };
-char D_004AAAB0[0x20] = {
+char gArmorLegsNames_186[32] = {
 #include "sub_main/004AAAB0.inc"
 };
-char D_004AAAD0[0x20] = {
+char gArmorLegsNames_187[32] = {
 #include "sub_main/004AAAD0.inc"
 };
-char D_004AAAF0[0x20] = {
+char gArmorLegsNames_188[32] = {
 #include "sub_main/004AAAF0.inc"
 };
-char D_004AAB10[0x20] = {
+char gArmorLegsNames_189[32] = {
 #include "sub_main/004AAB10.inc"
 };
-char D_004AAB30[0x20] = {
+char gArmorLegsNames_190[32] = {
 #include "sub_main/004AAB30.inc"
 };
-char D_004AAB50[0x20] = {
+char gArmorLegsNames_191[32] = {
 #include "sub_main/004AAB50.inc"
 };
-char D_004AAB70[0x20] = {
+char gArmorLegsNames_192[32] = {
 #include "sub_main/004AAB70.inc"
 };
-char D_004AAB90[0x18] = {
+char gArmorLegsNames_193[24] = {
 #include "sub_main/004AAB90.inc"
 };
-char D_004AABA8[15] = {
+char gArmorLegsNames_194[15] = {
 #include "sub_main/004AABA8.inc"
 };
-char D_004AABB8[15] = {
+char gArmorLegsNames_195[15] = {
 #include "sub_main/004AABB8.inc"
 };
-char D_004AABD0[0x20] = {
+char gArmorLegsNames_196[32] = {
 #include "sub_main/004AABD0.inc"
 };
-char D_004AABF0[0x20] = {
+char gArmorLegsNames_197[32] = {
 #include "sub_main/004AABF0.inc"
 };
-char D_004AAC10[0x20] = {
+char gArmorLegsNames_198[32] = {
 #include "sub_main/004AAC10.inc"
 };
-char D_004AAC30[0x18] = {
+char gArmorLegsNames_199[24] = {
 #include "sub_main/004AAC30.inc"
 };
-char D_004AAC48[15] = {
+char gArmorLegsNames_200[15] = {
 #include "sub_main/004AAC48.inc"
 };
-char D_004AAC58[13] = {
+char gArmorLegsNames_201[13] = {
 #include "sub_main/004AAC58.inc"
 };
-char D_004AAC70[0x18] = {
+char gArmorLegsNames_202[24] = {
 #include "sub_main/004AAC70.inc"
 };
-char D_004AAC88[15] = {
+char gArmorLegsNames_203[15] = {
 #include "sub_main/004AAC88.inc"
 };
-char D_004AAC98[15] = {
+char gArmorLegsNames_204[15] = {
 #include "sub_main/004AAC98.inc"
 };
-char D_004AACA8[15] = {
+char gArmorLegsNames_205[15] = {
 #include "sub_main/004AACA8.inc"
 };
-char D_004AACB8[15] = {
+char gArmorLegsNames_206[15] = {
 #include "sub_main/004AACB8.inc"
 };
-char D_004AACD0[0x20] = {
+char gArmorLegsNames_207[32] = {
 #include "sub_main/004AACD0.inc"
 };
-char D_004AACF0[0x20] = {
+char gArmorLegsNames_208[32] = {
 #include "sub_main/004AACF0.inc"
 };
-char D_004AAD10[0x18] = {
+char gArmorLegsNames_209[24] = {
 #include "sub_main/004AAD10.inc"
 };
-char D_004AAD28[13] = {
+char gArmorLegsNames_210[13] = {
 #include "sub_main/004AAD28.inc"
 };
-char D_004AAD38[13] = {
+char gArmorLegsNames_211[13] = {
 #include "sub_main/004AAD38.inc"
 };
-char D_004AAD50[0x20] = {
+char gArmorLegsNames_212[32] = {
 #include "sub_main/004AAD50.inc"
 };
-char D_004AAD70[0x18] = {
+char gArmorLegsNames_213[24] = {
 #include "sub_main/004AAD70.inc"
 };
-char D_004AAD88[13] = {
+char gArmorLegsNames_214[13] = {
 #include "sub_main/004AAD88.inc"
 };
-char D_004AAD98[13] = {
+char gArmorLegsNames_215[13] = {
 #include "sub_main/004AAD98.inc"
 };
-char D_004AADA8[0xC] = {
+char gArmorLegsNames_216[12] = {
 #include "sub_main/004AADA8.inc"
 };
-char D_004AADB8[0xC] = {
+char gArmorLegsNames_217[12] = {
 #include "sub_main/004AADB8.inc"
 };
-char D_004AADD0[0x20] = {
+char gArmorLegsNames_218[32] = {
 #include "sub_main/004AADD0.inc"
 };
-char D_004AADF0[0x20] = {
+char gArmorLegsNames_219[32] = {
 #include "sub_main/004AADF0.inc"
 };
-char D_004AAE10[0x20] = {
+char gArmorLegsNames_220[32] = {
 #include "sub_main/004AAE10.inc"
 };
-char D_004AAE30[0x20] = {
+char gArmorLegsNames_221[32] = {
 #include "sub_main/004AAE30.inc"
 };
-char D_004AAE50[0x20] = {
+char gArmorLegsNames_222[32] = {
 #include "sub_main/004AAE50.inc"
 };
-char D_004AAE70[0x20] = {
+char gArmorLegsNames_223[32] = {
 #include "sub_main/004AAE70.inc"
 };
-char D_004AAE90[0x20] = {
+char gArmorLegsNames_224[32] = {
 #include "sub_main/004AAE90.inc"
 };
-char D_004AAEB0[0x20] = {
+char gArmorLegsNames_225[32] = {
 #include "sub_main/004AAEB0.inc"
 };
-char D_004AAED0[0x20] = {
+char gArmorLegsNames_226[32] = {
 #include "sub_main/004AAED0.inc"
 };
-char D_004AAEF0[0x20] = {
+char D_004AAEF0[32] = {
 #include "sub_main/004AAEF0.inc"
 };
-char D_004AAF10[0x20] = {
+char D_004AAF10[32] = {
 #include "sub_main/004AAF10.inc"
 };
-char D_004AAF30[0x20] = {
+char gArmorLegsNames_231[32] = {
 #include "sub_main/004AAF30.inc"
 };
-char D_004AAF50[0x20] = {
+char gArmorLegsNames_232[32] = {
 #include "sub_main/004AAF50.inc"
 };
-char D_004AAF70[0x20] = {
+char gArmorLegsNames_233[32] = {
 #include "sub_main/004AAF70.inc"
 };
-char D_004AAF90[0x20] = {
+char gArmorLegsNames_234[32] = {
 #include "sub_main/004AAF90.inc"
 };
-char D_004AAFB0[0x20] = {
+char gArmorLegsNames_235[32] = {
 #include "sub_main/004AAFB0.inc"
 };
 #pragma rodata off
@@ -12916,8 +12821,6 @@ char D_004AAFB0[0x20] = {
 
 /* unit's own declaration: declared here as these callers use it; with the definition's s32 (u16 id), Dojo_SetBestScore and Dojo_SetBestTime compile differently. */
 s32 Dojo_FindQuest(s32 a);
-void Save_ClearEventFlag(s32 a);
-s32 Bits32_Test(u32 *bits, s32 n);
 
 /* Adds to gSave's points (SaveData.points, which the lobby's point shop spends), within 0 and
  * 9,999,999. */
@@ -12984,7 +12887,7 @@ void PspLink_SetFlags(u32 flags)
 void PspLink_ClearFlags(void)
 {
     gSave.pspLinkFlags = 0;
-    Save_ClearEventFlag(0x7E);
+    Save_ClearEventFlag(126);
 }
 
 /* 1 when bit `bit` of the MH Portable link flags is set. */
@@ -13040,15 +12943,6 @@ s32 Equip_CountDecos(EquipItem *item)
 
 /* Only the flags byte of the armour records (ArmorData). */
 
-
-u8 Equip_GetSlotCount(EquipItem *item);
-s32 Armor_LacksSexModel(s32 id, u8 female);
-u16 Record_GroupHunted(SaveData *save, u8 group);
-u16 Record_GroupCaptured(SaveData *save, u8 group);
-u16 Record_GetHunted(SaveData *save, u8 monster);
-u16 Record_GetCaptured(SaveData *save, u8 monster);
-s16 Box_GetCapacity(SaveData *save);
-DecoData *Item_GetDecoration(u16 item);
 static void Equip_CompactDecorations(EquipItem *e);
 
 /* The free decoration slots of a piece of equipment. Kept for the match: the record is read as
@@ -13219,9 +13113,6 @@ void SysSave_UnlockBonus(void)
 }
 
 u8 Equip_GetClass(EquipItem *item);
-s32 Equip_TestFlag(EquipItem *item, s16 bit);
-s32 Award_Grant(s32 arg0);
-s32 RateFlag_SetAndNotify(s32 a);
 
 /* Counts the equipment of the lists gEquipCollectType6 (type 6) and gEquipCollectType7 (type 7) by class
  * (Equip_GetClass) and how many the player owns (Equip_TestFlag): each class all owned gives

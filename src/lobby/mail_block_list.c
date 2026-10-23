@@ -15,22 +15,23 @@
 #include "lobby_vobj.h"
 #include "lobby_globals.h"
 #include "pad.h"
+#include "mail_block_list.h"
 /* Built at optimisation level 4: the compiler gives these functions the
  * game's code only at this level. */
 #pragma optimization_level 4
-void *memset(void *, s32, u32);
-
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 
 #include "stageobj.h"
 #include "lobby_menu.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "font.h"
+#include "friend_add.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "libc.h"
 extern u8 gMenuWork[];
 extern BlockedUser gMailBlockList[];
-s32 IdList_Count(s8 *p, u8 n);
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
-
-void BlockList_Draw(MenuTask *task);
 
 /* Opens the block list: clears the menu work area, counts the blocked
  * users, starts the window's slide in from the right edge, sets the page's
@@ -41,7 +42,7 @@ void BlockList_Open(void)
 
     memset(menu, 0, MENU_WORK_SIZE);
     menu->count = IdList_Count((s8 *) gMailBlockList, MAIL_BLOCK_LIST_LEN);
-    WinSlide_Step(&menu->win, 0x280, 0x154);
+    WinSlide_Step(&menu->win, 640, 340);
     LobbyMenu_SetDraw(BlockList_Draw, 0, 0, 0);
     gFieldControl = 0;
 }
@@ -53,11 +54,6 @@ void BlockList_Close(void)
     gFieldControl = 1;
     LobbyMenu_SetDraw(0, 0, NULL, 0);
 }
-
-void LobbySe_Play(s32 se);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 BlockList_RemoveInput(u16 pad);
-void BlockList_AskRemove(void *e, u8 *name);
 
 /* The block list's input, once a frame: slides the window in; on the list,
  * PAD_CIRCLE opens the delete box for the user under the cursor, PAD_CROSS
@@ -72,7 +68,7 @@ s32 BlockList_Update(u16 pad)
 
     switch (state = menu->state) {
     case BLOCK_LIST_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x154)) {
+        switch (WinSlide_Step(&menu->win, 640, 340)) {
         case MENU_DONE:
             menu->state++;
             break;
@@ -131,16 +127,11 @@ s32 BlockList_Update(u16 pad)
 }
 
 /* unit's own declaration: as the callers use it; with the definition's void (s16 x0, s16 y0, s16 x1, s16 y1, s8 flag), the calls in the list's and the delete box's draws compile differently */
-void Menu_DrawLine(s16 x, s16 y, s32 w, s32 h, s32 sel);
+void Menu_DrawRowHighlight(s16 x, s16 y, s32 w, s32 h, s32 sel);
 /* unit's own declaration: as the callers use it; with the definition's void (s32 x, s32 y, s32 w, s32 h, s32 c1, s32 c2, s16 kind), the calls in the list's and the delete box's draws compile differently */
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 void Text_PrintfColored(char *fmt, ...);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 void Text_Printf(const char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
-s32 sprintf(char *buf, const char *fmt, ...);
 void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
 extern char gBlockListFmtString[];
 
@@ -160,30 +151,30 @@ void BlockList_DrawList(BlockListMenu *menu, s16 x, s16 y)
     char idText[32];
     char idWide[32];
 
-    Win_Draw(x, y, 0x118, 0x122, 0xBDB59F6C, 0xBB402010, 8);
-    Gfx_DrawLine(x + 8, y + 0xC, 0x108, 0x14, 0x80B59F6C);
+    Win_Draw(x, y, 280, 290, 0xBDB59F6C, 0xBB402010, 8);
+    Gfx_DrawLine(x + 8, y + 12, 264, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0xA, (s16)(y + 0xE) - 1);
+    Font_SetPos(x + 10, (s16)(y + 14) - 1);
     Text_PrintfColored(gTownLabels[TOWN_LABEL_BLOCK_LIST]);
-    rowY += 0x24;
+    rowY += 36;
     menu->count = IdList_Count((s8 *) gMailBlockList, MAIL_BLOCK_LIST_LEN);
     if (menu->count > 0) {
         if (menu->cursor >= menu->count) {
             menu->cursor = menu->count - 1;
         }
     } else {
-        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_NONE_REGISTERED], x + 0x8C, 0x12), rowY + 0x46);
+        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_NONE_REGISTERED], x + 140, 18), rowY + 70);
         Font_SetColor(0x802B7F7F);
         Text_Printf(gBlockListFmtString, gEmptyListTexts[EMPTY_LIST_NONE_REGISTERED]);
         return;
     }
-    Font_SetPos(x + 0x26, rowY);
+    Font_SetPos(x + 38, rowY);
     Text_PrintfColored(gBlockListFmtString, gNetLabels[NET_LABEL_NAME]);
-    Font_SetPos(x + 0x8C, rowY);
+    Font_SetPos(x + 140, rowY);
     Text_PrintfColored(gBlockListFmtString, gNetLabels[NET_LABEL_ID]);
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < menu->count; i++) {
-        rowY += 0x14;
+        rowY += 20;
         if (menu->cursor == i) {
             switch (menu->state) {
             case BLOCK_LIST_LIST:
@@ -193,16 +184,16 @@ void BlockList_DrawList(BlockListMenu *menu, s16 x, s16 y)
                 steady = 1;
                 break;
             }
-            Menu_DrawLine(x + 8, rowY - 1, 0x108, 0x14, (s8)steady);
+            Menu_DrawRowHighlight(x + 8, rowY - 1, 264, 20, (s8)steady);
         }
-        Font_SetPos(x + 0x26, rowY);
+        Font_SetPos(x + 38, rowY);
         Text_PrintfColored(gBlockListFmtString, gMailBlockList[i].name);
-        Font_SetPos(x + 0x8C, rowY);
+        Font_SetPos(x + 140, rowY);
         sprintf(idText, gBlockListFmtString, &gMailBlockList[i]);
         Sjis_Widen(idText, idWide);
         Text_PrintfColored(gBlockListFmtString, idWide);
-        Icon_Draw(x + 0xA, rowY - 1, 0x16, 0x14, -1, 0x55);
-        Icon_Draw(x + 0xA, rowY - 1, 0x16, 0x14, -1, 0x58);
+        Icon_Draw(x + 10, rowY - 1, 22, 20, -1, 85);
+        Icon_Draw(x + 10, rowY - 1, 22, 20, -1, 88);
     }
 }
 
@@ -217,8 +208,8 @@ void BlockList_DrawDelete(BlockListMenu *menu, s16 x, s16 y)
     s32 boxX;
     s32 textX;
 
-    boxX = x - 0x6E;
-    Win_Draw(boxX, y, 0x6E, 0x26, 0xBDB59F6C, 0xBB402010, 3);
+    boxX = x - 110;
+    Win_Draw(boxX, y, 110, 38, 0xBDB59F6C, 0xBB402010, 3);
     Font_SetColor(0x807F7F7F);
     switch (menu->state) {
     case BLOCK_LIST_DELETE_BOX:
@@ -230,13 +221,12 @@ void BlockList_DrawDelete(BlockListMenu *menu, s16 x, s16 y)
     }
     textY = y;
     textX = (s16)boxX + 8;
-    Menu_DrawLine(textX, (s16)(textY + 8) - 1, 0x5E, 0x14, steady);
+    Menu_DrawRowHighlight(textX, (s16)(textY + 8) - 1, 94, 20, steady);
     Font_SetPos(textX, textY + 8);
     Text_PrintfColored(gNetLabels[NET_LABEL_DELETE]);
 }
 
 void Text_SetSize(s32 size);
-void Font_SetSpacing(u8 a, u8 b);
 
 /* The block list's draw (LobbyMenu_SetDraw): the list's window at the
  * window's slide position, and the delete box beside it while it is open. */
@@ -245,18 +235,18 @@ void BlockList_Draw(MenuTask *task)
     BlockListMenu *menu = (BlockListMenu *)gMenuWork;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
-    BlockList_DrawList(menu, menu->win.pos, 0x36);
+    Font_SetSpacing(18, 18);
+    BlockList_DrawList(menu, menu->win.pos, 54);
     switch (menu->state) {
     case BLOCK_LIST_DELETE_BOX:
-        BlockList_DrawDelete(menu, menu->win.pos, 0x36);
+        BlockList_DrawDelete(menu, menu->win.pos, 54);
         break;
     }
 }
 
 /* The format of the list's lines (a plain string). */
 #pragma rodata on
-char gBlockListFmtString[0x8] = {
+char gBlockListFmtString[8] = {
 #include "lobby/00825F20.inc"
 };
 #pragma rodata off

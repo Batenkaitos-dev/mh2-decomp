@@ -1,10 +1,12 @@
-// Symbols for overlay 9, yn.bin. Format: name = 0xADDRESS; // attributes
+// The yn overlay (overlay 9, yn.bin): the network settings screens that the
+// online set-up loads, after Sony's netcnfif library at the overlay's start
+// (named in its own symbol file). Format: name = 0xADDRESS; // attributes
 
-// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+// The first function, after the overlay's 64 bytes of padding.
 yn_entry = 0x00AC8080; // type:func
 
-// --- yn_main.c's .data: objects that other labels fall inside (splat then
-// writes references to those labels as sym + offset) -----------------------
+// .data objects that other labels fall inside (a reference to such a label
+// is written as the object plus an offset).
 gYnWindows = 0x00AD11A0; // size:0x50 the four windows of the setup screens (Yn_DrawBackground draws 0, 1 and 3, Yn_DrawMessageWindow 2)
 gYnProxyWindows = 0x00AD11F0; // size:0x3C Yn_DrawProxy, its three windows
 gYnStorageNames = 0x00AD1230; // size:0x10 Yn_DrawEntryList, the storage names, the HDD (PlayStation BB Unit) then memory card slots 1 and 2 by YnCard_GetSlot + 1
@@ -17,7 +19,8 @@ gYnNetmaskTexts = 0x00AD12C8; // size:0x8 netmask, default router (Yn_DrawEntryD
 gYnDnsTexts = 0x00AD12D0; // size:0x8 primary DNS, secondary DNS (Yn_DrawEntryDetails)
 gYnYesNoTexts = 0x00AD12D8; // size:0x8 yes and no on one line, yes (Yn_DrawMessageText, Yn_DrawChoiceCursor)
 
-// --- Functions: Capcom's (yn_card.c, yn_main.c). netcnfif's are in sdk_netcnfif.txt.
+// Functions: the settings screens (Yn_), the settings file's access
+// (YnNetcnf_) and the memory card checks (YnCard_).
 YnCard_Reset = 0x00AC96D0; // type:func
 YnCard_CheckSlots = 0x00AC96F0; // type:func
 YnCard_CheckCurrentSlot = 0x00AC9880; // type:func
@@ -102,14 +105,15 @@ Yn_Utf8ToSjis = 0x00AD0C30; // type:func
 Yn_SjisToUtf8 = 0x00AD0D60; // type:func
 Yn_UnloadModule = 0x00AD0EC0; // type:func
 Yn_LoadModule = 0x00AD0F70; // type:func
-// round 13 (ncoreh1): names
+// More functions: the streams' and network devices' reset and the text mode.
 Yn_ResetStreams = 0x00AC9B80; // type:func
 Yn_SetGlyphSize = 0x00ACDAC0; // type:func
 Yn_SetTextMode = 0x00ACDAD0; // type:func
 Yn_GetTextMode = 0x00ACDAE0; // type:func
 Yn_ResetNetDevices = 0x00AD09D0; // type:func
 
-// Round 20 (ndata)
+// Data: the work area and its buffers, the screens' text item tables, the
+// help bars and the netcnf modules' arguments.
 gYnWork = 0x00AD9B40; // size:0x4
 gYnWorkBuf = 0x00AD9C80; // size:0x40500
 gYnSetupGuideArg = 0x00AD9B50; // size:0x130
@@ -124,7 +128,8 @@ gYnHelpBars = 0x00AD2170;
 gYnHelpBarLabels = 0x00AD1240; // size:0x30
 gYnNetcnfArgs = 0x00AD21E0; // size:0x80
 
-// Round 23 (ndata-h1)
+// Data: the list and proxy screens' rows, the guide's arguments, the help
+// hints and the netcnfif module's arguments.
 gYnListBarYs = 0x00AD2128; // size:0x8
 gYnGuideArgv = 0x00AD2140; // size:0x10
 gYnProxyBarYs = 0x00AD2150; // size:0x8
@@ -132,18 +137,21 @@ gYnProxyChoiceYs = 0x00AD2158; // size:0x8
 gYnHelpHints = 0x00AD2160; // size:0xE
 gYnNetcnfifArgs = 0x00AD2260; // size:0x20
 
-// Round 31 (names)
-gYnNoTexts = 0x00AD12E0; // size:0x10 no, there are no connection provider settings (Yn_DrawMessageText)
-gYnOtherPs2Lines = 0x00AD12F0; // size:0x18 the network settings file on the memory card in %s was made on another PlayStation 2 and cannot be used (Yn_DrawEntryList, NULL ends)
-gYnNoCardLines = 0x00AD1308; // size:0xC no memory card is in %s (Yn_DrawEntryList, NULL ends)
+// Data: the texts of the screens' messages and lists, the background's
+// rectangle and the text formats.
+gYnNoTexts = 0x00AD12E0; // size:0x10 the texts of the message for no connection provider settings (Yn_DrawMessageText)
+gYnOtherPs2Lines = 0x00AD12F0; // size:0x18 the lines of the message for a card whose network settings file was made on another console (Yn_DrawEntryList, NULL ends)
+gYnNoCardLines = 0x00AD1308; // size:0xC the lines of the message for an empty card slot (Yn_DrawEntryList, NULL ends)
 gYnNoSettingsLines = 0x00AD1318; // size:0xC the lines of the message for a card slot without a network settings file (Yn_DrawEntryList, NULL ends)
 gYnEtherModeTexts = 0x00AD1270; // size:0x20 automatic, 10BaseT half and full duplex, 100BaseTX half and full duplex (Yn_DrawEntryDetails by the mode)
 gYnBackgroundRect = 0x00AD2130; // size:0xC Yn_DrawBackground, the text rectangle of window 3 (Window_DrawTextAlpha)
 gYnSpaceText = 0x00AD28D8; // size:0x2 a text of one space, the blank lines of the screens item lists
 gYnEmptyText = 0x00AD28E0; // size:0x1 an empty text, which no code uses
 gYnFmtString = 0x00AD3828; // size:0x3 the text format that prints one string (Yn_DrawEntryList, Yn_DrawEntryDetails)
+// Two empty hooks of the screens' draw and update.
 Yn_PreDraw = 0x00ACBF40; // type:func empty, Yn_Draw calls it before the screen
 Yn_PreUpdate = 0x00ACDF60; // type:func empty, Yn_Update and Yn_UpdateProxy call it first
+// sub_main's card task type, named apart for the card checks.
 gCardTaskTypes = 0x006AF134; // size:0x8 sub_main, gCardTask.type named apart (YnCard_CheckCurrentSlot needs its own base)
 
 // The screens' text items, named for the screen, message or help line whose table entry points at them

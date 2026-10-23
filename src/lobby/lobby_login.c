@@ -46,6 +46,30 @@
 #include "menu_task.h"
 #include "texture.h"
 #include "render_state.h"
+#include "lobby_servers.h"
+#include "stream.h"
+#include "text.h"
+#include "lobby_login.h"
+#include "draw_helpers.h"
+#include "hunter_card.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_enter.h"
+#include "lobby_leave_menus.h"
+#include "lobby_routes.h"
+#include "lobby_screen.h"
+#include "lobby_steps.h"
+#include "lobby_util.h"
+#include "lobby_web_users.h"
+#include "lobby_world.h"
+#include "main.h"
+#include "menu_widgets.h"
+#include "net_devices.h"
+#include "quest_offers.h"
+#include "server_name.h"
+#include "screen_fade.h"
+#include "game_util.h"
 
 #define FRIEND_CHECK_TIMERS 12      /* gFriendCheckTimers' entries */
 #define TOWN_DATA_SLOTS 4           /* the town data's slots (TOWN_DATA_SLOT_SIZE each) */
@@ -54,92 +78,22 @@
 #define ACCOUNT_PASS_LEN 16         /* the password's characters */
 
 s32 LobbyNet_GetErrText(char *);
-void Player_LoadFromSave(Player *pl);
-void Lobby_Disconnect(s32);
-s32 LobbyStep_DownloadQuests(void);
 extern LobbyMenu *gLobbyMenu;
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LobbySe_Play(s32 a);
 void *memset(void *dst, s32 c, u32 n);
 void *memcpy(void *dst, const void *src, u32 n);
-s32 LobbyMenu_TickTimer(void);
-void Lobby_MarkDisconnected(void);
-void LobbyWeb_Run(void);
 char *strcpy(void *dst, const void *src);
-void FadeA_Start(s32);
-extern char gLobbyWebUrl[0x100];
+extern char gLobbyWebUrl[256];
 extern s8 gLobbyPatchBusy;
-s32 LobbyNet_GetPatchInfo(NetPatchInfo *info);
-s32 LobbyNet_SendPatchEnd(void);
-void LobbyNetXfer_Reset(void);
-s32 LobbyNetXfer_Run(void);
-void Lobby_ReleaseNetTextures(void);
-void LoadOverlay(s32 id);
-void Game_ResetSubsystems(void);
-void NetMode_CallDrawScreen(s32 a0);
-void Lobby_LoadTextures(void);
-void LobbyMenu_StartTimer(void);
-u16 LobbyPad_Get(s32);
-s32 LobbyLogin_NoticeApplies(u8 item);
-s32 LobbyNet_SendLoginNotice(u8 shown);
-void LobbyDialog_OpenCountdown(void *text, s32 frames);
-void LobbyText_Open(s32 msg);
-s32 LobbyNet_GetLoginWebPage(NetLoginWebPage *);
-s32 LobbyLogin_SendSummary(void);
-void Loading_Request(void);
-void HunterCard_Build(void *out);
-s32 LobbyStep_HunterCard(void);
-void ServerList_ClearTried(void);
 extern u8 gNetEntryMode;        /* LOGIN_ENTRY_* */
 extern s16 gFriendCheckTimers[FRIEND_CHECK_TIMERS];
-void LobbyMenu_Init(void);
-void LobbyEntry_Draw(MenuTask *task);
-void LobbyNet_Reset(void);
-void LobbyRoute_Register(void);
-void Net_GetDeviceState(s16 *a, s16 *b, s16 *c, s16 *d);
 char *strncpy(char *dst, const char *src, s32 n);
-s32 LobbyNet_SetClientInfo(NetClientInfo *src);
-void LobbyTitle_Set(s32 a);
-s32 NetLoginTask_Start(NetLoginParams *, void (*onDone)(NetMsg, NetMsg *));
-void LobbyLogin_OnProgress(NetMsg msg, NetMsg *msgRef);
 extern s32 gLobbyActive;
 extern s32 gQuestQNetReadyArg;
-u8 FadeA_GetState(void);
-void LobbyDialog_OpenWait(void *text);
-s32 LobbyStep_LoginInfo(void);
-s32 LobbyLogin_InfoApplies(u8 item);
-u8 LobbyNet_GetCharaCount(void);
-s32 LobbyNet_GetCharaId(u8 i, char *dst);
-s32 LobbyNet_GetCharaName(u8 i, char *dst);
-s32 LobbyNet_GetCharaText(u8 i, u8 *dst);
-s32 LobbyStep_CharaSelectText(void);
-u8 FadeB_GetState(void);
-void FadeB_Start(s32);
-s32 IdMenu_Run(void);           /* an s8, used as an int */
-s32 LobbyNet_SetMe(char *id, char *name, u8 *text);
-s32 LobbyNet_GetMyCharaId(char *dst);
-s32 LobbyNet_GetMyCharaName(char *dst);
-void FileQueue_Flush(void);
-void NetMenu_Open(u8);
-void Stream_Reset(void);
-s32 LobbyNet_SendLoginReady(void);
 u8 NetMenu_Update(void);
-s32 LobbyStep_QuestRecord(void);
-s32 LobbyStep_ServerName(void);
-s32 LobbyStep_ChatColorMode(void);
-s32 LobbyStep_TownClock(void);
-void LobbyScreen_InitLists(void);
-s32 LobbyNet_SetSlotBuf(u8 i, char *buf, s32 n);
-s32 LobbyStep_TownData(u8 first, u8 last);
-s32 LobbyWorld_GetSeason(void);
-s32 LobbyTime_IsPm(void);
-void QuestList_Rebuild(void);
-void LobbyEnter_Begin(void);
 extern char gVersionString[];
 extern char gAccountId[];
 extern char gAccountData[];
 extern void (*gLobbyEntrySteps[])(void);
-s32 HunterCard_Sanitize(void *);
 
 /* Runs the login's step of LobbyState.mode (gLobbyEntrySteps); a mode out
  * of range quits the lobby (and is still called). */
@@ -156,7 +110,7 @@ void LobbyEntry_Run(void)
  * menu (its draw LobbyEntry_Draw), loads the lobby's textures, clears the
  * login's notice and information, resets the network's state, registers
  * the route handlers and sends the client's details (the device's state,
- * the game's version); the title and the "to the town" text show. Step 2
+ * the game's version); the title and the town-entry text show. Step 2
  * starts the login task with the account's id and password (the network
  * mode's entry, the extra save file's buffer for a patch), and step 3
  * waits for its progress under the menu's timer.
@@ -342,7 +296,7 @@ void LobbyEntry_Notice(void)
 
 /*
  * LOBBY_ENTRY_PATCH: the patch the server announced (LobbyState.patchInfo)
- * is downloaded (LobbyNetXfer_Run, the network mode's screen drawn
+ * is downloaded (LobbyPatch_Install, the network mode's screen drawn
  * meanwhile, gLobbyPatchBusy set), with the lobby's textures released and
  * its data overlay loaded again after it. When it is done, the patch's end
  * is sent and step 5 waits under the menu's timer; when it failed, the
@@ -361,7 +315,7 @@ void LobbyEntry_Patch(void)
         (*step)++;
         gLobby->connected = 0;
         LobbyNet_GetPatchInfo(&gLobby->patchInfo);
-        LobbyNetXfer_Reset();
+        LobbyPatch_ResetInstall();
         Game_ResetSubsystems();
         gLobbyPatchBusy = 1;
         break;
@@ -371,7 +325,7 @@ void LobbyEntry_Patch(void)
         break;
     case 2:
         gLobbyPatchBusy = 1;
-        result = LobbyNetXfer_Run();
+        result = LobbyPatch_Install();
         if (result == 1) {
             gLobby->step++;
             Lobby_ReleaseNetTextures();
@@ -446,7 +400,7 @@ void LobbyEntry_IdSelect(void)
         for (i = 0; i < count; i++) {
             LobbyNet_GetCharaId(i, gLobby->charaIds[i]);
             LobbyNet_GetCharaName(i, (char *) (&gLobby->charaNames[i * (LOBBY_USER_NAME_LEN + 1)]));
-            LobbyNet_GetCharaText(i, &gLobby->charaTexts[i * 0x100]);
+            LobbyNet_GetCharaText(i, &gLobby->charaTexts[i * 256]);
         }
         gLobby->step++;
         gLobby->subStep = 0;
@@ -510,11 +464,11 @@ void LobbyEntry_IdSelect(void)
         memcpy(&gLobby->charaNames[nameOffset], gSave.name, LOBBY_USER_NAME_LEN);
         idOffset = chosen * LOBBY_USER_ID_LEN;
         if (gLobby->charaIds[0][idOffset] == 0) {
-            HunterCard_Sanitize(&gLobby->charaTexts[chosen * 0x100]);
-            LobbyNet_SetMe((char *) NULL, (char *) &gLobby->charaNames[nameOffset], &gLobby->charaTexts[chosen * 0x100]);
+            HunterCard_Sanitize(&gLobby->charaTexts[chosen * 256]);
+            LobbyNet_SetMe((char *) NULL, (char *) &gLobby->charaNames[nameOffset], &gLobby->charaTexts[chosen * 256]);
         } else {
-            HunterCard_Sanitize(&gLobby->charaTexts[chosen * 0x100]);
-            LobbyNet_SetMe((char *) &gLobby->charaIds[0][idOffset], (char *) &gLobby->charaNames[nameOffset], &gLobby->charaTexts[chosen * 0x100]);
+            HunterCard_Sanitize(&gLobby->charaTexts[chosen * 256]);
+            LobbyNet_SetMe((char *) &gLobby->charaIds[0][idOffset], (char *) &gLobby->charaNames[nameOffset], &gLobby->charaTexts[chosen * 256]);
         }
         LobbyNet_GetMyCharaId((char *) gLobby->myId);
         LobbyNet_GetMyCharaName((char *) gLobby->myName);
@@ -578,7 +532,7 @@ void LobbyEntry_Error(void)
 /*
  * LOBBY_ENTRY_SUMMARY: the login summary is sent (LobbyLogin_SendSummary),
  * with the loading mark while it is busy. Then, on the first entry, the
- * hunter card is built from the save; the player starts in AREA_HUB_0x83
+ * hunter card is built from the save; the player starts in AREA_ONLINE_VILLAGE
  * (AREA_TAVERN after a quest), the downloaded
  * quests' records are forgotten, the friend list's checks reset, and the
  * card (its online mark, no quest status) is sent (LobbyStep_HunterCard).
@@ -614,7 +568,7 @@ void LobbyEntry_Summary(void)
             gPlayerText.card.arenaRole = 0;
             HunterCard_Sanitize(card);
         }
-        area = (gNetEntryMode != LOGIN_ENTRY_QUEST_RETURN) ? AREA_HUB_0x83 : AREA_TAVERN;
+        area = (gNetEntryMode != LOGIN_ENTRY_QUEST_RETURN) ? AREA_ONLINE_VILLAGE : AREA_TAVERN;
         local = gScene.localPlayer;
         gScene.area = gPlayers[local].nextArea = gPlayers[local].area = area;
         memset(QDL_SAVED, 0, QDL_FILE_COUNT * sizeof(NetDlFile));
@@ -936,24 +890,8 @@ void LobbyEntry_WebPage(void)
     }
 }
 
-void LobbyNet_GetLoginNotice(NetLoginNotice *dst);
-extern char gMyName[];               /* the character's name (0x10) */
+extern char gMyName[];               /* the character's name (16 bytes) */
 extern char gMyUserId[];             /* the character's id (8) */
-s32 LobbyNet_GetSaveSummaryPart(u8 *out);
-s32 LobbyReq_SaveSummaryBegin(u8 mode, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_SaveSummaryPart(u8 mode, u8 part, s32 data, u16 size, void (*onReply)(NetMsg, NetMsg *));
-s32 Save_SummarySize(s32 mode);
-void *Save_BuildSummary(s32 mode, s32 page);
-void LobbyLogin_OnSummaryReply(NetMsg m, NetMsg *pm);
-void Icon_DrawPreset(s32);
-void LobbyTitle_Draw(void);
-void LobbyHelp_Draw(void);
-void LobbyEntry_DrawSprites(void);
-s32 Gs_SetState(u8, u32);
-void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetTexFilter(s32);
-void Tex_Bind(s32);
-void Text_SetSize(s32);
 
 /* 1 while the login shows a web page the server named
  * (LOBBY_ENTRY_WEB_PAGE, in LOBBY_PHASE_ENTRY). */
@@ -1262,18 +1200,18 @@ void LobbyEntry_Draw(MenuTask *task)
     u8 mode;
 
     Text_SetSize(task->textSize);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
     if (((s32) gLobby->mode < LOBBY_ENTRY_SUMMARY) && (gNetEntryMode == LOGIN_ENTRY_FIRST)) {
         Icon_DrawPreset(2);
     } else {
-        LobbyEntry_DrawSprites();
+        LobbyLogin_DrawFrameBase();
     }
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
     mode = gLobby->mode;
     if ((mode == LOBBY_ENTRY_ID_SELECT) && (mode == LOBBY_ENTRY_PATCH)) {

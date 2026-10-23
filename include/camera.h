@@ -238,6 +238,8 @@
 #define CAM_SPACE_AT 5          /* at[0] (eyeSpace only) */
 
 #include "common.h"
+#include "em.h"
+#include "player.h"
 
 /*
  * The camera (gCamera points at gCameraData; Camera_Update and
@@ -261,7 +263,7 @@ extern Camera *gCamera;
 extern Camera gCameraData;
 
 /*
- * The camera controller (gCamCtl, 0x680 bytes) keeps one view per camera
+ * The camera controller (gCamCtl, 1664 bytes) keeps one view per camera
  * mode (CamCtl.modes, by kind: 0 the
  * follow camera, 1 the orbit, 2 the area's rail, 3 the aim, 4 the area's fixed
  * camera and the focus, 5 the script). CamCtl_Update runs each mode's init
@@ -279,7 +281,7 @@ typedef struct CamStep {
 } CamStep;
 #pragma pack()
 
-/* A camera mode's view (0x80 bytes; CamCtl.modes and CamCtl.out). */
+/* A camera mode's view (128 bytes; CamCtl.modes and CamCtl.out). */
 typedef struct CamView {
     f32 eye[3];                 /* 0x00 */
     f32 at[3];                  /* 0x0C: target */
@@ -306,7 +308,7 @@ typedef struct CamView {
 } CamView;
 typedef char CamView_size_check[(sizeof(CamView) == 0x80) ? 1 : -1];
 
-/* A distance setting of the follow camera (0x20 bytes). */
+/* A distance setting of the follow camera (32 bytes). */
 typedef struct CamDist {
     f32 unk0;
     f32 eyeHeight;              /* 0x04: the eye's height above the player */
@@ -319,7 +321,7 @@ typedef struct CamDist {
 } CamDist;
 typedef char CamDist_size_check[(sizeof(CamDist) == 0x20) ? 1 : -1];
 
-/* The follow camera's settings (0x100 bytes): a CAM_AREA_FOLLOW camera area's (CamArea.follow) or
+/* The follow camera's settings (256 bytes): a CAM_AREA_FOLLOW camera area's (CamArea.follow) or
  * gCamFollowDefaults (Cam_CopyDefaults copies it into the default area). */
 typedef struct CamDistSet {
     f32 fov;                    /* 0x00 */
@@ -364,7 +366,7 @@ typedef struct CamFollow {
                                    cleared when the target's sweep to eyeGoal is clear) */
     u8 unk76;                   /* 0x76: frames the pad's turn holds (8, 20 while the view is held) */
     u8 turningBehind;           /* 0x77: set while the yaw turns behind the player (CamFollow_ShouldTurnBehind; cleared
-                                   within 0x1000 of it; CamCtl_IsTurningBehind) */
+                                   within a sixteenth of a turn of it; CamCtl_IsTurningBehind) */
     u8 unk78;                   /* 0x78 */
     u8 unk79;                   /* 0x79: set when the eye was raised above the floor */
     s8 canFollow;               /* 0x7A: Cam_PlayerCanFollow (CamFollow_UpdateCanFollow; CamFollow_GetCanFollow) */
@@ -381,7 +383,7 @@ typedef struct CamOrbit {
     f32 unk18[3];               /* 0x18 */
     s16 pitch;                  /* 0x24 */
     s16 yaw;                    /* 0x26: added to CamFollow.yaw */
-    s16 dir;                    /* 0x28: where yaw heads, +-0x800 */
+    s16 dir;                    /* 0x28: where yaw heads, up to a thirty-second of a turn either way */
     u8 pad2A[0x40 - 0x2A];
 } CamOrbit;
 typedef char CamOrbit_size_check[(sizeof(CamOrbit) == 0x40) ? 1 : -1];
@@ -415,7 +417,7 @@ typedef struct CamAim {
     /* 0x60 */ s16 rx;                  /* class 3: the angles and pos CamAim_Set gives */
     /* 0x62 */ s16 ry;
     /* 0x64 */ s8 kind;                 /* the class (CamAim_Situation) */
-    /* 0x65 */ u8 unk65;                /* 1, 0x11 or 0 by the class */
+    /* 0x65 */ u8 unk65;                /* 1, 17 or 0 by the class */
     /* 0x66 */ u8 zoom;                 /* set when the right stick zooms */
 } CamAim;
 typedef char CamAim_size_check[(sizeof(CamAim) == 0x68) ? 1 : -1];
@@ -459,7 +461,7 @@ typedef struct PathPos {
     /* 0x8 */ u8 k;                     /* the segment */
 } PathPos;
 
-/* A camera shake request (0x14 bytes; CamCtl.shakeA/B/C): CamShake_Set* and
+/* A camera shake request (20 bytes; CamCtl.shakeA/B/C): CamShake_Set* and
  * CamShake_Req* fill it, CamCtl_RunMode ticks it and CamShake_Apply plays it. */
 typedef struct CamShake {
     /* 0x00 */ f32 pos[3];            /* where it comes from */
@@ -473,7 +475,7 @@ typedef char CamShake_size_check[(sizeof(CamShake) == 0x14) ? 1 : -1];
 /* A swing of the camera script (CamScript_Place): a cosine wave whose phase steps by speed
  * each frame, its amplitude eased from amp[0] to amp[1] as the move goes. */
 typedef struct CamSwing {
-    s16 phase;                  /* 0x0: an angle, 0x10000 per turn (Math_CosAngle) */
+    s16 phase;                  /* 0x0: an angle, ANGLE_TURN to a turn (Math_CosAngle) */
     s16 speed;                  /* 0x2: added to phase each frame (0: no swing) */
     s16 amp[2];                 /* 0x4: the amplitude at the move's start and at its end */
 } CamSwing;
@@ -490,7 +492,7 @@ typedef struct CamCmd {
     s32 point[3];               /* 0x4: CAMCMD_EYE_POINT's and CAMCMD_AT_POINT's point (in 1/4096) */
 } CamCmd;
 
-/* Mode 5's work: the camera script (CamCtl.script, 0x90 bytes; CamScript_Run, CamScript_Step,
+/* Mode 5's work: the camera script (CamCtl.script, 144 bytes; CamScript_Run, CamScript_Step,
  * CamScript_Place). A move eases each pair from [0], its start, to [1], its end, over the
  * script view's left / length (modes[5]); when it ends, CamScript_Step copies [1] into [0]. */
 typedef struct CamScript {
@@ -510,7 +512,7 @@ typedef struct CamScript {
     void *obj;                  /* 0x40: the request's object (CamCtl.requestArg: an Em or a Player; CAM_SPACE_OBJECT is its worldMtx) */
     f32 dist[2];                /* 0x44: the orbit's distance at the start and end (CAMCMD_DIST0, CAMCMD_DIST1: in 1/16) */
     s16 angle[2][2];            /* 0x4C: the orbit's x and y angles at the start and end (CAMCMD_ANGLE_*; CamScript_OrbitAngles) */
-    s16 roll[2];                /* 0x54: CAMCMD_ROLL0, CAMCMD_ROLL1 (0x10000 per turn) */
+    s16 roll[2];                /* 0x54: CAMCMD_ROLL0, CAMCMD_ROLL1 (ANGLE_TURN to a turn) */
     s16 fov[2];                 /* 0x58: CAMCMD_FOV0, CAMCMD_FOV1 */
     CamSwing swing[4];          /* 0x5C: the view's sideways and upward sways, the roll's swing and the fov's (CAMCMD_SWAY_*, CAMCMD_*_SWING_*) */
     u8 swingRand[4];            /* 0x7C: per swing, nonzero adds noise to the roll's and the fov's (CAMCMD_SWING_RAND) */
@@ -547,7 +549,14 @@ typedef struct PathSeg {
 } PathSeg;
 typedef char PathSeg_size_check[(sizeof(PathSeg) == 0x30) ? 1 : -1];
 
-/* A face of a camera area (0x40 bytes, CamArea.faces): the player is in the area when in front
+/* A complex number: the nearest point of a path's segment comes from the real
+ * roots of a quintic, which Quintic_Roots finds in complex numbers. */
+typedef struct Complex {
+    f32 x;
+    f32 y;
+} Complex;
+
+/* A face of a camera area (64 bytes, CamArea.faces): the player is in the area when in front
  * of one of its faces, no farther than depth, and inside its quad in the x-z plane
  * (CamArea_TestObj, CamFace_ContainsXZ). */
 typedef struct CamFace {
@@ -586,7 +595,7 @@ typedef struct CamTrans {
     u8 frames;                  /* 0x1: the blend's length from it (CamView_StartBlend; 0 and 1 cut) */
 } CamTrans;
 
-/* A camera area (0x300 bytes, then faceCount faces, then the 0x20-byte transition table when
+/* A camera area (768 bytes, then faceCount faces, then the 32-byte transition table when
  * trans is set: CamData_Relocate). The player's area (CamCtl.area: Cam_FindPlayerArea) picks
  * the camera by its kind. CamCtl_InitDefaultParams writes a default area of CAM_AREA_FOLLOW. */
 typedef struct CamArea {
@@ -598,7 +607,7 @@ typedef struct CamArea {
                                    1 x and z, 2 none (the default) */
     u8 lookSpace;               /* 0x04: the look point's space: 0 the world, 1 the player's frame, 2 the player's
                                    position plus an offset */
-    u8 faceCount;               /* 0x05: the faces of 0x40 bytes after the area's 0x300 bytes (CamData_Relocate) */
+    u8 faceCount;               /* 0x05: the faces of 64 bytes after the area's 768 bytes (CamData_Relocate) */
     u8 flags;                   /* 0x06: 0x80: the area counts only while the local player's action is in
                                    Player_IsOnWall's range (CamArea_IsEnabled) */
     u8 unk07;
@@ -618,8 +627,8 @@ typedef struct CamArea {
 typedef char CamArea_size_check[(sizeof(CamArea) == 0x300) ? 1 : -1];
 
 /* The area's camera data (gSysSettings.camData, loaded by Area_LoadCamData; CamCtl.data): this
- * header, then areaCount camera areas from +0x30 (each 0x300 bytes, then faceCount faces of 0x40
- * bytes, then 0x20 more bytes when its unk1C is set), the grid's cells and their area lists. The
+ * header, then areaCount camera areas from +0x30 (each 768 bytes, then faceCount faces of 64
+ * bytes, then 32 more bytes when its unk1C is set), the grid's cells and their area lists. The
  * file holds offsets from the header where the pointers are: CamData_Relocate turns them into
  * pointers. CamCtl_InitDefaultParams writes a default header and one area when the area has none. */
 typedef struct CamCell {
@@ -649,7 +658,7 @@ typedef struct CamDataHdr {
 
 typedef char CamDataHdr_size_check[(sizeof(CamDataHdr) == 0x30) ? 1 : -1];
 
-/* The camera controller, gCamCtl (0x5AF420, 0x680 bytes), cleared by CamCtl_Clear. */
+/* The camera controller, gCamCtl (0x5AF420, 1664 bytes), cleared by CamCtl_Clear. */
 typedef struct CamCtl {
     /* 0x000 */ CamView out;            /* the current mode's view (CamCtl_RunMode: modes[areaMode]) */
     /* 0x080 */ CamView modes[6];       /* each mode's view, by kind; modes[5] is the script's (the state machine; CamCtl_Apply) */
@@ -670,7 +679,7 @@ typedef struct CamCtl {
     /* 0x3A8 */ u16 cellX;             /* the grid cell Cam_FindPlayerArea looks in (cleared by CamCtl_Update) */
     /* 0x3AA */ u16 cellZ;
     /* 0x3AC */ u8 keepFirstArea;            /* while set, Cam_FindPlayerArea keeps the map's first area (cleared each frame) */
-    /* 0x3AD */ u8 areaId;             /* the current area's id (area[1]; 0xFF before the first) */
+    /* 0x3AD */ u8 areaId;             /* the current area's id (area[1]; 255 before the first) */
     /* 0x3AE */ u8 prevAreaId;         /* the one before (CAM_YAW_FROM_NONE: none) */
     /* 0x3AF */ u8 areaChanged;        /* set for the frame the area changed (CAM_MODE_RAIL turns at once) */
     /* 0x3B0 */ CamFollow follow;       /* CAM_MODE_FOLLOW's work */
@@ -708,9 +717,121 @@ typedef char CamCtl_size_check[(sizeof(CamCtl) == 0x680) ? 1 : -1];
 /* A camera mode's init or update handler (gCamModeInit, gCamModeUpdate): the controller and
  * the mode's view. */
 typedef void (*CamEntFn)(CamCtl *c, CamView *v);
-extern CamEntFn gCamModeInit[8];
-extern CamEntFn gCamModeUpdate[6];
+s32 CamScript_Run(CamCtl *cam, CamView *view);
+void CamScript_OrbitAngles(s16 *out, CamCtl *cam);
+void CamScript_Place(CamCtl *cam, CamView *view, CamScript *camScript);
+s32 CamScript_Step(CamCtl *cam, CamView *view, CamScript *script);
+void CamShake_Apply(CamShake *shake);
+void CamPoint_GetPos(CamCtl *ctl, f32 *out, CamArea *area);
+void CamPoint_GetPosOr(CamCtl *ctl, f32 *out, CamArea *area, f32 *pathPoint);
+void Path_PointAt(f32 *out, CamCtl *ctl, CamArea *area, PathSeg *segs);
+s32 Path_NearestSeg(PathData *path, f32 *target);
+s32 PathPos_Build(PathPos *pos, PathSeg *segs, PathData *path, f32 *target);
+void PathPos_MoveOnSeg(PathPos *pos, PathData *path, s32 goalSeg, f32 goalDist);
+s32 PathPos_MoveToward(PathPos *pos, PathData *path, PathSeg *segs, f32 *target);
+s32 PathPos_PlaceNear(PathPos *pos, PathData *path, PathSeg *segs, f32 *target);
+s32 CamCtl_PathPlace(CamCtl *ctl, PathSeg *segs, f32 *pos, s32 moveToward);
+void Vec_EvalCubic(f32 *out, PathSeg *seg, f32 frac);
+s32 PathSeg_Nearest(f32 *cands, PathSeg *seg, f32 *target, s32 axes);
+f32 CamArea_FovScale(CamArea *area, f32 dist);
+f32 PathKey_Blend(PathData *path, s32 keyNo, f32 frac);
+f32 PathKey_BlendAngle(PathData *path, s32 keyNo, f32 frac);
+void Path_BuildSpline(PathSeg *seg, PathKey *keys, s32 keyCount);
+void Quintic_Roots(Complex *roots, f32 *coefs);
+s32 Cubic_Roots(f32 *out, f32 *coefs);
+f32 Cam_LineHitDist(f32 *fromPos, f32 *toPos, f32 *dist);
+void Cam_PushOutOfEms(f32 *pos, f32 *unused1);
+void CamReq_QuestTarget(s32 flag);
+extern u32 *gDmcamFileIds[140];
 
 extern CamCtl gCamCtl;
+
+void CamCtl_Clear(void);
+void CamReq_Reset(void);
+void CamCtl_Init(void);
+void CamData_Relocate(CamDataHdr *hdr);
+void CamCtl_Update(s32 mode);
+void CamCtl_Apply(void);
+s32 CamCtl_GetMode(void);
+void CamFollow_Init(CamCtl *ctl, CamView *view);
+void CamFollow_Update(CamCtl *ctl, CamView *view);
+s32 CamCtl_IsTurningBehind(void);
+void CamCtl_SetTargetObj(u8 *obj);
+void CamCtl_TurnToPlayerFront(u8 *obj);
+void CamFollow_GetKeys(CamCtl *ctl, CamFollow *work);
+void CamFollow_SetYawFrom(s32 mode);
+void CamFollow_UpdateBlocked(CamCtl *ctl, CamFollow *work);
+s32 CamFollow_UpdateFallView(CamFollow *work);
+f32 CamFollow_FloorY(f32 *pos, Player *pl);
+void CamFollow_UpdateCanFollow(CamFollow *work, Player *pl);
+s8 CamFollow_GetCanFollow(void);
+s32 CamFollow_IsBlownAway(void);
+void CamOrbit_Init(CamCtl *ctl, CamView *view);
+void CamOrbit_Update(CamCtl *ctl, CamView *view);
+void CamScript_Init(CamCtl *ctl, CamView *view);
+void CamScript_Update(CamCtl *ctl, CamView *view);
+void CamReq_Set(s32 req, void *arg);
+void CamReq_Start(s32 req, void *arg);
+void CamReq_Change(s32 req, void *arg);
+void CamReq_Cancel(void);
+s32 CamReq_State(void);
+s32 CamReq_Started(void);
+void CamReq_BossHunted(void);
+void CamReq_ForMonster(Em *em);
+void CamReq_PlayerDown(void);
+void CamReq_Cart(void);
+void CamReq_AreaIntro(void);
+void CamReq_PlesiothScene(void *em);
+void CamReq_LobbyEvent(void);
+void CamReq_TownPc(void);
+void CamReq_Contest(s32 contest, s32 spot);
+void CamReq_Minigame(s32 game);
+void CamReq_HairMenu(void);
+void CamReq_TownArea(s32 area);
+void CamReq_VillageBoard(void);
+void CamReq_Kitchen(s32 index);
+void CamReq_StageStart(void);
+void CamReq_StageShot(u16 track, u16 shot);
+void CamReq_VersusDefeat(void *em, u8 view);
+void CamReq_TownTour(s32 tour);
+void Boot_ResetMenus(void);
+s32 CamReq_ResetStub(void);
+extern u8 gEffectColor0Green;
+extern u8 gEffectColor0Blue;
+
+void CamRail_Init(CamCtl *ctl, CamView *view);
+void CamRail_Update(CamCtl *ctl, CamView *view);
+void CamAim_Init(CamCtl *ctl, CamView *view);
+void CamAim_Update(CamCtl *ctl, CamView *view);
+s32 CamAim_IsSpecialMotion(Player *pl);
+void Mtx_FromAngles16Pos(f32 *mtx, s16 pitch, s16 yaw, f32 *pos);
+s32 CamAim_Situation(Player *pl);
+s8 CamAim_GetState(s32 unused, u8 *aimFlags, u8 *zooms, f32 *zoomT);
+void CamAim_Set(f32 *pos, s16 pitch, s16 yaw);
+void CamFixed_Init(CamCtl *ctl, CamView *view);
+void CamFixed_Update(CamCtl *ctl, CamView *view);
+void CamFixed_UpdateTarget(CamCtl *ctl, CamView *view, CamFixed *fixedWork);
+s32 CamFixed_AreaCamera(CamCtl *ctl, CamView *view, CamFixed *fixedWork);
+void CamFocus_Start(struct Em *);
+void CamFocus_End(void);
+s32 CamFocus_IsOn(void);
+void CamFocus_SetAside(s8 asideOn);
+s32 CamFocus_GetState(void);
+f32 CamFocus_Ease(s32 unused, s16 frame, u8 ease);
+void CamFocus_Update(CamCtl *ctl, CamView *view, CamFocus *focusWork);
+
+void Camera_Init(void);
+void Camera_Reset(void);
+void Camera_Update(void);
+void Camera_SetPreset(s32 id);
+void Camera_BuildFrustum(f32 farZ);
+void Camera_ApplyProjection(void);
+void Camera_SetFov(f32 fov);
+void Camera_RestoreFov(void);
+void Camera_SetRoll(f32 roll);
+void Camera_StoreFov(f32 fov);
+f32 Camera_Distance(void *pos);
+u16 Camera_GetYaw(void);
+void Camera_ComputeUp(f32 *up, f32 *eye, f32 *at, f32 roll);
 
 #endif /* CAMERA_H */

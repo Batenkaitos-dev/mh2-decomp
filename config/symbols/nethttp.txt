@@ -1,9 +1,13 @@
-// Symbols for overlay 5, nethttp.bin. Format: name = 0xADDRESS; // attributes
+// The nethttp overlay (overlay 5, nethttp.bin): Capcom's HTTP front end,
+// then Sony's base64 and libhttps and the OpenSSL-derived code, which have
+// symbol files of their own. Format: name = 0xADDRESS; // attributes
 
-// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+// The first function, after the overlay's 64 bytes of padding.
 nethttp_entry = 0x008FAE80; // type:func
 
-// Round 17 (anet): Capcom's HTTP front end (0x8FB130-0x8FD788, src/nethttp/http_front.c)
+// NETWORK: Capcom's HTTP front end (0x8FB130-0x8FD788): up to 8 requests
+// run as state machines over libhttps (HttpReq_), the lobby server's
+// protocol (HttpLbs_), the AFS archive's reads (HttpAfs_), and their data.
 Http_GetCertSize = 0x008FB130; // type:func
 Http_Init = 0x008FB150; // type:func
 Http_Term = 0x008FB250; // type:func
@@ -44,8 +48,8 @@ gHttpCertSize = 0x0094FFA8; // size:0x8
 gHttpLbsReq = 0x0095AA00; // size:0x4
 gHttpReq = 0x0095AA10; // size:0x720
 
-// Round 18 (lead, nsub-h1): the libhttps option callbacks Http_SetOptions registers
-// for options 0xA and 0x17, each storing the status byte c into req->async.
-// 0x8FB420 is a function start of its own (splat had it as HttpReq_Step's padding).
+// NETWORK: the libhttps callbacks HttpReq_SetOptions registers for the
+// connect and send options (HTTPS_OPT_CONNECT_CB, HTTPS_OPT_SEND_CB), each
+// storing the status byte into the request. Each is a function of its own.
 HttpReq_OnConnectDone = 0x008FB420; // type:func
 HttpReq_OnSendDone = 0x008FB430; // type:func

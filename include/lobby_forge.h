@@ -248,6 +248,10 @@ typedef struct DecoRecipe {
     u16 deco;           /* the decoration made (an item id) */
     DecoMat need[DECO_RECIPE_MATS];
 } DecoRecipe;
+s32 Deco_CanMake(s32 recipeIdx, s32 quantity);
+s32 Item_HalfPrice(u16 item);
+s32 Deco_GetAttachFee(u16 item);
+s32 Deco_GetRemoveFee(u16 item);
 extern DecoRecipe gDecoRecipes[];
 
 /* gRandomEquips' entry: a random-weapon recipe's three weapons
@@ -376,5 +380,97 @@ typedef struct DecoWork {
     /* 0x73 */ s8 view;                 /* the detail view shown: enum DecoMakeView, DecoBoxView or DecoPanelView */
     /* 0x74 */ s8 wear;                 /* 1: the changed piece is worn after */
 } DecoWork;
+void Deco_Open(void);
+s32 Deco_Input(u8 *task, u16 pad);
+void Deco_LoadRecipes(DecoWork *counter, s16 page);
+void Deco_OpenMake(DecoWork *counter);
+s32 Deco_MakeInput(DecoWork *counter, u16 pad);
+void Deco_Make(DecoWork *counter);
+s32 Deco_QuantityInput(DecoWork *counter, u16 pad);
+s32 Deco_RecipeListInput(DecoWork *counter, u16 pad);
+void Deco_OpenRemove(DecoWork *counter);
+s32 Deco_RemoveInput(DecoWork *counter, u16 pad);
+void Deco_OpenRemovePanel(DecoWork *counter);
+s32 Deco_ChooseRemove(DecoWork *counter, u16 pad);
+void Deco_LoadOwned(DecoWork *counter, s16 page);
+void Deco_OpenAttach(DecoWork *counter);
+s32 Deco_AttachInput(DecoWork *counter, u16 pad);
+s32 Deco_ChooseAttach(DecoWork *counter, u16 pad);
+s32 Deco_BoxInput(DecoWork *counter, u16 pad);
+void Deco_CountBoxViewPages(DecoWork *counter);
+void Deco_CountPanelViewPages(DecoWork *counter);
+s32 Deco_MenuInput(DecoWork *counter, u16 pad);
+void Deco_Remove(DecoWork *counter);
+s32 Deco_WearAskInput(DecoWork *counter, u16 pad);
+s32 Deco_Confirm(u8 *task, u16 pad);
+void Deco_DrawAttachList(DecoWork *counter, s16 x, s16 y);
+void Deco_DrawRemovePanel(DecoWork *counter, s16 x, s16 y);
+void Deco_DrawRemove(DecoWork *counter, s16 x, s16 y);
+void Deco_DrawMakeList(DecoWork *counter, s16 x, s16 y);
+void Deco_DrawMake(DecoWork *counter, s16 x, s16 y);
+void Deco_Draw(u8 *task);
+void Deco_Draw2(u8 *unused0);
+void Deco_DrawEquipAsk(DecoWork *counter, s16 choice);
+void Deco_DrawEquipPrompt(u8 *task);
+
+s32 Recipe_IsInList(s32 type, s32 id);
+s32 WeaponForge_IsUnlocked(s32 type, s32 id);
+s32 ArmorUpgrade_IsLocked(EquipItem *piece);
+s32 ArmorUpgrade_GetMaterials(EquipItem *piece, ItemStack *out, s8 *cond);
+s32 ArmorUpgrade_GetMakeMaterials(EquipItem *piece, ItemStack *out, s8 *cond);
+s32 ArmorUpgrade_GetDerived(EquipItem *piece, u16 *out);
+void ArmorForge_Open(WorkshopMenu *menu);
+s32 ArmorForge_Input(u8 *task, u16 pad);
+void ArmorForge_LoadBox(ArmorForgeWork *forge);
+void ArmorForge_AddUpgrade(ArmorForgeWork *forge, s32 slot);
+s32 ArmorForge_UpgradeInput(ArmorForgeWork *forge, u16 pad);
+s32 ArmorForge_UpgradeListInput(ArmorForgeWork *forge, u16 pad);
+void ArmorForge_UpgradeDetail(ArmorForgeWork *forge);
+s32 ArmorForge_CanMake(ArmorForgeWork *forge, s16 line);
+void Equip_CopyEquipped(EquipItem *out, s16 type);
+s32 ArmorForge_MakeInput(ArmorForgeWork *forge, u16 pad);
+void ArmorForge_OpenMake(ArmorForgeWork *forge);
+void ArmorForge_LoadMakePage(ArmorForgeWork *forge, s32 page);
+s32 ArmorForge_UpgradeConfirm(ArmorForgeWork *forge, u16 pad);
+s32 ArmorForge_Confirm(u8 *task, u16 pad);
+void ArmorForge_Make(ArmorForgeWork *forge);
+s32 ArmorForge_MakeConfirm(ArmorForgeWork *forge, u16 pad);
+void ArmorForge_DrawMakeListFull(ArmorForgeWork *forge, s16 x, s16 y);
+void ArmorForge_DrawMaterials(ArmorForgeWork *forge, s16 x, s16 y);
+void ArmorForge_DrawMake(ArmorForgeWork *forge);
+void ArmorForge_DrawUpgradeDetail(ArmorForgeWork *forge, s16 x, s16 y);
+void ArmorForge_DrawUpgradeList(ArmorForgeWork *forge, EquipItem *piece, s16 x, s16 y);
+void ArmorForge_DrawUpgradePanel(ArmorForgeWork *forge, s16 x, s16 y);
+void ArmorForge_Draw(u8 *task);
+void ArmorForge_DrawEquipPrompt(u8 *task);
+void WeaponForge_Open(WorkshopMenu *menu);
+s32 Forge_IsRandomWeapon(s16 id);
+s32 WeaponForge_Input(u8 *task, u16 pad);
+void WeaponForge_Make(WeaponForgeWork *forge);
+s32 WeaponForge_MakeConfirm(WeaponForgeWork *forge, u16 pad);
+s32 WeaponForge_UpgradeConfirm(WeaponForgeWork *forge, u16 pad);
+s32 WeaponForge_Confirm(u8 *task, u16 pad);
+void WeaponForge_Upgrade(WeaponForgeWork *forge);
+s32 Equip_ItemHalfPrice(EquipItem *item);
+void WeaponForge_SetBladeKind(WeaponForgeWork *forge);
+s32 WeaponForge_CanMake(WeaponForgeWork *forge, s16 line);
+s32 WeaponForge_MakeInput(WeaponForgeWork *forge, u16 pad);
+void WeaponForge_RollRandom(EquipItem *out, u16 key);
+void WeaponForge_OpenUpgrades(WeaponForgeWork *forge);
+s32 WeaponForge_UpgradeInput(WeaponForgeWork *forge, u16 pad);
+void WeaponForge_LoadGunMods(WeaponForgeWork *forge, s32 idx);
+u16 WeaponForge_ApplyGunMod(u16 levelByte, u16 mod);
+void WeaponForge_LoadUpgrades(WeaponForgeWork *forge);
+s32 WeaponForge_BoxInput(WeaponForgeWork *forge, u16 pad);
+s32 WeaponForge_UpgradeListInput(WeaponForgeWork *forge, u16 pad);
+s32 WeaponForge_CanUpgrade(WeaponForgeWork *forge, s16 line);
+void WeaponForge_UpgradeDetail(WeaponForgeWork *forge);
+void WeaponForge_MakeDetail(WeaponForgeWork *forge);
+void WeaponForge_DrawUpgradePanel(WeaponForgeWork *forge, s16 x, s16 y);
+u32 Equip_HalfPrice(s32 type, s32 id);
+void WeaponForge_DrawMake(WeaponForgeWork *forge);
+void WeaponForge_DrawMakeMaterials(WeaponForgeWork *forge, s16 x, s16 y);
+void WeaponForge_Draw(u8 *work);
+void WeaponForge_DrawPreview(u8 *work);
 
 #endif /* LOBBY_FORGE_H */

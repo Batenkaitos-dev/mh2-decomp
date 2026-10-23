@@ -1,4 +1,4 @@
-# Gs_ClearFrame (main, src/main/unk_180A50.c)
+# Gs_ClearFrame (main, src/main/gs_setup.c)
 
 ## Status
 

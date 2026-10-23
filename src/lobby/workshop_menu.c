@@ -26,21 +26,28 @@
 #include "lobby_menu.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "camera.h"
+#include "text.h"
+#include "workshop_menu.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "offer_menu.h"
+#include "talk.h"
+#include "town_frame.h"
+#include "town_players.h"
+#include "libc.h"
 
-#define WORKSHOP_NPC_FORGING 0x69   /* the actor state of the smith's forging scene */
-#define FORGE_WORK_SIZE 0xE00       /* a counter's work, cleared when it opens */
+#define FORGE_WORK_SIZE 3584        /* a counter's work, cleared when it opens */
 
 extern u8 gMenuWork[];
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern s8 gMenuInputLock;
-void *memset(void *dst, s32 c, u32 n);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LobbySe_Play(s32);
-s16 OfferMenu_BuildList(struct Em *t, s32 b);
-void Workshop_Draw(MenuTask *task);
-void Workshop_Draw2(MenuTask *task);
 
 /* Opens the workshop's menu at townsperson `npc`: restores the value the
  * menu keeps in the townsperson's block, and lists the three counters, plus
@@ -72,13 +79,8 @@ void Workshop_Open(Em *npc)
         menu->count--;
     }
     gMenuInputLock = 6;
-    LobbySe_Play(0x1B);
+    LobbySe_Play(27);
 }
-
-void CamFocus_End(void);
-void CamReq_Cancel(void);
-void EquipPreview_Free(void);
-void Chat_SetColor(s16);
 
 /* Closes the workshop: back to TOWN_MODE_FREE, the camera's focus and
  * request ended, the equipment preview freed, the chat's colour reset. */
@@ -94,24 +96,10 @@ void Workshop_Close(void)
     LobbySe_Play(LOBBY_SE_CANCEL);
 }
 
-u16 LobbyPad_Get(s32);
-struct Em *Npc_Find(u8 kind);
-void Actor_SetState(void *, s32, s32);
-s32 Game_IsOnline(void);
-void OfferMenu_Open(struct Em *t);
-void Talk_Say(s32 msg, s8 a);
-s32 Talk_Update(void);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
 void CamReq_Workshop(u8 lv); /* unit's own declaration: the definition takes an s32; declared with the u8 the callers pass, since with the definition's type Workshop_Update's call compiles differently */
 /* unit's own declaration: the definition returns a u8; declared with the s32 the callers read, since with the definition's type Workshop_Update's call compiles differently */
 s32 Village_FacilityLevel(s32 a);
-s32 Npc_NextRoutePoint(struct Em *);
 void NpcScene_Start(s8 a, s32 b, s32 c);
-s32 NpcScene_IsDone(void);
-void Npc_StartTalkState(struct Em *p);
-void Workshop_OpenCounter(void);
-s32 Workshop_CounterInput(u16 pad);
-s32 Workshop_ResultInput(u16 pad);
 /* The menu's frame, by its step: the top list (circle opens the counter
  * under the cursor, or the offer menu on the offers' entry; cross says
  * goodbye), the counter's input, the forging scene and its wait, the
@@ -131,18 +119,18 @@ void Workshop_Update(void)
             if (menu->shortList != 0) {
                 if (menu->choice == menu->count - 1 && Game_IsOnline() == 0) {
                     OfferMenu_Open(talker);
-                    LobbySe_Play(0x1B);
+                    LobbySe_Play(27);
                     break;
                 }
             } else if (menu->choice == WORKSHOP_OFFERS) {
                 OfferMenu_Open(talker);
-                LobbySe_Play(0x1B);
+                LobbySe_Play(27);
                 break;
             }
             menu->step++;
             memset((u8 *)menu + FORGE_WORK_OFFSET, 0, FORGE_WORK_SIZE);
             Workshop_OpenCounter();
-            LobbySe_Play(0x1B);
+            LobbySe_Play(27);
         } else if (pad & PAD_CROSS) {
             menu->step = WORKSHOP_STEP_BYE;
             Talk_Say(1, 0);
@@ -170,10 +158,10 @@ void Workshop_Update(void)
                 break;
             }
             if (talkerWork->id == NPC_WORKSHOP_HELPER) {
-                Actor_SetState(smith, 0, WORKSHOP_NPC_FORGING);
+                Actor_SetState(smith, 0, NPC_STATE_SMITH_FORGE);
                 Npc_NextRoutePoint(talker);
             } else {
-                Actor_SetState(talker, 0, WORKSHOP_NPC_FORGING);
+                Actor_SetState(talker, 0, NPC_STATE_SMITH_FORGE);
             }
             CamReq_Workshop(Village_FacilityLevel(VILLAGE_FACILITY_SMITHY));
         } else if (talkerWork->id == NPC_WORKSHOP_HELPER_ONLINE) {
@@ -190,7 +178,7 @@ void Workshop_Update(void)
                 menu->step++;
                 break;
             }
-            if (smith->state != WORKSHOP_NPC_FORGING) {
+            if (smith->state != NPC_STATE_SMITH_FORGE) {
                 CamReq_Cancel();
                 menu->step++;
                 if (talkerWork->id == NPC_WORKSHOP_HELPER) {
@@ -219,9 +207,6 @@ void Workshop_Update(void)
     }
 }
 
-void WeaponForge_Open(WorkshopMenu *menu);
-void ArmorForge_Open(WorkshopMenu *menu);
-void Deco_Open(void);
 /* Opens the counter under the top list's cursor. */
 void Workshop_OpenCounter(void)
 {
@@ -240,10 +225,6 @@ void Workshop_OpenCounter(void)
     }
 }
 
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 WeaponForge_Input(u8 *task, u16 pad);
-s32 ArmorForge_Input(u8 *task, u16 pad);
-s32 Deco_Input(u8 *task, u16 pad);
 /* Runs the open counter's input; returns its MENU_* result. */
 s32 Workshop_CounterInput(u16 pad)
 {
@@ -261,9 +242,6 @@ s32 Workshop_CounterInput(u16 pad)
     return MENU_RUNNING;
 }
 
-s32 WeaponForge_Confirm(u8 *task, u16 pad);
-s32 ArmorForge_Confirm(u8 *task, u16 pad);
-s32 Deco_Confirm(u8 *task, u16 pad);
 /* Runs the open counter's closing question after the forging scene;
  * returns its MENU_* result. */
 s32 Workshop_ResultInput(u16 pad)
@@ -282,28 +260,19 @@ s32 Workshop_ResultInput(u16 pad)
     return MENU_RUNNING;
 }
 
-void Font_SetSpacing(u8 a, u8 b);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
 /* Draws the top list: the helpers' shorter list or the full one. */
 void Workshop_DrawTop(s32 x, s32 y)
 {
     WorkshopMenu *menu = (WorkshopMenu *)gMenuWork;
 
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     if (menu->shortList != 0) {
-        Menu_DrawLabelList(0x1CC, gWorkshopTexts, menu->count, menu->choice, 0xFFB0B000);
+        Menu_DrawLabelList(460, gWorkshopTexts, menu->count, menu->choice, 0xFFB0B000);
     } else {
-        Menu_DrawLabelList(0x1CC, gSmithyMenuTexts, menu->count, menu->choice, 0xFFB0B000);
+        Menu_DrawLabelList(460, gSmithyMenuTexts, menu->count, menu->choice, 0xFFB0B000);
     }
 }
 
-void Text_SetSize(s32 a);
-void WeaponForge_Draw(u8 *o);
-void ArmorForge_Draw(u8 *task);
-void Deco_Draw(u8 *task);
-void WeaponForge_DrawPreview(u8 *o);
-void ArmorForge_DrawEquipPrompt(u8 *task);
-void Deco_DrawEquipPrompt(u8 *task);
 /* The menu's first draw callback: the top list, the open counter's
  * screens, or its closing question. */
 void Workshop_Draw(MenuTask *task)
@@ -313,7 +282,7 @@ void Workshop_Draw(MenuTask *task)
     Text_SetSize(task->textSize);
     switch (menu->step) {
     case WORKSHOP_STEP_TOP:
-        Workshop_DrawTop(0x1CC, 0x40);
+        Workshop_DrawTop(460, 64);
         break;
     case WORKSHOP_STEP_COUNTER:
         switch (menu->choice) {
@@ -344,7 +313,6 @@ void Workshop_Draw(MenuTask *task)
     }
 }
 
-void Deco_Draw2(u8 *unused0);
 /* The menu's second draw callback: only the decorations counter draws on
  * this layer. The empty cases stay: the game's switch has them. */
 void Workshop_Draw2(MenuTask *task)

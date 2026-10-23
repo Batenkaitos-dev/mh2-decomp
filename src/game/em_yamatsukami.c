@@ -18,120 +18,51 @@
 #include "quest.h"
 #include "mine_point.h"
 #include "em.h"
+#include "shadow.h"
 #include "player.h"
 #include "objattach.h"
 #include "area.h"
 #include "qsync.h"
 #include "em_yamatsukami.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "camera.h"
+#include "capsule.h"
+#include "card.h"
+#include "save.h"
+#include "sound.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "elder_attacks.h"
+#include "engine_math.h"
+#include "part_effects.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+#include "em_kind38.h"
+#include "em_script.h"
 
 
 
 
 /* prototypes */
 u16 Area_IdForCurrentTime(u16);
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-void EmYamaTsukami_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-s32 Save_TestEventFlag(s32);
-void YamaTsukamiAttack_Create(Em *, s8);
 void * EmEffectAttack_Create(Em *, s32, s32, s32, s32);
-void Em_MoveRotated(Em *, void *);
-void Em_RestartScript(Em *em);
-void EmYamaTsukami_StartCurves(Em *em, u8 kind);
-u8 EmYamaTsukami_UpdateCurves(Em *em);
-void EmYamaTsukami_GetMinePointPos(Em *em, f32 *out);
-void EmYamaTsukami_RunIdleState(Em *);
-void EmYamaTsukami_WalkForward(Em *);
-void EmYamaTsukami_WalkBackward(Em *);
-void EmYamaTsukami_Turn(Em *, s32);
-void EmYamaTsukami_RecoverPause(Em *);
-void EmYamaTsukami_FlyToGoal(Em *, s32);
-void EmYamaTsukami_RiseToGoalHeight(Em *, s32);
-void EmYamaTsukami_Rise(Em *, s32);
-void EmYamaTsukami_Descend(Em *, s32);
-void EmYamaTsukami_SurgeForward(Em *, s32);
-void EmYamaTsukami_SurgeBack(Em *, s32);
-void EmYamaTsukami_WaitForHunters(Em *);
-void EmYamaTsukami_SinkToFloor(Em *em);
-void EmYamaTsukami_Summon(Em *);
-void EmYamaTsukami_Spin(Em *, s32);
-void EmYamaTsukami_Smash(Em *, s32);
-void EmYamaTsukami_Die(Em *);
-void EmYamaTsukami_DieFalling(Em *);
-void EmYamaTsukami_WalkIn(Em *);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void EmYamaTsukami_MotionEffects(Em *, EmWork *);
-void EmYamaTsukami_EaseToSize(Em *em, EmWork *work);
-void EmYamaTsukami_InitTentacleDust(Em *em);
 extern s8 EmYamaTsukami_TentacleBones[4][2];
-f32 AreaGrid2_GetFloorY(f32 *pos);
-void EmYamaTsukami_UpdateTentacleDust(Em *);
 void EmBodyFx_Spawn(Em *em, s16 kind);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 Vec_Distance(f32 *a, f32 *b);
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 Debug_IsOn(s32);
-void MinePoint_SetArea(s32 slot, u16 area);
-void Player_Integrate(void *);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
 void GmEm_ResetSize(); /* unit's own declaration: GmEm_ResetSize reads a0 = em (the incoming argument, still in a0); the call passes no argument */
-extern f32 EmYamaTsukami_SizeScales[];
+/* The body scale per bodySize. EmYamaTsukami_EaseToSize keeps its (f32 (*)[3]) casts: without them its code doesn't match. */
+extern f32 EmYamaTsukami_SizeScales[4][3];
 extern f32 EmYamaTsukami_BoneGrowth[8];
 extern f32 EmYamaTsukami_BoneGrowthLast;
 extern f32 EmYamaTsukami_KindBStartPos[3];
 extern EmYamaTsukamiYawKey *EmYamaTsukami_SpinYawKeys[];
 static u8 EmYamaTsukami_TurnByKeys(Em *em, EmYamaTsukamiWork *w, s32 idx);
-f32 Math_Absf(f32 x);
-u16 Area_DayId(u16 id);
-f32 Math_Sin(f32 x);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
-void DustCloud_CreateAt(f32 *pos, u8 k, u8 c, f32 scale);
-u8 Player_InCurrentArea(void *obj);
-void EmYamaTsukami_MotionSounds(Em *, EmWork *);
 static void EmYamaTsukami_MotionEffectsDefault(Em *em);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-void EmYamaTsukami_SpawnFortImpact(Em *);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-void Quest_TriggerEvent(Em *em);
-void Em_BreakPart(Em *em, s32 part);
-void Em_EndStatus5(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-s32 MinePoint_Count(s32);
-void QSync_SendEm(Em *em, u8 kind, u8 arg);
-void EmYamaTsukami_RunState(Em *em);
-s32 EmYamaTsukami_IsQuakeFreeMotion(Em *em);
-s32 EmMine_Update(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-void QuestEm_Hunted(Em *em);
-void CamReq_BossHunted(void);
-void EmYamaTsukami_RemoveMinePoints(Em *em);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void HitSpark_SpawnForOwner(void *owner, s32 ang, s32 type, s32 sub, f32 *pos, f32 scale);
-void PartFx_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
-void CamShake_ReqARange(Em *obj, s32 i, s32 flag);
-void Em_MotionDelta(Em *em, f32 *out);
-void EmKind38_SpawnAtEmBone(Em *em);
-void PartFx_SpawnAt(f32 *pos, s32 a, f32 scale);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
 extern f32 gStartPos[];
-void EmYamaTsukami_AddMinePoint(Em *em);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_PlaySeAtBoneVolOnFrame(Em *em, s32 frame, s32 se, s32 bone, s32 vol);
 /* unit's own declaration: group and state are declared u16; with the definition's s32 the callers (EmKind38_ChangeState, EmShakalaka_ChangeState ...) pass the state without the 16-bit mask the game's code applies */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_TargetPlayerInRange(Em *);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 /* end of prototypes */
 
 /*
@@ -376,7 +307,7 @@ void EmYamaTsukami_SetMoveState(Em *em, u16 state, u8 mode)
             em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
         }
         turn = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-        if ((0 <= turn && turn <= 0x4000) || (turn >= 0xC000 && turn <= 0xFFFF)) {
+        if ((0 <= turn && turn <= 16384) || (turn >= 0xC000 && turn <= 0xFFFF)) {
             state = YAMA_MOVE_FORWARD;
         }
         break;
@@ -511,586 +442,586 @@ void EmYamaTsukami_MotionSounds(Em *em, EmWork *work)
     motion = ((EmYamaTsukamiWork *)work)->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, YAMA_MOT_IDLE):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, Sound_RandomSe(0xD, 4, 0xF, 4), 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x70, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xD8, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x140, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x144, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x148, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 90, Sound_RandomSe(13, 4, 15, 4), 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(101, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 112, Sound_RandomSe(101, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 216, Sound_RandomSe(101, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 320, Sound_RandomSe(101, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 220, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 324, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 328, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_RISE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x9E, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, 0x66, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x60, 0x4C, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(13, 4, 15, 4), 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 101, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 158, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 92, 102, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 96, 76, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 92, Sound_RandomSe(13, 4, 15, 4), 3, 9);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DESCEND):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x9E, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, 0x66, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x60, 0x4C, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0xD, 4, 0xF, 4), 3, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(13, 4, 15, 4), 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 101, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 158, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 92, 102, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 96, 76, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 92, Sound_RandomSe(13, 4, 15, 4), 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 244, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 248, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_RISE_TO_GOAL):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x53, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x44, 0x2C, 3, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 83, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 68, 44, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 11, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 12, 103, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SURGE_FORWARD):
     case EM_MOTION_ID(0, YAMA_MOT_SURGE_BACK):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x68, 0x66, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x6A, 0x2D, 0x10, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x13, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(0xC, 4, 0xE, 4), 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, 0x13, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x24, 0x15, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x7A, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x82, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0x13, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, Sound_RandomSe(0xC, 4, 0xE, 4), 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x92, 0x13, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0x15, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 12, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 104, 102, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 106, 45, 16, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(12, 4, 14, 4), 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, Sound_RandomSe(12, 4, 14, 4), 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, 18, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 19, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 46, 19, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 36, 21, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, Sound_RandomSe(12, 4, 14, 4), 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 122, Sound_RandomSe(12, 4, 14, 4), 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 130, 18, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, 19, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 118, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 146, 19, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, 21, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_RECOVER):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x4C, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x28, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, 0x11, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x32, 0x66, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x94, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 76, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 40, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, 17, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 112, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 50, 102, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 148, 101, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FALL):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x51, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x52, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0xA, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 81, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 12, 101, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 82, 101, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 84, 10, 3);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FALL_LAND):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x4C, 0x4B, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x24, 6, 3, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xAC, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE6, Sound_RandomSe(0xC, 4, 0xE, 4), 8);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 76, 75, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 36, YAMA_SE_THUD, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 172, Sound_RandomSe(12, 4, 14, 4), 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 184, Sound_RandomSe(13, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 230, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_MID);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SOFT_LAND):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x4C, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x16, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x16, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x16, 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x10, 0x3F, 0x1A, 5);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x14, 0x3F, 0x20, 5);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x10, 0x3F, 0xA, 5);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x14, 0x3F, 0xF, 5);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, 0x14, 0x2F);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x42, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 76, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 22, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 22, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 22, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 16, 63, YAMA_BONE_TENTACLE_C_TIP, 5);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 20, 63, YAMA_BONE_TENTACLE_D_TIP, 5);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 16, 63, YAMA_BONE_TENTACLE_A_TIP, 5);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 20, 63, YAMA_BONE_TENTACLE_B_TIP, 5);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 19, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, 20, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 66, 103, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_RISE_TO_GOAL_END):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x58, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 88, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_RECOVER_RISE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x46, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xB4, 0x58, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xBC, 0x28, 0x24);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xB4, 0x66, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD2, 0xA, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x104, 0x13, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF2, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 0x14, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF8, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10A, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x14, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 70, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 180, 88, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 188, 40, 36);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 180, 102, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 210, 10, 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 260, 19, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 242, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, 19, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 88, 20, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 244, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 248, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 220, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 266, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 20, 101, 3, 22);
         break;
-    case EM_MOTION_ID(0, 0xD):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x52, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, 0x12, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, 0x12, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x13, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, Sound_RandomSe(0xD, 4, 0xF, 4), 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x56, 0x13, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, Sound_RandomSe(0xD, 4, 0xF, 4), 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x60, 0x14, 0xA);
+    case EM_MOTION_ID(0, 13):
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 82, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, 18, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, 18, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 14, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 18, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(13, 4, 15, 4), 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 19, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(13, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 21, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 86, 19, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 96, 20, YAMA_BONE_TENTACLE_A_TIP);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_RECOVER_PAUSE):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x70, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(101, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 112, Sound_RandomSe(101, 4, 103, 4), 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DOWNED):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x52, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0, 5, 1, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(1, 3, 2, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x11, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 0xB, 0x24);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 12, 82, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0, 5, 1, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(1, 3, 2, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 17, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 11, 36);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_GET_UP):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x34, 0x4C, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x48, 6, 3, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 0x10, 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x8E, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 52, 76, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 72, YAMA_SE_THUD, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 10, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, 16, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 142, 103, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_MOVE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x12, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x46, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1C, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 18, Sound_RandomSe(101, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 70, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 28, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_MOVE_CRUISE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x12, 0x46, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, Sound_RandomSe(101, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 18, 70, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_MOVE_STOP):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, Sound_RandomSe(0x65, 4, 0x65, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0x67, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 71, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, Sound_RandomSe(101, 4, 101, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 92, Sound_RandomSe(103, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_A):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x48, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x13, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0xC, 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x13, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x98, Sound_RandomSe(0, 5, 1, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, Sound_RandomSe(1, 3, 2, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 72, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 10, 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 19, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 21, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 12, 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 160, 19, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, 21, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 152, Sound_RandomSe(0, 5, 1, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, Sound_RandomSe(1, 3, 2, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 22, Sound_RandomSe(101, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 122, Sound_RandomSe(101, 4, 102, 4), 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_B):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x48, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0x13, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x40, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, 0xC, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x13, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x98, Sound_RandomSe(0, 5, 1, 3), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, Sound_RandomSe(1, 3, 2, 5), 7);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, Sound_RandomSe(0x65, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, Sound_RandomSe(0x65, 4, 0x66, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 72, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 10, 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 19, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 64, 21, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, 12, 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 160, 19, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, 21, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 152, Sound_RandomSe(0, 5, 1, 3), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, Sound_RandomSe(1, 3, 2, 5), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 22, Sound_RandomSe(101, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 122, Sound_RandomSe(101, 4, 102, 4), 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_A):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x10, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC8, 0xF, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 71, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 10, 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, 16, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, 21, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 200, 15, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 17, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 220, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_B):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC8, 0xF, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x10, 0x11, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 71, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 10, 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, 16, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, 21, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 200, 15, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 16, 17, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 220, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_C):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x15, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 0x13, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(0xD, 4, 0xF, 4), 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x15, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x13, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 21, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 78, 19, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 21, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, 19, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 194, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 220, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_D):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 8);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x15, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, 0x13, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(0xD, 4, 0xF, 4), 0xD);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x80, 0x15, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9C, 0x13, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDC, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 21, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 78, 19, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_MID);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 128, 21, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 156, 19, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 194, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 220, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SMASH):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, 0x47, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, 0x48, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xE4, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x17, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA2, 0x17, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA0, 0x15, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA4, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA2, 0x17, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x9E, 0x17, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE2, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xAE, 0x44, 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, 9, 0x17);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 22, 71, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 122, 72, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 228, 101, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 10, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 158, YAMA_SE_SMASH_HIT, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 162, YAMA_SE_SMASH_HIT, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 160, 21, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 164, 21, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 162, YAMA_SE_SMASH_HIT, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 158, YAMA_SE_SMASH_HIT, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 226, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 174, YAMA_SE_FORT_IMPACT_B, 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 184, 9, 23);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SMASH_END):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x64, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5A, Sound_RandomSe(0xD, 4, 0xF, 4), 0x17);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7A, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x68, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, Sound_RandomSe(13, 4, 15, 4), 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 100, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 90, Sound_RandomSe(13, 4, 15, 4), 23);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 22, 101, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 122, 101, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 104, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 106, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_HOLD_POSE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x56, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x90, 0x27, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x90, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 86, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 144, 39, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 40, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 144, 103, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_HOLD_POSE_END):
     case EM_MOTION_ID(0, YAMA_MOT_SUMMON_END):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x58, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x11, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x26, 0x15, 0x1A, 6);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x2C, 0x15, 0x20, 6);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 88, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 17, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 38, 21, YAMA_BONE_TENTACLE_C_TIP, 6);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 44, 21, YAMA_BONE_TENTACLE_D_TIP, 6);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_INHALE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x16, 0x4E, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 0x27, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xDE, 0x28, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x104, 0x28, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 0x27, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8E, 0x27, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE0, 0x27, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xE4, 0x27, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x11C, 0x27, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x120, 0x27, 0x2F);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x13A, 0x3C, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x102, 0x3C, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xEE, 0x3E, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x128, 0x3E, 0x24, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 22, 78, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 106, 39, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 222, 40, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 260, 40, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, 39, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 142, 39, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 224, 39, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 228, 39, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 284, 39, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 288, 39, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 314, 60, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 258, 60, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 238, 62, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 296, 62, 36, 9);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_INHALE_END):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x58, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 0x11, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x74, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x78, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 88, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, 17, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 116, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 120, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_STRIKE_A):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4D, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x16, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x16, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 0x16, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3A, 0x16, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4C, 9, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x48, 9, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x5E, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x62, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x60, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 77, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 22, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 22, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 22, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 58, 22, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 76, 9, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 72, 9, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 10, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 94, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 98, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 96, 101, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_STRIKE_B):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4D, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0x16, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x16, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, 0x16, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, 0x16, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xA, 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x42, 0x65, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 77, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, 22, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 22, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, 22, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, 22, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 10, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 66, 101, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_STRIKE_B_HOLD):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 9, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, 8, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x66, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x10, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0xA, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 9, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, 8, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 102, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 106, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 16, 101, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 10, 3);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_STRIKE_RECOVER):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4C, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x82, 0x46, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xB, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6C, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x70, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x3C, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x98, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1E, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x20, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8E, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x90, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xFE, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x100, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 76, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 130, 70, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 108, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 112, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 60, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 152, 103, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 30, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 32, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 142, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 144, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 254, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 256, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SPIN_START):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x47, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x1E, Sound_RandomSe(0x66, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x10, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x32, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x2E, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 71, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 30, Sound_RandomSe(102, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 16, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 50, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 46, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_B_TIP);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SPIN):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x12, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x14, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x14, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x27, 0x2F);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 18, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 18, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 20, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 20, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 39, YAMA_BONE_SMALL_TENTACLE_B_TIP);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SPIN_END):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x13, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x13, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 0x15, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12, 0x15, 0x20);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x58, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x1E, Sound_RandomSe(0x66, 4, 0x66, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x10, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 19, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 19, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 2, 21, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 18, 21, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 88, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 30, Sound_RandomSe(102, 4, 102, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 16, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SUMMON):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 0x56, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x14, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x8E, 0x28, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x90, 0x67, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 6, 86, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 20, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 142, 40, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 40, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 144, 103, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_CRASH_FALL):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xC, 4, 0xE, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xC, 4, 0xE, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xC, 4, 0xE, 4), 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x12, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0x14, 0x2F);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 18, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 20, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 40, 102, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DIVE_SLAM):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x30, 0x57, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0xA, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xD0, 0xB, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x38, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3C, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xA0, 0x31, 0xB, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xA8, 0x31, 7, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x68, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xDE, 0x66, 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 48, 87, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 10, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 208, 11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 56, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 60, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 160, 49, YAMA_BONE_TENTACLE_B_BASE, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 168, 49, YAMA_BONE_TENTACLE_A_BASE, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 40, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 104, 101, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 222, 102, 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_CRASH_LIE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x2C, 0x47, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x44, 0xC, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0xB, 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x7E, 7, 3, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x28, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x84, 6, 3, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x86, 8, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x8A, 8, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x88, 9, 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x84, 9, 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB4, Sound_RandomSe(0, 5, 1, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB8, Sound_RandomSe(1, 3, 2, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x12C, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x130, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 44, 71, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 68, 12, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 11, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 126, 7, 3, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 40, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 132, YAMA_SE_THUD, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 134, 8, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 138, 8, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 136, 9, YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 132, 9, YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 180, Sound_RandomSe(0, 5, 1, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 184, Sound_RandomSe(1, 3, 2, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 300, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 304, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_CRASH_GET_UP):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x44, 0x46, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 0xB, 3);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(0xD, 4, 0xF, 4), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xD, 4, 0xF, 4), 0xF);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x54, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x72, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x76, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 68, 70, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, 11, 3);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 6, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 84, 103, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 114, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 118, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FLINCH_A):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x49, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 6, 0xF, 2), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 2, 0xF, 6), 0x20);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 73, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(13, 6, 15, 2), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(13, 2, 15, 6), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(102, 4, 103, 4), 3, 22);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FLINCH_B):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4A, 0x24, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x46, 0x11, 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x5C, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 74, 36, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(12, 4, 14, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 10, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 70, 17, 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 92, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 78, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DOWNED_FLINCH):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x4A, 0x24);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xE, 4, 0x10, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x58, 0x14, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x66, 9, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x6A, 9, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x16, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x1A, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 74, 36);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(14, 4, 16, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 84, 19, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 88, 20, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 102, 9, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 106, 9, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 22, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 26, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DIE):
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 0x4B, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xDC, 0x46, 0x24, 9);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xB2, 6, 3, 9);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xA2, 0x12, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB0, 9, 0x2A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xB6, 0x14, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC2, 8, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x92, Sound_RandomSe(0xD, 6, 0xF, 2), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x136, Sound_RandomSe(0xD, 2, 0xF, 6), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x132, Sound_RandomSe(0xD, 6, 0xF, 2), 0xA);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x136, Sound_RandomSe(0xD, 2, 0xF, 6), 0xF);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, 0x11, 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xF6, Sound_RandomSe(0xD, 6, 0xF, 2), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x150, 8, 0x20);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x54, 0x65, 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xAC, 0x66, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4A, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x4E, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 4, 75, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 220, 70, 36, 9);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 178, YAMA_SE_THUD, 3, 9);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 162, 18, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 176, 9, YAMA_BONE_SMALL_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 182, 20, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 194, 8, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 17, YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 146, Sound_RandomSe(13, 6, 15, 2), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 310, Sound_RandomSe(13, 2, 15, 6), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 306, Sound_RandomSe(13, 6, 15, 2), YAMA_BONE_TENTACLE_A_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 310, Sound_RandomSe(13, 2, 15, 6), YAMA_BONE_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, 17, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 246, Sound_RandomSe(13, 6, 15, 2), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 336, 8, YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 12, 103, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 84, 101, 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 172, 102, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 74, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 78, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FLINCH_D):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x49, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xE, 4, 0x10, 4), 0x20);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x52, Sound_RandomSe(0xD, 4, 0xF, 4), 0x1A);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 73, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(14, 4, 16, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 82, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_EVENT_TURN):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x49, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xE, 4, 0x10, 4), 0x1A);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x52, Sound_RandomSe(0xD, 4, 0xF, 4), 0x20);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0xC, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 73, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(14, 4, 16, 4), YAMA_BONE_TENTACLE_C_TIP);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(102, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 82, Sound_RandomSe(13, 4, 15, 4), YAMA_BONE_TENTACLE_D_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 12, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FLINCH_HOVER):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x49, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x3E, 0x12, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x54, 0x13, 0x2F);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(0xC, 4, 0xE, 4), 3);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0xC, 0x67, 3, 0x16);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x22, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x26, Sound_RandomSe(4, 3, 5, 5), 0xB);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 73, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 62, 18, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 84, 19, YAMA_BONE_SMALL_TENTACLE_B_TIP);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 8, Sound_RandomSe(12, 4, 14, 4), 3);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 12, 103, 3, 22);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 34, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 38, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FLINCH_C):
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 0x4B, 0x24);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(0xC, 4, 0xE, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x18, Sound_RandomSe(0xC, 4, 0xE, 4), 0x1D);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x30, Sound_RandomSe(3, 5, 4, 3), 7);
-        Em_PlaySeAtBoneOnFrame((Em *) em, 0x34, Sound_RandomSe(4, 3, 5, 5), 0xB);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(0x67, 4, 0x67, 4), 3, 0x16);
-        Em_PlaySeAtBoneVolOnFrame((Em *) em, 0x4E, Sound_RandomSe(0x66, 4, 0x67, 4), 3, 0x16);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, 75, 36);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 4, Sound_RandomSe(12, 4, 14, 4), 23);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 24, Sound_RandomSe(12, 4, 14, 4), 29);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 48, Sound_RandomSe(3, 5, 4, 3), YAMA_BONE_TENTACLE_A_BASE);
+        Em_PlaySeAtBoneOnFrame((Em *) em, 52, Sound_RandomSe(4, 3, 5, 5), YAMA_BONE_TENTACLE_B_BASE);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 8, Sound_RandomSe(103, 4, 103, 4), 3, 22);
+        Em_PlaySeAtBoneVolOnFrame((Em *) em, 78, Sound_RandomSe(102, 4, 103, 4), 3, 22);
         
     default:
         break;
@@ -1100,7 +1031,7 @@ void EmYamaTsukami_MotionSounds(Em *em, EmWork *work)
 /*
  * The family's setup (Em_TypeSetup calls it): clears queryValue and, while
  * the carcass's mine point exists, moves it to the monster's area and to
- * its place above bone 2.
+ * its place above YAMA_BONE_BODY.
  */
 void EmYamaTsukami_Setup(Em *em)
 {
@@ -1117,20 +1048,20 @@ void EmYamaTsukami_Setup(Em *em)
 
 /*
  * One of the family's table hooks (slots 0 and 1): creates the effect drawn
- * with the monster (Effect01 type 3) and, for the second kind, the EmBodyFx
+ * with the monster (its shadow, SHADOW_GROUND_BONES) and, for the second kind, the EmBodyFx
  * effect of kind 5.
  */
 void EmYamaTsukami_SpawnEffects(Em *em)
 {
-    Shadow_Spawn((Player *) &em->active, 3);
+    Shadow_Spawn((Player *) &em->active, SHADOW_GROUND_BONES);
     if (em->type == EM_KIND_YAMA_TSUKAMI_B) {
         EmBodyFx_Spawn(em, 5);
     }
 }
 
 /*
- * Writes the carcass mine point's position to out: 400 above bone 2, along
- * the bone's rotation.
+ * Writes the carcass mine point's position to out: 400 above
+ * YAMA_BONE_BODY, along the bone's rotation.
  */
 void EmYamaTsukami_GetMinePointPos(Em *em, f32 *out)
 {
@@ -1141,8 +1072,8 @@ void EmYamaTsukami_GetMinePointPos(Em *em, f32 *out)
     upOfs[1] = 400.0f;
     upOfs[0] = 0.0f;
     upOfs[2] = 0.0f;
-    Em_BonePos(em, 2, bonePos);
-    Vec_Rotate((f32 *) rotated, (f32 *) upOfs, (f32 *) (Em_Bone(em, 2)));
+    Em_BonePos(em, YAMA_BONE_BODY, bonePos);
+    Vec_Rotate((f32 *) rotated, (f32 *) upOfs, (f32 *) (Em_Bone(em, YAMA_BONE_BODY)));
     out[0] = bonePos[0] + rotated[0];
     out[1] = bonePos[1] + rotated[1];
     out[2] = bonePos[2] + rotated[2];
@@ -1167,16 +1098,16 @@ void EmYamaTsukami_AddMinePoint(Em *em)
     point.radius = 800.0f;
     switch (gQuest.header->tier) {
     default:
-        point.table = 0x63;
+        point.table = 99;
         break;
     case 1:
-        point.table = 0xE0;
+        point.table = 224;
         break;
     case 2:
-        point.table = 0x15C;
+        point.table = 348;
         break;
     case 3:
-        point.table = 0x15C;
+        point.table = 348;
         break;
     }
     point.action = MINE_ACTION_CARVE;
@@ -1211,8 +1142,8 @@ void EmYamaTsukami_RemoveMinePoints(Em *em)
  */
 void EmYamaTsukami_AimAtGoal(Em *em, EmYamaTsukamiWork *w)
 {
-    w->accelAngX = 0x10000 - (Math_Heading(Vec_Distance((f32 *) &em->posX, (f32 *) em->goal), em->posY, 0.0f, em->goal[1]) & 0xFFFF);
-    w->accelAngY = (s32) ((Math_Heading(em->posX, em->posZ, em->goal[0], em->goal[2]) & 0xFFFF) - 0x4000);
+    w->accelAngX = ANGLE_TURN - (Math_Heading(Vec_Distance((f32 *) &em->posX, (f32 *) em->goal), em->posY, 0.0f, em->goal[1]) & 0xFFFF);
+    w->accelAngY = (s32) ((Math_Heading(em->posX, em->posZ, em->goal[0], em->goal[2]) & 0xFFFF) - ANGLE_TURN / 4);
     w->accelAngZ = 0;
 }
 
@@ -1248,7 +1179,7 @@ void EmYamaTsukami_Start(Em *em)
     } else {
         em->unk_InitFlag = 1;
         em->combat = 1;
-        em->combatPlayers = 0xF;
+        em->combatPlayers = 15;
         em->blind = 0;
         w->flyGuard = 0;
         w->mineCount = 3;
@@ -1300,17 +1231,17 @@ void EmYamaTsukami_EndFlyState(Em *em)
 
 /*
  * YAMA_IDLE_HOLD: keeps the idle motion set unless debug flag 0x4D is on.
- * The second test compares layer 1 with 1101 (0x44D), which is no layer-1
+ * The second test compares layer 1 with 1101, which is no layer-1
  * motion id (those start at 1201), so it always sets the idle again.
  */
 void EmYamaTsukami_IdleHold(Em *em, EmWork *work)
 {
-    if (Debug_IsOn(0x4D) == 0) {
+    if (Debug_IsOn(77) == 0) {
         if (em->motionId[0] != EM_MOTION_ID(0, YAMA_MOT_IDLE)) {
-            Em_SetMotion(em, YAMA_MOT_IDLE, 0xA, 0);
+            Em_SetMotion(em, YAMA_MOT_IDLE, 10, 0);
         }
-        if (em->motionId[1] != 0x44D) { /* 1000 + 100 + the idle; layer 1's ids are 1200 + the motion */
-            Em_SetMotion(em, YAMA_MOT_IDLE, 0xA, 0);
+        if (em->motionId[1] != 1101) { /* 1000 + 100 + the idle; layer 1's ids are 1200 + the motion */
+            Em_SetMotion(em, YAMA_MOT_IDLE, 10, 0);
         }
     }
 }
@@ -1445,7 +1376,7 @@ void EmYamaTsukami_RunIdleState(Em *em)
 
 /*
  * YAMA_MOVE_FORWARD: walks forward by the motion's root movement, turning
- * toward the goal by up to 0x40 a frame, until goalDist runs out; the
+ * toward the goal by up to 64 a frame, until goalDist runs out; the
  * motion then ends the state.
  */
 void EmYamaTsukami_WalkForward(Em *em)
@@ -1464,16 +1395,16 @@ void EmYamaTsukami_WalkForward(Em *em)
         if (em->hasGoal != 0) {
             turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
             if (turn <= 0x8000) {
-                if (turn <= 0x3F) {
+                if (turn <= 63) {
                     em->rotY += turn;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else {
                 if (turn > 0xFFC0) {
                     em->rotY += turn;
                 } else {
-                    em->rotY -= 0x40;
+                    em->rotY -= 64;
                 }
             }
         }
@@ -1512,16 +1443,16 @@ void EmYamaTsukami_WalkBackward(Em *em)
         if (em->hasGoal != 0) {
             turn = ((((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) + 0x8000) & 0xFFFF) - em->rotY) & 0xFFFF;
             if (turn <= 0x8000) {
-                if (turn <= 0x3F) {
+                if (turn <= 63) {
                     em->rotY += turn;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else {
                 if (turn > 0xFFC0) {
                     em->rotY += turn;
                 } else {
-                    em->rotY -= 0x40;
+                    em->rotY -= 64;
                 }
             }
         }
@@ -1540,7 +1471,7 @@ void EmYamaTsukami_WalkBackward(Em *em)
 }
 
 /*
- * Turns to the goal, speeding up by 0x20 a frame until half the turn is
+ * Turns to the goal, speeding up by 32 a frame until half the turn is
  * made and then slowing down; the motion's end ends the state. variant 0:
  * on the ground (YAMA_MOVE_TURN); 1: in the air (YAMA_FLY_TURN); 2: in the
  * air, guarded (YAMA_FLY_TURN_GUARDED).
@@ -1585,15 +1516,15 @@ void EmYamaTsukami_Turn(Em *em, s32 variant)
         break;
     case 1:
         if (em->stateVar0 == 0) {
-            w->turnSpeed += 0x20;
+            w->turnSpeed += 32;
             w->turnLeft -= w->turnSpeed;
             if (w->turnLeft <= 0) {
                 em->stateVar0 = 1;
             }
         } else {
-            w->turnSpeed -= 0x20;
+            w->turnSpeed -= 32;
             if (w->turnSpeed <= 0) {
-                w->turnSpeed = 0x20;
+                w->turnSpeed = 32;
             }
         }
         rot = em->rotY;
@@ -2052,7 +1983,7 @@ void EmYamaTsukami_SinkToFloor(Em *em)
         Em_SetMotion(em, YAMA_MOT_MOVE, 0, 0);
         break;
     case 1:
-        em->velY = -10.0f + Math_Sin((6.2831855f * (f32) (em->timer << 0xA)) / 65536.0f);
+        em->velY = -10.0f + Math_Sin((6.2831855f * (f32) (em->timer << 10)) / 65536.0f);
         em->timer++;
         Em_MoveRotated(em, &w->accelAngX);
         if (!(em->floorY < em->posY)) {
@@ -2151,7 +2082,7 @@ void EmYamaTsukami_RunFlyState(Em *em)
 }
 
 /*
- * YAMA_ATK_SUMMON: in the summon pose, calls up kind 0x38 monsters at its
+ * YAMA_ATK_SUMMON: in the summon pose, calls up kind 56 monsters at its
  * bone (EmKind38_SpawnAtEmBone), one after 140 frames and then every 20
  * frames, five in all less those already alive.
  */
@@ -2170,7 +2101,7 @@ void EmYamaTsukami_Summon(Em *em)
         em->timer = 140;
         Em_SetMotion(em, YAMA_MOT_SUMMON, 0, 0);
         for (i = 0, other = gEms; i < 20; i++, other++) {
-            if (other->type == 0x38 && other->active != 0 && em->stateVar0 > 0) {
+            if (other->type == 56 && other->active != 0 && em->stateVar0 > 0) {
                 em->stateVar0--;
             }
         }
@@ -2245,7 +2176,7 @@ static u8 EmYamaTsukami_TurnByKeys(Em *em, EmYamaTsukamiWork *w, s32 idx)
 
 /*
  * Spins with the attack's hit (YamaTsukamiAttack type 0): a spin-up on its
- * curve and yaw keys, the spin (its step slowed by 0x71 a cycle for ten
+ * curve and yaw keys, the spin (its step slowed by 113 a cycle for ten
  * cycles, then sped up again), and a spin-down. variant 0
  * (YAMA_ATK_SPIN_TO_HEIGHT) rises or sinks to the goal's height meanwhile,
  * at most a 160th of the way a frame; variant 1 (YAMA_ATK_SPIN) spins in
@@ -2271,7 +2202,7 @@ void EmYamaTsukami_Spin(Em *em, s32 variant)
             em->step++;
             Em_SetMotion(em, YAMA_MOT_SPIN, 0, 0);
             em->timer = 10;
-            w->turnSpeed = -0x555;
+            w->turnSpeed = -1365;
             if (variant == 0) {
                 em->velY = (em->goal[1] - em->posY) / 160.0f;
             }
@@ -2289,7 +2220,7 @@ void EmYamaTsukami_Spin(Em *em, s32 variant)
         }
         if (em->motion[0].playing == 0 && em->timer > 0) {
             em->timer--;
-            w->turnSpeed -= 0x71;
+            w->turnSpeed -= 113;
         }
         if (variant == 0) {
             if (Math_Absf(em->goal[1] - em->posY) < 100.0f && em->timer <= 0) {
@@ -2309,7 +2240,7 @@ void EmYamaTsukami_Spin(Em *em, s32 variant)
                 Em_SetMotion(em, YAMA_MOT_SPIN_END, 0, 0);
                 EmYamaTsukami_StartCurves(em, YAMA_CURVE_SPIN_END);
             } else {
-                w->turnSpeed += 0x71;
+                w->turnSpeed += 113;
                 Em_SetMotion(em, YAMA_MOT_SPIN, 0, 0);
             }
         }
@@ -2468,9 +2399,9 @@ void EmYamaTsukami_Smash(Em *em, s32 variant)
         if ((variant == 1) && (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0)) {
             if (em->remote == 0) {
                 n = w->fortHits;
-                if (n < 0xA) {
+                if (n < 10) {
                     w->fortHits = n + 1;
-                    if (w->fortHits >= 0xA) {
+                    if (w->fortHits >= 10) {
                         Quest_TriggerEvent(em);
                     }
                     gScene.fortStage = w->fortHits;
@@ -2609,7 +2540,7 @@ void EmYamaTsukami_TentacleHitB(Em *em)
 
 /*
  * YAMA_ATK_INHALE: a strike, then the inhale for 240 frames; at its frame
- * 100 it makes the inhale's attack (YamaTsukamiAttack type 0x10) and the
+ * 100 it makes the inhale's attack (YamaTsukamiAttack type 16) and the
  * pull toward its mouth (EMFX_YAMA_INHALE).
  */
 void EmYamaTsukami_Inhale(Em *em)
@@ -2631,7 +2562,7 @@ void EmYamaTsukami_Inhale(Em *em)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 100.0f) != 0) {
             em->step++;
-            YamaTsukamiAttack_Create(em, 0x10);
+            YamaTsukamiAttack_Create(em, 16);
             EmEffectAttack_Create(em, EMFX_YAMA_INHALE, 0, 0, 0);
         }
         break;
@@ -3152,7 +3083,7 @@ void EmYamaTsukami_Die(Em *em)
     case 2:
         EmMine_Update(em);
         break;
-    case 0x63:
+    case 99:
         em->step++;
         EmYamaTsukami_RemoveMinePoints(em);
         em->hp = 13333;
@@ -3201,7 +3132,7 @@ void EmYamaTsukami_DieFalling(Em *em)
     case 3:
         EmMine_Update(em);
         break;
-    case 0x63:
+    case 99:
         em->step++;
         em->hp = 13333;
         EmYamaTsukami_RemoveMinePoints(em);
@@ -3334,7 +3265,7 @@ void EmYamaTsukami_WalkIn(Em *em)
         em->goal[0] = 3600.0f;
         em->goal[1] = 0.0f;
         em->goal[2] = 19500.0f;
-        em->rotY = Math_AngleXZ(&em->posX, em->goal) - 0x4000;
+        em->rotY = Math_AngleXZ(&em->posX, em->goal) - ANGLE_TURN / 4;
         em->goalDist = Vec_DistanceXZ(&em->posX, em->goal) - 500.0f;
         break;
     case 1:
@@ -3361,16 +3292,16 @@ void EmYamaTsukami_WalkIn(Em *em)
         }
         turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
         if (turn <= 0x8000) {
-            if (turn <= 0x3F) {
+            if (turn <= 63) {
                 em->rotY += turn;
             } else {
-                em->rotY += 0x40;
+                em->rotY += 64;
             }
         } else {
             if (turn > 0xFFC0) {
                 em->rotY += turn;
             } else {
-                em->rotY -= 0x40;
+                em->rotY -= 64;
             }
         }
         Em_MotionDelta(em, pos);
@@ -3385,16 +3316,16 @@ void EmYamaTsukami_WalkIn(Em *em)
     case 4:
         turn = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) & 0xFFFF;
         if (turn <= 0x8000) {
-            if (turn <= 0x3F) {
+            if (turn <= 63) {
                 em->rotY += turn;
             } else {
-                em->rotY += 0x40;
+                em->rotY += 64;
             }
         } else {
             if (turn > 0xFFC0) {
                 em->rotY += turn;
             } else {
-                em->rotY -= 0x40;
+                em->rotY -= 64;
             }
         }
         Em_MotionDelta(em, pos);
@@ -3614,8 +3545,8 @@ static void EmYamaTsukami_MotionEffectsDefault(Em *em)
  * Plays the motion sounds and makes the effects and attacks of the motion
  * on layer 0 at their frames: the YamaTsukamiAttack hits of the slams,
  * strikes and the landing, impact attacks, the dust and debris stage
- * objects, and the dive slam's impact under bone 2 (when a player is in the
- * area). Keeps the motion in fxMotion.
+ * objects, and the dive slam's impact under YAMA_BONE_BODY (when a player
+ * is in the area). Keeps the motion in fxMotion.
  */
 void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
 {
@@ -3630,23 +3561,23 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
     switch (w->fxMotion) {
     case EM_MOTION_ID(0, YAMA_MOT_SURGE_BACK):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EmImpactAttack_CreateAt(em, &em->posX, 0xA);
+            EmImpactAttack_CreateAt(em, &em->posX, 10);
         }
         if (EmMotion_PassedFrameScaled(em, 100.0f, 0) != 0) {
-            EmImpactAttack_CreateAt(em, &em->posX, 0xA);
+            EmImpactAttack_CreateAt(em, &em->posX, 10);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
             DustCloud_Create(em, 0, 0, 4.0f * em->scaleX);
-            YamaTsukamiAttack_Create(em, 0x14);
+            YamaTsukamiAttack_Create(em, 20);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SOFT_LAND):
         break;
     case EM_MOTION_ID(0, YAMA_MOT_GET_UP):
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            DustCloud_Create(em, 0x13, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 19, 0, 4.0f * em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_SLAM_A):
@@ -3683,34 +3614,34 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, YAMA_MOT_SMASH):
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0xA);
-            YamaTsukamiAttack_Create(em, 0x15);
+            YamaTsukamiAttack_Create(em, 10);
+            YamaTsukamiAttack_Create(em, 21);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DIVE_SLAM):
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0x16);
+            YamaTsukamiAttack_Create(em, 22);
         }
         if ((EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) && (Player_InCurrentArea(em) & 0xFF)) {
-            Em_BonePos(em, 2, pos);
+            Em_BonePos(em, YAMA_BONE_BODY, pos);
             pos[1] -= 300.0f * em->scaleY;
-            DustCloud_CreateAt(pos, 0x15, 0, 4.3f * em->scaleX);
-            DustCloud_CreateAt(pos, 0xD, 0, 4.3f * em->scaleX);
-            EmImpactAttack_CreateAt(em, pos, 0xB);
+            DustCloud_CreateAt(pos, 21, 0, 4.3f * em->scaleX);
+            DustCloud_CreateAt(pos, 13, 0, 4.3f * em->scaleX);
+            EmImpactAttack_CreateAt(em, pos, 11);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_CRASH_LIE):
         if (EmMotion_PassedFrameScaled(em, 86.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0xB);
+            YamaTsukamiAttack_Create(em, 11);
         }
         if (EmMotion_PassedFrameScaled(em, 122.0f, 0) != 0) {
-            DustCloud_Create(em, 0xB, 0, 4.0f * em->scaleX);
-            YamaTsukamiAttack_Create(em, 0x13);
+            DustCloud_Create(em, 11, 0, 4.0f * em->scaleX);
+            YamaTsukamiAttack_Create(em, 19);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_CRASH_GET_UP):
         if (EmMotion_PassedFrameScaled(em, 84.0f, 0) != 0) {
-            DustCloud_Create(em, 0x13, 0, 4.0f * em->scaleX);
+            DustCloud_Create(em, 19, 0, 4.0f * em->scaleX);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_DIE):
@@ -3720,24 +3651,24 @@ void EmYamaTsukami_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_A):
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0xC);
+            YamaTsukamiAttack_Create(em, 12);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_TENTACLE_HIT_B):
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0xD);
+            YamaTsukamiAttack_Create(em, 13);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_STRIKE_A):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0xE);
-            YamaTsukamiAttack_Create(em, 0x15);
+            YamaTsukamiAttack_Create(em, 14);
+            YamaTsukamiAttack_Create(em, 21);
         }
         break;
     case EM_MOTION_ID(0, YAMA_MOT_STRIKE_B):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            YamaTsukamiAttack_Create(em, 0xF);
-            YamaTsukamiAttack_Create(em, 0x15);
+            YamaTsukamiAttack_Create(em, 15);
+            YamaTsukamiAttack_Create(em, 21);
         }
         break;
     default:
@@ -3766,22 +3697,22 @@ void EmYamaTsukami_EaseToSize(Em *em, EmWork *work)
 
 /*
  * Swells the body: adds EmYamaTsukami_BoneGrowth (x, y, z per bone; the last value is
- * EmYamaTsukami_BoneGrowthLast) times bodyScale[0], [1] and [2] to the scale of bones 6,
- * 4 and 0x23. Em_AdjustKindBones calls it for the family when it poses the bones.
+ * EmYamaTsukami_BoneGrowthLast) times bodyScale[0], [1] and [2] to the scale of
+ * YAMA_BONE_SWELL_A, _B and _C. Em_AdjustKindBones calls it for the family when it poses the bones.
  */
 void EmYamaTsukami_ScaleBones(Em *em, EmBone *bones)
 {
     EmYamaTsukamiWork *w = (EmYamaTsukamiWork *)&em->work;
 
-    bones[0x6].pose[0] = bones[0x6].pose[0] + EmYamaTsukami_BoneGrowth[0] * w->bodyScale[0];
-    bones[0x6].pose[1] = bones[0x6].pose[1] + EmYamaTsukami_BoneGrowth[1] * w->bodyScale[0];
-    bones[0x6].pose[2] = bones[0x6].pose[2] + EmYamaTsukami_BoneGrowth[2] * w->bodyScale[0];
-    bones[0x4].pose[0] = bones[0x4].pose[0] + EmYamaTsukami_BoneGrowth[3] * w->bodyScale[1];
-    bones[0x4].pose[1] = bones[0x4].pose[1] + EmYamaTsukami_BoneGrowth[4] * w->bodyScale[1];
-    bones[0x4].pose[2] = bones[0x4].pose[2] + EmYamaTsukami_BoneGrowth[5] * w->bodyScale[1];
-    bones[0x23].pose[0] = bones[0x23].pose[0] + EmYamaTsukami_BoneGrowth[6] * w->bodyScale[2];
-    bones[0x23].pose[1] = bones[0x23].pose[1] + EmYamaTsukami_BoneGrowth[7] * w->bodyScale[2];
-    bones[0x23].pose[2] = bones[0x23].pose[2] + EmYamaTsukami_BoneGrowthLast * w->bodyScale[2];
+    bones[YAMA_BONE_SWELL_A].pose[0] = bones[YAMA_BONE_SWELL_A].pose[0] + EmYamaTsukami_BoneGrowth[0] * w->bodyScale[0];
+    bones[YAMA_BONE_SWELL_A].pose[1] = bones[YAMA_BONE_SWELL_A].pose[1] + EmYamaTsukami_BoneGrowth[1] * w->bodyScale[0];
+    bones[YAMA_BONE_SWELL_A].pose[2] = bones[YAMA_BONE_SWELL_A].pose[2] + EmYamaTsukami_BoneGrowth[2] * w->bodyScale[0];
+    bones[YAMA_BONE_SWELL_B].pose[0] = bones[YAMA_BONE_SWELL_B].pose[0] + EmYamaTsukami_BoneGrowth[3] * w->bodyScale[1];
+    bones[YAMA_BONE_SWELL_B].pose[1] = bones[YAMA_BONE_SWELL_B].pose[1] + EmYamaTsukami_BoneGrowth[4] * w->bodyScale[1];
+    bones[YAMA_BONE_SWELL_B].pose[2] = bones[YAMA_BONE_SWELL_B].pose[2] + EmYamaTsukami_BoneGrowth[5] * w->bodyScale[1];
+    bones[YAMA_BONE_SWELL_C].pose[0] = bones[YAMA_BONE_SWELL_C].pose[0] + EmYamaTsukami_BoneGrowth[6] * w->bodyScale[2];
+    bones[YAMA_BONE_SWELL_C].pose[1] = bones[YAMA_BONE_SWELL_C].pose[1] + EmYamaTsukami_BoneGrowth[7] * w->bodyScale[2];
+    bones[YAMA_BONE_SWELL_C].pose[2] = bones[YAMA_BONE_SWELL_C].pose[2] + EmYamaTsukami_BoneGrowthLast * w->bodyScale[2];
 }
 
 /*
@@ -3824,11 +3755,11 @@ void EmYamaTsukami_SpawnFortImpact(Em *em)
         pos[2] = 12400.0f;
         break;
     }
-    Em_PlaySeChecked(em, 0x45, 0, pos, 9, 0);
-    Em_PlaySeChecked(em, 0x44, 0, pos, 9, 0);
+    Em_PlaySeChecked(em, YAMA_SE_FORT_IMPACT_A, 0, pos, 9, 0);
+    Em_PlaySeChecked(em, YAMA_SE_FORT_IMPACT_B, 0, pos, 9, 0);
     HitSpark_SpawnForOwner(em, 0, 9, 0, pos, 3.0f);
     HitSpark_SpawnForOwner(em, 0, 9, 1, pos, 3.0f);
-    PartFx_SpawnIfHere(em, pos, 0x22, 30.0f);
+    PartFx_SpawnIfHere(em, pos, 34, 30.0f);
     CamShake_ReqARange(em, 2, 2);
 }
 
@@ -4016,7 +3947,7 @@ EmYamaTsukamiYawKey EmYamaTsukami_SpinEndYawKeys[11] = {
 EmYamaTsukamiYawKey *EmYamaTsukami_SpinYawKeys[2] = {
     EmYamaTsukami_SpinStartYawKeys, EmYamaTsukami_SpinEndYawKeys,
 };
-f32 EmYamaTsukami_SizeScales[12] = {
+f32 EmYamaTsukami_SizeScales[4][3] = {
 #include "game/008CAA80.inc"
 };
 f32 EmYamaTsukami_BoneGrowth[8] = {

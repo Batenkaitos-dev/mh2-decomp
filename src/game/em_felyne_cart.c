@@ -16,25 +16,17 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_felyne_cart.h"
 #include "player.h"
 #include "area.h"
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void EmFelyneCart_CarryPlayer(Em *em);
-void EmFelyneCart_TurnAround(Em *);
-void EmFelyneCart_RunState(Em *em);
-void EmFelyneCart_MotionEffects(Em *, EmWork *);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
+#include "capsule.h"
+#include "sound.h"
+#include "dust_flash_effects.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "vec_math.h"
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-void Shadow_Spawn(void *obj, s16 type);
-void Em_PlaySeOnFrame(Em *em, s32 frame, s32 se);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
-void PartFx_SpawnForEm(Em *em, s32 a, s32 b);
 /* end of prototypes */
 
 /* The sounds on the frames of the current motion (work->fxMotion): four on the run, one on the drop. */
@@ -45,9 +37,9 @@ void EmFelyneCart_MotionSounds(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, CART_MOT_RUN):
         Em_PlaySeOnFrame(em, 2, 0);
-        Em_PlaySeOnFrame(em, 0x26, 0);
-        Em_PlaySeOnFrame(em, 0x14, Sound_RandomSe(2, 4, 4, 4));
-        Em_PlaySeOnFrame(em, 0x3A, Sound_RandomSe(3, 4, 5, 4));
+        Em_PlaySeOnFrame(em, 38, 0);
+        Em_PlaySeOnFrame(em, 20, Sound_RandomSe(2, 4, 4, 4));
+        Em_PlaySeOnFrame(em, 58, Sound_RandomSe(3, 4, 5, 4));
         break;
     case EM_MOTION_ID(0, CART_MOT_DROP):
         Em_PlaySeOnFrame(em, 2, 1);
@@ -167,7 +159,7 @@ void EmFelyneCart_RunIdleState(Em *em)
 }
 
 /*
- * CART_MOVE_CIRCLE: runs (CART_MOT_RUN) turning 0x70 a frame, about a full
+ * CART_MOVE_CIRCLE: runs (CART_MOT_RUN) turning 112 a frame, about a full
  * circle in 600 frames, then asks the script for the next state.
  */
 void EmFelyneCart_RunCircle(Em *em)
@@ -181,7 +173,7 @@ void EmFelyneCart_RunCircle(Em *em)
         em->timer = 600;
         break;
     case 1:
-        em->rotY += 0x70;
+        em->rotY += 112;
         em->rotY = (s32) (u16) em->rotY;
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         if (--em->timer <= 0) {
@@ -421,11 +413,11 @@ void EmFelyneCart_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, CART_MOT_DROP):
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0)) {
-            PartFx_SpawnForEm(em, 0x10, 7);
+            PartFx_SpawnForEm(em, 16, 7);
         }
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0)) {
-            DustCloud_Create(em, 0x1C, 0, 1.0f);
-            DustCloud_Create(em, 0x1C, 1, 1.0f);
+            DustCloud_Create(em, 28, 0, 1.0f);
+            DustCloud_Create(em, 28, 1, 1.0f);
         }
         break;
     }
@@ -453,9 +445,9 @@ void EmFelyneCart_UpdateMotionEffects(Em *em)
  * Callback slots 0 and 1 (EmVt.init, update): makes the monster's effect
  * 01, as the other families do.
  */
-void EmFelyneCart_SpawnEffect01(u8 *em)
+void EmFelyneCart_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* Callback slots 2 and 5: nothing. */
@@ -464,8 +456,7 @@ void EmFelyneCart_TableNop(void)
 }
 
 /* The cart's row of the monsters' callback table (gGmEmCallbackTbl). */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmFelyneCart_Callbacks[8] = {
-    EmFelyneCart_SpawnEffect01, EmFelyneCart_SpawnEffect01, EmFelyneCart_TableNop, EmFelyneCart_UpdateMotionEffects,
+    EmFelyneCart_SpawnShadow, EmFelyneCart_SpawnShadow, EmFelyneCart_TableNop, EmFelyneCart_UpdateMotionEffects,
     GmEm_ReturnZero, EmFelyneCart_TableNop, NULL, NULL,
 };

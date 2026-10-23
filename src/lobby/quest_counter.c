@@ -27,35 +27,43 @@
 #include "player.h"
 #include "area.h"
 #include "lobby_labels.h"
+#include "lobby_npc.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "kbd.h"
+#include "text.h"
+#include "window.h"
+#include "quest_counter.h"
+#include "arena_cup.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_leave_menus.h"
+#include "lobby_queries.h"
+#include "lobby_steps.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "mem_util.h"
+#include "menu_util.h"
+#include "menu_widgets.h"
+#include "quest_counter_draw.h"
+#include "quest_desk.h"
+#include "quest_desk_draw.h"
+#include "quest_order_terms.h"
+#include "talk.h"
+#include "libc.h"
 
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern u8 gTownActionDelay;
 extern u8 gMenuWork;
-void Text_SetSize(s32 size);
-void QuestCounter_DrawTeamChoice(s32 x, s32 y0);
-QuestInfo *Quest_GetInfoAny(u16);
-void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room);
-void QuestCounter_DrawRoomSettings(s16 x, s32 y0, s32 k);
 /* unit's own declaration: a u32 colour; with the definition's s32, QuestCounter_DrawBoardRow compiles differently */
 void Font_SetColor(u32);
-void *memset(void *p, s32 c, u32 n);
-void Mem_Fill(void *dst, u8 c, s32 n);
-u8 *Talk_FindScript(u16 id);
-void LobbyMenu_Init(void);
-void QuestCounter_Draw(MenuTask *task);
-void QuestCounter_Draw2(MenuTask *task);
-void LobbySe_Play(s32 se);
 extern u8 gTalkNpcName;
 extern u8 *gTalkScriptRec;
 extern s16 gTalkScript;
 extern s32 gTalkLine;
 extern s8 gLobbyLevel2Index;
-s32 Save_HasRate(void);
-s32 Game_IsOnline(void);
-void QuestCounter_DrawBoard(WinSlide *, s16);
-void QuestCounter_DrawQuestWindow(s16 x, s16 y);
 
 /* Opens the quest counter (TOWN_MODE_QUEST_COUNTER): clears the menu work area and
  * the talk's state, starts the counter's talk script, sets the counter's draw
@@ -69,9 +77,9 @@ void QuestCounter_Open(void)
     gTownMode = TOWN_MODE_QUEST_COUNTER;
     gTalkLine = 0;
     gFieldControl = 0;
-    Mem_Fill(&gTalkNpcName, 0, 0x34); /* the talk's state: gTalkNpcName up to gTalkMode */
-    gTalkScriptRec = Talk_FindScript(0x63);
-    gTalkScript = 0x63;
+    Mem_Fill(&gTalkNpcName, 0, 52); /* the talk's state: gTalkNpcName up to gTalkMode */
+    gTalkScriptRec = Talk_FindScript(99);
+    gTalkScript = 99;
     LobbyMenu_Init();
     LobbyMenu_SetDraw(QuestCounter_Draw, QuestCounter_Draw2, NULL, NULL);
     if (gLobby->questTaken == 0) {
@@ -91,37 +99,13 @@ void QuestCounter_Close(void)
     LobbyMenu_SetDraw(NULL, NULL, NULL, NULL);
 }
 
-void Talk_Say(s32 arg0, s8 arg1);
-void LobbyText_Open(s32);
 s32 Menu_PushNoticeOnce(s32 arg0);
-s32 QuestCounter_OpenWindows(s32 x, s32 y);
 /* unit's own declaration: s32 ends; with the definition's s16 from and to, QuestCounter_OpenWindows and QuestCounter_Step compile differently */
 s32 WinSlide_Step(WinSlide *, s32, s32);
-s32 QuestCounter_CanJoin(s16 idx);
-s32 Talk_Update(void);
-void QuestCounter_Close(void);
-u16 LobbyPad_Get(s32);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 LobbyLevel2_FetchList(void);
 struct Player;
-s32 Equip_GunHasNoAmmo(struct Player *pl, struct SaveData *save);
-s32 QuestCounter_ChooseQuest(u16 arg0);
-s32 LobbyStep_Level2Entry(u16 id, NetUser *users);
-s32 QuestCounter_ViewQuest(u16 arg0);
-char *Talk_LineText(u16 id);
-char *Text_FillDollar(char *fmt, s32 n);
-s32 QuestCounter_CheckQuest(void);
 s32 Talk_YesNoBox(s8 flags);
-s32 QuestCounter_InputPassword(void *task);
-s32 Quest_IsDownloadId(s32);
-s8 Quest_DownloadedSlot(u16 id);
 /* unit's own declaration: an s8 slot and a u16 id; with the definition's s32 slot and id, QuestCounter_Step compiles differently */
 s32 LobbyStep_Download(s8 slot, u16 id);
-QuestInfo *Quest_CurrentInfo(void);
-s32 QuestCounter_ChooseArenaRole(u16 arg0);
-s32 LobbyLevel2_EnterWithPass(s32 v);
-void QuestDesk_Accept(u16 id, s16 money, s32 pay);
-s32 LobbyStep_Level2Leave(void);
 extern LobbyMenu *gLobbyMenu;
 extern LobbyRecs gLobbyRecs;
 extern u16 gLobbyQuestId;
@@ -154,7 +138,7 @@ void QuestCounter_Step(void)
     switch (w->step) {
     case QUEST_COUNTER_START:
         (w->step)++;
-        LobbyText_Open(0x78);
+        LobbyText_Open(120);
         gFieldControl = 0;
         break;
     case QUEST_COUNTER_FETCH_LIST:
@@ -164,10 +148,10 @@ void QuestCounter_Step(void)
             (w->step)++;
             Talk_Say(0, 0);
             if (Equip_GunHasNoAmmo(&gPlayers[gScene.localPlayer], (struct SaveData *)&gSave) == 1) {
-                Menu_PushNoticeOnce(0x13);
+                Menu_PushNoticeOnce(19);
             }
             gFieldControl = 1;
-            QuestCounter_OpenWindows(0x280, 0xF0);
+            QuestCounter_OpenWindows(640, 240);
             LobbySe_Play(LOBBY_SE_LIST_OPEN);
             break;
         case LOBBY_STEP_FAILED:
@@ -178,7 +162,7 @@ void QuestCounter_Step(void)
         }
         break;
     case QUEST_COUNTER_OPEN_BOARD:
-        switch (QuestCounter_OpenWindows(0x280, 0xF0)) {
+        switch (QuestCounter_OpenWindows(640, 240)) {
         case MENU_DONE:
             (w->step)++;
             break;
@@ -190,7 +174,7 @@ void QuestCounter_Step(void)
             (w->step)++;
             w->page = 0;
             gFieldControl = 0;
-            LobbyText_Open(0x78);
+            LobbyText_Open(120);
             break;
         case MENU_CANCEL:
             w->step = QUEST_COUNTER_CLOSE;
@@ -199,7 +183,7 @@ void QuestCounter_Step(void)
             w->step = QUEST_COUNTER_MESSAGE;
             w->returnStep = QUEST_COUNTER_CLOSE;
             gFieldControl = 0;
-            LobbyText_Open(0x62);
+            LobbyText_Open(98);
             break;
         }
         break;
@@ -210,13 +194,13 @@ void QuestCounter_Step(void)
             (w->step)++;
             w->questId = post->quest;
             gFieldControl = 1;
-            WinSlide_Step(&w->questWin, 0x280, 0x118);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            WinSlide_Step(&w->questWin, 640, 280);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             break;
         }
         break;
     case QUEST_COUNTER_OPEN_QUEST:
-        switch (WinSlide_Step(&w->questWin, 0x280, 0x118)) {
+        switch (WinSlide_Step(&w->questWin, 640, 280)) {
         case MENU_DONE:
             (w->step)++;
             break;
@@ -243,7 +227,7 @@ void QuestCounter_Step(void)
         if (QuestCounter_CanJoin(w->quest) == 0) {
             switch (gLobbyLevel2Entries[w->quest].state) {
             case 4:
-                Menu_PushNoticeOnce(0xA);
+                Menu_PushNoticeOnce(10);
                 break;
             default:
                 Menu_PushNoticeOnce(9);
@@ -277,13 +261,13 @@ void QuestCounter_Step(void)
             if (gLobbyLevel2Entries[w->quest].locked != 0) {
                 (w->step)++;
                 Talk_Say(2, 0);
-                memset(gLobbyRecs.pass, 0, 0x10); /* the password and the 7 bytes after it */
+                memset(gLobbyRecs.pass, 0, 16); /* the password and the 7 bytes after it */
                 gFieldControl = 0;
                 break;
             }
             w->step = QUEST_COUNTER_PREPARE;
             Talk_Say(3, 0);
-            LobbyText_Open(0x78);
+            LobbyText_Open(120);
             gLobbyQuestId = w->questId;
             minMembers = room->maxUsers - 1;
             gFieldControl = 0;
@@ -296,12 +280,12 @@ void QuestCounter_Step(void)
         gFieldControl = 0;
         break;
     case QUEST_COUNTER_PASSWORD:
-        Talk_YesNoBox(1);
+        Talk_YesNoBox(TALK_BOX_NO_INPUT);
         switch (QuestCounter_InputPassword(gLobbyRecs.pass)) {
         case MENU_DONE:
             (w->step)++;
             Talk_Say(3, 0);
-            LobbyText_Open(0x78);
+            LobbyText_Open(120);
             gLobbyQuestId = w->questId;
             minMembers = room->maxUsers - 1;
             gFieldControl = 0;
@@ -324,7 +308,7 @@ void QuestCounter_Step(void)
             }
             if (room->maxUsers == 2) {
                 if (gSave.arenaEms[0].emKind == 0) {
-                    LobbyText_Open(0x67);
+                    LobbyText_Open(103);
                     w->step = QUEST_COUNTER_MESSAGE;
                     w->returnStep = QUEST_COUNTER_CLOSE;
                     gFieldControl = 0;
@@ -344,7 +328,7 @@ void QuestCounter_Step(void)
         case LOBBY_STEP_DONE:
             info = Quest_CurrentInfo();
             if (info->id != w->questId) {
-                LobbyText_Open(0x62);
+                LobbyText_Open(98);
                 w->step = QUEST_COUNTER_MESSAGE;
                 w->returnStep = QUEST_COUNTER_CHOOSE_QUEST;
                 gFieldControl = 0;
@@ -365,7 +349,7 @@ void QuestCounter_Step(void)
         if (QuestCounter_CanJoin(w->quest) == 0) {
             switch (gLobbyLevel2Entries[w->quest].state) {
             case 4:
-                Menu_PushNoticeOnce(0xA);
+                Menu_PushNoticeOnce(10);
                 break;
             default:
                 Menu_PushNoticeOnce(9);
@@ -404,7 +388,7 @@ void QuestCounter_Step(void)
             }
             (w->step)++;
             gFieldControl = 0;
-            LobbyText_Open(0x61);
+            LobbyText_Open(97);
             gPlayerText.card.arenaRole = w->arenaRole;
             QuestDesk_Accept((u16)w->questId, (s16)post->money, 0);
             break;
@@ -420,7 +404,7 @@ void QuestCounter_Step(void)
         if (LobbyStep_Level2Leave() == 1) /* this step returns 1 once left */ {
             w->step = QUEST_COUNTER_MESSAGE;
             w->returnStep = QUEST_COUNTER_CLOSE;
-            LobbyText_Open(0x96);
+            LobbyText_Open(150);
         }
         break;
     case QUEST_COUNTER_ACCEPTED:
@@ -454,7 +438,6 @@ void QuestCounter_Step(void)
 }
 
 s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-void LobbyText_Open(s32);
 
 /* The arena cup's role choice, for a room of more than two: its window (kindWin)
  * slides in, then up and down move the cursor over roles 2 to 4. Circle takes the
@@ -471,10 +454,10 @@ s32 QuestCounter_ChooseArenaRole(u16 pad)
     case 0:
         w->arenaRole = 0;
         (w->subStep)++;
-        WinSlide_Step(&w->kindWin, -0xE6, 0x72);
+        WinSlide_Step(&w->kindWin, -230, 114);
         break;
     case 1:
-        switch (WinSlide_Step(&w->kindWin, -0xE6, 0x72)) {
+        switch (WinSlide_Step(&w->kindWin, -230, 114)) {
         case MENU_DONE:
             (w->subStep)++;
             break;
@@ -486,7 +469,7 @@ s32 QuestCounter_ChooseArenaRole(u16 pad)
             w->subStep = 0;
             role = w->cursor + 2;
             if (role == 3 && gSave.arenaEms[0].emKind == 0) {
-                LobbyText_Open(0x67);
+                LobbyText_Open(103);
                 return MENU_UNDONE;
             }
             w->arenaRole = role;
@@ -505,9 +488,6 @@ s32 QuestCounter_ChooseArenaRole(u16 pad)
     return MENU_RUNNING;
 }
 
-QuestInfo *Quest_FindDownloaded(u16 id);
-s32 QuestCounter_CanJoin(s16 idx);
-s32 Quest_IsDownloadId(s32);
 extern u16 gLobbyLevel2Count;
 
 /* The board's cursor: up and down over the gLobbyLevel2Count rooms (QuestCounterMenu.quest).
@@ -552,9 +532,7 @@ s32 QuestCounter_ChooseQuest(u16 pad)
     return MENU_RUNNING;
 }
 
-s32 QuestCounter_CanJoin(s16 idx);
 s32 Menu_WrapLeftRight(s32 arg0, s32 arg1);
-s32 Menu_PushNoticeOnce(s32 arg0);
 
 /* The quest window: left and right turn its pages. Circle gives MENU_DONE; cross,
  * or a room that can no longer be joined (with a notice), MENU_CANCEL; MENU_RUNNING
@@ -592,10 +570,6 @@ s32 QuestCounter_ViewQuest(u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Quest_CheckOrderTerms(u8 id, u8 flag);
-void Talk_Say(s32 arg0, s8 arg1);
-s32 LobbyTime_IsPm(void);
-
 /* Whether the chosen quest can't be taken: 1, with a message, for an arena cup
  * quest while it isn't afternoon in the town (LobbyTime_IsPm) or when the room's
  * record 2 is at its first value and gSave.arenaEms[0] holds no monster; for a
@@ -608,11 +582,11 @@ s32 QuestCounter_CheckQuest(void)
 
     if (post->desk == 3) {
         if (LobbyTime_IsPm() == 0) {
-            LobbyText_Open(0x91);
+            LobbyText_Open(145);
             return 1;
         }
         if (gLobbyRecs.rec[2].cur == 0 && gSave.arenaEms[0].emKind == 0) {
-            LobbyText_Open(0x66);
+            LobbyText_Open(102);
             return 1;
         }
     }
@@ -623,26 +597,20 @@ s32 QuestCounter_CheckQuest(void)
     }
     if (Quest_CheckOrderTerms(info->terms, 1) == 0) {
         if (post->desk == 3) {
-            LobbyText_Open(0x92);
+            LobbyText_Open(146);
         } else {
-            LobbyText_Open(0x65);
+            LobbyText_Open(101);
         }
         return 1;
     }
     if (post->money > gSave.money) {
-        LobbyText_Open(0x68);
+        LobbyText_Open(104);
         return 1;
     }
     return 0;
 }
 
-u16 Pad_GetPressedRepeat(s32 pad);
-void * LobbyLevel2_Entry(s32 arg0);
 s8 Kbd_Run(char *dst, s16 held, s16 pressed);
-void Kbd_Cancel(void);
-void Kbd_SetPos(s32 n, f32 f);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
-u8 Kbd_UsbNewKey(void);
 
 /* The room's password: opens the chat keyboard for 8 characters into pass, runs it
  * and returns MENU_DONE once it is closed; MENU_CANCEL (with a notice) when the
@@ -659,7 +627,7 @@ s32 QuestCounter_InputPassword(void *pass)
     switch (step = w->subStep) {
     case 0:
         w->subStep = step + 1;
-        Kbd_SetPos(0x3A, 80.0f);
+        Kbd_SetPos(58, 80.0f);
         Chat_OpenKbd(0, 6, 8, pass);
         gFieldControl = 0;
         break;
@@ -671,7 +639,7 @@ s32 QuestCounter_InputPassword(void *pass)
         if (QuestCounter_CanJoin(w->quest) == 0) {
             switch (room->state) {
             case 4:
-                Menu_PushNoticeOnce(0xA);
+                Menu_PushNoticeOnce(10);
                 break;
             default:
                 Menu_PushNoticeOnce(9);
@@ -772,20 +740,16 @@ s32 QuestCounter_OpenWindows(s32 fromX, s32 toX)
 
 INCLUDE_RODATA("asm/lobby/nonmatchings/quest_counter", gQuestCounterLabelFmt);
 
-void Text_PrintfColored(const char *, ...);
 void Font_SetSpacing(u8 a, u8 b);
 void Font_SetPos(s16, s16);
-s32 sprintf(char *, const char *, ...);
 void Sjis_Widen(char *, char *);
 extern char gQuestCounterLabelFmt[];
-char *strcpy(char *, const char *);
-void Text_Printf(const char *fmt, ...);
 
 #pragma optimization_level 4
 /* Draws the text of board row `row`: the room's label, then for an open room with
  * a quest the hall and desk it was posted at, the poster (its user id while
  * gChatHideNames, else its name), the members out of the room's size and the fee
- * if any (this half from x + 0x40); for any other room its state alone. Returns the
+ * if any (this half from x + 64); for any other room its state alone. Returns the
  * row panel's colour: grey for a room not open or a quest from another hall.
  * Built at optimization level 4, which gives the game's code for this function
  * (the file's other functions build the same at levels 3 and 4). */
@@ -798,12 +762,12 @@ s32 QuestCounter_DrawBoardRow(s16 x, s16 y, s16 row)
     u32 textColor;
     char *label;
     s32 lineY;
-    char line[0x40];
-    char wide[0x40];
+    char line[64];
+    char wide[64];
 
     post = &gPostedQuests[row];
     room = &gLobbyLevel2Entries[row];
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (post->area == gScene.area) {
         textColor = 0x80101010;
         feeColor = 0x80301010;
@@ -814,8 +778,8 @@ s32 QuestCounter_DrawBoardRow(s16 x, s16 y, s16 row)
         panelColor = 0xFF808080;
     }
     Font_SetColor(textColor);
-    lineY = y + 0x1B;
-    Font_SetPos(x + 0x24, lineY);
+    lineY = y + 27;
+    Font_SetPos(x + 36, lineY);
     Text_PrintfColored(gArenaFeedTexts[ARENA_FEED_DIGITS + 1 + row]); /* the row number, from 1 */
     textColor = 0x80101010;
     if (room->state != 3 || post->quest == 0) {
@@ -845,7 +809,7 @@ s32 QuestCounter_DrawBoardRow(s16 x, s16 y, s16 row)
         }
         if (label != NULL) {
             Font_SetColor(textColor);
-            Font_SetPos(Text_CenterX(label, x + 0xBE, 0x12), lineY);
+            Font_SetPos(Text_CenterX(label, x + 190, 18), lineY);
             Text_PrintfColored(label);
         }
         return 0xFF808080;
@@ -853,9 +817,9 @@ s32 QuestCounter_DrawBoardRow(s16 x, s16 y, s16 row)
     if (post->money != 0) {
         y += 8;
     } else {
-        y += 0x11;
+        y += 17;
     }
-    x += 0x40;
+    x += 64;
     Font_SetPos(x, y);
     switch (post->area) {
     case AREA_TAVERN:
@@ -871,33 +835,27 @@ s32 QuestCounter_DrawBoardRow(s16 x, s16 y, s16 row)
     }
     Text_Printf(gQuestCounterLabelFmt, label, gQuestBoardRows[BOARD_ROW_FREE + post->desk]); /* the desks' names follow the three halls' */
     Font_SetColor(textColor);
-    memset(line, 0, 0x11);
+    memset(line, 0, 17);
     if (gChatHideNames) {
         strcpy(line, post->userId);
     } else {
         strcpy(line, post->name);
     }
-    Font_SetPos(x, y += 0x14);
+    Font_SetPos(x, y += 20);
     Text_PrintfColored(gQuestCounterLabelFmt, gQuestBoardRows[BOARD_ROW_TAKER], line);
-    Font_SetPos(x + 0xA2, y);
+    Font_SetPos(x + 162, y);
     sprintf(line, gQuestBoardRows[BOARD_ROW_MEMBERS_FMT], room->users, room->maxUsers);
     Sjis_Widen(line, wide);
     Text_PrintfColored(wide);
     if (post->money != 0) {
         Font_SetColor(feeColor);
-        Font_SetPos(x, y + 0x14);
+        Font_SetPos(x, y + 20);
         Text_PrintfColored(gQuestBoardRows[BOARD_ROW_WANTED], post->money);
     }
     return panelColor;
 }
 #pragma optimization_level reset
 
-void Font_SetSpacing(u8 a, u8 b);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-s32 QuestCounter_DrawBoardRow(s16 x, s16 y, s16 i);
-void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 colour, s32 spr, u8 a);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
 extern u16 gFrameTick;
 
 /* The quest board: its title bar and the money held, then a panel per room at its
@@ -913,15 +871,15 @@ void QuestCounter_DrawBoard(WinSlide *win, s16 y)
     s16 x;
     s16 blink;
 
-    Font_SetSpacing(0x14, 0x14);
-    Menu_DrawLabelBar(0xF0, 0x12, 0xA0, 0xFFB0B000, gListTitles[LIST_TITLE_HUNTER_RECRUIT], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(20, 20);
+    Menu_DrawLabelBar(240, 18, 160, 0xFFB0B000, gListTitles[LIST_TITLE_HUNTER_RECRUIT], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     for (i = 0; i < gLobbyLevel2Count; i++, win++) {
         x = win->pos;
         panelColor = QuestCounter_DrawBoardRow(x, y, i);
-        Icon_DrawMode(x, y, 0x17C, 0x48, panelColor, 0, i % 4);
+        Icon_DrawMode(x, y, 380, 72, panelColor, 0, i % 4);
         if (gLobbyLevel2Entries[i].locked != 0) {
-            Icon_Draw(x + 0x14, y + 4, 0x1A, 0x16, -1, 0x47);
+            Icon_Draw(x + 20, y + 4, 26, 22, -1, 71);
         }
         if (i == menu->quest) {
             if (gFrameTick & 0x10) {
@@ -929,65 +887,54 @@ void QuestCounter_DrawBoard(WinSlide *win, s16 y)
             } else {
                 blink = 0;
             }
-            Icon_Draw(x - 10 + blink, y + 0x14, 0x20, 0x20, 0xFFA0A040, 0x29);
-            Icon_Draw(x + 0x166 - blink, y + 0x14, 0x20, 0x20, 0xFFA0A040, 0x28);
+            Icon_Draw(x - 10 + blink, y + 20, 32, 32, 0xFFA0A040, 41);
+            Icon_Draw(x + 358 - blink, y + 20, 32, 32, 0xFFA0A040, 40);
         }
-        y += 0x4E;
+        y += 78;
     }
 }
 
 /* unit's own declaration: an s32 result; with the definition's u8, Quest_DrawArenaTeams and QuestCounter_DrawMembers compile differently */
 s32 Equip_GetClass(EquipItem *e);
-char *Quest_GetText(u16 id, s32 k);
-void Text_PrintfColored(const char *, ...);
 /* unit's own declaration: s16 x and y, a u8 fifth and an s32 sixth argument; with the definition's s32, s32, s32, s32, s16, s8, QuestCounter_DrawMembers and Quest_DrawArenaTeams compile differently */
 void Icon_DrawWeaponClass(s16, s16, s32, s32, u8, s32);
-s32 sprintf(char *, const char *, ...);
-void Font_SetPos(s16, s16);
-void Sjis_Widen(char *, char *);
-extern char gQuestCounterLabelFmt[];
 
 /* The quest window's members page: the quest's title, then the room's four
  * members (QuestCounterMenu.members) with their weapon class icon, name and user
  * id. y steps once inside a call's arguments, as the game's code does. */
 void QuestCounter_DrawMembers(s16 x, s16 y, QuestInfo *quest)
 {
-    char line[0x40];
-    char wide[0x60];
+    char line[64];
+    char wide[96];
     NetUser *member;
     s32 i;
 
     member = ((QuestCounterMenu *)&gMenuWork)->members;
-    Font_SetPos(x, y += 0x14);
+    Font_SetPos(x, y += 20);
     Text_PrintfColored("%s", Quest_GetText(quest->id, 0));
-    y += 0x32;
+    y += 50;
     Font_SetColor(0x80101010);
-    x += 0x32;
+    x += 50;
     for (i = 0; i < LOBBY_ROOM_USER_COUNT; i++) {
         if (member->id[0] != 0) {
-            Icon_DrawWeaponClass(x - 0x36, y + 2, 0x28, -1, Equip_GetClass(&((HunterCard *)member->text)->weapon), 1);
+            Icon_DrawWeaponClass(x - 54, y + 2, 40, -1, Equip_GetClass(&((HunterCard *)member->text)->weapon), 1);
             sprintf(line, gQuestCounterLabelFmt, gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL], member->name);
             Sjis_Widen(line, wide);
             Font_SetPos(x, y);
             Text_PrintfColored(wide);
-            y += 0x14;
+            y += 20;
             sprintf(line, gQuestCounterLabelFmt, gLobbyLabelTexts[LOBBY_LABEL_ID], member->id);
             Sjis_Widen(line, wide);
             Font_SetPos(x, y);
             Text_PrintfColored(wide);
         }
-        y += 0x1A;
+        y += 26;
         member++;
     }
 }
 
-void Quest_DrawOverview(s16, s16, QuestInfo *);
-void Quest_DrawTerms(s16, s16, QuestInfo *);
-void Quest_DrawDetails(s16, s16, QuestInfo *);
-void QuestCounter_DrawMembers(s16, s16, QuestInfo *);
-
 /* The quest window's page (QuestCounterMenu.page) for a quest other than the arena
- * cup's: the overview, the terms, the details or the members, from x + 0x28. */
+ * cup's: the overview, the terms, the details or the members, from x + 40. */
 void QuestCounter_DrawQuestPage(s16 x, s16 y)
 {
     QuestCounterMenu *w = (QuestCounterMenu *)&gMenuWork;
@@ -997,21 +944,20 @@ void QuestCounter_DrawQuestPage(s16 x, s16 y)
     Font_SetColor(0x80101010);
     switch (w->page) {
     case 0:
-        Quest_DrawOverview(x + 0x28, y, info);
+        Quest_DrawOverview(x + 40, y, info);
         break;
     case 1:
-        Quest_DrawTerms(x + 0x28, y, info);
+        Quest_DrawTerms(x + 40, y, info);
         break;
     case 2:
-        Quest_DrawDetails(x + 0x28, y, info);
+        Quest_DrawDetails(x + 40, y, info);
         break;
     case 3:
-        QuestCounter_DrawMembers(x + 0x28, y, info);
+        QuestCounter_DrawMembers(x + 40, y, info);
         break;
     }
 }
 
-u8 Lobby_FindMember(u8 *id);
 extern NetUser gNetUsers[];
 
 /* The arena cup's teams page: under the cup's title, the members in list (four
@@ -1025,7 +971,7 @@ extern NetUser gNetUsers[];
 void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
 {
     s16 rowY;
-    char line[0x40];
+    char line[64];
     s16 nameX;
     NetUser *role2User;
     NetUser *netUser;
@@ -1033,20 +979,20 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
     char *label;
     s16 i;
     NetUser *role3User;
-    char wide[0x60];
+    char wide[96];
     s8 netIndex;
     NetUser *role1User;
     s16 shown;
     HunterCard *card;
 
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80301010);
-    Font_SetPos(Text_CenterX(gQuestBoardRows[BOARD_ROW_ARENA_CUP], x + 0xA0, 0x12), y += 0x14);
+    Font_SetPos(Text_CenterX(gQuestBoardRows[BOARD_ROW_ARENA_CUP], x + 160, 18), y += 20);
     Text_PrintfColored(gQuestBoardRows[BOARD_ROW_ARENA_CUP]);
-    Font_SetPos(Text_CenterX(gQuestCounterTexts[QUEST_COUNTER_TEXT_TEAM_A], x + 0xA0, 0x12), y += 0x28);
+    Font_SetPos(Text_CenterX(gQuestCounterTexts[QUEST_COUNTER_TEXT_TEAM_A], x + 160, 18), y += 40);
     Text_PrintfColored(gQuestCounterTexts[QUEST_COUNTER_TEXT_TEAM_A]);
-    y += 0x1E;
-    nameX = x + 0x5A;
+    y += 30;
+    nameX = x + 90;
     Font_SetColor(0x80101010);
     for (shown = 0, i = 0, role1User = list; i < LOBBY_ROOM_USER_COUNT; i++, role1User++) {
         if (role1User->id[0] != 0) {
@@ -1055,16 +1001,16 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
             card = (HunterCard *)netUser->text;
             if (((HunterCard *)netUser->text)->arenaRole == 1) {
                 rowY = y;
-                Icon_DrawWeaponClass(nameX - 0x36, rowY + 2, 0x28, -1, Equip_GetClass(&card->weapon), 1);
+                Icon_DrawWeaponClass(nameX - 54, rowY + 2, 40, -1, Equip_GetClass(&card->weapon), 1);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL], role1User->name);
                 Sjis_Widen(line, wide);
                 Font_SetPos(nameX, y);
                 Text_PrintfColored(wide);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyLabelTexts[LOBBY_LABEL_ID], role1User->id);
                 Sjis_Widen(line, wide);
-                Font_SetPos(nameX, rowY + 0x14);
+                Font_SetPos(nameX, rowY + 20);
                 Text_PrintfColored(wide);
-                y += 0x2E;
+                y += 46;
                 shown++;
             }
         }
@@ -1076,16 +1022,16 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
             card = (HunterCard *)netUser->text;
             if (((HunterCard *)netUser->text)->arenaRole == 2) {
                 rowY = y;
-                Icon_DrawWeaponClass(nameX - 0x36, rowY + 2, 0x28, -1, Equip_GetClass(&card->weapon), 1);
+                Icon_DrawWeaponClass(nameX - 54, rowY + 2, 40, -1, Equip_GetClass(&card->weapon), 1);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL], role2User->name);
                 Sjis_Widen(line, wide);
                 Font_SetPos(nameX, y);
                 Text_PrintfColored(wide);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyLabelTexts[LOBBY_LABEL_ID], role2User->id);
                 Sjis_Widen(line, wide);
-                Font_SetPos(nameX, rowY + 0x14);
+                Font_SetPos(nameX, rowY + 20);
                 Text_PrintfColored(wide);
-                y += 0x2E;
+                y += 46;
                 shown++;
             }
         }
@@ -1093,15 +1039,15 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
     if (shown == 0 && gLobbyLevel2Entries[room].maxUsers >= 3) {
         label = gQuestCounterTexts[QUEST_COUNTER_TEXT_OPEN];
         Font_SetColor(0x80101050);
-        Font_SetPos(Text_CenterX(label, x + 0xA0, 0x12), y);
+        Font_SetPos(Text_CenterX(label, x + 160, 18), y);
         Text_PrintfColored(label);
     }
-    y = 0xF4;
+    y = 244;
     Font_SetColor(0x80301010);
-    Font_SetPos(Text_CenterX(gQuestCounterTexts[QUEST_COUNTER_TEXT_TEAM_B], x + 0xA0, 0x12), y += 0x1E);
+    Font_SetPos(Text_CenterX(gQuestCounterTexts[QUEST_COUNTER_TEXT_TEAM_B], x + 160, 18), y += 30);
     Text_PrintfColored(gQuestCounterTexts[QUEST_COUNTER_TEXT_TEAM_B]);
-    y += 0x1E;
-    nameX = x + 0x5A;
+    y += 30;
+    nameX = x + 90;
     shown = 0;
     Font_SetColor(0x80101010);
     for (i = 0, role3User = list; i < LOBBY_ROOM_USER_COUNT; i++, role3User++) {
@@ -1111,16 +1057,16 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
             card = (HunterCard *)netUser->text;
             if (((HunterCard *)netUser->text)->arenaRole == 3) {
                 rowY = y;
-                Icon_DrawWeaponClass(nameX - 0x36, rowY + 2, 0x28, -1, Equip_GetClass(&card->weapon), 1);
+                Icon_DrawWeaponClass(nameX - 54, rowY + 2, 40, -1, Equip_GetClass(&card->weapon), 1);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL], role3User->name);
                 Sjis_Widen(line, wide);
                 Font_SetPos(nameX, y);
                 Text_PrintfColored(wide);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyLabelTexts[LOBBY_LABEL_ID], role3User->id);
                 Sjis_Widen(line, wide);
-                Font_SetPos(nameX, rowY + 0x14);
+                Font_SetPos(nameX, rowY + 20);
                 Text_PrintfColored(wide);
-                y += 0x2E;
+                y += 46;
                 shown++;
             }
         }
@@ -1128,9 +1074,9 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
     if (shown == 0) {
         label = gQuestCounterTexts[QUEST_COUNTER_TEXT_OPEN];
         Font_SetColor(0x80101050);
-        Font_SetPos(Text_CenterX(label, x + 0xA0, 0x12), y);
+        Font_SetPos(Text_CenterX(label, x + 160, 18), y);
         Text_PrintfColored(label);
-        y += 0x2E;
+        y += 46;
     }
     shown = 0;
     Font_SetColor(0x80101010);
@@ -1141,16 +1087,16 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
             card = (HunterCard *)netUser->text;
             if (((HunterCard *)netUser->text)->arenaRole == 4) {
                 rowY = y;
-                Icon_DrawWeaponClass(nameX - 0x36, rowY + 2, 0x28, -1, Equip_GetClass(&card->weapon), 1);
+                Icon_DrawWeaponClass(nameX - 54, rowY + 2, 40, -1, Equip_GetClass(&card->weapon), 1);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyHelpTexts[LOBBY_HELP_NAME_LABEL], role4User->name);
                 Sjis_Widen(line, wide);
                 Font_SetPos(nameX, y);
                 Text_PrintfColored(wide);
                 sprintf(line, gQuestCounterLabelFmt, gLobbyLabelTexts[LOBBY_LABEL_ID], role4User->id);
                 Sjis_Widen(line, wide);
-                Font_SetPos(nameX, rowY + 0x14);
+                Font_SetPos(nameX, rowY + 20);
                 Text_PrintfColored(wide);
-                y += 0x2E;
+                y += 46;
                 shown++;
             }
         }
@@ -1158,30 +1104,28 @@ void Quest_DrawArenaTeams(s16 x, s16 y, NetUser *list, s8 room)
     if (shown == 0 && gLobbyLevel2Entries[room].maxUsers >= 3) {
         label = gQuestCounterTexts[QUEST_COUNTER_TEXT_OPEN];
         Font_SetColor(0x80101050);
-        Font_SetPos(Text_CenterX(label, x + 0xA0, 0x12), y);
+        Font_SetPos(Text_CenterX(label, x + 160, 18), y);
         Text_PrintfColored(label);
     }
 }
 
-s32 ArenaCup_IsFormRowOpen(s8);
-
 /* gLobbyRecs seen as rows of sizeof(LobbyRec) bytes from its start: row i starts
- * 0x55 bytes (the head of LobbyRecs) before rec[i], so from +0x56 on its fields are
+ * 85 bytes (the head of LobbyRecs) before rec[i], so from +0x56 on its fields are
  * rec[i]'s. QuestCounter_DrawRoomSettings reads the records through it: the game's code
  * indexes them from gLobbyRecs' start, and &gLobbyRecs.rec[i] costs one more
  * register. */
 typedef struct LobbyRecRow {
-    /* 0x000 */ u8 head[0x56];          /* LobbyRecs' head and rec[i].flags */
-    /* 0x056 */ char name[0x41];
+    /* 0x000 */ u8 head[86];          /* LobbyRecs' head and rec[i].flags */
+    /* 0x056 */ char name[65];
     /* 0x097 */ u8 subCount;
     /* 0x098 */ u8 editable;
     /* 0x099 */ u8 defaultChoice;
     /* 0x09A */ u8 cur;                 /* the value chosen */
-    /* 0x09B */ u8 pad9B[0xBD - 0x9B];
-    /* 0x0BD */ char subName[0x20][0x41];
-    /* 0x8DD */ u8 unk8DD[0x14A8 - 0x8DD];
+    /* 0x09B */ u8 pad9B[189 - 155];
+    /* 0x0BD */ char subName[32][65];
+    /* 0x8DD */ u8 unk8DD[5288 - 2269];
 } LobbyRecRow;
-typedef char LobbyRecRow_size_check[(sizeof(LobbyRecRow) == 0x14A8) ? 1 : -1];
+typedef char LobbyRecRow_size_check[(sizeof(LobbyRecRow) == 5288) ? 1 : -1];
 
 /* The arena cup's settings page: under the cup's title, each of the room's
  * gLobbyRecs.n records with the value chosen; the fourth only while
@@ -1192,11 +1136,11 @@ void QuestCounter_DrawRoomSettings(s16 x, s32 startY, s32 room)
     s16 i;
     LobbyRecRow *row;
 
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80301010);
-    Font_SetPos(Text_CenterX(gQuestBoardRows[BOARD_ROW_ARENA_CUP], x + 0xA0, 0x12), y += 0x14);
+    Font_SetPos(Text_CenterX(gQuestBoardRows[BOARD_ROW_ARENA_CUP], x + 160, 18), y += 20);
     Text_PrintfColored(gQuestBoardRows[BOARD_ROW_ARENA_CUP]);
-    y += 0x14;
+    y += 20;
     for (i = 0; i < gLobbyRecs.n; i++) {
         row = &((LobbyRecRow *)&gLobbyRecs)[i];
         if (i == 3) {
@@ -1209,10 +1153,10 @@ void QuestCounter_DrawRoomSettings(s16 x, s32 startY, s32 room)
             }
         }
         Font_SetColor(0x80301010);
-        Font_SetPos(x + 0x28, y += 0x14);
+        Font_SetPos(x + 40, y += 20);
         Text_PrintfColored("%10s%s", row->name, gLobbyWords[LOBBY_WORD_COLON]);
         Font_SetColor(0x80101010);
-        Font_SetPos((s16)(x + 0x28) + 0x6C, y);
+        Font_SetPos((s16)(x + 40) + 108, y);
         Text_PrintfColored(row->subName[row->cur]);
     }
 }

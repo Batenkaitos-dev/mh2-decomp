@@ -4,7 +4,7 @@
 #include "common.h"
 
 /*
- * The memory card menu (gCardMenu, 0xBC bytes):
+ * The memory card menu (gCardMenu, 188 bytes):
  * one state machine per mode (CardMenu_Run*), for loading, saving and the NET file.
  * NetMenu_SetState sets the state; each state draws a message box and moves on.
  */
@@ -14,7 +14,7 @@ typedef struct NetMenu {
     u8 charLoaded;              /* 0x2: 1 (or 2) once a character was loaded or read into the slots (the save checks the slot then) */
     s8 slotSel;                 /* 0x03: the highlighted slot of CardMenu_DrawSlotFrames */
     s16 timer;                  /* 0x04 */
-    s16 charNo;                 /* 0x06: a character slot: the one being read (CardSave_ReadCharacters: slots + it * 0x37F8), the choice that sets charIndex (CardNew_ChooseSlot, CardLoad_CheckPatch) */
+    s16 charNo;                 /* 0x06: a character slot: the one being read (CardSave_ReadCharacters: slots + it * 14328), the choice that sets charIndex (CardNew_ChooseSlot, CardLoad_CheckPatch) */
     u8 pad8[8];
     u16 badVersion;             /* 0x10: set by SaveFile_Decrypt */
     u16 badSum;                 /* 0x12: set by SaveFile_Decrypt */
@@ -46,7 +46,7 @@ typedef struct NetMenu {
     u8 pad80[4];
     s32 filesToWrite;           /* 0x84: the card files the save writes, CARD_FILE_* bits (CardState_SetFlag) */
     s32 fileKind;               /* 0x88: the card file: 1 system, 2/4/8 character 0-2, 0x10 patch */
-    u8 *iconBuf;                /* 0x8C..0x98: buffers in gLoadBuf: the save icons (file 0x1714/0x1715, CardOp_SetFiles) */
+    u8 *iconBuf;                /* 0x8C..0x98: buffers in gLoadBuf: the save icons (file 5908/5909, CardOp_SetFiles) */
     s32 imageBuf;               /* 0x90: the save image (SaveMenu_CopyAll; an integer: SaveBuf_Offset takes it) */
     u8 *readBuf;                /* 0x94: the file read from the card */
     struct SaveData *slots;     /* 0x98: the save slots of the three characters (SaveData[3]) */

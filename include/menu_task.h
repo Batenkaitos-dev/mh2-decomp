@@ -5,7 +5,7 @@
 
 /*
  * A menu task of the lobby (created by the menu system, lobby 0x7BCA00; the
- * lobby menu drives eight of them, sub_main's gLobbyMenuLayer0..gLobbyMenuLayer7, 0x20 apart):
+ * lobby menu drives eight of them, sub_main's gLobbyMenuLayer0..gLobbyMenuLayer7, 32 bytes apart):
  * its draw callback gets the task and sets the text size from +0x18 first.
  */
 typedef struct MenuTask {

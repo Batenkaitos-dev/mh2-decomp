@@ -1,8 +1,9 @@
 #ifndef EM_KIND1D_H
 #define EM_KIND1D_H
+#include "em.h"
 
 /*
- * Monster kind 0x1D's vocabulary (the code in em_kind1d.c). No code shows
+ * Monster kind 29's vocabulary (EmKind1D_*, the kind in hex). No code shows
  * its species: it never moves or attacks, each of its groups has one or two
  * states that end at once or after a few frames, and its death plays its
  * variant's sound and effects.
@@ -34,5 +35,11 @@ enum EmKind1DReactState {
 enum EmKind1DDefeatState {
     KIND1D_DEFEAT_DIE = 0x00  /* EmKind1D_Update's pick when a hit takes the last hp */
 };
+
+extern void *EmKind1D_Callbacks[8];
+void EmKind1D_Init(Em *em);
+void EmKind1D_Die(Em *em);
+void EmKind1D_Update(Em *em);
+void EmKind1D_RunState(Em *em);
 
 #endif

@@ -20,68 +20,57 @@
 #include "lobby_text.h"
 #include "menu_task.h"
 #include "pad.h"
+#include "chat_log.h"
+#include "lobby_servers.h"
+#include "stream.h"
+#include "text.h"
+#include "move_menu.h"
+#include "area_list.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_disconnect.h"
+#include "lobby_util.h"
+#include "lobby_village.h"
+#include "lobby_web_users.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "quit_menu.h"
+#include "rand.h"
+#include "screen_fade.h"
+#include "libc.h"
 
-#define SERVER_PANEL_W 0x10E
-#define SERVER_PANEL_H 0x130
+#define SERVER_PANEL_W 270
+#define SERVER_PANEL_H 304
 
-extern IconSprite gIconSprites[];
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Text_SetSize(s32);
-void Font_SetSpacing(u8 a, u8 b);
 extern u8 gMenuWork;
 void LobbySrv_DrawServerPanel(s32, s32); /* unit's own declaration: the definition is in the old (K&R) style, so its short parameters arrive as ints, as here; a prototype with short parameters doesn't agree with such a definition */
 void Text_PrintfColored(const char *, ...);
-char *LobbySrv_MyName(void);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 extern char gMoveMenuTextFmt[];
-void MoveMenu_DrawAreaPage(MenuTask *task);
-void MoveMenu_DrawAreaList(s16 x, s16 y);
 void LobbyHelp_Draw(void);
-s32 LobbySrv_HasCurName(void);
 char *LobbySrv_CurName(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern s16 gHouseCloseTimer;
-s32 Menu_PushNoticeOnce(s32);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LobbyMenu_Init(void);
-void *memset(void *dst, s32 c, u32 n);
 extern s8 gMenuInputLock;
 extern u8 gLobbyLevel0Sel;
-void AreaList_Group(AreaList *list);
-void LobbySe_Play(s32 se);
 void LobbyHelp_SetText(void *text);
 void LobbyHelp_SetBox(s16 x, s16 y, s16 w);
 
-void Stream_Stop(s32 ch);
-s32 QuitMenu_Update(u16 pad);
-void MoveMenu_Close(void);
-void MoveMenu_OpenPick(void);
-s32 MoveMenu_PickInput(u16 pad);
-u16 LobbyPad_Get(s32 a);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 Menu_YesNoInput(void);
 void Menu_SetYesNo(u8 a); /* unit's own declaration: declared here as the callers use it; with the definition's void (s8 choice), MoveMenu_Update compiles differently */
 void LobbyDialog_Grow(void);
 void LobbyText_Open(s32);
-void Lobby_Disconnect(s32 a);
-void LobbyVillage_BeginStay(void);
-void FadeA_Start(s32 a);
 extern LobbyMenu *gLobbyMenu;
 #pragma rodata on
 /* the plain string format ("%s") the panels print their texts with */
-char gMoveMenuTextFmt[0x8] = {
+char gMoveMenuTextFmt[8] = {
 #include "lobby/00838298.inc"
 };
 /* an area's line: its users and its limit */
-char gMoveMenuUsersFmt[0x10] = {
+char gMoveMenuUsersFmt[16] = {
 #include "lobby/008382A0.inc"
 };
 #pragma rodata off
-
-void MoveMenu_DrawBack(MenuTask *task);
-void MoveMenu_DrawFront(MenuTask *task);
 
 /* Opens the move menu from the town: its question (LOBBY_TEXT_MOVE_ASK)
  * with the cursor on MOVE_CHOICE_AREA. */
@@ -224,16 +213,9 @@ void MoveMenu_OpenPick(void)
         }
     }
     LobbyHelp_SetText(QDL_AREA_KIND_HELP(menu->list.groups[menu->list.group].kind));
-    LobbyHelp_SetBox(0x140, 0x16A, 0x140);
+    LobbyHelp_SetBox(320, 362, 320);
 }
 
-s32 Lobby_CanEnterByRank(s32 i, s32 again);
-u16 Rand_Next(s32 stream);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-void FadeB_Start(s32);
-u8 FadeB_GetState(void);
-s32 LobbyLogin_EnterEntry(s32 a, s32 b);
-void ChatLog_Clear(void);
 void LobbyDialog_OpenWait(void *text);
 /*
  * The areas' pages' input (MoveMenu.pick, enum MovePickStep): waits for the
@@ -298,7 +280,7 @@ s32 MoveMenu_PickInput(u16 pad)
         }
         if (kind != menu->list.groups[menu->list.group].kind) {
             LobbyHelp_SetText(QDL_AREA_KIND_HELP(menu->list.groups[menu->list.group].kind));
-            LobbyHelp_SetBox(0x140, 0x16A, 0x140);
+            LobbyHelp_SetBox(320, 362, 320);
         }
         break;
     case MOVE_PICK_STAMP:
@@ -359,7 +341,7 @@ void LobbySrv_DrawWaitMark(s16 x, s16 y, s16 w)
     s16 width = sprite->uv1.u - sprite->uv0.u;
     s16 height = sprite->uv1.v - sprite->uv0.v;
 
-    Icon_Draw(x + 0xC, y + 0x10, width * 2, height * 2, 0xA0987222, ICON_SERVER_WAIT);
+    Icon_Draw(x + 12, y + 16, width * 2, height * 2, 0xA0987222, ICON_SERVER_WAIT);
 }
 
 /*
@@ -385,7 +367,7 @@ s16 y;
         return;
     }
     Font_SetColor(0x80101010);
-    Font_SetPos(x + 0x14, y + 0xA);
+    Font_SetPos(x + 20, y + 10);
     Text_PrintfColored(gMoveMenuTextFmt, LobbySrv_CurName());
 }
 
@@ -395,17 +377,11 @@ void LobbySrv_DrawListNamePanel(s16 x, s16 y)
 {
     Icon_Draw(x, y, SERVER_PANEL_W, SERVER_PANEL_H, -1, ICON_PANEL_SERVER);
     Font_SetColor(0x80101010);
-    Font_SetPos(x + 0x14, y + 0xA);
+    Font_SetPos(x + 20, y + 10);
     Text_PrintfColored(gMoveMenuTextFmt, LobbySrv_MyName());
 }
 
 extern LevelEntry gLobbyLevel0Entries[];
-u32 AreaList_KindColor(u8 slot);
-void LobbyUi_DrawIcon(s16 x, s16 y, s16 size, u32 color, s8 kind);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
 
 /*
  * Draws the areas' panel at (x, y): the page's kind mark in the kind's
@@ -428,29 +404,29 @@ void MoveMenu_DrawAreaList(s16 x, s16 y)
     s16 i;
     u32 color;
 
-    Icon_Draw(x, y, SERVER_PANEL_W, SERVER_PANEL_H, -1, ICON_PANEL_AREAS);
+    Icon_Draw(x, y, SERVER_PANEL_W, SERVER_PANEL_H, -1, ICON_PANEL);
     entry = &gLobbyLevel0Entries[menu->list.groups[menu->list.group].ids[0] - 1];
     color = AreaList_KindColor(entry->kind);
-    LobbyUi_DrawIcon(x + 0x87, y + 0x98, 0x70, color, 2);
+    LobbyUi_DrawLevelMarks(x + 135, y + 152, 112, color, 2);
     if (menu->step == MOVE_MENU_PICK && (menu->pick == MOVE_PICK_STAMP || menu->pick == MOVE_PICK_ENTER)) {
         Menu_DrawStamp(x, y, SERVER_PANEL_W, SERVER_PANEL_H, (u16)menu->list.stampSeed, menu->list.shake);
     }
-    x += 0x14;
-    Menu_DrawPageNum(x + 0xB4, y + 0xA, menu->list.group, menu->list.groupCount, 1);
+    x += 20;
+    Menu_DrawPageNum(x + 180, y + 10, menu->list.group, menu->list.groupCount, 1);
     Font_SetColor(0x80101010);
-    Font_SetPos(x, y + 0xA);
+    Font_SetPos(x, y + 10);
     Text_PrintfColored(gMoveMenuTextFmt, gListTitles[LIST_TITLE_AREA_LIST]);
     Font_SetColor(0xFF202060);
-    y += 0x1E;
+    y += 30;
     Font_SetPos(x, y);
     Text_PrintfColored(gMoveMenuTextFmt, gListTitles[LIST_TITLE_AREA_NAME]);
-    Font_SetPos(x + 0xB4, y);
+    Font_SetPos(x + 180, y);
     Text_PrintfColored(gCountLabels[COUNT_LABEL_PEOPLE]);
-    Menu_DrawDashLine(x, y + 0x10, 0xFA, 0xFF000000);
-    lineY += 0x22;
+    Menu_DrawDashLine(x, y + 16, 250, 0xFF000000);
+    lineY += 34;
     for (i = 0; i < menu->list.groups[sameMenu->list.group].count; i++) {
         entry = &gLobbyLevel0Entries[menu->list.groups[menu->list.group].ids[i] - 1];
-        lineY += 0x14;
+        lineY += 20;
         Font_SetPos(x, lineY);
         if (i == menu->list.index) {
             if (gFrameTick & 0x10) {
@@ -458,8 +434,8 @@ void MoveMenu_DrawAreaList(s16 x, s16 y)
             } else {
                 blink = 6;
             }
-            Icon_Draw(x, lineY + 0xE, 0xE2, 8, 0x99106060, ICON_CURSOR_BAR);
-            Menu_DrawCursorIcon(x - 0x1A - blink, lineY - 2, 0x18, 0xFF20C0C0);
+            Icon_Draw(x, lineY + 14, 226, 8, 0x99106060, ICON_CURSOR_BAR);
+            Menu_DrawCursorIcon(x - 26 - blink, lineY - 2, 24, 0xFF20C0C0);
         }
         if (gLobbyLevel0Sel == menu->list.groups[menu->list.group].ids[i]) {
             Font_SetColor(0x80404040);
@@ -467,7 +443,7 @@ void MoveMenu_DrawAreaList(s16 x, s16 y)
             Font_SetColor(0x80101010);
         }
         Text_PrintfColored(gMoveMenuTextFmt, entry->name);
-        Font_SetPos(x + 0xAA, lineY);
+        Font_SetPos(x + 170, lineY);
         Text_PrintfColored(gMoveMenuUsersFmt, entry->users, entry->maxUsers);
     }
 }
@@ -480,11 +456,11 @@ void MoveMenu_DrawBack(MenuTask *task)
     s32 slide;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     slide = menu->slide;
     switch (menu->step) {
     case MOVE_MENU_PICK:
-        LobbySrv_DrawServerPanel(slide < 0 ? 0x13A : (s16)(menu->slideStep * slide + 0x140), 0x36);
+        LobbySrv_DrawServerPanel(slide < 0 ? 314 : (s16)(menu->slideStep * slide + 320), 54);
         break;
     }
 }
@@ -498,15 +474,15 @@ void MoveMenu_DrawFront(MenuTask *task)
     s16 x;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (menu->slide < 0) {
-        x = 0x14E;
+        x = 334;
     } else {
-        x = menu->slideStep * menu->slide + 0x154;
+        x = menu->slideStep * menu->slide + 340;
     }
     switch (menu->step) {
     case MOVE_MENU_PICK:
-        LobbySrv_DrawListNamePanel(x, 0x54);
+        LobbySrv_DrawListNamePanel(x, 84);
         break;
     }
     MoveMenu_DrawAreaPage(task);
@@ -520,15 +496,15 @@ void MoveMenu_DrawAreaPage(MenuTask *task)
     s16 x;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (menu->slide < 0) {
-        x = 0x144;
+        x = 324;
     } else {
-        x = menu->slideStep * menu->slide + 0x14A;
+        x = menu->slideStep * menu->slide + 330;
     }
     switch (menu->step) {
     case MOVE_MENU_PICK:
-        MoveMenu_DrawAreaList(x + menu->list.shakeX, menu->list.shakeY + 0x72);
+        MoveMenu_DrawAreaList(x + menu->list.shakeX, menu->list.shakeY + 114);
         break;
     }
     if (menu->step == MOVE_MENU_PICK && menu->pick == MOVE_PICK_INPUT) {

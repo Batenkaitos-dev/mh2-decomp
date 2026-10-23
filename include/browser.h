@@ -1,19 +1,17 @@
-/* browser.h: the lobby overlay's HTML browser for the KDDI "MMBB" portal
- * (lobby 0x729AC0-0x744D70: pages, modes, input, links, forms, URLs and
- * the draw commands; the HTML parser and layout are in html.h, the image
- * decoders use zlib.h).
+/* browser.h: the lobby overlay's HTML browser for the KDDI "MMBB" portal:
+ * its pages, modes, input, links, forms, URLs, dialogs and the page's draw
+ * commands. The HTML parser and the page layout are in html.h; the image
+ * decoders use zlib.h.
  *
- * The browser's globals (.bss; the names are still splat's):
- *   gBrowserWork  BrowserWork *: the work area, &gBrowserWorkMem (0x1D2C0 bytes)
+ * The browser's globals (.bss):
+ *   gBrowserWork  BrowserWork *: the work area, &gBrowserWorkMem (119488 bytes)
  *   gBrowserState  BrowserState *: &work->state
  *   gBrowserSub  BrowserSub *: &work->sub
- *   gMmbbData  the persistent MMBB data in sub_main (0x5CAED0, 0x97C2
- *               bytes: the login id and password, the lobby server's
- *               user-id and connection-id ...), MmbbData *
+ *   gMmbbData  MmbbData *: the MMBB data, kept across lobby visits in
+ *               sub_main's gAccountData (0x5CAED0) (38850 bytes: the
+ *               login id and password, the lobby server's user-id and
+ *               connection-id ...)
  *   gBrowserTopMode  u8: the browser's top mode (BROWSER_TOP_*)
- * The lobby's first village range (0x7223C0-0x729AC0, arena_cup.c ..
- * unk_7238B0.c) is browser code too: it reads the work area by byte
- * offsets (`u8 *gBrowserWork`).
  */
 #ifndef BROWSER_H
 #define BROWSER_H
@@ -35,9 +33,9 @@
 typedef struct UrlScheme {
     u8 id;           /* URL_* */
     char prefix[16]; /* "file://" ... */
-} UrlScheme;         /* 0x11 bytes */
+} UrlScheme;         /* 17 bytes */
 
-/* The MMBB data (gMmbbData = sub_main 0x5CAED0, 0x97C2 bytes, kept
+/* The MMBB data (*gMmbbData: sub_main's gAccountData, 38850 bytes, kept
  * across lobby visits): what the portal's pages hand the game (the page's
  * <CSV> data: Mmbb_SetField's field numbers in brackets), used by the
  * lobby's login (userId and connectionId) and the server lists. */
@@ -45,6 +43,7 @@ typedef struct UrlScheme {
  * are named by number in MmbbData). */
 #define MMBB_FIELD_USER_ID 1
 #define MMBB_FIELD_CONNECTION_ID 2
+#define MMBB_FIELD_SESSION_URL 4
 #define MMBB_FIELD_NEXT_URL 5
 #define MMBB_FIELD_RESULT 6             /* the reply's result: "OK", or an error code */
 #define MMBB_FIELD_SERVER_ADDR 7        /* a lobby server's "host:port" */
@@ -56,7 +55,7 @@ typedef struct UrlScheme {
 typedef struct MmbbData {
     char userId[0x11];        /* 0x0000 [1]: the "user-id" (at most 14) */
     char connectionId[0xB];   /* 0x0011 [2]: the "connection-id" (10) */
-    char f4[0x101];           /* 0x001C [4] */
+    char sessionUrl[0x101];   /* 0x001C [4]: where a session reply posts the session's ids (Portal_HandleData) */
     char nextUrl[0x101];      /* 0x011D [5]: where the browser goes next */
     char result[0x11];        /* 0x021E [6]: "OK", or the error code (the error page shows it) */
     char serverAddr[40][0x62]; /* 0x022F [7]: each lobby server's "host:port" (LobbyNet_ConnectServer) */
@@ -71,20 +70,20 @@ typedef struct MmbbData {
     char f17[40][5];          /* 0x6EAA [17] */
     char f18[40][0x101];      /* 0x6F72 [18] */
     u8 unk979A[0x28];         /* 0x979A */
-} MmbbData;                   /* 0x97C2 bytes */
+} MmbbData;                   /* 38850 bytes */
 
-/* The lobby servers of a CRS-LBS-INFO-GET page (sub_main 0x5C09D0, a view
- * of it): a row per <CSV> entry, from the entry's fields 8 ("key,text,
- * value"), 12 and 13; Lbs_Sort sorts the rows by key, and the
- * entries' MMBB data with them. */
+/* The lobby servers of the portal's server-list page (gLobbyServers
+ * (0x5C09D0), a view of it): a row per <CSV> entry, from the entry's
+ * fields 8 ("key,text,value"), 12 and 13; Lbs_Sort sorts the rows by key,
+ * and the entries' MMBB data with them. */
 typedef struct LbsRow {
     char key[0xD];     /* 0x000: field 8's first item (at most 12 characters) */
-    char text[0xF7];   /* 0x00D: its second (at most 0xF4) */
+    char text[0xF7];   /* 0x00D: its second (at most 244) */
     s32 value;         /* 0x104: its third ("0x..." hex, or decimal) */
     s32 capacity;      /* 0x108: field 13 as a number: the server's capacity (the lobby prints users/capacity) */
     s32 users;         /* 0x10C: field 12 as a number: its users */
     u32 free;          /* 0x110: capacity - users, set by the lobby before it sorts the servers by it */
-} LbsRow;              /* 0x114 bytes */
+} LbsRow;              /* 276 bytes */
 
 typedef struct LbsList {
     LbsRow row[40];    /* 0x0000 */
@@ -113,7 +112,7 @@ typedef struct BrowserSub {
     s32 dragY;                  /* and y */
     s32 dragOfs;                /* the pointer's offset in the thumb (0: no drag) */
     s32 activeObj;              /* the page object in use: the open select list, or the text box the keyboard writes to (an obj[] index) */
-} BrowserSub; /* 0x24 bytes */
+} BrowserSub; /* 36 bytes */
 
 typedef struct BrowserState {
     u8 prevPage;                /* 0x000: the page shown before (set from page) */
@@ -125,7 +124,7 @@ typedef struct BrowserState {
     s32 pageW;                  /* 0x00C: the page's width (x scrolls up to pageW - PAGE_VIEW_W) */
     s32 pageH;                  /* 0x010: the page's height (y scrolls up to pageH - PAGE_VIEW_H) */
     u32 bgColor;                /* 0x014: the page's background colour (Html_SetBgColor; BROWSER_BLACK at start); Page_DrawObjBack draws bevels' lit edges grey on white (-1) */
-    u16 style;                  /* 0x018: the page's style flags (Page_SetStyle; 0x2E7 at start; 1, 2, 4, 8, 0x20 ...) */
+    u16 style;                  /* 0x018: the page's style flags (PAGE_STYLE_*, Page_SetStyle; HTML_PAGE_STYLE_DEFAULT at start) */
     s16 marginTop;              /* 0x01A: the margins (Page_SetMargins) */
     s16 marginBottom;           /* 0x01C */
     s16 marginLeft;             /* 0x01E */
@@ -141,14 +140,14 @@ typedef struct BrowserState {
     u8 page;                    /* 0x02E: where the page on show is in its load: enum PageLoad */
     u8 prevPageMode;            /* 0x02F: pageMode before the last Page_SetDataMode */
     u8 pageMode;                /* 0x030: the page's <CSV> block kind, CSV_KIND_* (Page_SetDataMode); the session, server-list and result kinds are data pages without form fields (Page_IsDataPage) */
-    u8 menuReached;             /* 0x031: 1 from CRS-MENU or COMP-SIGNUP (Page_SetKind) */
+    u8 menuReached;             /* 0x031: 1 from the portal's menu page or the sign-up's done page (Page_SetKind) */
     u8 unk32;                   /* 0x032 */
-    u8 fromTop;                 /* 0x033: 1 from CRS-TOP until the login id dialog (Page_SetKind) */
+    u8 fromTop;                 /* 0x033: 1 from the portal's top page until the login id dialog (Page_SetKind) */
     u8 plain;                   /* 0x034: 1: the portal's pages 1 and 2 (no frame colour, no back button) */
     s8 pageKind;                /* 0x035: what the page is to the game: enum PageKind (Page_SetKind; PAGE_KIND_NONE before) */
     s8 initMode;                /* 0x036: the argument of Browser_Init (1: ...) */
     u8 styled;                  /* 0x037: 1: Page_SetStyle ran for the page */
-    u8 styleWait;               /* 0x038: 0x1E frames from Page_SetStyle (no reload meanwhile) */
+    u8 styleWait;               /* 0x038: 30 frames from Page_SetStyle (no reload meanwhile) */
     u8 forceStyle8;             /* 0x039: 1: the reply was status 14 or 2 (Page_SetStyle adds style flag 8) */
     s8 fade;                    /* 0x03A: the fade: 16 in, -16 out (no reload meanwhile) */
     char url[0x100];            /* 0x03B: the URL asked for (Browser_Go) */
@@ -181,8 +180,8 @@ typedef struct BrowserObj {
     s8 state;                   /* 0x006: a dialog object's state: BOBJ_STATE_*, or the dialog box's BDLG_BOX_*; its update sets it, its draw follows it */
     s8 glowDir;                 /* 0x007: the dialog box's glow: GLOW_RISING or GLOW_FALLING (DlgBox_Draw) */
     u8 unk008[0x00A - 0x008];
-    s16 blink;                  /* 0x00A: the pointer object's: the focus frame's pulse, 0 to 0xFF by glow a frame; the dialog box's: a frame counter for the loading mark, 0 to 600 */
-    s16 glow;                   /* 0x00C: the dialog box's: its glow, 0 to 0xFF in steps of 15; the pointer object's: blink's step, +15 or -15 (the focus frame is red while it rises) */
+    s16 blink;                  /* 0x00A: the pointer object's: the focus frame's pulse, 0 to 255 by glow a frame; the dialog box's: a frame counter for the loading mark, 0 to 600 */
+    s16 glow;                   /* 0x00C: the dialog box's: its glow, 0 to 255 in steps of 15; the pointer object's: blink's step, +15 or -15 (the focus frame is red while it rises) */
     s16 unkE;                   /* 0x00E: seen: only cleared, by the dialog objects' create functions */
     s16 unk10;                  /* 0x010: seen: only cleared, as unkE */
     u8 unk012[0x014 - 0x012];
@@ -205,8 +204,8 @@ typedef struct BrowserObj {
     s32 color;                  /* 0x058: the draw command's color (Draw_Cmd); the draws test it signed: negative, none */
     u8 unk05C;                  /* 0x05C: seen: Page_DrawObj passes it to Page_DrawTextLine, which doesn't read it */
     u8 field;                   /* 0x05D: by kind: a text box's login field (1 the id, 2 the password, 3 ...; Form_Submit keeps their values); text's bold flag; a table's or cell's border width; an image button's kind (low 4 bits, 0x10 its second highlight, 0x80 no frame while it loads) */
-    u8 group;                   /* 0x05E: a form's number; a radio button's group (Draw_Cmd kind 8) */
-    u8 tex;                     /* 0x05F: texture slot; a radio button's index in its group; an option's index in its list (from 1) */
+    u8 group;                   /* 0x05E: a drop-down list's number, from 1, and its options' (Draw_Cmd) */
+    u8 tex;                     /* 0x05F: texture slot; a drop-down option's index in its list (from 1) */
     char *s1;                   /* 0x060: href, name ... */
     char *s2;                   /* 0x064: value ... */
     char *s3;                   /* 0x068: the draw command's third string */
@@ -297,6 +296,9 @@ enum BrowserResultCode {
 /* The page's objects: BrowserWork.obj's length (Draw_Cmd takes the first
  * free one; the draws walk them in order). */
 #define PAGE_OBJ_COUNT 500
+/* The size of BrowserWork.cmdBuf, where Draw_Cmd keeps its objects'
+ * strings; a command that doesn't fit is dropped. */
+#define BROWSER_CMD_BUF_SIZE 32768
 
 /* A page object's kind (BrowserObj.kind of the objects in BrowserWork.obj):
  * the draw command that made it (Draw_Cmd, from the Draw_* makers the
@@ -333,6 +335,8 @@ enum PageObjKind {
 #define PAGE_IMG_MAP 3          /* an image map */
 #define PAGE_IMG_CELL_BACK 4    /* a table's or cell's background, tiled (Page_TileImage) */
 #define PAGE_IMG_INPUT 5        /* a form's image button */
+/* The images a page may ask for (BrowserState.imgCount); the others fail. */
+#define PAGE_IMG_MAX 20
 /* An image object's state (BrowserObj.sub; 0 before its request). */
 #define PAGE_IMG_REQUESTED 1
 #define PAGE_IMG_LOADED 2
@@ -345,6 +349,10 @@ enum PageObjKind {
 #define PAGE_SELECT_END 30
 #define PAGE_SELECT_CLOSED 11
 #define PAGE_SELECT_PRESSED 12  /* its arrow drawn pressed until the press timer ends */
+/* An option's BrowserObj.active: PAGE_SELECT_OPTION + 1 while its list is
+ * being made, then PAGE_SELECT_OPTION + 2 once the list's end came. */
+#define PAGE_SELECT_OPTION_OPEN 21
+#define PAGE_SELECT_OPTION_DONE 22
 
 /* A table cell's two objects (BrowserObj.sub of a PAGE_OBJ_CELL). */
 #define PAGE_CELL_BORDER 1
@@ -389,6 +397,11 @@ enum PageWidget {
 
 /* Browser_Move's kinds (BrowserSub.moveKind): 1 to 4 the page up, down,
  * left and right; 5 and 6 the open drop-down list up and down. */
+#define BMOVE_NONE 0
+#define BMOVE_UP 1
+#define BMOVE_DOWN 2
+#define BMOVE_LEFT 3
+#define BMOVE_RIGHT 4
 #define BMOVE_LIST_UP 5
 #define BMOVE_LIST_DOWN 6
 
@@ -402,7 +415,7 @@ enum PageWidget {
 #define BDLG_KIND_CLEAR_LOGIN 6     /* a message box: keep or clear the kept login */
 #define BDLG_KIND_REGISTER_ASK 7    /* yes or no to send the registration (BrowserDlg_DrawYesNo) */
 #define BDLG_KIND_REGISTER_INCOMPLETE 8 /* one button: a registration field is empty (BrowserDlg_DrawOk) */
-#define BDLG_KIND_EXIT 11           /* the leave dialog (BrowserDlg_DrawCrsTop) */
+#define BDLG_KIND_EXIT 11           /* the leave dialog (BrowserDlg_DrawPortalTop) */
 #define BDLG_KIND_CLOSE 12          /* frees the box */
 
 /* The dialog's step (BrowserSub.dlgMode): Dialog_RunStep's table. */
@@ -450,8 +463,12 @@ enum PageWidget {
 
 /* The page's view: the screen area the page shows through, inside the
  * margins (x scrolls up to pageW - PAGE_VIEW_W, y up to pageH - PAGE_VIEW_H). */
-#define PAGE_VIEW_W 0x248
-#define PAGE_VIEW_H 0x17C
+#define PAGE_VIEW_W 584
+#define PAGE_VIEW_H 380
+
+/* BrowserWork.stickTilt and stick2Tilt: a stick tilted fully (Page_ScrollInput
+ * scrolls twice as fast). */
+#define BROWSER_STICK_FULL 3
 
 /* The object lists (BrowserObj.layer; PageObj_Alloc), each drawn by its
  * dialog object's DrawAll function. */
@@ -501,7 +518,7 @@ enum PageWidget {
 #define BDLG_BOX_MESSAGE 3              /* BrowserDlg_DrawMsgBox */
 #define BDLG_BOX_YES_NO 4               /* BrowserDlg_DrawYesNo */
 #define BDLG_BOX_OK 5                   /* BrowserDlg_DrawOk */
-#define BDLG_BOX_EXIT 7                 /* BrowserDlg_DrawCrsTop, the leave dialog */
+#define BDLG_BOX_EXIT 7                 /* BrowserDlg_DrawPortalTop, the leave dialog */
 
 /* The registration record the portal's sign-up form fills (gRegRecord;
  * a copy is kept in gLobbyPageData). Each of the form's registration text
@@ -539,16 +556,16 @@ enum PageLoad {
  * from the keyword the HTML parser finds in the page; -1 none). */
 enum PageKind {
     PAGE_KIND_NONE = -1,
-    PAGE_KIND_TOP = 0,              /* the portal's top page (CRS-TOP) */
-    PAGE_KIND_MENU = 1,             /* the menu reached after the login (CRS-MENU) */
-    PAGE_KIND_SIGNUP_FORM = 2,      /* INP-SIGNUP */
-    PAGE_KIND_SIGNUP_DONE = 3,      /* COMP-SIGNUP */
-    PAGE_KIND_PASSWORD_FORM = 4,    /* INP-PWCHANGE */
-    PAGE_KIND_PASSWORD_DONE = 5,    /* CMP-PWCHANGE */
-    PAGE_KIND_SIGNUP_TOP = 6,       /* TOP-SIGNUP */
-    PAGE_KIND_LOGIN_DONE = 7,       /* COMP-LOGIN */
-    PAGE_KIND_MMBB_KEICAN = 8,      /* KEICAN-MMBB: opens the dialog that keeps or clears the kept login */
-    PAGE_KIND_MMBB_CANCAN = 9       /* CANCAN-MMBB: Page_SetKind does nothing for it */
+    PAGE_KIND_TOP = 0,              /* the portal's top page */
+    PAGE_KIND_MENU = 1,             /* the portal's menu page, reached after the login */
+    PAGE_KIND_SIGNUP_FORM = 2,      /* the sign-up form */
+    PAGE_KIND_SIGNUP_DONE = 3,      /* the sign-up's done page */
+    PAGE_KIND_PASSWORD_FORM = 4,    /* the password change's form */
+    PAGE_KIND_PASSWORD_DONE = 5,    /* the password change's done page */
+    PAGE_KIND_SIGNUP_TOP = 6,       /* the sign-up's top page */
+    PAGE_KIND_LOGIN_DONE = 7,       /* the login's done page */
+    PAGE_KIND_MMBB_KEICAN = 8,      /* opens the dialog that keeps or clears the kept login */
+    PAGE_KIND_MMBB_CANCAN = 9       /* the other MMBB page: Page_SetKind does nothing for it */
 };
 
 /* What the login dialog's answer keeps (BrowserWork.loginSave): the page's
@@ -575,12 +592,12 @@ enum PageKind {
 #define PAGE_STYLE_VSCROLL 0x2          /* the vertical scroll bar */
 #define PAGE_STYLE_STATUS_BAR 0x4       /* the status bar */
 #define PAGE_STYLE_BACK 0x8             /* seen: the cancel button (or Backspace) follows the page's message link or goes back; error replies force it (forceStyle8) */
-#define PAGE_STYLE_FORWARD 0x10         /* the <GAME-STYLE> FORWARD keyword's bit; seen: with pad 0x100 the page goes forward */
-#define PAGE_STYLE_CANCEL 0x20          /* the CANCEL keyword's bit; seen: tested with pad 0x8000 on a styled page */
+#define PAGE_STYLE_FORWARD 0x10         /* the <GAME-STYLE> FORWARD keyword's bit; seen: with PAD_TRIANGLE the page goes forward */
+#define PAGE_STYLE_CANCEL 0x20          /* the CANCEL keyword's bit; seen: tested with PAD_START on a styled page */
 #define PAGE_STYLE_RELOAD 0x40          /* the RELOAD keyword's bit */
 #define PAGE_STYLE_UNDERLINE_LINKS 0x80 /* links and underlined text are drawn with their line */
 #define PAGE_STYLE_MSG_ICON 0x100       /* the message icon and its label, when the page has a message */
-#define PAGE_STYLE_NO_MSG_ICON 0x200    /* seen: hides them, whatever 0x100 says */
+#define PAGE_STYLE_NO_MSG_ICON 0x200    /* seen: hides them, whatever PAGE_STYLE_MSG_ICON says */
 
 /* The browser's colours (0xAARRGGBB). Black is 0xFF000001, not 0xFF000000:
  * a colour of 0 means "untinted" to the sprite draws (Page_DrawWidget). */
@@ -596,9 +613,15 @@ enum PageKind {
  * 10 shown (a scroll bar beyond). */
 #define DROPLIST_ROW_H 18
 #define DROPLIST_ROWS 10
+#define DROPLIST_PAGE (DROPLIST_ROWS - 1)   /* a page of the list: the rows shown less one */
+#define DROPLIST_TRACK_H 144    /* its scroll bar's track: the rows' height less the two arrows */
 
-/* A node of the work area's name lists (heads at gBrowserWork + 0x911C, 0x9228,
- * 0x9334, 0x9444; each head is a node too). The entries of a list extend it. */
+/* BrowserWork.pressTimer's start: the frames a pressed arrow or button is
+ * drawn pressed. */
+#define BROWSER_PRESS_FRAMES 3
+
+/* A node of the work area's name lists (heads BrowserWork.pageList, imgList,
+ * histList and reqList; each head is a node too). The entries of a list extend it. */
 typedef struct BrowserNode {
     struct BrowserNode *next; /* 0x000 */
     char name[0x100];      /* 0x004 */
@@ -606,14 +629,14 @@ typedef struct BrowserNode {
     BrowserNodeFlags tag;          /* 0x108 */
 } BrowserNode;                /* 0x10C */
 
-/* An entry of the list at gBrowserWork + 0x911C. */
+/* An entry of the list BrowserWork.pageList. */
 typedef struct BrowserPageNode {
     BrowserNode node; /* 0x000 */
     u8 *buf;       /* 0x10C: PAGE_BUF_SIZE bytes */
     s32 size;      /* 0x110: the page's length (BrowserReq_Poll); the download node: its buffer's size */
 } BrowserPageNode;
 
-/* An entry of the list at gBrowserWork + 0x9228. */
+/* An entry of the list BrowserWork.imgList. */
 typedef struct BrowserImgNode {
     BrowserNode node; /* 0x000 */
     char *data;    /* 0x10C: the image data (a reply buffer) */
@@ -623,7 +646,7 @@ typedef struct BrowserImgNode {
     u16 h;         /* 0x11A */
 } BrowserImgNode;
 
-/* An entry of the list at gBrowserWork + 0x9444. */
+/* An entry of the list BrowserWork.reqList. */
 typedef struct BrowserReqNode {
     BrowserNode node; /* 0x000 */
     s8 loadKind;   /* 0x10C: enum BrowserLoadKind */
@@ -637,7 +660,7 @@ typedef struct BrowserReqNode {
     s8 errStep;     /* 0x125: the connection step that failed (0 none) */
 } BrowserReqNode;
 
-/* The result BrowserReq_Poll returns (gBrowserWork + 0x9554). */
+/* The result BrowserReq_Poll returns (BrowserWork.reqResult). */
 typedef struct BrowserResult {
     void *data; /* 0x0 */
     s8 result;  /* 0x4: enum BrowserResultCode */
@@ -662,7 +685,7 @@ typedef struct BrowserWork {
     s8 keepLoginStep;           /* 0xE93 */
     s8 endReason;               /* 0xE94: why the browser ends: 1 network error, 2 left by the user, 3 the retry failed (>0: only the dialog boxes draw) */
     u8 netError;                /* 0xE95 */
-    s8 endGoOn;                 /* 0xE96: 1: the end goes on to gMmbbData->nextUrl (PortalEnd_Step0), 0: Browser_Exit(-1) */
+    s8 endGoOn;                 /* 0xE96: 1: the end goes on to gMmbbData->nextUrl (PortalEnd_Start), 0: Browser_Exit(-1) */
     u8 formGoLink;              /* 0xE97: set: a form goes to its link object's URL and skips fields named URL (only cleared in the C so far) */
     s8 result;                  /* 0xE98: Browser_Update's result: 0 running, -1 ... */
     u8 atMmbbUrl;               /* 0xE99 */
@@ -670,10 +693,10 @@ typedef struct BrowserWork {
     s8 gameMenuNo;              /* 0xE9B */
     u8 firstPage;               /* 0xE9C: 1 until the first page is shown (Browser_GoStart only then) */
     u8 tries;                   /* 0xE9D: page tries: the second failure gives up (Browser_Retry, Browser_GoStart; 2: give up) */
-    u8 startPosts;              /* 0xE9E: posts to gMmbbData->f4 (more than 1 gives up) */
+    u8 startPosts;              /* 0xE9E: posts to gMmbbData->sessionUrl (more than 1 gives up) */
     u8 texFailOnce;             /* 0xE9F: 1: a failed image may fail the page once (Browser_Init's mode 1) */
     u8 texCount;                /* 0xEA0: page textures in texHandle/texW/texH */
-    u8 cmdBuf[0x8000];          /* 0xEA1: the draw commands of the page */
+    u8 cmdBuf[0x8000];          /* 0xEA1: the draw commands' strings (BROWSER_CMD_BUF_SIZE) */
     u8 unk8EA1[0x8EA4 - 0x8EA1];
     char *pageData;             /* 0x8EA4: the reply data: the page HTML (Html_StartLoad) */
     u8 *cmdPtr;                 /* 0x8EA8: write position in cmdBuf */
@@ -693,7 +716,7 @@ typedef struct BrowserWork {
     s8 cursorOnLink;            /* 0x8EB9: 1: the selection moved onto a link (restarts the cursor blink) */
     u8 unk8EBA[0x8EC0 - 0x8EBA];
     char kbdText[0x100];        /* 0x8EC0: the software keyboard's text */
-    void *memPages;             /* 0x8FC0: the name lists (browser_cache_draw.c: pages, images, history, requests): the page nodes' memory */
+    void *memPages;             /* 0x8FC0: the name lists (browser_cache.c: pages, images, history, requests): the page nodes' memory */
     void *memBufs;              /* 0x8FC4 */
     void *memImgs;              /* 0x8FC8 */
     void *memConnBufs;          /* 0x8FCC */
@@ -735,8 +758,8 @@ typedef struct BrowserWork {
     u8 stick2Tilt;              /* 0x1A652: the right stick */
     u8 stick2Dir;               /* 0x1A653 */
     u8 unk1A654[0x1A660 - 0x1A654];
-    u8 *buf64k;                 /* 0x1A660: 0x10000 bytes (Mem_Alloc) */
-    u8 *buf512k;                /* 0x1A664: 0x80000 bytes (Mem_Alloc) */
+    u8 *buf64k;                 /* 0x1A660: 65536 bytes (Mem_Alloc) */
+    u8 *buf512k;                /* 0x1A664: 524288 bytes (Mem_Alloc) */
     void *mem64k;               /* 0x1A668: the Mem_Alloc handle of buf64k */
     void *mem512k;              /* 0x1A66C: the Mem_Alloc handle of buf512k */
     char formData[0x1000];      /* 0x1A670: the form's query: name=value pairs joined by & (BrowserForm_Add escapes them), cleared before a page's fields are added */
@@ -758,8 +781,8 @@ typedef struct BrowserWork {
     u8 unk1C29E[0x1C2A0 - 0x1C29E];
     char *loadSrc;              /* 0x1C2A0: the page's HTML */
     s32 loadPos;                /* 0x1C2A4 */
-    u8 *cert0;                  /* 0x1C2A8: certificate 0x84 (func_8FD770), Http_Init passes it with Http_GetCertSize(0) */
-    u8 *cert1;                  /* 0x1C2AC: certificate 0x85, 0x800 bytes after cert0 (Http_GetCertSize(1)) */
+    u8 *cert0;                  /* 0x1C2A8: certificate BRDATA_CERT0 (func_8FD770), Http_Init passes it with Http_GetCertSize(0) */
+    u8 *cert1;                  /* 0x1C2AC: certificate BRDATA_CERT1, BROWSER_CERT_SIZE bytes after cert0 (Http_GetCertSize(1)) */
     u8 unk1C2B0[0x1C2C0 - 0x1C2B0];
     u8 afsPartInfo[0x1000];     /* 0x1C2C0: the info area of AFS partition 5, the browser's data files (Http_LoadAfsPartition) */
 } BrowserWork;
@@ -806,6 +829,32 @@ enum PageStep {
     PAGE_STEP_FAIL = 15       /* Portal_FailStep */
 };
 
+/* The portal's end steps (BrowserState.step in BMODE_END; gPortalEndSteps). */
+enum PortalEndStep {
+    PORTAL_END_START = 0,       /* PortalEnd_Start: posts the ids to the next URL, or closes the frame */
+    PORTAL_END_DRAW_LAST = 1,   /* PortalEnd_DrawLast: the frame's objects a last time */
+    PORTAL_END_FREE = 2,        /* PortalEnd_FreeObjs: the page's objects freed */
+    PORTAL_END_FINISH = 3,      /* PortalEnd_Finish: the browser's result */
+    PORTAL_END_WAIT_POST = 4    /* PortalEnd_WaitPost: the post's answer, then the frame closes */
+};
+
+/* The history move a step asks for (BrowserState.histDir). */
+#define BHIST_NONE 0
+#define BHIST_BACK 1
+#define BHIST_FORWARD 2
+
+/* The dialogs' step (BrowserSub.dlgStep; Dialog_Run's table). */
+#define DLG_STEP_RESET 0        /* Dialog_Reset: the pointer centred, then DLG_STEP_RUN */
+#define DLG_STEP_RUN 1          /* Dialog_RunStep: the dialog mode's step (BDLG_MODE_*) each frame */
+#define DLG_STEP_STOPPED 2      /* Dialog_Stopped: nothing; set when the portal fails (Browser_Fail) */
+
+/* The menu of three's lines (BrowserSub.dlgCursor in BDLG_MODE_MENU;
+ * Dialog_MenuStep). It opens on BMENU_CLOSE. */
+#define BMENU_BACK 1            /* the page before (Portal_Back) */
+#define BMENU_LEAVE 2           /* leaves the portal (Browser_Fail) */
+#define BMENU_CLOSE 3           /* closes the menu */
+#define BMENU_LINES 3
+
 /* The lobby's pages' steps (BrowserState.step in BMODE_RUN under
  * BROWSER_TOP_LOBBY; gBrowserLobbySteps). Steps 1 to 4 only go on. */
 enum LobbyPageStep {
@@ -824,6 +873,19 @@ typedef union IdFieldNames {
         char connectionId[0x18];
     } name;
 } IdFieldNames;
+void Browser_Init(u8 mode);
+void LobbyKddi_CloseBrowser(void);
+s32 Browser_Update(void);
+void Browser_LobbyStep1(void);
+void Browser_LobbyStep2(void);
+void Browser_LobbyStep3(void);
+void Browser_LobbyStep4(void);
+void Browser_LobbyWait(void);
+void Browser_LobbyEnd(void);
+void Browser_LobbyExit(void);
+void Browser_RunError(void);
+void Browser_ModeDone(void);
+extern char gLbsScheme[8]; /* the lobby server's URL scheme (URL_LBS) */
 extern IdFieldNames gIdFieldNames;
 
 /* gConnCheckState: the lobby's link, found lost while the browser shows a
@@ -848,5 +910,257 @@ extern IdFieldNames gIdFieldNames;
 #define BROWSER_END_NET_ERROR 1     /* the network interface reported an error (Browser_CheckNetwork) */
 #define BROWSER_END_LEAVE 2         /* the leave dialog: the page couldn't be shown (Page_Load's -2), or the leave was chosen */
 #define BROWSER_END_RETRY_FAILED 3  /* a page failed again after its retry */
+
+void NameList_Release(BrowserNode *list, BrowserNode *node);
+BrowserNode *NameList_DropFirst(BrowserNode *list, BrowserNode *cur);
+void BrowserCache_Init(void);
+void BrowserCache_Shutdown(void);
+char *BrowserHist_Forward(void);
+s32 BrowserHist_CanForward(void);
+char *BrowserHist_Back(void);
+s32 BrowserHist_CanBack(void);
+char *BrowserReq_Reload(void);
+s32 BrowserReq_CanReload(void);
+char *BrowserHist_CurUrl(void); /* the URL of the history's current entry */
+void BrowserReq_Page(char **url);
+void BrowserReq_Post(char **url);
+void BrowserForm_Clear(void);
+void BrowserReq_Image(char **url);
+void ImgCache_FreeAll(BrowserNode *list);
+void BrowserReq_TakeHttpResult(BrowserReqNode *reqNode);
+void BrowserReq_StartPage(BrowserReqNode *reqNode);
+void BrowserReq_StartImage(BrowserReqNode *reqNode);
+void BrowserReq_StartDownload(BrowserReqNode *reqNode);
+void BrowserReq_UpdateAll(void);
+BrowserResult *BrowserReq_Poll(char **url);
+void BrowserHist_Undo(void);
+void BrowserReq_CancelAll(void);
+void Draw_RectClipped(s32 color, f32 left, f32 top, f32 right, f32 bottom);
+void Page_DrawMark(u8 kind, f32 x, f32 y); /* the pointer: PAGE_WIDGET_POINTER or _POINTER_ACTIVE */
+void Page_DrawWidget(u8 kind, f32 x, f32 y, f32 w, f32 h, s32 color); /* one of the PAGE_WIDGET_* pieces */
+void Page_DrawImage(u16 texSlot, f32 x, f32 y, f32 w, f32 h, s32 srcW, s32 srcH);
+void BrowserDlg_DrawWindow(f32 x0, f32 y0, f32 x1, f32 y1);
+void Page_DrawFrame(s32 color, s32 thickness, f32 x0, f32 y0, f32 x1, f32 y1);
+void Page_DrawThinFrame(s32 color, f32 x0, f32 y0, f32 x1, f32 y1); /* a one-pixel frame */
+void Page_DrawTextLine(u8 unused, u32 color, u8 bold, u8 size, f32 x, f32 y, char *text);
+void Page_Printf(const char *fmt, ...);
+void Page_DrawObjBack(BrowserObj *pageObj);
+void Page_DrawObj(BrowserObj *pageObj);
+void Page_DrawDropList(s32 listObjIdx);
+void Page_DrawFocus(BrowserObj *cursorObj);
+void BrowserDlg_DrawMsgBox(BrowserObj *dlgObj);
+void BrowserDlg_DrawYesNo(BrowserObj *dlgObj);
+void BrowserDlg_DrawOk(BrowserObj *dlgObj);
+void BrowserDlg_DrawPortalTop(BrowserObj *dlgObj);
+void Page_TileImage(BrowserObj *pageObj, u8 texSlot);
+void Browser_DrawOverlay(void);
+s32 Rect_ClipToScreen(f32 *x0, f32 *y0, f32 *x1, f32 *y1);
+void Browser_SetRenderState(s32 state, u32 value);
+void Prim_DrawTri(u32 color, f32 x0, f32 y0, f32 x1, f32 y1, f32 x2, f32 y2);
+void Prim_DrawRect(s32 color, f32 x1, f32 y1, f32 x2, f32 y2);
+void Prim_DrawSprite(u32 color, u32 tex, s16 x, s16 y, s16 w, s16 h, s16 u1, s16 v1, s16 u2, s16 v2);
+void Html_ResetLoad(void);
+void Html_StartLoad(char *src);
+void Html_StopLoad(void);
+s16 *Html_LoadStep(s32 arg);
+char *Browser_GetText(u32 group, s32 i);
+void Browser_InitHeap(void);
+void *Browser_Alloc(u32 size);
+void Browser_Free(void *ptr);
+void *Browser_Realloc(void *ptr, u32 size);
+void Browser_ReadPad(void);
+void Browser_SetUrl(BrowserWork *w, char *url);
+void Url_SetBase(char *url);
+void Url_ClearBase(void);
+char *Url_Resolve(char *base, char *url);
+void Str_ToLower(char *str);
+s32 Url_SpecialScheme(const char *url);
+s32 Url_GetScheme(const char *url);
+s32 Url_FileType(char *url);
+s32 Url_Escape(char *dst, u8 *src);
+void Str_SjisToEuc(u8 *str);
+void Str_EucToSjis(u8 *str);
+void PageObj_InitPool(void);
+BrowserObj *PageObj_Alloc(s32 layer, s32 atTail);
+void PageObj_Free(BrowserObj *pageObj);
+void PageObj_UpdateLayer(s32 layer);
+void PageObj_DrawLayer(s32 layer);
+void PageTex_ReleaseAll(void);
+u32 PageTex_Get(s8 i);
+void Browser_LoadFrame(s32 mode, u8 *step);
+void PageObj_Nop(void);
+extern UrlScheme gUrlSchemes[7]; /* the schemes the browser loads, then a zero entry */
+extern char *gScriptSchemes[2]; /* the script scheme, then NULL */
+extern char gScriptSchemes_0[12];
+
+void DlgBackImg_DrawAll(void);
+void DlgBackImg_Create(s32 mode);
+void DlgBackImg_Update(BrowserObj *obj);
+void DlgBackImg_Draw(BrowserObj *obj);
+void DlgPage_DrawAll(void);
+void DlgPage_Create(s32 mode);
+void DlgPage_Update(BrowserObj *obj);
+void DlgPage_Draw(BrowserObj *obj);
+void DlgVScroll_DrawAll(void);
+void DlgVScroll_Create(s32 mode);
+void DlgVScroll_Update(BrowserObj *obj);
+void DlgVScroll_Draw(BrowserObj *obj);
+void DlgHScroll_DrawAll(void);
+void DlgHScroll_Create(s32 mode);
+void DlgHScroll_Update(BrowserObj *obj);
+void DlgHScroll_Draw(BrowserObj *obj);
+void DlgStatus_DrawAll(void);
+void DlgStatus_Create(s32 mode);
+void DlgStatus_Update(BrowserObj *obj);
+void DlgStatus_Draw(BrowserObj *obj);
+void DlgMenu_DrawAll(void);
+void DlgMenu_Create(s32 mode);
+void DlgMenu_Update(BrowserObj *obj);
+void DlgMenu_Draw(BrowserObj *obj);
+void Browser_OpenKeyboard(char *text, s16 max, s32 mode);
+char *Browser_RunKeyboard(void);
+void DlgInput_DrawAll(void);
+void DlgInput_Create(s32 mode);
+void DlgInput_Update(BrowserObj *obj);
+void DlgInput_Draw(BrowserObj *obj);
+void DlgPointer_DrawAll(void);
+void DlgPointer_Create(s32 mode);
+void DlgPointer_Update(BrowserObj *obj);
+void DlgPointer_Draw(BrowserObj *obj);
+void DlgBox_DrawAll(void);
+void DlgBox_Create(s32 mode);
+void DlgBox_Update(BrowserObj *obj);
+void DlgBox_Draw(BrowserObj *obj);
+void Browser_SaveLogin(void);
+void Browser_SetErrorState(s32 kind);
+void Browser_EmptyHook(void);
+void Portal_FailStep(void);
+void Browser_UpdateFrame(void);
+void Browser_InitHook(void);
+void Draw_Cmd(u8 kind, u8 sub, u16 x, u16 y, u16 x2, u16 y2, u32 color, u8 size, u8 field, u8 maxlen, u8 *s1, u8 *s2, u8 *s3);
+s32 Page_Load(void);
+void Page_RequestImages(void);
+s8 Page_CheckImages(void);
+s32 Browser_Timers(void);
+void Page_CreateFrame(void);
+void Browser_RunEnd(void);
+void PortalEnd_Start(void);
+void PortalEnd_DrawLast(void);
+void PortalEnd_FreeObjs(void);
+void PortalEnd_Finish(void);
+void PortalEnd_WaitPost(void);
+void Dialog_Run(void);
+void Dialog_Reset(void);
+void Dialog_RunStep(void);
+void Dialog_PageStep(void);
+void Dialog_InputStep(void);
+void Dialog_ResetMsgState(void);
+void Dialog_MenuStep(void);
+void Dialog_ResetBoxState(void);
+void Dialog_ChoiceStep(void);
+void Dialog_SaveLogin(void);
+void Dialog_Register(void);
+void Dialog_Ok(void);
+void Dialog_Exit(void);
+void Dialog_NoStep(void);
+extern char gPageCancelLink[32]; /* a page's message link that cancels the portal */
+extern char gPortalTopUrl[48]; /* the URL of the portal's top page */
+
+void Browser_GoForward(void);
+void Browser_GoBack(void);
+void Portal_Back(void);
+void Page_ScrollInput(void);
+void Page_DragScroll(void);
+void Page_PointerScroll(void);
+void Page_PointAt(void);
+void Page_Clamp(void);
+void Page_Click(void);
+s32 Select_ListClick(s32 i);
+void Link_Follow(s32 i);
+void Form_Reset(s32 button);
+void Form_Submit(s32 button);
+s8 Portal_HandleData(void);
+s32 Portal_SetIds(void);
+void Dialog_Stopped(void);
+void Browser_Reload(void);
+void Browser_OpenPage(void);
+void Browser_ShowPage(void);
+void Browser_Fail(u8 page);
+void Browser_OpenLeaveDialog(s32 unused);
+void Browser_SetStep(s8 step);
+void Browser_Go(char *url);
+void Browser_ScrollBy(s32 dx, s32 dy);
+void Browser_Move(s32 dx, s32 dy, u8 kind);
+void Browser_Exit(s8 result);
+void Dialog_Close(s32 yes);
+void Browser_ListCursor(u8 max);
+s8 Browser_GameStartError(void);
+s32 Browser_GoStart(void);
+s32 Browser_Retry(void);
+void Browser_BuildErrorPage(char *buf, char *msg, char *code, s32 back);
+
+void Page_New(void);
+void Browser_RunStart(void);
+void Page_AllocObjs(void);
+void Page_FreeObjs(void);
+void Portal_Start0(void);
+void Portal_Start1(void);
+void Browser_RunPage(void);
+void Portal_ParseStep(void);
+void Portal_PageReady(void);
+void Portal_DialogStep(void);
+void Portal_ReshowStep(void);
+void Portal_HistoryStep(void);
+void Portal_ReloadStep(void);
+void Portal_OpenStep(void);
+void Portal_BackStep(void);
+void Portal_GameMenuStep(void);
+void Portal_CancelStep(void);
+void Portal_WaitReqStep(void);
+void Portal_ImagesStep(void);
+
+void Html_NewPage(void);
+void Html_Refresh(s32 sec, char *url);
+void Html_SetBgColor(u32 rgb);
+void Html_SetBase(char *url);
+void Draw_Title(u8 *text);
+void Draw_Text(u16 x, u16 y, s32 color, u8 size, u16 right, u16 bottom, u8 *text, u8 bold);
+void Draw_LinkText(u16 x, u16 y, s32 color, u8 size, u16 right, u16 bottom, u8 *href, u8 *text, u8 bold);
+void Draw_Submit(u16 x, u16 y, u16 right, u16 bottom, u8 *src);
+void Draw_Reset(u16 x, u16 y, u16 right, u16 bottom, u8 *src);
+void Draw_InputImage(u16 x, u16 y, u16 right, u16 bottom, u8 *name, u8 *src, u8 *alt);
+void Draw_PageButton(u16 x, u16 y, u16 right, u16 bottom, u8 *label);
+void Draw_TextInput(u16 x, u16 y, u16 right, u16 bottom, u8 *name, u8 *value, u16 maxlen, u8 key);
+void Draw_PasswordInput(u16 x, u16 y, u16 right, u16 bottom, u8 *name, u8 *value, u16 maxlen, u8 key);
+void Draw_SelectBegin(u8 *action);
+void Draw_Option(u8 *name, char *value, u8 selected);
+void Draw_SelectEnd(u16 x, u16 y, u16 right, u16 bottom);
+void Draw_Rule(u16 x, u16 y, u16 right, u16 bottom);
+void Draw_Radio(u16 x, u16 y, u8 checked, u8 *name, u8 *value, u8 key);
+void Draw_Checkbox(u16 x, u16 y, u8 checked, u8 *name, u8 *value, u8 key);
+void Draw_BodyBackground(u8 *name);
+void Draw_Image(u16 x, u16 y, u16 right, u16 bottom, u8 *src, u8 *alt);
+void Draw_ImageMap(u16 x, u16 y, u16 right, u16 bottom, u8 *src, u8 *href, u8 *alt, u8 key);
+void Draw_Anchor(u16 x, u16 y, u8 *name);
+void Draw_Cell(u16 x, u16 y, u16 right, u16 bottom, u8 size, s32 color, u8 border, s32 bcolor, u8 *background);
+void Draw_Table(u16 x, u16 y, u16 right, u16 bottom, u8 size, u32 color, u8 border, u8 *background);
+void Draw_StruckText(u16 x, u16 y, s32 color, u8 size, u16 right, u16 bottom, u8 *text, u8 *href, u8 bold);
+void Draw_UnderlinedText(u16 x, u16 y, s32 color, u8 size, u16 right, u16 bottom, u8 *text, u8 *href, u8 bold);
+void Draw_FormBegin(u8 *action, u8 post);
+void Draw_Hidden(u8 *name, u8 *value);
+void Page_SetDataMode(u8 mode);
+void Form_SetLoginId(u8 *id);
+void Browser_OpenDialog(s8 kind, s8 arg);
+void Page_SetKind(s8 kind);
+void Page_Extend(s32 x, s32 y);
+s32 Page_IsDataPage(void);
+
+s32 PageObj_Activate(u16 idx, s32 sound);
+void Select_Close(void);
+void Page_Navigate(void);
+
+void Prim_Sprite(Sprite *sprite);
+void Prim_Rect(PrimLine *rect);
+s32 Prim_Tri(PrimTri *tri);
 
 #endif /* BROWSER_H */

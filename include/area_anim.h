@@ -6,7 +6,7 @@
  * area_anim.c) build a model or texture matrix from one; the area tables of area_draw.c
  * point to them by animation type.
  * - PropRec.data (Area_DrawProp, one block per copy): 1 AnimSpin, 2 UvScroll, 3 UvWave[2],
- *   4 f32 pos[3], 5 AnimRot, 6 AnimRotScale, 7 f32 x and z, 8 and 0x6F AnimScrollPos,
+ *   4 f32 pos[3], 5 AnimRot, 6 AnimRotScale, 7 f32 x and z, 8 and 111 AnimScrollPos,
  *   9 AnimScrollSpin, 10 AnimScrollRot, 11 AnimSpin2, 12 UvStep[2].
  * - AreaAnim.arg (Area_DrawModels): 1 AnimSpin, 2 f32 pos[3], 4 UvScroll, 5 UvWave[2],
  *   6 AnimScrollSpin, 7 UvStep[2], 8 AnimScrollPos, 9 AnimSpin2.
@@ -22,7 +22,7 @@ typedef struct AnimRot {
 typedef char AnimRot_size_check[(sizeof(AnimRot) == 0x10) ? 1 : -1];
 
 /* A position and a rotation by the frame counter: the angle is the counter
- * masked to 16 - shift bits, shifted up (so a turn takes 0x10000 >> shift
+ * masked to 16 - shift bits, shifted up (so a turn takes ANGLE_TURN >> shift
  * frames). */
 typedef struct AnimSpin {
     f32 pos[3];                 /* 0x0 */
@@ -53,7 +53,7 @@ typedef char UvScroll_size_check[(sizeof(UvScroll) == 0x4) ? 1 : -1];
 /* A texture wave (one per coordinate): base + amp * sin(counter). */
 typedef struct UvWave {
     u16 period;                 /* 0x0: frames, a power of two (0: none) */
-    u16 speed;                  /* 0x2: angle units (0x10000 a turn) per frame */
+    u16 speed;                  /* 0x2: angle units (ANGLE_TURN a turn) per frame */
     f32 base;                   /* 0x4 */
     f32 amp;                    /* 0x8 */
 } UvWave;
@@ -105,5 +105,19 @@ typedef char AnimScrollRot_size_check[(sizeof(AnimScrollRot) == 0x8) ? 1 : -1];
 #define AREA_ANIM_REVERSE   0x04    /* the motion runs backwards */
 #define AREA_ANIM_ROT_X     0x40    /* turns about x (else y) */
 #define AREA_ANIM_ROT_Z     0x80    /* turns about z */
+
+void Area_UpdateTimers(void);
+void AreaAnim_Translate(void *mtx, f32 *pos);
+void AreaAnim_TranslateRotate(void *mtx, AnimRot *anim, u8 flags);
+void AreaAnim_TranslateSpin(void *mtx, AnimSpin *anim, u8 flags);
+void AreaAnim_ScaleTranslateRotate(void *mtx, AnimRotScale *anim, u8 flags);
+void AreaAnim_TranslateXZ(void *mtx, f32 *posXZ);
+void AreaAnim_UvScroll(UvScroll *anim, u8 flags);
+void AreaAnim_UvWave(UvWave *waves);
+void AreaAnim_UvScrollSpin(void *mtx, AnimScrollSpin *anim, u8 flags);
+void AreaAnim_UvStep(UvStep *steps);
+void AreaAnim_UvScrollTranslate(void *mtx, AnimScrollPos *anim, u8 flags);
+void AreaAnim_UvScrollRotate(void *mtx, AnimScrollRot *anim, u8 flags);
+void AreaAnim_SpinScroll(void *mtx, AnimSpin2 *anim);
 
 #endif /* AREA_ANIM_H */

@@ -12,27 +12,15 @@
 #include "common.h"
 #include "em.h"
 #include "em_fatalis.h"
+#include "player.h"
+#include "engine_math.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* The game built this file at optimization level 4. */
 #pragma optimization_level 4
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
 void Em_EndAllStatus(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_MoveRotatedAccel(Em *em, void *ang);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmBulldrome_ChangeState, EmBulldrome_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_TargetPlayerInRange(Em *);
-void EmFatalis_SetIdleState(Em *em, u16 state, u8 mode);
-void EmFatalis_SetMoveState(Em *em, u16 state, u8 mode);
-void EmFatalis_SetFlyState(Em *em, u16 state, u8 mode);
-void EmFatalis_SetAttackState(Em *em, u16 state, u8 mode);
-void Player_ClearVelocity(void *);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-f32 Vec_Distance(f32 *a, f32 *b);
-void EmFatalis_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_MoveRotated(Em *em, void *src);
 extern EmCurveKey *EmFatalis_MoveVelYCurves[];
 /* end of prototypes */
 
@@ -348,7 +336,7 @@ void EmFatalis_StartCurves(Em *em, u8 kind)
     case 0:
     case 6:
         w->curveVelY = 1;
-        w->curveFrame = 0x86;
+        w->curveFrame = 134;
         break;
     case 2:
         w->curveVelY = 1;
@@ -357,16 +345,16 @@ void EmFatalis_StartCurves(Em *em, u8 kind)
     case 3:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x46;
+        w->curveFrame = 70;
         break;
     case 4:
         w->curveSpeed = 1;
-        w->curveFrame = 0x46;
+        w->curveFrame = 70;
         break;
     case 5:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x3C;
+        w->curveFrame = 60;
         break;
     }
     Player_ClearVelocity(em);

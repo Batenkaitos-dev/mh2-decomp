@@ -4,10 +4,11 @@
 #include "common.h"
 #include "item.h"
 #include "save.h"
+#include "lobby_menu.h"
 
 /*
  * The item box menu's work, gBoxWork (pointing at gBoxWorkMem (0x8B4380),
- * 0x70 bytes): BoxMenu_InitWork sets it up, BoxMenu_Update and the BoxMenu_*
+ * 112 bytes): BoxMenu_InitWork sets it up, BoxMenu_Update and the BoxMenu_*
  * sub-menus run on it, and BoxMenu_Draw and its helpers draw from it.
  */
 /* ItemBoxMenu.state (BoxMenu_Update). */
@@ -86,7 +87,7 @@ enum BoxTakeStep {
 #define BOX_LIST_PAGE_MASK  0x7         /* the detail window's page, with BOX_LIST_DETAIL */
 #define BOX_LIST_DETAIL     0x8         /* the cursor item's description, or the piece's detail window */
 #define BOX_LIST_EQUIP      0x10        /* the equipment box, not the item box */
-#define BOX_LIST_DIM        0x20        /* dimmed (alpha 0x60), the page bar's arrows grey */
+#define BOX_LIST_DIM        0x20        /* dimmed (alpha 96), the page bar's arrows grey */
 #define BOX_LIST_MONEY      0x80        /* the money beside the list */
 #define BOX_LIST_SORTED     0x100       /* the sorted copy (the sort prompt's preview): no cursor, no name */
 #define BOX_LIST_WORN_ALT   0x200       /* worn pieces in the other colour */
@@ -108,7 +109,7 @@ enum BoxYesNo {
 typedef struct ItemBoxMenu {
     /* 0x00 */ u8 updated;          /* 1 once BoxMenu_Update has run through this frame: BoxMenu_Draw draws only then */
     /* 0x01 */ u8 cursorClass;      /* the equipment at the cursor (enum BoxCursorClass) */
-    /* 0x02 */ u8 inputOn;          /* bit 0: the menu takes input (pad 0x8000 toggles it) */
+    /* 0x02 */ u8 inputOn;          /* bit 0: the menu takes input (PAD_START toggles it) */
     /* 0x03 */ u8 yesNo;            /* a yes/no prompt's highlighted answer (enum BoxYesNo; gYesNoTexts, YesNo_Toggle) */
     /* 0x04 */ union {
         s32 steps;                  /* the four step bytes, cleared together */
@@ -132,7 +133,7 @@ typedef struct ItemBoxMenu {
     /* 0x10 */ EquipItem *equipped;  /* the worn item of the type (on the set screen, the set's), NULL none */
     /* 0x14 */ EquipItem *boxItem;   /* the equipment box item at the cursor (&gSave.box[slots[1]]), NULL none */
     /* 0x18 */ s32 price;           /* the selling price (BoxMenu_SellMenu) */
-    /* 0x1C */ u16 slots[2];         /* the item box and equipment box slots, indexed by kind ([0] also as slot); in a union, MWCC adds 0x1C before a variable index: the s32 clear is a cast */
+    /* 0x1C */ u16 slots[2];         /* the item box and equipment box slots, indexed by kind ([0] also as slot); in a union, MWCC adds offset 0x1C before a variable index: the s32 clear is a cast */
     /* 0x20 */ u16 held;            /* the slot held for a swap (BoxMenu_ArrangeMenu); BoxMenu_DrawGridCursor: % 100 */
     /* 0x22 */ u8 pouch;            /* pouch slot */
     /* 0x23 */ u8 atMax;            /* the amount is the most that can move */
@@ -145,7 +146,7 @@ typedef struct ItemBoxMenu {
     /* 0x2C */ u8 skillPages;       /* the skill view's pages (SkillView_Init, Equip_PreviewSkills) */
     /* 0x2D */ s8 msg;              /* a help line (gHelpLine), -1 none */
     /* 0x2E */ u8 help;             /* the help window's mode (enum BoxHelpMode; BoxMenu_DrawHelp) */
-    /* 0x2F */ u8 blink;            /* a frame counter: 0xFF at open, (& 0x1F) < 0x14 shows the cursor */
+    /* 0x2F */ u8 blink;            /* a frame counter: 255 at open, (& 0x1F) < 20 shows the cursor */
     /* 0x30 */ u8 prompt;           /* a yes/no prompt is up (the sort: BoxMenu_SortPrompt; yesNo the answer) */
     /* 0x31 */ u8 canEquip;         /* the equipment at the cursor fits (gender, weapon class): the comparison
                                        marks it otherwise (flag 8); the help draws its skills (EquipDetail_Draw) */
@@ -167,7 +168,7 @@ typedef struct ItemBoxMenu {
 typedef char ItemBoxMenu_size_check[(sizeof(ItemBoxMenu) == 0x70) ? 1 : -1];
 
 /*
- * The skill view's state at the start of gSkillPreview (0xA0 bytes; SkillList_Build
+ * The skill view's state at the start of gSkillPreview (160 bytes; SkillList_Build
  * fills the rest with the skill list). Equip_PreviewSkills fills it for one piece
  * tried on, SkillView_Init for a whole equipment set; EquipDetail_Draw draws it.
  */
@@ -217,9 +218,71 @@ typedef struct BoxTab {
     /* 0x12 */ u8 framed;       /* nonzero: the bar's window (gBoxPageTabsWin) is drawn under it */
 } BoxTab;
 typedef char BoxTab_size_check[(sizeof(BoxTab) == 0x14) ? 1 : -1];
+void BoxMenu_DrawGridCursor(void);
+void BoxMenu_DrawItemList(s16 cur, u32 flags, f32 listX);
+void BoxMenu_DrawPageTabs(s16 x, s16 y, s16 page, u32 flags, s32 alpha, u8 kind);
+s8 BoxList_Build(u8 kind, u8 sorted);
+void BoxList_InsertSorted(u16 *list, u16 idx, u16 n);
+s16 BoxList_MoveCursor(u8 *row, u8 *page, u16 pad);
+void EquipDetail_Draw(Player *pl, s16 x, s16 y, u32 flags);
+void EquipDetail_DrawNone(s16 x, s16 y);
+void BoxMenu_DrawControls(s32 where);
+void BoxMenu_DrawActions(s32 dimmed);
+void BoxMenu_Draw(void);
+void BoxMenu_DrawStore(void);
+void BoxMenu_DrawTake(void);
+void BoxMenu_DrawEquip(void);
+u32 Color_Half(u32 color);
+void BoxMenu_DrawListHeader(u8 *equipSet, s32 flags, u8 which);
+u8 BoxMenu_DrawEquipList(u16 *slot, s32 part, s32 flags);
+void EquipInfo_DrawPage(s16 y, s32 hasItem, s32 page, Player *player);
+void BoxMenu_DrawEquipInfo(u16 *slot, s32 part, s32 flags, Player *player);
+void BoxMenu_DrawEquipPick(EquipIdx *cur, s8 sel, u32 flags);
+void BoxMenu_DrawArrange(void);
+void BoxMenu_DrawSell(void);
+void BoxMenu_DrawHelp(s32 helpMode, s32 pouchSlot);
+void BoxMenu_DrawAmount(void);
+void BoxMenu_DrawZenny(void);
+void BoxMenu_DrawYesNo(void);
+void *Box_BuildSortedList(u8 equip);
+void Box_ApplySort(u8 equip);
+u32 BoxEquip_SortKey(EquipItem *item);
+void BoxEquip_ShellSort(EquipItem *list, u32 n);
+u16 Box_FindEquip(EquipItem *box, EquipItem *item);
 extern BoxTab gBoxPageTabs[2];
 
 extern ItemBoxMenu *gBoxWork;
 extern ItemBoxMenu gBoxWorkMem;
+
+void BoxMenu_InitWork(void);
+s32 BoxMenu_Open(void);
+s32 BoxMenu_Update(u16 pad);
+void BoxMenu_MoveCursor(u16 *cur, u16 pad);
+u16 BoxMenu_StoreFromPouch(u16 pad);
+u16 BoxMenu_TakeToPouch(u16 pad);
+u16 BoxMenu_EquipMenu(u16 pad);
+void EquipSet_RecalcStats(EquipIdx *slots, s32 compareTo);
+s32 EquipSet_RenameInput(u16 pad);
+void Equip_SetEquipped(EquipIdx *set);
+u8 BoxMenu_CloseStep(u16 pad, u8 step);
+u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags);
+void BoxMenu_UpdateSkillPreview(void);
+u8 Equip_PreviewSkills(Player *player, EquipItem *tried);
+u8 SkillView_Init(void *pl, s32 compareWith);
+u8 EquipSet_RemoveSlot(u16 slot, s32 testOnly);
+u8 EquipSet_DropUnfit(EquipIdx *out, EquipIdx *set, s32 flags);
+u16 BoxMenu_EquipListInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags);
+u16 BoxMenu_ArrangeMenu(u16 pad);
+u16 BoxMenu_SellMenu(u16 pad);
+s32 ItemBox_SlotHasItem(u16 slot);
+s32 EquipBox_TryRemove(u16 slot);
+s32 BoxMenu_CanTakeSeveral(void);
+void BoxMenu_InputAmount(u16 pad, u8 noLimit);
+void Equip_SwapSlots(u16 first, u16 second);
+u16 BoxMenu_Input(u16 pad);
+u16 BoxMenu_SortPrompt(u16 pad, u8 kind);
+s32 Equip_ArmorFits(EquipItem *item, u16 *slot);
+s32 Box_YesNoInput(u16 *pad);
+extern char gBoxEmptyText[]; /* an empty string */
 
 #endif /* BOX_MENU_H */

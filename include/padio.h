@@ -74,7 +74,7 @@
 #define PAD_STICK_MIRROR_Y 2
 #define PAD_STICK_MIRROR_XY 3
 
-/* An analog stick (0x0C bytes). */
+/* An analog stick (12 bytes). */
 typedef struct PadStick {
     /* 0x00 */ s16 x;           /* -128..127, 0 inside the dead zone */
     /* 0x02 */ s16 y;
@@ -91,7 +91,7 @@ typedef struct PadId {
     /* 0x03 */ u8 unk3;
 } __attribute__((aligned(4))) PadId;
 
-/* The port's state after a read (0x34 bytes, gPadRaw). */
+/* The port's state after a read (52 bytes, gPadRaw). */
 typedef struct PadRaw {
     /* 0x00 */ u8 state;        /* PadPort.state */
     /* 0x01 */ u8 caps;         /* PAD_CAP_* */
@@ -117,11 +117,11 @@ typedef struct PadPressures {
 
 /* Frames a button has been held (2 bytes). */
 typedef struct PadHold {
-    /* 0x00 */ u8 count;        /* up to 0xFF */
+    /* 0x00 */ u8 count;        /* up to 255 */
     /* 0x01 */ u8 unk1;
 } PadHold;
 
-/* The pad state the game reads (0x88 bytes): gPadIn as read, gPad
+/* The pad state the game reads (136 bytes): gPadIn as read, gPad
  * remapped. */
 typedef struct PadInput {
     /* 0x00 */ u8 state;
@@ -141,7 +141,7 @@ typedef struct PadInput {
     /* 0x78 */ u8 unk78[0x88 - 0x78];
 } PadInput;
 
-/* Button mapping (0x2C bytes; the default is gPadDefaultConfig). */
+/* Button mapping (44 bytes; the default is gPadDefaultConfig). */
 typedef struct PadConfig {
     /* 0x00 */ u8 map[32];      /* game bit i -> bit map[i] (>= 25: several) */
     /* 0x20 */ u8 dirMode;      /* gPadDirMap / gPadDirPressMap row */
@@ -164,7 +164,7 @@ typedef struct PadLimits {
 
 #define PAD_DATA_PRESSURES 12  /* the pressures a read gives (PadData.press) */
 
-/* The libpad-style data of a read (0x20 bytes). */
+/* The libpad-style data of a read (32 bytes). */
 typedef struct PadData {
     /* 0x00 */ u8 status;
     /* 0x01 */ u8 mode;
@@ -178,13 +178,13 @@ typedef struct PadData {
     /* 0x14 */ u8 unk14[0x20 - 0x14];
 } PadData;
 
-/* A controller button: its libpad2 bit and its kind (0x08 bytes). */
+/* A controller button: its libpad2 bit and its kind (8 bytes). */
 typedef struct PadButton {
     /* 0x00 */ u32 mask;        /* in PadData.buttons (inverted) */
     /* 0x04 */ s32 kind;        /* PAD_PRESS_*: its pressure in PadData.press */
 } PadButton;
 
-/* A libpad2 socket (0x18 bytes). */
+/* A libpad2 socket (24 bytes). */
 typedef struct PadPort {
     /* 0x00 */ u8 state;        /* PAD_PORT_* */
     /* 0x01 */ u8 setup;        /* profile read */
@@ -207,7 +207,7 @@ typedef struct scePad2SocketParam {
     s32 slot;
     s32 number;
     u8 unk10[0x10];             /* not set by the game; the frame of
-                                   Pad_OpenSocket needs the 0x20 bytes */
+                                   Pad_OpenSocket needs the 32 bytes */
 } scePad2SocketParam;
 
 s32 sceDbcInit(void);

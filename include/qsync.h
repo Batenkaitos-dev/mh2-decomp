@@ -4,6 +4,8 @@
 #include "common.h"
 #include "item.h"
 #include "lobby_state.h"
+#include "em.h"
+#include "player.h"
 
 /*
  * NETWORK: the game messages of the in-quest protocol (gm_sub qnet_sync.c;
@@ -40,7 +42,7 @@ enum QSyncCmd {
     QSYNC_CMD_QUEST = 10        /* the quest's setup and requests (QSyncStateMsg) */
 };
 
-/* sub_main's gQuestSync (0x6ADBC0, 0xE4 bytes; QuestSync_Clear zeroes it
+/* sub_main's gQuestSync (0x6ADBC0, 228 bytes; QuestSync_Clear zeroes it
  * and keeps charIndex): the quest's setup the players share (message 10
  * kind 2 sends a player's part of it, and player 0's shared values) and the
  * state of plsel's select screen (the preset hunters). The arrays of ten are
@@ -52,7 +54,7 @@ typedef struct QuestSync {
     u8 unk03;
     s16 bumpLeft;               /* 0x04: Plsel_StateChoose: the left arrow's bump frames (5); plsel_entry counts it to 60, then sends message 10 kind 8 */
     s16 bumpRight;              /* 0x06: the right arrow's */
-    s16 timer;                  /* 0x08: plsel's wait frames (Plsel_WaitPlayersReady 0xE10, Plsel_Finish 0x1E) */
+    s16 timer;                  /* 0x08: plsel's wait frames (Plsel_WaitPlayersReady 3600, Plsel_Finish 30) */
     u16 area;                   /* 0x0A: the start area outside a quest (gScene.area and startArea); player 0 sends it */
     u8 gender[10];              /* 0x0C: per player (gScene.playerGender; Plsel_InitSlots: odd players 1) */
     u8 unk16[10];               /* 0x16: per player: 4 (Plsel_InitSlots) */
@@ -115,7 +117,7 @@ enum QSyncPlayerKind {
 /* Messages 1-4, the body: a player's state (QSync_SendPlayer sends the
  * local player's, QSync_OnPlayer applies it to the sender's Player). */
 typedef union QSyncPlayerData {
-    struct {                /* kinds 1 and 9 (len 0x2F): the whole state */
+    struct {                /* kinds 1 and 9 (len QSYNC_LEN_PL_STATE): the whole state */
         u16 icons;          /* 0x04: Player.statusIcons */
         u16 mode;           /* 0x06: Player_SetState's flags: PL_SET_SNAP_POS places the player at pos (else it walks there over 10 frames), PL_SET_SNAP_YAW sets its heading at once (else it turns) */
         f32 pos[3];         /* 0x08 */
@@ -138,7 +140,7 @@ typedef union QSyncPlayerData {
         u8 weaponOut;       /* 0x2D: Player.weaponOut */
         u8 ammoType;        /* 0x2E */
     } k1;
-    struct {                /* kinds 2 and 10 (len 0x1E, 0x1F): position and health */
+    struct {                /* kinds 2 and 10 (len QSYNC_LEN_PL_POS, QSYNC_LEN_PL_POS_SONG): position and health */
         f32 pos[3];         /* 0x04 */
         u16 angle;          /* 0x10 */
         s16 hp;             /* 0x12 */
@@ -149,14 +151,14 @@ typedef union QSyncPlayerData {
         u16 area;           /* 0x1C */
         u8 hornSong;        /* 0x1E: Player.hornSong (kind 10) */
     } k2;
-    struct {                /* kinds 3-5 (len 0x17): the player placed in an area */
+    struct {                /* kinds 3-5 (len QSYNC_LEN_PL_PLACE): the player placed in an area */
         f32 pos[3];         /* 0x04: Player.startPos */
         u16 angle;          /* 0x10: Player.startAngle (also the receiver's targetYaw) */
         u16 area;           /* 0x12: Player.nextArea (the receiver's area) */
         s16 mashLeft;       /* 0x14: Player.mashLeft */
         u8 carry;           /* 0x16: Player.carry */
     } k3;
-    struct {                /* kind 6 (len 0x28): the state while handing over an item */
+    struct {                /* kind 6 (len QSYNC_LEN_PL_HANDOVER): the state while handing over an item */
         u16 icons;          /* 0x04 */
         u16 mode;           /* 0x06: as k1.mode */
         f32 pos[3];         /* 0x08 */
@@ -174,7 +176,7 @@ typedef union QSyncPlayerData {
         u8 weaponOut;       /* 0x26: Player.weaponOut */
         u8 ammoType;        /* 0x27 */
     } k6;
-    struct {                /* kinds 7 (ask for an item) and 8 (the answer), len 0xC */
+    struct {                /* kinds 7 (ask for an item) and 8 (the answer), len QSYNC_LEN_PL_ITEM */
         u8 result;          /* 0x04: kind 8: 1: given, 2: refused */
         u8 unk5;
         u8 asker;           /* 0x06: the player who asks for the item */
@@ -186,7 +188,7 @@ typedef union QSyncPlayerData {
 } QSyncPlayerData;
 typedef char QSyncPlayerData_size_check[(sizeof(QSyncPlayerData) == 0x3C) ? 1 : -1];
 
-/* Messages 1-4 (cmd: the sender's index + 1; kinds 1-10), 0x40 bytes. */
+/* Messages 1-4 (cmd: the sender's index + 1; kinds 1-10), 64 bytes. */
 typedef struct QSyncPlayerMsg {
     u8 len;                     /* 0x00 */
     u8 flags;                   /* 0x01 */
@@ -214,9 +216,9 @@ typedef struct QSyncChat {
 } QSyncChat;
 typedef char QSyncChat_size_check[(sizeof(QSyncChat) == 0x44) ? 1 : -1];
 
-/* Message 6, chat: kind 1, len 0x48. */
+/* Message 6, chat: kind 1, len QSYNC_LEN_CHAT (72, the whole message). */
 typedef struct QSyncChatMsg {
-    u8 len;                     /* 0x00: 0x48 */
+    u8 len;                     /* 0x00: QSYNC_LEN_CHAT */
     u8 flags;                   /* 0x01 */
     u8 kind;                    /* 0x02: 1 */
     u8 cmd;                     /* 0x03: 6 */
@@ -251,9 +253,9 @@ typedef char QSyncSupply_size_check[(sizeof(QSyncSupply) == 0xC) ? 1 : -1];
 #define QSYNC_SUPPLY_ANSWER 2       /* the host's answer */
 
 /* Message 7, the supply box (QSync_SendSupply builds it, QSync_OnSupply
- * handles it): kinds 1 and 2, len 0x10, in a 0x20-byte buffer. */
+ * handles it): kinds 1 and 2, len QSYNC_LEN_SUPPLY (16), in a 32-byte buffer. */
 typedef struct QSyncSupplyMsg {
-    u8 len;                     /* 0x00: 0x10 */
+    u8 len;                     /* 0x00: QSYNC_LEN_SUPPLY */
     u8 flags;                   /* 0x01 */
     u8 kind;                    /* 0x02: 1 or 2 */
     u8 cmd;                     /* 0x03: 7 */
@@ -307,10 +309,10 @@ enum QSyncEmMsgKind {
  * are QSync_PackEmState's: Em.versusGauge in a versus quest, else the
  * work area's first two bytes for the fort monsters (the Lao-Shan Lung
  * kinds, EM_KIND_SHEN_GAOREN, EM_KIND_YAMA_TSUKAMI and the Kushala Daora
- * family: Em.work and fortStage), and its bytes 0x44 and 0x45 for
+ * family: Em.work and fortStage), and its unk044 and unk045 for
  * EM_KIND_KHEZU and EM_KIND_RED_KHEZU (EmKhezuWork). */
 typedef union QSyncEmData {
-    struct {                /* kinds 1 (len 0x48) and 2 (len 0x46, no parts): the state */
+    struct {                /* kinds 1 (len QSYNC_LEN_EM_STATE) and 2 (len QSYNC_LEN_EM, no parts): the state */
         f32 pos[3];         /* 0x04 */
         s16 rot[3];         /* 0x10 */
         u8 stateGroup;      /* 0x16: kind 1: Em.syncKind, kind 2: Em.stateGroup */
@@ -333,7 +335,7 @@ typedef union QSyncEmData {
         u16 partsBroken;    /* 0x2C: Em.partsBroken (Em_BreakParts) */
         QSyncEmParts parts; /* 0x2E: kind 1 */
     } k1;
-    struct {                /* kind 3 (len 0x46): the state, from Em_SyncState's values */
+    struct {                /* kind 3 (len QSYNC_LEN_EM): the state, from Em_SyncState's values */
         f32 pos[3];         /* 0x04 */
         s16 rot[3];         /* 0x10 */
         u8 stateGroup;      /* 0x16: Em.syncKind */
@@ -354,7 +356,7 @@ typedef union QSyncEmData {
         u16 partsBroken;    /* 0x2A */
         QSyncEmParts parts; /* 0x2C */
     } k3;
-    struct {                /* kind 4 (len 0x46): the monster handed to another console */
+    struct {                /* kind 4 (len QSYNC_LEN_EM): the monster handed to another console */
         f32 pos[3];         /* 0x04: not applied to EM_KIND_FATALIS, EM_KIND_FATALIS_B, EM_KIND_FATALIS_C */
         s16 rot[3];         /* 0x10 */
         s16 hp;             /* 0x16: not applied when syncKind is EM_GROUP_DEFEAT */
@@ -378,7 +380,7 @@ typedef union QSyncEmData {
 } QSyncEmData;
 typedef char QSyncEmData_size_check[(sizeof(QSyncEmData) == 0x44) ? 1 : -1];
 
-/* Message 8, a monster's state (kinds 1-4), 0x48 bytes. */
+/* Message 8, a monster's state (kinds 1-4), 72 bytes. */
 typedef struct QSyncEmMsg {
     u8 len;                     /* 0x00: QSYNC_LEN_EM_STATE (kind 1), QSYNC_LEN_EM */
     u8 flags;                   /* 0x01 */
@@ -417,7 +419,7 @@ typedef union QSyncStateData {
     struct {                /* kind 1 (len 8): from the host */
         u8 count;           /* 0x04: gScene.playerCount */
     } k1;
-    struct {                /* kind 2 (len 0x22): the sender's part of gQuestSync, and player 0's shared values */
+    struct {                /* kind 2 (len QSYNC_LEN_ST_SETUP): the sender's part of gQuestSync, and player 0's shared values */
         u8 who;             /* 0x04 */
         u8 presetEquip;     /* 0x05: gQuestSync.presetEquip[who] */
         u8 weaponType;      /* 0x06: gQuestSync.weapon[who].type */
@@ -426,7 +428,7 @@ typedef union QSyncStateData {
         u16 area;           /* 0x0A: gQuestSync.area (player 0's) */
         u8 ready;           /* 0x0C: gQuestSync.ready[who] */
         u8 gender;          /* 0x0D: gQuestSync.gender[who] */
-        u16 stageId;        /* 0x0E: gNextQuestId, NetQuest_SetStage's (player 0's) */
+        u16 stageId;        /* 0x0E: gNextQuestId, NextQuest_SetStage's (player 0's) */
         u8 pick;            /* 0x10: gQuestSync.picks[who] */
         u8 unk11;           /* 0x11: gQuestSync.unkDE (player 0's) */
         u16 unk12;          /* 0x12: gQuestSync.unkDA (player 0's) */
@@ -437,7 +439,7 @@ typedef union QSyncStateData {
         u8 unk19;
         s8 userId[LOBBY_USER_ID_LEN]; /* 0x1A: the sender's user id, gMyUserId (into gScene.userIds[who], which holds the players' ids) */
     } k2;
-    struct {                /* kind 6 (len 0xE): a quest event, gQuest's 10-byte net message (Quest_HandleNetMsg) */
+    struct {                /* kind 6 (len QSYNC_LEN_ST_QUEST_EVENT): a quest event, gQuest's 10-byte net message (Quest_HandleNetMsg) */
         u8 from;            /* 0x04: Quest.msgFrom */
         u8 type;            /* 0x05: Quest.msgType */
         u16 arg0;           /* 0x06: Quest.msgArg0 */
@@ -453,7 +455,7 @@ typedef union QSyncStateData {
 } QSyncStateData;
 typedef char QSyncStateData_size_check[(sizeof(QSyncStateData) == 0x20) ? 1 : -1];
 
-/* Message 10 (kinds 1, 2, 6-10, 12, 13), 0x24 bytes (len at most 0x22). */
+/* Message 10 (kinds 1, 2, 6-10, 12, 13), 36 bytes (len at most 34). */
 typedef struct QSyncStateMsg {
     u8 len;                     /* 0x00 */
     u8 flags;                   /* 0x01 */
@@ -468,5 +470,25 @@ typedef char QSyncStateMsg_size_check[(sizeof(QSyncStateMsg) == 0x24) ? 1 : -1];
  * within 1 to QSYNC_DELAY_MAX. */
 #define QSYNC_DELAY_DEFAULT 8           /* without a ping to go by */
 #define QSYNC_DELAY_MAX 30
+
+void QSync_SendPlayer(Player *pl, s32 kind, u16 mode);
+void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg);
+void QSync_SendEm(Em *em, u8 kind, u8 arg);
+void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg);
+void QSync_PackEmParts(Em *em, QSyncEmParts *msg);
+void QSync_UnpackEmParts(Em *em, QSyncEmParts *msg);
+void QSync_PackEmState(Em *em, u8 kind, QSyncEmMsg *msg);
+void QSync_ApplyEmState(Em *em, u8 kind, QSyncEmData *data);
+void QSync_SendState(u8 kind, u8 who);
+void QSync_OnState(u8 from, QSyncStateMsg *msg, s32 arg);
+void QSync_SendChat(u8 who, u8 kind, char *text, u8 toPlayer);
+void QSync_OnChat(u8 from, QSyncChatMsg *msg, s32 arg);
+void QSync_SendSupply(u8 kind, u8 who);
+void QSync_OnSupply(u8 from, QSyncSupplyMsg *msg, s32 arg);
+s32 QSync_Begin(void);
+void QSync_QueuePlayerPos(Player *pl, f32 *pos);
+void QSync_UpdatePlayerPos(void);
+void QSync_QueueEmState(Em *em, u8 arg);
+void QSync_UpdateEmState(Em *em);
 
 #endif /* QSYNC_H */

@@ -2,6 +2,7 @@
 #define FISHING_H
 
 #include "common.h"
+#include "fxobj.h"
 
 /*
  * The fishing's vocabulary: the steps of a fish and of a lure (FxObj.step of
@@ -42,6 +43,78 @@ typedef struct FishSpot {
     s32 kind;                   /* 0x10: the entry of Stage_GetSeasonalData: the fish table and count */
     s32 unk14;                  /* 0x14: not read by the fishing */
 } FishSpot;
+
+/*
+ * The town's built-in stage data (gScene.inLobby): the stage file's lists,
+ * with pointers where the file holds offsets (stage_data.c).
+ * - LobbyFishArea: an entry of gLobbyStageData's list for Stage_FindData:
+ *   an area id and its fishing spots (FishSpot list); id 0 ends the list.
+ * - LobbyFishTable: an entry of a seasonal table (gLobbySeasonalData_N) for
+ *   Stage_GetSeasonalData: the fish table it returns and the count of fish
+ *   it stores in *out.
+ * - LobbyStageData (gLobbyStageData): the area list, then the fish table
+ *   the seasonal tables point to.
+ */
+typedef struct LobbyFishArea {
+    s32 area;
+    FishSpot *spots;
+} LobbyFishArea;
+typedef struct LobbyFishTable {
+    FishTableEntry *table;
+    s32 count;
+} LobbyFishTable;
+typedef struct LobbyStageData {
+    LobbyFishArea areas[3];
+    FishTableEntry fish[8];
+} LobbyStageData;
 typedef char FishSpot_size_check[(sizeof(FishSpot) == 0x18) ? 1 : -1];
+
+void Fish_Run(FxObj *fish);
+void Fish_Start(FxObj *fish);
+void Fish_StepSpawn(FxObj *fish, FishWork *w);
+void Fish_StepSwim(FxObj *fish, FishWork *w);
+void Fish_StepBite(FxObj *fish, FishWork *w);
+void Fish_StepHooked(FxObj *fish, FishWork *w);
+void Fish_StepWait(FxObj *fish, FishWork *w);
+void Fish_Update(FxObj *fish);
+void Fish_End(FxObj *fish);
+void Fish_Free(FxObj *fish);
+void Fish_Draw(DrawSlot *slot);
+s8 Fish_PickKind(FxObj *fish);
+void Effect17_Spawn(s32 spotKind, f32 *src, FishTableEntry *table);
+void Effect17_SpawnArea(s32 area);
+f32 Stage_GetDataPoint(s32 area, f32 *pos);
+void Lure_Spawn(Player *pl, u8 lureType);
+void Lure_Run(FxObj *lure);
+void Lure_Start(FxObj *lure);
+void Lure_Update(FxObj *lure);
+void Lure_End(FxObj *lure);
+void Lure_Free(FxObj *lure);
+void Lure_Draw(DrawSlot *slot);
+f32 Lure_GetWaterHeight(FxObj *lure);
+void Lure_Cast(FxObj *lure, LureWork *w);
+void Fish_StepState_Unk(FxObj *lure, LureWork *w);
+void Player_GetRodTip(f32 *out, Player *pl);
+void Fishing_PlaySe(FxObj *lure, f32 *pos, s16 sound);
+void CountdownFx_Update(FxObj *countdown);
+void CountdownFx_Start(FxObj *countdown);
+void CountdownFx_Run(FxObj *countdown);
+void CountdownFx_End(FxObj *countdown);
+void CountdownFx_Free(FxObj *countdown);
+void CountdownFx_Draw(DrawSlot *slot);
+void Effect2C_Spawn(s16 frames);
+void Countdown_Draw(s16 framesLeft);
+void Countdown_DrawDigit(u8 digit, u32 color, f32 scale);
+void Letterbox_Draw(s8 size);
+extern char *gPlselTexts[168];
+extern char *gResultRuleText;
+extern char *gWtdClassCText;
+extern s32 gHighClassBonusText;
+extern char *gHrpNotMetText;
+extern char *gHrpNoLossText;
+extern char *gHrMaxText;
+extern char *gHrUpText;
+extern char *gDeathPenaltyText;
+extern char *gHelpTexts_6[24];
 
 #endif /* FISHING_H */

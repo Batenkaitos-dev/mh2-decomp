@@ -1,4 +1,4 @@
-# ShortMail_DrawForm (lobby, src/lobby/unk_6FD6C0.c)
+# ShortMail_DrawForm (lobby, src/lobby/short_mail.c)
 
 ## Status
 

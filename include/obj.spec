@@ -1,5 +1,5 @@
-# Fields of Obj (include/obj.h), an object of sub_main's first object pool (0x80 of 0x40 bytes at 0x5B4FB0,
-# Obj_Alloc/Obj_Free; sub_main's bgm.c, area_draw.c and field_objects.c read it too), which the game overlay uses for its
+# Fields of Obj (include/obj.h), an object of sub_main's first object pool (128 of 64 bytes at 0x5B4FB0,
+# Obj_Alloc/Obj_Free; sub_main's obj_pools.c, area_draw.c and field_objects.c read it too), which the game overlay uses for its
 # short-lived objects (effects and the like): an update function run every frame steps a state machine in
 # +0x4 (0 set up, 1 run, 2 end, 3 free). Regenerate with:
 #   python tools/gen_struct.py include/obj.spec include/obj.h
@@ -21,7 +21,7 @@ size 0x40
 0x018 void * buf // its blocks of the object buffer (the kind's data: a struct of its own per kind)
 0x01C u8 blk
 0x01D u8 nblk
-0x01E u8 var4 // per-kind scratch byte: a player index, a position-table index (0xFF none), a random lifetime
+0x01E u8 var4 // per-kind scratch byte: a player index, a position-table index (255 none), a random lifetime
 0x01F u8 keep // not freed by Obj_FreeUnkept
 0x020 f32 pos[3]
 0x02C ObjFn{4} update // run every frame (Obj_UpdateAll)

@@ -20,16 +20,24 @@
 #include "lobby_net.h"
 #include "lobby_menu.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "sprite_queue.h"
+#include "kbd.h"
+#include "text.h"
+#include "window.h"
+#include "name_search.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "lobby_web_users.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "libc.h"
 /* The whole name search was built at optimization level 4. */
 #pragma optimization_level 4
 
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void *memset(void *dst, s32 c, u32 n);
-s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
 extern u8 gMenuWork;
-void NameSearch_Draw(MenuTask *task);
-void NameSearch_Draw2(MenuTask *task);
 
 /* Opens the name search: clears its work, takes the pad from the field and
  * slides the form in. */
@@ -39,7 +47,7 @@ void NameSearch_Open(void)
     gFieldControl = 0;
     LobbyMenu_Init();
     LobbyMenu_SetDraw(0, NameSearch_Draw, NameSearch_Draw2, 0);
-    WinSlide_Step(&((NameSearchMenu *)&gMenuWork)->formWin, 0x280, 0x190);
+    WinSlide_Step(&((NameSearchMenu *)&gMenuWork)->formWin, 640, 400);
 }
 
 /* Closes the name search and gives the pad back to the field. */
@@ -49,26 +57,15 @@ void NameSearch_Close(void)
     LobbyMenu_Init();
     LobbyMenu_SetDraw(0, 0, 0, 0);
 }
-s32 Menu_WrapUpDown(s32, s32);
 
 /* prototypes */
-void Text_SetSize(s32);
 /* end of prototypes */
 
 /* the hunters a name search found (LobbyNet_GetUserFindByName) */
 extern NetUserFindByNameFound *gUserFindByNameFound;
 
-void NameSearch_BuildPage(NameSearchMenu *menu, s16 page);
-
 extern LobbyMenu *gLobbyMenu;
 extern u8 gLobbyLevel1Sel;
-void LobbyText_Open(s32 msg);
-s32 NameSearch_InputName(NameSearchMenu *menu, u16 pad);
-s32 NameSearch_ResultsInput(NameSearchMenu *menu, u16 pad);
-void NameSearch_ShowResults(NameSearchMenu *menu);
-s32 LobbyUser_FindByName(s8 *name);
-s32 HunterInfo_Update(u16 pad);
-void HunterInfo_Open(void *, s32);
 
 /*
  * The name search's frame, from the game menu: runs the form until a name
@@ -160,12 +157,7 @@ s32 NameSearch_Update(u16 pad)
     return MENU_RUNNING;
 }
 
-void LobbySe_Play(s32 se);
-void LobbyDialog_Grow(void);
 s8 Kbd_Run(char *dst, s16 held, s16 pressed);
-void Kbd_Cancel(void);
-void Kbd_SetPos(s32 n, f32 f);
-void Chat_OpenKbd(s32 flags, s32 layout, u16 maxChars, void *text);
 
 /*
  * The name search's form: slides in, then moves over its two rows. Circle
@@ -178,7 +170,7 @@ s32 NameSearch_InputName(NameSearchMenu *menu, u16 pad)
 {
     switch (menu->inputStep) {
     case NAME_INPUT_SLIDE_IN:
-        switch (WinSlide_Step(&menu->formWin, 0x280, 0x190)) {
+        switch (WinSlide_Step(&menu->formWin, 640, 400)) {
         case MENU_DONE:
             menu->inputStep++;
             menu->row = NAME_SEARCH_ROW_NAME;
@@ -189,8 +181,8 @@ s32 NameSearch_InputName(NameSearchMenu *menu, u16 pad)
         if (pad & PAD_CIRCLE) {
             if (menu->row == NAME_SEARCH_ROW_NAME) {
                 menu->inputStep++;
-                Kbd_SetPos(0x3A, 80.0f);
-                Chat_OpenKbd(3, 0xF, NAME_SEARCH_NAME_CHARS, menu->name); /* kind 3, keyboard layout 0xF */
+                Kbd_SetPos(58, 80.0f);
+                Chat_OpenKbd(3, 15, NAME_SEARCH_NAME_CHARS, menu->name); /* kind 3, keyboard layout 0xF */
                 LobbySe_Play(LOBBY_SE_CONFIRM);
             } else if (menu->name[0] == 0) {
                 menu->inputStep = NAME_INPUT_NOTICE;
@@ -238,8 +230,6 @@ s32 NameSearch_InputName(NameSearchMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Menu_CountPages(s16 n, s16 per);
-
 /* Fills the results' rows with page `page` of the hunters found, counts the
  * pages, and keeps the cursor on the page. */
 void NameSearch_BuildPage(NameSearchMenu *menu, s16 page)
@@ -268,12 +258,10 @@ void NameSearch_ShowResults(NameSearchMenu *menu)
 {
     menu->cursor = 0;
     NameSearch_BuildPage(menu, 0);
-    WinSlide_Step(&menu->listWin, 0x280, 0x12C);
+    WinSlide_Step(&menu->listWin, 640, 300);
 }
 
 extern char gMyUserId[];
-s32 memcmp(void *a, void *b, s32 n);
-s32 Menu_WrapLeftRight(s32, s32);
 
 /*
  * The name search's results: slide in, then the cursor moves over the page
@@ -285,7 +273,7 @@ s32 NameSearch_ResultsInput(NameSearchMenu *menu, u16 pad)
 {
     switch (menu->inputStep) {
     case NAME_RESULTS_SLIDE_IN:
-        switch (WinSlide_Step(&menu->listWin, 0x280, 0x12C)) {
+        switch (WinSlide_Step(&menu->listWin, 640, 300)) {
         case MENU_DONE:
             menu->inputStep++;
             break;
@@ -324,18 +312,11 @@ s32 NameSearch_ResultsInput(NameSearchMenu *menu, u16 pad)
 extern char gNameSearchTextFmt[];
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k); /* unit's own declaration: s16 coordinates and an s32 kind here; with the definition's s32 coordinates and s16 kind, NameSearch_DrawResults and NameSearch_DrawForm compile differently */
 void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
 u32 Color_PulseAlpha(u32 color);
 void Menu_DrawSideArrows(s16 x, s16 y, s16 w, s16 size, s8 flip, u32 color);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *text, s32 color);
 
-void Sjis_Widen(char *src, char *dst);
-void Menu_DrawLine(s16 x, s16 y, s32 w, s32 h, s32 sel); /* unit's own declaration: a width, a height and an s32 choice here; with the definition's two corners and s8 flag, NameSearch_DrawResults compiles differently */
+void Menu_DrawRowHighlight(s16 x, s16 y, s32 w, s32 h, s32 sel); /* unit's own declaration: a width, a height and an s32 choice here; with the definition's two corners and s8 flag, NameSearch_DrawResults compiles differently */
 void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Text_Printf(const char *fmt, ...);
 
 /*
  * Draws the name search's results at x, y: the title, then either "no
@@ -352,30 +333,30 @@ void NameSearch_DrawResults(NameSearchMenu *menu, s16 x, s16 y)
     char *status;
     char wideId[32];
 
-    Win_Draw(x, y, 0x140, 0x122, 0xBDB59F6C, 0xBB402010, 8);
-    Gfx_DrawLine(x + 8, y + 0xC, 0x130, 0x14, 0x80B59F6C);
+    Win_Draw(x, y, 320, 290, 0xBDB59F6C, 0xBB402010, 8);
+    Gfx_DrawLine(x + 8, y + 12, 304, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    textX = x + 0x10;
-    Font_SetPos(textX, y + 0xE);
+    textX = x + 16;
+    Font_SetPos(textX, y + 14);
     Text_PrintfColored(gSearchMenuTexts[SEARCH_MENU_TEXT_NAME]);
     if (menu->count == 0) {
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_NO_RESULTS], x + 0xA0, 0x12), (s16)(y + 0xE) + 0x64);
+        Font_SetPos(Text_CenterX(gEmptyListTexts[EMPTY_LIST_NO_RESULTS], x + 160, 18), (s16)(y + 14) + 100);
         Text_PrintfColored(gEmptyListTexts[EMPTY_LIST_NO_RESULTS]);
         return;
     }
-    Menu_DrawPageNum(x + 0xE6, y + 0xE, menu->page, menu->pageCount, 1);
-    rowY += 0x24;
+    Menu_DrawPageNum(x + 230, y + 14, menu->page, menu->pageCount, 1);
+    rowY += 36;
     Font_SetColor(0x807F7F28);
     Font_SetPos(textX, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_NAME]);
-    Font_SetPos(x + 0x62, rowY);
+    Font_SetPos(x + 98, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_ID]);
-    Font_SetPos(x + 0xD8, rowY);
+    Font_SetPos(x + 216, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_CONN_STATE]);
     for (i = 0; i < menu->count; i++) {
         Font_SetColor(0x807F7F7F);
-        rowY += 0x16;
+        rowY += 22;
         if (menu->cursor == i) {
             switch (menu->step) {
             case NAME_SEARCH_RESULTS:
@@ -385,14 +366,14 @@ void NameSearch_DrawResults(NameSearchMenu *menu, s16 x, s16 y)
                 dim = 1;
                 break;
             }
-            Menu_DrawLine(x + 8, rowY - 1, 0x130, 0x14, dim);
+            Menu_DrawRowHighlight(x + 8, rowY - 1, 304, 20, dim);
         }
-        Font_SetPos(x + 0x10, rowY);
+        Font_SetPos(x + 16, rowY);
         Text_PrintfColored(gNameSearchTextFmt, menu->rows[i]->name);
-        Font_SetPos(x + 0x62, rowY);
+        Font_SetPos(x + 98, rowY);
         Sjis_Widen(menu->rows[i]->id, wideId);
         Text_PrintfColored(wideId);
-        Font_SetPos(x + 0xD8, rowY);
+        Font_SetPos(x + 216, rowY);
         /* the status is the first byte of the reply's text, read unsigned as
          * the game's code does (FRIEND_STATUS_UNKNOWN is its 0xFF) */
         switch ((u8)menu->rows[i]->text[0]) {
@@ -425,36 +406,33 @@ void NameSearch_DrawForm(NameSearchMenu *menu, s16 x, s16 y)
     u32 startColor;
     s16 rowY = y;
 
-    Win_Draw(x, y, 0xC8, 0x82, 0xBDB59F6C, 0xBB402010, 8);
-    Gfx_DrawLine(x + 8, rowY + 0xC, 0xB8, 0x14, 0x80B59F6C);
+    Win_Draw(x, y, 200, 130, 0xBDB59F6C, 0xBB402010, 8);
+    Gfx_DrawLine(x + 8, rowY + 12, 184, 20, 0x80B59F6C);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x10, rowY + 0xE);
+    Font_SetPos(x + 16, rowY + 14);
     Text_PrintfColored(gSearchMenuTexts[SEARCH_MENU_TEXT_NAME]);
-    rowY += 0x36;
+    rowY += 54;
     if (menu->row == NAME_SEARCH_ROW_NAME) {
-        frameColor = Color_PulseAlpha(0x8080);
+        frameColor = Color_PulseAlpha(32896);
         startColor = 0x80404040;
-        Menu_DrawSideArrows(x + 0xA, rowY, 0xB4, 0x16, 0, 0xFF008080);
+        Menu_DrawSideArrows(x + 10, rowY, 180, 22, 0, 0xFF008080);
     } else {
         frameColor = 0x80808080;
         startColor = 0x802B7F7F;
     }
-    Gfx_DrawRectFrame(x + 0x14, rowY, 0xA0, 0x18, frameColor);
-    Gfx_DrawRectFrame(x + 0x13, rowY - 1, 0xA2, 0x1A, frameColor);
+    Gfx_DrawRectFrame(x + 20, rowY, 160, 24, frameColor);
+    Gfx_DrawRectFrame(x + 19, rowY - 1, 162, 26, frameColor);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(Text_CenterX(menu->name, x + 0x64, 0x12), rowY + 4);
+    Font_SetPos(Text_CenterX(menu->name, x + 100, 18), rowY + 4);
     Text_PrintfColored(gNameSearchTextFmt, menu->name);
     Font_SetColor(startColor);
-    labelX = Text_CenterX(gNetLabels[NET_LABEL_SEARCH_START], x + 0x64, 0x12);
-    Font_SetPos(labelX, rowY += 0x28);
+    labelX = Text_CenterX(gNetLabels[NET_LABEL_SEARCH_START], x + 100, 18);
+    Font_SetPos(labelX, rowY += 40);
     Text_PrintfColored(gNetLabels[NET_LABEL_SEARCH_START]);
     if (menu->row == NAME_SEARCH_ROW_START) {
-        Menu_DrawArrowsRev(labelX, rowY, 0x12, gNetLabels[NET_LABEL_SEARCH_START], 0xFF008080);
+        Menu_DrawArrowsRev(labelX, rowY, 18, gNetLabels[NET_LABEL_SEARCH_START], 0xFF008080);
     }
 }
-
-void Font_SetSpacing(u8 a, u8 b);
-void HunterInfo_DrawIfOpen(void);
 
 /*
  * The name search's first draw callback: the form, the results, or the
@@ -465,13 +443,13 @@ void NameSearch_Draw(MenuTask *task)
     NameSearchMenu *menu = (NameSearchMenu *)&gMenuWork;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (menu->step) {
     case NAME_SEARCH_FORM:
-        NameSearch_DrawForm(menu, menu->formWin.pos, 0x3A);
+        NameSearch_DrawForm(menu, menu->formWin.pos, 58);
         break;
     case NAME_SEARCH_RESULTS:
-        NameSearch_DrawResults(menu, menu->listWin.pos, 0x3A);
+        NameSearch_DrawResults(menu, menu->listWin.pos, 58);
         break;
     case NAME_SEARCH_HUNTER:
         HunterInfo_DrawIfOpen();
@@ -487,7 +465,7 @@ void NameSearch_Draw2(MenuTask *task)
 
 /* The name search's read-only data: its string format. */
 #pragma rodata on
-char gNameSearchTextFmt[0x8] = {
+char gNameSearchTextFmt[8] = {
 #include "lobby/00838198.inc"
 };
 #pragma rodata off

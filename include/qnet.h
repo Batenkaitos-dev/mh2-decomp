@@ -28,7 +28,7 @@ typedef struct QNetHdr {
     u8 flags;   /* 1: a packet's channel (QNET_CHAN_*) and QNET_FLAG_STATES; a game message's
                  * QNET_MSG_DROPPABLE */
     u8 from;    /* 2: the sender's index (system messages: the command) */
-    u8 seq;     /* 3: the sender's sequence number (0xFF in queued messages) */
+    u8 seq;     /* 3: the sender's sequence number (255 in queued messages) */
 } QNetHdr;
 
 /* QNetHdr.flags of a packet: the low nibble is the channel. */
@@ -67,12 +67,12 @@ enum QNetSysCmd {
 
 /* A system message (channel QNET_CHAN_SYS): QuestNet_Sys* queue them in
  * gQNetSysSend, QuestNet_OnSysMsg handles them. The header's third byte is
- * the command and its seq is 0xFF. */
+ * the command and its seq is 255. */
 typedef struct QNetSysMsg {
     u8 len;     /* 0: 4; 5 (ready), 8 (time), 9 (time reply) */
     u8 flags;   /* 1: 0 */
     u8 cmd;     /* 2: enum QNetSysCmd */
-    u8 seq;     /* 3: 0xFF */
+    u8 seq;     /* 3: 255 */
     union {
         u8 ready;       /* 4: QNET_SYS_READY: the sender's ready timeout in seconds (QNet.readyTimeout) */
         struct {
@@ -156,7 +156,7 @@ enum QNetSendBlock {
 typedef s32 (*QNetMsgFunc)(u8, u8 *, s32);
 typedef void (*QNetPeerFunc)(u8, s32, u8);
 
-/* The session (gQNet, 0xD0 bytes). Times are seconds of the session's clock
+/* The session (gQNet, 208 bytes). Times are seconds of the session's clock
  * (now, QuestNet_Clock). */
 typedef struct QNet {
     s16 joinSecond;         /* 0x00: the join's whole seconds: each one sends an alive (QuestNet_UpdateJoin) */
@@ -230,5 +230,41 @@ typedef struct QNetConfig {
     QNetPeerFunc onLost;    /* 0x2C */
     s32 onLostArg;          /* 0x30 */
 } QNetConfig;
+
+void QNetIf_OnPlayerLost(u8 peer);
+void QNetIf_OnPlayerLeft(u8 peer);
+void QNetIf_Post(void *msg, s32 unused);
+void QNetIf_Flush(void);
+void QNetIf_UpdateReceive(void);
+void QNetIf_Leave(void);
+void QNetIf_Ready(s32 which);
+void QNetIf_Unready(void);
+extern s32 gQSyncResendDelay;
+extern s32 gQSyncSendPeriod; /* gm_sub; this unit reads its low half */
+
+s32 QuestNet_Send(QNet *net, QNetBuf *queue, u8 type);
+s32 QuestNet_OnSysMsg(QNet *net, u8 from, QNetSysMsg *msg);
+s32 QuestNet_Dispatch(QNet *net, u8 from, u8 flags, u8 *data, u8 len);
+s32 QuestNet_Parse(QNet *net, u8 *data, s32 len, QNetHdr *out);
+s32 QuestNet_ProcessQueue(QNet *net, QNetBuf *buf);
+s32 QuestNet_Recv(QNet *net);
+void QuestNet_Update(QNet *net);
+void QuestNet_Init(QNetConfig *cfg);
+s32 QuestNet_IsActive(void);
+s32 QuestNet_GetState(void);
+s32 QuestNet_IsRunning(void);
+u8 QuestNet_GetCount(void);
+s32 QuestNet_GetError(void);
+s32 QuestNet_CanSend(void);
+s32 QuestNet_GetPing(u8 peer);
+s32 QuestNet_NoPeerReady(void);
+void QuestNet_Post(void *msg);
+void QuestNet_Flush(void);
+void QuestNet_Receive(void);
+void QuestNet_Tick(void);
+void QuestNet_Ready(u8 timeout);
+void QuestNet_Unready(void);
+void QuestNet_Leave(void);
+void QuestNet_Close(void);
 
 #endif /* QNET_H */

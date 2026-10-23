@@ -1,5 +1,7 @@
 /*
- * The VU1 programs' packet builders, and the motion file reader.
+ * The VU1 programs: the choice of a model's program (Vu1_SelectProgram,
+ * from its render flags and mesh kind), the programs' descriptors (this
+ * file's data) and their packet builders.
  *
  * Model_Draw draws a model with the VU1 program its descriptor names (Vu1ProgInfo,
  * gVu1ProgInfo00 ...): after the model's part packets it runs the descriptor's builder
@@ -7,36 +9,612 @@
  * lights, the fog, the texture coordinate matrix, the bones' matrices) and starts the
  * program. The VU0 helpers the builders call (Vu1_MtxMul ...) are asm or inline asm, and
  * static, so that the builders keep their packet pointer in v0 across the calls.
- *
- * The motion file reader (AnimFile_*, Anim_LoadSet, Anim_ConvertChunk, Anim_ConvertKeys*)
- * converts a motion file (AnimFileHeader) into an AnimSet: per bone an AnimHeader with
- * its curves and their keys, in the forms the Anim_* evaluators read.
  */
 #include "common.h"
 #include "model.h"
-#include "motion.h"
 #include "dma.h"
-#include "heap.h"
 #include "light.h"
+#include "vu1_packets.h"
+#include "packet_tim2.h"
 
-extern s32 gAnimCurveBuf;          /* the base of the curves' keys */
-extern LinearHeap gAnimKeyHeap;   /* the heap of the keys */
-void *LinearHeap_Alloc(struct LinearHeap *heap, u32 size, s32 flag);
+/* The VU1 programs' descriptors (60 of them). */
+extern Vu1ProgInfo gVu1ProgInfo00;
+extern Vu1ProgInfo gVu1ProgInfo01;
+extern Vu1ProgInfo gVu1ProgInfo02;
+extern Vu1ProgInfo gVu1ProgInfo03;
+extern Vu1ProgInfo gVu1ProgInfo04;
+extern Vu1ProgInfo gVu1ProgInfo05;
+extern Vu1ProgInfo gVu1ProgInfo06;
+extern Vu1ProgInfo gVu1ProgInfo07;
+extern Vu1ProgInfo gVu1ProgInfo08;
+extern Vu1ProgInfo gVu1ProgInfo09;
+extern Vu1ProgInfo gVu1ProgInfo10;
+extern Vu1ProgInfo gVu1ProgInfo11;
+extern Vu1ProgInfo gVu1ProgInfo12;
+extern Vu1ProgInfo gVu1ProgInfo13;
+extern Vu1ProgInfo gVu1ProgInfo14;
+extern Vu1ProgInfo gVu1ProgInfo15;
+extern Vu1ProgInfo gVu1ProgInfo16;
+extern Vu1ProgInfo gVu1ProgInfo17;
+extern Vu1ProgInfo gVu1ProgInfo18;
+extern Vu1ProgInfo gVu1ProgInfo19;
+extern Vu1ProgInfo gVu1ProgInfo20;
+extern Vu1ProgInfo gVu1ProgInfo21;
+extern Vu1ProgInfo gVu1ProgInfo22;
+extern Vu1ProgInfo gVu1ProgInfo23;
+extern Vu1ProgInfo gVu1ProgInfo24;
+extern Vu1ProgInfo gVu1ProgInfo25;
+extern Vu1ProgInfo gVu1ProgInfo26;
+extern Vu1ProgInfo gVu1ProgInfo27;
+extern Vu1ProgInfo gVu1ProgInfo28;
+extern Vu1ProgInfo gVu1ProgInfo29;
+extern Vu1ProgInfo gVu1ProgInfo30;
+extern Vu1ProgInfo gVu1ProgInfo31;
+extern Vu1ProgInfo gVu1ProgInfo32;
+extern Vu1ProgInfo gVu1ProgInfo33;
+extern Vu1ProgInfo gVu1ProgInfo34;
+extern Vu1ProgInfo gVu1ProgInfo35;
+extern Vu1ProgInfo gVu1ProgInfo36;
+extern Vu1ProgInfo gVu1ProgInfo37;
+extern Vu1ProgInfo gVu1ProgInfo38;
+extern Vu1ProgInfo gVu1ProgInfo39;
+extern Vu1ProgInfo gVu1ProgInfo40;
+extern Vu1ProgInfo gVu1ProgInfo41;
+extern Vu1ProgInfo gVu1ProgInfo42;
+extern Vu1ProgInfo gVu1ProgInfo43;
+extern Vu1ProgInfo gVu1ProgInfo44;
+extern Vu1ProgInfo gVu1ProgInfo45;
+extern Vu1ProgInfo gVu1ProgInfo46;
+extern Vu1ProgInfo gVu1ProgInfo47;
+extern Vu1ProgInfo gVu1ProgInfo48;
+extern Vu1ProgInfo gVu1ProgInfo49;
+extern Vu1ProgInfo gVu1ProgInfo50;
+extern Vu1ProgInfo gVu1ProgInfo51;
+extern Vu1ProgInfo gVu1ProgInfo52;
+extern Vu1ProgInfo gVu1ProgInfo53;
+extern Vu1ProgInfo gVu1ProgInfo54;
+extern Vu1ProgInfo gVu1ProgInfo55;
+extern Vu1ProgInfo gVu1ProgInfo56;
+extern Vu1ProgInfo gVu1ProgInfo57;
+extern Vu1ProgInfo gVu1ProgInfo58;
+extern Vu1ProgInfo gVu1ProgInfo59;
 
-/* The 16-bit keys as the motion file stores them: KeyS2, KeyS4 and KeySM
- * (motion.h) read as unsigned halves. Anim_ConvertKeysS2/S4/SM copy them
- * through these, which the match needs: a signed half loads with lh, these
- * copies load with lhu. */
-typedef struct FileKeyS2 { u16 v, t; } FileKeyS2;
-typedef struct FileKeyS4 { u16 v, t, in, out; } FileKeyS4;
-typedef struct FileKeySM { u32 mode; u16 v, t, in, out; } FileKeySM;
+/*
+ * Picks entry's VU1 program: entry->prog (0..59) and its descriptor entry->progInfo
+ * (gVu1ProgInfo00 ...), from the render flags the data was built with (entry->renderFlags,
+ * whose top byte, render state 93's, must be 0) and the mesh key (MESH_KEY_*); -1 and
+ * NULL when no program fits. mesh is not read. The render keys are bits of gRenderFlags2,
+ * set by render states without names yet (render_state.h): 0x2 by state 21, 0x20 and 0x40
+ * by state 0, 0x80 by RS_SCISSOR, 0x200 by state 1, 0x4000 by state 98, 0x8000 by state
+ * 18, 0x20000 by state 102. The top byte is tested by a one-case switch, as the game's
+ * code does (a branch over a jump to the end).
+ */
+void Vu1_SelectProgram(ModelEntry *entry, MeshDesc *mesh)
+{
+    u32 flags;
+    u32 renderKey;
+    s32 meshKey;
 
-void Anim_ConvertKeysF2(AnimFileCurve *rec, AnimCurve *curve);
-void Anim_ConvertKeysF4(AnimFileCurve *rec, AnimCurve *curve);
-void Anim_ConvertKeysFM(AnimFileCurve *rec, AnimCurve *curve);
-void Anim_ConvertKeysS2(AnimFileCurve *rec, AnimCurve *curve);
-void Anim_ConvertKeysS4(AnimFileCurve *rec, AnimCurve *curve);
-void Anim_ConvertKeysSM(AnimFileCurve *rec, AnimCurve *curve);
+    entry->prog = -1;
+    entry->progInfo = NULL;
+    flags = entry->renderFlags;
+    meshKey = entry->used | entry->vtxFormat;
+    renderKey = flags & 0xFFFFFF;
+    switch (flags & 0xFF000000) {
+    case 0:
+            switch (renderKey) {
+            case 514:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 0;
+                    entry->progInfo = &gVu1ProgInfo00;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 1;
+                    entry->progInfo = &gVu1ProgInfo01;
+                    break;
+                }
+                break;
+            case 0x20202:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 2;
+                    entry->progInfo = &gVu1ProgInfo02;
+                    break;
+                }
+                break;
+            case 546:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 3;
+                    entry->progInfo = &gVu1ProgInfo03;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 4;
+                    entry->progInfo = &gVu1ProgInfo04;
+                    break;
+                }
+                break;
+            case 0x20020:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 5;
+                    entry->progInfo = &gVu1ProgInfo05;
+                    break;
+                }
+                break;
+            case 128:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 6;
+                    entry->progInfo = &gVu1ProgInfo06;
+                    break;
+                }
+                break;
+            case 0x20080:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 7;
+                    entry->progInfo = &gVu1ProgInfo07;
+                    break;
+                }
+                break;
+            case 512:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 8;
+                    entry->progInfo = &gVu1ProgInfo08;
+                    break;
+                }
+                break;
+            case 0x20200:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 9;
+                    entry->progInfo = &gVu1ProgInfo09;
+                    break;
+                }
+                break;
+            case 0:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 10;
+                    entry->progInfo = &gVu1ProgInfo10;
+                    break;
+                }
+                break;
+            case 2:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 11;
+                    entry->progInfo = &gVu1ProgInfo11;
+                    break;
+                }
+                break;
+            case 0x20000:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 12;
+                    entry->progInfo = &gVu1ProgInfo12;
+                    break;
+                }
+                break;
+            case 0x20002:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 13;
+                    entry->progInfo = &gVu1ProgInfo13;
+                    break;
+                }
+                break;
+            case 0x8222:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 14;
+                    entry->progInfo = &gVu1ProgInfo14;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 15;
+                    entry->progInfo = &gVu1ProgInfo15;
+                    break;
+                }
+                break;
+            case 674:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 16;
+                    entry->progInfo = &gVu1ProgInfo16;
+                    break;
+                }
+                break;
+            case 642:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 17;
+                    entry->progInfo = &gVu1ProgInfo17;
+                    break;
+                }
+                break;
+            case 0x8202:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 18;
+                    entry->progInfo = &gVu1ProgInfo18;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 19;
+                    entry->progInfo = &gVu1ProgInfo19;
+                    break;
+                }
+                break;
+            case 0x28202:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 20;
+                    entry->progInfo = &gVu1ProgInfo20;
+                    break;
+                }
+                break;
+            case 0x8200:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 21;
+                    entry->progInfo = &gVu1ProgInfo21;
+                    break;
+                }
+                break;
+            case 0x8000:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 22;
+                    entry->progInfo = &gVu1ProgInfo22;
+                    break;
+                }
+                break;
+            case 0x8002:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 23;
+                    entry->progInfo = &gVu1ProgInfo23;
+                    break;
+                }
+                break;
+            case 0x28200:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 24;
+                    entry->progInfo = &gVu1ProgInfo24;
+                    break;
+                }
+                break;
+            case 0x28000:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 25;
+                    entry->progInfo = &gVu1ProgInfo25;
+                    break;
+                }
+                break;
+            case 0x28002:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 26;
+                    entry->progInfo = &gVu1ProgInfo26;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 27;
+                    entry->progInfo = &gVu1ProgInfo27;
+                    break;
+                }
+                break;
+            case 16898:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 28;
+                    entry->progInfo = &gVu1ProgInfo28;
+                    break;
+                }
+                break;
+            case 0x24202:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 29;
+                    entry->progInfo = &gVu1ProgInfo29;
+                    break;
+                }
+                break;
+            case 16896:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 30;
+                    entry->progInfo = &gVu1ProgInfo30;
+                    break;
+                }
+                break;
+            case 0x24200:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 31;
+                    entry->progInfo = &gVu1ProgInfo31;
+                    break;
+                }
+                break;
+            case 16386:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 32;
+                    entry->progInfo = &gVu1ProgInfo32;
+                    break;
+                }
+                break;
+            case 0x24002:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 33;
+                    entry->progInfo = &gVu1ProgInfo33;
+                    break;
+                }
+                break;
+            case 16384:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 34;
+                    entry->progInfo = &gVu1ProgInfo34;
+                    break;
+                }
+                break;
+            case 0x24000:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 35;
+                    entry->progInfo = &gVu1ProgInfo35;
+                    break;
+                }
+                break;
+            case 0xC202:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 36;
+                    entry->progInfo = &gVu1ProgInfo36;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 37;
+                    entry->progInfo = &gVu1ProgInfo37;
+                    break;
+                }
+                break;
+            case 0x2C202:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 38;
+                    entry->progInfo = &gVu1ProgInfo38;
+                    break;
+                }
+                break;
+            case 0xC200:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 39;
+                    entry->progInfo = &gVu1ProgInfo39;
+                    break;
+                }
+                break;
+            case 0x2C200:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 40;
+                    entry->progInfo = &gVu1ProgInfo40;
+                    break;
+                }
+                break;
+            case 0xC002:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 41;
+                    entry->progInfo = &gVu1ProgInfo41;
+                    break;
+                }
+                break;
+            case 0x2C002:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 42;
+                    entry->progInfo = &gVu1ProgInfo42;
+                    break;
+                }
+                break;
+            case 0xC000:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 43;
+                    entry->progInfo = &gVu1ProgInfo43;
+                    break;
+                }
+                break;
+            case 0x2C000:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 44;
+                    entry->progInfo = &gVu1ProgInfo44;
+                    break;
+                }
+                break;
+            case 0x28080:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 45;
+                    entry->progInfo = &gVu1ProgInfo45;
+                    break;
+                }
+                break;
+            case 0x2C080:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 46;
+                    entry->progInfo = &gVu1ProgInfo46;
+                    break;
+                }
+                break;
+            case 0x2C280:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 47;
+                    entry->progInfo = &gVu1ProgInfo47;
+                    break;
+                }
+                break;
+            case 0x28022:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 48;
+                    entry->progInfo = &gVu1ProgInfo48;
+                    break;
+                }
+                break;
+            case 16930:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 49;
+                    entry->progInfo = &gVu1ProgInfo49;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 50;
+                    entry->progInfo = &gVu1ProgInfo50;
+                    break;
+                }
+                break;
+            case 0x24020:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 51;
+                    entry->progInfo = &gVu1ProgInfo51;
+                    break;
+                case MESH_KEY_SKINNED_MATS:
+                case MESH_KEY_SKINNED:
+                    entry->prog = 52;
+                    entry->progInfo = &gVu1ProgInfo52;
+                    break;
+                }
+                break;
+            case 0x200A0:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 53;
+                    entry->progInfo = &gVu1ProgInfo53;
+                    break;
+                }
+                break;
+            case 0x28020:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 54;
+                    entry->progInfo = &gVu1ProgInfo54;
+                    break;
+                }
+                break;
+            case 0x8080:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 55;
+                    entry->progInfo = &gVu1ProgInfo55;
+                    break;
+                }
+                break;
+            case 16512:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 56;
+                    entry->progInfo = &gVu1ProgInfo56;
+                    break;
+                }
+                break;
+            case 0xC080:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 57;
+                    entry->progInfo = &gVu1ProgInfo57;
+                    break;
+                }
+                break;
+            case 0x24080:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 58;
+                    entry->progInfo = &gVu1ProgInfo58;
+                    break;
+                }
+                break;
+            case 0x280A0:
+                switch (meshKey) {
+                case MESH_KEY_RIGID:
+                case MESH_KEY_RIGID_MATS:
+                    entry->prog = 59;
+                    entry->progInfo = &gVu1ProgInfo59;
+                    break;
+                }
+                break;
+            }
+        break;
+    }
+}
 
 /* dst = a * b (4x4), as Mtx_Mul. */
 static asm void Vu1_MtxMul(f32 *dst, f32 *a, f32 *b)
@@ -269,7 +847,6 @@ static asm void Vu1_PutUvMatrix(f32 *dst)
     nop
 }
 
-void *Packet_Alloc(u32 size, s32 align);
 extern f32 gMtxSlots[];
 extern f32 gMtxView[];
 extern f32 gMtxProjClip[];
@@ -365,7 +942,7 @@ u8 *Vu1Pkt_L(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(16), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(16), 16);
 
     VU1_PKT_HEAD(pkt, 16, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -396,7 +973,7 @@ u8 *Vu1Pkt_L(ModelEntry *entry, u32 start, u8 *next)
  */
 u8 *Vu1Pkt_SL(ModelEntry *entry, u32 start, u8 *next)
 {
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(240), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(240), 16);
 
     VU1_PKT_HEAD(pkt, 240, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -427,7 +1004,7 @@ u8 *Vu1Pkt_SL(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_Plain(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(9), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(9), 16);
 
     VU1_PKT_HEAD(pkt, 9, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -449,7 +1026,7 @@ u8 *Vu1Pkt_LD(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 16);
 
     VU1_PKT_HEAD(pkt, 17, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -484,7 +1061,7 @@ u8 *Vu1Pkt_LD(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_D(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(10), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(10), 16);
 
     VU1_PKT_HEAD(pkt, 10, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -510,7 +1087,7 @@ u8 *Vu1Pkt_LE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(19), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(19), 16);
 
     VU1_PKT_HEAD(pkt, 19, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -542,7 +1119,7 @@ u8 *Vu1Pkt_LE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_E(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(12), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(12), 16);
 
     VU1_PKT_HEAD(pkt, 12, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -566,7 +1143,7 @@ u8 *Vu1Pkt_LDE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(20), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(20), 16);
 
     VU1_PKT_HEAD(pkt, 20, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -603,7 +1180,7 @@ u8 *Vu1Pkt_LDE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(13), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(13), 16);
 
     VU1_PKT_HEAD(pkt, 13, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -630,7 +1207,7 @@ u8 *Vu1Pkt_LV(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 16);
 
     VU1_PKT_HEAD(pkt, 17, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -665,7 +1242,7 @@ u8 *Vu1Pkt_LV(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_V(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(10), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(10), 16);
 
     VU1_PKT_HEAD(pkt, 10, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -692,7 +1269,7 @@ u8 *Vu1Pkt_LDV(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(18), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(18), 16);
 
     VU1_PKT_HEAD(pkt, 18, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -732,7 +1309,7 @@ u8 *Vu1Pkt_LDV(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DV(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(11), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(11), 16);
 
     VU1_PKT_HEAD(pkt, 11, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -763,7 +1340,7 @@ u8 *Vu1Pkt_LVE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(20), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(20), 16);
 
     VU1_PKT_HEAD(pkt, 20, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -800,7 +1377,7 @@ u8 *Vu1Pkt_LVE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_VE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(13), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(13), 16);
 
     VU1_PKT_HEAD(pkt, 13, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -828,7 +1405,7 @@ u8 *Vu1Pkt_LDVE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(21), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(21), 16);
 
     VU1_PKT_HEAD(pkt, 21, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -869,7 +1446,7 @@ u8 *Vu1Pkt_LDVE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DVE(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(14), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(14), 16);
 
     VU1_PKT_HEAD(pkt, 14, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -899,7 +1476,7 @@ u8 *Vu1Pkt_DVE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DVP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(15), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(15), 16);
 
     VU1_PKT_HEAD(pkt, 15, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -930,7 +1507,7 @@ u8 *Vu1Pkt_DVP(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DVEP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(18), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(18), 16);
 
     VU1_PKT_HEAD(pkt, 18, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -962,7 +1539,7 @@ u8 *Vu1Pkt_LP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(20), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(20), 16);
 
     VU1_PKT_HEAD(pkt, 20, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -998,7 +1575,7 @@ u8 *Vu1Pkt_LDVEP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
     f32 lightDirs[12];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(25), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(25), 16);
 
     VU1_PKT_HEAD(pkt, 25, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1039,7 +1616,7 @@ u8 *Vu1Pkt_LDVEP(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_P(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(13), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(13), 16);
 
     VU1_PKT_HEAD(pkt, 13, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1061,7 +1638,7 @@ u8 *Vu1Pkt_P(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_VP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(14), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(14), 16);
 
     VU1_PKT_HEAD(pkt, 14, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1087,7 +1664,7 @@ u8 *Vu1Pkt_VP(ModelEntry *entry, u32 start, u8 *next)
  */
 u8 *Vu1Pkt_SLD(ModelEntry *entry, u32 start, u8 *next)
 {
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(241), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(241), 16);
 
     VU1_PKT_HEAD(pkt, 241, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1122,7 +1699,7 @@ u8 *Vu1Pkt_SLD(ModelEntry *entry, u32 start, u8 *next)
  */
 u8 *Vu1Pkt_SDV(ModelEntry *entry, u32 start, u8 *next)
 {
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(139), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(139), 16);
 
     VU1_PKT_HEAD(pkt, 139, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1152,7 +1729,7 @@ u8 *Vu1Pkt_SDV(ModelEntry *entry, u32 start, u8 *next)
  */
 u8 *Vu1Pkt_SLE(ModelEntry *entry, u32 start, u8 *next)
 {
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(243), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(243), 16);
 
     VU1_PKT_HEAD(pkt, 243, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1184,7 +1761,7 @@ u8 *Vu1Pkt_SLE(ModelEntry *entry, u32 start, u8 *next)
  */
 u8 *Vu1Pkt_SVE(ModelEntry *entry, u32 start, u8 *next)
 {
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(141), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(141), 16);
 
     VU1_PKT_HEAD(pkt, 141, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1211,7 +1788,7 @@ u8 *Vu1Pkt_SVE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(14), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(14), 16);
 
     VU1_PKT_HEAD(pkt, 14, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1237,7 +1814,7 @@ u8 *Vu1Pkt_DP(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_EP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(16), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(16), 16);
 
     VU1_PKT_HEAD(pkt, 16, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1260,7 +1837,7 @@ u8 *Vu1Pkt_EP(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_DEP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 16);
 
     VU1_PKT_HEAD(pkt, 17, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1287,7 +1864,7 @@ u8 *Vu1Pkt_DEP(ModelEntry *entry, u32 start, u8 *next)
  */
 u8 *Vu1Pkt_SLDE(ModelEntry *entry, u32 start, u8 *next)
 {
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(244), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(244), 16);
 
     VU1_PKT_HEAD(pkt, 244, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1324,7 +1901,7 @@ u8 *Vu1Pkt_SLDE(ModelEntry *entry, u32 start, u8 *next)
 u8 *Vu1Pkt_VEP(ModelEntry *entry, u32 start, u8 *next)
 {
     f32 modelView[16];
-    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 0x10);
+    u32 *pkt = Packet_Alloc(VU1_PKT_BYTES(17), 16);
 
     VU1_PKT_HEAD(pkt, 17, next);
     ((f32 *)pkt)[8] = gGsColorF[0] * entry->progInfo->colorScale;
@@ -1343,472 +1920,269 @@ u8 *Vu1Pkt_VEP(ModelEntry *entry, u32 start, u8 *next)
     return (u8 *)pkt;
 }
 
-/* The motion file's header: the file itself. */
-static void *AnimFile_Header(void *file)
-{
-    return file;
-}
-
-/* Chunk n of motion file file (the chunks follow the header, each `size` bytes long).
- * cur and chunk walk the chunks together: the compiler keeps the two in separate
- * registers, as the game's code does. */
-u8 *AnimFile_GetChunk(void *file, s32 n)
-{
-    s32 i;
-    u8 *header;
-    u8 *cur;
-    AnimFileChunk *chunk;
-
-    header = AnimFile_Header(file);
-    cur = header + sizeof(AnimFileHeader);
-    chunk = (AnimFileChunk *)(header + sizeof(AnimFileHeader));
-    for (i = 0; i < n; i++) {
-        cur += chunk->size;
-        chunk = (AnimFileChunk *)cur;
-    }
-    return (u8 *)chunk;
-}
-
-/* 1 and *loopTime = the file's loop time when it gives one, else 0 and *loopTime = 0. */
-s32 AnimFile_GetLoopTime(void *file, f32 *loopTime)
-{
-    AnimFileHeader *header = AnimFile_Header(file);
-    s32 loops;
-
-    if (header->loops != 0) {
-        loops = 1;
-        *loopTime = header->loopTime;
-    } else {
-        *loopTime = 0.0f;
-        loops = 0;
-    }
-    return loops;
-}
-
-s32 AnimFile_Count(void *file);
-u8 *AnimFile_GetChunk(void *file, s32 n);
-s32 Anim_ChunkKeySize(AnimFileChunk *chunk);
-
-/* The bytes motion file file takes once converted (Anim_LoadSet): the set, the list of
- * its animations, and per chunk an AnimHeader, its curves and their keys. */
-s32 Anim_ConvertedSize(void *file)
-{
-    s32 i;
-    s32 count;
-    s32 size;
-    AnimFileChunk *chunk;
-
-    count = AnimFile_Count(file);
-    size = count * sizeof(AnimHeader *) + sizeof(AnimSet);
-
-    for (i = 0; i < count; i++) {
-        chunk = (AnimFileChunk *)AnimFile_GetChunk(file, i);
-        size += sizeof(AnimHeader);
-        size += chunk->count * sizeof(AnimCurve);
-        size += Anim_ChunkKeySize(chunk);
-    }
-    return size;
-}
-
-/* The bytes the keys of chunk's curve records take once converted (Anim_ConvertKeys). */
-s32 Anim_ChunkKeySize(AnimFileChunk *chunk)
-{
-    AnimFileCurve *rec;
-    s32 count;
-    s32 size;
-    s32 i;
-
-    count = chunk->count;
-    rec = (AnimFileCurve *)(chunk + 1);
-    size = 0;
-
-    for (i = 0; i < count; i++) {
-        switch (ANIM_FILE_KEY_FORMAT(rec->info)) {
-        case ANIM_KEY_F32_LINEAR:
-            size += rec->count * sizeof(KeyF2);
-            break;
-        case ANIM_KEY_F32_CUBIC:
-            size += rec->count * sizeof(KeyF4);
-            break;
-        case ANIM_KEY_F32_MIXED:
-            size += rec->count * sizeof(KeyFM);
-            break;
-        case ANIM_KEY_S16_LINEAR:
-            size += rec->count * sizeof(KeyS2);
-            break;
-        case ANIM_KEY_S16_CUBIC:
-            size += rec->count * sizeof(KeyS4);
-            break;
-        case ANIM_KEY_S16_MIXED:
-            size += rec->count * sizeof(KeySM);
-            break;
-        }
-        rec = (AnimFileCurve *)((u8 *)rec + rec->size);
-    }
-    return size;
-}
-
-void Anim_SetKeyBase(void *buf);
-s32 LinearHeap_Init(struct LinearHeap *h, void *start, u32 size, s32 align);
-s32 AnimFile_Count(void *file);
-void Anim_LoadChunk(AnimHeader *anim, void *file, s32 i);
-f32 Anim_GetEndTime(AnimHeader *anim);
-f32 Anim_GetStartTime(AnimHeader *anim);
-
-/*
- * Converts motion file file into buf: the set first, then the list of its animations,
- * one AnimHeader per chunk with its curves and keys, all from the heap gAnimKeyHeap over
- * buf. The set's start and end are the earliest and latest keys of all the curves. The
- * offsets in the set are made relative to buf (gAnimCurveBuf), and *out gets a copy of
- * the set with base = buf. Returns 1.
- */
-s32 Anim_LoadSet(AnimSet *out, u8 *buf, void *file)
-{
-    s32 size;
-    s32 i;
-    s32 count;
-    AnimSet *set;
-    AnimHeader **list;
-    f32 min;
-    f32 max;
-    f32 time;
-    f32 loopTime;
-
-    size = Anim_ConvertedSize(file);
-    gAnimCurveBuf = (s32)buf;
-    Anim_SetKeyBase(buf);
-    LinearHeap_Init(&gAnimKeyHeap, buf, size, 1);
-    set = LinearHeap_Alloc(&gAnimKeyHeap, sizeof(AnimSet), 0);
-    count = AnimFile_Count(file);
-    set->flags = 0;
-    set->count = count;
-    set->anims = (s32)LinearHeap_Alloc(&gAnimKeyHeap, count * sizeof(AnimHeader *), 0);
-    max = 0.0f;
-    set->base = 0;
-    min = 1e10f;
-    set->size = size;
-    list = (AnimHeader **)set->anims;
-    for (i = 0; i < count; i++, list++) {
-        *list = LinearHeap_Alloc(&gAnimKeyHeap, sizeof(AnimHeader), 0);
-        Anim_LoadChunk(*list, file, i);
-        if ((time = Anim_GetEndTime(*list)) > max) {
-            max = time;
-        }
-        if ((time = Anim_GetStartTime(*list)) < min) {
-            min = time;
-        }
-    }
-    set->start = min;
-    set->end = max;
-    if (AnimFile_GetLoopTime(file, &loopTime)) {
-        set->flags |= ANIM_SET_LOOPS;
-        set->loop = loopTime;
-    } else {
-        set->flags &= ~ANIM_SET_LOOPS;
-        set->loop = 0.0f;
-    }
-    for (i = 0; i < count; i++) {
-        ((s32 *)set->anims)[i] -= gAnimCurveBuf;
-    }
-    set->anims -= gAnimCurveBuf;
-    *out = *set;
-    out->base = (s32)buf;
-    return 1;
-}
-
-s32 AnimFile_Count(void *file);
-void Anim_ConvertChunk(void *file, AnimHeader *anim, AnimFileChunk *chunk, s32 unused);
-
-/* Fills animation anim from chunk i of motion file file, its type from the file's
- * header; nothing when there is no such chunk. */
-void Anim_LoadChunk(AnimHeader *anim, void *file, s32 i)
-{
-    u8 *chunk;
-    AnimFileHeader *header;
-
-    if (AnimFile_Count(file) < i) {
-        return;
-    }
-    if ((chunk = AnimFile_GetChunk(file, i)) == NULL) {
-        return;
-    }
-    header = AnimFile_Header(file);
-    if (header == NULL) {
-        return;
-    }
-    switch (header->type) {
-    case ANIM_FILE_FLOAT:
-        anim->flags = ANIM_TYPE_FLOAT;
-        break;
-    case ANIM_FILE_FIXED:
-        anim->flags = ANIM_TYPE_FIXED;
-        break;
-    }
-    switch (anim->flags & ANIM_TYPE_MASK) {
-    case ANIM_TYPE_FLOAT:
-    case ANIM_TYPE_FIXED:
-        Anim_ConvertChunk(file, anim, (AnimFileChunk *)chunk, 0);
-        break;
-    }
-}
-
-void Anim_ConvertKeys(AnimFileCurve *rec, AnimCurve *curve);
-
-/* Fills animation anim from chunk of motion file file: one AnimCurve per curve record,
- * the used ones (ANIM_FILE_CURVE_USED) converted (Anim_ConvertKeys), each driving the
- * pose value n given by its record's bit 1 << n. The others keep no keys. */
-void Anim_ConvertChunk(void *file, AnimHeader *anim, AnimFileChunk *chunk, s32 unused)
-{
-    AnimCurve *curve;
-    AnimFileCurve *rec;
-    s32 count;
-    s32 i;
-    u32 info;
-
-    count = chunk->count;
-    anim->count = count;
-    curve = LinearHeap_Alloc(&gAnimKeyHeap, count * sizeof(AnimCurve), 0);
-    anim->curves = (s32)curve;
-    for (i = 0; i < count; i++) {
-        curve[i].type = ANIM_KEY_NONE;
-        curve[i].count = 0;
-    }
-    rec = (AnimFileCurve *)(chunk + 1);
-    for (i = 0; i < count; i++, curve++) {
-        info = rec->info;
-        if (info & ANIM_FILE_CURVE_USED) {
-            Anim_ConvertKeys(rec, curve);
-            switch (info & ANIM_FILE_POSE_BITS) {
-            case 1 << 0:
-                curve->idx = 0;
-                break;
-            case 1 << 1:
-                curve->idx = 1;
-                break;
-            case 1 << 2:
-                curve->idx = 2;
-                break;
-            case 1 << 3:
-                curve->idx = 3;
-                break;
-            case 1 << 4:
-                curve->idx = 4;
-                break;
-            case 1 << 5:
-                curve->idx = 5;
-                break;
-            case 1 << 6:
-                curve->idx = 6;
-                break;
-            case 1 << 7:
-                curve->idx = 7;
-                break;
-            case 1 << 8:
-                curve->idx = 8;
-                break;
-            }
-        }
-        rec = (AnimFileCurve *)((u8 *)rec + rec->size);
-    }
-    anim->curves -= gAnimCurveBuf;
-}
-
-/* Converts curve record rec's keys into curve, by the record's key format. */
-void Anim_ConvertKeys(AnimFileCurve *rec, AnimCurve *curve)
-{
-    u32 format;
-
-    format = ANIM_FILE_KEY_FORMAT((u32)rec->info);
-    switch (format) {
-    case ANIM_KEY_F32_LINEAR:
-        Anim_ConvertKeysF2(rec, curve);
-        break;
-    case ANIM_KEY_F32_CUBIC:
-        Anim_ConvertKeysF4(rec, curve);
-        break;
-    case ANIM_KEY_F32_MIXED:
-        Anim_ConvertKeysFM(rec, curve);
-        break;
-    case ANIM_KEY_S16_LINEAR:
-        Anim_ConvertKeysS2(rec, curve);
-        break;
-    case ANIM_KEY_S16_CUBIC:
-        Anim_ConvertKeysS4(rec, curve);
-        break;
-    case ANIM_KEY_S16_MIXED:
-        Anim_ConvertKeysSM(rec, curve);
-        break;
-    }
-}
-
-/* Curve curve, ANIM_KEY_F32_LINEAR, from record rec's keys (KeyF2), copied to gAnimKeyHeap. */
-void Anim_ConvertKeysF2(AnimFileCurve *rec, AnimCurve *curve)
-{
-    KeyF2 *src = (KeyF2 *)(rec + 1);
-    KeyF2 *dst;
-    s32 i;
-
-    curve->type = ANIM_KEY_F32_LINEAR;
-    curve->idx = 0;
-    curve->count = rec->count;
-    dst = LinearHeap_Alloc(&gAnimKeyHeap, curve->count * sizeof(KeyF2), 0);
-    curve->keys = (s32)dst;
-    for (i = 0; i < curve->count; i++) {
-        dst->v = src->v;
-        dst->t = src->t;
-        src++;
-        dst++;
-    }
-    curve->keys -= gAnimCurveBuf;
-}
-
-/* Curve curve, ANIM_KEY_F32_CUBIC, from record rec's keys (KeyF4), copied to gAnimKeyHeap. */
-void Anim_ConvertKeysF4(AnimFileCurve *rec, AnimCurve *curve)
-{
-    KeyF4 *src = (KeyF4 *)(rec + 1);
-    KeyF4 *dst;
-    s32 i;
-
-    curve->type = ANIM_KEY_F32_CUBIC;
-    curve->idx = 0;
-    curve->count = rec->count;
-    dst = LinearHeap_Alloc(&gAnimKeyHeap, curve->count * sizeof(KeyF4), 0);
-    curve->keys = (s32)dst;
-    for (i = 0; i < curve->count; i++) {
-        dst->v = src->v;
-        dst->t = src->t;
-        dst->in = src->in;
-        dst->out = src->out;
-        src++;
-        dst++;
-    }
-    curve->keys -= gAnimCurveBuf;
-}
-
-/* Curve curve, ANIM_KEY_F32_MIXED, from record rec's keys (KeyFM), copied to gAnimKeyHeap. */
-void Anim_ConvertKeysFM(AnimFileCurve *rec, AnimCurve *curve)
-{
-    KeyFM *src = (KeyFM *)(rec + 1);
-    KeyFM *dst;
-    s32 i;
-
-    curve->type = ANIM_KEY_F32_MIXED;
-    curve->idx = 0;
-    curve->count = rec->count;
-    dst = LinearHeap_Alloc(&gAnimKeyHeap, curve->count * sizeof(KeyFM), 0);
-    curve->keys = (s32)dst;
-    for (i = 0; i < curve->count; i++) {
-        dst->mode = src->mode;
-        dst->v = src->v;
-        dst->t = src->t;
-        dst->in = src->in;
-        dst->out = src->out;
-        src++;
-        dst++;
-    }
-    curve->keys -= gAnimCurveBuf;
-}
-
-/* Curve curve, ANIM_KEY_S16_LINEAR, from record rec's keys (KeyS2), copied to gAnimKeyHeap. */
-void Anim_ConvertKeysS2(AnimFileCurve *rec, AnimCurve *curve)
-{
-    FileKeyS2 *src = (FileKeyS2 *)(rec + 1);
-    KeyS2 *dst;
-    s32 i;
-
-    curve->type = ANIM_KEY_S16_LINEAR;
-    curve->idx = 0;
-    curve->count = rec->count;
-    dst = LinearHeap_Alloc(&gAnimKeyHeap, curve->count * sizeof(KeyS2), 0);
-    curve->keys = (s32)dst;
-    for (i = 0; i < curve->count; i++) {
-        dst->v = src->v;
-        dst->t = src->t;
-        src++;
-        dst++;
-    }
-    curve->keys -= gAnimCurveBuf;
-}
-
-/* Curve curve, ANIM_KEY_S16_CUBIC, from record rec's keys (KeyS4), copied to gAnimKeyHeap. */
-void Anim_ConvertKeysS4(AnimFileCurve *rec, AnimCurve *curve)
-{
-    FileKeyS4 *src = (FileKeyS4 *)(rec + 1);
-    KeyS4 *dst;
-    s32 i;
-
-    curve->type = ANIM_KEY_S16_CUBIC;
-    curve->idx = 0;
-    curve->count = rec->count;
-    dst = LinearHeap_Alloc(&gAnimKeyHeap, curve->count * sizeof(KeyS4), 0);
-    curve->keys = (s32)dst;
-    for (i = 0; i < curve->count; i++) {
-        dst->v = src->v;
-        dst->t = src->t;
-        dst->in = src->in;
-        dst->out = src->out;
-        src++;
-        dst++;
-    }
-    curve->keys -= gAnimCurveBuf;
-}
-
-/* Curve curve, ANIM_KEY_S16_MIXED, from record rec's keys (KeySM), copied to gAnimKeyHeap. */
-void Anim_ConvertKeysSM(AnimFileCurve *rec, AnimCurve *curve)
-{
-    FileKeySM *src = (FileKeySM *)(rec + 1);
-    KeySM *dst;
-    s32 i;
-
-    curve->type = ANIM_KEY_S16_MIXED;
-    curve->idx = 0;
-    curve->count = rec->count;
-    dst = LinearHeap_Alloc(&gAnimKeyHeap, curve->count * sizeof(KeySM), 0);
-    curve->keys = (s32)dst;
-    for (i = 0; i < curve->count; i++) {
-        dst->mode = src->mode;
-        dst->v = src->v;
-        dst->t = src->t;
-        dst->in = src->in;
-        dst->out = src->out;
-        src++;
-        dst++;
-    }
-    curve->keys -= gAnimCurveBuf;
-}
-
-f32 AnimCurve_GetEndTime(AnimCurve *curve);
-
-/* The latest end time (AnimCurve_GetEndTime) of animation anim's curves, at least 0. */
-f32 Anim_GetEndTime(AnimHeader *anim)
-{
-    f32 max = 0.0f;
-    s32 i;
-    f32 time;
-
-    for (i = 0; i < anim->count; i++) {
-        time = AnimCurve_GetEndTime(&((AnimCurve *)(anim->curves + gAnimCurveBuf))[i]);
-        if (time > max) {
-            max = time;
-        }
-    }
-    return max;
-}
-
-f32 AnimCurve_StartTime(AnimCurve *curve);
-
-/* The earliest start time (AnimCurve_StartTime) of animation anim's curves (1e10 when none). */
-f32 Anim_GetStartTime(AnimHeader *anim)
-{
-    f32 min = 1e10f;
-    s32 i;
-    f32 time;
-
-    for (i = 0; i < anim->count; i++) {
-        time = AnimCurve_StartTime(&((AnimCurve *)(anim->curves + gAnimCurveBuf))[i]);
-        if (time < min) {
-            min = time;
-        }
-    }
-    return min;
-}
+/* This file's initialised data: the VU1 programs' descriptors. */
+/* The VU1 programs (src/sub_main/vu1_microcode.vsm) the descriptors load. */
+extern u32 Vu1Prog00[];
+extern u32 Vu1Prog01[];
+extern u32 Vu1Prog02[];
+extern u32 Vu1Prog03[];
+extern u32 Vu1Prog04[];
+extern u32 Vu1Prog05[];
+extern u32 Vu1Prog06[];
+extern u32 Vu1Prog07[];
+extern u32 Vu1Prog08[];
+extern u32 Vu1Prog09[];
+extern u32 Vu1Prog10[];
+extern u32 Vu1Prog11[];
+extern u32 Vu1Prog12[];
+extern u32 Vu1Prog13[];
+extern u32 Vu1Prog14[];
+extern u32 Vu1Prog15[];
+extern u32 Vu1Prog16[];
+extern u32 Vu1Prog17[];
+extern u32 Vu1Prog18[];
+extern u32 Vu1Prog19[];
+extern u32 Vu1Prog20[];
+extern u32 Vu1Prog21[];
+extern u32 Vu1Prog22[];
+extern u32 Vu1Prog23[];
+extern u32 Vu1Prog24[];
+extern u32 Vu1Prog25[];
+extern u32 Vu1Prog26[];
+extern u32 Vu1Prog27[];
+extern u32 Vu1Prog28[];
+extern u32 Vu1Prog29[];
+extern u32 Vu1Prog30[];
+extern u32 Vu1Prog31[];
+extern u32 Vu1Prog32[];
+extern u32 Vu1Prog33[];
+extern u32 Vu1Prog34[];
+extern u32 Vu1Prog35[];
+extern u32 Vu1Prog36[];
+extern u32 Vu1Prog37[];
+extern u32 Vu1Prog38[];
+extern u32 Vu1Prog39[];
+extern u32 Vu1Prog40[];
+extern u32 Vu1Prog41[];
+extern u32 Vu1Prog42[];
+extern u32 Vu1Prog43[];
+extern u32 Vu1Prog44[];
+extern u32 Vu1Prog45[];
+extern u32 Vu1Prog46[];
+extern u32 Vu1Prog47[];
+extern u32 Vu1Prog48[];
+extern u32 Vu1Prog49[];
+extern u32 Vu1Prog50[];
+extern u32 Vu1Prog51[];
+extern u32 Vu1Prog52[];
+extern u32 Vu1Prog53[];
+extern u32 Vu1Prog54[];
+extern u32 Vu1Prog55[];
+extern u32 Vu1Prog56[];
+extern u32 Vu1Prog57[];
+extern u32 Vu1Prog58[];
+extern u32 Vu1Prog59[];
+Vu1ProgInfo gVu1ProgInfo00 = {
+#include "sub_main/00402580.inc"
+};
+Vu1BoneLayout gVu1BoneLayout01 = {
+#include "sub_main/004025B0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo01 = {
+#include "sub_main/004025C0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo02 = {
+#include "sub_main/004025F0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo03 = {
+#include "sub_main/00402620.inc"
+};
+Vu1BoneLayout gVu1BoneLayout04 = {
+#include "sub_main/00402650.inc"
+};
+Vu1ProgInfo gVu1ProgInfo04 = {
+#include "sub_main/00402660.inc"
+};
+Vu1ProgInfo gVu1ProgInfo05 = {
+#include "sub_main/00402690.inc"
+};
+Vu1ProgInfo gVu1ProgInfo06 = {
+#include "sub_main/004026C0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo07 = {
+#include "sub_main/004026F0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo08 = {
+#include "sub_main/00402720.inc"
+};
+Vu1ProgInfo gVu1ProgInfo09 = {
+#include "sub_main/00402750.inc"
+};
+Vu1ProgInfo gVu1ProgInfo10 = {
+#include "sub_main/00402780.inc"
+};
+Vu1ProgInfo gVu1ProgInfo11 = {
+#include "sub_main/004027B0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo12 = {
+#include "sub_main/004027E0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo13 = {
+#include "sub_main/00402810.inc"
+};
+Vu1ProgInfo gVu1ProgInfo14 = {
+#include "sub_main/00402840.inc"
+};
+Vu1BoneLayout gVu1BoneLayout15 = {
+#include "sub_main/00402870.inc"
+};
+Vu1ProgInfo gVu1ProgInfo15 = {
+#include "sub_main/00402880.inc"
+};
+Vu1ProgInfo gVu1ProgInfo16 = {
+#include "sub_main/004028B0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo17 = {
+#include "sub_main/004028E0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo18 = {
+#include "sub_main/00402910.inc"
+};
+Vu1BoneLayout gVu1BoneLayout19 = {
+#include "sub_main/00402940.inc"
+};
+Vu1ProgInfo gVu1ProgInfo19 = {
+#include "sub_main/00402950.inc"
+};
+Vu1ProgInfo gVu1ProgInfo20 = {
+#include "sub_main/00402980.inc"
+};
+Vu1ProgInfo gVu1ProgInfo21 = {
+#include "sub_main/004029B0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo22 = {
+#include "sub_main/004029E0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo23 = {
+#include "sub_main/00402A10.inc"
+};
+Vu1ProgInfo gVu1ProgInfo24 = {
+#include "sub_main/00402A40.inc"
+};
+Vu1ProgInfo gVu1ProgInfo25 = {
+#include "sub_main/00402A70.inc"
+};
+Vu1ProgInfo gVu1ProgInfo26 = {
+#include "sub_main/00402AA0.inc"
+};
+Vu1BoneLayout gVu1BoneLayout27 = {
+#include "sub_main/00402AD0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo27 = {
+#include "sub_main/00402AE0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo28 = {
+#include "sub_main/00402B10.inc"
+};
+Vu1ProgInfo gVu1ProgInfo29 = {
+#include "sub_main/00402B40.inc"
+};
+Vu1ProgInfo gVu1ProgInfo30 = {
+#include "sub_main/00402B70.inc"
+};
+Vu1ProgInfo gVu1ProgInfo31 = {
+#include "sub_main/00402BA0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo32 = {
+#include "sub_main/00402BD0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo33 = {
+#include "sub_main/00402C00.inc"
+};
+Vu1ProgInfo gVu1ProgInfo34 = {
+#include "sub_main/00402C30.inc"
+};
+Vu1ProgInfo gVu1ProgInfo35 = {
+#include "sub_main/00402C60.inc"
+};
+Vu1ProgInfo gVu1ProgInfo36 = {
+#include "sub_main/00402C90.inc"
+};
+Vu1BoneLayout gVu1BoneLayout37 = {
+#include "sub_main/00402CC0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo37 = {
+#include "sub_main/00402CD0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo38 = {
+#include "sub_main/00402D00.inc"
+};
+Vu1ProgInfo gVu1ProgInfo39 = {
+#include "sub_main/00402D30.inc"
+};
+Vu1ProgInfo gVu1ProgInfo40 = {
+#include "sub_main/00402D60.inc"
+};
+Vu1ProgInfo gVu1ProgInfo41 = {
+#include "sub_main/00402D90.inc"
+};
+Vu1ProgInfo gVu1ProgInfo42 = {
+#include "sub_main/00402DC0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo43 = {
+#include "sub_main/00402DF0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo44 = {
+#include "sub_main/00402E20.inc"
+};
+Vu1ProgInfo gVu1ProgInfo45 = {
+#include "sub_main/00402E50.inc"
+};
+Vu1ProgInfo gVu1ProgInfo46 = {
+#include "sub_main/00402E80.inc"
+};
+Vu1ProgInfo gVu1ProgInfo47 = {
+#include "sub_main/00402EB0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo48 = {
+#include "sub_main/00402EE0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo49 = {
+#include "sub_main/00402F10.inc"
+};
+Vu1BoneLayout gVu1BoneLayout50 = {
+#include "sub_main/00402F40.inc"
+};
+Vu1ProgInfo gVu1ProgInfo50 = {
+#include "sub_main/00402F50.inc"
+};
+Vu1ProgInfo gVu1ProgInfo51 = {
+#include "sub_main/00402F80.inc"
+};
+Vu1BoneLayout gVu1BoneLayout52 = {
+#include "sub_main/00402FB0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo52 = {
+#include "sub_main/00402FC0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo53 = {
+#include "sub_main/00402FF0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo54 = {
+#include "sub_main/00403020.inc"
+};
+Vu1ProgInfo gVu1ProgInfo55 = {
+#include "sub_main/00403050.inc"
+};
+Vu1ProgInfo gVu1ProgInfo56 = {
+#include "sub_main/00403080.inc"
+};
+Vu1ProgInfo gVu1ProgInfo57 = {
+#include "sub_main/004030B0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo58 = {
+#include "sub_main/004030E0.inc"
+};
+Vu1ProgInfo gVu1ProgInfo59 = {
+#include "sub_main/00403110.inc"
+};

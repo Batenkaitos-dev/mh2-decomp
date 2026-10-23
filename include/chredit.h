@@ -5,11 +5,11 @@
 
 #define CHARA_NAME_LEN 0x12     /* a hunter's name, in bytes: ChrEdit.name and SaveData.name */
 
-/* The character being created (sub_main's gChrEdit, 0x60 bytes; set up by select_entry, drawn by
+/* The character being created (sub_main's gChrEdit, 96 bytes; set up by select_entry, drawn by
  * select_parts.c's panels; select_chara.c's pages edit it). */
 typedef struct ChrEdit {
     u8 unk00;
-    u8 slot;                /* 0x01: the character slot (gSysSave's, 0x37F8 bytes each; sub_main's card menus choose it) */
+    u8 slot;                /* 0x01: the character slot (gSysSave's, 14328 bytes each; sub_main's card menus choose it) */
     u8 panel;               /* 0x02: the chosen panel (0 name, 1 type, 2 face, 3 hair, 4 colour, 5 voice; gCharaPartNames) */
     u8 choice;              /* 0x03: the answer under the cursor of a yes/no question (0 yes, 1 no); the colour editor's row (CHARA_COLOR_ROW_*) */
     u8 gender;              /* 0x04: 0 or 1: SaveData.gender and Player.gender (Chara_MakeSave), the voice bank (Sound_LoadVoiceBank); a row of gCharaStepConds and of the panels' condition labels */
@@ -21,7 +21,7 @@ typedef struct ChrEdit {
     f32 camPos[3];          /* 0x18: the camera's position */
     s8 name[CHARA_NAME_LEN]; /* 0x24: the hunter's name */
     u16 frameCount;         /* 0x36: +1 a frame while the creation or selection task runs (not read) */
-    u16 timer;              /* 0x38: the pages' frame counter (to 0x3C, from 150 ...; the help's button blinks by timer / 15) */
+    u16 timer;              /* 0x38: the pages' frame counter (to 60, from 150 ...; the help's button blinks by timer / 15) */
     u8 presetColor;         /* 0x3A: the preset colour under the cursor (gPresetColors, 16) */
     u8 savedToCard;         /* 0x3B: the save menu's result after creation, 1 saved, 0 not (Chara_CreateTask); picks the message after it (Chara_DrawSaveMessage) */
     u8 sound;               /* 0x3C: the next of the 12 sounds the voice page plays (Sound_PlaySeFlat(2, sound)) */
@@ -38,7 +38,7 @@ typedef struct ChrEdit {
     u16 padRepeat;          /* 0x4E: gPadState[0].repeat */
     u8 cond[8];             /* 0x50: the face, hair and voice pages' filter conditions (3, 3 and 2 rows; 0 any) */
     s32 mask;               /* 0x58: the faces, hair styles or voices that fit the conditions, a bit each (Chara_FilterParts) */
-    u8 loadedGender;        /* 0x5C: the gender whose body model is loaded, 0xFF none */
+    u8 loadedGender;        /* 0x5C: the gender whose body model is loaded, 255 none */
     u8 cursor;              /* 0x5D: the face, hair and voice panels' row under the cursor (0: the number, then the conditions, the last: confirm) */
     s8 matchCount;          /* 0x5E: the count of mask's bits */
     u8 noMatch;             /* 0x5F: nonzero while the no-match message is shown */

@@ -18,12 +18,13 @@
 #include "lobby_menu.h"
 #include "pad.h"
 #include "award.h"
+#include "friend_add.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "libc.h"
 
-void Menu_SetYesNo(s8);
-void LobbyDialog_SetMember(void *, void *);
-void LobbyText_Open(s32);
-void *memcpy(void *dst, const void *src, u32 n);
-extern u8 gAskUserName[0x18];   /* the user asked about: name */
+extern u8 gAskUserName[24];   /* the user asked about: name */
 extern u8 gAskUserId[LOBBY_USER_ID_LEN];   /* and id */
 extern LobbyMenu *gLobbyMenu;
 
@@ -46,15 +47,8 @@ void FriendList_AskAdd(void *userId, void *name)
 }
 
 extern char gMyUserId[];
-void LobbySe_Play(s32 se);
 extern FriendEntry gFriendList[];
 extern s8 gFriendStatus[];
-s32 Menu_YesNoInput(void);
-s32 memcmp(void *a, void *b, s32 n);
-s32 FriendList_FindId(s8 *list, s32 max, void *key);
-s32 FriendList_FindFree(s8 *list, s32 max);
-void *memset(void *d, s32 c, u32 n);
-s32 RateFlag_SetAndNotify(s32 a);
 s32 Award_Grant(s32 a);
 /* Runs the friend question FriendList_AskAdd opened. A yes is asked again
  * (the user is new, or is listed already and the entry is written again);
@@ -172,14 +166,7 @@ void BlockList_AskAdd(void *userId, void *name)
     gFieldControl = 0;
 }
 
-extern char gMyUserId[];
 extern u8 gMailBlockList[][sizeof(BlockedUser)];
-s32 memcmp(void *a, void *b, s32 n);
-s32 Menu_YesNoInput(void);
-s32 IdList_Find(s8 *list, s32 max, void *userId);
-s32 IdList_FindFree(s8 *list, s32 max);
-void *memset(void *d, s32 c, u32 n);
-void LobbySe_Play(s32 se);
 
 /* Runs the block list question BlockList_AskAdd opened, as
  * FriendList_AddInput runs the friend one (without the award). Returns
@@ -288,7 +275,6 @@ void BlockList_AskRemove(void *userId, u8 *name)
 }
 
 struct BlockedUser;
-s32 IdList_Remove(struct BlockedUser *r, u8 idx, u8 n);
 /* The game built the next function at optimization level 4. */
 #pragma optimization_level 4
 /* Runs the question BlockList_AskRemove opened: a yes takes the user in

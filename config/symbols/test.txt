@@ -1,2 +1,2 @@
-// Symbols for overlay 12, test.bin. Format: name = 0xADDRESS; // attributes
-
+// The test overlay (overlay 12, test.bin): an all-zero stub, with no symbols.
+// Format: name = 0xADDRESS; // attributes

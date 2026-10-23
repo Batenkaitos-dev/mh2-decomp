@@ -4,7 +4,7 @@
 #include "common.h"
 
 /*
- * A textured rectangle as Sprite_Draw (main) draws it, 0x14 bytes; also
+ * A textured rectangle as Sprite_Draw (main) draws it, 20 bytes; also
  * the lobby browser's Prim_Sprite. The texture rectangle
  * is two corners (u0, v0)-(u1, v1); the screen one is a corner and a size.
  */
@@ -15,7 +15,7 @@ typedef struct Sprite {
 } Sprite;
 
 /*
- * A draw slot of sub_main's pools (0x20 bytes): gDrawSlotPool, gDrawSlotsB and
+ * A draw slot of sub_main's pools (32 bytes): gDrawSlotPool, gDrawSlotsB and
  * gHudDrawHooks (their lengths below). DrawSlot_Alloc
  * takes a free one (it sets draw to 1 until the owner sets its callback) and
  * returns its index or -1, DrawSlot_Get gives its address and DrawSlot_Free
@@ -81,7 +81,7 @@ typedef struct IconUV {
     UV uv1;
 } IconUV;
 
-/* A textured rectangle (TexRect_DrawRotated, TexRect_DrawRotatedAt; 0x14 bytes). */
+/* A textured rectangle (TexRect_DrawRotated, TexRect_DrawRotatedAt; 20 bytes). */
 typedef struct TexRect {
     s16 x;                      /* 0x00 */
     s16 y;                      /* 0x02 */

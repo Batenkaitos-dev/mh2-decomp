@@ -1,24 +1,3 @@
 // Function starts of lobby, pinned for splat.
-// 797 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
+// 795 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
 func_006AF240 = 0x006AF240; // type:func
-func_006FB250 = 0x006FB250; // type:func
-func_0073ACE0 = 0x0073ACE0; // type:func
-func_00740D10 = 0x00740D10; // type:func
-func_00792A50 = 0x00792A50; // type:func
-func_00793BE0 = 0x00793BE0; // type:func
-func_00793C10 = 0x00793C10; // type:func
-func_007C95F0 = 0x007C95F0; // type:func
-func_007C9600 = 0x007C9600; // type:func
-func_007CF620 = 0x007CF620; // type:func
-func_007CF630 = 0x007CF630; // type:func
-func_007CF650 = 0x007CF650; // type:func
-func_007CFBF0 = 0x007CFBF0; // type:func
-func_007CFF30 = 0x007CFF30; // type:func
-func_007D21E0 = 0x007D21E0; // type:func
-func_007D44B0 = 0x007D44B0; // type:func
-func_007D4730 = 0x007D4730; // type:func
-func_007D4740 = 0x007D4740; // type:func
-func_007D8890 = 0x007D8890; // type:func
-func_007D9130 = 0x007D9130; // type:func
-func_007D9140 = 0x007D9140; // type:func
-func_007D98B0 = 0x007D98B0; // type:func

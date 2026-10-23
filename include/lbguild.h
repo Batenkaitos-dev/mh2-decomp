@@ -18,7 +18,7 @@
 #include "quest.h"
 
 /*
- * A quest of the guild's lists (0x50 bytes). The first 0x2C bytes are laid
+ * A quest of the guild's lists (80 bytes). The first 44 bytes are laid
  * out as a stage file's QuestInfo (quest.h): e.g. timeLimit 90000 frames
  * (50 minutes), texts the quest's eight texts (title, goal, ...).
  */

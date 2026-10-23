@@ -32,7 +32,7 @@ typedef struct ScEventHead {
 
 typedef char ScEventHead_size_check[(sizeof(ScEventHead) == 0x18) ? 1 : -1];
 
-/* A scene event's record in the game overlay's data (0x20 bytes). */
+/* A scene event's record in the game overlay's data (32 bytes). */
 typedef struct ScEventRec {
     ScEventHead head;
     s32 unk18[2];               /* 0 in every record; no code reads them */

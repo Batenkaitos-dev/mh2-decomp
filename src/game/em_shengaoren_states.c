@@ -10,14 +10,11 @@
 #include "common.h"
 #include "em.h"
 #include "em_shengaoren.h"
+#include "vec_math.h"
+#include "em_script.h"
+#include "quest.h"
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmShenGaoren_SetIdleState and the other Set functions compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_TargetPlayerInRange(Em *);
-void EmShenGaoren_SetMoveState(Em *em, u16 state, u8 mode);
-void EmShenGaoren_SetReactState(Em *em, u16 state, u8 mode);
-void Em_BreakPart(Em *em, s32 part);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
 /* end of prototypes */
 
 /*
@@ -69,7 +66,7 @@ void EmShenGaoren_SetMoveState(Em *em, u16 state, u8 mode)
             em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
         }
         angle = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-        if ((0 <= angle && angle <= 0x4000) || (angle >= 0xC000 && angle <= 0xFFFF)) {
+        if ((0 <= angle && angle <= ANGLE_TURN / 4) || (angle >= (ANGLE_TURN * 3 / 4) && angle <= 0xFFFF)) {
             state = SHEN_MOVE_WALK_TALL;
         }
         break;
@@ -82,7 +79,7 @@ void EmShenGaoren_SetMoveState(Em *em, u16 state, u8 mode)
             em->goalDist = Vec_DistanceXZ(&em->posX, em->goal);
         }
         angle = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-        if ((0 <= angle && angle <= 0x4000) || (angle >= 0xC000 && angle <= 0xFFFF)) {
+        if ((0 <= angle && angle <= ANGLE_TURN / 4) || (angle >= (ANGLE_TURN * 3 / 4) && angle <= 0xFFFF)) {
             state = SHEN_MOVE_WALK_LOW;
         }
         break;
@@ -103,7 +100,7 @@ void EmShenGaoren_SetMoveState(Em *em, u16 state, u8 mode)
 void EmShenGaoren_SetFlyState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
-    Em_SetStateSync(em, 0x2, state, mode);
+    Em_SetStateSync(em, 2, state, mode);
 }
 
 /*
@@ -112,7 +109,7 @@ void EmShenGaoren_SetFlyState(Em *em, u16 state, u8 mode)
 void EmShenGaoren_SetAttackState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
-    Em_SetStateSync(em, 0x3, state, mode);
+    Em_SetStateSync(em, 3, state, mode);
 }
 
 /*

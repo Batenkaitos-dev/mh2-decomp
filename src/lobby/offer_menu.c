@@ -30,85 +30,53 @@
 #include "lobby_npc.h"
 #include "pad.h"
 #include "lobby_labels.h"
-char *strcpy(char *, const char *);
-void *memset(void *, s32, u32);
-void *memcpy(void *, const void *, u32);
+#include "offer_menu.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "camera.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "quest_desk.h"
+#include "quest_desk_draw.h"
+#include "quest_offers.h"
+#include "rand.h"
+#include "talk.h"
+#include "town_frame.h"
+#include "village_cond.h"
+#include "village_offers.h"
+#include "village_progress.h"
+#include "village_records.h"
+#include "libc.h"
 
 extern OfferMenu gOfferMenu;
-s32 Items_HaveEnough(u16 item, s32 n);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void CamFocus_End(void);
-void OfferMenu_Draw(MenuTask *t);
 extern Delivery gStoryDeliveries[];
-QuestInfo *Quest_GetDiscInfo(u16 id);
-s32 LobbyWorld_GetSeason(void);
-s32 LobbyTime_IsPm(void);
-s32 Quest_MatchesSeasonTime(u16 quest, s32 a, s32 b);
 u16 Map_Group(u16 area);
-void OfferMenu_Close(void);
 u8 SavePouch_Add(u16 item, s16 n);
 s32 SavePouch_Count(u16 item);
-s32 SavePouch_Space(u16 item);
-s32 ItemBox_Total(u16 item);
-s32 ItemBox_Room(u16 item);
-s16 ItemBox_Remove(u16 item, s16 n);
-u32 ItemBox_AddStacks(u16 item, u32 n);
-void Npc_RefreshOffers(void);
-void LobbySe_Play(s32);
-void LobbyMenu_Init(void);
 
-u16 LobbyPad_Get(s32 a);
-s32 Talk_Update(void);
-void Talk_Say(s32 msg, s8 a);
-s32 OfferMenu_QuestList(u16 pad);
-s32 OfferMenu_DeliveryList(u16 pad);
-s32 Equip_GunHasNoAmmo(Player *pl, SaveData *save);
-s32 Menu_PushNoticeOnce(s32);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
-void CamFocus_SetAside(s8 a);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 OfferMenu_HasItems(void);
-void Menu_SetYesNo(s8 a);
-s32 Menu_YesNoInput(void);
-s32 Win_Shake(WinShake *s);
-u16 Rand_Next(s32 stream);
-void Jingle_Play(void *obj, s32 id);
-void OfferMenu_Deliver(void);
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-void Font_SetPos(s16 x, s16 y);
 void Text_Printf(char *s, ...);
 extern char gItemNeedFmt[];
 extern char *D_0080C044;
 extern char *gItemNames[];
-void Font_SetColor(s32 color);
 void Text_PrintfColored(char *s, ...);
-void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
 void Text_SetSize(s32 size);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
-void OfferMenu_DrawDelivery(s16 x, s16 y);
-void OfferMenu_DrawQuest(s16 x, s16 y);
-
-s32 Game_IsOnline(void);
-s32 Save_TestEventFlag(s32 flag);
-s32 Cond_IsLatest(u16 id);
-s32 Save_IsQuestCleared(u16 id);
-s16 Village_MilestoneState(s32);
-s32 Offer_FindRequest(u8 unused0);
-u16 Offer_GetQuest(u8 unused0);
-void OfferMenu_AddQuest(OfferMenu *m, s16 a, u16 quest);
-void OfferMenu_AddDelivery(OfferMenu *m, s16 kind, s16 idx);
-void OfferMenu_AddRequest(OfferMenu *m, s16 kind, s32 idx);
 
 /*
  * Fills gOfferMenu with what the townsperson offers: by its id, the story
  * delivery or story quest its progress (Cond_IsLatest) or event flags call
  * for, then its village request and quest. Story delivery k (0 to 9) is
- * offered while event flag 0x32 + 2k is set and 0x33 + 2k isn't; delivering
- * it sets 0x33 + 2k. Returns what it found (enum OfferHas); nothing outside
+ * offered while event flag 50 + 2k is set and 51 + 2k isn't; delivering
+ * it sets 51 + 2k. Returns what it found (enum OfferHas); nothing outside
  * the village. With probe set it fills a copy on the stack instead and returns
  * OFFER_HAS_STORY as soon as a story entry is found: the townspeople's marks
  * are made that way.
@@ -135,24 +103,24 @@ s16 OfferMenu_BuildList(Em *townsperson, s32 probe)
     switch (*npcId) {
     case 1:
         if (Cond_IsLatest(2) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0xA);
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 10);
         } else if (Cond_IsLatest(6) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0xC);
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 12);
         } else if (Cond_IsLatest(7) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0xD);
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 13);
         } else if (Cond_IsLatest(9) == 1) {
-            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x1389);
-        } else if (Cond_IsLatest(0x14) == 1) {
-            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x138C);
-        } else if (Cond_IsLatest(0x17) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0x10);
-        } else if (Cond_IsLatest(0x19) == 1) {
-            if (Save_IsQuestCleared(0x138D) == 0) {
-                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x138D);
-            } else if (Save_IsQuestCleared(0x138E) == 0) {
-                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x138E);
-            } else if (Save_IsQuestCleared(0x138F) == 0) {
-                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x138F);
+            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5001);
+        } else if (Cond_IsLatest(20) == 1) {
+            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5004);
+        } else if (Cond_IsLatest(23) == 1) {
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 16);
+        } else if (Cond_IsLatest(25) == 1) {
+            if (Save_IsQuestCleared(5005) == 0) {
+                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5005);
+            } else if (Save_IsQuestCleared(5006) == 0) {
+                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5006);
+            } else if (Save_IsQuestCleared(5007) == 0) {
+                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5007);
             } else {
                 break;
             }
@@ -164,24 +132,24 @@ s16 OfferMenu_BuildList(Em *townsperson, s32 probe)
         }
         break;
     case 4:
-        if (Save_TestEventFlag(0x79) != 0) {
-            if (Save_TestEventFlag(0x30) == 0) {
-                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x1771);
+        if (Save_TestEventFlag(121) != 0) {
+            if (Save_TestEventFlag(48) == 0) {
+                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 6001);
             } else if (Village_MilestoneState(6)) {
-                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x1771);
+                OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 6001);
             }
         }
         break;
     case 5:
-        if (Save_TestEventFlag(0x3C) == 1 && Save_TestEventFlag(0x3D) == 0) {
+        if (Save_TestEventFlag(60) == 1 && Save_TestEventFlag(61) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 5);
-        } else if (Save_TestEventFlag(0x3E) == 1 && Save_TestEventFlag(0x3F) == 0) {
+        } else if (Save_TestEventFlag(62) == 1 && Save_TestEventFlag(63) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 6);
-        } else if (Save_TestEventFlag(0x40) == 1 && Save_TestEventFlag(0x41) == 0) {
+        } else if (Save_TestEventFlag(0x40) == 1 && Save_TestEventFlag(65) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 7);
-        } else if (Save_TestEventFlag(0x42) == 1 && Save_TestEventFlag(0x43) == 0) {
+        } else if (Save_TestEventFlag(66) == 1 && Save_TestEventFlag(67) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 8);
-        } else if (Save_TestEventFlag(0x44) == 1 && Save_TestEventFlag(0x45) == 0) {
+        } else if (Save_TestEventFlag(68) == 1 && Save_TestEventFlag(69) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 9);
         }
         if (probe == 1 && menu->questCount + menu->count != 0) {
@@ -189,8 +157,8 @@ s16 OfferMenu_BuildList(Em *townsperson, s32 probe)
         }
         break;
     case 7:
-        if (Cond_IsLatest(0x12) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0xF);
+        if (Cond_IsLatest(18) == 1) {
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 15);
             if (probe == 1 && menu->questCount + menu->count != 0) {
                 return OFFER_HAS_STORY;
             }
@@ -198,22 +166,22 @@ s16 OfferMenu_BuildList(Em *townsperson, s32 probe)
         break;
     case 8:
         if (Cond_IsLatest(4) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0xB);
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 11);
             if (probe == 1 && menu->questCount + menu->count != 0) {
                 return OFFER_HAS_STORY;
             }
         }
         break;
     case 14:
-        if (Save_TestEventFlag(0x32) == 1 && Save_TestEventFlag(0x33) == 0) {
+        if (Save_TestEventFlag(50) == 1 && Save_TestEventFlag(51) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0);
-        } else if (Save_TestEventFlag(0x34) == 1 && Save_TestEventFlag(0x35) == 0) {
+        } else if (Save_TestEventFlag(52) == 1 && Save_TestEventFlag(53) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 1);
-        } else if (Save_TestEventFlag(0x36) == 1 && Save_TestEventFlag(0x37) == 0) {
+        } else if (Save_TestEventFlag(54) == 1 && Save_TestEventFlag(55) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 2);
-        } else if (Save_TestEventFlag(0x38) == 1 && Save_TestEventFlag(0x39) == 0) {
+        } else if (Save_TestEventFlag(56) == 1 && Save_TestEventFlag(57) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 3);
-        } else if (Save_TestEventFlag(0x3A) == 1 && Save_TestEventFlag(0x3B) == 0) {
+        } else if (Save_TestEventFlag(58) == 1 && Save_TestEventFlag(59) == 0) {
             OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 4);
         }
         if (probe == 1 && menu->questCount + menu->count != 0) {
@@ -221,15 +189,15 @@ s16 OfferMenu_BuildList(Em *townsperson, s32 probe)
         }
         break;
     case 15:
-        OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x1772);
+        OfferMenu_AddQuest(menu, OFFER_SRC_STORY, QUEST_ID_FORTRESS_STORY);
         break;
     case 16:
-        if (Cond_IsLatest(0xD) == 1) {
-            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x138A);
-        } else if (Cond_IsLatest(0xE) == 1) {
-            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x138B);
-        } else if (Cond_IsLatest(0x18) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0x11);
+        if (Cond_IsLatest(13) == 1) {
+            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5002);
+        } else if (Cond_IsLatest(14) == 1) {
+            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5003);
+        } else if (Cond_IsLatest(24) == 1) {
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 17);
         } else {
             break;
         }
@@ -238,16 +206,16 @@ s16 OfferMenu_BuildList(Em *townsperson, s32 probe)
         }
         break;
     case 18:
-        if (Cond_IsLatest(0xC) == 1) {
-            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 0xE);
+        if (Cond_IsLatest(12) == 1) {
+            OfferMenu_AddDelivery(menu, OFFER_SRC_STORY, 14);
             if (probe == 1 && menu->questCount + menu->count != 0) {
                 return OFFER_HAS_STORY;
             }
         }
         break;
-    case 0x69:
-        if (Cond_IsLatest(0x52) == 1) {
-            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 0x1390);
+    case 105:
+        if (Cond_IsLatest(82) == 1) {
+            OfferMenu_AddQuest(menu, OFFER_SRC_STORY, 5008);
             if (probe == 1 && menu->questCount + menu->count != 0) {
                 return OFFER_HAS_STORY;
             }
@@ -307,7 +275,7 @@ void OfferMenu_AddDelivery(OfferMenu *menu, s16 origin, s16 storyIdx)
     if (menu->count != OFFER_MENU_ENTRIES) {
         menu->source[menu->count] = origin;
         menu->story[menu->count] = storyIdx;
-        menu->tabs[menu->count] = 0x10;
+        menu->tabs[menu->count] = 16;
         if (origin == 0) {
             menu->entries[menu->count] = gStoryDeliveries[storyIdx];
             menu->period[menu->count] = 0;
@@ -316,14 +284,12 @@ void OfferMenu_AddDelivery(OfferMenu *menu, s16 origin, s16 storyIdx)
     }
 }
 
-char *Request_Title(s16 i);
-char *Request_Text(s16 i);
 /* SaveData.offers[idx], reached from the save's address: the record of the
- * village request (0x299C is offers' offset; with gSave.entries[idx] the
+ * village request (offers is at the offset 0x299C; with gSave.entries[idx] the
  * compiler computes the address differently). */
 static inline OfferRec *Save_OfferRec(u8 *save, s32 idx)
 {
-    return (OfferRec *)(save + idx * sizeof(OfferRec) + 0x299C);
+    return (OfferRec *)(save + idx * sizeof(OfferRec) + 10652);
 }
 /* Adds the village request kept in SaveData.offers[offer] as a delivery: its
  * items and points, and the title and text it was made with. */
@@ -334,7 +300,7 @@ void OfferMenu_AddRequest(OfferMenu *menu, s16 origin, s32 offer)
     if (menu->count != OFFER_MENU_ENTRIES) {
         menu->source[menu->count] = origin;
         menu->story[menu->count] = 0;
-        menu->tabs[menu->count] = 0x10;
+        menu->tabs[menu->count] = 16;
         rec = Save_OfferRec((u8 *)&gSave, offer);
         memcpy(&menu->entries[menu->count], rec, sizeof(rec->want));
         menu->entries[menu->count].points = rec->points;
@@ -387,7 +353,7 @@ void OfferMenu_Update(void)
         case 0:
         case 3:
             menu->step++;
-            LobbySe_Play(0x11);
+            LobbySe_Play(17);
             break;
         }
         break;
@@ -406,12 +372,12 @@ void OfferMenu_Update(void)
                 menu->listLen = menu->questCount;
                 menu->page = 0;
                 if (Equip_GunHasNoAmmo(&gPlayers[gScene.localPlayer], &gSave) == 1) {
-                    Menu_PushNoticeOnce(0x13);
+                    Menu_PushNoticeOnce(19);
                 }
             }
-            WinSlide_Step(&menu->win, 0x280, 0x118);
+            WinSlide_Step(&menu->win, 640, 280);
             CamFocus_SetAside(1);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         } else if (pad & PAD_CROSS) {
             menu->step = OFFER_STEP_BYE;
             Talk_Say(1, 0);
@@ -451,9 +417,6 @@ void OfferMenu_Update(void)
 }
 
 extern u16 gQuestStampRand;
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, M2C_UNK k);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
-void QuestDesk_Accept(u16 id, s16 money, s32 pay);
 /*
  * The quest list, by OfferMenu.listStep: circle orders the quest under the
  * cursor when no quest is taken and the fee can be paid (a yes/no), up and
@@ -469,7 +432,7 @@ s32 OfferMenu_QuestList(u16 pad)
 
     switch (menu->listStep) {
     case OFFER_LIST_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case MENU_DONE:
             menu->listStep++;
             break;
@@ -494,7 +457,7 @@ s32 OfferMenu_QuestList(u16 pad)
             LobbySe_Play(LOBBY_SE_CANCEL);
             return MENU_CANCEL;
         } else {
-            menu->cur = Menu_WrapUpDownSe(menu->cur, menu->listLen, 0x17);
+            menu->cur = Menu_WrapUpDownSe(menu->cur, menu->listLen, 23);
             menu->page = Menu_WrapLeftRight(menu->page, QUEST_SHEET_PAGES);
         }
         break;
@@ -550,7 +513,7 @@ s32 OfferMenu_DeliveryList(u16 pad)
 
     switch (menu->listStep) {
     case OFFER_LIST_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case MENU_DONE:
             menu->listStep++;
             break;
@@ -593,7 +556,7 @@ s32 OfferMenu_DeliveryList(u16 pad)
         switch (Win_Shake(&menu->shake)) {
         case MENU_DONE:
             menu->listStep++;
-            Jingle_Play(&gPlayers[gScene.localPlayer], 0xB);
+            Jingle_Play(&gPlayers[gScene.localPlayer], 11);
             break;
         }
         break;
@@ -602,7 +565,7 @@ s32 OfferMenu_DeliveryList(u16 pad)
             menu->listStep = OFFER_LIST_SLIDE_IN;
             CamFocus_SetAside(0);
             if (*npcId == 3) {
-                Talk_Say(0x12, 0);
+                Talk_Say(18, 0);
             } else {
                 Talk_Say(2, 0);
             }
@@ -677,12 +640,6 @@ s32 Items_Room(s32 item)
     return total;
 }
 
-void Save_SetEventFlag(s32 flag);
-void Npc_ResetTalked(void);
-void QuestList_Rebuild(void);
-void Village_UpdateProgress(s32 a);
-void Offer_AddPoints(s32 id, s32 v);
-void Offer_ClearRequest(s32 unused0);
 /*
  * Delivers the entry under the cursor: takes its items and gives its points
  * to the townsperson. A story delivery sets its event flag (some also reset
@@ -714,59 +671,59 @@ void OfferMenu_Deliver(void)
             Npc_ResetTalked();
             break;
         case 12:
-            Save_SetEventFlag(0xB);
+            Save_SetEventFlag(11);
             Npc_ResetTalked();
             QuestList_Rebuild();
             break;
         case 13:
-            Save_SetEventFlag(0xC);
+            Save_SetEventFlag(12);
             Npc_ResetTalked();
             break;
         case 14:
-            Save_SetEventFlag(0x48);
+            Save_SetEventFlag(72);
             Npc_ResetTalked();
             break;
         case 15:
-            Save_SetEventFlag(0x50);
+            Save_SetEventFlag(80);
             Npc_ResetTalked();
             break;
         case 16:
-            Save_SetEventFlag(0x55);
+            Save_SetEventFlag(85);
             Npc_ResetTalked();
             break;
         case 17:
-            Save_SetEventFlag(0x57);
+            Save_SetEventFlag(87);
             Npc_ResetTalked();
             break;
         case 0:
-            Save_SetEventFlag(0x33);
+            Save_SetEventFlag(51);
             break;
         case 1:
-            Save_SetEventFlag(0x35);
+            Save_SetEventFlag(53);
             break;
         case 2:
-            Save_SetEventFlag(0x37);
+            Save_SetEventFlag(55);
             break;
         case 3:
-            Save_SetEventFlag(0x39);
+            Save_SetEventFlag(57);
             break;
         case 4:
-            Save_SetEventFlag(0x3B);
+            Save_SetEventFlag(59);
             break;
         case 5:
-            Save_SetEventFlag(0x3D);
+            Save_SetEventFlag(61);
             break;
         case 6:
-            Save_SetEventFlag(0x3F);
+            Save_SetEventFlag(63);
             break;
         case 7:
-            Save_SetEventFlag(0x41);
+            Save_SetEventFlag(65);
             break;
         case 8:
-            Save_SetEventFlag(0x43);
+            Save_SetEventFlag(67);
             break;
         case 9:
-            Save_SetEventFlag(0x45);
+            Save_SetEventFlag(69);
             break;
         }
         Village_UpdateProgress(1);
@@ -829,9 +786,9 @@ s32 OfferMenu_HasItems(void)
  * (enum DeliveryPrompt); with the yes/no, the choice too. */
 void OfferMenu_DrawDeliveryPrompt(s16 x, s16 y, s8 prompt)
 {
-    Win_DrawText(x, y, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferMenuTexts[OFFER_TEXT_DELIVERY_PROMPT + prompt]);
+    Win_DrawText(x, y, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferMenuTexts[OFFER_TEXT_DELIVERY_PROMPT + prompt]);
     if (prompt == 2) {
-        Font_SetPos(x + 0x8C, y + 0x1E);
+        Font_SetPos(x + 140, y + 30);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
     }
 }
@@ -861,7 +818,7 @@ s32 Items_DrawNeedLine(s16 x, s16 y, u16 item, s32 count, u32 color)
     }
     Font_SetPos(x, y);
     Text_PrintfColored(gItemNeedFmt, gItemNames[item], gLobbyWords[LOBBY_WORD_COLON], pouch, box, count, D_0080C044);
-    Item_DrawIcon(x - 0x1A, y - 2, 0x14, item);
+    Item_DrawIcon(x - 26, y - 2, 20, item);
     if (missing != 0) {
         return 0;
     }
@@ -895,7 +852,7 @@ s32 Items_DrawNeedLineAfter(s16 x, s16 y, u16 item, s32 count, u32 color)
     }
     Font_SetPos(x, y);
     Text_PrintfColored(gItemNeedFmt, gItemNames[item], gLobbyWords[LOBBY_WORD_COLON], pouch, box, need, D_0080C044);
-    Item_DrawIcon(x - 0x1A, y - 2, 0x14, item);
+    Item_DrawIcon(x - 26, y - 2, 20, item);
     return 1;
 }
 
@@ -915,7 +872,7 @@ void Menu_DrawItemCountRow(s16 x, s16 y, u16 item, u32 color)
         Font_SetColor(color);
         Font_SetPos(x, y);
         Text_PrintfColored("%-16s%s%2d(%3d)", gItemNames[item], gLobbyWords[LOBBY_WORD_COLON], pouch, box);
-        Item_DrawIcon(x - 0x24, y - 2, 0x14, item);
+        Item_DrawIcon(x - 36, y - 2, 20, item);
     }
 }
 
@@ -927,22 +884,16 @@ void Menu_DrawItemPriceRow(s16 x, s16 y, u16 item, u32 color, s32 price)
         Font_SetColor(color);
         Font_SetPos(x, y);
         Text_PrintfColored("%-16s %7d%s", gItemNames[item], price, gLobbyWords[LOBBY_WORD_ZENNY]);
-        Item_DrawIcon(x - 0x24, y - 2, 0x14, item);
+        Item_DrawIcon(x - 36, y - 2, 20, item);
     }
 }
 
-void Font_SetSpacing(u8 a, u8 b);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 a, s16 b);
-void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 h, s16 *offs, s16 sel, s8 kind, s32 b);
-s32 Items_DrawNeedLine(s16 x, s16 y, u16 item, s32 n, u32 color);
-void OfferMenu_DrawDeliveryPrompt(s16 x, s16 y, s8 kind);
 /*
  * Draws the delivery sheet under the cursor: the title bar, the sheet with a
  * tab per entry, the entry's title, its items' need lines, the period and the
  * client's name, its text, the prompt window and the stamp once stamped.
- * The title is centred on the parameter x + 0xB4, not on its copy left: then
- * the need lines' x + 0x3C needs no extra register copy, as in the game's
+ * The title is centred on the parameter x + 180, not on its copy left: then
+ * the need lines' x + 60 needs no extra register copy, as in the game's
  * code. Menu_DrawStamp is declared with a u16 seed and an s16 frame: with an
  * s32, the load of y moves.
  */
@@ -966,68 +917,61 @@ void OfferMenu_DrawDelivery(s16 x, s16 y)
             tabLabels[i] = -tabLabels[i];
         }
     }
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFF106060, gOfferMenuTexts[OFFER_TEXT_DELIVERY], 2, 1);
-    Menu_DrawQuestSheet(x, y, 0x168, 0x12C, tabLabels, menu->cur, -1, -2);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 180, 0xFF106060, gOfferMenuTexts[OFFER_TEXT_DELIVERY], 2, 1);
+    Menu_DrawQuestSheet(x, y, 360, 300, tabLabels, menu->cur, -1, -2);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
     left = x;
-    Font_SetPos(Text_CenterX(menu->entries[menu->cur].title, x + 0xB4, 0x12), lineY += 0x22);
+    Font_SetPos(Text_CenterX(menu->entries[menu->cur].title, x + 180, 18), lineY += 34);
     Text_PrintfColored(menu->entries[menu->cur].title);
     Font_SetColor(0x80301010);
-    lineY += 0x10;
+    lineY += 16;
     missing = 0;
     i = 0;
     for (; i < DELIVERY_WANTS; i++) {
         item = menu->entries[menu->cur].want[i].item;
-        Font_SetPos(x + 0x3C, lineY += 0x14);
+        Font_SetPos(x + 60, lineY += 20);
         if (item != 0) {
-            if (Items_DrawNeedLine(x + 0x3C, lineY, item, menu->entries[menu->cur].want[i].count, 0x80101010) != 1) {
+            if (Items_DrawNeedLine(x + 60, lineY, item, menu->entries[menu->cur].want[i].count, 0x80101010) != 1) {
                 missing = 1;
             }
         }
     }
     Font_SetColor(0x80301010);
-    labelX = left + 0x28;
-    Font_SetPos(labelX, lineY += 0x24);
+    labelX = left + 40;
+    Font_SetPos(labelX, lineY += 36);
     Text_PrintfColored(gOfferMenuTexts[OFFER_TEXT_LIMIT]);
     Font_SetColor(0x80101010);
-    valueX = left + 0x8C;
+    valueX = left + 140;
     Font_SetPos(valueX, lineY);
     Text_PrintfColored(gQuestPeriodTexts[menu->period[menu->cur]]);
     Font_SetColor(0x80301010);
-    Font_SetPos(labelX, lineY += 0x1A);
+    Font_SetPos(labelX, lineY += 26);
     Text_PrintfColored(gOfferMenuTexts[OFFER_TEXT_CLIENT]);
     Font_SetColor(0x80101010);
     Font_SetPos(valueX, lineY);
     Text_PrintfColored(((NpcWork *)client)->name);
     Font_SetColor(0x80101010);
-    Font_SetPos(left + 0x32, (s16)(lineY + 8) + 0x14);
+    Font_SetPos(left + 50, (s16)(lineY + 8) + 20);
     Text_PrintfColored(menu->entries[menu->cur].text);
     switch (menu->listStep) {
     case OFFER_LIST_STAMP:
     case OFFER_LIST_DONE:
-        Win_DrawText(left + 0xA, 0x174, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferMenuTexts[OFFER_TEXT_ITEM_LINE]);
+        Win_DrawText(left + 10, 372, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferMenuTexts[OFFER_TEXT_ITEM_LINE]);
         break;
     case OFFER_LIST_CONFIRM:
-        OfferMenu_DrawDeliveryPrompt(left + 0xA, 0x174, DELIVERY_PROMPT_CONFIRM);
+        OfferMenu_DrawDeliveryPrompt(left + 10, 372, DELIVERY_PROMPT_CONFIRM);
         break;
     default:
-        OfferMenu_DrawDeliveryPrompt(left + 0xA, 0x174, missing);
+        OfferMenu_DrawDeliveryPrompt(left + 10, 372, missing);
         break;
     }
     if (menu->stampSeed != 0) {
-        Menu_DrawStamp(x, y, 0x168, 0x12C, menu->stampSeed, menu->shake.timer);
+        Menu_DrawStamp(x, y, 360, 300, menu->stampSeed, menu->shake.timer);
     }
 }
 
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Quest_DrawOverview(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawTerms(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawDetails(s16 x, s16 y, QuestInfo *q);
-void Quest_DrawClearMark(s16 x, s16 y);
-s32 Save_IsQuestCleared(u16 id);
 extern s8 gMapGroupMapIds[][2];
 /* Draws the quest sheet under the cursor: the title bar, the money, the sheet
  * with the quest's map strip and page (overview, terms, details), the prompt
@@ -1047,55 +991,55 @@ void OfferMenu_DrawQuest(s16 x, s16 y)
             tabLabels[i] = -tabLabels[i];
         }
     }
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0xB4, 0xFF106060, gOfferMenuTexts[OFFER_TEXT_QUEST_ORDER], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
-    Menu_DrawQuestSheet(x, y, 0x154, 0x168, tabLabels, menu->cur, gMapGroupMapIds[(u16)menu->questTabs[menu->cur]][0], -2);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 180, 0xFF106060, gOfferMenuTexts[OFFER_TEXT_QUEST_ORDER], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
+    Menu_DrawQuestSheet(x, y, 340, 360, tabLabels, menu->cur, gMapGroupMapIds[(u16)menu->questTabs[menu->cur]][0], -2);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
     Font_SetColor(0x80101010);
     if (menu->listStep == 1) {
-        Menu_DrawPageNum(x + 0x122, y + 0xE, menu->page, QUEST_SHEET_PAGES, 1);
+        Menu_DrawPageNum(x + 290, y + 14, menu->page, QUEST_SHEET_PAGES, 1);
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (menu->page) {
     case 0:
-        Quest_DrawOverview(x + 0x28, y + 0xE, info);
+        Quest_DrawOverview(x + 40, y + 14, info);
         break;
     case 1:
-        Quest_DrawTerms(x + 0x28, y + 0xE, info);
+        Quest_DrawTerms(x + 40, y + 14, info);
         break;
     case 2:
-        Quest_DrawDetails(x + 0x28, y + 0xE, info);
+        Quest_DrawDetails(x + 40, y + 14, info);
         break;
     }
     if (gLobby->questTaken != 0 && menu->listStep != OFFER_LIST_STAMP && menu->listStep != OFFER_LIST_DONE) {
-        Win_DrawText(x, 0x174, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_QUEST_TAKEN]);
+        Win_DrawText(x, 372, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_QUEST_TAKEN]);
     } else {
         switch (menu->listStep) {
         case OFFER_LIST_CONFIRM:
-            Win_DrawText(x, 0x174, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_ORDER_CONFIRM]);
-            Font_SetPos(x + 0x8C, 0x192);
+            Win_DrawText(x, 372, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_ORDER_CONFIRM]);
+            Font_SetPos(x + 140, 402);
             Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
             break;
         case OFFER_LIST_STAMP:
         case OFFER_LIST_DONE:
-            Win_DrawText(x, 0x174, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_ORDERED]);
+            Win_DrawText(x, 372, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_ORDERED]);
             break;
         default:
             if (info->fee > gSave.money) {
-                Win_DrawText(x, 0x174, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_NO_MONEY]);
+                Win_DrawText(x, 372, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_NO_MONEY]);
             } else {
-                Win_DrawText(x, 0x174, 0x152, 0x3C, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_ORDER_ASK]);
+                Win_DrawText(x, 372, 338, 60, 0xBDB59F6C, 0xC0101010, gOfferHelpTexts[OFFER_HELP_ORDER_ASK]);
             }
             break;
         }
     }
     if (menu->stampSeed != 0) {
-        Menu_DrawStamp(x + 0x28, y + 0xE, 0x154, 0x168, menu->stampSeed, menu->shake.timer);
+        Menu_DrawStamp(x + 40, y + 14, 340, 360, menu->stampSeed, menu->shake.timer);
     }
     if (Save_IsQuestCleared(info->id) != 0) {
-        Quest_DrawClearMark((s16)(x + 0x28) + 0x1E, -0xD6);
+        Quest_DrawClearMark((s16)(x + 40) + 30, -214);
     }
 }
 
@@ -1110,18 +1054,18 @@ void OfferMenu_Draw(MenuTask *task)
     Text_SetSize(task->textSize);
     Font_SetColor(0x80101010);
     x = menu->win.pos + menu->shake.dx;
-    y = menu->shake.dy + 0x3A;
+    y = menu->shake.dy + 58;
     switch (menu->step) {
     case OFFER_STEP_TOP:
         switch (menu->has) {
         case OFFER_HAS_DELIVERIES:
-            Menu_DrawLabelList(0x1CC, gOfferMenuTexts, 1, menu->topCur, 0xFF106060);
+            Menu_DrawLabelList(460, gOfferMenuTexts, 1, menu->topCur, 0xFF106060);
             break;
         case OFFER_HAS_QUESTS:
-            Menu_DrawLabelList(0x1CC, &gOfferMenuTexts[OFFER_TEXT_QUEST_ORDER], 1, menu->topCur, 0xFF106060);
+            Menu_DrawLabelList(460, &gOfferMenuTexts[OFFER_TEXT_QUEST_ORDER], 1, menu->topCur, 0xFF106060);
             break;
         default:
-            Menu_DrawLabelList(0x1CC, gOfferMenuTexts, 2, menu->topCur, 0xFF106060);
+            Menu_DrawLabelList(460, gOfferMenuTexts, 2, menu->topCur, 0xFF106060);
             break;
         }
         break;

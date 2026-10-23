@@ -17,53 +17,18 @@
 #include "em_chameleos.h"
 #include "player.h"
 #include "objattach.h"
-void EmChameleos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-u8 EmChameleos_UpdateCurves(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_BreakPart(Em *em, s32 part);
+#include "engine_math.h"
+#include "game_util.h"
+#include "vec_math.h"
+#include "em_script.h"
+#include "quest.h"
 void Em_EndAllStatus(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmChameleos_ChangeState, EmChameleos_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-s8 QuestEm_Appear(Em *em);
-void Em_MoveRotatedAccel(Em *, void *);
-void Em_LoadReactionSet(Em *em, u8 k);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_TargetPlayerInRange(Em *);
-void EmChameleos_SetIdleState(Em *em, u16 state, u8 mode);
-void EmChameleos_SetMoveState(Em *em, u16 state, u8 mode);
-void EmChameleos_SetFlyState(Em *em, u16 state, u8 mode);
-void EmChameleos_SetAttackState(Em *em, u16 state, u8 mode);
-void EmChameleos_StartCurves(Em *em, u8 kind);
-void EmChameleos_SetFullCloak(Em *em);
-void EmChameleos_ClearFullCloak(Em *em);
-s32 EmChameleos_IsInvisible(Em *em);
-s32 EmChameleos_WantsInvisible(Em *);
-s32 EmChameleos_InvisibilityBlocked(Em *em);
-void EmChameleos_SpawnLyingPuffs(Em *em);
-s32 EmChameleos_TongueHitPlayer(Em *em);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
 s32 Em_PartBroken(Em *em, s32 arg1);
-s32 EmChameleos_HasFullCloak(Em *em);
-void Em_BeginStatus1(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_ResetNotice(Em *em);
-s32 Game_IsOnline(void);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
 s32 EmChameleos_CanTurnInvisible(Em *em);
-void EmChameleos_UpdateInvisibility(Em *em);
 /* end of prototypes */
 
 /*
@@ -393,17 +358,17 @@ void EmChameleos_StartCurves(Em *em, u8 kind)
     case 0:
         w->curveVelY = 1;
         w->curveSpeed = 0;
-        w->curveFrame = 0x3A;
+        w->curveFrame = 58;
         break;
     case 1:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x66;
+        w->curveFrame = 102;
         break;
     case 2:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x4E;
+        w->curveFrame = 78;
         break;
     }
     Player_ClearVelocity(em);
@@ -418,7 +383,7 @@ static s32 EmChameleos_CurveNone(Em *em, EmWork *work)
 
 extern EmCurveKey *EmChameleos_VelYCurves[];
 
-/* The value of curve work[0x47] at the frame in the work area (a table of keys): sets
+/* The value of curve work[71] at the frame in the work area (a table of keys): sets
  * em->velY from the key pair around the frame, 2 at the table's end. */
 static u8 EmChameleos_CurveVelY(Em *em, EmWork *work)
 {
@@ -465,7 +430,7 @@ static u8 EmChameleos_CurveVelY(Em *em, EmWork *work)
 
 extern EmCurveKey *EmChameleos_SpeedCurves[];
 
-/* The value of curve work[0x47] at the frame in the work area: sets em->velZ from the key
+/* The value of curve work[71] at the frame in the work area: sets em->velZ from the key
  * pair around the frame, 4 at the table's end. */
 static u8 EmChameleos_CurveSpeed(Em *em, EmWork *work)
 {
@@ -584,7 +549,7 @@ void EmChameleos_UpdateInvisibility(Em *em)
     periodLeft = w->shimmerTimer - 1;
     w->shimmerTimer = periodLeft;
     if (periodLeft <= 0) {
-        w->shimmerTimer = 0x384;
+        w->shimmerTimer = 900;
     }
     if (EmChameleos_IsInvisible(em) == 1) {
         fade = w->invisFade;
@@ -595,13 +560,13 @@ void EmChameleos_UpdateInvisibility(Em *em)
                 mode = EmChameleos_WantsInvisible(em) & 0xFF;
                 switch (mode) {
                 case 0:
-                    w->invisFade = 0xFFFF;
+                    w->invisFade = 65535;
                     break;
                 case 2:
                     if (w->wantInvisible == 0) {
                         w->invisFade = 1;
                     }
-                    if (w->shimmerTimer == 0x384) {
+                    if (w->shimmerTimer == 900) {
                         w->invisFade = 1;
                     }
                     break;
@@ -612,8 +577,8 @@ void EmChameleos_UpdateInvisibility(Em *em)
             }
         } else {
             w->invisFade = fade + 1;
-            if ((s32) w->invisFade >= 0x20) {
-                w->invisFade = 0xFFFF;
+            if ((s32) w->invisFade >= 32) {
+                w->invisFade = 65535;
             }
         }
         w->wantInvisible = EmChameleos_WantsInvisible(em);
@@ -621,7 +586,7 @@ void EmChameleos_UpdateInvisibility(Em *em)
     }
     if (w->wantInvisible == 2) {
         if (EmChameleos_InvisibilityBlocked(em) == 1) {
-            w->invisFade = 0xFFFF;
+            w->invisFade = 65535;
         } else if (w->invisFade == 0xFFFF) {
             w->invisFade = 0;
         }
@@ -629,8 +594,8 @@ void EmChameleos_UpdateInvisibility(Em *em)
     nextFade = w->invisFade;
     if (nextFade != 0xFFFF) {
         w->invisFade = nextFade + 1;
-        if ((s32) w->invisFade >= 0x20) {
-            w->invisFade = 0xFFFF;
+        if ((s32) w->invisFade >= 32) {
+            w->invisFade = 65535;
         }
     }
     w->wantInvisible = 0;
@@ -708,7 +673,7 @@ s32 EmChameleos_InvisibilityBlocked(Em *em)
 }
 
 /*
- * Makes the lying puffs (Em_SpawnLyingPuffs) at bone 0x25 with a fixed
+ * Makes the lying puffs (Em_SpawnLyingPuffs) at CHAM_BONE_BREATH with a fixed
  * offset, scale 2; called every frame by the resting and status-lying
  * states.
  */
@@ -719,7 +684,7 @@ void EmChameleos_SpawnLyingPuffs(Em *em)
     ofs[0] = 0.0f;
     ofs[1] = 80.0f;
     ofs[2] = 290.0f;
-    Em_SpawnLyingPuffs(em, 0x25, ofs, 2.0f);
+    Em_SpawnLyingPuffs(em, CHAM_BONE_BREATH, ofs, 2.0f);
 }
 
 /*

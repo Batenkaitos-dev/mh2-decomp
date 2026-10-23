@@ -17,18 +17,9 @@
 #include "objhead.h"
 #include "item.h"
 #include "sound.h"
-extern s8 *gArmorRattleKinds[];
-
-extern f32 gSndVolumeScale[];
-extern s8 gSeBankByType[];
-s32 Sound_PlaySeVolPan(u32 slot, u32 id, s32 vol, s32 pan, s32 unused, s32 prog);
-void Sound_SetSeIds(u32 slot, u32 id, u8 id2, u8 id3, s32 table);
-s32 Sound_PlaySeAtPos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 prog, void *pos, s32 range, s32 update);
-s32 Em_PlaySeAtPos(Em *em, s32 id, s32 prog, void *pos, s32 range, s32 update);
-u16 Rand_Next(s32 stream);
-s32 Obj_InCurrentArea(void *obj);
-u8 Player_InCurrentArea(void *obj); /* the definition (sub_main) has (Player *p): the Em is passed */
+#include "bgm.h"
+#include "rand.h"
+#include "area.h"
 
 /* Plays a sound unplaced and unpanned at the options' sound-effect volume
  * (gSndVolumeScale's step for gSysSettings.seVolume, of 127); nothing for
@@ -131,28 +122,28 @@ void Sound_PlayArmorRattle(Player *pl, s32 kind)
         switch (kind) {
         case EQUIP_RATTLE_ALL:
             if (legs != body && body != 0) {
-                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, body * 2 + (Rand_Next(1) & 1), 0, pl->pos, 0xE, 0);
+                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, body * 2 + (Rand_Next(1) & 1), 0, pl->pos, 14, 0);
             }
             if (legs != waist && body != waist && waist != 0) {
-                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, waist * 2 + (Rand_Next(1) & 1), 0, pl->pos, 0xE, 0);
+                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, waist * 2 + (Rand_Next(1) & 1), 0, pl->pos, 14, 0);
             }
             if (legs != 0) {
-                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, legs * 2 + (Rand_Next(1) & 1), 0, pl->pos, 0xE, 0);
+                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, legs * 2 + (Rand_Next(1) & 1), 0, pl->pos, 14, 0);
             }
             break;
         case EQUIP_BODY:
             if (body != 0 && body != legs) {
-                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, body * 2 + (Rand_Next(1) & 1), 0, pl->pos, 0xE, 0);
+                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, body * 2 + (Rand_Next(1) & 1), 0, pl->pos, 14, 0);
             }
             break;
         case EQUIP_WAIST:
             if (waist != 0 && waist != body && waist != legs) {
-                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, waist * 2 + (Rand_Next(1) & 1), 0, pl->pos, 0xE, 0);
+                Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, waist * 2 + (Rand_Next(1) & 1), 0, pl->pos, 14, 0);
             }
             break;
         case EQUIP_ARMS:
             rattles = gArmorRattleKinds[pl->gender + kind * 2];
-            Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, rattles[pl->armourKind[kind]] * 2 + (Rand_Next(1) & 1), 0, pl->pos, 0xE, 0);
+            Sound_PlaySeAtPosChecked(SE_SLOT_COMMON, rattles[pl->armourKind[kind]] * 2 + (Rand_Next(1) & 1), 0, pl->pos, 14, 0);
             break;
         }
     }

@@ -26,21 +26,29 @@
 #include "chat_log.h"
 #include "area.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "camera.h"
+#include "text.h"
+#include "village_cond.h"
+#include "ship_mine_menus.h"
+#include "area_menu.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "mine_model_objects.h"
+#include "offer_menu.h"
+#include "talk.h"
+#include "town_frame.h"
+#include "town_players.h"
+#include "screen_fade.h"
+#include "libc.h"
 #pragma optimization_level 4
-void *memset(void *, s32, u32);
 
-void LobbySe_Play(s32);
-s32 Menu_WrapUpDown(s32 cursor, s32 count);
-s32 Menu_PushNoticeOnce(s32 notice);
 extern s32 gTownMode;
 extern u8 gMenuWork[];
 u8 Village_FacilityLevel(s32);
-s32 Cond_Check(u16);
-void CamFocus_End(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMenuOpen;
-void LobbyMenu_Init(void);
-s32 Items_HaveEnough(u16, s32);
 
 /* 1 while the ship menu's camera tour plays (the lobby's screen code
  * asks), else 0. */
@@ -52,11 +60,11 @@ s32 ShipMenu_IsTouring(void)
     return 0;
 }
 
-/* 1 when the townsperson offers the ship: condition 0x1A holds and the
+/* 1 when the townsperson offers the ship: condition 26 holds and the
  * village facility 3 is at level 2. */
 s32 ShipMenu_IsOffered(void)
 {
-    if ((Cond_Check(0x1A) == 1) && ((Village_FacilityLevel(3) & 0xFF) == 2)) {
+    if ((Cond_Check(26) == 1) && ((Village_FacilityLevel(3) & 0xFF) == 2)) {
         return 1;
     }
     return 0;
@@ -64,8 +72,6 @@ s32 ShipMenu_IsOffered(void)
 
 extern u8 gMenuInputLock;
 struct Em;
-s16 OfferMenu_BuildList(struct Em *t, s32 b);
-void ShipMenu_Draw(MenuTask *task);
 /* Opens the ship menu for npc: the offers are listed as a second choice
  * when OfferMenu_BuildList finds some. */
 void ShipMenu_Open(u8 *npc)
@@ -84,7 +90,7 @@ void ShipMenu_Open(u8 *npc)
     }
     LobbyMenu_SetDraw(ShipMenu_Draw, 0, 0, 0);
     gMenuInputLock = 6;
-    LobbySe_Play(0x11);
+    LobbySe_Play(17);
 }
 
 /* Closes the ship menu and gives the camera back. */
@@ -96,18 +102,6 @@ void ShipMenu_Close(void)
     CamFocus_End();
     LobbySe_Play(LOBBY_SE_CANCEL);
 }
-
-u16 LobbyPad_Get(s32 port);
-s32 ShipMenu_Input(ShipMenu *m, s32 pad);
-void Talk_Say(s32 msg, s8 a);
-void OfferMenu_Open(struct Em *t);
-s32 Talk_Update(void);
-void CamReq_TownTour(s32 n);
-void Jingle_Play(void *obj, s32 id);
-s32 CamReq_State(void);
-void FadeA_Start(s32 a);
-u8 FadeA_GetState(void);
-void AreaMenu_Open(u16 id);
 
 /*
  * The ship menu (TOWN_MODE_SHIP_MENU): boarding is confirmed in talk,
@@ -157,8 +151,8 @@ void ShipMenu_Update(void)
         case MENU_DONE:
         case MENU_CANCEL:
             menu->state += 1;
-            CamReq_TownTour(0xE);
-            Jingle_Play(pl, 0xD9);
+            CamReq_TownTour(14);
+            Jingle_Play(pl, 217);
             pl->visible = 0;
             gScene.mealAttack = 0;
             gScene.mealDefense = 0;
@@ -227,8 +221,6 @@ running:
     return MENU_RUNNING;
 }
 
-void Text_SetSize(s32 size);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
 /* The ship menu's draw: its choices while they are shown. */
 void ShipMenu_Draw(MenuTask *task)
 {
@@ -237,13 +229,11 @@ void ShipMenu_Draw(MenuTask *task)
     Text_SetSize(task->textSize);
     switch (menu->state) {
     case SHIP_MENU_CHOOSE:
-        Menu_DrawLabelList(0x1CC, gShipMenuTexts, menu->count, menu->cursor, 0xFFB0B000);
+        Menu_DrawLabelList(460, gShipMenuTexts, menu->count, menu->cursor, 0xFFB0B000);
         break;
     }
 }
 
-void Talk_Say(s32 msg, s8 a);
-void Mine_DrawMenu(MenuTask *task);
 /* Opens the mine's menu for the miner npc: his report on his last dig
  * when he has dug (MINE_DUG: one line for one dig, another
  * for two or three, another for more), else his opening words. */
@@ -289,12 +279,11 @@ void Mine_CloseMenu(void)
     LobbySe_Play(LOBBY_SE_CANCEL);
 }
 
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
 /* Starts the pickaxe list's window sliding in and lists the pickaxes
  * held, from the weakest. */
 void Mine_BuildPickaxeList(MineMenu *menu)
 {
-    WinSlide_Step(&menu->win, 0x280, 0x118);
+    WinSlide_Step(&menu->win, 640, 280);
     memset(menu->items, 0, MINE_PICKAXE_KINDS * sizeof(u16));
     menu->count = 0;
     if (Items_HaveEnough(ITEM_ID_MINE_TOOL_WEAK, 1) == 1) {
@@ -311,17 +300,9 @@ void Mine_BuildPickaxeList(MineMenu *menu)
     }
 }
 
-extern NpcRouteEnt gMinerRouteHigh[];
-extern NpcRouteEnt gMinerRouteLow[];
-extern NpcRouteEnt gMinerRouteMid[];
 /* unit's own declaration: the pad as an s32, as the caller passes it; with the definition's u16 pad, the call in Mine_UpdateMenu compiles differently */
 s32 Mine_PickaxeInput(MineMenu *m, s32 pad);
-void Mine_Dig(MineMenu *m);
-void Actor_SetState(void *, s32, s32);
-s32 SavePouch_Space(u16 item);
 u8 SavePouch_Add(u16 item, s16 n);
-u8 Notice_Push(u8, s16, s16);
-void Menu_PushNotice(s32 notice);
 /*
  * The mine's menu (TOWN_MODE_MINE). After his opening words the pickaxe
  * list slides in; a pickaxe given is dug with (Mine_Dig) and the miner
@@ -350,7 +331,7 @@ void Mine_UpdateMenu(void)
         }
         break;
     case MINE_MENU_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case MENU_DONE:
             menu->state += 1;
             break;
@@ -415,7 +396,7 @@ void Mine_UpdateMenu(void)
                 gSave.mine.digs = 0;
                 gSave.mine.active = MINE_IDLE;
             } else {
-                Menu_PushNotice(0x15);
+                Menu_PushNotice(21);
             }
             Mine_CloseMenu();
             break;
@@ -424,12 +405,12 @@ void Mine_UpdateMenu(void)
     }
 }
 
-/* 1 when the mine is open further (condition 0x15 holds, 0x19 doesn't,
- * and the player has no item 0x2DA): Mine_Dig then draws from each
+/* 1 when the mine is open further (condition 21 holds, 25 doesn't,
+ * and the player has no ITEM_ID_MINE_CLOSER): Mine_Dig then draws from each
  * pickaxe's other table of finds. */
 s32 Mine_IsOpen(void)
 {
-    if ((Cond_Check(0x15) == 1) && (Cond_Check(0x19) == 0) && (Items_HaveEnough(0x2DA, 1) == 0)) {
+    if ((Cond_Check(21) == 1) && (Cond_Check(25) == 0) && (Items_HaveEnough(ITEM_ID_MINE_CLOSER, 1) == 0)) {
         return 1;
     }
     return 0;

@@ -26,15 +26,19 @@
 #include "pad.h"
 #include "sound.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "shake.h"
+#include "text.h"
+#include "chat_state.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "menu_util.h"
 
-s32 IdList_FindFree(s8 *, s32);
-u8 ChatPage_CountMuted(void);
 char *strcpy(void *dst, const void *src);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 extern s8 gChatBlockList;
-s32 IdList_Find(s8 *list, s32 n, void *id);
 s32 ChatLog_ListSpeakers(struct ChatSpeaker *out);
-void ChatPage_MarkMuted(void);
 
 /* Whether the hunter page can open: only while the chat goes to the lobby's
  * chat (CHAT_SEND_LOBBY), whose log lists the hunters. */
@@ -61,25 +65,15 @@ s32 GameMenu_OpenChat(void)
     return 0;
 }
 
-void GameMenu_Back(void);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
 /* unit's own declaration: declared without parameters, so GameMenu_UpdateChat's call passes no menu, as the game's code does (PhraseMenu_Open ignores its menu argument) */
 s32 PhraseMenu_Open();
-s32 ChatPage_OpenSpeakers(void);
-s32 ChatPage_OpenState(void);
-s32 ChatLog_Close(void);
-s32 Chat_OpenWindow(void);
-u16 ChatLog_Scroll(u16 pad);
-u16 Chat_LogScroll(u16 buttons);
-u16 PhraseMenu_Update(u16 buttons);
-u16 ChatPage_UpdateSpeakers(u16 pad);
 /* unit's own declaration: the buttons are declared u16 (the definition takes an s32): with s32 the compiler passes pad to it unlike the game's code at GameMenu_UpdateChat's call */
 s32 ChatPage_UpdateState(u16 pad);
 
 /* The chat page's input. subStep 0, its list (subEntry, CHAT_ENTRY_*):
  * PAD_CIRCLE opens the log, the phrase menu, the hunter page or the chat
  * state page unless its open handler refuses; PAD_START closes the game
- * menu; the help line follows the cursor (AREA_HUB_0x83 has its own line
+ * menu; the help line follows the cursor (AREA_ONLINE_VILLAGE has its own line
  * for the state entry: only one state there). subStep 1: the open entry
  * takes the buttons, and PAD_CROSS left over goes back to the list.
  * Returns the buttons for GameMenu_Update: all of them from the list
@@ -101,7 +95,7 @@ u16 GameMenu_UpdateChat(u16 pad)
         menu = gSubMenuWork;
         cur = &menu->subEntry;
         gHelpLine = *cur;
-        if (*cur == CHAT_ENTRY_STATE && gScene.area == AREA_HUB_0x83) {
+        if (*cur == CHAT_ENTRY_STATE && gScene.area == AREA_ONLINE_VILLAGE) {
             gHelpLine = 4; /* the state entry's line where there is only one state */
         }
         if (pad & PAD_CIRCLE) {
@@ -167,18 +161,9 @@ u16 GameMenu_UpdateChat(u16 pad)
     return pad;
 }
 
-void GameMenu_DrawList(s8 dim);
-s32 ChatMenu_CanListSpeakers(void);
-s32 ChatMenu_CanSetState(void);
-void ChatPage_DrawSpeakers(void);
-void ChatPage_DrawState(void);
-void ChatLog_Draw(void);
-void PhraseMenu_Draw(void);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void Chat_DrawLog(void);
 extern ListPanel gChatPanel;
-extern char *gChatMenuTexts[];
 
 /* The chat page's draw: in its list, the game menu's list dimmed with the
  * four entries over it (the hunter and state entries take their other
@@ -229,7 +214,7 @@ void ChatPage_OpenMuted(void)
     gSubMenuWork->page++;
     gSubMenuWork->pageStep = 0;
     gHelpShow = 1;
-    gHelpLine = 0x26; /* the muted list's line */
+    gHelpLine = 38; /* the muted list's line */
     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
 }
 
@@ -243,9 +228,6 @@ void ChatPage_CloseMuted(void)
     gSubMenuWork->speakerGrid.index = gSubMenuWork->speakerGrid.row = gSubMenuWork->speakerGrid.col = 0;
     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
 }
-
-void Shake_Start(u8 id, u8 flags, f32 amp);
-void ChatPage_LoadSpeakers(void);
 
 /* The chat page's open handler for the hunter page: returns 1 (refused)
  * unless the chat goes to the lobby's chat (ChatMenu_CanListSpeakers); else
@@ -272,15 +254,7 @@ s32 ChatPage_OpenSpeakers(void)
     return 0;
 }
 
-s32 Shake_Update(u8 id);
-u8 Shake_Flags(u8 id);
-void Menu_GridCursor(struct Grid *g, u16 buttons);
-void HunterInfo_Open(void *src, s32 flags);
-s32 MuteList_Add(ChatSpeaker *e);
-s32 MuteList_Remove(ChatSpeaker *e);
-s32 HunterInfo_Update(u16 pad);
 struct BlockedUser;
-s32 IdList_Remove(struct BlockedUser *r, u8 idx, u8 n);
 
 /* The hunter page's input, by page (GameMenu.page):
  * - CHAT_PAGE_HUNTERS, the hunter list: PAD_CIRCLE opens the chosen
@@ -422,7 +396,7 @@ u16 ChatPage_UpdateSpeakers(u16 pad)
                 if (buttons & PAD_CIRCLE) {
                     menu = gSubMenuWork;
                     menu->pageStep++;
-                    gHelpLine = 0x27; /* the removal question's line */
+                    gHelpLine = 39; /* the removal question's line */
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                 }
             }
@@ -430,7 +404,7 @@ u16 ChatPage_UpdateSpeakers(u16 pad)
         case 1:
             if (pad & PAD_CROSS) {
                 *step = 0;
-                gHelpLine = 0x26;
+                gHelpLine = 38;
                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                 pad = 0;
             }
@@ -442,7 +416,7 @@ u16 ChatPage_UpdateSpeakers(u16 pad)
                     ChatPage_CountMuted();
                     ChatPage_MarkMuted();
                     gSubMenuWork->pageStep = 0;
-                    gHelpLine = 0x26;
+                    gHelpLine = 38;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                 } else {
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_REFUSE, 0);
@@ -497,11 +471,8 @@ s32 MuteList_Add(ChatSpeaker *speaker)
     return 0;
 }
 
-void Draw_Icons(Icon *icons, u8 count);
-void Window_DrawText(void *p, s16 *pos, u8 *text);
 extern Panel gMutedTitleWindow;
-extern s16 gMutedTitleIcons[];
-s32 IdList_Count(s8 *p, u8 n);
+extern Icon gMutedTitleIcons[];
 
 /* Takes a hunter off the chat's muted list (gChatBlockList), found by id;
  * the later records move down. Returns 1, or 0 when it isn't on the
@@ -533,19 +504,7 @@ u8 ChatPage_CountMuted(void)
 }
 
 struct ShakeOffset;
-s32 Shake_CopyOffset(u8 id, struct ShakeOffset *out);
-void Menu_DrawFrame(void *b, s16 *pos);
-void Gfx_DrawMarker(s16 x, s16 y, s16 w, s16 h, s32 flags);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Text_PrintfColored(const char *fmt, ...);
 s32 sprintf(char *, const char *, ...);
-void Sjis_Widen(char *src, char *dst);
-void Text_Draw(char *s);
-void ChatPage_DrawMutedTitle(s16 *pos);
-void HunterInfo_DrawIfOpen(void);
-s32 Shake_Value(u8);
 extern ListPanel gSpeakerPanel;
 extern ListPanel gSpeakerActionPanel;
 extern ListPanel gMutedRemovePanel;
@@ -570,9 +529,9 @@ extern char *gChatUserActTexts[][3];
  * additions unlike the game's code. */
 void ChatPage_DrawSpeakers(void)
 {
-    char title[0x20];
-    char countWide[0x10];
-    char countText[0xC];
+    char title[32];
+    char countWide[16];
+    char countText[12];
     s16 pos[2];
     s32 i;
     u32 color;
@@ -589,7 +548,7 @@ void ChatPage_DrawSpeakers(void)
         color = 0xFF0A9182;
         switch (((GameMenu *)menuBytes)->pageStep) {
         case 1:
-            if (menuBytes[((GameMenu *)menuBytes)->speakerGrid.index + 0x12] == 0) { /* speakerMuted[] of the chosen hunter */
+            if (menuBytes[((GameMenu *)menuBytes)->speakerGrid.index + 18] == 0) { /* speakerMuted[] of the chosen hunter */
                 entry = ((GameMenu *)menuBytes)->mutedCount < CHAT_BLOCK_LIST_LEN; /* room on the muted list */
                 actionSet = 0;
                 if (!entry) {
@@ -616,10 +575,10 @@ void ChatPage_DrawSpeakers(void)
                     Menu_DrawFrame(&gSpeakerPanel, pos);
                 }
                 Font_SetColor(0x807F7F28);
-                Font_SetPos(pos[0] + 0x1C1, 0x52);
+                Font_SetPos(pos[0] + 449, 82);
                 Text_PrintfColored(gChatPageTexts[CHAT_PAGE_TEXT_SPEAKERS_HEAD]);
                 Font_SetColor(0x807F7F7F);
-                y = 0x66;
+                y = 102;
                 i = CHAT_LIST_ROWS;
                 entry = gSubMenuWork->speakerGrid.col * CHAT_LIST_ROWS;
                 do {
@@ -627,19 +586,19 @@ void ChatPage_DrawSpeakers(void)
                     if (((GameMenu *)menuBytes)->speakers[entry].id[0] == 0) {
                         break;
                     }
-                    if ((menuBytes + entry)[0x12] != 0) { /* speakerMuted[entry] */
-                        Gfx_DrawMarker(pos[0] + 0x1A3, y, 0x19, 0x14, MARKER_ALERT);
+                    if ((menuBytes + entry)[18] != 0) { /* speakerMuted[entry] */
+                        Gfx_DrawMarker(pos[0] + 419, y, 25, 20, MARKER_ALERT);
                     }
-                    Font_SetPos(pos[0] + 0x1C1, y);
-                    menuBytes = (u8 *)gSubMenuWork + entry * 0x19;
-                    Text_PrintfColored("%-8.8s   %-6.6s", menuBytes + 0x5B, menuBytes + 0x53); /* speakers[entry]'s name and id */
-                    y += 0x14;
+                    Font_SetPos(pos[0] + 449, y);
+                    menuBytes = (u8 *)gSubMenuWork + entry * 25;
+                    Text_PrintfColored("%-8.8s   %-6.6s", menuBytes + 91, menuBytes + 83); /* speakers[entry]'s name and id */
+                    y += 20;
                     i--;
                     entry++;
                 } while (i > 0);
             } else {
                 Font_SetColor(0x802B7F7F);
-                Font_SetPos(pos[0] + 0x1B8, 0x78);
+                Font_SetPos(pos[0] + 440, 120);
                 Text_PrintfColored(gChatPageTexts[CHAT_PAGE_TEXT_NO_SPEAKERS]);
             }
             ChatPage_DrawMutedTitle(pos);
@@ -671,38 +630,38 @@ void ChatPage_DrawSpeakers(void)
                     Menu_DrawFrame(&gSpeakerPanel, pos);
                 }
                 Font_SetColor(0x807F7F28);
-                Font_SetPos(pos[0] + 0x1C1, 0x52);
+                Font_SetPos(pos[0] + 449, 82);
                 Text_PrintfColored(gChatPageTexts[CHAT_PAGE_TEXT_SPEAKERS_HEAD]);
                 Font_SetColor(0x807F7F7F);
-                y = 0x66;
+                y = 102;
                 i = CHAT_LIST_ROWS;
                 entry = gSubMenuWork->mutedGrid.col * CHAT_LIST_ROWS;
                 do {
                     if ((s8)((BlockedUser *)&gChatBlockList)[entry].userId[0] == 0) { /* the id's first byte read signed, as the game's code does */
                         break;
                     }
-                    Gfx_DrawMarker(pos[0] + 0x1A3, y, 0x19, 0x14, MARKER_ALERT);
-                    Font_SetPos(pos[0] + 0x1C1, y);
+                    Gfx_DrawMarker(pos[0] + 419, y, 25, 20, MARKER_ALERT);
+                    Font_SetPos(pos[0] + 449, y);
                     Text_PrintfColored("%-8.8s   %-6.6s", ((BlockedUser *)&gChatBlockList)[entry].name, ((BlockedUser *)&gChatBlockList)[entry].userId);
-                    y += 0x14;
+                    y += 20;
                     i--;
                     entry++;
                 } while (i > 0);
             } else {
                 Font_SetColor(0x802B7F7F);
-                Font_SetPos(pos[0] + 0x1A6, 0x78);
+                Font_SetPos(pos[0] + 422, 120);
                 Text_PrintfColored(gChatPageTexts[CHAT_PAGE_TEXT_NO_MUTED]);
             }
             if (Shake_Value(SHAKE_CHAT_HUNTERS) == 0) {
                 Font_SetColor(0x807F7F28);
-                Font_SetPos(pos[0] + 0x184, 0x190);
+                Font_SetPos(pos[0] + 388, 400);
                 Text_PrintfColored(gChatPageTexts[CHAT_PAGE_TEXT_MUTED_LABEL]);
                 if (gSubMenuWork->mutedCount >= CHAT_BLOCK_LIST_LEN) {
                     Font_SetColor(0x807F212E);
                 } else {
                     Font_SetColor(0x807F7F7F);
                 }
-                Font_SetPos(pos[0] + 0x1F0, 0x190);
+                Font_SetPos(pos[0] + 496, 400);
                 sprintf(countText, "%2d/20", gSubMenuWork->mutedCount);
                 Sjis_Widen(countText, countWide);
                 Text_Draw(countWide);
@@ -719,8 +678,8 @@ void ChatPage_DrawSpeakers(void)
 void ChatPage_DrawMutedTitle(s16 *pos)
 {
     Window_DrawText(&gMutedTitleWindow, (s16 *)pos, (u8 *)gChatPageTexts[CHAT_PAGE_TEXT_MUTED_PAGE_TITLE]);
-    gMutedTitleIcons[0] = *pos + 0x1C1;
-    Draw_Icons((Icon *) gMutedTitleIcons, 1);
+    gMutedTitleIcons[0].x = *pos + 449;
+    Draw_Icons(gMutedTitleIcons, 1);
 }
 
 /* The chat page's list window (GameMenu_DrawChat sets its entries). */
@@ -741,6 +700,6 @@ ListPanel gMutedRemovePanel = {
 Panel gMutedTitleWindow = {
 #include "lobby/007F1FB0.inc"
 };
-s16 gMutedTitleIcons[4] = {
+Icon gMutedTitleIcons[1] = {
 #include "lobby/007F1FC8.inc"
 };

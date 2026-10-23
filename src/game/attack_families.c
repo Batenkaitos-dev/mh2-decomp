@@ -20,11 +20,28 @@
 #include "sprite.h"
 #include "capsule.h"
 #include "area.h"
+#include "render_state.h"
+#include "bgm.h"
+#include "camera.h"
+#include "card.h"
+#include "quest.h"
+#include "save.h"
+#include "sound.h"
+#include "draw_slots.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "hit_setup.h"
+#include "part_effects.h"
+#include "place_rules.h"
+#include "rand.h"
+#include "hit_spark.h"
+#include "area_draw.h"
+#include "cam_shake.h"
+#include "vec_math.h"
+#include "em_melynx.h"
+#include "em_shakalaka.h"
 
 /* prototypes */
-void ShotFlash_CreateAtAngles(f32 *pos, s32 kind, u16 a, u16 b);
-s32 Side_Match(u8 a, u8 b, u8 none);
-void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
 extern s16 StageShot_TimeLimit[];
 extern f32 StageShot_CannonPtsFortress5[][3];
 extern u16 StageShot_CannonAngsFortress5[];
@@ -32,64 +49,32 @@ extern f32 StageShot_CannonPtsCastle1[][3];
 extern u16 StageShot_CannonAngsCastle1[];
 extern f32 StageShot_CannonPtsBattleTown1[][3];
 extern u16 StageShot_CannonAngsBattleTown1[];
-void StageShot_PlaySound(ObjAttach *o, s16 n);
 extern void *StageShot_RowsPtr;
 extern HitShape *StageShot_HitShapes[];
 extern f32 StageShot_StartVels[][3];
 extern f32 StageShot_Gravities[];
 extern f32 StageShot_RockSpotVels[];
 extern f32 StageShot_CannonSpread[];
-void StageShot_Draw(DrawSlot *d);
 extern f32 StageShot_RockSpotsFortress4[][3];
 extern u16 StageShot_RockAngsFortress4[];
 extern f32 StageShot_RockSpotsFortress3[][3];
 extern u16 StageShot_RockAngsFortress3[];
 extern f32 StageShot_RockSpotsFortress2[][3];
 extern u16 StageShot_RockAngsFortress2[];
-f32 Math_Sin(f32 x);
-void PitfallTrap_DrawModel(ModelMatSet *set, f32 *m);
-void PitfallTrap_PlaySound(ObjAttach *o, s16 kind);
-void DustCloud_CreateAtYaw(f32 *pos, s32 kind, u16 r, f32 scale);
 /* unit's own declaration: the angle declared u16 and the kind s32 as the callers pass them; with the definition's s32 angle and s16 kind the calls compile differently */
 void AttackBurst_CreateAtScaled(f32 *pos, u16 r, s32 kind, f32 scale);
-f32 Em_TrapReach(u16 type, f32 dist);
 void ElementBurst_Create(f32 *pos, s32 kind, u16 ang, void *owner, f32 scale);
-void HitSpark_SpawnRandomAngle(u16 a, u16 b, u8 type, f32 *pos);
-void Mtx_Identity(f32 *m);
 void Key_LerpVec2(f32 *k, volatile f32 *out, f32 t);
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-s32 Effect_DrawModelAdd(void *list, f32 *v, void *base);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
-extern u8 PlacedItem_BasePartScaleKeys[];
-extern u8 PlacedItem_RaisedPartScaleKeys[];
-extern u8 PlacedItem_SpinPartScaleKeys[];
-extern u8 PlacedItem_BasePartColorKeys[];
-extern u8 PlacedItem_RaisedPartColorKeys[];
+extern Vec2Key PlacedItem_BasePartScaleKeys[];
+extern Vec2Key PlacedItem_RaisedPartScaleKeys[];
+extern Vec3Key PlacedItem_SpinPartScaleKeys[];
+extern ColorKey PlacedItem_BasePartColorKeys[];
+extern ColorKey PlacedItem_RaisedPartColorKeys[];
 extern s16 PlacedItem_PartModels[];
-u16 Area_DayId(u16 id);
 extern s16 *EmBlangonga_FallListsSnowy3[];
 extern s16 *EmBlangonga_FallListsByZ[];
 extern f32 EmBlangonga_FallPointsSnowy3[][3];
 extern f32 EmBlangonga_FallPointsSnowy8[][3];
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 EmMotion_InFrameRange(void *obj, s32 a, f32 from, f32 to);
-s32 ObjAttach_RollBatBack(ObjAttach *o, u16 x);
-void Vec_Diff(f32 *out, f32 *a, f32 *b);
-u16 BowArrow_MulAddShift(u16 arg0, u16 arg1, s32 arg2, s32 arg3);
-f32 BowArrow_BitsToSignedFrac(u16 value, u16 bits);
-f32 Math_Sqrtf(f32 x);
-void Vec_Add(f32 *, f32 *, f32 *);
-void Mtx_Copy(f32 *dst, f32 *src);
-void BowArrow_ApplyPower(ObjAttach *o);
-f32 BowArrow_BitsToFrac(u16 arg0, s32 arg1);
-void BowArrow_ApplyEvent(ObjAttach *o);
-void BowArrow_Draw(DrawSlot *d);
-void Vec_RotateSelf(f32 *v, f32 *m);
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateX(f32 *v, f32 angle);
 extern void *BowArrow_RowsPtr;
 extern HitShape *BowArrow_HitShapes[];
 extern f32 BowArrow_ChargeFlight[][6];
@@ -97,60 +82,19 @@ extern f32 BowArrow_ChargePowerScale[];
 extern f32 BowArrow_ChargeElementScale[];
 extern f32 BowArrow_ChargeCoatingPower[];
 extern u8 BowArrow_LevelScale[];
-u8 PlacedItem_RunTrap(ObjAttach *o);
-void PlayerFx_CreateAtDefault(f32 *src, u8 k, f32 scale);
-void PlacedItem_FollowBone(ObjAttach *o);
-void PlacedItem_Free(ObjAttach *o);
-void PlacedItem_InitTrapParts(ObjAttach *o);
 extern s16 PlacedItem_Motions[];
 extern void *PlacedItem_RowsPtr;
 extern HitShape *PlacedItem_Shapes[];
-void PlacedItem_DrawMain(DrawSlot *d);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-s32 Obj_InCurrentArea(void *obj);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-void Boomerang_Update(ObjAttach *o);
-s32 EmMelynx_BombState(Em *em);
-s32 EmShakalaka_BombState(Em *em);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-f32 AreaGrid2_GetFloorY(f32 *pos);
-void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
 void ItemProp_Create(f32 *pos, s16 v, s32 k, u8 c);
 void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
 extern s16 BowArrow_EventHitFx[];
 extern f32 BowArrow_EventPowerScale[];
 extern s16 BowArrow_EventHitSe[];
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-u16 Rand_Next(s32 stream);
-void PlacedItem_Draw(DrawSlot *d);
-void PitfallTrap_Update(ObjAttach *o);
-s32 Player_IsLocal(void *obj);
-void Vec_RotateY(f32 *v, f32 angle);
-void Boomerang_Draw(DrawSlot *d);
 extern HitShape *Boomerang_HitShapes;
-void PlacedItem_Run(ObjAttach *o);
-void GraviosAttack_Update(ObjAttach *o);
-void BlangongaAttack_Update(ObjAttach *o);
-void StageShot_Update(ObjAttach *o);
-void HermitaurAttack_Update(ObjAttach *o);
-s32 StageShot_FindSpot(f32 *from, f32 *pos, u16 *ang);
-s16 DrawSlotB_Alloc(void);
-DrawSlot *DrawSlotB_Get(s32 i);
-void ObjAttach_StartAttack(ObjAttach *, s32 a, void *b);
-void PitfallTrap_Draw(DrawSlot *d);
 extern void *PitfallTrap_RowsPtr;
 extern HitShape *PitfallTrap_Val088;
 extern s16 *BowArrow_EventTbls[];
 EmBone *Em_Bone(void *obj, s16 bone);
-void EmBomb_Draw(DrawSlot *d);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void EmBomb_Update(ObjAttach *o);
-void EmBomb_Follow(ObjAttach *o, Em *em);
-void EmBomb_InitTimers(ObjAttach *o);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-void BowArrow_Update(ObjAttach *o);
 /* The bow arrow's block of the object buffer (BowArrow_Create; ObjAttach.buf). */
 typedef struct {
     u8 bounced;         /* 0x00: 1 once BowArrow_BounceStep ran (BowArrow_Draw then stops turning it along its velocity) */
@@ -160,8 +104,8 @@ typedef struct {
     f32 attackFactor;   /* 0x08: the player's attackFactor */
     u8 ammoType;        /* 0x0C: the player's ammoType (BowArrow_ApplyCoating) */
     u8 charge;          /* 0x0D: the player's chargeLevel & 3: the row of BowArrow_ChargeFlight and the scales */
-    u8 doneFrames;      /* 0x0E: frames counted once event is 0xFF */
-    u8 skills;          /* 0x0F: 1 SKILL_STATUS_PLUS (element x1.125), 2 skill 0xBA (range x2), 4 skill 0xB9 (range x0.5) */
+    u8 doneFrames;      /* 0x0E: frames counted once event is 255 */
+    u8 skills;          /* 0x0F: 1 SKILL_STATUS_PLUS (element x1.125), 2 SKILL_SPREAD_DOUBLE (random deviation x2), 4 SKILL_SPREAD_HALF (x0.5) */
     u16 elementFlags;   /* 0x10: the weapon's element bits (Player_WeaponElementFlags) */
     u8 elementLevel;    /* 0x12: the weapon's element value */
     u8 crit;            /* 0x13: the affinity roll (BowArrow_Fire): 1 a critical hit (x1.25, HITFX_CRITICAL), 2 a weak one (x0.5, HITFX_WEAK) */
@@ -173,130 +117,22 @@ void BowArrow_SkillFlags(BowArrowBuf *b, Player *pl);
 extern s16 *BowArrow_ShotParams[];
 extern u16 BowArrow_SpreadScale[];
 extern s16 BowArrow_SpreadDirs[];
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Vec_DirToAngles(f32 *dir, s16 *pitch, s16 *yaw);
-void Mtx_RotateX(f32 *m, f32 a);
-void Mtx_RotateY(f32 *m, f32 a);
-s16 Player_GetWeaponStat(Player *p, u8 kind);
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
 extern void *Boomerang_RowsPtr;
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
 extern s16 EmBomb_Models[];
-void VespoidAttack_Draw(ObjAttach *o);
 extern HitShape *VespoidAttack_HitShapes[];
 extern void *VespoidAttack_RowsPtr;
 extern void *HermitaurAttack_RowsPtr;
-void EmBomb_RunHeld(ObjAttach *o);
-void EmBomb_RunMelynxThrown(ObjAttach *o);
-void EmBomb_RunShakalakaThrown(ObjAttach *o);
-void FlashObj_Remove(EmObj *obj);
-s32 EmBlangonga_IsSmallKind(Em *em);
 extern HitShape *BlangongaAttack_HitShapes[];
 extern void *BlangongaAttack_RowsPtr;
-u8 BowArrow_BounceStep(ObjAttach *o);
-void BowArrow_Move(ObjAttach *o);
-void BowArrow_Fall(ObjAttach *o);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
 extern HitShape *HermitaurAttack_HitShapes[];
 extern HitShape *KutkuAttack_HitShapes[];
 extern void *KutkuAttack_RowsPtr;
-s32 FlashObj_Add(EmObj *obj);
-s32 Model_Draw(u32 h, s32 flags);
-void ObjAttach_Free(ObjAttach *p);
-s32 Player_HasSkill(Player *p, u8 skill);
-void VespoidAttack_Run(ObjAttach *o);
-void VespoidAttack_End(ObjAttach *o);
-void VespoidAttack_Free(ObjAttach *o);
-void PitfallTrap_End(ObjAttach *o);
-void PitfallTrap_Free(ObjAttach *o);
-void VelocipreyAttack_Setup(ObjAttach *o);
-void VelocipreyAttack_Run(ObjAttach *o);
-void VelocipreyAttack_End(ObjAttach *o);
-void VelocipreyAttack_Free(ObjAttach *o);
-void EmBomb_End(ObjAttach *o);
-void EmBomb_Free(ObjAttach *o);
-void DromeAttack_Setup(ObjAttach *o);
-void DromeAttack_Run(ObjAttach *o);
-void DromeAttack_End(ObjAttach *o);
-void DromeAttack_Free(ObjAttach *o);
-void KhezuAttack_Setup(ObjAttach *o);
-void KhezuAttack_Run(ObjAttach *o);
-void KhezuAttack_End(ObjAttach *o);
-void KhezuAttack_Free(ObjAttach *o);
-void KutkuAttack_End(ObjAttach *o);
-void KutkuAttack_Free(ObjAttach *o);
-void DiablosAttack_Setup(ObjAttach *);
-void DiablosAttack_Run(ObjAttach *o);
-void DiablosAttack_End(ObjAttach *o);
-void DiablosAttack_Free(ObjAttach *o);
-void GraviosAttack_Setup(ObjAttach *o);
-void GraviosAttack_End(ObjAttach *o);
-void GraviosAttack_Free(ObjAttach *o);
-void PlesiothAttack_Setup(ObjAttach *o);
-void PlesiothAttack_Run(ObjAttach *o);
-void PlesiothAttack_End(ObjAttach *o);
-void PlesiothAttack_Free(ObjAttach *o);
-void CephadromeAttack_Setup(ObjAttach *o);
-void CephadromeAttack_Run(ObjAttach *o);
-void CephadromeAttack_End(ObjAttach *o);
-void CephadromeAttack_Free(ObjAttach *o);
-void StageShot_Hit(ObjAttach *o);
-void StageShot_End(ObjAttach *o);
-void StageShot_Free(ObjAttach *o);
-void CephalosAttack_Setup(ObjAttach *o);
-void CephalosAttack_Run(ObjAttach *o);
-void CephalosAttack_End(ObjAttach *o);
-void CephalosAttack_Free(ObjAttach *o);
-void BowArrow_End(ObjAttach *o);
-void BowArrow_Free(ObjAttach *o);
-void GarugaAttack_Setup(ObjAttach *o);
-void GarugaAttack_Run(ObjAttach *o);
-void GarugaAttack_End(ObjAttach *o);
-void GarugaAttack_Free(ObjAttach *o);
-void HermitaurAttack_End(ObjAttach *o);
-void HermitaurAttack_Free(ObjAttach *o);
-void BlangongaAttack_End(ObjAttach *o);
-void BlangongaAttack_Free(ObjAttach *o);
-void Boomerang_Run(ObjAttach *o);
-void Boomerang_End(ObjAttach *o);
-void Boomerang_Free(ObjAttach *o);
-s32 Gs_SetState(u8 reg, u32 v);
-void Vec_Copy(f32 *out, f32 *in);
-f32 AreaGrid2_GetFloorYFiltered(f32 *);
-void Draw_ApplyStates(u32);
-void Draw_SetDefaultState(void);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void DrawSlot_Free(s32);
-void DrawSlotB_Free(s32);
 void ObjAttach_Move(ObjAttach *);
 void ObjAttach_MoveAccel(ObjAttach *);
 extern s16 gBowgunClipShots[][4];
-void BowArrow_Fire(Player *pl, s16 shot);
-void PlayerFx_CreateOnPlayerDefault(Player *p, u8 k, f32 scale);
-f32 Vec_Distance(f32 *a, f32 *b);
-void CamShake_SetAEverywhere(s32);
 extern f32 gCamPos;
 void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void StageShot_CamShake(ObjAttach *o);
-void HitSpark_SpawnScaled(s16 ang, u8 type, u8 sub, f32 *pos, f32 scale);
-void PartFx_SpawnIfHere(void *o, f32 *pos, s32 type, f32 scale);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-u8 Player_InCurrentArea(void *obj);
-ObjAttach *ObjAttach_Alloc(s32 n);
-void DromeAttack_Update(ObjAttach *o);
-void KhezuAttack_Update(ObjAttach *o);
-void KutkuAttack_Update(ObjAttach *o);
-void DiablosAttack_Update(ObjAttach *o);
-void PlesiothAttack_Update(ObjAttach *o);
-void CephadromeAttack_Update(ObjAttach *o);
-void CephalosAttack_Update(ObjAttach *o);
-void GarugaAttack_Update(ObjAttach *o);
-f32 Math_Absf(f32 x);
-s32 Player_TestSetFlags(void *, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *, s32 a, s32 b, void *c);
 extern HitShape *DiablosAttack_HitShapes[];
 extern void *DiablosAttack_RowsPtr;
 extern HitShape *PlesiothAttack_HitShapes[];
@@ -315,13 +151,7 @@ extern HitShape *KhezuAttack_HitShapes[];
 extern void *KhezuAttack_RowsPtr;
 extern HitShape *GraviosAttack_HitShapes[];
 extern void *GraviosAttack_RowsPtr;
-void VespoidAttack_Create(Em *em, s8 kind);
-void VelocipreyAttack_Create(Em *em, s8 kind);
-void VespoidAttack_Update(ObjAttach *o);
-void VelocipreyAttack_Update(ObjAttach *o);
-void KutkuAttack_Setup(ObjAttach *o);
-void HermitaurAttack_Run(ObjAttach *o);
-/* A row of BowArrow_Kinds (0x20 bytes): one kind of arrow shot. */
+/* A row of BowArrow_Kinds (32 bytes): one kind of arrow shot. */
 typedef struct {
     s16 keepSpeed;      /* 0x00: 0, arrow i of a shot flies at speed * (1 - 0.2 i) */
     s16 eventTbl;       /* 0x02: the index into BowArrow_EventTbls, -1 none */
@@ -336,27 +166,6 @@ typedef struct {
     u8 count;           /* 0x1F */
 } BowArrowKind;
 extern BowArrowKind BowArrow_Kinds[];
-void BowArrow_Run(ObjAttach *o);
-void BowArrow_Hit(ObjAttach *o);
-void BlangongaAttack_Setup(ObjAttach *o);
-void KutkuAttack_Run(ObjAttach *o);
-void EmBomb_Run(ObjAttach *o);
-void VespoidAttack_Setup(ObjAttach *o);
-void HermitaurAttack_Setup(ObjAttach *o);
-void Boomerang_Hit(ObjAttach *o);
-void Player_WeaponElementFlags(void *pl, u16 *flags, s8 *level);
-void BowArrow_Fire(Player *pl, s16 shot);
-void EmBomb_Setup(ObjAttach *o);
-void PitfallTrap_Setup(ObjAttach *o);
-void Boomerang_Setup(ObjAttach *o);
-void GraviosAttack_Run(ObjAttach *o);
-void BowArrow_Setup(ObjAttach *o);
-void BowArrow_Deflect(ObjAttach *o);
-void BlangongaAttack_Run(ObjAttach *o);
-void PitfallTrap_Run(ObjAttach *o);
-void StageShot_Setup(ObjAttach *o);
-void StageShot_Run(ObjAttach *o);
-s8 BowArrow_StepEvents(ObjAttach *o);
 /* end of prototypes */
 
 /* A part of the trap effect PlacedItem: three from PlacedItemBuf.parts, a DrawSlotB slot each (PlacedItem_Draw). */
@@ -382,6 +191,161 @@ typedef struct {
     u8 pad16[2];
     PlacedItemPart parts[3]; /* 0x18 */
 } PlacedItemBuf;
+
+/*
+ * Makes a PlacedItem of `type` (enum PlacedItemType) that pl sets down at pos
+ * in `area`, kept (keep) and facing pl's yaw. PLACED_TRAP and
+ * PLACED_MONSTER_BOMB take the second pool. The barrel bombs and PLACED_BOMB
+ * sit 50, 75 or 35 above pos, with the set-down sound. Types 2-4 move 80
+ * ahead of the player, and 2 and 3 take its side. The monster bomb sticks to
+ * the monster Em_HitQuadsVertical finds (the buffer keeps the monster at +4,
+ * the hit point at +8 and the bone at +0x14), with powerPct 250 and two
+ * sounds. With no monster found it is freed, with a puff in the scene's area.
+ * The local player's items count in gScene.placed1 (stateVar1 1), or for a
+ * trap in gScene.placed2 (stateVar1 2). SKILL_COMBINE_SURE sets stateVar0 1,
+ * which Explosion_BoostPower reads.
+ */
+void PlacedItem_Create(f32 *pos, u8 placedType, u16 area, Player *pl)
+{
+    ObjAttach *o;
+    f32 offset[3];
+    s16 pool;
+
+    switch (placedType) {
+    case PLACED_TRAP:
+    case PLACED_MONSTER_BOMB:
+        pool = 1;
+        break;
+    default:
+        pool = 0;
+        break;
+    }
+    if ((o = ObjAttach_Alloc(pool)) != NULL) {
+        o->kind = ATTACH_PLACED_ITEM;
+        o->type = placedType;
+        o->update = PlacedItem_Update;
+        o->isEm = 0;
+        o->owner = pl;
+        o->idx = pl->index;
+        o->pos[0] = pos[0];
+        o->pos[1] = pos[1];
+        o->pos[2] = pos[2];
+        o->area = area;
+        o->keep = 1;
+        o->rotY = pl->rot[1];
+        switch (o->type) {
+        case PLACED_LARGE_BARREL_BOMB:
+        default:
+            o->pos[1] += 50.0f;
+            if (gScene.area == o->area) {
+                Sound_PlaySeAtPosChecked(1, 60, 0, o->pos, 1, 0);
+            }
+            break;
+        case PLACED_LARGE_BARREL_BOMB_B:
+            o->pos[1] += 75.0f;
+            if (gScene.area == o->area) {
+                Sound_PlaySeAtPosChecked(1, 60, 0, o->pos, 1, 0);
+            }
+            break;
+        case PLACED_PLAYER_HIT_A:
+        case PLACED_PLAYER_HIT_B:
+            o->side = pl->side;
+        case PLACED_TRAP:
+            offset[0] = 0.0f;
+            offset[1] = 0.0f;
+            offset[2] = 80.0f;
+            Vec_RotateY(offset, (6.2831855f * pl->rot[1]) / 65536.0f);
+            o->pos[0] += offset[0];
+            o->pos[1] += offset[1];
+            o->pos[2] += offset[2];
+            break;
+        case PLACED_MONSTER_BOMB:
+            if (!Em_HitQuadsVertical((f32 *) pos, (Em **) (o->buf + 4), (s16 *) (o->buf + 20), (f32 *) (o->buf + 8))) {
+                if (area == gScene.area) {
+                    FireBlast_CreateScaled((f32 *) pos, 0, 0.5f);
+                }
+                ObjAttach_Free((ObjAttach *)o);
+                return;
+            }
+            o->powerPct = 250;
+            if (gScene.area == o->area) {
+                Sound_PlaySeAtPosChecked(1, 60, 0, o->pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 148, 0, o->pos, 1, 0);
+            }
+            break;
+        case PLACED_BOMB:
+            o->pos[1] += 35.0f;
+            if (gScene.area == o->area) {
+                Sound_PlaySeAtPosChecked(1, 60, 0, o->pos, 1, 0);
+            }
+            break;
+        }
+        o->stateVar0 = 0;
+        if (pl != NULL) {
+            if (Player_IsLocal(pl)) {
+                switch (o->type) {
+                case PLACED_LARGE_BARREL_BOMB:
+                case PLACED_LARGE_BARREL_BOMB_B:
+                case PLACED_PLAYER_HIT_A:
+                case PLACED_PLAYER_HIT_B:
+                case PLACED_BOMB:
+                default:
+                    (gScene.placed1)++;
+                    o->stateVar1 = 1;
+                    break;
+                case PLACED_TRAP:
+                    (gScene.placed2)++;
+                    o->stateVar1 = 2;
+                    break;
+                case PLACED_MONSTER_BOMB:
+                    break;
+                }
+            }
+            if (Player_HasSkill(pl, SKILL_COMBINE_SURE) == 1) {
+                o->stateVar0 = 1;
+            }
+        }
+    }
+}
+
+/*
+ * A placed item's update: switches on o->state to PlacedItem_Setup, Run, Hit,
+ * End or Free. Every other state ends it.
+ */
+void PlacedItem_Update(ObjAttach *o)
+{
+    switch (o->state) {
+    case ATTACH_SETUP:
+        PlacedItem_Setup(o);
+        break;
+    case ATTACH_RUN:
+        PlacedItem_Run(o);
+        break;
+    case ATTACH_END:
+        PlacedItem_End(o);
+        break;
+    case ATTACH_HIT:
+        PlacedItem_Hit(o);
+        break;
+    case 4:
+        PlacedItem_End(o);
+        break;
+    case ATTACH_DEFLECTED:
+        PlacedItem_End(o);
+        break;
+    case ATTACH_DEFLECTED_AURA:
+        PlacedItem_End(o);
+        break;
+    case 7:
+        PlacedItem_End(o);
+        break;
+    case ATTACH_FREE:
+        PlacedItem_Free(o);
+        
+    default:
+        break;
+    }
+}
 
 /*
  * Sets up the holding trap's (type 4) three parts in PlacedItemBuf and clears
@@ -438,7 +402,7 @@ void PlacedItem_InitTrapParts(ObjAttach *o)
  * hits no monster. The holding trap (4) gets a hit shape that hits no player;
  * it starts hidden, with its set effect, its sound and three parts. The stuck
  * bomb (5) may hit its owner, follows its bone, and with the bomb skill
- * (stateVar0 1) has 1.5 times the power, at most 0xFF. Then it takes a
+ * (stateVar0 1) has 1.5 times the power, at most 255. Then it takes a
  * DrawSlotB slot for PlacedItem_DrawMain, or frees the item.
  */
 void PlacedItem_Setup(ObjAttach *o)
@@ -448,7 +412,7 @@ void PlacedItem_Setup(ObjAttach *o)
     o->state++;
     o->visible = 1;
     o->draw = NULL;
-    o->ownerIndex = 0xFF;
+    o->ownerIndex = 255;
     o->hitPhase = 0;
     o->didHit = 0;
     o->targetEm = 0;
@@ -479,7 +443,7 @@ void PlacedItem_Setup(ObjAttach *o)
         o->visible = 0;
         if (gScene.area == o->area) {
             PlayerFx_CreateAtDefault(o->pos, 5, 1.0f);
-            Sound_PlaySeAtPosChecked(1, 0x89, 0, o->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 137, 0, o->pos, 1, 0);
         }
         PlacedItem_InitTrapParts(o);
         break;
@@ -492,8 +456,8 @@ void PlacedItem_Setup(ObjAttach *o)
         switch (o->stateVar0) {
         case 1:
             boosted = 1.5f * o->power;
-            if (boosted > 0xFF) {
-                boosted = 0xFF;
+            if (boosted > 255) {
+                boosted = 255;
             }
             o->power = boosted;
             break;
@@ -507,7 +471,7 @@ void PlacedItem_Setup(ObjAttach *o)
         o->drawSlotBuf->owner = o;
         o->drawSlotBuf->draw = PlacedItem_DrawMain;
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     } else {
         PlacedItem_Free(o);
     }
@@ -620,7 +584,7 @@ u8 PlacedItem_RunTrap(ObjAttach *o)
                 }
             }
             if (part->timer == 0 && o->area == gScene.area) {
-                Sound_PlaySeAtPosChecked(1, 0x8A, 0, o->pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 138, 0, o->pos, 1, 0);
             }
             part->angle += 0x2AAB;
             break;
@@ -630,10 +594,10 @@ u8 PlacedItem_RunTrap(ObjAttach *o)
         if (part->slot != NULL) {
             switch (part->kind) {
             case 2:
-                OT_AddByDepth(gDrawOt32, part->slot, 0x20U, 0);
+                OT_AddByDepth(gDrawOt32, part->slot, 32U, 0);
                 break;
             default:
-                OT_AddByDepth(gDrawOtSorted, part->slot, 0x40U, 0);
+                OT_AddByDepth(gDrawOtSorted, part->slot, 64U, 0);
                 break;
             }
         }
@@ -661,9 +625,9 @@ void PlacedItem_FollowBone(ObjAttach *o)
 
 /*
  * A placed item's frame. Every item ends after 9000 frames. A barrel (0, 1,
- * 6) bursts once hit (wasHit): it makes a StageObj_K0E and an Explosion of
- * kind 2 (type 0) or 0x16 (type 1), both passing the bomb skill in stateVar0,
- * or of kind 0x21 with its own effects and sound (type 6). Types 2 and 3 keep
+ * 6) bursts once hit (wasHit): it makes a StageObj_K0E and an
+ * EXPLOSION_LARGE_BARREL_BOMB (type 0) or EXPLOSION_LARGE_BARREL_BOMB_B (type 1), both passing the bomb skill in stateVar0,
+ * or EXPLOSION_PLACED_BOMB with its own effects and sound (type 6). Types 2 and 3 keep
  * their hit window open, and the trap runs PlacedItem_RunTrap. The stuck bomb
  * follows its bone for 224 frames, then bursts once (hitDelay 5, a sound and
  * a StageObj_K0E) and hides; it ends when its hit window closes. Then it
@@ -694,9 +658,9 @@ void PlacedItem_Run(ObjAttach *o)
                 Explosion_CreateAt(o->pos, EXPLOSION_LARGE_BARREL_BOMB_B, o->area, o->stateVar0);
             } else {
                 if (gScene.area == o->area) {
-                    PlayerFx_CreateAtDefault(o->pos, 0xD, 1.0f);
-                    PlayerFx_CreateAtDefault(o->pos, 0xE, 1.0f);
-                    Sound_PlaySeAtPosChecked(1, 0x93, 0, o->pos, 1, 0);
+                    PlayerFx_CreateAtDefault(o->pos, 13, 1.0f);
+                    PlayerFx_CreateAtDefault(o->pos, 14, 1.0f);
+                    Sound_PlaySeAtPosChecked(1, 147, 0, o->pos, 1, 0);
                 }
                 Explosion_CreateAt(o->pos, EXPLOSION_PLACED_BOMB, o->area, 0);
             }
@@ -722,7 +686,7 @@ void PlacedItem_Run(ObjAttach *o)
         } else if (o->aux == 0) {
             o->hitDelay = 5;
             if (o->area == gScene.area) {
-                Sound_PlaySeAtPosChecked(1, 0x4F, 0, o->pos, 15, 0);
+                Sound_PlaySeAtPosChecked(1, 79, 0, o->pos, 15, 0);
                 FireBlast_CreateScaled(o->pos, 0, 2.0f);
             }
             o->aux++;
@@ -736,7 +700,7 @@ void PlacedItem_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -768,13 +732,13 @@ void PlacedItem_Hit(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
 /*
  * The holding trap's end (PlacedItem_End, type 4): a small StageObj_K0E puff
- * and sound 0x4D in the current area, then frees the DrawSlotB slots of its
+ * and sound 77 in the current area, then frees the DrawSlotB slots of its
  * three parts.
  */
 void PlacedItem_EndBurst(ObjAttach *o)
@@ -785,7 +749,7 @@ void PlacedItem_EndBurst(ObjAttach *o)
     part = ((PlacedItemBuf *) o->buf)->parts;
     if (o->area == gScene.area) {
         FireBlast_CreateScaled(o->pos, 0, 0.5f);
-        Sound_PlaySeAtPosChecked(1, 0x4D, 0, o->pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 77, 0, o->pos, 1, 0);
     }
     for (i = 0; i < 3; i++) {
         if (*(s32 *)&part->slot != 0) {
@@ -837,7 +801,7 @@ void PlacedItem_Free(ObjAttach *o)
  */
 void PlacedItem_DrawModel(ModelMatSet *mdl, f32 *mtx, ModelMat *tex)
 {
-    Gs_SetState(0x1A, (s32) mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
     if (mdl != NULL && mdl->id != -1) {
         Gs_SetLightList(tex, mdl);
         Draw_ApplyStates(mdl->flags);
@@ -997,7 +961,7 @@ void PlacedItem_Draw(DrawSlot *slot)
                 break;
             case 2:
                 Mtx_Translation(texMtx, 0.0f, 0.375f * (trapPart->timer / 20.0f), 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
                 Key_LerpVec3((f32 *) PlacedItem_SpinPartScaleKeys, scale, trapPart->timer);
                 if (trapBuf->phase == 2) {
                     scale[1] *= 3.0f;
@@ -1014,13 +978,13 @@ void PlacedItem_Draw(DrawSlot *slot)
             Mtx_FromScaleRotTrans(scale, rot, slot->pos, order, mtx);
             mdl = &set->matSets[PlacedItem_PartModels[trapPart->kind]];
             if (lit == 0) {
-                Gs_SetState(0x67, -1);
+                Gs_SetState(RS_COLOR2, -1);
                 Effect_DrawModelAdd(mdl, mtx, tex);
             } else {
-                Gs_SetState(0x6C, 0);
+                Gs_SetState(RS_ZWRITE, 0);
                 Effect_DrawModel(mdl, mtx, col, flags, tex);
             }
-            Gs_SetState(0x6C, 1);
+            Gs_SetState(RS_ZWRITE, 1);
         }
     }
 }
@@ -1142,7 +1106,7 @@ void VespoidAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -1169,7 +1133,7 @@ void VespoidAttack_Draw(ObjAttach *o)
 }
 
 /*
- * Sets the player's second trap (Item_UseMisc, items 0x54 and 0x299) 80 ahead
+ * Sets the player's second trap (Item_UseMisc, items ITEM_ID_PITFALL_TRAP and ITEM_ID_SUPPLY_PITFALL_TRAP) 80 ahead
  * of pl in pl's area; kind is its type (0). A trap of the local player counts
  * in gScene.placed2 (stateVar1 1).
  */
@@ -1295,7 +1259,7 @@ void PitfallTrap_Run(ObjAttach *o)
         if (o->ownerMotion < 55) {
             if (o->area == gScene.area) {
                 if ((o->ownerMotion & 7) == 0) {
-                    HitSpark_SpawnRandomAngle(0xC000, 0, 2, o->pos);
+                    HitSpark_SpawnRandomAngle(ANGLE_TURN * 3 / 4, 0, 2, o->pos);
                 }
                 if ((o->ownerMotion & 0xF) == 0) {
                     PitfallTrap_PlaySound(o, 0);
@@ -1428,7 +1392,7 @@ void PitfallTrap_Run(ObjAttach *o)
     o->drawSlotBuf->pos[0] = o->pos[0];
     o->drawSlotBuf->pos[1] = o->pos[1];
     o->drawSlotBuf->pos[2] = o->pos[2];
-    OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+    OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
 }
 
 /*
@@ -1457,7 +1421,7 @@ void PitfallTrap_Free(ObjAttach *o)
 /* Draws model set `set` with matrix m, without lights. */
 void PitfallTrap_DrawModel(ModelMatSet *set, f32 *mtx)
 {
-    Gs_SetState(0x1A, (s32) mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
     if (set != NULL && set->id != -1) {
         Draw_ApplyStates(set->flags);
         Model_Draw(set->id, 0);
@@ -1534,28 +1498,28 @@ void PitfallTrap_Draw(DrawSlot *slot)
             break;
         }
         idx = gAreaFxModels[o->area][0];
-        Gs_SetState(0x67, -1);
+        Gs_SetState(RS_COLOR2, -1);
         if (o->stateVar0 < 3) {
             tex = commonModel->mats;
-            Gs_SetState(0x60, 0x80);
+            Gs_SetState(RS_ALPHA_REF, 128);
             Mtx_Identity(mtx);
             Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
             Gs_SetLightList(tex, &commonModel->matSets[116]);
             PitfallTrap_DrawModel(&commonModel->matSets[116], mtx);
         }
         if (o->stateVar0 != 4 && o->stateVar0 != 5 && o->stateVar0 != 6) {
-            Gs_SetState(0x60, 0);
+            Gs_SetState(RS_ALPHA_REF, 0);
             Mtx_Scale(mtx, scaleX, scaleY, scaleZ);
             Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
             Mtx_Translation(texMtx, 0.0f, texOfsY, 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             PitfallTrap_DrawModel(&areaModel->matSets[idx], mtx);
             Mtx_Scale(mtx, scaleX, scaleY, scaleZ);
             Mtx_SetTrans(mtx, o->pos[0], 2.0f + o->pos[1], o->pos[2]);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             PitfallTrap_DrawModel(&areaModel->matSets[idx] + 1, mtx);
         }
-        Gs_SetState(0x60, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         if ((u32) (o->stateVar0 - 3) <= 2 || o->stateVar0 == 6) {
             Mtx_Scale(mtx, 1.0f - scaleX, 1.0f - scaleX, 1.0f - scaleX);
             Mtx_SetTrans(mtx, o->pos[0], o->pos[1], o->pos[2]);
@@ -1567,20 +1531,20 @@ void PitfallTrap_Draw(DrawSlot *slot)
 
 /*
  * Plays the trap's sound `kind` at the trap, in the current area only: 0 the
- * setting tick (0x25), 1 the opening (0x26), 2 ready (0x46).
+ * setting tick (37), 1 the opening (38), 2 ready (70).
  */
 void PitfallTrap_PlaySound(ObjAttach *o, s16 kind)
 {
     if (o->area == gScene.area) {
         switch (kind) {
         case 0:
-            Sound_PlaySeAtPosChecked(1, 0x25, 0, o->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 37, 0, o->pos, 1, 0);
             break;
         case 1:
-            Sound_PlaySeAtPosChecked(1, 0x26, 0, o->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 38, 0, o->pos, 1, 0);
             break;
         case 2:
-            Sound_PlaySeAtPosChecked(1, 0x46, 0, o->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(1, 70, 0, o->pos, 1, 0);
             break;
         }
     }
@@ -1698,7 +1662,7 @@ void VelocipreyAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -1824,7 +1788,7 @@ void EmBomb_Update(ObjAttach *o)
 void EmBomb_InitTimers(ObjAttach *o)
 {
     o->hitPhase = 0;
-    o->aux = 0x154;
+    o->aux = 340;
     if (o->type == 4 || o->type == 5) {
         o->ownerMotion = 10;
     } else {
@@ -1871,7 +1835,7 @@ void EmBomb_RunHeld(ObjAttach *o)
             o->step++;
             o->stateVar0 = 15;
             if (o->area == gScene.area) {
-                Sound_PlaySeAtPosChecked(1, 0x24, 0, o->pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 36, 0, o->pos, 1, 0);
             }
         }
     case 2:
@@ -1905,11 +1869,11 @@ void EmBomb_RunHeld(ObjAttach *o)
         }
         if (o->area == gScene.area && o->ownerMotion >= 60) {
             if (o->ownerMotion & 1) {
-                HitSpark_SpawnRandomAngle(0xC000, 0, 2, o->pos);
+                HitSpark_SpawnRandomAngle(ANGLE_TURN * 3 / 4, 0, 2, o->pos);
             }
             if (--o->stateVar0 <= 0) {
                 o->stateVar0 = 15;
-                Sound_PlaySeAtPosChecked(1, 0x25, 0, o->pos, 1, 0);
+                Sound_PlaySeAtPosChecked(1, 37, 0, o->pos, 1, 0);
             }
         }
         break;
@@ -2000,8 +1964,8 @@ void EmBomb_RunMelynxThrown(ObjAttach *o)
  * Types 4 and 5, the bomb a Shakalaka throws (EmShakalaka_ThrowBomb). It
  * works as EmBomb_RunMelynxThrown but asks EmShakalaka_BombState and grows over 10
  * frames. Type 5 flies flat and fast (20 forward, 10 up) and bursts with a
- * StageObj_K0C and an Explosion of kind 0x1A owned by em. Type 4 (15, 25)
- * bursts with kind 0.
+ * StageObj_K0C and an EXPLOSION_THROWN_CLOUD_B owned by em. Type 4 (15, 25)
+ * bursts with EXPLOSION_BOMB.
  */
 void EmBomb_RunShakalakaThrown(ObjAttach *o)
 {
@@ -2124,7 +2088,7 @@ void EmBomb_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -2148,7 +2112,7 @@ void EmBomb_Free(ObjAttach *o)
 /*
  * Draws the bomb while visible in the current area: model set
  * EmBomb_Models[type] of gCommonModels[0], at size velX, turned by rotY. For
- * the barrel set (0x37) it hides material 1.
+ * the barrel set (55) it hides material 1.
  */
 void EmBomb_Draw(DrawSlot *slot)
 {
@@ -2169,7 +2133,7 @@ void EmBomb_Draw(DrawSlot *slot)
         Mtx_RotateXYZ(mtx, 0.0f, (6.2831855f * o->rotY) / 65536.0f, 0.0f);
         idx = EmBomb_Models[o->type];
         mdl = &set->matSets[idx];
-        if (idx == 0x37) {
+        if (idx == 55) {
             i = 0;
             if (i < mdl->count) {
                 ids = (s32 *) mdl;
@@ -2183,7 +2147,7 @@ void EmBomb_Draw(DrawSlot *slot)
                 } while (i < mdl->count);
             }
         }
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         if (mdl != NULL && mdl->id != -1) {
             Gs_SetLightList(tex, mdl);
             Draw_ApplyStates(mdl->flags);
@@ -2306,7 +2270,7 @@ void DromeAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -2447,7 +2411,7 @@ void KhezuAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -2617,7 +2581,7 @@ void KutkuAttack_Run(ObjAttach *o)
         break;
     }
     if (o->type == 22) {
-        o->buf[0x14] = 5;
+        o->buf[20] = 5;
     }
     if (em->motionId[0] != o->ownerMotion || o->hitPhase == 0) {
         o->hitPhase = 0;
@@ -2628,7 +2592,7 @@ void KutkuAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -2760,7 +2724,7 @@ void DiablosAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -2785,7 +2749,7 @@ void DiablosAttack_Free(ObjAttach *o)
  * Makes a GraviosAttack for em (Gravios, Black Gravios, Basarios:
  * EmGravios_MotionEffects, EmGravios_Gas) with row kind of
  * GraviosAttack_Rows, if a player is in em's area. Types 4 and 22 face
- * backward (yaw + 0x8000). Clears em's hitPending and contactHit.
+ * backward (yaw + half a turn). Clears em's hitPending and contactHit.
  */
 void GraviosAttack_Create(Em *em, s8 kind)
 {
@@ -2889,10 +2853,10 @@ void GraviosAttack_Setup(ObjAttach *o)
 }
 
 /*
- * Types 11 and 27 (motion 0x3F9: 11 for Gravios and Black Gravios, 27 for
- * Basarios) keep their window at 60 frames while the monster plays 0x3F9.
+ * Types 11 and 27 (motion EM_MOTION_ID(0, GRAV_MOT_CHARGE): 11 for Gravios and Black Gravios, 27 for
+ * Basarios) keep their window at 60 frames while the monster plays it.
  * Types 12 and 14 (EmGravios_Gas) keep theirs at 18 frames while it
- * plays 0x457. These four end only when the window closes or the monster is
+ * plays EM_MOTION_ID(0, GRAV_MOT_GAS). These four end only when the window closes or the monster is
  * in group 4 or 5. The others end when the motion changes or the window
  * closes.
  */
@@ -2903,13 +2867,13 @@ void GraviosAttack_Run(ObjAttach *o)
     switch (o->type) {
     case 11:
     case 27:
-        if (em->motionId[0] == EM_MOTION_ID(0, 0x11)) {
+        if (em->motionId[0] == EM_MOTION_ID(0, 17)) {
             o->hitFrames = 60;
         }
         break;
     case 12:
     case 14:
-        if (em->motionId[0] == EM_MOTION_ID(0, 0x6F)) {
+        if (em->motionId[0] == EM_MOTION_ID(0, 111)) {
             o->hitFrames = 18;
         }
         break;
@@ -2933,7 +2897,7 @@ void GraviosAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -3068,7 +3032,7 @@ void PlesiothAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -3204,7 +3168,7 @@ void CephadromeAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -3230,7 +3194,7 @@ void CephadromeAttack_Free(ObjAttach *o)
  * 36.2 to either side, aimed by pl->aimPitchPct, the second 3 frames late.
  * Type 1 is the cannon: it starts at the area's cannon spot pl->stateRand,
  * with a random spread from randBits, and is freed outside its three areas.
- * Type 7 is the arena strike, on pl's side and 45 frames late. Skill 0xC9
+ * Type 7 is the arena strike, on pl's side and 45 frames late. SKILL_STAGE_SHOT_POWER
  * sets powerPct 110 for types 0 and 1.
  */
 void StageShot_CreateForPlayer(Player *pl, u8 kind)
@@ -3248,13 +3212,13 @@ void StageShot_CreateForPlayer(Player *pl, u8 kind)
     switch (kind) {
     case STAGESHOT_MOUNTED_GUN:
         count = 2;
-        if (Player_HasSkill(pl, 0xC9) == 1) {
+        if (Player_HasSkill(pl, SKILL_STAGE_SHOT_POWER) == 1) {
             powerPercent = 110;
         }
         break;
     case STAGESHOT_CANNON:
         count = 1;
-        if (Player_HasSkill(pl, 0xC9) == 1) {
+        if (Player_HasSkill(pl, SKILL_STAGE_SHOT_POWER) == 1) {
             powerPercent = 110;
         }
         break;
@@ -3565,7 +3529,7 @@ void StageShot_Setup(ObjAttach *o)
             o->drawSlotBuf->draw = StageShot_Draw;
             Vec_Copy(o->drawSlotBuf->pos, o->pos);
             if (o->type != STAGESHOT_CANNON && o->type != STAGESHOT_MOUNTED_GUN && o->type != STAGESHOT_ARENA_STRIKE) {
-                OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+                OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
             }
             if (o->type == STAGESHOT_LAOSHAN_ROCK && o->area == gScene.area) {
                 StageShot_CamShake(o);
@@ -3692,9 +3656,9 @@ void StageShot_Run(ObjAttach *o)
                 if (o->area == gScene.area) {
                     StageShot_CamShake(o);
                     StageShot_PlaySound(o, 2);
-                    HitSpark_SpawnScaled(0, 0xB, 0, o->pos, 2.0f);
-                    HitSpark_SpawnScaled(0, 0xB, 1, o->pos, 2.0f);
-                    PartFx_SpawnIfHere(o->owner, o->pos, 0x22, 16.0f);
+                    HitSpark_SpawnScaled(0, 11, 0, o->pos, 2.0f);
+                    HitSpark_SpawnScaled(0, 11, 1, o->pos, 2.0f);
+                    PartFx_SpawnIfHere(o->owner, o->pos, 34, 16.0f);
                 }
                 o->hitFrames = 0;
                 o->hitPhase = 0;
@@ -3764,9 +3728,9 @@ void StageShot_Run(ObjAttach *o)
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
         if (useOt32 == 0) {
-            OT_AddByDepth(gDrawOtSorted, o->drawSlotBuf, 0x40U, 0);
+            OT_AddByDepth(gDrawOtSorted, o->drawSlotBuf, 64U, 0);
         } else {
-            OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+            OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
         }
     }
 }
@@ -3781,7 +3745,7 @@ void StageShot_Hit(ObjAttach *o)
 
     type = o->type;
     switch (type) {
-    case 0x0:
+    case 0:
     default:
         StageShot_End(o);
         break;
@@ -3794,9 +3758,9 @@ void StageShot_Hit(ObjAttach *o)
     case 4:
         if (o->area == gScene.area) {
             StageShot_CamShake(o);
-            HitSpark_SpawnScaled(0, 0xB, 0, o->pos, 2.0f);
-            HitSpark_SpawnScaled(0, 0xB, 1, o->pos, 2.0f);
-            PartFx_SpawnIfHere(o->owner, o->pos, 0x22, 16.0f);
+            HitSpark_SpawnScaled(0, 11, 0, o->pos, 2.0f);
+            HitSpark_SpawnScaled(0, 11, 1, o->pos, 2.0f);
+            PartFx_SpawnIfHere(o->owner, o->pos, 34, 16.0f);
         }
         o->hitFrames = 0;
         o->hitPhase = 0;
@@ -3828,7 +3792,7 @@ void StageShot_Free(ObjAttach *o)
  */
 void StageShot_DrawModel(ModelMatSet *mdl, f32 *mtx, ModelMat *tex)
 {
-    Gs_SetState(0x1A, (s32) mtx);
+    Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
     if (mdl != NULL && mdl->id != -1) {
         Gs_SetLightList(tex, mdl);
         Draw_ApplyStates(mdl->flags);
@@ -3908,7 +3872,7 @@ void StageShot_Draw(DrawSlot *slot)
         tex = bank->mats;
         mdl = &bank->matSets[133];
         Mtx_Translation(texMtx, 0.0f, 0.0f, 0.0f);
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         break;
     }
     case STAGESHOT_LAOSHAN_ROCK:
@@ -3966,7 +3930,7 @@ void StageShot_Draw(DrawSlot *slot)
             break;
         }
         tex = bank->mats;
-        Gs_SetState(0x67, -1);
+        Gs_SetState(RS_COLOR2, -1);
         break;
     }
     case STAGESHOT_ARENA_STRIKE:
@@ -4016,10 +3980,10 @@ void StageShot_PlaySound(ObjAttach *o, s16 event)
     case STAGESHOT_MOUNTED_GUN:
         switch (event) {
         case 0:
-            Sound_PlaySeAtPosChecked(7, 0x38, 0, o->pos, 7, 0);
+            Sound_PlaySeAtPosChecked(7, 56, 0, o->pos, 7, 0);
             break;
         case 1:
-            Sound_PlaySeAtPosChecked(7, 0x30, 0, o->pos, 7, 0);
+            Sound_PlaySeAtPosChecked(7, 48, 0, o->pos, 7, 0);
             break;
         }
         break;
@@ -4028,7 +3992,7 @@ void StageShot_PlaySound(ObjAttach *o, s16 event)
         case 0:
             break;
         case 1:
-            Sound_PlaySeAtPosChecked(7, 0x32, 0, o->pos, 7, 0);
+            Sound_PlaySeAtPosChecked(7, 50, 0, o->pos, 7, 0);
             break;
         }
         break;
@@ -4037,7 +4001,7 @@ void StageShot_PlaySound(ObjAttach *o, s16 event)
     case STAGESHOT_AREA_PAIR:
         switch (event) {
         case 0:
-            Sound_PlaySeAtPosChecked(7, 0x34, 0, o->pos, 7, 0);
+            Sound_PlaySeAtPosChecked(7, 52, 0, o->pos, 7, 0);
             break;
         }
         break;
@@ -4049,13 +4013,13 @@ void StageShot_PlaySound(ObjAttach *o, s16 event)
         }
         switch (event) {
         case 0:
-            Em_PlaySeChecked(em, 0x2C, 0, o->pos, 3, 0);
+            Em_PlaySeChecked(em, 44, 0, o->pos, 3, 0);
             break;
         case 1:
-            Em_PlaySeChecked(em, 0x2D, 0, o->pos, 3, 0);
+            Em_PlaySeChecked(em, 45, 0, o->pos, 3, 0);
             break;
         case 2:
-            Em_PlaySeChecked(em, 0x2B, 0, o->pos, 3, 0);
+            Em_PlaySeChecked(em, 43, 0, o->pos, 3, 0);
             break;
         }
         break;
@@ -4065,10 +4029,10 @@ void StageShot_PlaySound(ObjAttach *o, s16 event)
     case STAGESHOT_ARENA_STRIKE:
         switch (event) {
         case 1:
-            Sound_PlaySeAtPosChecked(7, 0x34, 0, o->pos, 7, 0);
+            Sound_PlaySeAtPosChecked(7, 52, 0, o->pos, 7, 0);
             break;
         case 2:
-            Sound_PlaySeAtPosChecked(7, 0x36, 0, o->pos, 7, 0);
+            Sound_PlaySeAtPosChecked(7, 54, 0, o->pos, 7, 0);
             break;
         }
         break;
@@ -4338,7 +4302,7 @@ void CephalosAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -4660,7 +4624,7 @@ void BowArrow_Move(ObjAttach *o)
         }
     }
     len = Math_Sqrtf(o->velX * o->velX + o->velZ * o->velZ);
-    if (o->ownerMotion <= 19 && BowArrow_MulAddShift(o->randBits, o->ownerMotion, 0x3045, 1) <= 0x1FFF) {
+    if (o->ownerMotion <= 19 && BowArrow_MulAddShift(o->randBits, o->ownerMotion, 12357, 1) <= 8191) {
         sway = row->sway * chargeRow[5];
         if (arrowBuf->skills & 2) {
             sway *= 2.0f;
@@ -4668,11 +4632,11 @@ void BowArrow_Move(ObjAttach *o)
         if (arrowBuf->skills & 4) {
             sway *= 0.5f;
         }
-        drift[0] = sway * BowArrow_BitsToSignedFrac(BowArrow_MulAddShift(o->randBits, o->ownerMotion, 0x3121, 4), 6);
+        drift[0] = sway * BowArrow_BitsToSignedFrac(BowArrow_MulAddShift(o->randBits, o->ownerMotion, 12577, 4), 6);
     } else {
         drift[0] = 0.0f;
     }
-    drift[1] = len * (row->lift + chargeRow[4]) * BowArrow_BitsToFrac(BowArrow_MulAddShift(o->randBits, o->ownerMotion, 0x147F, 2), 14);
+    drift[1] = len * (row->lift + chargeRow[4]) * BowArrow_BitsToFrac(BowArrow_MulAddShift(o->randBits, o->ownerMotion, 5247, 2), 14);
     drift[2] = 0.0f;
     Vec_RotateX(drift, (6.2831855f * o->rotX) / 65536.0f);
     Vec_RotateY(drift, (6.2831855f * o->rotY) / 65536.0f);
@@ -4689,23 +4653,23 @@ void BowArrow_Move(ObjAttach *o)
     }
     if (BowArrow_StepEvents(o)) {
         BowArrow_ApplyEvent(o);
-        if (arrowBuf->event == 0xFF) {
+        if (arrowBuf->event == 255) {
             arrowBuf->doneFrames = 0;
         }
     }
 }
 
 /*
- * Moves the arrow: a bounced one (stateVar1 0xFE) tumbles
+ * Moves the arrow: a bounced one (stateVar1 254) tumbles
  * (BowArrow_BounceStep). Otherwise it ends after 100 frames or 3 frames past
- * its last event; a batted-back arrow (stateVar1 0xFF) flies by
+ * its last event; a batted-back arrow (stateVar1 255) flies by
  * BowArrow_Fall, the others by BowArrow_Move. Moves its draw slot.
  */
 void BowArrow_Run(ObjAttach *o)
 {
     BowArrowBuf *buf = (BowArrowBuf *) o->buf;
 
-    if (o->stateVar1 == 0xFE) {
+    if (o->stateVar1 == 254) {
         if (BowArrow_BounceStep(o) != 0) {
             o->state = ATTACH_END;
             return;
@@ -4716,8 +4680,8 @@ void BowArrow_Run(ObjAttach *o)
             o->state = ATTACH_END;
             return;
         }
-        if (o->stateVar1 != 0xFF) {
-            if (buf->event == 0xFF) {
+        if (o->stateVar1 != 255) {
+            if (buf->event == 255) {
                 if (++buf->doneFrames > 3) {
                     o->hitFrames = 0;
                     o->state = ATTACH_END;
@@ -4731,7 +4695,7 @@ void BowArrow_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -4761,7 +4725,7 @@ void BowArrow_Hit(ObjAttach *o)
 {
     BowArrowKind *row = &BowArrow_Kinds[o->type];
 
-    if (o->stateVar1 == 0xFF) {
+    if (o->stateVar1 == 255) {
         o->state = ATTACH_END;
     } else {
         switch (row->hitMode) {
@@ -4790,16 +4754,16 @@ void BowArrow_Hit(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
 /*
  * A deflected arrow (ATTACH_DEFLECTED, ATTACH_DEFLECTED_AURA). Either it
- * bounces off at a random angle (stateVar1 0xFE), or, when ObjAttach_RollBatBack says
+ * bounces off at a random angle (stateVar1 254), or, when ObjAttach_RollBatBack says
  * so, the monster in targetEm bats it back. It then becomes that monster's
  * attack (row 12), flying at a point 100 above its shooter's feet (stateVar1
- * 0xFF), with SE 0x96.
+ * 255), with SE 150.
  */
 void BowArrow_Deflect(ObjAttach *o)
 {
@@ -4815,12 +4779,12 @@ void BowArrow_Deflect(ObjAttach *o)
     o->ownerMotion = 0;
     o->side = 0;
     if (ObjAttach_RollBatBack(o, o->randBits >> o->stateVar1) == 0) {
-        o->stateVar1 = 0xFE;
+        o->stateVar1 = 254;
         o->hitPhase = 0;
         Vec_Diff(dir, o->pos2, o->pos);
         Vec_DirToAngles(dir, (s16 *) &pitch, (s16 *) &heading);
         pitch += -(Rand_Next(1) & 0x7FF) - 0x200;
-        heading += (Rand_Next(1) & 0x3FFF) - 0x2000;
+        heading += (Rand_Next(1) & 0x3FFF) - ANGLE_TURN / 8;
         o->velX = 0.0f;
         o->velY = 1.0f + (Rand_Next(1) & 0x1F);
         o->velZ = 10.0f + (Rand_Next(1) & 7);
@@ -4832,7 +4796,7 @@ void BowArrow_Deflect(ObjAttach *o)
         o->rotX = Rand_Next(1);
         o->rotY = Rand_Next(1);
     } else {
-        o->stateVar1 = 0xFF;
+        o->stateVar1 = 255;
         o->idx = batter->index;
         o->isEm = batter->isEm;
         o->owner = batter;
@@ -4857,7 +4821,7 @@ void BowArrow_Deflect(ObjAttach *o)
         o->homingSpeed = 0.0f;
         Vec_Copy(o->pos2, o->pos);
         if (gScene.area == o->area) {
-            Sound_PlaySeAtPosChecked(1, 0x96, 0, o->pos, 6, 0);
+            Sound_PlaySeAtPosChecked(1, 150, 0, o->pos, 6, 0);
         }
     }
     o->state = ATTACH_RUN;
@@ -4871,8 +4835,8 @@ void BowArrow_Deflect(ObjAttach *o)
 void BowArrow_Fall(ObjAttach *o)
 {
     Vec_Copy(o->pos2, o->pos);
-    o->hitFrames = 0x63;
-    if (o->ownerMotion < 0x14) {
+    o->hitFrames = 99;
+    if (o->ownerMotion < 20) {
         ObjAttach_Move(o);
     } else {
         ObjAttach_MoveAccel(o);
@@ -4931,9 +4895,9 @@ void BowArrow_Draw(DrawSlot *slot)
             Mtx_RotateX(mtx, (6.2831855f * o->rotX) / 65536.0f);
             Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
         }
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, -1);
-        Gs_SetState(0x60, 0x80);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, -1);
+        Gs_SetState(RS_ALPHA_REF, 128);
         if (mdl != NULL && mdl->id != -1) {
             Gs_SetLightList(tex, mdl);
             Draw_ApplyStates(mdl->flags);
@@ -4944,8 +4908,8 @@ void BowArrow_Draw(DrawSlot *slot)
 }
 
 /*
- * Sets buf->skills from pl's skills: 1 SKILL_STATUS_PLUS (coatings x1.125), 2 skill
- * 0xBA (range x2), 4 skill 0xB9 (range x0.5).
+ * Sets buf->skills from pl's skills: 1 SKILL_STATUS_PLUS (coatings x1.125), 2
+ * SKILL_SPREAD_DOUBLE (random deviation x2), 4 SKILL_SPREAD_HALF (x0.5).
  */
 void BowArrow_SkillFlags(BowArrowBuf *buf, Player *pl)
 {
@@ -4953,10 +4917,10 @@ void BowArrow_SkillFlags(BowArrowBuf *buf, Player *pl)
     if (Player_HasSkill(pl, SKILL_STATUS_PLUS) == 1) {
         buf->skills |= 1;
     }
-    if (Player_HasSkill(pl, 0xBA) == 1) {
+    if (Player_HasSkill(pl, SKILL_SPREAD_DOUBLE) == 1) {
         buf->skills |= 2;
     }
-    if (Player_HasSkill(pl, 0xB9) == 1) {
+    if (Player_HasSkill(pl, SKILL_SPREAD_HALF) == 1) {
         buf->skills |= 4;
     }
 }
@@ -5014,7 +4978,7 @@ void BowArrow_InitAttack(BowArrowBuf *buf, Player *pl)
  * Applies a bow coating to o: 1 power (x1.5 power, only when stabbing), 2
  * poison, 3 ELEMF_EM_STATUS4, 4 ELEMF_EM_STATUS2. stab is 1 for the bow's
  * close stab (PlayerAttack_Setup) and 0 for an arrow, whose hitFx is then
- * 0x18. On the stab a status coating gets elementPower 2, otherwise the
+ * 24. On the stab a status coating gets elementPower 2, otherwise the
  * weapon's element applies; status values get SKILL_STATUS_PLUS's x1.125 and
  * elements are halved (at least 1).
  */
@@ -5029,19 +4993,19 @@ void BowArrow_ApplyCoating(ObjAttach *o, u8 coating, u8 stab)
     case 2:
         o->elementFlags = ELEMF_POISON;
         if (stab == 0) {
-            o->hitFx = 0x18;
+            o->hitFx = 24;
         }
         break;
     case 3:
         o->elementFlags = ELEMF_EM_STATUS4;
         if (stab == 0) {
-            o->hitFx = 0x18;
+            o->hitFx = 24;
         }
         break;
     case 4:
         o->elementFlags = ELEMF_EM_STATUS2;
         if (stab == 0) {
-            o->hitFx = 0x18;
+            o->hitFx = 24;
         }
         break;
     case 1:
@@ -5110,12 +5074,12 @@ void BowArrow_ApplyPower(ObjAttach *o)
         o->elementFlags = arrowBuf->elementFlags;
         o->elementPower = arrowBuf->elementLevel;
         if (o->elementPower != 0) {
-            o->hitFx = 0x18;
+            o->hitFx = 24;
             value = o->elementPower * BowArrow_ChargeElementScale[arrowBuf->charge];
             if (value == 0) {
                 value = 1;
-            } else if (value > 0xFF) {
-                value = 0xFF;
+            } else if (value > 255) {
+                value = 255;
             }
             o->elementPower = value;
         }
@@ -5125,8 +5089,8 @@ void BowArrow_ApplyPower(ObjAttach *o)
             scale *= 1.125f;
         }
         value = BowArrow_LevelScale[arrowBuf->shot] * scale;
-        if (value > 0xFF) {
-            value = 0xFF;
+        if (value > 255) {
+            value = 255;
         }
         o->elementPower = value;
     }
@@ -5146,8 +5110,8 @@ void BowArrow_ApplyPower(ObjAttach *o)
         value = o->power * scale;
         if (value == 0) {
             value = 1;
-        } else if (value > 0xFF) {
-            value = 0xFF;
+        } else if (value > 255) {
+            value = 255;
         }
         o->power = value;
     }
@@ -5155,7 +5119,7 @@ void BowArrow_ApplyPower(ObjAttach *o)
 
 /*
  * Moves buf->event past the entries of the kind's event table whose frame
- * ownerMotion has passed; a negative entry ends the list (event 0xFF, hit
+ * ownerMotion has passed; a negative entry ends the list (event 255, hit
  * window closed). Returns 1 when an entry passed, 0 otherwise or when the
  * kind has none.
  */
@@ -5170,13 +5134,13 @@ s8 BowArrow_StepEvents(ObjAttach *o)
         return ret;
     }
     tbl = BowArrow_EventTbls[row->eventTbl];
-    for (; buf->event != 0xFF; buf->event++) {
+    for (; buf->event != 255; buf->event++) {
         if (tbl[buf->event] >= o->ownerMotion) {
             break;
         }
         ret = 1;
         if (tbl[buf->event] < 0) {
-            buf->event = 0xFF;
+            buf->event = 255;
             o->hitPhase = 0;
             break;
         }
@@ -5195,7 +5159,7 @@ void BowArrow_ApplyEvent(ObjAttach *o)
     BowArrowBuf *arrowBuf = (BowArrowBuf *) o->buf;
     f32 newPower;
 
-    if (o->power == 0 || arrowBuf->event > 4 || arrowBuf->event == 0xFF) {
+    if (o->power == 0 || arrowBuf->event > 4 || arrowBuf->event == 255) {
         return;
     }
     switch (o->hitFx & 0x3F) {
@@ -5250,7 +5214,7 @@ f32 BowArrow_BitsToSignedFrac(u16 value, u16 bits)
 {
     u16 shift = 16 - bits;
 
-    return 0.000015625f * (s16) (((value & (u16) (0xFFFF >> shift)) << shift) - 0x8000);
+    return 0.000015625f * (s16) (((value & (u16) (0xFFFF >> shift)) << shift) - 32768);
 }
 
 /*
@@ -5299,7 +5263,7 @@ void GarugaAttack_Create(Em *em, s8 kind)
 }
 
 /*
- * The same as GarugaAttack_Create; EmGaruga_MotionEffects makes type 0x16
+ * The same as GarugaAttack_Create; EmGaruga_MotionEffects makes type 22
  * with it.
  */
 void GarugaAttack_CreateForEffects(Em *em, s8 kind)
@@ -5410,7 +5374,7 @@ void GarugaAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -5435,7 +5399,7 @@ void GarugaAttack_Free(ObjAttach *o)
  * Makes a HermitaurAttack for em with the row kind of HermitaurAttack_Rows,
  * if a player is in em's area. It is a hit zone of the Hermitaur family's
  * (EmHermitaur_*: Hermitaur, Daimyo Hermitaur, Shogun Ceanataur). Type 9
- * faces backward (yaw + 0x8000). Clears em's hitPending and contactHit.
+ * faces backward (yaw + half a turn). Clears em's hitPending and contactHit.
  */
 void HermitaurAttack_Create(Em *em, s32 kind)
 {
@@ -5572,9 +5536,9 @@ void HermitaurAttack_Run(ObjAttach *o)
         }
         break;
     case 11:
-        if (em->motionId[0] == EM_MOTION_ID(0, 0xA)) {
+        if (em->motionId[0] == EM_MOTION_ID(0, 10)) {
             o->hitFrames = 99;
-        } else if (em->motionId[0] == EM_MOTION_ID(0, 0xB)) {
+        } else if (em->motionId[0] == EM_MOTION_ID(0, 11)) {
             if (EmMotion_PassedFrameScaled(em, 4.0f, 0) != 0 && o->stateVar0 == 0) {
                 o->stateVar0++;
                 o->hitListNo = 5;
@@ -5596,7 +5560,7 @@ void HermitaurAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -5621,7 +5585,7 @@ void HermitaurAttack_Free(ObjAttach *o)
  * Makes a BlangongaAttack for em with the row kind of BlangongaAttack_Rows,
  * if a player is in em's area. It is a hit zone of the Blangonga family's
  * (EmBlangonga_*: Blangonga, Congalala, Rajang, Blango, Conga). Types 9, 18,
- * 20 and 30 face backward (yaw + 0x8000). Clears em's hitPending and
+ * 20 and 30 face backward (yaw + half a turn). Clears em's hitPending and
  * contactHit.
  */
 void BlangongaAttack_Create(Em *em, s32 kind)
@@ -5642,7 +5606,7 @@ void BlangongaAttack_Create(Em *em, s32 kind)
             case 18:
             case 20:
             case 30:
-                o->yaw = em->rotY + 0x8000;
+                o->yaw = em->rotY + ANGLE_TURN / 2;
                 break;
             default:
                 o->yaw = em->rotY;
@@ -5747,12 +5711,12 @@ void BlangongaAttack_Run(ObjAttach *o)
     Em *em = &gEms[o->idx];
 
     switch (o->type) {
-    case 0xF:
-    case 0x1D:
-    case 0x23:
+    case 15:
+    case 29:
+    case 35:
         o->hitFrames = 99;
         break;
-    case 0x1F:
+    case 31:
         if (em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_CONGALALA_COMBO)) {
             if (EmMotion_ReachedFrame(em, 0, 176.0f)) {
                 if (EmBlangonga_IsSmallKind(em) == 1) {
@@ -5772,7 +5736,7 @@ void BlangongaAttack_Run(ObjAttach *o)
         }
         o->hitList = BlangongaAttack_HitShapes[o->hitListNo];
         break;
-    case 0x21:
+    case 33:
         if (em->motionId[0] == o->ownerMotion) {
             o->hitFrames = 20;
         } else if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_HOP_LAND) || o->hitPhase == 0) {
@@ -5780,7 +5744,7 @@ void BlangongaAttack_Run(ObjAttach *o)
             o->state = ATTACH_END;
         }
         return;
-    case 0x24:
+    case 36:
         o->hitFrames = 99;
         if (em->motionId[0] == EM_MOTION_ID(0, BLANG_MOT_STRIKE_A)) {
             if (!EmMotion_ReachedFrame(em, 0, 34.0f) || EmMotion_InFrameRange(em, 0, 54.0f, 86.0f)) {
@@ -5791,7 +5755,7 @@ void BlangongaAttack_Run(ObjAttach *o)
         }
         o->hitList = BlangongaAttack_HitShapes[o->hitListNo];
         break;
-    case 0x27:
+    case 39:
         if (em->motionId[0] == o->ownerMotion) {
             o->hitFrames = 26;
         } else if (em->motionId[0] != EM_MOTION_ID(0, BLANG_MOT_RAJANG_CHARGE_END) || o->hitPhase == 0) {
@@ -5806,7 +5770,7 @@ void BlangongaAttack_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
@@ -5849,7 +5813,7 @@ typedef struct {
 } BoomerangBuf;
 
 /*
- * Makes the boomerang thrown by thrower at its bone 0x12, if thrower is in
+ * Makes the boomerang thrown by thrower at its bone 18, if thrower is in
  * the current area. thrower is a player: Player_StateThrowItem casts it. kind
  * (0 standing, 1 walking, 2 running) sets the throw's height. returns is
  * nonzero when the item is not used up, and then it comes back instead of
@@ -5873,8 +5837,8 @@ void Boomerang_Create(Em *thrower, u8 kind, u8 returns)
             o->area = thrower->area;
             boomBuf = (BoomerangBuf *) o->buf;
             o->rotY = 0;
-            o->rotZ = 0xF000;
-            Em_GetBonePos(o->owner, 0x12, pos);
+            o->rotZ = ANGLE_TURN * 15 / 16;
+            Em_GetBonePos(o->owner, 18, pos);
             o->pos[0] = pos[0];
             o->pos[1] = pos[1];
             o->pos[2] = pos[2];
@@ -5910,7 +5874,7 @@ void Boomerang_Create(Em *thrower, u8 kind, u8 returns)
 
 /*
  * The boomerang's per-frame update, by ObjAttach.state: ATTACH_HIT goes to
- * Boomerang_Hit. Its End, Free and Draw follow KushalaBreath's family.
+ * Boomerang_Hit.
  */
 void Boomerang_Update(ObjAttach *o)
 {
@@ -6005,17 +5969,11 @@ void Boomerang_Hit(ObjAttach *o)
     o->hitDelay = 0;
     boomBuf->wasHit = 1;
     boomBuf->hitDist = Vec_Distance(o->pos, &((Em *) o->owner)->posX);
-    boomBuf->returnYaw = Math_Heading(o->pos[0], o->pos[2], ((Em *) o->owner)->posX, ((Em *) o->owner)->posZ) + 0x4000;
+    boomBuf->returnYaw = Math_Heading(o->pos[0], o->pos[2], ((Em *) o->owner)->posX, ((Em *) o->owner)->posZ) + ANGLE_TURN / 4;
     boomBuf->returnFrames = boomBuf->hitDist / 30.0f;
     boomBuf->returnVelY = Math_Absf(o->pos[1] - (((Em *) o->owner)->posY + boomBuf->releaseHeight - 30.0f)) / boomBuf->returnFrames;
     Boomerang_Run(o);
 }
-
-f32 Math_Cos(f32 x);
-f32 Vec_Length(f32 *v);
-void Vec_Sub(f32 *out, f32 *a, f32 *b);
-void Vec_Normalize(f32 *v);
-
 
 typedef struct {
     f32 x, y, z;
@@ -6028,7 +5986,7 @@ typedef struct {
  * height, 2 arcs back after a hit (no more hits), and 3 is the drop: the
  * curve bends down and grows or fades by type, and type 1 slides on the
  * ground for 15 frames. It ends within 80 of the thrower, on the ground or
- * after 180 frames; it spins and plays SE 0x88 once per turn.
+ * after 180 frames; it spins and plays SE 136 once per turn.
  */
 void Boomerang_Run(ObjAttach *o)
 {
@@ -6070,10 +6028,10 @@ void Boomerang_Run(ObjAttach *o)
             o->pos[0] += o->velX;
             o->pos[1] += o->velY;
             o->pos[2] += o->velZ;
-            o->rotY += 0x3000;
+            o->rotY += ANGLE_TURN * 3 / 16;
             if (o->drawSlotBuf != NULL) {
                 Vec_Copy(o->drawSlotBuf->pos, o->pos);
-                OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20, 0);
+                OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32, 0);
             }
             return;
         }
@@ -6282,18 +6240,88 @@ void Boomerang_Run(ObjAttach *o)
             o->rotY += (u16) (s32) (0.5f + (65536.0f * (1.1780972f * (boomBuf->spinDownFrames / 15))) / 6.2831855f);
         }
     } else {
-        o->rotY += 0x3000;
+        o->rotY += ANGLE_TURN * 3 / 16;
     }
     if ((u16) o->rotY < (u16) prevRotY) {
         boomBuf->spinSe = 1;
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32, 0);
     }
     if (boomBuf->spinSe == 1) {
-        Sound_PlaySeAtPosChecked(1, 0x88, 0, o->pos, 1, 0);
+        Sound_PlaySeAtPosChecked(1, 136, 0, o->pos, 1, 0);
         boomBuf->spinSe = 0;
+    }
+}
+
+/*
+ * Ends the boomerang: closes its hit window, hides it and frees its draw
+ * slot. It is freed on the next update (ATTACH_FREE).
+ */
+void Boomerang_End(ObjAttach *o)
+{
+    o->hitPhase = 0;
+    o->state = ATTACH_FREE;
+    o->visible = 0;
+    if (o->drawSlotBuf != NULL) {
+        DrawSlot_Free((s32) o->drawSlot);
+    }
+}
+
+/* Frees the boomerang (ObjAttach_Free). */
+void Boomerang_Free(ObjAttach *o)
+{
+    ObjAttach_Free(o);
+}
+
+/*
+ * Draws the boomerang (mesh set 152 of gCommonModels[0]) at its draw slot
+ * when it is in the current area. The mesh is pitched along its velocity,
+ * headed from pos toward pos2, then turned by rotY and spun by rotZ. rotZ
+ * stays 0 once a type-1 boomerang has landed (BoomerangBuf.grounded,
+ * with the other families).
+ */
+void Boomerang_Draw(DrawSlot *drawSlot)
+{
+    f32 dirMtx[16];
+    f32 mtx[16];
+    ObjAttach *o;
+    u8 *boomBuf;
+    Model *mdl;
+    ModelMat *materials;
+    ModelMatSet *matSet;
+    f32 pitch;
+    u16 heading;
+
+    mdl = gCommonModels[0];
+    o = drawSlot->owner;
+    boomBuf = o->buf;
+    if (o->area == gScene.area && mdl != NULL && mdl->active != 0) {
+        if (boomBuf[44] == 1) {
+            o->rotZ = 0;
+        }
+        matSet = &mdl->matSets[152];
+        materials = mdl->mats;
+        Mtx_Identity(dirMtx);
+        pitch = -1.0f * Math_Atan(o->velY / Math_Sqrtf(o->velZ * o->velZ + o->velX * o->velX));
+        heading = Math_Heading(o->pos[0], o->pos[2], o->pos2[0], o->pos2[2]) + ANGLE_TURN / 4;
+        Mtx_RotateX(dirMtx, pitch);
+        Mtx_RotateY(dirMtx, (6.2831855f * heading) / 65536.0f);
+        Mtx_Identity(mtx);
+        Mtx_Scale(mtx, 1.0f, 1.0f, 1.0f);
+        Mtx_SetTrans(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
+        Mtx_RotateY(mtx, (6.2831855f * o->rotY) / 65536.0f);
+        Mtx_RotateZ(mtx, (6.2831855f * o->rotZ) / 65536.0f);
+        Mtx_Concat3x3(mtx, dirMtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, -1);
+        Gs_SetLightList(materials, matSet);
+        if (matSet != NULL && matSet->id != -1) {
+            Draw_ApplyStates(matSet->flags);
+            Model_Draw(matSet->id, 0);
+        }
+        Draw_SetDefaultState();
     }
 }
 
@@ -6320,26 +6348,26 @@ HitShape *PlacedItem_Shapes[8] = {
     PlacedItem_Shapes_0, PlacedItem_Shapes_1, PlacedItem_Shapes_2, PlacedItem_Shapes_2,
     PlacedItem_Shapes_4, PlacedItem_Shapes_5, PlacedItem_Shapes_6, 0,
 };
-u32 PlacedItem_Rows[30] = {
+AttackRow PlacedItem_Rows[5] = {
 #include "game/0089EE80.inc"
 };
 void *PlacedItem_RowsPtr = (void *)PlacedItem_Rows;
 s16 PlacedItem_Motions[8] = {
 #include "game/0089EF00.inc"
 };
-u8 PlacedItem_BasePartScaleKeys[48] = {
+Vec2Key PlacedItem_BasePartScaleKeys[4] = {
 #include "game/0089EF10.inc"
 };
-u8 PlacedItem_RaisedPartScaleKeys[48] = {
+Vec2Key PlacedItem_RaisedPartScaleKeys[4] = {
 #include "game/0089EF40.inc"
 };
-u8 PlacedItem_SpinPartScaleKeys[48] = {
+Vec3Key PlacedItem_SpinPartScaleKeys[3] = {
 #include "game/0089EF70.inc"
 };
-u8 PlacedItem_BasePartColorKeys[32] = {
+ColorKey PlacedItem_BasePartColorKeys[4] = {
 #include "game/0089EFA0.inc"
 };
-u8 PlacedItem_RaisedPartColorKeys[32] = {
+ColorKey PlacedItem_RaisedPartColorKeys[4] = {
 #include "game/0089EFC0.inc"
 };
 s16 PlacedItem_PartModels[8] = {
@@ -6377,7 +6405,7 @@ HitShape *VespoidAttack_HitShapes[12] = {
     VespoidAttack_HitShapes_4, VespoidAttack_HitShapes_5, VespoidAttack_HitShapes_6, VespoidAttack_HitShapes_7,
     VespoidAttack_HitShapes_8, 0, 0, 0,
 };
-u32 VespoidAttack_Rows[120] = {
+AttackRow VespoidAttack_Rows[20] = {
 #include "game/0089F3A0.inc"
 };
 void *VespoidAttack_RowsPtr = (void *)VespoidAttack_Rows;
@@ -6385,7 +6413,7 @@ HitShape D_0089F590[2] = {
 #include "game/0089F590.inc"
 };
 HitShape *PitfallTrap_Val088 = D_0089F590;
-u32 PitfallTrap_Rows[12] = {
+AttackRow PitfallTrap_Rows[2] = {
 #include "game/0089F5F0.inc"
 };
 void *PitfallTrap_RowsPtr = (void *)PitfallTrap_Rows;
@@ -6408,7 +6436,7 @@ HitShape *VelocipreyAttack_HitShapes[8] = {
     VelocipreyAttack_HitShapes_0, VelocipreyAttack_HitShapes_1, VelocipreyAttack_HitShapes_2, VelocipreyAttack_HitShapes_3,
     VelocipreyAttack_HitShapes_4, 0, 0, 0,
 };
-u32 VelocipreyAttack_Rows[108] = {
+AttackRow VelocipreyAttack_Rows[18] = {
 #include "game/0089F810.inc"
 };
 void *VelocipreyAttack_RowsPtr = (void *)VelocipreyAttack_Rows;
@@ -6430,7 +6458,7 @@ HitShape DromeAttack_HitShapes_3[3] = {
 HitShape *DromeAttack_HitShapes[4] = {
     DromeAttack_HitShapes_0, DromeAttack_HitShapes_1, DromeAttack_HitShapes_2, DromeAttack_HitShapes_3,
 };
-u32 DromeAttack_Rows[84] = {
+AttackRow DromeAttack_Rows[14] = {
 #include "game/0089FB60.inc"
 };
 void *DromeAttack_RowsPtr = (void *)DromeAttack_Rows;
@@ -6505,7 +6533,7 @@ HitShape *KhezuAttack_HitShapes[24] = {
     KhezuAttack_HitShapes_16, KhezuAttack_HitShapes_17, KhezuAttack_HitShapes_18, KhezuAttack_HitShapes_19,
     KhezuAttack_HitShapes_20, 0, 0, 0,
 };
-u32 KhezuAttack_Rows[246] = {
+AttackRow KhezuAttack_Rows[41] = {
 #include "game/008A0560.inc"
 };
 void *KhezuAttack_RowsPtr = (void *)KhezuAttack_Rows;
@@ -6583,7 +6611,7 @@ HitShape *KutkuAttack_HitShapes[24] = {
     KutkuAttack_HitShapes_16, KutkuAttack_HitShapes_17, KutkuAttack_HitShapes_18, KutkuAttack_HitShapes_19,
     KutkuAttack_HitShapes_20, KutkuAttack_HitShapes_21, 0, 0,
 };
-u32 KutkuAttack_Rows[228] = {
+AttackRow KutkuAttack_Rows[38] = {
 #include "game/008A1390.inc"
 };
 void *KutkuAttack_RowsPtr = (void *)KutkuAttack_Rows;
@@ -6654,7 +6682,7 @@ HitShape *DiablosAttack_HitShapes[20] = {
     DiablosAttack_HitShapes_12, DiablosAttack_HitShapes_13, DiablosAttack_HitShapes_14, DiablosAttack_HitShapes_15,
     DiablosAttack_HitShapes_16, DiablosAttack_HitShapes_17, DiablosAttack_HitShapes_18, DiablosAttack_HitShapes_19,
 };
-u32 DiablosAttack_Rows[204] = {
+AttackRow DiablosAttack_Rows[34] = {
 #include "game/008A2100.inc"
 };
 void *DiablosAttack_RowsPtr = (void *)DiablosAttack_Rows;
@@ -6735,7 +6763,7 @@ HitShape *GraviosAttack_HitShapes[24] = {
     GraviosAttack_HitShapes_16, GraviosAttack_HitShapes_17, GraviosAttack_HitShapes_18, GraviosAttack_HitShapes_19,
     GraviosAttack_HitShapes_20, GraviosAttack_HitShapes_21, GraviosAttack_HitShapes_22, 0,
 };
-u32 GraviosAttack_Rows[198] = {
+AttackRow GraviosAttack_Rows[33] = {
 #include "game/008A2E30.inc"
 };
 void *GraviosAttack_RowsPtr = (void *)GraviosAttack_Rows;
@@ -6780,7 +6808,7 @@ HitShape *PlesiothAttack_HitShapes[12] = {
     PlesiothAttack_HitShapes_4, PlesiothAttack_HitShapes_5, PlesiothAttack_HitShapes_6, PlesiothAttack_HitShapes_7,
     PlesiothAttack_HitShapes_8, PlesiothAttack_HitShapes_9, PlesiothAttack_HitShapes_10, PlesiothAttack_HitShapes_11,
 };
-u32 PlesiothAttack_Rows[156] = {
+AttackRow PlesiothAttack_Rows[26] = {
 #include "game/008A3720.inc"
 };
 void *PlesiothAttack_RowsPtr = (void *)PlesiothAttack_Rows;
@@ -6835,7 +6863,7 @@ HitShape *CephadromeAttack_HitShapes[16] = {
     CephadromeAttack_HitShapes_8, CephadromeAttack_HitShapes_9, CephadromeAttack_HitShapes_10, CephadromeAttack_HitShapes_11,
     CephadromeAttack_HitShapes_12, CephadromeAttack_HitShapes_13, CephadromeAttack_HitShapes_14, 0,
 };
-u32 CephadromeAttack_Rows[180] = {
+AttackRow CephadromeAttack_Rows[30] = {
 #include "game/008A4070.inc"
 };
 void *CephadromeAttack_RowsPtr = (void *)CephadromeAttack_Rows;
@@ -6884,7 +6912,7 @@ HitShape *StageShot_HitShapes[16] = {
     StageShot_HitShapes_8, StageShot_HitShapes_9, StageShot_HitShapes_10, StageShot_HitShapes_11,
     StageShot_HitShapes_12, 0, 0, 0,
 };
-u32 StageShot_Rows[60] = {
+AttackRow StageShot_Rows[10] = {
 #include "game/008A47A0.inc"
 };
 void *StageShot_RowsPtr = (void *)StageShot_Rows;
@@ -7011,7 +7039,7 @@ HitShape *CephalosAttack_HitShapes[16] = {
     CephalosAttack_HitShapes_8, CephalosAttack_HitShapes_9, CephalosAttack_HitShapes_10, CephalosAttack_HitShapes_11,
     CephalosAttack_HitShapes_12, CephalosAttack_HitShapes_13, CephalosAttack_HitShapes_14, 0,
 };
-u32 CephalosAttack_Rows[180] = {
+AttackRow CephalosAttack_Rows[30] = {
 #include "game/008A5230.inc"
 };
 void *CephalosAttack_RowsPtr = (void *)CephalosAttack_Rows;
@@ -7021,7 +7049,7 @@ HitShape BowArrow_HitShapes_0[2] = {
 HitShape *BowArrow_HitShapes[4] = {
     BowArrow_HitShapes_0, 0, 0, 0,
 };
-u32 BowArrow_Rows[78] = {
+AttackRow BowArrow_Rows[13] = {
 #include "game/008A5570.inc"
 };
 void *BowArrow_RowsPtr = (void *)BowArrow_Rows;
@@ -7188,7 +7216,7 @@ HitShape *GarugaAttack_HitShapes[24] = {
     GarugaAttack_HitShapes_16, GarugaAttack_HitShapes_17, GarugaAttack_HitShapes_18, GarugaAttack_HitShapes_19,
     GarugaAttack_HitShapes_20, GarugaAttack_HitShapes_21, GarugaAttack_HitShapes_22, 0,
 };
-u32 GarugaAttack_Rows[240] = {
+AttackRow GarugaAttack_Rows[40] = {
 #include "game/008A6530.inc"
 };
 void *GarugaAttack_RowsPtr = (void *)GarugaAttack_Rows;
@@ -7237,7 +7265,7 @@ HitShape *HermitaurAttack_HitShapes[16] = {
     HermitaurAttack_HitShapes_8, HermitaurAttack_HitShapes_9, HermitaurAttack_HitShapes_10, HermitaurAttack_HitShapes_11,
     HermitaurAttack_HitShapes_12, 0, 0, 0,
 };
-u32 HermitaurAttack_Rows[204] = {
+AttackRow HermitaurAttack_Rows[34] = {
 #include "game/008A7390.inc"
 };
 void *HermitaurAttack_RowsPtr = (void *)HermitaurAttack_Rows;
@@ -7328,7 +7356,7 @@ HitShape *BlangongaAttack_HitShapes[28] = {
     BlangongaAttack_HitShapes_20, BlangongaAttack_HitShapes_21, BlangongaAttack_HitShapes_22, BlangongaAttack_HitShapes_23,
     BlangongaAttack_HitShapes_24, BlangongaAttack_HitShapes_25, 0, 0,
 };
-u32 BlangongaAttack_Rows[252] = {
+AttackRow BlangongaAttack_Rows[42] = {
 #include "game/008A8260.inc"
 };
 void *BlangongaAttack_RowsPtr = (void *)BlangongaAttack_Rows;
@@ -7336,7 +7364,7 @@ HitShape D_008A8660[2] = {
 #include "game/008A8660.inc"
 };
 HitShape *Boomerang_HitShapes = D_008A8660;
-u32 Boomerang_Rows[12] = {
+AttackRow Boomerang_Rows[2] = {
 #include "game/008A86C0.inc"
 };
 void *Boomerang_RowsPtr = (void *)Boomerang_Rows;

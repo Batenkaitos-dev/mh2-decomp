@@ -1,9 +1,11 @@
-// Symbols for the boot ELF (SLPM_662.80): crt0 and two small CodeWarrior runtime objects (main ELF)
-// - crt0 0x100000-0x100230 (__start, _exit, _root); asm piece sdk/crt0
-// - console I/O 0x100230-0x1002A8 (open "tty00:", write, read), CodeWarrior-built
-//   (16-byte aligned), called by libkernl's stdio glue; asm piece mw/console
-// - static constructors and overlay start-up 0x1284F0-0x1285D0, CodeWarrior-built,
-//   linked between libvu0 and libusbkb, called by Overlay_Relocate; asm piece mw/overlay
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): crt0 and two small CodeWarrior runtime objects.
+// - crt0, 0x100000-0x100230 (__start, _exit, _root); asm piece sdk/crt0
+// - console I/O, 0x100230-0x1002A8 (open, write and read on the console
+//   device), built with CodeWarrior (16-byte aligned), called by libkernl's
+//   stdio glue; asm piece mw/console
+// - static constructors and overlay start-up, 0x1284F0-0x1285D0, built with
+//   CodeWarrior, linked between libvu0 and libusbkb, called by
+//   Overlay_Relocate; asm piece mw/overlay
+// Library code, kept as assembly: public API names only, where the binary
+// shows them. Format: name = 0xADDRESS; // attributes
 __start = 0x00100008; // type:func

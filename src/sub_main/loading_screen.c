@@ -22,39 +22,30 @@
 #include "hw_regs.h"
 #include "texture.h"
 #include "render_state.h"
+#include "syswork.h"
+#include "card.h"
+#include "prim.h"
+#include "text.h"
+#include "loading_screen.h"
+#include "display.h"
+#include "engine_math.h"
+#include "file_load.h"
+#include "font.h"
+#include "gs_setup.h"
+#include "rand.h"
+#include "libc.h"
+#include "libgraph.h"
+#include "libkernl.h"
 #pragma optimization_level 4
-
-/* An image of the loading screen's file (gLoadingImageSizes, one per
- * image): its size in pixels and the GS memory it takes, in blocks. */
-typedef struct LoadingImage {
-    s32 w;
-    s32 h;
-    s32 blocks;
-} LoadingImage;
-
-/* A sprite of the loading screen (gLoadingSprites, ended by a tex of -1):
- * its texture, its position and size in the 640-wide screen space, and
- * its texel origin and size (a negative tw mirrors it). */
-typedef struct LoadingSprite {
-    s32 tex;            /* 0x00: the image it draws, -1 ends a list */
-    f32 x;              /* 0x04 */
-    f32 y;              /* 0x08 */
-    s16 w;              /* 0x0C */
-    s16 h;              /* 0x0E */
-    f32 u;              /* 0x10 */
-    f32 v;              /* 0x14 */
-    s16 tw;             /* 0x18 */
-    s16 th;             /* 0x1A */
-} LoadingSprite;
 
 #define LOADING_IMAGES 4        /* the images of the screen's file */
 #define LOADING_SPRITES_MAX 32  /* the sprites the work holds */
 #define LOADING_WAVE_STEPS 12   /* the letters' wave (gLoadingBobOffsets) */
 
-/* The loading screen's work (gLoadingScreen, 0x4DC bytes at gMemAreas -
+/* The loading screen's work (gLoadingScreen, 1244 bytes at gMemAreas -
  * 0x1800); its packets follow it. */
 typedef struct LoadingScreen {
-    u8 unk00[0xC];                          /* no use but the clear */
+    u8 unk00[12];                          /* no use but the clear */
     s32 state;                              /* 0x0C: 1 once set up */
     u8 *base;                               /* 0x10 */
     s32 size;                               /* 0x14: the bytes used from base */
@@ -65,10 +56,10 @@ typedef struct LoadingScreen {
     u64 *chain;                             /* 0x58: the upload chain */
     u64 *sel[2][LOADING_IMAGES];            /* 0x5C: the texture select packets, per buffer */
     u64 *spr[2][16];                        /* 0x7C: the sprite packets, per buffer */
-    u8 unkFC[0x134 - 0xFC];                 /* no use but the clear */
+    u8 unkFC[308 - 252];                 /* no use but the clear */
     s32 buf;                                /* 0x134: the packet buffer drawn next (sel, spr) */
     u32 vram;                               /* 0x138: the first free GS block */
-    u8 unk13C[0x140 - 0x13C];               /* no use but the clear */
+    u8 unk13C[320 - 316];               /* no use but the clear */
     LoadingSprite rect[LOADING_SPRITES_MAX]; /* 0x140: the sprites as drawn */
     s16 floatUp;                            /* 0x4C0: the floating sprite moves up (1) or down (0) */
     f32 x;                                  /* 0x4C4: the floating sprite's position */
@@ -81,9 +72,6 @@ typedef struct LoadingScreen {
 } LoadingScreen;
 
 /* prototypes */
-s32 Dma_WaitIdle(void);
-s32 VramSlot_FreeAll(void);
-s32 Sys_FlipFrame(s32 unused0);
 extern LoadingScreen *gLoadingScreen;
 extern s32 gLoadingAnimFrame;
 extern s32 gLoadingFrame;
@@ -164,7 +152,7 @@ static u64 *Gs_UploadImagePacket(u64 *pkt, u32 src, u32 dbp, u32 dbw, u32 dpsm, 
     pkt = (u64 *)word;
     word = (u32 *)pkt;
     *word++ = 0;
-    *word++ = qwc | 0x51000000; /* a VIF DIRECTHL code, not read on the GIF channel */
+    *word++ = qwc | VIF_DIRECTHL; /* a VIF code, not read on the GIF channel */
     pkt = (u64 *)word;
     return pkt;
 }
@@ -215,18 +203,19 @@ static u64 *Tex_SelectPacket(u64 *pkt, s32 image)
     *word++ = 0;
     *word++ = 0;
     pkt = (u64 *)word;
-    *pkt++ = 0x8005 | ((u64)0x10000000 << 32); /* GIF tag: five A+D writes, the end */
+    *pkt++ = GIF_TAG_EOP | 5 | GIF_TAG_NREG(1); /* GIF tag: five A+D writes, the end */
     *pkt++ = GIF_REG_AD;
     *pkt++ = 0;
     *pkt++ = GS_REG_CLAMP_1; /* repeat */
-    *pkt++ = 0x44; /* (source - frame) * source alpha + frame */
+    *pkt++ = 68; /* (source - frame) * source alpha + frame */
     *pkt++ = GS_REG_ALPHA_1;
-    *pkt++ = 0x7000F; /* alpha test not equal 0, depth test greater */
+    /* the alpha test passes alpha other than 0, the depth test the nearer pixel */
+    *pkt++ = GS_TEST_ATE | (GS_ATST_NOTEQUAL << 1) | GS_TEST_ZTE | (GS_ZTST_GREATER << 17);
     *pkt++ = GS_REG_TEST_1;
     *pkt++ = (u64)tbp | ((s64)(width / 64) << 14) | ((u64)GS_PSMT8 << 20) | ((s64)logW << 26) |
-           ((s64)logH << 30) | ((u64)0xC << 32) | ((u64)cbp << 37) | ((u64)0x20000000 << 32);
+           ((s64)logH << 30) | ((u64)12 << 32) | ((u64)cbp << 37) | ((u64)0x20000000 << 32);
     *pkt++ = GS_REG_TEX0_1;
-    *pkt++ = 0x60; /* bilinear filtering */
+    *pkt++ = TEX1_MMAG_LINEAR | TEX1_MMIN(TEX1_MIN_LINEAR);
     *pkt++ = GS_REG_TEX1_1;
     return pkt;
 }
@@ -235,8 +224,8 @@ static u64 *Tex_SelectPacket(u64 *pkt, s32 image)
 /*
  * Writes the DMA packet that draws sprite at depth depth and returns the
  * packet's end. x and width are scaled from 640 to the display's width; y
- * and height are halved when gSysFrameMode is 0; the picture is centred in
- * the GS's 4096-wide drawing space, in its 1/16 pixel units. left and top
+ * and height are halved when gSysFrameMode is FRAME_MODE_FIELD; the
+ * picture is centred in the GS's 4096-wide drawing space, in its 1/16 pixel units. left and top
  * stay locals of their own: the game computes the corner first and keeps it
  * for the far corner.
  */
@@ -264,7 +253,7 @@ static u64 *Loading_WriteSprite(u64 *pkt, LoadingSprite *sprite, u32 depth)
     width = (u32)(16.0f * (sprite->w * scale));
     y = 16.0f * sprite->y;
     height = 16.0f * sprite->h;
-    if (gSysFrameMode == 0) {
+    if (gSysFrameMode == FRAME_MODE_FIELD) {
         y >>= 1;
         height >>= 1;
     }
@@ -284,8 +273,8 @@ static u64 *Loading_WriteSprite(u64 *pkt, LoadingSprite *sprite, u32 depth)
     *pkt++ = 0x8001 | ((u64)0x64000000 << 32);
     *pkt++ = GS_REG_PRIM | (GS_REG_RGBAQ << 4) | (GS_REG_UV << 8) | (GS_REG_XYZ2 << 12) |
              (GS_REG_UV << 16) | (GS_REG_XYZ2 << 20);
-    *pkt++ = 0x156; /* a sprite, textured, blended, with texel coordinates */
-    *pkt++ = 0x80404040; /* grey, alpha 0x80 */
+    *pkt++ = 342; /* a sprite, textured, blended, with texel coordinates */
+    *pkt++ = 0x80404040; /* grey, alpha 128 */
     *pkt++ = (s64)(texU + 8) | ((s64)(texV + 8) << 16);
     *pkt++ = ((s64)left | ((s64)top << 16)) | ((u64)depth << 32);
     *pkt++ = (s64)(texEndU + 8) | ((s64)(texEndV + 8) << 16);
@@ -295,12 +284,7 @@ static u64 *Loading_WriteSprite(u64 *pkt, LoadingSprite *sprite, u32 depth)
 
 
 extern DmaChan *gDmaChan[10];
-void FlushCache(s32 op);
 s32 sceDmaSend(DmaChan *chan, u32 tag);
-s32 sceGsSyncPath(s32 mode, u16 timeout);
-u16 Rand_Next(s32 stream);
-s32 LoadCompressedFile(u8 *dst, s32 id);
-void *memset(void *p, s32 c, u32 n);
 extern u8 *gLoadBuf;
 extern s32 gMemAreas;
 extern s32 gLoadingState;
@@ -308,14 +292,13 @@ extern s32 gLoadingArg;
 extern s16 gTexFileIds8;
 extern LoadingSprite gLoadingSprites[];
 extern s16 gLoadingStartPos[][2];
-extern f32 gLobbyDayFrac;
 
 /*
  * Opens the loading screen, unless it is open already. Sets up the work
  * under the memory areas, loads the screen's file (gTexFileIds8) into
  * gLoadBuf and uploads its images and palettes to GS memory after the
- * system's textures, with each palette's alpha halved for the GS (0xFF
- * becomes 0x80). Builds, for each packet buffer, the texture select packets
+ * system's textures, with each palette's alpha halved for the GS (255
+ * becomes 128). Builds, for each packet buffer, the texture select packets
  * and the packets of the sprites of gLoadingSprites, which it copies to the
  * work. Then sends the upload chain on the GIF's DMA channel, and picks the
  * floating sprite's start among gLoadingStartPos by the time of day
@@ -350,7 +333,7 @@ void Loading_Open(u32 unusedBuf, s32 arg)
     u8 alpha;
 
     gLoadingScreenOn = 1;
-    base = (u8 *)gMemAreas - 0x1800;
+    base = (u8 *)gMemAreas - 6144;
     if (gLoadingScreen != NULL && gLoadingScreen->state == 1) {
         return;
     }
@@ -360,20 +343,20 @@ void Loading_Open(u32 unusedBuf, s32 arg)
     screen = gLoadingScreen;
     memset(screen, 0, sizeof(LoadingScreen));
     screen->base = base;
-    screen->vram = gSysTexBlock + 0x300;
+    screen->vram = gSysTexBlock + 768;
     file = gLoadBuf;
     LoadCompressedFile(file, gTexFileIds8);
     imageCount = ((s32 *)file)[1];
     vramBlock = screen->vram;
-    pkt = (u64 *)(((u32)(base + sizeof(LoadingScreen)) + 0x3F) & ~0x3F);
+    pkt = (u64 *)(((u32)(base + sizeof(LoadingScreen)) + 63) & ~0x3F);
     entry = (u32 *)(file + 8);
     imageSize = (u32 *)gLoadingImageSizes;
     screen->chain = pkt;
     for (i = 0; i < imageCount; i++) {
         screen->img[i] = file + (s32)entry[0];
-        screen->clut[i] = screen->img[i] + (s32)entry[1] - 0x400;
+        screen->clut[i] = screen->img[i] + (s32)entry[1] - 1024;
         entry += 2;
-        screen->img[i] += 0x40;
+        screen->img[i] += 64;
         screen->tbp[i] = vramBlock;
         imageW = *imageSize++;
         imageH = *imageSize++;
@@ -386,8 +369,8 @@ void Loading_Open(u32 unusedBuf, s32 arg)
         for (k = 0; k < 256; k++) {
             rgba = *color;
             alpha = (rgba & 0xFF000000) >> 24;
-            if (alpha == 0xFF) {
-                alpha = 0x80;
+            if (alpha == 255) {
+                alpha = 128;
             } else if (alpha != 0) {
                 alpha >>= 1;
                 if (alpha == 0) {
@@ -414,7 +397,7 @@ void Loading_Open(u32 unusedBuf, s32 arg)
     }
     for (k = 0; k < 2; k++) {
         for (i = 0; i < 3; i++) {
-            screen->sel[k][i] = (u64 *)(((u32)pkt + 0xF) & ~0xF);
+            screen->sel[k][i] = (u64 *)(((u32)pkt + 15) & ~0xF);
             pkt = Tex_SelectPacket(screen->sel[k][i], i);
         }
         spriteCount = 0;
@@ -422,8 +405,8 @@ void Loading_Open(u32 unusedBuf, s32 arg)
         if (gLoadingSprites[0].tex != -1) {
             do {
                 screen->rect[spriteCount] = *sprite;
-                screen->spr[k][spriteCount] = (u64 *)(((u32)pkt + 0xF) & ~0xF);
-                pkt = Loading_WriteSprite(screen->spr[k][spriteCount], sprite, -0x10);
+                screen->spr[k][spriteCount] = (u64 *)(((u32)pkt + 15) & ~0xF);
+                pkt = Loading_WriteSprite(screen->spr[k][spriteCount], sprite, -16);
                 sprite++;
                 spriteCount++;
             } while (sprite->tex != -1);
@@ -542,16 +525,7 @@ void Loading_Animate(void)
 extern s32 gLoadingScrollX;
 extern char *gLoadingMessage;
 extern f32 gLoadingBobOffsets[];
-s32 Gs_ClearColor(u8 mode, u32 color);
-s32 Gs_SetState(u8 reg, u32 v);
-s32 Prim_SendPacket(u32 *p);
-f32 Math_Sin(f32 x);
-f32 Math_Cos(f32 x);
-void Text_Reset(void);
-void Font_SetSpacing(u8 a, u8 b);
 s32 Str_Length(char *s);
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-void Text_DrawPage(s32 layer);
 
 /*
  * Draws the loading screen, once a frame while it is open (frames: the frames
@@ -598,7 +572,7 @@ void Loading_Draw(s32 frames)
                 sprite->x -= 1248.0f;
             }
             if (sprite->x < 640.0f && !(416.0f + sprite->x < 0.0f)) {
-                Loading_WriteSprite(screen->spr[buf][i], sprite, -0x10);
+                Loading_WriteSprite(screen->spr[buf][i], sprite, -16);
                 Prim_SendPacket((u32 *)screen->spr[buf][i]);
             }
         }
@@ -617,7 +591,7 @@ void Loading_Draw(s32 frames)
          * registers the other way round */
         firstSel = (u64 **)((u8 *)screen->sel + buf * 16);
         Prim_SendPacket((u32 *)*firstSel);
-        Loading_WriteSprite(screen->spr[buf][3], sprite, -0x10);
+        Loading_WriteSprite(screen->spr[buf][3], sprite, -16);
         Prim_SendPacket((u32 *)screen->spr[buf][3]);
         Gs_SetState(RS_ZWRITE, 1);
         screen->elapsed += frames;
@@ -627,7 +601,7 @@ void Loading_Draw(s32 frames)
         }
         sprite = &screen->rect[4];
         def = &gLoadingSprites[4];
-        depth = -0x10;
+        depth = -16;
         for (i = 0; i < 5; i++) {
             *sprite = *def;
             sprite->x -= screen->stripScroll;
@@ -650,7 +624,7 @@ void Loading_Draw(s32 frames)
         for (i = 0; i < 10; i++, sprite++, def++) {
             sprite->x = def->x;
             sprite->y = (s32)(def->y + 4.0f * gLoadingBobOffsets[wave]);
-            Loading_WriteSprite(screen->spr[buf][10 + i], sprite, -0x10);
+            Loading_WriteSprite(screen->spr[buf][10 + i], sprite, -16);
             Prim_SendPacket((u32 *)screen->spr[buf][10 + i]);
             if (i == 2) {
                 wave += 2;

@@ -19,12 +19,14 @@
  * bits 16-23, the immediate in bits 0-15. */
 #define VIF_STCYCL(cl, wl) (0x01000000 | ((wl) << 8) | (cl))  /* write cycle: wl qwords per cl */
 #define VIF_FLUSHA 0x13000000                                  /* wait for the GIF paths to finish */
+#define VIF_DIRECT 0x50000000                                  /* or-ed with a qword count: that many qwords to the GIF (PATH2) */
+#define VIF_DIRECTHL 0x51000000                                /* the same, waiting while an image transfer (PATH3) is under way */
 #define VIF_MSCALF(addr) ((addr) | 0x15000000)                  /* start the VU program at addr (in doublewords) once the GIF is free */
 #define VIF_UNPACK_V4_32(num, addr) (0x6C000000 | ((num) << 16) | (addr)) /* num qwords of four words to VU memory addr */
 
 /*
- * The boot ELF's DMA layer (src/main/dma.c): DMA tags and VIF codes, image
- * transfers to and from GS memory, and the double-buffered queue of DMA
+ * The boot ELF's DMA layer: DMA tags and VIF codes, image transfers
+ * to and from GS memory, and the double-buffered queue of DMA
  * chains sent to the GIF each frame.
  */
 #include "common.h"
@@ -90,5 +92,18 @@ u128 *Vif_MsCnt(u128 *q);
 u128 *Vif_UnpackV4(u128 *q, s32 n, s32 addr);
 u128 *Vif_DirectHL(u128 *q, s32 qwc);
 s32 Dma_ImagePacketSize(u32 size);
+s32 Dma_EndPacketSize(u32 unused0);
+void Dma_BuildEndPacket(u128 *pkt, s32 irq);
+s32 Dma_StoreImagePacketSize(u32 size);
+void Dma_StoreImage(u32 dst, u32 size, s16 sbp, s16 sbw, s16 psm, s16 srcX, s16 srcY, s16 width, s16 height);
+s32 Dma_GsFinishHandler(s32 cause);
+void DmaQueue_Init(DmaQueue *queue, u32 capacity, s32 (*handler)(s32));
+s32 DmaQueue_Add(u32 tag, DmaQueue *queue);
+s32 DmaQueue_AddChain(s32 mode, u32 entry, u32 *last, DmaQueue *queue);
+s32 DmaQueue_Handler(s32 channel);
+void SendFrameDmaChain(void);
+s32 Dma_WaitIdle(void);
+
+s32 Dma_FlushQueue(void);
 
 #endif /* DMA_H */

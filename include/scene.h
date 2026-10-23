@@ -3,9 +3,10 @@
 
 #include "common.h"
 #include "item.h"
+#include "scevent.h"
 
 /*
- * The scene state in sub_main's data at 0x6ADCB0 (gScene, 0x2BC bytes);
+ * The scene state in sub_main's data at 0x6ADCB0 (gScene, 700 bytes);
  * its first byte selects the scene. The struct is generated from
  * include/scene.spec (tools/gen_struct.py): add fields there.
  *
@@ -27,7 +28,7 @@ typedef struct SceneState {
     u8 menuOpen;                /* 0x00E: the field or player menu is open (FieldMenu_Open, Plsel_OpenPlayerMenu); blocks the HUD input (Hud_InputBlocked) */
     u8 camControl;              /* 0x00F: the camera control option (option byte 4, copied with gSysSave.camControl): 0 L1/R1 change the distance, 2 reverses the turn (CamMode1 in kbd.c) */
     u8 musicFlags;              /* 0x010: MUSIC_FLAG_*: an area's own tune has played, the music is turned down under a tune */
-    u8 musicState;              /* 0x011: the music's state: in the field an enum MusicState (Bgm_FieldUpdate), in the town MUSIC_TOWN_* (Bgm_TownUpdate); the hunters' actions set MUSIC_MONSTER_BATTLE with musicTimer 0x96 */
+    u8 musicState;              /* 0x011: the music's state: in the field an enum MusicState (Bgm_FieldUpdate), in the town MUSIC_TOWN_* (Bgm_TownUpdate); the hunters' actions set MUSIC_MONSTER_BATTLE with musicTimer 150 */
     u8 allLocal;                /* 0x012: in a drill, every player counts as local (Player_IsLocal); set by Scene_EnterField, cleared by plsel */
     u8 unk013[0x014 - 0x013];
     u16 area;                   /* 0x014: the current area (compared with Em.unk680 and Player.unk680; Quest_SetStartArea) */
@@ -45,7 +46,7 @@ typedef struct SceneState {
     u8 emKind[4];               /* 0x02A: per monster slot, its kind (QuestEm_SpawnArea, Quest_SpawnMonsters from gQuestSync.emKind); 0 none */
     u16 questId;                /* 0x02E: the quest id (QuestDesk_Accept, Quest_Init; Tex_LoadStageFile(map, questId)) */
     u8 map;                     /* 0x030: the stage map: Map_AreaIndex(map, area), Map_DayId, Tex_LoadStageFile, the per-map tables (Quest_Init: stage data word 0) */
-    u8 campArea;                /* 0x031: the map's base camp: a fainted player goes back there (Player_StateThrowItem), the Felyne kind 0x12 spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1) */
+    u8 campArea;                /* 0x031: the map's base camp: a fainted player goes back there (Player_StateThrowItem), EM_KIND_FELYNE_CART spawns there (QuestEm_SpawnArea) (Quest_Init: stage data word 1) */
     u8 playerGender[4];         /* 0x032: per player, from gQuestSync (Quest_InitPlayers: Player.gender) */
     u8 unk036[0x03C - 0x036];
     u8 localPlayer;             /* 0x03C: the local player's index (gPlayers, per-player arrays) */
@@ -53,14 +54,14 @@ typedef struct SceneState {
     u8 playerCount;             /* 0x03E: players in the quest */
     u8 hitId;                   /* 0x03F: the last hit id (HitId_Next increments it, skipping 0; HitId_Reset) */
     u8 questPhase;              /* 0x040: QUEST_PHASE_*: 2 the hunt, 3/4 the goal met, 5-7 lost, 8 quit (Quest_GetOutcome) */
-    u8 inLobby;                 /* 0x041: nonzero while a scene of the lobby overlay runs: the network set-up and the online town (NetScene_Run), or plsel's tour of the town. 0 in every quest, online or not: the game overlay loads at the lobby's addresses, and Player_HasSkill calls the lobby's Town_InMode46 while it is set. Online play is Game_IsOnline */
+    u8 inLobby;                 /* 0x041: nonzero while a scene of the lobby overlay runs: the network set-up and the online town (NetScene_Run), or plsel's tour of the town. 0 in every quest, online or not: the game overlay loads at the lobby's addresses, and Player_HasSkill calls the lobby's Town_InRecordsMode while it is set. Online play is Game_IsOnline */
     EquipItem weapon[4];        /* 0x042: each player's weapon, from gQuestSync (SceneView in scene.c) */
     u8 unk072[0x0BA - 0x072];
     u8 presetEquip[4];          /* 0x0BA: per player: Player.presetEquip (Quest_InitPlayers), from gQuestSync.unk20 (Scene_StartQuest) */
     u8 unk0BE[0x0C4 - 0x0BE];
     s8 startItemList[4];        /* 0x0C4: per player, from gQuestSync (Quest_InitPlayers: Player.startItemList) */
     u8 unk0C8[0x0D0 - 0x0C8];
-    void *models[4];            /* 0x0D0: model headers (0x80 bytes), copied per monster (EmSlot_SetupModel, Em +0x30F) */
+    void *models[4];            /* 0x0D0: model headers (128 bytes), copied per monster (EmSlot_SetupModel, Em +0x30F) */
     s16 modelCount[4];          /* 0x0E0: per monster slot, its models (EmSlot_LoadModel loads one) */
     s16 modelFirst[4];          /* 0x0E8: per monster slot, its first model slot */
     struct Model *partModels[4];/* 0x0F0: per monster slot, a second model set (EmSlot_FreeModels frees it with the first; Model, include/model.h) */
@@ -72,8 +73,8 @@ typedef struct SceneState {
     s16 deductedCount;          /* 0x12E: its count */
     u8 rewardDeducted;          /* 0x130: set by Quest_DeductReward, cleared by Quest_Init */
     u8 aimReverse;              /* 0x131: the bowgun aim reversal option: 0 none, 1 up/down, 2 up/down and left/right (Player_BowgunAim) */
-    u8 noticeId;                /* 0x132: the last notice id, 0-0x7F (Notice_ResetQueue, the Notice_Push functions in area_draw.c) */
-    u8 bannerNotice;            /* 0x133: the notice the banner shows, 0xFF none (NoticeBanner_Spawn*, compared with gHudState dropNotice) */
+    u8 noticeId;                /* 0x132: the last notice id, 0-127 (Notice_ResetQueue, the Notice_Push functions in area_draw.c) */
+    u8 bannerNotice;            /* 0x133: the notice the banner shows, 255 none (NoticeBanner_Spawn*, compared with gHudState dropNotice) */
     u8 unk134[0x138 - 0x134];
     s16 mealStamina;            /* 0x138: the meal's stamina bonus (Meal_ApplyEffects): added to the local player's maximum stamina at the start (Player_Reset) */
     s16 unk13A;                 /* 0x13A: a health value: the rewards REWARD_HP_BELOW need it above their threshold and gQuest.savedEmHp at or below (Quest_RollRewards); no writer seen */
@@ -85,7 +86,7 @@ typedef struct SceneState {
     u32 supplyTaken[2];         /* 0x200: one bit per supply box slot taken */
     u8 countdownOn;             /* 0x208: 1 while the countdown gQuest.countdown runs (Quest_StartCountdown, Quest_UpdateCountdown) */
     u8 emEventFlags;            /* 0x209: flags: bit 0 set by Shen Gaoren and Lao-Shan, bit 1 by Fatalis; area objects test them (area_objects.c, area_scenery.c) */
-    u8 skipFlaggedTris;         /* 0x20A: set by CastleGate_Create (0 in quest 0xBBC, else 1): the area collisions skip the triangles of attribute 0x4000 (their masks add 0x4000), the kind 0x14 area object runs, and EmScript op 0x60 branches on it */
+    u8 skipFlaggedTris;         /* 0x20A: set by CastleGate_Create (0 in quest 3004, else 1): the area collisions skip the triangles with attribute bit 0x4000 (their masks add that bit), the kind 20 area object runs, and EMOP_IF_GATE_OPEN branches on it */
     u8 unk20B[0x20C - 0x20B];
     s16 syncDelay;              /* 0x20C: frames before a queued sync applies: the peers' mean delay, 1 to 30, default 8 (QSync_Begin, QSync_QueuePlayerPos) */
     u16 bgmId;                  /* 0x20E: the tune last started on the tune channel (Jingle_Play) */
@@ -93,7 +94,7 @@ typedef struct SceneState {
     u8 inQuest[4];              /* 0x224: per player: IN_QUEST_YES in the quest, IN_QUEST_LEFT left it, IN_QUEST_NO_PLAYER none (NetScene_Run, QNetIf_FindHost, Player_Init) */
     u8 unk228[0x26A - 0x228];
     u16 supplyWho;              /* 0x26A: the player whose supply box request the host answers (QNet case 7; sent in message 10) */
-    u16 supplySlot;             /* 0x26C: the supply slot granted to supplyWho, 0xFF: already taken (supplyTaken) */
+    u16 supplySlot;             /* 0x26C: the supply slot granted to supplyWho, QSYNC_SLOT_TAKEN: already taken (supplyTaken) */
     u8 host;                    /* 0x26E: the host player's index (QNetIf_FindHost: the first player in the quest) */
     u8 prevHost;                /* 0x26F: the host before (QNetIf_Update) */
     u8 questPaid;               /* 0x270: the quest fee was paid (QuestDesk_Accept, LobbyStep_SetOut: questPaid); plsel's rewards test it */
@@ -105,7 +106,7 @@ typedef struct SceneState {
     s8 userIds[4][8];           /* 0x276: the players' user ids (gMyUserId: Player_SetMyUserId, and the others' from their quest sync message); drawn as the players' names, passed to Player_LoadPreset; Scene_EnterField and Galex zero them */
     u8 unk296[0x2B9 - 0x296];
     u8 plselOpen;               /* 0x2B9: 1 while the quest preparation screen (plsel) is up (Plsel_SelectInit; cleared by Plsel_SelectTask, Plsel_StateReady): QSync_OnChat logs chat there instead of Chat_LogAddLocal */
-    u16 galexTimer;             /* 0x2BA: frames of the current Galex_Task step: zeroed, counted up, compared with the step limit (plsel gallery_scene.c; read there as unk276[0x2BA - 0x276] before) */
+    u16 galexTimer;             /* 0x2BA: frames of the current Galex_Task step: zeroed, counted up, compared with the step limit (plsel gallery_scene.c) */
 } SceneState;
 typedef char SceneState_size_check[(sizeof(SceneState) == 0x2BC) ? 1 : -1];
 
@@ -117,7 +118,7 @@ extern SceneState gScene;
 #define SCENE_FIELD         2   /* Scene_UpdateQuest: the quest in the field */
 #define SCENE_QUEST_END     3   /* Scene_ResultFade: the quest's end on screen */
 #define SCENE_IDLE          4   /* nothing */
-#define SCENE_RESULTS       5   /* Scene_QuestFrameTick: the results (overlay 0xB) */
+#define SCENE_RESULTS       5   /* Scene_QuestFrameTick: the results (OVERLAY_PLSEL) */
 #define SCENE_EXIT          6   /* Quest_Teardown */
 #define SCENE_OPENING       7   /* Scene_Opening: the opening movie and the boot */
 
@@ -128,7 +129,7 @@ extern SceneState gScene;
 #define QSTART_FIELD        3   /* Scene_StartField */
 #define QSTART_AREA         4   /* Scene_EnterArea */
 
-/* gScene.pauseState: the offline pause (Scene_RequestPause; the capture in frame_draw.c). */
+/* gScene.pauseState: the offline pause (Scene_RequestPause; the capture in draw_helpers.c). */
 #define PAUSE_NONE          0
 #define PAUSE_REQUESTED     1   /* the screen is captured at the frame's end (Pause_CaptureScreen) */
 #define PAUSE_CAPTURED      2   /* the capture is made opaque and shown (Pause_DrawCapture) */
@@ -147,73 +148,61 @@ extern SceneState gScene;
 #define IN_QUEST_YES        1       /* the player is in the quest */
 #define IN_QUEST_NO_PLAYER  0xFF    /* no player in the slot */
 
-/*
- * The screen fades (scene.c): two players, gFadeA and gFadeB, each
- * running one key of gFadeKeys at a time (FadeA_Start(id), ids from 1). A key
- * is a coloured rectangle whose alpha (256 opaque) moves from alphaFrom to
- * alphaTo by alphaStep a frame, after `delay` frames; the fade then holds the
- * key, or ends after a key marked last.
- */
-typedef struct FadeKey {
-    u8 last;            /* 0x00: nonzero: the fade ends after this key */
-    u8 color;           /* 0x01: an index into gFadeAColors / gFadeBColors (0 black, 7 white) */
-    u8 unk02[2];        /* 0x02: the same two bytes in every key; nothing reads them */
-    f32 x;              /* 0x04: the rectangle's corner */
-    f32 y;              /* 0x08 */
-    f32 z;              /* 0x0C */
-    s16 w;              /* 0x10 */
-    s16 h;              /* 0x12 */
-    s16 alphaFrom;      /* 0x14 */
-    s16 alphaTo;        /* 0x16 */
-    s16 alphaStep;      /* 0x18: added each frame */
-    s16 delay;          /* 0x1A: frames before the alpha moves */
-} FadeKey;
+void Scene_QuestTask(u8 *task); /* a sub_main task */
+void Scene_EnterField(void);
+void Scene_StartQuest(void);
+void Scene_StartQuestPlay(void);
+void Scene_LoadQuestSounds(void);
+void Scene_StartField(void);
+void Scene_QuestStartTask(void);
+void Scene_UpdateQuest(void);
+void Scene_ResultFade(void);
+void Scene_Idle(void);
+void Scene_QuestFrameTick(void);
+s32 Scene_FieldFrame(void);
+void PlayTime_Tick(void);
+s32 Scene_RequestPause(s32 mode);
+s32 Game_PauseState(void);
+s32 Quest_Teardown(s32 unused);
+void Quest_TeardownNet(void);
+void Scene_Opening(void);
+void Scene_ResetAll(void);
+void Hud_Start(void);
+void Quest_Setup(void);
+void Player_SetupQuest(s32 idx);
+void Quest_LoadCommonModels(void);
+void Quest_SetupStub(void);
+void Quest_SpawnMonsters(s32 mode);
+void Quest_InitPlayers(void);
+void Area_ResetStub(void);
+void Light_Reset(void);
+void Pad_ResetInput(void);
+void Area_Load(s32 area);
+void Anim_LoadCommon(s32 set);
+void Anim_LoadPlayer(s32 idx, s32 weaponType);
+void Anim_LoadEm(s32 idx, s32 kind);
+void Anim_LoadEmSlot(s32 slot, s32 set, s32 idx);
 
-/* A fade player (gFadeA, gFadeB). */
-typedef struct FadeState {
-    u8 active;          /* 0x00: FADE_STATE_* */
-    u8 starting;        /* 0x01: set by FadeX_Start, cleared when the alpha reaches the key's end */
-    u8 unk02[2];
-    s16 id;             /* 0x04: the key asked for (from 1), 0 none */
-    s16 cur;            /* 0x06: the key running */
-    s16 alpha;          /* 0x08 */
-    s16 prevAlpha;      /* 0x0A: the alpha of the frame before */
-    FadeKey *key;       /* 0x0C: the key running, NULL none */
-    s16 delay;          /* 0x10: frames left before the alpha moves */
-} FadeState;
-
-/* FadeState.active, and what FadeA_GetState and FadeB_GetState return. */
-#define FADE_STATE_IDLE     0   /* no fade */
-#define FADE_STATE_RUNNING  1   /* the alpha moving */
-#define FADE_STATE_HELD     2   /* holding the key's end */
-
-/* The rectangle FadeA_Draw gives Prim_FillRectF: two corners (x, y, z, 1)
- * and a colour. */
-typedef struct FadeQuad {
-    f32 p0[4];
-    f32 p1[4];
-    u32 color;
-} FadeQuad;
-
-/*
- * The keys of gFadeKeys (FadeA_Start, FadeB_Start), from the table: "out"
- * keys go to opaque and hold, "in" keys go back to clear and end the fade.
- * The frame counts are the ramp's length.
- */
-#define FADE_OUT_BLACK          1   /* 16 frames */
-#define FADE_IN_BLACK           2   /* 16 frames */
-#define FADE_OUT_WHITE          3   /* 16 frames */
-#define FADE_IN_WHITE           4   /* 16 frames */
-#define FADE_OUT_BLACK_SLOW     5   /* 32 frames */
-#define FADE_IN_BLACK_SLOW      6   /* 32 frames */
-#define FADE_OUT_HALF_BLACK     7   /* to half opaque, 16 frames */
-#define FADE_IN_HALF_BLACK      8   /* from half opaque, 16 frames */
-#define FADE_OUT_WHITE_SLOW     9   /* 128 frames */
-#define FADE_BLACK              10  /* opaque black at once, held */
-#define FADE_OUT_BLACK_FAST     11  /* 8 frames */
-#define FADE_IN_BLACK_FAST      12  /* 8 frames */
-#define FADE_IN_WHITE_FAST      13  /* 4 frames */
-#define FADE_IN_BAND            14  /* a black band 32 pixels high at y 246, 16 frames */
-#define FADE_IN_BLACK_DELAYED   15  /* 16 frames, after 4 */
+void EmSlot_LoadModels(s32 slot);
+void EmSlot_LoadModel(s32 kind, s32 var, s32 slot);
+void EmSlot_ForgetModel(s16 slot, s8 which);
+void EmSlot_Clear(s16 i);
+void EmSlot_FreeModels(s16 i);
+void Area_FreeModels(void);
+void Area_LoadSubModels(u16 id);
+void CharMake_LoadPartsModel(s32 gender);
+void CharMake_FreePartsModel(void);
+void ScEvent_Init(void);
+s32 ScEvent_Set(ScEvent *slot, ScEventHead *rec);
+s32 ScEvent_LoadDemoCams(ScEventList *list);
+s32 ScEvent_LoadCamera(ScEventList *list);
+void ScEvent_Update(void);
+void ScEvent_SetCamera(u8 req, u8 kind);
+s32 ScEvent_CurId(void);
+s32 ScEvent_CurFlag1(void);
+void ScEvent_StartFrom(ScEventHead *rec);
+s32 ScEvent_RunB(ScEvent *event);
+void ScEvent_SetupB(ScEventHead *rec);
+extern ScEventHead *gGalleryScEvents[48];
 
 #endif /* SCENE_H */

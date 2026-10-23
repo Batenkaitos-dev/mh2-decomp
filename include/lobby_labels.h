@@ -143,6 +143,7 @@ enum BoardRow {
 
 /* gTownLabels: labels and help lines of the town's small windows */
 extern char *gTownLabels[24];
+extern char *gAreaNameTexts[16];
 enum TownLabel {
     TOWN_LABEL_ZENNY_GOT_FMT = 0,       /* a talk's money reward */
     TOWN_LABEL_OPEN = 1,                /* the house access states */
@@ -567,6 +568,8 @@ enum ForgeText {
 
 /* gKitchenTexts: the kitchen's labels, questions and stat-change lines */
 extern char *gKitchenTexts[20];
+extern char *gMealNameTexts[16];
+extern char **gMealTasteTexts[8];
 enum KitchenText {
     KITCHEN_TEXT_INGREDIENT_A = 0,      /* the first pick's label */
     KITCHEN_TEXT_INGREDIENT_B = 1,      /* the second pick's label */
@@ -637,9 +640,11 @@ enum BoxMenuText {
 
 /* gBoxHelpTexts: the item box's help lines, by message (the field menus' help lists hold it too) */
 extern char *gBoxHelpTexts[72];
+extern char *gAreaChatTexts[4]; /* the chat window's title, then its marks 1 to 3 */
 
 /* gQuestCounterTexts: the quest counter's board rows, room pages and arena teams */
 extern char *gQuestCounterTexts[56];
+extern char *gInfoIndexTexts[8];
 enum QuestCounterText {
     QUEST_COUNTER_TEXT_ARENA_CUP = 0,   /* the arena cup's title */
     QUEST_COUNTER_TEXT_NOT_TAKEN = 1,   /* a board row with no quest */
@@ -661,6 +666,7 @@ enum QuestCounterText {
 
 /* gQuestSheetTexts: the quest sheets' and the room forms' labels */
 extern char *gQuestSheetTexts[36];
+extern char *gOfficialEventTexts[4];
 enum QuestSheetText {
     QUEST_SHEET_TEXT_FREE_QUEST = 0,
     QUEST_SHEET_TEXT_OFFICIAL_QUEST = 1,
@@ -720,6 +726,11 @@ extern char *gGameMenuHelpTexts[40];
 
 /* gSearchMenuTexts: the search menu's entries, which also title their pages */
 extern char *gSearchMenuTexts[4];
+extern char *gMailboxMenuTexts[4];
+extern char *gQuitMenuTexts[2];
+extern char *gQuitMenuDimTexts[2];
+extern char *gQuitSaveTexts[4];
+extern char *gQuitConfirmTexts[4];
 enum SearchMenuText {
     SEARCH_MENU_TEXT_FRIEND_LIST = 0,
     SEARCH_MENU_TEXT_AREA = 1,          /* search the area */
@@ -729,6 +740,8 @@ enum SearchMenuText {
 
 /* gChatPageTexts: the chat pages' titles and labels: the speakers, the muted players, the chat state */
 extern char *gChatPageTexts[12];
+extern char *gChatMenuTexts[6];
+extern char *gChatStateTexts[2];
 enum ChatPageText {
     CHAT_PAGE_TEXT_SPEAKERS_TITLE = 0,
     CHAT_PAGE_TEXT_SPEAKERS_TITLE_FMT = 1,/* the same with the page and the page count */
@@ -747,6 +760,10 @@ extern char *gFriendLimitTexts[2];
 
 /* gPlaceInfoTexts: the place info's labels */
 extern char *gPlaceInfoTexts[12];
+extern char *gTavernLevelTexts[4];
+extern char *gPortLevelTexts[4];
+extern char *gSmithyLevelTexts[4];
+extern char *gMineLevelTexts[4];
 enum PlaceInfoText {
     PLACE_INFO_TEXT_SEASON = 0,
     PLACE_INFO_TEXT_PLACE_DETAIL = 1,
@@ -792,6 +809,10 @@ enum CombineShopText {
 
 /* gShopPromptTexts: the shops' and the gallery's questions and notes */
 extern char *gShopPromptTexts[16];
+extern char *gSongHelpTexts[4];
+extern char *gMemberCardPanels_0[10];
+extern char *gStatusTitleTexts[2];
+extern char *gFriendRegTexts[4];
 enum ShopPrompt {
     SHOP_PROMPT_COMBINE_COUNT = 0,      /* how many times to combine */
     SHOP_PROMPT_BUY_COUNT = 1,
@@ -811,6 +832,7 @@ enum ShopPrompt {
 
 /* gBedMenuTexts: the bed's menu: its entries, their help lines, the living cost question */
 extern char *gBedMenuTexts[8];
+extern char *gMonsterClassTexts[76];
 enum BedMenuText {
     BED_MENU_TEXT_ENTRIES = 0,          /* save, nap, deep sleep, from 0 */
     BED_MENU_TEXT_HELP = 3,             /* each entry's help line, from 3 */
@@ -822,6 +844,9 @@ extern char *gGalleryCourseTexts[12];
 
 /* gEmptyListTexts: the notes of the lists and searches that come up empty */
 extern char *gEmptyListTexts[8];
+extern char *gLobbyNoticeTexts[44];
+extern char *gLobbyEventTexts[12];
+extern char *gSpotActionTexts[28];
 enum EmptyList {
     EMPTY_LIST_TOWN = 0,                /* nobody in the town */
     EMPTY_LIST_MAIL = 1,                /* no mail received */
@@ -835,6 +860,7 @@ enum EmptyList {
 
 /* gNameTagActionTexts: the actions the members' name tags offer */
 extern char *gNameTagActionTexts[4];
+extern char *gLobbyTitleTexts[8];
 enum NameTagAction {
     NAME_TAG_ACTION_STAND_UP = 0,
     NAME_TAG_ACTION_CANCEL_READY = 1,   /* cancel the departure's readiness */
@@ -866,6 +892,7 @@ enum LobbyNoSave {
 
 /* gLobbyButtonTexts: the lobby dialogs' quit choice, states and button guide labels */
 extern char *gLobbyButtonTexts[40];
+extern char gTextFillNameFmt[16];
 enum LobbyButton {
     LOBBY_BUTTON_QUIT_NO_SAVE = 0,
     LOBBY_BUTTON_GUIDE = 12,            /* the button guide's labels, from 12 */

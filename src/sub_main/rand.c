@@ -1,9 +1,10 @@
 /*
- * The game's random number generator, with a few sound helpers that share
- * its address range.
+ * The game's random number generator. The file begins with Debug_Message,
+ * the debug message call (a text and three values) that the game's build
+ * left empty.
  *
  * Rand_Next(stream) is a Lehmer generator on 16-bit state:
- *     x = (x ? x : 1) * 176 mod 65363 (0xFF53)
+ *     x = (x ? x : 1) * 176 mod 65363
  * returning the new state (1..65362). Stream 1 is the general one (about
  * 950 call sites across the modules); stream 0 is used about 25 times, e.g.
  * by the sound code's random variations. Rand_Seed sets streams 0 and 1 to
@@ -16,13 +17,11 @@
  * the quest's end and the text code clear, and no code reads.
  */
 #include "common.h"
-#include "scene.h"
 #include "save.h"
-#include "sound.h"
-#include "area.h"
+#include "rand.h"
+#include "engine_math.h"
+#include "libc.h"
 
-extern u8 gSoundEffectSet[2];        /* per SPU core: effect already set */
-extern u16 gBgmId;
 extern u16 gRandSeeds[4];
 #define RAND_SAVED_STREAMS 32
 #define RAND_GAUSS_SAMPLES 60
@@ -32,57 +31,6 @@ extern u16 gRandSaved[RAND_SAVED_STREAMS];
 extern f32 gRandGauss[RAND_GAUSS_SAMPLES];
 extern f32 gRandGaussSum;
 extern u8 gUnreadFlags[UNREAD_FLAG_COUNT][4];
-
-s32 Sound_SetEffect(s32 core, s32 mode, s32 depth, s32 delay, s32 feedback); /* main */
-f32 Math_Exp(f32 x);       /* expf */
-f32 Math_Pow(f32 x, f32 y); /* powf */
-f32 Math_Sqrtf(f32 x);       /* sqrtf (VU0) */
-void *memset(void *p, s32 c, u32 n);
-
-void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback);
-u16 Rand_NextSaved(s16 i);
-
-/* Reverb (effect mode 4) on both cores, unless an effect was already set. */
-void Sound_ReverbOn(void)
-{
-    Sound_SetEffectOnce(0, 4, 0x1000, 0, 0);
-    Sound_SetEffectOnce(1, 4, 0xA00, 0, 0);
-}
-
-void Sound_ReverbOff(void)
-{
-    Sound_SetEffectOnce(0, 4, 0, 0, 0);
-    Sound_SetEffectOnce(1, 4, 0, 0, 0);
-}
-
-void Sound_ResetEffects(void)
-{
-    gSoundEffectSet[0] = 0;
-    gSoundEffectSet[1] = 0;
-}
-
-/* Sets an SPU core's effect (Sound_SetEffect), unless one was set already
- * since Sound_ResetEffects. */
-void Sound_SetEffectOnce(s32 core, s32 mode, u32 depth, s32 delay, s32 feedback)
-{
-    u8 *set = &gSoundEffectSet[core];
-
-    if (*set == 0) {
-        *set = 1;
-        Sound_SetEffect(core, mode, depth, delay, feedback);
-    }
-}
-
-/* In AREA_TOWN_ARENA, clears gBgmId to BGM_NONE; the lobby calls it.
- * Returns 0. */
-s32 Bgm_StopInTownArena(void)
-{
-    if (gScene.area != AREA_TOWN_ARENA) {
-        return 0;
-    }
-    gBgmId = BGM_NONE;
-    return 0;
-}
 
 void Debug_Message(char *unused0, s32 unused1, s32 unused2, s32 unused3)
 {
@@ -102,7 +50,7 @@ u16 Rand_Next(s32 stream)
     if (x == 0) {
         x = 1;
     }
-    return gRandSeeds[stream] = x * 176 % 0xFF53;
+    return gRandSeeds[stream] = x * 176 % 65363;
 }
 
 /*
@@ -120,7 +68,7 @@ u16 Rand_NextSaved(s16 i)
     if (x == 0) {
         x = 1;
     }
-    next = x * 176 % 0xFF53;
+    next = x * 176 % 65363;
     *(u16 *)((u8 *)gRandSaved + offset) = next;
     gSave.randSaved[i] = *(u16 *)((u8 *)gRandSaved + offset);
     return next;

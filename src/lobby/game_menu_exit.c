@@ -9,10 +9,10 @@
 #include "lobby_menu.h"
 #include "lobby_text.h"
 #include "pad.h"
+#include "game_menu.h"
+#include "menu_steps.h"
 
 void QuitMenu_Open(void);
-s32 GameMenu_IsBusy(void);
-s32 Menu_PushNoticeOnce(s32);
 s32 QuitMenu_Update(s32); /* unit's own declaration: the definition takes a u16 pad; declared with an s32 here, the call passes pad without masking it to 16 bits, as the game's code does */
 s32 Chat_InInputMode(void);
 

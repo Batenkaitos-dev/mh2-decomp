@@ -9,10 +9,12 @@
  */
 #define AWARD_MONEY         0x1E /* the hunter's money reaches 2,000,000 (Save_AddMoney) */
 #define AWARD_PLAY_TIME     0x1F /* 300 hours of play (Save_PlayTimeReached(300)) */
-#define AWARD_RECIPES       0x20 /* 0xD5 of the 0xED combination recipes known (Recipe_CheckAllKnown) */
+#define AWARD_RECIPES       0x20 /* 213 of the 237 combination recipes known (Recipe_CheckAllKnown) */
 #define AWARD_MEALS         0x21 /* the meals record (RECORD_MEALS) reaches 100 (Meal_ApplyEffects) */
 #define AWARD_SET_COURSES   0x22 /* 50 set courses eaten in the kitchen (RECORD_SET_COURSES) */
 #define AWARD_FRIENDS       0x23 /* the friend list's 50th entry filled */
+#define AWARD_CONTEST_WINS  0x24 /* 50 arm-wrestling contests won (RECORD_CONTEST_WINS) */
+#define AWARD_DRINK_WINS    0x25 /* 50 drinking contests won (RECORD_DRINK_WINS) */
 #define AWARD_GALLERY_COURSE_5 0x26 /* the shooting gallery's course 5 scores GALLERY_AWARD_POINTS (4000) or more (Gallery_Run) */
 #define AWARD_RARE_ITEMS    0x27 /* 15 of gObtainFlagItems obtained (Save_SetItemObtained) */
 #define AWARD_WEAPONS       0x78 /* at least 80% of the weapons owned (EquipCollect_CheckWeapons) */

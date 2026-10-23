@@ -24,73 +24,39 @@
 #include "syssettings.h"
 #include "movie.h"
 #include "select/select_boot.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "render_state.h"
+#include "mine_point.h"
+#include "sif.h"
+#include "stageobj.h"
+#include "camera.h"
+#include "hud.h"
+#include "sound.h"
+#include "text.h"
+#include "texture.h"
+#include "file_load.h"
+#include "font.h"
+#include "frame.h"
+#include "game_util.h"
+#include "gm_main.h"
+#include "rand.h"
+#include "sys_main.h"
+#include "screen_fade.h"
+#include "quest.h"
 
 extern PadInput *gPadInputPtr; /* main: -> gPadIn */
-void SysSettings_Reset(void);
-s32 Select_IsPadReady(void);
 
-void GmSub_Task(TaskSlot *t); /* gm_sub: started when the boot ends */
 extern char *gBootTexts[];  /* the start prompt and the content warning's title (select_psp.c's .data) */
 extern char *gContentWarningText[];
 extern char *gPadWarningTexts[];
 
-void Game_ResetSubsystems(void);
-void Quest_Clear(void);
-void Gfx_ClearModelBuffers(void);
-void FadeB_Reset(void);
-void Tex_LoadSystemPack(s32 mode);
-void LobbyDay_SetNoon(void);
-void Text_PrintfColored(const char *fmt, ...);
-void Text_SetColor(s16 color);
-void Text_DrawAllAndStop(void);
-u8 Pad_GetConnected(void);
-void Gs_SetTableColor(s32 i);
-void Movie_PrePlay(void);
-s32 Movie_Play(s32 id);
-void Movie_SetPosition(s32 x, s32 y);
-void Movie_RequestStop(void);
-void Movie_Stop(void);
-s32 Movie_GetStatus(void);
-s32 Movie_Update(void);
-void Callbacks_Add(void (*fn)(void));
-void Frame_Draw(void);
-void Boot_ToTitle(void);
-void Tex_LoadCommonPack(void);
-void Rand_InitGauss(void);
-void Rand_Seed(u8 seed);
-void UnreadFlags_Init(void);
-void Model_ResetAll(void);
-void Boot_ResetMenus(void);
-void Card_Init(void);
-void Hud_Reset(void);
-void NetMenu_Open(u8 mode);
 /* unit's own declaration: declared s32 as Select_MainTask uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
-u8 Card_GetSeed(void);
-u8 FadeA_GetState(void);
-void FadeA_Reset(void);
-void Tex_ReleaseCommon(void);
 extern u8 gNextQuest[];
-void ScreenFade_Task(u8 *task);        /* sub_main: started as a task */
-void Select_LoadSoundBanks(void);
-s32 Select_CheckPad(void);
-void Select_DrawPadWarning(void);
-void Select_DrawContentWarning(void);
-void Select_DrawSplash(void);
-s32 Select_ApplyBootArgs(void);
-void Sound_PlayConfirm(void);
-void Text_SetDefaults(void);
 /* Static, as Boot_UpdateScreens's code needs: it keeps v0 free across the
  * calls only when they go to local void functions. */
 static void Boot_ToPicture(void);
 static void Boot_ToMovie(void);
 static void Boot_DrawPicture(void);
-void Boot_DrawTitleScreen(s32);
-void Pad_EnableVibration(u8 on);
-void Boot_Update(TaskSlot *t);
-void Boot_UpdateMovie(void);
-void Boot_UpdateScreens(void);
-void Select_BeginTaskFrame(void);
 
 /* .bss */
 BootWork *gBootWork;
@@ -174,8 +140,8 @@ void Boot_Task(TaskSlot *task)
 void Boot_DrawStartPrompt(void)
 {
     if (++gBootWork->blinkTimer & 0x20) {
-        Font_SetSpacing(0x18, 0x18);
-        Text_DrawShadow2(0x68, 0x15C, 1, 0, gBootTexts[0]);
+        Font_SetSpacing(24, 24);
+        Text_DrawShadow2(104, 348, 1, 0, gBootTexts[0]);
     }
 }
 
@@ -234,18 +200,18 @@ static void Boot_DrawPicture(void)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 2);
     Tex_Bind(2);
     spr.x = 0;
     spr.y = 0;
-    spr.w = 0x280;
-    spr.h = 0x1C0;
+    spr.w = 640;
+    spr.h = 448;
     spr.color = -1;
     spr.u0 = 0;
     spr.v0 = 0;
-    spr.u1 = 0x200;
-    spr.v1 = 0x1C0;
+    spr.u1 = 512;
+    spr.v1 = 448;
     Sprite_Draw(&spr);
 }
 
@@ -256,11 +222,11 @@ void Boot_DrawCopyrightMark(s16 x, s16 y, s32 color)
 
     Tex_Prepare(1, 8);
     Tex_Bind(8);
-    spr.v0 = 0xEE;
-    spr.w = 0x11;
-    spr.u1 = 0x12;
-    spr.h = 0x11;
-    spr.v1 = 0xFF;
+    spr.v0 = 238;
+    spr.w = 17;
+    spr.u1 = 18;
+    spr.h = 17;
+    spr.v1 = 255;
     spr.x = x;
     spr.y = y;
     spr.color = color;
@@ -268,56 +234,53 @@ void Boot_DrawCopyrightMark(s16 x, s16 y, s32 color)
     Sprite_Draw(&spr);
 }
 
-void Font_SetHalfWidth(s32);
-void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
-
 /* Draws the title screen: the picture and the logo (alpha: their opacity,
- * 0-0xFF), the copyright lines (one layout when gSysSettings.unk1A is 0, 2
+ * 0-255), the copyright lines (one layout when gSysSettings.unk1A is 0, 2
  * or 4, another otherwise) and the start prompt. */
 void Boot_DrawTitleScreen(s32 alpha)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 3);
     Tex_Bind(3);
     spr.x = 0;
     spr.y = 0;
-    spr.w = 0x280;
-    spr.h = 0x1C0;
+    spr.w = 640;
+    spr.h = 448;
     spr.color = ((u8)alpha << 24) | 0xFFFFFF;
     spr.u0 = 0;
     spr.v0 = 0;
-    spr.u1 = 0x1FF;
-    spr.v1 = 0x1BF;
+    spr.u1 = 511;
+    spr.v1 = 447;
     Sprite_Draw(&spr);
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
-    spr.x = 0x1A7;
-    spr.y = 0xC7;
-    spr.h = 0x14;
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
+    spr.x = 423;
+    spr.y = 199;
+    spr.h = 20;
     spr.w = 1.1f * spr.h;
     spr.color = ((u8)alpha << 24) | 0xFFFFFF;
-    spr.u0 = 0x60;
-    spr.v0 = 0x89;
-    spr.u1 = spr.u0 + 0x1F;
-    spr.v1 = spr.v0 + 0x1F;
+    spr.u0 = 96;
+    spr.v0 = 137;
+    spr.u1 = spr.u0 + 31;
+    spr.v1 = spr.v0 + 31;
     Sprite_Draw(&spr);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetHalfWidth(1);
     switch (gSysSettings.unk1A) {
     case 0:
     case 4:
     case 2:
-        Boot_DrawCopyrightMark(0x7D, 0x17A, 0xFF000000);
-        Boot_DrawCopyrightMark(0x7B, 0x178, -1);
-        Text_DrawShadow2(0x91, 0x178, 1, 0, TXT(0x006CDEA0) /* the copyright line (Japan) */);
+        Boot_DrawCopyrightMark(125, 378, 0xFF000000);
+        Boot_DrawCopyrightMark(123, 376, -1);
+        Text_DrawShadow2(145, 376, 1, 0, TXT(0x006CDEA0) /* the copyright line (Japan) */);
         break;
     default:
-        Boot_DrawCopyrightMark(0x6C, 0x178, -1);
-        Boot_DrawCopyrightMark(0x6C, 0x18C, -1);
-        Text_PrintfAt(0x80, 0x178, 0, TXT(0x006CDED0) /* the copyright line (first of two) */);
-        Text_PrintfAt(0x80, 0x18C, 0, TXT(0x006CDEF0) /* the copyright line (second of two) */);
+        Boot_DrawCopyrightMark(108, 376, -1);
+        Boot_DrawCopyrightMark(108, 396, -1);
+        Text_PrintfAt(128, 376, 0, TXT(0x006CDED0) /* the copyright line (first of two) */);
+        Text_PrintfAt(128, 396, 0, TXT(0x006CDEF0) /* the copyright line (second of two) */);
         break;
     }
     Boot_DrawStartPrompt();
@@ -407,7 +370,7 @@ void Boot_UpdateScreens(void)
             gBootWork->waitFrames = 332;
         }
         gBootWork->step++;
-        gBootWork->blinkTimer = 0x20;
+        gBootWork->blinkTimer = 32;
         gBootWork->skipped = 0;
     case 1:
         pad = gPadState[0].pressed;
@@ -417,7 +380,7 @@ void Boot_UpdateScreens(void)
                 FadeA_Start(5);
                 gBootWork->waitFrames = 60;
             } else {
-                FadeA_Start(0xB);
+                FadeA_Start(11);
                 gBootWork->waitFrames = 10;
             }
             gBootWork->skipped = 1;
@@ -449,7 +412,7 @@ void Boot_UpdateScreens(void)
         return;
     }
     if (gBootWork->mode == BOOT_TITLE) {
-        Boot_DrawTitleScreen(0xFF);
+        Boot_DrawTitleScreen(255);
         Text_SetDefaults();
     } else if (gBootWork->mode == BOOT_PICTURE) {
         Boot_DrawPicture();
@@ -486,7 +449,7 @@ void Select_MainTask(TaskSlot *task)
         Model_ResetAll();
         Boot_ResetMenus();
         Card_Init();
-        memset(gNextQuest, 0, 0x80);
+        memset(gNextQuest, 0, 128);
         Quest_Clear();
         Hud_Reset();
         TaskSlot_Set(ScreenFade_Task, 9);
@@ -541,13 +504,13 @@ void Select_MainTask(TaskSlot *task)
                 NetMenu_Open(NETMENU_MODE_BOOT);
             } else {
                 task->step++;
-                FadeA_Start(0xB);
+                FadeA_Start(11);
             }
             break;
         case 1:
             if ((u8)NetMenu_Update()) {
                 task->step++;
-                FadeA_Start(0xB);
+                FadeA_Start(11);
                 Rand_Seed(Card_GetSeed());
             }
             break;
@@ -637,10 +600,8 @@ void Select_MainTask(TaskSlot *task)
     }
 }
 
-void FlushCache(s32);
 struct SndFile;
 s32 Sound_LoadBankWait(struct SndFile *f, u32 slot); /* main: f is a SndFile * */
-s32 Sound_ReadBank(u32 id, void *buf);
 
 /* Reads the overlay's four sound banks through the load buffer into the
  * sound slots 0, 1, 6 and 7. */
@@ -695,16 +656,16 @@ void Select_DrawPadWarning(void)
     char **line;
     s32 y;
 
-    y = 0xB4;
-    Font_SetSpacing(0x12, 0x12);
+    y = 180;
+    Font_SetSpacing(18, 18);
     Text_SetColor(0);
     line = gPadWarningTexts;
     if (gPadWarningTexts[0] != 0) {
         do {
-            Font_SetPos(0x3A, y);
+            Font_SetPos(58, y);
             Text_PrintfColored(*line);
             line++;
-            y += 0x18;
+            y += 24;
         } while (*line != 0);
     }
 }
@@ -716,20 +677,20 @@ void Select_DrawContentWarning(void)
 
     Tex_Prepare(1, 6);
     Tex_Bind(6);
-    Gfx_SetTexFilter(0);
-    spr.w = 0x280;
-    spr.u1 = 0xFF;
-    spr.h = 0x1C0;
-    spr.v1 = 0xFF;
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    spr.w = 640;
+    spr.u1 = 255;
+    spr.h = 448;
+    spr.v1 = 255;
     spr.x = 0;
     spr.color = 0xFF606060;
     spr.y = 0;
     spr.u0 = 0;
     spr.v0 = 0;
     Sprite_Draw(&spr);
-    Font_SetSpacing(0x1A, 0x1A);
-    Text_DrawShadow2(0x63, 0xC8, 1, 0, gBootTexts[1]);
-    Text_DrawShadow2(0x63, 0xF0, 1, 0, gContentWarningText[0]);
+    Font_SetSpacing(26, 26);
+    Text_DrawShadow2(99, 200, 1, 0, gBootTexts[1]);
+    Text_DrawShadow2(99, 240, 1, 0, gContentWarningText[0]);
     Text_DrawAllAndStop();
 }
 
@@ -741,38 +702,38 @@ void Select_DrawSplash(void)
     s32 splash;
 
     splash = TaskSlot_Get(0)->splash;
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, splash + 2);
     Tex_Bind(splash + 2);
     if (splash == 7 || splash == 0) {
         spr.x = 0;
         spr.y = 0;
-        spr.w = 0x280;
-        spr.h = 0x1C0;
+        spr.w = 640;
+        spr.h = 448;
         spr.color = -1;
         spr.u0 = 0;
         spr.v0 = 0;
-        spr.u1 = 0x1FF;
-        spr.v1 = 0x1BF;
+        spr.u1 = 511;
+        spr.v1 = 447;
     } else {
         spr.x = 0;
-        spr.w = 0x280;
+        spr.w = 640;
         if (splash == 6) {
-            spr.y = -0x20;
+            spr.y = -32;
         } else {
             spr.y = 0;
         }
-        spr.h = 0x200;
+        spr.h = 512;
         spr.v0 = 0;
         spr.color = -1;
         spr.u0 = 0;
-        spr.u1 = 0x1FF;
-        spr.v1 = 0x1FF;
+        spr.u1 = 511;
+        spr.v1 = 511;
     }
     Sprite_Draw(&spr);
 }
 
-extern s8 gArgv[3][0x40];      /* main: the boot arguments (argv[1] a "0"/"1" flag, argv[2] the language letter) */
+extern s8 gArgv[3][64];      /* main: the boot arguments (argv[1] a "0"/"1" flag, argv[2] the language letter) */
 
 /* The language of the boot argument gArgv[2]'s letter: j, e, f, g, i, s
  * give 0-5; -1 for anything else. */

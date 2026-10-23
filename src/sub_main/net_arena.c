@@ -10,15 +10,12 @@
 #include "common.h"
 #include "sif.h"
 #include "arena.h"
+#include "libkernl.h"
 
 
 extern s32 gNetSema;
 
-s32 WaitSema(s32 sema);
-s32 SignalSema(s32 sema);
 void *memmove(void *dst, void *src, u32 n);
-void Arena_Lock(Arena *arena);
-void Arena_Unlock(Arena *arena);
 static s32 Arena_AllocBlock(Arena *arena, s32 size);
 static void Arena_FreeBlock(Arena *arena, s32 addr);
 
@@ -35,7 +32,7 @@ s32 Path_ToBackslashes(char *path)
 }
 
 /* The network code's log, compiled out: it does nothing. Its callers pass three numbers
- * before the format and its arguments (seen: 1, 0x1A or 0x1B, 1). */
+ * before the format and its arguments (seen: 1, 26 or 27, 1). */
 void Net_DebugLog(s32 level, s32 id, s32 flags, char *format, ...)
 {
 }

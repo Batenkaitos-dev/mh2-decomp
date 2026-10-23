@@ -2,9 +2,10 @@
 #define LIGHT_H
 
 #include "common.h"
+#include "player.h"
 
 /*
- * A light (0x68 bytes). Gs_SetState's registers 0x5A-0x5C copy one to gRsLights;
+ * A light (104 bytes). Gs_SetState's states RS_LIGHT(0) to RS_LIGHT(2) copy one to gRsLights;
  * gLightSets holds two sets of three (LightSet). The VU1 programs light a vertex
  * with the three lights' colours, each scaled by its N.L, plus an ambient colour,
  * the sum of the three lights' ambient parts (Vu1_PutLightColors).
@@ -42,7 +43,7 @@ enum LightFadeStep {
     LIGHT_FADE_END = 2      /* ends the mode */
 };
 
-/* A light set (0x140 bytes; gLightSets.sets[n], n 0 or 1): LightSet_Apply hands its
+/* A light set (320 bytes; gLightSets.sets[n], n 0 or 1): LightSet_Apply hands its
  * three lights to Gs_SetState. */
 typedef struct LightSet {
     u8 state;           /* 0x00: the mode's step (enum LightFadeStep) */
@@ -54,7 +55,7 @@ typedef struct LightSet {
 } LightSet;
 typedef char LightSet_size_check[(sizeof(LightSet) == 0x140) ? 1 : -1];
 
-/* The two light sets (0x290 bytes), after a head of 0x10 bytes that nothing reads; Light_InitAll and
+/* The two light sets (656 bytes), after a head of 16 bytes that nothing reads; Light_InitAll and
  * the scene's start clear the whole. */
 typedef struct LightSets {
     u8 unk00[0x10];
@@ -72,5 +73,14 @@ typedef struct LightSources {
     f32 (*ambient)[4];
     f32 (*unk14)[4];
 } LightSources;
+
+void Light_InitAll(s32 unused0);
+void LightSet_UpdateAll(void);
+void LightSet_UpdateFade(LightSet *set);
+void LightSet_SetColors(void *obj, s32 n);
+void LightSet_ResetColors(s32 setIndex);
+void LightSet_Apply(s32 setIndex);
+void Player_ClearLightColors(Player *pl);
+void LightSet_FadeColors(void *obj);
 
 #endif /* LIGHT_H */

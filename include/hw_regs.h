@@ -62,6 +62,9 @@
 #define GS_REG_FOG 0x0A
 #define GS_REG_TEX1_1 0x14
 #define GS_REG_TEX1_2 0x15
+#define GS_REG_XYOFFSET_1 0x18
+#define GS_REG_XYOFFSET_2 0x19
+#define GS_REG_PRMODECONT 0x1A
 #define GS_REG_MIPTBP1_1 0x34
 #define GS_REG_MIPTBP1_2 0x35
 #define GS_REG_MIPTBP2_1 0x36
@@ -73,8 +76,14 @@
 #define GS_REG_SCISSOR_2 0x41
 #define GS_REG_ALPHA_1 0x42
 #define GS_REG_ALPHA_2 0x43
+#define GS_REG_DIMX 0x44
+#define GS_REG_DTHE 0x45
+#define GS_REG_COLCLAMP 0x46
 #define GS_REG_TEST_1 0x47
 #define GS_REG_TEST_2 0x48
+#define GS_REG_PABE 0x49
+#define GS_REG_FBA_1 0x4A
+#define GS_REG_FBA_2 0x4B
 #define GS_REG_FRAME_1 0x4C
 #define GS_REG_FRAME_2 0x4D
 #define GS_REG_ZBUF_1 0x4E
@@ -87,5 +96,47 @@
 /* The GIF tag's register descriptor A+D: each qword is a value and the
  * number of the GS register it goes to. */
 #define GIF_REG_AD 0xE
+
+/* One A+D register write: the value, then the register's number. */
+typedef struct GsAd {
+    u64 data;
+    u64 reg;
+} GsAd;
+
+/* A GIF tag's fields (its low doubleword): NLOOP is the low 15 bits. */
+#define GIF_TAG_EOP 0x8000              /* the packet's last tag */
+#define GIF_TAG_NREG(n) ((u64)(n) << 60) /* n register descriptors */
+
+/* The GS's TEX1 fields (the texture's LOD and sampling). */
+#define TEX1_MXL(n) ((u64)(n) << 2)     /* the last mipmap level */
+#define TEX1_MMAG_LINEAR 0x20           /* magnified: bilinear */
+#define TEX1_MMIN(m) ((m) << 6)         /* minified: TEX1_MIN_* */
+#define TEX1_L(l) ((u64)(l) << 19)
+#define TEX1_K(k) ((u64)(((k) << 4) & 0xFFF) << 32)  /* K in 16ths */
+#define TEX1_MIN_LINEAR 1
+#define TEX1_MIN_NEAREST_MIP_NEAREST 2
+#define TEX1_MIN_NEAREST_MIP_LINEAR 3
+#define TEX1_MIN_LINEAR_MIP_NEAREST 4
+#define TEX1_MIN_LINEAR_MIP_LINEAR 5
+
+/* TEST's fields: the alpha test (ATE, ATST, AREF) and the depth test
+ * (ZTE, ZTST). */
+#define GS_TEST_ATE 1
+#define GS_TEST_ZTE 0x10000
+#define GS_ATST_NEVER 0
+#define GS_ATST_ALWAYS 1
+#define GS_ATST_LESS 2
+#define GS_ATST_LEQUAL 3
+#define GS_ATST_EQUAL 4
+#define GS_ATST_GEQUAL 5
+#define GS_ATST_GREATER 6
+#define GS_ATST_NOTEQUAL 7
+#define GS_ZTST_NEVER 0
+#define GS_ZTST_ALWAYS 1
+#define GS_ZTST_GEQUAL 2
+#define GS_ZTST_GREATER 3
+
+/* PRIM's primitive types. */
+#define GS_PRIM_SPRITE 6
 
 #endif

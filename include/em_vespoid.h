@@ -25,7 +25,7 @@ enum EmVespoidMotion {
     VESP_MOT_HOP = 0x06,        /* HOP_TURN, TAKE_OFF, the hop attacks: airborne from frame 6 */
     VESP_MOT_HOP_LAND = 0x07,   /* after VESP_MOT_HOP (frame 16 or 32), back on the ground */
     VESP_MOT_WALK = 0x08,       /* VESP_MOVE_WALK, Em_StepToGoal */
-    VESP_MOT_RUN = 0x09,        /* VESP_MOVE_RUN and VESP_ATK_CHARGE (1.3 speed, VespoidAttack 0xB) */
+    VESP_MOT_RUN = 0x09,        /* VESP_MOVE_RUN and VESP_ATK_CHARGE (1.3 speed, VespoidAttack 11) */
     VESP_MOT_LUNGE = 0x0A,      /* VESP_ATK_LUNGE; EmVespoid_MotionEffects makes VespoidAttack 6 at frame 12 */
     VESP_MOT_STING = 0x0B,      /* VESP_ATK_STING_A/B, attack at frame 34 */
     VESP_MOT_AIR_FLINCH = 0x0C, /* VESP_REACT_AIR_FLINCH */
@@ -74,10 +74,10 @@ enum EmVespoidFlyState {
 /* Group 3, EM_GROUP_ATTACK (EmVespoid_RunAttackState): the lunge, the stings, the hop and the charge. */
 enum EmVespoidAttackState {
     VESP_ATK_LUNGE = 0x00,  /* VESP_MOT_LUNGE, fast forward curve, attack 6 at frame 12 */
-    VESP_ATK_STING_A = 0x01, /* VESP_MOT_STING, attack 7/0xC/0x10 by variant at frame 34 */
+    VESP_ATK_STING_A = 0x01, /* VESP_MOT_STING, attack 7/12/16 by variant at frame 34 */
     VESP_ATK_HOP = 0x02,    /* VESP_MOT_HOP with VespoidAttack 8, lands */
-    VESP_ATK_CHARGE = 0x03, /* VESP_MOT_RUN at 1.3 with VespoidAttack 0xB */
-    VESP_ATK_STING_B = 0x04 /* VESP_MOT_STING, attack 0xE/0xF/0x11 by variant */
+    VESP_ATK_CHARGE = 0x03, /* VESP_MOT_RUN at 1.3 with VespoidAttack 11 */
+    VESP_ATK_STING_B = 0x04 /* VESP_MOT_STING, attack 14/15/17 by variant */
 };
 
 /* Group 4, EM_GROUP_REACT (EmVespoid_RunReactState): what EmVespoid_Update picks from Em_UpdateDamage's result, and two falls only the scripts ask for. */
@@ -143,5 +143,55 @@ typedef struct EmVespoidWork {
     u8 unk03E[0x100 - 0x03E];
 } EmVespoidWork;
 typedef char EmVespoidWork_size_check[(sizeof(EmVespoidWork) == sizeof(EmWork)) ? 1 : -1];
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes VespoidAttack_Create makes on given frames of a motion
+ * (VespoidAttack_HitShapes, by the attack rows' hit lists) and where an
+ * effect starts. The hit lists' other bones (10, 12, 13, 15, 25-27) belong
+ * to rows this family's code doesn't create.
+ */
+enum EmVespoidBone {
+    VESP_BONE_ROOT = 0,     /* the skeleton's first bone: every sound of the family plays here */
+    VESP_BONE_BODY = 2,     /* the body's sphere in the hops' attack (VESP_MOT_HOP) and VESP_MOT_LUNGE */
+    VESP_BONE_HEAD = 8,     /* the sphere of the charge (VESP_MOT_RUN), and where the lying puffs start */
+    VESP_BONE_STING = 23    /* the sting's sphere in VESP_MOT_STING (from frame 34) */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind). No sound plays on the frame of a thing the code
+ * shows (the sting's sound, 7, plays at frame 28, its hit at 34), so they
+ * stay numbers.
+ */
+
+extern void *EmVespoid_Callbacks[8];
+void EmVespoid_Init(Em *em);
+void EmVespoid_Start(Em *em);
+void EmVespoid_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmVespoid_Status2Lie(Em *em);
+void EmVespoid_RunMoveState(Em *em);
+void EmVespoid_FlyForward(Em *em, s32 unused);
+void EmVespoid_FlyBack(Em *em, s16 dashBack);
+void EmVespoid_Hover(Em *em);
+void EmVespoid_TakeOff(Em *em);
+void EmVespoid_Land(Em *em);
+void EmVespoid_Dart(Em *em);
+void EmVespoid_Lunge(Em *em);
+void EmVespoid_StingA(Em *em);
+void EmVespoid_StingB(Em *em);
+void EmVespoid_FallFromAir(Em *em);
+void EmVespoid_FallAndLie(Em *em);
+void EmVespoid_Die(Em *em);
+void EmVespoid_DieCarvable(Em *em);
+void EmVespoid_Reappear(Em *em);
+void EmVespoid_FlyIn(Em *em);
+void EmVespoid_Update(Em *em);
+void EmVespoid_RunState(Em *em);
+void EmVespoid_StartCurves(Em *em, u8 kind);
+u8 EmVespoid_UpdateCurves(Em *em);
+void EmVespoid_MoveByVelocity(Em *em);
 
 #endif

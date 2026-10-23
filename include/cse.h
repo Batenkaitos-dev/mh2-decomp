@@ -16,20 +16,20 @@
 #include "common.h"
 
 /* SIF RPC servers and the function numbers CseRpc_Call takes. */
-#define CSE_SID_COMM 0x434F4D4D     /* "COMM": requests (fno 1, 3, 0x309) */
+#define CSE_SID_COMM 0x434F4D4D     /* "COMM": requests (fno 1, 3, 777) */
 #define CSE_SID_STAT 0x53544154     /* "STAT": status (fno 2) */
-#define CSE_SID_THMN 0x54484D4E     /* "THMN" (fno 0x63) */
+#define CSE_SID_THMN 0x54484D4E     /* "THMN" (CSE_FNO_THMN) */
 
 #define CSE_FNO_COMM 1              /* a request for the IOP's sound driver thread */
 #define CSE_FNO_STAT 2              /* status: reply bytes 8-10 are "transfer busy" */
 #define CSE_FNO_UPLOAD 3            /* a CSE_REQ_UPLOAD request */
-#define CSE_FNO_THMN 0x63           /* 0x400-byte reply */
+#define CSE_FNO_THMN 0x63           /* 1024-byte reply */
 #define CSE_FNO_INIT 0x309          /* sent directly (not queued) by Cse_Init */
 
 /*
  * Word 0 of a request. Word 1 is a sequence number (never 0) that
  * MlRpcQueue_Set assigns; the arguments follow from byte 8. The IOP accepts
- * commands 0-0xD except 5; the EE library sends the ones below.
+ * commands 0-13 except 5; the EE library sends the ones below.
  */
 #define CSE_REQ_KEYON 0x10000000    /* CseParam + CseVoice: start a voice */
 #define CSE_REQ_KEYOFF 0x10000001   /* CseParam: release the matching voices */
@@ -45,7 +45,7 @@
 
 /* CseParam flags. FLAG_GLOBAL, FLAG_PHYSICAL, FLAG_BANK and ID2 are the
  * engine's own names (from its error messages). */
-#define CSE_F_PRIO 0x1              /* prio is valid (else 0x7F) */
+#define CSE_F_PRIO 0x1              /* prio is valid (else 127) */
 #define CSE_F_GLOBAL 0x2            /* FLAG_GLOBAL: every bank */
 #define CSE_F_PHYSICAL 0x4          /* FLAG_PHYSICAL */
 #define CSE_F_BANK 0x8              /* FLAG_BANK: bank is valid */
@@ -54,7 +54,7 @@
 #define CSE_F_ID3 0x40              /* id3 is valid; needs ID2 */
 
 /*
- * The parameter block of CSE_REQ_KEYON..CSE_REQ_MODULATE (0x20 bytes): which
+ * The parameter block of CSE_REQ_KEYON..CSE_REQ_MODULATE (32 bytes): which
  * voices a request applies to, and the values it sets.
  */
 typedef struct CseParam {
@@ -68,7 +68,7 @@ typedef struct CseParam {
     s16 vol;            /* 0x0A: 0-127 */
     s16 pan;            /* 0x0C: 0-127 */
     s16 unkE;           /* 0x0E */
-    s16 bend;           /* 0x10: -0x2000..0x1FFF */
+    s16 bend;           /* 0x10: -8192..8191 */
     u8 unk12;           /* 0x12 */
     u8 unk13;           /* 0x13 */
     u8 unk14;           /* 0x14 */
@@ -128,7 +128,7 @@ typedef struct CseEffect {
     u16 feedback;
 } CseEffect;
 
-/* One voice's attributes, from CseBankFile_GetVoice (0x14 bytes). */
+/* One voice's attributes, from CseBankFile_GetVoice (20 bytes). */
 typedef struct CseVoice {
     u8 vol;             /* 0x00: 0-127 */
     u8 pan;             /* 0x01: 0-127, 64 = centre */
@@ -181,6 +181,9 @@ s32 Cse_Update(void);
 u32 cseCheckVtransStatus(s32 mode);
 s32 CseSe_Init(void);
 s32 CseSe_Update(void);
+s32 CseSe_SetTable(u32 bank, CseSeTable *table);
+CseSeRec *CseSe_GetRecord(u32 bank, u32 id);
+s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt);
 void Snd_Init(void);
 s32 Snd_Update(void);
 void Snd_SetOutputMode(s32 mode);

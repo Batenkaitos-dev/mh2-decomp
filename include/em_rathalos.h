@@ -1,5 +1,6 @@
 #ifndef EM_RATHALOS_H
 #define EM_RATHALOS_H
+#include "em.h"
 
 /*
  * The Rathalos family's vocabulary (src/game/em_rathalos.c): Rathian,
@@ -25,7 +26,7 @@ enum EmRathalosMotion {
     RATH_MOT_RUN = 0x11,                /* running to the goal (a charge in group 3) */
     RATH_MOT_TAKE_OFF = 0x12,           /* airborne (stance 2) from frame 30 or 38 */
     RATH_MOT_TOUCH_DOWN = 0x13,         /* on the floor again (stance 0), with a camera shake */
-    RATH_MOT_LIE = 0x22,                /* lying under a status or resting (a periodic effect at bone 0x22) */
+    RATH_MOT_LIE = 0x22,                /* lying under a status or resting (a periodic puff at RATH_BONE_BREATH) */
     RATH_MOT_ROAR = 0x23,               /* with attached effect 1 (RathalosAttack_Create); the quest's opening landing ends with it */
     RATH_MOT_GET_UP = 0x25,             /* after resting or a status */
     RATH_MOT_COLLAPSE = 0x26,           /* falling over when a status starts */
@@ -36,14 +37,14 @@ enum EmRathalosMotion {
     RATH_MOT_TAIL_SPIN = 0x2B,          /* spinning in place, rotY falling 0x200 a frame */
     RATH_MOT_SWOOP_DIVE = 0x2C,         /* a swoop's start, aimed at the target */
     RATH_MOT_SWOOP_CLAW = 0x2D,         /* the swoop's pass over the target (follows RATH_MOT_SWOOP) */
-    RATH_MOT_AIR_FIREBALL = 0x2E,       /* a fireball while hovering: two projectiles (stage object kind 0x11) from bone 0x24 at frame 6 */
-    RATH_MOT_FIREBALL = 0x2F,           /* a fireball on the ground: two projectiles from bone 0x24 at frame 78 */
+    RATH_MOT_AIR_FIREBALL = 0x2E,       /* a fireball while hovering, at frame 6: the fireball from RATH_BONE_BREATH, its two bursts at RATH_BONE_FIREBALL_BURST */
+    RATH_MOT_FIREBALL = 0x2F,           /* a fireball on the ground, at frame 78: the fireball from RATH_BONE_BREATH, its two bursts at RATH_BONE_FIREBALL_BURST */
     RATH_MOT_AIR_FIREBALL_RISE = 0x31,  /* rising before RATH_MOT_AIR_FIREBALL */
-    RATH_MOT_FIREBALL_B = 0x32,         /* a second ground fireball, projectiles at frame 78 */
+    RATH_MOT_FIREBALL_B = 0x32,         /* a second ground fireball, at frame 78 */
     RATH_MOT_ALERT_IDLE = 0x33,         /* standing while it fights the hunters (EmRathalos_SetIdleState) */
     RATH_MOT_BACK_HOP = 0x34,           /* a hop backward, airborne from frame 76 */
     RATH_MOT_AIR_DIVE = 0x35,           /* a lunge at the target from the hover (EmRathalos_AirDive) */
-    RATH_MOT_TURN_IN_PLACE = 0x36,      /* turning to the goal 0x200 a frame */
+    RATH_MOT_TURN_ROAR = 0x36,          /* turns to the goal (to frame 60, 0x200 a frame), then roars: at frame 110 the roar's wide sphere (RathalosAttack row 19: radius 2000 at bone 2, power 0) and its rings (ElementBurst type 5), and sound 92 at RATH_BONE_HEAD to frame 280 */
     RATH_MOT_BACK_HOP_LAND = 0x39,      /* landing from a back hop */
     RATH_MOT_FEED = 0x3B,               /* eating (after RATH_MOT_HEAD_DOWN); hp and a need gauge refilled */
     RATH_MOT_SHAKE_OFF = 0x3E,          /* after getting up from a status */
@@ -57,7 +58,7 @@ enum EmRathalosMotion {
     RATH_MOT_DIE_FALLING = 0x52,        /* dead after falling out of the air */
     RATH_MOT_SWOOP = 0x57,              /* the swoop's descent, after RATH_MOT_SWOOP_DIVE */
     RATH_MOT_LEVEL_OUT = 0x5A,          /* levelling pitch and roll in the air */
-    RATH_MOT_CHARGE_TRIP = 0x5B,        /* the end of a charge, with attached effect 0x24 */
+    RATH_MOT_CHARGE_TRIP = 0x5B,        /* the end of a charge, with attack row 36 (RathalosAttack_Create) */
     RATH_MOT_FLIP = 0x5C,               /* a somersault, going up (the Rathian kinds' versus pose) */
     RATH_MOT_FLIP_FALL = 0x5D,          /* the somersault's descent */
     RATH_MOT_FLIP_LAND = 0x5E,          /* the somersault's landing */
@@ -65,6 +66,46 @@ enum EmRathalosMotion {
     RATH_MOT_STRUGGLE = 0x60,           /* struggling before it flies off (EmRathalos_EscapeUpward) */
     RATH_MOT_DOWNED = 0x61,             /* lying downed under a status, a capture or a death in a hold */
     RATH_MOT_DOWNED_GET_UP = 0x62       /* getting up from RATH_MOT_DOWNED */
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes RathalosAttack_Create makes on given frames of a
+ * motion (RathalosAttack_HitShapes, by the attack rows' hit lists), where a
+ * fireball or an effect starts, and the bones the steps' sounds take turns
+ * at. "A" and "B" are the two sides; which is left the code doesn't show.
+ * Bones no code explains stay numbers.
+ */
+enum EmRathalosBone {
+    RATH_BONE_ROOT = 0,             /* the skeleton's first bone: the body's sphere in the charge (with RATH_BONE_HEAD's), the sounds of its falls (RATH_MOT_COLLAPSE, RATH_MOT_DIE) */
+    RATH_BONE_BODY = 2,             /* the body's sphere in a leap and its landing, and in RATH_MOT_COLLAPSE; the dust under it in a low descent */
+    RATH_BONE_WING_A = 6,           /* the flight motions' wing beats play here and at RATH_BONE_WING_B, a few frames apart */
+    RATH_BONE_WING_B = 12,
+    RATH_BONE_LEG_A = 19,           /* leg A's upper sphere in the walk's and the turns' steps (with RATH_BONE_FOOT_A) */
+    RATH_BONE_STEP_A = 20,          /* leg A's step sounds (RATH_SE_STEP in the walk and the turns) */
+    RATH_BONE_FOOT_A = 22,          /* leg A's foot: the steps' larger sphere, the talons in a swoop and an air dive, a landing on both feet */
+    RATH_BONE_LEG_B = 25,           /* the same for leg B */
+    RATH_BONE_STEP_B = 26,
+    RATH_BONE_FOOT_B = 28,
+    RATH_BONE_BREATH = 34,          /* where the fireballs (EMRANGED_FIREBALL) and the lying puffs start */
+    RATH_BONE_HEAD = 35,            /* the head's sphere in the roar, the charge and the lowered head; the roar at a point looks from it */
+    RATH_BONE_FIREBALL_BURST = 36,  /* the fireball's two bursts (AttackBurst types 1 and 2) */
+    RATH_BONE_TAIL_A = 41,          /* the tail's spheres in the tail spin and the somersault (with RATH_BONE_TAIL_C) */
+    RATH_BONE_TAIL_B = 42,          /* the tail spin's swing sound plays here as the tail's hit starts */
+    RATH_BONE_TAIL_C = 44
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (the program
+ * gSeBankByType gives the kind; Em_PlaySeAtBone and Em_PlaySeType). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmRathalosSe {
+    RATH_SE_STEP = 1,               /* a step: on the walk's camera-shake frames, at the leg that lands */
+    RATH_SE_FIREBALL = 24           /* a fireball shot: on the frame each fireball starts */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmRathalos_RunIdleState). */
@@ -240,5 +281,47 @@ enum EmRathalosVersusState {
     RATH_VS_WAIT_BOTH = 0x98,
     RATH_VS_END = 0x99
 };
+
+extern void *EmRathalos_Callbacks[8];
+void EmRathalos_MotionSounds(Em *em, EmWork *work);
+void EmRathalos_Init(Em *em);
+void EmRathalos_Start(Em *em);
+void EmRathalos_TurnToGoal(Em *em, EmWork *work);
+void EmRathalos_TakeOff(Em *em, EmWork *work);
+void EmRathalos_Land(Em *em, EmWork *work);
+void EmRathalos_HopToGoal(Em *em, EmWork *work);
+void EmRathalos_FlyOutOfArea(Em *em, EmWork *work);
+void EmRathalos_FlyToGoalAndLand(Em *em, EmWork *work);
+void EmRathalos_FlyOutOfAreaAlt(Em *em, EmWork *work);
+void EmRathalos_FlyIntoArea(Em *em, EmWork *work);
+void EmRathalos_StepForward(Em *em, s32 unused);
+void EmRathalos_QuestIntro(Em *em, EmWork *work);
+void EmRathalos_Captured(Em *em);
+void EmRathalos_StoryEvent(Em *em);
+void EmRathalos_VersusEatBait(Em *em, EmWork *work);
+void EmRathalos_VersusPoseC(Em *em, EmWork *work);
+void EmRathalos_Die(Em *em, EmWork *work);
+void EmRathalos_DieHeld(Em *em, EmWork *work);
+void EmRathalos_DieFalling(Em *em, EmWork *work);
+void EmRathalos_RunIdleState(Em *em, EmWork *work);
+void EmRathalos_RunAttackState(Em *em, EmWork *work);
+void EmRathalos_Update(Em *em);
+void EmRathalos_RunState(Em *em, s32 work);
+void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work);
+void EmRathalos_SpawnLandingDust(Em *em);
+void EmRathalos_SpawnK14Type0AEvery5(Em *em);
+s32 EmRathalos_ReachedTarget(Em *em);
+s32 EmRathalos_ReachedPoint(Em *em);
+void EmRathalos_EndSwoop(Em *em, s32 unused);
+void EmRathalos_SetIdleState(Em *em, u16 state, u8 mode);
+void EmRathalos_SetMoveState(Em *em, u16 state, u8 mode);
+void EmRathalos_SetFlyState(Em *em, u16 state, u8 mode);
+void EmRathalos_SetAttackState(Em *em, u16 state, u8 mode);
+void EmRathalos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmRathalos_SetEscapePoint(Em *em);
+void EmRathalos_StepPitch(Em *em, s32 mode, f32 height);
+void EmRathalos_MoveByVelYCurve(Em *em, s32 kind);
+void EmRathalos_StartCurves(Em *em, u8 kind);
+u8 EmRathalos_UpdateCurves(Em *em);
 
 #endif /* EM_RATHALOS_H */

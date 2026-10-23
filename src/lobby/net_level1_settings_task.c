@@ -8,27 +8,6 @@
 #include "common.h"
 #include "lobby_net.h"
 
-void NetLevel1SettingsTask_Run(s32 task);
-void NetLevel1SettingsTask_Steps(NetTask *t);
-void NetLevel1SettingsTask_Done(NetTask *t);
-void NetLevel1SettingsTask_Failed(NetTask *t);
-void NetLevel1SettingsTask_Step0(NetTask *t);
-void NetLevel1SettingsTask_Step1(NetTask *t);
-void NetLevel1SettingsTask_Step2(NetTask *t);
-void NetLevel1SettingsTask_Step3(NetTask *t);
-void NetLevel1SettingsTask_Step4(NetTask *t);
-s32 LobbyReq_Level1SetName(char *s, u16 n, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1SetPass(s8 *arg0, u16 arg1, void (*arg2)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1SetText(s8 *arg0, u16 arg1, void (*arg2)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1SetGroupInfo(u16 arg0, u8 *arg1, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1SettingsEnd(void (*onReply)(NetMsg, NetMsg *));
-void NetLevel1SettingsTask_Step1Reply1(NetMsg m, NetMsg *pm);
-void NetLevel1SettingsTask_Step1Reply2(NetMsg m, NetMsg *pm);
-void NetLevel1SettingsTask_Step1Reply4(NetMsg m, NetMsg *pm);
-void NetLevel1SettingsTask_Step3Reply(NetMsg m, NetMsg *pm);
-void NetLevel1SettingsTask_Step1Reply8(NetMsg m, NetMsg *pm);
-s32 NetReq_CountFree(void);
-
 /* starts task 8 with the settings to send */
 s32 NetLevel1SettingsTask_Start(NetEntrySettings *src, void (*onDone)(NetMsg, NetMsg *))
 {
@@ -151,7 +130,7 @@ void NetLevel1SettingsTask_Step1(NetTask *task)
 /* task 8, step 2: all four answered */
 void NetLevel1SettingsTask_Step2(NetTask *task)
 {
-    if (task->reply == 0xF) {
+    if (task->reply == 15) {
         task->step++;
         task->reply = NET_REPLY_NONE;
     } else if (task->reply & 0x80) {
@@ -190,7 +169,7 @@ void NetLevel1SettingsTask_Step4(NetTask *task)
 }
 
 /*
- * Step 1's reply callback: sets bit 1 of the task's reply, or 0x80 when
+ * Step 1's reply callback: sets bit 1 of the task's reply, or the bit 0x80 when
  * the reply reports an error.
  */
 void NetLevel1SettingsTask_Step1Reply1(NetMsg msg, NetMsg *msgRef)
@@ -205,7 +184,7 @@ void NetLevel1SettingsTask_Step1Reply1(NetMsg msg, NetMsg *msgRef)
 }
 
 /*
- * Step 1's reply callback: sets bit 2 of the task's reply, or 0x80 when
+ * Step 1's reply callback: sets bit 2 of the task's reply, or the bit 0x80 when
  * the reply reports an error.
  */
 void NetLevel1SettingsTask_Step1Reply2(NetMsg msg, NetMsg *msgRef)
@@ -220,7 +199,7 @@ void NetLevel1SettingsTask_Step1Reply2(NetMsg msg, NetMsg *msgRef)
 }
 
 /*
- * Step 1's reply callback: sets bit 4 of the task's reply, or 0x80 when
+ * Step 1's reply callback: sets bit 4 of the task's reply, or the bit 0x80 when
  * the reply reports an error.
  */
 void NetLevel1SettingsTask_Step1Reply4(NetMsg msg, NetMsg *msgRef)
@@ -235,7 +214,7 @@ void NetLevel1SettingsTask_Step1Reply4(NetMsg msg, NetMsg *msgRef)
 }
 
 /*
- * Step 3's reply callback: sets bit 4 of the task's reply, or 0x80 when
+ * Step 3's reply callback: sets bit 4 of the task's reply, or the bit 0x80 when
  * the reply reports an error.
  */
 void NetLevel1SettingsTask_Step3Reply(NetMsg msg, NetMsg *msgRef)
@@ -250,7 +229,7 @@ void NetLevel1SettingsTask_Step3Reply(NetMsg msg, NetMsg *msgRef)
 }
 
 /*
- * Step 1's reply callback: sets bit 8 of the task's reply, or 0x80 when
+ * Step 1's reply callback: sets bit 8 of the task's reply, or the bit 0x80 when
  * the reply reports an error.
  */
 void NetLevel1SettingsTask_Step1Reply8(NetMsg msg, NetMsg *msgRef)

@@ -7,6 +7,10 @@
  */
 #include "common.h"
 #include "ram_areas.h"
+#include "texture.h"
+#include "iop.h"
+#include "power_off.h"
+#include "libcdvd.h"
 
 /* MH2DRIVE.DAT: a count and the offset and size of each module (the
  * offsets are made IOP addresses once the pack is on the IOP). */
@@ -48,12 +52,10 @@ s32 scePrintf(const char *fmt, ...);
 void FlushCache(s32 op);
 s32 sceSifInitRpc(s32 mode);
 s32 sceSifInitIopHeap(void);
-s32 sceCdInit(s32 mode);
 s32 sceFsReset(void);
 s32 sceSifRebootIop(const char *img);
 s32 sceSifSyncIop(void);
 s32 sceSifLoadFileReset(void);
-s32 sceCdMmode(s32 media);
 s32 sceOpen(const char *name, s32 mode);
 s32 sceLseek(s32 fd, s32 offset, s32 whence);
 s32 sceRead(s32 fd, void *buf, s32 size);
@@ -66,8 +68,6 @@ s32 sceSifLoadStartModule(const char *name, s32 argsize, const char *args, s32 *
 s32 sceSifLoadStartModuleBuffer(void *addr, s32 argsize, const char *args, s32 *result);
 s32 sceSifSearchModuleByName(const char *name);
 void func_00162878(s32, s32);
-s32 PowerOff_Init(void);
-void Iop_LoadModule(const char *path, s32 argSize, const char *args, s32 retries);
 
 /* Starts module id of the pack (already on the IOP); returns its result. */
 s32 Iop_StartPackedModule(IopModPack *pack, s32 id, s32 argsize, char *args)
@@ -169,46 +169,46 @@ void Iop_Init(void)
     if (sceSifSearchModuleByName(D_001C7E08) >= 0 || Iop_StartModule(D_001C7E10, 0, NULL) >= 0) {
         PowerOff_Init();
     }
-    Iop_LoadModule(D_001C7E30, 0x10, D_001C7E50, 0);
+    Iop_LoadModule(D_001C7E30, 16, D_001C7E50, 0);
 }
 
 /* This file's initialised data. */
-extern char D_001C7D30[];
-extern char D_001C7D50[];
+extern char gIopModArgs_9[];
+extern char gIopModArgs_10[];
 IopModArg gIopModArgs[12] = {
 #include "main/001BAAA0.inc"
 };
 
 /* This file's read-only data. */
 #pragma rodata on
-char D_001C7D30[0x20] = {
+char gIopModArgs_9[32] = {
 #include "main/001C7D30.inc"
 };
-char D_001C7D50[0x30] = {
+char gIopModArgs_10[48] = {
 #include "main/001C7D50.inc"
 };
-char D_001C7D80[0x20] = {
+char D_001C7D80[32] = {
 #include "main/001C7D80.inc"
 };
-char D_001C7DA0[0x10] = {
+char D_001C7DA0[16] = {
 #include "main/001C7DA0.inc"
 };
-char D_001C7DB0[0x30] = {
+char D_001C7DB0[48] = {
 #include "main/001C7DB0.inc"
 };
-char D_001C7DE0[0x28] = {
+char D_001C7DE0[40] = {
 #include "main/001C7DE0.inc"
 };
-char D_001C7E08[0x8] = {
+char D_001C7E08[8] = {
 #include "main/001C7E08.inc"
 };
-char D_001C7E10[0x20] = {
+char D_001C7E10[32] = {
 #include "main/001C7E10.inc"
 };
-char D_001C7E30[0x20] = {
+char D_001C7E30[32] = {
 #include "main/001C7E30.inc"
 };
-char D_001C7E50[0x10] = {
+char D_001C7E50[16] = {
 #include "main/001C7E50.inc"
 };
 #pragma rodata off

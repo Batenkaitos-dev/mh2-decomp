@@ -17,7 +17,7 @@ size 0x1D2C0
 0x00E93 s8 keepLoginStep
 0x00E94 s8 endReason // why the browser ends: 1 network error, 2 left by the user, 3 the retry failed (>0: only the dialog boxes draw)
 0x00E95 u8 netError
-0x00E96 s8 endGoOn // 1: the end goes on to gMmbbData->nextUrl (PortalEnd_Step0), 0: Browser_Exit(-1)
+0x00E96 s8 endGoOn // 1: the end goes on to gMmbbData->nextUrl (PortalEnd_Start), 0: Browser_Exit(-1)
 0x00E97 u8 formGoLink // set: a form goes to its link object's URL and skips fields named URL (only cleared in the C so far)
 0x00E98 s8 result // Browser_Update's result: 0 running, -1 ...
 0x00E99 u8 atMmbbUrl
@@ -25,10 +25,10 @@ size 0x1D2C0
 0x00E9B s8 gameMenuNo
 0x00E9C u8 firstPage // 1 until the first page is shown (Browser_GoStart only then)
 0x00E9D u8 tries // page tries: the second failure gives up (Browser_Retry, Browser_GoStart; 2: give up)
-0x00E9E u8 startPosts // posts to gMmbbData->f4 (more than 1 gives up)
+0x00E9E u8 startPosts // posts to gMmbbData->sessionUrl (more than 1 gives up)
 0x00E9F u8 texFailOnce // 1: a failed image may fail the page once (Browser_Init's mode 1)
 0x00EA0 u8 texCount // page textures in texHandle/texW/texH
-0x00EA1 u8 cmdBuf[0x8000] // the draw commands of the page
+0x00EA1 u8 cmdBuf[0x8000] // the draw commands' strings (BROWSER_CMD_BUF_SIZE)
 0x08EA4 char * pageData // the reply data: the page HTML (Html_StartLoad)
 0x08EA8 u8 *cmdPtr // write position in cmdBuf
 0x08EAC u8 stickReleased // 1: the left stick came back to neutral
@@ -46,7 +46,7 @@ size 0x1D2C0
 0x08EB8 u8 errorKind // Browser_SetErrorState's kind
 0x08EB9 s8 cursorOnLink // 1: the selection moved onto a link (restarts the cursor blink)
 0x08EC0 char kbdText[0x100] // the software keyboard's text
-0x08FC0 void *memPages // the name lists (browser_cache_draw.c: pages, images, history, requests): the page nodes' memory
+0x08FC0 void *memPages // the name lists (browser_cache.c: pages, images, history, requests): the page nodes' memory
 0x08FC4 void *memBufs
 0x08FC8 void *memImgs
 0x08FCC void *memConnBufs
@@ -84,8 +84,8 @@ size 0x1D2C0
 0x1A651 u8 stickDir // and direction (16 steps)
 0x1A652 u8 stick2Tilt // the right stick
 0x1A653 u8 stick2Dir
-0x1A660 u8 *buf64k // 0x10000 bytes (Mem_Alloc)
-0x1A664 u8 *buf512k // 0x80000 bytes (Mem_Alloc)
+0x1A660 u8 *buf64k // 65536 bytes (Mem_Alloc)
+0x1A664 u8 *buf512k // 524288 bytes (Mem_Alloc)
 0x1A668 void * mem64k // the Mem_Alloc handle of buf64k
 0x1A66C void * mem512k // the Mem_Alloc handle of buf512k
 0x1A670 char formData[0x1000] // the form's query: name=value pairs joined by & (BrowserForm_Add escapes them), cleared before a page's fields are added
@@ -104,6 +104,6 @@ size 0x1D2C0
 0x1C29C s16 loadResult // what Html_LoadStep returns a pointer to: 0, 1 parsing, 2 done, 3 failed
 0x1C2A0 char *loadSrc // the page's HTML
 0x1C2A4 s32 loadPos
-0x1C2A8 u8 *cert0 // certificate 0x84 (func_8FD770), Http_Init passes it with Http_GetCertSize(0)
-0x1C2AC u8 *cert1 // certificate 0x85, 0x800 bytes after cert0 (Http_GetCertSize(1))
+0x1C2A8 u8 *cert0 // certificate BRDATA_CERT0 (func_8FD770), Http_Init passes it with Http_GetCertSize(0)
+0x1C2AC u8 *cert1 // certificate BRDATA_CERT1, BROWSER_CERT_SIZE bytes after cert0 (Http_GetCertSize(1))
 0x1C2C0 u8 afsPartInfo[0x1000] // the info area of AFS partition 5, the browser's data files (Http_LoadAfsPartition)

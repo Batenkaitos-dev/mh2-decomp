@@ -15,11 +15,18 @@
 #include "dma.h"
 #include "hw_regs.h"
 #include "movie.h"
+#include "prim.h"
+#include "stream.h"
+#include "display.h"
+#include "mem_util.h"
+#include "libc.h"
+#include "libgraph.h"
+#include "libkernl.h"
 
-#define MOVIE_HEAP_SIZE 0x800000        /* the heap block: 8 MB */
-#define MOVIE_SFD_WORK_SIZE 0x7E9E40    /* Sofdec's work area in it */
-#define MOVIE_CHAIN_SIZE 0x16000        /* the frame upload chain after it */
-#define MOVIE_PACKET_SIZE 0xC0          /* each of the two sprite packets after that */
+#define MOVIE_HEAP_SIZE 8388608         /* the heap block: 8 MB */
+#define MOVIE_SFD_WORK_SIZE 8298048     /* Sofdec's work area in it */
+#define MOVIE_CHAIN_SIZE 90112          /* the frame upload chain after it */
+#define MOVIE_PACKET_SIZE 192           /* each of the two sprite packets after that */
 #define MOVIE_AFS_PARTITION 2           /* the movies are files of AFS02 */
 #define MOVIE_VOLUME_MIN (-960)         /* in 0.1 dB: -96 dB */
 
@@ -42,7 +49,7 @@ struct MwPly {
     MwPlyIf *vtbl;
 };
 
-/* Sofdec creation parameters (0x30 bytes). */
+/* Sofdec creation parameters (48 bytes). */
 typedef struct MwsfdCrePrm {
     s32 ftype;          /* 0x00 */
     s32 maxBps;         /* 0x04: bits per second */
@@ -56,7 +63,7 @@ typedef struct MwsfdCrePrm {
     s32 unk24[3];
 } MwsfdCrePrm;
 
-/* A decoded frame, as Sofdec's get-frame call returns it (0x88 bytes). */
+/* A decoded frame, as Sofdec's get-frame call returns it (136 bytes). */
 typedef struct MwsfdFrmInf {
     u32 bufadr;         /* 0x00: pixels, or 0 when no frame is ready */
     s32 unk04;
@@ -68,23 +75,13 @@ typedef struct MwsfdFrmInf {
     s64 unk28[12];
 } MwsfdFrmInf;
 
-/* One movie: an entry of gMovieDescs (16 bytes). */
-typedef struct MovieDesc {
-    s32 entry;          /* 0x0: file in AFS02 */
-    s32 ftype;          /* 0x4 */
-    u16 maxKbps;        /* 0x8 */
-    u16 width;          /* 0xA */
-    u16 height;         /* 0xC */
-    u16 mode;           /* 0xE: MOVIE_MODE_*: how it is drawn */
-} MovieDesc;
-
 typedef struct MoviePlayer {
     MwPly *ply;             /* 0x00 */
     MwsfdCrePrm cprm;       /* 0x04 */
     u8 unk34[4];
     MwsfdFrmInf frame;      /* 0x38: the last frame drawn */
     u8 status;              /* 0xC0: Sofdec status, MOVIE_STATUS_* */
-    u8 unkC1[0xB];
+    u8 unkC1[11];
     u16 width;              /* 0xCC: picture size */
     u16 height;             /* 0xCE */
     u16 dispW;              /* 0xD0: sprite rectangle on screen */
@@ -126,10 +123,7 @@ extern MovieWork *gMovieHeapBlock;
 extern MoviePlayer *gMoviePlayer;
 extern MoviePlayer gMoviePlayerData;
 extern MovieDesc gMovieDescs[];
-extern u8 gVolumeMax[];       /* option value -> volume step */
-extern s16 gVolumeDb[];      /* volume step -> 0.1 dB */
 
-void *memset(void *dst, s32 c, u32 n);
 MwPly *mwPlyCreateSofdec(MwsfdCrePrm *cprm);
 void mwPlyStartAfs(MwPly *ply, s32 partition, s32 entry);
 void mwPlySetFrmSync(MwPly *ply, s32 unk);
@@ -137,27 +131,10 @@ void mwPlyGetCurFrm(MwPly *ply, MwsfdFrmInf *frame);   /* get the current frame 
 void mwPlyRelCurFrm(MwPly *ply);                       /* release the current frame */
 u32 mwPlyCalcWorkCprmSfd(MwsfdCrePrm *cprm);                 /* work area size */
 void mwPlyGetPlyInf(MwPly *ply, void *buf);
-void *Mem_Alloc(u32 size, s32 unk);               /* heap: allocate a block */
-void Mem_Free(void *handle);                     /* heap: free */
-void *Mem_GetAddr(void *handle);               /* heap: address of a block */
-void Mem_Compact(void);
-s32 Dma_WaitIdle(void);                            /* waits for the frame DMA */
 u16 Vram_AllocBlock(u32 size);                          /* VRAM: allocate */
 /* unit's own declaration: declared as this file's callers use it; with the definition's void (u32 addr), Movie_FreeFrame compiles differently */
 void Vram_FreeBlock(u16 tbp);                          /* VRAM: free */
-s32 Sys_FlipFrame(s32 unused0);                          /* flips a frame */
-s32 Prim_SendPacket(u32 *pkt);                       /* draws a packet */
-void FlushCache(s32 op);
 s32 sceDmaSend(DmaChan *chan, u32 tag);
-s32 sceGsSyncPath(s32 mode, u16 timeout);
-
-void Movie_AllocFrame(s32 w, s32 h);
-void Movie_FreeFrame(void);
-u32 Movie_BuildUploadChain(u32 chain, void *buf, s32 tbp, s32 psm, s32 w, s32 h);
-void Movie_SetupBlockPackets(u32 chain, u32 *pixels, s32 w, s32 h, s32 skip);
-u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 unk, s32 w, s32 h);
-void MovieSfd_Draw(u32 *pixels, s32 w, s32 h, s32 setupOnly);
-void MovieSfd_Create(void *arg);
 
 /* Flips three frames, then allocates VRAM for a width x height RGBA frame
  * (height rounded up to 32 lines). */
@@ -210,10 +187,10 @@ typedef union MoviePkt {
 
 /* Builds the DMA chain that uploads a width x height frame at buf to VRAM
  * tbp (psm) in 16x16 blocks: a TEXFLUSH/BITBLTBUF/TRXREG header, then per
- * block a TRXPOS/TRXDIR and an image transfer referencing buf (0x40
+ * block a TRXPOS/TRXDIR and an image transfer referencing buf (64
  * qwords: 16 by 16 pixels). gMovieWork->blocks gets the first block's
  * address. Returns the end. The GIF tags: three A+D qwords, then one per
- * block, then an image of 0x40 qwords. */
+ * block, then an image of 64 qwords. */
 u32 Movie_BuildUploadChain(u32 chain, void *buf, s32 tbp, s32 psm, s32 width, s32 height)
 {
     MoviePkt pkt;
@@ -225,21 +202,21 @@ u32 Movie_BuildUploadChain(u32 chain, void *buf, s32 tbp, s32 psm, s32 width, s3
     bufWidth = gMovieTexWidth / 64;
     PKT_W(pkt, DMA_TAG_CNT | 4, 0);
     PKT_W(pkt, 0, 0);
-    PKT_D(pkt, 0x1000000000008003, GIF_REG_AD);
+    PKT_D(pkt, GIF_TAG_NREG(1) | GIF_TAG_EOP | 3, GIF_REG_AD);
     PKT_D(pkt, 0, GS_REG_TEXFLUSH);
     PKT_D(pkt, ((u64)psm << 56) | (((u64)tbp << 32) | ((u64)bufWidth << 48)), GS_REG_BITBLTBUF);
-    PKT_D(pkt, 0x10 | ((u64)0x10 << 32), GS_REG_TRXREG);
+    PKT_D(pkt, 0x10 | ((u64)16 << 32), GS_REG_TRXREG);
     gMovieWork->blocks = (u32)pkt.w;
     for (i = 0; i < width / 16; i++) {
         for (j = 0; j < height / 16; j++) {
             PKT_W(pkt, DMA_TAG_CNT | 4, 0);
             PKT_W(pkt, 0, 0);
-            PKT_D(pkt, 0x1000000000000002, GIF_REG_AD);
+            PKT_D(pkt, GIF_TAG_NREG(1) | 2, GIF_REG_AD);
             PKT_D(pkt, ((u64)(i * 16) << 32) | ((u64)(j * 16) << 48), GS_REG_TRXPOS);
             PKT_D(pkt, 0, GS_REG_TRXDIR);
             PKT_D(pkt, 0x0800000000008040, 0);
             PKT_W(pkt, DMA_TAG_REF | 0x40, (u32)buf);
-            PKT_W(pkt, 0, 0x51000040); /* VIF DIRECTHL, 0x40 qwords */
+            PKT_W(pkt, 0, 0x51000040); /* VIF DIRECTHL, 64 qwords */
         }
     }
     PKT_W(pkt, DMA_TAG_END, 0);
@@ -249,8 +226,8 @@ u32 Movie_BuildUploadChain(u32 chain, void *buf, s32 tbp, s32 psm, s32 width, s3
 #undef PKT_W
 #undef PKT_D
 
-/* Points the 0x60-byte packets of the DMA chain (their word at +0x54) at the image's
- * 16x16 blocks of 0x400 bytes, row by row, skipping skip pixels after each row. */
+/* Points the 96-byte packets of the DMA chain (their word at +0x54) at the image's
+ * 16x16 blocks of 1024 bytes, row by row, skipping skip pixels after each row. */
 void Movie_SetupBlockPackets(u32 chain, u32 *pixels, s32 width, s32 height, s32 skip)
 {
     s32 i;
@@ -262,7 +239,7 @@ void Movie_SetupBlockPackets(u32 chain, u32 *pixels, s32 width, s32 height, s32 
             word += 21;
             *word++ = (u32)pixels;
             word += 2;
-            pixels += 0x100;
+            pixels += 256;
         }
         pixels += skip;
     }
@@ -305,8 +282,8 @@ u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 z, s32 width, s32 height)
     }
     size = gMovieTexHeight;
     texHeightLog2 = 0;
-    if (size > 0x100 && size < 0x200) {
-        size = 0x200;
+    if (size > 256 && size < 512) {
+        size = 512;
     }
     while (size > 1) {
         odd = size % 2;
@@ -317,18 +294,18 @@ u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 z, s32 width, s32 height)
         texHeightLog2++;
     }
     drawHeight = gMovieTexHeight;
-    if (drawHeight > 0x1C0) {
-        drawHeight = 0x1C0;
+    if (drawHeight > 448) {
+        drawHeight = 448;
     }
     tagWord = (u32 *)packet;
     *tagWord++ = DMA_TAG_END | DMA_TAG_IRQ | 0xA;
     *tagWord++ = 0;
     *tagWord++ = 0;
-    *tagWord++ = 0x5100000A; /* VIF DIRECTHL, 0xA qwords */
+    *tagWord++ = VIF_DIRECTHL | 10; /* 10 qwords */
     reg = (u64 *)tagWord;
-    *reg++ = 0x1000000000000005; /* five A+D qwords */
+    *reg++ = GIF_TAG_NREG(1) | 5; /* five A+D qwords */
     *reg++ = GIF_REG_AD;
-    *reg++ = 0x44;
+    *reg++ = 68;
     *reg++ = GS_REG_ALPHA_1;
     *reg++ = 5;
     *reg++ = GS_REG_CLAMP_1;
@@ -337,24 +314,24 @@ u32 MovieSfd_FramePacket(u32 packet, s32 x, s32 y, s32 z, s32 width, s32 height)
     *reg++ = (u64)gMovieWork->tbp | ((u64)(gMovieTexWidth / 64) << 14) | ((u64)texWidthLog2 << 26)
         | ((u64)texHeightLog2 << 30) | ((u64)1 << 35);
     *reg++ = GS_REG_TEX0_1;
-    *reg++ = 0x60;
+    *reg++ = TEX1_MMAG_LINEAR | TEX1_MMIN(TEX1_MIN_LINEAR);
     *reg++ = GS_REG_TEX1_1;
     *reg++ = 0x6400000000008001; /* the sprite: PRIM, RGBAQ, UV, XYZ2, UV, XYZ2 */
     *reg++ = 0x535310;
-    ofs = ((0x1000 - gSysFbWidth) / 2) * 16;
-    *reg++ = 0x116;
+    ofs = ((4096 - gSysFbWidth) / 2) * 16;
+    *reg++ = 278;
     *reg++ = 0x3F80000080808080;
     *reg++ = 0x80008;
-    *reg++ = (u64)(ofs + x * 16) | ((u64)(y * 16 + 0x7200) << 16) | ((u64)z << 32);
+    *reg++ = (u64)(ofs + x * 16) | ((u64)(y * 16 + 29184) << 16) | ((u64)z << 32);
     *reg++ = (u64)((gMovieTexWidth - 1) * 16 + 8) | ((u64)((drawHeight - 1) * 16 + 8) << 16);
-    *reg++ = (u64)(ofs + (x + width) * 16) | ((u64)((y + height) * 16 + 0x7200) << 16) | ((u64)z << 32);
+    *reg++ = (u64)(ofs + (x + width) * 16) | ((u64)((y + height) * 16 + 29184) << 16) | ((u64)z << 32);
     return (u32)reg;
 }
 
 /* Builds the frame upload chain and the two sprite packets. */
 void MovieSfd_BuildPackets(void)
 {
-    u8 buf[0x400];
+    u8 buf[1024];
     s32 height;
 
     gMovieWork->tbp = gMovieTexTbp;
@@ -453,7 +430,7 @@ void MovieSfd_AllocWork(s32 frameWidth, s32 frameHeight)
     gMovieHeapBlock = Mem_GetAddr(gMovieHeapHandle);
     gMovieWork = gMovieHeapBlock;
     memset(gMovieWork, 0, MOVIE_HEAP_SIZE);
-    gMovieWork->work = ((u32)gMovieWork + 0x6B) & ~0x3F;
+    gMovieWork->work = ((u32)gMovieWork + 107) & ~0x3F;
     gMovieWork->chainSize = MOVIE_CHAIN_SIZE;
     gMovieWork->workSize = MOVIE_SFD_WORK_SIZE;
     gMovieWork->chain = gMovieWork->work + gMovieWork->workSize;
@@ -519,7 +496,7 @@ void MovieSfd_Create(void *arg)
     }
     cprm = &gMoviePlayer->cprm;
     memset(cprm, 0, sizeof(MwsfdCrePrm));
-    cprm->unk20 = 0x11;
+    cprm->unk20 = 17;
     cprm->ftype = desc->ftype;
     cprm->nfrmPoolWk = 2;
     cprm->maxBps = 1000.0f * (s32)desc->maxKbps;
@@ -610,7 +587,7 @@ void MovieSfd_Stop(void)
 void MovieSfd_Update(void)
 {
     MwsfdFrmInf frame;
-    u8 buf[0x20];
+    u8 buf[32];
 
     if (gMoviePlayer != NULL && gMoviePlayer->ply != NULL) {
         mwPlyGetPlyInf(gMoviePlayer->ply, buf);

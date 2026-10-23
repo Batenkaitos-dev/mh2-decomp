@@ -1,5 +1,5 @@
 /*
- * The lobby server list and the first steps of the network screen.
+ * The lobby server list and the steps of the network screen.
  *
  * The lobby servers (gLobbyServers, LbsRow: an id, a name, the capacity
  * and the users) are sorted and filtered here (ServerList_*): by free
@@ -9,12 +9,17 @@
  * (gServerTried) when gServerSkipTried asks it to; ServerList_ClearTried
  * forgets them.
  *
+ * NetScreen_Run, first, runs the network screen's current step through the
+ * function table at the end of the file.
  * NetScreen_Step0 to NetScreen_Step3 are the network screen's first steps:
  * by gNetEntryMode (LOGIN_ENTRY_*: the first entry, the second
  * connection or a later one, the return after a quest), they pick the server to
  * connect to, automatically or through the server list screen
  * (SrvMenu_Run), which closes after SERVER_MENU_TIMEOUT frames without
- * input.
+ * input. NetScreen_Step4 and NetScreen_Step5 are its last steps
+ * (gNetScreenStep counts within one), after the lobby was left: the
+ * account's portal page in the browser, then the message that says why
+ * the lobby was left.
  */
 #include "common.h"
 #include "em.h"
@@ -23,12 +28,23 @@
 #include "browser.h"
 #include "lobby_servers.h"
 #include "lobby_state.h"
+#include "lobby_menu.h"
+#include "lobby_text.h"
+#include "net_mode.h"
+#include "font.h"
+#include "game_util.h"
+#include "lobby_connect.h"
+#include "lobby_dialog_box.h"
+#include "lobby_frame.h"
+#include "lobby_util.h"
+#include "screen_fade.h"
+#include "libkernl.h"
 int strncmp(const char *, const char *, unsigned int);
 
 #define SERVERS_TRIED_MAX 40            /* gServerTried's entries */
-#define SERVER_TRIED_SIZE 0x14          /* each one's bytes */
+#define SERVER_TRIED_SIZE 20            /* each one's bytes */
 #define SERVER_MENU_TIMEOUT 36000       /* frames: 10 minutes */
-#define NET_ERR_NO_SERVER_LEFT -0x11    /* gLobbyNetError: every server was tried */
+#define NET_ERR_NO_SERVER_LEFT -17      /* gLobbyNetError: every server was tried */
 
 /* prototypes */
 void *memcpy(void *dst, const void *src, u32 n);
@@ -36,20 +52,30 @@ extern char gCurServerId[];
 extern char gServerTried[SERVERS_TRIED_MAX][SERVER_TRIED_SIZE];
 /* end of prototypes */
 extern u8 gNetEntryMode;
-extern u8 gLobbyMenuData[];
+extern LobbyMenu gLobbyMenuData;        /* the menu state gLobbyMenu points to */
 extern LobbyMenu *gLobbyMenu;
-s32 ServerList_TakeCurrent(void);
 extern u8 gServerPick;
 extern u8 gServerSkipTried;
 extern char gServerIdMin[];
 extern char gServerIdMax[];
 void *memset(void *dst, s32 c, u32 n);
-s32 NetIf_GetError(void);
-s32 SrvMenu_Run(void);
 s32 strncmp(const char *a, const char *b, u32 n);
 extern u8 gNetConnStep;
 extern u8 gLbsConnectStep;
 extern u8 gNetScreenStep;
+extern s8 gNetDisconnectStep;
+extern s16 gNetStepTimeout;                  /* frames left before the step fails */
+
+/* The network screen's steps: a function table (defined at the end of this
+ * file). */
+extern s32 (*jtbl_008193E0[])(void);
+
+/* The network screen's current step (gNetConnStep): NetScreen_Step0 to
+ * NetScreen_Step5. */
+s32 NetScreen_Run(void)
+{
+    return jtbl_008193E0[gNetConnStep]();
+}
 
 /* Forgets the servers tried: the next pick may take any server. */
 void ServerList_ClearTried(void)
@@ -210,7 +236,6 @@ s32 ServerList_TakeCurrent(void)
 }
 
 extern u8 gLoginState;
-void ServerList_Sort(s32 kind);
 char *strcpy(char *dst, const char *src);
 
 /* The network screen's first step, by gNetEntryMode: on the first entry
@@ -241,7 +266,7 @@ s32 NetScreen_Step0(void)
         gNetScreenStep = 0;
         gNetConnStep = 2;
         ServerList_Sort(2);
-        memset(gLobbyMenuData, 0, 0x44);
+        memset(&gLobbyMenuData, 0, 68);
         SrvMenu_Run();
     } else if (gNetEntryMode == LOGIN_ENTRY_QUEST_RETURN) {
         connDone = gLobbyConnDone;
@@ -309,7 +334,7 @@ s32 NetScreen_Step1(void)
             gLbsConnectStep = 0;
             gNetScreenStep = 0;
             gNetConnStep++;
-            memset(gLobbyMenuData, 0, 0x44);
+            memset(&gLobbyMenuData, 0, 68);
             gLobbyMenu->promptStep = 1;
             SrvMenu_Run();
         }
@@ -381,3 +406,118 @@ s32 NetScreen_Step3(void)
     }
     return result;
 }
+
+/* The network screen's step 4: resets the game's subsystems; returns -3. */
+s32 NetScreen_Step4(void)
+{
+    Game_ResetSubsystems();
+    return -3;
+}
+
+extern char gBrowserUrl[256];            /* the browser's URL */
+extern MmbbData gAccountData;
+
+/*
+ * The network screen's step 5, after the lobby was left: fades out, waits for the
+ * disconnection, shows the account's portal page (PORTAL_PAGE_NEXT) in the browser when
+ * the lobby server's connection had begun, then, after 8 frames, the message that
+ * says why the line was cut (no input for too long, or an unstable line), until
+ * PAD_CIRCLE. Returns -4 then (the step's end), else 0.
+ */
+s32 NetScreen_Step5(void)
+{
+    u16 pad = Pad_GetPressedRepeat(0);
+    s32 result = 0;
+
+    switch (gNetScreenStep) {
+    case 0:
+        gNetScreenStep++;
+        LobbyStream_Stop();
+        FadeA_Start(1);
+        break;
+    case 1:
+        if (LobbyFade_IsRunning() == 0) {
+            if (gLbsConnectStep != 0) {
+                gNetScreenStep++;
+            } else {
+                gNetScreenStep = 7;
+            }
+            LobbyMenu_SetDraw(0, Lobby_DrawBlackLine, LobbyDialog_DrawPending, 0);
+            NetMode_FadeReset();
+            gNetDisconnectStep = 0;
+        }
+        break;
+    case 2:
+        gNetScreenStep++;
+    case 3:
+        gNetScreenStep++;
+        FlushCache(0);
+        memset(gBrowserUrl, 0, 256);
+        gPortalPage = PORTAL_PAGE_NEXT;
+        gBrowserTopMode = BROWSER_TOP_LOBBY;
+        strcpy(gBrowserUrl, gAccountData.nextUrl);
+        Browser_Init(0);
+        break;
+    case 4:
+        switch (Browser_Update()) {
+        case 0:
+            break;
+        case -100:
+            LobbyKddi_CloseBrowser();
+            NetScene_BackToPortal();
+            break;
+        default:
+            LobbyKddi_CloseBrowser();
+            gNetScreenStep++;
+            break;
+        }
+        break;
+    case 5:
+        gNetScreenStep++;
+        break;
+    case 6:
+        gNetScreenStep++;
+    case 7:
+        if (LobbyNet_DisconnectWait() != 0) {
+            gNetScreenStep++;
+        }
+        break;
+    case 8:
+        gNetScreenStep = 9;
+        gNetStepTimeout = 8;
+        NetMode_FadeStart(0, 10, 0);
+        if (gLbsConnectStep == 0) {
+            LobbyText_Open(LOBBY_TEXT_LINE_UNSTABLE);
+        } else {
+            LobbyText_Open(LOBBY_TEXT_IDLE_CUT);
+        }
+        gLobbyMenuData.redraw = 1;
+        break;
+    case 9:
+        gLobbyMenuData.redraw = 1;
+        gNetStepTimeout--;
+        if (gNetStepTimeout < 0) {
+            gNetScreenStep++;
+        }
+        break;
+    case 10:
+        gLobbyMenuData.redraw = 1;
+        if (pad & PAD_CIRCLE) {
+            result = -4;
+            gLobbyNetError = 0;
+            gPortalPage = PORTAL_PAGE_TOP;
+        }
+        Text_SetColorIndex(5);
+        Font_SetSpacing(20, 20);
+        break;
+    }
+    LobbyMenu_QueueLayers();
+    return result;
+}
+
+/* The network screen's steps (this file's .data). The table's name is the
+ * one the build's tools look for in a table of jumps; it stays. */
+s32 (*jtbl_008193E0[8])(void) = {
+    NetScreen_Step0, NetScreen_Step1, NetScreen_Step2, NetScreen_Step3,
+    NetScreen_Step4, NetScreen_Step5, NULL, NULL,
+};

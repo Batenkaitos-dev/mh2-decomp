@@ -4,7 +4,7 @@
 #include "common.h"
 #include "grid.h"
 
-/* A speaker as the chat log lists them (0x19 bytes; ChatLog_ListSpeakers,
+/* A speaker as the chat log lists them (25 bytes; ChatLog_ListSpeakers,
  * lobby_screen.c): the hunter's id and name. */
 typedef struct ChatSpeaker {
     /* 0x00 */ char id[8];
@@ -12,15 +12,15 @@ typedef struct ChatSpeaker {
 } ChatSpeaker;
 
 /*
- * The game menu's work (gSubMenuWork -> gSubMenuWorkMem, 0x8B4400, 0x6D0
+ * The game menu's work (gSubMenuWork -> gSubMenuWorkMem, 0x8B4400, 1744
  * bytes): the town and lobby menu (GameMenu_*) and its pages:
- * search, chat, mail and quit (their steps at 5-7, their cursor at 0xA), the
- * chat's hunter list and muted list (ChatPage_*, ChatPage_DrawSpeakers).
+ * search, chat, mail and quit (their steps in subStep, page and pageStep,
+ * their cursor in subEntry), the chat's hunter list and muted list (ChatPage_*, ChatPage_DrawSpeakers).
  */
 /* GameMenu.kind: which list the menu shows (set by GameMenu_Open). */
 enum GameMenuKind {
     GAME_MENU_OFFLINE = 0,
-    GAME_MENU_HUB = 1,          /* online, in AREA_HUB_0x83 */
+    GAME_MENU_HUB = 1,          /* online, in AREA_ONLINE_VILLAGE */
     GAME_MENU_ONLINE = 2        /* online, elsewhere */
 };
 
@@ -114,5 +114,46 @@ typedef struct GameMenu {
 
 extern GameMenu *gSubMenuWork;
 extern GameMenu gSubMenuWorkMem;
+
+s32 ChatMenu_CanListSpeakers(void);
+s32 ChatMenu_CanSetState(void);
+s32 GameMenu_OpenChat(void);
+u16 GameMenu_UpdateChat(u16 pad);
+void GameMenu_DrawChat(void);
+s32 ChatPage_OpenSpeakers(void);
+u16 ChatPage_UpdateSpeakers(u16 pad);
+void ChatPage_MarkMuted(void);
+void ChatPage_LoadSpeakers(void);
+s32 MuteList_Add(ChatSpeaker *speaker);
+s32 MuteList_Remove(ChatSpeaker *speaker);
+u8 ChatPage_CountMuted(void);
+void ChatPage_DrawSpeakers(void);
+void ChatPage_DrawMutedTitle(s16 *pos);
+
+void GameMenu_Reset(void);
+void GameMenu_Open(void);
+void GameMenu_Start(void);
+void GameMenu_Clear(void);
+s32 GameMenu_Poll(void);
+u16 GameMenu_GetPad(void);
+s32 GameMenu_Update(u16 pad);
+void GameMenu_Back(void);
+void GameMenu_SetHelp(void);
+s32 GameMenu_IsBusy(void);
+void GameMenu_Draw(void);
+void GameMenu_DrawList(s8 dim);
+s32 GameMenu_OpenSearch(void);
+s32 GameMenu_OpenQuit(void *unused0);
+u16 GameMenu_UpdateQuit(u16 pad);
+s32 GameMenu_YesNoInput(u16 *pad);
+s32 GameMenu_OpenPause(void *menu);
+u16 GameMenu_UpdatePause(u16 pad);
+void GameMenu_DrawPause(void);
+void GameMenu_DrawQuit(void);
+s32 GameMenu_OpenMail(void *unused);
+u16 GameMenu_UpdateMail(u16 pad);
+void GameMenu_DrawMail(void);
+s32 GameMenu_OpenExit(void *menu);
+s32 GameMenu_UpdateExit(s32 pad);
 
 #endif /* GAME_MENU_H */

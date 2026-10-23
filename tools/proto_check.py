@@ -41,10 +41,10 @@ INTS = {  # name -> (size, signed)
     'signed short': (2, 1), 'unsigned short': (2, 0), 'short int': (2, 1),
     'unsigned short int': (2, 0), 'int': (4, 1), 'signed': (4, 1),
     'signed int': (4, 1), 'unsigned': (4, 0), 'unsigned int': (4, 0),
-    'long': (4, 1), 'unsigned long': (4, 0), 'long int': (4, 1),
+    'long': (8, 1), 'unsigned long': (8, 0), 'long int': (8, 1),   # MWCC for the EE: long is 64-bit
     'long long': (8, 1), 'unsigned long long': (8, 0), 'size_t': (4, 0),
     'BOOL': (4, 1), 'bool': (4, 1), 'u_int': (4, 0), 'u_char': (1, 0),
-    'u_short': (2, 0), 'u_long': (4, 0), 'u_long128': (16, 0), 'u128': (16, 0),
+    'u_short': (2, 0), 'u_long': (8, 0), 'u_long128': (16, 0), 'u128': (16, 0),
 }
 FLOATS = {'f32': 'f32', 'float': 'f32', 'f64': 'f64', 'double': 'f64'}
 FNPTR = {}  # function pointer typedef -> its spelled-out type
@@ -53,13 +53,19 @@ CANON = {}  # typedef alias -> canonical spelling (filled from the headers)
 def blank(m):
     return re.sub(r'[^\n]', ' ', m.group(0))
 
+# Comments and literals in one left-to-right pass, so that a "/*" inside a string and an
+# apostrophe inside a comment are each read as what they are.
+TOKEN = re.compile(r'/\*.*?\*/|//[^\n]*|"(?:\\.|[^"\\\n])*"|\'(?:\\.|[^\'\\\n])*\'', re.S)
+
+
 def strip_comments(src):
-    t = re.sub(r'/\*.*?\*/', blank, src, flags=re.S)
-    t = re.sub(r'//[^\n]*', blank, t)
-    # string and char literals: keep length, drop content
-    t = re.sub(r'"(?:\.|[^"\\n])*"', lambda m: '"' + ' ' * (len(m.group(0)) - 2) + '"', t)
-    t = re.sub(r"'(?:\.|[^'\\n])*'", lambda m: "'" + ' ' * (len(m.group(0)) - 2) + "'", t)
-    return t
+    def one(m):
+        s = m.group(0)
+        if s[0] == '/':
+            return blank(m)
+        # a string or char literal: keep its length, drop its content
+        return s[0] + ' ' * (len(s) - 2) + s[0]
+    return TOKEN.sub(one, src)
 
 def split_top(p):
     out, d, cur = [], 0, ''

@@ -22,35 +22,24 @@
 #include "quest.h"
 #include "menu_task.h"
 #include "pad.h"
+#include "camera.h"
+#include "text.h"
+#include "village_cond.h"
+#include "village_board.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
 
-s32 Cond_Check(u16);
-void CamReq_Cancel(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-s32 Save_TestEventFlag(s32 flag);
-void LobbyMenu_Init(void);
 extern s8 gMenuInputLock;
 extern s8 gLobbyLevel1Sel;
 extern s16 gVillageBoardCounts[];
-void LobbySe_Play(s32);
-s32 Menu_WrapUpDown(s32, s32);
-s32 Menu_WrapLeftRight(s32, s32);
-void VillageBoard_BuildPage(VillageBoardMenu *board, s16 page);
 extern VillageBoardArticle *gVillageBoardArticles[];
-s32 Menu_CountPages(s16 n, s16 per);
 extern char gVillageBoardTextFmt[];
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void Text_PrintfStyled(s32 a, const char *fmt, ...);
-void CamReq_VillageBoard(void);
-void VillageBoard_Draw(MenuTask *task);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
 extern u8 gMenuWork;
 void *memset(void *dst, s32 c, u32 n);
 
@@ -58,82 +47,82 @@ void *memset(void *dst, s32 c, u32 n);
  * the text before them (gVillageBoardTitle0_9 and five more): an object of their
  * size on its own would be aligned to 16 bytes and move. */
 #pragma rodata on
-char gVillageBoardTitle0_0[0x10] = {
+char gVillageBoardTitle0_0[16] = {
 #include "lobby/0082EA90.inc"
 };
-char gVillageBoardText0_0[0x1D0] = {
+char gVillageBoardText0_0[464] = {
 #include "lobby/0082EAA0.inc"
 };
-char gVillageBoardTitle0_1[0x20] = {
+char gVillageBoardTitle0_1[32] = {
 #include "lobby/0082EC70.inc"
 };
-char gVillageBoardText0_1[0x178] = {
+char gVillageBoardText0_1[376] = {
 #include "lobby/0082EC90.inc"
 };
 char gVillageBoardTitle0_2[13] = {
 #include "lobby/0082EE08.inc"
 };
-char gVillageBoardText0_2[0x188] = {
+char gVillageBoardText0_2[392] = {
 #include "lobby/0082EE20.inc"
 };
 char gVillageBoardTitle0_3[13] = {
 #include "lobby/0082EFA8.inc"
 };
-char gVillageBoardText0_3[0x178] = {
+char gVillageBoardText0_3[376] = {
 #include "lobby/0082EFC0.inc"
 };
-char gVillageBoardTitle0_4[0xC] = {
+char gVillageBoardTitle0_4[12] = {
 #include "lobby/0082F138.inc"
 };
-char gVillageBoardText0_4[0x1B8] = {
+char gVillageBoardText0_4[440] = {
 #include "lobby/0082F150.inc"
 };
 char gVillageBoardTitle0_5[13] = {
 #include "lobby/0082F308.inc"
 };
-char gVillageBoardText0_5[0x160] = {
+char gVillageBoardText0_5[352] = {
 #include "lobby/0082F320.inc"
 };
-char gVillageBoardTitle0_6[0x20] = {
+char gVillageBoardTitle0_6[32] = {
 #include "lobby/0082F480.inc"
 };
-char gVillageBoardText0_6[0x150] = {
+char gVillageBoardText0_6[336] = {
 #include "lobby/0082F4A0.inc"
 };
-char gVillageBoardTitle0_7[0x20] = {
+char gVillageBoardTitle0_7[32] = {
 #include "lobby/0082F5F0.inc"
 };
-char gVillageBoardText0_7[0x178] = {
+char gVillageBoardText0_7[376] = {
 #include "lobby/0082F610.inc"
 };
 char gVillageBoardTitle0_8[13] = {
 #include "lobby/0082F788.inc"
 };
-char gVillageBoardText0_8[0x1A0] = {
+char gVillageBoardText0_8[416] = {
 #include "lobby/0082F7A0.inc"
 };
-char gVillageBoardText0_9[0x180] = {
+char gVillageBoardText0_9[384] = {
 #include "lobby/0082F940.inc"
 };
-char gVillageBoardTitle0_10[0x20] = {
+char gVillageBoardTitle0_10[32] = {
 #include "lobby/0082FAC0.inc"
 };
-char gVillageBoardText0_10[0x160] = {
+char gVillageBoardText0_10[352] = {
 #include "lobby/0082FAE0.inc"
 };
-char gVillageBoardTitle0_11[0x20] = {
+char gVillageBoardTitle0_11[32] = {
 #include "lobby/0082FC40.inc"
 };
-char gVillageBoardText0_11[0x130] = {
+char gVillageBoardText0_11[304] = {
 #include "lobby/0082FC60.inc"
 };
-char gVillageBoardTitle0_12[0x10] = {
+char gVillageBoardTitle0_12[16] = {
 #include "lobby/0082FD90.inc"
 };
-char gVillageBoardText0_12[0x150] = {
+char gVillageBoardText0_12[336] = {
 #include "lobby/0082FDA0.inc"
 };
-char gVillageBoardText0_13[0x188] = {
+char gVillageBoardText0_13[392] = {
 #include "lobby/0082FEF0.inc"
 };
 char gVillageBoardTitle0_14[8] = {
@@ -142,463 +131,463 @@ char gVillageBoardTitle0_14[8] = {
 u32 gVillageBoardTitle0_14Tail[4] = {
 #include "lobby/00830080.inc"
 };
-char gVillageBoardText0_14[0x140] = {
+char gVillageBoardText0_14[320] = {
 #include "lobby/00830090.inc"
 };
-char gVillageBoardTitle0_15[0x20] = {
+char gVillageBoardTitle0_15[32] = {
 #include "lobby/008301D0.inc"
 };
-char gVillageBoardText0_15[0x130] = {
+char gVillageBoardText0_15[304] = {
 #include "lobby/008301F0.inc"
 };
-char gVillageBoardTitle0_16[0x20] = {
+char gVillageBoardTitle0_16[32] = {
 #include "lobby/00830320.inc"
 };
-char gVillageBoardText0_16[0x100] = {
+char gVillageBoardText0_16[256] = {
 #include "lobby/00830340.inc"
 };
-char gVillageBoardTitle0_17[0x20] = {
+char gVillageBoardTitle0_17[32] = {
 #include "lobby/00830440.inc"
 };
-char gVillageBoardText0_17[0x140] = {
+char gVillageBoardText0_17[320] = {
 #include "lobby/00830460.inc"
 };
-char gVillageBoardTitle0_18[0x10] = {
+char gVillageBoardTitle0_18[16] = {
 #include "lobby/008305A0.inc"
 };
-char gVillageBoardText0_18[0x180] = {
+char gVillageBoardText0_18[384] = {
 #include "lobby/008305B0.inc"
 };
-char gVillageBoardTitle4_0[0x20] = {
+char gVillageBoardTitle4_0[32] = {
 #include "lobby/00830730.inc"
 };
-char gVillageBoardText4_0[0x160] = {
+char gVillageBoardText4_0[352] = {
 #include "lobby/00830750.inc"
 };
-char gVillageBoardTitle4_1[0x10] = {
+char gVillageBoardTitle4_1[16] = {
 #include "lobby/008308B0.inc"
 };
-char gVillageBoardText4_1[0x170] = {
+char gVillageBoardText4_1[368] = {
 #include "lobby/008308C0.inc"
 };
-char gVillageBoardTitle4_2[0x20] = {
+char gVillageBoardTitle4_2[32] = {
 #include "lobby/00830A30.inc"
 };
-char gVillageBoardText4_2[0x140] = {
+char gVillageBoardText4_2[320] = {
 #include "lobby/00830A50.inc"
 };
-char gVillageBoardTitle4_3[0x20] = {
+char gVillageBoardTitle4_3[32] = {
 #include "lobby/00830B90.inc"
 };
-char gVillageBoardText4_3[0x140] = {
+char gVillageBoardText4_3[320] = {
 #include "lobby/00830BB0.inc"
 };
-char gVillageBoardTitle4_4[0x20] = {
+char gVillageBoardTitle4_4[32] = {
 #include "lobby/00830CF0.inc"
 };
-char gVillageBoardText4_4[0x190] = {
+char gVillageBoardText4_4[400] = {
 #include "lobby/00830D10.inc"
 };
-char gVillageBoardTitle4_5[0x20] = {
+char gVillageBoardTitle4_5[32] = {
 #include "lobby/00830EA0.inc"
 };
-char gVillageBoardText4_5[0x180] = {
+char gVillageBoardText4_5[384] = {
 #include "lobby/00830EC0.inc"
 };
-char gVillageBoardTitle4_6[0x20] = {
+char gVillageBoardTitle4_6[32] = {
 #include "lobby/00831040.inc"
 };
-char gVillageBoardText4_6[0xD0] = {
+char gVillageBoardText4_6[208] = {
 #include "lobby/00831060.inc"
 };
-char gVillageBoardTitle4_7[0x20] = {
+char gVillageBoardTitle4_7[32] = {
 #include "lobby/00831130.inc"
 };
-char gVillageBoardText4_7[0x170] = {
+char gVillageBoardText4_7[368] = {
 #include "lobby/00831150.inc"
 };
-char gVillageBoardTitle4_8[0x20] = {
+char gVillageBoardTitle4_8[32] = {
 #include "lobby/008312C0.inc"
 };
-char gVillageBoardText4_8[0x170] = {
+char gVillageBoardText4_8[368] = {
 #include "lobby/008312E0.inc"
 };
-char gVillageBoardTitle4_9[0x20] = {
+char gVillageBoardTitle4_9[32] = {
 #include "lobby/00831450.inc"
 };
-char gVillageBoardText4_9[0x128] = {
+char gVillageBoardText4_9[296] = {
 #include "lobby/00831470.inc"
 };
 char gVillageBoardTitle4_10[13] = {
 #include "lobby/00831598.inc"
 };
-char gVillageBoardText4_10[0xD0] = {
+char gVillageBoardText4_10[208] = {
 #include "lobby/008315B0.inc"
 };
-char gVillageBoardTitle3_0[0x10] = {
+char gVillageBoardTitle3_0[16] = {
 #include "lobby/00831680.inc"
 };
-char gVillageBoardText3_0[0x190] = {
+char gVillageBoardText3_0[400] = {
 #include "lobby/00831690.inc"
 };
-char gVillageBoardTitle3_1[0x20] = {
+char gVillageBoardTitle3_1[32] = {
 #include "lobby/00831820.inc"
 };
-char gVillageBoardText3_1[0x1B0] = {
+char gVillageBoardText3_1[432] = {
 #include "lobby/00831840.inc"
 };
-char gVillageBoardText3_2[0x190] = {
+char gVillageBoardText3_2[400] = {
 #include "lobby/008319F0.inc"
 };
-char gVillageBoardTitle3_3[0x10] = {
+char gVillageBoardTitle3_3[16] = {
 #include "lobby/00831B80.inc"
 };
-char gVillageBoardText3_3[0x1A0] = {
+char gVillageBoardText3_3[416] = {
 #include "lobby/00831B90.inc"
 };
-char gVillageBoardText3_4[0x190] = {
+char gVillageBoardText3_4[400] = {
 #include "lobby/00831D30.inc"
 };
-char gVillageBoardTitle3_5[0x20] = {
+char gVillageBoardTitle3_5[32] = {
 #include "lobby/00831EC0.inc"
 };
-char gVillageBoardText3_5[0x150] = {
+char gVillageBoardText3_5[336] = {
 #include "lobby/00831EE0.inc"
 };
-char gVillageBoardTitle3_6[0x20] = {
+char gVillageBoardTitle3_6[32] = {
 #include "lobby/00832030.inc"
 };
-char gVillageBoardText3_6[0x188] = {
+char gVillageBoardText3_6[392] = {
 #include "lobby/00832050.inc"
 };
 char gVillageBoardTitle3_7[13] = {
 #include "lobby/008321D8.inc"
 };
-char gVillageBoardText3_7[0x180] = {
+char gVillageBoardText3_7[384] = {
 #include "lobby/008321F0.inc"
 };
-char gVillageBoardTitle3_8[0x10] = {
+char gVillageBoardTitle3_8[16] = {
 #include "lobby/00832370.inc"
 };
-char gVillageBoardText3_8[0x1A0] = {
+char gVillageBoardText3_8[416] = {
 #include "lobby/00832380.inc"
 };
-char gVillageBoardTitle3_9[0x10] = {
+char gVillageBoardTitle3_9[16] = {
 #include "lobby/00832520.inc"
 };
-char gVillageBoardText3_9[0x180] = {
+char gVillageBoardText3_9[384] = {
 #include "lobby/00832530.inc"
 };
-char gVillageBoardTitle3_10[0x20] = {
+char gVillageBoardTitle3_10[32] = {
 #include "lobby/008326B0.inc"
 };
-char gVillageBoardText3_10[0x1B0] = {
+char gVillageBoardText3_10[432] = {
 #include "lobby/008326D0.inc"
 };
-char gVillageBoardTitle1_0[0x20] = {
+char gVillageBoardTitle1_0[32] = {
 #include "lobby/00832880.inc"
 };
-char gVillageBoardText1_0[0x190] = {
+char gVillageBoardText1_0[400] = {
 #include "lobby/008328A0.inc"
 };
-char gVillageBoardTitle1_1[0x20] = {
+char gVillageBoardTitle1_1[32] = {
 #include "lobby/00832A30.inc"
 };
-char gVillageBoardText1_1[0x1A0] = {
+char gVillageBoardText1_1[416] = {
 #include "lobby/00832A50.inc"
 };
-char gVillageBoardTitle1_2[0x20] = {
+char gVillageBoardTitle1_2[32] = {
 #include "lobby/00832BF0.inc"
 };
-char gVillageBoardText1_2[0x180] = {
+char gVillageBoardText1_2[384] = {
 #include "lobby/00832C10.inc"
 };
-char gVillageBoardTitle1_3[0x20] = {
+char gVillageBoardTitle1_3[32] = {
 #include "lobby/00832D90.inc"
 };
-char gVillageBoardText1_3[0x1A0] = {
+char gVillageBoardText1_3[416] = {
 #include "lobby/00832DB0.inc"
 };
-char gVillageBoardTitle1_4[0x10] = {
+char gVillageBoardTitle1_4[16] = {
 #include "lobby/00832F50.inc"
 };
-char gVillageBoardText1_4[0x160] = {
+char gVillageBoardText1_4[352] = {
 #include "lobby/00832F60.inc"
 };
-char gVillageBoardTitle1_5[0x20] = {
+char gVillageBoardTitle1_5[32] = {
 #include "lobby/008330C0.inc"
 };
-char gVillageBoardText1_5[0x1B0] = {
+char gVillageBoardText1_5[432] = {
 #include "lobby/008330E0.inc"
 };
-char gVillageBoardTitle1_6[0x20] = {
+char gVillageBoardTitle1_6[32] = {
 #include "lobby/00833290.inc"
 };
-char gVillageBoardText1_6[0x1B0] = {
+char gVillageBoardText1_6[432] = {
 #include "lobby/008332B0.inc"
 };
-char gVillageBoardTitle1_7[0x20] = {
+char gVillageBoardTitle1_7[32] = {
 #include "lobby/00833460.inc"
 };
-char gVillageBoardText1_7[0x1A0] = {
+char gVillageBoardText1_7[416] = {
 #include "lobby/00833480.inc"
 };
-char gVillageBoardTitle1_8[0x20] = {
+char gVillageBoardTitle1_8[32] = {
 #include "lobby/00833620.inc"
 };
-char gVillageBoardText1_8[0x190] = {
+char gVillageBoardText1_8[400] = {
 #include "lobby/00833640.inc"
 };
-char gVillageBoardTitle1_9[0x10] = {
+char gVillageBoardTitle1_9[16] = {
 #include "lobby/008337D0.inc"
 };
-char gVillageBoardText1_9[0x1C0] = {
+char gVillageBoardText1_9[448] = {
 #include "lobby/008337E0.inc"
 };
-char gVillageBoardTitle1_10[0x20] = {
+char gVillageBoardTitle1_10[32] = {
 #include "lobby/008339A0.inc"
 };
-char gVillageBoardText1_10[0x1A8] = {
+char gVillageBoardText1_10[424] = {
 #include "lobby/008339C0.inc"
 };
-char gVillageBoardTitle1_11[0xC] = {
+char gVillageBoardTitle1_11[12] = {
 #include "lobby/00833B68.inc"
 };
-char gVillageBoardText1_11[0x150] = {
+char gVillageBoardText1_11[336] = {
 #include "lobby/00833B80.inc"
 };
-char gVillageBoardTitle1_12[0x20] = {
+char gVillageBoardTitle1_12[32] = {
 #include "lobby/00833CD0.inc"
 };
-char gVillageBoardText1_12[0x1B0] = {
+char gVillageBoardText1_12[432] = {
 #include "lobby/00833CF0.inc"
 };
-char gVillageBoardText1_13[0x1D0] = {
+char gVillageBoardText1_13[464] = {
 #include "lobby/00833EA0.inc"
 };
-char gVillageBoardTitle1_14[0x20] = {
+char gVillageBoardTitle1_14[32] = {
 #include "lobby/00834070.inc"
 };
-char gVillageBoardText1_14[0x160] = {
+char gVillageBoardText1_14[352] = {
 #include "lobby/00834090.inc"
 };
-char gVillageBoardTitle1_15[0x20] = {
+char gVillageBoardTitle1_15[32] = {
 #include "lobby/008341F0.inc"
 };
-char gVillageBoardText1_15[0x1B0] = {
+char gVillageBoardText1_15[432] = {
 #include "lobby/00834210.inc"
 };
-char gVillageBoardTitle1_16[0x20] = {
+char gVillageBoardTitle1_16[32] = {
 #include "lobby/008343C0.inc"
 };
-char gVillageBoardText1_16[0x1B0] = {
+char gVillageBoardText1_16[432] = {
 #include "lobby/008343E0.inc"
 };
-char gVillageBoardTitle1_17[0x20] = {
+char gVillageBoardTitle1_17[32] = {
 #include "lobby/00834590.inc"
 };
-char gVillageBoardText1_17[0x170] = {
+char gVillageBoardText1_17[368] = {
 #include "lobby/008345B0.inc"
 };
-char gVillageBoardTitle1_18[0x20] = {
+char gVillageBoardTitle1_18[32] = {
 #include "lobby/00834720.inc"
 };
-char gVillageBoardText1_18[0x1B0] = {
+char gVillageBoardText1_18[432] = {
 #include "lobby/00834740.inc"
 };
-char gVillageBoardTitle1_19[0x20] = {
+char gVillageBoardTitle1_19[32] = {
 #include "lobby/008348F0.inc"
 };
-char gVillageBoardText1_19[0x1A0] = {
+char gVillageBoardText1_19[416] = {
 #include "lobby/00834910.inc"
 };
-char gVillageBoardTitle1_20[0x20] = {
+char gVillageBoardTitle1_20[32] = {
 #include "lobby/00834AB0.inc"
 };
-char gVillageBoardText1_20[0x1A0] = {
+char gVillageBoardText1_20[416] = {
 #include "lobby/00834AD0.inc"
 };
-char gVillageBoardTitle1_21[0x10] = {
+char gVillageBoardTitle1_21[16] = {
 #include "lobby/00834C70.inc"
 };
-char gVillageBoardText1_21[0x160] = {
+char gVillageBoardText1_21[352] = {
 #include "lobby/00834C80.inc"
 };
-char gVillageBoardTitle1_22[0x20] = {
+char gVillageBoardTitle1_22[32] = {
 #include "lobby/00834DE0.inc"
 };
-char gVillageBoardText1_22[0x180] = {
+char gVillageBoardText1_22[384] = {
 #include "lobby/00834E00.inc"
 };
-char gVillageBoardTitle1_23[0x20] = {
+char gVillageBoardTitle1_23[32] = {
 #include "lobby/00834F80.inc"
 };
-char gVillageBoardText1_23[0x1A0] = {
+char gVillageBoardText1_23[416] = {
 #include "lobby/00834FA0.inc"
 };
-char gVillageBoardTitle1_24[0x20] = {
+char gVillageBoardTitle1_24[32] = {
 #include "lobby/00835140.inc"
 };
-char gVillageBoardText1_24[0x1B0] = {
+char gVillageBoardText1_24[432] = {
 #include "lobby/00835160.inc"
 };
-char gVillageBoardTitle1_25[0x20] = {
+char gVillageBoardTitle1_25[32] = {
 #include "lobby/00835310.inc"
 };
-char gVillageBoardText1_25[0x1B8] = {
+char gVillageBoardText1_25[440] = {
 #include "lobby/00835330.inc"
 };
-char gVillageBoardTitle1_26[0xC] = {
+char gVillageBoardTitle1_26[12] = {
 #include "lobby/008354E8.inc"
 };
-char gVillageBoardText1_26[0x180] = {
+char gVillageBoardText1_26[384] = {
 #include "lobby/00835500.inc"
 };
-char gVillageBoardTitle2_0[0x20] = {
+char gVillageBoardTitle2_0[32] = {
 #include "lobby/00835680.inc"
 };
-char gVillageBoardText2_0[0x1A0] = {
+char gVillageBoardText2_0[416] = {
 #include "lobby/008356A0.inc"
 };
-char gVillageBoardTitle2_1[0x20] = {
+char gVillageBoardTitle2_1[32] = {
 #include "lobby/00835840.inc"
 };
-char gVillageBoardText2_1[0x1D0] = {
+char gVillageBoardText2_1[464] = {
 #include "lobby/00835860.inc"
 };
-char gVillageBoardTitle2_2[0x20] = {
+char gVillageBoardTitle2_2[32] = {
 #include "lobby/00835A30.inc"
 };
-char gVillageBoardText2_2[0x1B0] = {
+char gVillageBoardText2_2[432] = {
 #include "lobby/00835A50.inc"
 };
-char gVillageBoardTitle2_3[0x20] = {
+char gVillageBoardTitle2_3[32] = {
 #include "lobby/00835C00.inc"
 };
-char gVillageBoardText2_3[0x1D0] = {
+char gVillageBoardText2_3[464] = {
 #include "lobby/00835C20.inc"
 };
-char gVillageBoardTitle2_4[0x20] = {
+char gVillageBoardTitle2_4[32] = {
 #include "lobby/00835DF0.inc"
 };
-char gVillageBoardText2_4[0x1B0] = {
+char gVillageBoardText2_4[432] = {
 #include "lobby/00835E10.inc"
 };
-char gVillageBoardTitle2_5[0x20] = {
+char gVillageBoardTitle2_5[32] = {
 #include "lobby/00835FC0.inc"
 };
-char gVillageBoardText2_5[0x190] = {
+char gVillageBoardText2_5[400] = {
 #include "lobby/00835FE0.inc"
 };
-char gVillageBoardTitle2_6[0x20] = {
+char gVillageBoardTitle2_6[32] = {
 #include "lobby/00836170.inc"
 };
-char gVillageBoardText2_6[0x1B0] = {
+char gVillageBoardText2_6[432] = {
 #include "lobby/00836190.inc"
 };
-char gVillageBoardTitle2_7[0x20] = {
+char gVillageBoardTitle2_7[32] = {
 #include "lobby/00836340.inc"
 };
-char gVillageBoardText2_7[0x190] = {
+char gVillageBoardText2_7[400] = {
 #include "lobby/00836360.inc"
 };
-char gVillageBoardTitle2_8[0x20] = {
+char gVillageBoardTitle2_8[32] = {
 #include "lobby/008364F0.inc"
 };
-char gVillageBoardText2_8[0x1A0] = {
+char gVillageBoardText2_8[416] = {
 #include "lobby/00836510.inc"
 };
-char gVillageBoardTitle2_9[0x20] = {
+char gVillageBoardTitle2_9[32] = {
 #include "lobby/008366B0.inc"
 };
-char gVillageBoardText2_9[0x190] = {
+char gVillageBoardText2_9[400] = {
 #include "lobby/008366D0.inc"
 };
-char gVillageBoardTitle2_10[0x20] = {
+char gVillageBoardTitle2_10[32] = {
 #include "lobby/00836860.inc"
 };
-char gVillageBoardText2_10[0x1C0] = {
+char gVillageBoardText2_10[448] = {
 #include "lobby/00836880.inc"
 };
-char gVillageBoardTitle2_11[0x10] = {
+char gVillageBoardTitle2_11[16] = {
 #include "lobby/00836A40.inc"
 };
-char gVillageBoardText2_11[0x190] = {
+char gVillageBoardText2_11[400] = {
 #include "lobby/00836A50.inc"
 };
-char gVillageBoardTitle2_12[0x20] = {
+char gVillageBoardTitle2_12[32] = {
 #include "lobby/00836BE0.inc"
 };
-char gVillageBoardText2_12[0x190] = {
+char gVillageBoardText2_12[400] = {
 #include "lobby/00836C00.inc"
 };
-char gVillageBoardTitle2_13[0x20] = {
+char gVillageBoardTitle2_13[32] = {
 #include "lobby/00836D90.inc"
 };
-char gVillageBoardText2_13[0x178] = {
+char gVillageBoardText2_13[376] = {
 #include "lobby/00836DB0.inc"
 };
 char gVillageBoardTitle2_14[13] = {
 #include "lobby/00836F28.inc"
 };
-char gVillageBoardText2_14[0x180] = {
+char gVillageBoardText2_14[384] = {
 #include "lobby/00836F40.inc"
 };
-char gVillageBoardText2_15[0x180] = {
+char gVillageBoardText2_15[384] = {
 #include "lobby/008370C0.inc"
 };
-char gVillageBoardTitle2_16[0x10] = {
+char gVillageBoardTitle2_16[16] = {
 #include "lobby/00837240.inc"
 };
-char gVillageBoardText2_16[0x148] = {
+char gVillageBoardText2_16[328] = {
 #include "lobby/00837250.inc"
 };
-char gVillageBoardTitle2_17[0xC] = {
+char gVillageBoardTitle2_17[12] = {
 #include "lobby/00837398.inc"
 };
-char gVillageBoardText2_17[0x158] = {
+char gVillageBoardText2_17[344] = {
 #include "lobby/008373B0.inc"
 };
-char gVillageBoardTitle2_18[0xC] = {
+char gVillageBoardTitle2_18[12] = {
 #include "lobby/00837508.inc"
 };
-char gVillageBoardText2_18[0x180] = {
+char gVillageBoardText2_18[384] = {
 #include "lobby/00837520.inc"
 };
-char gVillageBoardTitle2_19[0x10] = {
+char gVillageBoardTitle2_19[16] = {
 #include "lobby/008376A0.inc"
 };
-char gVillageBoardText2_19[0x1B0] = {
+char gVillageBoardText2_19[432] = {
 #include "lobby/008376B0.inc"
 };
-char gVillageBoardTitle2_20[0x20] = {
+char gVillageBoardTitle2_20[32] = {
 #include "lobby/00837860.inc"
 };
-char gVillageBoardText2_20[0x170] = {
+char gVillageBoardText2_20[368] = {
 #include "lobby/00837880.inc"
 };
-char gVillageBoardTitle2_21[0x10] = {
+char gVillageBoardTitle2_21[16] = {
 #include "lobby/008379F0.inc"
 };
-char gVillageBoardText2_21[0x1A0] = {
+char gVillageBoardText2_21[416] = {
 #include "lobby/00837A00.inc"
 };
-char gVillageBoardTitle2_22[0x10] = {
+char gVillageBoardTitle2_22[16] = {
 #include "lobby/00837BA0.inc"
 };
-char gVillageBoardText2_22[0x190] = {
+char gVillageBoardText2_22[400] = {
 #include "lobby/00837BB0.inc"
 };
-char gVillageBoardTitle2_23[0x10] = {
+char gVillageBoardTitle2_23[16] = {
 #include "lobby/00837D40.inc"
 };
-char gVillageBoardText2_23[0x190] = {
+char gVillageBoardText2_23[400] = {
 #include "lobby/00837D50.inc"
 };
-char gVillageBoardTitle2_24[0x10] = {
+char gVillageBoardTitle2_24[16] = {
 #include "lobby/00837EE0.inc"
 };
-char gVillageBoardText2_24[0x170] = {
+char gVillageBoardText2_24[368] = {
 #include "lobby/00837EF0.inc"
 };
 #pragma rodata off
@@ -649,14 +638,6 @@ void VillageBoard_Close(void)
     LobbyMenu_SetDraw(0, 0, 0, 0);
     CamReq_Cancel();
 }
-
-extern u8 gMenuWork;
-u16 LobbyPad_Get(s32);
-s32 WinSlide_Step(WinSlide *p, s16 from, s16 to);
-s32 VillageBoard_TopInput(VillageBoardMenu *board, u16 pad);
-s32 VillageBoard_ListInput(VillageBoardMenu *board, u16 pad);
-s32 VillageBoard_ArticleInput(void *board, u16 pad);
-void VillageBoard_MarkRead(s16 n);
 
 /*
  * Runs the village board each frame, by its steps (enum VillageBoardStep):
@@ -839,10 +820,6 @@ s32 VillageBoard_TopInput(VillageBoardMenu *board, u16 pad)
     return MENU_RUNNING;
 }
 
-
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *text, s32 color);
-void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
-
 /* Draws the categories at (x, y): the board's title bar and panel, the
  * heading, the five categories' names with the arrows on the cursor's, and
  * the help box. */
@@ -855,33 +832,31 @@ void VillageBoard_DrawTop(VillageBoardMenu *board, s16 x, s16 y)
     s16 textX;
     char *label;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(VILLAGE_BOARD_X_IN, 0x12, 0xC8, 0xFFB0B000, gVillageBoardTitles[VILLAGE_BOARD_TITLE], 2, 1);
-    Icon_Draw(x, y, 0x14E, 0x11A, 0xFFE0D8C8, 0);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(VILLAGE_BOARD_X_IN, 18, 200, 0xFFB0B000, gVillageBoardTitles[VILLAGE_BOARD_TITLE], 2, 1);
+    Icon_Draw(x, y, 334, 282, 0xFFE0D8C8, 0);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
     left = x;
-    Font_SetPos(left + 0x28, rowY += 0x16);
+    Font_SetPos(left + 40, rowY += 22);
     Text_PrintfColored(gVillageBoardTitles[VILLAGE_BOARD_TOP_HELP]);
-    Menu_DrawDashLine(left + 0x14, rowY + 0x2C, 0x126, 0xFF000000);
-    rowY += 0x3E;
-    centerX = left + 0xA7;
+    Menu_DrawDashLine(left + 20, rowY + 44, 294, 0xFF000000);
+    rowY += 62;
+    centerX = left + 167;
     for (i = 0; i < VILLAGE_BOARD_CATEGORY_COUNT; i++) {
         label = gVillageBoardTexts[i];
-        textX = Text_CenterX(label, centerX, 0x12);
+        textX = Text_CenterX(label, centerX, 18);
         if (board->category == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x12, label, 0xFF008080);
+            Menu_DrawArrowsRev(textX, rowY, 18, label, 0xFF008080);
         }
         Font_SetPos(textX, rowY);
         Text_PrintfColored(label);
-        rowY += 0x16;
+        rowY += 22;
     }
-    Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gVillageBoardTitles[VILLAGE_BOARD_TOP_PROMPT]);
+    Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gVillageBoardTitles[VILLAGE_BOARD_TOP_PROMPT]);
 }
 
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 s32 sprintf(char *buf, char *fmt, ...);
-s32 VillageBoard_IsRead(u16 n);
 
 /*
  * Draws the titles at (x, y): the title bar and panel, the page number, the
@@ -900,38 +875,38 @@ void VillageBoard_DrawArticles(VillageBoardMenu *board, s16 x, s16 y)
     s16 centerX;
     s16 textX;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(VILLAGE_BOARD_X_IN, 0x12, 0xC8, 0xFFB0B000, gVillageBoardTitles[VILLAGE_BOARD_TITLE], 2, 1);
-    Icon_Draw(x, y, 0x14E, 0x11A, 0xFFE0D8C8, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(VILLAGE_BOARD_X_IN, 18, 200, 0xFFB0B000, gVillageBoardTitles[VILLAGE_BOARD_TITLE], 2, 1);
+    Icon_Draw(x, y, 334, 282, 0xFFE0D8C8, 1);
     left = x;
-    centerX = left + 0xA7;
-    Font_SetSpacing(0x12, 0x12);
+    centerX = left + 167;
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(left + 0xFE, rowY + 4, board->page, board->pageCount, 1);
+    Menu_DrawPageNum(left + 254, rowY + 4, board->page, board->pageCount, 1);
     sprintf(line, gPriceInfoTexts[PRICE_INFO_BRACKET_FMT], gVillageBoardTexts[board->category]);
-    Font_SetPos(Text_CenterX(line, centerX, 0x12), rowY += 0x18);
+    Font_SetPos(Text_CenterX(line, centerX, 18), rowY += 24);
     Text_PrintfColored(gVillageBoardTextFmt, line);
     label = gVillageBoardTexts[VILLAGE_BOARD_CATEGORY_COUNT + board->category];
-    Font_SetPos(Text_CenterX(label, centerX, 0x12), rowY += 0x16);
+    Font_SetPos(Text_CenterX(label, centerX, 18), rowY += 22);
     Text_PrintfColored(gVillageBoardTextFmt, label);
-    Menu_DrawDashLine(left + 0x14, rowY + 0x16, 0x126, 0xFF000000);
+    Menu_DrawDashLine(left + 20, rowY + 22, 294, 0xFF000000);
     articles = gVillageBoardArticles[board->category];
-    rowY += 0x28;
+    rowY += 40;
     for (i = 0; i < board->rowCount; i++) {
         sprintf(line, "%s%s%s", gLobbyWords[LOBBY_WORD_WIDE_SPACE], articles[board->rows[i]].title, gLobbyWords[LOBBY_WORD_WIDE_SPACE]);
         label = line;
-        textX = Text_CenterX(line, centerX, 0x12);
+        textX = Text_CenterX(line, centerX, 18);
         Font_SetPos(textX, rowY);
         Text_PrintfColored(line);
         if (VillageBoard_IsRead(board->categoryFirst + board->rows[i]) == 0) {
-            Icon_Draw(textX, rowY, 0x10, 0x14, 0xFFC03000, ICON_UNREAD_MARK);
+            Icon_Draw(textX, rowY, 16, 20, 0xFFC03000, ICON_UNREAD_MARK);
         }
         if (board->cursor == i) {
-            Menu_DrawArrowsRev(textX, rowY, 0x12, label, 0xFF008080);
+            Menu_DrawArrowsRev(textX, rowY, 18, label, 0xFF008080);
         }
-        rowY += 0x16;
+        rowY += 22;
     }
-    Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gVillageBoardTitles[VILLAGE_BOARD_ARTICLE_PROMPT]);
+    Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gVillageBoardTitles[VILLAGE_BOARD_ARTICLE_PROMPT]);
 }
 
 /* Draws the open article at (x, y): once its window is in place, the
@@ -945,30 +920,25 @@ void VillageBoard_DrawArticle(VillageBoardMenu *board, s16 x, s16 y)
     s16 centerX;
     s32 left = x;
 
-    centerX = left + 0x118;
+    centerX = left + 280;
     if (board->step == VILLAGE_BOARD_ARTICLE) {
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawLabelBar(0x17C, 0x30, 0xF0, 0xFFB0B000, gVillageBoardTexts[board->category], 2, 1);
+        Font_SetSpacing(22, 22);
+        Menu_DrawLabelBar(380, 48, 240, 0xFFB0B000, gVillageBoardTexts[board->category], 2, 1);
     }
-    Icon_Draw(x, y, 0x230, 0x140, 0xFFE0D8C8, 2);
+    Icon_Draw(x, y, 560, 320, 0xFFE0D8C8, 2);
     article = gVillageBoardArticles[board->category];
     article += board->rows[board->cursor];
     Font_SetColor(0x80101010);
     title = article->title;
-    Font_SetSpacing(0x16, 0x16);
-    Font_SetPos(Text_CenterX(title, centerX, 0x16), rowY += 0x1E);
+    Font_SetSpacing(22, 22);
+    Font_SetPos(Text_CenterX(title, centerX, 22), rowY += 30);
     Text_PrintfColored(gVillageBoardTextFmt, title);
-    Menu_DrawDashLine(left + 0x32, rowY + 0x1A, 0x1CC, 0xFF000000);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(left + 0x1E, rowY + 0x28);
+    Menu_DrawDashLine(left + 50, rowY + 26, 460, 0xFF000000);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(left + 30, rowY + 40);
     Text_PrintfStyled(4, gVillageBoardTextFmt, article->text);
 }
 
-extern u8 gMenuWork;
-void Text_SetSize(s32);
-void VillageBoard_DrawTop(VillageBoardMenu *board, s16 x, s16 y);
-void VillageBoard_DrawArticles(VillageBoardMenu *board, s16 x, s16 y);
-void VillageBoard_DrawArticle(VillageBoardMenu *board, s16 x, s16 y);
 /* The village board's draw: the categories, the titles or the article by
  * the step, at its window's slide. */
 void VillageBoard_Draw(MenuTask *task)
@@ -980,14 +950,14 @@ void VillageBoard_Draw(MenuTask *task)
     case VILLAGE_BOARD_SLIDE_IN:
     case VILLAGE_BOARD_CATEGORIES:
     case VILLAGE_BOARD_SLIDE_OUT:
-        VillageBoard_DrawTop(board, board->boardWin.pos, 0x38);
+        VillageBoard_DrawTop(board, board->boardWin.pos, 56);
         break;
     case VILLAGE_BOARD_TITLES:
-        VillageBoard_DrawArticles(board, board->boardWin.pos, 0x38);
+        VillageBoard_DrawArticles(board, board->boardWin.pos, 56);
         break;
     case VILLAGE_BOARD_ARTICLE_IN:
     case VILLAGE_BOARD_ARTICLE:
-        VillageBoard_DrawArticle(board, 0x28, board->articleWin.pos);
+        VillageBoard_DrawArticle(board, 40, board->articleWin.pos);
         break;
     }
 }

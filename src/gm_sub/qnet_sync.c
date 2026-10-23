@@ -24,6 +24,18 @@
 #include "overlay.h"
 #include "item.h"
 #include "chat_log.h"
+#include "em_rathalos.h"
+#include "em_gravios.h"
+#include "area_draw.h"
+#include "hud.h"
+#include "qnet.h"
+#include "save.h"
+#include "text.h"
+#include "window.h"
+#include "camera.h"
+#include "frame.h"
+#include "game_util.h"
+#include "em_script.h"
 
 /* The fort monsters' first two work bytes, as QSync_ApplyEmState reads them:
  * EM_KIND_LAO_SHAN_LUNG and EM_KIND_ASHEN_LAO_SHAN_LUNG, EM_KIND_SHEN_GAOREN,
@@ -33,59 +45,30 @@
 typedef struct EmFortWork {
     u8 stage;                   /* 0x000: the fight's stage (the families' ScriptQuery returns it); the messages only raise it */
     s8 fortHits;                /* 0x001: the hits on the fort (Em.fortStage), copied to gScene.fortStage */
-    u8 unk002[0x100 - 0x002];
+    u8 unk002[256 - 2];
 } EmFortWork;
 typedef char EmFortWork_size_check[(sizeof(EmFortWork) == sizeof(EmWork)) ? 1 : -1];
 
 s32 strlen(char *);
-void Chat_LogAddLocal(u8, u8, char *);
 void Plsel_LogChatFrom(u8 slot, u8 flag, char *text);
 /* gScene.userIds, the players' user ids (message 10 kind 2), under its own
  * name: QSync_OnState matches only with the address loaded whole (the
  * field form folds the offset into the store). */
 extern s8 gSceneUserIds[SCENE_PLAYERS][LOBBY_USER_ID_LEN];
 
-void QNetIf_Post(void *msg, s32 unused);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
-void SupplyBox_StartMove(u16, u8);
 
-s32 Game_IsOnline(void);
 /* QSync_OnEm's calls narrow the group and the state to bytes, as the game's
  * code does; with the definition's s32 a and b they would pass them whole.
  * unit's own declaration: declared as the caller uses it. */
 void Em_ChangeStateRouted(Em *em, u8 a, u8 b, s32 c);
-void Em_SpawnPartEffects(Em *em, u8 mask);
-s32 Quest_IsVersus(void);
-void Loading_Stop(void);
-void Quest_Finish(void);
-void Game_ResetSubsystems(void);
-void Scene_LoadOverlay(s32);
-s32 QuestNet_GetPing(u8);
-u16 Map_AreaAt(u16 map, u16 i);
-void Quest_HandleNetMsg(void);
-void Hud_StartMapPing(s32 i);
-u8 Notice_Push(u8 kind, s16 a, s16 b);
-void Em_RestartScript(Em *em);
-s32 Scene_InField(void);
-s32 Player_IsLocal(void *obj);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-u16 Camera_GetYaw(void);
-void QSync_QueuePlayerPos(Player *p, f32 *pos);
-extern s32 gQSyncResendDelay;
-void Player_StartMoveTo(Player *p, s16 frames);
 void Player_SetState(Player *p, u16 state, u8 sub, u16 flags);
-void Player_Reset(Player *p);
 void Item_Use(Player *p);
 void Item_UseTool(Player *p);
 void Item_UseMisc(Player *p);
 void Item_UseTeamPowder(Player *p);
 void Item_UsePlaced(Player *p);
-s16 Pouch_Count(Player *p, u16 item);
-u8 PouchBackup_Use(Player *p, u16 item, s16 n);
-s32 Side_Match(u8 a, u8 b, u8 none);
-void HuntingHorn_PlaySong(Player *p, u8 song, u8 quiet);
-void HuntingHorn_SongFxAllies(Player *p);
-void HuntingHorn_SongFxSelf(Player *p);
 
 /* Sends the local player's state (messages 1-4, QSyncPlayerMsg) of the given
  * kind (QSyncPlayerKind); mode goes into the message: Player_SetState's
@@ -514,20 +497,6 @@ void QSync_OnPlayer(u8 from, QSyncPlayerMsg *msg, s32 arg)
 }
 
 /* QSync_SendEm and QSync_OnEm (game message 8, a monster's state). */
-u16 Map_AreaIndex(u16 map, u16 area);
-void QSync_PackEmParts(Em *, QSyncEmParts *);
-void QSync_PackEmState(Em *, u8, QSyncEmMsg *);
-void QSync_QueueEmState(Em *, u8);
-void QSync_UnpackEmParts(Em *, QSyncEmParts *);
-void QSync_ApplyEmState(Em *, u8, QSyncEmData *);
-void Em_BreakParts(Em *, u16);
-void Em_AddPoison(Em *em, s32 arg);
-void Em_ApplyFlash(Em *em);
-void Em_CheckRageByHp(Em *em, s16 n);
-void Em_StartRage2(Em *em);
-void Em_EndRage(Em *em);
-void Em_TypeSetup(Em *em);
-void Em_ResetToBasePose(Em *em);
 extern s16 gEmCombatInit[];
 
 /* Sends game message 8, a monster's state; the layout after the header
@@ -985,16 +954,16 @@ void QSync_OnEm(u8 from, QSyncEmMsg *msg, s32 arg)
                 case EM_KIND_BLACK_DIABLOS:
                 case EM_KIND_MONOBLOS:
                 case EM_KIND_WHITE_MONOBLOS:
-                    /* reaction state 0xF: the Rathalos family's
-                     * RATH_REACT_PART_BREAK_END (0x11 for the Gravios kinds) */
-                    if (group == EM_GROUP_REACT && state == 0xF) {
+                    /* the part break's end: RATH_REACT_PART_BREAK_END, and the
+                     * Diablos kinds' DIAB_REACT_PART_BREAK_END is the same 15 */
+                    if (group == EM_GROUP_REACT && state == RATH_REACT_PART_BREAK_END) {
                         Em_ResetToBasePose(em);
                     }
                     break;
                 case EM_KIND_GRAVIOS:
                 case EM_KIND_BLACK_GRAVIOS:
                 case EM_KIND_BASARIOS:
-                    if (group == EM_GROUP_REACT && state == 0x11) {
+                    if (group == EM_GROUP_REACT && state == GRAV_REACT_PART_BREAK_END) {
                         Em_ResetToBasePose(em);
                     }
                     break;
@@ -1144,7 +1113,7 @@ void QSync_UnpackEmParts(Em *em, QSyncEmParts *msg)
 /*
  * Puts a monster's own state into a state message (kinds 1 to 3): the
  * versus gauge in a versus quest, else the fort monsters' work state and
- * fort stage (restarting their sync timer, 0x96 frames), or the Khezu
+ * fort stage (restarting their sync timer, 150 frames), or the Khezu
  * family's two work bytes.
  */
 void QSync_PackEmState(Em *em, u8 kind, QSyncEmMsg *msg)
@@ -1402,7 +1371,7 @@ void QSync_SendState(u8 kind, u8 who)
             msg.u.k2.gender = sync->gender[who];
             msg.u.k2.startItemList = sync->startItemList[who];
             msg.u.k2.pick = sync->picks[who];
-            msg.u.k2.stageId = *(u16 *)((u8 *)&gScene - 0x168);
+            msg.u.k2.stageId = *(u16 *)((u8 *)&gScene - 360);
             msg.u.k2.unk11 = sync->unkDE;
             msg.u.k2.unk12 = sync->unkDA;
             msg.u.k2.unk14 = sync->unkDC;
@@ -1447,12 +1416,12 @@ void QSync_SendState(u8 kind, u8 who)
         case QSYNC_STATE_PICK_TAKEN:
             msg.u.k12.who = who;
             msg.len = QSYNC_LEN_ST_SHORT;
-            msg.u.k12.pick = *((u8 *)&gScene - 0x18) | QSYNC_PICK_TAKEN;
+            msg.u.k12.pick = *((u8 *)&gScene - 24) | QSYNC_PICK_TAKEN;
             break;
         case QSYNC_STATE_PICK_CURSOR:
             msg.u.k12.who = who;
             msg.len = QSYNC_LEN_ST_SHORT;
-            msg.u.k12.pick = *((u8 *)&gScene - 0x18);
+            msg.u.k12.pick = *((u8 *)&gScene - 24);
             break;
         }
         QNetIf_Post(&msg, 0);
@@ -1545,11 +1514,11 @@ void QSync_OnState(u8 from, QSyncStateMsg *msg, s32 arg)
                     item = gScene.supply[id].item;
                     Pouch_Add(&gPlayers[data->supply.taker], item, gScene.supply[id].count);
                     switch (item) {
-                    case 0x2A4:
-                        Notice_Push(1, 0x13, item);
+                    case 676:
+                        Notice_Push(1, 19, item);
                         break;
                     case ITEM_ID_DELIVERY:
-                        Notice_Push(1, 0x14, item);
+                        Notice_Push(1, 20, item);
                         break;
                     }
                 }
@@ -1575,7 +1544,7 @@ void QSync_OnState(u8 from, QSyncStateMsg *msg, s32 arg)
 }
 
 /*
- * Sends the local player's chat text (kind 1, under 0x40 characters) to
+ * Sends the local player's chat text (kind 1, under 64 characters) to
  * the player toPlayer, while online.
  */
 void QSync_SendChat(u8 who, u8 kind, char *text, u8 toPlayer)

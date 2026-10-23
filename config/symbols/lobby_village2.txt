@@ -1,11 +1,8 @@
-// Symbols for overlay 4, lobby.bin: the second half of the village
-// (0x757600-0x7AF6C0: the equipment shop, the village conditions and quest
-// data, the house and its boxes, the combination shop, townspeople, Poogie
-// points, the village event checks). Format: name = 0xADDRESS; // attributes
-//
-// One symbol file per round-5 lobby worker, so that they never edit the same
-// file: new names in this range go here, sorted by address. lobby.txt has the
-// names from earlier rounds; lobby.yaml reads all three files.
+// The lobby overlay (overlay 4, lobby.bin): the names of the village's
+// second half, 0x757600-0x7AF6C0: the equipment shop, the village
+// conditions and quest data, the house and its boxes, the combination shop,
+// the townspeople, Poogie's points and the village's event checks.
+// Format: name = 0xADDRESS; // attributes
 
 // --- the village, second half --------------------------------------------
 LobbyMenu_MoveCursor = 0x007571E0; // type:func
@@ -116,7 +113,7 @@ Talk_Check01 = 0x007A9200; // type:func
 Talk_Check02 = 0x007A97E0; // type:func
 Talk_Check03 = 0x007A9A50; // type:func
 Talk_Check04 = 0x007A9CA0; // type:func
-Talk_Check05 = 0x007A9DC0; // type:func
+Talk_CheckContestHost = 0x007A9DC0; // type:func
 Talk_Check06 = 0x007AA120; // type:func
 Talk_Check07 = 0x007AA180; // type:func
 Talk_Check08 = 0x007AA460; // type:func
@@ -125,16 +122,16 @@ Talk_Check0A = 0x007AA760; // type:func
 Talk_Check0B = 0x007AA820; // type:func
 Talk_Check0C = 0x007AA940; // type:func
 Talk_Check0D = 0x007AAA20; // type:func
-Talk_Check0E = 0x007AAAB0; // type:func
-Talk_Check0F = 0x007AAFA0; // type:func
-Talk_Check10 = 0x007AB070; // type:func
-Talk_Check12 = 0x007AB2E0; // type:func
+Talk_CheckWorkshopSmith = 0x007AAAB0; // type:func
+Talk_CheckWorkshopHelper = 0x007AAFA0; // type:func
+Talk_CheckDrinkContestHost = 0x007AB070; // type:func
+Talk_CheckNamingTalker = 0x007AB2E0; // type:func
 Talk_Check13 = 0x007AB460; // type:func
 Talk_Check15 = 0x007AB5F0; // type:func
 Talk_Check16 = 0x007AB710; // type:func
 Talk_Check17 = 0x007AB770; // type:func
 Talk_Check18 = 0x007AB7D0; // type:func
-Talk_Check19 = 0x007AB850; // type:func
+Talk_CheckFishingSpot = 0x007AB850; // type:func
 Talk_Check1A = 0x007AB8D0; // type:func
 Talk_Check1B = 0x007AB9E0; // type:func
 Talk_Check1C = 0x007ABA40; // type:func
@@ -156,15 +153,15 @@ Talk_Check2D = 0x007AC2A0; // type:func
 Talk_Check2E = 0x007AC390; // type:func
 Talk_Check2F = 0x007AC480; // type:func
 Talk_Check30 = 0x007AC520; // type:func
-Talk_Check33 = 0x007AC580; // type:func
+Talk_CheckFishingSpotOnline = 0x007AC580; // type:func
 Talk_Check37 = 0x007AC5E0; // type:func
 Talk_Check38 = 0x007AC780; // type:func
-Talk_Check39 = 0x007AC900; // type:func
+Talk_CheckGalleryKeeper = 0x007AC900; // type:func
 Talk_Check3A = 0x007ACA60; // type:func
 Talk_Check3B = 0x007ACAC0; // type:func
 Talk_Check3C = 0x007ACB40; // type:func
 Talk_Check3D = 0x007ACBC0; // type:func
-Talk_Check40 = 0x007ACC20; // type:func
+Talk_CheckOfficialDeskLowHr = 0x007ACC20; // type:func
 Talk_Check41 = 0x007ACF50; // type:func
 Talk_Check42 = 0x007AD070; // type:func
 Talk_Check45 = 0x007AD110; // type:func
@@ -175,8 +172,8 @@ Talk_Check4A = 0x007AD340; // type:func
 Talk_Check4B = 0x007AD3A0; // type:func
 Talk_Check4C = 0x007AD400; // type:func
 Talk_Check4D = 0x007AD460; // type:func
-Talk_Check4E = 0x007AD5A0; // type:func
-Talk_Check4F = 0x007AD7A0; // type:func
+Talk_CheckOfficialDeskHighHr = 0x007AD5A0; // type:func
+Talk_CheckQuestDesk2 = 0x007AD7A0; // type:func
 Talk_Check50 = 0x007AD8B0; // type:func
 Talk_Check51 = 0x007AD950; // type:func
 Talk_Check52 = 0x007AD9B0; // type:func
@@ -185,19 +182,19 @@ Talk_Check54 = 0x007ADA70; // type:func
 Talk_Check55 = 0x007ADAD0; // type:func
 Talk_Check56 = 0x007ADB50; // type:func
 Talk_Check57 = 0x007ADC70; // type:func
-Talk_Check58 = 0x007ADCD0; // type:func
+Talk_CheckWorkshopHelperOnline = 0x007ADCD0; // type:func
 Talk_Check69 = 0x007ADD50; // type:func
 Talk_Check6B = 0x007ADEE0; // type:func
-Talk_Check71 = 0x007ADF90; // type:func
+Talk_CheckHouseCook = 0x007ADF90; // type:func
 Talk_Check = 0x007AE030; // type:func
-Talk_CheckState = 0x007AE830; // type:func
-Talk_CheckMode = 0x007AE8C0; // type:func
+Talk_CheckSeason = 0x007AE830; // type:func
+Talk_CheckTimeOfDay = 0x007AE8C0; // type:func
 Talk_Start = 0x007AE940; // type:func
 Talk_FindScript = 0x007AEDE0; // type:func
-Talk_StepData = 0x007AEE90; // type:func
+Talk_LineTextAddr = 0x007AEE90; // type:func
 Talk_LineKind = 0x007AEF20; // type:func
 
-// --- NETWORK (preserve for Phase 6) ------------------------------------------
+// --- NETWORK: the town messages ---
 TownMsg_Recv = 0x00778DD0; // type:func
 Lobby_ShowMemberName = 0x00779760; // type:func
 Chat_Receive = 0x00779D70; // type:func
@@ -222,8 +219,7 @@ TownMsg_SendSelf = 0x007A0F40; // type:func
 Net_Connect = 0x007AF690; // type:func
 TownPc_HandleInput = 0x0079C540; // type:func
 
-// --- Round 13 names (decomp-b13-nlobby) ---
-// --- Round 13 names (decomp-b13-nlobby-h1) ---
+// --- The village's and the town's menus ---
 // the equipment shop (Town_UpdateMode)
 EquipShop_Update = 0x007580B0; // type:func
 // the top menu
@@ -238,10 +234,11 @@ EquipShop_InputSell = 0x00759280; // type:func
 EquipShop_InputBuy = 0x007597C0; // type:func
 // zoom and move the model preview
 Equip_DrawPreviewHelp = 0x0075A800; // type:func
-// gLobby->unk396F == 1 (the elder dragon interception state, set from D_008BEFA0)
-ElderRaid_InState1 = 0x0075D790; // type:func
-// gLobby->unk396F == 2
-ElderRaid_InState2 = 0x0075D7B0; // type:func
+// gLobby->elderRaidState is ELDER_RAID_ON (the elder dragon interception,
+// set from gElderRaidEvent)
+ElderRaid_IsOn = 0x0075D790; // type:func 1 while the elder raid is on with its movie
+// gLobby->elderRaidState is ELDER_RAID_ON_NO_MOVIE
+ElderRaid_IsOnNoMovie = 0x0075D7B0; // type:func 1 while the elder raid is on without its movie
 // 0 - the quest order conditions are not met
 Quest_CheckOrderTerms = 0x0075FE60; // type:func
 // participants, password, recruitment text
@@ -264,18 +261,22 @@ BoxMenu_SellMenu = 0x007670A0; // type:func
 BoxList_Build = 0x00769EF0; // type:func
 // rotate camera, hide/show the menu
 BoxMenu_DrawControls = 0x0076A890; // type:func
-// (equip) - 0 the item box merged and sorted, 1 the used equipment sorted; into D_008B2C00
+// (equip) - 0 the item box merged and sorted, 1 the used equipment sorted;
+// into the buffer at gSkillTryPlayer
 Box_BuildSortedList = 0x0076CEC0; // type:func
 // by BoxEquip_SortKey
 BoxEquip_ShellSort = 0x0076D3E0; // type:func
-// clears the menu state, talk script 0x63, draws with func_00770690 / func_007708F0
+// clears the menu state, talk script 99, draws with QuestCounter_Draw and
+// QuestCounter_Draw2
 QuestCounter_Open = 0x0076DC20; // type:func
 QuestCounter_Close = 0x0076DCF0; // type:func
-// one of three kinds (the fourth option needs 0x5D7392)
+// one of three kinds (the fourth option depends on a sub_main byte with no
+// name yet)
 QuestCounter_ChooseArenaRole = 0x0076E770; // type:func
-// a quest of the posted list (D_008BEC00)
+// a quest of the posted list (gPostedQuests)
 QuestCounter_ChooseQuest = 0x0076E8C0; // type:func
-// the chosen quest's room (D_008EA200), its pages; refused when it can't be joined
+// the chosen quest's room (gLobbyLevel2Entries), its pages; refused when it
+// can't be joined
 QuestCounter_ViewQuest = 0x0076EA10; // type:func
 // 1 (a message shown) when the quest can't be taken - the time of day, the terms, the fee
 QuestCounter_CheckQuest = 0x0076EB20; // type:func
@@ -299,18 +300,18 @@ ChatPage_DrawMutedTitle = 0x00772ED0; // type:func
 ChatPage_DrawState = 0x00773140; // type:func
 // the local player's hunter card (equipment, HR, weapon, village levels ...) into out
 HunterCard_Build = 0x00775C00; // type:func
-// town mode 10 - combination requests, buy, sell
+// TOWN_MODE_COMBINE_SHOP, the combination requests, buying and selling
 CombShop_Open = 0x00776580; // type:func
-// --- NETWORK, round 13 names (decomp-b13-nlobby-h1; preserve for Phase 6) ---
+// --- NETWORK: the town messages' handlers ---
 TownMsg_OnKitchen = 0x00779630; // type:func
 TownMsg_OnArenaTeam = 0x00779710; // type:func
 TownMsg_OnSongAsk = 0x00779800; // type:func
 TownMsg_OnSongAnswer = 0x007798B0; // type:func
-// a member asks for an item (+0x85C id, +0x85E count) - state 0xA
+// a member asks for an item (+0x85C id, +0x85E count), state 10
 TownMsg_OnOffer = 0x00779960; // type:func
 // takes the item asked for from the pouch if it is there; answers 0 or 1
 TownMsg_OnOfferTake = 0x007799E0; // type:func
-// the position of townsperson 0x14
+// the position of NPC_POOGIE
 TownMsg_OnPoogiePos = 0x0077A330; // type:func
 TownMsg_OnContestSeatAsk = 0x0077A620; // type:func
 TownMsg_OnContestSeatAnswer = 0x0077A740; // type:func
@@ -323,6 +324,7 @@ TownMsg_OnSeatTaken = 0x0077ACC0; // type:func
 // answers a new member with the area and the actor
 TownMsg_OnSyncAsk = 0x0077ADD0; // type:func
 TownMsg_OnSober = 0x0077AF80; // type:func
+// --- The townspeople and the town players ---
 // a draw slot calling Npc_Draw
 Npc_SetupDraw = 0x0077BCE0; // type:func
 Npc_Init = 0x0077BE00; // type:func
@@ -336,7 +338,7 @@ Npc_PlayTownSeAt = 0x0077E540; // type:func
 // as Npc_PlayTownSeAt with Em_PlayCommonSe
 Npc_PlayCommonSeAt = 0x0077E5D0; // type:func
 // Em +0x1B
-Npc_IsType4D = 0x0077FDB0; // type:func
+Npc_IsType77 = 0x0077FDB0; // type:func
 Npc_IsMusicActor = 0x0077FDC0; // type:func
 Npc_IsType31to36 = 0x0077FDD0; // type:func
 Npc_IsType40 = 0x0077FE60; // type:func
@@ -344,7 +346,7 @@ Npc_IsType52 = 0x0077FE70; // type:func
 Npc_IsType3Cto3E = 0x0077FE80; // type:func
 Npc_IsType4B = 0x0077FED0; // type:func
 Npc_IsType49 = 0x0077FEE0; // type:func
-// one of 6 routes (D_007F6FA0 ...), from its first point
+// one of 6 routes (gLessonRouteBHome ...), from its first point
 Npc_SetLessonRoute = 0x0077FEF0; // type:func
 // runs the state (by type), moves and turns, advances the route
 Npc_UpdateState = 0x00780100; // type:func
@@ -364,35 +366,35 @@ Npc_PairIdBySide = 0x00780970; // type:func
 Npc_StateIdle = 0x007817F0; // type:func
 Npc_StateWalk = 0x00781E20; // type:func
 Npc_StateRun = 0x00782250; // type:func
-// also state 0x36
+// also NPC_STATE_SEAT_POSE_A_1
 Npc_StateSeatPoseA = 0x00782440; // type:func
-// also states 0x44, 0x45, 0x8B
+// also NPC_STATE_PAIR_STAND_1, _2 and _3
 Npc_StatePairStand = 0x00782510; // type:func
 Npc_StateWarpToRoute = 0x007828E0; // type:func
-// also states 0x38, 0x39
+// also NPC_STATE_SEAT_POSE_B_1 and NPC_STATE_SEAT_POSE_B_3
 Npc_StateSeatPoseB = 0x00782970; // type:func
 Npc_StateTalk = 0x00782A60; // type:func
-// also state 0x47
-Npc_State46 = 0x00783740; // type:func
-// also state 0x3B
-Npc_State3A = 0x007837E0; // type:func
+// also state 71
+Npc_State70 = 0x00783740; // type:func
+// also state 59
+Npc_State58 = 0x007837E0; // type:func
 Npc_StateSeatedAtTable = 0x007838C0; // type:func
-// also state 0x25
+// also NPC_STATE_SEATED
 Npc_StateSitDown = 0x00783B20; // type:func
-// also state 0x49
-Npc_State48 = 0x00783C30; // type:func
-Npc_State4A = 0x00783CE0; // type:func
+// also state 73
+Npc_State72 = 0x00783C30; // type:func
+Npc_State74 = 0x00783CE0; // type:func
 Npc_StateTalkDelay = 0x00783D20; // type:func
 Npc_StateRouteWait = 0x00783D90; // type:func
 Npc_StateRandomizeWait = 0x00783E70; // type:func
-Npc_State85 = 0x00783F40; // type:func
-Npc_State86 = 0x00783FB0; // type:func
-Npc_State87 = 0x00784000; // type:func
-Npc_State88 = 0x00784050; // type:func
-Npc_State89 = 0x007840A0; // type:func
-Npc_State4B = 0x007840F0; // type:func
-// also state 0x4D
-Npc_State4C = 0x007841A0; // type:func
+Npc_State133 = 0x00783F40; // type:func
+Npc_State134 = 0x00783FB0; // type:func
+Npc_State135 = 0x00784000; // type:func
+Npc_State136 = 0x00784050; // type:func
+Npc_State137 = 0x007840A0; // type:func
+Npc_State75 = 0x007840F0; // type:func
+// also state 77
+Npc_State76 = 0x007841A0; // type:func
 Npc_StateBusyIdle = 0x00784240; // type:func
 Npc_StateBusyTalk = 0x00784340; // type:func
 Npc_StateBusyTalkHold = 0x007845B0; // type:func
@@ -400,10 +402,10 @@ Npc_StateBusyPose = 0x00784690; // type:func
 Npc_StateBusyPoseTalk = 0x00784700; // type:func
 Npc_StateBusyLoop = 0x007848D0; // type:func
 Npc_StateBusyLoopTalk = 0x00784990; // type:func
-Npc_State3F = 0x00784B20; // type:func
-Npc_State40 = 0x00784CF0; // type:func
-Npc_State2E = 0x00784DF0; // type:func
-Npc_State2F = 0x00784ED0; // type:func
+Npc_State63 = 0x00784B20; // type:func
+Npc_State64 = 0x00784CF0; // type:func
+Npc_State46 = 0x00784DF0; // type:func
+Npc_State47 = 0x00784ED0; // type:func
 Npc_StateGreet = 0x00785060; // type:func
 Npc_StateGreetHold = 0x00785200; // type:func
 Npc_StateGreetTalk = 0x00785380; // type:func
@@ -411,16 +413,16 @@ Npc_StatePairWait = 0x00785510; // type:func
 Npc_StateLeave = 0x007855B0; // type:func
 Npc_StateStepAhead = 0x007855D0; // type:func
 Npc_StateStepBack = 0x007858E0; // type:func
-// also state 0x7F
+// also NPC_STATE_SMITH_TALK_AFTER_FORGE
 Npc_StateSmithTalk = 0x00785BF0; // type:func
 Npc_StateSmithForge = 0x007861C0; // type:func
 Npc_StatePartnerWork = 0x00786240; // type:func
-Npc_State9D = 0x00786480; // type:func
+Npc_State157 = 0x00786480; // type:func
 Npc_StatePartnerStrike = 0x007865F0; // type:func
-Npc_State7B = 0x00786960; // type:func
-Npc_State7C = 0x007869E0; // type:func
+Npc_State123 = 0x00786960; // type:func
+Npc_State124 = 0x007869E0; // type:func
 Npc_StateContestWait = 0x00786A10; // type:func
-// also state 0xA7
+// also NPC_STATE_CONTEST_REACT_LATE
 Npc_StateContestReact = 0x00786B30; // type:func
 Npc_StateSmithMeetBelow = 0x00786C90; // type:func
 Npc_StateSmithMeetAbove = 0x00786F80; // type:func
@@ -433,45 +435,45 @@ Npc_StateContestLeave = 0x00787660; // type:func
 Npc_StateContestEnd = 0x007876E0; // type:func
 Npc_StateContestLose = 0x007877D0; // type:func
 Npc_StateContestWin = 0x00787850; // type:func
-Npc_State7D = 0x007878F0; // type:func
+Npc_State125 = 0x007878F0; // type:func
 Npc_StateWatchContest = 0x00787950; // type:func
 Npc_StateRouteTurn = 0x00787C60; // type:func
 Npc_StateRouteWalk = 0x00787CC0; // type:func
-Npc_State8A = 0x00787EA0; // type:func
-Npc_State8C = 0x00787F90; // type:func
+Npc_State138 = 0x00787EA0; // type:func
+Npc_State140 = 0x00787F90; // type:func
 Npc_StateCallOver = 0x00788000; // type:func
 Npc_StateReactNear = 0x00788160; // type:func
-Npc_State92 = 0x007882D0; // type:func
+Npc_State146 = 0x007882D0; // type:func
 Npc_StateWaitTownFree = 0x00788430; // type:func
-// also state 0x95
-Npc_State94 = 0x00788520; // type:func
+// also state 149
+Npc_State148 = 0x00788520; // type:func
 Npc_StateIdleByTime = 0x007885A0; // type:func
-Npc_State9F = 0x007887B0; // type:func
+Npc_State159 = 0x007887B0; // type:func
 Npc_StateStandUp = 0x00788810; // type:func
-Npc_StateA3 = 0x00788860; // type:func
+Npc_State163 = 0x00788860; // type:func
 Npc_StateForge = 0x007888F0; // type:func
 Npc_StateHammer = 0x00788980; // type:func
-Npc_StateAD = 0x00788A30; // type:func
-Npc_StateAE = 0x00788B00; // type:func
+Npc_State173 = 0x00788A30; // type:func
+Npc_State174 = 0x00788B00; // type:func
 Npc_StateMealServed = 0x00788CA0; // type:func
 Npc_StateMealRiseGood = 0x00788D80; // type:func
 Npc_StateRouteJump = 0x00788E60; // type:func
 Npc_StateRouteJumpRandom = 0x00788EB0; // type:func
 // the state handler by +0x15, for most townspeople
 Npc_RunState = 0x00788F60; // type:func
-// also state 0x6C
+// also state 108
 ServiceNpc_StateBusy = 0x007899A0; // type:func
-// also state 0x59
+// also state 89
 ServiceNpc_StateIdle = 0x00789A10; // type:func
-// also states 0x3, 0x4, 0xB0
+// also NPC_STATE_WALK, NPC_STATE_RUN and state 176
 ServiceNpc_StateWalk = 0x00789C20; // type:func
 ServiceNpc_StateFidget = 0x00789E50; // type:func
 ServiceNpc_StateGreet = 0x00789F00; // type:func
 ServiceNpc_StateGreetFx = 0x0078A070; // type:func
 ServiceNpc_StateHairWait = 0x0078A2C0; // type:func
-Npc51_State98 = 0x0078A450; // type:func
-Npc51_StateB1 = 0x0078A630; // type:func
-Npc51_StateB2 = 0x0078A690; // type:func
+Npc81_State152 = 0x0078A450; // type:func
+Npc81_State177 = 0x0078A630; // type:func
+Npc81_State178 = 0x0078A690; // type:func
 ServiceNpc_StateHairPrepare = 0x0078A760; // type:func
 ServiceNpc_StateHairDo = 0x0078A880; // type:func
 ServiceNpc_StateTalk = 0x0078AA80; // type:func
@@ -480,12 +482,12 @@ ServiceNpc_StateServed = 0x0078AEB0; // type:func
 ServiceNpc_StateStopJingle = 0x0078AFD0; // type:func
 ServiceNpc_StateFidgetPause = 0x0078B320; // type:func
 ServiceNpc_StateStepInPlace = 0x0078B3F0; // type:func
-// the state handler by +0x15, for types (+0x1B) 0x51-0x55
+// the state handler by +0x15, for types (+0x1B) 81-85
 ServiceNpc_RunState = 0x0078B550; // type:func
-// also state 0x59
+// also state 89
 Pet_StateIdle = 0x0078B8A0; // type:func
 Pet_StateHouseOpen = 0x0078B920; // type:func
-// also state 0x53
+// also state 83
 Pet_StateSit = 0x0078B9B0; // type:func
 Pet_StatePetted = 0x0078BBB0; // type:func
 Pet_StateFace = 0x0078BE30; // type:func
@@ -498,18 +500,18 @@ Pet_StateWander = 0x0078C850; // type:func
 Pet_StateFollow = 0x0078CB00; // type:func
 Pet_StateFollowTalker = 0x0078D3C0; // type:func
 Pet_StateWait = 0x0078D8D0; // type:func
-Npc4F_StateAB = 0x0078DCB0; // type:func
+Npc79_State171 = 0x0078DCB0; // type:func
 Pet_StateDig = 0x0078DD30; // type:func
-// the state handler by +0x15, for types (+0x1B) 0x4F and 0x50
+// the state handler by +0x15, for types (+0x1B) 79 and 80
 Pet_RunState = 0x0078E210; // type:func
 // the equipment icon of its kind (a weapon by its class) in its rarity colour
 Lobby_DrawEquipIcon = 0x00790C00; // type:func
 Text_CenterX = 0x00790EC0; // type:func
 // the coin icon and the money ("%7dz"); dimmed when flag
 Menu_DrawMoney = 0x00790F20; // type:func
-// the points of 0x5D73E4 ("%7dP")
+// the points held in sub_main's data (%7dP)
 Menu_DrawPoints = 0x007910C0; // type:func
-// icon 0x42 repeated across w
+// ICON_BAR_SEGMENT repeated across w
 Menu_DrawDashLine = 0x00791230; // type:func
 // a bar of three pieces (two caps, the middle) rotated about cx, cy
 Menu_DrawBarRotated = 0x00791380; // type:func
@@ -521,7 +523,7 @@ Menu_DrawRowBar = 0x007915B0; // type:func
 Menu_DrawPageArrows = 0x007916F0; // type:func
 // page/count, with arrows when there are several
 Menu_DrawPageNum = 0x00791800; // type:func
-// the cursor (icon 0x29), size w
+// the cursor (ICON_CURSOR), size w
 Menu_DrawCursorIcon = 0x007919B0; // type:func
 // a row's underline and the blinking cursor left of it
 Menu_DrawCursorRow = 0x007919C0; // type:func
@@ -530,27 +532,27 @@ Menu_DrawSideArrows = 0x00791A90; // type:func
 // color with a pulsing alpha
 Color_PulseAlpha = 0x00791C40; // type:func
 // pulsing unless flag
-Menu_DrawLine = 0x00791CF0; // type:func
+Menu_DrawRowHighlight = 0x00791CF0; // type:func
 // the frame's four edges and the inner line
 Menu_DrawFrameBox = 0x00791F90; // type:func
-// equipment icon i (D_007FEAF0), 1.25 x wide
+// equipment icon i (gEquipIconUVs), 1.25 x wide
 Icon_DrawEquip = 0x007920D0; // type:func
 Win_Draw = 0x00792190; // type:func
-// the mail icon, blinking, while a mail is in D_5C0540
+// the mail icon, blinking, while a mail is in gMailBox
 Menu_DrawMailIcon = 0x00792280; // type:func
 Icon_DrawRotated = 0x00792690; // type:func
 // rotated about cx, cy
 Icon_DrawRotatedAt = 0x00792740; // type:func
 // TexRect_Draw with mode
 Icon_DrawMode = 0x00792810; // type:func
-// entry i of the table D_007FF250 (position, size, color, icon)
+// entry i of the table gIconPresets (position, size, color, icon)
 Icon_DrawPreset = 0x007928D0; // type:func
 TownPc_IsLoaded = 0x00793C40; // type:func
 // frees the players whose member left (returns 1 if any)
 TownPc_RemoveLeft = 0x00793CF0; // type:func
 // members whose data changed - recalculates skills (returns 1 if any)
 TownPc_RefreshChanged = 0x00793E70; // type:func
-// copies new members into D_008EA908 and spawns their players
+// copies new members into gLobby and spawns their players
 TownPc_AddJoined = 0x00793F90; // type:func
 // per frame online - removes, refreshes, adds members, loads their models
 TownPc_SyncMembers = 0x00794170; // type:func
@@ -559,7 +561,7 @@ TownPc_LoadAllModels = 0x00794330; // type:func
 TownPc_Spawn = 0x00794480; // type:func
 // (p, mode) - mode 1 also marks the member loaded
 TownPc_LoadModel = 0x00794660; // type:func
-// marks the member loading (D_008EA908 +0x3954) when Player_QueueLookFiles starts
+// marks the member loading (gLobby +0x3954) when Player_QueueLookFiles starts
 TownPc_StartLoad = 0x00794760; // type:func
 TownPc_LoadModelNow = 0x007947A0; // type:func
 // (p, mode) - mode 0 frees the player, 1 only the changed models
@@ -578,7 +580,8 @@ Actor_TickTimers = 0x00794C90; // type:func
 Actor_SetStateNow = 0x00794DB0; // type:func
 // (obj, group, state, flags) - flags & 1 keeps the +0x66C timers
 Actor_SetStateFlags = 0x00794DE0; // type:func
-// online, the local player, in an area where the state is sent (func_0077AD50)
+// online, the local player, in an area where the state is sent
+// (Area_HasTownPcs)
 Actor_NeedsStateSend = 0x00794F20; // type:func
 // clears the state work and enters state (0, 1) with motion 1 / 101
 Actor_ReturnToIdle = 0x00795010; // type:func
@@ -608,11 +611,12 @@ Actor_SetState = 0x007960D0; // type:func
 // inserts by priority, then depth
 LockOn_Insert = 0x00796240; // type:func
 TownPc_UpdateAll = 0x00797040; // type:func
-// runs the state (group 0 - func_0079BC90, 1 - func_0079E880), motions, floor, draw
+// runs the state (group 0 TownPc_RunActionState, 1 TownPc_RunGestureState),
+// motions, floor, draw
 TownPc_Update = 0x00797180; // type:func
-// idle; group 0 states are run by func_0079BC90
+// idle; group 0 states are run by TownPc_RunActionState
 TownPc_StateIdle = 0x007977A0; // type:func
-// also states 5 and 0x23
+// also TOWN_PC_RUN_LOOP and TOWN_PC_DRUNK_WALK
 TownPc_StateWalk = 0x00797890; // type:func
 TownPc_StateRun = 0x00797BE0; // type:func
 TownPc_StateRunStop = 0x00797E30; // type:func
@@ -627,11 +631,11 @@ TownPc_StateTurnAround = 0x007988E0; // type:func
 TownPc_StateDrunkCollapse = 0x007989B0; // type:func
 TownPc_StateDrunkGetUp = 0x00798A90; // type:func
 TownPc_StateHairChair = 0x00798C40; // type:func
-// also state 0x25
+// also TOWN_PC_SIT_DOWN_SEATED
 TownPc_StateSitDown = 0x00798CF0; // type:func
 TownPc_StateStandUp = 0x00799100; // type:func
 TownPc_StateBedNap = 0x00799190; // type:func
-// also state 0x1A
+// also TOWN_PC_REST_LONG
 TownPc_StateRest = 0x00799270; // type:func
 TownPc_StateGetUpFaceUp = 0x007996E0; // type:func
 TownPc_StateSeatPoseRight = 0x00799760; // type:func
@@ -646,20 +650,20 @@ TownPc_StateSeatPoseLeftEnd = 0x00799D70; // type:func
 TownPc_StateSeatPoseLeft = 0x00799E10; // type:func
 TownPc_StateSeatPoseDown = 0x00799F00; // type:func
 TownPc_StateSeatPoseDownEnd = 0x00799FC0; // type:func
-// also state 0x18
+// also TOWN_PC_MEAL_RISE_GOOD
 TownPc_StateMealRise = 0x0079A060; // type:func
 TownPc_StateSeatPoseUp = 0x0079A190; // type:func
 TownPc_StateSeatPoseUpEnd = 0x0079A250; // type:func
 TownPc_StateMealServed = 0x0079A2F0; // type:func
 TownPc_StateMealCollapse = 0x0079A380; // type:func
-TownPc_State2B = 0x0079A480; // type:func
+TownPc_State43 = 0x0079A480; // type:func
 TownPc_StateFishWait = 0x0079AB50; // type:func
 TownPc_StateFishCast = 0x0079AC20; // type:func
 TownPc_StateFishReel = 0x0079AD20; // type:func
-// also 0x65 (arg 1)
+// also 101 (arg 1)
 TownPc_StateFishReelEmpty = 0x0079AEC0; // type:func
 TownPc_StateGalleryAim = 0x0079B000; // type:func
-// also 0x71 (arg 1)
+// also 113 (arg 1)
 TownPc_StateContestSeat = 0x0079B070; // type:func
 TownPc_StateContestGrip = 0x0079B220; // type:func
 TownPc_StateContestWin = 0x0079B2B0; // type:func
@@ -680,26 +684,26 @@ TownPc_GestureScout = 0x0079DCD0; // type:func
 TownPc_Gesture03 = 0x0079DDD0; // type:func
 TownPc_Gesture03End = 0x0079DEC0; // type:func
 TownPc_Gesture05 = 0x0079DFB0; // type:func
-// also 0x0E (arg 2)
+// also 14 (arg 2)
 TownPc_Gesture06 = 0x0079E0B0; // type:func
 TownPc_Gesture07 = 0x0079E1B0; // type:func
 TownPc_Gesture08 = 0x0079E2B0; // type:func
-// also 0x0D (arg 1), 0x0F (arg 3)
+// also 13 (arg 1), 15 (arg 3)
 TownPc_GestureOneShot = 0x0079E3B0; // type:func
 TownPc_Gesture0A = 0x0079E470; // type:func
 TownPc_Gesture0B = 0x0079E570; // type:func
 TownPc_Gesture0C = 0x0079E670; // type:func
 TownPc_Gesture10 = 0x0079E770; // type:func
 TownPc_GestureEnd = 0x0079E870; // type:func
-// runs the state of group 1 (debug text "NO PL ACTION")
+// runs the state of group 1 (it prints a debug text)
 TownPc_RunGestureState = 0x0079E880; // type:func
 // reply callback - chat send error
 Chat_OnSendError = 0x0079ECF0; // type:func
 // a position (the player's, or a fixed point by the facility's level) to a member
 TownMsg_SendPoogiePos = 0x0079F050; // type:func
-// message 0x23 - the music's track and position, to a member
+// TOWN_MSG_BGM, the music's track and position, to a member
 TownMsg_SendBgmTo = 0x0079F450; // type:func
-// message 0x23 - track x, to all and to self
+// TOWN_MSG_BGM, track x, to all and to self
 TownMsg_SendBgm = 0x0079F4A0; // type:func
 // the song chosen in SongMenu, to all and to self
 TownMsg_SendSongAsk = 0x0079F4E0; // type:func
@@ -721,7 +725,7 @@ TownMsg_SendSeatAnswer = 0x007A0970; // type:func
 TownMsg_SendOffer = 0x007A0AB0; // type:func
 // the local player's name, two fields and c, to a member
 TownMsg_SendOfferResult = 0x007A0BD0; // type:func
-// town mode 2 - buy, sell, shooting gallery or requests
+// TOWN_MODE_ITEM_SHOP, buying, selling, the shooting gallery or the requests
 ItemShop_Open = 0x007A0FB0; // type:func
 ItemShop_Update = 0x007A1120; // type:func
 Shop_BuildSellList = 0x007A13A0; // type:func
@@ -730,7 +734,8 @@ Shop_SellStep = 0x007A14E0; // type:func
 Shop_Sell = 0x007A1730; // type:func
 Shop_SellAmountInput = 0x007A1800; // type:func
 Shop_SellListInput = 0x007A1A80; // type:func
-// the menu rows (shooting gallery for NPC 0x39, else requests if any)
+// the menu rows (the shooting gallery for NPC_GALLERY_KEEPER, else the
+// requests if any)
 ItemShop_SetRows = 0x007A1C10; // type:func
 // the items on sale
 Shop_BuildStock = 0x007A1DD0; // type:func
@@ -752,7 +757,7 @@ LobbyPad_Read = 0x007A4410; // type:func
 LobbyPad_Get = 0x007A44D0; // type:func
 // n rows of Menu_DrawLabelBar from y 60, row cur in color
 Menu_DrawLabelList = 0x007A4650; // type:func
-// the turn from an actor facing to a point (0x10000 a turn)
+// the turn from an actor facing to a point (ANGLE_TURN a turn)
 Actor_HeadingDiff = 0x007A7030; // type:func
 Menu_WrapUpDown = 0x007A70F0; // type:func
 Menu_WrapUpDownSe = 0x007A7240; // type:func
@@ -764,21 +769,21 @@ WinSlide_Step = 0x007A7A20; // type:func
 Menu_CountPages = 0x007A7C20; // type:func
 // Menu_PushNotice, at most one every 90 frames
 Menu_PushNoticeOnce = 0x007A7ED0; // type:func
-// the notice of a message (D_0080D390 index)
+// the notice of a message (an index of gLobbyNoticeTexts)
 Menu_PushNotice = 0x007A7F30; // type:func
-// a chat line from "CAPCOM" - D_0080D440[msg], %s = arg
+// a chat line from a fixed sender name, gLobbyEventTexts[msg], %s = arg
 Chat_SystemMsg = 0x007A7F80; // type:func
-// blinking "press the button"
+// the blinking button prompt
 Lobby_DrawPressButton = 0x007A81A0; // type:func
 // the text with its first $ replaced (a static buffer)
 Text_FillDollar = 0x007A8220; // type:func
 ActSpot_ClearAll = 0x007A84A0; // type:func
 ActSpot_Release = 0x007A84C0; // type:func
-// town message 04 grants a spot - set its bit
+// TOWN_MSG_SEAT_ASK grants a spot, its bit set
 ActSpot_Take = 0x007A8530; // type:func
-// bit n of the taken-spot mask D_008BEB24/D_008BEB28 is clear
+// bit n of the taken-spot mask gSpotTakenMask is clear
 ActSpot_IsFree = 0x007A85A0; // type:func
-// the text of talk line k (Talk_StepData)
+// the text of talk line k (Talk_LineTextAddr)
 Talk_LineText = 0x007AEF10; // type:func
 Talk_Step = 0x007AF010; // type:func
 // returns 3 when the line is done, after giving its gift (money or an item)
@@ -786,16 +791,14 @@ Talk_Update = 0x007AF3E0; // type:func
 // (line, mode) - shows a line of the current script; mode 1 - no gift at the end
 Talk_Say = 0x007AF5B0; // type:func
 
-// --- Round 14 names (decomp-b14-nlobby) ---
-// first empty record (0x30 bytes each), -1 when full
+// first empty record (48 bytes each), -1 when full
 FriendList_FindFree = 0x00757BD0; // type:func
 // the record with this 8-byte user id, -1 when none
 FriendList_FindId = 0x00757C20; // type:func
 // moves the later records down
 FriendList_DeleteAt = 0x00757CB0; // type:func
-// records in use (0x18 bytes each)
-// --- Round 14 names (decomp-b14-nlobby-h1) ---
-// lists of 0x18-byte entries keyed by an 8-byte id
+// lists of 24-byte entries keyed by an 8-byte id; first, the count of the
+// records in use
 IdList_Count = 0x00757DA0; // type:func
 IdList_FindFree = 0x00757DE0; // type:func
 IdList_Find = 0x00757E30; // type:func
@@ -812,15 +815,16 @@ BoxMenu_DrawArrange = 0x0076C910; // type:func
 BoxMenu_DrawSell = 0x0076CAA0; // type:func
 BoxMenu_DrawSkillHint = 0x0076DB00; // type:func
 GameMenu_Reset = 0x00770970; // type:func
-// town mode 0xB - the start-button menu (items, combine, status, quests, info, chat, mail, search, options, quit; texts D_0080CDC0)
+// TOWN_MODE_GAME_MENU, the start-button menu and its ten items (texts
+// gGameMenuHubTexts)
 GameMenu_Open = 0x007709A0; // type:func
-// chooses the item table - offline, area 0x83, online
+// chooses the item table: offline, AREA_ONLINE_VILLAGE, online
 GameMenu_Start = 0x00770AB0; // type:func
 GameMenu_Clear = 0x00770B90; // type:func
-// Town_UpdateMode 0xB - 1 once closed, else keeps the pad
+// Town_UpdateMode's TOWN_MODE_GAME_MENU, 1 once closed, else keeps the pad
 GameMenu_Poll = 0x00770BC0; // type:func
 GameMenu_GetPad = 0x00770C50; // type:func
-// runs the item open/update tables D_007F1D40...
+// runs the item open and update tables (gGameMenuOpen0 ...)
 GameMenu_Update = 0x00770CB0; // type:func
 // back to the item list (cancel sound)
 GameMenu_Back = 0x00771090; // type:func
@@ -844,14 +848,14 @@ ChatPage_OpenSpeakers = 0x00771F50; // type:func
 ChatPage_UpdateSpeakers = 0x00772060; // type:func
 ChatPage_MarkMuted = 0x00772610; // type:func
 ChatPage_LoadSpeakers = 0x007726C0; // type:func
-// adds to the chat muted list (gChatBlockList), 20 records of 0x18 bytes
+// adds to the chat muted list (gChatBlockList), 20 records of 24 bytes
 MuteList_Add = 0x00772720; // type:func
 MuteList_Remove = 0x007727B0; // type:func
 ChatPage_CountMuted = 0x00772800; // type:func
 ChatPage_OpenState = 0x00772F30; // type:func
 ChatPage_UpdateState = 0x00772FF0; // type:func
 GameMenu_OpenQuit = 0x007732E0; // type:func
-// sets town mode 0x23 (fade out, leave the town)
+// sets TOWN_MODE_QUIT (fade out, leave the town)
 GameMenu_Quit = 0x00773340; // type:func
 GameMenu_UpdateQuit = 0x007733B0; // type:func
 GameMenu_OpenPause = 0x007739A0; // type:func
@@ -864,18 +868,19 @@ GameMenu_DrawMail = 0x00775050; // type:func
 // online quit
 GameMenu_OpenExit = 0x007753D0; // type:func
 GameMenu_UpdateExit = 0x00775450; // type:func
-// town mode 3 - the card of the player in front (status, friend registration)
+// TOWN_MODE_PC_CARD, the card of the player in front (status, friend
+// registration)
 PcCard_Open = 0x007754D0; // type:func
 PcCard_Update = 0x00775590; // type:func
 PcCard_Draw = 0x00775870; // type:func
 Npc_UpdateMotion = 0x0077E140; // type:func
 Npc_IdleWorkshopHelper = 0x00780D40; // type:func
-// Npc_StateIdle for NPC 5
+// Npc_StateIdle for townsperson 5
 Npc_IdleContestHost = 0x00781030; // type:func
-// NPCs 0x69 and 0x6B
+// townspeople 105 and 107
 Npc_IdlePaired = 0x00781150; // type:func
 Npc_Idle4D = 0x00781370; // type:func
-// NPCs 0x3C-0x3E
+// townspeople 60-62
 Npc_Idle3C = 0x00781470; // type:func
 Npc_Idle4B = 0x00781530; // type:func
 Npc_IdleMusicActor = 0x00781620; // type:func
@@ -887,12 +892,13 @@ LobbyMember_GetCard = 0x00793040; // type:func
 LobbyMember_LoadEquip = 0x00793070; // type:func
 // moves by +0x760 for +0x76C frames
 TownPc_StepMoveTo = 0x007956D0; // type:func
-// town mode 0x37 (online contest, area 0x86 spot kind 0xE)
+// TOWN_MODE_CONTEST_SEATED (the online contest, AREA_TAVERN, spot kind
+// TOWN_SPOT_CONTEST)
 Contest_TakeSeat = 0x0079A5C0; // type:func
 TownPc_CheckAction = 0x0079DB00; // type:func
 TownMsg_SendKitchen = 0x0079F180; // type:func
 TownMsg_SendArenaTeam = 0x0079F210; // type:func
-// then 0x2A
+// then 42
 TownMsg_SendArenaTeams = 0x0079F2F0; // type:func
 TownMsg_SendHouseVisit = 0x0079F5B0; // type:func
 // the position (x, z)
@@ -916,33 +922,37 @@ TownMsg_SendSeatAsk = 0x007A0900; // type:func
 TownMsg_SendSeatFree = 0x007A0930; // type:func
 TownMsg_SendSeatTaken = 0x007A09F0; // type:func
 // TownMsg_SendOffer sends to one member
-TownMsg_Send0AAll = 0x007A0A30; // type:func
+TownMsg_SendOfferAll = 0x007A0A30; // type:func
 TownMsg_SendOfferTake = 0x007A0B40; // type:func
 TownMsg_SendOfferEnd = 0x007A0C80; // type:func
 TownMsg_SendSyncAsk = 0x007A0C90; // type:func
-TownMsg_Send0DTo = 0x007A0CD0; // type:func
+TownMsg_SendSyncAskTo = 0x007A0CD0; // type:func
 // the empty callback of TownMsg_SendTo
 TownMsg_OnSent = 0x007A0F30; // type:func
 // +0x6A0 - the position plus the model bounds centre
 Npc_UpdateAreaPos = 0x007A7080; // type:func
 
-// Round 23 (ndata-h1)
+// The lobby fade's test, an area's townspeople, the box menu's symbol
+// colours, a shop's stock by timer, the server's timers and the raid routes.
 LobbyFade_IsRunning = 0x00757B00; // type:func 1 while FadeA_GetState is FADE_STATE_RUNNING (LobbyScreen_RunTour waits on the same state)
 AreaNpc_IsPresent = 0x0077C490; // type:func Npc_IsPresent for entry idx of the area set gAreaNpcTables table (Town_SpawnNpcs)
 BoxMenu_ListStyles = 0x0076DB40; // type:func lists the symbol colours earned and returns their count
 Shop_PickByTimer = 0x007A1D80; // type:func p[1] when offline and Village_GetTimerState(x) is nonzero, else p[0] (gShopStockNpc0A)
 Lobby_ApplyServerTimers = 0x0079EA30; // type:func sets gTownMoveFrames, gRecruitFrames, gFriendCheckFrames and gAreaSearchFrames from the nonzero values of the downloaded data (LobbyStep_DownloadQuests)
 Npc_SetRaidRoute = 0x0077D450; // type:func sets the one route of townspeople 0x1C-0x4E by kind (gNpcRaidRoute1D ... gOfficialDeskHighRaidRoute, 0x1F also scales its +0x884 by 1.3)
-Talk_PlayAmJingle = 0x007A8E00; // type:func (plays jingle 0x133 when the talk event step is 0x63 in the morning, townspeople 0x45-0x47)
+Talk_PlayMorningJingle = 0x007A8E00; // type:func (plays jingle 307 when the talk event step is 99 in the morning, townspeople 69-71)
 
-// Round 24 (nnames-h1)
+// Where the town players are loaded, the return to the portal, the contest
+// test, an actor's motion time, the townspeople's hit stop and a requested
+// offer.
 Area_HasTownPcs = 0x0077AD50; // type:func areas 0x84, 0x86-0x88 and 0xAD-0xAF where the town players are loaded
-NetScene_BackToPortal = 0x007AF5E0; // type:func the portal page after a quit, a first entry next, NetScene_ToState6
+NetScene_BackToPortal = 0x007AF5E0; // type:func the portal page after a quit, a first entry next, NetScene_ToPortal
 TownPc_IsInContest = 0x0079B1D0; // type:func states 0x6F-0x71 (Contest_TakeSeat, Contest_Play)
 Actor_RestartMotionTime = 0x007951F0; // type:func motionTime from the motion start and blend
 Npc_UpdateHitStop = 0x00796090; // type:func the lobby copy of Player_UpdateHitStop
 TownPc_StartRequestedOffer = 0x0079C310; // type:func freeState set, a requested offer starts state 0xA/0x10
 
-// Round 27 (names)
+// The fishing input of the local town player, and a townsperson's route
+// step.
 TownPc_UpdateFishingInput = 0x0079AA80; // type:func the fishing idle input of the local town player, button 0x20 hooks (fishTimer), reels or casts
 Npc_HideAndAdvance = 0x00780560; // type:func a town NPC route step, hides the NPC and moves to the next task phase

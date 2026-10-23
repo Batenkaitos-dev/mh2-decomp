@@ -31,6 +31,7 @@ enum LobbyTextMsg {
     LOBBY_TEXT_TOWN_ENTERING = 0x11,         /* the town's next area is being entered (the move menu's chosen area; LobbyVillage_BeginReturn) */
     LOBBY_TEXT_AREA_FULL = 0x14,             /* the chosen area is full (its LevelEntry.state isn't LEVEL_ENTRY_OPEN) */
     LOBBY_TEXT_AREA_CURRENT = 0x18,          /* the chosen area is the one the player is in (the move menu, Lobby_CanEnterByRank) */
+    LOBBY_TEXT_TOWN_LEAVING = 0x1A,          /* the town is being left for the village (the exit spot's yes, Town_UpdateMode) */
     LOBBY_TEXT_AREA_LIST_FETCH = 0x1B,       /* the areas' list is being fetched (AreaList_Begin) */
     LOBBY_TEXT_MOVING = 0x1D,                /* a move is under way: shown when entering the chosen group failed, while its area's list is fetched again (LobbyLogin_EnterEntry) */
     LOBBY_TEXT_FRIEND_REMOVE_ASK = 0x1E,     /* whether to take the friend off the friend list (a yes or no; FriendList_Update) */
@@ -40,12 +41,14 @@ enum LobbyTextMsg {
     LOBBY_TEXT_NAME_EMPTY = 0x24,            /* the name search: no name was typed */
     LOBBY_TEXT_FRIEND_ADD_ASK = 0x25,        /* whether to add the user to the friend list (a yes or no; FriendList_AskAdd) */
     LOBBY_TEXT_FRIEND_IS_SELF = 0x26,        /* the user to add is the player */
+    LOBBY_TEXT_MAIL_TO_SELF = 0x27,          /* the short mail's addressee typed is the player */
     LOBBY_TEXT_FRIEND_ADD_NO = 0x28,         /* the friend's adding is answered no */
     LOBBY_TEXT_FRIEND_ADDED = 0x29,          /* the user is added to a free entry */
     LOBBY_TEXT_FRIEND_UPDATED = 0x2A,        /* the user's entry, already listed, is written again */
     LOBBY_TEXT_FRIEND_LISTED_ASK = 0x2B,     /* the user is already listed: write the entry again? (a yes or no) */
     LOBBY_TEXT_FRIEND_NEW_ASK = 0x2C,        /* the user isn't listed yet: add? (a yes or no) */
     LOBBY_TEXT_FRIEND_LIST_FULL = 0x2D,      /* the friend list has no free entry */
+    LOBBY_TEXT_HUNTER_UNAVAILABLE = 0x2F,    /* the hunter can't be joined: not PROFILE_STATUS_JOINABLE, or on a server the list doesn't hold (Group_CanJoin) */
     LOBBY_TEXT_BLOCK_ADD_ASK = 0x30,         /* whether to add the user to the mail block list (BlockList_AskAdd) */
     LOBBY_TEXT_BLOCK_ADD_NO = 0x31,          /* the user isn't added: the player, or answered no */
     LOBBY_TEXT_BLOCK_ADDED = 0x32,           /* the user is added to a free entry */
@@ -56,6 +59,11 @@ enum LobbyTextMsg {
     LOBBY_TEXT_BLOCK_REMOVE_ASK = 0x37,      /* whether to take the user off the block list (BlockList_AskRemove) */
     LOBBY_TEXT_BLOCK_KEPT = 0x38,            /* the user stays on the block list (answered no) */
     LOBBY_TEXT_BLOCK_REMOVED = 0x39,         /* the user is taken off the block list */
+    LOBBY_TEXT_MAIL_SENT = 0x3B,             /* the short mail was sent (LobbyStep_ShortMailSend) */
+    LOBBY_TEXT_MAIL_SENDING = 0x44,          /* the short mail is being sent */
+    LOBBY_TEXT_QUIT_ASK_GMSUB = 0x3C,        /* the quit menu asks to confirm QUIT_CHOICE_GMSUB */
+    LOBBY_TEXT_QUIT_ASK_GMSUB_KEEP = 0x3D,   /* the quit menu asks to confirm QUIT_CHOICE_GMSUB_KEEP */
+    LOBBY_TEXT_QUIT_ASK_PORTAL = 0x3E,       /* the quit menu asks to confirm QUIT_CHOICE_PORTAL */
     LOBBY_TEXT_LEAVE_ASK = 0x3F,             /* whether to leave the lobby server (a yes or no; the move menu) */
     LOBBY_TEXT_GROUP_DISBANDED = 0x49,       /* the chosen entry was closed meanwhile (the area board's join) */
     LOBBY_TEXT_GROUP_OPENING = 0x4B,         /* a free entry of the group board is being opened as the player's group */
@@ -64,7 +72,9 @@ enum LobbyTextMsg {
     LOBBY_TEXT_GROUP_SEARCHING = 0x54,       /* the group search is running */
     LOBBY_TEXT_GROUP_NONE_FOUND = 0x55,      /* the group search found no group (circle goes back to the form) */
     LOBBY_TEXT_GROUP_FETCHING = 0x56,        /* a group's details are being fetched (also before joining one of the area's groups) */
+    LOBBY_TEXT_HUNTER_SAME_PLACE = 0x5B,     /* the hunter to join is where the player is: the same server, area and land (Group_CanJoin) */
     LOBBY_TEXT_SAVE_ASK = 0x5D,              /* asks whether to save (the bed's menu, offline) */
+    LOBBY_TEXT_HOUSE_PASSWORD_WRONG = 0x60,  /* the password for a member's house is wrong or empty (HouseAccess_Update) */
     LOBBY_TEXT_ROOM_CLOSED = 0x6C,           /* the quest room has closed (LobbyRoom_BeginClose's kind 0) */
     LOBBY_TEXT_SET_OUT_SHORT_ASK = 0x6D,     /* the quest's payer at the gate with members missing: set out? (TOWN_MODE_SET_OUT_ASK) */
     LOBBY_TEXT_SET_OUT_CANCEL_ASK = 0x6E,    /* a member at the gate after setting out: cancel? (TOWN_MODE_SET_OUT_CANCEL_ASK) */
@@ -77,15 +87,22 @@ enum LobbyTextMsg {
     LOBBY_TEXT_RECORDS_NO_REPLY = 0x79,      /* the house's owner didn't send the records asked for in time */
     LOBBY_TEXT_EXIT_ASK = 0x7B,              /* the town's exit spot: leave the town? (TOWN_MODE_EXIT_ASK) */
     LOBBY_TEXT_AREA_MOVING = 0x7D,           /* online, moving to another area (LobbyScreen_LeaveArea) */
+    LOBBY_TEXT_AREA_PICK_FROM_TAVERN = 0x7E, /* the area menu at AREA_TAVERN's door to AREA_HUB_0x85: that area or AREA_ELDER_HALL, the hall not open yet (COND_HR_GATE_2_HR_31 unmet) */
+    LOBBY_TEXT_AREA_PICK_FROM_TAVERN_HALL = 0x7F, /* the same, the hall open */
+    LOBBY_TEXT_AREA_PICK_FROM_85 = 0x80,     /* the area menu at AREA_HUB_0x85's door to AREA_TAVERN: that area or AREA_ELDER_HALL, the hall not open yet */
+    LOBBY_TEXT_AREA_PICK_FROM_85_HALL = 0x81, /* the same, the hall open */
     LOBBY_TEXT_GATE_CLOSED = 0x82,           /* the quest gate: no quest is taken, or it isn't this season's or this time of day's (QUEST_ORDER_WRONG_TIME) */
     LOBBY_TEXT_GATE_ORDER_TERMS = 0x83,      /* the quest gate: the quest's order terms aren't met (QUEST_ORDER_TERMS) */
     LOBBY_TEXT_MOVE_ASK = 0x84,              /* the move menu's question: move to another area, or leave the lobby (MoveMenu_Update) */
+    LOBBY_TEXT_QUIT_MENU = 0x85,             /* the quit menu's text while its choices show */
     LOBBY_TEXT_GROUP_JOIN_ASK = 0x86,        /* whether to join the group found, on the player's own land (a yes or no) */
     LOBBY_TEXT_GROUP_JOIN_MOVE_ASK = 0x87,   /* whether to join the group found, which is on another land (a yes or no) */
     LOBBY_TEXT_GROUP_RANK_REFUSED = 0x88,    /* the group's limit (GROUP_LIMIT_*) doesn't admit the player's hunter rank (the group board, LobbyLogin_EnterEntry, LobbyLevel1_Enter) */
+    LOBBY_TEXT_HUNTER_JOIN_MOVE_ASK = 0x89,  /* whether to join the hunter, who is on another server (a yes or no; Group_Join) */
+    LOBBY_TEXT_HUNTER_JOIN_ASK = 0x8A,       /* whether to join the hunter, on the player's own server (a yes or no; Group_Join) */
     LOBBY_TEXT_ENTRY_JOIN_ASK = 0x8B,        /* whether to join the chosen entry (a yes or no; the area board's join) */
     LOBBY_TEXT_ARENA_RELEASE_ASK = 0x8C,     /* the arena cup's desk asks whether to release the chosen monster */
-    LOBBY_TEXT_RECORDS_WAIT = 0x8E,          /* waiting for the house owner's records */
+    LOBBY_TEXT_PLEASE_WAIT = 0x8E,           /* a wait message: the records' owner asked, the arena's request sent */
     LOBBY_TEXT_GROUP_BOARD_ASK = 0x8F,       /* the group board's first question: the area's groups or the group search (a two-way choice; GroupBoard_Open) */
     LOBBY_TEXT_PASSWORD_EMPTY = 0x90,        /* the house password typed is empty */
     LOBBY_TEXT_ARENA_TERMS_UNMET = 0x92,     /* the arena cup's quest: the order terms are not met (Quest_CheckOrderTerms) */
@@ -99,9 +116,9 @@ enum LobbyTextMsg {
  */
 enum LobbyDialogKind {
     DIALOG_TEXT = 0,        /* the text alone */
-    DIALOG_WAIT = 1,        /* a text of its own over a dimmed screen; "press a button" once no leave is pending */
-    DIALOG_PAGES = 2,       /* no box: a page of a text with the page number, or a "none now" text, and "back" */
-    DIALOG_COUNTDOWN = 3,   /* a text of its own and a countdown in seconds, then "press a button" */
+    DIALOG_WAIT = 1,        /* a text of its own over a dimmed screen; the button prompt once no leave is pending */
+    DIALOG_PAGES = 2,       /* no box: a page of a text with the page number, or the empty list's text, and the back prompt */
+    DIALOG_COUNTDOWN = 3,   /* a text of its own and a countdown in seconds, then the button prompt */
     DIALOG_YES_NO = 4,      /* the text, then yes and no (gLobbyDialogChoice, 0 yes) */
     DIALOG_OK = 5,          /* the text, then yes alone */
     DIALOG_SAVE_QUIT = 6,   /* the text, then save, or quit without saving */
@@ -111,6 +128,8 @@ enum LobbyDialogKind {
     DIALOG_DIM = 10,        /* only the dimmed screen */
     DIALOG_NONE = 11        /* nothing */
 };
+
+#define LOBBY_NOTICE_COUNT 41  /* gLobbyNoticeTexts' entries (Menu_PushNotice shows no other) */
 
 /* Notices of gLobbyNoticeTexts that Menu_PushNoticeOnce shows, named by
  * the role their callers give them. */
@@ -127,6 +146,7 @@ enum LobbyNotice {
     LOBBY_NOTICE_BOW_ONLY = 0x0E,   /* the shop: the item chosen is a coating and the weapon isn't a bow */
     LOBBY_NOTICE_SENT_TO_BOX = 0x0F, /* what was got went to the box: a workshop counter's new or changed piece that isn't worn, or items past the pouch's room (Items_Give returned 1) */
     LOBBY_NOTICE_NO_HUNTER_RANK = 0x10, /* the quest counter's spot at hunter rank 0 */
+    LOBBY_NOTICE_TOWN_LEAVE_FAILED = 0x12, /* the town couldn't be left (Town_ModeDisconnect: LobbyStep_Level1Leave failed); the player stays */
     LOBBY_NOTICE_GUN_NO_AMMO = 0x13, /* the hunter's gun has no ammo (Equip_GunHasNoAmmo), shown when a quest menu opens */
     LOBBY_NOTICE_POUCH_FULL = 0x15, /* the pouch has no room for the item given (a resident's gift, the mine's find) */
     LOBBY_NOTICE_NO_MONEY = 0x16,   /* the price is more than the money held (the bed's menu, the shooting gallery's fee) */
@@ -142,6 +162,7 @@ enum LobbyNotice {
     LOBBY_NOTICE_SONG_TRACK3_FIRST = 0x21, /* shown with the first request of the song menu's track 3 (SongMenu_OnAccepted) */
     LOBBY_NOTICE_ARENA_RELEASE_REFUSED = 0x22, /* the arena cup's desk: a monster can't be released while the cup's quest is taken */
     LOBBY_NOTICE_EQUIP_GOT = 0x23,  /* a townsperson's gift of equipment went into the box (Talk_Update) */
+    LOBBY_NOTICE_HOUSE_CLOSED = 0x24, /* another's online house: its owner left or no longer lets visitors in; the player is sent out 10 s later (MyHouse_CheckHost) */
     LOBBY_NOTICE_CANNOT_WEAR = 0x25, /* the armour forge: the chosen upgrade can't be worn by this hunter (Equip_CanWear) */
     LOBBY_NOTICE_HOUSE_OPEN = 0x26, /* the house's Poogie while the house is open to visitors (NPC_STATE_HOUSE_OPEN): no menu */
     LOBBY_NOTICE_MEAL_MONEY = 0x27, /* the kitchen: money given with a dish eaten online with others (Kitchen_Update) */
@@ -176,5 +197,11 @@ enum LobbyEventText {
     LOBBY_EVENT_TEXT = 10,          /* the argument alone */
     LOBBY_EVENT_TOWN_CHECKING = 11  /* the town's state is being checked (sent as chat during a raid's movie) */
 };
+
+void TagText_ReadTag(void);
+void TagText_HandleTag(void);
+void TagText_ReadLine(void);
+void TagText_DrawLine(void);
+void TagText_Print(char *text, f32 x, f32 y);
 
 #endif /* LOBBY_TEXT_H */

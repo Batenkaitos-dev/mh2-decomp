@@ -1,8 +1,9 @@
 #ifndef EM_KIND38_H
 #define EM_KIND38_H
+#include "em.h"
 
 /*
- * Kind 0x38's vocabulary (EmKind38_*): a small hovering
+ * Kind 56's vocabulary (EmKind38_*, the kind in hex): a small hovering
  * monster with one contact attack (the charge). Nothing in the code names
  * the monster. It is placed by the quest or spawned by Yama Tsukami
  * (EmKind38_SpawnAtEmBone; then it bursts out, stays 1800 frames and dies).
@@ -10,6 +11,27 @@
  */
 enum EmKind38Motion {
     K38_MOT_IDLE = 0x01
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones). The
+ * code uses one: bone 2 is its body.
+ *
+ * Sounds: a sound number indexes the kind's own sound bank
+ * (Em_PlaySeAtBoneVol, at K38_BONE_BODY). Each plays on the frame of the
+ * thing it goes with, or loops while a state runs (EmKind38_UpdateLoopSe,
+ * by EmKind38Work.seKind).
+ */
+enum EmKind38Bone {
+    K38_BONE_BODY = 2       /* its one hit sphere (part 1, radius 40), its charge's sphere (BulldromeAttack, which it borrows), where its sounds play and where the self-destruct explodes */
+};
+enum EmKind38Se {
+    K38_SE_FLY_LOOP = 0,    /* every 10 frames while it flies, hovers, sidesteps or bursts out (seKind 1) */
+    K38_SE_CHARGE_LOOP = 1, /* every 11 frames while it charges or flies at the target to explode (seKind 2) */
+    K38_SE_BURST_OUT = 2,   /* on K38_FLY_BURST_OUT's first frame, as it is flung out */
+    K38_SE_VANISH = 3,      /* when K38_DEFEAT_DIE's 60-frame hold ends and the fade starts */
+    K38_SE_ICE_KILL = 4,    /* on the frame an ice hit kills it (EmKind38_Update) */
+    K38_SE_FLINCH = 5       /* on the frame a hit makes it flinch (EmKind38_Update) */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmKind38_RunIdleState). */
@@ -31,7 +53,7 @@ enum EmKind38FlyState {
     K38_FLY_HOVER = 0x03,               /* the idle in the air */
     K38_FLY_CLIMB = 0x04,
     K38_FLY_DESCEND = 0x05,             /* lands if it touches the floor */
-    K38_FLY_SIDESTEP_A = 0x06,          /* heading 0x3800 off the goal's direction, one way */
+    K38_FLY_SIDESTEP_A = 0x06,          /* heading 14336 off the goal's direction, one way */
     K38_FLY_SIDESTEP_B = 0x07,          /* the other way */
     K38_FLY_DRIFT = 0x08,               /* along +x, -x, +z or -z (stateRand) */
     K38_FLY_NONE = 0x09,
@@ -70,7 +92,7 @@ enum EmKind38Event2State {
     K38_EVENT_FADE_IN = 0x00            /* sinks into view after reappearing */
 };
 
-/* Kind 0x38's own meanings of the work area's bytes (em.h's EmWork has the shared ones). */
+/* Kind 56's own meanings of the work area's bytes (em.h's EmWork has the shared ones). */
 typedef struct EmKind38Work {
     u8 fxStep;                  /* 0x000: UpdateMotionEffects: 0, then 1 */
     u8 unk001[0x006 - 0x001];
@@ -92,5 +114,35 @@ typedef struct EmKind38Work {
     u8 unk042[0x100 - 0x042];
 } EmKind38Work;
 typedef char EmKind38Work_size_check[(sizeof(EmKind38Work) == sizeof(EmWork)) ? 1 : -1];
+
+extern void *EmKind38_Callbacks[8];
+void EmKind38_UpdateLoopSe(Em *em, EmWork *work);
+void EmKind38_Init(Em *em);
+void EmKind38_Start(Em *em);
+void EmKind38_FlyForward(Em *em, s16 variant);
+void EmKind38_FlyBackward(Em *em);
+void EmKind38_Climb(Em *em);
+void EmKind38_Descend(Em *em);
+void EmKind38_Sidestep(Em *em, s32 dir);
+void EmKind38_Drift(Em *em);
+void EmKind38_BurstOut(Em *em);
+void EmKind38_Charge(Em *em, u8 k);
+void *EmKind38_CreateChargeAttack(Em *em);
+void EmKind38_SelfDestruct(Em *em);
+void EmKind38_Die(Em *em, u8 variant);
+void EmKind38_Reappear(Em *em);
+void EmKind38_Update(Em *em);
+void EmKind38_RunState(Em *em);
+void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmKind38_InitHover(Em *em, EmWork *work);
+void EmKind38_SteerHover(Em *em, EmWork *work);
+void EmKind38_ApplyHover(Em *em, EmWork *work);
+s32 EmKind38_MoveByVelocity(Em *em);
+void EmKind38_ClampVelocity(Em *em, f32 *max);
+void EmKind38_KeepHeight(Em *em, u8 k);
+s32 EmKind38_HitByIce(Em *em);
+void EmKind38_SpawnAtEmBone(Em *em);
+u8 EmKind38_IsCharging(Em *em);
+void EmKind38_PlaySe(Em *em, s32 soundId);
 
 #endif

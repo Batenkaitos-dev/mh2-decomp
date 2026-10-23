@@ -2,13 +2,15 @@
 #define LOBBY_NPC_H
 
 #include "common.h"
+#include "em.h"
 
 /*
- * A route entry (0x14 bytes): the point, the state to enter there
+ * A route entry (20 bytes): the point, the state to enter there
  * (Npc_EnterRoutePoint; 0 ends the route and it starts again) and an
  * argument: the frames to wait there, -1 no wait, -2 until the Em timer
- * +0x154 runs out (Npc_UpdateState); for state 0x83 the next route
- * (Npc_StateRouteJump) and for 0x81 an angle.
+ * +0x154 runs out (Npc_UpdateState); for NPC_STATE_ROUTE_JUMP the next route
+ * (Npc_StateRouteJump; the data types such a point as NpcRouteJump) and for
+ * NPC_STATE_ROUTE_TURN an angle.
  */
 typedef struct NpcPos {
     f32 v[3];
@@ -18,6 +20,54 @@ typedef struct NpcRouteEnt {
     /* 0x0C */ s32 state;
     /* 0x10 */ s32 arg;
 } NpcRouteEnt;
+
+/*
+ * A route point of NPC_STATE_ROUTE_JUMP or NPC_STATE_ROUTE_JUMP_RANDOM: its
+ * argument is the next route, which Npc_StateRouteJump and
+ * Npc_StateRouteJumpRandom read as a pointer.
+ */
+typedef struct NpcRouteJump {
+    /* 0x00 */ NpcPos pos;
+    /* 0x0C */ s32 state;
+    /* 0x10 */ NpcRouteEnt *next;
+} NpcRouteJump;
+
+/*
+ * The routes that end in a jump, each one object the route's walk reads
+ * from its first point on: the points before the jump, the jump, and in
+ * the ...End ones the end point (state 0) after it. Named by the number
+ * of points before the jump; the code takes the route as `.pt`.
+ */
+typedef struct NpcJumpRoute2 { NpcRouteEnt pt[2]; NpcRouteJump jump; } NpcJumpRoute2;
+typedef struct NpcJumpRoute3 { NpcRouteEnt pt[3]; NpcRouteJump jump; } NpcJumpRoute3;
+typedef struct NpcJumpRoute4 { NpcRouteEnt pt[4]; NpcRouteJump jump; } NpcJumpRoute4;
+typedef struct NpcJumpRoute6 { NpcRouteEnt pt[6]; NpcRouteJump jump; } NpcJumpRoute6;
+typedef struct NpcJumpRoute7 { NpcRouteEnt pt[7]; NpcRouteJump jump; } NpcJumpRoute7;
+typedef struct NpcJumpRoute9 { NpcRouteEnt pt[9]; NpcRouteJump jump; } NpcJumpRoute9;
+typedef struct NpcJumpRoute12 { NpcRouteEnt pt[12]; NpcRouteJump jump; } NpcJumpRoute12;
+typedef struct NpcJumpRoute3End { NpcRouteEnt pt[3]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute3End;
+typedef struct NpcJumpRoute4End { NpcRouteEnt pt[4]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute4End;
+typedef struct NpcJumpRoute5End { NpcRouteEnt pt[5]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute5End;
+typedef struct NpcJumpRoute6End { NpcRouteEnt pt[6]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute6End;
+typedef struct NpcJumpRoute7End { NpcRouteEnt pt[7]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute7End;
+typedef struct NpcJumpRoute8End { NpcRouteEnt pt[8]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute8End;
+typedef struct NpcJumpRoute9End { NpcRouteEnt pt[9]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute9End;
+typedef struct NpcJumpRoute10End { NpcRouteEnt pt[10]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute10End;
+typedef struct NpcJumpRoute11End { NpcRouteEnt pt[11]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute11End;
+typedef struct NpcJumpRoute14End { NpcRouteEnt pt[14]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute14End;
+typedef struct NpcJumpRoute19End { NpcRouteEnt pt[19]; NpcRouteJump jump; NpcRouteEnt end; } NpcJumpRoute19End;
+
+/*
+ * A route whose jump is NPC_STATE_ROUTE_JUMP_RANDOM (gNpcRoute6E): its
+ * point, the random jump, then the point whose route the random jump takes
+ * one time in ten (the next entry's argument), and the end point.
+ */
+typedef struct NpcRandJumpRoute {
+    NpcRouteEnt pt[1];
+    NpcRouteJump jump;
+    NpcRouteJump alt;
+    NpcRouteEnt end;
+} NpcRandJumpRoute;
 
 /* A line on the town's ground, from (x1, z1) to (x2, z2) (gNpcSideLines):
  * Npc_PlayerAboveLine tells which side of it the local player is on. */
@@ -51,10 +101,10 @@ typedef struct NpcWork {
     /* 0x00 */ u8 id;           /* which townsperson (Npc_Find, Npc_IsPresent) */
     /* 0x01 */ u8 voice;            /* the first of its two voice sounds (Npc_PlayVoice adds 0 or 1) */
     /* 0x02 */ u8 noTalk;       /* 1: the player can't talk to it or lock on to it (TownPc_HandleInput, the lock-on); cleared by Npc_UpdateState each frame, set again by the states that keep it busy */
-    /* 0x03 */ u8 talked;       /* 0 until the player first talks to it (the talk then takes its first-time line and sets it); cleared for every townsperson by Npc_ClearAllTalked (a new day) */
+    /* 0x03 */ s8 talked;       /* 0 until the player first talks to it (the talk then takes its first-time line and sets it); cleared for every townsperson by Npc_ClearAllTalked (a new day) */
     /* 0x04 */ u8 offerMark;    /* the offer mark over it (Npc_RefreshOffers): 0 none, 1 an offer, 2 a ready one */
     /* 0x05 */ u8 unk5[0x8 - 0x5];
-    /* 0x08 */ char *name;      /* its name: the area table's, or the Poogie's name (SaveData.poogieName) for townsperson 0x14 (Npc_SetupFromArea) */
+    /* 0x08 */ char *name;      /* its name: the area table's, or the Poogie's name (SaveData.poogieName) for NPC_POOGIE (Npc_SetupFromArea) */
     /* 0x0C */ NpcRouteEnt *route; /* the route (Em + 0x444) */
     /* 0x10 */ u8 unk10[0x14 - 0x10];
     /* 0x14 */ f32 step[3];     /* Npc_StartMoveTo: the move per frame (Em + 0x44C) */
@@ -79,10 +129,10 @@ typedef struct NpcWork {
     /* 0x48 */ u8 presence;         /* the area entry's presence rule (NpcAreaEntry.presence) */
     /* 0x49 */ u8 leaving;          /* set as the townsperson leaves the area (Npc_StateLeave, the swap with its pair); its time-of-day route changes stop */
     /* 0x4A */ u8 bodyKind;         /* its body: the area entry's modelSet (Npc_SetupFromArea), also Em.type and Em.modelSlot; 1 a stationed townsperson (not Npc_IsFree) */
-    /* 0x4B */ u8 look;             /* its look: the area entry's type, also Em.variant and Em.npcLook; 0x4D-0x55 are the special ones (not Npc_IsFree) */
+    /* 0x4B */ u8 look;             /* its look: the area entry's type, also Em.variant and Em.npcLook; 77-85 are the special ones (not Npc_IsFree) */
     /* 0x4C */ u8 holdRoute;    /* nonzero: Npc_UpdateState stays at the route point */
     /* 0x4D */ u8 unk4D[0x50 - 0x4D];
-    /* 0x50 */ f32 markAnchor[3]; /* where the offer mark hangs: the position of bone 0x14 (free), 0xA (looks 0x51-0x55) or 0xC (body 1), else 200 * scaleY above it (Npc_Init); NameTags_DrawNpcs keeps the mark there while the bone moves less than 20, and stores the bone each frame */
+    /* 0x50 */ f32 markAnchor[3]; /* where the offer mark hangs: the position of bone 20 (free), 10 (looks 81-85) or 12 (body 1), else 200 * scaleY above it (Npc_Init); NameTags_DrawNpcs keeps the mark there while the bone moves less than 20, and stores the bone each frame */
     /* 0x5C */ union {
         s32 partnerId;          /* a side pair's townsperson parked as it leaves: its partner's id (Npc_CheckSideSwap) */
         s32 warpTimer;          /* the pets: 200 when it is put back at an entry point far from its spot, counted down each frame; while nonzero it skips the wall collision (Pet_StateFollow) */
@@ -91,7 +141,7 @@ typedef struct NpcWork {
 typedef char NpcWork_size_check[(sizeof(NpcWork) == 0x60) ? 1 : -1];
 
 /* A townsperson's entry in an area set's table (gAreaNpcTables[set],
- * gAreaNpcCounts[set] of them; 0x48 bytes). Npc_SetupFromArea copies it into
+ * gAreaNpcCounts[set] of them; 72 bytes). Npc_SetupFromArea copies it into
  * the Em and its NpcWork. */
 typedef struct NpcAreaEntry {
     /* 0x00 */ u8 id;               /* the townsperson's id (NpcWork.id) */
@@ -100,7 +150,7 @@ typedef struct NpcAreaEntry {
     /* 0x04 */ s32 yaw;             /* the start yaw (Em.rotY), kept until a turn point of the route gives another */
     /* 0x08 */ f32 scale;
     /* 0x0C */ f32 motionSpeed;     /* the motion speed (Em.motionSpeed) */
-    /* 0x10 */ void *route;         /* its route (an NpcRouteEnt list) */
+    /* 0x10 */ NpcRouteEnt *route;  /* its route; for a townsperson whose route Npc_SetRouteByKind picks right after, its table of routes by time of day (NpcRouteEnt *[4]) */
     /* 0x14 */ u8 modelSet;         /* its model and handler set: Em.type, Em.modelSlot and NpcWork.bodyKind (1: a stationed townsperson, not free) */
     /* 0x15 */ u8 presence;         /* its presence rule (NpcWork.presence): 0 always, 1 mornings, 2 afternoons, 4 on the player's side of its pair */
     /* 0x16 */ char name[0x32];     /* its name (NpcWork.name) */
@@ -117,7 +167,7 @@ typedef struct NpcColor {
 } NpcColor;
 
 /* Two townspeople who take turns at one place: at most one of them is in town
- * (gAreaNpcSpawns[area]: the pairs of an area set, ended by NPC id 0xFF). */
+ * (gAreaNpcSpawns[area]: the pairs of an area set, ended by NPC id 255). */
 typedef struct NpcPair {
     u8 first;
     u8 second;
@@ -129,7 +179,7 @@ typedef struct NpcPair {
 /* Townspeople the action button's talk acts on (TownPc_HandleInput). */
 #define NPC_CONTEST_HOST        0x05    /* offline, the arm-wrestling contest is held with it (Contest_Open) */
 #define NPC_DRINK_CONTEST_HOST  0x10    /* offline in the afternoon, a tavern seat opens its drinking contest */
-#define NPC_POOGIE_CARE         0x22    /* the care pet (in AREA_HUB_0x83): its talk opens the care menu (PoogieMenu_OpenCare) */
+#define NPC_POOGIE_CARE         0x22    /* the care pet (in AREA_ONLINE_VILLAGE): its talk opens the care menu (PoogieMenu_OpenCare) */
 #define NPC_HOUSE_PET           0x6D    /* the house pet (in AREA_HOUSE and AREA_HUB_0x57): its talk starts a petting (HousePet_Open) */
 #define NPC_NAMING_TALKER       0x12    /* the townsperson who talks the player through the Poogie's naming (PoogieNaming_Open: no naming without it) */
 #define NPC_HAIRDRESSER         0x70    /* its talk opens the hair menu (HairMenu_Open) */
@@ -218,12 +268,18 @@ enum NpcState {
     NPC_STATE_ROUTE_WALK             = 0x82,
     NPC_STATE_ROUTE_JUMP             = 0x83,
     NPC_STATE_RANDOMIZE_WAIT         = 0x84,
+    NPC_STATE_DRINK_WAIT             = 0x85, /* the drinking contest's opponent: seated with its mugs (DrinkContest_Play) */
+    NPC_STATE_DRINK                  = 0x86, /* the opponent drinks a mug: its frame 250 empties one */
     NPC_STATE_PAIR_STAND_3           = 0x8B,
     NPC_STATE_CALL_OVER              = 0x8E,
     NPC_STATE_REACT_NEAR             = 0x8F,
     NPC_STATE_WAIT_TOWN_FREE         = 0x93,
     NPC_STATE_IDLE_BY_TIME           = 0x96,
     NPC_STATE_CONTEST_WAIT           = 0xA1,
+    NPC_STATE_HAIR_WAIT              = 0x97, /* the hairdresser waits while the player walks to the chair (the hair menu sets it) */
+    NPC_STATE_HAIR_DONE              = 0x98, /* the haircut's end: back to its route; the hair menu waits for it */
+    NPC_STATE_HAIR_PREPARE           = 0x99, /* gets ready once the player stands at the chair (the hair menu sets it) */
+    NPC_STATE_HAIR_DO                = 0x9B, /* the haircut, once the player sits (the hair menu sets it) */
     NPC_STATE_BUSY_TALK_HOLD         = 0xA2,
     NPC_STATE_CONTEST_REACT          = 0xA6,
     NPC_STATE_CONTEST_REACT_LATE     = 0xA7,
@@ -297,7 +353,7 @@ typedef struct VillageNpcEvent {
  */
 enum PetArea {
     PET_AREA_POOGIE = 0,        /* the Poogie (NPC_POOGIE): every area but the two below */
-    PET_AREA_CARE = 1,          /* AREA_HUB_0x83: the care pet (NPC_POOGIE_CARE) */
+    PET_AREA_CARE = 1,          /* AREA_ONLINE_VILLAGE: the care pet (NPC_POOGIE_CARE) */
     PET_AREA_HOUSE = 2          /* AREA_HOUSE and AREA_HUB_0x57: the house pet (NPC_HOUSE_PET) */
 };
 
@@ -364,10 +420,49 @@ typedef char NpcWorkshopWork_size_check[(sizeof(NpcWorkshopWork) == sizeof(NpcWo
 #define TALK_LINE_NEXT  2       /* another line follows; any other kind is the talk's last line */
 #define TALK_CHOICE_YES 0
 #define TALK_CHOICE_NO  1
+#define TALK_BOX_NO_INPUT 0x1   /* Talk_YesNoBox's flags: the pad is ignored */
+#define TALK_BOX_SILENT   0x2   /* closing the line plays no sound */
 #define TALK_GIFT_MONEY 1       /* money, with its notice */
 #define TALK_GIFT_ITEM  2       /* an item into the pouch */
 #define TALK_GIFT_EQUIP 3       /* a piece of equipment into the box */
 #define TALK_GIFT_NONE  0xFF    /* TalkLine.gift: the line hands over nothing */
+#define TALK_EVENTS_MAX 100    /* Talk_Start gives up its search of a script's events after this many */
+#define TALK_SEL_ENTRIES_MAX 1000 /* and of a selection list's entries */
+#define TALK_EVENT_NONE 0xFFFF  /* gTalkEventStep: the talk took no event step; also the end of a script's events */
+
+/* An event of a script (gTalkEvents[script], ended by step TALK_EVENT_NONE):
+ * the event step that Talk_Check tests, and the line the talk then opens
+ * with. */
+typedef struct TalkEvent {
+    u16 step;
+    u16 line;
+} TalkEvent;
+
+/* An entry of a selection list (gTalkSelects[script] and its lists, ended
+ * by an entry with no next): the id its check tests (a village condition,
+ * a talk state or a town mode, by the list's level), and the next level's
+ * list, or at the last level the entry's lines (TalkSelLines). */
+typedef struct TalkSel {
+    u16 id;
+    void *next;
+} TalkSel;
+
+/* A selection's lines (the TalkSel.next of a list's last level, gTalkSelLines):
+ * the line a talk opens with, the first time the player talks to the
+ * townsperson and every later time (Talk_Start, by NpcWork.talked). */
+typedef struct TalkSelLines {
+    /* 0x0 */ u16 firstLine;    /* the first talk's line (gTalkLines[script]) */
+    /* 0x2 */ u16 laterLine;    /* every later talk's line */
+} TalkSelLines;
+
+/* A talk script's record in the talk data file (Talk_FindScript): the
+ * script, and the offset of its table of line offsets from the file's
+ * start. The records end with script TALK_SCRIPT_END. */
+typedef struct TalkFileScript {
+    s32 script;
+    s32 offset;
+} TalkFileScript;
+#define TALK_SCRIPT_END 0xFFFF
 
 /* A line of a townsperson's talk (gTalkLines[script][line]). */
 typedef struct TalkLine {
@@ -391,5 +486,148 @@ typedef struct TalkGift {
         u16 id;                 /* the equipment's id */
     } b;
 } TalkGift;
+
+s32 NpcScene_IsDone(void);
+void NpcScene_RunNpc(Em *npc);
+
+void Npc_SetRouteToHairChair(Em *npc);
+void Npc_SetRouteFromHairChair(Em *npc);
+s32 Npc_IsFreeAct2Bto30(Em *npc);
+s32 Npc_IsFreeAct15to19(Em *npc);
+s32 Npc_IsFreeAct18Set(Em *npc);
+s32 Npc_HasSecondHead(Em *npc);
+s32 Npc_IsFreeId0Aor2E(Em *npc);
+s32 Npc_IsWorkshopSmith(Em *npc);
+s32 Npc_IsFreeAct29or2A(Em *npc);
+s32 Npc_IsFree(Em *npc);
+s32 Npc_IsAct51to55(Em *npc);
+s32 Npc_IsPet(Em *em);
+s32 Npc_IsType77(Em *npc);
+s32 Npc_IsMusicActor(Em *npc);
+s32 Npc_IsType31to36(Em *npc);
+s32 Npc_HasDrinkMug(Em *npc);
+s32 Npc_IsType40(Em *npc);
+s32 Npc_IsType52(Em *npc);
+s32 Npc_IsType3Cto3E(Em *npc);
+s32 Npc_IsType4B(Em *npc);
+s32 Npc_IsType49(Em *npc);
+void Npc_SetLessonRoute(Em *npc, s32 routeNo);
+s32 Poogie_PlaceByPlayer(void);
+
+void Npc_DrawProps(Em *npc);
+void Npc_Draw(DrawSlot *slot);
+void Npc_Init(Em *npc);
+void Npc_SetRouteByKind(Em *npc);
+void Npc_SetupFromArea(Em *npc, u8 keep, s32 areaId);
+void Npc_FollowFloor(Em *npc);
+s32 Npc_Run(Em *npc);
+void Npc_ClearAllTalked(void);
+s32 Npc_Update(Em *npc);
+void Npc_UpdateMotion(Em *npc);
+void Npc_UpdateMatrix(Em *npc);
+void Npc_RunMotionFx(Em *npc);
+void Npc_NopHandlerA(void);
+void Npc_NopHandlerB(void);
+extern NpcRouteEnt gMinerRouteMid[4];
+extern NpcRouteEnt gMinerRouteLow[4];
+extern NpcRouteEnt gMinerRouteHigh[4];
+extern NpcAreaEntry gAreaNpcTables_0[16];
+Em *Npc_Find(u8 npcId);
+void Npc_SpawnArea(void);
+extern u8 gAreaNpcCounts[16];
+
+s32 Npc_UpdateState(Em *npc);
+void Npc_HoldRoute(Em *npc);
+void Npc_EnterRoutePoint(Em *npc);
+void Npc_HideAndAdvance(Em *npc);
+s32 Npc_NextRoutePoint(Em *npc);
+void Npc_StepTurn(Em *npc);
+void Npc_TurnToPlayer(Em *npc, s32 frames);
+void Npc_StartTurnTo(Em *npc, s32 frames, s32 angle);
+s32 Npc_CheckHubPartner(Em *npc);
+u8 Npc_PairIdBySide(u8 kind);
+void Npc_CheckSideSwap(Em *npc, NpcWork *work);
+void Npc_CheckTimeRoute(Em *npc, NpcWork *work);
+void Npc_IdleWorkshopHelper(Em *npc);
+void Npc_IdleContestHost(Em *npc);
+void Npc_IdlePaired(Em *npc);
+void Npc_Idle4D(Em *npc);
+void Npc_Idle3C(Em *npc);
+void Npc_Idle4B(Em *npc);
+void Npc_IdleMusicActor(Em *npc);
+void Npc_StateIdle(Em *npc);
+void Npc_StartTalkState(Em *npc);
+void Npc_StateWalk(Em *npc);
+void Npc_StateRun(Em *npc);
+void Npc_StateSeatPoseA(Em *npc, s8 variant);
+void Npc_StatePairStand(Em *npc, s8 variant);
+void Npc_StateWarpToRoute(Em *npc);
+void Npc_StateSeatPoseB(Em *npc, s8 variant);
+void Npc_StateTalk(Em *npc);
+void Npc_State70(Em *npc, s8 variant);
+void Npc_State58(Em *npc, s8 variant);
+void Npc_StateSeatedAtTable(Em *npc);
+void Npc_StateSitDown(Em *npc, u8 seated);
+void Npc_State72(Em *npc, s32 variant);
+void Npc_State74(Em *npc);
+void Npc_StateTalkDelay(Em *npc);
+void Npc_StateRouteWait(Em *obj);
+void Npc_StateRandomizeWait(Em *obj);
+void Npc_State133(Em *npc);
+void Npc_State134(Em *npc);
+void Npc_State135(Em *npc);
+void Npc_State136(Em *npc);
+void Npc_State137(Em *npc);
+void Npc_State75(Em *obj);
+void Npc_State76(Em *npc, s8 variant);
+void Npc_StateBusyIdle(Em *npc);
+void Npc_StateBusyTalk(Em *npc);
+void Npc_StateBusyTalkHold(Em *npc);
+void Npc_StateBusyPose(Em *npc);
+void Npc_StateBusyPoseTalk(Em *npc);
+void Npc_StateBusyLoop(Em *npc);
+void Npc_StateBusyLoopTalk(Em *npc);
+void Npc_State63(Em *npc);
+void Npc_State64(Em *npc);
+void Npc_State46(Em *npc);
+void Npc_State47(Em *npc);
+void Npc_StateGreet(Em *npc);
+void Npc_StateGreetHold(Em *npc);
+void Npc_StateGreetTalk(Em *npc);
+void Npc_StatePairWait(Em *npc);
+void Npc_StateLeave(Em *npc);
+void Npc_StateStepAhead(Em *npc);
+void Npc_StateStepBack(Em *npc);
+void Npc_StateSmithTalk(Em *npc, u8 afterForge);
+void Npc_SmithForgeAlone(Em *npc);
+void Npc_SmithForgeWithPartner(Em *npc);
+void Npc_StateSmithForge(Em *npc);
+void Npc_StatePartnerWork(Em *npc);
+void Npc_State157(Em *npc);
+void Npc_StatePartnerStrike(Em *npc);
+void Npc_SmithWorkWithPartner(Em *npc);
+void Npc_State123(Em *npc);
+void Npc_State124(Em *npc);
+void Npc_StateContestWait(Em *npc);
+void Npc_StateContestReact(Em *npc, s32 delayed);
+void Npc_StateSmithMeetBelow(Em *npc);
+void Npc_StateSmithMeetAbove(Em *npc);
+void Npc_SmithWorkAlone(Em *npc);
+void Npc_StateSmithWork(Em *npc);
+void Npc_StateRouteTurn(Em *npc);
+void Npc_StateRouteJump(Em *npc);
+void Npc_StateRouteJumpRandom(Em *npc);
+s32 Npc_RunState(Em *npc);
+
+/* One of an area set's four creature slots (gTownAreaSets[set], one Em
+ * model slot each): the model EmSlot_LoadModel loads into it. */
+typedef struct AreaModelSlot {
+    s32 kind;                       /* the model's kind, or AREA_MODEL_POOGIE / AREA_MODEL_NONE */
+    s32 variant;
+} AreaModelSlot;
+#define AREA_MODEL_SLOTS 4          /* an area set's creature slots */
+#define AREA_MODEL_POOGIE (-2)      /* the slot of the Poogie, whose model depends on its outfit */
+#define AREA_MODEL_NONE (-1)        /* an empty slot */
+extern AreaModelSlot *gTownAreaSets[16];   /* per area set (npc_spawn.c) */
 
 #endif

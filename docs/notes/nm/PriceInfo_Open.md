@@ -1,4 +1,4 @@
-# PriceInfo_Open (lobby, src/lobby/unk_7106D0.c)
+# PriceInfo_Open (lobby, src/lobby/market.c)
 
 ## Status
 

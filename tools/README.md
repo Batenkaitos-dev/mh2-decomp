@@ -23,6 +23,7 @@ Run the tools from the repository's root, in a shell prepared by
 | `vu1as.py` | the VU1 assembler: src/sub_main/vu1_microcode.vsm to GNU as source |
 | `asset_c.py`, `gen_data.py`, `type_data.py`, `data_blob.py` | the C of a described asset, and the data that stays in your copy, written at build time |
 | `content_gen.py` | the values of the C's data and the game's texts, written from your copy into `build/gen/` at build time |
+| `export_readable.py` | a copy of the tree with your copy's data and text written out in C (default `build/readable/`; CONTRIBUTING.md, "The readable export"). It holds the game's content: keep it on your machine |
 | `check_targets.py` | compare the 13 built files with `config/targets.sha1` |
 | `progress.py` | `ninja progress`: matched code per module and origin |
 

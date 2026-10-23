@@ -24,25 +24,30 @@
 #include "lobby_menu.h"
 #include "lobby_labels.h"
 #include "pad.h"
-void *memset(void *, s32, u32);
-void LobbyText_Open(s32 msg);
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "sound.h"
+#include "stream.h"
+#include "text.h"
+#include "area_board.h"
+#include "area_list.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_steps.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "rand.h"
+#include "libc.h"
 
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Win_Shake(WinShake *s);
-s32 LobbyStep_DownloadQuests(void);
-void LobbyTown_Begin(void);
-void Stream_Stop(s32 ch);
-void AreaBoard_Close(void);
-s32 AreaBoard_ListInput(u16 pad);
-s32 AreaBoard_RecruitInput(u16 pad);
-s32 AreaBoard_LeaveEntry(u16 pad);
-s32 AreaBoard_Join(u16 pad, AreaBoardMenu *m, s32 slot);
 extern u8 gMenuWork[];
 extern LobbyMenu *gLobbyMenu;
 extern s8 gLobbyLevel1Sel;
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
-void LobbySe_Play(s32);
 
 /* LobbyLevel0_HasGroups and AreaBoard_Open were built at optimization level 4. */
 #pragma optimization_level 4
@@ -65,13 +70,6 @@ s32 LobbyLevel0_HasGroups(void)
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern u16 gLobbyLevel1Count;
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-u16 Rand_Next(s32 stream);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-s32 Menu_CountPages(s16 n, s16 per);
-void AreaBoard_Draw(MenuTask *task);
-void AreaBoard_DrawPanel(MenuTask *task);
 /*
  * Opens the area board (TOWN_MODE_AREA_BOARD): clears the work, sets the
  * two draw callbacks, counts the pages of the area's entries, starts the
@@ -88,9 +86,9 @@ void AreaBoard_Open(void)
     LobbyMenu_Init();
     LobbyMenu_SetDraw(AreaBoard_Draw, AreaBoard_DrawPanel, 0, 0);
     board->listPages = Menu_CountPages(gLobbyLevel1Count, AREA_BOARD_ROWS_PER_PAGE);
-    WinSlide_Step(&board->listWin, -0x104, 0x36);
+    WinSlide_Step(&board->listWin, -260, 54);
     board->stampSeed = Rand_Next(1);
-    Sound_PlaySeFlat(1, 0x95, 0);
+    Sound_PlaySeFlat(1, 149, 0);
 }
 
 #pragma optimization_level reset
@@ -124,14 +122,14 @@ void AreaBoard_Update(void)
     Chat_SetWindowMode(1, 2);
     switch (board->state) {
     case AREA_BOARD_SLIDE_IN:
-        switch (WinSlide_Step(&board->listWin, -0x104, 0x36)) {
+        switch (WinSlide_Step(&board->listWin, -260, 54)) {
         case MENU_DONE:
             board->state = AREA_BOARD_LIST;
             break;
         }
         break;
     case AREA_BOARD_SLIDE_OUT:
-        switch (WinSlide_Step(&board->listWin, 0x36, -0x104)) {
+        switch (WinSlide_Step(&board->listWin, 54, -260)) {
         case MENU_DONE:
             AreaBoard_Close();
             break;
@@ -142,11 +140,11 @@ void AreaBoard_Update(void)
         case MENU_DONE:
             board->state = AREA_BOARD_JOIN;
             board->showForm = 0;
-            WinSlide_Step(&board->joinWin, 0x280, 0x140);
+            WinSlide_Step(&board->joinWin, 640, 320);
             break;
         case MENU_CANCEL:
             board->state = AREA_BOARD_SLIDE_OUT;
-            WinSlide_Step(&board->listWin, 0x36, -0x104);
+            WinSlide_Step(&board->listWin, 54, -260);
             break;
         case AREA_BOARD_PICK_FREE:
             board->state = AREA_BOARD_RECRUIT;
@@ -229,9 +227,6 @@ void AreaBoard_Update(void)
     }
 }
 
-s32 AreaBoard_JoinInput(u16 pad, AreaBoardMenu *m, s32 slot);
-s32 LobbyLevel1_CanEnter(s32 slot);
-s32 LobbyStep_EnterLevel1(void);
 s32 LobbyStep_FetchLevel1Users(NetUser *users, s16 entryNo); /* unit's own declaration: an s16 entry here; with the definition's s32, AreaBoard_Join compiles differently */
 /*
  * Joins the level-1 entry entryNo (from 1): fetches its members, slides
@@ -255,19 +250,19 @@ s32 AreaBoard_Join(u16 pad, AreaBoardMenu *menu, s32 entryNo)
             } else {
                 menu->memberPages = 2;
             }
-            WinSlide_Step(&menu->joinWin, 0x280, 0x140);
+            WinSlide_Step(&menu->joinWin, 640, 320);
             break;
         }
         break;
     case AREA_JOIN_SLIDE_IN:
-        switch (WinSlide_Step(&menu->joinWin, 0x280, 0x140)) {
+        switch (WinSlide_Step(&menu->joinWin, 640, 320)) {
         case MENU_DONE:
             menu->step = AREA_JOIN_MEMBERS;
             break;
         }
         break;
     case AREA_JOIN_SLIDE_OUT:
-        switch (WinSlide_Step(&menu->joinWin, 0x140, 0x280)) {
+        switch (WinSlide_Step(&menu->joinWin, 320, 640)) {
         case MENU_DONE:
             menu->step = AREA_JOIN_FETCH;
             return MENU_CANCEL;
@@ -287,7 +282,7 @@ s32 AreaBoard_Join(u16 pad, AreaBoardMenu *menu, s32 entryNo)
             return LOBBY_STEP_FAILED;
         case MENU_CANCEL:
             menu->step = AREA_JOIN_SLIDE_OUT;
-            WinSlide_Step(&menu->joinWin, 0x140, 0x280);
+            WinSlide_Step(&menu->joinWin, 320, 640);
             break;
         case LOBBY_STEP_FAILED:
             menu->step = AREA_JOIN_FETCH;
@@ -311,9 +306,6 @@ s32 AreaBoard_Join(u16 pad, AreaBoardMenu *menu, s32 entryNo)
 }
 
 extern LevelEntry gLobbyLevel1Entries[];
-void LobbyText_Open(s32 msg);
-s32 Menu_WrapUpDown(s32, s32);
-s32 Menu_WrapLeftRight(s32 arg0, s32 arg1);
 /*
  * The entry list's input: circle on an open entry returns MENU_DONE (join
  * it), on a free one AREA_BOARD_PICK_FREE (open it), on any other a
@@ -354,11 +346,6 @@ s32 AreaBoard_ListInput(u16 pad)
     return MENU_RUNNING;
 }
 
-void LobbyDialog_Grow(void);
-void Menu_SetYesNo(s8 a);
-s32 Menu_YesNoInput(void);
-void HunterInfo_Open(void *src, s32 flags);
-s32 HunterInfo_Update(u16 pad);
 /*
  * The members panel of the entry being joined (enum AreaJoinInputStep):
  * left and right turn its member pages, square puts a cursor on the
@@ -469,9 +456,6 @@ s32 AreaBoard_JoinInput(u16 pad, AreaBoardMenu *menu, s32 entryNo)
     return MENU_RUNNING;
 }
 
-extern LevelEntry gLobbyLevel0Entries[];
-extern u8 gLobbyLevel0Sel;
-s32 Menu_CountPages(s16 n, s16 per);
 /*
  * Fills the text picker's page `page`: the room data's slots holding a
  * recruiting text offered in this kind of area, RECRUIT_TEXTS_PER_PAGE to
@@ -506,12 +490,6 @@ void AreaBoard_LoadPage(s16 page)
     menu->textPage = page;
 }
 
-s32 LobbyStep_Level1SetColor(s32 v);
-s32 LobbyStep_Level1Settings(char *text, u8 *vals);
-s32 LobbyStep_RefreshLevel1Users(void);
-void LobbyDialog_OpenWait(void *);
-char *strcpy(char *dst, const char *src);
-s32 LobbyStep_Level1Open(s32 id);
 extern u16 gRecruitFrames;
 /*
  * Opens the free entry chosen as the player's own and runs the recruit
@@ -550,7 +528,7 @@ s32 AreaBoard_RecruitInput(u16 pad)
             board->recruitStep++;
             board->formTimer = gRecruitFrames;
             AreaBoard_LoadPage(0);
-            WinSlide_Step(&board->panelWin, 0x280, 0x140);
+            WinSlide_Step(&board->panelWin, 640, 320);
             break;
         case LOBBY_STEP_FAILED:
             board->recruitStep = AREA_RECRUIT_OPEN;
@@ -559,7 +537,7 @@ s32 AreaBoard_RecruitInput(u16 pad)
         }
         break;
     case AREA_RECRUIT_SLIDE_IN:
-        switch (WinSlide_Step(&board->panelWin, 0x280, 0x140)) {
+        switch (WinSlide_Step(&board->panelWin, 640, 320)) {
         case MENU_DONE:
             memset(board->text, 0, sizeof(board->text));
             board->recruitStep++;
@@ -717,8 +695,6 @@ s16 GroupBoard_SendSettings(RoomJoin *join)
     return LOBBY_STEP_BUSY;
 }
 
-s32 LobbyStep_Level1Leave(void);
-s32 LobbyStep_Level1List(s32);
 /*
  * Gives up the level-1 entry the player opened and fetches the area's
  * entry list again (enum AreaLeaveStep). Returns LOBBY_STEP_DONE when
@@ -756,19 +732,10 @@ s32 AreaBoard_LeaveEntry(u16 pad)
     return LOBBY_STEP_BUSY;
 }
 
-extern u16 gLobbyLevel1Count;
 extern char gAreaBoardTextFmt[];
 extern char gAreaBoardUsersFmt[];
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-void Text_SetColor(s16 color);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: s16 coordinates and an s32 kind here; with the definition's s32 coordinates and s16 kind, the entry list and the text picker compile differently */
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
+void Menu_DrawRowHighlight(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
 /*
  * Draws the entry list at x, y: its label bar and page number while the
  * list has the input (the join's or the recruit's label otherwise), the
@@ -787,38 +754,38 @@ void AreaBoard_DrawList(s16 x, s16 y)
     s16 rowY = y;
     s8 dim;
 
-    Font_SetSpacing(0x16, 0x16);
+    Font_SetSpacing(22, 22);
     switch (board->state) {
     case AREA_BOARD_SLIDE_OUT:
     case AREA_BOARD_SLIDE_IN:
         break;
     case AREA_BOARD_LIST:
-        Menu_DrawLabelBar(0x14, 0x12, 0xC8, 0xFFB0B000, gNetLabels[NET_LABEL_GROUP_BOARD], 2, 1);
-        Menu_DrawPageNum(x + 0x200, 0x16, board->listPage, board->listPages, 1);
+        Menu_DrawLabelBar(20, 18, 200, 0xFFB0B000, gNetLabels[NET_LABEL_GROUP_BOARD], 2, 1);
+        Menu_DrawPageNum(x + 512, 22, board->listPage, board->listPages, 1);
         break;
     default:
         if (board->showForm == 1) {
-            Menu_DrawLabelBar(0x140, 0x12, 0xC8, 0xFFB0B000, gNetLabels[NET_LABEL_RECRUIT_MEMBERS], 2, 1);
+            Menu_DrawLabelBar(320, 18, 200, 0xFFB0B000, gNetLabels[NET_LABEL_RECRUIT_MEMBERS], 2, 1);
         } else {
-            Menu_DrawLabelBar(0x140, 0x12, 0xC8, 0xFFB0B000, gNetLabels[NET_LABEL_JOIN_GROUP], 2, 1);
+            Menu_DrawLabelBar(320, 18, 200, 0xFFB0B000, gNetLabels[NET_LABEL_JOIN_GROUP], 2, 1);
         }
         break;
     }
-    Win_Draw(x, y, 0x264, 0xFA, 0xBDB59F6C, 0xB0F04020, 7);
+    Win_Draw(x, y, 612, 250, 0xBDB59F6C, 0xB0F04020, 7);
     rowY += 2;
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F28);
     leftX = x;
-    Font_SetPos(leftX + 0xA, rowY);
+    Font_SetPos(leftX + 10, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_NUMBER]);
-    Font_SetPos(leftX + 0x3C, rowY);
+    Font_SetPos(leftX + 60, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_RECRUIT_MSG]);
-    Font_SetPos(leftX + 0x1CC, rowY);
+    Font_SetPos(leftX + 460, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_HEADCOUNT]);
-    Font_SetPos(leftX + 0x21C, rowY);
+    Font_SetPos(leftX + 540, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_IN_TOWN]);
     for (i = 0; i < AREA_BOARD_ROWS_PER_PAGE; i++) {
-        rowY += 0x16;
+        rowY += 22;
         entryIdx = i + board->listPage * AREA_BOARD_ROWS_PER_PAGE;
         if (entryIdx < gLobbyLevel1Count) {
             entry = &gLobbyLevel1Entries[entryIdx];
@@ -828,21 +795,21 @@ void AreaBoard_DrawList(s16 x, s16 y)
                 color = 0x807F7F7F;
             }
             Font_SetColor(color);
-            Font_SetPos(leftX + 0xA, rowY);
+            Font_SetPos(leftX + 10, rowY);
             Text_PrintfColored("%2d", entryIdx + 1);
             if (color == 0x807F7F7F) {
                 Text_SetColor(entry->color);
             }
-            Font_SetPos(leftX + 0x3C, rowY);
+            Font_SetPos(leftX + 60, rowY);
             Text_PrintfColored(gAreaBoardTextFmt, entry->text);
             Font_SetColor(color);
-            Font_SetPos(leftX + 0x1C6, rowY);
+            Font_SetPos(leftX + 454, rowY);
             Text_PrintfColored(gAreaBoardUsersFmt, entry->users, entry->maxUsers);
-            Font_SetPos(leftX + 0x21C, rowY);
+            Font_SetPos(leftX + 540, rowY);
             Text_PrintfColored("%2d", entry->users - entry->questUsers);
         } else {
             Font_SetColor(0x80404040);
-            Font_SetPos(leftX + 0xA, rowY);
+            Font_SetPos(leftX + 10, rowY);
             Text_PrintfColored(gNetLabels[NET_LABEL_DASHES]);
         }
         if (i == board->rowCursor) {
@@ -856,10 +823,10 @@ void AreaBoard_DrawList(s16 x, s16 y)
                 dim = 1;
                 break;
             }
-            Menu_DrawLine(x, rowY - 1, 0x264, 0x14, dim);
+            Menu_DrawRowHighlight(x, rowY - 1, 612, 20, dim);
         }
     }
-    Win_DrawText(0x12C, 0x154, 0x140, 0x50, 0xBDB59F6C, 0xC0201010, gNetLabels[NET_LABEL_AREA_BOARD_HELP]);
+    Win_DrawText(300, 340, 320, 80, 0xBDB59F6C, 0xC0201010, gNetLabels[NET_LABEL_AREA_BOARD_HELP]);
     switch (board->state) {
     case AREA_BOARD_SLIDE_IN:
     case AREA_BOARD_SLIDE_OUT:
@@ -873,13 +840,6 @@ void AreaBoard_DrawList(s16 x, s16 y)
 INCLUDE_RODATA("asm/lobby/nonmatchings/area_board", gAreaBoardTextFmt);
 INCLUDE_RODATA("asm/lobby/nonmatchings/area_board", gAreaBoardUsersFmt);
 
-u32 AreaList_KindColor(u8 slot);
-void LobbyUi_DrawIcon(s16 x, s16 y, s16 size, u32 color, s8 kind);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 a, s16 b);
-void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 color, u32 color2);
-s32 sprintf(char *buf, const char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
 struct EquipItem;
 /* AreaBoard_DrawMembers passes the weapon's class as an s32 to Icon_DrawWeaponClass's u8 parameter: that way the compiler masks it to a byte as the game's code does */
 u8 Equip_GetClass(struct EquipItem *e);
@@ -902,41 +862,41 @@ void AreaBoard_DrawMembers(s16 x, s16 y, s32 entryNo, WinShake *shake, u16 stamp
     char hrText[16];
     char hrWide[16];
 
-    Icon_Draw(x, y, 0x12C, 0x10E, 0xFFE0D8C8, 1);
+    Icon_Draw(x, y, 300, 270, 0xFFE0D8C8, 1);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(x + 0xDC, y + 6, menu->memberPage, menu->memberPages, 1);
-    LobbyUi_DrawIcon(x + 0x96, y + 0x87, 0x70, AreaList_KindColor(gLobbyLevel0Entries[gLobbyLevel0Sel - 1].kind), 3);
+    Menu_DrawPageNum(x + 220, y + 6, menu->memberPage, menu->memberPages, 1);
+    LobbyUi_DrawLevelMarks(x + 150, y + 135, 112, AreaList_KindColor(gLobbyLevel0Entries[gLobbyLevel0Sel - 1].kind), 3);
     Font_SetColor(0x80301010);
-    Font_SetPos(x + 0x28, y + 0x14);
+    Font_SetPos(x + 40, y + 20);
     Text_PrintfColored(gAreaBoardTextFmt, gLobbyLevel1Entries[entryNo - 1].name);
-    rowY += 0x2A;
-    Font_SetPos(x + 0x28, rowY);
+    rowY += 42;
+    Font_SetPos(x + 40, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_NAME]);
-    Font_SetPos(x + 0xBE, rowY);
+    Font_SetPos(x + 190, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_HR]);
-    Font_SetPos(x + 0xF0, rowY);
+    Font_SetPos(x + 240, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_WEAPON]);
     Font_SetColor(0x80101010);
     for (i = 0; i < AREA_BOARD_MEMBERS_PER_PAGE; i++) {
-        rowY += 0x16;
+        rowY += 22;
         member = &menu->members[i + menu->memberPage * AREA_BOARD_MEMBERS_PER_PAGE];
         card = (HunterCard *)member->text;
         if (member->id[0] != 0) {
             if (menu->memberView == MEMBER_VIEW_CURSOR && i == menu->memberCursor) {
-                Menu_DrawCursorRow(x + 0x28, rowY, 0xBE, 0x14, 0xC0106060, 0xFF106060);
+                Menu_DrawCursorRow(x + 40, rowY, 190, 20, 0xC0106060, 0xFF106060);
             }
-            Font_SetPos(x + 0x28, rowY);
+            Font_SetPos(x + 40, rowY);
             Text_PrintfColored(gAreaBoardTextFmt, member->name);
-            Font_SetPos(x + 0xAC, rowY);
+            Font_SetPos(x + 172, rowY);
             sprintf(hrText, "%3d", card->hr);
             Sjis_Widen(hrText, hrWide);
             Text_PrintfColored(hrWide);
-            Icon_DrawWeaponClass(x + 0xF6, rowY, 0x18, -1, (s32)Equip_GetClass(&card->weapon), 0);
+            Icon_DrawWeaponClass(x + 246, rowY, 24, -1, (s32)Equip_GetClass(&card->weapon), 0);
         }
     }
-    GroupBoard_DrawButtonHints(menu, x + 0x28, rowY + 0x24, 0x80101010);
+    GroupBoard_DrawButtonHints(menu, x + 40, rowY + 36, 0x80101010);
     if (stamped) {
-        Menu_DrawStamp(x, y, 0x12C, 0x10E, stampSeed, shake->timer);
+        Menu_DrawStamp(x, y, 300, 270, stampSeed, shake->timer);
     }
 }
 
@@ -953,19 +913,17 @@ void AreaBoard_DrawRowMarks(s16 x, s16 y)
         bounce = (gFrameTick & 0x10) ? 0 : 6;
         switch (board->row) {
         case AREA_RECRUIT_ROW_TEXT:
-            Icon_Draw(x + 10 - bounce, y + 0x7C, 0x18, 0x18, 0xFF106060, 0x29);
-            Icon_Draw(x + 0x10A + bounce, y + 0x7C, 0x18, 0x18, 0xFF106060, 0x28);
+            Icon_Draw(x + 10 - bounce, y + 124, 24, 24, 0xFF106060, 41);
+            Icon_Draw(x + 266 + bounce, y + 124, 24, 24, 0xFF106060, 40);
             break;
         case AREA_RECRUIT_ROW_CONFIRM:
-            Icon_Draw(x + 100 - bounce, y + 0xBE, 0x18, 0x18, 0xFF106060, 0x29);
-            Icon_Draw(x + 0xB0 + bounce, y + 0xBE, 0x18, 0x18, 0xFF106060, 0x28);
+            Icon_Draw(x + 100 - bounce, y + 190, 24, 24, 0xFF106060, 41);
+            Icon_Draw(x + 176 + bounce, y + 190, 24, 24, 0xFF106060, 40);
             break;
         }
     }
 }
 
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Text_Printf(const char *fmt, ...);
 /*
  * Draws the recruit form at x, y: the area kind's emblem, the entry's
  * name, the recruiting text in its frame (highlighted on the text row),
@@ -984,33 +942,33 @@ void AreaBoard_DrawRecruitForm(s16 x, s16 y)
     s32 centerX;
     s32 textX;
 
-    Icon_Draw(x, y, 0x12C, 0x10E, 0xFFE0D8C8, 1);
+    Icon_Draw(x, y, 300, 270, 0xFFE0D8C8, 1);
     kindColor = AreaList_KindColor(gLobbyLevel0Entries[gLobbyLevel0Sel - 1].kind);
     topY = rowY;
     leftX = x;
-    centerX = leftX + 0x96;
-    LobbyUi_DrawIcon(centerX, topY + 0x87, 0x70, kindColor, 3);
+    centerX = leftX + 150;
+    LobbyUi_DrawLevelMarks(centerX, topY + 135, 112, kindColor, 3);
     Font_SetColor(0x80301010);
-    Font_SetPos(leftX + 0x28, topY + 0x14);
+    Font_SetPos(leftX + 40, topY + 20);
     Text_PrintfColored(gAreaBoardTextFmt, entry->name);
-    rowY += 0x2A;
-    textX = leftX + 0x28;
-    Font_SetPos(textX, rowY += 0x32);
+    rowY += 42;
+    textX = leftX + 40;
+    Font_SetPos(textX, rowY += 50);
     Text_PrintfColored(gAreaBoardTextFmt, gNetLabels[NET_LABEL_RECRUIT_MSG_COLON]);
-    Gfx_DrawRectFrame(textX, rowY += 0x20, 0xDC, 0x18, frameColor);
+    Gfx_DrawRectFrame(textX, rowY += 32, 220, 24, frameColor);
     Font_SetColor(0x80101010);
-    Font_SetPos(Text_CenterX(board->text, centerX, 0x12), rowY + 3);
+    Font_SetPos(Text_CenterX(board->text, centerX, 18), rowY + 3);
     Text_PrintfColored(gAreaBoardTextFmt, board->text);
     Font_SetColor(0x80301010);
-    Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_DECIDE], centerX, 0x12), rowY + 0x46);
+    Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_DECIDE], centerX, 18), rowY + 70);
     Text_PrintfColored(gAreaBoardTextFmt, gNetLabels[NET_LABEL_DECIDE]);
     AreaBoard_DrawRowMarks(x, y);
     if (board->state != AREA_BOARD_LEAVE) {
-        Font_SetPos(leftX + 0x9C, topY + 0xEC);
+        Font_SetPos(leftX + 156, topY + 236);
         Text_Printf(gArenaCupTexts[ARENA_TEXT_TIME_LEFT], board->formTimer / 30); /* frames to seconds */
     }
     if (board->stamped != 0) {
-        Menu_DrawStamp(x, y, 0x12C, 0x10E, board->stampSeed, board->stampShake.timer);
+        Menu_DrawStamp(x, y, 300, 270, board->stampSeed, board->stampShake.timer);
     }
 }
 
@@ -1028,47 +986,39 @@ void AreaBoard_DrawTextPicker(s16 x, s16 y, s16 cursor, s16 count)
     s16 rowY = y;
     s8 *slotNo;
 
-    Win_Draw(x, y, 0x118, 0x122, 0xBDB59F6C, 0xC0101010, 2);
+    Win_Draw(x, y, 280, 290, 0xBDB59F6C, 0xC0101010, 2);
     rowY += 10;
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x28, rowY);
+    Font_SetPos(x + 40, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_RECRUIT_MSG]);
     Font_SetColor(0x807F7F7F);
-    Menu_DrawPageNum((s16)(x + 0x28) + 0xA0, rowY, menu->textPage, menu->textPages, 1);
+    Menu_DrawPageNum((s16)(x + 40) + 160, rowY, menu->textPage, menu->textPages, 1);
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < count; i++) {
         if (room->slots[menu->textSlots[i]].text[0] != 0) {
             slotNo = &menu->textSlots[i];
-            rowY += 0x16;
-            Font_SetPos(x + 0x28, rowY);
+            rowY += 22;
+            Font_SetPos(x + 40, rowY);
             Text_SetColor(room->slotColor[*slotNo]);
             Text_PrintfColored(gAreaBoardTextFmt, room->slots[*slotNo].text);
             if (cursor == i) {
-                Menu_DrawLine(x + 10, rowY - 1, 0x104, 0x14, 0);
+                Menu_DrawRowHighlight(x + 10, rowY - 1, 260, 20, 0);
             }
         }
     }
 }
 
-void Font_SetSpacing(u8 a, u8 b);
-void Text_SetSize(s32);
-void AreaBoard_DrawList(s16, s16);
-
 /* The board's first draw callback: the entry list at its sliding x. */
 void AreaBoard_Draw(MenuTask *task)
 {
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
-    AreaBoard_DrawList(0xE, ((MenuWork *)gMenuWork)->areaBoard.listWin.pos);
+    Font_SetSpacing(18, 18);
+    AreaBoard_DrawList(14, ((MenuWork *)gMenuWork)->areaBoard.listWin.pos);
 }
 
 /* AreaBoard_DrawPanel was built at optimization level 4. */
 #pragma optimization_level 4
 
-void AreaBoard_DrawMembers(s16 x, s16 y, s32 n, WinShake *p, u16 a, s8 show);
-void AreaBoard_DrawRecruitForm(s16 x, s16 y);
-void AreaBoard_DrawTextPicker(s16 x, s16 y, s16 cur, s16 n);
-void HunterInfo_DrawIfOpen(void);
 /*
  * The board's second draw callback, the right-hand panel shaken with the
  * stamp: the members panel of the entry being joined or a member's hunter
@@ -1082,9 +1032,9 @@ void AreaBoard_DrawPanel(MenuTask *task)
     s16 y;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     x = board->panelWin.pos + board->stampShake.dx;
-    y = board->stampShake.dy + 0x36;
+    y = board->stampShake.dy + 54;
     switch (board->state) {
     case AREA_BOARD_JOIN:
         x = board->joinWin.pos + board->stampShake.dx;
@@ -1106,7 +1056,7 @@ void AreaBoard_DrawPanel(MenuTask *task)
         case AREA_RECRUIT_OPEN:
             break;
         case AREA_RECRUIT_PICK_TEXT:
-            AreaBoard_DrawTextPicker(0x1E, 0x36, board->textCursor, board->textCount);
+            AreaBoard_DrawTextPicker(30, 54, board->textCursor, board->textCount);
         default:
             AreaBoard_DrawRecruitForm(x, y);
             break;

@@ -32,59 +32,42 @@
 #include "bgm.h"
 #include "pad.h"
 #include "lobby_labels.h"
+#include "net_mode.h"
+#include "scene.h"
+#include "stream.h"
+#include "font.h"
+#include "game_util.h"
+#include "lobby_frame.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "screen_fade.h"
+#include "libc.h"
 
 extern char gCurServerId[];                 /* the current server's id (sub_main) */
-s32 memcmp(void *a, void *b, s32 n);
-u16 Pad_GetCursorButtons(s32 pad);
-void Stream_FadeOut(s32, s32);
-void LobbySe_Play(s32 se);
-s32 Menu_WrapUpDownPad(s32 cur, s32 n, u16 pad);
-s32 Menu_WrapLeftRightPad(s32 cur, s32 n, u16 pad);
 void LobbyText_Open(s32 msg);
 extern s8 gSrvMenuChoice;
 
 void LobbyTitle_Draw(void);
 void LobbyHelp_Draw(void);
-void Font_SetSpacing(u8 a, u8 b);
 void Text_SetSize(s32);
-void SrvMenu_DrawList(s16 x, s16 y);
 extern LobbyMenu *gLobbyMenu;
 void LobbySrv_DrawServerPanel(s32, s32); /* unit's own declaration: the definition is in the old (K&R) style, so its short parameters arrive as ints, as here; with (s16 x, s16 y) the call would narrow them first, which the game's call doesn't */
 void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void SrvMenu_DrawInfo(MenuTask *task);
-void SrvMenu_DrawWindow(MenuTask *task);
-s32 LobbyPad_Pressed(s32 button);
 void Menu_SetYesNo(u8 choice); /* unit's own declaration: the answer is passed as the u8 field it is read from; with the definition's s8 parameter, SrvMenu_Quit would sign the byte before the call, which the game's code doesn't */
 s32 LobbyMenu_MoveCursor(u8 *, u8, u8);
-void Bgm_PlayWithVolume(s32, s32);
-void LobbyDialog_DrawPending(MenuTask *task);
-void Lobby_DrawBlackLine(void);
 extern void (*gSrvMenuPages[])(void);      /* the server menu's pages */
-s32 LobbySrv_Index(char *s);
-s32 LoginWave_Update(void);
-void LobbyMenu_QueueLayers(void);
-void SrvMenu_Choose(void);
-void SrvMenu_Intro(void);
-void SrvMenu_Quit(void);
-void SrvMenu_SlideIn(void);
-void SrvMenu_Start(void);
-s32 Menu_CountPages(s16, s16);
 void LobbyTitle_Set(s32);
 void LobbyHelp_Set(s32);
 void LobbyHelp_SetBox(s16, s16, s16);
-void NetMode_Init(void);
-void LoginWave_Clear(void);
-void LoginWave_Mark(s32);
-void FadeA_Start(s32);
 
 #define SRV_SLIDE_FRAMES 6          /* frames: the window's slide in */
-#define SRV_CHOSEN_FRAMES 0x28      /* frames from a choice (or quitting) to the result */
-#define SRV_INTRO_FRAMES 0x260      /* frames: the introductory message's time on screen */
-#define SRV_INTRO_SKIP_AFTER 0x224  /* circle skips the message once the timer is below this (0x3C frames in) */
+#define SRV_CHOSEN_FRAMES 40        /* frames from a choice (or quitting) to the result */
+#define SRV_INTRO_FRAMES 608        /* frames: the introductory message's time on screen */
+#define SRV_INTRO_SKIP_AFTER 548    /* circle skips the message once the timer is below this (60 frames in) */
 #define SRV_QUIT_WAIT_FRAMES 8      /* frames before and after the quit question's answer */
 #define YES_NO_YES 0                /* LobbyMenu.quitYesNo */
 #define YES_NO_NO 1
-#define CURSOR_LEFT_RIGHT 3         /* LobbyMenu_MoveCursor's mode: left and right move the cursor */
 
 /* The server choice: when a group was joined (LobbyState.groupJoin), the
  * index of its server (LobbySrv_Index of groupId); else runs the menu's
@@ -136,7 +119,7 @@ void SrvMenu_Start(void)
     LobbyTitle_Set(LOBBY_TITLE_SERVER_MENU);
     LobbyHelp_Set(0);
     LobbySe_Play(LOBBY_SE_WINDOW_IN);
-    LobbyHelp_SetBox(0x24, 0x16A, 0x154);
+    LobbyHelp_SetBox(36, 362, 340);
 }
 
 /*
@@ -165,7 +148,7 @@ void SrvMenu_SlideIn(void)
             gLobbyMenu->slideTimer = 0;
             gLobbyMenu->screen = (u8) (gLobbyMenu->screen + 1);
             gLobbyMenu->step = 0;
-            Bgm_PlayWithVolume(BGM_SERVER_MENU, 0x1E);
+            Bgm_PlayWithVolume(BGM_SERVER_MENU, 30);
             return;
         }
     } else {
@@ -247,7 +230,7 @@ void SrvMenu_Choose(void)
 /*
  * The introductory message (SRV_PAGE_INTRO, LOBBY_TEXT_SERVER_INTRO):
  * shown for SRV_INTRO_FRAMES, which circle cuts short after its first
- * 0x3C frames; then the list (SRV_PAGE_CHOOSE) with its draw hooks and
+ * 60 frames; then the list (SRV_PAGE_CHOOSE) with its draw hooks and
  * the menu's music.
  */
 void SrvMenu_Intro(void)
@@ -272,12 +255,12 @@ void SrvMenu_Intro(void)
             gLobbyMenu->screen = SRV_PAGE_CHOOSE;
             gLobbyMenu->step = 0;
             LobbyMenu_SetDraw(SrvMenu_DrawInfo, SrvMenu_DrawWindow, NULL, &LobbyDialog_DrawPending);
-            Bgm_PlayWithVolume(BGM_SERVER_MENU, 0x3C);
+            Bgm_PlayWithVolume(BGM_SERVER_MENU, 60);
         } else if (gLobbyMenu->timer < 0) {
             gLobbyMenu->screen = SRV_PAGE_CHOOSE;
             gLobbyMenu->step = 0;
             LobbyMenu_SetDraw(SrvMenu_DrawInfo, SrvMenu_DrawWindow, NULL, &LobbyDialog_DrawPending);
-            Bgm_PlayWithVolume(BGM_SERVER_MENU, 0x3C);
+            Bgm_PlayWithVolume(BGM_SERVER_MENU, 60);
         }
         break;
     }
@@ -333,7 +316,7 @@ void SrvMenu_Quit(void)
                 gLobbyMenu->step = 0;
             }
         } else {
-            LobbyMenu_MoveCursor(&gLobbyMenu->quitYesNo, 1, CURSOR_LEFT_RIGHT);
+            LobbyMenu_MoveCursor(&gLobbyMenu->quitYesNo, 1, MOVE_CURSOR_H);
             Menu_SetYesNo(gLobbyMenu->quitYesNo);
         }
         break;
@@ -360,15 +343,7 @@ void SrvMenu_Quit(void)
     }
 }
 
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
 void Text_PrintfColored(char *fmt, ...);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
-void LobbyUi_DrawIcon(s16 x, s16 y, s16 size, u32 color, s8 kind);
-s32 LobbySrv_ColorAt(s32 i);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 
 #define SRV_TEXT_COLOR 0x80101010       /* the title and the servers' rows */
 #define SRV_HEAD_COLOR 0xFF202060       /* the column heads */
@@ -376,14 +351,14 @@ void Font_SetColor(s32 color);
 #define SRV_CURSOR_BAR_COLOR 0x99106060 /* the bar under the cursor's row */
 #define SRV_CURSOR_COLOR 0xFF20C0C0     /* the cursor's arrow */
 #define SRV_ICON_ALPHA 0xB0000000       /* over the server's colour (LbsRow.value) */
-#define SPR_CURSOR_BAR 0x6F             /* Icon_Draw's sprite for the cursor's bar */
+#define SPR_CURSOR_BAR 111              /* Icon_Draw's sprite for the cursor's bar */
 
 /*
  * Draws the server list at x, y: its frame, the title and the page
  * number, the icon in the colour of the server under the cursor
  * (LbsRow.value), the column heads (the name, the users), and the page's
  * rows (name, users/capacity), with the cursor's bar and blinking arrow.
- * x + 0x14 and its s16 + 0xB4 are written out at each use: kept in
+ * x + 20 and its s16 + 180 are written out at each use: kept in
  * locals, they were given other registers than the game's code uses.
  */
 void SrvMenu_DrawList(s16 x, s16 y)
@@ -394,38 +369,38 @@ void SrvMenu_DrawList(s16 x, s16 y)
     s16 arrowShift;
     LbsRow *server;
 
-    Icon_Draw(x, y, 0x10E, 0x130, -1, 0);
-    lineY += 0xE;
+    Icon_Draw(x, y, 270, 304, -1, 0);
+    lineY += 14;
     Font_SetColor(SRV_TEXT_COLOR);
-    Font_SetPos(x + 0x14, lineY);
+    Font_SetPos(x + 20, lineY);
     Text_PrintfColored(gListTitles[LIST_TITLE_LAND_LIST]);
-    Menu_DrawPageNum((s16)(x + 0x14) + 0xB4, lineY, gLobbyMenu->page, gLobbyMenu->pages, 1);
-    LobbyUi_DrawIcon(x + 0x87, y + 0x98, 0x70, LobbySrv_ColorAt(gLobbyMenu->cursor + gLobbyMenu->page * SRV_MENU_PAGE_LEN) | SRV_ICON_ALPHA, 1);
+    Menu_DrawPageNum((s16)(x + 20) + 180, lineY, gLobbyMenu->page, gLobbyMenu->pages, 1);
+    LobbyUi_DrawLevelMarks(x + 135, y + 152, 112, LobbySrv_ColorAt(gLobbyMenu->cursor + gLobbyMenu->page * SRV_MENU_PAGE_LEN) | SRV_ICON_ALPHA, 1);
     Font_SetColor(SRV_HEAD_COLOR);
-    Font_SetPos(x + 0x14, lineY += 0x16);
+    Font_SetPos(x + 20, lineY += 22);
     Text_PrintfColored(gListTitles[LIST_TITLE_LAND_NAME]);
-    Font_SetPos((s16)(x + 0x14) + 0xB4, lineY);
+    Font_SetPos((s16)(x + 20) + 180, lineY);
     Text_PrintfColored(gCountLabels[COUNT_LABEL_PEOPLE]);
-    Menu_DrawDashLine(x + 0x14, lineY + 0x10, 0xFA, SRV_RULE_COLOR);
+    Menu_DrawDashLine(x + 20, lineY + 16, 250, SRV_RULE_COLOR);
     lineY += 4;
     Font_SetColor(SRV_TEXT_COLOR);
-    x += 0x28;
+    x += 40;
     for (i = 0; i < SRV_MENU_PAGE_LEN; i++) {
         idx = i + gLobbyMenu->page * SRV_MENU_PAGE_LEN;
         if (idx >= SERVER_LIST_MAX || idx >= gLobbyServers.count) {
             break;
         }
-        lineY += 0x16;
+        lineY += 22;
         if (i == gLobbyMenu->cursor) {
             arrowShift = (gFrameTick & 0x10) ? (s16)0 : (s16)6;     /* the arrow blinks every 16 frames */
-            Icon_Draw(x - 0xA, lineY + 0xE, 0xE2, 8, SRV_CURSOR_BAR_COLOR, SPR_CURSOR_BAR);
-            Menu_DrawCursorIcon(x - 0x1C - arrowShift, lineY - 2, 0x18, SRV_CURSOR_COLOR);
+            Icon_Draw(x - 10, lineY + 14, 226, 8, SRV_CURSOR_BAR_COLOR, SPR_CURSOR_BAR);
+            Menu_DrawCursorIcon(x - 28 - arrowShift, lineY - 2, 24, SRV_CURSOR_COLOR);
         }
         Font_SetPos(x, lineY);
         Font_SetColor(SRV_TEXT_COLOR);
         server = &gLobbyServers.row[idx];
         Text_PrintfColored("%s", server->text);
-        Font_SetPos(x + 0x82, lineY);
+        Font_SetPos(x + 130, lineY);
         Text_PrintfColored("%4d/%4d", server->users, server->capacity);
     }
 }
@@ -438,14 +413,14 @@ void SrvMenu_DrawInfo(MenuTask *task)
     s32 x;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     slide = gLobbyMenu->slideTimer;
     if (slide < 0) {
-        x = 0x1A;
+        x = 26;
     } else {
-        x = (s16)((0x14 - (slide * 0x30)));
+        x = (s16)((20 - (slide * 48)));
     }
-    LobbySrv_DrawServerPanel(x, 0x44);
+    LobbySrv_DrawServerPanel(x, 68);
 }
 
 /* The menu's second draw hook: the server list, sliding in with the
@@ -456,14 +431,14 @@ void SrvMenu_DrawWindow(MenuTask *task)
     s16 x;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     slide = gLobbyMenu->slideTimer;
     if (slide < 0) {
-        x = 0x2E;
+        x = 46;
     } else {
-        x = 0x28 - (slide * 0x33);
+        x = 40 - (slide * 51);
     }
-    SrvMenu_DrawList(x, 0x62);
+    SrvMenu_DrawList(x, 98);
     LobbyTitle_Draw();
     LobbyHelp_Draw();
 }
@@ -522,8 +497,6 @@ s32 LobbySrv_CurIndex(void)
     return 0;
 }
 
-s32 LobbySrv_IsCur(char *id);
-s32 LobbySrv_HasCurName(void);
 void LobbyDialog_Draw(void);
 extern s8 gCurServerName;
 

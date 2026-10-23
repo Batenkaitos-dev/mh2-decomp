@@ -104,36 +104,34 @@ segments:
       - [0x29F20, asm, sdk/libmpeg]            # 0x129CA0: MPEG decoder ("[MPEG ERROR]")
       - [0x31640, asm, cri/sofdec]             # 0x1313C0: CRI Sofdec (MWSFD 3.33, M2V, MPS, MPV, SFD, SFH; Sep 2004), CodeWarrior-built (16-byte aligned)
       - [0x58BB0, asm, cri/adx]                # 0x158930: CRI ADX (ADXT 9.34, ADXF, CVFS, SJ, SVM...; Nov 2004), GCC-built (8-byte aligned)
-      - [0x79810, c, dma]  # 0x179590: DMA tags, image uploads, the DMA queue and handlers
-      - [0x7b390, c, dma_flush]   # automatch: 1 of 1
+      - [0x79810, c, dma_packets]  # 0x179590: DMA tags and VIF codes, image upload packets
+      - [0x7A010, c, dma_queue]  # 0x179D90: the DMA queue and its handlers, image downloads from GS memory
       - [0x7B430, c, texture]  # 0x17B1B0: texture and palette handles (flCreatePaletteHandle)
-      - [0x7d4c0, c, tex_use]     # automatch: 1 of 1
-      - [0x7D4D0, c, texconv]  # 0x17D250: texture upload and conversion (flPS2ConvertTextureFromContext), swizzle tables, VRAM blocks
-      - [0x7ed80, c, unk_17EB00]  # automatch: 2 of 12
-      - [0x7F8E0, c, unk_17F660]
-      - [0x800A0, c, unk_17FE20]   # 0x17FE20: byte fill/copy, heap wrappers
-      - [0x80390, c, unk_180110]
-      - [0x808c0, c, unk_180640]  # automatch: 1 of 1
-      - [0x808D0, c, display]  # 0x180650: display and GS setup at boot (InitDisplay), the VBlank handler
-      - [0x80c40, c, flip_frame]  # automatch: 1 of 1
-      - [0x80CD0, c, unk_180A50]
-      - [0x82290, c, unk_182010]  # automatch: 3 of 3
+      - [0x7D6D0, c, texconv]  # 0x17D450: texture sizes and conversion (flPS2ConvertTextureFromContext), swizzle tables
+      - [0x7EB60, c, vram_slots]  # automatch: 2 of 12
+      - [0x7F570, c, screen_tex]
+      - [0x800A0, c, mem_util]     # 0x17FE20: byte fill/copy, heap wrappers
+      - [0x80330, c, packet_tim2]
+      - [0x808c0, c, display]  # 0x180640: display and GS setup at boot (InitDisplay), the VBlank handler
+      - [0x80CD0, c, gs_setup]
+      - [0x82290, c, packet_mode]  # automatch: 3 of 3
       - [0x822C0, c, iop]  # 0x182040: IOP reboot and module loading
       - [0x826D0, asm, mem_loops]  # 0x182450: Capcom's hand-written copy, clear and fill loops (Mem_*), built from src/main/mem_loops.s
-      - [0x828C0, c, unk_182640]
-      - [0x828f0, c, main_heap]   # automatch: 6 of 6
-      - [0x82950, c, unk_1826D0]
-      - [0x83fa0, c, unk_183D20]  # automatch: 3 of 6
-      - [0x856E0, c, unk_185460]
-      - [0x86760, c, unk_1864E0]
-      - [0x86f90, c, unk_186D10]  # automatch: 2 of 3
-      - [0x87000, c, unk_186D80]
-      - [0x8a210, c, pad]         # automatch: 8 of 22
+      - [0x828C0, c, main_heap]
+      - [0x82950, c, heap]
+      - [0x83860, c, image_pixels]
+      - [0x83fa0, c, render_state]  # automatch: 3 of 6
+      - [0x856E0, c, gs_regs]
+      - [0x86760, c, gs_tex_regs]
+      - [0x86f90, c, display_util]  # automatch: 2 of 3
+      - [0x870A0, c, prim]
+      - [0x89FC0, c, power_off]
+      - [0x8a210, c, cri_setup]
+      - [0x8A2B0, c, pad]
       - [0x8B260, c, pad_port]
-      - [0x8ce90, c, unk_18CC10]  # automatch: 1 of 1
-      - [0x8CEA0, c, main]  # 0x18CC20: main, the file systems, file loading by id, LoadOverlay, save-data accessors
-      - [0x8dcd0, c, unk_18DA50]  # automatch: 8 of 23
-      - [0x8EDA0, c, unk_18EB20]
+      - [0x8C560, c, tim2_file]
+      - [0x8ce90, c, main]  # 0x18CC10: main, the file systems, file loading by id, LoadOverlay
+      - [0x8d620, c, save_helpers]  # automatch: 8 of 23
       - [0x8EE20, c, sound]          # 0x18EBA0: the game's sound manager (bank slots, SE requests)
       - [0x8FE20, c, cse_spumap]     # 0x18FBA0: CSE SPU memory map (SPUMAPDT)
       - [0x90170, c, cse_rpc]        # 0x18FEF0: CSE SIF RPC client (COMM, STAT, THMN)
@@ -142,47 +140,45 @@ segments:
       - [0x91BF0, c, cse_bankfile]   # 0x191970: CSE bank file (Head/Prog/Smpl/Vagi)
       - [0x922A0, c, ml_rpc_queue]   # 0x192020: mlRpcQueue (request queue)
       - [0x92710, c, cse_cmd]        # 0x192490: CSE requests (COMM commands)
-      - [0x93170, c, unk_192EF0]
-      - [0x93360, c, unk_1930E0]  # automatch: 2 of 12
-      - [0x93A20, c, unk_1937A0]
-      - [0x93f30, c, unk_193CB0]  # automatch: 9 of 26
+      - [0x93160, c, adx_init]
+      - [0x93360, c, file_queue]  # automatch: 2 of 12
+      - [0x93A20, c, stream_play]
+      - [0x94300, c, afs_files]
       - [0x94AB0, c, sound_effects]
-      - [0x954b0, c, unk_195230]  # automatch: 3 of 8
-      - [0x95C90, c, unk_195A10]
+      - [0x954b0, c, sound_banks]  # automatch: 3 of 8
       - [0x95E80, data, data]            # .data (0x195C00)
-      - [0xBA390, .data, dma]
+      - [0xBA390, .data, dma_queue]
       - [0xBA3D0, .data, texconv]
-      - [0xBAC10, .data, unk_17F660]
-      - [0xBAC90, .data, unk_180A50]
+      - [0xBAC10, .data, screen_tex]
+      - [0xBAC90, .data, gs_setup]
       - [0xBAD20, .data, iop]
-      - [0xBADB0, .data, unk_1864E0]
-      - [0xBAE30, .data, unk_186D80]
+      - [0xBADB0, .data, gs_tex_regs]
+      - [0xBAE30, .data, prim]
       - [0xBB260, .data, pad]
       - [0xBB270, .data, pad_port]
       - [0xBB3B0, .data, main]
-      - [0xBB520, .data, unk_18DA50]
+      - [0xBB3C0, .data, save_helpers]
       - [0xBBC60, .data, sound]
       - [0xBCF00, .data, cse_rpc]
       - [0xBCF18, .data, cse]
       - [0xBCF20, .data, ml_rpc_queue]
-      - [0xBCF30, .data, unk_192EF0]
-      - [0xBCF80, .data, unk_1937A0]
-      - [0xBD090, .data, unk_193CB0]
+      - [0xBCF30, .data, adx_init]
+      - [0xBCF80, .data, stream_play]
+      - [0xBD090, .data, afs_files]
       - [0xBD0A0, .data, sound_effects]
       - { start: 0xBD100, type: data, name: rodata, linker_section_order: .rodata }  # .rodata (0x1BCE80)
-      - [0xC7D90, .rodata, dma]
+      - [0xC7D90, .rodata, dma_queue]
       - [0xC7DF0, .rodata, texture]
       - [0xC7E70, .rodata, texconv]
-      - [0xC7EB0, .rodata, unk_17F660]
-      - [0xC7F78, .rodata, unk_180A50]
+      - [0xC7EB0, .rodata, screen_tex]
+      - [0xC7F78, .rodata, gs_setup]
       - [0xC7FB0, .rodata, iop]
-      - [0xC80E0, .rodata, unk_183D20]
-      - [0xC8120, .rodata, unk_185460]
-      - [0xC8168, .rodata, unk_186D80]
+      - [0xC80E0, .rodata, render_state]
+      - [0xC8120, .rodata, gs_regs]
+      - [0xC8168, .rodata, power_off]
       - [0xC8190, .rodata, pad]
       - [0xC81E0, .rodata, main]
-      - [0xC8260, .rodata, unk_18DA50]
-      - [0xC8280, .rodata, unk_18EB20]
+      - [0xC8260, .rodata, save_helpers]
       - [0xC82B8, .rodata, cse_spumap]
       - [0xC83B8, .rodata, cse_rpc]
       - [0xC8468, .rodata, cse]
@@ -190,8 +186,8 @@ segments:
       - [0xC8548, .rodata, cse_bankfile]
       - [0xC85F8, .rodata, ml_rpc_queue]
       - [0xC86D8, .rodata, cse_cmd]
-      - [0xC8770, .rodata, unk_192EF0]
-      - [0xC87B0, .rodata, unk_193CB0]
+      - [0xC8770, .rodata, adx_init]
+      - [0xC87B0, .rodata, afs_files]
       - { type: bss, vram: 0x1C8600, name: bss }
   - [0xC8880, bin, elf_tail]
   - [0xC8C60]

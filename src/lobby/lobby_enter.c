@@ -17,9 +17,16 @@
 #include "lobby_menu.h"
 #include "lobby_text.h"
 #include "area.h"
+#include "lobby_enter.h"
+#include "area_list.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_screen.h"
+#include "lobby_steps.h"
+#include "lobby_town.h"
+#include "libc.h"
+#include "save.h"
 
-void LobbyText_Open(s32);
-void Lobby_ClearRequests(void);
 extern LobbyMenu *gLobbyMenu;
 
 /*
@@ -61,29 +68,11 @@ void LobbyEnter_Begin(void)
 }
 
 s32 LobbyNet_GetErrText(char *);
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-s32 LobbyNet_GetCurrentPlace(struct NetCurrentPlace *dst);
 extern u8 gLobbyLevel0Sel;
 extern u8 gLobbyLevel1Sel;
-s32 LobbyReq_CurrentPlace(void (*onReply)(NetMsg, NetMsg *));
-void LobbyStep_CurrentPlaceDone(NetMsg msg, NetMsg *msgPtr);
 
-s32 LobbyStep_CurrentPlace(void);
-void Player_LoadFromSave(Player *pl);
-void AreaList_Begin(void);
-s32 LobbyStep_Level0List(void);
-void Lobby_Disconnect(s32);
-s32 LobbyStep_Level1List(s32 a);
-s32 LobbyStep_Level1Users(void);
-s32 LobbyStep_DownloadQuests(void);
-void Town_Reset(void);
-s32 LobbyScreen_EnterSeq(s32 mode);
-void LobbyTown_BeginRunning(void);
 extern NetUser gNetUsers[10];
 extern u8 gLobbyScreenMode;
-void *memset(void *dst, s32 c, u32 n);
-s32 HunterCard_SendChanged(void);
 
 /*
  * Runs the re-entry each frame, by enum LobbyEnterStep:

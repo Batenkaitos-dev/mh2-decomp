@@ -24,6 +24,10 @@ typedef struct Vec3f {
 #define NULL 0
 #endif
 
+/* A full turn in the game's 16-bit angles (the monsters' and the player's
+ * rotations, the cameras', Math_CosAngle): ANGLE_TURN / 4 is a quarter turn. */
+#define ANGLE_TURN 0x10000
+
 /*
  * INCLUDE_ASM(dir, name): the function `name` is still assembly, in
  * dir/name.s. The compiler never sees this macro. tools/mwcc_cc.py replaces

@@ -14,75 +14,34 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_kirin.h"
 #include "player.h"
 #include "objattach.h"
 #include "area.h"
+#include "capsule.h"
+#include "save.h"
+#include "sound.h"
+#include "attack_objects.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* prototypes of callees */
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmKirin_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_EndStatus5(Em *em);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-ObjAttach *EmContactAttack_Create(Em *em, s8 kind);
 void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void Em_MoveRotatedAccel(Em *, void *);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmDrome_ChangeState, EmDrome_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_RestartScript(Em *em);
-void EmKirin_Hunted(Em *, EmWork *);
-void EmKirin_SnowyMountainsScene(Em *);
-void EmKirin_EndState(Em *em);
-void EmKirin_MotionEffects(Em *, EmWork *);
 void ThunderSpark_CreateTimed(Em *em, u8 k, s32 n, f32 f);
 void EmBodyFx_Spawn(Em *em, s16 kind);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
-void Em_InitParts(Em *em);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-u16 Area_DayId(u16 id);
-void EmKirin_KnockBack(Em *em, EmWork *work, s16 variant);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_TargetPlayerInRange(Em *);
-void Em_BeginStatus4(Em *em);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-f32 GmEm_ScaleBySize(Em *em, f32 v);
-s32 Em_GetFloorY(Em *em, f32 *pos, f32 *out);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-s32 Save_TestEventFlag(s32 flag);
-void GmEm_ResetSize(Em *em);
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_RaisePlayerAreaTrigger(Em *em);
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void EmKirin_RunState(Em *em);
-void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
 /* end of prototypes */
 
 /*
  * Plays the sounds of the motion in work->fxMotion (EM_MOTION_ID(0,
- * KIRIN_MOT_*)) at its frames: voice sounds at bone 0x17 (two motions pick
- * one at random with Sound_RandomSe), footsteps at bone 0. Called first by
+ * KIRIN_MOT_*)) at its frames: voice sounds at KIRIN_BONE_BOLT (two motions pick
+ * one at random with Sound_RandomSe), footsteps at KIRIN_BONE_ROOT. Called first by
  * EmKirin_MotionEffects.
  */
 void EmKirin_MotionSounds(Em *em, EmWork *work)
@@ -94,155 +53,155 @@ void EmKirin_MotionSounds(Em *em, EmWork *work)
     case EM_MOTION_ID(0, KIRIN_MOT_IDLE):
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_IDLE_ACTION_A):
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0xD, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, 0xD, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 92, 13, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 122, 13, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 146, 13, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 182, 13, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 210, 13, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 240, 13, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 270, 13, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_IDLE_ACTION_B):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x51, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 14, 81, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_IDLE_ACTION_C):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x4A, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 74, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_IDLE_ACTION_D):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x10, 4, 0x11, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, Sound_RandomSe(0x11, 4, 0x12, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, Sound_RandomSe(0x10, 4, 0x12, 4), 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(16, 4, 17, 4), 23);
+        Em_PlaySeAtBoneOnFrame(em, 84, Sound_RandomSe(17, 4, 18, 4), 23);
+        Em_PlaySeAtBoneOnFrame(em, 200, Sound_RandomSe(16, 4, 18, 4), 23);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_IDLE_ACTION_E):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xE, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 14, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_CHARGE):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 6, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 18, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 19, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_GALLOP):
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 16, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 12, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 19, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STRIDE_A):
     case EM_MOTION_ID(0, KIRIN_MOT_STRIDE_B):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 32, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 36, 19, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STOP):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_TURN_AROUND_LEFT):
     case EM_MOTION_ID(0, KIRIN_MOT_TURN_AROUND_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 22, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 56, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 19, KIRIN_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x10):
-        Em_PlaySeAtBoneOnFrame(em, 4, 7, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 8, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 9, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0xA, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0, 0);
+    case EM_MOTION_ID(0, 16):
+        Em_PlaySeAtBoneOnFrame(em, 4, 7, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 62, 8, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 76, 9, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 148, 10, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 18, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_LUNGE):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 2, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 14, KIRIN_SE_LIGHTNING, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 48, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_HOP):
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 24, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 26, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 19, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_JUMP):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x13, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 19, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STRIKE):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x49, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 12, 73, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 54, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_THREAT):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x11, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 12, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 46, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 17, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_CALL_LIGHTNING):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x51, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 2, 0);
+        Em_PlaySeAtBoneOnFrame(em, 2, 81, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 90, KIRIN_SE_LIGHTNING, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_FLINCH_A):
     case EM_MOTION_ID(0, KIRIN_MOT_FLINCH_B):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4B, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 75, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 34, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_KNOCKBACK):
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4B, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 4, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 75, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_KNOCKBACK_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 4, 6, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x14, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 6, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, 20, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 14, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 50, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 44, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 58, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 76, 0, KIRIN_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_COLLAPSE):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 1, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x4A, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 38, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 66, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 124, 20, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 98, 1, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 74, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STATUS2_LIE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x59, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 0x59, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 4, 89, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 184, 89, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STATUS4):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x55, 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x55, 0x17);
+        Em_PlaySeAtBoneOnFrame(em, 4, 85, KIRIN_BONE_BOLT);
+        Em_PlaySeAtBoneOnFrame(em, 88, 19, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 138, 85, KIRIN_BONE_BOLT);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STATUS4_SHAKE_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(0x56, 4, 0x57, 4), 0x17);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, Sound_RandomSe(86, 4, 87, 4), 23);
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, KIRIN_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, KIRIN_BONE_ROOT);
         
         break;
     }
@@ -367,7 +326,7 @@ void EmKirin_Update(Em *em)
     case EM_DMG_HIT_MODE3:
         hitAngle = em->hitAngle;
         hitDelta = hitAngle - em->rotY;
-        if (((hitDelta - 0x4000) & 0xFFFF) < 0x8000 && em->parts[0].hp > 0 && em->stance == EM_STANCE_GROUND) {
+        if (((hitDelta - 16384) & 0xFFFF) < 0x8000 && em->parts[0].hp > 0 && em->stance == EM_STANCE_GROUND) {
             if ((hitDelta & 0xFFFF) < 0x8000) {
                 EmKirin_ChangeState(em, EM_GROUP_REACT, KIRIN_REACT_FLINCH_A, EM_SYNC_OWNER);
             } else {
@@ -385,7 +344,7 @@ void EmKirin_Update(Em *em)
     switch (gQuest.stage) {
     case QUEST_ID_KIRIN_SCENE_1:
     case QUEST_ID_KIRIN_SCENE_2:
-        if (Area_DayId(em->area) == AREA_SNOWY_MOUNTAINS_8 && Save_TestEventFlag(0xAC) == 0) {
+        if (Area_DayId(em->area) == AREA_SNOWY_MOUNTAINS_8 && Save_TestEventFlag(172) == 0) {
             if (Area_DayId(gScene.area) == AREA_SNOWY_MOUNTAINS_8 && gScene.eventRunning == 1 && em->stateGroup != EM_GROUP_EVENT) {
                 EmKirin_ChangeState(em, EM_GROUP_EVENT, KIRIN_EVENT_SNOWY_MOUNTAINS_SCENE, EM_SYNC_SEND);
             }
@@ -527,7 +486,7 @@ void EmKirin_IdleActionE(Em *em, EmWork *work)
 
 /*
  * Sets targetAngle to the goal and plays KIRIN_MOT_TURN_TO_GOAL_LEFT when
- * the goal is up to 0x8000 on the rotY-rising side, else
+ * the goal is up to a half turn on the rotY-rising side, else
  * KIRIN_MOT_TURN_TO_GOAL_RIGHT (the motion turns; no rotY change in code);
  * then EmKirin_EndState.
  */
@@ -759,7 +718,7 @@ void EmKirin_WalkTurnToGoal(Em *em)
 }
 
 /*
- * KIRIN_MOT_WALK, Em_StepToGoal (turn step 0x40) until the goal is reached,
+ * KIRIN_MOT_WALK, Em_StepToGoal (turn step 64) until the goal is reached,
  * then EmKirin_EndState.
  */
 void EmKirin_WalkToGoal(Em *em)
@@ -770,7 +729,7 @@ void EmKirin_WalkToGoal(Em *em)
         Em_SetMotion(em, KIRIN_MOT_WALK, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             EmKirin_EndState(em);
         }
@@ -779,7 +738,7 @@ void EmKirin_WalkToGoal(Em *em)
 }
 
 /*
- * KIRIN_MOT_CHARGE with contact attack 0x10, Em_StepToGoal until the goal is
+ * KIRIN_MOT_CHARGE with contact attack 16, Em_StepToGoal until the goal is
  * reached and the motion ended, then KIRIN_MOT_STOP and EmKirin_EndState.
  * The variant is unused: states 2 and 9 differ only in the stop margin
  * EmKirin_ChangeState sets.
@@ -790,10 +749,10 @@ void EmKirin_ChargeToGoal(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_CHARGE, 0, 0);
-        EmContactAttack_Create(em, 0x10);
+        EmContactAttack_Create(em, 16);
         break;
     case 1:
-        if ((Em_StepToGoal(em, 0x40, 0) == 1) && (em->motion[0].playing == 0)) {
+        if ((Em_StepToGoal(em, 64, 0) == 1) && (em->motion[0].playing == 0)) {
             em->step++;
             Em_SetMotion(em, KIRIN_MOT_STOP, 4, 0);
         }
@@ -808,10 +767,10 @@ void EmKirin_ChargeToGoal(Em *em, EmWork *work, s32 variant)
 }
 
 /*
- * KIRIN_MOT_GALLOP with contact attack 0x10, restarted by hand on layers 0
+ * KIRIN_MOT_GALLOP with contact attack 16, restarted by hand on layers 0
  * and 1 each time it ends until Em_StepToGoal reaches the goal, then
  * KIRIN_MOT_STOP on both layers and EmKirin_EndState. The variant is unused
- * (states 3 and 0xA differ in EmKirin_ChangeState).
+ * (states 3 and 10 differ in EmKirin_ChangeState).
  */
 void EmKirin_GallopToGoal(Em *em, EmWork *work, s32 variant)
 {
@@ -819,10 +778,10 @@ void EmKirin_GallopToGoal(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_GALLOP, 0, 0);
-        EmContactAttack_Create(em, 0x10);
+        EmContactAttack_Create(em, 16);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             if (em->motion[0].playing == 0) {
                 em->step++;
                 Em_SetLayerMotion(em, EM_MOTION_ID(0, KIRIN_MOT_STOP), 0, 2, 0);
@@ -846,7 +805,7 @@ void EmKirin_GallopToGoal(Em *em, EmWork *work, s32 variant)
 }
 
 /*
- * KIRIN_MOT_STRIDE_A, then KIRIN_MOT_STOP from frame 0x1A, then
+ * KIRIN_MOT_STRIDE_A, then KIRIN_MOT_STOP from frame 26, then
  * EmKirin_EndState.
  */
 void EmKirin_StrideA(Em *em)
@@ -859,7 +818,7 @@ void EmKirin_StrideA(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KIRIN_MOT_STOP, 0, 0x1A);
+            Em_SetMotion(em, KIRIN_MOT_STOP, 0, 26);
         }
         break;
     case 2:
@@ -872,7 +831,7 @@ void EmKirin_StrideA(Em *em)
 }
 
 /*
- * KIRIN_MOT_STRIDE_B, then KIRIN_MOT_STOP from frame 0x1A, then
+ * KIRIN_MOT_STRIDE_B, then KIRIN_MOT_STOP from frame 26, then
  * EmKirin_EndState.
  */
 void EmKirin_StrideB(Em *em)
@@ -885,7 +844,7 @@ void EmKirin_StrideB(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KIRIN_MOT_STOP, 0, 0x1A);
+            Em_SetMotion(em, KIRIN_MOT_STOP, 0, 26);
         }
         break;
     case 2:
@@ -986,27 +945,27 @@ void EmKirin_StrideRampage(Em *em)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_STRIDE_A, 0, 0);
-        EmContactAttack_Create(em, 0xD);
+        EmContactAttack_Create(em, 13);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, KIRIN_MOT_STRIDE_B, 0, 0);
-            EmContactAttack_Create(em, 0xD);
+            EmContactAttack_Create(em, 13);
         }
         break;
     case 2:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, KIRIN_MOT_STRIDE_A, 0, 0);
-            EmContactAttack_Create(em, 0xD);
+            EmContactAttack_Create(em, 13);
         }
         break;
     case 3:
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, KIRIN_MOT_STRIDE_B, 0, 0);
-            EmContactAttack_Create(em, 0xD);
+            EmContactAttack_Create(em, 13);
         }
         break;
     case 4:
@@ -1020,7 +979,7 @@ void EmKirin_StrideRampage(Em *em)
 
 /*
  * Ground stance, lookAtTarget off, aims targetAngle at the goal: within
- * 0x3000 either way KIRIN_MOT_HOP (up to a quarter turn over frame 26), else
+ * three sixteenths of a turn either way KIRIN_MOT_HOP (up to a quarter turn over frame 26), else
  * KIRIN_MOT_TURN_AROUND_RIGHT or _LEFT (up to a half turn over frame 30);
  * turns rotY by the step a frame, snapping onto the goal angle, then
  * EmKirin_EndState.
@@ -1052,10 +1011,10 @@ void EmKirin_FaceGoal(Em *em, EmWork *work)
         }
         if (em->motionId[0] == EM_MOTION_ID(0, KIRIN_MOT_HOP)) {
             turnEndFrame = 26.0f;
-            turnStep = 0x4000U / (u32) (turnEndFrame / 2.0f);
+            turnStep = 16384U / (u32) (turnEndFrame / 2.0f);
         } else {
             turnEndFrame = 30.0f;
-            turnStep = 0x8000U / (u32) (turnEndFrame / 2.0f);
+            turnStep = 32768U / (u32) (turnEndFrame / 2.0f);
         }
         angleDiff = (em->targetAngle - (em->rotY & 0xFFFF)) & 0xFFFF;
         if ((u32) ((angleDiff + turnStep) & 0xFFFF) < turnStep * 2) {
@@ -1083,7 +1042,7 @@ void EmKirin_FaceGoal(Em *em, EmWork *work)
  * the goal height) timed to the XZ distance, else a short jump (velY 75,
  * velZ 50); airborne (EM_STANCE_AIR) moving by Em_MoveRotatedAccel once the
  * motion ends, frozen from frame 36; on the floor ground stance and
- * KIRIN_MOT_STOP (frame 0xA), then EmKirin_EndState.
+ * KIRIN_MOT_STOP (frame 10), then EmKirin_EndState.
  */
 void EmKirin_JumpToGoal(Em *em, EmWork *work)
 {
@@ -1129,7 +1088,7 @@ void EmKirin_JumpToGoal(Em *em, EmWork *work)
             em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
             em->motionSpeed = 1.0f;
-            Em_SetMotion(em, KIRIN_MOT_STOP, 4, 0xA);
+            Em_SetMotion(em, KIRIN_MOT_STOP, 4, 10);
         }
         break;
     case 2:
@@ -1216,7 +1175,7 @@ void EmKirin_Threat(Em *em)
 
 /*
  * KIRIN_MOT_LUNGE (its effects: contact KIRIN_ATK_BOLTS_B_ALT at frame 20),
- * then KIRIN_MOT_STOP from frame 0x1A, then EmKirin_EndState.
+ * then KIRIN_MOT_STOP from frame 26, then EmKirin_EndState.
  */
 void EmKirin_Lunge(Em *em)
 {
@@ -1228,7 +1187,7 @@ void EmKirin_Lunge(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, KIRIN_MOT_STOP, 0, 0x1A);
+            Em_SetMotion(em, KIRIN_MOT_STOP, 0, 26);
         }
         break;
     case 2:
@@ -1267,9 +1226,9 @@ void EmKirin_JumpStrike(Em *em)
 }
 
 /*
- * KIRIN_MOT_STRIKE; at frame 22 lightning (EMRANGED_KIRIN_BOLTS) from bone
- * 0x17 with variant 0 (variant 1: 6, the same strike spots with attack row
- * 6); then EmKirin_EndState.
+ * KIRIN_MOT_STRIKE; at frame 22 lightning (EMRANGED_KIRIN_BOLTS) from
+ * KIRIN_BONE_BOLT with variant 0 (variant 1: 6, the same strike spots with
+ * attack row 6); then EmKirin_EndState.
  */
 void EmKirin_StrikeBolts(Em *em, EmWork *work, s32 variant)
 {
@@ -1281,9 +1240,9 @@ void EmKirin_StrikeBolts(Em *em, EmWork *work, s32 variant)
     case 1:
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 0, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 0, 0, 0);
             } else {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 6, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 6, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -1296,7 +1255,7 @@ void EmKirin_StrikeBolts(Em *em, EmWork *work, s32 variant)
 
 /*
  * KIRIN_MOT_CALL_LIGHTNING with spark type 8 for 90 frames; at frame 90
- * lightning from bone 0x17 with variant 1 (variant 1: 7); then
+ * lightning from KIRIN_BONE_BOLT with variant 1 (variant 1: 7); then
  * EmKirin_EndState.
  */
 void EmKirin_CallBoltsA(Em *em, EmWork *work, s32 variant)
@@ -1305,14 +1264,14 @@ void EmKirin_CallBoltsA(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_CALL_LIGHTNING, 0, 0);
-        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 0x5A, 1.0f);
+        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 90, 1.0f);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 1, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 1, 0, 0);
             } else {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 7, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 7, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -1332,14 +1291,14 @@ void EmKirin_CallBoltsB(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_CALL_LIGHTNING, 0, 0);
-        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 0x5A, 1.0f);
+        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 90, 1.0f);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 2, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 2, 0, 0);
             } else {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 8, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 8, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -1359,14 +1318,14 @@ void EmKirin_CallBoltsC(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_CALL_LIGHTNING, 0, 0);
-        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 0x5A, 1.0f);
+        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 90, 1.0f);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 3, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 3, 0, 0);
             } else {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 9, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 9, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -1378,7 +1337,7 @@ void EmKirin_CallBoltsC(Em *em, EmWork *work, s32 variant)
 }
 
 /*
- * As EmKirin_CallBoltsA with lightning variant 4 (0xA).
+ * As EmKirin_CallBoltsA with lightning variant 4 (10).
  */
 void EmKirin_CallBoltsD(Em *em, EmWork *work, s32 variant)
 {
@@ -1386,14 +1345,14 @@ void EmKirin_CallBoltsD(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_CALL_LIGHTNING, 0, 0);
-        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 0x5A, 1.0f);
+        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 90, 1.0f);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 4, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 4, 0, 0);
             } else {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 0xA, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 10, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -1405,7 +1364,7 @@ void EmKirin_CallBoltsD(Em *em, EmWork *work, s32 variant)
 }
 
 /*
- * As EmKirin_CallBoltsA with lightning variant 5 (0xB).
+ * As EmKirin_CallBoltsA with lightning variant 5 (11).
  */
 void EmKirin_CallBoltsE(Em *em, EmWork *work, s32 variant)
 {
@@ -1413,14 +1372,14 @@ void EmKirin_CallBoltsE(Em *em, EmWork *work, s32 variant)
     case 0:
         em->step++;
         Em_SetMotion(em, KIRIN_MOT_CALL_LIGHTNING, 0, 0);
-        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 0x5A, 1.0f);
+        ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 90, 1.0f);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
             if (!(variant & 0xFF)) {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 5, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 5, 0, 0);
             } else {
-                EmRangedAttack_CreateAtBone(em, 0x17, 8, 0xB, 0, 0);
+                EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 11, 0, 0);
             }
         }
         if (em->motion[0].playing == 0) {
@@ -1566,7 +1525,7 @@ void EmKirin_KnockBack(Em *em, EmWork *work, s16 variant)
             em->step++;
             em->stance = EM_STANCE_GROUND;
             Em_SetMotion(em, KIRIN_MOT_KNOCKBACK_LAND, 0, 0);
-            em->timer = 0x5A;
+            em->timer = 90;
         }
         break;
     case 2:
@@ -1679,8 +1638,8 @@ void EmKirin_RunReactState(Em *em, EmWork *work)
  */
 void EmKirin_Hunted(Em *em, EmWork *work)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
@@ -1841,12 +1800,12 @@ void EmKirin_SnowyMountainsScene(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, KIRIN_MOT_CALL_LIGHTNING, 0, 0);
-            ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 0x5A, 1.0f);
+            ThunderSpark_CreateTimed(em, SPARK_KIRIN_CHARGE, 90, 1.0f);
         }
         break;
     case 10:
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBone(em, 0x17, 8, 4, 0, 0);
+            EmRangedAttack_CreateAtBone(em, KIRIN_BONE_BOLT, EMRANGED_KIRIN_BOLTS, 4, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -1860,7 +1819,7 @@ void EmKirin_SnowyMountainsScene(Em *em)
         }
         break;
     case 12:
-        if (Save_TestEventFlag(0xAC) == 1) {
+        if (Save_TestEventFlag(172) == 1) {
             EmKirin_EndState(em);
         }
         break;
@@ -2015,7 +1974,7 @@ void EmKirin_SpawnEffects(Em *em)
 {
     EmBodyFx_Spawn(em, EMBODYFX_KIRIN_FLASH);
     EmBodyFx_Spawn(em, EMBODYFX_KIRIN_GLOW);
-    Shadow_Spawn((Player *) em, 4);
+    Shadow_Spawn((Player *) em, SHADOW_OWN_MODEL);
 }
 
 /*
@@ -2036,8 +1995,8 @@ void EmKirin_MotionEffectsDefault(Em *em)
  * Keeps motionId[0] in work->fxMotion, plays EmKirin_MotionSounds, then the
  * motion effects at their frames: dust PartFx for the charge, gallop,
  * strides, stop, turn-arounds, lunge, hop and knockback landing; contact
- * attacks 0xB (KIRIN_MOT_LUNGE f20) and 0xC (KIRIN_MOT_STRIKE f14); lying
- * puffs at bone 0x17 for KIRIN_MOT_STATUS2_LIE.
+ * attacks 11 (KIRIN_MOT_LUNGE f20) and 12 (KIRIN_MOT_STRIKE f14); lying
+ * puffs at KIRIN_BONE_BOLT for KIRIN_MOT_STATUS2_LIE.
  */
 void EmKirin_MotionEffects(Em *em, EmWork *work)
 {
@@ -2058,74 +2017,74 @@ void EmKirin_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_CHARGE):
         if (EmMotion_PassedFrameScaled(em, 4.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x15, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_D, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_C, 3, 0.6f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_GALLOP):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x15, 3, 0.7f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_D, 3, 0.7f);
         }
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.7f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_C, 3, 0.7f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STRIDE_A):
     case EM_MOTION_ID(0, KIRIN_MOT_STRIDE_B):
-        if (work->fxMotion == 0x3F7) {
+        if (work->fxMotion == 1015) {
             if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-                PartFx_SpawnForEmScaled(em, 0x15, 3, 0.9f);
+                PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_D, 3, 0.9f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.9f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_C, 3, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STOP):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0xB, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_B, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0xB, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_B, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 7, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_A, 3, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 7, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_A, 3, 0.6f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_TURN_AROUND_LEFT):
     case EM_MOTION_ID(0, KIRIN_MOT_TURN_AROUND_RIGHT):
-        if (work->fxMotion == 0x3F7) {
+        if (work->fxMotion == 1015) {
             if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
-                PartFx_SpawnForEmScaled(em, 0x15, 3, 0.6f);
+                PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_D, 3, 0.6f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 34.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x11, 3, 0.6f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_FOOT_C, 3, 0.6f);
         }
         break;
-    case EM_MOTION_ID(0, 0x10):
+    case EM_MOTION_ID(0, 16):
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_LUNGE):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0U) != 0) {
-            EmContactAttack_Create(em, 0xB);
+            EmContactAttack_Create(em, 11);
         }
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 3, 0.9f);
+            PartFx_SpawnForEmScaled(em, 22, 3, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_HOP):
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 3, 0.9f);
+            PartFx_SpawnForEmScaled(em, 22, 3, 0.9f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_JUMP):
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STRIKE):
         if (EmMotion_PassedFrameScaled(em, 14.0f, 0U) != 0) {
-            EmContactAttack_Create(em, 0xC);
+            EmContactAttack_Create(em, 12);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_THREAT):
@@ -2136,7 +2095,7 @@ void EmKirin_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_KNOCKBACK_LAND):
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0U) != 0) {
-            PartFx_SpawnForEmScaled(em, 2, 6, 0.5f);
+            PartFx_SpawnForEmScaled(em, KIRIN_BONE_BODY, 6, 0.5f);
         }
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_GET_UP):
@@ -2146,7 +2105,7 @@ void EmKirin_MotionEffects(Em *em, EmWork *work)
         puffOfs[0] = 0.0f;
         puffOfs[1] = 0.0f;
         puffOfs[2] = 10.0f;
-        Em_SpawnLyingPuffs(em, 0x17, puffOfs, 1.0f);
+        Em_SpawnLyingPuffs(em, KIRIN_BONE_BOLT, puffOfs, 1.0f);
         break;
     case EM_MOTION_ID(0, KIRIN_MOT_STATUS4):
     case EM_MOTION_ID(0, KIRIN_MOT_STATUS4_SHAKE_OFF):
@@ -2176,7 +2135,6 @@ void EmKirin_UpdateMotionEffects(Em *em)
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmKirin_Callbacks[8] = {
     EmKirin_SpawnEffects, EmKirin_SpawnEffects, EmKirin_TableNop, EmKirin_UpdateMotionEffects,
     GmEm_ReturnZero, EmKirin_TableNop, NULL, NULL,

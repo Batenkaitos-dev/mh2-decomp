@@ -19,6 +19,9 @@
 #include "common.h"
 #include "card.h"
 #include "window.h"
+#include "kbd.h"
+#include "mine_point.h"
+#include "screen_fade.h"
 extern u8 gOldGameKind;
 #include "syssettings.h"
 #include "camera.h"
@@ -32,50 +35,50 @@ extern u8 gOldGameKind;
 #include "em.h"
 #include "syssave.h"
 #include "qsync.h"
+#include "render_state.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "light.h"
+#include "movie.h"
+#include "sound.h"
+#include "texture.h"
+#include "area.h"
+#include "draw_helpers.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "file_load.h"
+#include "frame.h"
+#include "game_util.h"
+#include "gm_main.h"
+#include "mem_util.h"
+#include "rand.h"
+#include "tex_files.h"
+#include "libc.h"
+#include "font.h"
+#include "quest.h"
+#include "area_draw.h"
 extern SaveData *gCardSlots; /* sub_main: the save slots read from the memory card */
 
 void ColorEdit_Draw(u8 mode, s16 x, s16 y, u8 r, u8 g, u8 b, u8 sel, u8 pal);
-void Chara_SetupEditPlayer(Player *p, s32 mode, s32 slot);
 /* The caller passes an s16 slot unextended: the slot is an s16. */
-void Chara_SetupCardPlayer(Player *p, s32 mode, s16 slot);
-void CharaSel_Update(void);
-void Chara_PlayCancelSe(void);
 u32 Equip_Color(u8 idx, u8 alpha, s32 alt);      /* a colour from an alpha */
 struct Frame;
-void WindowFrame_Draw(struct Frame *, s16 *off);       /* draws a window */
 void Text_SetColor(s16 color);
 void Text_SetSize(s32 size);
 s32 Text_DisplayLength(char *);            /* a message's width */
 void Text_Printf(const char *fmt, ...);
-u16 Rand_Next(s32);
 extern char *gNoMatchTexts[];          /* select_psp.c's .data, as the other texts */
-void Parts_StartBounce(u8);
-s32 Sound_LoadVoiceBank(s32 sex, s32 voice);
-void Sound_PlayCancel(void);
 extern char *gRotateTexts[];
 extern char *gCharaPartNames[];
 extern char *gCharaListHelpTexts[];
 extern char *gCharaPartHelpTexts[];
 extern char *gCharaEditHelpTexts[];
 extern char *gCharaSelectTexts[];
-void Chara_DrawNoMatch(ChrEdit *c);
-void Hud_DrawButtonIconWhite(s32 a, s32 b, s32 c, s32 d, f32 scale);
 /* unit's own declaration: an s32 colour as Chara_DrawEquipment passes it; with the definition's s16, the calls compile differently */
 void Text_PrintfAt(s16, s16, s32, const char *, ...);
 s32 Str_Length(char *);                /* a message's width */
 extern char *gCardSavingTexts[];
-void Player_SetupFromSave(struct Player *, struct SaveData *);
 void Player_SetMotionPair(Player *p, s32 motion, s32 a, s16 b);
-
-
-void Chara_SetCamera(Player *pl, s32 mode, s32 hold);
-void Parts_SlideInPanels(u8 sel);
-void Parts_StartPanel(s16 flag);
-
-
-void Sel_DrawBackground(u8 c);
-void Sel_DrawHeader(s16 kind);
-s32 NgWord_Check(s8 *name);
 
 /* .data */
 /* Per panel (CharaPanel), the camera view (CharaCamera) of its page. */
@@ -129,9 +132,6 @@ u8 gArmorIconCells[16] = {
 #include "select/006C8090.inc"
 };
 
-
-extern u32 gPresetColors[];      /* sub_main: the preset colours */
-
 /*
  * The overlay's entry: resets gChrEdit for a new character. keep == 0 also
  * resets the name, the colour (preset 0), the slot, the panel and the loaded
@@ -166,7 +166,7 @@ void select_entry(s16 keep)
     edit->soundWait = 0;
     edit->unk44[1] = 0;
     edit->unk44[2] = 0;
-    edit->inputDelay = 0x14;
+    edit->inputDelay = 20;
     edit->cond[0] = 0;
     edit->cond[1] = 0;
     edit->cond[2] = 0;
@@ -186,18 +186,8 @@ s32 Chara_EquipViewOn(void)
     return gChrEdit.equipView != 0;
 }
 
-void Mem_Fill(void *dst, u8 c, s32 n);
 u16 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level);
-s32 Equip_EquipSlot(SaveData *save, u16 idx);
-void Equip_Refresh(SaveData *save);
-u32 ItemBox_AddTo(SaveData *s, u16 item, u32 count);
-void Save_SetEventFlag(s32);
-u16 Save_RankFromPoints(SaveData *s);
-void Rate_InitSave(SaveData *save);
-s32 sprintf(char *, const char *, ...);
-void Save_SetTitleIn(SaveData *save, s32 n);
 
-extern char *gEquipSetNameFormat;
 /*
  * Fills a new save record from the finished character (slot CHARA_SLOT_NONE:
  * gSave itself, otherwise gSysSave.save): its looks and name, the starting
@@ -225,7 +215,7 @@ void Chara_MakeSave(ChrEdit *edit, u8 slot)
     newSave->face = edit->face;
     newSave->voice = edit->voice;
     if (edit->hair == CHARA_HAIR_SPECIAL) {
-        newSave->hairStyle = 0x13;
+        newSave->hairStyle = 19;
     } else {
         newSave->hairStyle = edit->hair;
     }
@@ -235,15 +225,15 @@ void Chara_MakeSave(ChrEdit *edit, u8 slot)
     }
     newSave->charType = edit->type;
     newSave->money = 0;
-    newSave->equipIdx[1] = 0xFFFF;
-    newSave->equipIdx[2] = 0xFFFF;
-    newSave->equipIdx[3] = 0xFFFF;
-    newSave->equipIdx[4] = 0xFFFF;
-    newSave->equipIdx[5] = 0xFFFF;
+    newSave->equipIdx[1] = 65535;
+    newSave->equipIdx[2] = 65535;
+    newSave->equipIdx[3] = 65535;
+    newSave->equipIdx[4] = 65535;
+    newSave->equipIdx[5] = 65535;
     newSave->modeSelChoice = GMSUB_MODE_SEL_OFFLINE;
     newSave->hrPoints = 0;
     newSave->hr = 0;
-    Equip_EquipSlot(newSave, (s16)Box_AddItem(newSave, 6, 0x9C, 0));
+    Equip_EquipSlot(newSave, (s16)Box_AddItem(newSave, 6, 156, 0));
     Equip_Refresh(newSave);
     newSave->equip[1].type = 0;
     newSave->equip[2].type = 2;
@@ -251,30 +241,30 @@ void Chara_MakeSave(ChrEdit *edit, u8 slot)
     newSave->equip[4].type = 4;
     newSave->equip[5].type = 5;
     if (gOldGameKind != 0) {
-        ItemBox_AddTo(newSave, 7, 0xA);
-        ItemBox_AddTo(newSave, 0xAC, 0x14);
-        ItemBox_AddTo(newSave, 0x30, 0xA);
-        ItemBox_AddTo(newSave, 0x47, 0xA);
-        ItemBox_AddTo(newSave, 0x8E, 5);
-        ItemBox_AddTo(newSave, 0x97, 3);
-        ItemBox_AddTo(newSave, 0x9A, 3);
-        newSave->money += 0xBB8;
-        Save_SetEventFlag(0x77);
+        ItemBox_AddTo(newSave, 7, 10);
+        ItemBox_AddTo(newSave, 172, 20);
+        ItemBox_AddTo(newSave, 48, 10);
+        ItemBox_AddTo(newSave, 71, 10);
+        ItemBox_AddTo(newSave, 142, 5);
+        ItemBox_AddTo(newSave, 151, 3);
+        ItemBox_AddTo(newSave, 154, 3);
+        newSave->money += 3000;
+        Save_SetEventFlag(119);
     }
     newSave->hr = Save_RankFromPoints(newSave);
-    for (i = 0; i < 0x20; i++) {
+    for (i = 0; i < 32; i++) {
         newSave->randSaved[i] = Rand_Next(1);
     }
     Rate_InitSave(newSave);
     /* equipSets[j] (idx, then name at +0xC) through a byte walk: the indexed form
      * swaps s1 and s2 (the loop counter and the walk). */
     for (j = 0, walk = newSave; j < 10; j++, walk = (SaveData *)((u8 *)walk + sizeof(EquipSet))) {
-        walk->equipSets[0].idx[0] = 0xFFFF;
-        walk->equipSets[0].idx[1] = 0xFFFF;
-        walk->equipSets[0].idx[2] = 0xFFFF;
-        walk->equipSets[0].idx[3] = 0xFFFF;
-        walk->equipSets[0].idx[4] = 0xFFFF;
-        walk->equipSets[0].idx[5] = 0xFFFF;
+        walk->equipSets[0].idx[0] = 65535;
+        walk->equipSets[0].idx[1] = 65535;
+        walk->equipSets[0].idx[2] = 65535;
+        walk->equipSets[0].idx[3] = 65535;
+        walk->equipSets[0].idx[4] = 65535;
+        walk->equipSets[0].idx[5] = 65535;
         sprintf((char *)walk->equipSets[0].name, gEquipSetNameFormat, j + 1);
     }
     Save_SetTitleIn(newSave, 0);
@@ -291,18 +281,7 @@ typedef struct SelVec3 {
 
 extern SelVec3 gStartPos[];     /* sub_main */
 extern s32 gAreaSubModelId[];
-extern s32 gSystemTexFiles[];
-void DrawCb_LocalPlayer(DrawSlot *r);
-void DrawCb_CharMake(DrawSlot *r);
-void Player_SetColorWord(Player *p, u8 c);
-void Player_InitPartTable(s32 idx);
 void Player_LoadPartModels(Player *p);
-void Player_ClearFxBlock(Player *p);
-void Player_InitRecords(Player *p);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-Model *Model_Get(s32 i);
-void Player_LoadWeaponModel(s32 kind, s32 pl);
 
 /*
  * Sets up player object slot as the character being created: at the area's
@@ -458,26 +437,26 @@ void Chara_SetupCardPlayer(Player *pl, s32 mode, s16 slot)
     }
 }
 
-/* Draws the creation's backdrop, texture 0xA3 over the whole screen. */
+/* Draws the creation's backdrop, texture 163 over the whole screen. */
 void Chara_DrawBackground(void)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0xA3);
-    Tex_Bind(0xA3);
-    Gs_SetState(0x6C, 0);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 163);
+    Tex_Bind(163);
+    Gs_SetState(RS_ZWRITE, 0);
     spr.x = 0;
     spr.y = 0;
-    spr.w = 0x280;
-    spr.h = 0x1C0;
+    spr.w = 640;
+    spr.h = 448;
     spr.color = -1;
     spr.u0 = 0;
     spr.v0 = 0;
-    spr.u1 = 0x1FF;
-    spr.v1 = 0x1BF;
+    spr.u1 = 511;
+    spr.v1 = 447;
     Sprite_Draw(&spr);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 /*
@@ -486,24 +465,24 @@ void Chara_DrawBackground(void)
  */
 void Chara_DrawPartsHeader(TaskSlot *task, ChrEdit *edit)
 {
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     Sel_DrawHeader(4);
-    Font_SetSpacing(0x14, 0x14);
-    Hud_DrawButtonIconWhite(0x12, 0x206, 0x60, 8, 1.0f);
-    Text_PrintfAt(0x220, 0x60, 0, gRotateTexts[0]);
-    Gs_SetState(0x6C, 1);
+    Font_SetSpacing(20, 20);
+    Hud_DrawButtonIconWhite(18, 518, 96, 8, 1.0f);
+    Text_PrintfAt(544, 96, 0, gRotateTexts[0]);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 /* Plays the decide sound. */
 void Chara_PlayDecideSe(void)
 {
-    Sound_PlaySeFlat(0, 0x13, 0);
+    Sound_PlaySeFlat(0, 19, 0);
 }
 
 /* Plays the cancel sound. */
 void Chara_PlayCancelSe(void)
 {
-    Sound_PlaySeFlat(0, 0x14, 0);
+    Sound_PlaySeFlat(0, 20, 0);
 }
 
 const char gCharaStrFormat[3] = {
@@ -521,17 +500,17 @@ void Chara_DrawPartHelp(ChrEdit *edit, u8 kind, u8 showPartHelp)
     char *helpLine;
 
     WindowFrame_Draw(&gCharaHelpFrame, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Text_SetColor(0);
     kind = (kind == 0) ? edit->panel : kind;
-    Font_SetPos((0x280 - Text_DisplayLength(gCharaPartNames[kind]) * 10) / 2, 0x168);
+    Font_SetPos((640 - Text_DisplayLength(gCharaPartNames[kind]) * 10) / 2, 360);
     Text_Printf(gCharaStrFormat, gCharaPartNames[kind]);
     if (showPartHelp == 0) {
         helpLine = gCharaListHelpTexts[0];
     } else {
         helpLine = gCharaPartHelpTexts[kind];
     }
-    Font_SetPos((0x280 - Text_DisplayLength(helpLine) * 10) / 2, 0x180);
+    Font_SetPos((640 - Text_DisplayLength(helpLine) * 10) / 2, 384);
     Text_Printf(gCharaStrFormat, helpLine);
 }
 
@@ -545,15 +524,15 @@ void Chara_DrawNoMatch(ChrEdit *edit)
     s16 x;
 
     WindowFrame_Draw(&gCharaNoMatchFrame, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Text_SetColor(0);
     Text_SetSize(2);
     msg = gNoMatchTexts[0];
-    x = (0x280 - Text_DisplayLength(msg) * 10) / 2;
-    Font_SetPos(x, 0xA2);
+    x = (640 - Text_DisplayLength(msg) * 10) / 2;
+    Font_SetPos(x, 162);
     Text_Printf(gCharaStrFormat, msg);
     msg = gNoMatchTexts[1];
-    Font_SetPos(x, 0xBA);
+    Font_SetPos(x, 186);
     Text_Printf(gCharaStrFormat, msg);
     Text_SetSize(0);
 }
@@ -568,11 +547,11 @@ s32 Chara_NameHasText(ChrEdit *edit)
     u8 found;
 
     found = 0;
-    for (i = 0; i < 0x10; i++) {
+    for (i = 0; i < 16; i++) {
         if (edit->name[i] == 0) {
             break;
         }
-        if (edit->name[i] != 0 && edit->name[i] != 0x20) {
+        if (edit->name[i] != 0 && edit->name[i] != 32) {
             found = 1;
         }
     }
@@ -582,9 +561,6 @@ s32 Chara_NameHasText(ChrEdit *edit)
     return 0;
 }
 
-s32 Chara_CheckName(s8 *name);
-s16 NetMenu_DrawMessage(s32 x, s16 y, s32 id);
-void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
 s32 Str_Length(char *);
 extern char *gNameInvalidTexts[];
 extern char *gCharaConfirmTexts[];
@@ -606,7 +582,7 @@ void Chara_DrawQuestion(ChrEdit *edit, s16 mode)
     s16 y;
     s16 x;
 
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     WindowFrame_Draw(&gCharaHelpFrame, 0);
     err = 0;
     if (mode != CHARA_ASK_GENDER) {
@@ -618,13 +594,13 @@ void Chara_DrawQuestion(ChrEdit *edit, s16 mode)
     }
     if (err != 0 && mode == CHARA_ASK_CREATE) {
         if (err == 1) {
-            x = (0x280 - Str_Length(gRotateTexts[1]) * 10) / 2;
-            Text_PrintfAt(x, 0x168, 0, gRotateTexts[1]);
+            x = (640 - Str_Length(gRotateTexts[1]) * 10) / 2;
+            Text_PrintfAt(x, 360, 0, gRotateTexts[1]);
         } else {
-            x = (0x280 - Str_Length(gNameInvalidTexts[0]) * 10) / 2;
-            Text_PrintfAt(x, 0x168, 0, gNameInvalidTexts[0]);
+            x = (640 - Str_Length(gNameInvalidTexts[0]) * 10) / 2;
+            Text_PrintfAt(x, 360, 0, gNameInvalidTexts[0]);
         }
-        Font_SetPos((0x280 - Text_DisplayLength(gNameInvalidTexts[1]) * 10) / 2, 0x180);
+        Font_SetPos((640 - Text_DisplayLength(gNameInvalidTexts[1]) * 10) / 2, 384);
         Text_Printf(gNameInvalidTexts[1]);
         return;
     }
@@ -646,23 +622,23 @@ void Chara_DrawQuestion(ChrEdit *edit, s16 mode)
         msg = gGenderBackTexts[0];
         break;
     case CHARA_ASK_NET_MESSAGE:
-        NetMenu_DrawMessage(0x140, 0x160, 0x30);
+        NetMenu_DrawMessage(320, 352, 48);
         break;
     }
     if (mode != CHARA_ASK_NET_MESSAGE) {
-        Text_PrintfAt((0x280 - Str_Length(msg) * 10) / 2, 0x168, 0, msg);
-        y = 0x184;
+        Text_PrintfAt((640 - Str_Length(msg) * 10) / 2, 360, 0, msg);
+        y = 388;
     } else {
-        y = 0x180;
+        y = 384;
     }
     if (edit->choice == CHARA_CHOICE_YES) {
-        Menu_DrawGlowBar(0x10E, y - 2, 0x64, 0x18, 0xFF20C0C0);
-        Text_PrintfAt(0xFA, y, 5, gCharaYesNoTexts[0]);
-        Text_PrintfAt(0x15E, y, 0, gCharaYesNoTexts[1]);
+        Menu_DrawGlowBar(270, y - 2, 100, 24, 0xFF20C0C0);
+        Text_PrintfAt(250, y, 5, gCharaYesNoTexts[0]);
+        Text_PrintfAt(350, y, 0, gCharaYesNoTexts[1]);
     } else {
-        Menu_DrawGlowBar(0x17C, y - 2, 0x64, 0x18, 0xFF20C0C0);
-        Text_PrintfAt(0xFA, y, 0, gCharaYesNoTexts2[0]);
-        Text_PrintfAt(0x15E, y, 5, gCharaYesNoTexts2[1]);
+        Menu_DrawGlowBar(380, y - 2, 100, 24, 0xFF20C0C0);
+        Text_PrintfAt(250, y, 0, gCharaYesNoTexts2[0]);
+        Text_PrintfAt(350, y, 5, gCharaYesNoTexts2[1]);
     }
 }
 
@@ -673,15 +649,15 @@ void Chara_DrawQuestion(ChrEdit *edit, s16 mode)
 void Chara_DrawEditHelp(ChrEdit *edit, s32 mode)
 {
     WindowFrame_Draw(&gCharaHelpFrame, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Text_SetColor(0);
     if ((u16)mode == 0) {
-        Text_PrintfAt(0xA0, 0x168, 0, gCharaEditHelpTexts[0]);
-        Text_PrintfAt(0xA0, 0x180, 0, gCharaEditHelpTexts[1]);
+        Text_PrintfAt(160, 360, 0, gCharaEditHelpTexts[0]);
+        Text_PrintfAt(160, 384, 0, gCharaEditHelpTexts[1]);
     } else {
-        Font_SetPos((0x280 - Text_DisplayLength(gCharaSelectTexts[0]) * 10) / 2, 0x168);
+        Font_SetPos((640 - Text_DisplayLength(gCharaSelectTexts[0]) * 10) / 2, 360);
         Text_Printf(gCharaSelectTexts[0]);
-        Font_SetPos((0x280 - Text_DisplayLength(gCharaSelectTexts[1]) * 10) / 2, 0x180);
+        Font_SetPos((640 - Text_DisplayLength(gCharaSelectTexts[1]) * 10) / 2, 384);
         Text_Printf(gCharaSelectTexts[1]);
     }
 }
@@ -690,7 +666,7 @@ void Chara_DrawEditHelp(ChrEdit *edit, s32 mode)
  * Draws the window of the creation's save: showResult 0, the lines shown
  * while saving; otherwise the message for the save menu's result
  * (ChrEdit.savedToCard: 1 saved, 0 not). Those two are gCardSavingTexts' last
- * entries, which the game reads as gRotateTexts[0x12] and [0x13].
+ * entries, which the game reads as gRotateTexts[18] and [19].
  */
 void Chara_DrawSaveMessage(ChrEdit *edit, s32 showResult)
 {
@@ -698,23 +674,23 @@ void Chara_DrawSaveMessage(ChrEdit *edit, s32 showResult)
     s16 x;
 
     WindowFrame_Draw(&gCharaHelpFrame, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     if ((s16)showResult == 0) {
-        x = (0x280 - Str_Length(gCardSavingTexts[0]) * 10) / 2;
-        Text_PrintfAt(x, 0x168, 0, gCardSavingTexts[0]);
-        x = (0x280 - Str_Length(gCardSavingTexts[1]) * 10) / 2;
-        Text_PrintfAt(x, 0x180, 2, gCardSavingTexts[1]);
+        x = (640 - Str_Length(gCardSavingTexts[0]) * 10) / 2;
+        Text_PrintfAt(x, 360, 0, gCardSavingTexts[0]);
+        x = (640 - Str_Length(gCardSavingTexts[1]) * 10) / 2;
+        Text_PrintfAt(x, 384, 2, gCardSavingTexts[1]);
     } else {
         switch (edit->savedToCard) {
         case 0:
-            msgIndex = 0x13;
+            msgIndex = 19;
             break;
         case 1:
-            msgIndex = 0x12;
+            msgIndex = 18;
             break;
         }
-        x = (0x280 - Str_Length(gRotateTexts[msgIndex]) * 10) / 2;
-        Text_PrintfAt(x, 0x168, 0, gRotateTexts[msgIndex]);
+        x = (640 - Str_Length(gRotateTexts[msgIndex]) * 10) / 2;
+        Text_PrintfAt(x, 360, 0, gRotateTexts[msgIndex]);
     }
 }
 
@@ -724,11 +700,8 @@ void Chara_DrawSaveMessage(ChrEdit *edit, s32 showResult)
  */
 void Chara_DrawColorEdit(ChrEdit *edit)
 {
-    ColorEdit_Draw(0, 0, 0x78, (edit->color >> 16) & 0xFF, (edit->color >> 8) & 0xFF, edit->color & 0xFF, edit->choice, edit->presetColor);
+    ColorEdit_Draw(0, 0, 120, (edit->color >> 16) & 0xFF, (edit->color >> 8) & 0xFF, edit->color & 0xFF, edit->choice, edit->presetColor);
 }
-
-void Vec_Copy(f32 *dst, f32 *src);          /* copies a vector */
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 
 /*
  * Sets the camera's target and eye for a view of the player (CharaCamera)
@@ -749,7 +722,7 @@ void Chara_SetCamera(Player *pl, s32 mode, s32 hold)
         edit->camPos[2] += 300.0f;
         break;
     case CHARA_CAM_FACE:
-        Em_GetBonePos(pl, 0x14, edit->camTarget);
+        Em_GetBonePos(pl, 20, edit->camTarget);
         edit->camTarget[0] -= 20.0f;
         Vec_Copy(edit->camPos, edit->camTarget);
         edit->camPos[1] += 15.0f;
@@ -779,11 +752,11 @@ void Chara_MoveCursorWrap(ChrEdit *edit, u16 pad, u8 *cursor, u16 count, u16 sou
     u16 next;
 
     if (horiz == 0) {
-        prev = 0x800;
-        next = 0x400;
+        prev = 2048;
+        next = 1024;
     } else {
-        prev = 0x2000;
-        next = 0x1000;
+        prev = 8192;
+        next = 4096;
     }
     if (pad & prev) {
         if (*cursor == 0) {
@@ -839,14 +812,14 @@ void Chara_MoveRowCursor(ChrEdit *edit, u8 rowCount, u16 pad)
         } else {
             edit->cursor++;
         }
-        Sound_PlaySeFlat(0, 0x12, 0);
+        Sound_PlaySeFlat(0, 18, 0);
     } else if (pad & 0x2000) {
         if (edit->cursor == 0) {
             edit->cursor = rowCount - 1;
         } else {
             edit->cursor--;
         }
-        Sound_PlaySeFlat(0, 0x12, 0);
+        Sound_PlaySeFlat(0, 18, 0);
     }
 }
 
@@ -890,7 +863,7 @@ s32 Chara_StepCondition(ChrEdit *edit, u16 pad, u8 condIndex, u8 bounceEntry)
             edit->cond[condIndex]--;
         }
         Parts_StartBounce(bounceEntry);
-        Sound_PlaySeFlat(0, 0x16, 0);
+        Sound_PlaySeFlat(0, 22, 0);
         return 1;
     }
     return 0;
@@ -963,7 +936,7 @@ static s8 Chara_FilterParts(ChrEdit *edit, u8 kind)
                 misses--;
             }
             if (i == CHARA_HAIR_SPECIAL && gSysSave.bonusUnlocked == 0) {
-                misses = 0x63;
+                misses = 99;
             }
             if (misses == 0) {
                 edit->mask |= 1 << i;
@@ -999,13 +972,13 @@ static s8 Chara_FilterParts(ChrEdit *edit, u8 kind)
 
 /*
  * Shows or hides the no-match message, ignores the pad for 10 frames and
- * plays sound 0x15.
+ * plays sound 21.
  */
 void Chara_ShowNoMatch(ChrEdit *edit, s8 show)
 {
     edit->noMatch = show;
-    edit->inputDelay = 0xA;
-    Sound_PlaySeFlat(0, 0x15, 0);
+    edit->inputDelay = 10;
+    Sound_PlaySeFlat(0, 21, 0);
 }
 
 /*
@@ -1271,7 +1244,7 @@ s32 Chara_VoicePage(ChrEdit *edit)
         if (edit->matchCount != 0) {
             if (pad & 0x400) {
                 do {
-                    if (edit->voice >= 0xE) {
+                    if (edit->voice >= 14) {
                         edit->voice = 0;
                     } else {
                         edit->voice++;
@@ -1281,7 +1254,7 @@ s32 Chara_VoicePage(ChrEdit *edit)
             } else if (pad & 0x800) {
                 do {
                     if (edit->voice == 0) {
-                        edit->voice = 0xE;
+                        edit->voice = 14;
                     } else {
                         edit->voice--;
                     }
@@ -1335,7 +1308,7 @@ void Chara_LoadSlot(s32 unused, Player *pl, s16 slot)
         if (pl->gender == 0) {
             Player_SetMotionPair(pl, 1, 0, 0);
         } else {
-            Player_SetMotionPair(pl, 0x32B, 0, 0);
+            Player_SetMotionPair(pl, 811, 0, 0);
         }
     }
 }
@@ -1361,7 +1334,6 @@ void Chara_RotateByPad(void)
     gPlayers[2].rot[1] = rot;
 }
 
-extern u32 gPresetColors[];      /* sub_main: the preset colours */
 
 /*
  * The colour page, a frame: the red, green and blue rows step their value
@@ -1389,7 +1361,7 @@ s32 Chara_EditColor(ChrEdit *edit, Player *pl, u16 pad)
         } else {
             edit->choice--;
         }
-        Sound_PlaySeFlat(0, 0x12, 0);
+        Sound_PlaySeFlat(0, 18, 0);
     }
     if (pad & 0x1000) {
         if (edit->choice >= CHARA_COLOR_ROW_DONE) {
@@ -1397,13 +1369,13 @@ s32 Chara_EditColor(ChrEdit *edit, Player *pl, u16 pad)
         } else {
             edit->choice++;
         }
-        Sound_PlaySeFlat(0, 0x12, 0);
+        Sound_PlaySeFlat(0, 18, 0);
     }
     if (edit->choice < CHARA_COLOR_ROW_PRESETS) {
-        Chara_MoveCursorClamp(edit, edit->padHoldRepeat, &rgb[edit->choice], 0x100, 0x17);
+        Chara_MoveCursorClamp(edit, edit->padHoldRepeat, &rgb[edit->choice], 256, 23);
         edit->color = (rgb[0] << 16) | 0xFF000000 | (rgb[1] << 8) | rgb[2];
     } else if (edit->choice == CHARA_COLOR_ROW_PRESETS) {
-        Chara_MoveCursorWrap(edit, pad, &edit->presetColor, CHARA_PRESET_COLOR_COUNT, 0x16, 0);
+        Chara_MoveCursorWrap(edit, pad, &edit->presetColor, CHARA_PRESET_COLOR_COUNT, 22, 0);
         if (edit->padPressed & 0x20) {
             edit->color = gPresetColors[edit->presetColor];
             Chara_PlayDecideSe();
@@ -1413,14 +1385,6 @@ s32 Chara_EditColor(ChrEdit *edit, Player *pl, u16 pad)
     return 0;
 }
 
-s32 Parts_DrawSides(TaskSlot *p);
-void Parts_DrawTypes(s16 x, s16 y, s32 sel);
-void Parts_DrawFacePanel(s16 x, s16 y, s32 sel);
-void Parts_DrawHairPanel(s16 x, s16 y, s32 sel);
-void Parts_DrawVoicePanel(s16 x, s16 y, s32 sel);
-void Kbd_SetPos(s32, f32);
-void Chat_DrawKbdBox(s32 text);
-void Chara_DrawQuestion(ChrEdit *c, s16 mode);
 extern char *gCharaPageTexts[];
 
 /*
@@ -1434,21 +1398,21 @@ void Chara_DrawPages(DrawSlot *hook)
 
     task = hook->owner;
     edit = &gChrEdit;
-    Gs_SetState(0x60, 0);
+    Gs_SetState(RS_ALPHA_REF, 0);
     if (task->mode >= CHARA_CREATE_PANELS) {
         if (task->mode < CHARA_CREATE_SAVE) {
             Chara_DrawPartsHeader(task, edit);
         } else if (task->mode <= CHARA_CREATE_SAVE || task->mode >= CHARA_CREATE_ASK_GENDER) {
-            Hud_DrawButtonIconWhite(0x12, 0x206, 0x60, 8, 1.0f);
-            Font_SetSpacing(0x14, 0x14);
-            Text_PrintfAt(0x220, 0x60, 0, gCharaPageTexts[0]);
+            Hud_DrawButtonIconWhite(18, 518, 96, 8, 1.0f);
+            Font_SetSpacing(20, 20);
+            Text_PrintfAt(544, 96, 0, gCharaPageTexts[0]);
         }
     }
     switch (task->mode) {
     case CHARA_CREATE_GENDER:
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         Sel_DrawHeader(4);
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
         if (Parts_DrawSides(task) == 1) {
             Chara_DrawPartHelp(edit, 7, 1);
         }
@@ -1460,23 +1424,23 @@ void Chara_DrawPages(DrawSlot *hook)
         Chara_DrawPartHelp(edit, 0, 1);
         switch (edit->panel) {
         case CHARA_PANEL_NAME:
-            Kbd_SetPos(0xF0, 75.0f);
+            Kbd_SetPos(240, 75.0f);
             Chat_DrawKbdBox(0xBD6C6CC5);
             break;
         case CHARA_PANEL_TYPE:
-            Parts_DrawTypes(0, 0x60, edit->type);
+            Parts_DrawTypes(0, 96, edit->type);
             break;
         case CHARA_PANEL_FACE:
-            Parts_DrawFacePanel(0, 0x60, 0);
+            Parts_DrawFacePanel(0, 96, 0);
             break;
         case CHARA_PANEL_COLOR:
             Chara_DrawColorEdit(edit);
             break;
         case CHARA_PANEL_VOICE:
-            Parts_DrawVoicePanel(0, 0x60, 0);
+            Parts_DrawVoicePanel(0, 96, 0);
             break;
         case CHARA_PANEL_HAIR:
-            Parts_DrawHairPanel(0, 0x60, 0);
+            Parts_DrawHairPanel(0, 96, 0);
             break;
         }
         break;
@@ -1527,59 +1491,14 @@ void Chara_ClosePage(TaskSlot *task, ChrEdit *edit)
     task->mode = CHARA_CREATE_PANELS;
     Parts_SlideInPanels(edit->panel);
     Chara_SetCamera(gPlayers, gCharaCameraModes[0], 1);
-    edit->inputDelay = 0x14;
+    edit->inputDelay = 20;
     Parts_StartPanel(1);
 }
 
 void Gfx_SetBlend(s32, s32);
-s32 Sound_LoadSelectBanks(void *task);
-u8 FadeA_GetState(void);
-void Game_ResetSubsystems(void);
-void Tex_LoadSystemPack(s32);
-void Sel_LoadCommonTextures(void);
-void Tex_LoadFile(s32, s32, s32);
-void FadeA_Reset(void);
-void Camera_Reset(void);
-void CamCtl_Init(void);
-void CamCtl_Clear(void);
-void Quest_Clear(void);
-void Light_InitAll(s32 unused0);
-void Area_Enter(u16);
-void Loading_Start(void);
-void Loading_Stop(void);
 void Hud_LoadTextures(void);
-void Anim_LoadCommon(s32);
-void CharMake_LoadPartsModel(s32 arg0);
-void CharMake_FreePartsModel(void);
-void Mem_Compact(void);
-void Sound_PlaySeFlatPan(u32 slot, u32 id, s32 prog, s32 pan);
-void Sound_PlaySeMusicVol(u32, u32, s32);
-void Parts_SlideOutPanels(u8);
-void Parts_ResetBounces(void);
-void Parts_Init(void);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
 s8 Kbd_Run(s8 *, s16, s16);
-void Kbd_Cancel(void);
-void NetMenu_Open(u8);
 u8 NetMenu_Update(void);
-s32 Movie_Update(void);
-s32 Movie_GetStatus(void);
-void Movie_RequestStop(void);
-void Movie_Stop(void);
-void Task_EndGmSubForNetScene(void);
-void Task_StartGmSub(void);
-void Sound_Silence(void);
-void Player_TickTimers(Player *p);
-void Player_UpdateHitStop(void *obj);
-void Player_UpdateMotionStep(Player *p);
-void Players_UpdateMatrices(void);
-void LightSet_UpdateAll(void);
-void Camera_Update(void);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
-void Parts_Animate(void);
-s32 Parts_DrawPanels(TaskSlot *t);
-void Frame_Draw(void);
 extern DrawSlot gSelectDrawHook;
 extern DrawSlot gCharaTextDrawHook;
 
@@ -1642,7 +1561,7 @@ void Chara_CreateTask(TaskSlot *task)
         edit->padHeld = 0;
         edit->padRepeat = 0;
     }
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Text_SetSize(0);
     switch (task->mode) {
     case CHARA_CREATE_INIT:
@@ -1650,7 +1569,7 @@ void Chara_CreateTask(TaskSlot *task)
         Game_ResetSubsystems();
         Tex_LoadSystemPack(2);
         Sel_LoadCommonTextures();
-        Tex_LoadFile(0xC, 0x16B, 0);
+        Tex_LoadFile(12, 363, 0);
         FadeA_Reset();
         select_entry(0);
         Camera_Reset();
@@ -1672,18 +1591,18 @@ void Chara_CreateTask(TaskSlot *task)
             edit->gender = 0;
             edit->voice = 0;
             Parts_Init();
-            edit->inputDelay = 0x1E;
+            edit->inputDelay = 30;
         }
         break;
     case CHARA_CREATE_GENDER:
         if ((edit->padPressed & 0x800) && edit->gender == 1) {
             edit->gender = 0;
             edit->inputDelay = 3;
-            Sound_PlaySeFlatPan(0, 0x12, 0, edit->gender * 100 - 50);
+            Sound_PlaySeFlatPan(0, 18, 0, edit->gender * 100 - 50);
         } else if ((edit->padPressed & 0x400) && edit->gender == 0) {
             edit->gender = 1;
             edit->inputDelay = 3;
-            Sound_PlaySeFlatPan(0, 0x12, 0, edit->gender * 100 - 50);
+            Sound_PlaySeFlatPan(0, 18, 0, edit->gender * 100 - 50);
         } else if (edit->padPressed & 0x20) {
             task->mode++;
             if (edit->loadedGender != edit->gender) {
@@ -1716,7 +1635,7 @@ void Chara_CreateTask(TaskSlot *task)
                 if (edit->gender == 0) {
                     Player_SetMotionPair(pl, 1, 0, 0);
                 } else {
-                    Player_SetMotionPair(pl, 0x32B, 0, 0);
+                    Player_SetMotionPair(pl, 811, 0, 0);
                 }
                 Chara_SetCamera(gPlayers, CHARA_CAM_BODY, 0);
                 gCamera->fov = 0.87266463f;
@@ -1724,7 +1643,7 @@ void Chara_CreateTask(TaskSlot *task)
             }
             Sound_PlaySeMusicVol(6, 0, 0);
             Sound_PlaySeMusicVol(6, 1, 0);
-            Parts_SlideInPanels(0xFF);
+            Parts_SlideInPanels(255);
         } else if (edit->padPressed & 0x40) {
             Sound_PlayCancel();
             task->mode = CHARA_CREATE_ASK_QUIT;
@@ -1744,13 +1663,13 @@ void Chara_CreateTask(TaskSlot *task)
                 Chara_PlayDecideSe();
                 Chara_SetCamera(gPlayers, gCharaCameraModes[edit->panel], 1);
                 Parts_SlideOutPanels(edit->panel);
-                edit->inputDelay = 0x14;
+                edit->inputDelay = 20;
                 edit->cursor = 0;
                 Parts_ResetBounces();
                 Parts_StartPanel(0);
                 switch (edit->panel) {
                 case CHARA_PANEL_NAME:
-                    Chat_OpenKbd(3, 0xF, 8, edit->name);
+                    Chat_OpenKbd(3, 15, 8, edit->name);
                     break;
                 case CHARA_PANEL_COLOR:
                     break;
@@ -1775,14 +1694,14 @@ void Chara_CreateTask(TaskSlot *task)
             } else {
                 edit->panel--;
             }
-            Sound_PlaySeFlat(1, 0xC, 0);
+            Sound_PlaySeFlat(1, 12, 0);
         } else if (edit->padPressed & 0x1000) {
             if (edit->panel >= CHARA_PANEL_FINISH) {
                 edit->panel = CHARA_PANEL_NAME;
             } else {
                 edit->panel++;
             }
-            Sound_PlaySeFlat(1, 0xC, 0);
+            Sound_PlaySeFlat(1, 12, 0);
         } else if (((edit->padHeld & 0x4000) && (edit->padPressed & 0x8000)) ||
                    ((edit->padPressed & 0x4000) && (edit->padHeld & 0x8000))) {
             edit->type = Rand_Next(1) & 3;
@@ -1831,7 +1750,7 @@ void Chara_CreateTask(TaskSlot *task)
                 Chara_PlayDecideSe();
                 Chara_ClosePage(task, edit);
             } else {
-                Chara_MoveCursorWrap(edit, trig, &edit->type, 4, 0x12, 1);
+                Chara_MoveCursorWrap(edit, trig, &edit->type, 4, 18, 1);
             }
             break;
         case CHARA_PANEL_FACE:
@@ -1884,11 +1803,11 @@ void Chara_CreateTask(TaskSlot *task)
             Chara_PlayCancelSe();
         } else {
             if ((trig & 0x800) && edit->choice != CHARA_CHOICE_YES) {
-                Sound_PlaySeFlat(0, 0x12, 0);
+                Sound_PlaySeFlat(0, 18, 0);
                 edit->choice = CHARA_CHOICE_YES;
             }
             if ((trig & 0x400) && edit->choice == CHARA_CHOICE_YES) {
-                Sound_PlaySeFlat(0, 0x12, 0);
+                Sound_PlaySeFlat(0, 18, 0);
                 edit->choice = CHARA_CHOICE_NO;
             }
         }
@@ -1917,7 +1836,7 @@ void Chara_CreateTask(TaskSlot *task)
         }
         break;
     case CHARA_CREATE_DONE:
-        if (++edit->timer >= 0x3C) {
+        if (++edit->timer >= 60) {
             task->mode++;
             FadeA_Start(5);
         }
@@ -1998,11 +1917,11 @@ void Chara_CreateTask(TaskSlot *task)
             Chara_PlayCancelSe();
         } else {
             if ((trig & 0x800) && edit->choice != CHARA_CHOICE_YES) {
-                Sound_PlaySeFlat(0, 0x12, 0);
+                Sound_PlaySeFlat(0, 18, 0);
                 edit->choice = CHARA_CHOICE_YES;
             }
             if ((trig & 0x400) && edit->choice == CHARA_CHOICE_YES) {
-                Sound_PlaySeFlat(0, 0x12, 0);
+                Sound_PlaySeFlat(0, 18, 0);
                 edit->choice = CHARA_CHOICE_NO;
             }
         }
@@ -2026,11 +1945,11 @@ void Chara_CreateTask(TaskSlot *task)
             Chara_PlayCancelSe();
         } else {
             if ((trig & 0x800) && edit->choice != CHARA_CHOICE_YES) {
-                Sound_PlaySeFlat(0, 0x12, 0);
+                Sound_PlaySeFlat(0, 18, 0);
                 edit->choice = CHARA_CHOICE_YES;
             }
             if ((trig & 0x400) && edit->choice == CHARA_CHOICE_YES) {
-                Sound_PlaySeFlat(0, 0x12, 0);
+                Sound_PlaySeFlat(0, 18, 0);
                 edit->choice = CHARA_CHOICE_NO;
             }
         }
@@ -2059,11 +1978,11 @@ void Chara_CreateTask(TaskSlot *task)
             pl->drawSlot->pos[0] = pl->pos[0];
             pl->drawSlot->pos[1] = pl->pos[1];
             pl->drawSlot->pos[2] = pl->pos[2];
-            OT_AddByDepth(gDrawOt32, pl->drawSlot, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, pl->drawSlot, 32, 0);
             }
         }
         Parts_Animate();
-        OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 0x40);
+        OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 64);
         OT_AddAt(gDrawListText2, &gCharaTextDrawHook, 0, 1);
         Chara_DrawBackground();
         if (task->mode >= CHARA_CREATE_PANELS && task->mode < CHARA_CREATE_SAVE) {
@@ -2076,9 +1995,9 @@ void Chara_CreateTask(TaskSlot *task)
 /* Draws the selection's backdrop and header (the parameter is not used). */
 void Chara_DrawHeader(ChrEdit *unused)
 {
-    Gs_SetState(0x6C, 0);
-    Sel_DrawBackground(0xFF);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 0);
+    Sel_DrawBackground(255);
+    Gs_SetState(RS_ZWRITE, 1);
     Sel_DrawHeader(5);
 }
 
@@ -2090,14 +2009,14 @@ void Chara_DrawArmorIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
-    spr.x = x - 0x26;
+    spr.x = x - 38;
     spr.y = y - 7;
-    spr.w = 0x20;
-    spr.h = 0x20;
-    spr.color = Equip_Color(rarity, 0xFF, 0);
+    spr.w = 32;
+    spr.h = 32;
+    spr.color = Equip_Color(rarity, 255, 0);
     if (kind == 0) {
         spr.u0 = gArmorIconUV[idx][0];
         spr.v0 = gArmorIconUV[idx][1];
@@ -2105,8 +2024,8 @@ void Chara_DrawArmorIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
         spr.u0 = gArmorIconUVAlt[idx][0];
         spr.v0 = gArmorIconUVAlt[idx][1];
     }
-    spr.u1 = spr.u0 + 0x18;
-    spr.v1 = spr.v0 + 0x18;
+    spr.u1 = spr.u0 + 24;
+    spr.v1 = spr.v0 + 24;
     Sprite_Draw(&spr);
 }
 
@@ -2124,24 +2043,24 @@ void Chara_DrawEquipIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
     s32 texV;
 
     if (kind == 0) {
-        cell = idx + 0x3F;
+        cell = idx + 63;
     } else {
-        cell = gArmorIconCells[idx] + 0x4A;
+        cell = gArmorIconCells[idx] + 74;
     }
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x144);
-    Tex_Bind(0x144);
-    spr.x = x - 0x26;
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 324);
+    Tex_Bind(324);
+    spr.x = x - 38;
     spr.y = y - 7;
-    spr.w = 0x20;
-    spr.h = 0x20;
+    spr.w = 32;
+    spr.h = 32;
     texU = (cell & 7) * 32;
     spr.u0 = texU + 1;
     texV = (cell >> 3) * 32;
     spr.v0 = texV + 1;
-    spr.u1 = texU + 0x1F;
-    spr.v1 = texV + 0x1F;
-    spr.color = Equip_Color(rarity, 0xFF, 0);
+    spr.u1 = texU + 31;
+    spr.v1 = texV + 31;
+    spr.color = Equip_Color(rarity, 255, 0);
     Sprite_Draw(&spr);
 }
 
@@ -2149,13 +2068,6 @@ void Chara_DrawEquipIcon(s16 x, s16 y, s16 kind, s16 idx, s32 rarity)
 u8 Equip_GetRarity(u8 type, u16 id);      /* an item's rarity */
 s32 Rarity_Color(u8 rarity);             /* the rarity's colour; unit's own declaration: s32 as Chara_DrawEquipment uses it; with the definition's s16 return, the call compiles differently */
 u8 Weapon_GetClass(u8 type, u16 id);
-extern char *gGunNames[];    /* item names by kind */
-extern char *gBladeNames[];
-extern char *gArmorHeadNames[];
-extern char *gArmorBodyNames[];
-extern char *gArmorArmsNames[];
-extern char *gArmorWaistNames[];
-extern char *gArmorLegsNames[];
 
 /*
  * Draws the selected character's equipment: the weapon and the five armour
@@ -2170,48 +2082,41 @@ void Chara_DrawEquipment(ChrEdit *unused, s32 mode)
 
     save = gCardSlots;
     save += gChrEdit.slot;
-    win.x = 0x15E;
-    win.w = 0xF0;
-    win.y = 0x58;
-    win.h = 0xF0;
+    win.x = 350;
+    win.w = 240;
+    win.y = 88;
+    win.h = 240;
     win.style = 1;
     win.color = -1;
     win.color2 = 0xC0402010;
     WindowFrame_Draw(&win, 0);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (save->equip[0].type == 7) {
         rarity = Equip_GetRarity(7, save->equip[0].id);
-        Text_PrintfAt(0x186, 0x6E, Rarity_Color(rarity), gCharaStrFormat, gGunNames[save->equip[0].id]);
+        Text_PrintfAt(390, 110, Rarity_Color(rarity), gCharaStrFormat, gGunNames[save->equip[0].id]);
     } else {
         rarity = Equip_GetRarity(6, save->equip[0].id);
-        Text_PrintfAt(0x186, 0x6E, Rarity_Color(rarity), gCharaStrFormat, gBladeNames[save->equip[0].id]);
+        Text_PrintfAt(390, 110, Rarity_Color(rarity), gCharaStrFormat, gBladeNames[save->equip[0].id]);
     }
-    Chara_DrawEquipIcon(0x186, 0x6E, 0, Weapon_GetClass(save->equip[0].type, save->equip[0].id), rarity);
+    Chara_DrawEquipIcon(390, 110, 0, Weapon_GetClass(save->equip[0].type, save->equip[0].id), rarity);
     rarity = Equip_GetRarity(2, save->equip[2].id);
-    Text_PrintfAt(0x186, 0x91, Rarity_Color(rarity), gCharaStrFormat, gArmorHeadNames[save->equip[2].id]);
-    Chara_DrawArmorIcon(0x186, 0x91, 0, 0, rarity);
+    Text_PrintfAt(390, 145, Rarity_Color(rarity), gCharaStrFormat, gArmorHeadNames[save->equip[2].id]);
+    Chara_DrawArmorIcon(390, 145, 0, 0, rarity);
     rarity = Equip_GetRarity(3, save->equip[3].id);
-    Text_PrintfAt(0x186, 0xB4, Rarity_Color(rarity), gCharaStrFormat, gArmorBodyNames[save->equip[3].id]);
-    Chara_DrawArmorIcon(0x186, 0xB4, 0, 1, rarity);
+    Text_PrintfAt(390, 180, Rarity_Color(rarity), gCharaStrFormat, gArmorBodyNames[save->equip[3].id]);
+    Chara_DrawArmorIcon(390, 180, 0, 1, rarity);
     rarity = Equip_GetRarity(4, save->equip[4].id);
-    Text_PrintfAt(0x186, 0xD7, Rarity_Color(rarity), gCharaStrFormat, gArmorArmsNames[save->equip[4].id]);
-    Chara_DrawArmorIcon(0x186, 0xD7, 0, 2, rarity);
+    Text_PrintfAt(390, 215, Rarity_Color(rarity), gCharaStrFormat, gArmorArmsNames[save->equip[4].id]);
+    Chara_DrawArmorIcon(390, 215, 0, 2, rarity);
     rarity = Equip_GetRarity(5, save->equip[5].id);
-    Text_PrintfAt(0x186, 0xFA, Rarity_Color(rarity), gCharaStrFormat, gArmorWaistNames[save->equip[5].id]);
-    Chara_DrawArmorIcon(0x186, 0xFA, 0, 3, rarity);
+    Text_PrintfAt(390, 250, Rarity_Color(rarity), gCharaStrFormat, gArmorWaistNames[save->equip[5].id]);
+    Chara_DrawArmorIcon(390, 250, 0, 3, rarity);
     rarity = Equip_GetRarity(0, save->equip[1].id);
-    Text_PrintfAt(0x186, 0x11D, Rarity_Color(rarity), gCharaStrFormat, gArmorLegsNames[save->equip[1].id]);
-    Chara_DrawArmorIcon(0x186, 0x11D, 0, 4, rarity);
+    Text_PrintfAt(390, 285, Rarity_Color(rarity), gCharaStrFormat, gArmorLegsNames[save->equip[1].id]);
+    Chara_DrawArmorIcon(390, 285, 0, 4, rarity);
 }
 
-void Chara_DrawQuestion(ChrEdit *c, s16 mode);
-void Chara_DrawEquipment(ChrEdit *c, s32 mode);
-s32 GmSub_IsCharaSelectMenu(void);
-s32 CharaSel_IsIdle(void);
 struct NetMenu;
-void CardMenu_DrawSlots(struct NetMenu *c, s32 mode, u8 n, s32 unused, s32 flag);
-s16 NetMenu_DrawMessageY(s16 y, s32 id);
-extern char *gCharaPageTexts[];
 
 /*
  * The selection's draw hook (gSelectDrawHook): the yes/no question, the
@@ -2225,7 +2130,7 @@ void Chara_DrawPrompts(DrawSlot *hook)
 
     task = hook->owner;
     edit = &gChrEdit;
-    Gs_SetState(0x60, 0);
+    Gs_SetState(RS_ALPHA_REF, 0);
     if (task->mode < CHARA_SELECT_MESSAGE) {
         if (task->mode == CHARA_SELECT_CONFIRM) {
             Chara_DrawQuestion(edit, CHARA_ASK_SELECT);
@@ -2238,9 +2143,9 @@ void Chara_DrawPrompts(DrawSlot *hook)
                 if (CharaSel_IsIdle() != 0) {
                     CardMenu_DrawSlots((struct NetMenu *)edit, 1, task->mode, 0, 1);
                     if (Chara_EquipViewOn() == 0) {
-                        Hud_DrawButtonIconWhite(0x12, 0x206, 0x60, 8, 1.0f);
-                        Font_SetSpacing(0x14, 0x14);
-                        Text_PrintfAt(0x220, 0x60, 0, gCharaPageTexts[0]);
+                        Hud_DrawButtonIconWhite(18, 518, 96, 8, 1.0f);
+                        Font_SetSpacing(20, 20);
+                        Text_PrintfAt(544, 96, 0, gCharaPageTexts[0]);
                     } else {
                         Chara_DrawEquipment(edit, 1);
                     }
@@ -2248,9 +2153,9 @@ void Chara_DrawPrompts(DrawSlot *hook)
             } else {
                 CardMenu_DrawSlots((struct NetMenu *)edit, 1, task->mode, 0, 1);
                 if (Chara_EquipViewOn() == 0) {
-                    Hud_DrawButtonIconWhite(0x12, 0x206, 0x60, 8, 1.0f);
-                    Font_SetSpacing(0x14, 0x14);
-                    Text_PrintfAt(0x220, 0x60, 0, gCharaPageTexts[0]);
+                    Hud_DrawButtonIconWhite(18, 518, 96, 8, 1.0f);
+                    Font_SetSpacing(20, 20);
+                    Text_PrintfAt(544, 96, 0, gCharaPageTexts[0]);
                 } else {
                     Chara_DrawEquipment(edit, 1);
                 }
@@ -2258,45 +2163,13 @@ void Chara_DrawPrompts(DrawSlot *hook)
         }
     }
     if (task->mode == CHARA_SELECT_MESSAGE) {
-        NetMenu_DrawMessageY(0x164, 0x28);
+        NetMenu_DrawMessageY(356, 40);
         WindowFrame_Draw(&gCharaHelpFrame, 0);
         if (!((gChrEdit.timer / 15) & 1)) {
-            Hud_DrawButtonIconWhite(0x14, 0x232, 0x184, 8, 1.0f);
+            Hud_DrawButtonIconWhite(20, 562, 388, 8, 1.0f);
         }
     }
 }
-
-void Game_ResetSubsystems(void);
-void Tex_LoadSystemPack(s32);
-void Sel_LoadCommonTextures(void);
-s32 Tex_LoadPack(s32 id, s32 slot, s32 kind);
-void CharaSel_Start(void);
-void Camera_Reset(void);
-void CamCtl_Clear(void);
-void Quest_Clear(void);
-void Light_InitAll(s32 unused0);
-void Area_Enter(u16);
-void NetMenu_Open(u8);
-u8 NetMenu_Update(void);
-void Sound_PlaySeMusicVol(u32, u32, s32);
-void Task_StartBootToGmSub(void);
-void Task_StartGmSub(void);
-void Sel_FreeTextures(void);
-void Tex_FreeRange(s32, s32);
-s32 Card_ReadyCount(void);
-void Loading_Start(void);
-void Anim_LoadCommon(s32);
-s32 Sound_LoadSelectBanks(void *task);
-void Loading_Stop(void);
-void Sound_PlaySlotChange(void);
-void CharaSel_Leave(void);
-void Save_LoadSlot(u8);
-s32 CharaSel_IsDone(void);
-u8 FadeA_GetState(void);
-void Task_StartBootToGmSubKeep(void);
-void Chara_Frame(TaskSlot *p);
-void Gfx_SetBlend(s32, s32);
-s32 Card_SlotReady(s32 slot);
 
 /*
  * Character selection, the task (CharaSelectStep): the card's load menu,
@@ -2325,7 +2198,7 @@ void Chara_SelectTask(TaskSlot *task)
     trig = gPadState[0].pressed;
     pressedOrRepeat = trig | gPadState[0].repeat;
     (gScene.frame)++;
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     switch (task->mode) {
     case CHARA_SELECT_INIT:
         task->mode++;
@@ -2333,7 +2206,7 @@ void Chara_SelectTask(TaskSlot *task)
         Tex_LoadSystemPack(0);
         if (GmSub_IsCharaSelectMenu() == 1) {
             Sel_LoadCommonTextures();
-            Tex_LoadPack(gSystemTexFiles[1], 0x144, 0);
+            Tex_LoadPack(gSystemTexFiles[1], 324, 0);
             CharaSel_Start();
         }
         FadeA_Start(2);
@@ -2372,7 +2245,7 @@ void Chara_SelectTask(TaskSlot *task)
             }
             if (GmSub_IsCharaSelectMenu() == 1) {
                 Sel_FreeTextures();
-                Tex_FreeRange(0x144, 1);
+                Tex_FreeRange(324, 1);
             }
             return;
         }
@@ -2451,7 +2324,7 @@ void Chara_SelectTask(TaskSlot *task)
         Loading_Stop();
         Sound_PlaySeMusicVol(6, 0, 0);
         Sound_PlaySeMusicVol(6, 1, 0);
-        Sound_PlaySeFlat(0, 0x19, 0);
+        Sound_PlaySeFlat(0, 25, 0);
         Chara_EquipViewOn();
         edit->timer = 1;
     case CHARA_SELECT_CHOOSE:
@@ -2487,7 +2360,7 @@ void Chara_SelectTask(TaskSlot *task)
                 Task_StartGmSub();
                 if (GmSub_IsCharaSelectMenu() == 1) {
                     Sel_FreeTextures();
-                    Tex_FreeRange(0x144, 1);
+                    Tex_FreeRange(324, 1);
                 }
             }
             return;
@@ -2506,9 +2379,9 @@ void Chara_SelectTask(TaskSlot *task)
             if (oldSlot != edit->slot) {
                 Sound_PlaySlotChange();
                 if (Chara_EquipViewOn() == 0) {
-                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[0] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[1] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[2] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[0] + edit->slot * 2416) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[1] + edit->slot * 2416) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[2] + edit->slot * 2416) = 0x01000000;
                 }
             }
         } else if (trig & 0x1000) {
@@ -2525,9 +2398,9 @@ void Chara_SelectTask(TaskSlot *task)
             if (oldSlot != edit->slot) {
                 Sound_PlaySlotChange();
                 if (edit->slot != CHARA_SLOT_NONE && Chara_EquipViewOn() == 0) {
-                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[0] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[1] + edit->slot * 0x970) = 0x01000000;
-                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[2] + edit->slot * 0x970) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[0] + edit->slot * 2416) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[1] + edit->slot * 2416) = 0x01000000;
+                    *(s32 *)((u8 *)&gPlayers[0].lightFadeColors[2] + edit->slot * 2416) = 0x01000000;
                 }
             }
         }
@@ -2557,10 +2430,10 @@ void Chara_SelectTask(TaskSlot *task)
             Chara_PlayCancelSe();
             task->mode = CHARA_SELECT_CHOOSE;
         } else if ((pressedOrRepeat & 0x800) && edit->choice != CHARA_CHOICE_YES) {
-            Sound_PlaySeFlat(0, 0x12, 0);
+            Sound_PlaySeFlat(0, 18, 0);
             edit->choice = CHARA_CHOICE_YES;
         } else if ((pressedOrRepeat & 0x400) && edit->choice == CHARA_CHOICE_YES) {
-            Sound_PlaySeFlat(0, 0x12, 0);
+            Sound_PlaySeFlat(0, 18, 0);
             edit->choice = CHARA_CHOICE_NO;
         }
         break;
@@ -2577,20 +2450,20 @@ void Chara_SelectTask(TaskSlot *task)
                 Chara_SetVoiceMotion(pl, pl->gender, pl->voice);
                 edit->timer = 0;
             } else {
-                edit->timer = 0x41;
+                edit->timer = 65;
             }
         }
         break;
     case CHARA_SELECT_DONE:
         if (GmSub_IsCharaSelectMenu() == 1) {
             if (CharaSel_IsDone() != 0) {
-                if (++edit->timer >= 0x41) {
+                if (++edit->timer >= 65) {
                     task->mode++;
                     FadeA_Start(5);
                 }
             }
         } else {
-            if (++edit->timer >= 0x41) {
+            if (++edit->timer >= 65) {
                 task->mode++;
                 FadeA_Start(5);
             }
@@ -2599,7 +2472,7 @@ void Chara_SelectTask(TaskSlot *task)
     case CHARA_SELECT_FADE_OUT:
         if (FadeA_GetState() != 1) {
             task->mode++;
-            edit->timer = 0x3C;
+            edit->timer = 60;
         }
         break;
     case CHARA_SELECT_END:
@@ -2621,18 +2494,6 @@ void Chara_SelectTask(TaskSlot *task)
     Chara_Frame(task);
 }
 
-s32 CharaSel_IsShown(void);
-void Player_TickTimers(Player *p);
-void Player_UpdateHitStop(void *obj);
-void Player_UpdateMotionStep(Player *p);
-void Players_RunEquipEffects(void);
-void Players_UpdateMatrices(void);
-void LightSet_UpdateAll(void);
-void Camera_Update(void);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
-void CharaSel_Draw(void);
-void Frame_Draw(void);
 
 /*
  * The selection's frame after its step: the character selection screen
@@ -2689,15 +2550,15 @@ draw:
                 pl->drawSlot->pos[0] = pl->pos[0];
                 pl->drawSlot->pos[1] = pl->pos[1];
                 pl->drawSlot->pos[2] = pl->pos[2];
-                OT_AddByDepth(gDrawOt32, pl->drawSlot, 0x20, 0);
+                OT_AddByDepth(gDrawOt32, pl->drawSlot, 32, 0);
             }
         }
         if (GmSub_IsCharaSelectMenu() == 0) {
-            OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 0x40);
+            OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 64);
             Chara_DrawHeader(edit);
         } else {
             CharaSel_Draw();
-            OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 0x40);
+            OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 64);
         }
         Frame_Draw();
     }

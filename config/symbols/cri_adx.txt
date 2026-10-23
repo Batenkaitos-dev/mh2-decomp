@@ -1,11 +1,14 @@
-// Symbols for the boot ELF (SLPM_662.80): CRI ADX and its file/stream layers, text 0x158930-0x179590, built with GCC (8-byte aligned);
-// asm piece cri/adx. Version strings, all built Nov 12 2004: SKG 0.64, ADXF 7.19, ADXT 9.34,
-// ADXPS2 2.57, ADXRT 3020, CFG 1.002, CVFS 2.37, SRD 2.22, DTR 1.06, DTX 1.08, DVCI 2.71,
-// HTCI 2.69, LSC 2.18, MFCI 1.09, PS2RNA 1.30, SJ 6.28, SJRMT 1.03, SJX 1.08, SVM 1.54,
-// PL2ENC 1.01. Text order by their error strings: ADXB 0x15AD30, ADXF 0x15E4F0, ADXT,
-// cvFs 0x169ED8, SRD 0x16BEA8, DTR, DTX, DVCI, HTCI, LSC, MFCI, PS2RNA 0x1739C8, SJ 0x175AA8, SVM 0x1788E0
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): CRI's ADX and its file and stream layers, text
+// 0x158930-0x179590, built with GCC (8-byte aligned); asm piece cri/adx.
+// Its modules' version strings, all built Nov 12 2004: SKG 0.64, ADXF 7.19,
+// ADXT 9.34, ADXPS2 2.57, ADXRT 3020, CFG 1.002, CVFS 2.37, SRD 2.22, DTR
+// 1.06, DTX 1.08, DVCI 2.71, HTCI 2.69, LSC 2.18, MFCI 1.09, PS2RNA 1.30, SJ
+// 6.28, SJRMT 1.03, SJX 1.08, SVM 1.54, PL2ENC 1.01. The text's order, by
+// their error strings: ADXB 0x15AD30, ADXF 0x15E4F0, ADXT, cvFs 0x169ED8,
+// SRD 0x16BEA8, DTR, DTX, DVCI, HTCI, LSC, MFCI, PS2RNA 0x1739C8, SJ
+// 0x175AA8, SVM 0x1788E0.
+// Library code, kept as assembly: public API names only, where the binary
+// shows them. Format: name = 0xADDRESS; // attributes
 
 // CRI ADX, EE side (GCC-built; named from their own error strings)
 ADXT_SetOutVol = 0x00166DF8; // type:func
@@ -35,5 +38,6 @@ ADXT_EntryErrFunc = 0x001677C8; // type:func
 ADXERR_EntryErrFunc = 0x0015DFB0; // type:func
 ADXERR_CallErrFunc1 = 0x0015DFD8; // type:func
 
-// Round 27 (names h1) - library functions the C calls, named from the evidence
+// Functions the game's C calls, named from what each does (its line's
+// comment).
 ADXF_LoadPartitionNw = 0x0015E5D8; // type:func file-name partition load with the default temp buffer, the pair of ADXF_LoadPartitionFromAfsNw, its blocking caller waits on ADXF_GetPtStat

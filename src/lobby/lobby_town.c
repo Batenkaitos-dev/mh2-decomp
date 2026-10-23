@@ -35,107 +35,47 @@
 #include "scene.h"
 #include "player.h"
 #include "pad.h"
+#include "kbd.h"
+#include "model.h"
+#include "text.h"
+#include "lobby_town.h"
+#include "elder_forecast.h"
+#include "equip_shop.h"
+#include "game_util.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_leave_menus.h"
+#include "lobby_queries.h"
+#include "lobby_screen.h"
+#include "lobby_steps.h"
+#include "lobby_util.h"
+#include "lobby_village.h"
+#include "mem_util.h"
+#include "quest.h"
+#include "town_members.h"
+#include "screen_fade.h"
+#include "libc.h"
 
 s32 LobbyNet_GetErrText(s8 *);
 
-s32 LobbyReq_Level1Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyLevel_SelId(s32);
-void Chat_ClearTargets(void);
-void LobbyTown_OnUsersReply(NetMsg m, NetMsg *pm);
-void Kbd_Cancel(void);
-s32 Lobby_HandleLeaveRequest(void);
-void LobbyTown_Enter(void);
-void LobbyTown_Leave(void);
-s32 NetList1_GetUsers(u16 i, u16 *a, u16 *b);
-s32 LobbyNet_GetLevel1Search(u32 **arg0);
-void LobbyNet_GetLevel1SearchInfo(NetLevel1SearchInfo *dst);
-void LobbyDialog_OpenWait(void *);
-s32 LobbyMenu_TickTimer(void);
-void Lobby_SetPlace(s32);
-void Lobby_ClearRequests(void);
-s32 LobbyReq_Level1Search(NetLevel1SearchQuery q, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1SearchInfo(u8 i, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Users(u16, void (*)(NetMsg, NetMsg *)); /* called with an int: no prototype here */
-s32 LobbyReq_Level2Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Members(u16 id, void (*onReply)(NetMsg, NetMsg *));
-void LobbyLevel1_OnLevel1SearchReply(NetMsg m, NetMsg *pm);
-void LobbyLevel1_OnLevel1SearchInfoReply(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnLevel2UsersReply(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnLevel2ValuesReply(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnLevel2MembersReply(NetMsg m, NetMsg *pm);
 extern LevelEntry gLobbyLevel1Entries[];
 extern NetLevel1SearchReply *gGroupSearchResults;
 extern NetLevel1SearchInfo gGroupSearchInfo;
 extern u8 gLobbyLevel2Sel;
-void Lobby_Disconnect(s32);
-s32 NetList2_GetUser(u16 i, char *id, char *name, u8 *text);
-s32 NetList2_GetUsers(u16 id, u16 *a, u16 *b);
 s32 NetList2_GetMembers(s32 id, u16 *a, u16 *b);
-void *memset(void *dst, s32 c, u32 n);
-void *memcpy(void *dst, const void *src, u32 n);
-void LobbyMenu_StartTimer(void);
-s32 LobbyReq_QuestAccept(u32 v, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_QuestPost(void *data, u16 n, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Enter(u16 id, char *pass, u8 v, void (*onReply)(NetMsg, NetMsg *));
-s32 NetLevel2ListTask_Start(s32 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *));
-void LobbyLevel2_OnQuestAcceptReply(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnQuestPostReply(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnLevel2EnterReply(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnListDone(NetMsg m, NetMsg *pm);
-void LobbyLevel2_Refresh(void);
 extern u8 gLobbyLevel2Index;
 extern char gMyUserId[];
 extern char gMyName[];
-s32 LobbyNet_GetListReplies(u16 *out);
-s32 NetList2_GetCount(u16 *out);
-s32 NetList2_GetByte(u16 id, u8 *out);
-s32 NetList2_GetText(u16 id, char *dst);
-s32 NetList2_GetLimits(u16 id, u16 *a, u16 *b, u16 *c, u16 *d, u16 *e);
-s32 Net_GetLevel2Color(u16 id, s32 *out);
-s32 Net_GetLevel2PostedQuest(u16 id, u8 *dst);
-s32 NetList2_GetLocked(u16 id, u8 *out);
-s32 LobbyReq_Level2Open(u16 id, u8 v, void (*onReply)(NetMsg, NetMsg *));
-void LobbyText_Open(s32 msg);
-void LobbyLevel2_OnLevel2OpenReply(NetMsg m, NetMsg *pm);
 extern u16 gLobbyLevel2Count;
 
 extern LobbyRecs gLobbyRecs;
 extern LobbyMenu *gLobbyMenu;
-extern char gRoomText[0x3D];          /* the quest room's text */
+extern char gRoomText[61];          /* the quest room's text */
 extern u16 gLobbyQuestId;             /* the quest */
-s32 NetLevel2RecsTask_Start(u16 id, void (*onDone)(NetMsg, NetMsg *));
-s32 NetLevel2SettingsTask_Start(NetEntrySettings2 s, void (*onDone)(NetMsg, NetMsg *));
 s32 NetLevel2RecsTask_GetRecs(u16 id, NetRecs2 *dst); /* unit's own declaration: a u16 id, as the callers pass it; with the definition's s32, LobbyLevel2_FetchRecords compiles one instruction differently */
 u8 Quest_GetListFlags(u16 id);
-u8 Quest_GetStars(u16 id);
-void LobbyLevel2_OnRecsDone(NetMsg m, NetMsg *pm);
-void LobbyLevel2_OnSettingsDone(NetMsg m, NetMsg *pm);
-char *strcpy(char *dst, const char *src);
-s32 LobbyScreen_FadeOut(s32);
-s32 LobbyScreen_EnterSeq(s32);
-u8 FadeB_GetState(void);
-void FadeB_Start(s32);
-s32 LobbyTown_WantsMovie(void);
-void LobbyTown_StartMovie(void);
-s32 LobbyTown_MovieDone(void);
-void LobbyScene_Run(void);
 extern u8 gLobbyScreenMode;
-u16 Pad_GetPressedRepeat(s32 pad);
-void EquipPreview_Hide(u8 hide);
-void EquipPreview_Free(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-s32 HunterCard_SendChanged(void);
-s32 LobbyStep_Level1Leave(void);
 struct Player;
-void TownPc_Remove(struct Player *);
-void Mem_Fill(void *dst, u8 c, s32 n);
-u8 FadeA_GetState(void);
-void LobbyVillage_BeginReturn(s32);
-void Text_SetSize(s32 size);
-s32 sprintf(char *, const char *, ...);
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-void Lobby_DrawPressButton(void);
-void LobbySe_Play(s32 se);
 extern u8 gHouseAccess;
 extern u8 gChatToLobby;
 extern u8 gLobbyTextDirty;
@@ -327,7 +267,7 @@ void LobbyTown_Enter(void)
  */
 void LobbyTown_Leave(void)
 {
-    char buf[0x10];
+    char buf[16];
     u16 pad;
     s32 i;
 
@@ -401,7 +341,7 @@ void LobbyTown_Leave(void)
         } else {
             Text_SetSize(5);
             sprintf(buf, "%3d", gLobby->countdown / 30); /* in seconds */
-            Text_DrawShadow(0x1D6, 0x54, 1, 5, buf);
+            Text_DrawShadow(470, 84, 1, 5, buf);
         }
         break;
     case PROMPT_PRESS:
@@ -622,7 +562,7 @@ void LobbyLevel2_OnListDone(NetMsg msg, NetMsg *msgPtr)
 
 /* Opens the first free room of the town for a quest (6407, with value): the
  * room becomes gLobbyLevel2Sel (its id) and gLobbyLevel2Index. With no room
- * free, the "desk busy" message and LOBBY_STEP_FAILED. Opened, the quest is
+ * free, the busy desk's message and LOBBY_STEP_FAILED. Opened, the quest is
  * taken and paid; failed, the server's error text and the quest not taken.
  * Returns LOBBY_STEP_BUSY, _DONE or _FAILED. */
 s32 LobbyLevel2_EnterFree(s32 value)

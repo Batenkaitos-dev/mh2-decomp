@@ -2,4 +2,3 @@
  * the object that contains it. */
 /* Round 19 (ndata): names the code uses inside named objects */
 /* Round 20 (ndata): names the code uses inside named objects */
-D_5BE9D4 = gNetSaveData + 0xC84;

@@ -1,5 +1,6 @@
-/* The HTML parser: </TD>, the attribute value readers (a string, a
- * number, a percentage, a colour, a keyword) and the text run layout. */
+/* The HTML parser's helpers: the font's character widths, the page's
+ * lowest line, and the attribute value readers (a string, a number, a
+ * percentage, a colour, a keyword). */
 #include "common.h"
 #include "html.h"
 #include "browser.h"
@@ -12,28 +13,8 @@ s32 strncmp(const char *, const char *, s32);
 s32 strlen(const char *s);
 s32 strncmp(const char *a, const char *b, s32 n);
 
-void Html_SetCharWidths(u8 bold);
-void Html_NoteBottom(HtmlPen *pen);
-void Html_ReadAttrValue(u8 **cur, char *buf, s32 size);
-void Layout_NextLine(void);
-void Layout_FlushBlock(u8 *text);
-void Layout_CellAlign(HtmlCell *cell);
-s32 Layout_CellColSpan(HtmlCell *cell);
-s32 Layout_BeforeClose(u8 **cur, u8 *text, u8 kind);
-void Layout_DrawCellBox(HtmlCell *cell);
-void Layout_DrawRun(u16 x, u16 y, HtmlLine *line);
-u16 Layout_CenterOffset(HtmlLine *line);
-void Draw_Anchor(u16 x, u16 y, u8 *name);
-void Draw_Text(u16 x, u16 y, s32 color, u8 size, u16 x2, u16 y2, u8 *text, u8 a8);
-void Draw_LinkText(u16 x, u16 y, s32 color, u8 size, u16 x2, u16 y2, u8 *href, u8 *text, u8 a8);
-void Draw_StruckText(u16 x, u16 y, s32 color, u8 size, u16 x2, u16 y2, u8 *s1, u8 *s2, u8 a8);
-void Draw_UnderlinedText(u16 x, u16 y, s32 color, u8 size, u16 x2, u16 y2, u8 *s1, u8 *s2, u8 a8);
-
 extern u8 gFullCharWidths[2][8]; /* a full-width character's width: [bold][size] */
 extern u8 gHalfCharWidths[2][8]; /* a half-width character's width: [bold][size] */
-extern u8 gCharClass[]; /* character classes */
-extern u8 gToUpper[]; /* to upper case */
-extern u8 gHexDigitValues[]; /* hex digits: value + 1, 0 for others */
 extern HtmlColor gHtmlColorNames[];
 extern char gHtmlHash[]; /* "#" */
 
@@ -44,88 +25,6 @@ static inline void Html_MaxU16(u16 *dst, s32 value)
     if (*dst < value) {
         *dst = value;
     }
-}
-
-/* <TD BACKGROUND=...> */
-s32 Html_AttrTdBackground(u8 **cur, u8 *text)
-{
-    Html_ReadAttrValue(cur, gHtml->tdAttr.background, sizeof(gHtml->tdAttr.background));
-    return 0;
-}
-
-/* </TD>, </TH> */
-s32 Html_TagEndTd(u8 **cur, u8 *text)
-{
-    HtmlCell *cell;
-    HtmlCell *parent;
-    s32 n;
-
-    if (gHtml->tableDepth == 0) {
-        return 0;
-    }
-    if (Layout_BeforeClose(cur, text, HTML_CELL_TD) < 0) {
-        return -1;
-    }
-    gHtml->curCell = gHtml->cellStack[gHtml->tableDepth];
-    cell = &gHtml->cells[gHtml->curCell];
-    parent = cell->parent;
-    if (parent == NULL) {
-        return -1;
-    }
-    Html_SetCharWidths(cell->bold);
-    cell->open = 0;
-    Layout_FlushBlock(text);
-    gHtml->cells[gHtml->curCell].flags &= ~HTML_FLAG_PRE;
-    gHtml->pre = 0;
-    gHtml->cells[gHtml->curCell].bold = 0;
-    if (gHtml->measure == HTML_PASS_MEASURE && cell->colSpan) {
-        n = (cell->colSpan - 1) * (cell->spacing + cell->padding * 2);
-        if (cell->minW < n) {
-            cell->minW = n;
-        }
-    }
-    if (cell->w < cell->minW) {
-        cell->w = cell->minW;
-    }
-    if (cell->rowSpan == 0) {
-        Html_MaxU16(&cell->h, gHtml->cellPen.runY);
-        if (cell->h < cell->innerH) {
-            cell->h = cell->innerH;
-        }
-    } else if (gHtml->measure != HTML_PASS_DRAW) {
-        cell->spanH = gHtml->cellPen.runY;
-    }
-    cell->textH = gHtml->cellPen.runY;
-    n = cell->h + cell->padding * 2;
-    if (parent->h < n) {
-        parent->h = n;
-    }
-    if (cell->colSpan == 0) {
-        parent->penX += cell->spacing + (cell->w + cell->padding * 2);
-        if (gHtml->measure == HTML_PASS_MEASURE) {
-            parent->minW += cell->spacing + (cell->w + cell->padding * 2);
-            parent->cellCount++;
-        }
-    }
-    if (gHtml->measure == HTML_PASS_MEASURE) {
-        parent->maxW += cell->spacing + (cell->maxW + cell->padding * 2);
-    }
-    Layout_DrawCellBox(cell);
-    if (gHtml->measure == HTML_PASS_MEASURE) {
-        Html_MaxU16(&gHtml->pageWidth, cell->x + cell->w);
-    }
-    if (gHtml->tableDepth != 0) {
-        gHtml->tableDepth--;
-    } else {
-        return -1;
-    }
-    if (Layout_CellColSpan(cell) < 0) {
-        return -1;
-    }
-    Layout_CellAlign(cell);
-    Layout_NextLine();
-    Layout_CellAlign(cell);
-    return 0;
 }
 
 /* Sets the character widths for the current font size, bold or not. */
@@ -331,7 +230,7 @@ end:
 /* A colour: "#RRGGBB" or a colour name (gHtmlColorNames); -1 when unknown. */
 s32 Html_ParseColor(char *str)
 {
-    char buf[0x100];
+    char buf[256];
     s32 j;
     s32 rgb = 0;
     s32 len;
@@ -463,7 +362,7 @@ u8 *Html_SkipSpaces(u8 *pos)
  * its value, or 0. */
 u8 Html_LookupKeyword(char *word, HtmlKeyword *table, u32 size)
 {
-    char buf[0x100];
+    char buf[256];
     u16 len;
     u16 i;
     u16 n;
@@ -473,7 +372,7 @@ u8 Html_LookupKeyword(char *word, HtmlKeyword *table, u32 size)
         buf[i] = gToUpper[(u8)word[i]];
     }
     buf[i] = 0;
-    n = size / sizeof(HtmlKeyword);
+    n = size / HTML_KEYWORD_SIZE;
     for (i = 0; i < n; i++) {
         if (strncmp(buf, table[i].name, table[i].size) == 0) {
             return table[i].value;
@@ -482,209 +381,91 @@ u8 Html_LookupKeyword(char *word, HtmlKeyword *table, u32 size)
     return 0;
 }
 
-/* Draws the pending run of text (gHtml->line) at (x, y) on its line, by
- * what it is (HtmlState.link): plain, struck or underlined text, or a
- * link with its target. */
-void Layout_DrawRun(u16 x, u16 y, HtmlLine *line)
-{
-    u8 bold;
-
-    if (strlen(gHtml->line) != 0 || gHtml->inFrame != 0) {
-        if (gHtml->tableDepth != 0) {
-            HtmlCell *cell = &gHtml->cells[gHtml->curCell];
-            bold = cell->bold;
-        } else {
-            bold = gHtml->bold;
-        }
-        switch (gHtml->link) {
-        case HTML_LINK_NONE:
-            gHtml->anchor[0] = 0;
-            if (gHtml->strike != 0) {
-                Draw_StruckText(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
-                              gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line,
-                              (u8 *) gHtml->anchor, bold);
-            } else if (gHtml->underline != 0) {
-                Draw_UnderlinedText(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
-                              gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line,
-                              (u8 *) gHtml->anchor, bold);
-            } else {
-                Draw_Text(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
-                              gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, bold);
-            }
-            break;
-        case HTML_LINK_LOCAL:
-            if (gHtml->strike != 0) {
-                Draw_StruckText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
-                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->anchor, bold);
-            } else if (gHtml->underline != 0) {
-                Draw_UnderlinedText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
-                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->anchor, bold);
-            } else {
-                Draw_LinkText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
-                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->anchor, bold);
-            }
-            break;
-        case HTML_LINK_URL:
-            if (gHtml->strike != 0) {
-                Draw_StruckText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
-                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->href, bold);
-            } else if (gHtml->underline != 0) {
-                Draw_UnderlinedText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
-                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->href, bold);
-            } else {
-                Draw_LinkText(x, y + line->h - gHtml->charW, gHtml->linkColorValue, gHtml->charW,
-                              x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, (u8 *) gHtml->href, bold);
-            }
-            break;
-        case HTML_LINK_NAME:
-            Draw_Text(x, y + line->h - gHtml->charW, gHtml->fontColor[gHtml->fontDepth],
-                          gHtml->charW, x + gHtml->pen.runW, y + line->h, (u8 *) gHtml->line, bold);
-            break;
-        }
-    }
-}
-
-/* The x offset that centres a line (in <CENTER>), else 0. */
-u16 Layout_CenterOffset(HtmlLine *line)
-{
-    s32 off;
-    s32 room;
-
-    off = 0;
-    if (gHtml->center != 0) {
-        room = gHtml->width - gHtml->indent;
-        if (line->w < room) {
-            off = (room - line->w) / 2;
-        }
-    }
-    return off;
-}
-
-/* <A NAME=...>: an anchor at the pen's position. */
-void Layout_Anchor(char *name)
-{
-    HtmlCell *cell;
-    HtmlLine *line;
-    u16 x;
-    u16 y;
-
-    if (gHtml->measure == HTML_PASS_DRAW) {
-        line = &gHtml->lines[gHtml->lineNo];
-        if (gHtml->tableDepth == 0) {
-            x = gHtml->pen.runX + (gHtml->indent + gHtml->pen.left);
-            x += Layout_CenterOffset(line);
-            y = gHtml->pen.h + gHtml->pen.runY;
-        } else {
-            cell = &gHtml->cells[gHtml->curCell];
-            x = gHtml->cellPen.runX + (cell->indent + gHtml->cellPen.left);
-            Layout_CellAlign(cell);
-            x += cell->alignX;
-            y = cell->valignY;
-            y += gHtml->cellPen.h + gHtml->cellPen.runY;
-        }
-        if (gHtml->inFrame == 0) {
-            Draw_Anchor(x, y + line->h - gHtml->charW, (u8 *) name);
-        }
-    }
-}
-
-/* Lays out the current run of text (line[]) at the pen. */
-void Layout_PlaceRun(HtmlLine *line)
-{
-    u16 x;
-
-    if (gHtml->measure == HTML_PASS_DRAW) {
-        x = gHtml->pen.runX + (gHtml->indent + gHtml->pen.left);
-        x += Layout_CenterOffset(line);
-        Layout_DrawRun(x, gHtml->pen.h + gHtml->pen.runY, line);
-    }
-}
-
 /* The strings the tables below point at, then the parser's character
  * tables (gCharClass, gHexDigitValues, gToUpper), the entities and the
  * colour names (gHtmlColorNames). */
-extern char D_00839E90[];
-extern char D_00839E98[];
-extern char D_00839EA0[];
-extern char D_00839EA8[];
-extern char D_00839EB0[];
-extern char D_00839EB8[];
-extern char D_00839EC0[];
-extern char D_00839EC8[];
-extern char D_00839ED0[];
-extern char D_00839F10[];
-extern char D_00839F20[];
-extern char D_00839F30[];
-extern char D_00839F38[];
-extern char D_00839F48[];
-extern char D_00839F50[];
-extern char D_00839F58[];
-extern char D_00839F60[];
+extern char gHtmlEntityNames_0[];
+extern char gHtmlEntityNames_1[];
+extern char gHtmlEntityNames_2[];
+extern char gHtmlEntityNames_3[];
+extern char gHtmlEntityNames_4[];
+extern char gHtmlEntityNames_5[];
+extern char gHtmlEntityNames_6[];
+extern char gHtmlEntityNames_7[];
+extern char gHtmlEntityNames_8[];
+extern char gHtmlColorNames_0[];
+extern char gHtmlColorNames_1[];
+extern char gHtmlColorNames_2[];
+extern char gHtmlColorNames_3[];
+extern char gHtmlColorNames_4[];
+extern char gHtmlColorNames_5[];
+extern char gHtmlColorNames_6[];
+extern char gHtmlColorNames_7[];
 extern u32 D_00839F68[];
-extern char D_00839F78[];
-extern char D_00839F80[];
-extern char D_00839F90[];
-extern char D_00839F98[];
-extern char D_00839FA0[];
-extern char D_00839FB0[];
-extern char D_00839FC0[];
-extern char D_00839FD0[];
-extern char D_00839FE0[];
-extern char D_00839FF0[];
-extern char D_00839FF8[];
-extern char D_0083A000[];
-extern char D_0083A010[];
-extern char D_0083A020[];
-extern char D_0083A030[];
-extern char D_0083A038[];
-extern char D_0083A040[];
-extern char D_0083A050[];
-extern char D_0083A060[];
-extern char D_0083A070[];
-extern char D_0083A080[];
-extern char D_0083A090[];
-extern char D_0083A0A0[];
-extern char D_0083A0B0[];
-extern char D_0083A0C0[];
-extern char D_0083A0D0[];
-extern char D_0083A0E0[];
-extern char D_0083A0F0[];
+extern char gHtmlColorNames_9[];
+extern char gHtmlColorNames_10[];
+extern char gHtmlColorNames_11[];
+extern char gHtmlColorNames_12[];
+extern char gHtmlColorNames_13[];
+extern char gHtmlColorNames_14[];
+extern char gHtmlColorNames_15[];
+extern char gHtmlColorNames_16[];
+extern char gHtmlColorNames_17[];
+extern char gHtmlColorNames_18[];
+extern char gHtmlColorNames_19[];
+extern char gHtmlColorNames_20[];
+extern char gHtmlColorNames_21[];
+extern char gHtmlColorNames_22[];
+extern char gHtmlColorNames_23[];
+extern char gHtmlColorNames_24[];
+extern char gHtmlColorNames_25[];
+extern char gHtmlColorNames_26[];
+extern char gHtmlColorNames_27[];
+extern char gHtmlColorNames_28[];
+extern char gHtmlColorNames_29[];
+extern char gHtmlColorNames_30[];
+extern char gHtmlColorNames_31[];
+extern char gHtmlColorNames_32[];
+extern char gHtmlColorNames_33[];
+extern char gHtmlColorNames_34[];
+extern char gHtmlColorNames_35[];
+extern char gHtmlColorNames_36[];
 extern u32 D_0083A0F8[];
 extern u32 D_0083A108[];
 extern u32 D_0083A118[];
 extern u32 D_0083A128[];
 extern u32 D_0083A138[];
-extern char D_0083A148[];
-extern char D_0083A158[];
-extern char D_0083A168[];
-extern char D_0083A178[];
-extern char D_0083A180[];
-extern char D_0083A190[];
-extern char D_0083A1A0[];
-extern char D_0083A1B0[];
-extern char D_0083A1C0[];
-extern char D_0083A1D0[];
-extern char D_0083A1D8[];
-extern char D_0083A1E8[];
-extern char D_0083A1F8[];
-extern char D_0083A200[];
-extern char D_0083A210[];
-extern char D_0083A218[];
-extern char D_0083A220[];
-extern char D_0083A230[];
-extern char D_0083A240[];
-extern char D_0083A248[];
-extern char D_0083A258[];
-extern char D_0083A260[];
-extern char D_0083A268[];
-extern char D_0083A270[];
-extern char D_0083A280[];
-extern char D_0083A290[];
-extern char D_0083A2A0[];
-extern char D_0083A2B0[];
-extern char D_0083A2C0[];
-extern char D_0083A2D0[];
-extern char D_0083A2E0[];
+extern char gHtmlColorNames_42[];
+extern char gHtmlColorNames_43[];
+extern char gHtmlColorNames_44[];
+extern char gHtmlColorNames_45[];
+extern char gHtmlColorNames_46[];
+extern char gHtmlColorNames_47[];
+extern char gHtmlColorNames_48[];
+extern char gHtmlColorNames_49[];
+extern char gHtmlColorNames_50[];
+extern char gHtmlColorNames_51[];
+extern char gHtmlColorNames_52[];
+extern char gHtmlColorNames_53[];
+extern char gHtmlColorNames_54[];
+extern char gHtmlColorNames_55[];
+extern char gHtmlColorNames_56[];
+extern char gHtmlColorNames_57[];
+extern char gHtmlColorNames_58[];
+extern char gHtmlColorNames_59[];
+extern char gHtmlColorNames_60[];
+extern char gHtmlColorNames_61[];
+extern char gHtmlColorNames_62[];
+extern char gHtmlColorNames_63[];
+extern char gHtmlColorNames_64[];
+extern char gHtmlColorNames_65[];
+extern char gHtmlColorNames_66[];
+extern char gHtmlColorNames_67[];
+extern char gHtmlColorNames_68[];
+extern char gHtmlColorNames_69[];
+extern char gHtmlColorNames_70[];
+extern char gHtmlColorNames_71[];
+extern char gHtmlColorNames_72[];
 extern u32 D_0083A2F8[];
 extern u32 D_0083A308[];
 extern u32 D_0083A318[];
@@ -693,72 +474,72 @@ extern u32 D_0083A338[];
 extern u32 D_0083A348[];
 extern u32 D_0083A358[];
 extern u32 D_0083A368[];
-extern char D_0083A378[];
-extern char D_0083A388[];
-extern char D_0083A390[];
-extern char D_0083A3A0[];
-extern char D_0083A3A8[];
-extern char D_0083A3B0[];
-extern char D_0083A3C0[];
+extern char gHtmlColorNames_81[];
+extern char gHtmlColorNames_82[];
+extern char gHtmlColorNames_83[];
+extern char gHtmlColorNames_84[];
+extern char gHtmlColorNames_85[];
+extern char gHtmlColorNames_86[];
+extern char gHtmlColorNames_87[];
 extern u32 D_0083A3D8[];
 extern u32 D_0083A3E8[];
 extern u32 D_0083A3F8[];
 extern u32 D_0083A408[];
 extern u32 D_0083A418[];
-extern char D_0083A430[];
-extern char D_0083A450[];
-extern char D_0083A460[];
-extern char D_0083A470[];
-extern char D_0083A480[];
-extern char D_0083A490[];
-extern char D_0083A4A0[];
-extern char D_0083A4B0[];
-extern char D_0083A4C0[];
-extern char D_0083A4C8[];
-extern char D_0083A4D0[];
-extern char D_0083A4D8[];
-extern char D_0083A4E8[];
-extern char D_0083A4F0[];
-extern char D_0083A500[];
+extern char gHtmlColorNames_93[];
+extern char gHtmlColorNames_94[];
+extern char gHtmlColorNames_95[];
+extern char gHtmlColorNames_96[];
+extern char gHtmlColorNames_97[];
+extern char gHtmlColorNames_98[];
+extern char gHtmlColorNames_99[];
+extern char gHtmlColorNames_100[];
+extern char gHtmlColorNames_101[];
+extern char gHtmlColorNames_102[];
+extern char gHtmlColorNames_103[];
+extern char gHtmlColorNames_104[];
+extern char gHtmlColorNames_105[];
+extern char gHtmlColorNames_106[];
+extern char gHtmlColorNames_107[];
 extern u32 D_0083A508[];
 extern u32 D_0083A518[];
 extern u32 D_0083A528[];
 extern u32 D_0083A538[];
-extern char D_0083A548[];
-extern char D_0083A558[];
-extern char D_0083A568[];
-extern char D_0083A570[];
-extern char D_0083A578[];
-extern char D_0083A580[];
-extern char D_0083A590[];
-extern char D_0083A598[];
-extern char D_0083A5A0[];
-extern char D_0083A5B0[];
-extern char D_0083A5C0[];
-extern char D_0083A5D0[];
-extern char D_0083A5E0[];
-extern char D_0083A5E8[];
-extern char D_0083A5F8[];
-extern char D_0083A608[];
-extern char D_0083A618[];
-extern char D_0083A620[];
-extern char D_0083A628[];
-extern char D_0083A630[];
-extern char D_0083A640[];
-extern char D_0083A650[];
-extern char D_0083A658[];
-extern char D_0083A668[];
-extern char D_0083A678[];
-extern char D_0083A680[];
-extern char D_0083A688[];
-extern char D_0083A690[];
-extern char D_0083A698[];
-extern char D_0083A6A8[];
-extern char D_0083A6B0[];
-extern char D_0083A6B8[];
-extern char D_0083A6C0[];
-extern char D_0083A6D0[];
-extern char D_0083A6D8[];
+extern char gHtmlColorNames_112[];
+extern char gHtmlColorNames_113[];
+extern char gHtmlColorNames_114[];
+extern char gHtmlColorNames_115[];
+extern char gHtmlColorNames_116[];
+extern char gHtmlColorNames_117[];
+extern char gHtmlColorNames_118[];
+extern char gHtmlColorNames_119[];
+extern char gHtmlColorNames_120[];
+extern char gHtmlColorNames_121[];
+extern char gHtmlColorNames_122[];
+extern char gHtmlColorNames_123[];
+extern char gHtmlColorNames_124[];
+extern char gHtmlColorNames_125[];
+extern char gHtmlColorNames_126[];
+extern char gHtmlColorNames_127[];
+extern char gHtmlColorNames_128[];
+extern char gHtmlColorNames_129[];
+extern char gHtmlColorNames_130[];
+extern char gHtmlColorNames_131[];
+extern char gHtmlColorNames_132[];
+extern char gHtmlColorNames_133[];
+extern char gHtmlColorNames_134[];
+extern char gHtmlColorNames_135[];
+extern char gHtmlColorNames_136[];
+extern char gHtmlColorNames_137[];
+extern char gHtmlColorNames_138[];
+extern char gHtmlColorNames_139[];
+extern char gHtmlColorNames_140[];
+extern char gHtmlColorNames_141[];
+extern char gHtmlColorNames_142[];
+extern char gHtmlColorNames_143[];
+extern char gHtmlColorNames_144[];
+extern char gHtmlColorNames_145[];
+extern char gHtmlColorNames_146[];
 u8 gCharClass[256] = {
 #include "lobby/007EFF00.inc"
 };
@@ -769,11 +550,11 @@ u8 gToUpper[256] = {
 #include "lobby/007F0100.inc"
 };
 char *gHtmlEntityNames[10] = {
-    D_00839E90, D_00839E98, D_00839EA0, D_00839EA8,
-    D_00839EB0, D_00839EB8, D_00839EC0, D_00839EC8,
-    D_00839ED0, NULL,
+    gHtmlEntityNames_0, gHtmlEntityNames_1, gHtmlEntityNames_2, gHtmlEntityNames_3,
+    gHtmlEntityNames_4, gHtmlEntityNames_5, gHtmlEntityNames_6, gHtmlEntityNames_7,
+    gHtmlEntityNames_8, NULL,
 };
-u32 gHtmlEntityChars[3] = {
+char gHtmlEntityChars[12] = {
 #include "lobby/007F0228.inc"
 };
 HtmlColor gHtmlColorNames[148] = {
@@ -783,427 +564,427 @@ HtmlColor gHtmlColorNames[148] = {
 /* The strings (read-only data): the entities' and the colours' names,
  * and the short keywords and colours the handlers compare with. */
 #pragma rodata on
-char D_00839E90[0x8] = {
+char gHtmlEntityNames_0[8] = {
 #include "lobby/00839E90.inc"
 };
-char D_00839E98[0x8] = {
+char gHtmlEntityNames_1[8] = {
 #include "lobby/00839E98.inc"
 };
-char D_00839EA0[0x8] = {
+char gHtmlEntityNames_2[8] = {
 #include "lobby/00839EA0.inc"
 };
-char D_00839EA8[0x8] = {
+char gHtmlEntityNames_3[8] = {
 #include "lobby/00839EA8.inc"
 };
-char D_00839EB0[0x8] = {
+char gHtmlEntityNames_4[8] = {
 #include "lobby/00839EB0.inc"
 };
-char D_00839EB8[0x8] = {
+char gHtmlEntityNames_5[8] = {
 #include "lobby/00839EB8.inc"
 };
-char D_00839EC0[0x8] = {
+char gHtmlEntityNames_6[8] = {
 #include "lobby/00839EC0.inc"
 };
-char D_00839EC8[0x8] = {
+char gHtmlEntityNames_7[8] = {
 #include "lobby/00839EC8.inc"
 };
-char D_00839ED0[0x8] = {
+char gHtmlEntityNames_8[8] = {
 #include "lobby/00839ED0.inc"
 };
-u32 gHtmlAmpersand[2] = {
+char gHtmlAmpersand[8] = {
 #include "lobby/00839ED8.inc"
 };
-u32 gHtmlBlack[2] = {
+char gHtmlBlack[8] = {
 #include "lobby/00839EE0.inc"
 };
-u32 gHtmlBlue[2] = {
+char gHtmlBlue[8] = {
 #include "lobby/00839EE8.inc"
 };
-u32 gHtmlShapeRect[2] = {
+char gHtmlShapeRect[8] = {
 #include "lobby/00839EF0.inc"
 };
-u32 gHtmlMethodPost[2] = {
+char gHtmlMethodPost[8] = {
 #include "lobby/00839EF8.inc"
 };
-u32 gHtmlFontSizeDefault[2] = {
+char gHtmlFontSizeDefault[8] = {
 #include "lobby/00839F00.inc"
 };
-u32 gHtmlRefresh[2] = {
+char gHtmlRefresh[8] = {
 #include "lobby/00839F08.inc"
 };
-char D_00839F10[0x10] = {
+char gHtmlColorNames_0[16] = {
 #include "lobby/00839F10.inc"
 };
-char D_00839F20[0x10] = {
+char gHtmlColorNames_1[16] = {
 #include "lobby/00839F20.inc"
 };
-char D_00839F30[0x8] = {
+char gHtmlColorNames_2[8] = {
 #include "lobby/00839F30.inc"
 };
-char D_00839F38[0xC] = {
+char gHtmlColorNames_3[12] = {
 #include "lobby/00839F38.inc"
 };
-char D_00839F48[0x8] = {
+char gHtmlColorNames_4[8] = {
 #include "lobby/00839F48.inc"
 };
-char D_00839F50[0x8] = {
+char gHtmlColorNames_5[8] = {
 #include "lobby/00839F50.inc"
 };
-char D_00839F58[0x8] = {
+char gHtmlColorNames_6[8] = {
 #include "lobby/00839F58.inc"
 };
-char D_00839F60[0x18] = {
+char gHtmlColorNames_7[24] = {
 #include "lobby/00839F60.inc"
 };
-char D_00839F78[0x8] = {
+char gHtmlColorNames_9[8] = {
 #include "lobby/00839F78.inc"
 };
-char D_00839F80[0x10] = {
+char gHtmlColorNames_10[16] = {
 #include "lobby/00839F80.inc"
 };
-char D_00839F90[0x8] = {
+char gHtmlColorNames_11[8] = {
 #include "lobby/00839F90.inc"
 };
-char D_00839F98[0x8] = {
+char gHtmlColorNames_12[8] = {
 #include "lobby/00839F98.inc"
 };
-char D_00839FA0[0x10] = {
+char gHtmlColorNames_13[16] = {
 #include "lobby/00839FA0.inc"
 };
-char D_00839FB0[0x10] = {
+char gHtmlColorNames_14[16] = {
 #include "lobby/00839FB0.inc"
 };
-char D_00839FC0[0x10] = {
+char gHtmlColorNames_15[16] = {
 #include "lobby/00839FC0.inc"
 };
-char D_00839FD0[0x10] = {
+char gHtmlColorNames_16[16] = {
 #include "lobby/00839FD0.inc"
 };
-char D_00839FE0[0x10] = {
+char gHtmlColorNames_17[16] = {
 #include "lobby/00839FE0.inc"
 };
-char D_00839FF0[0x8] = {
+char gHtmlColorNames_18[8] = {
 #include "lobby/00839FF0.inc"
 };
-char D_00839FF8[0x8] = {
+char gHtmlColorNames_19[8] = {
 #include "lobby/00839FF8.inc"
 };
-char D_0083A000[0x10] = {
+char gHtmlColorNames_20[16] = {
 #include "lobby/0083A000.inc"
 };
-char D_0083A010[0x10] = {
+char gHtmlColorNames_21[16] = {
 #include "lobby/0083A010.inc"
 };
-char D_0083A020[0x10] = {
+char gHtmlColorNames_22[16] = {
 #include "lobby/0083A020.inc"
 };
-char D_0083A030[0x8] = {
+char gHtmlColorNames_23[8] = {
 #include "lobby/0083A030.inc"
 };
-char D_0083A038[0x8] = {
+char gHtmlColorNames_24[8] = {
 #include "lobby/0083A038.inc"
 };
-char D_0083A040[0x10] = {
+char gHtmlColorNames_25[16] = {
 #include "lobby/0083A040.inc"
 };
-char D_0083A050[0x10] = {
+char gHtmlColorNames_26[16] = {
 #include "lobby/0083A050.inc"
 };
-char D_0083A060[0x10] = {
+char gHtmlColorNames_27[16] = {
 #include "lobby/0083A060.inc"
 };
-char D_0083A070[0x10] = {
+char gHtmlColorNames_28[16] = {
 #include "lobby/0083A070.inc"
 };
-char D_0083A080[0x10] = {
+char gHtmlColorNames_29[16] = {
 #include "lobby/0083A080.inc"
 };
-char D_0083A090[0x10] = {
+char gHtmlColorNames_30[16] = {
 #include "lobby/0083A090.inc"
 };
-char D_0083A0A0[0x10] = {
+char gHtmlColorNames_31[16] = {
 #include "lobby/0083A0A0.inc"
 };
-char D_0083A0B0[0x10] = {
+char gHtmlColorNames_32[16] = {
 #include "lobby/0083A0B0.inc"
 };
-char D_0083A0C0[0x10] = {
+char gHtmlColorNames_33[16] = {
 #include "lobby/0083A0C0.inc"
 };
-char D_0083A0D0[0x10] = {
+char gHtmlColorNames_34[16] = {
 #include "lobby/0083A0D0.inc"
 };
-char D_0083A0E0[0x10] = {
+char gHtmlColorNames_35[16] = {
 #include "lobby/0083A0E0.inc"
 };
-char D_0083A0F0[0x58] = {
+char gHtmlColorNames_36[88] = {
 #include "lobby/0083A0F0.inc"
 };
-char D_0083A148[0xC] = {
+char gHtmlColorNames_42[12] = {
 #include "lobby/0083A148.inc"
 };
-char D_0083A158[0xC] = {
+char gHtmlColorNames_43[12] = {
 #include "lobby/0083A158.inc"
 };
-char D_0083A168[0xC] = {
+char gHtmlColorNames_44[12] = {
 #include "lobby/0083A168.inc"
 };
-char D_0083A178[0x8] = {
+char gHtmlColorNames_45[8] = {
 #include "lobby/0083A178.inc"
 };
-char D_0083A180[0x10] = {
+char gHtmlColorNames_46[16] = {
 #include "lobby/0083A180.inc"
 };
-char D_0083A190[0x10] = {
+char gHtmlColorNames_47[16] = {
 #include "lobby/0083A190.inc"
 };
-char D_0083A1A0[0x10] = {
+char gHtmlColorNames_48[16] = {
 #include "lobby/0083A1A0.inc"
 };
-char D_0083A1B0[0x10] = {
+char gHtmlColorNames_49[16] = {
 #include "lobby/0083A1B0.inc"
 };
-char D_0083A1C0[0x10] = {
+char gHtmlColorNames_50[16] = {
 #include "lobby/0083A1C0.inc"
 };
-char D_0083A1D0[0x8] = {
+char gHtmlColorNames_51[8] = {
 #include "lobby/0083A1D0.inc"
 };
-char D_0083A1D8[0xC] = {
+char gHtmlColorNames_52[12] = {
 #include "lobby/0083A1D8.inc"
 };
-char D_0083A1E8[0xC] = {
+char gHtmlColorNames_53[12] = {
 #include "lobby/0083A1E8.inc"
 };
-char D_0083A1F8[0x8] = {
+char gHtmlColorNames_54[8] = {
 #include "lobby/0083A1F8.inc"
 };
-char D_0083A200[0x10] = {
+char gHtmlColorNames_55[16] = {
 #include "lobby/0083A200.inc"
 };
-char D_0083A210[0x8] = {
+char gHtmlColorNames_56[8] = {
 #include "lobby/0083A210.inc"
 };
-char D_0083A218[0x8] = {
+char gHtmlColorNames_57[8] = {
 #include "lobby/0083A218.inc"
 };
-char D_0083A220[0x10] = {
+char gHtmlColorNames_58[16] = {
 #include "lobby/0083A220.inc"
 };
-char D_0083A230[0x10] = {
+char gHtmlColorNames_59[16] = {
 #include "lobby/0083A230.inc"
 };
-char D_0083A240[0x8] = {
+char gHtmlColorNames_60[8] = {
 #include "lobby/0083A240.inc"
 };
-char D_0083A248[0xC] = {
+char gHtmlColorNames_61[12] = {
 #include "lobby/0083A248.inc"
 };
-char D_0083A258[0x8] = {
+char gHtmlColorNames_62[8] = {
 #include "lobby/0083A258.inc"
 };
-char D_0083A260[0x8] = {
+char gHtmlColorNames_63[8] = {
 #include "lobby/0083A260.inc"
 };
-char D_0083A268[0x8] = {
+char gHtmlColorNames_64[8] = {
 #include "lobby/0083A268.inc"
 };
-char D_0083A270[0x10] = {
+char gHtmlColorNames_65[16] = {
 #include "lobby/0083A270.inc"
 };
-char D_0083A280[0x10] = {
+char gHtmlColorNames_66[16] = {
 #include "lobby/0083A280.inc"
 };
-char D_0083A290[0x10] = {
+char gHtmlColorNames_67[16] = {
 #include "lobby/0083A290.inc"
 };
-char D_0083A2A0[0x10] = {
+char gHtmlColorNames_68[16] = {
 #include "lobby/0083A2A0.inc"
 };
-char D_0083A2B0[0x10] = {
+char gHtmlColorNames_69[16] = {
 #include "lobby/0083A2B0.inc"
 };
-char D_0083A2C0[0x10] = {
+char gHtmlColorNames_70[16] = {
 #include "lobby/0083A2C0.inc"
 };
-char D_0083A2D0[0x10] = {
+char gHtmlColorNames_71[16] = {
 #include "lobby/0083A2D0.inc"
 };
-char D_0083A2E0[0x98] = {
+char gHtmlColorNames_72[152] = {
 #include "lobby/0083A2E0.inc"
 };
-char D_0083A378[0xC] = {
+char gHtmlColorNames_81[12] = {
 #include "lobby/0083A378.inc"
 };
-char D_0083A388[0x8] = {
+char gHtmlColorNames_82[8] = {
 #include "lobby/0083A388.inc"
 };
-char D_0083A390[0x10] = {
+char gHtmlColorNames_83[16] = {
 #include "lobby/0083A390.inc"
 };
-char D_0083A3A0[0x8] = {
+char gHtmlColorNames_84[8] = {
 #include "lobby/0083A3A0.inc"
 };
-char D_0083A3A8[0x8] = {
+char gHtmlColorNames_85[8] = {
 #include "lobby/0083A3A8.inc"
 };
-char D_0083A3B0[0x10] = {
+char gHtmlColorNames_86[16] = {
 #include "lobby/0083A3B0.inc"
 };
-char D_0083A3C0[0x70] = {
+char gHtmlColorNames_87[112] = {
 #include "lobby/0083A3C0.inc"
 };
-char D_0083A430[0x20] = {
+char gHtmlColorNames_93[32] = {
 #include "lobby/0083A430.inc"
 };
-char D_0083A450[0x10] = {
+char gHtmlColorNames_94[16] = {
 #include "lobby/0083A450.inc"
 };
-char D_0083A460[0x10] = {
+char gHtmlColorNames_95[16] = {
 #include "lobby/0083A460.inc"
 };
-char D_0083A470[0x10] = {
+char gHtmlColorNames_96[16] = {
 #include "lobby/0083A470.inc"
 };
-char D_0083A480[0x10] = {
+char gHtmlColorNames_97[16] = {
 #include "lobby/0083A480.inc"
 };
-char D_0083A490[0x10] = {
+char gHtmlColorNames_98[16] = {
 #include "lobby/0083A490.inc"
 };
-char D_0083A4A0[0x10] = {
+char gHtmlColorNames_99[16] = {
 #include "lobby/0083A4A0.inc"
 };
-char D_0083A4B0[0x10] = {
+char gHtmlColorNames_100[16] = {
 #include "lobby/0083A4B0.inc"
 };
-char D_0083A4C0[0x8] = {
+char gHtmlColorNames_101[8] = {
 #include "lobby/0083A4C0.inc"
 };
-char D_0083A4C8[0x8] = {
+char gHtmlColorNames_102[8] = {
 #include "lobby/0083A4C8.inc"
 };
-char D_0083A4D0[0x8] = {
+char gHtmlColorNames_103[8] = {
 #include "lobby/0083A4D0.inc"
 };
-char D_0083A4D8[0xC] = {
+char gHtmlColorNames_104[12] = {
 #include "lobby/0083A4D8.inc"
 };
-char D_0083A4E8[0x8] = {
+char gHtmlColorNames_105[8] = {
 #include "lobby/0083A4E8.inc"
 };
-char D_0083A4F0[0x10] = {
+char gHtmlColorNames_106[16] = {
 #include "lobby/0083A4F0.inc"
 };
-char D_0083A500[0x48] = {
+char gHtmlColorNames_107[72] = {
 #include "lobby/0083A500.inc"
 };
-char D_0083A548[0xC] = {
+char gHtmlColorNames_112[12] = {
 #include "lobby/0083A548.inc"
 };
-char D_0083A558[0xC] = {
+char gHtmlColorNames_113[12] = {
 #include "lobby/0083A558.inc"
 };
-char D_0083A568[0x8] = {
+char gHtmlColorNames_114[8] = {
 #include "lobby/0083A568.inc"
 };
-char D_0083A570[0x8] = {
+char gHtmlColorNames_115[8] = {
 #include "lobby/0083A570.inc"
 };
-char D_0083A578[0x8] = {
+char gHtmlColorNames_116[8] = {
 #include "lobby/0083A578.inc"
 };
-char D_0083A580[0x10] = {
+char gHtmlColorNames_117[16] = {
 #include "lobby/0083A580.inc"
 };
-char D_0083A590[0x8] = {
+char gHtmlColorNames_118[8] = {
 #include "lobby/0083A590.inc"
 };
-char D_0083A598[0x8] = {
+char gHtmlColorNames_119[8] = {
 #include "lobby/0083A598.inc"
 };
-char D_0083A5A0[0x10] = {
+char gHtmlColorNames_120[16] = {
 #include "lobby/0083A5A0.inc"
 };
-char D_0083A5B0[0x10] = {
+char gHtmlColorNames_121[16] = {
 #include "lobby/0083A5B0.inc"
 };
-char D_0083A5C0[0x10] = {
+char gHtmlColorNames_122[16] = {
 #include "lobby/0083A5C0.inc"
 };
-char D_0083A5D0[0x10] = {
+char gHtmlColorNames_123[16] = {
 #include "lobby/0083A5D0.inc"
 };
-char D_0083A5E0[0x8] = {
+char gHtmlColorNames_124[8] = {
 #include "lobby/0083A5E0.inc"
 };
-char D_0083A5E8[0xC] = {
+char gHtmlColorNames_125[12] = {
 #include "lobby/0083A5E8.inc"
 };
-char D_0083A5F8[0xC] = {
+char gHtmlColorNames_126[12] = {
 #include "lobby/0083A5F8.inc"
 };
-char D_0083A608[0xC] = {
+char gHtmlColorNames_127[12] = {
 #include "lobby/0083A608.inc"
 };
-char D_0083A618[0x8] = {
+char gHtmlColorNames_128[8] = {
 #include "lobby/0083A618.inc"
 };
-char D_0083A620[0x8] = {
+char gHtmlColorNames_129[8] = {
 #include "lobby/0083A620.inc"
 };
-char D_0083A628[0x8] = {
+char gHtmlColorNames_130[8] = {
 #include "lobby/0083A628.inc"
 };
-char D_0083A630[0x10] = {
+char gHtmlColorNames_131[16] = {
 #include "lobby/0083A630.inc"
 };
-char D_0083A640[0x10] = {
+char gHtmlColorNames_132[16] = {
 #include "lobby/0083A640.inc"
 };
-char D_0083A650[0x8] = {
+char gHtmlColorNames_133[8] = {
 #include "lobby/0083A650.inc"
 };
-char D_0083A658[0xC] = {
+char gHtmlColorNames_134[12] = {
 #include "lobby/0083A658.inc"
 };
-char D_0083A668[0xC] = {
+char gHtmlColorNames_135[12] = {
 #include "lobby/0083A668.inc"
 };
-char D_0083A678[0x8] = {
+char gHtmlColorNames_136[8] = {
 #include "lobby/0083A678.inc"
 };
-char D_0083A680[0x8] = {
+char gHtmlColorNames_137[8] = {
 #include "lobby/0083A680.inc"
 };
-char D_0083A688[0x8] = {
+char gHtmlColorNames_138[8] = {
 #include "lobby/0083A688.inc"
 };
-char D_0083A690[0x8] = {
+char gHtmlColorNames_139[8] = {
 #include "lobby/0083A690.inc"
 };
-char D_0083A698[0xC] = {
+char gHtmlColorNames_140[12] = {
 #include "lobby/0083A698.inc"
 };
-char D_0083A6A8[0x8] = {
+char gHtmlColorNames_141[8] = {
 #include "lobby/0083A6A8.inc"
 };
-char D_0083A6B0[0x8] = {
+char gHtmlColorNames_142[8] = {
 #include "lobby/0083A6B0.inc"
 };
-char D_0083A6B8[0x8] = {
+char gHtmlColorNames_143[8] = {
 #include "lobby/0083A6B8.inc"
 };
-char D_0083A6C0[0x10] = {
+char gHtmlColorNames_144[16] = {
 #include "lobby/0083A6C0.inc"
 };
-char D_0083A6D0[0x8] = {
+char gHtmlColorNames_145[8] = {
 #include "lobby/0083A6D0.inc"
 };
-char D_0083A6D8[0xC] = {
+char gHtmlColorNames_146[12] = {
 #include "lobby/0083A6D8.inc"
 };
-char gHtmlHash[0x8] = {
+char gHtmlHash[8] = {
 #include "lobby/0083A6E8.inc"
 };
 #pragma rodata off

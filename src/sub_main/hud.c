@@ -31,6 +31,12 @@
  * The menus' cursor helpers, the help window, the equipment icons and the
  * slides have code of their own, and so do the small queries that other
  * code asks of the HUD.
+ *
+ * One file: the menus and the cockpit's drawing share the data, in an order of their own. The
+ * first tables (the players' map colours, the status icons, then the quest and option menus'
+ * rows) mix the two, the item colours serve both, and the jump tables and literals interleave
+ * as well; the only clean cuts fall among the last four functions (a quest page's helper and
+ * the status page's comment editor), which are menus too. So the file stays whole.
  */
 #include "common.h"
 #include "window.h"
@@ -52,6 +58,37 @@
 #include "sound.h"
 #include "area.h"
 #include "texture.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "box_menu.h"
+#include "camera.h"
+#include "game_menu.h"
+#include "kbd.h"
+#include "qsync.h"
+#include "shake.h"
+#include "arena_cup.h"
+#include "cam_helpers.h"
+#include "chat_phrases.h"
+#include "draw_helpers.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "equip_parts.h"
+#include "font.h"
+#include "game_util.h"
+#include "hunter_card.h"
+#include "lobby_queries.h"
+#include "member_list.h"
+#include "menu_util.h"
+#include "online_mark.h"
+#include "place_info.h"
+#include "place_info_draw.h"
+#include "vibration.h"
+#include "supply_box.h"
+#include "libgcc.h"
+#include "msg_event.h"
+#include "em_blangonga.h"
 
 /* Built at optimization level 4: MonsterNote_DrawCrown, Map_DrawAreaChange, Hud_DrawPouchItem,
  * Hud_DrawCompass and Hud_DrawCompassQuad match only at 4, Map_DrawZoomed only at 3 (a pair below),
@@ -60,77 +97,19 @@
 #pragma optimization_level 4
 
 /* prototypes */
-s32 Combine_IsKnown(s16 a, s16 b);
-s32 Player_IsLocal(void *obj);
-s32 Quest_IsVersus(void);
-void Save_StorePouch(Player *p);
-void Shake_Start(u8 id, u8 flags, f32 amp);
 void Text_Draw(char *s);
 void Text_SetSize(s32 size);
-void Font_SetColor(s32 color);
-void Font_SetPal(s32 a);
-s32 Game_PauseState(void);
 struct Recipe;
-u8 Recipe_YieldBase(struct Recipe *r);
-s32 Combine_IsKnown3(s32, s32, s32);
-s32 Recipe_IsKnown(Recipe *r);
-void Tex_Prepare(s32 a, s32 b);
-void Hud_ResetMenuState(void);
-void FieldMenu_DrawList(s8 flag);
-void FieldMenu_Draw(void);
-void InfoMenu_Reset(void);
-void LocationInfo_Draw(void);
-void ItemList_DrawPage(void);
-void MonsterNote_DrawPage(void);
-void QuestMenu_DrawPage(void);
-void PhraseMenu_Draw(void);
-s32 PouchDrop_Update(u16 buttons);
-void Hud_DrawPlayerNames(void);
-void Hud_DrawVersusMonsterBars(void);
-void Hud_DrawMap(void);
-void Hud_DrawPouchItem(void);
-void Hud_DrawItemWindow(void);
-void Hud_DrawPartyStatus(void);
-void Hud_DrawClock(void);
-void Hud_DrawWeaponBox(void);
-void Hud_DrawAimView(void);
-void Hud_DrawBowgun(void);
-s32 Map_MonsterLocated(Em *em);
-void Hud_DrawGlow(s16, s16, s32, f32, f32);
-void Hud_DrawBowgunAmmo(void);
-void Pause_DrawWindow(void);
-s32 ItemGet_Reserve(s32 arg0, u16 *arg1);
-void Game_Pause(u8 arg0);
-s32 Player_IsFree(Player *p);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-s32 MonsterNote_SetKnown(s32 arg0);
 /* unit's own declaration: declared here as MonsterNote_Update calls it; with the definition's s8 (s8 cur, s8 dir), the call compiles differently */
 s8 MonsterNote_NextKnown(s32 cur, s32 dir);
-void Chat_DrawHudLog(void);
-void Chat_DrawLog(void);
 void Gfx_SetBlend(s32 a, s32 b);
 void Gfx_SetTexFilter(s32 a);
 void Tex_Bind(s32 a);
-s32 Game_IsOnline(void);
-s32 Quest_PhaseIsOver(s32 a);
-s32 Quest_HasAdvice(void);
-s32 Item_IsOnePerPouch(u16 item);
-s32 Gs_SetState(u8 reg, u32 v);
-s32 Gs_GetState(u8 reg);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void PlaceInfo_Draw(void);
-void MsgEvent_DrawPopup(void);
-void BoxMenu_Draw(void);
 s32 func_770310(void);
-void GameMenu_Back(void);
-void GameMenu_Draw(void);
-void LobbyMember_DrawList(void);
-void FriendLimitWin_Open(void);
 s32 FriendLimitWin_Input(void); /* unit's own declaration: FriendLimitWin_Input reads a0 = buttons (StatusMenu_Update's, left in a0 through FriendLimit_Update) */
 s32 Lobby_LacksQuest(void);
-s32 Lobby_HasQuest(void);
-s32 EmBlangonga_InStateArmor(Em *em);
 extern u8 gQuestMenuCursorMax[];
 extern u8 gFieldMenuHelpLines[];
 extern ListPanel gInfoMenuPanel;
@@ -147,27 +126,14 @@ extern u8 gPauseMenuReq;
 extern u8 gPauseWinStep;
 extern u8 gPauseWinFade;
 extern u8 gChatInputMode;
-u8 Shake_Flags(u8 id);
-s32 Shake_Update(u8 id);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count);
-f32 Math_Sin(f32 x);
-f32 Math_Sqrtf(f32 x);
-s32 Sprite_Draw(struct Sprite *s);
 s32 sprintf(char *dst, char *fmt, ...);
 void Text_PrintfColored(char *fmt, ...);
-void Window_DrawText(void *p, s16 *pos, u8 *text);
-void Sjis_Widen(char *src, char *dst);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
 extern u16 gFrameTick;
 extern QuestInfo *gQuestInfo;
 extern u8 gChatHideNames;
 extern s8 gHelpColumn;
 struct ListWin;
-void ListPanel_DrawDim(struct ListWin *win, char *title, s32 sel);
 struct Window;
-void Window_DrawTextB2(struct Window *w, u8 *text);
 void Text_Printf(char *fmt, ...);
 void *memcpy(void *d, void *s, u32 n);
 /* end of prototypes */
@@ -180,7 +146,7 @@ extern char gPlayerIds[][8];
 
 /* The HUD's constants, read-only. */
 #pragma rodata on
-u32 D_0046CFB8[3] = {
+char gEmptyNameStr[12] = {
 #include "sub_main/0046CFB8.inc"
 };
 #pragma rodata off
@@ -202,7 +168,7 @@ void Hud_PrintPlayerName(Player *pl)
     Text_PrintfColored("%-8.8s", name);
 }
 
-/* Returns 1 when the menu button (0x8000) is in btn and the field menu may
+/* Returns 1 when the menu button (PAD_START) is in btn and the field menu may
  * open: not while the player's trade message shows, nor while a versus
  * quest's input lock runs. */
 s32 FieldMenu_Requested(Player *pl, u16 buttons)
@@ -213,7 +179,7 @@ s32 FieldMenu_Requested(Player *pl, u16 buttons)
     if ((Quest_IsVersus() == 1) && (gQuest.inputLock > 0)) {
         return 0;
     }
-    return (buttons & 0xFFFF & 0x8000) != 0;
+    return (buttons & 0xFFFF & PAD_START) != 0;
 }
 
 extern u8 gChatLines;
@@ -221,28 +187,8 @@ extern s32 gChatSendWait;
 extern DrawSlot gHudDrawHooks[4];   /* the HUD draw hooks */
 /* unit's own declaration: as the file's last declaration of it (u8 in pouch.c) */
 s32 Pouch_Add(Player *p, u16 item, s16 n);
-s32 Pouch_IsSlotUsable(Player *p, u16 slot);
-u16 Menu_ReadDpad(u8 pad);
-s32 Player_IsAiming(Player *p);
-void Hud_UpdateMapPing(u16 buttons);
-void Players_UpdatePresent(void);
 u8 MsgEvent_PopupInput(u16 buttons); /* unit's own declaration: the definition (game) is u8 MsgEvent_PopupInput(s32 arg0); the calls here match only with this one */
 s32 Field_ControlEnabled(void);
-s32 Kbd_ActHotkeys(void);
-s32 Player_Status7Active(Player *p);
-void Chat_OpenInput(u8 a);
-void FieldMenu_Open(void);
-void SupplyBox_Update(Player *p);
-void Player_RunDeliveryMenu(Player *p);
-void Quest_DeliveryMenu(Player *p);
-void Hud_MapZoomInput(u16 arg0, u16 arg1);
-void FieldMenu_Update(u16 buttons);
-void Chat_SendInput(u16 buttons);
-void Chat_UpdateWindow(u16 unused0);
-void Pause_Update(void);
-void Fade_UpdateAll(void);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
-s32 CamReq_Started(void);
 
 /* The field HUD's update, once a frame in a quest or offline. When the
  * quest is over it puts back the combine menu's ingredients and closes every
@@ -281,7 +227,7 @@ void ItemHud_Update(void)
         gChatInputMode = 0;
         return;
     }
-    /* the new presses, with the D-pad's (0x3C00) auto-repeat */
+    /* the new presses, with the D-pad's auto-repeat */
     btn = gPadState[0].pressed | (gPadState[0].repeat & PAD_DPAD);
     pad = gPadState[0].held;
     Menu_ReadDpad(0);
@@ -320,7 +266,7 @@ void ItemHud_Update(void)
         if (pl->isGunner == 1) {
             if (gHudState->ammoSlot != pl->ammoSlot) {
                 gHudState->ammoSlot = pl->ammoSlot;
-                if (pl->ammoSlot != 0xFF) {
+                if (pl->ammoSlot != 255) {
                     gHudState->blink64 = 2;
                     if (pl->pouchHudFlags & 0x10) {
                         gHudState->dir65 = -1;
@@ -432,23 +378,7 @@ void ItemHud_Update(void)
     gHudState->camReqStarted = CamReq_Started();
 }
 
-extern u8 gChatLines;
-extern s32 gChatSendWait;
 extern s8 gNoticeFlags;
-void Chat_PickSendTarget(void);
-u16 GameMenu_GetPad(void);
-u16 Menu_ReadDpad(u8 pad);
-void Players_UpdatePresent(void);
-s32 Hud_ChatKeyAllowed(void);
-s32 Kbd_ActHotkeys(void);
-void Chat_OpenInput(u8 a);
-s32 PouchDrop_UpdateSave(u16 buttons);
-s32 GameMenu_Update(u16 pad);
-void Chat_SendInput(u16 buttons);
-void Chat_UpdateWindowsOnline(u16 buttons);
-void Pause_Update(void);
-void Fade_UpdateAll(void);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
 
 /* The HUD's update in the online town, where the game menu (GameMenu_Update)
  * takes the field menu's place: the chat key, the drop dialog, the menus and
@@ -532,21 +462,16 @@ void FieldMenu_Open(void)
     Hud_ResetMenuState();
 }
 
-void Shake_Stop(void);
-void FieldMenu_Close(void);
-void FieldMenu_SetHelpLine(void);
-void FieldMenu_ToggleCockpit(void);
-void FieldMenu_Exit(void);
 extern s32 (*gFieldMenuDecideOnline[])(void);
 extern s32 (*gFieldMenuDecide[])(void);
 extern u16 (*gFieldMenuInputOnline[])(s32);
 extern u16 (*gFieldMenuInput[])(s32);
 
-/* The field menu's input. In phase 0 the cursor picks an entry (0x200
+/* The field menu's input. In phase 0 the cursor picks an entry (PAD_SQUARE
  * toggles the cockpit) and confirming starts it (gFieldMenuDecide or
  * gFieldMenuDecideOnline returns 0 to open it, else the error sound plays);
  * in phase 1 the entry's own input runs (gFieldMenuInput...), whose result
- * 0x8000 closes the menu and 0x40 goes back to the list; phase 2 waits for
+ * PAD_START closes the menu and PAD_CROSS goes back to the list; phase 2 waits for
  * the window to slide out. */
 void FieldMenu_Update(u16 buttons)
 {
@@ -586,9 +511,9 @@ void FieldMenu_Update(u16 buttons)
         } else {
             result = gFieldMenuInput[gHudState->fieldMenuCursor](buttons);
         }
-        if (result & 0x8000) {
+        if (result & PAD_START) {
             FieldMenu_Exit();
-        } else if (result & 0x40) {
+        } else if (result & PAD_CROSS) {
             gHudState->menuPhase = 0;
             gHelpShow = 1;
             gHelpPage = HELP_PAGE_FIELD_MENU;
@@ -639,12 +564,6 @@ void FieldMenu_ToggleCockpit(void)
 extern ListPanel gFieldMenuPanel;
 extern char *gFieldMenuItemsOffline[][9];
 extern char *gFieldMenuItemsOnline[][7];
-extern char *gFieldMenuTitle[];
-void GameMenu_DrawList(s8 dim);
-void *Shake_GetOffset(u8 id);
-s32 Hud_ItemMenusAllowed(void);
-s32 ItemGet_IsReady(Player *p);
-void FieldMenu_DrawCockpit(s16 row, s16 *pos);
 
 /* Draws the field menu's list (in the town, the game menu's). The entry texts
  * come in sets: 1 when the menu is refused or an item get is pending, plus
@@ -660,7 +579,7 @@ void FieldMenu_DrawList(s8 dimmed)
         GameMenu_DrawList(dimmed);
         return;
     }
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     pos = Shake_GetOffset(SHAKE_FIELD_MENU);
     textSet = 0;
     if (Hud_ItemMenusAllowed() != 1 || ItemGet_IsReady(NULL) != 1) {
@@ -688,8 +607,6 @@ void FieldMenu_DrawList(s8 dimmed)
 
 extern void (*gFieldMenuDrawOnline[])(void);
 extern void (*gFieldMenuDraw[])(void);
-s32 Shake_Value(u8 id);
-void HelpWindow_DrawCurrent(void);
 
 /* Draws the field menu: the list, or the open entry's page (with the help
  * window unless the window is sliding). */
@@ -717,17 +634,15 @@ void FieldMenu_Draw(void)
 
 extern Sprite gFieldMenuCockpitBox;
 extern Icon gFieldMenuCockpitIcon;
-extern char *gCockpitToggleTexts[];
-void Draw_Icons(Icon *icons, u8 count);
 
 /* Draws the cockpit toggle's box and button icon below the list's last
  * entry (rows entries), at the window's slide offset pos. */
 void FieldMenu_DrawCockpit(s16 rows, s16 *offset)
 {
-    s16 boxY = (rows + 1) * 22 + 0x50;
+    s16 boxY = (rows + 1) * 22 + 80;
     gFieldMenuCockpitBox.y = boxY;
     Window_DrawText(&gFieldMenuCockpitBox, (s16 *)offset, (u8 *)gCockpitToggleTexts[gHudState->cockpitOff]);
-    gFieldMenuCockpitIcon.x = offset[0] + 0x1D3;
+    gFieldMenuCockpitIcon.x = offset[0] + 467;
     gFieldMenuCockpitIcon.y = boxY - 1;
     Draw_Icons(&gFieldMenuCockpitIcon, 1);
 }
@@ -750,20 +665,12 @@ s32 StatusMenu_Open(void *menu)
     return 0;
 }
 
-s32 PersonalStatus_Open(void);
-u16 PersonalStatus_Update(u16 buttons);
-s32 EquipStatus_Open(void);
-u16 EquipStatus_Update(u16 buttons);
-void CommentEdit_Open(void);
-u16 Chat_InputLine(u16 buttons);
-void OnlineMark_Open(void);
 u16 OnlineMark_Input(u16 buttons); /* unit's own declaration: the definition (lobby) is s32 OnlineMark_Input(s32 arg0); the calls here match only with this one */
 void FriendLimit_Open(void);
-s32 FriendLimit_Update(void);
 
 /* The status page's input: in step 0 the cursor picks one of its entries
  * (STATUS_*) and confirming opens it; in step 1 the entry's own input runs,
- * and its result 0x8000 closes the field menu, 0x40 goes back to the list.
+ * and its result PAD_START closes the field menu, PAD_CROSS goes back to the list.
  * Returns the buttons left for the field menu (0 once used). */
 u16 StatusMenu_Update(u16 buttons)
 {
@@ -842,10 +749,6 @@ s32 FriendLimit_Update(void)
     return FriendLimitWin_Input();
 }
 
-void PersonalStatus_Draw(void);
-void EquipStatus_Draw(void);
-void CommentEdit_Draw(void);
-void FriendLimitWin_Draw(void);
 extern ListPanel gStatusMenuPanel;
 
 /* Draws the status page: its list over the dimmed field menu, or the open
@@ -893,7 +796,7 @@ extern u8 gInfoMenuEntries[];
 
 /* Sets the info page back to its list: picks the set of entries (0
  * without the lobby overlay, 1 with it while not online, 2 online, or 3
- * in AREA_HUB_0x83) and the help line of the entry under the cursor. */
+ * in AREA_ONLINE_VILLAGE) and the help line of the entry under the cursor. */
 void InfoMenu_Reset(void)
 {
     gHudState->menuStep = 0;
@@ -902,7 +805,7 @@ void InfoMenu_Reset(void)
     } else if (Game_IsOnline() != 1) {
         gHudState->infoSet = 1;
     } else {
-        gHudState->infoSet = gScene.area != AREA_HUB_0x83 ? 2 : 3;
+        gHudState->infoSet = gScene.area != AREA_ONLINE_VILLAGE ? 2 : 3;
     }
     gHudState->cursorMax = gInfoMenuCounts[gHudState->infoSet];
     gHudState->infoEntry = (gInfoMenuEntries + gHudState->infoSet * INFO_SET_ENTRIES)[gHudState->listCursor];
@@ -923,21 +826,12 @@ s32 InfoMenu_Open(void *menu)
     return 0;
 }
 
-s32 PlaceInfo_Open(void);
-s32 LobbyMember_OpenList(void);
-u16 LocationInfo_Update(u16 buttons);
-u16 CombineList_Update(u16 buttons);
-u16 MonsterNote_Update(u16 buttons);
-u16 QuestMenu_Update(u16 buttons);
-u16 LobbyMember_ListInput(u16 pad);
-s32 CombineList_Open(void);
-s32 MonsterNote_Open(void);
 s32 QuestMenu_Open(); /* unit's own declaration: QuestMenu_Open ignores a0 (m), which holds &gHudState->infoEntry at InfoMenu_Update's call */
 void FieldMenu_Close(void);
 
 /* The info page's input: in step 0 the cursor picks an entry of the set
  * (INFO_*) and confirming opens it; in step 1 the entry's own input runs,
- * and its result 0x8000 is passed up (the field menu closes), 0x40 goes
+ * and its result PAD_START is passed up (the field menu closes), PAD_CROSS goes
  * back to the list. Returns the buttons left for the field menu. */
 u16 InfoMenu_Update(u16 buttons)
 {
@@ -991,7 +885,7 @@ u16 InfoMenu_Update(u16 buttons)
             break;
         }
         if (buttons & PAD_START) {
-            return 0x8000;
+            return PAD_START;
         }
         if (buttons & PAD_CROSS) {
             InfoMenu_Reset();
@@ -1061,7 +955,6 @@ void LocationInfo_Draw(void)
 }
 
 struct Grid;
-s32 CombineList_Setup(struct Grid *g, s16 *out, s32 v);
 
 /* Opens the combine list (the info page's entry): five rows a page from
  * the first, no recipe picked, its window sliding in. Returns 0. */
@@ -1077,16 +970,14 @@ s32 CombineList_Open(void)
     return 0;
 }
 
-void CombineList_MoveCursor(struct Grid *g, s16 *out, u16 buttons);
-s32 Recipe_IsListedFor(s16 item, s32 a);
 struct RecipeHit;
 u8 Combine_ListRecipesFor(struct RecipeHit *out, s16 item, s32 flags);
 
 /* The combine list's input: moves the cursor over the items that have
  * recipes (Recipe_IsListedFor; the others show as unknown), lists the
  * recipes of the item under it (Combine_ListRecipesFor) and steps through
- * them with 0x200. The menu button slides the window out, and the result
- * 0x8000 once it is out closes the field menu. */
+ * them with PAD_SQUARE. The menu button slides the window out, and the result
+ * PAD_START once it is out closes the field menu. */
 u16 CombineList_Update(u16 buttons)
 {
     s32 i;
@@ -1095,7 +986,7 @@ u16 CombineList_Update(u16 buttons)
 
     if (Shake_Flags(SHAKE_COMBINE_LIST) & 0x80) {
         if (Shake_Update(SHAKE_COMBINE_LIST) == 0) {
-            return 0x8000;
+            return PAD_START;
         }
         return 0;
     }
@@ -1147,36 +1038,14 @@ u16 CombineList_Update(u16 buttons)
 
 extern ListPanel gItemListPanel;
 extern Frame gItemListFrame[];
-extern char *gCombineListFmt[];
 extern char *gCombineListNoText;
-extern char *gItemListLineTexts[];
 extern char *gUnknownNameText;
-extern char *gRecipeMaterialsFmt[];
 extern char *gRecipeUnknownFmt;
-extern char *gRecipeSwitchHint[];
-extern char *gRecipeMaterialFmts[];
 extern char *gRecipeRateLines[];
-extern char *gRecipeRateLabels[];
-extern char *gRecipeYieldLabels[];
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *off);
 struct ShakeOffset;
-s32 Shake_CopyOffset(u8 id, struct ShakeOffset *pos);
-s32 sprintf(char *dst, char *fmt, ...);
-void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void Menu_DrawFrame(void *b, s16 *pos);
-void Tex_Prepare(s32 a, s32 b);
-void Tex_Bind(s32 a);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(char *fmt, ...);
 void Text_DrawLinesColored(s16 x, s16 y, char **names, s16 h);
-s32 Recipe_IsKnown(Recipe *r);
-void Font_SetColor(s32 color);
-void Text_Draw(char *s);
-void Text_Printf(char *fmt, ...);
 u32 strlen(const void *s);
-s32 Sprite_Draw(struct Sprite *s);
-extern s32 gItemNames[];
 extern s32 gItemColors[];
 
 /* Draws the combine list's page: each item with its number, name and icon
@@ -1189,7 +1058,7 @@ void ItemList_DrawPage(void)
 {
     ItemData *itemData;
     Sprite iconSprite;
-    char buf[0x30];
+    char buf[48];
     s16 offset[2];
     s32 i;
     u16 *items;
@@ -1206,11 +1075,11 @@ void ItemList_DrawPage(void)
     sprintf(buf, gCombineListFmt[0], gHudState->grid.col + 1, gHudState->grid.cols);
     ListPanel_Draw(&gItemListPanel, offset, buf, gHudState->grid.row + 1);
     Menu_DrawFrame(&gItemListPanel, offset);
-    Tex_Prepare(1, 0x144);
-    Tex_Bind(0x144);
-    Font_SetPos(offset[0] + 0x13B, 0x52);
+    Tex_Prepare(1, 324);
+    Tex_Bind(324);
+    Font_SetPos(offset[0] + 315, 82);
     Text_PrintfColored(gCombineListNoText);
-    y = 0x66;
+    y = 102;
     items = gHudState->listItems;
     number = gHudState->grid.col * gHudState->grid.rows + 1;
     if (gHudState->grid.col < gHudState->grid.cols - 1) {
@@ -1218,57 +1087,57 @@ void ItemList_DrawPage(void)
     } else {
         count = gHudState->grid.lastRows;
     }
-    iconSprite.x = offset[0] + 0x172;
-    iconSprite.w = 0x17;
-    iconSprite.h = 0x12;
+    iconSprite.x = offset[0] + 370;
+    iconSprite.w = 23;
+    iconSprite.h = 18;
     for (i = count; i > 0; i--) {
         itemData = &gItemData[*items];
         if (*items != 0) {
             name = (char *)gItemNames[*items];
             iconSprite.u0 = (((itemData->icon + 1) & 7) << 5) + 1;
             iconSprite.v0 = (((itemData->icon + 1) >> 3) << 5) + 1;
-            iconSprite.u1 = iconSprite.u0 + 0x1E;
-            iconSprite.v1 = iconSprite.v0 + 0x1E;
+            iconSprite.u1 = iconSprite.u0 + 30;
+            iconSprite.v1 = iconSprite.v0 + 30;
         } else {
             name = gUnknownNameText;
-            *(s32 *)&iconSprite.u0 = TEX_UV(0x41, 0x81);   /* the question mark */
-            *(s32 *)&iconSprite.u1 = TEX_UV(0x5F, 0x9F);
+            *(s32 *)&iconSprite.u0 = TEX_UV(65, 129);   /* the question mark */
+            *(s32 *)&iconSprite.u1 = TEX_UV(95, 159);
         }
-        Font_SetPos(offset[0] + 0x13B, y);
+        Font_SetPos(offset[0] + 315, y);
         Text_PrintfColored(gItemListLineTexts[0], number, name);
         iconSprite.y = y;
         iconSprite.color = gItemColors[itemData->color];
         Sprite_Draw(&iconSprite);
         items++;
         number++;
-        y += 0x14;
+        y += 20;
     }
     WindowFrame_Draw(&gItemListFrame[0], offset);
     WindowFrame_Draw(&gItemListFrame[1], offset);
-    Text_DrawLinesColored((s16)(offset[0] + 0x216), 0xE4, gRecipeRateLines, 0x32);
+    Text_DrawLinesColored((s16)(offset[0] + 534), 228, gRecipeRateLines, 50);
     set = &gHudState->sets[gHudState->set];
     shown = set->recipe;
     if (shown != NULL) {
-        Font_SetPos(offset[0] + 0x13B, 0xDA);
+        Font_SetPos(offset[0] + 315, 218);
         if (Recipe_IsKnown(shown) == 1) {
             Text_PrintfColored(gRecipeMaterialsFmt[0], gHudState->set + 1);
-            number = 0xF8;
+            number = 248;
             rows = !(shown->flags & RECIPE_THREE_ITEMS) ? 2 : 3;
-            for (y = 0; rows > 0; rows--, y++, number += 0x14) {
-                Font_SetPos(offset[0] + 0x13B, number);
+            for (y = 0; rows > 0; rows--, y++, number += 20) {
+                Font_SetPos(offset[0] + 315, number);
                 Text_PrintfColored(gRecipeMaterialFmts[y], gItemNames[set->info[y]]);
             }
             Font_SetColor(0x802B7F2B);
-            Font_SetPos(offset[0] + 0x228, 0xF8);
+            Font_SetPos(offset[0] + 552, 248);
             Text_Draw(gRecipeRateLabels[shown->rateClass]);
             halfWidth = strlen(gRecipeYieldLabels[shown->yieldClass]) * 9 / 2;
-            Font_SetPos(0x23A - halfWidth + offset[0], 0x12A);
+            Font_SetPos(570 - halfWidth + offset[0], 298);
             Text_Draw(gRecipeYieldLabels[shown->yieldClass]);
         } else {
             Text_PrintfColored(gRecipeUnknownFmt, gHudState->set + 1);
         }
         if (gHudState->setCount > 1) {
-            Font_SetPos(offset[0] + 0x13B, 0x13E);
+            Font_SetPos(offset[0] + 315, 318);
             Font_SetColor(0x807F7F7F);
             Text_Printf(gRecipeSwitchHint[0]);
         }
@@ -1288,13 +1157,10 @@ s32 MonsterNote_Open(void)
     return 0;
 }
 
-s32 MonsterNote_AnyKnown(void);
-s32 Save_TestEventFlag(s32 flag);
-
 /* The monster notes' input: left and right step through the monsters the
- * hunter knows, and once event flag 0xC4 is set 0x200 switches between the
+ * hunter knows, and once EVENT_FLAG_ARENA_CUP_OPEN is set PAD_SQUARE switches between the
  * record page and the materials page (which shows the help line). The menu
- * button slides the window out; the result 0x8000 then closes the menu. */
+ * button slides the window out; the result PAD_START then closes the menu. */
 u16 MonsterNote_Update(u16 buttons)
 {
     s8 next;
@@ -1303,7 +1169,7 @@ u16 MonsterNote_Update(u16 buttons)
     gHelpShow = 0;
     if (Shake_Flags(SHAKE_MONSTER_LIST) & 0x80) {
         if (Shake_Update(SHAKE_MONSTER_LIST) == 0) {
-            return 0x8000;
+            return PAD_START;
         }
         return 0;
     }
@@ -1316,7 +1182,7 @@ u16 MonsterNote_Update(u16 buttons)
         buttons = 0;
     }
     if (MonsterNote_AnyKnown() == 1) {
-        if (Save_TestEventFlag(0xC4) == 1 && (buttons & PAD_SQUARE)) {
+        if (Save_TestEventFlag(EVENT_FLAG_ARENA_CUP_OPEN) == 1 && (buttons & PAD_SQUARE)) {
             if (gHudState->notePage & MONSTER_NOTE_RECORD) {
                 gHudState->notePage &= ~MONSTER_NOTE_RECORD;
             } else {
@@ -1342,41 +1208,17 @@ u16 MonsterNote_Update(u16 buttons)
     return buttons;
 }
 
-s32 MonsterNote_CountKnown(void);
-u8 MonsterNote_Number(u8 m);
-s32 Em_HasRandomSize(s16 id);
-f32 Monster_SizeFromPercent(u8 kind, u16 x);
-u16 Record_GroupHunted(SaveData *save, u8 group);
-u16 Record_GroupCaptured(SaveData *save, u8 group);
-u16 Record_GroupLargest(SaveData *save, u8 group, u8 *out);
-u16 Record_GroupSmallest(SaveData *save, u8 group, u8 *out);
-f64 fptodp(f32 x);
-s32 MonsterNote_Index(u16 id);
-u8 MonsterNote_GetListFlags(u16 id);
 s32 Str_Length(char *s);
 void Text_PrintfStyled(s32 a, const char *fmt, ...);
-void Menu_DrawEntryPicture(MonsterNoteDef *e, s16 x, s16 y);
-s32 SizeRecord_DrawLarge(MonsterNoteDef *r, s16 x, s16 y, s32 v);
-s32 SizeRecord_DrawSmall(MonsterNoteDef *r, s16 x, s16 y, s32 v);
 extern ListPanel gMonsterNotePanels[];
 extern Panel gMonsterNoteHelpBoxes[];
-extern char *gMonsterListTitle[];
 extern char *gMonsterCountFmt;
 extern char *gMonsterSizeFmt;
-extern char *gMonsterNoSizeText[];
 extern char *gArenaBaitTitle;
-extern char *gArenaBaitNoBookText[];
 extern char *gArenaCannotRaiseFmt;
-extern char *gMonsterNoteLabels[];
 extern char *gMonsterRecordLabels;
-extern char *gArenaBaitHint[];
 extern char *gMonsterListHint;
-extern char *gArenaBaitLabels[];
 extern char *gMonsterNoteNumFmt;
-extern char *gMonsterNoteValueFmt[];
-extern char *gMonsterNames[];
-extern char *gEmClassNames[];
-extern char *gEmDescTexts[];
 extern u16 *gMonsterNoteMarks[]; /* per material set: 8-byte entries, the item first */
 
 /* Draws the monster notes' page for the monster picked (or a line saying
@@ -1389,10 +1231,10 @@ extern u16 *gMonsterNoteMarks[]; /* per material set: 8-byte entries, the item f
  * set. */
 void MonsterNote_DrawPage(void)
 {
-    char largestText[0x18];
-    char smallestText[0x10];
+    char largestText[24];
+    char smallestText[16];
     Sprite iconSprite;
-    char line[0x40];
+    char line[64];
     s16 offset[2];
     u8 recordKind;
     char *title;
@@ -1418,11 +1260,11 @@ void MonsterNote_DrawPage(void)
         page = 1;
     }
     ListPanel_Draw(&gMonsterNotePanels[page], offset, title, -1);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     count = MonsterNote_CountKnown();
     if (count != 0) {
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(offset[0] + 0x21B, 0x3E);
+        Font_SetPos(offset[0] + 539, 62);
         sprintf(largestText, gMonsterNoteNumFmt, MonsterNote_Number((u8)gHudState->noteMonster), count);
         Text_PrintfColored(gMonsterNoteValueFmt[0], largestText);
     }
@@ -1433,67 +1275,67 @@ void MonsterNote_DrawPage(void)
         def = &gMonsterNoteDefs[gHudState->noteMonster];
         if (gHudState->notePage & MONSTER_NOTE_RECORD) {
             Font_SetColor(0x807F7F28);
-            Font_SetPos(offset[0] + 0x11F, 0x52);
+            Font_SetPos(offset[0] + 287, 82);
             Text_PrintfStyled(2, gMonsterNoteLabels[0]);
             Font_SetColor(0x807F7F7F);
-            Font_SetPos(offset[0] + 0x155, 0x52);
+            Font_SetPos(offset[0] + 341, 82);
             Text_PrintfColored(gMonsterNames[def->emType]);
-            Font_SetPos(offset[0] + 0x155, 0x66);
+            Font_SetPos(offset[0] + 341, 102);
             Text_PrintfColored(gEmClassNames[def->emClass]);
-            Font_SetPos(offset[0] + 0x19D, 0x7A);
+            Font_SetPos(offset[0] + 413, 122);
             count = Record_GroupHunted(&gSave, def->emType);
             count += Record_GroupCaptured(&gSave, def->emType);
             if (count > 9999) {
                 count = 9999;
             }
             Text_PrintfColored(gMonsterCountFmt, count);
-            Font_SetPos(offset[0] + 0x11F, 0xBF);
+            Font_SetPos(offset[0] + 287, 191);
             Text_PrintfStyled(1, gEmDescTexts[def->note]);
             if (Em_HasRandomSize(def->emType) == 1) {
                 Font_SetColor(0x807F7F28);
-                Font_SetPos(offset[0] + 0x11F, 0x8E);
+                Font_SetPos(offset[0] + 287, 142);
                 Text_PrintfStyled(2, gMonsterRecordLabels);
                 if (count != 0) {
                     sizePercent = (s16)Record_GroupLargest(&gSave, def->emType, &recordKind);
                     size = Monster_SizeFromPercent(recordKind, (u16)sizePercent);
-                    SizeRecord_DrawLarge(def, offset[0] + 0x179, 0x8E, sizePercent);
+                    SizeRecord_DrawLarge(def, offset[0] + 377, 142, sizePercent);
                     sprintf(largestText, gMonsterSizeFmt, fptodp(size));
                     sizePercent = (s16)Record_GroupSmallest(&gSave, def->emType, &recordKind);
                     size = Monster_SizeFromPercent(recordKind, (u16)sizePercent);
-                    SizeRecord_DrawSmall(def, offset[0] + 0x179, 0xA2, sizePercent);
+                    SizeRecord_DrawSmall(def, offset[0] + 377, 162, sizePercent);
                     sprintf(smallestText, gMonsterSizeFmt, fptodp(size));
                 } else {
                     sprintf(largestText, gMonsterNoSizeText[0]);
                     sprintf(smallestText, gMonsterNoSizeText[0]);
                 }
                 Font_SetColor(0x807F7F7F);
-                Font_SetPos(offset[0] + 0x19D, 0x8E);
+                Font_SetPos(offset[0] + 413, 142);
                 Text_PrintfColored(largestText);
-                Font_SetPos(offset[0] + 0x19D, 0xA2);
+                Font_SetPos(offset[0] + 413, 162);
                 Text_PrintfColored(smallestText);
             }
-            Menu_DrawEntryPicture(def, offset[0] + 0x1EF, 0x66);
+            Menu_DrawEntryPicture(def, offset[0] + 495, 102);
             helpText = gArenaBaitHint[0];
         } else {
             noteIndex = MonsterNote_Index(def->emType);
-            if (noteIndex != 0xFF) {
+            if (noteIndex != MONSTER_NOTE_NONE) {
                 Font_SetColor(0x807F7F28);
-                Font_SetPos(offset[0] + 0x11F, 0x52);
+                Font_SetPos(offset[0] + 287, 82);
                 Text_PrintfStyled(2, gArenaBaitLabels[0]);
                 Font_SetColor(0x807F7F7F);
-                Font_SetPos(offset[0] + 0x155, 0x52);
+                Font_SetPos(offset[0] + 341, 82);
                 Text_PrintfColored(gMonsterNames[def->emType]);
                 material = gMonsterNoteMarks[noteIndex];
                 known = MonsterNote_GetListFlags(def->emType);
-                y = 0x7A;
+                y = 122;
                 Font_SetColor(0x807F7F7F);
-                Tex_Prepare(1, 0x144);
-                Tex_Bind(0x144);
-                iconSprite.w = 0x17;
-                iconSprite.x = offset[0] + 0x167;
-                iconSprite.h = 0x12;
+                Tex_Prepare(1, 324);
+                Tex_Bind(324);
+                iconSprite.w = 23;
+                iconSprite.x = offset[0] + 359;
+                iconSprite.h = 18;
                 for (i = 0; i < 5;) {
-                    Font_SetPos(offset[0] + 0x18B, y);
+                    Font_SetPos(offset[0] + 395, y);
                     if (known & 1) {
                         ItemData *itemData;
 
@@ -1501,13 +1343,13 @@ void MonsterNote_DrawPage(void)
                         itemData = &gItemData[*material];
                         iconSprite.u0 = (((itemData->icon + 1) & 7) << 5) + 1;
                         iconSprite.v0 = (((itemData->icon + 1) >> 3) << 5) + 1;
-                        iconSprite.u1 = iconSprite.u0 + 0x1E;
-                        iconSprite.v1 = iconSprite.v0 + 0x1E;
+                        iconSprite.u1 = iconSprite.u0 + 30;
+                        iconSprite.v1 = iconSprite.v0 + 30;
                         iconSprite.color = gItemColors[itemData->color];
                     } else {
                         Text_PrintfColored(gUnknownNameText);
-                        *(s32 *)&iconSprite.u0 = TEX_UV(0x41, 0x81); /* the question mark */
-                        *(s32 *)&iconSprite.u1 = TEX_UV(0x5F, 0x9F);
+                        *(s32 *)&iconSprite.u0 = TEX_UV(65, 129); /* the question mark */
+                        *(s32 *)&iconSprite.u1 = TEX_UV(95, 159);
                         iconSprite.color = gItemColors[0];
                     }
                     iconSprite.y = y;
@@ -1515,29 +1357,26 @@ void MonsterNote_DrawPage(void)
                     i++;
                     known >>= 1;
                     material += 4;
-                    y += 0x14;
+                    y += 20;
                 }
             } else {
                 Font_SetColor(0x802B7F7F);
                 sprintf(line, gArenaCannotRaiseFmt, gMonsterNames[def->emType]);
                 halfWidth = (s16)Str_Length(line) * 9 / 2;
-                Font_SetPos(offset[0] + 0x1C1 - halfWidth, 0x7A);
+                Font_SetPos(offset[0] + 449 - halfWidth, 122);
                 Text_Printf(line);
             }
             helpText = gMonsterListHint;
         }
-        if (Save_TestEventFlag(0xC4) == 1) {
+        if (Save_TestEventFlag(196) == 1) {
             Window_DrawText(&gMonsterNoteHelpBoxes[page], (s16 *)offset, (u8 *)helpText);
         }
     } else {
         Font_SetColor(0x802B7F7F);
-        Font_SetPos(offset[0] + 0x147, 0xA2);
+        Font_SetPos(offset[0] + 327, 162);
         Text_Printf(gArenaBaitNoBookText[0]);
     }
 }
-
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
 
 /* Draws a monster note's picture (EntryPicture_GetUV) at x, y in its frame
  * and shadow; nothing for a note without one. */
@@ -1545,53 +1384,50 @@ void Menu_DrawEntryPicture(MonsterNoteDef *note, s16 x, s16 y)
 {
     SpriteWords sprite;
 
-    if (note->picture == 0xFF) {
+    if (note->picture == 255) {
         return;
     }
-    Gfx_DrawLine(x + 3, y + 3, 0x5E, 0x4A, 0xFF493120);
+    Gfx_DrawLine(x + 3, y + 3, 94, 74, 0xFF493120);
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
     sprite.x = x;
     sprite.y = y;
-    sprite.w = 0x5E;
+    sprite.w = 94;
     sprite.h = 6;
     sprite.color = 0xFF493120;
-    sprite.uv0 = TEX_UV(0x41, 0x81);
-    sprite.uv1 = TEX_UV(0x7E, 0x87);
+    sprite.uv0 = TEX_UV(65, 129);
+    sprite.uv1 = TEX_UV(126, 135);
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.x = x + 6;
-    sprite.y = y + 0x4A;
-    sprite.uv0 = TEX_UV(0x7D, 0x86);
-    sprite.uv1 = TEX_UV(0x40, 0x80);
+    sprite.y = y + 74;
+    sprite.uv0 = TEX_UV(125, 134);
+    sprite.uv1 = TEX_UV(64, 128);
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.x = x;
     sprite.y = y + 6;
     sprite.w = 6;
-    sprite.h = 0x4A;
-    sprite.uv0 = TEX_UV(0x81, 0x83);
-    sprite.uv1 = TEX_UV(0x88, 0xBE);
+    sprite.h = 74;
+    sprite.uv0 = TEX_UV(129, 131);
+    sprite.uv1 = TEX_UV(136, 190);
     Sprite_Draw((struct Sprite *)&sprite);
-    sprite.x = x + 0x5E;
+    sprite.x = x + 94;
     sprite.y = y;
-    sprite.uv0 = TEX_UV(0x87, 0xBD);
-    sprite.uv1 = TEX_UV(0x80, 0x82);
+    sprite.uv0 = TEX_UV(135, 189);
+    sprite.uv1 = TEX_UV(128, 130);
     Sprite_Draw((struct Sprite *)&sprite);
-    Gfx_SetBlend(4, 5);
-    Gfx_SetTexFilter(0);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     Tex_Prepare(1, TEX_SLOT_PICTURES);
     Tex_Bind(TEX_SLOT_PICTURES);
-    sprite.x = x + 0x12;
-    sprite.w = 0x40;
+    sprite.x = x + 18;
+    sprite.w = 64;
     sprite.y = y + 8;
-    sprite.h = 0x40;
+    sprite.h = 64;
     EntryPicture_GetUV(&sprite.uv0, &sprite.uv1, note->picture);
     sprite.color = 0xFFFFFFFF;
     Sprite_Draw((struct Sprite *)&sprite);
 }
 
-s32 SizeRecord_DrawLarge(MonsterNoteDef *r, s16 x, s16 y, s32 v);
-s32 SizeRecord_DrawSmall(MonsterNoteDef *r, s16 x, s16 y, s32 v);
-void MonsterNote_DrawCrown(s16 x, s16 y, s16 size, u8 flags);
 
 /* The size records' crowns for monster note `note` (the lobby and plsel
  * call these): see SizeRecord_DrawLarge and SizeRecord_DrawSmall. */
@@ -1612,10 +1448,10 @@ void MonsterNote_DrawCrown(s16 x, s16 y, s16 size, u8 flags)
 {
     SpriteWords sprite;
 
-    Gfx_SetTexFilter(0);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (size == 0) {
         size = 25;
     }
@@ -1625,11 +1461,11 @@ void MonsterNote_DrawCrown(s16 x, s16 y, s16 size, u8 flags)
     sprite.h = size * 18 / 25;
     sprite.color = 0xFFFFFFFF;
     if (flags & CROWN_GOLD) {
-        sprite.uv0 = TEX_UV(0x64, 0xCA);
-        sprite.uv1 = TEX_UV(0x78, 0xD7);
+        sprite.uv0 = TEX_UV(100, 202);
+        sprite.uv1 = TEX_UV(120, 215);
     } else {
-        sprite.uv0 = TEX_UV(0x64, 0xDD);
-        sprite.uv1 = TEX_UV(0x78, 0xEA);
+        sprite.uv0 = TEX_UV(100, 221);
+        sprite.uv1 = TEX_UV(120, 234);
     }
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.x = x + size * 6 / 25;
@@ -1637,11 +1473,11 @@ void MonsterNote_DrawCrown(s16 x, s16 y, s16 size, u8 flags)
     sprite.w = size * 10 / 25;
     sprite.h = size * 7 / 25;
     if (flags & CROWN_SMALL) {
-        sprite.uv0 = TEX_UV(0x7E, 0xC8);
-        sprite.uv1 = TEX_UV(0x86, 0xCD);
+        sprite.uv0 = TEX_UV(126, 200);
+        sprite.uv1 = TEX_UV(134, 205);
     } else {
-        sprite.uv0 = TEX_UV(0x7E, 0xD0);
-        sprite.uv1 = TEX_UV(0x86, 0xD5);
+        sprite.uv0 = TEX_UV(126, 208);
+        sprite.uv1 = TEX_UV(134, 213);
     }
     Sprite_Draw((struct Sprite *)&sprite);
 }
@@ -1743,7 +1579,7 @@ s32 QuestMenu_Open(void *menu)
 
 /* The quest pages' input: left and right turn the pages (when there is a
  * quest), the menu button slides the window out, and once it is out the
- * result 0x8000 closes the menu. */
+ * result PAD_START closes the menu. */
 u16 QuestMenu_Update(u16 buttons)
 {
     gHelpShow = 0;
@@ -1762,7 +1598,7 @@ u16 QuestMenu_Update(u16 buttons)
         break;
     case 1:
         if (Shake_Update(SHAKE_QUEST_MENU) == 0) {
-            return 0x8000;
+            return PAD_START;
         }
         buttons = 0;
         break;
@@ -1772,26 +1608,10 @@ u16 QuestMenu_Update(u16 buttons)
 
 extern ListPanel gQuestMenuPanel;
 extern u8 gQuestMenuKinds[][4];
-extern char *gQuestStatusTitle[];
 extern char *gNoQuestText;
-extern char *gQuestMenuRecordTitles[];
-extern char *gQuestMenuTitles[];
 extern char *gQuestMenuItemLists[][17];
-extern char *gStageNames[];
-extern char *gQuestKindNames[];
-s32 Quest_IsMustOrder(void);
-s32 ArenaCup_QuestTaken(void);
 s32 func_793C10(void);
 void func_793BE0(void);
-s32 Quest_IsDrill(void);
-s32 QuestMenu_DrillItemList(s32 a);
-void QuestMenu_DrawParTime(s16 x);
-void QuestMenu_DrawBestRecord(s16 x);
-void QuestMenu_DrawTargets(s16 x);
-void QuestMenu_DrawTimeLimit(s32 unused);
-void QuestMenu_DrawNumber(s32 v);
-void Text_DrawStars(s32 n);
-void *QuestInfo_Get(s32 i);
 
 /* Draws the quest page under pageCursor (or a line saying no quest is
  * taken): the page's kind is gQuestMenuKinds[questMenuInField][pageCursor]
@@ -1809,11 +1629,11 @@ void QuestMenu_DrawPage(void)
     s16 itemList;
     char buf[64];
 
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (gHudState->hasQuestInfo == 0) {
         gQuestMenuPanel.items = NULL;
         ListPanel_Draw(&gQuestMenuPanel, offset, gQuestStatusTitle[0], -1);
-        Font_SetPos(*offset + 0x167, 0xB6);
+        Font_SetPos(*offset + 359, 182);
         Text_Draw(gNoQuestText);
         return;
     }
@@ -1861,7 +1681,7 @@ void QuestMenu_DrawPage(void)
     ListPanel_Draw(&gQuestMenuPanel, offset, buf, -1);
     Menu_DrawFrame(&gQuestMenuPanel, offset);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(*offset + 0x167, 0x66);
+    Font_SetPos(*offset + 359, 102);
     Text_Draw(QuestInfo_Get(0));
     switch (kind) {
     case QUEST_PAGE_TARGETS:
@@ -1869,26 +1689,26 @@ void QuestMenu_DrawPage(void)
         break;
     case QUEST_PAGE_SUMMARY:
         if (mustOrder != 1) {
-            Font_SetPos(*offset + 0x167, 0xB6);
+            Font_SetPos(*offset + 359, 182);
             Text_Draw(QuestInfo_Get(1));
-            Font_SetPos(*offset + 0x1C1, 0xCA);
+            Font_SetPos(*offset + 449, 202);
             Text_DrawStars(gQuestInfo->stars);
-            Font_SetPos(*offset + 0x167, 0x106);
+            Font_SetPos(*offset + 359, 262);
             Text_Draw(QuestInfo_Get(2));
-            Font_SetPos(*offset + 0x167, 0x142);
+            Font_SetPos(*offset + 359, 322);
             Text_Draw(QuestInfo_Get(3));
-            Font_SetPos(*offset + 0x167, 0x17E);
+            Font_SetPos(*offset + 359, 382);
             Text_Draw(gQuestKindNames[gQuestInfo->terms]);
         } else {
-            Font_SetPos(*offset + 0x167, 0xB6);
+            Font_SetPos(*offset + 359, 182);
             Text_Draw(QuestInfo_Get(1));
-            Font_SetPos(*offset + 0x167, 0xCA);
+            Font_SetPos(*offset + 359, 202);
             Text_Draw(QuestInfo_Get(2));
-            Font_SetPos(*offset + 0x167, 0xDE);
+            Font_SetPos(*offset + 359, 222);
             Text_Draw(QuestInfo_Get(3));
-            Font_SetPos(*offset + 0x1C1, 0x106);
+            Font_SetPos(*offset + 449, 262);
             Text_DrawStars(gQuestInfo->stars);
-            Font_SetPos(*offset + 0x167, 0x142);
+            Font_SetPos(*offset + 359, 322);
             Text_Draw(gQuestKindNames[gQuestInfo->terms]);
         }
         break;
@@ -1897,7 +1717,7 @@ void QuestMenu_DrawPage(void)
             QuestMenu_DrawParTime(*offset);
             break;
         }
-        Font_SetPos(*offset + 0x1C1, 0xA2);
+        Font_SetPos(*offset + 449, 162);
         switch (versus) {
         case 0:
         case 1:
@@ -1908,26 +1728,26 @@ void QuestMenu_DrawPage(void)
             break;
         }
         if (versus == 0) {
-            Font_SetPos(*offset + 0x1C1, 0xB6);
+            Font_SetPos(*offset + 449, 182);
             QuestMenu_DrawNumber(gQuestInfo->fee);
             if (mustOrder != 1) {
-                Font_SetPos(*offset + 0x1E5, 0xCA);
+                Font_SetPos(*offset + 485, 202);
                 QuestMenu_DrawNumber(gQuestInfo->reward);
-                Font_SetPos(*offset + 0x1E5, 0xDE);
+                Font_SetPos(*offset + 485, 222);
                 QuestMenu_DrawNumber(gQuestInfo->rewardSubA);
-                Font_SetPos(*offset + 0x1E5, 0xF2);
+                Font_SetPos(*offset + 485, 242);
                 QuestMenu_DrawNumber(gQuestInfo->rewardSubB);
             } else {
-                Font_SetPos(*offset + 0x1C1, 0xCA);
+                Font_SetPos(*offset + 449, 202);
                 QuestMenu_DrawNumber(gQuestInfo->reward);
             }
         } else {
-            Font_SetPos(*offset + 0x1C1, 0xB6);
+            Font_SetPos(*offset + 449, 182);
             QuestMenu_DrawNumber(0);
         }
-        Font_SetPos(*offset + 0x167, 0x12E);
+        Font_SetPos(*offset + 359, 302);
         Text_Draw(QuestInfo_Get(4));
-        Font_SetPos(*offset + 0x167, 0x17E);
+        Font_SetPos(*offset + 359, 382);
         Text_Draw(QuestInfo_Get(5));
         break;
     case QUEST_PAGE_PLACE:
@@ -1935,18 +1755,17 @@ void QuestMenu_DrawPage(void)
             QuestMenu_DrawBestRecord(*offset);
             break;
         }
-        Font_SetPos(*offset + 0x1C1, 0xA2);
+        Font_SetPos(*offset + 449, 162);
         Text_Draw(QuestInfo_Get(6));
-        Font_SetPos(*offset + 0x1C1, 0xB6);
+        Font_SetPos(*offset + 449, 182);
         Text_Draw(gStageNames[gQuestInfo->map]);
-        Font_SetPos(*offset + 0x167, 0xF2);
+        Font_SetPos(*offset + 359, 242);
         Text_Draw(QuestInfo_Get(7));
         break;
     }
 }
 
 extern char gHudFmtInt[];
-extern char *gQuestMenuStatusTexts[];
 
 /* Prints the quest's time limit in minutes (gQuestMenuStatusTexts[0]),
  * the number in full-width digits. */
@@ -1973,8 +1792,6 @@ void QuestMenu_DrawTimeLimit(s32 unused)
 }
 
 INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtInt);
-
-s32 Quest_GetTime(s32 which);
 
 /* Draws a quest time (Quest_GetTime(which): 0 the time left, 1 the time
  * taken) as minutes and seconds in full-width characters. */
@@ -2084,8 +1901,6 @@ void QuestMenu_DrawCount(u16 count, u16 max, u8 withMax)
     Text_Draw((char *)out);
 }
 
-extern char *gQuestInfoFormats[];
-
 /* Prints the fort's remaining strength in percent (10 % for each stage
  * gScene.fortStage has not reached), in full-width digits. */
 void QuestMenu_DrawRate(void)
@@ -2152,23 +1967,13 @@ void QuestMenu_DrawFaints(void)
     }
 }
 
-s32 Quest_IsMustOrder(void);
-void Text_PrintfStyled(s32 a, const char *fmt, ...);
-extern char *gQuestTargetLabels[];
-extern char *gQuestMenuTargetTexts[];
-void QuestMenu_DrawTime(u8 which);
-void QuestMenu_DrawCount(u16 a, u16 b, u8 flag);
-void QuestMenu_DrawRate(void);
-void QuestMenu_DrawFaints(void);
-void *QuestInfo_Get(s32 i);
-s32 Quest_PhaseIsOver(s32 a);
 
 
 
 /* Draws the targets page at x: its title, the quest's goals and, outside
  * versus quests, the fort's strength (quest flag 0x10000000), the faints,
  * then the time left; each goal shown (goal flag 0x10) gets the count
- * still wanted while it runs (flags 3) and a done mark (0x20). */
+ * still wanted while it runs (flags 3) and a done mark (goal flag 0x20). */
 void QuestMenu_DrawTargets(s16 x)
 {
     s16 left = x;
@@ -2178,47 +1983,47 @@ void QuestMenu_DrawTargets(s16 x)
     s32 textX;
 
     i = Quest_IsMustOrder();    /* i holds this until the loop below (the game's register use) */
-    textX = left + 0x167;
-    Font_SetPos(textX, 0xA2);
-    Text_PrintfStyled(0x2A, gQuestTargetLabels[Quest_IsVersus() != 1 ? i == 1 : 2]);
+    textX = left + 359;
+    Font_SetPos(textX, 162);
+    Text_PrintfStyled(42, gQuestTargetLabels[Quest_IsVersus() != 1 ? i == 1 : 2]);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(textX, 0xB6);
+    Font_SetPos(textX, 182);
     Text_Draw(QuestInfo_Get(1));
     if (Quest_IsVersus() != 1) {
         if (i != 1 || (gQuest.goals[1].flags & 0x10)) {
-            Font_SetPos(textX, 0xF2);
+            Font_SetPos(textX, 242);
             Text_Draw(QuestInfo_Get(2));
         }
         if (i != 1 || (gQuest.goals[2].flags & 0x10)) {
-            Font_SetPos(textX, 0x12E);
+            Font_SetPos(textX, 302);
             Text_Draw(QuestInfo_Get(3));
         }
         if (gQuest.flags & 0x10000000) {
-            Font_SetPos(textX, 0x16A);
+            Font_SetPos(textX, 362);
             QuestMenu_DrawRate();
         }
-        Font_SetPos(textX, 0x17E);
+        Font_SetPos(textX, 382);
         Text_Printf(gQuestInfoFormats[5]);
-        Font_SetPos(left + 0x1C1, 0x17E);
+        Font_SetPos(left + 449, 382);
         QuestMenu_DrawFaints();
     }
-    Font_SetPos(left + 0x1C1, 0x192);
+    Font_SetPos(left + 449, 402);
     QuestMenu_DrawTime(0);
     if (Quest_IsVersus() != 1) {
-        for (i = 0, y = 0xCA; i < 3; i++, y += 0x3C) {
+        for (i = 0, y = 202; i < 3; i++, y += 60) {
             if (gQuest.goals[i].flags & 0x10) {
                 if ((gQuest.goals[i].flags & 3) && !(gQuest.goals[i].flags & 0x20) && Quest_PhaseIsOver(0) != 1) {
                     Font_SetColor(0x807F5230);
-                    Font_SetPos(left + 0x167, y);
+                    Font_SetPos(left + 359, y);
                     Text_Draw(gQuestMenuStatusTexts[1]);
                     wanted = gQuest.goalsSet[i].count - gQuest.goals[i].count;
                     Font_SetColor(0x807F7F7F);
-                    Font_SetPos(left + 0x1E5, y);
+                    Font_SetPos(left + 485, y);
                     QuestMenu_DrawCount(wanted, 0, 0);
                 }
                 if (gQuest.goals[i].flags & 0x20) {
                     Font_SetColor(0x807F212E);
-                    Font_SetPos(left + 0x167, y);
+                    Font_SetPos(left + 359, y);
                     Text_Draw(gQuestMenuTargetTexts[0]);
                 }
             }
@@ -2238,14 +2043,12 @@ s32 ChatMenu_Open(void)
     return 0;
 }
 
-s32 Chat_OpenWindow(void);
-u16 Chat_LogScroll(u16 buttons);
 s32 PhraseMenu_Open(); /* unit's own declaration: PhraseMenu_Open ignores a0 (m), which holds &gHudState->listCursor at ChatMenu_Update's call */
 u16 PhraseMenu_Update(u16 buttons);
 
 /* The chat menu's input: in step 0 the cursor picks the chat log or the
  * phrases and confirming opens it; in step 1 its own input runs, and its
- * result 0x8000 is passed up, 0x40 goes back to the list. */
+ * result PAD_START is passed up, PAD_CROSS goes back to the list. */
 u16 ChatMenu_Update(u16 buttons)
 {
     switch (gHudState->menuStep) {
@@ -2279,7 +2082,7 @@ u16 ChatMenu_Update(u16 buttons)
             break;
         }
         if (buttons & PAD_START) {
-            return 0x8000;
+            return PAD_START;
         }
         if (buttons & PAD_CROSS) {
             gHudState->menuStep = 0;
@@ -2333,19 +2136,15 @@ s32 PhraseMenu_Open(void *menu)
     return 0;
 }
 
-u8 PhraseMenu_MoveCursor(u16 buttons, u8 cur);
-s32 PhraseMenu_OpenKbd(u8 cur);
-s8 PhraseMenu_KbdUpdate(u8 cur);
-
 /* The phrase menu's input: in step 0 the cursor moves over the phrases
  * and confirming opens the keyboard to edit the one under it; in step 1
  * the keyboard runs until it closes. The menu button slides the window
- * out, and once it is out the result 0x8000 closes the menu. */
+ * out, and once it is out the result PAD_START closes the menu. */
 u16 PhraseMenu_Update(u16 buttons)
 {
     if (Shake_Flags(SHAKE_PHRASE_MENU) & 0x80) {
         if (Shake_Update(SHAKE_PHRASE_MENU) == 0) {
-            return 0x8000;
+            return PAD_START;
         }
         return 0;
     }
@@ -2383,13 +2182,6 @@ u16 PhraseMenu_Update(u16 buttons)
 
 extern ListPanel gPhraseMenuPanel;
 
-extern char *gPhraseEditFmt[];
-s32 Shake_CopyOffset(u8 id, struct ShakeOffset *pos);
-void Menu_DrawFrame(void *b, s16 *pos);
-void Text_DrawTruncated(u8 n, char *src);
-
-extern PhraseEntry gPhraseEntries[];
-
 /* Draws the phrase menu: the page of PHRASE_MENU_ROWS phrases the cursor
  * is on, each cut to 20 characters, with the cursor grey while the
  * keyboard is open. */
@@ -2412,15 +2204,15 @@ void PhraseMenu_Draw(void)
     }
     ListPanel_Draw(&gPhraseMenuPanel, offset, buf, row);
     Menu_DrawFrame(&gPhraseMenuPanel, offset);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F7F);
     phrase = &gPhraseEntries[(s8)gPhraseMenuCursor / PHRASE_MENU_ROWS * PHRASE_MENU_ROWS];
-    y = 0x54;
+    y = 84;
     i = PHRASE_MENU_ROWS;
     do {
-        Font_SetPos(offset[0] + 0x1AF, y);
-        Text_DrawTruncated(0x14, phrase->text);
-        y += 0x16;
+        Font_SetPos(offset[0] + 431, y);
+        Text_DrawTruncated(20, phrase->text);
+        y += 22;
         phrase++;
     } while (--i != 0);
 }
@@ -2439,15 +2231,13 @@ s32 PauseMenu_Open(void)
     return 1;
 }
 
-void Game_Resume(u8 a);
-
 /* The pause entry's input: confirm, cancel or the menu button resume the
- * game and close the menu (0x8000). */
+ * game and close the menu (PAD_START). */
 u16 PauseMenu_Update(u16 buttons)
 {
     if (buttons & (PAD_START | PAD_CROSS | PAD_CIRCLE)) {
         Game_Resume(1);
-        return 0x8000;
+        return PAD_START;
     }
     return 0;
 }
@@ -2539,7 +2329,7 @@ s32 Area_HasTownPcs(u16 a);
 
 /* Returns 1 if the selected pouch slot's item may be given to another
  * hunter: online only, not items of rarity 3 or more or without a count
- * limit (max 0xFF), and in town only where other hunters are shown
+ * limit (max ITEM_MAX_UNLIMITED), and in town only where other hunters are shown
  * (Area_HasTownPcs).
  * pl is unused: it reads gHudState's player. */
 s32 PouchMenu_CanTransfer(Player *pl)
@@ -2553,7 +2343,7 @@ s32 PouchMenu_CanTransfer(Player *pl)
     if (gItemData[item].rarity >= 3) {
         return 0;
     }
-    if (gItemData[item].max == 0xFF) {
+    if (gItemData[item].max == 255) {
         return 0;
     }
     if (gScene.inLobby != 0) {
@@ -2582,19 +2372,9 @@ s32 PouchMenu_Open(void *menu)
     return 0;
 }
 
-void Pouch_Compact(u8 box);
-u16 PouchMenu_MoveCursor(u8 *cur, u16 buttons);
-void PouchMenu_DecoCursor(u16 item, u16 buttons);
-s32 Scene_InField(void);
-void GameMenu_Clear(void);
-void Pouch_MoveCursor(u8 *cur, u16 buttons);
-s16 Pouch_ClearSlot(Player *p, s16 slot);
-u8 YesNo_Toggle(u16 buttons, u8 sel, u16 mask);
-s32 NetUser_State(s8 i);
-
 /* The pouch menu, driven by buttons: pick a slot (or sort the pouch), pick drop, give or move,
  * then do it; giving offers the item to another player (Player.offerItem) and waits in state 3.
- * Returns the buttons left unused, 0x8000 once the menu has closed. */
+ * Returns the buttons left unused, PAD_START once the menu has closed. */
 u16 PouchMenu_Update(u16 buttons)
 {
     Player *pl = gHudState->player;
@@ -2655,7 +2435,7 @@ u16 PouchMenu_Update(u16 buttons)
                 gHudState->sorting = 1;
                 buttons = 0;
                 gHudState->yesNo = 0;
-                Sound_PlaySeFlat(0, 0xF, 0);
+                Sound_PlaySeFlat(0, 15, 0);
                 break;
             }
         }
@@ -2742,7 +2522,7 @@ u16 PouchMenu_Update(u16 buttons)
                     PouchMenu_Back();
                 } else {
                     gHelpLine = 0;
-                    gHudState->yesNo = YesNo_Toggle(buttons, gHudState->yesNo, 0x3000);
+                    gHudState->yesNo = YesNo_Toggle(buttons, gHudState->yesNo, 12288);
                     if (buttons & PAD_CIRCLE) {
                         if (gHudState->yesNo == 0) {
                             Pouch_ClearSlot(pl, gHudState->slot);
@@ -2775,7 +2555,7 @@ u16 PouchMenu_Update(u16 buttons)
                     if (buttons & PAD_CROSS) {
                         buttons &= ~PAD_CROSS;
                         if (pl->pouch[gHudState->slot].count != 1 &&
-                            gItemData[pl->pouch[gHudState->slot].item].max != 0xFF) {
+                            gItemData[pl->pouch[gHudState->slot].item].max != 255) {
                             gHudState->step = 0;
                             Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
                         } else {
@@ -2865,7 +2645,7 @@ u16 PouchMenu_Update(u16 buttons)
                             gHudState->slot = gHudState->dest;
                             gHudState->state = 0;
                             gHelpLine = HELP_ITEM_LINE(gHudState->player->pouch[gHudState->slot].item);
-                            Sound_PlaySeFlat(1, 0x8B, 0);
+                            Sound_PlaySeFlat(1, 139, 0);
                         } else {
                             Sound_PlaySeFlat(0, SE_SYS_REFUSE, 0);
                         }
@@ -2896,7 +2676,7 @@ u16 PouchMenu_Update(u16 buttons)
         break;
     case 4:
         if (Shake_Update(SHAKE_POUCH_MENU) == 0) {
-            return 0x8000;
+            return PAD_START;
         }
         gHelpShow = 0;
         buttons = 0;
@@ -2906,22 +2686,19 @@ u16 PouchMenu_Update(u16 buttons)
 }
 
 /* Returns 1 if pouch slot `slot` is not the one under the pouch menu's
- * cursor. HudState.slot is read at its offset (0x51): the field access
+ * cursor. HudState.slot is read at its offset 0x51: the field access
  * allocates the registers the other way. */
 s32 Menu_IsNotCursorSlot(s32 slot)
 {
-    return (slot & 0xFF) != *(u8 *)((u8 *)gHudState + 0x51);
+    return (slot & 0xFF) != *(u8 *)((u8 *)gHudState + 81);
 }
-
-s32 Combine_ItemHasRecipe(s16 item);
-s32 Combine_ItemUsable(s16 item);
 
 /* Returns 1 if pouch slot `slot` still holds `item` and the item can start
  * a combine: one with a recipe, or for a three-item combine one usable in
  * any (Combine_ItemUsable). */
 s32 CombineMenu_CheckFirst(u8 slot, u16 item)
 {
-    if (slot == 0xFF) {
+    if (slot == 255) {
         return 0;
     }
     if ((gHudState->player)->pouch[slot].item != item) {
@@ -2937,9 +2714,6 @@ s32 CombineMenu_CheckFirst(u8 slot, u16 item)
     return 1;
 }
 
-struct Recipe *Combine_FindRecipe(s16 a, s16 b);
-s32 Combine_CanUsePair(s16 a, s16 b);
-
 /* Returns 1 if the items of pouch slots slotA and slotB (two different
  * slots) combine: for a two-item combine it sets combineRecipe and the
  * result shown (combineResult, -1 while the recipe is unknown); for a
@@ -2948,7 +2722,7 @@ s32 CombineMenu_CheckPair(u8 slotA, u8 slotB)
 {
     Player *pl = gHudState->player;
 
-    if (slotA == 0xFF) {
+    if (slotA == 255) {
         return 0;
     }
     if (slotB == slotA) {
@@ -2978,10 +2752,10 @@ s32 CombineMenu_CheckTriple(u8 slotA, u8 slotB, u8 slotC)
 {
     Player *pl = gHudState->player;
 
-    if (slotB == 0xFF) {
+    if (slotB == 255) {
         return 0;
     }
-    if (slotA == 0xFF) {
+    if (slotA == 255) {
         return 0;
     }
     if (slotC == slotB) {
@@ -3012,12 +2786,12 @@ void CombineMenu_Reset(void)
     gHudState->slot = 0;
     gHudState->combineThree = 0;
     gHudState->combineConfirm = 0;
-    gHudState->combineSlots[2] = 0xFF;
-    gHudState->combineSlots[1] = 0xFF;
-    gHudState->combineSlots[0] = 0xFF;
-    gHudState->combineItems[2] = 0xFFFF;
-    gHudState->combineItems[1] = 0xFFFF;
-    gHudState->combineItems[0] = 0xFFFF;
+    gHudState->combineSlots[2] = 255;
+    gHudState->combineSlots[1] = 255;
+    gHudState->combineSlots[0] = 255;
+    gHudState->combineItems[2] = 65535;
+    gHudState->combineItems[1] = 65535;
+    gHudState->combineItems[0] = 65535;
     gHudState->combineResult = -1;
     gHudState->combineRecipe = NULL;
     gHudState->fadeActive = 0;
@@ -3154,7 +2928,7 @@ s32 CombineMenu_Open(void)
     gHudState->sorting = 0;
     gHelpShow = 1;
     gHelpPage = HELP_PAGE_ITEMS;
-    gHelpLine = gHudState->combineThree + 0xE;
+    gHelpLine = gHudState->combineThree + 14;
     gHelpColumn = 0;
     Shake_Start(SHAKE_POUCH_MENU, SHAKE_AXIS_X, 180.0f);
     return 0;
@@ -3162,19 +2936,6 @@ s32 CombineMenu_Open(void)
 
 INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtInt2);
 INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtFraction);
-
-
-void CombineMenu_StartFade(s32 a);
-void Recipe_SetKnown(Recipe *r, s16 *item);
-s32 Recipe_CheckAllKnown(void);
-s16 Combine_Do(u8 *count, Player *player, s16 a, s16 b, s32 mode);
-s16 Combine_Do3(u8 *count, Player *player, s32 a, s32 b, s32 c, s32 mode);
-s16 Pouch_FindSlot(Player *p, u16 item);
-s16 Pouch_GiveItems(Player *p, u16 item, s16 key, u8 flags, s16 n);
-void Item_PlayUseSound(Player *p, u16 item);
-u8 Notice_Push(u8 kind, s16 text, s16 subject);
-void Jingle_Play(void *obj, s32 id);
-s16 Pouch_Space(Player *p, u16 item);
 
 /* The combine menu's input step: the ingredient picks (state 1), the confirmation (2), the
    result (3-5) and the checks after it (6); returns the buttons left for the caller. */
@@ -3238,12 +2999,12 @@ u16 CombineMenu_Input(u16 btn)
         } else if (btn & PAD_SELECT) {
             gHudState->sorting = 1;
             gHudState->yesNo = 0;
-            Sound_PlaySeFlat(0, 0xF, 0);
+            Sound_PlaySeFlat(0, 15, 0);
             break;
         }
         Menu_CursorUpDown(&gHudState->combineThree, btn, 2);
         pressed = btn;
-        gHelpLine = gHudState->combineThree + 0xE;
+        gHelpLine = gHudState->combineThree + 14;
         Pouch_MoveCursor(&gHudState->slot, pressed & (PAD_LEFT | PAD_RIGHT));
         if (pressed & PAD_CIRCLE) {
             gHudState->combineState++;
@@ -3258,13 +3019,13 @@ u16 CombineMenu_Input(u16 btn)
             Pouch_MoveCursor(&gHudState->slot, btn);
             if (pressed & PAD_CROSS) {
                 gHudState->combineState = 0;
-                gHelpLine = gHudState->combineThree + 0xE;
+                gHelpLine = gHudState->combineThree + 14;
                 Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
             } else if (pressed & PAD_CIRCLE) {
                 if (CombineMenu_CheckFirst(gHudState->slot, pl->pouch[gHudState->slot].item) == 1) {
                     gHudState->combineSlots[0] = gHudState->slot;
                     gHudState->combineItems[0] = pl->pouch[gHudState->combineSlots[0]].item;
-                    gHudState->combineItems[1] = 0xFFFF;
+                    gHudState->combineItems[1] = 65535;
                     gHudState->combinePick++;
                     Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
                 } else {
@@ -3286,7 +3047,7 @@ u16 CombineMenu_Input(u16 btn)
                             if (gHudState->combineThree == 0) {
                                 gHudState->combineState++;
                             } else {
-                                gHudState->combineItems[2] = 0xFFFF;
+                                gHudState->combineItems[2] = 65535;
                             }
                             gHudState->combinePick++;
                             Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
@@ -3297,14 +3058,14 @@ u16 CombineMenu_Input(u16 btn)
                     break;
                 }
             }
-            gHudState->combineSlots[0] = 0xFF;
-            gHudState->combineItems[0] = 0xFFFF;
+            gHudState->combineSlots[0] = 255;
+            gHudState->combineItems[0] = 65535;
             gHudState->combinePick = 0;
             break;
         case 2:
             if (CombineMenu_CheckFirst(gHudState->combineSlots[0], gHudState->combineItems[0]) != 1) {
-                gHudState->combineSlots[0] = 0xFF;
-                gHudState->combineItems[0] = 0xFFFF;
+                gHudState->combineSlots[0] = 255;
+                gHudState->combineItems[0] = 65535;
                 gHudState->combinePick = 0;
                 break;
             }
@@ -3327,8 +3088,8 @@ u16 CombineMenu_Input(u16 btn)
                     break;
                 }
             }
-            gHudState->combineSlots[1] = 0xFF;
-            gHudState->combineItems[1] = 0xFFFF;
+            gHudState->combineSlots[1] = 255;
+            gHudState->combineItems[1] = 65535;
             gHudState->combinePick = 1;
             break;
         }
@@ -3338,19 +3099,19 @@ u16 CombineMenu_Input(u16 btn)
         gHudState->combineKnown = 0;
         if (CombineMenu_CheckFirst(gHudState->combineSlots[0], gHudState->combineItems[0]) == 0) {
             gHudState->combineSlots[0] = Pouch_FindSlot(pl, gHudState->combineItems[0]);
-            if (gHudState->combineSlots[0] == 0xFF) {
+            if (gHudState->combineSlots[0] == 255) {
                 gHudState->combineError |= 4;
             }
         }
         if (CombineMenu_CheckFirst(gHudState->combineSlots[1], gHudState->combineItems[1]) == 0) {
             gHudState->combineSlots[1] = Pouch_FindSlot(pl, gHudState->combineItems[1]);
-            if (gHudState->combineSlots[1] == 0xFF) {
+            if (gHudState->combineSlots[1] == 255) {
                 gHudState->combineError |= 4;
             }
         }
         if (gHudState->combineThree != 0 && CombineMenu_CheckFirst(gHudState->combineSlots[2], gHudState->combineItems[2]) == 0) {
             gHudState->combineSlots[2] = Pouch_FindSlot(pl, gHudState->combineItems[2]);
-            if (gHudState->combineSlots[2] == 0xFF) {
+            if (gHudState->combineSlots[2] == 255) {
                 gHudState->combineError |= 4;
             }
         }
@@ -3361,22 +3122,22 @@ u16 CombineMenu_Input(u16 btn)
                 if (n == 0) {
                     if (CombineMenu_HasSpecial() == 0) {
                         gHudState->combineError |= 1;
-                        gHelpLine = 0xC;
+                        gHelpLine = 12;
                     }
                 } else if (n < 0) {
                     if (pl->pouch[gHudState->combineSlots[0]].count > 1 && pl->pouch[gHudState->combineSlots[1]].count > 1) {
                         gHudState->combineError |= 2;
-                        gHelpLine = 0xD;
+                        gHelpLine = 13;
                     }
                 }
                 gHudState->combineKnown = 1;
             }
         } else {
-            gHelpLine = 0xB;
+            gHelpLine = 11;
         }
         if (gHudState->combineError == 0) {
             if (gHudState->combineResult == -1) {
-                gHelpLine = 0xA;
+                gHelpLine = 10;
             } else {
                 gHelpLine = HELP_ITEM_LINE(gHudState->combineResult);
             }
@@ -3409,12 +3170,12 @@ u16 CombineMenu_Input(u16 btn)
                 break;
             case 1:
                 CombineMenu_Reset();
-                return 0x40;
+                return 64;
             }
         } else if (pressed & PAD_START) {
             CombineMenu_Reset();
             Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
-            return 0x8000;
+            return PAD_START;
         } else if (pressed & PAD_CROSS) {
             ret &= ~PAD_CROSS;
             if (gHudState->combineSlots[1] < 20) {
@@ -3425,15 +3186,15 @@ u16 CombineMenu_Input(u16 btn)
             gHudState->combineResult = -1;
             gHudState->combineState = 1;
             if (gHudState->combineThree == 0) {
-                gHudState->combineSlots[1] = 0xFF;
-                gHudState->combineItems[1] = 0xFFFF;
+                gHudState->combineSlots[1] = 255;
+                gHudState->combineItems[1] = 65535;
                 gHudState->combinePick = 1;
             } else {
-                gHudState->combineSlots[2] = 0xFF;
-                gHudState->combineItems[2] = 0xFFFF;
+                gHudState->combineSlots[2] = 255;
+                gHudState->combineItems[2] = 65535;
                 gHudState->combinePick = 2;
             }
-            gHelpLine = gHudState->combineThree + 0xE;
+            gHelpLine = gHudState->combineThree + 14;
             Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
         } else {
             Menu_CursorUpDown(&gHudState->combineConfirm, btn, 2);
@@ -3452,18 +3213,18 @@ u16 CombineMenu_Input(u16 btn)
             CombineMenu_StartFade(1);
             Recipe_CheckAllKnown();
         } else {
-            gHudState->combineMadeItem = 0xAE;
+            gHudState->combineMadeItem = 174;
             gHudState->combineMade = 1;
             CombineMenu_StartFade(2);
         }
         if (pl->pouch[gHudState->combineSlots[0]].item == 0) {
-            gHudState->combineSlots[0] = 0xFF;
+            gHudState->combineSlots[0] = 255;
         }
         if (pl->pouch[gHudState->combineSlots[1]].item == 0) {
-            gHudState->combineSlots[1] = 0xFF;
+            gHudState->combineSlots[1] = 255;
         }
         if (gHudState->combineThree != 0 && pl->pouch[gHudState->combineSlots[2]].item == 0) {
-            gHudState->combineSlots[2] = 0xFF;
+            gHudState->combineSlots[2] = 255;
         }
         gHelpLine = HELP_ITEM_LINE(gHudState->combineMadeItem);
         gHudState->combineState++;
@@ -3475,7 +3236,7 @@ u16 CombineMenu_Input(u16 btn)
         case 0:
         case 1:
             if (gHudState->combineKnown == 0) {
-                if (gHudState->combineMadeItem != 0xAE) {
+                if (gHudState->combineMadeItem != 174) {
                     Item_PlayUseSound(pl, gHudState->combineMadeItem);
                 } else {
                     Jingle_Play(pl, 10);
@@ -3522,19 +3283,19 @@ u16 CombineMenu_Input(u16 btn)
             break;
         }
         if (gHudState->combineItems[0] != pl->pouch[gHudState->combineSlots[0]].item) {
-            gHudState->combineSlots[0] = 0xFF;
+            gHudState->combineSlots[0] = 255;
         } else if (gHudState->combineItems[1] != pl->pouch[gHudState->combineSlots[1]].item) {
-            gHudState->combineSlots[1] = 0xFF;
+            gHudState->combineSlots[1] = 255;
         } else if (gHudState->combineThree != 0 && gHudState->combineItems[2] != pl->pouch[gHudState->combineSlots[2]].item) {
-            gHudState->combineSlots[2] = 0xFF;
+            gHudState->combineSlots[2] = 255;
         }
         gHudState->combineState = 2;
         if (gHudState->combineThree == 0) {
-            if (gHudState->combineSlots[0] != 0xFF && gHudState->combineSlots[1] != 0xFF && Combine_FindRecipe(gHudState->combineItems[0], gHudState->combineItems[1]) == NULL) {
+            if (gHudState->combineSlots[0] != 255 && gHudState->combineSlots[1] != 255 && Combine_FindRecipe(gHudState->combineItems[0], gHudState->combineItems[1]) == NULL) {
                 CombineMenu_Reset();
                 gHudState->combineState++;
             }
-        } else if (gHudState->combineSlots[0] != 0xFF && gHudState->combineSlots[1] != 0xFF && gHudState->combineSlots[2] != 0xFF
+        } else if (gHudState->combineSlots[0] != 255 && gHudState->combineSlots[1] != 255 && gHudState->combineSlots[2] != 255
                    && Combine_FindRecipe3(gHudState->combineItems[0], gHudState->combineItems[1], gHudState->combineItems[2]) == NULL) {
             CombineMenu_Reset();
             gHudState->combineState++;
@@ -3543,7 +3304,7 @@ u16 CombineMenu_Input(u16 btn)
         break;
     case 7:
         if (Shake_Update(SHAKE_POUCH_MENU) == 0) {
-            return 0x8000;
+            return PAD_START;
         }
         gHelpShow = 0;
         ret = 0;
@@ -3562,22 +3323,9 @@ extern ListPanel gCombineMaterialPanel;
 extern Panel gCombineResultWindow;
 extern ListPanel gCombineDoPanel;
 extern u32 D_004321C4[]; /* gCombineDoPanel's text colour as one RGBA word (textColor, unk16, rgbText) */
-extern char *gYesNoTexts[];
-extern char *gCombineSelectFmt[];
-extern char *gCombineInfoLabels[];
 extern char *gCombineUnknownText;
-extern char *gCombineRateFmt[];
 extern char *gCombineRateUnknownText;
-extern char *gCombineSelectingText[];
 extern char *gCombineSuccessLabels;
-extern char *gCombineFailLabels[];
-extern char *gCombine2MaterialLabels[];
-extern char *gCombine3MaterialLabels[];
-s16 Pouch_Count(Player *p, u16 item);
-s32 Combine_RecipeRate(struct Recipe *r, s32 mode);
-void *Recipe_YieldLabel(struct Recipe *r);
-void CombineMenu_DrawItemName(u8 arg0, u16 arg1);
-void ItemList_DrawPouch(s32 cursor, s32 cursorColor, s32 flags);
 
 /* Draws the combine menu's info panel for the state at +0x88: the ingredient list, the chosen
    recipe's result, success rate and yield, or (states 5 and 6) the result item's counts. */
@@ -3590,15 +3338,15 @@ void CombineMenu_DrawInfo(void)
     u16 cnt;
     u16 max;
 
-    Gfx_SetTexFilter(0);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     help = 0;
-    flags = 0x85;
+    flags = 133;
     if (gHudState->combineState == 0) {
         if (gHudState->sorting != 0) {
-            flags = 0x11;
-            Font_SetSpacing(0x12, 0x12);
-            Font_SetPos(0x1B0, 0x18E);
+            flags = 17;
+            Font_SetSpacing(18, 18);
+            Font_SetPos(432, 398);
             Text_Printf(gYesNoTexts[gHudState->yesNo]);
         } else {
             if (Shake_Value(SHAKE_POUCH_MENU) == 0) {
@@ -3609,21 +3357,21 @@ void CombineMenu_DrawInfo(void)
     } else if (gHudState->combineState < 5) {
         gCombineMaterialPanel.lines = gHudState->combineThree + 2;
         ListPanel_Draw(&gCombineMaterialPanel, NULL, NULL, -1);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         Font_SetColor(0x807F7F28);
-        Text_DrawLinesColored(0x10E, 0x3E, gHudState->combineThree == 0 ? gCombine2MaterialLabels : gCombine3MaterialLabels, 0x27);
-        Font_SetPos(0x10E, 0x50);
+        Text_DrawLinesColored(270, 62, gHudState->combineThree == 0 ? gCombine2MaterialLabels : gCombine3MaterialLabels, 39);
+        Font_SetPos(270, 80);
         if (gHudState->combinePick == 0) {
             Text_Printf(gCombineSelectingText[0]);
         } else {
             CombineMenu_DrawItemName(gHudState->combineSlots[0], gHudState->combineItems[0]);
-            Font_SetPos(0x10E, 0x77);
+            Font_SetPos(270, 119);
             if (gHudState->combinePick == 1) {
                 Text_Printf(gCombineSelectingText[0]);
             } else {
                 CombineMenu_DrawItemName(gHudState->combineSlots[1], gHudState->combineItems[1]);
                 if (gHudState->combineThree > 0) {
-                    Font_SetPos(0x10E, 0x9E);
+                    Font_SetPos(270, 158);
                     if (gHudState->combinePick == 2) {
                         Text_Printf(gCombineSelectingText[0]);
                     } else {
@@ -3635,7 +3383,7 @@ void CombineMenu_DrawInfo(void)
         if (gHudState->combineState < 2) {
             help = 0xA9182;
             Font_SetColor(0x807F7F7F);
-            Font_SetPos(0x132, 0x166);
+            Font_SetPos(306, 358);
             Text_PrintfColored(gCombineSelectFmt[0], gCombine3MaterialLabels[gHudState->combinePick]);
         }
         if (gHudState->combineState < 3) {
@@ -3644,31 +3392,31 @@ void CombineMenu_DrawInfo(void)
     }
     ItemList_DrawPouch(gHudState->slot, help, flags);
     if (gHudState->combineState >= 2 && gHudState->combineState < 5) {
-        gCombineResultWindow.y = gHudState->combineThree == 0 ? 0x9D : 0xC4;
+        gCombineResultWindow.y = gHudState->combineThree == 0 ? 157 : 196;
         Window_DrawText(&gCombineResultWindow, (s16 *)NULL, (u8 *)gCombineInfoLabels[0]);
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(0x10E, gCombineResultWindow.y + 0x14);
+        Font_SetPos(270, gCombineResultWindow.y + 20);
         if (gHudState->combineResult > 0) {
             Text_Draw((char *)gItemNames[((RecipeView *)gHudState->combineRecipe)->result]);
         } else {
             Text_Draw(gCombineUnknownText);
         }
-        Font_SetPos(0x168, gCombineResultWindow.y + 0x28);
+        Font_SetPos(360, gCombineResultWindow.y + 40);
         if (gHudState->combineResult > 0) {
             Text_PrintfColored(gCombineRateFmt[0], (s8)Combine_RecipeRate(gHudState->combineRecipe, 0));
         } else {
             Text_Draw(gCombineRateUnknownText);
         }
-        Font_SetPos(0x168, gCombineResultWindow.y + 0x3C);
+        Font_SetPos(360, gCombineResultWindow.y + 60);
         Text_Draw(Recipe_YieldLabel(gHudState->combineRecipe));
         if (gHudState->combineState == 2) {
-            gCombineDoPanel.y = gHudState->combineThree == 0 ? 0xFF : 0x125;
+            gCombineDoPanel.y = gHudState->combineThree == 0 ? 255 : 293;
             D_004321C4[0] = gHudState->combineError == 0 ? 0x807F7F7F : 0x80404040;
             ListPanel_Draw(&gCombineDoPanel, NULL, NULL, gHudState->combineConfirm);
         }
     }
     if (gHudState->combineState == 5 || gHudState->combineState == 6) {
-        if (gHudState->combineMadeItem != 0xAE) {
+        if (gHudState->combineMadeItem != 174) {
             Window_DrawText(&gCombineResultWindow, (s16 *)NULL, (u8 *)gCombineSuccessLabels);
             n = gHudState->combineMade;
             cnt = Pouch_Count(pl, gHudState->combineMadeItem);
@@ -3676,15 +3424,15 @@ void CombineMenu_DrawInfo(void)
         } else {
             Window_DrawText(&gCombineResultWindow, (s16 *)NULL, (u8 *)gCombineFailLabels[0]);
             n = 1;
-            cnt = Pouch_Count(pl, 0xAE);
-            max = gItemData[0xAE].max;
+            cnt = Pouch_Count(pl, 174);
+            max = gItemData[174].max;
         }
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(0x10E, gCombineResultWindow.y + 0x14);
+        Font_SetPos(270, gCombineResultWindow.y + 20);
         Text_Draw((char *)gItemNames[gHudState->combineMadeItem]);
-        Font_SetPos(0x168, gCombineResultWindow.y + 0x28);
+        Font_SetPos(360, gCombineResultWindow.y + 40);
         Text_PrintfColored(gHudFmtInt, n);
-        Font_SetPos(0x168, gCombineResultWindow.y + 0x3C);
+        Font_SetPos(360, gCombineResultWindow.y + 60);
         Text_PrintfColored(gHudFmtFraction, cnt, max);
     }
 }
@@ -3694,7 +3442,7 @@ void CombineMenu_DrawItemName(u8 slot, u16 item)
 {
     u32 color;
 
-    if ((slot & 0xFF) != 0xFF) {
+    if ((slot & 0xFF) != 255) {
         color = 0x807F7F7F;
     } else {
         color = 0x80404040;
@@ -3702,9 +3450,6 @@ void CombineMenu_DrawItemName(u8 slot, u16 item)
     Font_SetColor(color);
     Text_Draw((char *) ((s8 *) gItemNames[item & 0xFFFF]));
 }
-
-void SkillList_Build(Player *p, Player *q);
-void Player_RecomputeStats(Player *p);
 
 /* Opens the hunter's status pages (in the town the stats are recomputed first)
  * and builds the skill list. Returns 0. */
@@ -3718,8 +3463,6 @@ s32 PersonalStatus_Open(void)
     gHelpShow = 0;
     return 0;
 }
-
-u8 SkillList_PageCount(void);
 
 /* The status pages' input: left and right turn the pages (the first and
  * the skill list's), wrapping around. Returns cancel and the menu button. */
@@ -3742,8 +3485,6 @@ u16 PersonalStatus_Update(u16 buttons)
     }
     return buttons & (PAD_START | PAD_CROSS);
 }
-
-void PersonalStatus_DrawPage(struct Player *p, u8 b);
 
 /* Draws the status page under the cursor. */
 void PersonalStatus_Draw(void)
@@ -3803,8 +3544,6 @@ s32 EquipStatus_Open(void)
     return 0;
 }
 
-u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b);
-
 /* The equipment page's input: up and down pick one of the six equipment
  * slots, left and right the pages of the item's levels (Equip_LevelMark). */
 u16 EquipStatus_Update(u16 buttons)
@@ -3833,7 +3572,7 @@ extern u8 gOptionMenuCounts[];
 
 /* Opens the options menu from the field menu: picks the set of options it
  * lists (HudState.optionKind, an index into gOptionMenuCounts and
- * gOptionMenuRows: 0 in the town's AREA_HUB_0x83, 1 and 2 elsewhere in the town, 3 and 4
+ * gOptionMenuRows: 0 in the town's AREA_ONLINE_VILLAGE, 1 and 2 elsewhere in the town, 3 and 4
  * outside it, by Game_IsOnline) and slides the window in. Returns 0 (opened). */
 s32 OptionMenu_Open(void *menu)
 {
@@ -3841,7 +3580,7 @@ s32 OptionMenu_Open(void *menu)
     gHelpPage = HELP_PAGE_OPTIONS;
     gHelpShow = 0;
     if (gScene.inLobby != 0) {
-        if (gScene.area == AREA_HUB_0x83) {
+        if (gScene.area == AREA_ONLINE_VILLAGE) {
             gHudState->optionKind = 0;
         } else {
             gHudState->optionKind = Game_IsOnline() == 1 ? 1 : 2;
@@ -3854,19 +3593,18 @@ s32 OptionMenu_Open(void *menu)
     return 0;
 }
 
-void Vib_Start(s32 port, s32 on);
 extern u8 *gOptionMenuRows[];
 
 
 /* The options menu (vibration and the other settings): the cursor, the changed option, then the
- * settings copied to the game; 0x8040 of the buttons returned (0x8000 while shaking out). */
+ * settings copied to the game; PAD_START and PAD_CROSS of the buttons returned (PAD_START while shaking out). */
 s32 OptionMenu_Update(u16 buttons)
 {
     u8 k;
 
     gHelpShow = 0;
     if (Shake_Flags(SHAKE_OPTION_MENU) & 0x80) {
-        return Shake_Update(SHAKE_OPTION_MENU) == 0 ? 0x8000 : 0;
+        return Shake_Update(SHAKE_OPTION_MENU) == 0 ? PAD_START : 0;
     }
     if (buttons & PAD_START) {
         Shake_Start(SHAKE_OPTION_MENU, SHAKE_SLIDE, 333.0f);
@@ -3901,7 +3639,7 @@ s32 OptionMenu_Update(u16 buttons)
         case 6:
             if (buttons & PAD_LEFT) {
                 /* &gHudState->options[k] (options is at 0x9B), with k added first as the game does */
-                u8 *option = (u8 *)(k + (s32)gHudState + 0x9B);
+                u8 *option = (u8 *)(k + (s32)gHudState + 155);
 
                 if (*option == 0) {
                     *option = 2;
@@ -3936,10 +3674,7 @@ s32 OptionMenu_Update(u16 buttons)
 
 extern char *gFieldOptionLabels[][9];
 extern char *gFieldOptionValues[][3];
-extern char D_00448198[];
-extern char *gOptionMenuTitle[];
 extern ListPanel gOptionMenuPanel;
-s32 Str_Length(char *s);
 
 /* Draws the options menu: the list of the page options (gOptionMenuPanel), each option value text
  * centred at the right (option 1's own text while option 0 is set), and the cursor arrows
@@ -3957,7 +3692,7 @@ void OptionMenu_Draw(void)
     char **names;
 
     Shake_CopyOffset(SHAKE_OPTION_MENU, (struct ShakeOffset *)pos);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     rows = gOptionMenuRows[gHudState->optionKind];
     names = gFieldOptionLabels[gHudState->options[OPTION_COCKPIT_OFF]];
     for (i = 0; i < gHudState->optionCount; i++) {
@@ -3968,34 +3703,34 @@ void OptionMenu_Draw(void)
     gOptionMenuPanel.lines = gHudState->optionCount;
     ListPanel_Draw(&gOptionMenuPanel, pos, gOptionMenuTitle[0], -1);
     Font_SetColor(0x807F7F28);
-    y = 0x55;
+    y = 85;
     for (i = 0; i < gHudState->optionCount; i++) {
         k = rows[i];
         if (gHudState->options[OPTION_COCKPIT_OFF] == 0 || k != 1) {
             w = Str_Length(gFieldOptionValues[k][gHudState->options[k]]);
-            Font_SetPos(pos[0] + 0x229 - w * 9 / 2, y);
+            Font_SetPos(pos[0] + 553 - w * 9 / 2, y);
             Text_Draw(gFieldOptionValues[k][gHudState->options[k]]);
         } else {
-            Font_SetPos(pos[0] + 0x20E, y);
+            Font_SetPos(pos[0] + 526, y);
             Text_Printf(D_00448198);
         }
         y += 22;
     }
-    sprite.w = 0x12;
-    sprite.y = gHudState->pageCursor * 22 + 0x55;
-    sprite.h = 0x12;
+    sprite.w = 18;
+    sprite.y = gHudState->pageCursor * 22 + 85;
+    sprite.h = 18;
     if (gScene.inLobby != 0 || gHudState->options[OPTION_COCKPIT_OFF] == 0 || rows[gHudState->pageCursor] != 1) {
-        sprite.color = (((s8)(48.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10))) + 0xAF) << 8) | 0xF0200020;
+        sprite.color = (((s8)(48.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10))) + 175) << 8) | 0xF0200020;
     } else {
         sprite.color = 0xF0707070;
     }
-    sprite.x = pos[0] + 0x1EE;
-    sprite.uv0 = TEX_UV(0xA6, 0x1A);
-    sprite.uv1 = TEX_UV(0x94, 0x2E);
+    sprite.x = pos[0] + 494;
+    sprite.uv0 = TEX_UV(166, 26);
+    sprite.uv1 = TEX_UV(148, 46);
     Sprite_Draw((struct Sprite *)&sprite);
-    sprite.x = pos[0] + 0x252;
-    *(s16 *)&sprite.uv0 = TEX_UV(0x94, 0x0);
-    *(s16 *)&sprite.uv1 = TEX_UV(0xA6, 0x0);
+    sprite.x = pos[0] + 594;
+    *(s16 *)&sprite.uv0 = TEX_UV(148, 0);
+    *(s16 *)&sprite.uv1 = TEX_UV(166, 0);
     Sprite_Draw((struct Sprite *)&sprite);
 }
 
@@ -4040,9 +3775,6 @@ s32 ItemGet_Reserve(s32 pl, u16 *ticket)
     return -1;
 }
 
-void QuestRecord_Count(u16 a);
-s16 Pouch_GiveItems(Player *p, u16 item, s16 key, u8 flags, s16 n);
-
 /* Adds one item to p's pouch (Pouch_GiveItems, whose result it returns), in a quest also
  * through QuestRecord_Count. */
 s16 Pouch_GiveItem(Player *pl, u16 item, s16 key, u8 flags)
@@ -4054,10 +3786,6 @@ s16 Pouch_GiveItem(Player *pl, u16 item, s16 key, u8 flags)
 }
 
 /* unit's own declaration: as the file's last declaration of it (u8 in pouch.c) */
-s32 Pouch_Add(Player *p, u16 item, s16 n);
-void Item_PlayUseSound(Player *p, u16 item);
-u8 Notice_Push(u8 kind, s16 text, s16 subject);
-u8 Item_CarryKind(u16 item);
 
 /* Adds n of item to pl's pouch (the result of Pouch_Add, or -1 while the state is busy or `key` is
  * not the current request); flags 1: messages, 2: the use sound. */
@@ -4095,7 +3823,7 @@ s16 Pouch_GiveItems(Player *pl, u16 item, s16 key, u8 flags, s16 n)
     case 5:
         if (Item_CarryKind(item) != 0) {
             if (flags & 1) {
-                Notice_Push(NOTICE_KIND_MESSAGE, 0xC, 0);
+                Notice_Push(NOTICE_KIND_MESSAGE, 12, 0);
             }
             return 5;
         }
@@ -4106,7 +3834,7 @@ s16 Pouch_GiveItems(Player *pl, u16 item, s16 key, u8 flags, s16 n)
         if (flags & 2) {
             Item_PlayUseSound(pl, item);
         }
-        gHudState->dropNotice = 0xFF;
+        gHudState->dropNotice = 255;
         break;
     }
     return result;
@@ -4125,12 +3853,7 @@ u16 ItemGet_Result(void)
     return gHudState->dropItem;
 }
 
-s32 Notice_IsQueued(u8 id);
-void Pouch_MoveCursor(u8 *cur, u16 buttons);
-s16 Pouch_ClearSlot(Player *p, s16 slot);
 /* unit's own declaration: declared here as Pouch_GiveItems calls it; with the definition's u8 (Player *p, u16 item, s16 n), the call compiles differently */
-s32 Pouch_Add(Player *p, u16 item, s16 n);
-u8 YesNo_Toggle(u16 buttons, u8 sel, u16 mask);
 
 /* Runs the pouch-full dialog by HudState.dropState (DROP_*): the notice
  * of the item got (dropItem), then the choice to swap it for a pouch
@@ -4148,7 +3871,7 @@ s32 PouchDrop_Update(u16 buttons)
         }
         return 0;
     case DROP_NOTICE:
-        if (gHudState->dropNotice == 0xFF) {
+        if (gHudState->dropNotice == 255) {
             gHudState->dropNotice = Notice_Push(NOTICE_KIND_ITEM, NOTICE_ITEM_GOT, (s16)gHudState->dropItem);
         } else if (gHudState->dropNotice == gScene.bannerNotice) {
             (*state)++;
@@ -4176,8 +3899,8 @@ s32 PouchDrop_Update(u16 buttons)
             buttons &= PAD_DPAD;
         }
         gHudState->dropBlink = (gHudState->dropBlink + 1) & 0x7F;
-        if (gHudState->dropBlink < 0x40) {
-            gHudState->dropHelpLine = 0x14;
+        if (gHudState->dropBlink < 64) {
+            gHudState->dropHelpLine = 20;
         } else {
             gHudState->dropHelpLine = HELP_ITEM_LINE(gHudState->dropItem);
         }
@@ -4189,7 +3912,7 @@ s32 PouchDrop_Update(u16 buttons)
         if (buttons & PAD_CIRCLE) {
             switch (gHudState->dropChoice) {
             case 0:
-                gHudState->dropHelpLine = 0x15;
+                gHudState->dropHelpLine = 21;
                 gHudState->dropShowSlot = 0;
                 (gHudState->dropState)++;
                 break;
@@ -4215,25 +3938,25 @@ s32 PouchDrop_Update(u16 buttons)
         }
         Pouch_MoveCursor(&gHudState->slot, buttons);
         if (buttons & PAD_CIRCLE) {
-            gHudState->dropHelpLine = 0x16;
+            gHudState->dropHelpLine = 22;
             gHudState->dropShowSlot = 0;
             gHudState->yesNo = 1;
             (gHudState->dropState)++;
             Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
         } else if (buttons & PAD_CROSS) {
-            gHudState->dropHelpLine = 0x14;
+            gHudState->dropHelpLine = 20;
             gHudState->dropBlink = 0;
             gHudState->dropState = DROP_CHOOSE;
             Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
         } else if (gHudState->dropShowSlot == 0) {
-            gHudState->dropHelpLine = 0x15;
+            gHudState->dropHelpLine = 21;
         } else {
             gHudState->dropHelpLine = HELP_ITEM_LINE((gHudState->player)->pouch[gHudState->slot].item);
         }
         break;
     case DROP_CONFIRM:
-        gHudState->dropHelpLine = 0x16;
-        gHudState->yesNo = YesNo_Toggle(buttons, gHudState->yesNo, 0x3000);
+        gHudState->dropHelpLine = 22;
+        gHudState->yesNo = YesNo_Toggle(buttons, gHudState->yesNo, 12288);
         if (buttons & PAD_CIRCLE) {
             if (gHudState->yesNo == 0) {
                 Pouch_ClearSlot(gHudState->player, gHudState->slot);
@@ -4283,16 +4006,20 @@ s32 PouchDrop_UpdateSave(u16 buttons)
     return ret;
 }
 
-/* 0x4000 zooms the map in or out while the map shows. */
+/* PAD_SELECT zooms the map in or out while the map shows. */
 void Hud_MapZoomInput(u16 btn, u16 unused)
 {
-    if ((gHudState->mapOff == 0) && (gHudState->hidden == 0) && (btn & 0xFFFF & 0x4000)) {
+    if ((gHudState->mapOff == 0) && (gHudState->hidden == 0) && (btn & 0xFFFF & PAD_SELECT)) {
         gHudState->mapZoomed = (u8) (gHudState->mapZoomed ^ 1);
     }
 }
 
-void QSync_SendState(u8 a, u8 b); /* gm_sub QSync_SendState */
-
+/*
+ * Runs the four players' map pings: a ping plays sounds 27 to 31, one every
+ * 20 frames, and ends after 105 frames. Holding button bit 2 for 10 frames
+ * starts the local player's ping and sends it to the others
+ * (QSync_SendState 9).
+ */
 void Hud_UpdateMapPing(u16 buttons)
 {
     s32 i;
@@ -4300,7 +4027,7 @@ void Hud_UpdateMapPing(u16 buttons)
     for (i = 0; i < 4; i++) {
         if (gHudState->pingTimer[i] >= 0) {
             if (gHudState->pingTimer[i] <= 99 && gHudState->pingTimer[i] % 20 == 0) {
-                Sound_PlaySeFlat(0, gHudState->pingTimer[i] / 20 + 0x1B, 0);
+                Sound_PlaySeFlat(0, gHudState->pingTimer[i] / 20 + 27, 0);
             }
             gHudState->pingTimer[i]++;
             if (gHudState->pingTimer[i] > 105) {
@@ -4328,10 +4055,6 @@ void Hud_StartMapPing(s32 i)
 extern char gHudFmtSideName[];
 extern u32 gPlayerNameColors[];
 extern char *gSideNames[];
-s32 Obj_InCurrentArea(void *obj);
-f32 Player_NameTagRaise(Player *p);
-void Camera_ProjectPoint(f32 *out, f32 *pos);
-void Mtx_Identity(f32 *m);
 
 /* The other hunters' names above their heads (in their team colour, with the team name, in
  * versus quests). */
@@ -4345,7 +4068,7 @@ void Hud_DrawPlayerNames(void)
     char *name;
     s16 i;
 
-    Font_SetSpacing(0x10, 0x10);
+    Font_SetSpacing(16, 16);
     Font_SetColor(0x807F7F7F);
     for (pl = gPlayers, i = 0; i < 4; i++, pl++) {
         if (pl->index == gScene.localPlayer) {
@@ -4384,9 +4107,6 @@ void Hud_DrawPlayerNames(void)
 }
 
 extern NextQuest gNextQuest;
-Em *Em_FindOnSide(u8 side);
-s32 Em_IsHiddenFromHud(Em *e);
-void Hud_DrawVersusMonsterBar(Em *e, s16 x, s16 y, u32 color, u8 *name);
 
 /* In versus quests, draws each side's monster's health bar above it (green,
  * yellow, then red, blinking under a fifth), with the side's name from
@@ -4407,10 +4127,10 @@ void Hud_DrawVersusMonsterBars(void)
     if (Quest_IsVersus() != 1) {
         return;
     }
-    Gfx_SetTexFilter(1);
-    Gfx_SetBlend(4, 5);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     for (i = 0, side = (u8 *)&gNextQuest; i < 2; i++, side += sizeof(NextQuestTeam)) {
         if ((em = Em_FindOnSide(i + 1)) == NULL) {
             continue;
@@ -4435,7 +4155,7 @@ void Hud_DrawVersusMonsterBars(void)
             } else {
                 color = 0xFFFF0000;
                 if (hpRatio < 0.2f) {
-                    color = ((s8)(112.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10))) + 0x8F) << 16 | 0xFF000000;
+                    color = ((s8)(112.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10))) + 143) << 16 | 0xFF000000;
                 }
             }
             Hud_DrawVersusMonsterBar(em, x, y, color, ((NextQuest *)side)->teams[0].name);
@@ -4490,63 +4210,60 @@ void Hud_DrawBlockGauge(s16 x, s16 y, u16 value, u32 color)
     }
 }
 
-void Hud_DrawBlockGauge(s16 x, s16 y, u16 v, u32 color);
-void Sprite_DrawStretch9(Sprite *src, s16 w, s16 h, s16 du, s16 dv);
-
 /* The health bar box of versus monster e at (x, y): the frame, the bar in `color`, the anger
- * gauge (Hud_DrawBlockGauge: e[0x9A0], or blinking from e+0x808 while e[0x9A1] is set) and the side's
+ * gauge (Hud_DrawBlockGauge: em->versusGauge, or blinking from em->rageTimer once em->rageStarted is set) and the side's
  * name with `name`. */
 void Hud_DrawVersusMonsterBar(Em *em, s16 x, s16 y, u32 color, u8 *name)
 {
     Sprite sprite;
-    char buf[0x20];
+    char buf[32];
     s16 n;
     f32 wave;
 
     sprite.x = x - 10;
     sprite.y = y - 2;
-    sprite.w = 0x7A;
-    sprite.h = 0x14;
-    *(s32 *)&sprite.u0 = TEX_UV(0x38, 0x70);
-    *(s32 *)&sprite.u1 = TEX_UV(0x56, 0x8D);
+    sprite.w = 122;
+    sprite.h = 20;
+    *(s32 *)&sprite.u0 = TEX_UV(56, 112);
+    *(s32 *)&sprite.u1 = TEX_UV(86, 141);
     sprite.color = 0xC0000000;
     Sprite_DrawStretch9(&sprite, 8, 8, 8, 8);
     sprite.color = color;
-    sprite.h = 0x16;
-    sprite.x = x - 0x16;
-    sprite.w = 0x19;
-    *(s32 *)&sprite.u0 = TEX_UV(0x0, 0x77);
-    *(s32 *)&sprite.u1 = TEX_UV(0x19, 0x8D);
+    sprite.h = 22;
+    sprite.x = x - 22;
+    sprite.w = 25;
+    *(s32 *)&sprite.u0 = TEX_UV(0, 119);
+    *(s32 *)&sprite.u1 = TEX_UV(25, 141);
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.x += sprite.w;
-    sprite.w = 0x64;
-    sprite.u0 = 0x19;
-    sprite.u1 = 0x23;
+    sprite.w = 100;
+    sprite.u0 = 25;
+    sprite.u1 = 35;
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.x += sprite.w;
-    sprite.w = 0xB;
-    sprite.u0 = 0x23;
-    sprite.u1 = 0x36;
+    sprite.w = 11;
+    sprite.u0 = 35;
+    sprite.u1 = 54;
     Sprite_Draw((struct Sprite *)&sprite);
-    sprite.x = x - 0x14;
-    sprite.y = y - 0xD;
-    sprite.w = 0x1A;
-    sprite.h = 0xA;
-    *(s32 *)&sprite.u0 = TEX_UV(0x16, 0x8F);
-    *(s32 *)&sprite.u1 = TEX_UV(0x30, 0x99);
+    sprite.x = x - 20;
+    sprite.y = y - 13;
+    sprite.w = 26;
+    sprite.h = 10;
+    *(s32 *)&sprite.u0 = TEX_UV(22, 143);
+    *(s32 *)&sprite.u1 = TEX_UV(48, 153);
     Sprite_Draw((struct Sprite *)&sprite);
     if (em->rageStarted == 0) {
-        if (em->versusGauge != 0xFF && em->versusGauge != 0) {
+        if (em->versusGauge != 255 && em->versusGauge != 0) {
             Hud_DrawBlockGauge(x, y, em->versusGauge, 0xFFFFA040);
         }
     } else {
         n = (em->rageTimer - 450) / 30;
         if (n > 0) {
             wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x1F) << 11));
-            Hud_DrawBlockGauge(x, y, n, (((s8)(80.0f * wave) + 0x50) << 8) | 0xFFFF0000 | ((s8)(32.0f * wave) + 0x20));
+            Hud_DrawBlockGauge(x, y, n, (((s8)(80.0f * wave) + 80) << 8) | 0xFFFF0000 | ((s8)(32.0f * wave) + 32));
         }
     }
-    Font_SetSpacing(0x10, 0x10);
+    Font_SetSpacing(16, 16);
     Font_SetPos(x, y);
     Font_SetColor((u8)em->side == 1 ? 0x802B7F7F : 0x807F212E);
     sprintf(buf, gHudFmtSideName, gSideNames[(u8)em->side], name);
@@ -4556,11 +4273,6 @@ void Hud_DrawVersusMonsterBar(Em *em, s16 x, s16 y, u32 color, u8 *name)
 extern char *gItemActionLabels[][3];
 extern ListPanel gPouchMenuPanel;
 extern ListPanel gPouchMenuPanel2;
-void Menu_PlayerNameList(void);
-extern char *gYesNoTexts[];
-void ItemList_DrawPouch(s32 cursor, s32 cursorColor, s32 flags);
-void Menu_DrawListCursor(s16 *off, s32 row, u32 color);
-s32 PouchMenu_CanTransfer(Player *p);
 
 /* Draws the pouch menu by HudState.state: 0 the list (while sorting, the
  * yes/no question instead of the cursor), 1 the item's actions
@@ -4586,8 +4298,8 @@ void PouchMenu_Draw(void)
         if (gHudState->sorting != 0) {
             flags = ITEM_LIST_SORTED;
             color = 0;
-            Font_SetSpacing(0x12, 0x12);
-            Font_SetPos(0x1B0, 0x18E);
+            Font_SetSpacing(18, 18);
+            Font_SetPos(432, 398);
             Text_Printf(gYesNoTexts[gHudState->yesNo]);
         } else {
             if (gHudState->camReqStarted != 0) {
@@ -4648,7 +4360,6 @@ void PouchMenu_Draw(void)
 
 extern char gHudFmtCount[];
 extern Panel gPlayerNameCountBox;
-void Menu_DrawArrow(s16 x, s16 y, s16 w, s16 h, u32 color, u8 flags);
 
 /* Draws the count to give in its box, with the arrows that can still
  * change it (up unless at the maximum, down unless at 1). */
@@ -4658,14 +4369,14 @@ void PlayerNameList_DrawCount(void)
 
     sprintf(buf, gHudFmtCount, gHudState->count);
     Window_DrawText(&gPlayerNameCountBox, (s16 *)NULL, (u8 *)buf);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
     if (gHudState->atMax == 0) {
-        Menu_DrawArrow(0x18A, 0x3E, 0x18, 0x12, 0xFF20FF28, 0);
+        Menu_DrawArrow(394, 62, 24, 18, 0xFF20FF28, 0);
     }
     if (gHudState->count != 1) {
-        Menu_DrawArrow(0x14C, 0x3E, 0x18, 0x12, 0xFF20FF28, 1);
+        Menu_DrawArrow(332, 62, 24, 18, 0xFF20FF28, 1);
     }
 }
 
@@ -4680,23 +4391,20 @@ void Delivery_DrawCount(void)
 
     sprintf(buf, gHudFmtCount, gHudState->count);
     Window_DrawText(&gDeliveryCountBox, (s16 *)NULL, (u8 *)buf);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
     if (gHudState->atMax != gHudState->count) {
-        Menu_DrawArrow(0x144, 0x50, 0x18, 0x12, 0xFF20FF28, 0);
+        Menu_DrawArrow(324, 80, 24, 18, 0xFF20FF28, 0);
     }
     if (gHudState->count != 1) {
-        Menu_DrawArrow(0x106, 0x50, 0x18, 0x12, 0xFF20FF28, 1);
+        Menu_DrawArrow(262, 80, 24, 18, 0xFF20FF28, 1);
     }
 }
 
 extern char *gEmptyNameText;
 extern ListPanel gPlayerNameListPanels[];
 extern NetUser gNetUsers[];
-s32 NetUser_State(s8 i);
-void PlayerNameList_DrawCount(void);
-void Text_DrawLinesColored(s16 x, s16 y, char **names, s16 h);
 
 /* Draws the list of the other players' names (HudState.step 1; step 0
  * draws the count to give instead, PlayerNameList_DrawCount): gPlayers'
@@ -4760,8 +4468,8 @@ void Menu_PlayerNameList(void)
         }
         ListPanel_Draw(&gPlayerNameListPanels[gScene.inLobby], NULL, NULL, k);
         Font_SetColor(0x807F7F7F);
-        Font_SetSpacing(0x12, 0x12);
-        Text_DrawLinesColored(0x154, 0x3E, names, 0x15);
+        Font_SetSpacing(18, 18);
+        Text_DrawLinesColored(340, 62, names, 21);
         break;
     case 0:
         PlayerNameList_DrawCount();
@@ -4771,7 +4479,6 @@ void Menu_PlayerNameList(void)
 
 struct SortPair;
 void Sort_PairsDesc(struct SortPair *list, u32 n);
-void ItemList_Draw(ItemStack *list, s32 cursor, s32 cursorColor, s32 flags);
 
 /* Draws a pouch as an item list (ItemList_Draw): the player's, or with
  * flag 2 the saved one. With flag 0x10 the items are packed and sorted
@@ -4817,12 +4524,7 @@ void ItemList_DrawPouch(s32 cursor, s32 cursorColor, s32 flags)
 
 extern ListPanel gItemListBox;
 extern Panel gItemListTextBox;
-extern char *gItemListTitles[];
-extern char *gItemListTitleFmt[];
 extern char *gItemListEmptyText;
-extern char *gInfinityText[];
-s32 Combine_ItemHasRecipeIn(s16 item, u8 flag);
-void ButtonHint_DrawSort(u8 i);
 
 /* Draws the page of 10 item stacks of `list` that holds entry `cursor` on
  * the item list box, with the cursor on that entry in colour `highlight` (none
@@ -4840,7 +4542,7 @@ void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags)
     u32 color;
     ItemStack *list = list_in;
     s32 usable;
-    char buf[0x2C];
+    char buf[44];
     s32 mark;
     s16 k;
     s16 page;
@@ -4849,7 +4551,7 @@ void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags)
 
     page = cursor / 10;
     base = page * 10;
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (highlight != 0) {
         gItemListBox.cursorColor = highlight;
         cur = cursor - base;
@@ -4873,17 +4575,17 @@ void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags)
     if (flags & ITEM_LIST_FRAME) {
         Menu_DrawFrame(&gItemListBox, pos);
     }
-    Gfx_SetTexFilter(0);
-    Font_SetSpacing(0x12, 0x12);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Font_SetSpacing(18, 18);
     i = 10;
-    x = pos[0] + 0x1AF;
+    x = pos[0] + 431;
     list += base;
-    y = pos[1] + 0x3E;
-    countX = x + 0x9E;
+    y = pos[1] + 62;
+    countX = x + 158;
     usable = flags & ITEM_LIST_COMBINE;
     mark = flags & ITEM_LIST_MOVING;
     for (; i > 0; i--, list++, base++) {
-        y += 0x15;
+        y += 21;
         Font_SetPos(x, y);
         Font_SetColor(0x807F7F7F);
         color = 0x807F212E;
@@ -4925,7 +4627,7 @@ void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags)
             Text_Draw((char *)gItemNames[list->item]);
             if (gItemData[list->item].max > 1) {
                 Font_SetPos(countX, y);
-                if (gItemData[list->item].max == 0xFF) {
+                if (gItemData[list->item].max == 255) {
                     Text_Draw(gInfinityText[0]);
                 } else {
                     if (list->count >= gItemData[list->item].max) {
@@ -4942,8 +4644,6 @@ void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags)
     }
 }
 
-s32 Prim_FillRect(struct PrimLine *r);
-extern ListPanel gItemListBox;
 
 /* The blinking cursor frame around row `row` of the list box gItemListBox (moved by off). */
 void Menu_DrawListCursor(s16 *off, s32 row, u32 color)
@@ -4965,7 +4665,7 @@ void Menu_DrawListCursor(s16 *off, s32 row, u32 color)
     line.x1 = x + panel->charW * panel->lineChars + 1;
     line.y0 = y + rowH * (row + 1) - 1;
     line.y1 = line.y0 + rowH + 2;
-    line.color = color | ((((s8)(48.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10)))) + 0xBF) << 24);
+    line.color = color | ((((s8)(48.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10)))) + 191) << 24);
     Prim_FillRect((struct PrimLine *)&line);
 }
 
@@ -4981,19 +4681,19 @@ u32 Map_MonsterColor(Em *em)
     u8 level;
 
     if (em->stateGroup == EM_GROUP_DEFEAT || func_786E50(em) == 1) {
-        level = (s8)(32.0f * Math_Sin(0.0000958738f * (u16)(*(u8 *)&gFrameTick << 8))) + 0x80;
+        level = (s8)(32.0f * Math_Sin(0.0000958738f * (u16)(*(u8 *)&gFrameTick << 8))) + 128;
         return level | ((level << 16) | 0xC0000000 | (level << 8));
     }
     if (gHudState->detectLevel <= 1) {
         wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10));
-        return ((((s8)(54.0f * wave) + 0x53) << 8) | 0xFFFA0000) | ((s8)(6.0f * wave) + 0xDD);
+        return ((((s8)(54.0f * wave) + 83) << 8) | 0xFFFA0000) | ((s8)(6.0f * wave) + 221);
     }
     if (em->combat == 1) {
         wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0xF) << 12));
-        return (((s8)(64.0f * wave) + 0x48) << 8) | 0xFFF00000;
+        return (((s8)(64.0f * wave) + 72) << 8) | 0xFFF00000;
     }
     wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10));
-    return (((s8)(48.0f * wave) + 0x80) << 8) | 0xFF1000E0;
+    return (((s8)(48.0f * wave) + 128) << 8) | 0xFF1000E0;
 }
 
 /* Draws a round dot of `radius` in `color` centred at x, y on the map. */
@@ -5001,14 +4701,14 @@ void Map_DrawDot(u32 color, f32 x, f32 y, f32 radius)
 {
     SpriteWords sprite;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     sprite.x = x - radius;
     sprite.y = y - radius;
     sprite.w = radius + radius;
     sprite.h = radius + radius;
     sprite.color = color;
-    sprite.uv0 = TEX_UV(0x10, 0xF0);
-    sprite.uv1 = TEX_UV(0x20, 0x100);
+    sprite.uv0 = TEX_UV(16, 240);
+    sprite.uv1 = TEX_UV(32, 256);
     Sprite_Draw((struct Sprite *)&sprite);
 }
 
@@ -5018,16 +4718,16 @@ void Map_DrawMarker(f32 x, f32 y)
     SpriteWords sprite;
     f32 radius = 8.0f;
 
-    Tex_Prepare(1, 0x145);
-    Tex_Bind(0x145);
-    Gfx_SetTexFilter(0);
+    Tex_Prepare(1, 325);
+    Tex_Bind(325);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     sprite.x = x - radius;
     sprite.y = y - radius;
     sprite.w = radius + radius;
     sprite.h = radius + radius;
     sprite.color = 0xFFFFFFFF;
-    sprite.uv0 = TEX_UV(0x20, 0xF0);
-    sprite.uv1 = TEX_UV(0x2F, 0xFF);
+    sprite.uv0 = TEX_UV(32, 240);
+    sprite.uv1 = TEX_UV(47, 255);
     Sprite_Draw((struct Sprite *)&sprite);
 }
 
@@ -5093,11 +4793,6 @@ s32 Map_IsMonsterHidden(Em *em)
     }
 }
 
-void Mtx_Identity(f32 *m);
-void Mtx_SetRotZYX(f32 *m, f32 x, f32 y, f32 z);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-s32 Prim_DrawTexTri(struct PrimTexTri *t);
-extern u8 gMapIconKinds[];
 extern u32 gMapMonsterIconColors[];
 extern u8 gMapMonsterIconU[];
 
@@ -5139,7 +4834,7 @@ void Map_DrawMonsterIcon(Em *em, f32 x, f32 y, f32 scale)
     if (Map_IsMonsterHidden(em) == 1) {
         return;
     }
-    Gfx_SetTexFilter(0);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     if (gHudState->detectLevel <= 1) {
         icon = 7;
         heading = 0;
@@ -5151,7 +4846,7 @@ void Map_DrawMonsterIcon(Em *em, f32 x, f32 y, f32 scale)
         heading = 0x18000 - em->rotY;
     }
     uLeft = gMapMonsterIconU[icon];
-    uRight = uLeft + 0x10;
+    uRight = uLeft + 16;
     Mtx_Identity(mtx);
     Mtx_SetRotZYX(mtx, 0.0f, 0.0f, 6.2831855f * heading / 65536.0f);
     pos[2] = 0.0f;
@@ -5170,9 +4865,9 @@ void Map_DrawMonsterIcon(Em *em, f32 x, f32 y, f32 scale)
     tri.x2 = corner[2][0];
     tri.y2 = corner[2][1];
     tri.u0 = uLeft;
-    tri.v0 = 0xF0;
-    tri.v1 = 0x100;
-    tri.v2 = 0xF0;
+    tri.v0 = 240;
+    tri.v1 = 256;
+    tri.v2 = 240;
     tri.u1 = uLeft;
     tri.u2 = uRight;
     tri.color = Map_MonsterColor(em);
@@ -5180,12 +4875,11 @@ void Map_DrawMonsterIcon(Em *em, f32 x, f32 y, f32 scale)
     tri.x0 = corner[3][0];
     tri.y0 = corner[3][1];
     tri.u0 = uRight;
-    tri.v0 = 0x100;
+    tri.v0 = 256;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
 }
 
 extern u32 gPlayerMapColors[];
-void Map_DrawPingGlow(s16 x, s16 y, s16 n, s32 c);
 
 /* The map icon of player p at (x, y) (scale s), turned by its heading (the local player's own
  * icon, the others' in their colour gPlayerMapColors), flashing on its counter gHudState+0x3C (shown
@@ -5207,16 +4901,16 @@ void Map_DrawPlayerIcon(Player *pl, f32 x, f32 y, f32 scale)
     if (pl->index != gScene.localPlayer && hidden == 1) {
         return;
     }
-    Gfx_SetTexFilter(0);
-    Gfx_SetBlend(4, 5);
-    Tex_Prepare(1, 0x145);
-    Tex_Bind(0x145);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 325);
+    Tex_Bind(325);
     if (pl->index == gScene.localPlayer) {
         uLeft = 0;
     } else {
-        uLeft = 0x50;
+        uLeft = 80;
     }
-    uRight = uLeft + 0xF;
+    uRight = uLeft + 15;
     Mtx_Identity(mtx);
     Mtx_SetRotZYX(mtx, 0.0f, 0.0f, 6.2831855f * (u16)(0x18000 - pl->rot[1]) / 65536.0f);
     pos[2] = 0.0f;
@@ -5240,22 +4934,22 @@ void Map_DrawPlayerIcon(Player *pl, f32 x, f32 y, f32 scale)
     tri.x2 = corner[2][0];
     tri.y2 = corner[2][1];
     tri.u0 = uLeft;
-    tri.v0 = 0xF0;
-    tri.v1 = 0xFF;
-    tri.v2 = 0xF0;
+    tri.v0 = 240;
+    tri.v1 = 255;
+    tri.v2 = 240;
     tri.u1 = uLeft;
     tri.u2 = uRight;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
     tri.x0 = corner[3][0];
     tri.y0 = corner[3][1];
     tri.u0 = uRight;
-    tri.v0 = 0xFF;
+    tri.v0 = 255;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
     if (gHudState->pingTimer[pl->index] >= 0) {
-        Gfx_SetTexFilter(1);
-        Gfx_SetBlend(4, 1);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
         if (hidden != 1) {
             Map_DrawPingGlow(x, y, gHudState->pingTimer[pl->index], gPlayerMapColors[pl->index & 3]);
         } else {
@@ -5288,16 +4982,12 @@ void Map_DrawPingGlow(s16 x, s16 y, s16 frame, s32 color)
 
 
 extern f32 gMapDrawScales[][2];
-u8 Player_DetectLevel(Player *p);
-s32 Player_GetMapHalf(Player *p);
-s32 Map_GetHalf(u8 stage, u8 area);
 s32 Map_MonsterVisibility(Em *em); /* unit's own declaration: the definition returns u8; declared u8 here, two callers would drop their masks */
 void Map_DrawPlayerIcon(Player *p, f32 x, f32 y, f32 s);
 
 static void Map_GetPoint(f32 *x, f32 *y, f32 *z, s32 id);
 AreaRecord *Stage_GetAreaRecord(s32 id); /* unit's own declaration: declared here as Map_GetPosition calls it; with the definition's AreaRecord *(u16 x), the call compiles differently */
 s32 Player_HasMap(Player *p);
-void Map_DrawDot(u32 color, f32 x, f32 y, f32 r);
 
 /* Draws the area map at x, y, scaled by `scale`: a dot on each area a
  * shown monster is in, the map texture (the whole map when the player has
@@ -5326,13 +5016,13 @@ void Map_DrawArea(f32 x, s16 y, f32 scale)
     pl = gHudState->player;
     gHudState->detectLevel = Player_DetectLevel(pl);
     gHudState->mapHalf = Player_GetMapHalf(pl);
-    Tex_Prepare(1, 0x145);
-    Tex_Bind(0x145);
-    Gfx_SetTexFilter(1);
+    Tex_Prepare(1, 325);
+    Tex_Bind(325);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
     scaleX = 320.0f * gHudState->mapScaleX * scale;
     scaleZ = 320.0f * gHudState->mapScaleZ * scale;
-    Gfx_SetBlend(4, 1);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
     for (i = 20, emDot = (Em *)gEms; i > 0; i--, emDot++) {
         if ((u8)Map_MonsterVisibility(emDot) && emDot->showOnMap != 0) {
             Map_GetPoint(&posX, &posY, &radius, emDot->area);
@@ -5349,22 +5039,22 @@ void Map_DrawArea(f32 x, s16 y, f32 scale)
             Map_DrawDot(0x70C0C010, posX, posY, radius * scale);
         }
     }
-    Gfx_SetBlend(4, 5);
-    Gfx_SetTexFilter(0);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     if (Player_HasMap(pl) == 1) {
         sprite.y = y;
         sprite.x = x;
         sprite.h = sprite.w = 320.0f * scale;
         *(s32 *)&sprite.u0 = 0;
-        *(s32 *)&sprite.u1 = TEX_UV(0xF0, 0xF0);
+        *(s32 *)&sprite.u1 = TEX_UV(240, 240);
         switch (gHudState->mapHalf) {
         case MAP_HALF_WHOLE:
             break;
         case MAP_HALF_LEFT:
-            sprite.u1 = 0x78; /* the texture holds two maps side by side, 0x78 texels each */
+            sprite.u1 = 120; /* the texture holds two maps side by side, 120 texels each */
             break;
         case MAP_HALF_RIGHT:
-            sprite.u0 = 0x78;
+            sprite.u0 = 120;
             break;
         }
     } else {
@@ -5394,8 +5084,8 @@ void Map_DrawArea(f32 x, s16 y, f32 scale)
             sprite.u0 = viewLeft / 2.0f;
             sprite.u1 = viewRight / 2.0f;
             if (gHudState->mapHalf == MAP_HALF_RIGHT) {
-                sprite.u0 += 0x78;
-                sprite.u1 += 0x78;
+                sprite.u0 += 120;
+                sprite.u1 += 120;
             }
         }
         sprite.x = x + 1.3333334f * viewLeft * scale;
@@ -5439,14 +5129,14 @@ void Map_DrawArea(f32 x, s16 y, f32 scale)
 extern MapPoint gMapPoints[];
 extern MapPoint gMapPoints80[];
 
-/* Reads map point id (gMapPoints; on stage MAP_TOWER_C the points 0x80 and
- * 0x81 come from gMapPoints80). */
+/* Reads map point id (gMapPoints; on stage MAP_TOWER_C the points 128 and
+ * 129 come from gMapPoints80). */
 static void Map_GetPoint(f32 *x, f32 *y, f32 *z, s32 id)
 {
     MapPoint *point = &gMapPoints[id];
 
-    if (gScene.map == MAP_TOWER_C && (id == 0x80 || id == 0x81)) {
-        point = &gMapPoints80[id - 0x80];
+    if (gScene.map == MAP_TOWER_C && (id == 128 || id == 129)) {
+        point = &gMapPoints80[id - 128];
     }
     *x = point->x;
     *y = point->y;
@@ -5456,7 +5146,6 @@ static void Map_GetPoint(f32 *x, f32 *y, f32 *z, s32 id)
 /* The stages' map scale factors, x and y per stage (splat split the table in two). */
 extern f32 gMapScales[];
 extern f32 D_00430EA4[];
-AreaRecord *Stage_GetAreaRecord(s32 id); /* unit's own declaration: declared here as Map_GetPosition calls it; with the definition's AreaRecord *(u16 x), the call compiles differently */
 
 /* The map position of id (Map_GetPoint) scaled by the stage's factors; when its z is 0, the centre
  * of area id's rectangle instead (returns 0 then, else 1). */
@@ -5484,9 +5173,6 @@ s32 Map_GetPosition(f32 *x, f32 *y, s32 id)
     return 0;
 }
 
-void Map_DrawArea(f32 x, s16 y, f32 scale);
-s32 Season_Get(void);
-
 /* Draws the screen shown while the quest moves to another area
  * (Scene_UpdateQuest's step 2): the full-screen background, a band at the
  * top and one at the bottom in the season's colour, and the area map. */
@@ -5496,16 +5182,16 @@ void Map_DrawAreaChange(void)
     u32 tint;
     s16 season;
 
-    Gfx_SetTexFilter(1);
-    Gfx_SetBlend(4, 5);
-    Tex_Prepare(1, 0x154);
-    Tex_Bind(0x154);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 340);
+    Tex_Bind(340);
     sprite.x = 0;
     sprite.y = 0;
-    sprite.w = 0x280;
-    sprite.h = 0x1C0;
+    sprite.w = 640;
+    sprite.h = 448;
     *(s32 *)&sprite.u0 = 0;
-    *(s32 *)&sprite.u1 = TEX_UV(0xFF, 0xBF);
+    *(s32 *)&sprite.u1 = TEX_UV(255, 191);
     sprite.color = 0xFFFFFFFF;
     Sprite_Draw((struct Sprite *)&sprite);
     season = (u8)Season_Get();
@@ -5521,14 +5207,14 @@ void Map_DrawAreaChange(void)
         break;
     }
     sprite.color = tint;
-    sprite.y = 0x10;
-    sprite.h = 0x20;
-    sprite.v0 = season * 21 + 0xC1;
-    sprite.v1 = sprite.v0 + 0x14;
+    sprite.y = 16;
+    sprite.h = 32;
+    sprite.v0 = season * 21 + 193;
+    sprite.v1 = sprite.v0 + 20;
     Sprite_Draw((struct Sprite *)&sprite);
-    sprite.y = 0x190;
+    sprite.y = 400;
     Sprite_Draw((struct Sprite *)&sprite);
-    Map_DrawArea(160.0f, 0x40, 1.0f);
+    Map_DrawArea(160.0f, 64, 1.0f);
 }
 
 /* The zoomed map around the local player at x, y: the camp mark, the monsters and the other
@@ -5561,9 +5247,9 @@ void Map_DrawZoomed(f32 x, s16 y)
     pl = gHudState->player;
     gHudState->detectLevel = Player_DetectLevel(pl);
     gHudState->mapHalf = Player_GetMapHalf(pl);
-    Tex_Prepare(1, 0x145);
-    Tex_Bind(0x145);
-    Gfx_SetTexFilter(0);
+    Tex_Prepare(1, 325);
+    Tex_Bind(325);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     Gs_SetState(RS_ALPHA_REF, 0);
     playerU = 240.0f * (pl->mapPos[0] * gHudState->mapScaleX);
     playerV = 240.0f * (pl->mapPos[2] * gHudState->mapScaleZ);
@@ -5581,12 +5267,12 @@ void Map_DrawZoomed(f32 x, s16 y)
     } else {
         viewV = playerV - 22.4f;
     }
-    Tex_Prepare(1, 0x145);
-    Tex_Bind(0x145);
+    Tex_Prepare(1, 325);
+    Tex_Bind(325);
     sprite.x = x;
     sprite.y = y;
-    sprite.w = 0xA8;
-    sprite.h = 0xA8;
+    sprite.w = 168;
+    sprite.h = 168;
     sprite.u0 = viewU;
     sprite.v0 = viewV;
     sprite.u1 = 44.8f + viewU;
@@ -5597,8 +5283,8 @@ void Map_DrawZoomed(f32 x, s16 y)
         sprite.u0 /= 2;
         sprite.u1 /= 2;
         if (*half == MAP_HALF_RIGHT) {
-            sprite.u0 += 0x78;
-            sprite.u1 += 0x78;
+            sprite.u0 += 120;
+            sprite.u1 += 120;
         }
     }
     Sprite_Draw((struct Sprite *)&sprite);
@@ -5649,8 +5335,6 @@ void Map_DrawZoomed(f32 x, s16 y)
 }
 #pragma optimization_level reset
 
-void Map_DrawZoomed(f32 x, s16 y);
-void Hud_DrawGlowEffect(void);
 extern f32 gMapAreaOffsetX[];
 extern s16 gMapAreaOffsetY[];
 
@@ -5665,7 +5349,7 @@ void Hud_DrawMap(void)
     if (gHudState->hidden != 0) {
         return;
     }
-    y = gChatInputMode == 0 ? 0x3C : 0xB6;
+    y = gChatInputMode == 0 ? 60 : 182;
     if (gHudState->mapZoomed == 0) {
         Map_DrawArea(400.0f + gMapAreaOffsetX[gScene.map], y + gMapAreaOffsetY[gScene.map], 0.7f);
         Hud_DrawGlowEffect();
@@ -5674,15 +5358,9 @@ void Hud_DrawMap(void)
     }
 }
 
-s32 Pouch_IsSlotUsable(Player *p, u16 slot);
-void Sprite_DrawStretch3(Sprite *src, s16 w, s16 du);
-void Sprite_DrawList(Sprite *s, s32 n);
-void Hud_DrawPouchSelector(void);
-void Hud_DrawPouchBar(void);
 extern u32 gHudSeasonColors[];
 extern Sprite gPouchBoxSprites[];
 extern char gHudFmtString[];
-s32 Str_Length(char *s);
 
 /* Draws the cockpit's item box: the box in the season's colour
  * (gHudSeasonColors), then the selector or the pouch bar by
@@ -5700,10 +5378,10 @@ void Hud_DrawPouchItem(void)
     if (gHudState->hidden != 0) {
         return;
     }
-    Gfx_SetTexFilter(1);
-    Gfx_SetBlend(4, 5);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     gPouchBoxSprites[0].color = gHudSeasonColors[(u8)Season_Get()];
     Sprite_DrawStretch3(&gPouchBoxSprites[0], 8, 8);
     Sprite_DrawList(&gPouchBoxSprites[1], 2);
@@ -5754,13 +5432,13 @@ void Hud_DrawPouchItem(void)
         stack = (u8)pl->pouch[pl->pouchCursor].count;
         item = pl->pouch[pl->pouchCursor].item;
         if (stack > 0 && gItemData[item].max > 1) {
-            Font_SetSpacing(0x12, 0x12);
-            Font_SetPos(stack > 9 ? 0x212 : 0x20D, 0x170);
+            Font_SetSpacing(18, 18);
+            Font_SetPos(stack > 9 ? 530 : 525, 368);
             Font_SetColor(stack >= gItemData[item].max ? 0x807F212E : 0x807F7F7F);
             Text_PrintfColored(gHudFmtInt2, stack);
         }
-        Font_SetSpacing(0x14, 0x13);
-        Font_SetPos(419.0f + (186.0f - Str_Length((char *)gItemNames[pl->pouch[pl->pouchCursor].item]) * 10) / 2.0f, 0x18C);
+        Font_SetSpacing(20, 19);
+        Font_SetPos(419.0f + (186.0f - Str_Length((char *)gItemNames[pl->pouch[pl->pouchCursor].item]) * 10) / 2.0f, 396);
         Font_SetColor(0x807F7F7F);
         Text_PrintfColored(gHudFmtString, gItemNames[item]);
     }
@@ -5774,12 +5452,6 @@ void Hud_DrawPouchItem(void)
 
 #undef HUD
 
-s32 Pouch_IsSlotUsable(Player *p, u16 slot);
-s32 Hud_DrawPouchSlotName(u8, s16);
-void Hud_DrawPouchSlotIcon(u8 slot, s16 x, f32 sw, f32 sh);
-void Sprite_DrawStretch3(Sprite *src, s16 w, s16 du);
-void Sprite_DrawList(Sprite *s, s32 n);
-extern s32 gItemColors[];
 extern Sprite gPouchBarSprites[];
 extern Sprite gPouchSelectorSprites[];
 extern Sprite gPouchSelectorSpritesB[];
@@ -5808,29 +5480,29 @@ void Hud_DrawPouchSelector(void)
     if (melee != 0) {
         Sprite_Draw((struct Sprite *)&gPouchBarSprites[6]);
         icons = gPouchSelIconsA;
-        gPouchSelIconsA[1].y = 0x175;
+        gPouchSelIconsA[1].y = 373;
     } else {
         Sprite_Draw((struct Sprite *)&gPouchBarSprites[7]);
         icons = gPouchSelIconsB;
-        gPouchSelIconsB[1].y = 0x173;
+        gPouchSelIconsB[1].y = 371;
     }
     Sprite_DrawList(&gPouchBoxSprites[3], 2);
     Sprite_DrawList(gPouchSelectorSprites, 3);
     if (Pouch_IsSlotUsable((Player *) pl, pl->pouchCursor) == 1) {
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        Hud_DrawPouchSlotIcon((u8) pl->pouchCursor, 0x200, 1.0f, 1.0f);
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        Hud_DrawPouchSlotIcon((u8) pl->pouchCursor, 512, 1.0f, 1.0f);
     }
     if (melee == 0) {
         ammoColor = -0x7F7F80;
         if (pl->ammoCount != 0) {
-            Font_SetSpacing(0x14, 0x13);
-            if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 0x130) == 1) {
-                ammoColor = gItemColors[*(&gItemData->color + (pl->pouch[pl->ammoSlot].item * 0x18))];
+            Font_SetSpacing(20, 19);
+            if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 304) == 1) {
+                ammoColor = gItemColors[*(&gItemData->color + (pl->pouch[pl->ammoSlot].item * 24))];
             }
         }
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         Sprite_DrawStretch3(&gPouchSelectorSprites[3], 8, -8);
         Sprite_DrawList(gPouchSelectorSpritesB, 6);
         if (pl->weaponType != WEAPON_BOW) {
@@ -5838,7 +5510,7 @@ void Hud_DrawPouchSelector(void)
             Sprite_Draw((struct Sprite *)&gPouchSelectorSpritesB[6]);
         } else {
             ammoSlot = pl->ammoSlot;
-            if (pl->pouch[ammoSlot].item != 0x87) {
+            if (pl->pouch[ammoSlot].item != 135) {
                 if (ammoSlot == pl->coatingSlot) {
                     Sprite_DrawList(gPouchSelectorSpritesC, 2);
                 }
@@ -5865,12 +5537,8 @@ extern s16 gPouchBarXA[];
 extern s16 gPouchBarXB[];
 extern s16 D_00432438[];
 extern s16 D_00432440[];
-s16 Pouch_CountSelectable(Player *p);
 u16 Pouch_NextSelectable(Player *pl, u16 cur, u8 dir);
-u16 Bowgun_NextAmmoSlot(Player *p, u16 slot, u8 dir);
 extern Sprite gPouchBarFrame[];
-void Hud_AmmoIconSprite(u8 *a, Sprite *s);
-void Hud_DrawPouchBarEnds(s16 x, s16 y, s16 h);
 
 
 /* The pouch item bar (state 1-3 of Hud_DrawPouchItem): the selected item and its
@@ -5899,14 +5567,14 @@ void Hud_DrawPouchBar(void)
     melee = pl->isGunner != 1;
     Sprite_Draw((struct Sprite *)&gPouchBarSprites[0]);
     shade.color = 0xA0000000;
-    *(s32 *)&shade.u0 = TEX_UV(0x7E, 0x69);
-    *(s32 *)&shade.u1 = TEX_UV(0xA1, 0x8C);
+    *(s32 *)&shade.u0 = TEX_UV(126, 105);
+    *(s32 *)&shade.u1 = TEX_UV(161, 140);
     box.color = 0xFF808080;
-    *(s32 *)&box.u0 = TEX_UV(0x8B, 0x16);
-    *(s32 *)&box.u1 = TEX_UV(0xBD, 0x48);
+    *(s32 *)&box.u0 = TEX_UV(139, 22);
+    *(s32 *)&box.u1 = TEX_UV(189, 72);
     if (gHudState->blink60 != 0) {
         n = Pouch_CountSelectable(pl);
-        slot[0] = slot[1] = slot[2] = slot[3] = slot[4] = slot[5] = 0xFF;
+        slot[0] = slot[1] = slot[2] = slot[3] = slot[4] = slot[5] = 255;
         dir = gHudState->dir61 >= 0;
         if (Pouch_IsSlotUsable(pl, pl->pouchCursor) == 0) {
             n++;
@@ -5939,96 +5607,96 @@ void Hud_DrawPouchBar(void)
             break;
         }
         slide = gHudState->pouchBarTimer;
-        slotX0 = gPouchBarXB[0] + (0x1F6 - gPouchBarXB[0]) * slide / 9;
-        slotX1 = gPouchBarXB[1] + (0x20A - gPouchBarXB[1]) * slide / 9;
-        slotX2 = gPouchBarXB[2] + (0x1EA - gPouchBarXB[2]) * slide / 9;
-        slotX3 = gPouchBarXB[3] + (0x216 - gPouchBarXB[3]) * slide / 9;
-        slotX4 = gPouchBarXB[4] + (0x1DE - gPouchBarXB[4]) * slide / 9;
-        slotX5 = gPouchBarXB[5] + (0x222 - gPouchBarXB[5]) * slide / 9;
+        slotX0 = gPouchBarXB[0] + (502 - gPouchBarXB[0]) * slide / 9;
+        slotX1 = gPouchBarXB[1] + (522 - gPouchBarXB[1]) * slide / 9;
+        slotX2 = gPouchBarXB[2] + (490 - gPouchBarXB[2]) * slide / 9;
+        slotX3 = gPouchBarXB[3] + (534 - gPouchBarXB[3]) * slide / 9;
+        slotX4 = gPouchBarXB[4] + (478 - gPouchBarXB[4]) * slide / 9;
+        slotX5 = gPouchBarXB[5] + (546 - gPouchBarXB[5]) * slide / 9;
         shadeW = 40 * 0.32;
         shade.w = shadeW;
-        shade.y = 0x15E;
-        shade.h = 0x19;
+        shade.y = 350;
+        shade.h = 25;
         shade.x = slotX4 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shade.x = slotX5 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shadeW = 58 * 0.32;
         box.w = shadeW;
-        box.y = 0x158;
-        box.h = 0x25;
+        box.y = 344;
+        box.h = 37;
         box.x = slotX4 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
         box.x = slotX5 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        if (slot[4] != 0xFF) {
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        if (slot[4] != 255) {
             Hud_DrawPouchSlotIcon(slot[4], slotX4, 0.32f, 0.64f);
         }
-        if (slot[5] != 0xFF) {
+        if (slot[5] != 255) {
             Hud_DrawPouchSlotIcon(slot[5], slotX5, 0.32f, 0.64f);
         }
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         shadeW = 40 * 0.76;
         shade.w = shadeW;
-        shade.y = 0x15B;
-        shade.h = 0x1E;
+        shade.y = 347;
+        shade.h = 30;
         shade.x = slotX2 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shade.x = slotX3 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shadeW = 58 * 0.76;
         box.w = shadeW;
-        box.y = 0x154;
-        box.h = 0x2C;
+        box.y = 340;
+        box.h = 44;
         box.x = slotX2 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
         box.x = slotX3 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        if (slot[2] != 0xFF) {
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        if (slot[2] != 255) {
             Hud_DrawPouchSlotIcon(slot[2], slotX2, 0.76f, 0.76f);
         }
-        if (slot[3] != 0xFF) {
+        if (slot[3] != 255) {
             Hud_DrawPouchSlotIcon(slot[3], slotX3, 0.76f, 0.76f);
         }
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         shadeW = 40 * 0.88;
         shade.w = shadeW;
-        shade.y = 0x159;
-        shade.h = 0x23;
+        shade.y = 345;
+        shade.h = 35;
         shade.x = slotX0 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shade.x = slotX1 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shadeW = 58 * 0.88;
         box.w = shadeW;
-        box.y = 0x151;
-        box.h = 0x33;
+        box.y = 337;
+        box.h = 51;
         box.x = slotX0 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
         box.x = slotX1 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
         Sprite_Draw((struct Sprite *)&gPouchSelectorSprites[2]);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        if (slot[0] != 0xFF) {
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        if (slot[0] != 255) {
             Hud_DrawPouchSlotIcon(slot[0], slotX0, 0.88f, 0.88f);
         }
-        if (slot[1] != 0xFF) {
+        if (slot[1] != 255) {
             Hud_DrawPouchSlotIcon(slot[1], slotX1, 0.88f, 0.88f);
         }
     } else {
         slot[0] = pl->pouchCursor;
-        slot[1] = slot[2] = slot[3] = slot[4] = 0xFF;
+        slot[1] = slot[2] = slot[3] = slot[4] = 255;
         n = Pouch_CountSelectable(pl);
         if (Pouch_IsSlotUsable(pl, pl->pouchCursor) == 0) {
             n++;
-            slot[0] = 0xFF;
+            slot[0] = 255;
         }
         switch (n) {
         default:
@@ -6052,236 +5720,236 @@ void Hud_DrawPouchBar(void)
             break;
         }
         slide = gHudState->pouchBarTimer;
-        slotX0 = gPouchBarXA[1] + (0x1E8 - gPouchBarXA[1]) * slide / 9;
-        slotX1 = gPouchBarXA[2] + (0x218 - gPouchBarXA[2]) * slide / 9;
-        slotX2 = gPouchBarXA[3] + (0x1DE - gPouchBarXA[3]) * slide / 9;
-        slotX3 = gPouchBarXA[4] + (0x222 - gPouchBarXA[4]) * slide / 9;
+        slotX0 = gPouchBarXA[1] + (488 - gPouchBarXA[1]) * slide / 9;
+        slotX1 = gPouchBarXA[2] + (536 - gPouchBarXA[2]) * slide / 9;
+        slotX2 = gPouchBarXA[3] + (478 - gPouchBarXA[3]) * slide / 9;
+        slotX3 = gPouchBarXA[4] + (546 - gPouchBarXA[4]) * slide / 9;
         shadeW = 40 * 0.68;
         shade.w = shadeW;
-        shade.y = 0x15D;
-        shade.h = 0x1B;
+        shade.y = 349;
+        shade.h = 27;
         shade.x = slotX3 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shade.x = slotX2 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shadeW = 58 * 0.68;
         box.w = shadeW;
-        box.y = 0x157;
-        box.h = 0x27;
+        box.y = 343;
+        box.h = 39;
         box.x = slotX3 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
         box.x = slotX2 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        if (slot[4] != 0xFF) {
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        if (slot[4] != 255) {
             Hud_DrawPouchSlotIcon(slot[4], slotX3, 0.68f, 0.68f);
         }
-        if (slot[3] != 0xFF) {
+        if (slot[3] != 255) {
             Hud_DrawPouchSlotIcon(slot[3], slotX2, 0.68f, 0.68f);
         }
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         shadeW = 40 * 0.8;
         shade.w = shadeW;
-        shade.y = 0x15A;
-        shade.h = 0x20;
+        shade.y = 346;
+        shade.h = 32;
         shade.x = slotX1 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shade.x = slotX0 - (shade.w >> 1);
         Sprite_Draw((struct Sprite *)&shade);
         shadeW = 58 * 0.8;
         box.w = shadeW;
-        box.y = 0x153;
-        box.h = 0x2E;
+        box.y = 339;
+        box.h = 46;
         box.x = slotX1 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
         box.x = slotX0 - (box.w >> 1);
         Sprite_Draw((struct Sprite *)&box);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        if (slot[2] != 0xFF) {
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        if (slot[2] != 255) {
             Hud_DrawPouchSlotIcon(slot[2], slotX1, 0.8f, 0.8f);
         }
-        if (slot[1] != 0xFF) {
+        if (slot[1] != 255) {
             Hud_DrawPouchSlotIcon(slot[1], slotX0, 0.8f, 0.8f);
         }
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         Sprite_DrawList(&gPouchBoxSprites[3], 2);
         Sprite_Draw((struct Sprite *)&gPouchSelectorSprites[2]);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
-        if (slot[0] != 0xFF) {
-            Hud_DrawPouchSlotIcon(slot[0], 0x200, 1.0f, 1.0f);
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
+        if (slot[0] != 255) {
+            Hud_DrawPouchSlotIcon(slot[0], 512, 1.0f, 1.0f);
         }
     }
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     box.color = -1;
     if (gHudState->pouchBarState == 3) {
-        box.w = 0x14;
-        box.y = 0x160;
-        box.h = 0x11;
-        *(s32 *)&box.u0 = TEX_UV(0xDF, 0x9C);
-        *(s32 *)&box.u1 = TEX_UV(0xCB, 0xAD);
-        box.x = gHudState->pouchBarTimer * -0x2B / 9 + 0x256;
+        box.w = 20;
+        box.y = 352;
+        box.h = 17;
+        *(s32 *)&box.u0 = TEX_UV(223, 156);
+        *(s32 *)&box.u1 = TEX_UV(203, 173);
+        box.x = gHudState->pouchBarTimer * -43 / 9 + 598;
         Sprite_Draw((struct Sprite *)&box);
-        box.w = 0x24;
-        box.y = 0x16F;
-        box.h = 0x1D;
-        *(s32 *)&box.u0 = TEX_UV(0xB8, 0xCF);
-        *(s32 *)&box.u1 = TEX_UV(0xDC, 0xEC);
-        box.x = gHudState->pouchBarTimer * -0x2B / 9 + 0x23D;
+        box.w = 36;
+        box.y = 367;
+        box.h = 29;
+        *(s32 *)&box.u0 = TEX_UV(184, 207);
+        *(s32 *)&box.u1 = TEX_UV(220, 236);
+        box.x = gHudState->pouchBarTimer * -43 / 9 + 573;
     } else {
-        box.w = 0x18;
-        box.y = 0x16B;
-        box.h = 0x19;
-        *(s32 *)&box.u0 = TEX_UV(0xCD, 0xAE);
-        *(s32 *)&box.u1 = TEX_UV(0xE5, 0xC7);
-        box.x = gHudState->pouchBarTimer * -0x2B / 9 + 0x250;
+        box.w = 24;
+        box.y = 363;
+        box.h = 25;
+        *(s32 *)&box.u0 = TEX_UV(205, 174);
+        *(s32 *)&box.u1 = TEX_UV(229, 199);
+        box.x = gHudState->pouchBarTimer * -43 / 9 + 592;
         Sprite_Draw((struct Sprite *)&box);
-        box.w = 0x24;
-        box.y = 0x179;
-        box.h = 0x13;
-        *(s32 *)&box.u0 = TEX_UV(0xB8, 0xD9);
-        *(s32 *)&box.u1 = TEX_UV(0xDC, 0xEC);
-        box.x = gHudState->pouchBarTimer * -0x2B / 9 + 0x23D;
+        box.w = 36;
+        box.y = 377;
+        box.h = 19;
+        *(s32 *)&box.u0 = TEX_UV(184, 217);
+        *(s32 *)&box.u1 = TEX_UV(220, 236);
+        box.x = gHudState->pouchBarTimer * -43 / 9 + 573;
     }
     Sprite_Draw((struct Sprite *)&box);
-    box.x -= 0x3F;
-    box.w = 0x3F;
-    box.y = 0x184;
+    box.x -= 63;
+    box.w = 63;
+    box.y = 388;
     box.h = 7;
-    *(s32 *)&box.u0 = TEX_UV(0xC1, 0x22);
-    *(s32 *)&box.u1 = TEX_UV(0x100, 0x29);
+    *(s32 *)&box.u0 = TEX_UV(193, 34);
+    *(s32 *)&box.u1 = TEX_UV(256, 41);
     Sprite_Draw((struct Sprite *)&box);
-    while (box.x > 0x205) {
-        box.x -= 0x3F;
+    while (box.x > 517) {
+        box.x -= 63;
         Sprite_Draw((struct Sprite *)&box);
     }
-    box.w = box.x - 0x1C6;
-    box.u0 = 0x102 - box.w;
-    box.x = 0x1C6;
+    box.w = box.x - 454;
+    box.u0 = 258 - box.w;
+    box.x = 454;
     Sprite_Draw((struct Sprite *)&box);
     if (melee) {
         Sprite_Draw((struct Sprite *)&gPouchBarSprites[5]);
-        box.w = 0x18;
-        box.y = 0x16F;
-        box.h = 0x18;
-        *(s32 *)&box.u0 = TEX_UV(0x56, 0x70);
-        *(s32 *)&box.u1 = TEX_UV(0x6E, 0x88);
-        box.x = (gPouchBarSprites[6].x - 0x19E) * gHudState->pouchBarTimer / 9 + 0x19E;
+        box.w = 24;
+        box.y = 367;
+        box.h = 24;
+        *(s32 *)&box.u0 = TEX_UV(86, 112);
+        *(s32 *)&box.u1 = TEX_UV(110, 136);
+        box.x = (gPouchBarSprites[6].x - 414) * gHudState->pouchBarTimer / 9 + 414;
     } else {
-        box.w = 0x1A;
-        box.y = 0x16B;
-        box.h = 0x1B;
-        *(s32 *)&box.u0 = TEX_UV(0xE6, 0xAD);
-        *(s32 *)&box.u1 = TEX_UV(0x100, 0xC8);
-        box.x = (gPouchBarSprites[7].x - 0x197) * gHudState->pouchBarTimer / 9 + 0x197;
+        box.w = 26;
+        box.y = 363;
+        box.h = 27;
+        *(s32 *)&box.u0 = TEX_UV(230, 173);
+        *(s32 *)&box.u1 = TEX_UV(256, 200);
+        box.x = (gPouchBarSprites[7].x - 407) * gHudState->pouchBarTimer / 9 + 407;
     }
     Sprite_Draw((struct Sprite *)&box);
     i = melee;
     if (!i) {
-        box.w = 0x24;
-        box.y = 0x144;
-        box.h = 0x24;
-        *(s32 *)&box.u0 = TEX_UV(0xFF, 0xEB);
-        *(s32 *)&box.u1 = TEX_UV(0xDB, 0xC7);
-        box.x = gHudState->pouchBarTimer * 0x2B / 9 + 0x19F;
+        box.w = 36;
+        box.y = 324;
+        box.h = 36;
+        *(s32 *)&box.u0 = TEX_UV(255, 235);
+        *(s32 *)&box.u1 = TEX_UV(219, 199);
+        box.x = gHudState->pouchBarTimer * 43 / 9 + 415;
         Sprite_Draw((struct Sprite *)&box);
-        box.x += 0x24;
-        box.w = 0x3F;
-        box.y = 0x144;
+        box.x += 36;
+        box.w = 63;
+        box.y = 324;
         box.h = 7;
-        *(s32 *)&box.u0 = TEX_UV(0xC1, 0x22);
-        *(s32 *)&box.u1 = TEX_UV(0x100, 0x29);
-        while (box.x < 0x1FB) {
+        *(s32 *)&box.u0 = TEX_UV(193, 34);
+        *(s32 *)&box.u1 = TEX_UV(256, 41);
+        while (box.x < 507) {
             Sprite_Draw((struct Sprite *)&box);
-            box.x += 0x3F;
+            box.x += 63;
         }
-        box.w = 0x23A - box.x;
-        box.u1 = box.w + 0xC3;
+        box.w = 570 - box.x;
+        box.u1 = box.w + 195;
         Sprite_Draw((struct Sprite *)&box);
     }
     n = 1;
     if (melee) {
-        gPouchBarIcons[0].x = (gPouchSelIconsA[1].x - 0x19E) * gHudState->pouchBarTimer / 9 + 0x19E;
-        gPouchBarIcons[0].y = 0x175;
+        gPouchBarIcons[0].x = (gPouchSelIconsA[1].x - 414) * gHudState->pouchBarTimer / 9 + 414;
+        gPouchBarIcons[0].y = 373;
     } else {
-        gPouchBarIcons[0].x = (gPouchSelIconsB[1].x - 0x18E) * gHudState->pouchBarTimer / 9 + 0x18E;
-        gPouchBarIcons[0].y = 0x171;
+        gPouchBarIcons[0].x = (gPouchSelIconsB[1].x - 398) * gHudState->pouchBarTimer / 9 + 398;
+        gPouchBarIcons[0].y = 369;
     }
     if (pl->pouchHudFlags & 4) {
         gPouchBarIcons[0].y += 2;
     }
     if (gHudState->pouchBarState < 3) {
         n = 2;
-        gPouchBarIcons[1].x = gHudState->pouchBarTimer * -0x2B / 9 + 0x25F;
-        gPouchBarIcons[1].y = 0x16F;
+        gPouchBarIcons[1].x = gHudState->pouchBarTimer * -43 / 9 + 607;
+        gPouchBarIcons[1].y = 367;
         if (pl->pouchHudFlags & 2) {
             gPouchBarIcons[1].y += 2;
         }
     }
     Draw_Icons(gPouchBarIcons, n);
     if (!i) {
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         Sprite_DrawStretch9(&gPouchBarFrame[0], 8, 8, -8, -8);
         Sprite_DrawList(&gPouchBarFrame[1], 8);
-        box.h = 0x18;
-        box.v0 = 0x1A;
-        box.v1 = 0x30;
+        box.h = 24;
+        box.v0 = 26;
+        box.v1 = 48;
         if (gHudState->blink64 != 0) {
             if (gHudState->dir65 < 0) {
                 ammo[1] = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 1);
-                ammo[0] = ammo[2] = ammo[3] = 0xFF;
-                if (ammo[1] != 0xFF) {
+                ammo[0] = ammo[2] = ammo[3] = 255;
+                if (ammo[1] != 255) {
                     if (pl->pouch[ammo[1]].item == pl->pouch[pl->ammoSlot].item) {
-                        ammo[1] = 0xFF;
+                        ammo[1] = 255;
                     } else {
-                        Font_SetSpacing(0x14, 0x14);
-                        if (Hud_DrawPouchSlotName(ammo[1], 0x125) == 0) {
-                            ammo[1] = 0xFF;
+                        Font_SetSpacing(20, 20);
+                        if (Hud_DrawPouchSlotName(ammo[1], 293) == 0) {
+                            ammo[1] = 255;
                         } else {
                             u8 k = Bowgun_NextAmmoSlot(pl, ammo[1], 1);
                             if (pl->pouch[k].item != pl->pouch[ammo[1]].item && pl->pouch[k].item != pl->pouch[pl->ammoSlot].item) {
-                                Font_SetSpacing(0x14, 0xA);
-                                if (Hud_DrawPouchSlotName(k, 0x13C) == 1) {
+                                Font_SetSpacing(20, 10);
+                                if (Hud_DrawPouchSlotName(k, 316) == 1) {
                                     ammo[0] = k;
                                     k = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 0);
-                                    if (pl->pouch[k].item != pl->pouch[ammo[0]].item && Hud_DrawPouchSlotName(k, 0x100) == 1) {
+                                    if (pl->pouch[k].item != pl->pouch[ammo[0]].item && Hud_DrawPouchSlotName(k, 256) == 1) {
                                         ammo[3] = k;
                                     }
                                 }
                             }
                         }
                     }
-                    Font_SetSpacing(0x14, 0x14);
-                    if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 0x10D) == 1) {
+                    Font_SetSpacing(20, 20);
+                    if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 269) == 1) {
                         ammo[2] = pl->ammoSlot;
                     }
                 }
             } else {
                 ammo[0] = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 1);
-                ammo[1] = ammo[2] = ammo[3] = 0xFF;
-                if (ammo[0] != 0xFF) {
+                ammo[1] = ammo[2] = ammo[3] = 255;
+                if (ammo[0] != 255) {
                     if (pl->pouch[ammo[0]].item == pl->pouch[pl->ammoSlot].item) {
-                        ammo[0] = 0xFF;
+                        ammo[0] = 255;
                     } else {
-                        Font_SetSpacing(0x14, 0xA);
-                        if (Hud_DrawPouchSlotName(ammo[0], 0x13C) == 0) {
-                            ammo[0] = 0xFF;
+                        Font_SetSpacing(20, 10);
+                        if (Hud_DrawPouchSlotName(ammo[0], 316) == 0) {
+                            ammo[0] = 255;
                         } else {
                             u8 k = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 0);
                             if (pl->pouch[k].item != pl->pouch[ammo[0]].item) {
-                                Font_SetSpacing(0x14, 0x14);
-                                if (Hud_DrawPouchSlotName(k, 0x10D) == 1) {
+                                Font_SetSpacing(20, 20);
+                                if (Hud_DrawPouchSlotName(k, 269) == 1) {
                                     ammo[2] = k;
                                     k = Bowgun_NextAmmoSlot(pl, ammo[2], 0);
                                     if (pl->pouch[k].item != pl->pouch[ammo[0]].item) {
-                                        Font_SetSpacing(0x14, 0xA);
-                                        if (Hud_DrawPouchSlotName(k, 0x100) == 1) {
+                                        Font_SetSpacing(20, 10);
+                                        if (Hud_DrawPouchSlotName(k, 256) == 1) {
                                             ammo[3] = k;
                                         }
                                     }
@@ -6289,18 +5957,18 @@ void Hud_DrawPouchBar(void)
                             }
                         }
                     }
-                    Font_SetSpacing(0x14, 0x14);
-                    if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 0x125) == 1) {
+                    Font_SetSpacing(20, 20);
+                    if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 293) == 1) {
                         ammo[1] = pl->ammoSlot;
                     }
                 }
             }
             Hud_AmmoIconSprite((u8 *)pl, &box);
             for (i = 3; i >= 0; i--) {
-                if (pl->weaponType == WEAPON_BOW && pl->pouch[ammo[i]].item == 0x87) {
+                if (pl->weaponType == WEAPON_BOW && pl->pouch[ammo[i]].item == 135) {
                     box.y += D_00432438[i];
                 } else {
-                    if (ammo[i] != 0xFF) {
+                    if (ammo[i] != 255) {
                         box.color = gItemColors[gItemData[pl->pouch[ammo[i]].item].color];
                     } else {
                         box.color = 0xFF707070;
@@ -6312,41 +5980,41 @@ void Hud_DrawPouchBar(void)
             }
         } else {
             ammo[0] = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 1);
-            ammo[1] = ammo[2] = 0xFF;
-            if (ammo[0] != 0xFF) {
-                Font_SetSpacing(0x14, 0x14);
+            ammo[1] = ammo[2] = 255;
+            if (ammo[0] != 255) {
+                Font_SetSpacing(20, 20);
                 melee = Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 0);
-                if (pl->pouch[melee].item != pl->pouch[ammo[0]].item && Hud_DrawPouchSlotName(melee, 0xFF) == 1) {
+                if (pl->pouch[melee].item != pl->pouch[ammo[0]].item && Hud_DrawPouchSlotName(melee, 255) == 1) {
                     ammo[2] = melee;
                 }
                 if (pl->pouch[ammo[0]].item == pl->pouch[pl->ammoSlot].item) {
-                    ammo[0] = 0xFF;
-                } else if (Hud_DrawPouchSlotName(ammo[0], 0x12F) == 0) {
-                    ammo[0] = 0xFF;
+                    ammo[0] = 255;
+                } else if (Hud_DrawPouchSlotName(ammo[0], 303) == 0) {
+                    ammo[0] = 255;
                 }
-                if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 0x117) == 1) {
+                if (Hud_DrawPouchSlotName(*(u8 *)&pl->ammoSlot, 279) == 1) {
                     ammo[1] = pl->ammoSlot;
                 }
             }
             Hud_AmmoIconSprite((u8 *)pl, &box);
             for (i = 2; i >= 0; i--) {
                 if (pl->weaponType == WEAPON_BOW) {
-                    if (pl->pouch[ammo[i]].item != 0x87) {
-                        if (ammo[i] != 0xFF && ammo[i] == pl->coatingSlot) {
-                            Hud_DrawPouchBarEnds(0x1AB, box.y, box.h + 1);
+                    if (pl->pouch[ammo[i]].item != 135) {
+                        if (ammo[i] != 255 && ammo[i] == pl->coatingSlot) {
+                            Hud_DrawPouchBarEnds(427, box.y, box.h + 1);
                         }
                         goto draw;
                     }
                 } else {
                 draw:
-                    if (ammo[i] != 0xFF) {
+                    if (ammo[i] != 255) {
                         box.color = gItemColors[gItemData[pl->pouch[ammo[i]].item].color];
                     } else {
                         box.color = 0xFF707070;
                     }
                     Sprite_Draw((struct Sprite *)&box);
                 }
-                box.y += 0x18;
+                box.y += 24;
             }
         }
         gHudState->pouchBarShown = 1;
@@ -6364,23 +6032,21 @@ void Hud_DrawButtonIcons(void)
     Player *pl = gHudState->player;
 
     if (gHudState->pouchBarShown != 0) {
-        gHudButtonIcons[0].y = 0xEA;
+        gHudButtonIcons[0].y = 234;
         if (pl->pouchHudFlags & 0x10) {
             gHudButtonIcons[0].y += 2;
         }
-        gHudButtonIcons[1].y = 0x140;
+        gHudButtonIcons[1].y = 320;
         if (pl->pouchHudFlags & 8) {
             gHudButtonIcons[1].y += 2;
         }
         Draw_Icons(gHudButtonIcons, 2);
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         Sprite_DrawList(gHudButtonSprites, 3);
     }
 }
 
-extern char *gPouchInfiniteFmt[];
-s32 Str_Length(char *s);
 
 /* The name and count of pouch slot `slot` (the loaded ammo highlighted) at height y; 0 when the
  * slot is empty or not usable. */
@@ -6391,9 +6057,9 @@ s32 Hud_DrawPouchSlotName(u8 slot, s16 y)
     u16 item;
     u8 n;
     u32 color;
-    char buf[0x20];
+    char buf[32];
 
-    if (slot == 0xFF) {
+    if (slot == 255) {
         return 0;
     }
     item = pl->pouch[slot].item;
@@ -6411,9 +6077,9 @@ s32 Hud_DrawPouchSlotName(u8 slot, s16 y)
         color = slot == pl->coatingSlot ? 0x807F7F28 : 0x807F7F7F;
     }
     Font_SetColor(color);
-    if (item == 0x87) {
+    if (item == 135) {
         sprintf(buf, (char *)gItemNames[item]);
-    } else if (itemData->max == 0xFF) {
+    } else if (itemData->max == 255) {
         sprintf(buf, gPouchInfiniteFmt[0], gItemNames[item]);
     } else {
         sprintf(buf, "%s %d", gItemNames[item], n);
@@ -6422,8 +6088,6 @@ s32 Hud_DrawPouchSlotName(u8 slot, s16 y)
     Text_Draw(buf);
     return 1;
 }
-
-s32 Item_IsUsable(u16 item);
 
 /* The icon of pouch slot `slot` at x (scaled by sw, sh), marked when the item can't be used (or is
  * flagged in its data). */
@@ -6438,7 +6102,7 @@ void Hud_DrawPouchSlotIcon(u8 slot, s16 x, f32 scaleW, f32 scaleH)
 
     item = (gHudState->player)->pouch[slot].item;
     icon = gItemData[item].icon;
-    if (icon == 0xFF) {
+    if (icon == 255) {
         return;
     }
     color = gItemData[item].color;
@@ -6452,21 +6116,21 @@ void Hud_DrawPouchSlotIcon(u8 slot, s16 x, f32 scaleW, f32 scaleH)
     sprite.w = 45.0f * scaleW;
     sprite.x = x - (sprite.w >> 1);
     sprite.h = 45.0f * scaleH;
-    sprite.y = 0x16A - (sprite.h >> 1);
+    sprite.y = 362 - (sprite.h >> 1);
     sprite.u0 = ((icon + 1) & 7) * 32 + 1;
     sprite.v0 = ((icon + 1) >> 3) * 32 + 1;
-    sprite.u1 = sprite.u0 + 0x1E;
-    sprite.v1 = sprite.v0 + 0x1E;
+    sprite.u1 = sprite.u0 + 30;
+    sprite.v1 = sprite.v0 + 30;
     sprite.color = gItemColors[color];
     Sprite_Draw((struct Sprite *)&sprite);
     if (mark != 0) {
         if (mark > 0) {
-            *(s32 *)&sprite.u0 = TEX_UV(0x80, 0xE0);
-            *(s32 *)&sprite.u1 = TEX_UV(0xA0, 0x100);
+            *(s32 *)&sprite.u0 = TEX_UV(128, 224);
+            *(s32 *)&sprite.u1 = TEX_UV(160, 256);
             sprite.color = 0xFFFFFFFF;
         } else {
-            *(s32 *)&sprite.u0 = TEX_UV(0xA0, 0xE0);
-            *(s32 *)&sprite.u1 = TEX_UV(0xC0, 0x100);
+            *(s32 *)&sprite.u0 = TEX_UV(160, 224);
+            *(s32 *)&sprite.u1 = TEX_UV(192, 256);
             sprite.color = 0xC8FF0000;
         }
         Sprite_Draw((struct Sprite *)&sprite);
@@ -6477,13 +6141,9 @@ extern Panel gItemWindowTextBox;
 extern ListPanel gItemWindowDropPanel;
 extern ListPanel gItemWindowPanel;
 extern Panel gItemWindowNameBox[2];
-extern char *gItemFullText[];
 extern char *gItemGotFmt;
 extern u32 gItemDropPanelColors[];
 extern s32 gItemDropPouchColors[];
-void ItemList_DrawPouch(s32 cursor, s32 cursorColor, s32 flags);
-void HelpWindow_DrawLine(u8 a, u16 b);
-void ButtonHint_DrawDetails(void);
 
 /* Draws the pouch-full dialog (PouchDrop_Update) by its state: the
  * pouch-full text (blinking), then the window that slides in with the
@@ -6492,7 +6152,7 @@ void ButtonHint_DrawDetails(void);
 
 void Hud_DrawItemWindow(void)
 {
-    char buf[0x40];
+    char buf[64];
     s32 flags;
     s16 *offset;
     u8 state;
@@ -6538,8 +6198,6 @@ void Hud_DrawItemWindow(void)
     }
 }
 
-void Hud_DrawPlayerStatus(Player *p, s16 y, f32 scale);
-
 /* Draws the local player's status, then the other hunters' in the quest
  * below it. */
 void Hud_DrawPartyStatus(void)
@@ -6548,22 +6206,18 @@ void Hud_DrawPartyStatus(void)
     u32 i;
     s16 y;
 
-    Hud_DrawPlayerStatus(gHudState->player, 0x63, 15.0f);
-    y = 0x77;
+    Hud_DrawPlayerStatus(gHudState->player, 99, 15.0f);
+    y = 119;
     pl = gPlayers;
     for (i = 0; i < 4; i++, pl++) {
         if (pl->active != 0 && i != gScene.localPlayer && gScene.inQuest[i] == 1) {
             Hud_DrawPlayerStatus(pl, y, 15.0f);
-            y += 0x16;
+            y += 22;
         }
     }
 }
 
-extern u32 gHudSeasonColors[];
 struct Pt;
-void Hud_WeaponIconUV(u8 *e, struct Pt *uv0, struct Pt *uv1);
-s32 Prim_DrawLine(PrimLine *l);
-void Hud_DrawStatusIcon(u16 mask, s32 idx, u32 x, u16 y);
 
 /* A player's HUD panel at x, y: for another player the name plate and health bar, then the
  * colour icon and name, the target mark when a monster in the player's area is on them (or in
@@ -6584,43 +6238,43 @@ void Hud_DrawPlayerStatus(Player *pl, s16 y, f32 x)
     s16 glowX;
     s16 glowY;
 
-    Gfx_SetTexFilter(1);
-    Gfx_SetBlend(4, 5);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     if (pl->index != gScene.localPlayer) {
         sprite.x = 12.0f + x;
         sprite.y = y;
-        sprite.w = 0x5B;
-        sprite.h = 0x14;
-        *(s32 *)&sprite.u0 = TEX_UV(0x38, 0x70);
-        *(s32 *)&sprite.u1 = TEX_UV(0x56, 0x8D);
+        sprite.w = 91;
+        sprite.h = 20;
+        *(s32 *)&sprite.u0 = TEX_UV(56, 112);
+        *(s32 *)&sprite.u1 = TEX_UV(86, 141);
         sprite.color = gHudSeasonColors[(u8)Season_Get()];
         Sprite_DrawStretch9(&sprite, 8, 8, 8, 8);
         sprite.color = 0xFF000000;
         sprite.y = y;
-        sprite.h = 0x16;
+        sprite.h = 22;
         sprite.x = x;
-        sprite.w = 0x19;
-        *(s32 *)&sprite.u0 = TEX_UV(0x0, 0x77);
-        *(s32 *)&sprite.u1 = TEX_UV(0x19, 0x8D);
+        sprite.w = 25;
+        *(s32 *)&sprite.u0 = TEX_UV(0, 119);
+        *(s32 *)&sprite.u1 = TEX_UV(25, 141);
         Sprite_Draw((struct Sprite *)&sprite);
         sprite.x += sprite.w;
-        sprite.w = 0x41;
-        sprite.u0 = 0x19;
-        sprite.u1 = 0x23;
+        sprite.w = 65;
+        sprite.u0 = 25;
+        sprite.u1 = 35;
         Sprite_Draw((struct Sprite *)&sprite);
         sprite.x += sprite.w;
-        sprite.w = 0x13;
-        sprite.u0 = 0x23;
-        sprite.u1 = 0x36;
+        sprite.w = 19;
+        sprite.u0 = 35;
+        sprite.u1 = 54;
         Sprite_Draw((struct Sprite *)&sprite);
         hpRatio = (f32)pl->hp / (f32)pl->hpMax;
         barX = 22.0f + x;
         rowY = y;
         bar.x0 = barX;
         bar.x1 = barX + 72.0f * hpRatio;
-        bar.y0 = bar.y1 = rowY + 0x12;
+        bar.y0 = bar.y1 = rowY + 18;
         bar.color = 0xFF00FF00;
         Prim_DrawLine(&bar);
         nameY = y;
@@ -6633,17 +6287,17 @@ void Hud_DrawPlayerStatus(Player *pl, s16 y, f32 x)
     pingX = 11.0f + x;
     sprite.x = pingX;
     sprite.y = rowY + 2;
-    sprite.w = 0x14;
-    sprite.h = 0x12;
+    sprite.w = 20;
+    sprite.h = 18;
     sprite.color = gPlayerMapColors[pl->index & 3];
     Hud_WeaponIconUV((u8 *)pl, (struct Pt *)&sprite.u0, (struct Pt *)&sprite.u1);
     Sprite_Draw((struct Sprite *)&sprite);
-    Font_SetSpacing(0x10, 0x10);
+    Font_SetSpacing(16, 16);
     Font_SetColor(0x807F7F7F);
     Font_SetPos(33.0f + x, rowY + 1);
     Hud_PrintPlayerName(pl);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     shown = 0;
     if (Quest_IsVersus() == 1) {
         shown = 1;
@@ -6651,7 +6305,7 @@ void Hud_DrawPlayerStatus(Player *pl, s16 y, f32 x)
         shown = 1;
     } else {
         for (em = (Em *)gEms, i = 0; i < 20; i++, em++) {
-            if (em->active != 0 && em->area == pl->area && em->type != 0xF && em->type != 0x2D) {
+            if (em->active != 0 && em->area == pl->area && em->type != 15 && em->type != 45) {
                 if (em->showOnMap != 0 && em->curGoalKind == 1 && em->curGoalArg == 0 && pl->index == em->curGoalNo
                     && em->combat == 1) {
                     shown = 1;
@@ -6666,21 +6320,21 @@ void Hud_DrawPlayerStatus(Player *pl, s16 y, f32 x)
     }
     if (shown > 0) {
         sprite.x = 109.0f + x;
-        sprite.w = 0x19;
+        sprite.w = 25;
         sprite.y = nameY + 2;
-        sprite.h = 0x14;
+        sprite.h = 20;
         sprite.color = 0xFFFFFFFF;
-        *(s32 *)&sprite.u0 = TEX_UV(0x78, 0xED);
-        *(s32 *)&sprite.u1 = TEX_UV(0x8C, 0xFF);
+        *(s32 *)&sprite.u0 = TEX_UV(120, 237);
+        *(s32 *)&sprite.u1 = TEX_UV(140, 255);
         Sprite_Draw((struct Sprite *)&sprite);
     }
     Hud_DrawStatusIcon(pl->statusIcons, (u8)pl->index, x, nameY);
     if (gHudState->pingTimer[pl->index] >= 0) {
         hidden = (pl->statusIcons & 0x800) != 0;
         if (pl->index == gScene.localPlayer || hidden != 1) {
-            Gfx_SetBlend(4, 1);
-            Tex_Prepare(1, 0x144);
-            Tex_Bind(0x144);
+            Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+            Tex_Prepare(1, 324);
+            Tex_Bind(324);
             glowX = (s16)pingX + 10;
             glowY = rowY + 11;
             if (hidden != 1) {
@@ -6734,8 +6388,8 @@ void Hud_DrawStatusIcon(u16 mask, s32 slot, u32 x, u16 y)
         }
         rect.x = 134.0f + x;
         rect.y = y + 2;
-        rect.w = 0x19;
-        rect.h = 0x14;
+        rect.w = 25;
+        rect.h = 20;
         rect.color = 0xFFFFFFFF;
         iconUV = &gStatusIconUVs[gHudState->statusIcon[k]];
         rect.uv0 = iconUV->uv0;
@@ -6751,25 +6405,14 @@ extern s16 D_005B3858;
 extern s16 D_005B3850;
 extern u8 D_005B3860;
 extern u32 gClockColors[];
-extern u8 D_004308C0[];
+extern Sprite gClockRimSprites[];
 extern u32 D_004308C8[];
 extern u32 D_004308DC[];
-extern u32 gHudSeasonColors[];
-s32 Quest_GetTime(s32 which);
 /* the calls cast to u8: this unit's code takes the value as u8 */
-s32 Season_Get(void);
-void Compass_DrawMarker(s16 a, s16 b, u8 kind);
-void Sprite_DrawStretch9(Sprite *src, s16 w, s16 h, s16 du, s16 dv);
-void Hud_DrawHealthStamina(void);
-void Hud_DrawCompass(s32 angle, u8 kind);
-u16 Clock_Angle(s32 x);
-void Hud_DrawCompassQuad(s32 angle, s32 k);
-void Sprite_DrawList(Sprite *s, s32 n);
-f32 Math_Sin(f32 x);
 
 /* The quest clock: the compass markers, the clock face and its frame (colour by kind
  * Season_Get), its rim pulsing faster as the time left (+0x24) runs out, and the hands for the
- * time gone (+0x28 - +0x24), the hand at +0xAC catching up 0x16C a frame. */
+ * time gone (+0x28 - +0x24), the hand at +0xAC catching up 364 a frame. */
 void Hud_DrawClock(void)
 {
     s32 total;
@@ -6782,9 +6425,9 @@ void Hud_DrawClock(void)
     u8 kind;
     s32 gone;
 
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     if (gScene.questPhase == 2) {
         gHudState->timeLeft = Quest_GetTime(0);
         gHudState->timeTotal = Quest_GetTime(1);
@@ -6797,39 +6440,39 @@ void Hud_DrawClock(void)
     total = gHudState->timeTotal;
     kind = (u8)Season_Get();
     Compass_DrawMarker(0, D_005B3858, kind);
-    Compass_DrawMarker(0, D_005B3858 + 0x4000, kind);
-    Compass_DrawMarker(0, D_005B3858 + 0x8000, kind);
-    Compass_DrawMarker(0, D_005B3858 + 0xC000, kind);
-    Compass_DrawMarker(D_005B3850, 0x2000, kind);
-    Compass_DrawMarker(D_005B3850, 0x6000, kind);
-    Compass_DrawMarker(D_005B3850, -0x6000, kind);
-    Compass_DrawMarker(D_005B3850, -0x2000, kind);
+    Compass_DrawMarker(0, D_005B3858 + 16384, kind);
+    Compass_DrawMarker(0, D_005B3858 + ANGLE_TURN / 2, kind);
+    Compass_DrawMarker(0, D_005B3858 + 49152, kind);
+    Compass_DrawMarker(D_005B3850, 8192, kind);
+    Compass_DrawMarker(D_005B3850, 24576, kind);
+    Compass_DrawMarker(D_005B3850, -24576, kind);
+    Compass_DrawMarker(D_005B3850, -8192, kind);
     Game_PauseState();
-    sprite.x = 0x1B;
-    sprite.y = 0x62;
-    sprite.w = 0x5B;
-    sprite.h = 0x14;
-    *(s32 *)&sprite.u0 = TEX_UV(0x38, 0x70);
-    *(s32 *)&sprite.u1 = TEX_UV(0x56, 0x8D);
+    sprite.x = 27;
+    sprite.y = 98;
+    sprite.w = 91;
+    sprite.h = 20;
+    *(s32 *)&sprite.u0 = TEX_UV(56, 112);
+    *(s32 *)&sprite.u1 = TEX_UV(86, 141);
     sprite.color = gHudSeasonColors[kind];
     Sprite_DrawStretch9(&sprite, 8, 8, 8, 8);
-    sprite.x = 0xF;
+    sprite.x = 15;
     sprite.y = 8;
-    sprite.w = 0x6D;
-    sprite.h = 0x6E;
+    sprite.w = 109;
+    sprite.h = 110;
     *(s32 *)&sprite.u0 = 0;
-    *(s32 *)&sprite.u1 = TEX_UV(0x6D, 0x6E);
+    *(s32 *)&sprite.u1 = TEX_UV(109, 110);
     sprite.color = gClockColors[kind];
     Sprite_Draw((struct Sprite *)&sprite);
     Hud_DrawHealthStamina();
-    Gfx_SetBlend(4, 5);
-    sprite.x = 0x1E;
-    sprite.y = 0x47;
-    sprite.w = sprite.h = 0xE;
-    sprite.u0 = 0x70;
-    sprite.v0 = kind * 16 + 0x5C;
-    sprite.u1 = 0x7E;
-    sprite.v1 = sprite.v0 + 0xE;
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    sprite.x = 30;
+    sprite.y = 71;
+    sprite.w = sprite.h = 14;
+    sprite.u0 = 112;
+    sprite.v0 = kind * 16 + 92;
+    sprite.u1 = 126;
+    sprite.v1 = sprite.v0 + 14;
     sprite.color = gClockColors[kind];
     Sprite_Draw((struct Sprite *)&sprite);
     if (left > 9000) {
@@ -6837,17 +6480,17 @@ void Hud_DrawClock(void)
     } else {
         if (left > 1800) {
             wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x1F) << 11));
-            level = (s8)(60.0f * wave) + 0xC0;
+            level = (s8)(60.0f * wave) + 192;
         } else {
             wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0xF) << 12));
-            level = (s8)(76.0f * wave) + 0xAC;
+            level = (s8)(76.0f * wave) + 172;
         }
         color = level << 8 | 0xC0FF0000 | level;
     }
     D_004308DC[0] = color;
     D_004308C8[0] = color;
-    Sprite_DrawList((Sprite *)D_004308C0, 2);
-    Gfx_SetTexFilter(0);
+    Sprite_DrawList(gClockRimSprites, 2);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     gone = total - left;
     if (gone < 0) {
         gone = 0;
@@ -6864,7 +6507,7 @@ void Hud_DrawClock(void)
     }
     Hud_DrawCompassQuad((s16)Clock_Angle(total), 1);
     if (Game_PauseState() == 0 && gHudState->clockHand < hand) {
-        gHudState->clockHand += 0x16C;
+        gHudState->clockHand += 364;
     }
 }
 
@@ -6872,11 +6515,9 @@ void Hud_DrawClock(void)
 extern u32 gCompassColors[];
 extern f32 gCompassPoints[][2];
 extern u8 gCompassUVs[][4];
-void Math_GetSinCos(f32 *s, f32 *c, f32 a);
-s32 Prim_DrawTexTri(struct PrimTexTri *t);
 
-/* The compass: eight triangles around (0x42, 0x40), the points of gCompassPoints turned by `angle`
- * (0x10000 a turn); kind selects the colour. */
+/* The compass: eight triangles around (66, 64), the points of gCompassPoints turned by `angle`
+ * (ANGLE_TURN to a turn); kind selects the colour. */
 void Hud_DrawCompass(s32 angle, u8 kind)
 {
     PrimTexTri tri;
@@ -6887,21 +6528,21 @@ void Hud_DrawCompass(s32 angle, u8 kind)
     u8 (*uv)[4];
 
     Math_GetSinCos(&sinA, &cosA, 6.2831855f * angle / 65536.0f);
-    tri.x0 = 0x42;
-    tri.y0 = 0x40;
+    tri.x0 = 66;
+    tri.y0 = 64;
     tri.color = gCompassColors[kind];
-    tri.u0 = 0x8A;
-    tri.v0 = 0x1C;
+    tri.u0 = 138;
+    tri.v0 = 28;
     p = gCompassPoints;
     uv = gCompassUVs;
-    tri.x2 = (s16)(0.5f + ((*p)[0] * cosA - (*p)[1] * sinA)) + 0x42;
-    tri.y2 = (s16)(0.5f + ((*p)[0] * sinA + (*p)[1] * cosA)) + 0x40;
+    tri.x2 = (s16)(0.5f + ((*p)[0] * cosA - (*p)[1] * sinA)) + 66;
+    tri.y2 = (s16)(0.5f + ((*p)[0] * sinA + (*p)[1] * cosA)) + 64;
     for (i = 8; i != 0; i--) {
         tri.x1 = tri.x2;
         tri.y1 = tri.y2;
         p++;
-        tri.x2 = (s16)(0.5f + ((*p)[0] * cosA - (*p)[1] * sinA)) + 0x42;
-        tri.y2 = (s16)(0.5f + ((*p)[0] * sinA + (*p)[1] * cosA)) + 0x40;
+        tri.x2 = (s16)(0.5f + ((*p)[0] * cosA - (*p)[1] * sinA)) + 66;
+        tri.y2 = (s16)(0.5f + ((*p)[0] * sinA + (*p)[1] * cosA)) + 64;
         tri.u1 = (*uv)[0];
         tri.v1 = (*uv)[1];
         tri.u2 = (*uv)[2];
@@ -6937,28 +6578,28 @@ void Compass_DrawMarker(s16 heading, s16 target, u8 kind)
     tri.y1 = -6.0f * cosA + (centerY + 6.0f * sinA);
     tri.x2 = (centerX + -6.0f * cosA) - 6.0f * sinA;
     tri.y2 = 6.0f * cosA + (centerY + -6.0f * sinA);
-    tri.u0 = 0x9B;
+    tri.u0 = 155;
     tri.v0 = 1;
-    tri.u1 = 0xA7;
+    tri.u1 = 167;
     tri.v1 = 1;
-    tri.u2 = 0x9B;
-    tri.v2 = 0xD;
+    tri.u2 = 155;
+    tri.v2 = 13;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
     tri.x0 = centerX + 6.0f * cosA - 6.0f * sinA;
     tri.y0 = centerY + 6.0f * sinA + 6.0f * cosA;
-    tri.u0 = 0xA7;
-    tri.v0 = 0xD;
+    tri.u0 = 167;
+    tri.v0 = 13;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
 }
 
-/* The clock hand's angle (0x10000 a turn) for `frames` of quest time: a
+/* The clock hand's angle (ANGLE_TURN to a turn) for `frames` of quest time: a
  * twelfth of a turn for each full 9000 frames (5 minutes at 30 a second). */
 u16 Clock_Angle(s32 frames)
 {
-    return (frames / 9000) * 0x1555;
+    return (frames / 9000) * 5461;
 }
 
-/* A textured quad (two triangles) around (0x42, 0x40): four points and their UVs. */
+/* A textured quad (two triangles) around (66, 64): four points and their UVs. */
 typedef struct QuadDef {
     f32 p[4][2];        /* 0x00 */
     u8 uv[4];           /* 0x20: u0, v0, u1, v1 */
@@ -6967,7 +6608,7 @@ typedef struct QuadDef {
 
 extern QuadDef gCompassQuads[];
 
-/* Draws quad k of gCompassQuads turned by `angle` (0x10000 a turn). */
+/* Draws quad k of gCompassQuads turned by `angle` (ANGLE_TURN to a turn). */
 void Hud_DrawCompassQuad(s32 angle, s32 k)
 {
     QuadDef *quad = &gCompassQuads[k];
@@ -6983,27 +6624,19 @@ void Hud_DrawCompassQuad(s32 angle, s32 k)
     tri.v1 = quad->uv[1];
     tri.u2 = quad->uv[0];
     tri.v2 = quad->uv[3];
-    tri.x0 = (s16)(0.5f + (quad->p[0][0] * cosA - quad->p[0][1] * sinA)) + 0x42;
-    tri.y0 = (s16)(0.5f + (quad->p[0][0] * sinA + quad->p[0][1] * cosA)) + 0x40;
-    tri.x1 = (s16)(0.5f + (quad->p[1][0] * cosA - quad->p[1][1] * sinA)) + 0x42;
-    tri.y1 = (s16)(0.5f + (quad->p[1][0] * sinA + quad->p[1][1] * cosA)) + 0x40;
-    tri.x2 = (s16)(0.5f + (quad->p[2][0] * cosA - quad->p[2][1] * sinA)) + 0x42;
-    tri.y2 = (s16)(0.5f + (quad->p[2][0] * sinA + quad->p[2][1] * cosA)) + 0x40;
+    tri.x0 = (s16)(0.5f + (quad->p[0][0] * cosA - quad->p[0][1] * sinA)) + 66;
+    tri.y0 = (s16)(0.5f + (quad->p[0][0] * sinA + quad->p[0][1] * cosA)) + 64;
+    tri.x1 = (s16)(0.5f + (quad->p[1][0] * cosA - quad->p[1][1] * sinA)) + 66;
+    tri.y1 = (s16)(0.5f + (quad->p[1][0] * sinA + quad->p[1][1] * cosA)) + 64;
+    tri.x2 = (s16)(0.5f + (quad->p[2][0] * cosA - quad->p[2][1] * sinA)) + 66;
+    tri.y2 = (s16)(0.5f + (quad->p[2][0] * sinA + quad->p[2][1] * cosA)) + 64;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
     tri.u0 = quad->uv[2];
     tri.v0 = quad->uv[3];
-    tri.x0 = (s16)(0.5f + (quad->p[3][0] * cosA - quad->p[3][1] * sinA)) + 0x42;
-    tri.y0 = (s16)(0.5f + (quad->p[3][0] * sinA + quad->p[3][1] * cosA)) + 0x40;
+    tri.x0 = (s16)(0.5f + (quad->p[3][0] * cosA - quad->p[3][1] * sinA)) + 66;
+    tri.y0 = (s16)(0.5f + (quad->p[3][0] * sinA + quad->p[3][1] * cosA)) + 64;
     Prim_DrawTexTri((struct PrimTexTri *)&tri);
 }
-
-void Hud_DrawGaugeFrame(Gauge *g, s32 thin);
-void Hud_DrawGaugeFill(Gauge *g, s32 thin);
-u32 Hud_HealthColor(s16 kind, Player *p);
-u32 Hud_HealthBarColor(Player *p);
-u32 Hud_StaminaColor(s16 kind, Player *p);
-s32 Player_StaminaLocked(Player *p);
-s16 Area_Temperature(u16 area);
 
 /* Draws the local player health and stamina gauges: the frames, the recoverable (red) health,
  * the health in its colour (by the area kind), the stamina blinking red below 76 or pulsing
@@ -7020,11 +6653,11 @@ void Hud_DrawHealthStamina(void)
     s32 grey;
     s32 tint;
 
-    Gs_SetState(0x6C, 1);
-    Gs_SetState(0x6D, 7);
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gs_SetState(RS_ZWRITE, 1);
+    Gs_SetState(RS_ZTEST, RS_CMP_ALWAYS);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     hpColor = 0xFF10C010;
     stColor = 0xFFF0F000;
     kind = Area_Temperature(pl->area);
@@ -7045,7 +6678,7 @@ void Hud_DrawHealthStamina(void)
         break;
     }
     gauge.x = 119.0f;
-    gauge.y = 0x15;
+    gauge.y = 21;
     gauge.len = 288.0f;
     gauge.max = 100;
     gauge.cur = pl->hpMax;
@@ -7061,28 +6694,25 @@ void Hud_DrawHealthStamina(void)
         gauge.color = hpColor;
         Hud_DrawGaugeFill(&gauge, 0);
     }
-    gauge.y = 0x24;
+    gauge.y = 36;
     gauge.max = 300;
     gauge.cur = pl->staminaMax;
     gauge.color = 0xFF000000;
     Hud_DrawGaugeFrame(&gauge, 1);
-    if (pl->stamina < 0x4C) {
-        pulse = (s16)(64.0f * Math_Sin(6.2831855f * ((gFrameTick % 45) * 8) / 360.0f)) + 0x40;
+    if (pl->stamina < 76) {
+        pulse = (s16)(64.0f * Math_Sin(6.2831855f * ((gFrameTick % 45) * 8) / 360.0f)) + 64;
         gauge.color = pulse << 8 | 0xFFFF0000 | pulse;
     } else if (Player_StaminaLocked(pl) == 0) {
         gauge.color = stColor;
     } else {
         wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10));
-        grey = (u8)((s8)(18.0f * wave) + 0xE7);
+        grey = (u8)((s8)(18.0f * wave) + 231);
         tint = grey << 16 | 0xFF000000 | grey << 8;
-        gauge.color = (u8)((s8)(40.0f * wave) + 0x9F) | tint;
+        gauge.color = (u8)((s8)(40.0f * wave) + 159) | tint;
     }
     gauge.cur = pl->stamina;
     Hud_DrawGaugeFill(&gauge, 1);
 }
-
-s32 Player_InPoisonArea(Player *p);
-s16 Player_CountSpecialItems(Player *p);
 
 /* Returns 1 while the health bar pulses: the player carries special items,
  * has status icon 1, or Player_InPoisonArea says so. */
@@ -7102,9 +6732,8 @@ s32 Hud_HealthFlashes(Player *pl)
 
 extern s16 gHudGaugeFlashSpeeds[][5];
 u8 Player_GetSkill(Player *p, u8 group);
-f32 Math_Cos(f32 x);
 
-/* The colour of gauge `kind` (0, 1 or 3) of p: pulsing at a speed from the skill of group 0x1E
+/* The colour of gauge `kind` (0, 1 or 3) of p: pulsing at a speed from the skill of group 30
  * while p->unk870 is clear (or when Hud_HealthFlashes holds), else 0xFF10C010. */
 u32 Hud_HealthColor(s16 kind, Player *pl)
 {
@@ -7116,19 +6745,19 @@ u32 Hud_HealthColor(s16 kind, Player *pl)
     f32 wave;
 
     if (pl->coolDrinkTimer == 0) {
-        skill = Player_GetSkill(pl, 0x1E);
-        if (skill != 0x86) {
+        skill = Player_GetSkill(pl, 30);
+        if (skill != 134) {
             switch (skill) {
-            case 0x85:
+            case 133:
                 lvl = 0;
                 break;
-            case 0x84:
+            case 132:
                 lvl = 1;
                 break;
-            case 0x87:
+            case 135:
                 lvl = 3;
                 break;
-            case 0x88:
+            case 136:
                 lvl = 4;
                 break;
             default:
@@ -7150,19 +6779,18 @@ u32 Hud_HealthColor(s16 kind, Player *pl)
         }
     }
     if (speed == 0 && Hud_HealthFlashes(pl) == 1) {
-        speed = 0x100;
+        speed = 256;
     }
     if (speed != 0) {
         gHudState->hpBlink += speed;
         wave = Math_Cos(0.0000958738f * gHudState->hpBlink);
-        color = (((s8)(-28.0f * wave) + 0x2D) << 16) | 0xFF000000 | (((s8)(15.0f * wave) + 0xB1) << 8) | ((s8)(-72.0f * wave) + 0x58);
+        color = (((s8)(-28.0f * wave) + 45) << 16) | 0xFF000000 | (((s8)(15.0f * wave) + 177) << 8) | ((s8)(-72.0f * wave) + 88);
     } else {
         gHudState->hpBlink = 0;
     }
     return color;
 }
 
-f32 Math_Cos(f32 x);
 
 /* The health bar's colour: green, or while Hud_HealthFlashes a colour that
  * pulses with hpBlink. */
@@ -7172,16 +6800,16 @@ u32 Hud_HealthBarColor(Player *pl)
     f32 wave;
 
     if (Hud_HealthFlashes(pl) == 1) {
-        gHudState->hpBlink += 0x100;
+        gHudState->hpBlink += 256;
         wave = Math_Cos(0.0000958738f * gHudState->hpBlink);
-        color = (((s8)(-28.0f * wave) + 0x2D) << 16) | 0xFF000000 | (((s8)(15.0f * wave) + 0xB1) << 8) | ((s8)(-72.0f * wave) + 0x58);
+        color = (((s8)(-28.0f * wave) + 45) << 16) | 0xFF000000 | (((s8)(15.0f * wave) + 177) << 8) | ((s8)(-72.0f * wave) + 88);
     } else {
         gHudState->hpBlink = 0;
     }
     return color;
 }
 
-/* The colour of gauge `kind` (2 or 4) of p: pulsing at a speed from the skill of group 0x1D while
+/* The colour of gauge `kind` (2 or 4) of p: pulsing at a speed from the skill of group 29 while
  * p->unk872 is clear, else 0xFFF0F000. */
 u32 Hud_StaminaColor(s16 kind, Player *pl)
 {
@@ -7193,19 +6821,19 @@ u32 Hud_StaminaColor(s16 kind, Player *pl)
     f32 wave;
 
     if (pl->hotDrinkTimer == 0) {
-        skill = Player_GetSkill(pl, 0x1D);
-        if (skill != 0x8B) {
+        skill = Player_GetSkill(pl, 29);
+        if (skill != 139) {
             switch (skill) {
-            case 0x8A:
+            case 138:
                 lvl = 0;
                 break;
-            case 0x89:
+            case 137:
                 lvl = 1;
                 break;
-            case 0x8C:
+            case 140:
                 lvl = 3;
                 break;
-            case 0x8D:
+            case 141:
                 lvl = 4;
                 break;
             default:
@@ -7226,7 +6854,7 @@ u32 Hud_StaminaColor(s16 kind, Player *pl)
     if (speed != 0) {
         gHudState->staminaBlink += speed;
         wave = Math_Cos(0.0000958738f * gHudState->staminaBlink);
-        color = (((s8)(58.0f * wave) + 0xB6) << 16) | 0xFF000000 | (((s8)(102.0f * wave) + 0x8A) << 8) | ((s8)(-21.0f * wave) + 0x15);
+        color = (((s8)(58.0f * wave) + 182) << 16) | 0xFF000000 | (((s8)(102.0f * wave) + 138) << 8) | ((s8)(-21.0f * wave) + 21);
     } else {
         gHudState->staminaBlink = 0;
     }
@@ -7247,7 +6875,6 @@ typedef struct GaugeFrame {
 } GaugeFrame;
 
 extern GaugeFrame gGaugeFrames[];
-s32 Prim_DrawSpriteF(PrimSpriteF *sp);
 
 /* Draws the frame of gauge g: body pieces 45 pixels wide along its length, then the end cap. */
 void Hud_DrawGaugeFrame(Gauge *gauge, s32 thin)
@@ -7320,15 +6947,13 @@ void Hud_DrawGaugeFill(Gauge *gauge, s32 thin)
     sprite.x = gauge->x;
     sprite.w = w;
     sprite.color = gauge->color;
-    sprite.uv0 = TEX_UV(0xC4, 0x4);
-    sprite.uv1 = TEX_UV(0xC6, 0x5);
+    sprite.uv0 = TEX_UV(196, 4);
+    sprite.uv1 = TEX_UV(198, 5);
     Sprite_Draw((struct Sprite *)&sprite);
 }
 
-u8 Player_GetSharpnessLevel(Player *p);
-void Hud_DrawHornNotes(Player *p);
 extern u8 gSharpnessBarV[];
-extern u32 gSharpnessGlowMasks[];
+extern WeaponBoxHud gSharpnessGlowMasks;
 extern s16 D_00430958[];
 extern s16 D_0043095A[];
 extern u8 gLongSwordGaugeSprites[];
@@ -7344,44 +6969,44 @@ void Hud_DrawWeaponBox(void)
     u32 mask;
     f32 wave;
 
-    Gfx_SetTexFilter(0);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     sharpness = Player_GetSharpnessLevel(pl);
-    sprite.x = 0x70;
-    sprite.y = 0x31;
-    sprite.w = 0x50;
-    sprite.h = 0xE;
+    sprite.x = 112;
+    sprite.y = 49;
+    sprite.w = 80;
+    sprite.h = 14;
     sprite.color = 0xFFFFFFFF;
-    sprite.u0 = 0xC0;
-    sprite.u1 = 0xFF;
+    sprite.u0 = 192;
+    sprite.u1 = 255;
     sprite.v0 = gSharpnessBarV[sharpness];
-    sprite.v1 = sprite.v0 + 0xE;
+    sprite.v1 = sprite.v0 + 14;
     Sprite_Draw((struct Sprite *)&sprite);
-    mask = gSharpnessGlowMasks[sharpness];
+    mask = gSharpnessGlowMasks.glowMasks[sharpness];
     if (mask != 0) {
-        Gfx_SetTexFilter(1);
-        Gfx_SetBlend(4, 1);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
         wave = Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x7F) << 9));
-        sprite.color = ((((s8)(127.0f * wave) + 0x7F) << 24) | 0xFFFFFF) & mask;
-        sprite.x = 0x8D;
-        sprite.w = 0x33;
-        sprite.u0 = 0xD7;
-        sprite.v0 -= 0x2A;
-        sprite.v1 -= 0x2A;
+        sprite.color = ((((s8)(127.0f * wave) + 127) << 24) | 0xFFFFFF) & mask;
+        sprite.x = 141;
+        sprite.w = 51;
+        sprite.u0 = 215;
+        sprite.v0 -= 42;
+        sprite.v1 -= 42;
         Sprite_Draw((struct Sprite *)&sprite);
-        Gfx_SetBlend(4, 5);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     }
     switch (pl->weaponType) {
     case 7:
         if (pl->swordGauge > 0) {
             sprite.x = D_00430958[0];
             sprite.y = D_0043095A[0] + 4;
-            sprite.w = pl->swordGauge * 0x75 / 100;
+            sprite.w = pl->swordGauge * 117 / 100;
             sprite.h = 2;
             sprite.color = 0xFFFF2020;
-            *(s32 *)&sprite.u0 = TEX_UV(0xC4, 0x4);
-            *(s32 *)&sprite.u1 = TEX_UV(0xC6, 0x5);
+            *(s32 *)&sprite.u0 = TEX_UV(196, 4);
+            *(s32 *)&sprite.u1 = TEX_UV(198, 5);
             Sprite_Draw((struct Sprite *)&sprite);
         }
         Sprite_DrawList((Sprite *)gLongSwordGaugeSprites, 8);
@@ -7397,7 +7022,6 @@ void Hud_DrawWeaponBox(void)
 
 
 extern u8 gHornNoteSprites[];
-extern u32 gHornNoteColors[];
 extern s16 gHornNoteYs[];
 
 /* y0 caches the current row's height for the difference (the sum reads the table again: a local
@@ -7435,17 +7059,17 @@ void Hud_DrawHornNotes(Player *pl)
         gHudState->hornHist[1] = gHudState->hornHist[0];
         gHudState->hornHist[0] = pl->hornNotes[pl->hornNoteSlot];
     }
-    sprite.uv0 = TEX_UV(0x15, 0x9D);
-    sprite.uv1 = TEX_UV(0x25, 0xAC);
+    sprite.uv0 = TEX_UV(21, 157);
+    sprite.uv1 = TEX_UV(37, 172);
     if (gHudState->hornAnim > 0) {
         sprite.w = 20;
         sprite.h = 15;
-        x = (u16)(gHudState->hornAnim * -24 / 6) + 0xF0;
+        x = (u16)(gHudState->hornAnim * -24 / 6) + 240;
         for (i = 1; i < 5; i++) {
             if (gHudState->hornHist[(u32)i] == 0) {
                 break;
             }
-            x += 0x18;
+            x += 24;
             noteY = (u16)gHornNoteYs[i];
             sprite.x = x;
             sprite.y = (u16)gHornNoteYs[i] + gHudState->hornAnim * ((u16)gHornNoteYs[i - 1] - noteY) / 6;
@@ -7463,13 +7087,13 @@ void Hud_DrawHornNotes(Player *pl)
         }
         sprite.w = 20.0f * scale;
         sprite.h = 15.0f * scale;
-        sprite.x = 0xFA - sprite.w / 2;
+        sprite.x = 250 - sprite.w / 2;
         sprite.y = gHornNoteYs[0] + 7 - sprite.h / 2;
         sprite.color = gHornNoteColors[gHudState->hornHist[0]];
         Sprite_Draw((struct Sprite *)&sprite);
         gHudState->hornAnim--;
     } else {
-        sprite.x = 0xF0;
+        sprite.x = 240;
         sprite.w = 20;
         sprite.h = 15;
         for (i = 0; i < 4; i++) {
@@ -7479,7 +7103,7 @@ void Hud_DrawHornNotes(Player *pl)
             sprite.y = gHornNoteYs[i];
             sprite.color = gHornNoteColors[gHudState->hornHist[(u32)i]];
             Sprite_Draw((struct Sprite *)&sprite);
-            sprite.x += 0x18;
+            sprite.x += 24;
         }
     }
 }
@@ -7497,10 +7121,7 @@ typedef struct TriW {
     s32 uv2;            /* 0x18 */
 } TriW;
 
-s32 CamCtl_IsAiming(Player *pl);
-s8 CamAim_GetState(s32 p, u8 *show, u8 *bar, f32 *pos);
 struct TexRect;
-void TexRect_Draw(struct TexRect *r, s8 mode);
 extern u8 D_0043189C[];
 extern s16 D_0043189E;
 extern s16 gAimViewSizes[];
@@ -7510,7 +7131,7 @@ extern s16 D_00431876[];
 extern s16 D_0043187A[];
 extern s16 D_0043188A[];
 extern s16 D_0043188E[];
-extern u8 gAimViewSprites[];
+extern AimViewSprites gAimViewSprites;
 extern s16 gAimViewTris[];
 extern s16 D_004318D4[];
 extern s16 D_004318EC[];
@@ -7539,30 +7160,30 @@ void Hud_DrawAimView(void)
         gHudState->aimKind = -1;
         return;
     }
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
     gHudState->aimKind = CamAim_GetState(plWord, &show, &bar, &pos);
     if (bar != 0) {
         Sprite_DrawList((Sprite *)D_0043189C, 2);
-        sprite.x = 0x107;
+        sprite.x = 263;
         sprite.y = D_0043189E;
         sprite.w = gAimViewSizes[0];
         sprite.h = D_004318A2[0];
         sprite.color = -1;
-        sprite.uv0 = TEX_UV(0x0, 0xC4);
-        sprite.uv1 = TEX_UV(0x14, 0xD8);
+        sprite.uv0 = TEX_UV(0, 196);
+        sprite.uv1 = TEX_UV(20, 216);
         i = 5;
         do {
             Sprite_Draw((struct Sprite *)&sprite);
-            sprite.x += 0x18;
+            sprite.x += 24;
         } while (--i != 0);        sprite.x = 246.0f + 142.0f * pos;
-        sprite.y = 0x15D;
-        sprite.w = 0xC;
-        sprite.h = 0xC;
+        sprite.y = 349;
+        sprite.w = 12;
+        sprite.h = 12;
         sprite.color = 0xFFFF0000;
-        sprite.uv0 = TEX_UV(0x61, 0x8F);
-        sprite.uv1 = TEX_UV(0x6A, 0x9A);
+        sprite.uv0 = TEX_UV(97, 143);
+        sprite.uv1 = TEX_UV(106, 154);
         TexRect_Draw((struct TexRect *)&sprite, 2);
     }
     if (show != 0) {
@@ -7571,7 +7192,7 @@ void Hud_DrawAimView(void)
             restK = 4 - k;
             if (gHudState->aimFade == 0) {
                 wave = Math_Cos(0.0000958738f * (u16)((gHudState->aimBlink & 0x1F) << 11));
-                sprite.color = ((s8)(94.0f * wave) + 0xA1) << 24 | 0xFF0000;
+                sprite.color = ((s8)(94.0f * wave) + 161) << 24 | 0xFF0000;
                 (gHudState->aimBlink)++;
             } else {
                 sprite.color = 0xFFFF0000;
@@ -7580,17 +7201,17 @@ void Hud_DrawAimView(void)
             q = gHudStepPulse;
             sprite.x = (q[0][0] * k + q[0][1] * restK) >> 2;
             sprite.y = D_00431876[0];
-            sprite.w = 0x19;
+            sprite.w = 25;
             sprite.h = D_0043187A[0];
-            sprite.uv0 = TEX_UV(0x56, 0x8F);
-            sprite.uv1 = TEX_UV(0x6A, 0x9A);
+            sprite.uv0 = TEX_UV(86, 143);
+            sprite.uv1 = TEX_UV(106, 154);
             Sprite_Draw((struct Sprite *)&sprite);
             sprite.x = (q[1][0] * k + q[1][1] * restK) >> 2;
             sprite.y = D_0043188A[0];
-            sprite.w = 0x19;
+            sprite.w = 25;
             sprite.h = D_0043188E[0];
-            sprite.uv0 = TEX_UV(0x69, 0x8F);
-            sprite.uv1 = TEX_UV(0x55, 0x9A);
+            sprite.uv0 = TEX_UV(105, 143);
+            sprite.uv1 = TEX_UV(85, 154);
             Sprite_Draw((struct Sprite *)&sprite);
             q++;
             q++; /* two steps: MWCC folds `q += 2` into the offsets */
@@ -7598,29 +7219,29 @@ void Hud_DrawAimView(void)
             tri.x0 = tri.x2 = gAimViewTris[0];
             tri.x1 = D_004318D4[0];
             tri.y0 = tri.y1 = (q[0][0] * k + q[0][1] * restK) >> 2;
-            tri.y2 = tri.y0 + 0xC;
-            tri.uv0 = TEX_UV(0x61, 0x9A);
-            tri.uv1 = TEX_UV(0x61, 0x8F);
+            tri.y2 = tri.y0 + 12;
+            tri.uv0 = TEX_UV(97, 154);
+            tri.uv1 = TEX_UV(97, 143);
             tri.uv2 = 0x9A006A;
             Prim_DrawTexTri((struct PrimTexTri *)&tri);
             tri.x0 = tri.x1;
             tri.y0 = tri.y2;
-            tri.uv0 = TEX_UV(0x6A, 0x8F);
+            tri.uv0 = TEX_UV(106, 143);
             Prim_DrawTexTri((struct PrimTexTri *)&tri);
             tri.x0 = D_00431908[0];
             tri.y2 = (q[1][0] * k + q[1][1] * restK) >> 2;
-            tri.y0 = tri.y1 = tri.y2 + 0xC;
-            tri.uv0 = TEX_UV(0x61, 0x9A);
+            tri.y0 = tri.y1 = tri.y2 + 12;
+            tri.uv0 = TEX_UV(97, 154);
             Prim_DrawTexTri((struct PrimTexTri *)&tri);
             tri.x0 = tri.x1;
             tri.y0 = tri.y2;
-            tri.uv0 = TEX_UV(0x6A, 0x8F);
+            tri.uv0 = TEX_UV(106, 143);
             Prim_DrawTexTri((struct PrimTexTri *)&tri);
             if ((u8)gHudState->aimStart != 0) {
-                Sound_PlaySeFlat(0, 0x20, 0);
+                Sound_PlaySeFlat(0, 32, 0);
             }
         }
-        Sprite_DrawList((Sprite *)gAimViewSprites, 3);
+        Sprite_DrawList(gAimViewSprites.views, 3);
         Prim_DrawTexTri((struct PrimTexTri *)gAimViewTris);
         Prim_DrawTexTri((struct PrimTexTri *)D_004318EC);
         Prim_DrawTexTri((struct PrimTexTri *)D_00431908);
@@ -7629,9 +7250,6 @@ void Hud_DrawAimView(void)
 }
 
 s16 Player_IsState(void *obj, u8 a, u8 b);
-u16 Bowgun_NextAmmoSlot(Player *p, u16 slot, u8 dir);
-void Hud_DrawBlinkIcon(s32 i);
-void Hud_DrawBowgunClip(Player *p, u8 kind);
 
 /* Draws the gunners' HUD (the two bowguns and the gunlance): the clip
  * (Hud_DrawBowgunClip) and the blinking prompts (BLINK_ICON_*) while the
@@ -7641,9 +7259,9 @@ void Hud_DrawBowgun(void)
     Player *pl = gHudState->player;
 
     if (pl->weaponType == WEAPON_HEAVY_BOWGUN || pl->weaponType == WEAPON_LIGHT_BOWGUN || pl->weaponType == WEAPON_GUNLANCE) {
-        Gfx_SetTexFilter(0);
-        Tex_Prepare(1, 0x146);
-        Tex_Bind(0x146);
+        Gfx_SetTexFilter(GFX_TEX_NEAREST);
+        Tex_Prepare(1, 326);
+        Tex_Bind(326);
         if (pl->weaponType == WEAPON_GUNLANCE) {
             Hud_DrawBowgunClip(pl, 2);
             if (pl->weaponOut != 0) {
@@ -7660,7 +7278,7 @@ void Hud_DrawBowgun(void)
             return;
         }
         if (pl->ammoCount == 0) {
-            if (pl->weaponOut != 0 && Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 1) != 0xFF) {
+            if (pl->weaponOut != 0 && Bowgun_NextAmmoSlot(pl, pl->ammoSlot, 1) != 255) {
                 Hud_DrawBlinkIcon(BLINK_ICON_NEXT_AMMO);
             }
             return;
@@ -7669,7 +7287,7 @@ void Hud_DrawBowgun(void)
         if (pl->roundsLoaded <= 0 && pl->weaponOut != 0) {
             Hud_DrawBlinkIcon(BLINK_ICON_RELOAD);
         }
-        if (pl->motionId[0] == 0x57C) /* the bowguns' reload motion */ {
+        if (pl->motionId[0] == 1404) /* the bowguns' reload motion */ {
             Hud_DrawBlinkIcon(BLINK_ICON_RELOADING);
         }
     }
@@ -7686,17 +7304,17 @@ void Hud_DrawBlinkIcon(s32 icon)
     IconDef *def = &gBlinkIconDefs[icon];
     u8 alpha;
 
-    alpha = (s8)(96.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x1F) << 11))) + 0x9F;
+    alpha = (s8)(96.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x1F) << 11))) + 159;
     if (gHudState->aimKind != 0) {
-        sprite.x = 0x78;
-        sprite.y = 0x3A;
+        sprite.x = 120;
+        sprite.y = 58;
         sprite.color = (alpha << 24) | 0xFFFFFF;
         if ((gHudState->player)->weaponType == WEAPON_GUNLANCE) {
-            sprite.x += 0x64;
+            sprite.x += 100;
         }
     } else {
         sprite.x = def->x;
-        sprite.y = 0xD5;
+        sprite.y = 213;
         sprite.color = 0xFF000000 | (alpha << 16) | (alpha << 8) | alpha;
     }
     sprite.w = def->w;
@@ -7705,8 +7323,6 @@ void Hud_DrawBlinkIcon(s32 icon)
     sprite.uv1 = def->uv1;
     Sprite_Draw((struct Sprite *)&sprite);
 }
-
-u8 Player_GetSharpnessLevel(Player *p);
 
 /* The bowgun's clip: p->clipSize slots, the first p->roundsLoaded of them loaded (kind 0-2: the
  * position). */
@@ -7718,37 +7334,35 @@ void Hud_DrawBowgunClip(Player *pl, u8 kind)
     sprite.color = 0xFFFFFFFF;
     switch (kind) {
     case 0:
-        sprite.x = 0x78;
-        sprite.y = 0x32;
+        sprite.x = 120;
+        sprite.y = 50;
         break;
     case 1:
-        sprite.x = 0x13E - pl->clipSize * 15 / 2;
-        sprite.y = 0x123;
+        sprite.x = 318 - pl->clipSize * 15 / 2;
+        sprite.y = 291;
         break;
     case 2:
         if (Player_GetSharpnessLevel(pl) == 0) {
             sprite.color = 0xFFFF0000;
         }
-        sprite.x = 0xDC;
-        sprite.y = 0x32;
+        sprite.x = 220;
+        sprite.y = 50;
         break;
     }
-    sprite.w = 0xF;
-    sprite.h = 0x14;
+    sprite.w = 15;
+    sprite.h = 20;
     for (i = 0; i < pl->clipSize; i++) {
         if (i < pl->roundsLoaded) {
-            sprite.uv0 = TEX_UV(0xD8, 0xED);
-            sprite.uv1 = TEX_UV(0xE4, 0xFF);
+            sprite.uv0 = TEX_UV(216, 237);
+            sprite.uv1 = TEX_UV(228, 255);
         } else {
-            sprite.uv0 = TEX_UV(0xE4, 0xED);
-            sprite.uv1 = TEX_UV(0xF0, 0xFF);
+            sprite.uv0 = TEX_UV(228, 237);
+            sprite.uv1 = TEX_UV(240, 255);
         }
         Sprite_Draw((struct Sprite *)&sprite);
         sprite.x += sprite.w;
     }
 }
-
-s32 Player_HasSkill(Player *p, u8 skill);
 
 /* Returns 1 if the hunter knows where monster em is: it is painted, or the
  * local player has a detect effect running or the higher detect skill. */
@@ -7763,7 +7377,7 @@ s32 Map_MonsterLocated(Em *em)
     if ((*(u16 *)&pl->detectTimer | *(u16 *)&pl->actDetectTimer) != 0) {
         return 1;
     }
-    return Player_HasSkill((Player *) pl, 0xA2U);
+    return Player_HasSkill((Player *) pl, 162U);
 }
 
 /* Starts the map's glow (glowTimer) when monster em is located and the map
@@ -7771,7 +7385,7 @@ s32 Map_MonsterLocated(Em *em)
 void Hud_TriggerGlow(Em *em)
 {
     if ((Map_MonsterLocated(em) != 0) && (gHudState->mode == 0) && (gHudState->mapOff == 0) && (gHudState->hidden == 0)) {
-        gHudState->glowTimer = 0x1A;
+        gHudState->glowTimer = 26;
     }
 }
 
@@ -7782,14 +7396,14 @@ void Hud_DrawGlowEffect(void)
     u8 glowTimer;
 
     if (gHudState->glowTimer != 0) {
-        Gfx_SetBlend(4, 1);
-        Gfx_SetTexFilter(1);
-        Tex_Prepare(1, 0x144);
-        Tex_Bind(0x144);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+        Tex_Prepare(1, 324);
+        Tex_Bind(324);
         glowTimer = gHudState->glowTimer;
         frames = (f32) (u32) glowTimer;
-        Hud_DrawGlow(0x200, 0xAC, 0xFFFFFF, 120.0f, frames);
-        Gfx_SetBlend(4, 5);
+        Hud_DrawGlow(512, 172, 0xFFFFFF, 120.0f, frames);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     }
 }
 
@@ -7807,31 +7421,26 @@ void Hud_DrawGlow(s16 x, s16 y, s32 color, f32 size, f32 frames)
     sprite.h = w;
     sprite.x = x;
     sprite.y = y;
-    *(s32 *)&sprite.u0 = TEX_UV(0xE1, 0xC1);
-    *(s32 *)&sprite.u1 = TEX_UV(0xFF, 0xDF);
+    *(s32 *)&sprite.u0 = TEX_UV(225, 193);
+    *(s32 *)&sprite.u1 = TEX_UV(255, 223);
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.y = y - sprite.h;
-    sprite.v0 = 0xDF;
-    sprite.v1 = 0xC1;
+    sprite.v0 = 223;
+    sprite.v1 = 193;
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.x = x - sprite.w;
-    sprite.u0 = 0xFF;
-    sprite.u1 = 0xE1;
+    sprite.u0 = 255;
+    sprite.u1 = 225;
     Sprite_Draw((struct Sprite *)&sprite);
     sprite.y = y;
-    sprite.v0 = 0xC1;
-    sprite.v1 = 0xDF;
+    sprite.v0 = 193;
+    sprite.v1 = 223;
     Sprite_Draw((struct Sprite *)&sprite);
 }
 
 extern Frame gSupplyBoxFrame;
-extern char *gSupplySelectText[];
 extern char *gSupplyPouchFullText;
-extern char *gSupplyCannotCarryText[];
 extern char *gSupplyInfiniteFmt;
-extern char *gSupplyCountFmt[];
-s32 QuestGoal_IsDone(s32 a);
-s16 Pouch_Space(Player *p, u16 item);
 
 /* The x of supply box slot i's column. */
 #define SUPPLY_X(i) (313.0f + 36.0f * ((i) & 7))
@@ -7883,29 +7492,29 @@ void SupplyBox_Draw(void)
     rect.color = 0xFF200000;
     for (i = 0; i < 40; i++) {
         rect.x0 = (s16)SUPPLY_X(i) + 4;
-        rect.x1 = rect.x0 + 0x20;
-        rect.y0 = (i >> 3) * 32 + 0x60;
-        rect.y1 = rect.y0 + 0x1C;
+        rect.x1 = rect.x0 + 32;
+        rect.y0 = (i >> 3) * 32 + 96;
+        rect.y1 = rect.y0 + 28;
         Prim_FillRect((struct PrimLine *)&rect);
     }
-    Gfx_SetTexFilter(0);
-    Tex_Prepare(1, 0x144);
-    Tex_Bind(0x144);
-    sprite.w = 0x28;
-    sprite.h = 0x20;
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Tex_Prepare(1, 324);
+    Tex_Bind(324);
+    sprite.w = 40;
+    sprite.h = 32;
     for (i = 0; i < 40; i++) {
         if (!(taken[i >> 5] & (1 << (i & 31)))) {
             if (scene->supply[i].item != 0 && scene->supply[i].count != 0) {
                 ItemData *itemData = &gItemData[scene->supply[i].item];
 
-                if (itemData->icon != 0xFF) {
+                if (itemData->icon != 255) {
                     k = itemData->icon + 1;
                     sprite.x = SUPPLY_X(i);
-                    sprite.y = (i >> 3) * 32 + 0x5E;
+                    sprite.y = (i >> 3) * 32 + 94;
                     sprite.u0 = (k & 7) * 32 + 1;
                     sprite.v0 = (k >> 3) * 32 + 1;
-                    sprite.u1 = sprite.u0 + 0x1E;
-                    sprite.v1 = sprite.v0 + 0x1E;
+                    sprite.u1 = sprite.u0 + 30;
+                    sprite.v1 = sprite.v0 + 30;
                     sprite.color = gItemColors[itemData->color];
                     Sprite_Draw((struct Sprite *)&sprite);
                 }
@@ -7915,21 +7524,21 @@ void SupplyBox_Draw(void)
     if (gHudState->supplyMoveTimer > 0) {
         progress = (f32)gHudState->supplyMoveTimer / (f32)gHudState->supplyMoveFrames;
         sprite.x = SUPPLY_X(gHudState->supplyMoveSlot) * progress + 315.0f * (1.0f - progress);
-        sprite.y = progress * ((gHudState->supplyMoveSlot >> 3) * 32 + 0x5E) + 284.0f * (1.0f - progress);
+        sprite.y = progress * ((gHudState->supplyMoveSlot >> 3) * 32 + 94) + 284.0f * (1.0f - progress);
         k = gItemData[gHudState->supplyMoveItem].icon + 1;
         sprite.u0 = (k & 7) * 32 + 1;
         sprite.v0 = (k >> 3) * 32 + 1;
-        sprite.u1 = sprite.u0 + 0x1E;
-        sprite.v1 = sprite.v0 + 0x1E;
+        sprite.u1 = sprite.u0 + 30;
+        sprite.v1 = sprite.v0 + 30;
         sprite.color = gItemColors[gItemData[gHudState->supplyMoveItem].color] & 0xFFFFFF;
         item = 45.0f * Math_Sqrtf(gHudState->supplyMoveTimer);
         sprite.color |= (item & 0xFF) << 24;
         Sprite_Draw((struct Sprite *)&sprite);
     }
     sprite.x = SUPPLY_X(pl->menuCursor);
-    sprite.y = (pl->menuCursor >> 3) * 32 + 0x5E;
+    sprite.y = (pl->menuCursor >> 3) * 32 + 94;
     *(s32 *)&sprite.u0 = 0;
-    *(s32 *)&sprite.u1 = TEX_UV(0x20, 0x20);
+    *(s32 *)&sprite.u1 = TEX_UV(32, 32);
     sprite.color = 0xFFFFFFFF;
     Sprite_Draw((struct Sprite *)&sprite);
     if (gHudState->supplyMsgTimer > 0) {
@@ -7938,31 +7547,31 @@ void SupplyBox_Draw(void)
         size = 32.0f * (1.0f + 0.17960416f * Math_Sqrtf(31.0f - frames));
         sprite.w = 1.25f * size;
         sprite.h = size;
-        sprite.x = (s16)SUPPLY_X(gHudState->supplyFlashSlot) - ((sprite.w - 0x28) >> 1);
-        sprite.y = (gHudState->supplyFlashSlot >> 3) * 32 + 0x5E - ((sprite.h - 0x20) >> 1);
+        sprite.x = (s16)SUPPLY_X(gHudState->supplyFlashSlot) - ((sprite.w - 40) >> 1);
+        sprite.y = (gHudState->supplyFlashSlot >> 3) * 32 + 94 - ((sprite.h - 32) >> 1);
         sprite.color = ((alpha & 0xFF) << 24) | 0xFFFFFF;
         Sprite_Draw((struct Sprite *)&sprite);
     }
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
-    sprite.x = 0x13B;
-    sprite.y = 0x11C;
-    sprite.w = 0x32;
-    sprite.h = 0x32;
-    *(s32 *)&sprite.u0 = TEX_UV(0x78, 0xEC);
-    *(s32 *)&sprite.u1 = TEX_UV(0x8C, 0x100);
+    sprite.x = 315;
+    sprite.y = 284;
+    sprite.w = 50;
+    sprite.h = 50;
+    *(s32 *)&sprite.u0 = TEX_UV(120, 236);
+    *(s32 *)&sprite.u1 = TEX_UV(140, 256);
     sprite.color = 0xFFFFFFFF;
     Sprite_Draw((struct Sprite *)&sprite);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(0x144, 0x46);
+    Font_SetPos(324, 70);
     Text_Draw(gSupplySelectText[0]);
     cur = pl->menuCursor;
     item = (taken[cur >> 5] & (1 << (cur & 31))) ? 0 : scene->supply[cur].item;
     n = scene->supply[cur].count;
     if (item == 0 || n == 0) {
         sprintf(buf, gHudFmtString, gItemNames[0]);
-        Font_SetPos(0x1CB - Str_Length(buf) * 9 / 2, 0x10A);
+        Font_SetPos(459 - Str_Length(buf) * 9 / 2, 266);
         Text_Draw(buf);
         item = 0;
     } else {
@@ -7970,26 +7579,26 @@ void SupplyBox_Draw(void)
         case 1:
             sprintf(buf, (char *)gItemNames[item]);
             break;
-        case 0xFF:
+        case 255:
             sprintf(buf, gSupplyInfiniteFmt, gItemNames[item]);
             break;
         default:
             sprintf(buf, gSupplyCountFmt[0], gItemNames[item], n);
             break;
         }
-        Font_SetPos(0x1CB - Str_Length(buf) * 9 / 2, 0x10A);
+        Font_SetPos(459 - Str_Length(buf) * 9 / 2, 266);
         Text_Draw(buf);
         x = -1;
         k = Pouch_Space(pl, item);
         if (k < 0) {
-            x = 0x18C;
+            x = 396;
             msg = gSupplyPouchFullText;
         } else if (k < n) {
-            x = 0x17A;
+            x = 378;
             msg = gSupplyCannotCarryText[0];
         }
         if (x > 0) {
-            Font_SetPos(x, 0x128);
+            Font_SetPos(x, 296);
             Font_SetColor(0x807F212E);
             Text_Draw(msg);
         }
@@ -8001,8 +7610,8 @@ void SupplyBox_Draw(void)
  * byte at 0x81B of the player it is given). */
 void Hud_StartSupplyMsg(u8 *player)
 {
-    gHudState->supplyMsgTimer = 0x1F;
-    gHudState->supplyFlashSlot = player[0x81B];
+    gHudState->supplyMsgTimer = 31;
+    gHudState->supplyFlashSlot = player[2075];
 }
 
 /* Starts the icon of `item`, taken from supply box slot `slot`, moving to
@@ -8016,19 +7625,14 @@ void SupplyBox_StartMove(u16 item, u8 slot)
     gHudState->supplyMoveItem = item;
     gHudState->supplyMoveSlot = slot;
     dx = 313.0f + 36.0f * (gHudState->supplyMoveSlot & 7) - 315.0f;
-    dy = (gHudState->supplyMoveSlot >> 3) * 32 - 0xBE;
+    dy = (gHudState->supplyMoveSlot >> 3) * 32 - 190;
     frames = 0.1f * Math_Sqrtf(dx * dx + dy * dy);
     gHudState->supplyMoveTimer = frames;
     gHudState->supplyMoveFrames = frames;
 }
 
 extern ListWin gTentMenuPanel;
-extern char *gTentMenuLabels[];
-extern char *gSubTargetHelpText[];
-extern char *gQuestMenuHelpTexts[];
-extern char *gYesNoTexts[];
 extern Panel gSupplyBoxTextBox;
-s32 Quest_CheckSubClearMode(void);
 
 /* Draws the camp's tent menu while the player has it open
  * (Player.deliveryMenu): page 0 the list (gTentMenuLabels: a set of
@@ -8056,7 +7660,7 @@ void TentMenu_Draw(void)
             helpLine += 3;
         }
         if (pl->menuDelay != 0) {
-            gTentMenuPanel.color = 0xA;
+            gTentMenuPanel.color = 10;
             shownCursor = -1;
         } else {
             shownCursor = pl->menuCursor;
@@ -8084,23 +7688,16 @@ void TentMenu_Draw(void)
             break;
         }
         Window_DrawTextB2((struct Window *)&gSupplyBoxTextBox, (u8 *)((s32)text));
-        Font_SetPos(0x18F, 0x142);
+        Font_SetPos(399, 322);
         Text_Printf(gYesNoTexts[pl->yesNoCursor]);
         break;
     }
 }
 
-extern char gHudFmtString[];
-extern char *gDeliveryMenuTexts[];
-extern char *gDeliveryDoneText[];
 extern char *gNotDeliveryText;
-extern char *gDeliveryHelpText[];
 extern ListPanel gDeliveryPanel;
 extern ListPanel gDeliveryPanel2;
 extern Panel gDeliveryTextBox;
-s32 Quest_GetDeliveryTarget(Player *unused, s32 idx, ItemStack *out);
-s32 QuestGoal_AllSubDone(void);
-s16 Pouch_Count(Player *p, u16 item);
 
 /* Draws the delivery page of the quest menu (page 2 first shows the goal list, page 1 the
  * Delivery_DrawCount part): the title and, for each of the three targets, its label and the item
@@ -8109,7 +7706,7 @@ void QuestMenu_DrawDelivery(void)
 {
     Player *pl = gHudState->player;
     ItemStack stack;
-    char buf[0x4C];
+    char buf[76];
     s16 i;
     char *cursor;
     s8 n;
@@ -8129,12 +7726,12 @@ void QuestMenu_DrawDelivery(void)
         Delivery_DrawCount();
     case 0:
         ListPanel_Draw(&gDeliveryPanel2, NULL, NULL, pl->menuCursor + 1);
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(0x166, 0x50);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(358, 80);
         Font_SetColor(0x807F7F28);
         Text_Printf(gHudFmtString, gDeliveryMenuTexts[0]);
         for (i = 0; i < 3; i++) {
-            Font_SetPos(0x166, (i + 1) * 22 + 0x50);
+            Font_SetPos(358, (i + 1) * 22 + 80);
             Font_SetColor(0x807F7F7F);
             cursor = buf;
             n = 0;
@@ -8170,9 +7767,6 @@ void QuestMenu_DrawDelivery(void)
 }
 
 extern ListWin gEquipStatusPanel;
-extern char *gEquipStatusTitle[];
-void PersonalStatus_DrawEquipment(Player *pl);
-void EquipWindow_DrawLocal(EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other);
 
 /* Draws the status page's equipment window: the six slots
  * (PersonalStatus_DrawEquipment), the cursor's bar pulsing over the
@@ -8188,18 +7782,17 @@ void EquipStatus_Draw(void)
     pl = gHudState->player;
     ListPanel_DrawDim(&gEquipStatusPanel, gEquipStatusTitle[0], -1);
     PersonalStatus_DrawEquipment(pl);
-    line.x0 = 0x178;
-    line.x1 = 0x266;
-    line.y0 = gHudState->pageCursor * 32 + 0x55;
-    line.y1 = line.y0 + 0x20;
-    line.color = (((s8)(48.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10))) + 0xBF) << 24) | 0xA9182;
+    line.x0 = 376;
+    line.x1 = 614;
+    line.y0 = gHudState->pageCursor * 32 + 85;
+    line.y1 = line.y0 + 32;
+    line.color = (((s8)(48.0f * Math_Sin(0.0000958738f * (u16)((gFrameTick & 0x3F) << 10))) + 191) << 24) | 0xA9182;
     Prim_FillRect((struct PrimLine *)&line);
     equip = Player_GetEquipBySlot(&item, gHudState->pageCursor, pl);
-    EquipWindow_DrawLocal(equip, 0x132, 0x12A, gHudState->equipCursor, 0);
+    EquipWindow_DrawLocal(equip, 306, 298, gHudState->equipCursor, 0);
 }
 
 extern Sprite gBowgunAmmoSprite;
-extern char *gAmmoTensFmt[];
 void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
 
 /* The bowgun's loaded ammo: the tens as a number, the ones as rounds. */
@@ -8214,36 +7807,36 @@ void Hud_DrawBowgunAmmo(void)
     s32 ones;
     u32 color;
 
-    Gfx_SetTexFilter(0);
-    Tex_Prepare(1, 0x146);
-    Tex_Bind(0x146);
-    if (pl->coatingSlot != 0xFF) {
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
+    if (pl->coatingSlot != 255) {
         n = pl->pouch[pl->coatingSlot].count;
         item = pl->pouch[pl->coatingSlot].item;
         color = gItemColors[gItemData[item].color];
         ones = n % 10;
-        sprite.x = 0x78;
-        sprite.y = 0x34;
-        sprite.w = 0x1F;
-        sprite.h = 0x15;
-        sprite.uv0 = TEX_UV(0xE8, 0x2A);
-        sprite.uv1 = TEX_UV(0x100, 0x3F);
+        sprite.x = 120;
+        sprite.y = 52;
+        sprite.w = 31;
+        sprite.h = 21;
+        sprite.uv0 = TEX_UV(232, 42);
+        sprite.uv1 = TEX_UV(256, 63);
         tens = n / 10;
         sprite.color = tens != 0 ? color : 0xFF808080;
         Sprite_Draw((struct Sprite *)&sprite);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         sprintf(buf, gAmmoTensFmt[0], tens);
-        Text_DrawShadow(0x98, 0x37, 1, 0, buf);
-        sprite.x = 0xB4;
-        sprite.y = 0x34;
-        sprite.w = 0x14;
-        sprite.h = 0x15;
-        sprite.uv0 = TEX_UV(0x4, 0xAD);
-        sprite.uv1 = TEX_UV(0x14, 0xC2);
+        Text_DrawShadow(152, 55, 1, 0, buf);
+        sprite.x = 180;
+        sprite.y = 52;
+        sprite.w = 20;
+        sprite.h = 21;
+        sprite.uv0 = TEX_UV(4, 173);
+        sprite.uv1 = TEX_UV(20, 194);
         sprite.color = color;
         while (ones != 0) {
             Sprite_Draw((struct Sprite *)&sprite);
-            sprite.x += 0x14;
+            sprite.x += 20;
             ones--;
         }
     } else {
@@ -8252,7 +7845,6 @@ void Hud_DrawBowgunAmmo(void)
 }
 
 extern Panel gPauseTextBox;
-extern char *gPausedText[];
 
 /* Draws the pause window, sliding with gPauseWinFade. */
 void Pause_DrawWindow(void)
@@ -8266,20 +7858,20 @@ void Pause_DrawWindow(void)
     }
 }
 
-/* Saves (and the next restores) the GS states 0x6C and 0x6D around the
+/* Saves (and the next restores) the render states RS_ZWRITE and RS_ZTEST around the
  * HUD's drawing. */
 void Hud_SaveGsState(void)
 {
-    gHudState->gsSave6C = Gs_GetState(0x6C);
-    gHudState->gsSave6D = Gs_GetState(0x6D);
+    gHudState->gsSaveZWrite = Gs_GetState(RS_ZWRITE);
+    gHudState->gsSaveZTest = Gs_GetState(RS_ZTEST);
 }
 
-/* Puts back the render states 0x6C and 0x6D that Hud_SaveGsState kept
+/* Puts back the render states RS_ZWRITE and RS_ZTEST that Hud_SaveGsState kept
  * (the depth test and the alpha test's mode, render_state.h). */
 void Hud_RestoreGsState(void)
 {
-    Gs_SetState(0x6C, gHudState->gsSave6C);
-    Gs_SetState(0x6D, gHudState->gsSave6D);
+    Gs_SetState(RS_ZWRITE, gHudState->gsSaveZWrite);
+    Gs_SetState(RS_ZTEST, gHudState->gsSaveZTest);
 }
 
 /* The HUD's first draw layer: the versus monsters' bars (not while
@@ -8288,7 +7880,7 @@ void Hud_DrawLayer0(void)
 {
     Hud_SaveGsState();
     Gs_SetState(RS_ALPHA_REF, 0);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Text_SetSize(6);
     Font_SetPal(0);
     if (Game_PauseState() == 0) {
@@ -8308,7 +7900,7 @@ void Hud_DrawLayer1(void)
 
     Hud_SaveGsState();
     Gs_SetState(RS_ALPHA_REF, 0);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Text_SetSize(0);
     Font_SetPal(0);
     if (Game_PauseState() == 0) {
@@ -8350,7 +7942,7 @@ void Hud_DrawLayer2(void)
     Player *pl;
 
     Hud_SaveGsState();
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Text_SetSize(1);
     Font_SetPal(0);
     if (gHudState->popupOpen != 0) {
@@ -8371,16 +7963,6 @@ void Hud_DrawLayer2(void)
     }
     Hud_RestoreGsState();
 }
-
-s8 Kbd_IsOpen(void);
-void Hud_DrawButtonIcons(void);
-void SupplyBox_Draw(void);
-void TentMenu_Draw(void);
-void QuestMenu_DrawDelivery(void);
-void Notice_Draw(void);
-void Chat_DrawHud(void);
-void Hud_FadeDraw(void);
-void Chat_DrawKbdBox(s32 text);
 
 /* The third draw hook: with no popup, the button icons, the supply box,
  * the tent menu and the delivery (when no menu is open), a notice or the
@@ -8407,7 +7989,7 @@ void Hud_DrawLayer3(void)
             Hud_FadeDraw();
         }
         if (Kbd_IsOpen() != 0) {
-            Gfx_SetBlend(4, 5);
+            Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
             Chat_DrawKbdBox(gChatInputMode != 0 ? 0xBDB59F6C : 0xBD6C6CC5);
         }
     }
@@ -8419,7 +8001,7 @@ void Hud_DrawLayer1B(void)
 {
     Hud_SaveGsState();
     Gs_SetState(RS_ALPHA_REF, 0);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Text_SetSize(0);
     Font_SetPal(0);
     Pause_DrawWindow();
@@ -8432,7 +8014,7 @@ void Hud_DrawLayer2B(void)
 {
     Hud_SaveGsState();
     Gs_SetState(RS_ALPHA_REF, 0);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Text_SetSize(1);
     Font_SetPal(0);
     if (gChatInputMode == 0) {
@@ -8447,8 +8029,6 @@ void Hud_DrawLayer2B(void)
 }
 
 extern u8 gChatSendTo;
-void ChatLog_DrawFull(void);
-void LobbyChat_DrawHud(void);
 
 /* The online town's third draw hook: a notice, the chat (the full log or
  * the HUD's lines while typing, by gChatSendTo), the fades and the
@@ -8478,7 +8058,7 @@ void Hud_DrawLayer3B(void)
         Hud_FadeDraw();
     }
     if (Kbd_IsOpen() != 0) {
-        Gfx_SetBlend(4, 5);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
         boxColor = 0xBD6C6CC5;
         if (gChatInputMode != 0) {
             boxColor = gChatSendTo == 0 ? 0xBD6CC56C : 0xBDB59F6C;
@@ -8488,22 +8068,19 @@ void Hud_DrawLayer3B(void)
     Hud_RestoreGsState();
 }
 
-void Hud_FadeStart(s32 mode, s16 x, s16 y);
-
 /* Starts the combine menu's fade of kind `mode` at its result's place. */
 void CombineMenu_StartFade(s32 mode)
 {
-    Hud_FadeStart(mode, 0x10E, gHudState->combineThree == 0 ? 0xC3 : 0xEA);
+    Hud_FadeStart(mode, 270, gHudState->combineThree == 0 ? 195 : 234);
 }
 
 extern Fade gHudFades[6];
-void Jingle_Play(void *obj, s32 id);
 extern FadeDef *gHudFadeSetsA[4];
 extern FadeDef gHudFadeDefsB[2];
 extern FadeDef *gHudFadeSetsC[4];
 extern s16 gFadeOffsets[][3][2];
 
-/* Starts the six fades of gHudFades (the gHudState block's fade state 0x8C-0x8E) in one of
+/* Starts the six fades of gHudFades (gHudState's fadeActive to fadeFrame) in one of
  * three patterns at (x, y): 0 a staggered row (with a jingle), 1 three pairs jittered by the
  * gFadeOffsets table picked by the frame tick, 2 four at once. */
 void Hud_FadeStart(s32 mode, s16 x, s16 y)
@@ -8525,7 +8102,7 @@ void Hud_FadeStart(s32 mode, s16 x, s16 y)
             fade->active = 1; fade->visible = 0; fade->start = i * 5; fade->bx = baseX; fade->by = y; fade->def = gHudFadeSetsA[i % 4];
             fade++;
         }
-        Jingle_Play(gHudState->player, 0x1C);
+        Jingle_Play(gHudState->player, 28);
         break;
     case 1:
         fade = gHudFades;
@@ -8537,7 +8114,7 @@ void Hud_FadeStart(s32 mode, s16 x, s16 y)
                 fade++;
             }
         }
-        Sound_PlaySeFlat(0, 0xE, 0);
+        Sound_PlaySeFlat(0, 14, 0);
         break;
     case 2:
         fade = gHudFades;
@@ -8548,13 +8125,10 @@ void Hud_FadeStart(s32 mode, s16 x, s16 y)
         }
         gHudFades[5].active = 0;
         gHudFades[4].active = 0;
-        Sound_PlaySeFlat(0, 0xD, 0);
+        Sound_PlaySeFlat(0, 13, 0);
         break;
     }
 }
-
-s32 Fade_ApplyPos(Fade *e, PosKey *k, s16 t);
-s32 Fade_ApplyAlpha(Fade *e, AlphaKey *k, s16 t);
 
 /* Steps the menus' fades (the six of gHudFades) one frame: each active
  * fade that has started (Fade.start, in HudState.fadeFrame's frames) is
@@ -8590,10 +8164,8 @@ void Fade_UpdateAll(void)
     }
 }
 
-void Gfx_SetBlendAlphaAdd(s32 a);
-
 /* Draws the active fades of gHudFades: each a textured quad (two triangles) of its
- * definition, turned by the definition angle (0x10000 a turn) and scaled to its rectangle. */
+ * definition, turned by the definition angle (ANGLE_TURN to a turn) and scaled to its rectangle. */
 void Hud_FadeDraw(void)
 {
     Fade *fade;
@@ -8605,10 +8177,10 @@ void Hud_FadeDraw(void)
     if (gHudState->fadeActive == 0) {
         return;
     }
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
-    Tex_Prepare(1, 0x144);
-    Tex_Bind(0x144);
+    Tex_Prepare(1, 324);
+    Tex_Bind(324);
     fade = gHudFades;
     i = 6;
     do {
@@ -8711,13 +8283,11 @@ s32 QuestMenu_Begin(void)
     return 0;
 }
 
-extern char *gQuestInfoFormats[];
-
 /* Draws `value` in full-width digits. */
 void QuestMenu_DrawWideNumber(s32 value)
 {
-    char out[0x40];
-    char buf[0x40];
+    char out[64];
+    char buf[64];
 
     sprintf(buf, gQuestInfoFormats[0], value);
     Sjis_Widen(buf, out);
@@ -8726,10 +8296,6 @@ void QuestMenu_DrawWideNumber(s32 value)
 
 extern u16 gNextQuestId;
 extern char *D_004458F4;
-u16 Dojo_GetParMinutes(u16 id);
-void *QuestInfo_Get(s32 i);
-void QuestMenu_DrawTimeLimit(s32 unused);
-void QuestMenu_DrawWideNumber(s32 v);
 
 /* Draws a training quest's terms page at x: the time limit, the par
  * time in minutes (Dojo_GetParMinutes), the reward and the two sub
@@ -8737,8 +8303,8 @@ void QuestMenu_DrawWideNumber(s32 v);
  * quest is gNextQuestId in the town, gQuest.stage outside it. */
 void QuestMenu_DrawParTime(s16 x)
 {
-    char buf[0x40];
-    char out[0x40];
+    char buf[64];
+    char out[64];
     u16 quest;
 
     if (gScene.inLobby == 1) {
@@ -8746,30 +8312,25 @@ void QuestMenu_DrawParTime(s16 x)
     } else {
         quest = gQuest.stage;
     }
-    Font_SetPos(x + 0x1F7, 0xA2);
+    Font_SetPos(x + 503, 162);
     QuestMenu_DrawTimeLimit(1);
-    Font_SetPos(x + 0x1F7, 0xB6);
+    Font_SetPos(x + 503, 182);
     sprintf(buf, D_004458F4, Dojo_GetParMinutes(quest));
     Sjis_Widen(buf, out);
     Text_Draw(out);
-    Font_SetPos(x + 0x1D3, 0xCA);
+    Font_SetPos(x + 467, 202);
     QuestMenu_DrawWideNumber(gQuestInfo->reward);
-    Font_SetPos(x + 0x1D3, 0xDE);
+    Font_SetPos(x + 467, 222);
     QuestMenu_DrawWideNumber(gQuestInfo->rewardSubA);
-    Font_SetPos(x + 0x1D3, 0xF2);
+    Font_SetPos(x + 467, 242);
     QuestMenu_DrawWideNumber(gQuestInfo->rewardSubB);
-    Font_SetPos(x + 0x167, 0x12E);
+    Font_SetPos(x + 359, 302);
     Text_Draw(QuestInfo_Get(4));
-    Font_SetPos(x + 0x167, 0x17E);
+    Font_SetPos(x + 359, 382);
     Text_Draw(QuestInfo_Get(5));
 }
 
-extern char *gStageNames[];
-extern char *gDojoNoRecordText[];
 extern char *gDojoBestTimeFmt;
-s32 Save_IsQuestCleared(u16 id);
-s32 Dojo_GetBestScore(u16 id);
-s32 Dojo_GetBestTime(u16 id);
 char *strcpy(char *dst, char *src);
 
 /* Draws a training quest's record page at x: the quest's text, the
@@ -8778,8 +8339,8 @@ char *strcpy(char *dst, char *src);
  * until the quest's list bit is set. */
 void QuestMenu_DrawBestRecord(s16 x)
 {
-    char buf[0x40];
-    char out[0x40];
+    char buf[64];
+    char out[64];
     u16 quest;
     s32 seconds;
     s32 minutes;
@@ -8789,17 +8350,17 @@ void QuestMenu_DrawBestRecord(s16 x)
     } else {
         quest = gQuest.stage;
     }
-    Font_SetPos(x + 0x1C1, 0x8E);
+    Font_SetPos(x + 449, 142);
     Text_Draw(QuestInfo_Get(6));
-    Font_SetPos(x + 0x1C1, 0xA2);
+    Font_SetPos(x + 449, 162);
     Text_Draw(gStageNames[gQuestInfo->map]);
-    Font_SetPos(x + 0x1E5, 0xB6);
+    Font_SetPos(x + 485, 182);
     if (Save_IsQuestCleared(quest) == 0) {
         Text_Draw(gDojoNoRecordText[0]);
     } else {
         QuestMenu_DrawWideNumber(Dojo_GetBestScore(quest));
     }
-    Font_SetPos(x + 0x1E5, 0xCA);
+    Font_SetPos(x + 485, 202);
     if (Save_IsQuestCleared(quest) == 0) {
         strcpy(buf, gDojoNoRecordText[0]);
     } else {
@@ -8810,33 +8371,24 @@ void QuestMenu_DrawBestRecord(s16 x)
     }
     Sjis_Widen(buf, out);
     Text_Draw(out);
-    Font_SetPos(x + 0x167, 0xF2);
+    Font_SetPos(x + 359, 242);
     Text_Draw(QuestInfo_Get(7));
 }
 
-extern ListPanel gQuestMenuPanel;
-extern char *gQuestStatusTitle[];
-extern char *gNoQuestText;
-extern char *gQuestMenuTitles[];
 extern char *D_00445904;
 extern char *D_00445908;
-extern char *gQuestMenuItemLists[][17];
-extern char *gQuestKindNames[];
 extern char gMemberNames[][17];
-extern char gPlayerIds[][8];
 extern char gMyName[];
 extern char gMyUserId[];
 s32 func_D64530(s32 i);
 void Text_SetColor(s16 color);
-void QuestMenu_DrawParTime(s16 x);
-void QuestMenu_DrawBestRecord(s16 x);
 
 /* draws the quest info window: page 0 the quest, 1 and 2 the sub-pages, 3 the
  * players (two strings each, the local one from gMyName/gMyUserId) */
 void QuestMenu_DrawInfo(void)
 {
-    char buf[0x40];
-    char out[0x40];
+    char buf[64];
+    char out[64];
     s16 *pos;
     s32 i;
     s32 lineY;
@@ -8847,11 +8399,11 @@ void QuestMenu_DrawInfo(void)
     u8 *scene;
 
     pos = Shake_GetOffset(SHAKE_QUEST_MENU);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (gHudState->hasQuestInfo == 0) {
         gQuestMenuPanel.items = NULL;
         ListPanel_Draw(&gQuestMenuPanel, pos, gQuestStatusTitle[0], -1);
-        Font_SetPos(pos[0] + 0x167, 0xB6);
+        Font_SetPos(pos[0] + 359, 182);
         Text_Draw(gNoQuestText);
         return;
     }
@@ -8876,19 +8428,19 @@ void QuestMenu_DrawInfo(void)
     ListPanel_Draw(&gQuestMenuPanel, pos, buf, -1);
     Menu_DrawFrame(&gQuestMenuPanel, pos);
     Font_SetColor(0x807F7F7F);
-    Font_SetPos(pos[0] + 0x167, 0x66);
+    Font_SetPos(pos[0] + 359, 102);
     Text_Draw(QuestInfo_Get(0));
     switch (page) {
     case 0:
-        Font_SetPos(pos[0] + 0x167, 0xB6);
+        Font_SetPos(pos[0] + 359, 182);
         Text_Draw(QuestInfo_Get(1));
-        Font_SetPos(pos[0] + 0x1C1, 0xCA);
+        Font_SetPos(pos[0] + 449, 202);
         Text_DrawStars(gQuestInfo->stars);
-        Font_SetPos(pos[0] + 0x167, 0x106);
+        Font_SetPos(pos[0] + 359, 262);
         Text_Draw(QuestInfo_Get(2));
-        Font_SetPos(pos[0] + 0x167, 0x142);
+        Font_SetPos(pos[0] + 359, 322);
         Text_Draw(QuestInfo_Get(3));
-        Font_SetPos(pos[0] + 0x167, 0x17E);
+        Font_SetPos(pos[0] + 359, 382);
         Text_Draw(gQuestKindNames[gQuestInfo->terms]);
         break;
     case 1:
@@ -8901,17 +8453,17 @@ void QuestMenu_DrawInfo(void)
         i = 0;
         if (i < gScene.playerCount) {
             scene = (u8 *)&gScene;
-            lineY = 0xA2;
-            listY = 0x64;
+            lineY = 162;
+            listY = 100;
             do {
             if (((SceneState *)scene)->inQuest[0] == 1) {
-                Font_SetPos(pos[0] + 0x167, lineY);
+                Font_SetPos(pos[0] + 359, lineY);
                 Text_SetColor((u8)func_D64530(i));
                 sprintf(buf, "%dP", i + 1);
                 Sjis_Widen(buf, out);
                 Text_Draw(out);
                 Font_SetColor(0x807F7F7F);
-                Font_SetPos(pos[0] + 0x167, listY + 0x52);
+                Font_SetPos(pos[0] + 359, listY + 82);
                 if (i == gScene.localPlayer) {
                     sprintf(buf, D_00445904, gMyName);
                 } else {
@@ -8919,7 +8471,7 @@ void QuestMenu_DrawInfo(void)
                 }
                 Sjis_Widen(buf, out);
                 Text_Draw(out);
-                Font_SetPos(pos[0] + 0x167, listY + 0x66);
+                Font_SetPos(pos[0] + 359, listY + 102);
                 if (i == gScene.localPlayer) {
                     sprintf(buf, D_00445908, gMyUserId);
                 } else {
@@ -8927,8 +8479,8 @@ void QuestMenu_DrawInfo(void)
                 }
                 Sjis_Widen(buf, out);
                 Text_Draw(out);
-                lineY += 0x3C;
-                listY += 0x3C;
+                lineY += 60;
+                listY += 60;
             }
             scene++;
             } while (++i < gScene.playerCount);
@@ -8958,11 +8510,7 @@ void CommentEdit_Open(void)
 }
 
 extern u8 *gLoadBuf;
-void Kbd_SetPos(s32 a, f32 b);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
-void Kbd_Cancel(void);
 s8 Kbd_Run(char *dst, s16 held, s16 pressed);
-void Chat_FilterWords(char *s);
 s32 HunterCard_SendChanged(void);
 
 /* The chat input line: confirm opens the keyboard (the line saved), then the keyboard's result
@@ -8970,16 +8518,16 @@ s32 HunterCard_SendChanged(void);
 u16 Chat_InputLine(u16 buttons)
 {
     if ((buttons & PAD_CIRCLE) && gHudState->kbdOpen == 0) {
-        memcpy(gLoadBuf, gSave.comment, 0x62);
+        memcpy(gLoadBuf, gSave.comment, 98);
         gHudState->kbdOpen = 1;
         Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
-        Kbd_SetPos(0x4B, 80.0f);
-        Chat_OpenKbd(2, 0xE, 0x60, gSave.comment);
+        Kbd_SetPos(75, 80.0f);
+        Chat_OpenKbd(2, 14, 96, gSave.comment);
     } else if (gHudState->kbdOpen != 0) {
         if (gPadState[0].pressed & PAD_SELECT) {
             Kbd_Cancel();
             gHudState->kbdOpen = 0;
-            memcpy(gSave.comment, gLoadBuf, 0x62);
+            memcpy(gSave.comment, gLoadBuf, 98);
         } else {
             switch (Kbd_Run((char *)gSave.comment, gPadState[0].held, gPadState[0].pressed)) {
             case 0:
@@ -8994,7 +8542,7 @@ u16 Chat_InputLine(u16 buttons)
                 }
                 break;
             case -1:
-                memcpy(gSave.comment, gLoadBuf, 0x62);
+                memcpy(gSave.comment, gLoadBuf, 98);
                 goto close;
             }
         }
@@ -9004,8 +8552,6 @@ u16 Chat_InputLine(u16 buttons)
 
 extern ListPanel gCommentEditMenu __attribute__((aligned(16)));
 extern ListWin gCommentEditPanel;
-extern char *gCommentEditTitle[];
-void Text_DrawWrapped33(s16 x, s16 y, s16 lineh, char *s);
 
 /* Draws the comment line's page: its window, the menu (grey while the
  * keyboard is open) and the comment. */
@@ -9018,41 +8564,20 @@ void CommentEdit_Draw(void)
     }
     ListPanel_DrawDim(&gCommentEditPanel, gCommentEditTitle[0], -1);
     ListPanel_Draw(&panel, 0, 0, 0);
-    Text_DrawWrapped33(0x132, 0x52, 0x12, (char *)gSave.comment);
+    Text_DrawWrapped33(306, 82, 18, (char *)gSave.comment);
 }
 
 /* The HUD's and the menus' initialised data. */
-extern char *gPouchMenuPanel2_6[];
-extern char *gDeliveryPanel_7[];
-extern char *D_00445888[];
-extern char *gStatusMenuColors_1[];
-extern char *gInfoMenuLabelsOffline[];
-extern char *gInfoMenuLabels[];
-extern char *gCombine2Text[];
-extern char *gCombineDoText[];
-extern char *gChatMenuPanel_7[];
-extern char *gCommentEditText[];
-extern u32 D_0046CFB8[];
+extern char gEmptyNameStr[];
 extern u32 gSideNameNone[];
 extern u32 gSideNameA[];
 extern u32 gSideNameB[];
 extern u32 gHeapBlocks[];
-void ChatMenu_Draw(void);
-s32 ChatMenu_Open(void);
-void CombineMenu_DrawInfo(void);
-s32 CombineMenu_Open(void);
-void OptionMenu_Draw(void);
-s32 OptionMenu_Open(void *m);
-void PauseMenu_Draw(void);
-s32 PauseMenu_Open(void);
 s32 PhraseMenu_Open(void *m);
-void PouchMenu_Draw(void);
-s32 PouchMenu_Open(void *m);
-u16 PouchMenu_Update(u16);
 u32 gPlayerMapColors[4] = {
 #include "sub_main/004306C0.inc"
 };
-char *gEmptyNameText = (char *)D_0046CFB8;
+char *gEmptyNameText = gEmptyNameStr;
 IconUV gStatusIconUVs[15] = {
 #include "sub_main/004306E0.inc"
 };
@@ -9105,7 +8630,7 @@ f32 gCompassPoints[10][2] = {
 u8 gCompassUVs[8][4] = {
 #include "sub_main/004308A0.inc"
 };
-u8 D_004308C0[48] = {
+Sprite gClockRimSprites[2] = {
 #include "sub_main/004308C0.inc"
 };
 s16 gHudGaugeFlashSpeeds[2][5] = {
@@ -9114,7 +8639,7 @@ s16 gHudGaugeFlashSpeeds[2][5] = {
 u8 gSharpnessBarV[8] = {
 #include "sub_main/00430908.inc"
 };
-u32 gSharpnessGlowMasks[68] = {
+WeaponBoxHud gSharpnessGlowMasks = {
 #include "sub_main/00430910.inc"
 };
 s16 gHornNoteYs[8] = {
@@ -9201,7 +8726,7 @@ MonsterNoteDef gMonsterNoteDefs[MONSTER_NOTE_COUNT] = {
 s16 gHudStepPulse[4][2] = {
 #include "sub_main/00431850.inc"
 };
-u8 gAimViewSprites[64] = {
+AimViewSprites gAimViewSprites = {
 #include "sub_main/00431860.inc"
 };
 s16 gAimViewSizes[24] = {
@@ -9216,28 +8741,28 @@ IconDef gBlinkIconDefs[3] = {
 Sprite gBowgunAmmoSprite = {
 #include "sub_main/00431970.inc"
 };
-u32 gHudFadeSetsA_0_9[12] = {
+PosKey gHudFadeSetsA_0_9[4] = {
 #include "sub_main/00431990.inc"
 };
-u32 gHudFadeSetsA_1_9[12] = {
+PosKey gHudFadeSetsA_1_9[4] = {
 #include "sub_main/004319C0.inc"
 };
-u32 gHudFadeSetsA_2_5[12] = {
+PosKey gHudFadeSetsA_2_5[4] = {
 #include "sub_main/004319F0.inc"
 };
-u32 gHudFadeSetsA_3_5[12] = {
+PosKey gHudFadeSetsA_3_5[4] = {
 #include "sub_main/00431A20.inc"
 };
-u32 gHudFadeSetsA_0_10[12] = {
+AlphaKey gHudFadeSetsA_0_10[6] = {
 #include "sub_main/00431A50.inc"
 };
-u32 gHudFadeSetsA_1_10[12] = {
+AlphaKey gHudFadeSetsA_1_10[6] = {
 #include "sub_main/00431A80.inc"
 };
-u32 gHudFadeSetsA_2_6[12] = {
+AlphaKey gHudFadeSetsA_2_6[6] = {
 #include "sub_main/00431AB0.inc"
 };
-u32 gHudFadeSetsA_3_6[12] = {
+AlphaKey gHudFadeSetsA_3_6[6] = {
 #include "sub_main/00431AE0.inc"
 };
 FadeDef gHudFadeSetsA_0 = {
@@ -9246,52 +8771,52 @@ FadeDef gHudFadeSetsA_0 = {
 FadeDef gHudFadeSetsA_1 = {
 #include "sub_main/00431B30.inc"
 };
-u32 gHudFadeSetsA_2[8] = {
+FadeDef gHudFadeSetsA_2 = {
 #include "sub_main/00431B50.inc"
 };
-u32 gHudFadeSetsA_3[8] = {
+FadeDef gHudFadeSetsA_3 = {
 #include "sub_main/00431B70.inc"
 };
 FadeDef *gHudFadeSetsA[4] = {
-    &gHudFadeSetsA_0, &gHudFadeSetsA_1, (FadeDef *)gHudFadeSetsA_2, (FadeDef *)gHudFadeSetsA_3,
+    &gHudFadeSetsA_0, &gHudFadeSetsA_1, &gHudFadeSetsA_2, &gHudFadeSetsA_3,
 };
-u32 gHudFadeDefsB_0[16] = {
+PosKey gHudFadeDefsB_0[5] = {
 #include "sub_main/00431BA0.inc"
 };
-u32 gHudFadeDefsB_1[12] = {
+PosKey gHudFadeDefsB_1[4] = {
 #include "sub_main/00431BE0.inc"
 };
-u32 gHudFadeDefsB_0_a[8] = {
+AlphaKey gHudFadeDefsB_0_a[4] = {
 #include "sub_main/00431C10.inc"
 };
-u32 gHudFadeDefsB_1_a[8] = {
+AlphaKey gHudFadeDefsB_1_a[4] = {
 #include "sub_main/00431C30.inc"
 };
 FadeDef gHudFadeDefsB[2] = {
 #include "sub_main/00431C50.inc"
 };
-u32 gHudFadeSetsC_0_9[16] = {
+PosKey gHudFadeSetsC_0_9[5] = {
 #include "sub_main/00431C90.inc"
 };
-u32 gHudFadeSetsC_1_9[16] = {
+PosKey gHudFadeSetsC_1_9[5] = {
 #include "sub_main/00431CD0.inc"
 };
-u32 gHudFadeSetsC_2_5[12] = {
+PosKey gHudFadeSetsC_2_5[4] = {
 #include "sub_main/00431D10.inc"
 };
-u32 gHudFadeSetsC_3_5[12] = {
+PosKey gHudFadeSetsC_3_5[4] = {
 #include "sub_main/00431D40.inc"
 };
-u32 gHudFadeSetsC_0_10[8] = {
+AlphaKey gHudFadeSetsC_0_10[4] = {
 #include "sub_main/00431D70.inc"
 };
-u32 gHudFadeSetsC_1_10[8] = {
+AlphaKey gHudFadeSetsC_1_10[4] = {
 #include "sub_main/00431D90.inc"
 };
-u32 gHudFadeSetsC_2_6[8] = {
+AlphaKey gHudFadeSetsC_2_6[4] = {
 #include "sub_main/00431DB0.inc"
 };
-u32 gHudFadeSetsC_3_6[8] = {
+AlphaKey gHudFadeSetsC_3_6[4] = {
 #include "sub_main/00431DD0.inc"
 };
 FadeDef gHudFadeSetsC_0 = {
@@ -9300,20 +8825,17 @@ FadeDef gHudFadeSetsC_0 = {
 FadeDef gHudFadeSetsC_1 = {
 #include "sub_main/00431E10.inc"
 };
-u32 gHudFadeSetsC_2[8] = {
+FadeDef gHudFadeSetsC_2 = {
 #include "sub_main/00431E30.inc"
 };
-u32 gHudFadeSetsC_3[8] = {
+FadeDef gHudFadeSetsC_3 = {
 #include "sub_main/00431E50.inc"
 };
 FadeDef *gHudFadeSetsC[4] = {
-    &gHudFadeSetsC_0, &gHudFadeSetsC_1, (FadeDef *)gHudFadeSetsC_2, (FadeDef *)gHudFadeSetsC_3,
+    &gHudFadeSetsC_0, &gHudFadeSetsC_1, &gHudFadeSetsC_2, &gHudFadeSetsC_3,
 };
 /* The message-event list, the game overlay's (sub_main links game's names
  * link-only: tools/configure.py, LOADED_WITH). */
-s32 MsgEvent_OpenList(void);
-s32 MsgEvent_ListInput(u16 pad);
-void MsgEvent_Draw(void);
 s32 (*gFieldMenuDecide[12])(void) = {
     (s32 (*)(void))PouchMenu_Open, CombineMenu_Open, (s32 (*)(void))StatusMenu_Open, (s32 (*)(void))QuestMenu_Open,
     (s32 (*)(void))InfoMenu_Open, (s32 (*)(void))PhraseMenu_Open, (s32 (*)(void))OptionMenu_Open, PauseMenu_Open,
@@ -9489,6 +9011,6 @@ ListWin gCommentEditPanel = {
 ListPanel gCommentEditMenu __attribute__((aligned(16))) = {
 #include "sub_main/00432640.inc"
 };
-u32 gWeaponIconUVs[22] = {
+WeaponIconUV gWeaponIconUVs[11] = {
 #include "sub_main/00432660.inc"
 };

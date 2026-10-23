@@ -29,7 +29,7 @@ enum EmDiablosMotion {
     DIAB_MOT_AIR = 0x0F,           /* the airborne loop of the copied air states; dust when within 1000 of the floor */
     DIAB_MOT_RUN = 0x11,           /* runs and the charge (DIAB_MOVE_RUN, DIAB_MOVE_RUN_AND_STOP, the DIAB_ATK_CHARGE states; under the sand DIAB_BURROW_TRAVEL) */
     DIAB_MOT_LEAP = 0x12,          /* EM_STANCE_AIR from frame 70 with velY curve 2 (DIAB_BURROW_LEAP, _SAND_ESCAPE); dust near the floor */
-    DIAB_MOT_LAND = 0x13,          /* touch-down, stance ground, camera shake; DiablosAttack 0xD at frame 2 */
+    DIAB_MOT_LAND = 0x13,          /* touch-down, stance ground, camera shake; DiablosAttack 13 at frame 2 */
     DIAB_MOT_UPPER_D = 0x14,       /* layer-1 gesture of DIAB_IDLE_UPPER_D */
     DIAB_MOT_UPPER_A = 0x18,       /* layer-1 gesture of DIAB_IDLE_UPPER_A */
     DIAB_MOT_UPPER_B = 0x19,       /* layer-1 gesture of DIAB_IDLE_UPPER_B */
@@ -43,8 +43,8 @@ enum EmDiablosMotion {
     DIAB_MOT_GET_UP = 0x25,        /* STATUS1_END, STATUS2_END */
     DIAB_MOT_COLLAPSE = 0x26,      /* STATUS1/2_COLLAPSE start */
     DIAB_MOT_LIE_DOWN = 0x27,      /* DIAB_IDLE_STATUS2_LIE_DOWN */
-    DIAB_MOT_TAIL_SPIN = 0x2A,     /* DIAB_ATK_TAIL_SPIN, rotY + 0x200; DiablosAttack 0x11 at frame 30 */
-    DIAB_MOT_ALERT_IDLE = 0x33,    /* combat idle (DIAB_IDLE_ALERT), the Diablos scene, DIAB_VS_BAIT; DiablosAttack 0x1B/0x1C */
+    DIAB_MOT_TAIL_SPIN = 0x2A,     /* DIAB_ATK_TAIL_SPIN, rotY + 0x200; DiablosAttack 17 at frame 30 */
+    DIAB_MOT_ALERT_IDLE = 0x33,    /* combat idle (DIAB_IDLE_ALERT), the Diablos scene, DIAB_VS_BAIT; DiablosAttack 27/28 */
     DIAB_MOT_TURN_IN_PLACE = 0x36, /* DIAB_MOVE_TURN_TO_GOAL (rotY 0x200 a frame to frame 60), DIAB_VS_POSE_B */
     DIAB_MOT_FLINCH = 0x3C,        /* DIAB_REACT_FLINCH, start of DIAB_REACT_HOLD2 (no root motion to frame 52) */
     DIAB_MOT_FLINCH_E = 0x3D,      /* DIAB_REACT_FLINCH_E, DIAB_VS_POSE_A */
@@ -73,10 +73,10 @@ enum EmDiablosMotion {
     DIAB_MOT_BURROW = 0x67,        /* DIAB_BURROW_DIG (EM_STANCE_GROUND, shadow hidden from frame 100, guarded) */
     DIAB_MOT_EMERGE = 0x68,        /* DIAB_BURROW_EMERGE (EM_STANCE_UNDER while blending, then EM_STANCE_GROUND) */
     DIAB_MOT_POP_OUT = 0x69,       /* forced out of the sand (DIAB_REACT_POP_OUT, the downs in the sand, DIAB_DEFEAT_DIE_IN_SAND); EM_STANCE_UNDER while it blends in */
-    DIAB_MOT_ATTACK_A = 0x6A,      /* DIAB_ATK_CHARGE_ATTACK_A, DIAB_ATK_TURN_ATTACK_A; DiablosAttack 0x18 at frame 48 */
-    DIAB_MOT_ATTACK_B = 0x6B,      /* DIAB_ATK_CHARGE_ATTACK_B, DIAB_ATK_TURN_ATTACK_B; DiablosAttack 0x10 at frame 50 */
+    DIAB_MOT_ATTACK_A = 0x6A,      /* DIAB_ATK_CHARGE_ATTACK_A, DIAB_ATK_TURN_ATTACK_A; DiablosAttack 24 at frame 48 */
+    DIAB_MOT_ATTACK_B = 0x6B,      /* DIAB_ATK_CHARGE_ATTACK_B, DIAB_ATK_TURN_ATTACK_B; DiablosAttack 16 at frame 50 */
     DIAB_MOT_ATTACK_C = 0x6C,      /* DIAB_ATK_ATTACK_C */
-    DIAB_MOT_ATTACK_D = 0x6D,      /* DIAB_ATK_TURN_ATTACK_D; DiablosAttack 0x1E at frame 54 */
+    DIAB_MOT_ATTACK_D = 0x6D,      /* DIAB_ATK_TURN_ATTACK_D; DiablosAttack 30 at frame 54 */
     DIAB_MOT_ROAR = 0x6F,          /* DIAB_ATK_ROAR, both scenes, DIAB_VS_ROAR */
     DIAB_MOT_PART6_BREAK = 0x71,   /* DIAB_REACT_PART6_BREAK only; no effects case */
     DIAB_MOT_HORN_STUCK = 0x72,    /* DIAB_IDLE_HORN_STUCK after EmDiablos_ChargeHitWall, 240 frames */
@@ -229,7 +229,7 @@ typedef struct EmDiablosWork {
     u8 unk001[0x006 - 0x001];
     s16 landTimer;              /* 0x006: frames since the landing after DIAB_BURROW_SAND_ESCAPE (150; EmDiablos_Update counts it down) */
     u8 unk008[0x014 - 0x008];
-    u16 goalYaw;                /* 0x014: as EmWork's (EmDiablos_Init: 0x4000) */
+    u16 goalYaw;                /* 0x014: as EmWork's (EmDiablos_Init: ANGLE_TURN / 4) */
     u8 unk016[0x01B - 0x016];
     s8 rageFade;                /* 0x01B: EmDiablos_Update: counts up to 60 while enraged (then rageStep 1), down to 0 otherwise */
     s32 moveAngBX;              /* 0x01C: as EmWork's */
@@ -250,5 +250,83 @@ typedef struct EmDiablosWork {
     u8 unk050[0x100 - 0x050];
 } EmDiablosWork;
 typedef char EmDiablosWork_size_check[(sizeof(EmDiablosWork) == sizeof(EmWork)) ? 1 : -1];
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes DiablosAttack_Create makes on given frames of a motion
+ * (DiablosAttack_HitShapes, by the attack rows' hit lists), where the dust,
+ * the sparks or the rings start, and the bones the steps' sounds take
+ * turns at. "A" and "B" are the two sides; which is left the code doesn't
+ * show. Bones no code explains stay numbers: 1 (the mine ahead of it while
+ * the horn is stuck), 3 (the charge's wide sphere), 9, 15 and 27 (the
+ * dust of the burrowing and the flinches), 24 (a sphere in
+ * DIAB_MOT_CHARGE_STOP), 29 and 30 (the burrowing's spheres) and 43 (dust
+ * where the tail strikes in DIAB_MOT_ATTACK_C).
+ */
+enum EmDiablosBone {
+    DIAB_BONE_ROOT = 0,     /* the skeleton's first bone: the falls' and the burrowing's sounds play here */
+    DIAB_BONE_BODY = 2,     /* the body's wide sphere in DIAB_MOT_COLLAPSE and DIAB_MOT_EMERGE; the dust and bursts of the descent, the charge's stop and the pop out of the sand */
+    DIAB_BONE_WING_A = 6,   /* the flight's (DIAB_MOT_AIR, DIAB_MOT_DESCEND, DIAB_MOT_LEAP) paired sounds play here and at DIAB_BONE_WING_B, four frames apart */
+    DIAB_BONE_WING_B = 12,
+    DIAB_BONE_LEG_A = 19,   /* leg A's upper sphere in the walk's and the turns' steps (with DIAB_BONE_FOOT_A's) */
+    DIAB_BONE_STEP_A = 20,  /* leg A's step sounds (DIAB_SE_STEP in the walk and the turns); DustCloud type 3 rises under it */
+    DIAB_BONE_FOOT_A = 22,  /* leg A's foot: the steps' larger sphere, and a landing on both feet (DIAB_MOT_LAND) */
+    DIAB_BONE_LEG_B = 25,   /* the same for leg B */
+    DIAB_BONE_STEP_B = 26,  /* (DustCloud type 2 rises under it) */
+    DIAB_BONE_FOOT_B = 28,
+    DIAB_BONE_BREATH = 34,  /* the lying puffs start here and the roar's rings follow it; the head's sphere in the horn attacks, the charge and the stare */
+    DIAB_BONE_HEAD = 35,    /* every voice sound (Em_PlaySeType*) plays here */
+    DIAB_BONE_HORN = 39,    /* the sparks where the horn (part 6) sticks in a wall, in DIAB_MOT_HORN_STUCK */
+    DIAB_BONE_TAIL_A = 41,  /* the tail's capsule, to DIAB_BONE_TAIL_C, in DIAB_MOT_TAIL_SPIN, DIAB_MOT_ATTACK_C, DIAB_MOT_STARE and DIAB_MOT_ALERT_IDLE */
+    DIAB_BONE_TAIL_B = 42,  /* the tail spin's swing sound plays here as the tail's hit starts (frame 30) */
+    DIAB_BONE_TAIL_C = 44   /* the capsule's other end; the tail strike's sounds in DIAB_MOT_ATTACK_C */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBone and Em_PlaySeType). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmDiablosSe {
+    DIAB_SE_STEP = 1,       /* a step: in DIAB_MOT_WALK on the frames of its camera shakes (52 and 116), at the step bones */
+    DIAB_SE_ROAR = 91       /* the roar: DIAB_MOT_ROAR's only voice from frame 100, repeated every 4 frames to frame 320, over the rings (frame 112) and the roar's wide sphere */
+};
+
+extern void *EmDiablos_Callbacks[8];
+void EmDiablos_MotionSounds(Em *em, EmWork *work);
+void EmDiablos_Init(Em *em);
+void EmDiablos_Start(Em *em);
+void EmDiablos_EndStateInAir(Em *em, u8 variant);
+void EmDiablos_HornStuck(Em *em, EmWork *work);
+void EmDiablos_StatusDownedInSand(Em *em, EmWork *work);
+void EmDiablos_TurnToGoal(Em *em, EmWork *work);
+void EmDiablos_BurrowTravelRumble(Em *em, EmWork *work);
+void EmDiablos_BurrowTravel(Em *em, EmWork *work);
+void EmDiablos_DiablosDesertScene(Em *em, EmWork *work);
+void EmDiablos_MonoblosDesertScene(Em *em, EmWork *work);
+void EmDiablos_VsBait(Em *em, EmWork *work);
+void EmDiablos_Die(Em *em, EmWork *work);
+void EmDiablos_DieInSand(Em *em, EmWork *work);
+void EmDiablos_DieFalling(Em *em, EmWork *work);
+void EmDiablos_RunReactState(Em *em, EmWork *work);
+void EmDiablos_Update(Em *em);
+void EmDiablos_RunState(Em *em, EmWork *work);
+void EmDiablos_MotionEffects(Em *em, EmWork *work);
+void EmDiablos_EndAttack(Em *em, EmWork *work);
+void EmDiablos_SetIdleState(Em *em, u16 state, u8 mode);
+void EmDiablos_SetMoveState(Em *em, u16 state, u8 mode);
+void EmDiablos_SetBurrowState(Em *em, u16 state, u8 mode);
+void EmDiablos_SetAttackState(Em *em, u16 state, u8 mode);
+void EmDiablos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmDiablos_MoveByVelYCurve(Em *em, s32 kind);
+void EmDiablos_StartCurves(Em *em, u8 kind);
+u8 EmDiablos_UpdateCurves(Em *em);
+s32 EmDiablos_IsBuriedOffSand(Em *em);
+s32 EmDiablos_ChargeHitWall(Em *em);
+s32 EmDiablos_InSandStuckMotion(Em *em);
+s32 EmDiablos_InSandReactState(Em *em);
 
 #endif

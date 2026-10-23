@@ -20,11 +20,21 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_bulldrome.h"
 #include "player.h"
 #include "objattach.h"
 #include "lobby_vobj.h"
 #include "area.h"
+#include "capsule.h"
+#include "save.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "shakalaka_teostra_bulldrome.h"
+#include "vec_math.h"
+#include "em_script.h"
 
 /* The game built this file at optimization level 4; the pragma does the same. */
 #pragma optimization_level 4
@@ -34,134 +44,20 @@
 
 
 struct EmHolder;
-void Em_BeginStatus1(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
 void Em_EndAllStatus(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-s8 QuestEm_Appear(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmBulldrome_ChangeState, EmBulldrome_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_StartRage(Em *);
-void Em_StartPendingRage(Em *);
-void Em_RefillNeed3(Em *em);
-void Em_ResetNotice(Em *em);
-void Em_TargetPlayerInRange(Em *);
-void EmBulldrome_SetMoveState(Em *em, u16 state, u8 mode);
-void EmBulldrome_SetTravelState(Em *em, u16 state, u8 mode);
-void EmBulldrome_SetAttackState(Em *em, u16 state, u8 mode);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-u16 Area_DayId(u16 id);
-void Versus_MarkDefeat(Em *em);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-void Vec_Copy(f32 *dst, f32 *src);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 Game_IsOnline(void);
-void Em_ResetToBasePose(Em *em);
-void Em_BreakPart(Em *em, s32 part);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_CheckRageByHp(Em *em, s16 n);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-void Em_SetTargetAngle(Em *em);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_StartGoalAction(Em *em, s32 arg1);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_ClearPart(Em *em, u16 part);
 void Em_AddHp(Em *em, s16 n);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_AddNeed2(Em *em, s32 n);
-void Em_ClearNeed1State(Em *em);
-void Em_ClearNeed2State(Em *em);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-void EmBulldrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-f32 *Mtx_FromAnglesXYZ(s32 *ang, f32 *mtx);
 extern f32 EmBulldrome_LaunchVel[];
 extern f32 EmBulldrome_LaunchAccel[];
 struct EmBone;
 struct MtxSlot;
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-ObjAttach *BulldromeAttack_Create(Em *em, s8 kind);
-extern f32 EmBulldrome_Effect0BOfs[3];
-void EmBulldrome_LaunchFromHit(Em *);
-void EmBulldrome_SetKnockedMotion(Em *em, s16 arg1);
-extern EmTurnParams EmBulldrome_TurnParams[1];
-s8 EmMine_Create(Em *em, s32 idx);
-void EmMine_Remove(Em *em);
-s32 EmMine_Update(Em *em);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_ClearHitReactMode(Em *em);
-void Em_ClearLowHpNeed(Em *em);
-void Em_ClearPoison(Em *em);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void Em_HoldPosNoPlayers(Em *em, u16 a, u16 b);
-void Em_InitParts(Em *em);
-void Em_RaisePlayerAreaTrigger(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's s32 (Em *em, s16 n, s16 max, s16 interval), the calls in EmBulldrome_LieDown and EmChameleos_Rest compile differently */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
-void Em_ResetKindTimer(Em *em);
-void Em_RestartScript(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetHold2(Em *em);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-void Em_SetStatus2Timer(Em *em);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-s32 Em_UpdateCombatTimer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void GmEm_ResetSize(Em *em);
-u16 Map_DayId(u16 area);
-void Motion_InitTime(void *p, s16 step);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Player_ClearFlag(void *, u32 flag);
-s32 Player_MoveFall(Player *p);
-void Player_SetFlag(void *obj, u32 flag);
-void QuestEm_Captured(Em *em);
-void QuestEm_Hunted(Em *em);
-s32 Save_TestEventFlag(s32);
-s32 ScEvent_CurId(void);
 void StunStars_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
-void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
-s32 Versus_BothDefeated(void);
-s32 Versus_DefeatCamera(Em *pl);
-void Versus_RouteEmByTeam(Em *em);
-void EmBulldrome_Init(Em *em);
-void EmBulldrome_LieDown(Em *, s32);
-void EmBulldrome_TurnInPlace(Em *, s32);
-void EmBulldrome_WanderHome(Em *em);
-void EmBulldrome_QuarterTurn(Em *em, u8 variant);
-void EmBulldrome_HalfTurn(Em *em, u8 variant);
-void EmBulldrome_TravelTurn(Em *);
-void EmBulldrome_TravelToGoal(Em *);
-void EmBulldrome_Spin(Em *);
-void EmBulldrome_Die(Em *);
-void EmBulldrome_DieInAir(Em *);
-void EmBulldrome_Captured(Em *);
-void EmBulldrome_IntroScene(Em *);
-void EmBulldrome_RunVersusState(Em *em);
-void EmBulldrome_VsEatBait(Em *, EmWork *);
-void EmBulldrome_EndState(Em *em);
-void EmBulldrome_RunState(Em *em);
 /* A position copied whole: the versus bait's position is copied from
  * EmBulldrome_CarveThrowPt as one struct, as the game's code does. */
 extern Vec3f EmBulldrome_CarveThrowPt __attribute__((aligned(8)));
@@ -262,7 +158,7 @@ void EmBulldrome_Idle(Em *em)
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
-        Em_SetMotion(em, BULL_MOT_IDLE, 0xA, 0);
+        Em_SetMotion(em, BULL_MOT_IDLE, 10, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -293,7 +189,7 @@ void EmBulldrome_Forage(Em *em)
         Motion_InitTime(em, 0);
         break;
     case 1:
-        if (em->motionTime >= 0xF0) {
+        if (em->motionTime >= 240) {
             EmBulldrome_EndState(em);
         }
         break;
@@ -302,7 +198,7 @@ void EmBulldrome_Forage(Em *em)
 
 /*
  * BULL_IDLE_AIM_SHORT/MEDIUM/LONG: BULL_MOT_AIM
- * while Em_TurnToGoal turns 0x200 a frame; loops counts down once per frame
+ * while Em_TurnToGoal turns 512 a frame; loops counts down once per frame
  * the motion is not playing, then EmBulldrome_EndState.
  */
 void EmBulldrome_AimAtGoal(Em *em, s32 loops)
@@ -315,7 +211,7 @@ void EmBulldrome_AimAtGoal(Em *em, s32 loops)
         Em_SetMotion(em, BULL_MOT_AIM, 6, 0);
         break;
     case 1:
-        Em_TurnToGoal(em, 0x200, 0);
+        Em_TurnToGoal(em, 512, 0);
         if (em->motion[0].playing == 0) {
             if (--em->timer <= 0) {
                 EmBulldrome_EndState(em);
@@ -333,9 +229,9 @@ void EmBulldrome_IdleNopC(void)
 }
 
 /*
- * BULL_IDLE_DISPLAY, _DISPLAY_B, _DISPLAY_RAGE,
- * _DISPLAY_PENDING_RAGE: BULL_MOT_THREAT once, then EmBulldrome_EndState; the second
- * argument is unused (the setter does the rage).
+ * BULL_IDLE_DISPLAY, _DISPLAY_B, _DISPLAY_RAGE, _DISPLAY_PENDING_RAGE:
+ * BULL_MOT_THREAT once, then EmBulldrome_EndState; the second argument is
+ * unused (the setter does the rage).
  */
 void EmBulldrome_Display(Em *em, s32 unused)
 {
@@ -374,12 +270,12 @@ void EmBulldrome_ShakeOff(Em *em)
 }
 
 /*
- * BULL_IDLE_STATUS2_LIE (kind 0),
- * BULL_IDLE_STATUS1_LIE (kind 1), BULL_IDLE_REST (kind 2): hitReactMode WAKE
- * and blind every frame, BULL_MOT_LIE with lying puffs at bone 0xB; the rest
- * sets 5400 frames and regains 1 hp every 10 frames up to 60%; at the
- * timer's end (rest: Em_ClearLowHpNeed) goes to STATUS2_END, STATUS1_END or
- * REST_END; step 2 repeats that change on the owner.
+ * BULL_IDLE_STATUS2_LIE (kind 0), BULL_IDLE_STATUS1_LIE (kind 1),
+ * BULL_IDLE_REST (kind 2): hitReactMode WAKE and blind every frame,
+ * BULL_MOT_LIE with lying puffs at BULL_BONE_BREATH; the rest sets 5400
+ * frames and regains 1 hp every 10 frames up to 60%; at the timer's end
+ * (rest: Em_ClearLowHpNeed) goes to STATUS2_END, STATUS1_END or REST_END;
+ * step 2 repeats that change on the owner.
  */
 void EmBulldrome_LieDown(Em *em, s32 lieKind)
 {
@@ -394,14 +290,14 @@ void EmBulldrome_LieDown(Em *em, s32 lieKind)
         em->stance = EM_STANCE_GROUND;
         Em_SetMotion(em, BULL_MOT_LIE, 0, 0);
         if ((lieKind & 0xFFFF) == 2) {
-            em->timer = 0x1518;
+            em->timer = 5400;
         }
         break;
     case 1:
-        Em_SpawnLyingPuffs(em, 0xB, (f32 *) &EmBulldrome_Effect0BOfs, 1.0f);
+        Em_SpawnLyingPuffs(em, BULL_BONE_BREATH, (f32 *) &EmBulldrome_LiePuffsOfs, 1.0f);
         kind = lieKind & 0xFFFF;
         if (kind == 2) {
-            Em_RegenHp(em, 1, (s32) (0.6f * (f32) em->hpMax), 0xA);
+            Em_RegenHp(em, 1, (s32) (0.6f * (f32) em->hpMax), 10);
         }
         if (--em->timer <= 0) {
             em->step++;
@@ -576,10 +472,10 @@ void EmBulldrome_RunIdleState(Em *em)
 }
 
 /*
- * BULL_MOVE_TURN_TO_TARGET (Em_StartTurnToTarget
- * with EmBulldrome_TurnParams) or BULL_MOVE_QUARTER_TURN_FIXED (aimAngle
- * rotY + 0x4000, the turn motion picked as Em_StartTurnToTarget would, front
- * motion without root motion); Em_TurnStep until done, then EmBulldrome_EndState.
+ * BULL_MOVE_TURN_TO_TARGET (Em_StartTurnToTarget with EmBulldrome_TurnParams)
+ * or BULL_MOVE_QUARTER_TURN_FIXED (aimAngle rotY + ANGLE_TURN / 4, the turn
+ * motion picked as Em_StartTurnToTarget would, front motion without root
+ * motion); Em_TurnStep until done, then EmBulldrome_EndState.
  */
 void EmBulldrome_TurnInPlace(Em *em, s32 variant)
 {
@@ -593,9 +489,9 @@ void EmBulldrome_TurnInPlace(Em *em, s32 variant)
             Em_StartTurnToTarget(em, &EmBulldrome_TurnParams[0]);
             break;
         }
-        em->aimAngle = em->rotY + 0x4000;
+        em->aimAngle = em->rotY + ANGLE_TURN / 4;
         turnDiff = (em->aimAngle - em->rotY) & 0xFFFF;
-        if (turnDiff <= 0x1000 || turnDiff >= 0xF000) {
+        if (turnDiff <= 4096 || turnDiff >= 0xF000) {
             Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
             Em_SetMotion(em, BULL_MOT_WALK, 0, 0);
         } else if (turnDiff >= 0x8000) {
@@ -616,7 +512,7 @@ void EmBulldrome_TurnInPlace(Em *em, s32 variant)
 
 /*
  * BULL_MOVE_WALK (BULL_MOT_WALK) or
- * BULL_MOVE_WALK_B (BULL_MOT_WALK_B): Em_StepToGoal turning 0x200 a frame
+ * BULL_MOVE_WALK_B (BULL_MOT_WALK_B): Em_StepToGoal turning 512 a frame
  * until the goal, then EmBulldrome_EndState.
  */
 void EmBulldrome_WalkToGoal(Em *em, s32 variant)
@@ -628,7 +524,7 @@ void EmBulldrome_WalkToGoal(Em *em, s32 variant)
         Em_SetMotion(em, (u8) variant == 0 ? 2 : 3, 6, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x200, 0) == 1) {
+        if (Em_StepToGoal(em, 512, 0) == 1) {
             EmBulldrome_EndState(em);
         }
         break;
@@ -651,7 +547,7 @@ void EmBulldrome_MoveNopB(void)
 
 /*
  * BULL_MOVE_WANDER_HOME: BULL_MOT_WALK for
- * 120-247 frames (stateRand), turning 0x80 a frame toward the home position;
+ * 120-247 frames (stateRand), turning 128 a frame toward the home position;
  * EmBulldrome_EndState on the owner when the timer ends.
  */
 void EmBulldrome_WanderHome(Em *em)
@@ -662,7 +558,7 @@ void EmBulldrome_WanderHome(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
+        em->timer = (em->stateRand & 0x7F) + 120;
         Em_SetMotion(em, BULL_MOT_WALK, 6, 0);
         break;
     case 1:
@@ -675,18 +571,17 @@ void EmBulldrome_WanderHome(Em *em)
             break;
         }
         em->targetAngle = Math_AngleXZ(&em->posX, &emWork->home[0]) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x80);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 128);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         break;
     }
 }
 
 /*
- * BULL_MOVE_QUARTER_TURN,
- * _QUARTER_TURN_NEW_GOAL: turns to the goal's side with
- * BULL_MOT_QUARTER_TURN_B (goal under 0x8000, rotY + 0x135 a frame) or _A
- * (rotY - 0x135), EmBulldrome_EndState at the motion's end; variant 1 computes a clamped
- * turnStep it never reads.
+ * BULL_MOVE_QUARTER_TURN, _QUARTER_TURN_NEW_GOAL: turns to the goal's side
+ * with BULL_MOT_QUARTER_TURN_B (goal under 0x8000, rotY + 309 a frame) or _A
+ * (rotY - 309), EmBulldrome_EndState at the motion's end; variant 1 computes
+ * a clamped turnStep it never reads.
  */
 void EmBulldrome_QuarterTurn(Em *em, u8 variant)
 {
@@ -705,21 +600,21 @@ void EmBulldrome_QuarterTurn(Em *em, u8 variant)
             goalDiff = 0x10000 - goalDiff;
         }
         if (variant == 0) {
-            w->turnStep = 0x135;
+            w->turnStep = 309;
         } else {
-            if (goalDiff < 0x2000) {
-                goalDiff = 0x2000;
-            } else if (goalDiff > 0x6000) {
-                goalDiff = 0x6000;
+            if (goalDiff < 8192) {
+                goalDiff = 8192;
+            } else if (goalDiff > 24576) {
+                goalDiff = 24576;
             }
             w->turnStep = goalDiff / 53;
         }
-        Em_SetMotion(em, 5 - w->turnDir, 0, 0);
+        Em_SetMotion(em, BULL_MOT_QUARTER_TURN_B - w->turnDir, 0, 0);
         break;
     case 1:
-        turnStep = 0x135;
+        turnStep = 309;
         if (w->turnDir != 0) {
-            turnStep = -0x135;
+            turnStep = -309;
         }
         em->rotY += turnStep;
         if (em->motion[0].playing == 0) {
@@ -730,9 +625,10 @@ void EmBulldrome_QuarterTurn(Em *em, u8 variant)
 }
 
 /*
- * BULL_MOVE_HALF_TURN (turnStep 0x26A a frame) or
- * BULL_MOVE_TURN_TO_NEW_GOAL (turnStep = goal angle clamped 0x4000-0xA000, /
- * 53): BULL_MOT_HALF_TURN, rotY + turnStep each frame, EmBulldrome_EndState at the end.
+ * BULL_MOVE_HALF_TURN (turnStep 618 a frame) or BULL_MOVE_TURN_TO_NEW_GOAL
+ * (turnStep = goal angle clamped to a quarter to five eighths of a turn, /
+ * 53): BULL_MOT_HALF_TURN, rotY + turnStep each frame, EmBulldrome_EndState
+ * at the end.
  */
 void EmBulldrome_HalfTurn(Em *em, u8 variant)
 {
@@ -744,14 +640,14 @@ void EmBulldrome_HalfTurn(Em *em, u8 variant)
         em->step++;
         Em_SetMotion(em, BULL_MOT_HALF_TURN, 0, 0);
         if (variant == 0) {
-            emWork->turnStep = 0x26A;
+            emWork->turnStep = 618;
             break;
         }
         goalDiff = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (goalDiff < 0x4000) {
-            goalDiff = 0x4000;
+        if (goalDiff < 16384) {
+            goalDiff = 16384;
         } else if (goalDiff > 0xA000) {
-            goalDiff = 0xA000;
+            goalDiff = 40960;
         }
         emWork->turnStep = goalDiff / 53;
         break;
@@ -845,7 +741,7 @@ void EmBulldrome_TravelStart(Em *em)
 
 /*
  * BULL_TRAVEL_TURN: keeps the goal heading
- * (travelYaw), BULL_MOT_TRAVEL, rotY 0x400 a frame toward it; within 0x400
+ * (travelYaw), BULL_MOT_TRAVEL, rotY 0x400 a frame toward it; within 1024
  * snaps and goes to BULL_TRAVEL_MOVE.
  */
 void EmBulldrome_TravelTurn(Em *em)
@@ -877,7 +773,7 @@ void EmBulldrome_TravelTurn(Em *em)
         rotY = em->rotY;
         goalYaw = emWork->travelYaw;
         diff = (goalYaw - (rotY & 0xFFFF)) & 0xFFFF;
-        if ((u32) ((diff + 0x400) & 0xFFFF) < 0x800U) {
+        if ((u32) ((diff + 1024) & 0xFFFF) < 2048U) {
             em->rotY = (s32) goalYaw;
             em->step++;
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
@@ -899,7 +795,7 @@ void EmBulldrome_TravelTurn(Em *em)
 
 /*
  * BULL_TRAVEL_MOVE: BULL_MOT_TRAVEL, steers
- * 0x40 a frame to the goal while steerToGoal, moves 80 a frame along rotY
+ * 64 a frame to the goal while steerToGoal, moves 80 a frame along rotY
  * and takes it off distLeft; at 0 goes to BULL_TRAVEL_END.
  */
 void EmBulldrome_TravelToGoal(Em *em)
@@ -930,15 +826,15 @@ void EmBulldrome_TravelToGoal(Em *em)
         if (emWork->steerToGoal != 0) {
             goalDiff = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
             if (goalDiff <= 0x8000) {
-                if (goalDiff < 0x40) {
+                if (goalDiff < 64) {
                     em->rotY += goalDiff;
                 } else {
-                    em->rotY += 0x40;
+                    em->rotY += 64;
                 }
             } else if (goalDiff > 0xFFC0) {
                 em->rotY += goalDiff;
             } else {
-                em->rotY -= 0x40;
+                em->rotY -= 64;
             }
         }
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
@@ -1015,7 +911,7 @@ void EmBulldrome_RunTravelState(Em *em)
 
 /*
  * The charges: BULL_MOT_CHARGE with BulldromeAttack
- * type 3, 4 or 5 (variant 0, 1, 2+), Em_StepToGoal turning 0x40 a frame
+ * type 3, 4 or 5 (variant 0, 1, 2+), Em_StepToGoal turning 64 a frame
  * until the goal or the setter's timer (90, or 30), then
  * BULL_MOT_CHARGE_STOP and EmBulldrome_EndState.
  */
@@ -1025,7 +921,7 @@ void EmBulldrome_Charge(Em *em, s32 variant)
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
-        Em_SetMotion(em, BULL_MOT_CHARGE, 0xA, 0);
+        Em_SetMotion(em, BULL_MOT_CHARGE, 10, 0);
         switch (variant) {
         case 0:
             BulldromeAttack_Create(em, 3);
@@ -1038,12 +934,12 @@ void EmBulldrome_Charge(Em *em, s32 variant)
         }
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->timer = 1;
         }
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, BULL_MOT_CHARGE_STOP, 0xA, 0);
+            Em_SetMotion(em, BULL_MOT_CHARGE_STOP, 10, 0);
         }
         break;
     case 2:
@@ -1056,8 +952,8 @@ void EmBulldrome_Charge(Em *em, s32 variant)
 
 /*
  * BULL_ATK_SPIN: picks the goal's quadrant (turnDir),
- * BULL_MOT_SPIN_A or _B with BulldromeAttack type 1 (spin); turns 0xE6 a
- * frame to frame 60, then 0x35C (front) or 0x92E (rear quadrants) a frame
+ * BULL_MOT_SPIN_A or _B with BulldromeAttack type 1 (spin); turns 230 a
+ * frame to frame 60, then 860 (front) or 2350 (rear quadrants) a frame
  * over frames 142-164; EmBulldrome_EndState at the end.
  */
 void EmBulldrome_Spin(Em *em)
@@ -1070,7 +966,7 @@ void EmBulldrome_Spin(Em *em)
     case 0:
         em->step++;
         goalDiff = Math_AngleXZ(&em->posX, em->goal) - em->rotY;
-        if (goalDiff < 0x4000) {
+        if (goalDiff < 16384) {
             emWork->turnDir = 0;
         } else if (goalDiff < 0x8000) {
             emWork->turnDir = 2;
@@ -1079,13 +975,13 @@ void EmBulldrome_Spin(Em *em)
         } else {
             emWork->turnDir = 1;
         }
-        Em_SetMotion(em, (emWork->turnDir & 1) + 0x12, 0, 0);
+        Em_SetMotion(em, (emWork->turnDir & 1) + 18, 0, 0);
         BulldromeAttack_Create(em, 1);
         break;
     case 1:
-        spinStep = 0xE6;
+        spinStep = 230;
         if (emWork->turnDir & 1) {
-            spinStep = -0xE6;
+            spinStep = -230;
         }
         em->rotY += spinStep;
         if (EmMotion_ReachedFrame(em, 0, 60.0f)) {
@@ -1094,7 +990,7 @@ void EmBulldrome_Spin(Em *em)
         break;
     case 2:
         if (EmMotion_InFrameRange(em, 0, 142.0f, 164.0f)) {
-            spinStep = (emWork->turnDir & 2) == 0 ? 0x35C : 0x92E;
+            spinStep = (emWork->turnDir & 2) == 0 ? 860 : 2350;
             if (emWork->turnDir & 1) {
                 spinStep = -spinStep;
             }
@@ -1141,9 +1037,9 @@ void EmBulldrome_RunAttackState(Em *em)
 }
 
 /*
- * BULL_REACT_FLINCH: BULL_MOT_FLINCH when hitAngle -
- * rotY is within 0x6000-0xA000, else BULL_MOT_FLINCH_SIDE_A (under 0x8000)
- * or _SIDE_B; Em_RestartScript; EmBulldrome_EndState at the end.
+ * BULL_REACT_FLINCH: BULL_MOT_FLINCH when hitAngle - rotY is within three to
+ * five eighths of a turn, else BULL_MOT_FLINCH_SIDE_A (under 0x8000) or
+ * _SIDE_B; Em_RestartScript; EmBulldrome_EndState at the end.
  */
 void EmBulldrome_Flinch(Em *em)
 {
@@ -1172,10 +1068,10 @@ void EmBulldrome_Flinch(Em *em)
 }
 
 /*
- * BULL_REACT_KNOCKED_AWAY: knocked motion for
- * the hit's side, launched at frame 10 (EmBulldrome_LaunchFromHit), falls
- * (Player_MoveFall, z drag stopped when it would reverse),
- * BULL_MOT_KNOCKED_LAND for 150 frames, BULL_MOT_KNOCKED_GET_UP, EmBulldrome_EndState.
+ * BULL_REACT_KNOCKED_AWAY: knocked motion for the hit's side, launched at
+ * frame 10 (EmBulldrome_LaunchFromHit), falls (Player_MoveFall, z drag
+ * stopped when it would reverse), BULL_MOT_KNOCKED_LAND for 150 frames,
+ * BULL_MOT_KNOCKED_GET_UP, EmBulldrome_EndState.
  */
 void EmBulldrome_KnockedAway(Em *em)
 {
@@ -1200,7 +1096,7 @@ void EmBulldrome_KnockedAway(Em *em)
             em->step++;
             em->stance = EM_STANCE_GROUND;
             Em_SetMotion(em, BULL_MOT_KNOCKED_LAND, 6, 0);
-            em->timer = 0x96;
+            em->timer = 150;
         }
         break;
     case 3:
@@ -1218,16 +1114,15 @@ void EmBulldrome_KnockedAway(Em *em)
 }
 
 /*
- * BULL_REACT_KNOCKED_AWAY_IN_AIR: as
- * EmBulldrome_KnockedAway but the knocked motion starts at frame 10 and the launch is at
- * once.
+ * BULL_REACT_KNOCKED_AWAY_IN_AIR: as EmBulldrome_KnockedAway but the knocked
+ * motion starts at frame 10 and the launch is at once.
  */
 void EmBulldrome_KnockedAwayInAir(Em *em)
 {
     switch (em->step) {
     case 0:
         em->step++;
-        EmBulldrome_SetKnockedMotion(em, 0xA);
+        EmBulldrome_SetKnockedMotion(em, 10);
         EmBulldrome_LaunchFromHit(em);
         Em_RestartScript(em);
         break;
@@ -1239,7 +1134,7 @@ void EmBulldrome_KnockedAwayInAir(Em *em)
             em->step++;
             em->stance = EM_STANCE_GROUND;
             Em_SetMotion(em, BULL_MOT_KNOCKED_LAND, 6, 0);
-            em->timer = 0x96;
+            em->timer = 150;
         }
         break;
     case 2:
@@ -1273,7 +1168,7 @@ void EmBulldrome_Status4Down(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        Em_SpawnStatus4Effect(em, 2);
+        Em_SpawnStatus4Effect(em, BULL_BONE_BODY);
         if (--em->timer <= 0) {
             em->step++;
             EmBulldrome_ChangeState(em, EM_GROUP_IDLE, BULL_IDLE_STATUS4_GET_UP, EM_SYNC_OWNER_FLAGGED);
@@ -1300,7 +1195,7 @@ void EmBulldrome_Stun(Em *em)
         Em_SetMotion(em, BULL_MOT_DOWN, 0, 0);
         Em_RestartScript(em);
         em->noReact = 1;
-        StunStars_CreateEm(em, 1, 0, *(s16 *)&em->timer, 100.0f, 2.2f);
+        StunStars_CreateEm(em, 1, BULL_BONE_ROOT, *(s16 *)&em->timer, 100.0f, 2.2f);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -1550,7 +1445,7 @@ void EmBulldrome_RunDefeatState(Em *em)
 
 /*
  * BULL_EVENT_CAPTURED: Em_SetCaptured each frame,
- * BULL_MOT_DOWN from frame 0x24, Em_BeginStatus1, poison cleared; at its end
+ * BULL_MOT_DOWN from frame 36, Em_BeginStatus1, poison cleared; at its end
  * QuestEm_Captured and the motion frozen; lying puffs, 150 frames once it
  * may appear, fade out, then BULL_DEFEAT_REAPPEAR.
  */
@@ -1562,7 +1457,7 @@ void EmBulldrome_Captured(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, BULL_MOT_DOWN, 0x1E, 0x24);
+        Em_SetMotion(em, BULL_MOT_DOWN, 30, 36);
         em->timer = 150;
         Em_BeginStatus1(em);
         Em_ClearPoison(em);
@@ -1579,7 +1474,7 @@ void EmBulldrome_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = -20.0f;
         pos[2] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0xB, pos, 1.0f);
+        Em_SpawnLyingPuffs(em, BULL_BONE_BREATH, pos, 1.0f);
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
@@ -1603,10 +1498,10 @@ void EmBulldrome_Captured(Em *em)
 }
 
 /*
- * BULL_EVENT_INTRO (Jungle area 5 story scene,
- * event 0x99): placed at a fixed spot, BULL_MOT_WALK_B to a goal (300 frames
- * max), idle 240 frames, BULL_MOT_HALF_TURN, BULL_MOT_AIM easing toward a
- * second goal, BULL_MOT_CHARGE 90 frames, then waits EVENT_FLAG_BULLDROME_SCENE and
+ * BULL_EVENT_INTRO (Jungle area 5 story scene, scene event 153): placed at a
+ * fixed spot, BULL_MOT_WALK_B to a goal (300 frames max), idle 240 frames,
+ * BULL_MOT_HALF_TURN, BULL_MOT_AIM easing toward a second goal,
+ * BULL_MOT_CHARGE 90 frames, then waits EVENT_FLAG_BULLDROME_SCENE and
  * EmBulldrome_EndState.
  */
 void EmBulldrome_IntroScene(Em *em)
@@ -1830,7 +1725,7 @@ void EmBulldrome_VsEnd(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x5A;
+        em->timer = 90;
         if (em->motionId[0] != EM_MOTION_ID(0, BULL_MOT_IDLE)) {
             Em_SetMotion(em, BULL_MOT_IDLE, 0, 0);
         }
@@ -1847,7 +1742,8 @@ void EmBulldrome_VsEnd(Em *em)
 }
 
 /*
- * Group 8 dispatcher (0-3, 0x98, 0x99).
+ * Group 8 dispatcher (BULL_VS_EAT_BAIT to BULL_VS_POSE_C, BULL_VS_WAIT_BOTH,
+ * BULL_VS_END).
  */
 void EmBulldrome_RunVersusState(Em *em)
 {
@@ -1876,16 +1772,16 @@ void EmBulldrome_RunVersusState(Em *em)
 }
 
 /*
- * Per frame: counts the work's countdown down, combat
- * timer, area trigger, holds position without players, low-hp check (0.3) in
- * Jungle/Swamp/Snowy maps; picks the state from Em_UpdateDamage (killed/dead
- * -> BULL_DEFEAT_DIE; status in air -> KNOCKED_AWAY_IN_AIR; status 4 ->
- * BULL_REACT_STATUS4; captured -> BULL_EVENT_CAPTURED; status 2 -> BULL_IDLE_STATUS2_LIE;
- * hit lying -> STATUS1_END from STATUS1_LIE, else STATUS2_END; part flinch
- * -> FLINCH if part 0's state bits 0-1, else KNOCKED_AWAY; hit mode 3 ->
- * KNOCKED_AWAY; stun -> BULL_REACT_STUN; attack 0x13 -> BULL_REACT_HOLD2); starts
- * BULL_EVENT_INTRO in the story quest, else runs the pending script; then
- * runs the state (twice on a stateRequest).
+ * Per frame: counts the work's countdown down, combat timer, area trigger,
+ * holds position without players, low-hp check (0.3) in Jungle/Swamp/Snowy
+ * maps; picks the state from Em_UpdateDamage (killed/dead -> BULL_DEFEAT_DIE;
+ * status in air -> KNOCKED_AWAY_IN_AIR; status 4 -> BULL_REACT_STATUS4;
+ * captured -> BULL_EVENT_CAPTURED; status 2 -> BULL_IDLE_STATUS2_LIE; hit
+ * lying -> STATUS1_END from STATUS1_LIE, else STATUS2_END; part flinch ->
+ * FLINCH if part 0's state bits 0-1, else KNOCKED_AWAY; hit mode 3 ->
+ * KNOCKED_AWAY; stun -> BULL_REACT_STUN; EM_DMG_ATTACK13 ->
+ * BULL_REACT_HOLD2); starts BULL_EVENT_INTRO in the story quest, else runs
+ * the pending script; then runs the state (twice on a stateRequest).
  */
 void EmBulldrome_Update(Em *em)
 {
@@ -1975,7 +1871,7 @@ void EmBulldrome_Update(Em *em)
         break;
     }
     if ((gQuest.stage == QUEST_ID_BULLDROME_SCENE_1 || gQuest.stage == QUEST_ID_BULLDROME_SCENE_2) && Area_DayId(em->area) == AREA_JUNGLE_5 && Save_TestEventFlag(EVENT_FLAG_BULLDROME_SCENE) == 0) {
-        if (ScEvent_CurId() == 0x99 && em->stateGroup != EM_GROUP_EVENT) {
+        if (ScEvent_CurId() == 153 && em->stateGroup != EM_GROUP_EVENT) {
             EmBulldrome_ChangeState(em, EM_GROUP_EVENT, BULL_EVENT_INTRO, EM_SYNC_SEND);
         }
     } else {
@@ -2039,9 +1935,9 @@ void EmBulldrome_Setup(Em *em)
  * Callback slots 0 and 1: Shadow_Spawn type
  * 0 (the flat model under the monster).
  */
-void EmBulldrome_SpawnEffect01(u8 *em)
+void EmBulldrome_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /*
@@ -2250,7 +2146,7 @@ void EmBulldrome_ChangeState(Em *em, u16 group, u16 state, u8 mode)
 
 /*
  * Sets velocity (EmBulldrome_LaunchVel turned
- * to hitAngle + 0x8000) and acceleration (EmBulldrome_LaunchAccel) and
+ * to hitAngle + ANGLE_TURN / 2) and acceleration (EmBulldrome_LaunchAccel) and
  * EM_STANCE_AIR: the knock-away jump.
  */
 void EmBulldrome_LaunchFromHit(Em *em)
@@ -2260,7 +2156,7 @@ void EmBulldrome_LaunchFromHit(Em *em)
 
     angles[2] = 0;
     angles[0] = 0;
-    angles[1] = em->hitAngle + 0x8000;
+    angles[1] = em->hitAngle + ANGLE_TURN / 2;
     Mtx_FromAnglesXYZ(angles, mtx);
     Vec_Rotate(&em->velX, EmBulldrome_LaunchVel, mtx);
     Vec_Copy(&em->accelX, EmBulldrome_LaunchAccel);
@@ -2269,13 +2165,13 @@ void EmBulldrome_LaunchFromHit(Em *em)
 
 /*
  * Plays BULL_MOT_KNOCKED_SIDE_A (hitAngle -
- * rotY under 0x8000) or _SIDE_B from the given frame.
+ * rotY under ANGLE_TURN / 2) or _SIDE_B from the given frame.
  */
 void EmBulldrome_SetKnockedMotion(Em *em, s16 frame)
 {
     s32 row;
 
-    if ((u16) (em->hitAngle - em->rotY) < 0x8000) {
+    if ((u16) (em->hitAngle - em->rotY) < (ANGLE_TURN / 2)) {
         row = BULL_MOT_KNOCKED_SIDE_A;
     } else {
         row = BULL_MOT_KNOCKED_SIDE_B;
@@ -2287,18 +2183,14 @@ void EmBulldrome_SetKnockedMotion(Em *em, s16 frame)
 EmTurnParams EmBulldrome_TurnParams[1] = {
 #include "game/008CB480.inc"
 };
-f32 EmBulldrome_Effect0BOfs[3] = {
+f32 EmBulldrome_LiePuffsOfs[3] = {
 #include "game/008CB4A0.inc"
 };
 Vec3f EmBulldrome_CarveThrowPt = {
 #include "game/008CB4B0.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
-void GmEm_UpdateSfx(Em *em); /* gm_sub */
-void EmBulldrome_SpawnEffect01(u8 *em);
-void EmBulldrome_TableNop(void);
 void *EmBulldrome_Callbacks[8] = {
-    EmBulldrome_SpawnEffect01, EmBulldrome_SpawnEffect01, EmBulldrome_TableNop, GmEm_UpdateSfx,
+    EmBulldrome_SpawnShadow, EmBulldrome_SpawnShadow, EmBulldrome_TableNop, GmEm_UpdateSfx,
     GmEm_ReturnZero, EmBulldrome_Reinit, NULL, NULL,
 };
 f32 EmBulldrome_LaunchVel[4] = {
@@ -2307,180 +2199,185 @@ f32 EmBulldrome_LaunchVel[4] = {
 f32 EmBulldrome_LaunchAccel[4] = {
 #include "game/008CB4F0.inc"
 };
-u32 gEmMotionRows_68[304] = {
+EmMotionRow gEmMotionRows_68[101] = {
 #include "game/008CB500.inc"
 };
-u32 gEmKindTables_68_1_1[8] = {
+f32 gEmKindTables_68_1_1[2][3] = {
 #include "game/008CB9C0.inc"
 };
-u32 gEmKindTables_68_1_3[12] = {
+f32 gEmKindTables_68_1_3[4][3] = {
 #include "game/008CB9E0.inc"
 };
-u32 gEmKindTables_68_1_5[12] = {
+f32 gEmKindTables_68_1_5[4][3] = {
 #include "game/008CBA10.inc"
 };
-u32 gEmKindTables_68_1_7[8] = {
+f32 gEmKindTables_68_1_7[2][3] = {
 #include "game/008CBA40.inc"
 };
-u32 gEmKindTables_68_1_9[8] = {
+f32 gEmKindTables_68_1_9[2][3] = {
 #include "game/008CBA60.inc"
 };
-u32 gEmKindTables_68_1_11[12] = {
+f32 gEmKindTables_68_1_11[4][3] = {
 #include "game/008CBA80.inc"
 };
-u32 gEmKindTables_68_1_13[16] = {
+f32 gEmKindTables_68_1_13[5][3] = {
 #include "game/008CBAB0.inc"
 };
-u32 gEmKindTables_68_1_15[16] = {
+f32 gEmKindTables_68_1_15[5][3] = {
 #include "game/008CBAF0.inc"
 };
-u32 gEmKindTables_68_1_17[12] = {
+f32 gEmKindTables_68_1_17[4][3] = {
 #include "game/008CBB30.inc"
 };
-u32 gEmKindTables_68_1_19[10] = {
+f32 gEmKindTables_68_1_19[3][3] = {
 #include "game/008CBB60.inc"
 };
-u32 gEmKindTables_68_1_21[3] = {
+f32 gEmKindTables_68_1_21[1][3] = {
 #include "game/008CBB88.inc"
 };
-u32 gEmKindTables_68_1_23[8] = {
+f32 gEmKindTables_68_1_23[2][3] = {
 #include "game/008CBBA0.inc"
 };
-u32 gEmKindTables_68_1_25[12] = {
+f32 gEmKindTables_68_1_25[4][3] = {
 #include "game/008CBBC0.inc"
 };
-u32 gEmKindTables_68_1[28] = {
+EmAreaPoints gEmKindTables_68_1[14] = {
 #include "game/008CBBF0.inc"
 };
-u32 gEmKindTables_68_3[2] = {
+EmAreaPoints gEmKindTables_68_3[1] = {
 #include "game/008CBC60.inc"
 };
-u32 gEmKindTables_68_4[2] = {
+EmAreaPoints gEmKindTables_68_4[1] = {
 #include "game/008CBC68.inc"
 };
-u32 gEmKindTables_68_5[4] = {
+EmAreaPoints gEmKindTables_68_5[2] = {
 #include "game/008CBC70.inc"
 };
-u32 gEmKindTables_68_6_3_1[16] = {
+EmRoutePt gEmKindTables_68_6_3_1[3] = {
 #include "game/008CBC80.inc"
 };
-u32 gEmKindTables_68_6_3_7[16] = {
+EmRoutePt gEmKindTables_68_6_3_7[3] = {
 #include "game/008CBCC0.inc"
 };
-u32 gEmKindTables_68_6_3[12] = {
+EmRoute gEmKindTables_68_6_3[2] = {
 #include "game/008CBD00.inc"
 };
-u32 gEmKindTables_68_6_1_1[12] = {
+EmRoutePt gEmKindTables_68_6_1_1[2] = {
 #include "game/008CBD30.inc"
 };
-u32 gEmKindTables_68_6_1_7[20] = {
+EmRoutePt gEmKindTables_68_6_1_7[4] = {
 #include "game/008CBD60.inc"
 };
-u32 gEmKindTables_68_6_1[12] = {
+EmRoute gEmKindTables_68_6_1[2] = {
 #include "game/008CBDB0.inc"
 };
-u32 gEmKindTables_68_6_5_1[20] = {
+EmRoutePt gEmKindTables_68_6_5_1[4] = {
 #include "game/008CBDE0.inc"
 };
-u32 gEmKindTables_68_6_5[8] = {
+EmRoute gEmKindTables_68_6_5[1] = {
 #include "game/008CBE30.inc"
 };
-u32 gEmKindTables_68_6_9_1[28] = {
+EmRoutePt gEmKindTables_68_6_9_1[5] = {
 #include "game/008CBE50.inc"
 };
-u32 gEmKindTables_68_6_9[8] = {
+EmRoute gEmKindTables_68_6_9[1] = {
 #include "game/008CBEC0.inc"
 };
-u32 gEmKindTables_68_6_7_1[16] = {
+EmRoutePt gEmKindTables_68_6_7_1[3] = {
 #include "game/008CBEE0.inc"
 };
-u32 gEmKindTables_68_6_7[8] = {
+EmRoute gEmKindTables_68_6_7[1] = {
 #include "game/008CBF20.inc"
 };
-u32 gEmKindTables_68_6_11_1[16] = {
+EmRoutePt gEmKindTables_68_6_11_1[3] = {
 #include "game/008CBF40.inc"
 };
-u32 gEmKindTables_68_6_11_7[20] = {
+EmRoutePt gEmKindTables_68_6_11_7[4] = {
 #include "game/008CBF80.inc"
 };
-u32 gEmKindTables_68_6_11[12] = {
+EmRoute gEmKindTables_68_6_11[2] = {
 #include "game/008CBFD0.inc"
 };
-u32 D_008CC000[16] = {
+EmRoutePt gEmKindTables_68_6_13_1[3] = {
 #include "game/008CC000.inc"
 };
-u32 gEmKindTables_68_6_13_7[16] = {
+EmRoutePt gEmKindTables_68_6_13_7[3] = {
 #include "game/008CC040.inc"
 };
-u32 gEmKindTables_68_6_13[12] = {
+EmRoute gEmKindTables_68_6_13[2] = {
 #include "game/008CC080.inc"
 };
-u32 gEmKindTables_68_6_15_1[16] = {
+EmRoutePt gEmKindTables_68_6_15_1[3] = {
 #include "game/008CC0B0.inc"
 };
-u32 gEmKindTables_68_6_15_7[16] = {
+EmRoutePt gEmKindTables_68_6_15_7[3] = {
 #include "game/008CC0F0.inc"
 };
-u32 gEmKindTables_68_6_15[12] = {
+EmRoute gEmKindTables_68_6_15[2] = {
 #include "game/008CC130.inc"
 };
-u32 gEmKindTables_68_6_17_1[20] = {
+EmRoutePt gEmKindTables_68_6_17_1[4] = {
 #include "game/008CC160.inc"
 };
-u32 gEmKindTables_68_6_17_7[20] = {
+EmRoutePt gEmKindTables_68_6_17_7[4] = {
 #include "game/008CC1B0.inc"
 };
-u32 gEmKindTables_68_6_17[12] = {
+EmRoute gEmKindTables_68_6_17[2] = {
 #include "game/008CC200.inc"
 };
-u32 gEmKindTables_68_6_19_1[16] = {
+EmRoutePt gEmKindTables_68_6_19_1[3] = {
 #include "game/008CC230.inc"
 };
-u32 gEmKindTables_68_6_19_7[20] = {
+EmRoutePt gEmKindTables_68_6_19_7[4] = {
 #include "game/008CC270.inc"
 };
-u32 gEmKindTables_68_6_19_13[16] = {
+EmRoutePt gEmKindTables_68_6_19_13[3] = {
 #include "game/008CC2C0.inc"
 };
-u32 gEmKindTables_68_6_19[20] = {
+EmRoute gEmKindTables_68_6_19[3] = {
 #include "game/008CC300.inc"
 };
-u32 gEmKindTables_68_6_21_1[16] = {
+EmRoutePt gEmKindTables_68_6_21_1[3] = {
 #include "game/008CC350.inc"
 };
-u32 gEmKindTables_68_6_21_7[12] = {
+EmRoutePt gEmKindTables_68_6_21_7[2] = {
 #include "game/008CC390.inc"
 };
-u32 gEmKindTables_68_6_21[12] = {
+EmRoute gEmKindTables_68_6_21[2] = {
 #include "game/008CC3C0.inc"
 };
-u32 gEmKindTables_68_6_23_1[16] = {
+EmRoutePt gEmKindTables_68_6_23_1[3] = {
 #include "game/008CC3F0.inc"
 };
-u32 gEmKindTables_68_6_23[8] = {
+EmRoute gEmKindTables_68_6_23[1] = {
 #include "game/008CC430.inc"
 };
-u32 gEmKindTables_68_6_25_1[16] = {
+EmRoutePt gEmKindTables_68_6_25_1[3] = {
 #include "game/008CC450.inc"
 };
-u32 gEmKindTables_68_6_25_7[16] = {
+EmRoutePt gEmKindTables_68_6_25_7[3] = {
 #include "game/008CC490.inc"
 };
-u32 gEmKindTables_68_6_25[12] = {
+EmRoute gEmKindTables_68_6_25[2] = {
 #include "game/008CC4D0.inc"
 };
-u32 gEmKindTables_68_6[28] = {
+EmRouteSet gEmKindTables_68_6[14] = {
 #include "game/008CC500.inc"
 };
-extern u32 gEmKindTables_68_0[];
-extern u32 gEmKindTables_68_2[];
-u32 gEmKindTables_68[8] = {
-    (u32)gEmKindTables_68_0, (u32)gEmKindTables_68_1, (u32)gEmKindTables_68_2, (u32)gEmKindTables_68_3,
-    (u32)gEmKindTables_68_4, (u32)gEmKindTables_68_5, (u32)gEmKindTables_68_6, 0,
+extern EmAreaPoints gEmKindTables_68_0[];
+extern EmAreaPoints gEmKindTables_68_2[];
+/*
+ * Kind 68's area tables (gEmKindTables[68], Em.tables): [k] for k 0 to 5
+ * the point lists (EmAreaPoints) Em_ComputeGoal reads for goal argument k,
+ * [6] the route sets (EmRouteSet).
+ */
+void *gEmKindTables_68[8] = {
+    gEmKindTables_68_0, gEmKindTables_68_1, gEmKindTables_68_2, gEmKindTables_68_3,
+    gEmKindTables_68_4, gEmKindTables_68_5, gEmKindTables_68_6, NULL,
 };
-u32 gEmAreaTimer1Values_68[4] = {
+EmAreaValue gEmAreaTimer1Values_68[4] = {
 #include "game/008CC590.inc"
 };
-u32 gEmAreaTimer2Values_68[16] = {
+EmAreaValue gEmAreaTimer2Values_68[16] = {
 #include "game/008CC5A0.inc"
 };

@@ -28,17 +28,25 @@
 #include "scene.h"
 #include "save.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "quest.h"
+#include "stream.h"
+#include "bed_menu.h"
+#include "font.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "town_frame.h"
+#include "town_input.h"
+#include "town_players.h"
 
-void Stream_Pause(s32, s32);
-void Bgm_SetPaused(u8);
-void Bgm_FadeInFromZero(s32 fade);
 extern s8 gTownAreaMsgPending;
-void TownPc_WalkToBed(void);
-s32 Game_IsOnline(void);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LobbySe_Play(s32);
-void TownSave_Draw(MenuTask *task);
 extern u8 gMenuWork[];
 extern s32 gTownMenuOpen;
 extern s32 gTownMode;
@@ -95,39 +103,11 @@ void TownSave_Close(void)
     LobbyMenu_SetDraw(0, 0, NULL, 0);
 }
 
-extern u8 gMenuWork[];
 extern LobbyMenu *gLobbyMenu;
-s32 Game_IsOnline(void);
 void Gfx_SetTexFilter(s32 a);
-s32 Gs_SetState(u8, u32);
 void Text_SetSize(s32 size);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16, s16);
-void Menu_DrawLabelList(s16 x, char **items, s16 count, s16 cursor, u32 color);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-char *Text_FillDollar(char *fmt, s32 n);
 void Text_Printf(char *fmt, ...);
-extern char *gYesNoTexts[];
-extern s32 gTownMode;
 extern s32 gTownDay;
-u16 LobbyPad_Get(s32 a);
-void LobbyWorld_HoldClock(void);
-void Player_ClearFlag(void *obj, u32 flag);
-void Actor_SetState(void *, s32, s32);
-void LobbySe_Play(s32 se);
-void Menu_SetYesNo(s8 choice);
-s32 Menu_PushNoticeOnce(s32);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-void LobbyText_Open(s32 msg);
-void TownNetMenu_Begin(void);
-s32 Menu_YesNoInput(void);
-void TownPc_WalkToBed(void);
-s32 TownNetMenu_Update(s32 fromGameMenu);
-void Save_AddMoney(s32 n);
-s32 LobbyTime_IsPm(void);
-void LobbyTime_SetClock(u32 time);
-s32 LobbyWorld_GetSeason(void);
 
 /*
  * Runs one frame of the bed's menu (enum TownSaveStep). Offline, the
@@ -289,21 +269,21 @@ void TownSave_Draw(MenuTask *task)
         return;
     }
     if (w->step == TOWN_SAVE_CHOOSE || w->step == TOWN_SAVE_PAY_ANSWER) {
-        Gfx_SetTexFilter(1);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
         Gs_SetState(RS_ALPHA_REF, 0);
         Text_SetSize(task->textSize);
-        Menu_DrawMoney(0x1E0, 0x10, 0);
-        Font_SetSpacing(0x14, 0x14);
-        Menu_DrawLabelList(0x1C2, gBedMenuTexts, BED_LINE_COUNT, w->line, 0xFFB0B000);
+        Menu_DrawMoney(480, 16, 0);
+        Font_SetSpacing(20, 20);
+        Menu_DrawLabelList(450, gBedMenuTexts, BED_LINE_COUNT, w->line, 0xFFB0B000);
         switch (w->step) {
         case TOWN_SAVE_PAY_ANSWER:
-            Win_DrawText(0x114, 0x160, 0x154, 0x50, 0xBDB59F6C, 0x80202020,
+            Win_DrawText(276, 352, 340, 80, 0xBDB59F6C, 0x80202020,
                           Text_FillDollar(gBedMenuTexts[BED_MENU_TEXT_LIVING_COST], w->prices[w->line]));
-            Font_SetPos(0x1A0, 0x190);
+            Font_SetPos(416, 400);
             Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
             break;
         default:
-            Win_DrawText(0x114, 0x160, 0x154, 0x50, 0xBDB59F6C, 0x80202020,
+            Win_DrawText(276, 352, 340, 80, 0xBDB59F6C, 0x80202020,
                          (gBedMenuTexts + BED_LINE_COUNT)[w->line]);
             break;
         }
@@ -323,13 +303,7 @@ void TownNetMenu_Begin(void)
 }
 
 extern s8 gTownNetMenuFade;
-void NetMenu_Open(u8 mode);
 u8 NetMenu_Update(void);
-void Stream_FadeOut(s32, s32);
-void Stream_Stop(s32 ch);
-void Stream_Pause(s32, s32);
-void LobbySe_Play(s32 se);
-void TownNetMenu_Resume(void);
 
 /*
  * Runs one frame of the save menu over the town (TownNetMenu_Begin first).

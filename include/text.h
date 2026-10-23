@@ -56,4 +56,44 @@
 #define SJIS_IS_LEAD(c) (((c) >= 0x80 && (c) <= 0x9F) || ((c) >= 0xE0 && (c) <= 0xFF))
 #define SJIS_SPACE 0x8140
 
+void Draw_BeginFrame(void);
+void Draw_EndFrame(void);
+void Gfx_SetBlend(s32 modeA, s32 modeB);
+void Gfx_SetTexFilter(s32 mode);
+void Tex_Bind(s32 slot);
+void Gfx_ResetRenderStates(s32 partial);
+void Gfx_SetBlendOp(s32 opIndex);
+void FreeList_InitAll(void);
+void Text_Init(void);
+void Text_Reset(void);
+void Text_FlushPages(void);
+void Text_DrawAllAndStop(void);
+void Text_DrawPage(s32 layer);
+void Text_DrawCurrentPage(void);
+void Text_DrawIcons(s32 layer);
+void Text_PrintfColored(const char *fmt, ...);
+void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
+void Text_DrawLines(s16 x, s16 y, char **lines, s16 dy);
+void Text_DrawLinesColored(s16 x, s16 y, char **lines, s16 dy);
+void Text_FormatVar(void *dst, s16 kind);
+char *Text_ParseCode(char *text, s16 *code, s16 mode);
+void Text_Printf(const char *fmt, ...);
+void Text_PrintfStyled(s32 lineGap, const char *fmt, ...);
+void Text_PrintCodes(s16 max, const char *fmt, ...);
+void Text_DrawShadow(s16 x, s16 y, s16 shadowColor, s16 color, char *text);
+void Text_DrawShadow2(s16 x, s16 y, s32 shadowColor, s32 color, char *text);
+void Text_DrawShadowRgb(s16 x, s16 y, u32 shadowColor, u32 color, char *text);
+void Text_Draw(char *text);
+s32 Text_DisplayLength(char *text);
+s32 Text_CountChars(char *text);
+s32 Text_NextChar(char *out, char *text, char **next);
+void Text_SetSize(s32 size);
+void Text_SetColor(s16 color);
+void Text_DrawAllPages(void);
+void Text_SetDefaults(void);
+void Text_Disable(void);
+void MemFile_Load(void);
+u16 Pad_KeyRepeat(s32 pad, u16 held, u16 pressed);
+void Text_DrawColored(char *text);
+
 #endif /* TEXT_H */

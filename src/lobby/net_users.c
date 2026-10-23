@@ -11,43 +11,12 @@
  *   the request it reuses). Users by conditions (6709) or by name (6711),
  *   6416's 16-byte records, level 1's entries (6319) and one entry's
  *   details (631A).
- * - The party's ready notice and the quest's payment (the last two).
  */
 #include "common.h"
 #include "lobby_net.h"
 #include "lobby_globals.h"
 
-u8 * LobbyMsg_GetString(void *dst, u8 *src);
-u8 * LobbyMsg_GetU32(void *dst, u8 *src);
-void LobbyReply_UserProfile(void);
-void LobbySrvReq_6706(void);
-s32 LobbyNet_GetUserSearch(NetUserSearchFound **out);
-void LobbyNet_GetUserStatus(u16 *arg0, u16 *arg1, u16 *arg2, u8 *arg3);
-void LobbyReply_UserStatus(void);
-void LobbyReply_6417(void);
-s32 LobbyNet_GetUserFindByName(NetUserFindByNameFound **out);
-s32 LobbyNet_GetLevel1Search(u32 **arg0);
-void LobbyReply_Level1SearchInfo(void);
-s32 LobbyPkt_QuestPaid(void);
 char *strcpy(void *dst, const void *src);
-void Lobby_RouteMessage(s32 a);
-s32 LobbyPkt_ShortMailSend(void *id, char *text);
-s32 LobbyPkt_UserProfile(void *id);
-s32 LobbyPkt_UserSearch(NetUserSearchQuery query);
-s32 LobbyPkt_UserSearchNext(u8 arg0);
-s32 LobbyPkt_6416Next(u8 arg0);
-s32 LobbyPkt_UserStatus(void *id);
-s32 LobbyPkt_ChatColorMode(u8 arg0);
-s32 LobbyPkt_UserFindByName(NetBlob name);
-s32 LobbyPkt_UserFindByNameNext(u8 arg0);
-s32 LobbyPkt_Level1Search(NetLevel1SearchQuery query);
-s32 LobbyPkt_Level1SearchNext(u8 arg0);
-s32 LobbyPkt_Level1SearchInfo(u8 arg0);
-void LobbyNotify_ShortMailRead(void);
-void LobbyReply_UserProfileRead(void);
-void LobbyReply_UserStatusRead(void);
-void LobbyReply_6417Read(void);
-void LobbyReply_Level1SearchInfoRead(void);
 
 /* The notification of a short mail: sender's id, name and text into
  * gLobbyNet.shortMail. */
@@ -157,27 +126,27 @@ void LobbyReply_UserProfileRead(void)
     u8 *cur;
     s32 i;
 
-    memset(&gLobbyNet.userStatus, 0, 0x20A);
+    memset(&gLobbyNet.userStatus, 0, 522);
     memset(&gLobbyNet.userProfile, 0, sizeof(gLobbyNet.userProfile));
     profile = &gLobbyNet.userProfile;
-    cur = LobbyMsg_GetBlob(profile->s0, 0x10, gLobbyRecvData);
-    cur = LobbyMsg_GetBlob(profile->s14, 0xC, cur);
-    cur = LobbyMsg_GetU16(&profile->h3B8, cur);
-    cur = LobbyMsg_GetU16(&profile->h3BA, cur);
-    cur = LobbyMsg_GetU8(&profile->b3C8, cur);
-    cur = LobbyMsg_GetBlob(profile->s24, 0x100, cur);
-    cur = LobbyMsg_GetBlob(profile->s128, 0x100, cur);
-    cur = LobbyMsg_GetU32(&profile->w3C4, cur);
-    cur = LobbyMsg_GetBlob(profile->s22C, 0x40, cur);
-    cur = LobbyMsg_GetU8(&profile->b3C9, cur);
-    cur = LobbyMsg_GetBlob(profile->s270, 0x40, cur);
-    cur = LobbyMsg_GetBlob(profile->s2B4, 0x100, cur);
-    cur = LobbyMsg_GetU8(&profile->b3CA, cur);
+    cur = LobbyMsg_GetBlob(profile->name, 16, gLobbyRecvData);
+    cur = LobbyMsg_GetBlob(profile->serverId, 12, cur);
+    cur = LobbyMsg_GetU16(&profile->area, cur);
+    cur = LobbyMsg_GetU16(&profile->land, cur);
+    cur = LobbyMsg_GetU8(&profile->status, cur);
+    cur = LobbyMsg_GetBlob(profile->location, 256, cur);
+    cur = LobbyMsg_GetBlob(profile->serverName, 256, cur);
+    cur = LobbyMsg_GetU32(&profile->serverColor, cur);
+    cur = LobbyMsg_GetBlob(profile->areaName, 64, cur);
+    cur = LobbyMsg_GetU8(&profile->areaKind, cur);
+    cur = LobbyMsg_GetBlob(profile->landName, 64, cur);
+    cur = LobbyMsg_GetBlob(profile->message, 256, cur);
+    cur = LobbyMsg_GetU8(&profile->unk3CA, cur);
     for (i = 0; i < 4; i++) {
-        cur = LobbyMsg_GetU8(&profile->b3C0[i], cur);
+        cur = LobbyMsg_GetU8(&profile->groupInfo[i], cur);
     }
-    cur = LobbyMsg_GetU16(&profile->h3BC, cur);
-    LobbyMsg_GetU16(&profile->h3BE, cur);
+    cur = LobbyMsg_GetU16(&profile->members, cur);
+    LobbyMsg_GetU16(&profile->maxMembers, cur);
 }
 
 /* The server's request 6706: a short mail without the sender's id (name,
@@ -285,7 +254,7 @@ void LobbyReply_UserSearch(void)
         user = &gLobbyNet.userSearchFound.users[start];
         for (i = 0; i < count; i++) {
             cur = LobbyMsg_GetBlob(user->id, sizeof(user->id), cur);
-            cur = LobbyMsg_GetBlob(user->name, 0x10, cur);
+            cur = LobbyMsg_GetBlob(user->name, 16, cur);
             cur = LobbyMsg_GetBlob(user->text, sizeof(user->text), cur);
             user++;
         }
@@ -491,7 +460,7 @@ void LobbyReply_UserFindByName(void)
         user = &gLobbyNet.userFindByNameFound.list[start];
         for (i = 0; i < count; i++) {
             cur = LobbyMsg_GetBlob(user->id, 8, cur);
-            cur = LobbyMsg_GetBlob(user->name, 0x10, cur);
+            cur = LobbyMsg_GetBlob(user->name, 16, cur);
             cur = LobbyMsg_GetString(user->text, cur);
             user++;
         }
@@ -536,7 +505,7 @@ s32 LobbyNet_GetLevel1Search(u32 **out)
     return 0;
 }
 
-/* 6319: blob (0xC), u8, u8 n, then n conditions (u8 type, u8 m, m bytes) */
+/* 6319: blob (12), u8, u8 n, then n conditions (u8 type, u8 m, m bytes) */
 s32 LobbyPkt_Level1Search(NetLevel1SearchQuery query)
 {
     s32 seq;
@@ -546,7 +515,7 @@ s32 LobbyPkt_Level1Search(NetLevel1SearchQuery query)
     u8 condLen;
 
     seq = LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_LEVEL1_SEARCH) & 0xFFFF;
-    LobbyPkt_PutBlob(&gLobbyPkt, query.id, 0xC);
+    LobbyPkt_PutBlob(&gLobbyPkt, query.id, 12);
     LobbyPkt_PutU8(&gLobbyPkt, query.maxFound);
     LobbyPkt_PutU8(&gLobbyPkt, query.n);
     n = query.n;
@@ -658,19 +627,4 @@ void LobbyReply_Level1SearchInfo(void)
         LobbyReply_Level1SearchInfoRead();
     }
     Lobby_RouteMessage(NET_ROUTE_NONE);
-}
-
-/* The notification that the quest's party is ready. */
-void LobbyNotify_PartyReady(void)
-{
-    Lobby_RouteMessage(NET_ROUTE_PARTY_READY);
-}
-
-/* Sends the quest's payment notice; returns 0. */
-s32 LobbyPkt_QuestPaid(void)
-{
-    LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_QUEST_PAID);
-    LobbyPkt_End(&gLobbyPkt);
-    LobbyPkt_Send(&gLobbyPkt);
-    return 0;
 }

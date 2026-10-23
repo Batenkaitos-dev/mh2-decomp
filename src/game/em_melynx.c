@@ -27,102 +27,37 @@
 #include "objattach.h"
 #include "area.h"
 #include "chat_log.h"
+#include "shadow.h"
+#include "area_draw.h"
+#include "capsule.h"
+#include "render_state.h"
+#include "sound.h"
+#include "attack_objects.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* prototypes of callees */
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void EmMelynx_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the call in EmMelynx_ChangeState compiles differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-s8 QuestEm_Appear(Em *em);
-ObjAttach *EmContactAttack_Create(Em *em, s8 kind);
-void EmBomb_Create(Em *, s8);
-void Em_ComputeGoal2(Em *em, f32 *target);
 void Em_SetRequest(Em *em, u8 a, u8 prio);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_PlaySeOnFrame(Em *em, s32 frame, s32 se);
-void Em_RestartScript(Em *em);
-void EmMelynx_Reset(Em *);
-void EmMelynx_CapTimerOffTarget(Em *em);
-void EmMelynx_Status2Lie(Em *);
-void EmMelynx_BurrowAway(Em *);
-void EmMelynx_ChaseGoal(Em *);
-void EmMelynx_WalkLong(Em *);
-void EmMelynx_RunToGoalA(Em *);
-void EmMelynx_RunToGoalB(Em *);
-void EmMelynx_WalkToGoal(Em *);
-void EmMelynx_StealAttack(Em *em);
-void EmMelynx_KnockBack(Em *);
-void EmMelynx_Status4(Em *);
-void EmMelynx_HuntedKnockBack(Em *);
-void EmMelynx_HuntedFlinch(Em *);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
 void StunStars_CreateEm(Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-void Vec_RotateY(f32 *v, f32 angle);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-u16 Area_DayId(u16 id);
-s32 QuestEm_CanAppear(Em *em);
-void Quest_DeductReward(Player *p, u16 item, s16 n);
-void Player_Integrate(void *);
-void Shadow_Spawn(void *obj, s16 type);
-void QuestEm_Hunted(Em *em);
-void EmMine_Remove(Em *em);
-void EmMelynx_ReturnItem(Em *em, EmMelynxWork *w);
-void ObjListA70_Remove(EmObj *obj);
-void EmMine_Drop(Em *em, f32 *pos);
-s32 Player_MoveFall(Player *p);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Player_ClearAccel2(void *);
 /* unit's own declaration: declared here as the callers use it; with the definition's u8 (Player *p, u16 item, s16 n), the calls in EmMelynx_ReturnItem compile differently */
 s32 Pouch_Add(Player *p, u16 item, s16 n);
-s32 Player_IsLocal(void *obj);
-u8 Notice_Push(u8 kind, s16 a, s16 b);
-void EmMelynx_MotionEffects(Em *em, EmWork *work);
-s32 Quest_GetOutcome(s32 withLoss);
-s32 Player_HasSkill(Player *p, u8 skill);
-s16 Pouch_Count(Player *p, u16 item);
-void GmEm_ApplySize(Em *em);
 extern s16 gEmCombatInit[];
-void Em_InitParts(Em *em);
 s32 EmMelynx_StealItem(Em *em, Player *p, EmMelynxWork *w);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-void Em_CheckRageByHp(Em *em, s16 n);
-u8 Em_SenseObjects(Em *em, EmObj *self);
-s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
-s32 ObjListA70_Add(EmObj *obj);
-void Em_ResetPartHp(Em *em, u32 i);
-void Em_SetStatus5Timer(Em *em);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void EmMelynx_RunState(Em *em);
-void PartFx_SpawnForEm(Em *em, s32 a, s32 b);
-/* A set of meshes (0x8C bytes). */
+/* A set of meshes (140 bytes). */
 typedef struct EmMelynxMeshSet {
     s32 unk0;
     s32 count;          /* 0x04 */
     s32 mesh[33];       /* 0x08 */
 } EmMelynxMeshSet;
-s32 Gs_SetState(u8 reg, u32 v);
 /* end of prototypes */
 
 /*
@@ -139,306 +74,306 @@ void EmMelynx_MotionSounds(Em *em, EmWork *work)
     motion = work->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE):
-        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(0x12, 1, 0x12, 1));
+        Em_PlaySeOnFrame(em, 4, Sound_RandomSe(18, 1, 18, 1));
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_A):
-        Em_PlaySeOnFrame(em, 0x12, 1);
-        Em_PlaySeOnFrame(em, 0x26, 1);
-        Em_PlaySeOnFrame(em, 0x72, 1);
-        Em_PlaySeOnFrame(em, 0x7E, 1);
-        Em_PlaySeOnFrame(em, 0x98, 1);
-        Em_PlaySeOnFrame(em, 0xCC, 0xC);
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        Em_PlaySeOnFrame(em, 0x58, 0x1E);
-        Em_PlaySeOnFrame(em, 0xD0, 0x1E);
+        Em_PlaySeOnFrame(em, 18, 1);
+        Em_PlaySeOnFrame(em, 38, 1);
+        Em_PlaySeOnFrame(em, 114, 1);
+        Em_PlaySeOnFrame(em, 126, 1);
+        Em_PlaySeOnFrame(em, 152, 1);
+        Em_PlaySeOnFrame(em, 204, 12);
+        Em_PlaySeOnFrame(em, 8, 30);
+        Em_PlaySeOnFrame(em, 88, 30);
+        Em_PlaySeOnFrame(em, 208, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_B):
-        Em_PlaySeOnFrame(em, 0x26, 0x12);
-        Em_PlaySeOnFrame(em, 6, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x9A, 0x1E);
-        Em_PlaySeOnFrame(em, 0xA4, 0x1E);
+        Em_PlaySeOnFrame(em, 38, 18);
+        Em_PlaySeOnFrame(em, 6, 30);
+        Em_PlaySeOnFrame(em, 22, 30);
+        Em_PlaySeOnFrame(em, 154, 30);
+        Em_PlaySeOnFrame(em, 164, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_C):
-        Em_PlaySeOnFrame(em, 0xE, Sound_RandomSe(9, 2, 9, 2));
-        Em_PlaySeOnFrame(em, 0x4C, Sound_RandomSe(0xC, 2, 0xC, 2));
-        Em_PlaySeOnFrame(em, 0xA0, Sound_RandomSe(9, 2, 9, 2));
-        Em_PlaySeOnFrame(em, 0xC8, Sound_RandomSe(0xA, 2, 0xA, 2));
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        Em_PlaySeOnFrame(em, 0x50, 0x1E);
-        Em_PlaySeOnFrame(em, 0x8C, 0x1E);
-        Em_PlaySeOnFrame(em, 0xC8, 0x1E);
+        Em_PlaySeOnFrame(em, 14, Sound_RandomSe(9, 2, 9, 2));
+        Em_PlaySeOnFrame(em, 76, Sound_RandomSe(12, 2, 12, 2));
+        Em_PlaySeOnFrame(em, 160, Sound_RandomSe(9, 2, 9, 2));
+        Em_PlaySeOnFrame(em, 200, Sound_RandomSe(10, 2, 10, 2));
+        Em_PlaySeOnFrame(em, 8, 30);
+        Em_PlaySeOnFrame(em, 80, 30);
+        Em_PlaySeOnFrame(em, 140, 30);
+        Em_PlaySeOnFrame(em, 200, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_D):
-        Em_PlaySeOnFrame(em, 4, 0x17);
-        Em_PlaySeOnFrame(em, 0xE, 3);
+        Em_PlaySeOnFrame(em, 4, 23);
+        Em_PlaySeOnFrame(em, 14, 3);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_WALK):
-        Em_PlaySeOnFrame(em, 0x50, Sound_RandomSe(0x12, 2, 0x12, 2));
-        Em_PlaySeOnFrame(em, 0xC, 0x1E);
-        Em_PlaySeOnFrame(em, 0x1E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x42, 0x1E);
-        Em_PlaySeOnFrame(em, 0x58, 0x1E);
-        Em_PlaySeOnFrame(em, 0x76, 0x1E);
-        Em_PlaySeOnFrame(em, 0x8C, 0x1E);
-        Em_PlaySeOnFrame(em, 0x98, 0x1E);
-        Em_PlaySeOnFrame(em, 0xA2, 0x1E);
-        Em_PlaySeOnFrame(em, 0xAE, 0x1E);
-        Em_PlaySeOnFrame(em, 0xB8, 0x1E);
-        Em_PlaySeOnFrame(em, 0xC2, 0x1E);
-        Em_PlaySeOnFrame(em, 0xAE, 0x1E);
+        Em_PlaySeOnFrame(em, 80, Sound_RandomSe(18, 2, 18, 2));
+        Em_PlaySeOnFrame(em, 12, 30);
+        Em_PlaySeOnFrame(em, 30, 30);
+        Em_PlaySeOnFrame(em, 46, 30);
+        Em_PlaySeOnFrame(em, 66, 30);
+        Em_PlaySeOnFrame(em, 88, 30);
+        Em_PlaySeOnFrame(em, 118, 30);
+        Em_PlaySeOnFrame(em, 140, 30);
+        Em_PlaySeOnFrame(em, 152, 30);
+        Em_PlaySeOnFrame(em, 162, 30);
+        Em_PlaySeOnFrame(em, 174, 30);
+        Em_PlaySeOnFrame(em, 184, 30);
+        Em_PlaySeOnFrame(em, 194, 30);
+        Em_PlaySeOnFrame(em, 174, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_RUN_A):
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0xE, 2, 0xE, 2));
-        Em_PlaySeOnFrame(em, 0xA, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x20, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x38, 0x1E);
-        Em_PlaySeOnFrame(em, 0x44, 0x1E);
-        Em_PlaySeOnFrame(em, 0x4E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x58, 0x1E);
-        Em_PlaySeOnFrame(em, 0x64, 0x1E);
-        Em_PlaySeOnFrame(em, 0x70, 0x1E);
+        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(14, 2, 14, 2));
+        Em_PlaySeOnFrame(em, 10, 30);
+        Em_PlaySeOnFrame(em, 22, 30);
+        Em_PlaySeOnFrame(em, 32, 30);
+        Em_PlaySeOnFrame(em, 46, 30);
+        Em_PlaySeOnFrame(em, 56, 30);
+        Em_PlaySeOnFrame(em, 68, 30);
+        Em_PlaySeOnFrame(em, 78, 30);
+        Em_PlaySeOnFrame(em, 88, 30);
+        Em_PlaySeOnFrame(em, 100, 30);
+        Em_PlaySeOnFrame(em, 112, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_FALL):
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0xD, 2, 0xD, 2));
-        Em_PlaySeOnFrame(em, 0xC, 0x21);
-        Em_PlaySeOnFrame(em, 0xC, 0x19);
-        Em_PlaySeOnFrame(em, 0x2A, 0x17);
-        Em_PlaySeOnFrame(em, 0x2E, 0x18);
+        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(13, 2, 13, 2));
+        Em_PlaySeOnFrame(em, 12, 33);
+        Em_PlaySeOnFrame(em, 12, 25);
+        Em_PlaySeOnFrame(em, 42, 23);
+        Em_PlaySeOnFrame(em, 46, 24);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_POSTURE_MOVE):
-        Em_PlaySeOnFrame(em, 8, 0x1E);
-        Em_PlaySeOnFrame(em, 0x18, 0x1E);
-        Em_PlaySeOnFrame(em, 0x28, 0x1E);
+        Em_PlaySeOnFrame(em, 8, 30);
+        Em_PlaySeOnFrame(em, 24, 30);
+        Em_PlaySeOnFrame(em, 40, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_RUN_B):
         Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0, 2, 0, 2));
-        Em_PlaySeOnFrame(em, 0xC, 0x18);
-        Em_PlaySeOnFrame(em, 0x12, 0x22);
-        Em_PlaySeOnFrame(em, 0x22, 0x18);
-        Em_PlaySeOnFrame(em, 0x28, 0x22);
+        Em_PlaySeOnFrame(em, 12, 24);
+        Em_PlaySeOnFrame(em, 18, 34);
+        Em_PlaySeOnFrame(em, 34, 24);
+        Em_PlaySeOnFrame(em, 40, 34);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_DASH):
-        Em_PlaySeOnFrame(em, 0x2E, Sound_RandomSe(0x11, 1, 0x11, 1));
-        Em_PlaySeOnFrame(em, 0xA, 0x17);
-        Em_PlaySeOnFrame(em, 0x18, 0x17);
-        Em_PlaySeOnFrame(em, 0x26, 0x17);
-        Em_PlaySeOnFrame(em, 0x32, 0x17);
+        Em_PlaySeOnFrame(em, 46, Sound_RandomSe(17, 1, 17, 1));
+        Em_PlaySeOnFrame(em, 10, 23);
+        Em_PlaySeOnFrame(em, 24, 23);
+        Em_PlaySeOnFrame(em, 38, 23);
+        Em_PlaySeOnFrame(em, 50, 23);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_BURROW):
-        Em_PlaySeOnFrame(em, 0x10, 0x1A);
-        Em_PlaySeOnFrame(em, 0x24, 0x1A);
-        Em_PlaySeOnFrame(em, 0x3A, 0x1A);
-        Em_PlaySeOnFrame(em, 0x4E, 0x1A);
-        Em_PlaySeOnFrame(em, 0x7E, 0x14);
-        Em_PlaySeOnFrame(em, 0x80, 0x19);
-        Em_PlaySeOnFrame(em, 0x78, 6);
-        Em_PlaySeOnFrame(em, 0x9C, 0x1B);
+        Em_PlaySeOnFrame(em, 16, 26);
+        Em_PlaySeOnFrame(em, 36, 26);
+        Em_PlaySeOnFrame(em, 58, 26);
+        Em_PlaySeOnFrame(em, 78, 26);
+        Em_PlaySeOnFrame(em, 126, 20);
+        Em_PlaySeOnFrame(em, 128, 25);
+        Em_PlaySeOnFrame(em, 120, 6);
+        Em_PlaySeOnFrame(em, 156, 27);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_POUNCE_START):
-        Em_PlaySeOnFrame(em, 2, 0x16);
-        Em_PlaySeOnFrame(em, 0xE, 0x17);
-        Em_PlaySeOnFrame(em, 0x18, 3);
-        Em_PlaySeOnFrame(em, 0x48, 0x17);
+        Em_PlaySeOnFrame(em, 2, 22);
+        Em_PlaySeOnFrame(em, 14, 23);
+        Em_PlaySeOnFrame(em, 24, 3);
+        Em_PlaySeOnFrame(em, 72, 23);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_LEAP):
-        Em_PlaySeOnFrame(em, 2, 0x18);
-        Em_PlaySeOnFrame(em, 6, 0x21);
-        Em_PlaySeOnFrame(em, 0x10, 4);
+        Em_PlaySeOnFrame(em, 2, 24);
+        Em_PlaySeOnFrame(em, 6, 33);
+        Em_PlaySeOnFrame(em, 16, 4);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_SNATCH):
-        Em_PlaySeOnFrame(em, 0x12, 0x18);
-        Em_PlaySeOnFrame(em, 0x22, 0x17);
-        Em_PlaySeOnFrame(em, 0x2A, 0xB);
-        Em_PlaySeOnFrame(em, 0x70, 0xF);
-        Em_PlaySeOnFrame(em, 0xAA, 0xF);
-        Em_PlaySeOnFrame(em, 0xF0, 0xD);
-        Em_PlaySeOnFrame(em, 0x68, 0x16);
-        Em_PlaySeOnFrame(em, 0x82, 0x17);
-        Em_PlaySeOnFrame(em, 0x8A, 0x16);
-        Em_PlaySeOnFrame(em, 0xA2, 0x17);
-        Em_PlaySeOnFrame(em, 0xA8, 0x16);
-        Em_PlaySeOnFrame(em, 0xBE, 0x17);
-        Em_PlaySeOnFrame(em, 0xC8, 0x16);
-        Em_PlaySeOnFrame(em, 0xE0, 0x17);
-        Em_PlaySeOnFrame(em, 0xE6, 0x20);
-        Em_PlaySeOnFrame(em, 0x124, 0x17);
+        Em_PlaySeOnFrame(em, 18, 24);
+        Em_PlaySeOnFrame(em, 34, 23);
+        Em_PlaySeOnFrame(em, 42, 11);
+        Em_PlaySeOnFrame(em, 112, 15);
+        Em_PlaySeOnFrame(em, 170, 15);
+        Em_PlaySeOnFrame(em, 240, 13);
+        Em_PlaySeOnFrame(em, 104, 22);
+        Em_PlaySeOnFrame(em, 130, 23);
+        Em_PlaySeOnFrame(em, 138, 22);
+        Em_PlaySeOnFrame(em, 162, 23);
+        Em_PlaySeOnFrame(em, 168, 22);
+        Em_PlaySeOnFrame(em, 190, 23);
+        Em_PlaySeOnFrame(em, 200, 22);
+        Em_PlaySeOnFrame(em, 224, 23);
+        Em_PlaySeOnFrame(em, 230, 32);
+        Em_PlaySeOnFrame(em, 292, 23);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_LEAP_LAND):
-        Em_PlaySeOnFrame(em, 0x10, 0x1E);
-        Em_PlaySeOnFrame(em, 0x1A, 0x1E);
-        Em_PlaySeOnFrame(em, 0x24, 0x1E);
-        Em_PlaySeOnFrame(em, 0x30, 0x1E);
-        Em_PlaySeOnFrame(em, 0x3A, 0x1E);
-        Em_PlaySeOnFrame(em, 0x46, 0x1E);
-        Em_PlaySeOnFrame(em, 0x52, 0x1E);
-        Em_PlaySeOnFrame(em, 0x92, 0x1E);
+        Em_PlaySeOnFrame(em, 16, 30);
+        Em_PlaySeOnFrame(em, 26, 30);
+        Em_PlaySeOnFrame(em, 36, 30);
+        Em_PlaySeOnFrame(em, 48, 30);
+        Em_PlaySeOnFrame(em, 58, 30);
+        Em_PlaySeOnFrame(em, 70, 30);
+        Em_PlaySeOnFrame(em, 82, 30);
+        Em_PlaySeOnFrame(em, 146, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_DIZZY):
-        Em_PlaySeOnFrame(em, 0xE, 0xB);
-        Em_PlaySeOnFrame(em, 0x44, 0x13);
-        Em_PlaySeOnFrame(em, 0x52, 0x13);
-        Em_PlaySeOnFrame(em, 0x5E, 0x13);
-        Em_PlaySeOnFrame(em, 0x44, 0x16);
-        Em_PlaySeOnFrame(em, 0x52, 0x16);
-        Em_PlaySeOnFrame(em, 0x5E, 0x16);
-        Em_PlaySeOnFrame(em, 0x70, 0x1C);
-        Em_PlaySeOnFrame(em, 0x72, 6);
+        Em_PlaySeOnFrame(em, 14, 11);
+        Em_PlaySeOnFrame(em, 68, 19);
+        Em_PlaySeOnFrame(em, 82, 19);
+        Em_PlaySeOnFrame(em, 94, 19);
+        Em_PlaySeOnFrame(em, 68, 22);
+        Em_PlaySeOnFrame(em, 82, 22);
+        Em_PlaySeOnFrame(em, 94, 22);
+        Em_PlaySeOnFrame(em, 112, 28);
+        Em_PlaySeOnFrame(em, 114, 6);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_POSTURE_LOOP):
-        Em_PlaySeOnFrame(em, 4, 0x15);
-        Em_PlaySeOnFrame(em, 0xC, 0x18);
+        Em_PlaySeOnFrame(em, 4, 21);
+        Em_PlaySeOnFrame(em, 12, 24);
         Em_PlaySeOnFrame(em, 8, Sound_RandomSe(5, 4, 7, 4));
-        Em_PlaySeOnFrame(em, 0x1E, 0x15);
-        Em_PlaySeOnFrame(em, 0x36, 0x1A);
+        Em_PlaySeOnFrame(em, 30, 21);
+        Em_PlaySeOnFrame(em, 54, 26);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_POSTURE_START):
-        Em_PlaySeOnFrame(em, 8, 0x15);
-        Em_PlaySeOnFrame(em, 6, 0x19);
-        Em_PlaySeOnFrame(em, 0x26, 0x21);
-        Em_PlaySeOnFrame(em, 0x26, 0x1A);
+        Em_PlaySeOnFrame(em, 8, 21);
+        Em_PlaySeOnFrame(em, 6, 25);
+        Em_PlaySeOnFrame(em, 38, 33);
+        Em_PlaySeOnFrame(em, 38, 26);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_POSTURE_END):
-        Em_PlaySeOnFrame(em, 8, 0x17);
-        Em_PlaySeOnFrame(em, 0xC, 0x21);
-        Em_PlaySeOnFrame(em, 0x26, 0x21);
+        Em_PlaySeOnFrame(em, 8, 23);
+        Em_PlaySeOnFrame(em, 12, 33);
+        Em_PlaySeOnFrame(em, 38, 33);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_G):
-        Em_PlaySeOnFrame(em, 0xA, 0x17);
-        Em_PlaySeOnFrame(em, 0xE, 0x21);
-        Em_PlaySeOnFrame(em, 0xE, Sound_RandomSe(5, 4, 7, 4));
-        Em_PlaySeOnFrame(em, 0x16, 0x15);
-        Em_PlaySeOnFrame(em, 0x1E, 0x15);
-        Em_PlaySeOnFrame(em, 0x26, 0x15);
-        Em_PlaySeOnFrame(em, 0x2E, 0x15);
-        Em_PlaySeOnFrame(em, 0x34, 0x15);
-        Em_PlaySeOnFrame(em, 0x3C, 0x15);
-        Em_PlaySeOnFrame(em, 0x44, 0x15);
-        Em_PlaySeOnFrame(em, 0x52, 0x17);
-        Em_PlaySeOnFrame(em, 0x6C, 0x1E);
+        Em_PlaySeOnFrame(em, 10, 23);
+        Em_PlaySeOnFrame(em, 14, 33);
+        Em_PlaySeOnFrame(em, 14, Sound_RandomSe(5, 4, 7, 4));
+        Em_PlaySeOnFrame(em, 22, 21);
+        Em_PlaySeOnFrame(em, 30, 21);
+        Em_PlaySeOnFrame(em, 38, 21);
+        Em_PlaySeOnFrame(em, 46, 21);
+        Em_PlaySeOnFrame(em, 52, 21);
+        Em_PlaySeOnFrame(em, 60, 21);
+        Em_PlaySeOnFrame(em, 68, 21);
+        Em_PlaySeOnFrame(em, 82, 23);
+        Em_PlaySeOnFrame(em, 108, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_BOMB_TAKE_OUT):
-        if ((em->stateGroup == EM_GROUP_IDLE) && (em->state == 0xF)) {
-            Em_PlaySeOnFrame(em, 4, 0x11);
-            Em_PlaySeOnFrame(em, 0x54, 0x19);
-            Em_PlaySeOnFrame(em, 0x5E, 0x19);
-            Em_PlaySeOnFrame(em, 0x78, 0x18);
-            Em_PlaySeOnFrame(em, 0x3E, 0x24);
+        if ((em->stateGroup == EM_GROUP_IDLE) && (em->state == 15)) {
+            Em_PlaySeOnFrame(em, 4, 17);
+            Em_PlaySeOnFrame(em, 84, 25);
+            Em_PlaySeOnFrame(em, 94, 25);
+            Em_PlaySeOnFrame(em, 120, 24);
+            Em_PlaySeOnFrame(em, 62, 36);
             break;
         }
-        Em_PlaySeOnFrame(em, 4, 0x11);
-        Em_PlaySeOnFrame(em, 0x54, 0x19);
-        Em_PlaySeOnFrame(em, 0x5E, 0x19);
-        Em_PlaySeOnFrame(em, 0x78, 0x18);
-        Em_PlaySeOnFrame(em, 0x46, 0x23);
+        Em_PlaySeOnFrame(em, 4, 17);
+        Em_PlaySeOnFrame(em, 84, 25);
+        Em_PlaySeOnFrame(em, 94, 25);
+        Em_PlaySeOnFrame(em, 120, 24);
+        Em_PlaySeOnFrame(em, 70, 35);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_E):
-        Em_PlaySeOnFrame(em, 8, 0x18);
-        Em_PlaySeOnFrame(em, 0xE, 0x15);
-        Em_PlaySeOnFrame(em, 0x16, 0x15);
-        Em_PlaySeOnFrame(em, 0x1E, 0x15);
-        Em_PlaySeOnFrame(em, 0x26, 0x15);
-        Em_PlaySeOnFrame(em, 0x2E, 0x15);
-        Em_PlaySeOnFrame(em, 0x34, 0x15);
-        Em_PlaySeOnFrame(em, 0x44, 0x1F);
-        Em_PlaySeOnFrame(em, 0x54, 0x1F);
-        Em_PlaySeOnFrame(em, 0x72, 0x1E);
+        Em_PlaySeOnFrame(em, 8, 24);
+        Em_PlaySeOnFrame(em, 14, 21);
+        Em_PlaySeOnFrame(em, 22, 21);
+        Em_PlaySeOnFrame(em, 30, 21);
+        Em_PlaySeOnFrame(em, 38, 21);
+        Em_PlaySeOnFrame(em, 46, 21);
+        Em_PlaySeOnFrame(em, 52, 21);
+        Em_PlaySeOnFrame(em, 68, 31);
+        Em_PlaySeOnFrame(em, 84, 31);
+        Em_PlaySeOnFrame(em, 114, 30);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_IDLE_ACTION_F):
-        Em_PlaySeOnFrame(em, 0x12, Sound_RandomSe(8, 4, 0xA, 4));
-        Em_PlaySeOnFrame(em, 0x3C, Sound_RandomSe(9, 4, 0xC, 4));
-        Em_PlaySeOnFrame(em, 0x10, 0x15);
-        Em_PlaySeOnFrame(em, 0x40, 0x15);
-        Em_PlaySeOnFrame(em, 0x10, 0x18);
-        Em_PlaySeOnFrame(em, 0x40, 0x18);
+        Em_PlaySeOnFrame(em, 18, Sound_RandomSe(8, 4, 10, 4));
+        Em_PlaySeOnFrame(em, 60, Sound_RandomSe(9, 4, 12, 4));
+        Em_PlaySeOnFrame(em, 16, 21);
+        Em_PlaySeOnFrame(em, 64, 21);
+        Em_PlaySeOnFrame(em, 16, 24);
+        Em_PlaySeOnFrame(em, 64, 24);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_FLINCH):
         Em_PlaySeOnFrame(em, 4, Sound_RandomSe(5, 4, 7, 4));
-        Em_PlaySeOnFrame(em, 0x32, 0x10);
-        Em_PlaySeOnFrame(em, 0xC, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x16, 0x1E);
-        Em_PlaySeOnFrame(em, 0x20, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1E);
-        Em_PlaySeOnFrame(em, 0x46, 0x1E);
-        Em_PlaySeOnFrame(em, 0xD2, 0x1C);
+        Em_PlaySeOnFrame(em, 50, 16);
+        Em_PlaySeOnFrame(em, 12, 30);
+        Em_PlaySeOnFrame(em, 22, 30);
+        Em_PlaySeOnFrame(em, 22, 30);
+        Em_PlaySeOnFrame(em, 32, 30);
+        Em_PlaySeOnFrame(em, 46, 30);
+        Em_PlaySeOnFrame(em, 70, 30);
+        Em_PlaySeOnFrame(em, 210, 28);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_KNOCK_BACK):
         Em_PlaySeOnFrame(em, 4, Sound_RandomSe(5, 4, 7, 4));
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_LIE):
         Em_PlaySeOnFrame(em, 4, Sound_RandomSe(4, 2, 4, 2));
-        Em_PlaySeOnFrame(em, 4, 0x1C);
-        Em_PlaySeOnFrame(em, 0x2E, 0x1D);
+        Em_PlaySeOnFrame(em, 4, 28);
+        Em_PlaySeOnFrame(em, 46, 29);
         Em_PlaySeOnFrame(em, 4, Sound_RandomSe(6, 3, 6, 3));
-        Em_PlaySeOnFrame(em, 0x64, 0x1C);
-        Em_PlaySeOnFrame(em, 0xA, 0x1A);
-        Em_PlaySeOnFrame(em, 0x34, 0x1A);
+        Em_PlaySeOnFrame(em, 100, 28);
+        Em_PlaySeOnFrame(em, 10, 26);
+        Em_PlaySeOnFrame(em, 52, 26);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_GET_UP):
-        Em_PlaySeOnFrame(em, 0x1C, 0x15);
-        Em_PlaySeOnFrame(em, 0x28, 0x15);
-        Em_PlaySeOnFrame(em, 0x34, 0x15);
-        Em_PlaySeOnFrame(em, 0x40, 0x15);
-        Em_PlaySeOnFrame(em, 0x1C, 0x11);
-        Em_PlaySeOnFrame(em, 0x66, 4);
-        Em_PlaySeOnFrame(em, 0x68, 0x16);
-        Em_PlaySeOnFrame(em, 0x80, 0x17);
-        Em_PlaySeOnFrame(em, 0x84, 0x18);
+        Em_PlaySeOnFrame(em, 28, 21);
+        Em_PlaySeOnFrame(em, 40, 21);
+        Em_PlaySeOnFrame(em, 52, 21);
+        Em_PlaySeOnFrame(em, 64, 21);
+        Em_PlaySeOnFrame(em, 28, 17);
+        Em_PlaySeOnFrame(em, 102, 4);
+        Em_PlaySeOnFrame(em, 104, 22);
+        Em_PlaySeOnFrame(em, 128, 23);
+        Em_PlaySeOnFrame(em, 132, 24);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_FLINCH_END):
-        Em_PlaySeOnFrame(em, 0x14, 0x1E);
-        Em_PlaySeOnFrame(em, 0x22, 0x1E);
-        Em_PlaySeOnFrame(em, 0x2A, 0x1E);
-        Em_PlaySeOnFrame(em, 0x46, 0x1E);
-        Em_PlaySeOnFrame(em, 0x54, 0x1E);
-        Em_PlaySeOnFrame(em, 0x6C, 0x1E);
-        Em_PlaySeOnFrame(em, 0x8C, 0x13);
+        Em_PlaySeOnFrame(em, 20, 30);
+        Em_PlaySeOnFrame(em, 34, 30);
+        Em_PlaySeOnFrame(em, 42, 30);
+        Em_PlaySeOnFrame(em, 70, 30);
+        Em_PlaySeOnFrame(em, 84, 30);
+        Em_PlaySeOnFrame(em, 108, 30);
+        Em_PlaySeOnFrame(em, 140, 19);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_STATUS4_START):
-        Em_PlaySeOnFrame(em, 0x30, 0x13);
+        Em_PlaySeOnFrame(em, 48, 19);
         Em_PlaySeOnFrame(em, 4, 6);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_STATUS4_LOOP):
-        Em_PlaySeOnFrame(em, 4, 0x13);
-        Em_PlaySeOnFrame(em, 0x40, 0x1A);
-        Em_PlaySeOnFrame(em, 0x5A, 0x1D);
+        Em_PlaySeOnFrame(em, 4, 19);
+        Em_PlaySeOnFrame(em, 64, 26);
+        Em_PlaySeOnFrame(em, 90, 29);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_STATUS2_LIE):
-        Em_PlaySeOnFrame(em, 4, 0x12);
-        Em_PlaySeOnFrame(em, 0x9C, 0x1D);
+        Em_PlaySeOnFrame(em, 4, 18);
+        Em_PlaySeOnFrame(em, 156, 29);
         break;
-    case EM_MOTION_ID(0, 0x46):
-        Em_PlaySeOnFrame(em, 4, 0xC);
-        Em_PlaySeOnFrame(em, 0x100, 1);
+    case EM_MOTION_ID(0, 70):
+        Em_PlaySeOnFrame(em, 4, 12);
+        Em_PlaySeOnFrame(em, 256, 1);
         break;
-    case EM_MOTION_ID(0, 0x47):
-        Em_PlaySeOnFrame(em, 0x10, 0x18);
-        Em_PlaySeOnFrame(em, 0x12, 0x18);
-        Em_PlaySeOnFrame(em, 0x24, 0xC);
+    case EM_MOTION_ID(0, 71):
+        Em_PlaySeOnFrame(em, 16, 24);
+        Em_PlaySeOnFrame(em, 18, 24);
+        Em_PlaySeOnFrame(em, 36, 12);
         break;
-    case EM_MOTION_ID(0, 0x48):
-        Em_PlaySeOnFrame(em, 0x30, 0xD);
-        Em_PlaySeOnFrame(em, 8, 0x1E);
+    case EM_MOTION_ID(0, 72):
+        Em_PlaySeOnFrame(em, 48, 13);
+        Em_PlaySeOnFrame(em, 8, 30);
         break;
-    case EM_MOTION_ID(0, 0x49):
-        Em_PlaySeOnFrame(em, 0xA, 0x12);
+    case EM_MOTION_ID(0, 73):
+        Em_PlaySeOnFrame(em, 10, 18);
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_BOMB_THROW):
-        Em_PlaySeOnFrame(em, 8, 0xA);
-        Em_PlaySeOnFrame(em, 0x34, 4);
-        Em_PlaySeOnFrame(em, 0x36, 0x21);
-        Em_PlaySeOnFrame(em, 0x36, 0x20);
-        Em_PlaySeOnFrame(em, 0x16, 0x18);
-        Em_PlaySeOnFrame(em, 0x1E, 0x18);
-        Em_PlaySeOnFrame(em, 0x80, 0x18);
-        Em_PlaySeOnFrame(em, 0x94, 0x18);
+        Em_PlaySeOnFrame(em, 8, 10);
+        Em_PlaySeOnFrame(em, 52, 4);
+        Em_PlaySeOnFrame(em, 54, 33);
+        Em_PlaySeOnFrame(em, 54, 32);
+        Em_PlaySeOnFrame(em, 22, 24);
+        Em_PlaySeOnFrame(em, 30, 24);
+        Em_PlaySeOnFrame(em, 128, 24);
+        Em_PlaySeOnFrame(em, 148, 24);
         break;
-    case EM_MOTION_ID(0, 0x4B):
-        Em_PlaySeOnFrame(em, 0xE, 0xB);
+    case EM_MOTION_ID(0, 75):
+        Em_PlaySeOnFrame(em, 14, 11);
         break;
     }
 }
@@ -503,21 +438,21 @@ void EmMelynx_Reset(Em *em)
 }
 
 /*
- * Resets the monster (EmMelynx_Reset) and starts it: variant 0xC and the
+ * Resets the monster (EmMelynx_Reset) and starts it: variant 12 and the
  * desert stand (MELYNX_IDLE_STAND; desert variants other than 0 unhittable
  * for 10 frames), the others wander (MELYNX_MOVE_WANDER).
  */
 void EmMelynx_Start(Em *em)
 {
     EmMelynx_Reset(em);
-    if (em->variant == 0xC) {
+    if (em->variant == 12) {
         EmMelynx_ChangeState(em, EM_GROUP_IDLE, MELYNX_IDLE_STAND, EM_SYNC_LOCAL);
         return;
     }
     if ((Area_DayId(em->area) & 0xFFFF) == AREA_DESERT_8) {
         if (em->variant != 0) {
-            em->noHitTimer = 0xA;
-            em->noPushTimer = 0xA;
+            em->noHitTimer = 10;
+            em->noPushTimer = 10;
         }
         EmMelynx_ChangeState(em, EM_GROUP_IDLE, MELYNX_IDLE_STAND, EM_SYNC_LOCAL);
         return;
@@ -554,12 +489,12 @@ void EmMelynx_CapTimerOffTarget(Em *em)
 {
     s8 targetIdx;
 
-    if (em->timer > 0xF) {
+    if (em->timer > 15) {
         targetIdx = em->targetNo;
         if (targetIdx == -1) {
-            em->timer = 0xF;
+            em->timer = 15;
         } else if (em->area != ((Player *) &gPlayers[targetIdx])->area) {
-            em->timer = 0xF;
+            em->timer = 15;
         }
     }
 }
@@ -669,7 +604,7 @@ s32 EmMelynx_BombState(Em *em)
     if (em->contactHit != 0) {
         return -2;
     }
-    if (*(u16 *) (w + 0xE) != 0) {
+    if (*(u16 *) (w + 14) != 0) {
         return 1;
     }
     return 0;
@@ -677,10 +612,10 @@ s32 EmMelynx_BombState(Em *em)
 
 /*
  * Steals one item from player p on the local machine, unless the quest is
- * over or p has SKILL_THEFT_GUARD: the item 0xBD or 0xF9 first, else a random one
- * (stateRand) among the pouch's items of type 0 and rarity below 4; takes
- * it from the pouch, records it in w (stolenItem, stolenCount -1,
- * stolenFrom) and shows the stolen notice. Returns 1 when it stole, else 0.
+ * over or p has SKILL_THEFT_GUARD: the item 189 or 249 first, else a random
+ * one (stateRand) among the pouch's items of type 0 and rarity below 4; takes
+ * it from the pouch, records it in w (stolenItem, stolenCount -1, stolenFrom)
+ * and shows the stolen notice. Returns 1 when it stole, else 0.
  */
 s32 EmMelynx_StealItem(Em *em, Player *victim, EmMelynxWork *work)
 {
@@ -697,11 +632,11 @@ s32 EmMelynx_StealItem(Em *em, Player *victim, EmMelynxWork *work)
     if (Player_HasSkill(victim, SKILL_THEFT_GUARD) == 1) {
         return 0;
     }
-    if (Pouch_Count(victim, 0xBD) > 0) {
-        work->stolenItem = 0xBD;
+    if (Pouch_Count(victim, 189) > 0) {
+        work->stolenItem = 189;
         work->stolenCount = -1;
-    } else if (Pouch_Count(victim, 0xF9) > 0) {
-        work->stolenItem = 0xF9;
+    } else if (Pouch_Count(victim, 249) > 0) {
+        work->stolenItem = 249;
         work->stolenCount = -1;
     } else {
         for (i = 0, count = 0; i < 20; i++) {
@@ -724,7 +659,7 @@ s32 EmMelynx_StealItem(Em *em, Player *victim, EmMelynxWork *work)
 
 /*
  * Gives the stolen item back to the player robbed (Pouch_Add) and shows
- * that player's notice (returned, pouch full, or message 0xC), then marks
+ * that player's notice (returned, pouch full, or message 12), then marks
  * no stolen item.
  */
 void EmMelynx_ReturnItem(Em *em, EmMelynxWork *work)
@@ -745,7 +680,7 @@ void EmMelynx_ReturnItem(Em *em, EmMelynxWork *work)
             break;
         default:
             if (Player_IsLocal(work->stolenFrom) == 1) {
-                Notice_Push(NOTICE_KIND_MESSAGE, 0xC, 0);
+                Notice_Push(NOTICE_KIND_MESSAGE, 12, 0);
             }
             break;
         }
@@ -835,7 +770,7 @@ void EmMelynx_IdleActionD(Em *em, s32 unused)
     case 0:
         em->step++;
         Em_SetMotion(em, MELYNX_MOT_IDLE_ACTION_D, 0, 0);
-        em->timer = 0x78;
+        em->timer = 120;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -855,7 +790,7 @@ void EmMelynx_IdleDizzy(Em *em, s32 unused)
     case 0:
         em->step++;
         Em_SetMotion(em, MELYNX_MOT_DIZZY, 0, 0);
-        StunStars_CreateEm(em, 1, 2, 0x3C, 30.0f, 1.0f);
+        StunStars_CreateEm(em, 1, 2, 60, 30.0f, 1.0f);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -896,7 +831,7 @@ void EmMelynx_IdleActionF(Em *em, s32 unused)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = (em->stateRand & 0x3F) + 0x3C;
+        em->timer = (em->stateRand & 0x3F) + 60;
         Em_SetMotion(em, MELYNX_MOT_IDLE_ACTION_F, 0, 0);
         break;
     case 1:
@@ -916,7 +851,7 @@ void EmMelynx_IdlePosture(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x96;
+        em->timer = 150;
         Em_SetMotion(em, MELYNX_MOT_POSTURE_LOOP, 0, 0);
         break;
     case 1:
@@ -942,7 +877,7 @@ void EmMelynx_IdleActionG(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x78;
+        em->timer = 120;
         Em_SetMotion(em, MELYNX_MOT_IDLE_ACTION_G, 0, 0);
         em->blind = 0;
         break;
@@ -966,13 +901,13 @@ void EmMelynx_HoldBomb(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x14;
+        em->timer = 20;
         Em_SetMotion(em, MELYNX_MOT_BOMB_TAKE_OUT, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = 0x6E;
+            em->timer = 110;
             w->holdBomb = 1;
             EmBomb_Create(em, 0);
         }
@@ -1007,7 +942,7 @@ void EmMelynx_Status2Lie(Em *em)
         puffOffset[0] = 0.0f;
         puffOffset[1] = 0.0f;
         puffOffset[2] = 10.0f;
-        Em_SpawnLyingPuffs(em, 0xA, puffOffset, 0.6f);
+        Em_SpawnLyingPuffs(em, 10, puffOffset, 0.6f);
         if (--em->timer <= 0) {
             em->step++;
             EmMelynx_ChangeState(em, EM_GROUP_IDLE, MELYNX_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
@@ -1066,7 +1001,7 @@ void EmMelynx_BurrowAway(Em *em)
         if (em->motion[0].playing == 0) {
             w = (EmMelynxWork *)&em->work;
             if (w->alertState == 1) {
-                ObjListA70_Remove(&w->sense);
+                EmSenseObjs_Remove(&w->sense);
                 w->alertState = 2;
             }
             item = w->stolenItem;
@@ -1090,13 +1025,13 @@ void EmMelynx_HoldBigBomb(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x14;
+        em->timer = 20;
         Em_SetMotion(em, MELYNX_MOT_BOMB_TAKE_OUT, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = 0x6E;
+            em->timer = 110;
             w->holdBomb = 1;
             EmBomb_Create(em, 1);
         }
@@ -1208,7 +1143,7 @@ void EmMelynx_ChaseGoal(Em *em)
     case 0:
         em->step++;
         em->timer = 300;
-        w->stateTimer = 0x8A;
+        w->stateTimer = 138;
         Em_SetMotion(em, MELYNX_MOT_RUN_A, 0, 0);
         break;
     case 1:
@@ -1217,7 +1152,7 @@ void EmMelynx_ChaseGoal(Em *em)
             break;
         }
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         EmMelynx_CapTimerOffTarget(em);
         break;
@@ -1244,7 +1179,7 @@ void EmMelynx_PostureMove(Em *em)
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, MELYNX_MOT_POSTURE_MOVE, 0, 0);
-            em->timer = 0x12C;
+            em->timer = 300;
         }
         break;
     case 2:
@@ -1280,7 +1215,7 @@ void EmMelynx_WalkLong(Em *em)
             EmMelynx_EndState(em);
             break;
         }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         break;
     }
@@ -1299,7 +1234,7 @@ void EmMelynx_Charge(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x8C;
+        em->timer = 140;
         Em_SetMotion(em, MELYNX_MOT_DASH, 0, 0);
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
         EmContactAttack_Create(em, 4);
@@ -1310,7 +1245,7 @@ void EmMelynx_Charge(Em *em)
             break;
         }
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         EmMelynx_CapTimerOffTarget(em);
         break;
@@ -1331,7 +1266,7 @@ void EmMelynx_TurnToGoal(Em *em)
         Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
-        if (Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800) < 0x800) {
+        if (Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32) < 0x800) {
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmMelynx_EndState(em);
         }
@@ -1358,7 +1293,7 @@ void EmMelynx_RunToGoalA(Em *em)
             EmMelynx_EndState(em);
             break;
         }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         break;
     }
@@ -1379,7 +1314,7 @@ void EmMelynx_RunToGoalB(Em *em)
             EmMelynx_EndState(em);
             break;
         }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         break;
     }
@@ -1397,9 +1332,9 @@ void EmMelynx_Wander(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
+        em->timer = (em->stateRand & 0x7F) + 120;
         Em_SetMotion(em, MELYNX_MOT_WALK, 0, 0);
-        em->targetAngle = (em->stateRand & 0xF) << 0xC;
+        em->targetAngle = (em->stateRand & 0xF) << 12;
         break;
     case 1:
         timer = em->timer;
@@ -1427,7 +1362,7 @@ void EmMelynx_Dash(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         Em_SetMotion(em, MELYNX_MOT_DASH, 0, 0);
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
         break;
@@ -1437,7 +1372,7 @@ void EmMelynx_Dash(Em *em)
             break;
         }
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         EmMelynx_CapTimerOffTarget(em);
         break;
@@ -1455,9 +1390,9 @@ void EmMelynx_WanderRun(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x78;
+        em->timer = 120;
         Em_SetMotion(em, MELYNX_MOT_RUN_B, 0, 0);
-        em->targetAngle = (em->stateRand & 0xF) << 0xC;
+        em->targetAngle = (em->stateRand & 0xF) << 12;
         break;
     case 1:
         timer = em->timer;
@@ -1492,7 +1427,7 @@ void EmMelynx_WalkToGoal(Em *em)
             EmMelynx_EndState(em);
             break;
         }
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         break;
     }
@@ -1510,7 +1445,7 @@ void EmMelynx_WalkHome(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
+        em->timer = (em->stateRand & 0x7F) + 120;
         Em_SetMotion(em, MELYNX_MOT_WALK, 0, 0);
         break;
     case 1:
@@ -1714,7 +1649,7 @@ void EmMelynx_StealAttack(Em *em)
     case 1:
         if (em->contactHit != 0 && (victim = em->contact) != NULL && victim->isEm == 0 && victim == &gPlayers[victim->index] && victim->active) {
             EmMelynx_StealItem(em, victim, w);
-            Em_SetRequest(em, 1, 0x90);
+            Em_SetRequest(em, 1, 144);
             em->step++;
             Em_SetMotion(em, MELYNX_MOT_SNATCH, 0, 0);
         } else if (--em->timer <= 0) {
@@ -1724,7 +1659,7 @@ void EmMelynx_StealAttack(Em *em)
             if (em->state == 3) {
                 em->targetAngle = Math_AngleXZ(&em->posX, em->goal);
             }
-            Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x800);
+            Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, ANGLE_TURN / 32);
             Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
             EmMelynx_CapTimerOffTarget(em);
         }
@@ -1813,13 +1748,13 @@ void EmMelynx_ThrowBomb(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x14;
+        em->timer = 20;
         Em_SetMotion(em, MELYNX_MOT_BOMB_TAKE_OUT, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = 0x3C;
+            em->timer = 60;
             w->holdBomb = 1;
             if (em->state == 4) {
                 EmBomb_Create(em, 2);
@@ -1973,7 +1908,7 @@ void EmMelynx_Daze(Em *em)
     case 0:
         em->step++;
         Em_SetMotion(em, MELYNX_MOT_DIZZY, 0, 0);
-        Em_SetRequest(em, 0U, 0x90U);
+        Em_SetRequest(em, 0U, 144U);
         Em_RestartScript(em);
         break;
     case 1:
@@ -2021,7 +1956,7 @@ void EmMelynx_Status4(Em *em)
         if (EmMotion_PassedFrameScaled(em, 120.0f, 0) != 0) {
             em->step++;
             Em_SetMotion(em, MELYNX_MOT_STATUS4_START, 0, 0);
-            w->stateTimer = 0x3A;
+            w->stateTimer = 58;
         }
         break;
     case 2:
@@ -2161,7 +2096,7 @@ void EmMelynx_HuntedKnockBack(Em *em)
     case 4:
         if (em->motion[0].playing == 0) {
             if (w->alertState == 1) {
-                ObjListA70_Remove(&w->sense);
+                EmSenseObjs_Remove(&w->sense);
                 w->alertState = 2;
             }
             em->visible = 0;
@@ -2218,7 +2153,7 @@ void EmMelynx_HuntedFlinch(Em *em)
     case 3:
         if (em->motion[0].playing == 0) {
             if (w->alertState == 1) {
-                ObjListA70_Remove(&w->sense);
+                EmSenseObjs_Remove(&w->sense);
                 w->alertState = 2;
             }
             em->visible = 0;
@@ -2251,7 +2186,7 @@ void EmMelynx_Reappear(Em *em)
     switch (em->step) {
     case 0:
         if (QuestEm_CanAppear(em) == 1) {
-            if (em->variant == 0xC) {
+            if (em->variant == 12) {
                 EmMelynx_ChangeState(em, EM_GROUP_IDLE, MELYNX_IDLE_STAND, EM_SYNC_LOCAL);
                 break;
             }
@@ -2347,7 +2282,7 @@ void EmMelynx_Update(Em *em)
         em->blind = 0;
     }
     if (w->alertState == 1) {
-        ObjListA70_Remove(&w->sense);
+        EmSenseObjs_Remove(&w->sense);
         w->alertState = 2;
     }
     result = Em_UpdateDamage(em, damageOut) & 0xFF;
@@ -2424,7 +2359,7 @@ void EmMelynx_Update(Em *em)
             w->sense.radius = 3000.0f;
             w->sense.area = (u8) em->area;
             w->sense.kind = 1;
-            ObjListA70_Add(&w->sense);
+            EmSenseObjs_Add(&w->sense);
             w->alertState = 1;
         }
     }
@@ -2480,8 +2415,8 @@ void EmMelynx_MotionEffectsDefault(Em *em)
 
 /*
  * Keeps work->fxMotion as the layer-0 motion, plays its sounds
- * (EmMelynx_MotionSounds) and adds its effects: dust clouds and Effect0D
- * bursts on given frames of MELYNX_MOT_BURROW.
+ * (EmMelynx_MotionSounds) and adds its effects: dust clouds and part effects
+ * (PartFx_SpawnForEm) on given frames of MELYNX_MOT_BURROW.
  */
 void EmMelynx_MotionEffects(Em *em, EmWork *work)
 {
@@ -2513,16 +2448,16 @@ void EmMelynx_MotionEffects(Em *em, EmWork *work)
             DustCloud_Create(em, 2, 4, 0.5f);
         }
         if (EmMotion_PassedFrameScaled(em, 126.0f, 0)) {
-            PartFx_SpawnForEm(em, 2, 7);
+            PartFx_SpawnForEm(em, MELYNX_BONE_BODY, 7);
         }
         if (EmMotion_PassedFrameScaled(em, 158.0f, 0)) {
-            PartFx_SpawnForEm(em, 2, 3);
+            PartFx_SpawnForEm(em, MELYNX_BONE_BODY, 3);
         }
         if (EmMotion_PassedFrameScaled(em, 166.0f, 0)) {
-            PartFx_SpawnForEm(em, 2, 3);
+            PartFx_SpawnForEm(em, MELYNX_BONE_BODY, 3);
         }
         if (EmMotion_PassedFrameScaled(em, 176.0f, 0)) {
-            PartFx_SpawnForEm(em, 2, 3);
+            PartFx_SpawnForEm(em, MELYNX_BONE_BODY, 3);
         }
         break;
     case EM_MOTION_ID(0, MELYNX_MOT_POUNCE_START):
@@ -2545,12 +2480,12 @@ void EmMelynx_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, MELYNX_MOT_STATUS4_START):
     case EM_MOTION_ID(0, MELYNX_MOT_STATUS4_LOOP):
     case EM_MOTION_ID(0, MELYNX_MOT_STATUS2_LIE):
-    case EM_MOTION_ID(0, 0x46):
-    case EM_MOTION_ID(0, 0x47):
-    case EM_MOTION_ID(0, 0x48):
-    case EM_MOTION_ID(0, 0x49):
+    case EM_MOTION_ID(0, 70):
+    case EM_MOTION_ID(0, 71):
+    case EM_MOTION_ID(0, 72):
+    case EM_MOTION_ID(0, 73):
     case EM_MOTION_ID(0, MELYNX_MOT_BOMB_THROW):
-    case EM_MOTION_ID(0, 0x4B):
+    case EM_MOTION_ID(0, 75):
         break;
     default:
         EmMelynx_MotionEffectsDefault(em);
@@ -2661,14 +2596,14 @@ void EmMelynx_SetMeshSetAlpha(Em *em, s32 kind, EmMelynxMeshSet *sets)
             }
             break;
         }
-        Gs_SetState((i + 0x3A) & 0xFF, (s32) mat);
+        Gs_SetState((i + 58) & 0xFF, (s32) mat);
     }
 }
 
-/* The two effect hooks of the table: Shadow_Spawn with type 0. */
-void EmMelynx_SpawnEffect01(u8 *em)
+/* Slots 0 and 1 of the callback table: spawns the shadow (SHADOW_MODEL). */
+void EmMelynx_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* The empty hook of the table. */
@@ -2677,8 +2612,7 @@ void EmMelynx_TableNop(void)
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmMelynx_Callbacks[8] = {
-    EmMelynx_SpawnEffect01, EmMelynx_SpawnEffect01, EmMelynx_TableNop, EmMelynx_UpdateFace,
+    EmMelynx_SpawnShadow, EmMelynx_SpawnShadow, EmMelynx_TableNop, EmMelynx_UpdateFace,
     GmEm_ReturnZero, EmMelynx_Reinit, NULL, NULL,
 };

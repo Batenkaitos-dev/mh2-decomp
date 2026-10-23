@@ -1,5 +1,8 @@
 #ifndef SOUND_H
 #define SOUND_H
+#include "em.h"
+#include "player.h"
+#include "cse.h"
 
 /*
  * The game's sound ids. A sound effect is played by a slot (its bank) and
@@ -66,8 +69,83 @@
 #define SND_BANK_TOWN       4       /* the town's bank offline (slot 6, the monsters' slot) */
 #define SND_BANK_TOWN_NET   5       /* online */
 #define SND_BANK_HOUSE      6       /* in AREA_HOUSE and AREA_HUB_0x57 */
+#define SND_BANK_COMMON     0       /* the shared bank (SE_SLOT_COMMON), loaded again as a quest ends */
+#define SND_BANK_PSP        10      /* the PSP link's bank (slot 6, the monsters' slot) */
+#define SND_BANK_RESULTS    45      /* the quest results' bank (SE_SLOT_SCENE), loaded by their set-up */
+#define SND_BANK_MENUS      2       /* the shared slot's bank on the title menu and select screens (SE_SLOT_COMMON) */
+#define SND_BANK_NET_MODE   3       /* the network mode's bank (slot 6), with the shared bank */
+#define SND_BANK_SELECT     7       /* the select screen's bank (slot 6) */
+#define SND_BANK_TITLE_MENU_SCENE 8 /* the title menu's bank in SE_SLOT_SCENE */
+#define SND_BANK_TITLE_MENU 9       /* the title menu's bank (slot 6) */
+#define SND_BANK_WEAPONS    57      /* + gWeaponSeBanks[weaponKind]: a player's weapon bank in a quest */
+#define SND_BANK_NO_WEAPON  299     /* the weapon bank staged for an empty player slot */
+#define SND_BANK_QUEST_VOICES 300   /* + gVoiceBanks[gender][voice]: a hunter's voice in a quest */
+#define VOICE_BANKS_PER_GENDER 16   /* gVoiceBanks' row: the hunter's voices, then VOICE_EXTRA */
+#define VOICE_EXTRA         15      /* the voice past the hunter's choices: weapon kinds 111 and 170 take it in a quest */
+#define SND_BANK_NO_VOICE   332     /* the voice bank staged for an empty player slot */
+#define SND_BANK_EM         333     /* the monsters' shared bank; + gEmSeBankFiles[kind]: a monster kind's own */
 
-/* gBgmId (rand.c): the music playing; this value when none is. */
+/*
+ * The scene's staged bank loads (SndLoad_PlayerBanks, SndLoad_EmBanks):
+ * where in the load buffer the files are read, and where their bank
+ * headers and sample data are staged.
+ */
+#define SNDLOAD_PL_VOICE    0x20000 /* a player's voice bank file (its weapon bank's at 0) */
+#define SNDLOAD_PL_HEAD     0x40000 /* a player's staged bank headers */
+#define SNDLOAD_PL_BODY     0x80000 /* and sample data */
+#define SNDLOAD_EM_FILE     0x4800  /* each monster kind's bank file (the shared one's at 0) */
+#define SNDLOAD_EM_HEAD     0xB4800 /* the monsters' staged bank headers */
+#define SNDLOAD_EM_BODY     0xD4800 /* and sample data */
+
+/* gBgmId: the music playing; this value when none is. */
 #define BGM_NONE 0xFF
+
+void Sound_Init(void);
+void Sound_InitBuffers(void);
+void Sound_LoadSpuMap(void);
+s32 Sound_Update(void);
+s32 Sound_LoadBankFile(s32 data, s32 slot);
+s32 Sound_CheckTransfer(void);
+s32 Sound_SetSpuMapPage(u32 page);
+s32 Sound_SetEffect(s32 core, s32 mode, s32 depth, s32 delay, s32 feedback); /* main */
+s32 Sound_StopAll(void);
+s32 Sound_StopBank(s32 slot);
+void Sound_SetOutputMode(s32 mode);
+void Sound_SetSeIds(u32 slot, u32 id, u8 ownerType, u8 ownerSlot, s32 table);
+s32 Sound_PlaySeVolPan(u32 slot, u32 id, s32 vol, s32 pan, s32 unused, s32 prog);
+s32 Sound_PlaySe(u32 slot, u32 id, CseOpt *opt);
+s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update);
+s32 Sound_PlaySeAtPos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update);
+void Sound_InitStaging(u8 *headBase, u8 *bodyBase);
+void Sound_Silence(void);
+void SndLoad_Init(s8 count);
+s32 SndLoad_EmBanks(u8 *buf, u8 *emKinds);
+s32 SndLoad_PlayerBanks(u8 *buf, Player *pl);
+void Sound_LoadNetModeBanks(void);
+void Sound_LoadTitleMenuBanks(void);
+s32 Sound_LoadSelectBanks(void *task);
+void Sound_OnBanksLoaded(void);
+s32 Sound_LoadVoiceBank(s32 gender, s32 voice);
+void Sound_LoadPspBank(void);
+void Sound_LoadResultsBank(void);
+void Sound_ReloadCommonBank(void);
+void Sound_QueueBank(u32 id, void *buf);
+s32 Sound_ReadBank(u32 id, void *buf); /* loads a file by id */
+
+void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
+void Sound_PlaySeFlatPan(u32 slot, u32 id, s32 prog, s32 pan);
+void Sound_PlaySeMusicVol(u32 slot, u32 id, s32 prog);
+s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 prog, void *pos, s32 range, s32 update);
+s32 Sound_RandomSe(s32 id, s16 idWeight, s32 alt, s16 altWeight);
+void Sound_PlayPlayerSe(void *obj, s32 id, s32 prog, void *pos, s32 range, s32 update);
+void Sound_PlayArmorRattle(Player *pl, s32 kind);
+void Player_PlaySe(Player *pl, s32 id, s32 prog, void *pos, s32 range, s32 update);
+s32 Sound_PlayEmSe(Em *em, s32 id, s32 prog, void *pos, s32 range, s32 update);
+s32 Em_PlaySeChecked(Em *em, s32 id, s32 prog, void *pos, s32 range, s32 update);
+s32 Em_PlaySeAtPos(Em *em, s32 id, s32 prog, void *pos, s32 range, s32 update);
+s32 Em_PlaySeType(Em *em, s32 id, s32 prog, void *pos, s32 range, s32 update);
+void Em_PlayEmBankSe(Em *em, s32 id, void *pos, s32 range);
+void Em_PlayCommonSe(Em *em, s32 id, void *pos, s32 range);
+extern f32 gSndVolumeScale[8]; /* the SE volume settings */
 
 #endif /* SOUND_H */

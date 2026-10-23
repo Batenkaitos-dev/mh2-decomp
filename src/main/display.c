@@ -1,5 +1,7 @@
 /*
- * Display and GS setup at boot (InitDisplay), the VBlank handler
+ * Display and GS setup at boot (InitDisplay), the VBlank handler,
+ * Sys_EnableGameVSync, which turns on the game's VSync counter that the
+ * handler advances, and the end of a frame (Sys_FlipFrame).
  */
 #include "common.h"
 #include "dma.h"
@@ -7,6 +9,20 @@
 #include "hw_regs.h"
 #include "heap.h"
 #include "ram_areas.h"
+#include "render_state.h"
+#include "pad.h"
+#include "texture.h"
+#include "display.h"
+#include "display_util.h"
+#include "gs_setup.h"
+#include "iop.h"
+#include "mem_util.h"
+#include "packet_tim2.h"
+#include "sys_main.h"
+#include "libc.h"
+#include "libdma.h"
+#include "libgraph.h"
+#include "libvu0.h"
 
 extern DmaQueue gDmaQueue;
 extern u8 gSysHeap[];         /* a LinearHeap over SYS_HEAP_AREA */
@@ -33,29 +49,16 @@ extern s32 gGameVSyncOn;
 extern s32 gSysExiting;
 extern s32 gVSyncCount;
 
-void Mem_Fill(void *dst, u8 c, s32 n);
-void Vram_Init(void);
-s32 LinearHeap_Init(LinearHeap *h, void *start, u32 size, s32 align);
-void *SysHeap_Alloc(u32 size);
-void *SysHeap_AllocTop(u32 size);
-void free(void *p);
-void Sys_InitHeap(void *base, s32 size, s32 align);
-void Iop_Init(void);
-void sceVpu0Reset(void);
-s32 Sys_InitCard(void);
-s32 sceGsResetPath(void);
-void sceDmaReset(s32 mode);
 DmaChan *sceDmaGetChan(s32 ch);
-void DmaQueue_Init(DmaQueue *q, u32 capacity, s32 (*handler)(s32));
-s32 DmaQueue_Handler(s32 ch);
-void Packet_InitBuffers(void);
-s32 Sys_Init(void);
-void Gs_ClearVram(void);
-void Gs_SetupDisplay(s32, s32, s32, s32, s32);
-void Gs_ShowFrame(s32, s32);
-s32 Pad_Init(void);
-s32 sceGsSyncV(s32);
-void Display_AdxVint(void);
+void func_00162040(void);     /* CRI (ADX): a server call */
+extern s32 gSysFlipCount;
+
+/* Turns on the game's VSync counter, which the VBlank handler
+ * (VBlankHandler) advances while it is on. */
+void Sys_EnableGameVSync(void)
+{
+    gGameVSyncOn = 1;
+}
 
 s32 InitDisplay(s32 w, s32 h)
 {
@@ -76,7 +79,7 @@ s32 InitDisplay(s32 w, s32 h)
         field = sceGsSyncV(0);
         gSysField = field;
     } while (field != 0);
-    *(s32 *)&T1_MODE = 0x80;
+    *(s32 *)&T1_MODE = 128;
     *(s32 *)&T1_COUNT = 0;
     return 1;
 }
@@ -87,21 +90,24 @@ s32 Sys_InitWork(void)
 {
     void *heap;
 
-    Mem_Fill(&gSysWork, 0, 0x470);
+    Mem_Fill(&gSysWork, 0, 1136);
     Vram_Init();
-    LinearHeap_Init((LinearHeap *) gSysHeap, SYS_HEAP_AREA, SYS_HEAP_AREA_SIZE, 0x40);
+    LinearHeap_Init((LinearHeap *) gSysHeap, SYS_HEAP_AREA, SYS_HEAP_AREA_SIZE, 64);
     gSysHeapSize = 0xE00000;
     heap = SysHeap_AllocTop(gSysHeapSize);
     gSysHeapBase = heap;
-    Sys_InitHeap(heap, gSysHeapSize, 0x40);
+    Sys_InitHeap(heap, gSysHeapSize, 64);
     D_00219060 = 0;
     gSysAllocHook = SysHeap_Alloc;
     gSysFreeHook = free;
     D_00219138 = 100;
     D_0021905C = -1;
-    gRenderFlags2 = 0x202;
+    gRenderFlags2 = 514;
     gTexCount = 0;
-    gRenderFlags = 0x138B032;
+    /* alpha blending on, the alpha test passing all, depth writes and the
+     * nearer-or-equal depth test */
+    gRenderFlags = RF_BLEND_ON | RF_ATEST(RS_CMP_ALWAYS) | RF_ZWRITE | RF_ZTEST(RS_CMP_LEQUAL)
+        | RS_BLEND_ALPHA;
     gPalCount = 0;
     gModelCount = 0;
     gFlipCountdown = 0;
@@ -123,7 +129,7 @@ s32 Sys_Init(void)
     }
     sceVpu0Reset();
     gDmaQueue.chan = 1;
-    DmaQueue_Init(&gDmaQueue, 0x1000, DmaQueue_Handler);
+    DmaQueue_Init(&gDmaQueue, 4096, DmaQueue_Handler);
     Sys_InitCard();
     return 1;
 }
@@ -146,4 +152,28 @@ void VBlankHandler(void)
         Display_AdxVint();
     }
     __asm__ volatile ("sync.l\n\tei");
+}
+
+/*
+ * The end of a frame: the display is flipped (Sys_WaitFlip), then the
+ * next frame starts: timer 0 counts the frame's H-blanks from 0, the
+ * frame's DMA chain is sent and the packet buffer and the GS frame are
+ * cleared. Returns 1; the argument is not used (the callers pass 0).
+ */
+s32 Sys_FlipFrame(s32 unused)
+{
+    SubMain_EndFrame();
+    Dma_WaitIdle();
+    Sys_WaitFlip();
+    *(s32 *)&T0_MODE = T_MODE_CUE | T_MODE_CLKS_HBLANK;
+    *(s32 *)&T0_COUNT = 0;
+    gSysVblanks = 0;
+    gSysFlipCount += 1;
+    SendFrameDmaChain();
+    Packet_Reset();
+    Gs_ClearFrame();
+    D_00219060 = 0;
+    D_0021905C = -1;
+    func_00162040();
+    return 1;
 }

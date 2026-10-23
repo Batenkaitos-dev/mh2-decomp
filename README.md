@@ -7,10 +7,12 @@ game's original compiler turns back into the original's exact bytes, and
 the build reproduces the boot executable and all 12 code overlays byte for
 byte.
 
-The code matches, but much of it doesn't read well yet. Readability work
-was deliberately left until the whole build matched, so that every cleanup
-can be checked against it. That work is underway, and any assistance is welcome
-(see [Contributing](#contributing)).
+The code matches, and it has had a full readability pass. That work was
+deliberately left until the whole build matched, so that every cleanup
+could be checked against it: the functions, data and fields are named and
+typed, each C file has its header, and the data's tables have their own
+types. Corrections and further cleanup are welcome (see
+[Contributing](#contributing)).
 
 The project exists to preserve how the game works, in a form people can
 read, and to show how a large PS2 title was made: how a 2006 CodeWarrior
@@ -36,7 +38,7 @@ The rows of `ninja progress`:
   `NON_MATCHING` block is left.
   - 12,497 are C.
   - 42 are CodeWarrior `asm` functions in their C files
-    (`src/sub_main/engine_core.c` and `vu1_packets.c`): VU0 code, which MWCC
+    (`src/sub_main/engine_math.c`, `anim_curve.c` and `vu1_packets.c`): VU0 code, which MWCC
     never emits from C ([docs/mwcc-matching.md](docs/mwcc-matching.md),
     "What can't come from C").
   - 12 are main's hand-written copy and fill loops
@@ -63,9 +65,9 @@ The rows of `ninja progress`:
   type, name and size are in the source, and its values and the game's
   texts come from your copy at build time
   ([CONTRIBUTING.md](CONTRIBUTING.md), "Content").
-- **Readability.** 12,527 of the 12,551 functions have real names (the
-  `named` column of `ninja progress`). What is left to name and tidy is
-  under [Contributing](#contributing).
+- **Readability.** All 12,551 functions have real names (the `named`
+  column of `ninja progress`). What is left to name and tidy (fields and
+  data objects) is under [Contributing](#contributing).
 
 ## Your copy of the game
 
@@ -151,12 +153,21 @@ tools/deps/downloads` before `tools/setup.sh`.
 The game's compiler is a Windows program; wibo runs it on Linux, and
 there is no native Windows build.
 
+### A readable copy, for your own use
+
+After `configure.py`, `python tools/export_readable.py` writes
+`build/readable/`, a copy of the source with your copy's data tables and
+texts written out in C (each struct member by its field name). It builds
+the same way, byte-identical until you edit it. It holds the game's
+content: keep it on your machine, and never commit or share it
+([CONTRIBUTING.md](CONTRIBUTING.md), "The readable export").
+
 ## Project layout
 
 | Path | What it is |
 |---|---|
 | `src/<module>/` | Capcom's code: C, one file per translation unit; main's hand-written assembly; sub_main's VU1 microcode |
-| `include/` | headers: the game's types, and the `*.spec` files some structs are generated from |
+| `include/` | headers: `common.h`, one for each C file (or its subject), one for each library's functions, and the `*.spec` files some structs are generated from |
 | `config/` | splat configs (`main.yaml`, `overlays/<module>.yaml`), names (`symbols/`), function starts (`functions/`), linker aliases (`ld/`), described assets (`assets/`), the reviewed exceptions of the content check (`content_exceptions.txt`), the known-good hashes (`disc.sha1`, `targets.sha1`) |
 | `tools/` | setup, build, verification and diffing scripts ([tools/README.md](tools/README.md)) |
 | `docs/` | the MWCC matching reference ([docs/mwcc-matching.md](docs/mwcc-matching.md)), notes on hard matches (`docs/notes/nm/`), how the project was made ([docs/ai-workflow/](docs/ai-workflow/README.md)) |

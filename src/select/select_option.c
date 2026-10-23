@@ -10,7 +10,9 @@
  * starts the network setup guide (the yn overlay). Leaving saves the
  * settings to the memory card when they changed.
  *
- * The file owns its .data, .rodata and .bss.
+ * The file owns its .data, .rodata and .bss. The two share it: the network
+ * options call the options' static arrow helpers, and their tables lie
+ * among the options' in .data.
  */
 #include "common.h"
 #include "card.h"
@@ -20,49 +22,43 @@
 #include "m2c_macros.h"
 #include "select.h"
 #include "syssave.h"
+#include "render_state.h"
+#include "stageobj.h"
+#include "stream.h"
+#include "area_draw.h"
+#include "camera.h"
+#include "text.h"
+#include "display_util.h"
+#include "font.h"
+#include "frame.h"
+#include "game_util.h"
+#include "main.h"
+#include "sys_main.h"
+#include "vibration.h"
+#include "screen_fade.h"
+#include "sprite_queue.h"
 
-void SysSettings_Reset(void);
-u8 FadeA_GetState(void);
-void Option_Update(TaskSlot *t);
-void Option_Start(TaskSlot *t, u16 net);
-void Option_Exit(void *t, s32 net);
-void Gfx_SetBlend(s32, s32);
-void Frame_Draw(void);
-
-void Stream_UpdateMaxVol(s32 apply);
-void Sound_PlayConfirm(void);
-void Sound_PlayCursorMove(void);
-void Sound_PlayCancel(void);
 struct TexRect;
-void TexRect_DrawRotated(struct TexRect *r, s32 angle);
-
-void Title_DrawMenu(void *unused);
-void Sel_DrawHeader(s16 kind);
-
-void NetOption_Update(TaskSlot *task, s32 unused);
-
-extern u32 gNetOptValueNames_0[];
-extern u32 gNetOptValueNames_1[];
 
 /* .bss, declared from the highest address down (MWCC emits uninitialized
  * variables last-declared first). */
 OptWork *gOptWork;
-u8 gNetOptDefaults[0x10];
+u8 gNetOptDefaults[16];
 
 /* .data */
-u32 gOptSysDefaults[4] = {
+SysOptions gOptSysDefaults = {
 #include "select/006CAB60.inc"
 };
-u32 gOptMainDefaults[4] = {
+s8 gOptMainDefaults[16] = {
 #include "select/006CAB70.inc"
 };
-u32 gOptControlDefaults[4] = {
+s8 gOptControlDefaults[16] = {
 #include "select/006CAB80.inc"
 };
-u32 gOptMainValueCounts[4] = {
+s8 gOptMainValueCounts[16] = {
 #include "select/006CAB90.inc"
 };
-u32 gOptControlValueCounts[4] = {
+s8 gOptControlValueCounts[16] = {
 #include "select/006CABA0.inc"
 };
 Frame gOptPageFrame = {
@@ -71,23 +67,23 @@ Frame gOptPageFrame = {
 Frame gNetOptPageFrame = {
 #include "select/006CABD0.inc"
 };
-u32 gNetOptValueNames[6] = {
-    (u32)gNetOptValueNames_0, (u32)gNetOptValueNames_1, 0x00000000, 0x00000000,
-    0x00000000, 0x00000000,
+char **gNetOptValueNames[6] = {
+    gNetOptValueNames_0, gNetOptValueNames_1, NULL, NULL,
+    NULL, NULL,
 };
-u32 gNetOptValueCounts[2] = {
+s8 gNetOptValueCounts[8] = {
 #include "select/006CAC08.inc"
 };
-u32 gOptScreenPosRects[8] = {
+u16 gOptScreenPosRects[16] = {
 #include "select/006CAC10.inc"
 };
-u32 gOptMainArrows[8] = {
+s16 gOptMainArrows[8][2] = {
 #include "select/006CAC30.inc"
 };
-u32 gOptControlArrows[6] = {
+s16 gOptControlArrows[6][2] = {
 #include "select/006CAC50.inc"
 };
-u32 gNetOptArrows[2] = {
+s16 gNetOptArrows[2][2] = {
 #include "select/006CAC68.inc"
 };
 s16 gOptCornerPosA[4][2] = {
@@ -99,7 +95,7 @@ s16 gOptCornerPosB[4][2] = {
 u16 gOptCornerAngles[8][1] = {
 #include "select/006CAC90.inc"
 };
-u32 gNetOptConfirmWin[8] = {
+Window gNetOptConfirmWin[2] = {
 #include "select/006CACA0.inc"
 };
 
@@ -107,7 +103,7 @@ u32 gNetOptConfirmWin[8] = {
 /* Resets every option to its default and applies them. */
 void Option_SetDefaults(void)
 {
-    memcpy(&gSysSave.options, &gOptSysDefaults, 0x10);
+    memcpy(&gSysSave.options, &gOptSysDefaults, 16);
     SysSettings_Reset();
 }
 
@@ -123,7 +119,7 @@ void Option_MainDefaults(void)
 
     dst = &gSysSave.options.soundMode;
     src = (s8 *)gOptMainDefaults;
-    for (i = 0; i < 0x10; i++, dst++, src++) {
+    for (i = 0; i < 16; i++, dst++, src++) {
         if (*src != -1) {
             *dst = *src;
         }
@@ -144,7 +140,7 @@ void Option_NetDefaults(void)
 
     dst = (s8 *)gSysSave.netOptions;
     src = (s8 *)gNetOptDefaults;
-    for (i = 0; i < 0x10; i++, dst++, src++) {
+    for (i = 0; i < 16; i++, dst++, src++) {
         if (*src != -1) {
             *dst = *src;
         }
@@ -163,7 +159,7 @@ void Option_ControlDefaults(void)
 
     dst = &gSysSave.options.soundMode;
     src = (s8 *)gOptControlDefaults;
-    for (i = 0; i < 0x10; i++, dst++, src++) {
+    for (i = 0; i < 16; i++, dst++, src++) {
         if (*src != -1) {
             *dst = *src;
         }
@@ -178,7 +174,7 @@ void Option_Task(TaskSlot *task)
 {
     u8 step;
 
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     step = task->mode;
     switch (step) {
     case 0:
@@ -236,22 +232,22 @@ void Option_DrawArrows(void)
     Sprite spr;
 
     if (gOptWork->arrowsShown != 0) {
-        Gfx_SetTexFilter(1);
-        Tex_Prepare(1, 0x155);
-        Tex_Bind(0x155);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+        Tex_Prepare(1, 341);
+        Tex_Bind(341);
         spr.x = gOptWork->arrowLeftX - gOptWork->arrowLeftOfs;
         spr.y = gOptWork->arrowY;
-        spr.w = 0x18;
-        spr.h = 0x1E;
+        spr.w = 24;
+        spr.h = 30;
         spr.color = 0xFF32BC64;
-        spr.u0 = 0xFF;
-        spr.v0 = 0xEC;
-        spr.u1 = 0xF0;
-        spr.v1 = 0xFF;
+        spr.u0 = 255;
+        spr.v0 = 236;
+        spr.u1 = 240;
+        spr.v1 = 255;
         Sprite_Draw(&spr);
         spr.x = gOptWork->arrowRightX + gOptWork->arrowRightOfs;
-        spr.u0 = 0xF0;
-        spr.u1 = 0xFF;
+        spr.u0 = 240;
+        spr.u1 = 255;
         Sprite_Draw(&spr);
     }
 }
@@ -300,8 +296,6 @@ static void Option_UpdateArrows(void)
         }
     }
 }
-
-void Options_Apply(void);
 
 /*
  * The main page's input: up and down move the cursor (skipping the defaults
@@ -450,7 +444,7 @@ void Option_DrawText(s32 x, s32 y, char *str, s32 size, s32 color)
     s32 shadowOfs;
 
     Font_SetSpacing(size, size);
-    shadowOfs = (size > 0x16) ? 3 : 2;
+    shadowOfs = (size > 22) ? 3 : 2;
     Font_SetPos(x + shadowOfs, y + shadowOfs);
     Font_SetColor(0x80000000);
     Font_Printf(str);
@@ -470,10 +464,7 @@ extern char *gReverseTexts[];
 extern char *gSizeTexts[];
 extern char *gTypeNumTexts[];
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *off);
-void Font_SetPal(s32);
 s32 Str_Length(char *);
-void Sel_DrawBackground(u8);
 
 /*
  * The main page: one row per setting with its value and arrows, the row
@@ -497,7 +488,7 @@ void Option_DrawMainPage(void)
     char **valueTexts;
     s32 value;
 
-    Sel_DrawBackground(0xFF);
+    Sel_DrawBackground(255);
     Sel_DrawHeader(2);
     WindowFrame_Draw(&gOptPageFrame, 0);
     Font_SetPal(0);
@@ -569,8 +560,6 @@ void Option_DrawMainPage(void)
                   gOptMainHelp[gOptWork->cursor], gOptWork->textSize,
                   gOptWork->textColor);
 }
-
-void Vib_Start(s32, s32);
 
 /*
  * The controls page's input, as Option_MainInput's for its rows (every
@@ -691,8 +680,8 @@ void Option_DrawControlPage(void)
     char **valueTexts;
     s32 value;
 
-    Sel_DrawBackground(0xFF);
-    Sel_DrawHeader(0xA);
+    Sel_DrawBackground(255);
+    Sel_DrawHeader(10);
     WindowFrame_Draw(&gOptPageFrame, 0);
     Font_SetPal(0);
     color = 0;
@@ -773,24 +762,22 @@ void Option_DrawFrame(void)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 4);
     Tex_Bind(4);
-    Gs_SetState(0x6C, 0);
-    spr.x = 0x7D;
-    spr.y = 0x1D;
-    spr.w = 0x186;
-    spr.h = 0x186;
+    Gs_SetState(RS_ZWRITE, 0);
+    spr.x = 125;
+    spr.y = 29;
+    spr.w = 390;
+    spr.h = 390;
     spr.color = -1;
     spr.u0 = 0;
     spr.v0 = 0;
-    spr.u1 = 0xFF;
-    spr.v1 = 0xEF;
+    spr.u1 = 255;
+    spr.v1 = 239;
     Sprite_Draw(&spr);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
-
-void Display_SetOffset(s32 x, s32 y);
 
 /* The screen position page's input: the D-pad moves the picture (-16 to 16
  * each way), 0x200 centres it, cancel goes back. screenPosMoved keeps the
@@ -822,42 +809,42 @@ void Option_ScreenPosInput(u16 trig, u16 rep)
     } else {
         if (rep & 0x2000) {
             offset = *offsetY;
-            if (offset > -0x10) {
+            if (offset > -16) {
                 *offsetY = offset - 1;
                 moved |= 0x2000;
                 changed = 1;
             } else {
-                *offsetY = -0x10;
+                *offsetY = -16;
             }
         }
         if (rep & 0x1000) {
             offset = *offsetY;
-            if (offset < 0x10) {
+            if (offset < 16) {
                 *offsetY = offset + 1;
                 moved |= 0x1000;
                 changed = 1;
             } else {
-                *offsetY = 0x10;
+                *offsetY = 16;
             }
         }
         if (rep & 0x800) {
             offset = *offsetX;
-            if (offset > -0x10) {
+            if (offset > -16) {
                 *offsetX = offset - 1;
                 moved |= 0x800;
                 changed = 1;
             } else {
-                *offsetX = -0x10;
+                *offsetX = -16;
             }
         }
         if (rep & 0x400) {
             offset = *offsetX;
-            if (offset < 0x10) {
+            if (offset < 16) {
                 *offsetX = offset + 1;
                 moved |= 0x400;
                 changed = 1;
             } else {
-                *offsetX = 0x10;
+                *offsetX = 16;
             }
         }
         if ((s16)changed) {
@@ -877,24 +864,24 @@ void Option_DrawCorners(void)
     Sprite cornerRotated;
     s32 i;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 4);
     Tex_Bind(4);
-    Gs_SetState(0x6C, 0);
-    corner.w = 0x60;
-    corner.h = 0xA;
+    Gs_SetState(RS_ZWRITE, 0);
+    corner.w = 96;
+    corner.h = 10;
     corner.color = -1;
     corner.u0 = 0;
-    corner.v0 = 0xF0;
-    corner.u1 = 0x2F;
-    corner.v1 = 0xF7;
-    cornerRotated.w = 0x60;
-    cornerRotated.h = 0xA;
+    corner.v0 = 240;
+    corner.u1 = 47;
+    corner.v1 = 247;
+    cornerRotated.w = 96;
+    cornerRotated.h = 10;
     cornerRotated.color = -1;
     cornerRotated.u0 = 0;
-    cornerRotated.v0 = 0xF8;
-    cornerRotated.u1 = 0x2F;
-    cornerRotated.v1 = 0xFF;
+    cornerRotated.v0 = 248;
+    cornerRotated.u1 = 47;
+    cornerRotated.v1 = 255;
     for (i = 0; i < 4; i++) {
         corner.x = gOptCornerPosA[i][0];
         corner.y = gOptCornerPosA[i][1];
@@ -903,7 +890,7 @@ void Option_DrawCorners(void)
         cornerRotated.y = gOptCornerPosB[i][1];
         TexRect_DrawRotated((struct TexRect *)&cornerRotated, gOptCornerAngles[i][0]);
     }
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 const char gOptNumberFormat[3] = {
@@ -916,44 +903,43 @@ s32 sprintf(char *, const char *, ...);    /* sprintf */
 s32 strlen(char *);                         /* strlen */
 void Hud_DrawButtonIconWhite(s32, s16, s16, s32, f32); /* unit's own declaration: s16 x and y, though the definition (sub_main) takes s32; the page drawers' code needs them */
 void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-void Sel_DrawBackground(u8);
 /* The screen position page: the offsets, the frame and corner marks, and
  * four arrows, lit while their direction moves. */
 void Option_DrawScreenPosPage(void)
 {
     Sprite spr;
-    char buf[0x80];
+    char buf[128];
     u16 *rec;
     s32 i;
 
-    Sel_DrawBackground(0xFF);
+    Sel_DrawBackground(255);
     Option_DrawFrame();
     Option_DrawCorners();
     Sel_DrawHeader(3);
-    i = 0xA0;
-    Font_SetSpacing(0x12, 0x12);
-    Text_DrawShadow(0xB8, 0x130, 1, 0, gScreenPosTexts[0]);
-    Text_DrawShadow(0xB8, 0x154, 1, 0, gScreenPosTexts[1]);
-    Hud_DrawButtonIconWhite(0x15, i, 0x185, 8, 1.0f);
-    i += 0x18;
-    Text_DrawShadow(i, 0x188, 1, 0, gBackResetTexts[0]);
-    i += strlen(gBackResetTexts[0]) * 9 + 0x5A;
-    Hud_DrawButtonIconWhite(3, i, 0x185, 8, 1.0f);
-    Text_DrawShadow(i + 0x18, 0x188, 1, 0, gBackResetTexts[1]);
-    Font_SetSpacing(0x24, 0x12);
+    i = 160;
+    Font_SetSpacing(18, 18);
+    Text_DrawShadow(184, 304, 1, 0, gScreenPosTexts[0]);
+    Text_DrawShadow(184, 340, 1, 0, gScreenPosTexts[1]);
+    Hud_DrawButtonIconWhite(21, i, 389, 8, 1.0f);
+    i += 24;
+    Text_DrawShadow(i, 392, 1, 0, gBackResetTexts[0]);
+    i += strlen(gBackResetTexts[0]) * 9 + 90;
+    Hud_DrawButtonIconWhite(3, i, 389, 8, 1.0f);
+    Text_DrawShadow(i + 24, 392, 1, 0, gBackResetTexts[1]);
+    Font_SetSpacing(36, 18);
     sprintf(buf, gOptNumberFormat, gSysSave.options.screenX);
-    Text_DrawShadow(0x1A2, 0x130, 1, 0, buf);
+    Text_DrawShadow(418, 304, 1, 0, buf);
     sprintf(buf, gOptNumberFormat, gSysSave.options.screenY);
-    Text_DrawShadow(0x1A2, 0x154, 1, 0, buf);
+    Text_DrawShadow(418, 340, 1, 0, buf);
     Tex_Prepare(1, 8);
     Tex_Bind(8);
-    Gfx_SetTexFilter(1);
-    spr.w = 0x40;
-    spr.h = 0x40;
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    spr.w = 64;
+    spr.h = 64;
     spr.u0 = 0;
-    spr.v0 = 0xA0;
-    spr.u1 = spr.u0 + 0x3F;
-    spr.v1 = spr.v0 + 0x3F;
+    spr.v0 = 160;
+    spr.u1 = spr.u0 + 63;
+    spr.v1 = spr.v0 + 63;
     rec = (u16 *)gOptScreenPosRects;
     for (i = 0; i < 4; i++, rec += 2) {
         spr.x = *rec++;
@@ -967,8 +953,8 @@ void Option_DrawScreenPosPage(void)
     }
 }
 
-/* The brightness page's input: left/right step the brightness (0x80 is the
- * middle; 1 per step above it, 2 below, within 0x39..0xA3), 0x200 resets
+/* The brightness page's input: left/right step the brightness (128 is the
+ * middle; 1 per step above it, 2 below, within 57..163), 0x200 resets
  * it, cancel keeps it and goes back. The game's "changed" test compares
  * the old offset with the same value recomputed, so the cursor sound never
  * plays. level is an s32 and the pointers are cast as the match needs. */
@@ -983,37 +969,37 @@ void Option_BrightnessInput(u16 trig, u16 rep)
     levelPtr = (u8 *)&gSysSettings.brightness;
     level = *levelPtr;
     if (rep & 0x800) {
-        old = level - 0x80;
+        old = level - 128;
         if (old == 0) {
             *levelPtr = level - 2;
         } else if (old > 0) {
-            if (level - 1 > 0x38) {
+            if (level - 1 > 56) {
                 *levelPtr = level - 1;
             }
         } else {
-            if (level - 2 > 0x38) {
+            if (level - 2 > 56) {
                 *levelPtr = level - 2;
             }
         }
-        if (old != level - 0x80) {
+        if (old != level - 128) {
             Sound_PlayCursorMove();
         }
         return;
     }
     if (rep & 0x400) {
-        old = level - 0x80;
+        old = level - 128;
         if (old == 0) {
             *levelPtr = level + 1;
         } else if (old > 0) {
-            if (level + 1 < 0xA4) {
+            if (level + 1 < 164) {
                 *levelPtr = level + 1;
             }
         } else {
-            if (level + 2 < 0xA4) {
+            if (level + 2 < 164) {
                 *levelPtr = level + 2;
             }
         }
-        if (old != level - 0x80) {
+        if (old != level - 128) {
             Sound_PlayCursorMove();
         }
         return;
@@ -1026,20 +1012,13 @@ void Option_BrightnessInput(u16 trig, u16 rep)
     }
     if (trig & 0x200) {
         Sound_PlayConfirm();
-        *levelPtr = 0x80;
+        *levelPtr = 128;
     }
 }
 
 extern char *gBackResetTexts[];     /* messages (select_psp.c) */
 extern char *gOptBrightnessTexts[];
-s32 sprintf(char *, const char *, ...);    /* sprintf */
-s32 strlen(char *);                         /* strlen */
 s32 Str_Length(char *);                         /* a message's width */
-void Font_SetPal(s32);
-void Hud_DrawButtonIconWhite(s32, s16, s16, s32, f32); /* unit's own declaration: s16 x and y, though the definition (sub_main) takes s32; the page drawers' code needs them */
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-void Sel_DrawBackground(u8);
-void Option_DrawBrightnessStrip(void);
 
 /*
  * The brightness page: the brightness strip, the offset from the middle
@@ -1047,7 +1026,7 @@ void Option_DrawBrightnessStrip(void);
  */
 void Option_DrawBrightnessPage(void)
 {
-    char buf[0x100];
+    char buf[256];
     s32 offset;
     s32 i;
     s32 y;
@@ -1055,11 +1034,11 @@ void Option_DrawBrightnessPage(void)
     s32 width;
     s32 x;
 
-    Sel_DrawBackground(0xFF);
+    Sel_DrawBackground(255);
     Option_DrawFrame();
     Sel_DrawHeader(9);
     Option_DrawBrightnessStrip();
-    offset = gSysSettings.brightness - 0x80;
+    offset = gSysSettings.brightness - 128;
     if (offset == 0) {
         sprintf(buf, " %d", offset);
     } else if (offset > 0) {
@@ -1068,24 +1047,24 @@ void Option_DrawBrightnessPage(void)
         sprintf(buf, gOptNumberFormat, offset / 2);
     }
     Font_SetPal(0);
-    Option_DrawText(0x20C, 0x158, buf, 0x14, 0x80808080);
+    Option_DrawText(524, 344, buf, 20, 0x80808080);
     line = gOptBrightnessTexts;
-    y = 0xF0;
+    y = 240;
     for (i = 0; i < 3; i++, line++) {
         width = Str_Length(*line);
         if (width != 0) {
-            Option_DrawText((640.0f - 10.0f * width) / 2.0f, y, *line, 0x14, 0x80808080);
-            y += 0x18;
+            Option_DrawText((640.0f - 10.0f * width) / 2.0f, y, *line, 20, 0x80808080);
+            y += 24;
         }
     }
-    x = 0xA0;
-    Font_SetSpacing(0x12, 0x12);
-    Hud_DrawButtonIconWhite(0x15, x, 0x185, 8, 1.0f);
-    x += 0x18;
-    Text_DrawShadow(x, 0x188, 1, 0, gBackResetTexts[0]);
-    x += strlen(gBackResetTexts[0]) * 9 + 0x5A;
-    Hud_DrawButtonIconWhite(3, x, 0x185, 8, 1.0f);
-    Text_DrawShadow(x + 0x18, 0x188, 1, 0, gBackResetTexts[1]);
+    x = 160;
+    Font_SetSpacing(18, 18);
+    Hud_DrawButtonIconWhite(21, x, 389, 8, 1.0f);
+    x += 24;
+    Text_DrawShadow(x, 392, 1, 0, gBackResetTexts[0]);
+    x += strlen(gBackResetTexts[0]) * 9 + 90;
+    Hud_DrawButtonIconWhite(3, x, 389, 8, 1.0f);
+    Text_DrawShadow(x + 24, 392, 1, 0, gBackResetTexts[1]);
 }
 
 /*
@@ -1111,19 +1090,11 @@ loop_1:
     i += 1;
     def += 1;
     cur += 1;
-    if (i >= 0x10) {
+    if (i >= 16) {
         return 0;
     }
     goto loop_1;
 }
-
-s32 Option_MainInput(u16 trig, u16 rep);
-void Option_ControlInput(u16 trig, u16 rep);
-void Option_ScreenPosInput(u16 trig, u16 rep);
-void Option_BrightnessInput(u16 trig, u16 rep);
-void Option_DrawControlPage(void);
-void Option_DrawScreenPosPage(void);
-void Option_DrawMainPage(void);
 
 /*
  * The options' frame: the fades between the pages, the current page's input
@@ -1142,7 +1113,7 @@ void Option_Update(TaskSlot *task)
     rep = gPadState[0].repeat | trig;
     switch (gOptWork->state) {
     case 0:
-        FadeA_Start(0xC);
+        FadeA_Start(12);
         gOptWork->state++;
     case 1:
         if ((u8)FadeA_GetState() != 1) {
@@ -1167,7 +1138,7 @@ void Option_Update(TaskSlot *task)
         }
         break;
     case 3:
-        FadeA_Start(0xB);
+        FadeA_Start(11);
         gOptWork->state++;
     case 4:
         if ((u8)FadeA_GetState() != 1) {
@@ -1182,7 +1153,7 @@ void Option_Update(TaskSlot *task)
     i = 0;
     saved = gOptWork->savedOptions;
     gOptWork->changed = 0;
-    for (; i < 0x10; i++, saved++, current++) {
+    for (; i < 16; i++, saved++, current++) {
         if (*saved != *current) {
             gOptWork->changed = 1;
             break;
@@ -1204,9 +1175,6 @@ void Option_Update(TaskSlot *task)
     }
 }
 
-void Stream_Play(s32, s32);
-void Gs_SetTableColor(s32);
-
 /*
  * Starts the options (net: the network options instead): the music for the
  * plain options, the work at 0x100 in gSysSettings.selWork, the settings at
@@ -1219,31 +1187,31 @@ void Option_Start(TaskSlot *task, u16 net)
         task->unk15 = 0;
         task->mode++;
         if (net == 0) {
-            Stream_Play(0, 0xC9);
+            Stream_Play(0, 201);
         }
         Gs_SetTableColor(0);
-        gOptWork = (OptWork *)(gSysSettings.selWork + 0x100);
-        memset(gOptWork, 0, 0xB0);
-        memcpy(gOptWork->savedOptions, &gSysSave.options, 0x10);
-        memcpy(gOptWork->savedNetOptions, gSysSave.netOptions, 0x10);
-        gOptWork->textSize = 0x12;
-        gOptWork->textSize2 = 0x12;
+        gOptWork = (OptWork *)(gSysSettings.selWork + 256);
+        memset(gOptWork, 0, 176);
+        memcpy(gOptWork->savedOptions, &gSysSave.options, 16);
+        memcpy(gOptWork->savedNetOptions, gSysSave.netOptions, 16);
+        gOptWork->textSize = 18;
+        gOptWork->textSize2 = 18;
         if (net == 0) {
-            gOptWork->rowX = 0x3C;
-            gOptWork->rowY = 0x46;
-            gOptWork->rowStep = 0x1E;
+            gOptWork->rowX = 60;
+            gOptWork->rowY = 70;
+            gOptWork->rowStep = 30;
             gOptWork->selScale = 1.35f;
-            gOptWork->helpX = 0x32;
-            gOptWork->helpY = 0x170;
-            gOptWork->valueX = 0x122;
+            gOptWork->helpX = 50;
+            gOptWork->helpY = 368;
+            gOptWork->valueX = 290;
         } else {
-            gOptWork->rowX = 0x3C;
-            gOptWork->rowY = 0x5A;
-            gOptWork->rowStep = 0x1E;
+            gOptWork->rowX = 60;
+            gOptWork->rowY = 90;
+            gOptWork->rowStep = 30;
             gOptWork->selScale = 1.35f;
-            gOptWork->helpX = 0x32;
-            gOptWork->helpY = 0x15E;
-            gOptWork->valueX = 0x140;
+            gOptWork->helpX = 50;
+            gOptWork->helpY = 350;
+            gOptWork->valueX = 320;
         }
         gOptWork->textColor = 0x80808080;
         gOptWork->selColor = 0x80784100;
@@ -1252,15 +1220,8 @@ void Option_Start(TaskSlot *task, u16 net)
     }
 }
 
-void Stream_Reset(void);
 /* unit's own declaration: declared s32 as NetOption_Update uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
-void NetMenu_Open(u8 mode);
-void Vib_StopAll(void);
-s32 CamReq_ResetStub(void);
-void Task_StartGmSub(void);
-void Option_DrawMainPage(void);
-void NetOption_DrawPage(void);
 
 /*
  * Leaves the options: saves the settings to the memory card first (through
@@ -1272,7 +1233,7 @@ void Option_Exit(void *task, s32 net)
     case 0:
         Stream_Reset();
         if (gOptWork->changed == 0) {
-            FadeA_Start(0xB);
+            FadeA_Start(11);
             gOptWork->step = 2;
             gOptWork->timer = 0;
         } else {
@@ -1283,7 +1244,7 @@ void Option_Exit(void *task, s32 net)
     case 1:
         if ((u8)NetMenu_Update() != 0) {
             gOptWork->step++;
-            FadeA_Start(0xB);
+            FadeA_Start(11);
         }
         break;
     case 2:
@@ -1301,7 +1262,7 @@ void Option_Exit(void *task, s32 net)
             gOptWork = NULL;
             TaskSlot_End(task);
             Task_StartGmSub();
-            FadeA_Start(0xC);
+            FadeA_Start(12);
             return;
         }
         break;
@@ -1344,8 +1305,8 @@ void NetOption_Task(TaskSlot *task)
 {
     u8 step;
 
-    Gfx_SetBlend(4, 5);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     step = task->mode;
     switch (step) {
     case 0:
@@ -1383,17 +1344,11 @@ loop_1:
     i += 1;
     def += 1;
     cur += 1;
-    if (i >= 0x10) {
+    if (i >= 16) {
         return 0;
     }
     goto loop_1;
 }
-
-s32 NetOption_Input(u16 trig, u16 rep);
-void NetOption_ConfirmInput(u16 pad, u16 rep);
-void NetOption_DrawPage(void);
-void NetOption_DrawNetMenuPage(void);
-void NetOption_DrawConfirm(void);
 
 /*
  * The network options' frame: the fades between the pages; the main page's
@@ -1413,7 +1368,7 @@ void NetOption_Update(TaskSlot *task, s32 unused)
     rep = gPadState[0].repeat | trig;
     switch (gOptWork->state) {
     case 0:
-        FadeA_Start(0xC);
+        FadeA_Start(12);
         gOptWork->state++;
     case 1:
         if ((u8)FadeA_GetState() != 1) {
@@ -1437,7 +1392,7 @@ void NetOption_Update(TaskSlot *task, s32 unused)
                     i = 0;
                     saved = gOptWork->savedNetOptions;
                     gOptWork->changed = 0;
-                    for (; i < 0x10; i++, saved++, current++) {
+                    for (; i < 16; i++, saved++, current++) {
                         if (*saved != *current) {
                             gOptWork->changed = 1;
                             break;
@@ -1466,7 +1421,7 @@ void NetOption_Update(TaskSlot *task, s32 unused)
         }
         break;
     case 3:
-        FadeA_Start(0xB);
+        FadeA_Start(11);
         gOptWork->state++;
     case 4:
         if ((u8)FadeA_GetState() != 1) {
@@ -1595,7 +1550,7 @@ extern char *gNetOptHelp[];
 /*
  * The network options' page: one row per setting with its value and
  * arrows, the row under the cursor enlarged, then the help line. The values
- * are read at netSetting[0x10], 16 bytes past gSysSave.options: the
+ * are read at netSetting[16], 16 bytes past gSysSave.options: the
  * network settings, read this way in the game's code.
  */
 void NetOption_DrawPage(void)
@@ -1616,12 +1571,12 @@ void NetOption_DrawPage(void)
     u8 *netSetting;
     s32 valueX;
 
-    Sel_DrawBackground(0xFF);
+    Sel_DrawBackground(255);
     Sel_DrawHeader(7);
     WindowFrame_Draw(&gNetOptPageFrame, 0);
     label = gNetOptLabels;
     i = 0;
-    valueTexts = (char ***)gNetOptValueNames;
+    valueTexts = gNetOptValueNames;
     netSetting = (u8 *)&gSysSave.options;
     arrow = (s16 (*)[2])gNetOptArrows;
     x = gOptWork->rowX;
@@ -1662,7 +1617,7 @@ void NetOption_DrawPage(void)
                     gOptWork->arrowY = y - 6;
                 }
             }
-            valueText = &(*valueTexts)[netSetting[0x10]];
+            valueText = &(*valueTexts)[netSetting[16]];
             width = Str_Length(*valueText);
             valueX = gOptWork->valueX + (s32)((320.0f - (size / 2) * width) / 2.0f);
             Font_SetSpacing(size, size);
@@ -1692,7 +1647,6 @@ void NetOption_DrawPage(void)
                   gOptWork->textColor);
 }
 
-void LoadOverlay(s32 id);
 void Yn_LaunchSetupGuide(void); /* yn: the overlay's entry */
 
 /*
@@ -1721,7 +1675,7 @@ void NetOption_ConfirmInput(u16 pad, u16 rep)
                 Sound_PlayConfirm();
                 if (gOptWork->subCursor == 0) {
                     gOptWork->confirmStep++;
-                    gOptWork->timer = 0x14;
+                    gOptWork->timer = 20;
                 } else {
                     NetOption_OpenMainPage();
                 }
@@ -1753,15 +1707,10 @@ void NetOption_DrawNetMenuPage(void)
 }
 
 extern char *gNetOptConfirmTexts[];      /* the network options' notice (select_psp.c) */
-extern char *gPouchMenuPanel2_6[];        /* sub_main: the YES/NO strings */
 extern char gSelectFmtString[];
-void Text_SetColor(s16 color);
-void Text_PrintfColored(const char *fmt, ...);
-s32 Str_Length(char *);
 void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
 struct Window;
 void Window_DrawTextAlpha(struct Window *w, u8 *text, u8 alpha);
-void Sel_DrawBackground(u8);
 
 /*
  * Draws the confirmation: the notice's lines and the two choices, the
@@ -1778,43 +1727,43 @@ void NetOption_DrawConfirm(void)
     s32 color;
     s32 lineX;
 
-    Sel_DrawBackground(0xFF);
+    Sel_DrawBackground(255);
     Sel_DrawHeader(7);
-    Window_DrawTextAlpha((struct Window *) gNetOptConfirmWin, 0, 0x80);
-    Font_SetSpacing(0x12, 0x12);
+    Window_DrawTextAlpha((struct Window *) gNetOptConfirmWin, 0, 128);
+    Font_SetSpacing(18, 18);
     line = gNetOptConfirmTexts;
-    y = 0x78;
+    y = 120;
     Text_SetColor(0);
     for (i = 0; i < 6; i++) {
         if (**line != ' ') {
             lineX = Str_Length(*line);
-            lineX = (0x280 - lineX * 9) / 2;
+            lineX = (640 - lineX * 9) / 2;
             Font_SetPos(lineX, y);
             Text_PrintfColored(gSelectFmtString, *line);
         }
-        y += 0x18;
+        y += 24;
         line++;
     }
     for (j = 0, choice = gPouchMenuPanel2_6; j < 2; j++, choice++) {
         color = (gOptWork->subCursor == j) ? 5 : 0;
-        x = 0xF0;
+        x = 240;
         if (j == 0) {
-            x += 0x14;
+            x += 20;
         } else {
-            x += 0x82;
+            x += 130;
         }
         Text_SetColor(color);
         if (j == 0) {
-            Font_SetPos(x - 0x14, 0x144);
+            Font_SetPos(x - 20, 324);
         } else {
-            Font_SetPos(x - 0x1E, 0x144);
+            Font_SetPos(x - 30, 324);
         }
         Text_PrintfColored(gSelectFmtString, *choice);
         if (gOptWork->subCursor == j) {
-            Menu_DrawGlowBar(x, 0x142, 0x78, 0x18, 0xFF20C0C0);
+            Menu_DrawGlowBar(x, 322, 120, 24, 0xFF20C0C0);
         }
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
 }
 
 /*
@@ -1825,19 +1774,19 @@ void Option_DrawBrightnessStrip(void)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 5);
     Tex_Bind(5);
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     spr.x = 0;
-    spr.y = 0x12C;
-    spr.w = 0x280;
-    spr.h = 0x50;
+    spr.y = 300;
+    spr.w = 640;
+    spr.h = 80;
     spr.color = -1;
     spr.u0 = 0;
     spr.v0 = 0;
-    spr.u1 = 0x1FF;
-    spr.v1 = 0x3F;
+    spr.u1 = 511;
+    spr.v1 = 63;
     Sprite_Draw(&spr);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }

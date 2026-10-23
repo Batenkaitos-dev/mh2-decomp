@@ -17,13 +17,9 @@ extern s8 gCtypeTable[];       /* main: the ctype table (1 + c: 2 lower case, 7 
 
 s32 strlen(s8 *);
 s32 strncmp(s8 *, s8 *, s32);
-void NgWord_Normalize(s8 *dst, s8 *src, s32 n);
-s32 NgWord_MatchAt(s8 *text);
-s32 NgWord_StartsWithListed(s8 *name, NgWordRec *list);
-s32 NgWord_ReadRecord(NgWordRec *rec, s8 *out, s32 max);
 
 /* .data */
-u32 gNgWords[2736] = {
+NgWordRec gNgWords[684] = {
 #include "select/006C80A0.inc"
 };
 
@@ -41,10 +37,10 @@ u32 gNgWords[2736] = {
  */
 s32 NgWord_Check(s8 *name)
 {
-    s8 upper[0x50];
+    s8 upper[80];
     NgWordRec *rec;
     s32 len;
-    s8 word[0x50];
+    s8 word[80];
     s32 start;
     s32 found;
     s8 *cursor;
@@ -54,7 +50,7 @@ s32 NgWord_Check(s8 *name)
     s8 wordCh;
     s8 nameCh;
     NgWordRec *list;
-    list = (NgWordRec *)gNgWords;
+    list = gNgWords;
     len = strlen(name);
     NgWord_Normalize(upper, name, len);
     start = 0;
@@ -123,7 +119,7 @@ void NgWord_Normalize(s8 *dst, s8 *src, s32 n)
     for (i = 0; i <= n; i++) {
         dst[i] = src[i];
         if ((gCtypeTable + 1)[src[i]] & 2) {
-            dst[i] -= 0x20;
+            dst[i] -= 32;
         }
         if (dst[i] == '@') {
             dst[i] = 'A';
@@ -166,7 +162,7 @@ s32 NgWord_MatchAt(s8 *text)
     } else if (!((gCtypeTable + 1)[*text] & 7)) {
         result = 1;
     } else {
-        result = NgWord_StartsWithListed(text, (NgWordRec *)gNgWords) != 0;
+        result = NgWord_StartsWithListed(text, gNgWords) != 0;
     }
     return result;
 }
@@ -174,7 +170,7 @@ s32 NgWord_MatchAt(s8 *text)
 /* 1 when the name starts with a word of the list. */
 s32 NgWord_StartsWithListed(s8 *name, NgWordRec *list)
 {
-    s8 word[0x60];
+    s8 word[96];
     s32 len;
     s32 wordLen;
     len = strlen(name);

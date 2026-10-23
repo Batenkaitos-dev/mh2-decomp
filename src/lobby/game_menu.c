@@ -3,7 +3,7 @@
  * and online. GameMenu_Open opens it (TOWN_MODE_GAME_MENU), GameMenu_Update runs it and
  * GameMenu_Draw draws it. The list depends on where the game is (GameMenu.kind): 0 offline
  * (pouch, combine, status, quest, info, phrases, options, pause, quit), 1 online in
- * AREA_HUB_0x83 (pouch, combine, status, info, chat, mail, search, options, exit), 2 online
+ * AREA_ONLINE_VILLAGE (pouch, combine, status, info, chat, mail, search, options, exit), 2 online
  * elsewhere (the same with the quest page). Each entry opens a page through the tables at
  * the end of the file (gGameMenuOpen0..2, gGameMenuUpdate0..2, gGameMenuDraw0..2, one set
  * per list); a page's update returns PAD_START to close the whole menu or PAD_CROSS to go
@@ -28,44 +28,32 @@
 #include "lobby_menu.h"
 #include "chat_log.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "lobby_search.h"
+#include "shake.h"
+#include "text.h"
+#include "village_cond.h"
+#include "chat_send.h"
+#include "engine_math.h"
+#include "friend_list.h"
+#include "game_util.h"
+#include "id_search.h"
+#include "item_shop.h"
+#include "lobby_queries.h"
+#include "menu_util.h"
+#include "name_search.h"
+#include "net_scene.h"
+#include "town_player_states.h"
 
 /* prototypes */
-void Shake_Start(u8 id, u8 flags, f32 amp);
-void GameMenu_Reset(void);
-s32 GameMenu_Poll(void);
-u16 GameMenu_GetPad(void);
-s32 GameMenu_IsBusy(void);
-void GameMenu_DrawList(s8 dim);
-s32 GameMenu_OpenSearch(void);
-s32 ChatMenu_CanListSpeakers(void);
-s32 ChatMenu_CanSetState(void);
-s32 GameMenu_OpenChat(void);
 struct ListPanel;
 /* unit's own declaration: the cursor is passed as a plain int here (the definition takes an s16); the search page passes its cursor byte without narrowing it, as the game's code does, so this declaration stays */
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s32 sel);
 extern ListPanel gSearchPanel;
 /* end of prototypes */
 
-s32 Cond_Check(u16);
-void GameMenu_Start(void);
-void GameMenu_SetHelp(void);
-void Hud_ResetMenuState(void);
-s32 TownPc_IsSeatedState(u8, u8);
-s32 Area_IsHouse(u16);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-s32 Hud_ItemGetBusy(void);
-s32 Game_IsOnline(void);
 extern s32 gTownMode;
-u16 CombineMenu_Input(u16 pad);
-void Save_StorePouch(Player *p);
-u16 PouchMenu_Update(u16 pad);
-s32 CombineMenu_Open(void);
-void Player_CalcSkills(Player *p);
-u16 LobbyPad_Get(s32);
-s32 Lobby_GetDayState(void);
-void GameMenu_Clear(void);
 
 /* Points gSubMenuWork at its memory, the menu closed and the cursor on the first entry. */
 void GameMenu_Reset(void)
@@ -109,7 +97,7 @@ void GameMenu_Open(void)
 }
 
 /* Starts the list: which one by where the game is (kind 0 offline with 9 entries, 1
- * online in AREA_HUB_0x83 with 9, 2 online elsewhere with 10), the help window on the
+ * online in AREA_ONLINE_VILLAGE with 9, 2 online elsewhere with 10), the help window on the
  * lobby page at the cursor's line, the chat shown, and the list's slide-in. */
 void GameMenu_Start(void)
 {
@@ -119,7 +107,7 @@ void GameMenu_Start(void)
     if (Game_IsOnline() != 1) {
         gSubMenuWork->kind = GAME_MENU_OFFLINE;
         gSubMenuWork->count = 9;
-    } else if (gScene.area == AREA_HUB_0x83) {
+    } else if (gScene.area == AREA_ONLINE_VILLAGE) {
         gSubMenuWork->kind = GAME_MENU_HUB;
         gSubMenuWork->count = 9;
     } else {
@@ -141,7 +129,7 @@ void GameMenu_Clear(void)
 }
 
 /* Once the menu is closed, clears it and returns 1. Otherwise stores this frame's
- * buttons in pad (the lobby's buttons when Lobby_GetDayState() is 2 or more, else pad
+ * buttons in pad (the lobby's buttons when Lobby_GetPauseState() is 2 or more, else pad
  * 0's) and returns 0. */
 s32 GameMenu_Poll(void)
 {
@@ -149,7 +137,7 @@ s32 GameMenu_Poll(void)
         GameMenu_Clear();
         return 1;
     }
-    if (Lobby_GetDayState() >= 2) {
+    if (Lobby_GetPauseState() >= 2) {
         gSubMenuWork->pad = (u16) gLobby->buttons;
     } else {
         gSubMenuWork->pad = LobbyPad_Get(0);
@@ -157,12 +145,12 @@ s32 GameMenu_Poll(void)
     return 0;
 }
 
-/* The buttons the town reads: the lobby's when Lobby_GetDayState() is 2 or more, pad 0's
+/* The buttons the town reads: the lobby's when Lobby_GetPauseState() is 2 or more, pad 0's
  * while the menu is closed, else the ones GameMenu_Poll stored (0 while a page takes
  * them). */
 u16 GameMenu_GetPad(void)
 {
-    if (Lobby_GetDayState() >= 2) {
+    if (Lobby_GetPauseState() >= 2) {
         return gLobby->buttons;
     }
     if (gSubMenuWork->open == 0) {
@@ -171,15 +159,6 @@ u16 GameMenu_GetPad(void)
     return gSubMenuWork->pad;
 }
 
-s32 Town_IsMode(s32 a);
-s32 Lobby_HasQuest(void);
-s32 Hud_ItemMenusAllowed(void);
-s32 ItemGet_IsReady(struct Player *p);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Shake_Update(u8 id);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-void Shake_Stop(void);
-void GameMenu_Back(void);
 extern s32 (*gGameMenuOpen0[])(void *m);
 extern s32 (*gGameMenuOpen1[])(void *m);
 extern s32 (*gGameMenuOpen2[])(void *m);
@@ -327,12 +306,6 @@ typedef void (*GameMenuDrawFunc)(void);
 extern GameMenuDrawFunc gGameMenuDraw0[];
 extern GameMenuDrawFunc gGameMenuDraw1[];
 extern GameMenuDrawFunc gGameMenuDraw2[];
-void Tex_Prepare(s32 n, s32 tex);
-void Tex_Bind(s32);
-void Gfx_SetTexFilter(s32);
-s32 Gs_SetState(u8, u32);
-s32 Shake_Value(u8);
-void HelpWindow_DrawCurrent(void);
 
 /* The game menu's frame (by step): the list, the open page's draw function
  * by kind and entry (the tables are called without arguments; the exit entry, 8 of
@@ -345,7 +318,7 @@ void GameMenu_Draw(void)
     }
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
     switch (gSubMenuWork->step) {
     case GAME_MENU_LIST:
@@ -377,11 +350,7 @@ void GameMenu_Draw(void)
     }
 }
 
-void *Shake_GetOffset(u8 id);
-void Gfx_SetBlend(s32 a, s32 b);
-
 extern ListPanel gGameMenuPanel;
-f32 Math_Sin(f32 a);
 
 
 
@@ -462,20 +431,9 @@ s32 GameMenu_OpenSearch(void)
     gSubMenuWork->subEntry = 0;
     gHelpShow = 1;
     gHelpPage = HELP_PAGE_LOBBY;
-    gHelpLine = 0x1C;
+    gHelpLine = 28;
     return 0;
 }
-
-void GameMenu_Back(void);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-void FriendList_Open(s32 a);
-void AreaSearch_Open(void);
-void NameSearch_Open(void);
-void IdSearch_Open(void);
-s32 FriendList_Update(u16);
-s32 AreaSearch_Update(u16);
-s32 NameSearch_Update(u16);
-s32 IdSearch_Update(u16);
 
 /* The search page: subStep 0 its list (subEntry, four searches), 1 the
  * chosen search; the page's own input while one is open. Returns the pad, 0 when
@@ -494,7 +452,7 @@ u16 GameMenu_UpdateSearch(u16 pad)
         Menu_CursorUpDown(&gSubMenuWork->subEntry, pad, 4);
         menu = gSubMenuWork;
         cursor = &menu->subEntry;
-        gHelpLine = menu->subEntry + 0x1C;
+        gHelpLine = menu->subEntry + 28;
         if (pad & PAD_CIRCLE) {
             switch (*cursor) {
             case 0:
@@ -606,37 +564,8 @@ void GameMenu_DrawSearch(void)
 /* The game menu's data: the help lines of lists 0 and 1, the open, update and draw
  * functions of each list's entries (one table per list, NULL past its last entry),
  * and the two list panels. */
-void CombineMenu_DrawInfo(void);
-void InfoMenu_Draw(void);
-s32 InfoMenu_Open(void *m);
-u16 InfoMenu_Update(u16 pad);
-void OptionMenu_Draw(void);
-s32 OptionMenu_Open(void *m);
-s32 OptionMenu_Update(u16 pad);
-void PhraseMenu_Draw(void);
 s32 PhraseMenu_Open(void *m);
-u16 PhraseMenu_Update(u16 pad);
-void PouchMenu_Draw(void);
-s32 PouchMenu_Open(void *m);
-void QuestMenu_DrawPage(void);
 s32 QuestMenu_Open(void *m);
-u16 QuestMenu_Update(u16 pad);
-void StatusMenu_Draw(void);
-s32 StatusMenu_Open(void *m);
-u16 StatusMenu_Update(u16 pad);
-void GameMenu_DrawChat(void);
-void GameMenu_DrawMail(void);
-void GameMenu_DrawPause(void);
-void GameMenu_DrawQuit(void);
-s32 GameMenu_OpenExit(void *unused0);
-s32 GameMenu_OpenMail(void *unused);
-s32 GameMenu_OpenPause(void *unused0);
-s32 GameMenu_OpenQuit(void *unused0);
-u16 GameMenu_UpdateChat(u16 pad);
-s32 GameMenu_UpdateExit(s32 pad);
-u16 GameMenu_UpdateMail(u16 pad);
-u16 GameMenu_UpdatePause(u16 pad);
-u16 GameMenu_UpdateQuit(u16 pad);
 u8 gGameMenuHelpLines0[16] = {
 #include "lobby/007F1D20.inc"
 };

@@ -26,18 +26,19 @@
 #include "player.h"
 #include "sound.h"
 #include "hud.h"
-void Save_AddMoney(s32 n);
-void Equip_Refresh(SaveData *save);
-void Player_CalcSkills(struct Player *pl);
-void SkillList_Build(struct Player *p, struct Player *q);
-u8 SkillList_PageCount(void);
-u8 Equip_PreviewSkills(Player *player, EquipItem *e);
-u8 EquipSet_RemoveSlot(u16 slot, s32 check);
-void Town_ReloadLocalPlayer(void);
-void Sound_PlaySeFlat(u32 a, u32 b, s32 c);
-void CamFocus_Start(struct Em *);
-s32 StatusPage_HasSymbolColor(void);
-void Shake_Start(u8 id, u8 flags, f32 amp);
+#include "bgm.h"
+#include "chat_box.h"
+#include "camera.h"
+#include "kbd.h"
+#include "window.h"
+#include "equip_parts.h"
+#include "game_util.h"
+#include "member_card.h"
+#include "menu_util.h"
+#include "shake.h"
+#include "town_frame.h"
+#include "libc.h"
+#include "box_skill_lists.h"
 /* end of prototypes */
 
 /* Points gBoxWork at the item box menu's work, clears its state and sets it to the local
@@ -77,31 +78,7 @@ s32 BoxMenu_Open(void)
     return 1;
 }
 
-s16 Box_GetPageCount(SaveData *save);
-s16 Box_WrapIndex(SaveData *save, s16 idx);
-void BoxMenu_MoveCursor(u16 *cur, u16 pad);
-void Equip_SetEquipped(EquipIdx *e);
-u8 BoxMenu_CloseStep(u16 pad, u8 step);
-void BoxMenu_UpdateSkillPreview(void);
-u8 EquipSet_DropUnfit(EquipIdx *out, EquipIdx *set, s32 flags);
-s32 ItemBox_SlotHasItem(u16 slot);
-u16 BoxMenu_SortPrompt(u16 pad, u8 kind);
-s32 EquipBox_TryRemove(u16 slot);
 static s32 BoxMenu_CanSplit(void);
-s32 BoxMenu_CanTakeSeveral(void);
-void BoxMenu_InputAmount(u16 pad, u8 noLimit);
-void Equip_SwapSlots(u16 a, u16 b);
-s32 Equip_ArmorFits(EquipItem *e, u16 *slot);
-void Chat_SetColor(s16 color);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 Shake_Update(u8 id);
-void CamFocus_End(void);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-u16 BoxMenu_StoreFromPouch(u16 pad);
-u16 BoxMenu_TakeToPouch(u16 pad);
-u16 BoxMenu_EquipMenu(u16 pad);
-u16 BoxMenu_ArrangeMenu(u16 pad);
-u16 BoxMenu_SellMenu(u16 pad);
 extern u16 gChatRecipients;
 
 /* The item box menu's update, with the frame's pad. PAD_START switches the menu's input off
@@ -200,9 +177,6 @@ s32 BoxMenu_Update(u16 pad)
     return 1;
 }
 
-s16 Box_GetPageCount(SaveData *save);
-s16 Box_WrapIndex(SaveData *save, s16 idx);
-
 /* Moves an item box cursor, a slot index (page * 100 + row * 10 + column), by the pad:
  * PAD_R2 and PAD_L2 turn the page forward and back when the box has more than one
  * (Box_GetPageCount), the D-pad moves in the page's 10 by 10 grid, wrapping at its edges.
@@ -276,14 +250,6 @@ void BoxMenu_MoveCursor(u16 *cur, u16 pad)
     }
 }
 
-u8 YesNo_Toggle(u16 pad, u8 cur, u16 mask);
-void Pouch_Compact(u8 box);
-s32 ItemBox_Fits(u16 item);
-void Pouch_MoveCursor(u8 *cur, u16 buttons);
-void PouchMenu_DecoCursor(u16 item, u16 pad);
-u32 ItemBox_Add(u16 item, u32 count);
-s16 Box_GetCapacity(SaveData *save);
-
 /* The store sub-menu (pouch to item box), with the frame's pad; returns the pad bits it
  * leaves, PAD_CROSS once it has closed.
  * Step 0, the pouch cursor: PAD_SELECT asks whether to sort the pouch (prompt: PAD_LEFT and
@@ -313,7 +279,7 @@ u16 BoxMenu_StoreFromPouch(u16 pad)
             gHelpShow = 0;
             pad &= PAD_DPAD | PAD_CROSS;
         }
-        gHelpLine = 0x38;
+        gHelpLine = 56;
         field = &gBoxWork->prompt;
         if (*field != 0) {
             keys = pad;
@@ -349,7 +315,7 @@ u16 BoxMenu_StoreFromPouch(u16 pad)
             pad = 0;
             gBoxWork->yesNo = BOX_YES;
             gBoxWork->help = BOX_HELP_OFF;
-            Sound_PlaySeFlat(SE_SLOT_SYSTEM, 0xF, 0);
+            Sound_PlaySeFlat(SE_SLOT_SYSTEM, 15, 0);
             break;
         }
         if (pad & PAD_CROSS) {
@@ -392,7 +358,7 @@ u16 BoxMenu_StoreFromPouch(u16 pad)
                     save->pouch[gBoxWork->pouch].count = 0;
                     save->pouch[gBoxWork->pouch].item = 0;
                     gBoxWork->msg = 1;
-                    Sound_PlaySeFlat(SE_SLOT_COMMON, 0x88, 0);
+                    Sound_PlaySeFlat(SE_SLOT_COMMON, 136, 0);
                 } else {
                     save->pouch[gBoxWork->pouch].count = left;
                     gBoxWork->msg = 2;
@@ -431,7 +397,7 @@ u16 BoxMenu_StoreFromPouch(u16 pad)
         break;
     case BOX_STORE_CLOSING:
         if (Shake_Update(SHAKE_POUCH_MENU) == 0) {
-            return 0x40;
+            return 64;
         }
         gHelpShow = 0;
         pad = 0;
@@ -439,9 +405,6 @@ u16 BoxMenu_StoreFromPouch(u16 pad)
     }
     return pad;
 }
-
-s32 Item_IsOnePerPouch(u16 item);
-s32 SavePouch_Room(u16 item);
 
 /* The item box menu's work as BoxMenu_TakeToPouch reads it, through TV: the same bytes as
  * ItemBoxMenu (step, sub, slots[0] as slot, pouch, atMax, amount, msg). Kept for the match:
@@ -451,7 +414,7 @@ typedef struct TakeView {
     /* 0x00 */ u8 unk0[5];
     /* 0x05 */ u8 step;
     /* 0x06 */ u8 sub;
-    /* 0x07 */ u8 unk7[0x15];
+    /* 0x07 */ u8 unk7[21];
     /* 0x1C */ u16 slot;
     /* 0x1E */ u8 unk1E[4];
     /* 0x22 */ u8 pouch;
@@ -558,7 +521,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
                 TV->msg = 7;
                 gHelpLine = 7;
                 TV->step = BOX_TAKE_RESULT;
-                Sound_PlaySeFlat(SE_SLOT_COMMON, 0x88, 0);
+                Sound_PlaySeFlat(SE_SLOT_COMMON, 136, 0);
             } else {
                 gHelpLine = 5;
                 TV->amount = 1;
@@ -632,7 +595,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
             TV->msg = 7;
             gHelpLine = 7;
             TV->step = BOX_TAKE_RESULT;
-            Sound_PlaySeFlat(SE_SLOT_COMMON, 0x88, 0);
+            Sound_PlaySeFlat(SE_SLOT_COMMON, 136, 0);
             break;
         }
         pad = 0;
@@ -667,7 +630,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
         TV->msg = 7;
         gHelpLine = 7;
         TV->step = BOX_TAKE_RESULT;
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x88, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 136, 0);
         break;
     case BOX_TAKE_SWAP:
         buttons = pad;
@@ -688,7 +651,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
         field = &gBoxWork->yesNo;
         if (*field != 0) {
             gHelpLine = 4;
-            *field = 0xFF;
+            *field = 255;
             TV->step = BOX_TAKE_SLOT;
             Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
             break;
@@ -705,7 +668,7 @@ u16 BoxMenu_TakeToPouch(u16 pad)
         TV->msg = 7;
         gBoxWork->yesNo = BOX_YESNO_NONE;
         TV->step = BOX_TAKE_RESULT;
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x88, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 136, 0);
     case BOX_TAKE_RESULT:
         menu = TV;
         gHelpLine = menu->msg;
@@ -722,19 +685,6 @@ u16 BoxMenu_TakeToPouch(u16 pad)
     return pad;
 }
 
-
-s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count);
-s32 Equip_UnequipType(SaveData *save, s32 type);
-s32 Equip_EquipSlot(SaveData *save, u16 idx);
-s32 Box_YesNoInput(u16 *pad);
-s8 BoxList_Build(u8 kind, u8 sorted);
-u8 BoxMenu_ListStyles(u8 *out);
-void Save_SetSymbolColor(u8 a);
-void Player_SetColorWord(struct Player *pl, u8 idx);
-void EquipSet_RecalcStats(EquipIdx *in, s32 b);
-s32 EquipSet_RenameInput(u16 pad);
-u16 BoxMenu_EquipListInput(u16 *sel, u16 pad, s32 *ok, s32 flags);
-u16 BoxMenu_EquipPickInput(u16 *set, u16 pad, s32 *ok, s32 flags);
 extern u8 gBoxPartIdx[];
 extern s8 gLobbyTextDirty;
 
@@ -781,7 +731,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
         }
         Menu_CursorUpDown(&gBoxWork->kind, pad, gBoxWork->setEntries);
         gHelpShow = 1;
-        gHelpLine = gBoxWork->kind + 0x33;
+        gHelpLine = gBoxWork->kind + 51;
         if (pad & PAD_CIRCLE) {
             pad = 0;
             gBoxWork->help = BOX_HELP_OFF;
@@ -791,25 +741,25 @@ u16 BoxMenu_EquipMenu(u16 pad)
             gBoxWork->set = 0;
             /* SaveData.equipSets, reached by its offset: the compiler then orders the
              * adds as the game's code does. */
-            setAtCursor = (EquipSet *)((u8 *)save + 0x25E4) + gBoxWork->set;
+            setAtCursor = (EquipSet *)((u8 *)save + 9700) + gBoxWork->set;
             switch (gBoxWork->kind) {
             case EQUIP_MENU_PIECES:
                 BoxMenu_EquipPickInput(save->equipIdx, 0, &ok, 0);
                 break;
             case EQUIP_MENU_WEAR_SET:
                 EquipSet_RecalcStats((EquipIdx *)setAtCursor, (s32)gBoxWork->player);
-                gHelpLine = 0x1F;
+                gHelpLine = 31;
                 break;
             case EQUIP_MENU_EDIT_SET:
                 EquipSet_RecalcStats((EquipIdx *)setAtCursor, 0);
-                gHelpLine = 0x20;
+                gHelpLine = 32;
                 break;
             case EQUIP_MENU_SAVE_SET:
                 EquipSet_RecalcStats((EquipIdx *)setAtCursor, 0);
-                gHelpLine = 0x28;
+                gHelpLine = 40;
                 break;
             case EQUIP_MENU_SYMBOL_COLOR:
-                gHelpLine = 0x32;
+                gHelpLine = 50;
                 gBoxWork->help = BOX_HELP_OFF;
                 gBoxWork->count = BoxMenu_ListStyles(gBoxWork->list);
                 break;
@@ -827,7 +777,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
             case 0:
                 pad = BoxMenu_EquipPickInput(save->equipIdx, pad, &ok, 0);
                 if (pad & PAD_CROSS) {
-                    gHelpLine = 0x33;
+                    gHelpLine = 51;
                     pad = 0;
                     gBoxWork->step = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
@@ -849,20 +799,20 @@ u16 BoxMenu_EquipMenu(u16 pad)
             case 1:
                 answer = Box_YesNoInput(&pad);
                 if (answer < 0) {
-                    gHelpLine = 0xA;
+                    gHelpLine = 10;
                     pad = 0;
                     gBoxWork->sub = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                     break;
                 }
                 if (gBoxWork->boxItem == NULL) {
-                    gHelpLine = 0x10;
+                    gHelpLine = 16;
                 } else if (gBoxWork->equipped == NULL) {
-                    gHelpLine = 0x11;
+                    gHelpLine = 17;
                 } else if (gBoxWork->cursorClass != BOX_CLASS_OTHER_WEAPON) {
-                    gHelpLine = 0xF;
+                    gHelpLine = 15;
                 } else {
-                    gHelpLine = 0xB;
+                    gHelpLine = 11;
                 }
                 Menu_CursorLeftRight(&gBoxWork->levelSel, pad & (PAD_L1 | PAD_R1), gBoxWork->levelCount);
                 if (answer > 0) {
@@ -872,7 +822,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                         ok = Equip_EquipSlot(save, gBoxWork->slots[1]);
                     }
                     if (ok == 1) {
-                        gHelpLine = 0x12;
+                        gHelpLine = 18;
                         gBoxWork->levelSel = 0;
                         gBoxWork->sub++;
                         gBoxWork->close = 0;
@@ -883,7 +833,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 }
                 break;
             case 2:
-                gHelpLine = 0x12;
+                gHelpLine = 18;
                 gBoxWork->close = BoxMenu_CloseStep(pad, gBoxWork->close);
                 if (gBoxWork->close == 0) {
                     BoxMenu_EquipPickInput(save->equipIdx, 0, &ok, 0);
@@ -901,7 +851,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 if (pad & PAD_CROSS) {
                     pad = 0;
                     gBoxWork->levelSel = 0;
-                    gHelpLine = 0x35;
+                    gHelpLine = 53;
                     gBoxWork->step = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                     break;
@@ -915,13 +865,13 @@ u16 BoxMenu_EquipMenu(u16 pad)
                         gBoxWork->levelSel = 0;
                         gBoxWork->yesNo = BOX_YES;
                         gBoxWork->sub++;
-                        gHelpLine = 0x22;
+                        gHelpLine = 34;
                         gBoxWork->levelSel = 0;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                         break;
                     }
                 }
-                gHelpLine = 0x1F;
+                gHelpLine = 31;
                 prevCursor = gBoxWork->set;
                 Menu_CursorLeftRight(&gBoxWork->set, pad & (PAD_LEFT | PAD_RIGHT), EQUIP_SET_COUNT);
                 setAtCursor = &sets[gBoxWork->set];
@@ -945,15 +895,15 @@ u16 BoxMenu_EquipMenu(u16 pad)
             case 1:
                 setAtCursor = &sets[gBoxWork->set];
                 answer = Box_YesNoInput(&pad);
-                gHelpLine = 0x22;
+                gHelpLine = 34;
                 if (answer > 0) {
                     Equip_SetEquipped((EquipIdx *)setAtCursor);
-                    gHelpLine = 0x12;
+                    gHelpLine = 18;
                     gBoxWork->sub++;
                     gBoxWork->close = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                 } else if (answer < 0) {
-                    gHelpLine = 0x1F;
+                    gHelpLine = 31;
                     gBoxWork->sub = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                 }
@@ -962,7 +912,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 gBoxWork->close = BoxMenu_CloseStep(pad, gBoxWork->close);
                 if (gBoxWork->close == 0) {
                     EquipSet_RecalcStats((EquipIdx *)&sets[gBoxWork->set], (s32)gBoxWork->player);
-                    gHelpLine = 0x1F;
+                    gHelpLine = 31;
                     gBoxWork->sub = 0;
                 }
                 pad = 0;
@@ -977,7 +927,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 if (pad & PAD_CROSS) {
                     pad = 0;
                     gBoxWork->levelSel = 0;
-                    gHelpLine = 0x34;
+                    gHelpLine = 52;
                     gBoxWork->step = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                 } else if (pad & PAD_CIRCLE) {
@@ -992,18 +942,18 @@ u16 BoxMenu_EquipMenu(u16 pad)
                     gBoxWork->row = 0;
                     if (gBoxWork->cur.idx[SAVE_EQUIP_WEAPON] != BOX_NONE) {
                         gBoxWork->newSet = 0;
-                        gHelpLine = 0x2B;
+                        gHelpLine = 43;
                         gBoxWork->sub2 = 0;
                     } else {
                         gBoxWork->newSet = 1;
-                        gHelpLine = 0x24;
+                        gHelpLine = 36;
                         gBoxWork->sub2 = 1;
                         gBoxWork->equipped = NULL;
                         BoxMenu_EquipListInput(sets[gBoxWork->set].idx, 0, &ok, 0);
                         EquipSet_RecalcStats((EquipIdx *)&gBoxWork->cur, 0);
                     }
                 } else {
-                    gHelpLine = 0x20;
+                    gHelpLine = 32;
                     prevCursor = gBoxWork->set;
                     Menu_CursorLeftRight(&gBoxWork->set, pad & (PAD_LEFT | PAD_RIGHT), EQUIP_SET_COUNT);
                     setAtCursor = &save->equipSets[gBoxWork->set];
@@ -1034,7 +984,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 case 0:
                     if (pad & PAD_CROSS) {
                         EquipSet_RecalcStats((EquipIdx *)&save->equipSets[gBoxWork->set], 0);
-                        gHelpLine = 0x20;
+                        gHelpLine = 32;
                         gBoxWork->sub = 0;
                         gBoxWork->levelSel = 0;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
@@ -1043,9 +993,9 @@ u16 BoxMenu_EquipMenu(u16 pad)
                     }
                     gHelpShow = 1;
                     if (gBoxWork->part != BOX_PART_SAVE) {
-                        gHelpLine = 0x2B;
+                        gHelpLine = 43;
                     } else {
-                        gHelpLine = 0x2D;
+                        gHelpLine = 45;
                     }
                     if (pad & PAD_CIRCLE) {
                         pad = 0;
@@ -1055,12 +1005,12 @@ u16 BoxMenu_EquipMenu(u16 pad)
                                 EquipSet_DropUnfit((EquipIdx *)&save->equipSets[gBoxWork->set], (EquipIdx *)&gBoxWork->cur, 0);
                                 EquipSet_RecalcStats((EquipIdx *)&save->equipSets[gBoxWork->set], 0);
                                 gBoxWork->sub++;
-                                gHelpLine = 0x26;
+                                gHelpLine = 38;
                                 gBoxWork->yesNo = BOX_YES;
                                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_DONE, 0);
                             } else {
                                 gBoxWork->sub2 = 2;
-                                gHelpLine = 0x2C;
+                                gHelpLine = 44;
                                 gBoxWork->yesNo = BOX_YES;
                                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                             }
@@ -1070,7 +1020,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_REFUSE, 0);
                             } else {
                                 gBoxWork->sub2++;
-                                gHelpLine = 0x23;
+                                gHelpLine = 35;
                                 gBoxWork->help = BOX_HELP_OFF;
                                 gBoxWork->row = 0;
                                 gBoxWork->page = 0;
@@ -1106,10 +1056,10 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 case 1:
                     if (pad & PAD_CROSS) {
                         if (gBoxWork->newSet == 0) {
-                            gHelpLine = 0x2B;
+                            gHelpLine = 43;
                             *editStep = 0;
                         } else {
-                            gHelpLine = 0x20;
+                            gHelpLine = 32;
                             gBoxWork->sub = 0;
                         }
                         gBoxWork->levelSel = 0;
@@ -1163,7 +1113,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                                 }
                             }
                             EquipSet_RecalcStats((EquipIdx *)cur, 0);
-                            gHelpLine = 0x2B;
+                            gHelpLine = 43;
                             gBoxWork->sub2 = 0;
                             gBoxWork->levelSel = 0;
                             Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
@@ -1177,12 +1127,12 @@ u16 BoxMenu_EquipMenu(u16 pad)
                             EquipSet_DropUnfit((EquipIdx *)&save->equipSets[gBoxWork->set], (EquipIdx *)&gBoxWork->cur, 0);
                             EquipSet_RecalcStats((EquipIdx *)&save->equipSets[gBoxWork->set], 0);
                             gBoxWork->sub++;
-                            gHelpLine = 0x26;
+                            gHelpLine = 38;
                             gBoxWork->yesNo = BOX_YES;
                             Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_DONE, 0);
                         } else {
                             gBoxWork->sub2 = 0;
-                            gHelpLine = 0x2D;
+                            gHelpLine = 45;
                             Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                         }
                     }
@@ -1192,16 +1142,16 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 break;
             case 2:
                 answer = Box_YesNoInput(&pad);
-                gHelpLine = 0x26;
+                gHelpLine = 38;
                 if (answer != 0) {
                     if (answer > 0) {
-                        gHelpLine = 0x2F;
+                        gHelpLine = 47;
                         gBoxWork->sub++;
                         gBoxWork->sub2 = 0;
                         gBoxWork->yesNo = BOX_YESNO_NONE;
                         EquipSet_RenameInput(0);
                     } else {
-                        gHelpLine = 0x21;
+                        gHelpLine = 33;
                         gBoxWork->sub = 4;
                         gBoxWork->yesNo = BOX_YES;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
@@ -1213,13 +1163,13 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 if (EquipSet_RenameInput(pad) == 0) {
                     gBoxWork->sub++;
                     gBoxWork->yesNo = BOX_YES;
-                    gHelpLine = 0x21;
+                    gHelpLine = 33;
                 }
                 pad = 0;
                 break;
             case 4:
                 answer = Box_YesNoInput(&pad);
-                gHelpLine = 0x21;
+                gHelpLine = 33;
                 if (answer != 0) {
                     if (answer > 0) {
                         Equip_SetEquipped((EquipIdx *)&sets[gBoxWork->set]);
@@ -1228,7 +1178,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                     } else {
                         pad = 0;
-                        gHelpLine = 0x20;
+                        gHelpLine = 32;
                         gBoxWork->sub = 0;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                     }
@@ -1239,7 +1189,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
             case 5:
                 gBoxWork->close = BoxMenu_CloseStep(pad, gBoxWork->close);
                 if (gBoxWork->close == 0) {
-                    gHelpLine = 0x20;
+                    gHelpLine = 32;
                     gBoxWork->sub = 0;
                 }
                 pad = 0;
@@ -1252,20 +1202,20 @@ u16 BoxMenu_EquipMenu(u16 pad)
             case 0:
                 gHelpShow = 1;
                 if (pad & PAD_CROSS) {
-                    gHelpLine = 0x36;
+                    gHelpLine = 54;
                     pad = 0;
                     gBoxWork->levelSel = 0;
                     gBoxWork->step = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                 } else if (pad & PAD_CIRCLE) {
-                    gHelpLine = 0x29;
+                    gHelpLine = 41;
                     pad = 0;
                     gBoxWork->yesNo = BOX_YES;
                     gBoxWork->levelSel = 0;
                     gBoxWork->sub++;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                 } else {
-                    gHelpLine = 0x28;
+                    gHelpLine = 40;
                     prevCursor = gBoxWork->set;
                     Menu_CursorLeftRight(&gBoxWork->set, pad & (PAD_LEFT | PAD_RIGHT), EQUIP_SET_COUNT);
                     setAtCursor = &save->equipSets[gBoxWork->set];
@@ -1289,7 +1239,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 break;
             case 1:
                 answer = Box_YesNoInput(&pad);
-                gHelpLine = 0x29;
+                gHelpLine = 41;
                 if (answer != 0) {
                     if (answer > 0) {
                         setCursor = &gBoxWork->set;
@@ -1297,12 +1247,12 @@ u16 BoxMenu_EquipMenu(u16 pad)
                         *(EquipIdx *)&sets[*setCursor] = *(EquipIdx *)save->equipIdx;
                         gBoxWork->cur = sets[*setCursor];
                         EquipSet_RecalcStats((EquipIdx *)&gBoxWork->cur, 0);
-                        gHelpLine = 0x26;
+                        gHelpLine = 38;
                         gBoxWork->sub++;
                         gBoxWork->yesNo = BOX_YES;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_DONE, 0);
                     } else {
-                        gHelpLine = 0x28;
+                        gHelpLine = 40;
                         gBoxWork->sub--;
                         gBoxWork->yesNo = BOX_YESNO_NONE;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
@@ -1312,16 +1262,16 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 break;
             case 2:
                 answer = Box_YesNoInput(&pad);
-                gHelpLine = 0x26;
+                gHelpLine = 38;
                 if (answer != 0) {
                     if (answer > 0) {
-                        gHelpLine = 0x2F;
+                        gHelpLine = 47;
                         gBoxWork->sub++;
                         gBoxWork->sub2 = 0;
                         EquipSet_RenameInput(0);
                     } else {
                         gBoxWork->sub = 4;
-                        gHelpLine = 0x2A;
+                        gHelpLine = 42;
                         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CONFIRM, 0);
                     }
                 }
@@ -1329,16 +1279,16 @@ u16 BoxMenu_EquipMenu(u16 pad)
                 break;
             case 3:
                 if (EquipSet_RenameInput(pad) == 0) {
-                    gHelpLine = 0x2A;
+                    gHelpLine = 42;
                     gBoxWork->sub++;
                 }
                 pad = 0;
                 break;
             case 4:
-                gHelpLine = 0x2A;
+                gHelpLine = 42;
                 gBoxWork->blink++;
                 if (pad & PAD_CIRCLE) {
-                    gHelpLine = 0x36;
+                    gHelpLine = 54;
                     gBoxWork->blink = BOX_BLINK_RESTART;
                     gBoxWork->step = 0;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_DESCRIPTION, 0);
@@ -1350,7 +1300,7 @@ u16 BoxMenu_EquipMenu(u16 pad)
         case EQUIP_MENU_SYMBOL_COLOR:
             if (pad & PAD_CROSS) {
                 pad = 0;
-                gHelpLine = 0x37;
+                gHelpLine = 55;
                 gBoxWork->step = 0;
                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
             } else {
@@ -1361,9 +1311,9 @@ u16 BoxMenu_EquipMenu(u16 pad)
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_DESCRIPTION, 0);
                 }
                 if (gBoxWork->help == BOX_HELP_OFF) {
-                    gHelpLine = 0x32;
+                    gHelpLine = 50;
                 } else {
-                    gHelpLine = gBoxWork->list[gBoxWork->pick] + 0x3C;
+                    gHelpLine = gBoxWork->list[gBoxWork->pick] + 60;
                 }
                 if (pad & PAD_CIRCLE) {
                     Save_SetSymbolColor(gBoxWork->list[gBoxWork->pick]);
@@ -1378,14 +1328,6 @@ u16 BoxMenu_EquipMenu(u16 pad)
     }
     return pad;
 }
-
-void Player_RecomputeStats(struct Player *pl);
-void Player_SetWeapon(struct Player *pl, EquipItem *e);
-s32 Player_GetHpSkillBonus(struct Player *pl);
-void Player_CalcAttackRemote(struct Player *pl);
-void Player_CalcDefenseRemote(struct Player *pl);
-void Player_CalcResistsRemote(struct Player *pl);
-u8 SkillView_Init(void *pl, s32 b);
 
 /*
  * Builds the stats preview of an equipment set in gPreviewPlayer: a copy of the local hunter
@@ -1457,10 +1399,10 @@ void EquipSet_RecalcStats(EquipIdx *slots, s32 compareTo)
     }
     pl->hp = pl->hpMax = health;
     pl->staminaMax = gScene.mealStamina + 300;
-    if (pl->staminaMax <= 0x4B) {
-        pl->staminaMax = 0x4B;
-    } else if (pl->staminaMax > 0x1C2) {
-        pl->staminaMax = 0x1C2;
+    if (pl->staminaMax <= 75) {
+        pl->staminaMax = 75;
+    } else if (pl->staminaMax > 450) {
+        pl->staminaMax = 450;
     }
     pl->attackDrug = gScene.mealAttack;
     pl->attackBuff = 0;
@@ -1475,26 +1417,9 @@ void EquipSet_RecalcStats(EquipIdx *slots, s32 compareTo)
     }
 }
 
-void Equip_SetEquipped(EquipIdx *e);
-u8 BoxMenu_CloseStep(u16 pad, u8 step);
-void BoxMenu_UpdateSkillPreview(void);
-u8 EquipSet_DropUnfit(EquipIdx *out, EquipIdx *set, s32 flags);
-s32 ItemBox_SlotHasItem(u16 slot);
-s32 EquipBox_TryRemove(u16 slot);
 static s32 BoxMenu_CanSplit(void);
-s32 BoxMenu_CanTakeSeveral(void);
-void BoxMenu_InputAmount(u16 pad, u8 noLimit);
-void Equip_SwapSlots(u16 a, u16 b);
-s32 Equip_ArmorFits(EquipItem *e, u16 *slot);
-s32 Field_ControlEnabled(void);
-void Kbd_Cancel(void);
-void Kbd_SetPos(s32 n, f32 f);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
 s8 Kbd_Run(char *dst, s16 held, s16 pressed);
-u8 YesNo_Toggle(u16 pad, u8 cur, u16 mask);
-void *memcpy(void *dst, const void *src, u32 n);
 INCLUDE_RODATA("asm/lobby/nonmatchings/item_box_menu", gBoxEmptyText);
-extern char gBoxEmptyText[]; /* an empty string */
 
 /*
  * Names the equipment set gBoxWork->set, once a frame (its step is gBoxWork->sub2); called first
@@ -1509,7 +1434,7 @@ s32 EquipSet_RenameInput(u16 pad)
 {
     EquipSet *sets = gSave.equipSets;
     s8 answer;
-    u8 name[0x14];
+    u8 name[20];
     s16 padHeld;
     s16 padPressed;
 
@@ -1520,13 +1445,13 @@ s32 EquipSet_RenameInput(u16 pad)
         }
         gBoxWork->sub2++;
         memcpy(gBoxWork->cur.name, sets[gBoxWork->set].name, sizeof(gBoxWork->cur.name));
-        Kbd_SetPos(0x3C, 76.0f);
-        Chat_OpenKbd(2, 0xE, sizeof(gBoxWork->cur.name), gBoxEmptyText);
+        Kbd_SetPos(60, 76.0f);
+        Chat_OpenKbd(2, 14, sizeof(gBoxWork->cur.name), gBoxEmptyText);
         Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_OPEN, 0);
         /* falls through: the keyboard runs this frame */
     case 1:
         padHeld = *(s16 *)&gPadState[0].held;
-        gHelpLine = 0x2F;
+        gHelpLine = 47;
         padPressed = *(s16 *)&gPadState[0].pressed;
         name[0] = 0;
         answer = Kbd_Run((char *) name, padHeld, padPressed);
@@ -1556,7 +1481,7 @@ s32 EquipSet_RenameInput(u16 pad)
         } else {
             gBoxWork->yesNo = YesNo_Toggle(pad, gBoxWork->yesNo, PAD_LEFT | PAD_RIGHT);
         }
-        gHelpLine = 0x27;
+        gHelpLine = 39;
         if (answer != 0) {
             gBoxWork->yesNo = BOX_YESNO_NONE;
             if (answer > 0) {
@@ -1565,7 +1490,7 @@ s32 EquipSet_RenameInput(u16 pad)
                 return 0;
             }
             gBoxWork->sub2 = 0;
-            gHelpLine = 0x2F;
+            gHelpLine = 47;
         }
         break;
     }
@@ -1586,7 +1511,7 @@ void Equip_SetEquipped(EquipIdx *set)
 
 /*
  * The end of an equipment change, one step a frame: step 0 plays the change's sound (the common
- * bank's 0x89), step 1 reloads the local hunter with the new equipment (Town_ReloadLocalPlayer)
+ * bank's 137), step 1 reloads the local hunter with the new equipment (Town_ReloadLocalPlayer)
  * and its skills, step 2 shows the "changed" help line with the cursor blinking until
  * PAD_CIRCLE. Returns the next step: 0 once closed.
  */
@@ -1594,7 +1519,7 @@ u8 BoxMenu_CloseStep(u16 pad, u8 step)
 {
     switch (step) {
     case 0:
-        Sound_PlaySeFlat(SE_SLOT_COMMON, 0x89, 0);
+        Sound_PlaySeFlat(SE_SLOT_COMMON, 137, 0);
         step++;
         break;
     case 1:
@@ -1603,7 +1528,7 @@ u8 BoxMenu_CloseStep(u16 pad, u8 step)
         step++;
         break;
     case 2:
-        gHelpLine = 0x13;
+        gHelpLine = 19;
         gBoxWork->blink++;
         if (pad & PAD_CIRCLE) {
             step = 0;
@@ -1614,9 +1539,6 @@ u8 BoxMenu_CloseStep(u16 pad, u8 step)
     }
     return step;
 }
-
-u8 Equip_LevelMark(struct EquipItem *e, u8 flags, struct EquipItem *other);
-s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count);
 
 /*
  * The box cursor of the equipment screen: flags bit 0 clear, setIdx is SaveData.equipIdx and
@@ -1681,11 +1603,11 @@ u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
         return PAD_CROSS;
     }
     if (mode == 0) {
-        gHelpLine = 0xA;
+        gHelpLine = 10;
     } else if (setIdx[SAVE_EQUIP_WEAPON] != BOX_NONE) {
-        gHelpLine = 0x23;
+        gHelpLine = 35;
     } else {
-        gHelpLine = 0x24;
+        gHelpLine = 36;
     }
     prev = gBoxWork->slots[1];
     BoxMenu_MoveCursor(&gBoxWork->slots[1], pad);
@@ -1725,7 +1647,7 @@ u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
             if (gBoxWork->equipped == gBoxWork->boxItem) {
                 if (gBoxWork->cursorClass != BOX_CLASS_ARMOR) {
                     *ok = 0;
-                    gHelpLine = 0xC;
+                    gHelpLine = 12;
                     gBoxWork->canEquip = 0;
                 }
                 gBoxWork->boxItem = NULL;
@@ -1733,11 +1655,11 @@ u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
                 armorFlags = Equip_GetData(gBoxWork->boxItem)->armor.flags;
                 if (!(armorFlags & ((save->gender == 0) ? (u8)ARMOR_FLAG_MALE : (u8)ARMOR_FLAG_FEMALE))) {
                     *ok = 0;
-                    gHelpLine = 0xE;
+                    gHelpLine = 14;
                     gBoxWork->canEquip = 0;
                 } else if (!(armorFlags & (u8)((save->box[setIdx[SAVE_EQUIP_WEAPON]].type == EQUIP_BLADE) ? ARMOR_FLAG_BLADEMASTER : ARMOR_FLAG_GUNNER))) {
                     *ok = 0;
-                    gHelpLine = 0xD;
+                    gHelpLine = 13;
                     gBoxWork->canEquip = 0;
                 }
             } else if (gBoxWork->equipped->type != gBoxWork->boxItem->type) {
@@ -1746,7 +1668,7 @@ u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
         } else if (gBoxWork->cursorClass != BOX_CLASS_ARMOR) {
             if (gBoxWork->equipped == gBoxWork->boxItem) {
                 *ok = 0;
-                gHelpLine = 0xC;
+                gHelpLine = 12;
                 gBoxWork->boxItem = NULL;
             } else if (gBoxWork->equipped != NULL && gBoxWork->equipped->type != gBoxWork->boxItem->type) {
                 gBoxWork->cursorClass = BOX_CLASS_OTHER_WEAPON;
@@ -1758,11 +1680,11 @@ u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
                 armorFlags = Equip_GetData(gBoxWork->boxItem)->armor.flags;
                 if (!(armorFlags & ((save->gender == 0) ? (u8)ARMOR_FLAG_MALE : (u8)ARMOR_FLAG_FEMALE))) {
                     *ok = 0;
-                    gHelpLine = 0xE;
+                    gHelpLine = 14;
                     gBoxWork->canEquip = 0;
                 } else if (!(armorFlags & (u8)((save->box[setIdx[SAVE_EQUIP_WEAPON]].type == EQUIP_BLADE) ? ARMOR_FLAG_BLADEMASTER : ARMOR_FLAG_GUNNER))) {
                     *ok = 0;
-                    gHelpLine = 0x25;
+                    gHelpLine = 37;
                     gBoxWork->canEquip = 0;
                 }
             }
@@ -1770,7 +1692,7 @@ u16 BoxMenu_EquipPickInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
             *ok = 0;
             gBoxWork->canEquip = 0;
         }
-        gBoxWork->levelCount = Equip_LevelMark((struct EquipItem *)gBoxWork->boxItem, 0x10, (struct EquipItem *)gBoxWork->equipped);
+        gBoxWork->levelCount = Equip_LevelMark((struct EquipItem *)gBoxWork->boxItem, 16, (struct EquipItem *)gBoxWork->equipped);
         if (gBoxWork->levelSel >= gBoxWork->levelCount) {
             gBoxWork->levelSel = gBoxWork->levelCount - 1;
         }
@@ -1826,9 +1748,6 @@ void BoxMenu_UpdateSkillPreview(void)
 
 
 extern Player gSkillTryPlayer; /* a scratch Player: the equipment tried on */
-void Player_RemoveUnwearable(struct Player *pl);
-s32 Equip_DataWearable(struct Player *pl, EquipItem *e);
-u8 Player_ArmorHasTorsoUp(Player *p);
 
 /*
  * Tries the piece on a copy of the player (gSkillTryPlayer): a weapon of the other kind first
@@ -1971,16 +1890,7 @@ static inline u8 Equip_GenderBit(u8 gender)
     return gender == 0 ? ARMOR_FLAG_MALE : ARMOR_FLAG_FEMALE;
 }
 
-s32 ItemBox_SlotHasItem(u16 slot);
-s32 EquipBox_TryRemove(u16 slot);
 static s32 BoxMenu_CanSplit(void);
-s32 BoxMenu_CanTakeSeveral(void);
-void BoxMenu_InputAmount(u16 pad, u8 noLimit);
-void Equip_SwapSlots(u16 a, u16 b);
-s32 Equip_ArmorFits(EquipItem *e, u16 *slot);
-s16 BoxList_MoveCursor(u8 *row, u8 *page, u16 pad);
-u8 Equip_LevelMark(struct EquipItem *e, u8 flags, struct EquipItem *other);
-s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count);
 
 /*
  * The box list of the equipment set editor (BoxList_MoveCursor over the pieces of the chosen
@@ -1998,7 +1908,7 @@ u16 BoxMenu_EquipListInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
     ItemBoxMenu *menu;
     s32 buttons;
 
-    *(u16 *)&gHelpLine = 0xFFFF;
+    *(u16 *)&gHelpLine = 65535;
     if (pad & (PAD_CIRCLE | PAD_CROSS)) {
         pad &= PAD_CIRCLE | PAD_CROSS;
     }
@@ -2009,21 +1919,21 @@ u16 BoxMenu_EquipListInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
         gBoxWork->cursorClass = BOX_CLASS_WEAPON;
         if (gBoxWork->equipped == gBoxWork->boxItem) {
             *ok = 0;
-            gHelpLine = 0xC;
+            gHelpLine = 12;
         }
     } else {
         gBoxWork->cursorClass = BOX_CLASS_ARMOR;
         if (gBoxWork->equipped == gBoxWork->boxItem) {
-            gHelpLine = 0x2E;
+            gHelpLine = 46;
         } else {
             data = &Equip_GetData(gBoxWork->boxItem)->armor;
             if (!(data->flags & Equip_GenderBit(save->gender))) {
                 *ok = 0;
-                gHelpLine = 0xE;
+                gHelpLine = 14;
             } else {
                 if (!(data->flags & (u8)(save->box[*setIdx].type == EQUIP_BLADE ? ARMOR_FLAG_BLADEMASTER : ARMOR_FLAG_GUNNER))) {
                     *ok = 0;
-                    gHelpLine = 0x25;
+                    gHelpLine = 37;
                 }
             }
         }
@@ -2051,8 +1961,6 @@ u16 BoxMenu_EquipListInput(u16 *setIdx, u16 pad, s32 *ok, s32 flags)
     return pad;
 }
 
-u16 BoxMenu_Input(u16 pad);
-
 /*
  * The box menu's arrange screen. Step 0 picks the item box or the equipment box (kind; PAD_CROSS
  * goes back to the menu list). Step 1 moves the cursor (BoxMenu_Input): PAD_CIRCLE holds a slot
@@ -2076,7 +1984,7 @@ u16 BoxMenu_ArrangeMenu(u16 pad)
     ItemStack stack;
     EquipItem item;
 
-    gHelpLine = *kind + 0x14;
+    gHelpLine = *kind + 20;
     switch (gBoxWork->step) {
     case 0:
         if (pad & PAD_CROSS) {
@@ -2109,7 +2017,7 @@ u16 BoxMenu_ArrangeMenu(u16 pad)
             } else if (pad & PAD_CIRCLE) {
                 gBoxWork->held = (&gBoxWork->slots[0])[gBoxWork->kind];
                 gBoxWork->sub++;
-                Sound_PlaySeFlat(SE_SLOT_COMMON, 0x8A, 0);
+                Sound_PlaySeFlat(SE_SLOT_COMMON, 138, 0);
             }
             break;
         case 1:
@@ -2137,7 +2045,7 @@ u16 BoxMenu_ArrangeMenu(u16 pad)
                         Equip_SwapSlots(*held, slots[*kindPtr]);
                     }
                     gBoxWork->sub = 0;
-                    Sound_PlaySeFlat(SE_SLOT_COMMON, 0x8B, 0);
+                    Sound_PlaySeFlat(SE_SLOT_COMMON, 139, 0);
                 } else {
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_REFUSE, 0);
                 }
@@ -2149,9 +2057,6 @@ u16 BoxMenu_ArrangeMenu(u16 pad)
     return pad;
 }
 
-s32 Box_ClearSlot(SaveData *save, u16 idx);
-s32 Equip_GetSellPrice(EquipItem *e);
-
 /* ItemBoxMenu seen by BoxMenu_SellMenu: the ItemBoxMenu form changes the code (MWCC reuses the load of gBoxWork) */
 typedef struct SellView {
     /* 0x00 */ u8 unk0[5];
@@ -2159,7 +2064,7 @@ typedef struct SellView {
     /* 0x06 */ u8 sub;
     /* 0x07 */ u8 unk7[2];
     /* 0x09 */ u8 kind;             /* 0 items, 1 equipment */
-    /* 0x0A */ u8 unkA[0xE];
+    /* 0x0A */ u8 unkA[14];
     /* 0x18 */ s32 price;
     /* 0x1C */ u16 slot[2];
     /* 0x20 */ u8 unk20[4];
@@ -2199,11 +2104,11 @@ u16 BoxMenu_SellMenu(u16 pad)
         if (buttons & PAD_CIRCLE) {
             view = (SellView *)gBoxWork;
             if (view->kind == BOX_KIND_ITEMS) {
-                gHelpLine = 0x16;
+                gHelpLine = 22;
             } else {
-                gHelpLine = 0x17;
+                gHelpLine = 23;
                 if (EquipSet_RemoveSlot(view->slot[1], 1) != 0) {
-                    gHelpLine = 0x1B;
+                    gHelpLine = 27;
                 }
             }
             ((SellView *)gBoxWork)->msg = -1;
@@ -2244,11 +2149,11 @@ u16 BoxMenu_SellMenu(u16 pad)
             }
             view = (SellView *)gBoxWork;
             if (view->kind == BOX_KIND_ITEMS) {
-                gHelpLine = 0x16;
+                gHelpLine = 22;
             } else {
-                gHelpLine = 0x17;
+                gHelpLine = 23;
                 if (EquipSet_RemoveSlot(view->slot[1], 1) != 0) {
-                    gHelpLine = 0x1B;
+                    gHelpLine = 27;
                 }
             }
             if (pad & PAD_CIRCLE) {
@@ -2257,20 +2162,20 @@ u16 BoxMenu_SellMenu(u16 pad)
                     ok = ItemBox_SlotHasItem(view->slot[0]);
                     if (ok == 1) {
                         if (BoxMenu_CanSplit() == 0) {
-                            gHelpLine = 0x19;
+                            gHelpLine = 25;
                             ((SellView *)gBoxWork)->sub = 2;
                             gBoxWork->yesNo = BOX_NO;
                             ((SellView *)gBoxWork)->price = gItemData[save->itemBox[((SellView *)gBoxWork)->slot[0]].item].value;
                         } else {
                             ((SellView *)gBoxWork)->amount = 1;
-                            gHelpLine = 0x18;
+                            gHelpLine = 24;
                             ((SellView *)gBoxWork)->sub = 1;
                         }
                     }
                 } else {
                     result = EquipBox_TryRemove(view->slot[1]);
                     if (result > 0) {
-                        gHelpLine = 0x19;
+                        gHelpLine = 25;
                         ((SellView *)gBoxWork)->sub = 2;
                         gBoxWork->yesNo = BOX_NO;
                         ((SellView *)gBoxWork)->price = Equip_GetSellPrice(&save->box[((SellView *)gBoxWork)->slot[1]]);
@@ -2278,7 +2183,7 @@ u16 BoxMenu_SellMenu(u16 pad)
                     } else {
                         ok = 0;
                         if (result == 0) {
-                            ((SellView *)gBoxWork)->msg = 0x1A;
+                            ((SellView *)gBoxWork)->msg = 26;
                         }
                     }
                 }
@@ -2295,13 +2200,13 @@ u16 BoxMenu_SellMenu(u16 pad)
         case 1:
             buttons = pad;
             if (buttons & PAD_CROSS) {
-                gHelpLine = 0x16;
+                gHelpLine = 22;
                 pad &= ~PAD_CROSS;
                 *subPtr = 0;
                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
                 break;
             }
-            gHelpLine = 0x18;
+            gHelpLine = 24;
             BoxMenu_InputAmount(pad, 1);
             if (!(buttons & PAD_CIRCLE)) {
                 break;
@@ -2324,15 +2229,15 @@ u16 BoxMenu_SellMenu(u16 pad)
                     result = gBoxWork->yesNo == BOX_YES ? 1 : -1;
                 }
             }
-            gHelpLine = 0x19;
+            gHelpLine = 25;
             if (result != 0) {
                 if (result < 0) {
                     if (((SellView *)gBoxWork)->kind == BOX_KIND_ITEMS && BoxMenu_CanSplit() == 1) {
-                        gHelpLine = 0x18;
+                        gHelpLine = 24;
                         ((SellView *)gBoxWork)->sub = 1;
                     } else {
                         view = (SellView *)gBoxWork;
-                        gHelpLine = view->kind + 0x16;
+                        gHelpLine = view->kind + 22;
                         view->sub = 0;
                     }
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
@@ -2357,9 +2262,9 @@ u16 BoxMenu_SellMenu(u16 pad)
                     }
                     Save_AddMoney(((SellView *)gBoxWork)->price);
                     view = (SellView *)gBoxWork;
-                    gHelpLine = view->kind + 0x16;
+                    gHelpLine = view->kind + 22;
                     view->sub = 0;
-                    Sound_PlaySeFlat(SE_SLOT_COMMON, 0x83, 0);
+                    Sound_PlaySeFlat(SE_SLOT_COMMON, 131, 0);
                 }
                 pad = 0;
                 gBoxWork->yesNo = BOX_YESNO_NONE;
@@ -2371,7 +2276,7 @@ u16 BoxMenu_SellMenu(u16 pad)
     return pad;
 }
 
-/* 1 when item box slot 'slot' holds an item that has an icon (ItemData.icon not 0xFF), else 0. */
+/* 1 when item box slot 'slot' holds an item that has an icon (ItemData.icon not 255), else 0. */
 s32 ItemBox_SlotHasItem(u16 slot)
 {
     u16 item = gSave.itemBox[slot].item;
@@ -2379,7 +2284,7 @@ s32 ItemBox_SlotHasItem(u16 slot)
     if (item == 0) {
         return 0;
     }
-    if (gItemData[item].icon != 0xFF) {
+    if (gItemData[item].icon != 255) {
         return 1;
     }
     return 0;
@@ -2618,12 +2523,9 @@ u16 BoxMenu_Input(u16 pad)
     return pad;
 }
 
-s32 Equip_ArmorFits(EquipItem *e, u16 *slot);
-void Box_ApplySort(u8 equip);
-
 /* ItemBoxMenu seen by BoxMenu_SortPrompt: the ItemBoxMenu form changes the code (MWCC reuses the load of gBoxWork) */
 typedef struct BoxCursors {
-    /* 0x00 */ u8 unk0[0x1C];
+    /* 0x00 */ u8 unk0[28];
     /* 0x1C */ u16 slot[2];
 } BoxCursors;
 
@@ -2646,7 +2548,7 @@ u16 BoxMenu_SortPrompt(u16 pad, u8 kind)
                 gBoxWork->prompt = 0;
                 gBoxWork->yesNo = BOX_YESNO_NONE;
             } else {
-                gHelpLine = 0x38;
+                gHelpLine = 56;
                 if (pad & PAD_CROSS) {
                     *answer = 1;
                     Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
@@ -2660,7 +2562,7 @@ u16 BoxMenu_SortPrompt(u16 pad, u8 kind)
             gBoxWork->yesNo = BOX_YESNO_NONE;
             Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_CANCEL, 0);
         } else {
-            gHelpLine = 0x38;
+            gHelpLine = 56;
             if (pad & PAD_LEFT) {
                 *answer = 0;
                 Sound_PlaySeFlat(SE_SLOT_SYSTEM, SE_SYS_SCROLL, 0);
@@ -2672,8 +2574,8 @@ u16 BoxMenu_SortPrompt(u16 pad, u8 kind)
         gBoxWork->prompt = 1;
         gBoxWork->yesNo = BOX_YES;
         gBoxWork->help = BOX_HELP_OFF;
-        gHelpLine = 0x38;
-        Sound_PlaySeFlat(SE_SLOT_SYSTEM, 0xF, 0);
+        gHelpLine = 56;
+        Sound_PlaySeFlat(SE_SLOT_SYSTEM, 15, 0);
         return 0;
     }
     return pad;

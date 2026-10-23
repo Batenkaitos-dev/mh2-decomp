@@ -1,10 +1,11 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libdbc, "PsIIlibdbc  3030" (.data 0x1977B8), text 0x101F18-0x103168; asm piece sdk/libdbc
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libdbc (version 3030, by its id string
+// in .data at 0x1977B8), text 0x101F18-0x103168; asm piece sdk/libdbc.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 
-// libdbc (sceDbcInit: "libdbc: bind failed", module version check; sceDbcEnd
-// deletes its semaphore), libpad2 (scePad2CreateSocket: "libpad2: buffer
-// addr is not 64 byte align"; the others by what the pad code does with
-// them) and libvib.
+// libdbc (sceDbcInit by its own bind error message and module version
+// check; sceDbcEnd deletes its semaphore), libpad2 (scePad2CreateSocket by
+// its own buffer alignment message, the others by what the pad code does
+// with them) and libvib.
 sceDbcInit = 0x00101F70; // type:func
 sceDbcEnd = 0x00102210; // type:func

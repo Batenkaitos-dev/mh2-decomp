@@ -12,54 +12,12 @@
  *   an unknown byte (630B) and the four group-info bytes (631B). Each
  *   reply handler also takes the server's notification of the same
  *   command.
- * - Last, the request that enters an entry (6305).
  * Network code: it stays byte for byte, as the whole build does.
  */
 #include "common.h"
 #include "lobby_net.h"
 #include "m2c_macros.h"
-
-char *strcpy(char *dst, const char *src);      /* strcpy */
-s32 LobbyPkt_EntryValues(u16 kind, u16 id);
-s32 LobbyPkt_EntryName(u16 kind, u16 id);
-void LobbyMsg_ReadU16Str(void *a, void *b);
-void NetList_ReadValues(NetListEntry *e);
-void Lobby_RouteMessage(s32);
-s32 LobbyPkt_EntryState(u16 kind, u16 arg1);
-s32 LobbyPkt_EntryText(u16 kind, u16 arg1);
-void LobbyMsg_ReadU16U8b(void *a, void *b);
-void LobbyMsg_ReadU16Str2(void *a, void *b);
-s32 LobbyPkt_Level1GroupInfo(u16 id);
-s32 LobbyPkt_630B(u16 id);
-s32 LobbyPkt_Level1Color(u16 id);
-u8 *LobbyMsg_ReadU16U8(void *a, void *b);
-u8 *LobbyMsg_ReadU16U32(void *a, void *b);
-s32 LobbyPkt_Level1Enter(u16 id, char *password);
-void NetLevel1ListTask_Run(s32 task);
-void NetLevel1ListTask_Steps(NetTask *t);
-void NetLevel1ListTask_Done(NetTask *t);
-void NetLevel1ListTask_Failed(NetTask *t);
-void NetLevel1ListTask_Step0(NetTask *t);
-void NetLevel1ListTask_Step1(NetTask *t);
-void NetLevel1ListTask_Step2(NetTask *t);
-void NetLevel1ListTask_Step3(NetTask *t);
-void NetLevel1ListTask_Step4(NetTask *t);
-void NetLevel1ListTask_Step5(NetTask *t);
-void NetLevel1ListTask_Step1Reply(NetMsg m, NetMsg *pm);
-void NetLevel1ListTask_Step4Reply(NetMsg m, NetMsg *pm);
-void LobbyMsg_ReadU16(void *a0);
-s32 LobbyPkt_ListCount(u16 kind);
-void NetReq_ClearAll(void);
-s32 NetReq_CountFree(void);
-s32 LobbyReq_Level1Count(void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1Name(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1State(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1Text(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1Color(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_630B(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1GroupInfo(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level1Kind(u16 id, void (*onReply)(NetMsg, NetMsg *));
+#include "libc.h"
 
 /* the selection byte of level 0-2 */
 void NetList_Select(s32 levelArg, u16 id)
@@ -119,8 +77,8 @@ s32 LobbyNet_GetListReplies(u16 *nReplies)
 }
 
 /* starts task 3: the second level's list, with the information flags asks for
- * (bits: 1 6303, 2 6304, 4 6302, 8 6308, 0x10 630B, 0x80 630D, 0x200 631B,
- * 0x400 630E) */
+ * (NET_ENTRY_*: VALUES 6303, STATE 6304, NAME 6302, TEXT 6308, LOCKED 630B,
+ * COLOR 630D, GROUP_INFO 631B, KIND 630E; NET_LEVEL1_REQS leaves out LOCKED) */
 s32 NetLevel1ListTask_Start(s32 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *))
 {
     NetTask *netTask = &gLobbyNet.task[NET_TASK_LEVEL1_LIST];
@@ -219,7 +177,7 @@ void NetLevel1ListTask_Step0(NetTask *task)
     task->reply = NET_REPLY_NONE;
     flags = task->reqFlags;
     task->reqCount = 0;
-    for (i = 0; i < 0x20; i++) {
+    for (i = 0; i < 32; i++) {
         if (flags & 1) {
             task->reqCount++;
         }
@@ -227,7 +185,7 @@ void NetLevel1ListTask_Step0(NetTask *task)
     }
     gLobbyNet.nReplies = 0;
     gLobbyNet.count1 = 0;
-    memset(gLobbyNet.list1, 0, 0x459C);
+    memset(gLobbyNet.list1, 0, 17820);
 }
 
 /* task 3, step 1: 6301 (the count) */
@@ -305,7 +263,7 @@ void NetLevel1ListTask_Step4(NetTask *task)
             LobbyReq_Level1Kind(id, NetLevel1ListTask_Step4Reply);
         }
         task->pos++;
-        if (id + 1 > gLobbyNet.count1 || id + 1 > 0x2D) {
+        if (id + 1 > gLobbyNet.count1 || id + 1 > 45) {
             task->step++;
         }
     }
@@ -318,7 +276,7 @@ void NetLevel1ListTask_Step5(NetTask *task)
     u32 j;
     u32 i = 0;
 
-    for (j = 0; j < 0x2D; j++) {
+    for (j = 0; j < 45; j++) {
         i++;
         if (i > gLobbyNet.count1) {
             break;
@@ -416,10 +374,10 @@ s32 NetList1_GetName(u16 id, char *dst)
     return 0;
 }
 
-/* the reply to 6302 and its notification: u16 id, string; route 0x14 */
+/* the reply to 6302 and its notification: u16 id, string; route NET_ROUTE_LEVEL1_NAME */
 void LobbyReply_Level1Name(void)
 {
-    char name[0x4C];
+    char name[76];
     u16 id;
 
     if (gLobbyNet.replyErr == 0) {
@@ -487,7 +445,7 @@ s32 NetList1_GetByte(u16 id, u8 *out)
     return 0;
 }
 
-/* the reply to 6304 and its notification: u16 id, u8; route 0x16 */
+/* the reply to 6304 and its notification: u16 id, u8; route NET_ROUTE_LEVEL1_STATE */
 void LobbyReply_Level1State(void)
 {
     u16 id;
@@ -522,10 +480,10 @@ s32 NetList1_GetText(u16 id, char *dst)
     return 0;
 }
 
-/* the reply to 6308 and its notification: u16 id, string; route 0x17 */
+/* the reply to 6308 and its notification: u16 id, string; route NET_ROUTE_LEVEL1_TEXT */
 void LobbyReply_Level1Text(void)
 {
-    char text[0x10C];
+    char text[268];
     u16 id;
 
     if (gLobbyNet.replyErr == 0) {
@@ -568,7 +526,7 @@ s32 LobbyPkt_Level1Color(u16 id)
     return seq;
 }
 
-/* the reply to 630D and its notification: u16 id, u32; route 0x19 */
+/* the reply to 630D and its notification: u16 id, u32; route NET_ROUTE_LEVEL1_COLOR */
 void LobbyReply_Level1Color(void)
 {
     s32 value;
@@ -609,7 +567,7 @@ s32 LobbyPkt_630B(u16 id)
     return seq;
 }
 
-/* the reply to 630B and its notification: u16 id, u8; route 0x18 */
+/* the reply to 630B and its notification: u16 id, u8; route NET_ROUTE_630B */
 void LobbyReply_630B(void)
 {
     u16 id;
@@ -666,7 +624,7 @@ s32 LobbyPkt_Level1GroupInfo(u16 id)
     return seq;
 }
 
-/* the reply to 631B and its notification: u16 id, u8 x4; route 0x33 */
+/* the reply to 631B and its notification: u16 id, u8 x4; route NET_ROUTE_LEVEL1_GROUP_INFO */
 void LobbyReply_Level1GroupInfo(void)
 {
     u16 id;
@@ -683,18 +641,4 @@ void LobbyReply_Level1GroupInfo(void)
         gLobbyNet.list1[id - 1].flags |= NET_ENTRY_GROUP_INFO;
     }
     Lobby_RouteMessage(NET_ROUTE_LEVEL1_GROUP_INFO);
-}
-
-/* 6305: enters second-level entry id (with a password, NULL for none) */
-s32 LobbyReq_Level1Enter(u16 id, char *pass, void (*onReply)(NetMsg, NetMsg *))
-{
-    s32 i;
-
-    i = NetReq_Alloc(1, NULL, onReply);
-    if (i != -1) {
-        NetList_Select(1, id);
-        gLobbyNet.req[i].seq = LobbyPkt_Level1Enter(id, pass);
-        return i;
-    }
-    return -1;
 }

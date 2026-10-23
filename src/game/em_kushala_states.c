@@ -13,51 +13,18 @@
 #include "common.h"
 #include "em.h"
 #include "em_kushala.h"
+#include "player.h"
+#include "engine_math.h"
+#include "vec_math.h"
+#include "em_script.h"
+#include "quest.h"
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s16 n), the calls in EmBlangonga_EatNeed2 compile differently */
 void Em_AddHp(Em *em, s32 n);
-void Em_BeginStatus1(Em *em);
-void Em_MoveRotatedAccel(Em *em, void *ang);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmBlangonga_ChangeState, EmKushala_ChangeState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_ClearNeed2State(Em *em);
-void Em_AddNeed2(Em *em, s32 n);
 s32 Em_PartBroken(Em *em, s32 arg1);
-void Em_TargetPlayerInRange(Em *);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_BreakPart(Em *em, s32 part);
 /* unit's own declaration: Em_EndAllStatus reads a0 = em at EmKushala_SetReactState state 6 (left by EmKushala_SetWind(em, ...), which keeps a0) */
 void Em_EndAllStatus();
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void EmKushala_SetIdleState(Em *em, u16 state, u8 mode);
-void EmKushala_SetMoveState(Em *em, u16 state, u8 mode);
-void EmKushala_SetFlyState(Em *em, u16 state, u8 mode);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-void Em_ClearPart(Em *em, u16 part);
-void Em_ResetNotice(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_ClearNeed1State(Em *em);
-void Vec_Copy(f32 *out, f32 *in);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-s8 QuestEm_Appear(Em *em);
-void EmKushala_SetAttackState(Em *em, u16 state, u8 mode);
-void EmKushala_SetReactState(Em *em, u16 state, u8 mode);
-void EmKushala_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 /* end of prototypes */
 
 /*
@@ -392,7 +359,7 @@ void EmKushala_SetAttackState(Em *em, u16 state, u8 mode)
 {
     em->motionSpeed = 1.0f;
     switch ((u16) state) {
-    case 0xB:
+    case 11:
         Em_SetSpeedScaled(em, 0, 1000.0f, 520.0f);
         break;
     }
@@ -568,7 +535,7 @@ void EmKushala_StartCurves(Em *em, u8 kind)
     switch (w->curveKind) {
     case 0:
         w->curveVelY = 1;
-        w->curveFrame = 0x30;
+        w->curveFrame = 48;
         break;
     case 1:
         w->curveVelY = 1;

@@ -9,22 +9,38 @@
  *   colours, inserted numbers, icons queued per layer in gTextIcons, hidden
  *   parts) read by Text_ParseCode and drawn by Text_PrintCodes, text with a
  *   drop shadow, and Shift-JIS aware scanning (Text_NextChar);
- * - the pads' key repeat, applying the options, and the reset of the game's
- *   subsystems (Game_ResetSubsystems) with the motion table's frees.
+ * - the pads' key repeat (Pad_KeyRepeat), between the text functions.
+ * The text run can't be cut from the render-state shortcuts: its last
+ * function's table (Text_DrawColored's) lies below theirs in the data.
  */
 #include "common.h"
 #include "model.h"
 #include "sprite.h"
 #include "syssettings.h"
-#include "syssave.h"
 
 #include "ee_stdarg.h"
 #include "render_state.h"
-#include "overlay.h"
 #include "text.h"
 #include "net_menu.h"
-#include "motion.h"
 #include "pad.h"
+#include "bgm.h"
+#include "heap.h"
+#include "area.h"
+#include "camera.h"
+#include "display_util.h"
+#include "draw_slots.h"
+#include "em.h"
+#include "file_load.h"
+#include "font.h"
+#include "frame.h"
+#include "main.h"
+#include "mem_util.h"
+#include "menu_util.h"
+#include "rand.h"
+#include "sys_main.h"
+#include "vibration.h"
+#include "engine_util.h"
+#include "image.h"
 
 /* Key repeat state of a pad (Pad_KeyRepeat). */
 typedef struct KeyRepeat {
@@ -40,7 +56,6 @@ extern u32 gBlendModes[];
 extern u32 gBlendModes2[];
 extern u32 gTexFilterModes[];
 extern u32 gBlendOps[];
-extern u32 gTextCodeColors[];
 extern u32 gTextColors[];       /* text colours TEXT_COLOR_RGB.. */
 extern u32 gTexHandles[];
 extern s32 gTextOff;          /* nonzero: text drawing is off */
@@ -65,88 +80,16 @@ extern u8 gSysBusy;
 extern void *gMotions[];
 
 void *memset(void *p, s32 c, u32 n);
-s32 Packet_SetMode1Ok(void);
-s32 Packet_SetMode2Ok(void);
-s32 Gs_SetState(u8 reg, u32 v);
-s32 Overlay_IsLoaded(s32 a);
 void sprintf(char *buf, const char *fmt, ...);
 void vsnprintf(char *buf, s32 size, const char *fmt, va_list ap);
-void ScreenTex_Release(void);
-void Mem_Compact(void);
-void Display_SetOffset(s32 a, s32 b);
-void FileQueue_Cancel(void);
-void Stream_Reset(void);
-void Stream_UpdateMaxVol(s32 a);
-void Sound_ApplyOutputMode(s32 mode);
-void Sound_Silence(void);
-void Gs_SetTableColor(s32 a);
-void Font_Init(s32 unused0);
-void TextObj_Reset(void);
-void Font_ClearPage(s32 layer);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetSize(f32 scale);
-void Font_SetColor(s32 color);
-void Font_SetColorIndex(s16 color);
-void Font_SetPal(s32 a);
-s32 Font_GetPage(void);
-s16 Font_GetAdvance(void);
-s32 Font_GetPal(void);
-u32 Font_GetColor(void);
-s16 Font_GetX(void);
-s16 Font_GetY(void);
 char *strchr(char *s, s32 c);
 char *strcpy(char *dst, char *src);
-s16 Font_GetCharH(void);
-s32 Font_GetHalfWidth(void);
-s32 Font_IsLineGapOn(void);
 /* unit's own declaration: s16 (the definition, returns s32: (s16) of a u8, 0-255); with s32, in every form tried, Text_PrintCodes sign-extends the value before y += (2 more words) */
 s16 Font_GetLineGap(void);
 void strncat(char *dst, u8 *src, s32 n);
-void Font_SetLineGapOn(u8 on);
-void Font_SetLineGap(s32 lineGap);
 s32 Str_Length(char *s);
 void Font_Printf(char *fmt, ...);
-void Font_DrawPage(s32 layer);
-void Font_DrawAllPages(void);
-void Sjis_Widen(char *src, char *dst);
-s32 Mem_FreeRet1(void *p);
-void FreeList_Init(s32 n, u32 *p);
-void FadeA_Reset(void);
-void Area_ResetStub(void);
-void Light_Reset(void);
-void Tex_ReleaseAll(void);
-void Tex_LoadFile(s32 a, s32 b, s32 c);
-void Model_ResetAll(void);
-void Model_FreeAll(void);
-void EmSlot_ForgetModel(s16 a, s8 b);
 struct Icon;
-void Draw_Icons(struct Icon *boxes, u8 count);
-void Obj_InitAll(void);
-void UnreadFlags_ClearAll(void);
-void Callbacks_Clear(void);
-void EquipPreview_Clear(void);
-void DrawSlot_ResetAll(void);
-void DrawSlotB_ResetAll(void);
-void Notice_ResetQueue(void);
-void Player_ClearAll(void);
-s32 LoadCompressedFile(u8 *dst, s32 id);
-void Movie_Stop(void);
-void Camera_Init(void);
-void Camera_SetPreset(s32 id);
-void EmSlot_ClearAll(void);
-void Area_ClearState(void);
-void Vib_StopAll(void);
-void Sound_ReverbOn(void);
-s32 Sound_SetSpuMapPage(u32 page);
-char *Text_ParseCode(char *s, s16 *code, s16 mode);
-void Text_Printf(const char *fmt, ...);
-void Text_PrintCodes(s16 max, const char *fmt, ...);
-void Text_SetColor(s16 color);
-void Text_DrawColored(char *s);
-void Motion_FreeAll(void);
-s32 Text_CountChars(char *s);
-void Text_FormatVar(void *dst, s16 kind);
 
 /* Starts a frame's drawing: packets may be built, the texture preparation
  * counters restart, and the nesting depth goes up. */
@@ -176,8 +119,8 @@ void Gfx_SetBlend(s32 modeA, s32 modeB)
     }
 }
 
-/* Sets RS_TEX_FILTER from gTexFilterModes (0 filtered, 1 not), when the
- * index changes. */
+/* Sets RS_TEX_FILTER from gTexFilterModes (GFX_TEX_NEAREST: point
+ * sampling; GFX_TEX_BILINEAR: filtered), when the index changes. */
 void Gfx_SetTexFilter(s32 mode)
 {
     if (gSysSettings.texFilter != mode) {
@@ -203,8 +146,8 @@ void Gfx_ResetRenderStates(s32 partial)
 
     if (partial == 0) {
         Gs_SetState(RS_COLOR, 0);
-        Gs_SetState(1, 0x200);
-        Gs_SetState(0x15, 2);
+        Gs_SetState(1, 512);
+        Gs_SetState(21, 2);
         Gs_SetState(RS_FOG_COLOR, 0x80FFFFFF);
         Gs_SetState(RS_FOG_NEAR, *(u32 *)&fogNear);
         Gs_SetState(RS_FOG_FAR, *(u32 *)&fogFar);
@@ -214,22 +157,22 @@ void Gfx_ResetRenderStates(s32 partial)
     gSysSettings.blendA = 4;
     gSysSettings.blendB = 5;
     gSysSettings.texFilter = 1;
-    gSysSettings.unk3D = 0x80;
-    gSysSettings.boundTex = 0xFFFF; /* none */
+    gSysSettings.unk3D = 128;
+    gSysSettings.boundTex = 65535; /* none */
     gSysSettings.unk3E = 1;
     Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
     Gs_SetState(RS_TEX_FILTER, 0);
-    Gs_SetState(0xD, 0);
+    Gs_SetState(RS_BLEND_OP, RF_BLEND_OP_ADD);
     Gs_SetState(RS_ALPHA_REF, 0);
 }
 
-/* Sets render state 0xD (which of Gs_SetAlpha's tables RS_BLEND reads)
- * from gBlendOps, when the index changes. */
+/* Sets RS_BLEND_OP (which of Gs_SetAlpha's tables RS_BLEND reads)
+ * from gBlendOps (GFX_BLEND_OP_*), when the index changes. */
 void Gfx_SetBlendOp(s32 opIndex)
 {
     if (gSysSettings.blendOp != opIndex) {
         gSysSettings.blendOp = opIndex;
-        Gs_SetState(0xD, gBlendOps[opIndex]);
+        Gs_SetState(RS_BLEND_OP, gBlendOps[opIndex]);
     }
 }
 
@@ -237,9 +180,9 @@ void Gfx_SetBlendOp(s32 opIndex)
  * entries) and the single lists of the stage, the sky and the text. */
 void FreeList_InitAll(void)
 {
-    FreeList_Init(0x40, gDrawOtSorted);
-    FreeList_Init(0x20, gDrawOt32);
-    FreeList_Init(0x10, gDrawOtText3);
+    FreeList_Init(64, gDrawOtSorted);
+    FreeList_Init(32, gDrawOt32);
+    FreeList_Init(16, gDrawOtText3);
     FreeList_Init(8, gDrawOt8);
     FreeList_Init(1, gDrawListStage);
     FreeList_Init(1, gDrawListText0b);
@@ -369,7 +312,7 @@ void Text_DrawLinesColored(s16 x, s16 y, char **lines, s16 dy)
  * digits; dst is left alone for another kind. */
 void Text_FormatVar(void *dst, s16 kind)
 {
-    char buf[0x80];
+    char buf[128];
 
     switch (kind) {
     case TEXT_VAR_CARD_SLOT:
@@ -395,7 +338,7 @@ void Text_AddIcon(s16 x, s16 y, s16 size, s16 kind)
         gTextIcons[layer][count].y = y;
         gTextIcons[layer][count].size = size;
         gTextIcons[layer][count].kind = kind;
-        gTextIcons[layer][count].alpha = 0xFF;
+        gTextIcons[layer][count].alpha = 255;
         gTextIconCount[layer]++;
     }
 }
@@ -420,7 +363,7 @@ void Text_AddIcon(s16 x, s16 y, s16 size, s16 kind)
  */
 char *Text_ParseCode(char *text, s16 *code, s16 mode)
 {
-    char buf[0x80];
+    char buf[128];
     s16 num;
 
     *code = 0;
@@ -631,7 +574,7 @@ void Text_PrintCodes(s16 max, const char *fmt, ...)
                 case TEXT_CODE_COLOR:
                     /* ~C00-~C15: the font's colours; ~C16 on: gTextColors from its 0x10th */
                     color = (s16)(codeValue & TEXT_CODE_ARG);
-                    if (color >= 0x10) {
+                    if (color >= 16) {
                         color += TEXT_COLOR_RGB;
                     }
                     Text_SetColor(color);
@@ -735,13 +678,13 @@ void Text_DrawShadow(s16 x, s16 y, s16 shadowColor, s16 color, char *text)
         shadowY = 2;
         width = Font_GetAdvance();
         height = Font_GetAdvance();
-        if (width >= 0x18) {
+        if (width >= 24) {
             shadowX++;
         }
-        if (height >= 0x18) {
+        if (height >= 24) {
             shadowY += 2;
         }
-        if (height > 0x14 && height < 0x18) {
+        if (height > 20 && height < 24) {
             shadowY++;
         }
         Font_SetPos(x + shadowX, y + shadowY);
@@ -766,16 +709,16 @@ void Text_DrawShadow2(s16 x, s16 y, s32 shadowColor, s32 color, char *text)
         shadowY = shadowX = 2;
         width = Font_GetAdvance();
         height = Font_GetAdvance();
-        if (width >= 0x18) {
+        if (width >= 24) {
             shadowX += 2;
         }
-        if (width > 0x14 && width < 0x18) {
+        if (width > 20 && width < 24) {
             shadowX++;
         }
-        if (height >= 0x18) {
+        if (height >= 24) {
             shadowY += 2;
         }
-        if (height > 0x14 && height < 0x18) {
+        if (height > 20 && height < 24) {
             shadowY++;
         }
         Font_SetPos(x + shadowX, y + shadowY);
@@ -979,10 +922,10 @@ void Text_DrawAllPages(void)
     Font_DrawAllPages();
 }
 
-/* The text's defaults: spacing 0x14 each way, size 0, colour 0. */
+/* The text's defaults: spacing 20 each way, size 0, colour 0. */
 void Text_SetDefaults(void)
 {
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Text_SetSize(0);
     Text_SetColor(0);
 }
@@ -995,7 +938,7 @@ void Text_Disable(void)
 void MemFile_Load(void)
 {
     gSysSettings.memFile = gMemFileBuf;
-    gSysSettings.memFileSize = LoadCompressedFile(gMemFileBuf, 0x19EB);
+    gSysSettings.memFileSize = LoadCompressedFile(gMemFileBuf, 6635);
 }
 
 /* Key repeat for PAD_UP and PAD_DOWN: returns the buttons pressed, or the
@@ -1087,148 +1030,6 @@ void Text_DrawColored(char *text)
     }
 }
 
-/* Applies the options to the system settings. */
-void Options_Apply(void)
-{
-    SysSettings *sys = &gSysSettings;
-
-    gSysSettings.soundMode = gSysSave.options.soundMode;
-    gSysSettings.musicVolume = gSysSave.options.musicVolume;
-    gSysSettings.seVolume = gSysSave.options.seVolume;
-    gSysSettings.brightness = gSysSave.options.brightness;
-    if (gSysSettings.brightness < 0x38 || sys->brightness > 0xA4) {
-        sys->brightness = 0x80;
-        gSysSave.options.brightness = 0x80;
-    }
-    Sound_ApplyOutputMode(sys->soundMode);
-    Stream_UpdateMaxVol(1);
-    Display_SetOffset(gSysSave.options.screenX, gSysSave.options.screenY);
-}
-
-/* Records the quest to run: its id, its data and whether it came from the
- * quest list. */
-void Quest_SetCurrent(u16 questId, void *questData, s32 fromList)
-{
-    gSysSettings.questData = questData;
-    gSysSettings.questId = questId;
-    gSysSettings.questFromList = fromList;
-}
-
-/* Clears the model, material, bone and primitive pools, the work area,
- * the camera data and the model load buffer. */
-void Gfx_ClearModelBuffers(void)
-{
-    memset(gObjBufBlocks, 0, 0x20000);
-    memset(gMatSets, 0, 0xD200);
-    memset(gMaterials, 0, 0x14000);
-    memset(gBones, 0, 0xC8000);
-    memset(gModels, 0, 0x4000);
-    memset(gPrims, 0, 0x5000);
-    memset(gSysSettings.extraBuf, 0, 0x14000);
-    memset(gWorkArea, 0, 0x18000);
-    memset(gSysSettings.camData, 0, 0x2000);
-    memset(gModelLoadBuf, 0, 0x134000);
-}
-
-/*
- * Resets the game's subsystems for a new scene: the camera, render states,
- * motions, models, textures, objects, players, monsters, areas, draw lists,
- * sound and text, and reloads the two common texture files (slots 4 and 5).
- */
-void Game_ResetSubsystems(void)
-{
-    s16 i;
-
-    FileQueue_Cancel();
-    Camera_Init();
-    Camera_SetPreset(0);
-    Gfx_ResetRenderStates(0);
-    Motion_FreeAll();
-    Model_FreeAll();
-    UnreadFlags_ClearAll();
-    Movie_Stop();
-    ScreenTex_Release();
-    Tex_ReleaseAll();
-    Mem_Compact();
-    Model_ResetAll();
-    Obj_InitAll();
-    Area_ResetStub();
-    Light_Reset();
-    Player_ClearAll();
-    EmSlot_ClearAll();
-    Area_ClearState();
-    EquipPreview_Clear();
-    memset(gAreaSubModels, 0, 0x10);
-    memset(gAreaSubModel, 0, 8);
-    memset(gCommonModels, 0, 0x14);
-    Mem_Compact();
-    Callbacks_Clear();
-    Gs_SetTableColor(0);
-    Tex_LoadFile(4, 0x148, 0);
-    Tex_LoadFile(5, 0x155, 0);
-    FadeA_Reset();
-    FreeList_InitAll();
-    DrawSlot_ResetAll();
-    DrawSlotB_ResetAll();
-    Sound_Silence();
-    Stream_Reset();
-    Vib_StopAll();
-    Sound_ReverbOn();
-    Sound_SetSpuMapPage(0);
-    gScreenCaptureOk = 0;
-    gFieldControl = 1;
-    gSysSettings.clearCapture = 0;
-    gSysBusy = 0;
-    Text_Reset();
-    gSoundLoading = 0;
-    gSysSettings.cardMenuDone = 1;
-    if (Overlay_IsLoaded(OVERLAY_SUB_MAIN) == 1) {
-        Notice_ResetQueue();
-    }
-    for (i = 0; i < MOTIONS_EM_SLOTS; i++) {
-        EmSlot_ForgetModel(i, 2);
-    }
-}
-
-/* Frees every loaded motion (gMotions) and clears its entry. */
-void Motion_FreeAll(void)
-{
-    s32 i;
-    void **motion = gMotions;
-
-    for (i = 0; i < MOTIONS_TOTAL; i++, motion++) {
-        if (*motion != NULL && Mem_FreeRet1(*motion) == 1) {
-            *motion = NULL;
-        }
-    }
-}
-
-/* Frees the common set's motions (those before the players'). */
-void Motion_FreeCommon(void)
-{
-    s32 i;
-    void **motion = gMotions;
-
-    for (i = 0; i < MOTIONS_PLAYER_FIRST; i++, motion++) {
-        if (*motion != NULL && Mem_FreeRet1(*motion) == 1) {
-            *motion = NULL;
-        }
-    }
-}
-
-/* Clears monster slot `slot`'s model and frees its motions. */
-void Motion_FreeEmSlot(s16 slot)
-{
-    s32 end;
-    s16 i;
-
-    EmSlot_ForgetModel(slot, 1);
-    for (i = slot * MOTIONS_PER_EM + MOTIONS_EM_FIRST, end = i + MOTIONS_PER_EM; i < end; i++) {
-        if (gMotions[i] != NULL && Mem_FreeRet1(gMotions[i]) == 1) {
-            gMotions[i] = NULL;
-        }
-    }
-}
 
 /* This file's initialised data. */
 u32 gTextColors[24] = {

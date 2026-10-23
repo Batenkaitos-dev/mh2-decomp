@@ -1,3 +1,4 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libipu, "PsIIlibipu  3000" (.data 0x197FC0), text 0x1130A0-0x113700; asm piece sdk/libipu
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libipu (version 3000, by its id string
+// in .data at 0x197FC0), text 0x1130A0-0x113700; asm piece sdk/libipu.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes

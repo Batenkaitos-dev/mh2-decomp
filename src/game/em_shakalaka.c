@@ -16,88 +16,30 @@
 #include "em_shakalaka.h"
 #include "player.h"
 #include "area.h"
-void EmShakalaka_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
+#include "shadow.h"
+#include "capsule.h"
+#include "sound.h"
+#include "engine_math.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "shakalaka_teostra_bulldrome.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* unit's own declaration: group and state are declared u16; with the definition's s32 the callers (EmKind38_ChangeState, EmShakalaka_ChangeState ...) pass the state without the 16-bit mask the game's code applies */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-s8 QuestEm_Appear(Em *em);
-void EmImpactAttack_CreateAt(Em *em, f32 *pos, s8 kind);
-void EmBomb_Create(Em *, s8);
-void ShakalakaAttack_Create(Em *, s8);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_PlaySeOnFrame(Em *em, s32 frame, s32 se);
-s32 EmList_FindKindNear(Em *em, u16 kind, s32 mode, f32 dist);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmShakalaka_Init(Em *);
-void EmShakalaka_IdleAction(Em *, s32);
-void EmShakalaka_Ambush(Em *);
-void EmShakalaka_Status2Collapse(Em *);
-void EmShakalaka_MoveAction(Em *, s32);
-void EmShakalaka_MoveStraight(Em *, s32);
-void EmShakalaka_WanderHome(Em *, s32);
-void EmShakalaka_RunToFlank(Em *, s8);
-void EmShakalaka_Leap(Em *, s32);
-void EmShakalaka_KnockDown(Em *);
-void EmShakalaka_Die(Em *);
-void EmShakalaka_DieInAir(Em *);
-void EmShakalaka_Reappear(Em *);
-void EmShakalaka_MotionEffects(Em *, EmWork *);
 void EmBodyFx_Spawn(Em *em, s16 kind);
 /* unit's own declaration: the arguments are declared s32; with the definition's u8 and s16 the compiler narrows them before the call, which EmKushala_Stun doesn't do */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-void Vec_RotateY(f32 *v, f32 angle);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Vec_Copy(f32 *out, f32 *in);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
-u8 Player_InCurrentArea(void *obj);
-void Shadow_Spawn(void *obj, s16 type);
-void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
 /* unit's own declaration: the bone is declared s32; with the definition's s16 the compiler narrows it before the call, which the ground-effect functions don't do */
 void Em_BonePos(void *obj, s32 a, f32 *out);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_BeginStatus2(Em *em);
 extern f32 EmShakalaka_NearDist[];
-u16 Rand_Next(s32 stream);
-void QuestEm_Hunted(Em *em);
 extern Vec3f EmShakalaka_LeapVel[];
 extern Vec3f D_008CA324[];
 extern Vec3f D_008CA328[];
-s32 Motion_ReachedFrame(void *, s32, f32);
-void EmMine_Remove(Em *em);
-s32 EmMine_Update(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-void Em_InitParts(Em *em);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void EmShakalaka_RunState(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus2Timer(Em *em);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetPartHp(Em *em, u32 i);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-s32 Quest_GetTime(s32 which);
-void Em_EndStatus5(Em *em);
 /* end of prototypes */
 
 /*
@@ -112,238 +54,238 @@ void EmShakalaka_MotionSounds(Em *em, EmWork *work)
     motion = work->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, SHAK_MOT_IDLE):
-        Em_PlaySeOnFrame(em, 0xC, Sound_RandomSe(0x24, 1, 0x24, 1));
+        Em_PlaySeOnFrame(em, 12, Sound_RandomSe(36, 1, 36, 1));
         break;
     case EM_MOTION_ID(0, SHAK_MOT_IDLE_ACTION_A):
-        Em_PlaySeOnFrame(em, 0x10, 3);
-        Em_PlaySeOnFrame(em, 0x16, 0x1D);
-        Em_PlaySeOnFrame(em, 0x28, 0x12);
+        Em_PlaySeOnFrame(em, 16, 3);
+        Em_PlaySeOnFrame(em, 22, 29);
+        Em_PlaySeOnFrame(em, 40, 18);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_IDLE_ACTION_B):
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0x1C, 3, 0x1C, 2));
-        Em_PlaySeOnFrame(em, 0x40, Sound_RandomSe(0x24, 2, 0x24, 2));
-        Em_PlaySeOnFrame(em, 0x7A, Sound_RandomSe(0x1C, 2, 0x1C, 0));
-        Em_PlaySeOnFrame(em, 0x98, Sound_RandomSe(0x24, 1, 0x24, 1));
+        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(28, 3, 28, 2));
+        Em_PlaySeOnFrame(em, 64, Sound_RandomSe(36, 2, 36, 2));
+        Em_PlaySeOnFrame(em, 122, Sound_RandomSe(28, 2, 28, 0));
+        Em_PlaySeOnFrame(em, 152, Sound_RandomSe(36, 1, 36, 1));
         break;
     case EM_MOTION_ID(0, SHAK_MOT_WALK_B):
         Em_PlaySeOnFrame(em, 8, 1);
-        Em_PlaySeOnFrame(em, 0x18, 2);
-        Em_PlaySeOnFrame(em, 0x28, 1);
-        Em_PlaySeOnFrame(em, 0x38, 2);
-        Em_PlaySeOnFrame(em, 0x46, 1);
-        Em_PlaySeOnFrame(em, 0x58, 2);
-        Em_PlaySeOnFrame(em, 0x64, 1);
-        Em_PlaySeOnFrame(em, 0x72, 2);
-        Em_PlaySeOnFrame(em, 0x2E, Sound_RandomSe(0x1A, 3, 0x1A, 2));
-        Em_PlaySeOnFrame(em, 0x58, Sound_RandomSe(0x27, 3, 0x27, 2));
+        Em_PlaySeOnFrame(em, 24, 2);
+        Em_PlaySeOnFrame(em, 40, 1);
+        Em_PlaySeOnFrame(em, 56, 2);
+        Em_PlaySeOnFrame(em, 70, 1);
+        Em_PlaySeOnFrame(em, 88, 2);
+        Em_PlaySeOnFrame(em, 100, 1);
+        Em_PlaySeOnFrame(em, 114, 2);
+        Em_PlaySeOnFrame(em, 46, Sound_RandomSe(26, 3, 26, 2));
+        Em_PlaySeOnFrame(em, 88, Sound_RandomSe(39, 3, 39, 2));
         break;
-    case EM_MOTION_ID(0, 0x5):
-        Em_PlaySeOnFrame(em, 0xA, 1);
-        Em_PlaySeOnFrame(em, 0x24, 2);
-        Em_PlaySeOnFrame(em, 0x3A, 1);
-        Em_PlaySeOnFrame(em, 0x53, 2);
-        Em_PlaySeOnFrame(em, 0x10, Sound_RandomSe(0x1C, 2, 0x1C, 2));
-        Em_PlaySeOnFrame(em, 0x3C, Sound_RandomSe(0x24, 1, 0x24, 0));
+    case EM_MOTION_ID(0, 5):
+        Em_PlaySeOnFrame(em, 10, 1);
+        Em_PlaySeOnFrame(em, 36, 2);
+        Em_PlaySeOnFrame(em, 58, 1);
+        Em_PlaySeOnFrame(em, 83, 2);
+        Em_PlaySeOnFrame(em, 16, Sound_RandomSe(28, 2, 28, 2));
+        Em_PlaySeOnFrame(em, 60, Sound_RandomSe(36, 1, 36, 0));
         break;
     case EM_MOTION_ID(0, SHAK_MOT_IDLE_ACTION_C):
         Em_PlaySeOnFrame(em, 8, 0);
-        Em_PlaySeOnFrame(em, 0x1C, 0);
+        Em_PlaySeOnFrame(em, 28, 0);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_MOVE_ACTION_A):
         Em_PlaySeOnFrame(em, 8, 3);
-        Em_PlaySeOnFrame(em, 0x10, 0x26);
-        Em_PlaySeOnFrame(em, 0x1A, 1);
-        Em_PlaySeOnFrame(em, 0x1E, 2);
-        Em_PlaySeOnFrame(em, 0x2E, 1);
-        Em_PlaySeOnFrame(em, 0x3E, 2);
+        Em_PlaySeOnFrame(em, 16, 38);
+        Em_PlaySeOnFrame(em, 26, 1);
+        Em_PlaySeOnFrame(em, 30, 2);
+        Em_PlaySeOnFrame(em, 46, 1);
+        Em_PlaySeOnFrame(em, 62, 2);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_MOVE_ACTION_B):
         Em_PlaySeOnFrame(em, 8, 3);
-        Em_PlaySeOnFrame(em, 0xC, 0x26);
-        Em_PlaySeOnFrame(em, 0x1A, 1);
-        Em_PlaySeOnFrame(em, 0x1E, 2);
-        Em_PlaySeOnFrame(em, 0x2E, 1);
-        Em_PlaySeOnFrame(em, 0x3E, 2);
+        Em_PlaySeOnFrame(em, 12, 38);
+        Em_PlaySeOnFrame(em, 26, 1);
+        Em_PlaySeOnFrame(em, 30, 2);
+        Em_PlaySeOnFrame(em, 46, 1);
+        Em_PlaySeOnFrame(em, 62, 2);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_IDLE_ACTION_D):
-        Em_PlaySeOnFrame(em, 0xE, 0x14);
-        Em_PlaySeOnFrame(em, 0x32, 0x15);
-        Em_PlaySeOnFrame(em, 0x58, 0x16);
-        Em_PlaySeOnFrame(em, 0x14, 2);
-        Em_PlaySeOnFrame(em, 0xA0, 1);
+        Em_PlaySeOnFrame(em, 14, 20);
+        Em_PlaySeOnFrame(em, 50, 21);
+        Em_PlaySeOnFrame(em, 88, 22);
+        Em_PlaySeOnFrame(em, 20, 2);
+        Em_PlaySeOnFrame(em, 160, 1);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_IDLE_ACTION_E):
-        Em_PlaySeOnFrame(em, 4, 0x1F);
-        Em_PlaySeOnFrame(em, 0x28, 0x20);
-        Em_PlaySeOnFrame(em, 0x4E, 0x21);
-        Em_PlaySeOnFrame(em, 0xC, 2);
-        Em_PlaySeOnFrame(em, 0x14, 1);
+        Em_PlaySeOnFrame(em, 4, 31);
+        Em_PlaySeOnFrame(em, 40, 32);
+        Em_PlaySeOnFrame(em, 78, 33);
+        Em_PlaySeOnFrame(em, 12, 2);
+        Em_PlaySeOnFrame(em, 20, 1);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_IDLE_ACTION_F):
-        Em_PlaySeOnFrame(em, 0x2E, 0x22);
-        Em_PlaySeOnFrame(em, 0x44, 0x23);
-        Em_PlaySeOnFrame(em, 0xE, 2);
-        Em_PlaySeOnFrame(em, 0x14, 1);
+        Em_PlaySeOnFrame(em, 46, 34);
+        Em_PlaySeOnFrame(em, 68, 35);
+        Em_PlaySeOnFrame(em, 14, 2);
+        Em_PlaySeOnFrame(em, 20, 1);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_WALK):
-        Em_PlaySeOnFrame(em, 0xA, 1);
-        Em_PlaySeOnFrame(em, 0x1E, 2);
+        Em_PlaySeOnFrame(em, 10, 1);
+        Em_PlaySeOnFrame(em, 30, 2);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_RUN):
-        Em_PlaySeOnFrame(em, 0xC, 1);
-        Em_PlaySeOnFrame(em, 0x1A, 2);
-        Em_PlaySeOnFrame(em, 0x2A, 1);
-        Em_PlaySeOnFrame(em, 0x38, 2);
-        Em_PlaySeOnFrame(em, 0x44, 1);
-        Em_PlaySeOnFrame(em, 0x52, 2);
-        Em_PlaySeOnFrame(em, 0x5E, 1);
-        Em_PlaySeOnFrame(em, 0x6A, 2);
-        Em_PlaySeOnFrame(em, 0x72, 1);
-        Em_PlaySeOnFrame(em, 0x7E, 2);
-        Em_PlaySeOnFrame(em, 0x12, 5);
-        Em_PlaySeOnFrame(em, 0x32, 6);
-        Em_PlaySeOnFrame(em, 0x52, 5);
-        Em_PlaySeOnFrame(em, 0x72, 6);
-        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(0x2D, 2, 0x2D, 1));
-        Em_PlaySeOnFrame(em, 0x44, Sound_RandomSe(0x2D, 1, 0x2D, 2));
-        Em_PlaySeOnFrame(em, 0x82, Sound_RandomSe(0x2D, 1, 0x2D, 1));
+        Em_PlaySeOnFrame(em, 12, 1);
+        Em_PlaySeOnFrame(em, 26, 2);
+        Em_PlaySeOnFrame(em, 42, 1);
+        Em_PlaySeOnFrame(em, 56, 2);
+        Em_PlaySeOnFrame(em, 68, 1);
+        Em_PlaySeOnFrame(em, 82, 2);
+        Em_PlaySeOnFrame(em, 94, 1);
+        Em_PlaySeOnFrame(em, 106, 2);
+        Em_PlaySeOnFrame(em, 114, 1);
+        Em_PlaySeOnFrame(em, 126, 2);
+        Em_PlaySeOnFrame(em, 18, 5);
+        Em_PlaySeOnFrame(em, 50, 6);
+        Em_PlaySeOnFrame(em, 82, 5);
+        Em_PlaySeOnFrame(em, 114, 6);
+        Em_PlaySeOnFrame(em, 8, Sound_RandomSe(45, 2, 45, 1));
+        Em_PlaySeOnFrame(em, 68, Sound_RandomSe(45, 1, 45, 2));
+        Em_PlaySeOnFrame(em, 130, Sound_RandomSe(45, 1, 45, 1));
         break;
     case EM_MOTION_ID(0, SHAK_MOT_AMBUSH):
-        Em_PlaySeOnFrame(em, 4, 0xB);
-        Em_PlaySeOnFrame(em, 0x20, 0x1E);
-        Em_PlaySeOnFrame(em, 0x24, 7);
-        Em_PlaySeOnFrame(em, 0x44, 0x12);
+        Em_PlaySeOnFrame(em, 4, 11);
+        Em_PlaySeOnFrame(em, 32, 30);
+        Em_PlaySeOnFrame(em, 36, 7);
+        Em_PlaySeOnFrame(em, 68, 18);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_STRIKE):
-        Em_PlaySeOnFrame(em, 8, 0x28);
-        Em_PlaySeOnFrame(em, 0x14, 1);
-        Em_PlaySeOnFrame(em, 0x18, 5);
-        Em_PlaySeOnFrame(em, 0x56, 2);
+        Em_PlaySeOnFrame(em, 8, 40);
+        Em_PlaySeOnFrame(em, 20, 1);
+        Em_PlaySeOnFrame(em, 24, 5);
+        Em_PlaySeOnFrame(em, 86, 2);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_LEAP):
-        Em_PlaySeOnFrame(em, 0xA, 0x29);
-        Em_PlaySeOnFrame(em, 0x3A, Sound_RandomSe(0x2D, 3, 0x31, 2));
-        Em_PlaySeOnFrame(em, 0x18, 5);
-        Em_PlaySeOnFrame(em, 0x2C, 6);
+        Em_PlaySeOnFrame(em, 10, 41);
+        Em_PlaySeOnFrame(em, 58, Sound_RandomSe(45, 3, 49, 2));
+        Em_PlaySeOnFrame(em, 24, 5);
+        Em_PlaySeOnFrame(em, 44, 6);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_LEAP_LAND):
-        Em_PlaySeOnFrame(em, 2, 0x1B);
+        Em_PlaySeOnFrame(em, 2, 27);
         Em_PlaySeOnFrame(em, 6, 9);
-        Em_PlaySeOnFrame(em, 0x1E, 0xA);
-        Em_PlaySeOnFrame(em, 0x6E, 0x11);
+        Em_PlaySeOnFrame(em, 30, 10);
+        Em_PlaySeOnFrame(em, 110, 17);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_BOMB_WINDUP):
-        Em_PlaySeOnFrame(em, 6, 0x17);
-        Em_PlaySeOnFrame(em, 0x10, 0xF);
-        Em_PlaySeOnFrame(em, 0x26, 0xF);
-        Em_PlaySeOnFrame(em, 0x42, 0xF);
-        Em_PlaySeOnFrame(em, 0x5E, 0xF);
-        Em_PlaySeOnFrame(em, 0x7A, 0xF);
+        Em_PlaySeOnFrame(em, 6, 23);
+        Em_PlaySeOnFrame(em, 16, 15);
+        Em_PlaySeOnFrame(em, 38, 15);
+        Em_PlaySeOnFrame(em, 66, 15);
+        Em_PlaySeOnFrame(em, 94, 15);
+        Em_PlaySeOnFrame(em, 122, 15);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_BOMB_THROW):
-        Em_PlaySeOnFrame(em, 0x2C, 0xE);
-        Em_PlaySeOnFrame(em, 0x2C, 0x27);
-        Em_PlaySeOnFrame(em, 0x56, 0x32);
-        Em_PlaySeOnFrame(em, 0x5A, 0xD);
-        Em_PlaySeOnFrame(em, 0x70, 0x12);
+        Em_PlaySeOnFrame(em, 44, 14);
+        Em_PlaySeOnFrame(em, 44, 39);
+        Em_PlaySeOnFrame(em, 86, 50);
+        Em_PlaySeOnFrame(em, 90, 13);
+        Em_PlaySeOnFrame(em, 112, 18);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_JUMP_UP):
-        Em_PlaySeOnFrame(em, 2, 0x28);
+        Em_PlaySeOnFrame(em, 2, 40);
         Em_PlaySeOnFrame(em, 8, 5);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_JUMP_FALL):
-        Em_PlaySeOnFrame(em, 2, 0x2A);
+        Em_PlaySeOnFrame(em, 2, 42);
         Em_PlaySeOnFrame(em, 4, 6);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_JUMP_LAND):
         Em_PlaySeOnFrame(em, 2, 8);
-        Em_PlaySeOnFrame(em, 4, 0x12);
-        Em_PlaySeOnFrame(em, 0x38, 0x17);
-        Em_PlaySeOnFrame(em, 0x62, 0x18);
-        Em_PlaySeOnFrame(em, 0x64, 7);
+        Em_PlaySeOnFrame(em, 4, 18);
+        Em_PlaySeOnFrame(em, 56, 23);
+        Em_PlaySeOnFrame(em, 98, 24);
+        Em_PlaySeOnFrame(em, 100, 7);
         break;
-    case EM_MOTION_ID(0, 0x1F):
+    case EM_MOTION_ID(0, 31):
         Em_PlaySeOnFrame(em, 6, 1);
-        Em_PlaySeOnFrame(em, 0x18, 2);
-        Em_PlaySeOnFrame(em, 0x28, 1);
-        Em_PlaySeOnFrame(em, 0x3A, 2);
-        Em_PlaySeOnFrame(em, 0x46, 1);
-        Em_PlaySeOnFrame(em, 0x58, 2);
-        Em_PlaySeOnFrame(em, 0x64, 1);
-        Em_PlaySeOnFrame(em, 0x72, 2);
-        Em_PlaySeOnFrame(em, 0x7E, 1);
-        Em_PlaySeOnFrame(em, 0x20, Sound_RandomSe(0x30, 3, 0x30, 2));
-        Em_PlaySeOnFrame(em, 0x56, Sound_RandomSe(0x1A, 1, 0x1A, 2));
+        Em_PlaySeOnFrame(em, 24, 2);
+        Em_PlaySeOnFrame(em, 40, 1);
+        Em_PlaySeOnFrame(em, 58, 2);
+        Em_PlaySeOnFrame(em, 70, 1);
+        Em_PlaySeOnFrame(em, 88, 2);
+        Em_PlaySeOnFrame(em, 100, 1);
+        Em_PlaySeOnFrame(em, 114, 2);
+        Em_PlaySeOnFrame(em, 126, 1);
+        Em_PlaySeOnFrame(em, 32, Sound_RandomSe(48, 3, 48, 2));
+        Em_PlaySeOnFrame(em, 86, Sound_RandomSe(26, 1, 26, 2));
         break;
     case EM_MOTION_ID(0, SHAK_MOT_FLINCH):
-        Em_PlaySeOnFrame(em, 8, 0x1B);
-        Em_PlaySeOnFrame(em, 0x16, 1);
-        Em_PlaySeOnFrame(em, 0x22, 2);
-        Em_PlaySeOnFrame(em, 0x46, 0x24);
+        Em_PlaySeOnFrame(em, 8, 27);
+        Em_PlaySeOnFrame(em, 22, 1);
+        Em_PlaySeOnFrame(em, 34, 2);
+        Em_PlaySeOnFrame(em, 70, 36);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_KNOCK_DOWN):
-        Em_PlaySeOnFrame(em, 2, 0x2F);
-        Em_PlaySeOnFrame(em, 0x12, 0x10);
-        Em_PlaySeOnFrame(em, 0x38, 4);
-        Em_PlaySeOnFrame(em, 0x58, 0x10);
-        Em_PlaySeOnFrame(em, 0x74, 0xA);
+        Em_PlaySeOnFrame(em, 2, 47);
+        Em_PlaySeOnFrame(em, 18, 16);
+        Em_PlaySeOnFrame(em, 56, 4);
+        Em_PlaySeOnFrame(em, 88, 16);
+        Em_PlaySeOnFrame(em, 116, 10);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_GET_UP):
         Em_PlaySeOnFrame(em, 2, 4);
-        Em_PlaySeOnFrame(em, 0x1E, 0x17);
-        Em_PlaySeOnFrame(em, 0x26, 3);
-        Em_PlaySeOnFrame(em, 0x32, 0x12);
+        Em_PlaySeOnFrame(em, 30, 23);
+        Em_PlaySeOnFrame(em, 38, 3);
+        Em_PlaySeOnFrame(em, 50, 18);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_RECOVER):
-        Em_PlaySeOnFrame(em, 0x1A, 0x13);
-        Em_PlaySeOnFrame(em, 0x24, 4);
-        Em_PlaySeOnFrame(em, 0x96, 0x24);
-        Em_PlaySeOnFrame(em, 0x50, 1);
-        Em_PlaySeOnFrame(em, 0x60, 2);
-        Em_PlaySeOnFrame(em, 0x76, 1);
-        Em_PlaySeOnFrame(em, 0x90, 2);
+        Em_PlaySeOnFrame(em, 26, 19);
+        Em_PlaySeOnFrame(em, 36, 4);
+        Em_PlaySeOnFrame(em, 150, 36);
+        Em_PlaySeOnFrame(em, 80, 1);
+        Em_PlaySeOnFrame(em, 96, 2);
+        Em_PlaySeOnFrame(em, 118, 1);
+        Em_PlaySeOnFrame(em, 144, 2);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_STATUS4):
-        Em_PlaySeOnFrame(em, 4, 0x19);
-        Em_PlaySeOnFrame(em, 0x64, Sound_RandomSe(0x19, 2, 0x19, 2));
+        Em_PlaySeOnFrame(em, 4, 25);
+        Em_PlaySeOnFrame(em, 100, Sound_RandomSe(25, 2, 25, 2));
         break;
     case EM_MOTION_ID(0, SHAK_MOT_SHAKE_OFF):
-        Em_PlaySeOnFrame(em, 6, 0x1A);
-        Em_PlaySeOnFrame(em, 0xC, 0x13);
-        Em_PlaySeOnFrame(em, 0x2E, 0x11);
+        Em_PlaySeOnFrame(em, 6, 26);
+        Em_PlaySeOnFrame(em, 12, 19);
+        Em_PlaySeOnFrame(em, 46, 17);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_COLLAPSE):
-        Em_PlaySeOnFrame(em, 0xC, 0x1D);
-        Em_PlaySeOnFrame(em, 0x78, 0x1D);
-        Em_PlaySeOnFrame(em, 0xCA, 0x10);
-        Em_PlaySeOnFrame(em, 0xE6, 0x11);
+        Em_PlaySeOnFrame(em, 12, 29);
+        Em_PlaySeOnFrame(em, 120, 29);
+        Em_PlaySeOnFrame(em, 202, 16);
+        Em_PlaySeOnFrame(em, 230, 17);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_DIE):
-        Em_PlaySeOnFrame(em, 0xA, 0);
-        Em_PlaySeOnFrame(em, 0x1C, 0);
-        Em_PlaySeOnFrame(em, 0x2A, 0);
-        Em_PlaySeOnFrame(em, 0x3E, 0);
-        Em_PlaySeOnFrame(em, 0x4A, 0);
-        Em_PlaySeOnFrame(em, 0x5C, 0);
-        Em_PlaySeOnFrame(em, 0x68, 0);
-        Em_PlaySeOnFrame(em, 0x76, 0);
-        Em_PlaySeOnFrame(em, 0x80, 0);
-        Em_PlaySeOnFrame(em, 0x8C, 0);
-        Em_PlaySeOnFrame(em, 0x96, 0);
-        Em_PlaySeOnFrame(em, 0xA2, 0);
-        Em_PlaySeOnFrame(em, 0xAE, 0);
-        Em_PlaySeOnFrame(em, 0xC0, 3);
-        Em_PlaySeOnFrame(em, 0xC8, 0x2B);
-        Em_PlaySeOnFrame(em, 0xD6, 0xC);
-        Em_PlaySeOnFrame(em, 0xDE, 0x2C);
+        Em_PlaySeOnFrame(em, 10, 0);
+        Em_PlaySeOnFrame(em, 28, 0);
+        Em_PlaySeOnFrame(em, 42, 0);
+        Em_PlaySeOnFrame(em, 62, 0);
+        Em_PlaySeOnFrame(em, 74, 0);
+        Em_PlaySeOnFrame(em, 92, 0);
+        Em_PlaySeOnFrame(em, 104, 0);
+        Em_PlaySeOnFrame(em, 118, 0);
+        Em_PlaySeOnFrame(em, 128, 0);
+        Em_PlaySeOnFrame(em, 140, 0);
+        Em_PlaySeOnFrame(em, 150, 0);
+        Em_PlaySeOnFrame(em, 162, 0);
+        Em_PlaySeOnFrame(em, 174, 0);
+        Em_PlaySeOnFrame(em, 192, 3);
+        Em_PlaySeOnFrame(em, 200, 43);
+        Em_PlaySeOnFrame(em, 214, 12);
+        Em_PlaySeOnFrame(em, 222, 44);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_FALL):
-        Em_PlaySeOnFrame(em, 4, 0x2E);
+        Em_PlaySeOnFrame(em, 4, 46);
         break;
     case EM_MOTION_ID(0, SHAK_MOT_FALL_LAND):
-        Em_PlaySeOnFrame(em, 2, 0x10);
-        Em_PlaySeOnFrame(em, 0xE, 0x2F);
-        Em_PlaySeOnFrame(em, 0x18, 0xA);
+        Em_PlaySeOnFrame(em, 2, 16);
+        Em_PlaySeOnFrame(em, 14, 47);
+        Em_PlaySeOnFrame(em, 24, 10);
         break;
     }
 }
@@ -475,12 +417,12 @@ void EmShakalaka_ShortenMoveIfTargetLost(Em *em)
 {
     s8 lostTarget;
 
-    if (em->timer > 0xF) {
+    if (em->timer > 15) {
         lostTarget = em->targetNo;
         if (lostTarget == -1) {
-            em->timer = 0xF;
+            em->timer = 15;
         } else if (em->area != ((Player *) &gPlayers[lostTarget])->area) {
-            em->timer = 0xF;
+            em->timer = 15;
         }
     }
 }
@@ -632,7 +574,7 @@ void EmShakalaka_IdleAction(Em *em, s32 variant)
             break;
         case 2:
             Em_SetMotion(em, SHAK_MOT_IDLE_ACTION_C, 0, 0);
-            em->timer = 0x5A;
+            em->timer = 90;
             break;
         }
         break;
@@ -716,7 +658,7 @@ void EmShakalaka_Ambush(Em *em)
     em->hideShadowHold = 2;
     em->hideShadow = 2;
     em->stateArmor = 1;
-    em->noPushTimer = 0xA;
+    em->noPushTimer = 10;
     em->senseDelay = 5;
     switch (em->step) {
     case 0:
@@ -726,8 +668,8 @@ void EmShakalaka_Ambush(Em *em)
     case 1:
         player = gPlayers;
         if (em->spawnParam == 2) {
-            em->noHitTimer = 0xA;
-            em->noPushTimer = 0xA;
+            em->noHitTimer = 10;
+            em->noPushTimer = 10;
             break;
         }
         for (i = 0; i < 4; i++, player++) {
@@ -766,7 +708,7 @@ void EmShakalaka_Status2Collapse(Em *em)
         pos[2] = 10.0f;
         pos[0] = 0.0f;
         pos[1] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0xA, pos, 0.6f);
+        Em_SpawnLyingPuffs(em, SHAK_BONE_BREATH, pos, 0.6f);
         if (--em->timer <= 0) {
             em->step++;
             EmShakalaka_ChangeState(em, EM_GROUP_IDLE, SHAK_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
@@ -874,13 +816,13 @@ void EmShakalaka_MoveToGoal(Em *em, s32 variant)
     case 0:
         em->step++;
         k = variant & 0xFF;
-        em->timer = 0x12C;
+        em->timer = 300;
         switch (k) {
         case 6:
-            em->timer = 0xD2;
+            em->timer = 210;
             Em_SetMotion(em, SHAK_MOT_WALK, 0, 0);
             break;
-        case 0x0:
+        case 0:
         default:
             Em_SetMotion(em, SHAK_MOT_WALK, 0, 0);
             break;
@@ -894,7 +836,7 @@ void EmShakalaka_MoveToGoal(Em *em, s32 variant)
             break;
         case 3:
             Em_SetMotion(em, SHAK_MOT_RUN, 0, 0);
-            em->speedBonus = 0x32;
+            em->speedBonus = 50;
         }
         break;
     case 1:
@@ -918,7 +860,7 @@ void EmShakalaka_MoveToGoal(Em *em, s32 variant)
             break;
         }
         em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-        Angle_StepToward(&em->rotY, &em->targetAngle, 0x800);
+        Angle_StepToward(&em->rotY, &em->targetAngle, ANGLE_TURN / 32);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         EmShakalaka_ShortenMoveIfTargetLost(em);
         break;
@@ -957,7 +899,7 @@ void EmShakalaka_MoveAction(Em *em, s32 variant)
             }
         } else {
             em->targetAngle = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
-            Angle_StepToward(&em->rotY, &em->targetAngle, 0x800);
+            Angle_StepToward(&em->rotY, &em->targetAngle, ANGLE_TURN / 32);
             Mtx_FromAnglesXYZ((s32 *) &em->rotX, (f32 *) em->rotMtx);
             EmShakalaka_ShortenMoveIfTargetLost(em);
         }
@@ -979,7 +921,7 @@ void EmShakalaka_TurnInPlace(Em *em)
         Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
-        if (Angle_StepToward(&em->rotY, &em->targetAngle, 0x800) < 0x800) {
+        if (Angle_StepToward(&em->rotY, &em->targetAngle, ANGLE_TURN / 32) < 0x800) {
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmShakalaka_EndState(em);
         }
@@ -997,7 +939,7 @@ void EmShakalaka_MoveStraight(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x12C;
+        em->timer = 300;
         switch (variant & 0xFF) {
         case 0:
         default:
@@ -1013,7 +955,7 @@ void EmShakalaka_MoveStraight(Em *em, s32 variant)
         if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
             EmShakalaka_EndState(em);
         } else {
-            Angle_StepToward(&em->rotY, &em->targetAngle, 0x800);
+            Angle_StepToward(&em->rotY, &em->targetAngle, ANGLE_TURN / 32);
             Mtx_FromAnglesXYZ((s32 *) &em->rotX, (f32 *) em->rotMtx);
         }
         break;
@@ -1028,7 +970,7 @@ void EmShakalaka_WanderHome(Em *em, s32 variant)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
+        em->timer = (em->stateRand & 0x7F) + 120;
         switch (variant & 0xFF) {
         case 0:
         default:
@@ -1070,7 +1012,7 @@ void EmShakalaka_RunToFlank(Em *em, s8 variant)
         em->timer = 150;
         Em_SetMotion(em, SHAK_MOT_RUN, 0, 0);
         if (variant & 1) {
-            em->speedBonus = 0x32;
+            em->speedBonus = 50;
         }
         break;
     case 1:
@@ -1089,7 +1031,7 @@ void EmShakalaka_RunToFlank(Em *em, s8 variant)
             EmShakalaka_EndState(em);
         } else {
             em->targetAngle = Math_AngleXZ(&em->posX, pos) & 0xFFFF;
-            Angle_StepToward(&em->rotY, &em->targetAngle, 0x800);
+            Angle_StepToward(&em->rotY, &em->targetAngle, ANGLE_TURN / 32);
             Mtx_FromAnglesXYZ((s32 *) &em->rotX, (f32 *) em->rotMtx);
             EmShakalaka_ShortenMoveIfTargetLost(em);
         }
@@ -1108,12 +1050,12 @@ void EmShakalaka_DashPastTarget(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x12C;
+        em->timer = 300;
         Em_SetMotion(em, SHAK_MOT_RUN, 0, 0);
         Em_SetSpeedScaled(em, 2, 500.0f, -400.0f);
         break;
     case 1:
-        if ((Em_StepToGoal(em, 0x40, 0) == 1) || (timeLeft = em->timer - 1, em->timer = timeLeft, (timeLeft <= 0))) {
+        if ((Em_StepToGoal(em, 64, 0) == 1) || (timeLeft = em->timer - 1, em->timer = timeLeft, (timeLeft <= 0))) {
             em->step++;
             Em_SetMotion(em, SHAK_MOT_LEAP_LAND, 0, 0);
         }
@@ -1454,7 +1396,7 @@ void EmShakalaka_KnockDown(Em *em)
         em->step++;
         Em_SetMotion(em, SHAK_MOT_KNOCK_DOWN, 0, 0);
         ang[0] = 0;
-        em->rotY = ang[1] = em->hitAngle + 0x8000;
+        em->rotY = ang[1] = em->hitAngle + ANGLE_TURN / 2;
         ang[2] = 0;
         Mtx_FromAnglesXYZ((s32 *) ang, unusedMtx);
         Em_RestartScript(em);
@@ -1670,7 +1612,7 @@ void EmShakalaka_Die(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->posY = em->floorY;
         Em_SetMotion(em, SHAK_MOT_DIE, 0, 0);
-        ang[1] = em->hitAngle + 0x8000;
+        ang[1] = em->hitAngle + ANGLE_TURN / 2;
         ang[2] = 0;
         Mtx_FromAnglesXYZ((s32 *) ang, unusedMtx);
         QuestEm_Hunted(em);
@@ -1678,7 +1620,7 @@ void EmShakalaka_Die(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->timer = 0x960;
+            em->timer = 2400;
             if (em->variant == 3) {
                 EmMine_Create(em, 1);
             } else {
@@ -1755,7 +1697,7 @@ void EmShakalaka_DieInAir(Em *em)
         if (em->motion[0].playing == 0) {
             em->step++;
             Em_SetMotion(em, SHAK_MOT_DIE, 0, 0);
-            ang[1] = em->hitAngle + 0x8000;
+            ang[1] = em->hitAngle + ANGLE_TURN / 2;
             ang[2] = 0;
             Mtx_FromAnglesXYZ((s32 *) ang, unusedMtx);
         }
@@ -1763,7 +1705,7 @@ void EmShakalaka_DieInAir(Em *em)
     case 4:
         if (em->motion[0].playing == 0) {
             em->step++;
-            em->timer = 0x960;
+            em->timer = 2400;
             if (em->variant == 3) {
                 EmMine_Create(em, 1);
             } else {
@@ -2026,7 +1968,7 @@ void EmShakalaka_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, SHAK_MOT_MOVE_ACTION_A):
     case EM_MOTION_ID(0, SHAK_MOT_MOVE_ACTION_B):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 1, 0x14, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_DUST, 20, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_STRIKE):
@@ -2044,18 +1986,18 @@ void EmShakalaka_MotionEffects(Em *em, EmWork *work)
             ShakalakaAttack_Create(em, 5);
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 1, 0x14, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_DUST, 20, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 70.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 1, 4, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_DUST, 4, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_LEAP_LAND):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 0xA, 0x14, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_BREATH, 20, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 0xA, 4, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_BREATH, 4, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_JUMP_LAND):
@@ -2063,34 +2005,34 @@ void EmShakalaka_MotionEffects(Em *em, EmWork *work)
             forwardOfs[0] = 0.0f;
             forwardOfs[1] = 0.0f;
             forwardOfs[2] = 55.0f * em->scaleZ;
-            EmShakalaka_SpawnGroundEffectOffset(em, 1, 0x28, forwardOfs, 0.2f);
-            EmShakalaka_SpawnGroundEffectOffset(em, 1, 0xE, forwardOfs, 0.4f);
+            EmShakalaka_SpawnGroundEffectOffset(em, SHAK_BONE_DUST, 40, forwardOfs, 0.2f);
+            EmShakalaka_SpawnGroundEffectOffset(em, SHAK_BONE_DUST, 14, forwardOfs, 0.4f);
             Vec_RotateY(forwardOfs, (6.2831855f * (f32) em->rotY) / 65536.0f);
-            Em_BonePos(em, 1, pos);
+            Em_BonePos(em, SHAK_BONE_DUST, pos);
             pos[1] = em->floorY;
             pos[0] += forwardOfs[0];
             pos[1] += forwardOfs[1];
             pos[2] += forwardOfs[2];
-            AttackBurst_CreateAtScaled(pos, *(u16 *) &em->rotY, 0xA, 0.2f * em->scaleX);
-            EmImpactAttack_CreateAt(em, (f32 *) pos, 0xD);
+            AttackBurst_CreateAtScaled(pos, *(u16 *) &em->rotY, 10, 0.2f * em->scaleX);
+            EmImpactAttack_CreateAt(em, (f32 *) pos, 13);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_KNOCK_DOWN):
         if ((EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0)) {
-            EmShakalaka_SpawnGroundEffect(em, 1, 0x14, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_DUST, 20, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 96.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 1, 4, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_DUST, 4, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_SHAKE_OFF):
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 0xA, 4, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_BREATH, 4, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_COLLAPSE):
         if (EmMotion_PassedFrameScaled(em, 206.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 0xA, 4, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_BREATH, 4, 2.0f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_DIE):
@@ -2098,18 +2040,18 @@ void EmShakalaka_MotionEffects(Em *em, EmWork *work)
             forwardOfs[0] = 0.0f;
             forwardOfs[1] = 0.0f;
             forwardOfs[2] = 55.0f * em->scaleZ;
-            EmShakalaka_SpawnGroundEffectOffset(em, 1, 4, forwardOfs, 2.0f);
+            EmShakalaka_SpawnGroundEffectOffset(em, SHAK_BONE_DUST, 4, forwardOfs, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 218.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 0xA, 7, 0.5f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_BREATH, 7, 0.5f);
         }
         break;
     case EM_MOTION_ID(0, SHAK_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 3, 4, 2.0f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_FALL_DUST, 4, 2.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) != 0) {
-            EmShakalaka_SpawnGroundEffect(em, 3, 7, 0.5f);
+            EmShakalaka_SpawnGroundEffect(em, SHAK_BONE_FALL_DUST, 7, 0.5f);
         }
         break;
     default:
@@ -2141,7 +2083,7 @@ s32 EmShakalaka_ScriptQuery(Em *em, u8 flag)
 {
     switch (flag) {
     case 1:
-        if (EmList_FindKindNear(em, 0x3B, 1, 2000.0f) == 1) {
+        if (EmList_FindKindNear(em, 59, 1, 2000.0f) == 1) {
             return 1;
         }
         break;
@@ -2149,10 +2091,10 @@ s32 EmShakalaka_ScriptQuery(Em *em, u8 flag)
     return 0;
 }
 
-/* Creates the effect drawn under the monster (Effect01 type 0). */
-void EmShakalaka_SpawnEffect01(u8 *em)
+/* Slots 0 and 1 of the callback table: spawns the shadow (SHADOW_MODEL). */
+void EmShakalaka_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* An empty hook of the family's table. */
@@ -2168,6 +2110,6 @@ Vec3f EmShakalaka_LeapVel[4] = {
 #include "game/008CA320.inc"
 };
 void *EmShakalaka_Callbacks[8] = {
-    EmShakalaka_SpawnEffect01, EmShakalaka_SpawnEffect01, EmShakalaka_TableNop, EmShakalaka_UpdateMotionEffects,
+    EmShakalaka_SpawnShadow, EmShakalaka_SpawnShadow, EmShakalaka_TableNop, EmShakalaka_UpdateMotionEffects,
     EmShakalaka_ScriptQuery, EmShakalaka_Reinit, NULL, NULL,
 };

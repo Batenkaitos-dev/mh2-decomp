@@ -1,17 +1,14 @@
 /*
- * Stage objects (StageObj, enum StageObjKind), nine families in the game's
- * order:
+ * Stage objects (StageObj, enum StageObjKind), seven families in the
+ * game's order:
  * - ImpactRocks: rocks flung from the great sword's ground impact;
  * - DemonGlow: the glow on the dual swords' blades in demon mode;
  * - ThunderSpark: the Khezu's and the Kirin's electric sparks;
  * - WeaponTrail: the trail a blade leaves as it swings;
  * - EmBodyFx: a monster's glow, cover or prop drawn on its bones (the
- *   Kirin, the Shakalaka, monster kind 0x38, the Yama Tsukami);
+ *   Kirin, the Shakalaka, monster kind 56, the Yama Tsukami);
  * - EmTail: a monster's severable tail, which falls and can be carved;
- * - LaoshanDust: the Lao-Shan Lung's dust clouds;
- * - PlayerHitBurst: a burst on a hunter who was hit;
- * - ItemProp: what an item leaves in the stage, drawn by type (the rest
- *   of the family is with the hit effects).
+ * - LaoshanDust: the Lao-Shan Lung's dust clouds.
  * Each family has a creator, an update that switches on StageObj.state
  * (enum StageObjState: set-up, run, end, free) and a draw callback for its
  * draw slots. Their records (ImpactRock, WeaponTrailBuf ...) and their
@@ -28,107 +25,37 @@
 #include "em_garuga.h"
 #include "em_gravios.h"
 #include "em.h"
+#include "em_shakalaka.h"
 #include "objhead.h"
 #include "objattach.h"
 #include "lobby_vobj.h"
 #include "area.h"
+#include "render_state.h"
+#include "camera.h"
+#include "light.h"
+#include "sound.h"
+#include "text.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "vec_math.h"
+#include "em_chameleos.h"
+#include "em_kind38.h"
 /* The game built this file at optimization level 4. */
 #pragma optimization_level 4
 /* prototypes of callees */
-u8 Player_InCurrentArea(void *obj);
 struct EmHolder;
 /* prototypes */
-s32 EmHolder_CreateMine(struct EmHolder *h, s32 unused, f32 *pos);
-u16 Rand_Next(s32 stream);
-s32 EmChameleos_IsInvisible(Em *);
-void ImpactRocks_Setup(StageObj *fx);
-void ImpactRocks_DrawRock(DrawSlot *node);
-void ImpactRocks_Run(StageObj *fx);
-void ImpactRocks_End(StageObj *fx);
-void ImpactRocks_Free(StageObj *fx);
-void DemonGlow_Setup(StageObj *fx);
-void DemonGlow_Run(StageObj *fx);
-void DemonGlow_End(StageObj *fx);
-void DemonGlow_Free(StageObj *fx);
-void ThunderSpark_Setup(StageObj *fx);
-void ThunderSpark_Run(StageObj *fx);
-void ThunderSpark_End(StageObj *fx);
-void ThunderSpark_Free(StageObj *fx);
-void WeaponTrail_Setup(StageObj *fx);
-void WeaponTrail_Draw(DrawSlot *node);
-void WeaponTrail_Run(StageObj *fx);
-void WeaponTrail_End(StageObj *fx);
-void WeaponTrail_Free(StageObj *fx);
-void EmBodyFx_Setup(StageObj *fx);
-void EmBodyFx_Draw(DrawSlot *node);
 u8 EmBodyFx_CoverMesh(Em *em);
-void Vec_RotateY(f32 *v, f32 angle);
-void EmBodyFx_Run(StageObj *fx);
-void EmBodyFx_End(StageObj *fx);
-void EmBodyFx_Free(StageObj *fx);
-void EmTail_Setup(StageObj *fx);
 void EmTail_SetDropPos(Em *em, StageObj *fx, s16 mode);
-void EmTail_Run(StageObj *fx);
-struct QuestEm *QuestEm_FindForEm(struct Em *em);
-void MinePoint_SetPos(s32 slot, f32 *pos);
-s32 MinePoint_Count(s32 slot);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-void EmTail_Drop(StageObj *fx);
-void EmTail_AddCarvePoint(StageObj *fx);
-void EmTail_End(StageObj *fx);
-void EmTail_Free(StageObj *fx);
-void LaoshanDust_Setup(StageObj *fx);
-void LaoshanDust_Run(StageObj *fx);
-void LaoshanDust_End(StageObj *fx);
-void LaoshanDust_Free(StageObj *fx);
-void PlayerHitBurst_Setup(StageObj *fx);
-void PlayerHitBurst_Run(StageObj *fx);
-void PlayerHitBurst_End(StageObj *fx);
-void PlayerHitBurst_Free(StageObj *fx);
-void ItemProp_Setup(StageObj *o);
-void ItemProp_Run(StageObj *o);
-void ItemProp_SetupMeat(StageObj *o);
-void ItemProp_RunMeat(StageObj *o);
-void ItemProp_DrawMeat(StageObj *);
-void ItemProp_SetupSmoke(StageObj *o);
-void ItemProp_RunSmoke(StageObj *fx);
-void SightBlock_Remove(EmObj *);
-extern u16 ItemProp_SmokeRingSpins[];
-void ItemProp_DrawSmoke(StageObj *fx, DrawSlot *node);
-void ItemProp_SetupBait(StageObj *o);
-void ItemProp_RunBait(StageObj *o);
-void ItemProp_DrawBait(StageObj *fx);
-void ItemProp_SetupDropped(StageObj *o);
-void ItemProp_RunDropped(StageObj *fx);
-void ItemProp_DrawDropped(StageObj *fx, DrawSlot *node);
-void ItemProp_SetupPuffs(StageObj *o);
-void ItemProp_RunPuffs(StageObj *o);
-void ItemProp_DrawPuff(StageObj *o, DrawSlot *node);
-void ItemProp_End(StageObj *o);
-void ItemProp_Free(StageObj *o);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void StageObj_Free(struct StageObj *p);
 void DrawSlot_Free(s32 i);
 void DrawSlotB_Free(s32);
-u16 Area_DayId(u16 id);
-StageObj *WeaponTrail_Create(void *owner, s32 arg1, s32 kind);
 f32 *Em_Bone(void *obj, s32 bone); /* unit's own declaration: declared here as the callers use it, returning the bone's matrix with an s32 bone; with the definition's EmBone *(void *obj, s16 bone), the calls compile differently */
 void Mtx_Copy(f32 *dst, f32 *src);
-void Gfx_SetTexFilter(s32 a);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateY(f32 *m, f32 a);
-s32 Gs_SetState(u8 reg, u32 v);
-void Draw_ApplyStates(u32);
 void Draw_SetBlendFlags(u16 flags);
-s32 Model_Draw(u32 h, s32 flags);
-void Draw_SetDefaultState(void);
 void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-void Vec_Copy(f32 *dst, f32 *src);
 extern s16 DemonGlow_BladeCounts[];
 extern s16 ThunderSpark_PartCounts[];
 extern s16 LaoshanDust_PieceCounts[];
@@ -138,105 +65,47 @@ extern s16 LaoshanDust_PieceEnds[];
 extern s16 LaoshanDust_FirstKey[];
 extern s16 *LaoshanDust_PieceEndLists[];
 extern void *LaoshanDust_Keys[];
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
 extern s16 WeaponTrail_Counts[];
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-void MinePoint_Remove(s32);
-void Vec_Normalize(f32 *);
-f32 Vec_Dot(f32 *a, f32 *b);
-void Vec_Cross(f32 *, f32 *, f32 *);
-void Vec_Sub(f32 *, f32 *, f32 *);
 extern f32 gCamPos;
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
 s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s16 id); /* unit's own declaration: declared with an s16 id (the definition takes an s32): with the definition's type, the set-ups that pass a draw slot number (WeaponTrail_Setup, EmTail_Setup, ItemProp_SetupBait) compile differently */
+DrawSlot *DrawSlot_Get(s16 id); /* unit's own declaration: declared with an s16 id (the definition takes an s32): with the definition's type, the set-ups that pass a draw slot number (WeaponTrail_Setup, EmTail_Setup) compile differently */
 void ObjList_Remove(EmObj *obj);
-void PlayerHitBurst_Draw(DrawSlot *node);
-void Gfx_SetBlend(s32, s32);
-s16 EmSlot_FindKind(s16 k);
-s16 Player_DualSwordIndex(void *obj);
-s32 SightBlock_Add(EmObj *obj);
-void DemonGlow_DrawBlade(DrawSlot *node);
-s32 Obj_InCurrentArea(void *obj);
-void EmTail_Draw(DrawSlot *node);
 s32 EmTail_OwnerInvisible(Em *em);
 s32 EmTail_RootBone(Em *em);
-void LightSet_SetColors(void *obj, s32 n);
-void LightSet_FadeColors(void *obj);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
-void Mtx_SetRotXYZ(f32 *m, f32 x, f32 y, f32 z);
 struct EmBone;
-void Bone_UpdateWorldScaledRoot(struct EmBone *b, f32 *m);
 struct MtxSlot;
-void Bone_StoreMatricesTo(struct MtxSlot *tbl, struct EmBone *b);
-void Bone_StoreMatrices(struct EmBone *b);
-void Mtx_Blend(f32 *dst, f32 *a, f32 *b, f32 wa, f32 wb);
-f32 Vec_Length(f32 *v);
 extern f32 EmBodyFx_ChargeBlink0[];
 extern f32 EmBodyFx_ChargeBlink1[];
 extern f32 EmBodyFx_FlashScaleKeys[];
-extern u8 EmBodyFx_FlashColorKeys[];
+extern ColorKey EmBodyFx_FlashColorKeys[];
 void Key_LerpVec2(f32 *k, f32 *out, f32 t);
-void Mtx_CopyRot(f32 *m, f32 *src);
-void Mtx_RotateX(f32 *m, f32 a);
 extern f32 WeaponTrail_RotWeights[][2];
 extern f32 WeaponTrail_CurveWeights[][3];
 extern s16 WeaponTrail_MeshIdx[];
-void Tex_Prepare(s32 a, s32 b);
-void GmEm_PrepareMeshSet(Em *em, s32 mode, ModelMatSet *sets);
-void MtxSlot_LoadList(s16 *list, struct MtxSlot *tbl);
 extern u8 gBoneMatrixBuf[];
 extern u8 gModelPartLists[];
-extern u8 EmTail_FlyOfsXKeys[];
-extern u8 EmTail_FlyOfsYKeys[];
-extern u8 EmTail_FlyOfsZKeys[];
-extern u8 EmTail_FlyRotKeys[];
+extern FloatKey EmTail_FlyOfsXKeys[];
+extern FloatKey EmTail_FlyOfsYKeys[];
+extern FloatKey EmTail_FlyOfsZKeys[];
+extern Vec3Key EmTail_FlyRotKeys[];
 s16 DrawSlotB_Alloc(void);
-DrawSlot *DrawSlotB_Get(s16 id); /* unit's own declaration: declared with an s16 id (the definition takes an s32): with the definition's type, the set-ups that pass a draw slot number (WeaponTrail_Setup, EmTail_Setup, ItemProp_SetupBait) compile differently */
+DrawSlot *DrawSlotB_Get(s16 id); /* unit's own declaration: declared with an s16 id (the definition takes an s32): with the definition's type, the set-ups that pass a draw slot number (WeaponTrail_Setup, EmTail_Setup) compile differently */
 void FireBlast_CreateOnEm(Em *em, s16 k);
-u16 Mtx_Heading(f32 *m);
-f32 AreaGrid2_GetFloorY(f32 *pos);
 extern DemonGlowPair DemonGlow_OfsLeft[];
 extern DemonGlowPair DemonGlow_OfsRight[];
 extern DemonGlowPair DemonGlow_ScaleLeft[];
 extern DemonGlowPair DemonGlow_ScaleLeftLen[];
 extern DemonGlowPair DemonGlow_ScaleRight[];
 extern DemonGlowPair DemonGlow_ScaleRightLen[];
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_TurnX(f32 *m, f32 a);
-void Mtx_TurnZ(f32 *m, f32 a);
-void Mtx_TurnY(f32 *m, f32 a);
-s32 Motion_ReachedFrame(void *, s32, f32);
 extern ThunderSparkPoint ThunderSpark_BodyPoints[];
-void Effect_GetColor(s32 area, u8 *r, u8 *g, u8 *b, u8 *a);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-void Mtx_Concat3x3(f32 *m, f32 *a);
 extern f32 gCamMatrix[];
 extern f32 gCamYawMtx[];
-void Camera_SetFov(f32 fov);
-void Camera_RestoreFov(void);
-void Mtx_RotateZ(f32 *m, f32 a);
-extern f32 ItemProp_SmokeRingScales[];
-extern u8 ItemProp_SmokeColors[][4];
-extern u8 ItemProp_SmokeColorsG[][4];
-extern u8 ItemProp_SmokeColorsB[][4];
-extern u8 ItemProp_BaitColorsFirst[][4];
-extern u8 ItemProp_BaitColorsFirstG[][4];
-extern u8 ItemProp_BaitColorsFirstB[][4];
-extern u8 ItemProp_BaitColorsSecond[][4];
-extern u8 ItemProp_BaitColorsSecondG[][4];
-extern u8 ItemProp_BaitColorsSecondB[][4];
 extern f32 EmBodyFx_PropOffsets[][3];
 extern f32 EmBodyFx_RingOffsets[][3];
 extern f32 WeaponTrail_DualScalesA[];
 extern f32 WeaponTrail_DualScalesB[];
 void WeaponTrail_GetBladeMatrix(f32 *m, StageObj *fx, Em *em, s16 alt);
-void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
-s32 Sound_PlaySeAtPosChecked(s32, s32, s32, void *, s32, s32);
 void DemonGlow_BladeMatrix(f32 *m, StageObj *fx, Em *em, DemonGlowBlade *seg, s16 kind);
 void DemonGlow_BladeOffset(f32 *out, StageObj *fx, Em *owner, DemonGlowBlade *seg);
 
@@ -249,35 +118,21 @@ extern Vec3f WeaponTrail_DualOffsetsAZ[];
 extern Vec3f WeaponTrail_DualOffsetsB[];
 extern Vec3f WeaponTrail_DualOffsetsBY[];
 extern Vec3f WeaponTrail_DualOffsetsBZ[];
-void WeaponTrail_GetBladeOffset(f32 *out, StageObj *fx, void *obj, s16 alt);
 extern LaoshanDustBone LaoshanDust_Bones[];
-void LaoshanDust_Draw(DrawSlot *node);
 void ThunderSpark_BonePos(f32 *out, Em *em, f32 *ofs, s32 bone);
-void ThunderSpark_DrawPart(DrawSlot *node);
 extern s16 ThunderSpark_Lifetimes[];
 extern s16 ThunderSpark_KeyStart[];
 extern s16 ThunderSpark_KeyStep[];
 extern s16 *ThunderSpark_PartEnds[];
 extern void *ThunderSpark_Keys[];
-void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-f32 AreaGrid2_GetFloorYFiltered(f32 *pos);
-void ThunderSpark_PickBodyPoints(StageObj *fx, ThunderSparkPart *p);
-void ThunderSpark_RestartFanCharge(StageObj *fx, ThunderSparkPart *p);
-void ThunderSpark_RestartKirinCharge(StageObj *fx, ThunderSparkPart *p);
-void ThunderSpark_CreateAt(void *src, u8 k, u8 c, f32 f);
-f32 Math_Sin(f32 x);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (void *obj, s16 bone, f32 *out), the calls in EmTail_SetDropPos compile differently */
 void Em_BonePos(void *obj, s32 bone, f32 *out);
-u8 EmKind38_IsCharging(Em *em);
-extern u8 ThunderSpark_FanChargeColors0[];
-extern u8 ThunderSpark_FanChargeColors1[];
-extern u8 ThunderSpark_FanChargeColors2[];
-extern u8 ThunderSpark_FanChargeColors3[];
-extern u8 *ThunderSpark_FanBurstColors[];
-extern u8 *ThunderSpark_GroundBoltColors[];
-void Mtx_Identity(f32 *m);
-void ThunderSpark_TurnToCamera(f32 *arg0, void *pos);
+extern ColorKey ThunderSpark_FanChargeColors0[];
+extern ColorKey ThunderSpark_FanChargeColors1[];
+extern ColorKey ThunderSpark_FanChargeColors2[];
+extern ColorKey ThunderSpark_FanChargeColors3[];
+extern ColorKey *ThunderSpark_FanBurstColors[];
+extern ColorKey *ThunderSpark_GroundBoltColors[];
 /* end of prototypes */
 
 /*
@@ -394,7 +249,7 @@ void ImpactRocks_Run(StageObj *obj)
             rock->node->pos[0] = rock->pos[0];
             rock->node->pos[1] = rock->pos[1];
             rock->node->pos[2] = rock->pos[2];
-            OT_AddByDepth(gDrawOt32, rock->node, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, rock->node, 32, 0);
         }
     }
 }
@@ -441,11 +296,11 @@ void ImpactRocks_DrawRock(DrawSlot *node)
 
     if (set != NULL && set->active != 0) {
         materials = set->mats;
-        Gfx_SetTexFilter(0);
+        Gfx_SetTexFilter(GFX_TEX_NEAREST);
         Mtx_Translation(mtx, rock->pos[0], rock->pos[1], rock->pos[2]);
         Mtx_RotateXYZ(mtx, (6.2831855f * rock->rot[0]) / 65536.0f, (6.2831855f * rock->rot[1]) / 65536.0f, (6.2831855f * rock->rot[2]) / 65536.0f);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, -1);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_COLOR2, -1);
         if (obj->var2 == IMPACT_ROCKS_MESH_RANDOM) {
             mesh = &set->matSets[rock->mesh] + 32;
         } else if (obj->var2 == IMPACT_ROCKS_MESH_DEBRIS) {
@@ -460,7 +315,7 @@ void ImpactRocks_DrawRock(DrawSlot *node)
             Model_Draw(mesh->id, 0);
         }
         Draw_SetDefaultState();
-        Gfx_SetTexFilter(1);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     }
 }
 
@@ -597,7 +452,7 @@ void DemonGlow_Run(StageObj *obj)
             blade->node->pos[0] = blade->pos[0];
             blade->node->pos[1] = blade->pos[1];
             blade->node->pos[2] = blade->pos[2];
-            OT_AddByDepth(gDrawOtSorted, blade->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, blade->node, 64, 0);
         }
     }
 }
@@ -632,7 +487,7 @@ void DemonGlow_Free(StageObj *obj)
 /*
  * Draw slot callback: mesh 59 of gCommonModels[0] with the blade's scaled
  * bone matrix (DemonGlow_BladeMatrix 1) at the slot's position, tint
- * 0x33FF3333 (faint red), blend flags 2, Gs state 0x6C set to 0 before and
+ * 0x33FF3333 (faint red), blend flags 2, RS_ZWRITE set to 0 before and
  * after; nothing while the player is hidden.
  */
 void DemonGlow_DrawBlade(DrawSlot *node)
@@ -652,10 +507,10 @@ void DemonGlow_DrawBlade(DrawSlot *node)
         materials = set->mats;
         DemonGlow_BladeMatrix(mtx, obj, pl, blade, 1);
         Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         mesh = &set->matSets[59];
-        Gs_SetState(0x6C, 0);
-        Gs_SetState(0x67, 0x33FF3333);
+        Gs_SetState(RS_ZWRITE, 0);
+        Gs_SetState(RS_COLOR2, 0x33FF3333);
         if (mesh != NULL && mesh->id != -1) {
             Gs_SetLightList(materials, mesh);
             Draw_ApplyStates(mesh->flags);
@@ -663,13 +518,13 @@ void DemonGlow_DrawBlade(DrawSlot *node)
             Model_Draw(mesh->id, 0);
         }
         Draw_SetDefaultState();
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
     }
 }
 
 /*
- * The blade's matrix: the left hand bone 0xE (blade 0) or the right 0x12
- * (blade 1, turned half a turn about z); with scaled = 1 also turned a
+ * The blade's matrix: the left hand's PL_BONE_HAND (blade 0) or the right's
+ * PL_BONE_OTHER_HAND (blade 1, turned half a turn about z); with scaled = 1 also turned a
  * quarter turn about x and its x and y axes scaled by the sword's row of
  * DemonGlow_ScaleLeft and DemonGlow_ScaleLeftLen (DemonGlow_ScaleRight and
  * DemonGlow_ScaleRightLen for the right blade).
@@ -684,9 +539,9 @@ void DemonGlow_BladeMatrix(f32 *mtx, StageObj *obj, Em *pl, DemonGlowBlade *blad
     switch (scaled) {
     case 0:
         if (blade->side == 0) {
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, 0xE));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, PL_BONE_HAND));
         } else {
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, 0x12));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, PL_BONE_OTHER_HAND));
         }
         break;
     case 1:
@@ -694,12 +549,12 @@ void DemonGlow_BladeMatrix(f32 *mtx, StageObj *obj, Em *pl, DemonGlowBlade *blad
             scaleX = DemonGlow_ScaleLeft[buf->sword].x;
             scaleY = DemonGlow_ScaleLeftLen[buf->sword].x;
             scaleZ = 1.0f;
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, 0xE));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, PL_BONE_HAND));
         } else {
             scaleX = DemonGlow_ScaleRight[buf->sword].x;
             scaleY = DemonGlow_ScaleRightLen[buf->sword].x;
             scaleZ = 1.0f;
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, 0x12));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(pl, PL_BONE_OTHER_HAND));
             Mtx_TurnZ(mtx, 3.1415927f);
         }
         Mtx_TurnX(mtx, 1.5707964f);
@@ -777,7 +632,7 @@ void ThunderSpark_Update(StageObj *obj)
 
 /*
  * Sets up ThunderSpark_PartCounts[type] parts by type (look, spin, size, start
- * delay, draw list; types 4 and 9 first put pos at the head, bone 0x22) with
+ * delay, draw list; types 4 and 9 first put pos at the head, bone 34) with
  * a draw slot each (ThunderSpark_DrawPart), then runs the first
  * ThunderSpark_Run.
  */
@@ -804,13 +659,13 @@ void ThunderSpark_Setup(StageObj *obj)
         ofs[0] = 0.0f;
         ofs[1] = -25.0f;
         ofs[2] = 100.0f;
-        ThunderSpark_BonePos(obj->pos, em, ofs, 0x22);
+        ThunderSpark_BonePos(obj->pos, em, ofs, 34);
         break;
     case SPARK_RED_KHEZU_DROP:
         ofs[0] = 0.0f;
         ofs[1] = 0.0f;
         ofs[2] = 80.0f;
-        ThunderSpark_BonePos(obj->pos, em, ofs, 0x22);
+        ThunderSpark_BonePos(obj->pos, em, ofs, 34);
         break;
     }
     for (i = 0; i < count; part++, i++) {
@@ -846,12 +701,12 @@ void ThunderSpark_Setup(StageObj *obj)
             part->frame = -2 - i * 2;
             part->rot[2] = Rand_Next(1);
             part->sorted = SPARK_DRAW_SORTED;
-            part->pos[0] = obj->pos[0] + 0.010000001f * ((Rand_Next(1) & 0x3FF) - 0x200);
-            part->pos[1] = obj->pos[1] + 0.010000001f * ((Rand_Next(1) & 0x3FF) - 0x200);
-            part->pos[2] = obj->pos[2] + 0.010000001f * ((Rand_Next(1) & 0x3FF) - 0x200);
+            part->pos[0] = obj->pos[0] + 0.010000001f * ((Rand_Next(1) & 0x3FF) - 512);
+            part->pos[1] = obj->pos[1] + 0.010000001f * ((Rand_Next(1) & 0x3FF) - 512);
+            part->pos[2] = obj->pos[2] + 0.010000001f * ((Rand_Next(1) & 0x3FF) - 512);
             Vec_Copy(part->pos, obj->pos);
             part->scale *= 1.2f - 0.2f * i;
-            part->rise = (Rand_Next(1) & 0x1F) + 0x4B;
+            part->rise = (Rand_Next(1) & 0x1F) + 75;
             break;
         case SPARK_KHEZU_FAN_CHARGE:
             if (i == 4) {
@@ -885,7 +740,7 @@ void ThunderSpark_Setup(StageObj *obj)
                 break;
             case 5:
                 part->frame = -4;
-                part->rot[1] = em->rotY + 0x8000;
+                part->rot[1] = em->rotY + ANGLE_TURN / 2;
                 part->scale *= 0.5f;
                 break;
             }
@@ -1013,7 +868,7 @@ void ThunderSpark_Run(StageObj *obj)
             obj->visible = 0;
             return;
         }
-        if (em->motionId[0] != 0x45A) {
+        if (em->motionId[0] != 1114) {
             obj->state++;
             obj->visible = 0;
             return;
@@ -1021,7 +876,7 @@ void ThunderSpark_Run(StageObj *obj)
         ThunderSpark_PickBodyPoints(obj, part);
         break;
     case SPARK_KHEZU_SHOT_RISE:
-        partEnd = 0x16;
+        partEnd = 22;
         break;
     case SPARK_KHEZU_FAN_CHARGE:
         if (em->active == 0) {
@@ -1029,7 +884,7 @@ void ThunderSpark_Run(StageObj *obj)
             obj->visible = 0;
             return;
         }
-        if (em->motionId[0] != 0x417) {
+        if (em->motionId[0] != 1047) {
             obj->state++;
             obj->visible = 0;
             return;
@@ -1037,11 +892,11 @@ void ThunderSpark_Run(StageObj *obj)
         ofs[0] = 0.0f;
         ofs[1] = -25.0f;
         ofs[2] = 100.0f;
-        ThunderSpark_BonePos(obj->pos, em, ofs, 0x22);
+        ThunderSpark_BonePos(obj->pos, em, ofs, 34);
         break;
     case SPARK_KIRIN_BOLT_GROUND:
         if (obj->timer == life) {
-            PartFx_SpawnAt(obj->pos, 0x1B, 1.0f);
+            PartFx_SpawnAt(obj->pos, 27, 1.0f);
         }
         break;
     case SPARK_KIRIN_CHARGE:
@@ -1050,7 +905,7 @@ void ThunderSpark_Run(StageObj *obj)
             obj->visible = 0;
             return;
         }
-        if (em->motionId[0] != 0x40F) {
+        if (em->motionId[0] != 1039) {
             obj->state++;
             obj->visible = 0;
             return;
@@ -1058,7 +913,7 @@ void ThunderSpark_Run(StageObj *obj)
         ofs[0] = 0.0f;
         ofs[1] = 14.0f;
         ofs[2] = 24.0f;
-        ThunderSpark_BonePos(obj->pos, em, ofs, 0x17);
+        ThunderSpark_BonePos(obj->pos, em, ofs, 23);
         break;
     case SPARK_RED_KHEZU_DROP:
         for (i = 0; i < count; i++) {
@@ -1199,7 +1054,7 @@ void ThunderSpark_Run(StageObj *obj)
                 part->rot[2] = Rand_Next(1);
                 break;
             case 1:
-                part->rot[2] += 0x1000;
+                part->rot[2] += ANGLE_TURN / 16;
                 break;
             }
             break;
@@ -1219,7 +1074,7 @@ void ThunderSpark_Run(StageObj *obj)
             part->alpha = 255.0f * alphaKey;
             switch (part->look) {
             case 0:
-                part->rot[2] += 0x1000;
+                part->rot[2] += ANGLE_TURN / 16;
                 break;
             }
             break;
@@ -1245,7 +1100,7 @@ void ThunderSpark_Run(StageObj *obj)
             if (part->pos[1] <= floorY) {
                 part->pos[1] = floorY;
                 if (em->active != 0 && em->type == obj->var2) {
-                    Em_PlaySeChecked(em, 0x1E, 0, part->pos, 1, 0);
+                    Em_PlaySeChecked(em, 30, 0, part->pos, 1, 0);
                 }
                 ThunderSpark_CreateAt(part->pos, SPARK_KHEZU_SHOT_FLASH, obj->var2, 0.3f * obj->scale);
                 ThunderSpark_CreateAt(part->pos, SPARK_KHEZU_SHOT_RISE, obj->var2, 0.3f * obj->scale);
@@ -1259,9 +1114,9 @@ void ThunderSpark_Run(StageObj *obj)
             part->node->pos[1] = part->pos[1] + ofs[1];
             part->node->pos[2] = part->pos[2] + ofs[2];
             if (part->sorted != SPARK_DRAW_ADD) {
-                OT_AddByDepth(gDrawOtSorted, part->node, 0x40, 0);
+                OT_AddByDepth(gDrawOtSorted, part->node, 64, 0);
             } else {
-                OT_AddByDepth(gDrawOt32, part->node, 0x20, 0);
+                OT_AddByDepth(gDrawOt32, part->node, 32, 0);
             }
         }
     }
@@ -1298,8 +1153,6 @@ void ThunderSpark_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
-s32 Effect_DrawModelAdd(void *list, f32 *v, void *base);
 /*
  * Draw slot callback: one part as a mesh of the kind's part models (nothing
  * when they are not loaded), by type and look: matrix from scale times keyed
@@ -1324,7 +1177,7 @@ void ThunderSpark_DrawPart(DrawSlot *node)
     u16 flags;
     s32 rotOrder;
     u8 facing;
-    u8 *colorKeys;
+    ColorKey *colorKeys;
     s32 rotOrder2;
     u8 alpha;
 
@@ -1347,19 +1200,19 @@ void ThunderSpark_DrawPart(DrawSlot *node)
                 rot[2] = (6.2831855f * part->rot[2]) / 65536.0f;
                 rotOrder = 6;
                 Mtx_Translation(texMtx, 0.0f, 0.046875f * part->frame, 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
-                alpha = 0xFF;
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
+                alpha = 255;
                 facing = 0;
             } else {
                 mesh = models->matSets;
                 flags |= 2;
                 rot[2] = (6.2831855f * part->rot[2]) / 65536.0f;
                 rotOrder = 3;
-                alpha = 0xFF;
+                alpha = 255;
                 if (part->sorted == SPARK_DRAW_SORTED) {
-                    alpha = 0xFF;
+                    alpha = 255;
                 } else {
-                    alpha = 0x80;
+                    alpha = 128;
                     scale[0] *= 0.8f;
                     scale[1] *= 0.8f;
                     scale[2] *= 0.8f;
@@ -1406,7 +1259,7 @@ void ThunderSpark_DrawPart(DrawSlot *node)
                 rot[2] = (6.2831855f * part->rot[2]) / 65536.0f;
                 rotOrder = 3;
                 Mtx_Translation(texMtx, 0.0f, 0.0234375f * part->frame, 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
                 facing = 0;
                 break;
             case 3:
@@ -1471,7 +1324,7 @@ void ThunderSpark_DrawPart(DrawSlot *node)
                 rot[1] = (6.2831855f * part->rot[1]) / 65536.0f;
                 Mtx_FromScaleRotTrans(scale, rot, node->pos, 2, mtx);
                 Mtx_Translation(texMtx, 0.0f, 0.0234375f * part->frame, 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
                 facing = 0;
                 break;
             }
@@ -1512,17 +1365,17 @@ void ThunderSpark_DrawPart(DrawSlot *node)
             color = 0xFFFFFFFF;
             Mtx_FromScaleRotTrans(scale, rot, node->pos, 3, mtx);
             Mtx_Translation(texMtx, 0.0f, 0.0f, 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             goto draw;
         case SPARK_KIRIN_BOLT_GROUND:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             switch (part->look) {
             case 0:
                 mesh = &models->matSets[6];
                 rot[2] = (6.2831855f * part->rot[2]) / 65536.0f;
                 rotOrder2 = 3;
                 Mtx_Translation(texMtx, 0.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
                 break;
             case 1:
                 rotOrder2 = 0;
@@ -1542,7 +1395,7 @@ void ThunderSpark_DrawPart(DrawSlot *node)
             Mtx_FromScaleRotTrans(scale, rot, node->pos, rotOrder2, mtx);
             goto draw;
         case SPARK_KIRIN_CHARGE:
-            Gs_SetState(0x6C, 0);
+            Gs_SetState(RS_ZWRITE, 0);
             switch (part->look) {
             case 0:
                 mesh = models->matSets;
@@ -1552,7 +1405,7 @@ void ThunderSpark_DrawPart(DrawSlot *node)
                 rotOrder2 = 6;
                 facing = 0;
                 Mtx_Translation(texMtx, 0.0f, (0.1875f * part->frame) / 10.0f, 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
                 break;
             default:
                 flags |= 2;
@@ -1560,7 +1413,7 @@ void ThunderSpark_DrawPart(DrawSlot *node)
                 rot[2] = (6.2831855f * part->rot[2]) / 65536.0f;
                 rotOrder2 = 3;
                 Mtx_Translation(texMtx, 0.0f, 0.25f, 0.0f);
-                Gs_SetState(0x19, (s32) texMtx);
+                Gs_SetState(RS_UV_MTX, (s32) texMtx);
                 break;
             }
             color = 0xFFFFFFFF;
@@ -1585,10 +1438,10 @@ void ThunderSpark_DrawPart(DrawSlot *node)
             if (part->sorted != SPARK_DRAW_ADD) {
                 Effect_DrawModel(mesh, mtx, color, flags, materials);
             } else {
-                Gs_SetState(0x67, color);
+                Gs_SetState(RS_COLOR2, color);
                 Effect_DrawModelAdd(mesh, mtx, materials);
             }
-            Gs_SetState(0x6C, 1);
+            Gs_SetState(RS_ZWRITE, 1);
             break;
         }
     }
@@ -1924,11 +1777,10 @@ void WeaponTrail_Run(StageObj *obj)
         }
         if (((Em *)obj->owner)->visible != 0 && (Obj_InCurrentArea(obj->owner) & 0xFF) && buf->node[i] != NULL) {
             Mtx_GetTrans(buf->node[i]->pos, buf->hist[0][i]);
-            OT_AddByDepth(gDrawOtSorted, buf->node[i], 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, buf->node[i], 64, 0);
         }
     }
 }
-
 
 /*
  * Frees the trails' draw slots (DrawSlotB when keep).
@@ -1964,8 +1816,6 @@ void WeaponTrail_Free(StageObj *obj)
    above the flags = 0 stack store (an absolute address may alias the stack store) */
 
 extern u8 gEffectColors;
-extern u8 gEffectColor0Green;
-extern u8 gEffectColor0Blue;
 /*
  * DrawSlot callback: sets the ribbon model's first two bones to the live
  * blade matrix and the rest to blends of the history (rotation by
@@ -2024,7 +1874,7 @@ void WeaponTrail_Draw(DrawSlot *node)
         bonesLeft -= 2;
         hist = (void *) buf->hist[0][node->part];
         /* the length of the z axis (mtx[8] to mtx[10]); written as a byte offset, the address is computed here apart from its later uses, as in the game's code */
-        bladeLen = Vec_Length((f32 *) ((u8 *) mtx + 0x20));
+        bladeLen = Vec_Length((f32 *) ((u8 *) mtx + 32));
         for (seg = 0; seg < 4; seg++) {
             Mtx_Copy(mNew, hist[seg][0]);
             Mtx_Copy(mMid, hist[seg + 1][0]);
@@ -2048,7 +1898,7 @@ void WeaponTrail_Draw(DrawSlot *node)
         }
     done:
         Bone_StoreMatrices(mdl->bones);
-        Gfx_SetTexFilter(1);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
         matSet = &mdl->matSets[WeaponTrail_MeshIdx[obj->type]];
         materials = mdl->mats;
         switch (obj->type) {
@@ -2056,22 +1906,22 @@ void WeaponTrail_Draw(DrawSlot *node)
             red = gEffectColors;
             green = gEffectColor0Green;
             blue = gEffectColor0Blue;
-            alpha = 0xFF;
+            alpha = 255;
             break;
         case WTRAIL_BLADE:
         case WTRAIL_BLADE_B:
         case WTRAIL_BOW:
-            red = 0xFF;
-            green = 0xFF;
-            blue = 0xFF;
-            alpha = 0xFF;
+            red = 255;
+            green = 255;
+            blue = 255;
+            alpha = 255;
             flags |= 2;
             break;
         case WTRAIL_DEMON:
-            red = 0xFF;
-            green = 0x33;
-            alpha = 0xFF;
-            blue = 0x33;
+            red = 255;
+            green = 51;
+            alpha = 255;
+            blue = 51;
             flags |= 2;
             break;
         case WTRAIL_LONG_SWORD:
@@ -2085,8 +1935,8 @@ void WeaponTrail_Draw(DrawSlot *node)
             if (fade > 1.0f) {
                 fade = 1.0f;
             }
-            red = 0xFF;
-            green = 0xFF - (u8) (204.0f * fade);
+            red = 255;
+            green = 255 - (u8) (204.0f * fade);
             blue = green;
             if (gauge < 20) {
                 fade = 0.0f;
@@ -2099,15 +1949,15 @@ void WeaponTrail_Draw(DrawSlot *node)
             alpha = 255.0f * fade;
             break;
         case WTRAIL_LONG_SWORD_SPIRIT:
-            red = 0xFF;
-            green = 0x33;
-            alpha = 0xFF;
-            blue = 0x33;
+            red = 255;
+            green = 51;
+            alpha = 255;
+            blue = 51;
             flags |= 2;
             break;
         }
-        Gs_SetState(0x6C, 0);
-        Gs_SetState(0x67, (alpha << 24) | (red << 16) | (green << 8) | blue);
+        Gs_SetState(RS_ZWRITE, 0);
+        Gs_SetState(RS_COLOR2, (alpha << 24) | (red << 16) | (green << 8) | blue);
         if (matSet != NULL && matSet->id != -1) {
             Gs_SetLightList(materials, matSet);
             Draw_ApplyStates(matSet->flags);
@@ -2115,16 +1965,17 @@ void WeaponTrail_Draw(DrawSlot *node)
             Model_Draw(matSet->id, 0);
         }
         Draw_SetDefaultState();
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
 /*
- * Writes the weapon bone's matrix for trail "part": dual swords: bone 0xE
- * (type 1, or type 3 part 0) or bone 0x12 turned 180 degrees about Z, z axis
- * scaled by the sword's DualScales; others: horn bone 0x12 turned about Y (z
- * x1.5), long sword bone 0xE (z x2.1), else bone 0xE or 0x12 by
- * Player.unk417.
+ * Writes the weapon bone's matrix for trail "part": dual swords:
+ * PL_BONE_HAND (WTRAIL_BLADE, or WTRAIL_DEMON part 0) or PL_BONE_OTHER_HAND
+ * turned 180 degrees about Z, z axis scaled by the sword's DualScales;
+ * others: the bow (WTRAIL_BOW) PL_BONE_OTHER_HAND turned about Y (z x1.5),
+ * the long sword PL_BONE_HAND (z x2.1), else PL_BONE_HAND or
+ * PL_BONE_OTHER_HAND by Player.unk417.
  */
 void WeaponTrail_GetBladeMatrix(f32 *mtx, StageObj *obj, Em *em, s16 part)
 {
@@ -2137,11 +1988,11 @@ void WeaponTrail_GetBladeMatrix(f32 *mtx, StageObj *obj, Em *em, s16 part)
         if (obj->type == WTRAIL_BLADE || (obj->type == WTRAIL_DEMON && part == 0)) {
             xyScale = 1.0f;
             zScale = WeaponTrail_DualScalesA[sword];
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, 0xE));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, PL_BONE_HAND));
         } else {
             xyScale = 1.0f;
             zScale = WeaponTrail_DualScalesB[sword];
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, 0x12));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, PL_BONE_OTHER_HAND));
             Mtx_TurnZ(mtx, 3.1415927f);
         }
         mtx[0] *= xyScale;
@@ -2156,7 +2007,7 @@ void WeaponTrail_GetBladeMatrix(f32 *mtx, StageObj *obj, Em *em, s16 part)
     } else {
         switch (obj->type) {
         case WTRAIL_BOW:
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, 0x12));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, PL_BONE_OTHER_HAND));
             Mtx_TurnY(mtx, 3.1415927f);
             mtx[8] *= 1.5f;
             mtx[9] *= 1.5f;
@@ -2164,16 +2015,16 @@ void WeaponTrail_GetBladeMatrix(f32 *mtx, StageObj *obj, Em *em, s16 part)
             break;
         case WTRAIL_LONG_SWORD:
         case WTRAIL_LONG_SWORD_SPIRIT:
-            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, 0xE));
+            Mtx_Copy(mtx, (f32 *) Em_GetBone(em, PL_BONE_HAND));
             mtx[8] *= 2.1f;
             mtx[9] *= 2.1f;
             mtx[10] *= 2.1f;
             break;
         default:
             if (em->unk417 != 0) {
-                Mtx_Copy(mtx, (f32 *) Em_GetBone(em, 0xE));
+                Mtx_Copy(mtx, (f32 *) Em_GetBone(em, PL_BONE_HAND));
             } else {
-                Mtx_Copy(mtx, (f32 *) Em_GetBone(em, 0x12));
+                Mtx_Copy(mtx, (f32 *) Em_GetBone(em, PL_BONE_OTHER_HAND));
             }
             break;
         }
@@ -2256,8 +2107,8 @@ StageObj *WeaponTrail_Create(void *owner, s32 life, s32 type)
 
 /*
  * WeaponTrail_Create, then lets the trail last into a second motion (angle2
- * = motion2). Seen: Player_MotionEffects (sword and shield motion 0x589 with
- * 0x57E).
+ * = motion2). Seen: Player_MotionEffects (sword and shield motion 1417 with
+ * 1406).
  */
 void WeaponTrail_CreateTwoMotions(Em *pl, s32 life, s32 type, s16 motion2)
 {
@@ -2292,7 +2143,7 @@ void EmBodyFx_Update(StageObj *obj)
 /*
  * Sets the type up: types 2 and 5 allocate three draw slots (type 5 places
  * them around the monster, EmBodyFx_RingOffsets turned by rotY, 70-frame swing,
- * scale 0.7); type 3 picks the area mesh and starts at bone 0xB; type 4
+ * scale 0.7); type 3 picks the area mesh and starts at bone 11; type 4
  * takes mesh 5; types 0, 1, 3, 4 allocate one slot (StageObj.slot), freeing
  * the object if none is free.
  */
@@ -2326,7 +2177,7 @@ void EmBodyFx_Setup(StageObj *obj)
     case EMBODYFX_SHAKALAKA_COVER:
         obj->var2 = EmBodyFx_CoverMesh(em);
         obj->angle2 = 0;
-        Mtx_Copy(buf->m, Em_Bone(em, 0xB));
+        Mtx_Copy(buf->m, Em_Bone(em, SHAK_BONE_PROP));
         Vec_Rotate(ofs, EmBodyFx_PropOffsets[obj->var2], buf->m);
         obj->pos[0] = buf->m[12] + ofs[0];
         obj->pos[1] = buf->m[13] + ofs[1];
@@ -2373,12 +2224,12 @@ void EmBodyFx_Setup(StageObj *obj)
 
 /*
  * Ends when the monster is gone or being freed (taskPhase 3), else runs the
- * type: 0 Kirin's flashes while enraged (sound 0x19, 1 in 4 at bone 2 with a
- * random turn, else at bone 0x17, then a 4-19 frame wait); 1 a pulsing glow
- * at bone 0xD while enraged; 2 the charge glow at bone 2 (three parts; level
- * up while charging; shrink and flash in defeat); 3 the cover on bone 0xB,
+ * type: 0 Kirin's flashes while enraged (sound 25, 1 in 4 at KIRIN_BONE_BODY with a
+ * random turn, else at KIRIN_BONE_BOLT, then a 4-19 frame wait); 1 a pulsing glow
+ * at bone 13 while enraged; 2 the charge glow at bone 2 (three parts; level
+ * up while charging; shrink and flash in defeat); 3 the cover on bone 11,
  * thrown off when the ambush ends, two bounces to the floor, then ends; 4
- * the prop on bone 0xB; 5 the three rings around the monster.
+ * the prop on bone 11; 5 the three rings around the monster.
  */
 void EmBodyFx_Run(StageObj *obj)
 {
@@ -2400,7 +2251,7 @@ void EmBodyFx_Run(StageObj *obj)
         switch (obj->var0) {
         case 0:
             if (em->rage != 0 && --obj->timer <= 0) {
-                Em_PlaySeChecked(em, 0x19, 0, &em->posX, 1, 0);
+                Em_PlaySeChecked(em, 25, 0, &em->posX, 1, 0);
                 if (!(Rand_Next(1) & 3)) {
                     obj->var0 = 1;
                     obj->angle = Rand_Next(1);
@@ -2420,7 +2271,7 @@ void EmBodyFx_Run(StageObj *obj)
             }
             Em_BonePos(em, 2, obj->pos);
             Vec_Copy(obj->node->pos, (f32 *) obj->pos);
-            OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
             break;
         case 2:
             if (++obj->timer >= 12) {
@@ -2428,9 +2279,9 @@ void EmBodyFx_Run(StageObj *obj)
                 obj->timer = (Rand_Next(1) & 0xF) + 4;
                 break;
             }
-            Em_BonePos(em, 0x17, obj->pos);
+            Em_BonePos(em, 23, obj->pos);
             Vec_Copy(obj->node->pos, (f32 *) obj->pos);
-            OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
             break;
         }
         break;
@@ -2438,10 +2289,10 @@ void EmBodyFx_Run(StageObj *obj)
         obj->timer++;
         obj->scale = 1.0f + 0.1f * Math_Sin((6.2831855f * (obj->timer << 10)) / 65536.0f);
         obj->scale *= em->scaleX;
-        Em_BonePos(em, 0xD, obj->pos);
+        Em_BonePos(em, 13, obj->pos);
         Vec_Copy(obj->node->pos, (f32 *) obj->pos);
         if (em->rage != 0) {
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
         }
         break;
     case EMBODYFX_KIND38_CHARGE:
@@ -2478,7 +2329,7 @@ void EmBodyFx_Run(StageObj *obj)
             for (i = 0; i < 3; i++) {
                 if (buf->node[i] != NULL && (i != 2 || obj->var2 != 0)) {
                     Vec_Copy(buf->node[i]->pos, (f32 *) obj->pos);
-                    OT_AddByDepth(gDrawOtSorted, buf->node[i], 0x40, 0);
+                    OT_AddByDepth(gDrawOtSorted, buf->node[i], 64, 0);
                 }
             }
         }
@@ -2487,8 +2338,8 @@ void EmBodyFx_Run(StageObj *obj)
         obj->timer++;
         switch (obj->var0) {
         case 0:
-            if (em->motionId[0] == 0x3F7 || (em->motionId[0] == 0x3F6 && EmMotion_ReachedFrame(em, 0, 32.0f) == 0)) {
-                Mtx_Copy(buf->m, Em_Bone(em, 0xB));
+            if (em->motionId[0] == 1015 || (em->motionId[0] == 1014 && EmMotion_ReachedFrame(em, 0, 32.0f) == 0)) {
+                Mtx_Copy(buf->m, Em_Bone(em, SHAK_BONE_PROP));
                 Vec_Rotate(step, EmBodyFx_PropOffsets[obj->var2], buf->m);
                 obj->pos[0] = buf->m[12] + step[0];
                 obj->pos[1] = buf->m[13] + step[1];
@@ -2502,7 +2353,7 @@ void EmBodyFx_Run(StageObj *obj)
             break;
         case 1:
         case 2:
-            obj->angle2 += 0x1000;
+            obj->angle2 += ANGLE_TURN / 16;
             if (obj->var0 < 2) {
                 step[1] = 25.0f / obj->var0 - 3.5f * obj->timer;
             } else {
@@ -2528,34 +2379,34 @@ void EmBodyFx_Run(StageObj *obj)
         Vec_Copy(obj->node->pos, (f32 *) obj->pos);
         switch (obj->var2) {
         case 3:
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
             break;
         default:
-            OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
             break;
         }
         break;
     case EMBODYFX_SHAKALAKA_PROP:
         obj->timer++;
-        boneMtx = Em_Bone(em, 0xB);
+        boneMtx = Em_Bone(em, SHAK_BONE_PROP);
         Vec_Rotate(step, EmBodyFx_PropOffsets[obj->var2], boneMtx);
         obj->pos[0] = boneMtx[12] + step[0];
         obj->pos[1] = boneMtx[13] + step[1];
         obj->pos[2] = boneMtx[14] + step[2];
         Vec_Copy(obj->node->pos, (f32 *) obj->pos);
         if (em->alpha < 1.0f) {
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
         } else {
-            OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, obj->node, 32, 0);
         }
         break;
     case EMBODYFX_YAMATSUKAMI_RINGS:
         switch (obj->var0) {
         case 0:
-            obj->angle2 += 0x10;
+            obj->angle2 += 16;
             break;
         case 1:
-            obj->angle2 -= 0x10;
+            obj->angle2 -= 16;
             break;
         }
         if (obj->timer-- <= 0) {
@@ -2572,13 +2423,12 @@ void EmBodyFx_Run(StageObj *obj)
                 buf->node[i]->pos[0] += buf->ofs[0];
                 buf->node[i]->pos[1] += buf->ofs[1];
                 buf->node[i]->pos[2] += buf->ofs[2];
-                OT_AddByDepth(gDrawOt32, buf->node[i], 0x20, 0);
+                OT_AddByDepth(gDrawOt32, buf->node[i], 32, 0);
             }
         }
         break;
     }
 }
-
 
 /*
  * Frees the three slots (types 2, 5) or StageObj.slot.
@@ -2693,9 +2543,9 @@ void EmBodyFx_Draw(DrawSlot *node)
             frames = 12;
             matSet = &mdl->matSets[8];
             Mtx_Translation(texMtx, 0.0f, 0.1875f * (obj->timer / 12.0f), 0.0f);
-            Gs_SetState(0x19, (s32) texMtx);
+            Gs_SetState(RS_UV_MTX, (s32) texMtx);
             Mtx_Copy(mtx, Em_Bone(em, 2));
-            Gs_SetState(0x1A, (s32) mtx);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
             if (matSet != NULL) {
                 if (matSet->id != -1) {
                     Gs_SetLightList(materials, matSet);
@@ -2705,13 +2555,13 @@ void EmBodyFx_Draw(DrawSlot *node)
                 Draw_SetDefaultState();
             }
             Mtx_Identity(mtx);
-            Mtx_CopyRot(mtx, Em_Bone(em, 0x17));
+            Mtx_CopyRot(mtx, Em_Bone(em, 23));
             break;
         default:
             return;
         }
         Mtx_Translation(texMtx, 0.0f, 0.1875f * (obj->timer / (f32) frames), 0.0f);
-        Gs_SetState(0x19, (s32) texMtx);
+        Gs_SetState(RS_UV_MTX, (s32) texMtx);
         matSet = &mdl->matSets[obj->var0] - 1;
         break;
     case EMBODYFX_KIRIN_GLOW:
@@ -2735,8 +2585,8 @@ void EmBodyFx_Draw(DrawSlot *node)
             }
             matSet = &mdl->matSets[64];
             scale[0] = scale[1] = scale[2] = EmBodyFx_ChargeBlink0[obj->timer & 1];
-            alpha8 = blue = 0xFF;
-            green = red = 0xA0;
+            alpha8 = blue = 255;
+            green = red = 160;
             spin = 0;
             break;
         case 1:
@@ -2749,7 +2599,7 @@ void EmBodyFx_Draw(DrawSlot *node)
                 fade = level / 15.0f;
             }
             matSet = &mdl->matSets[81];
-            alpha8 = blue = green = red = 0xFF;
+            alpha8 = blue = green = red = 255;
             scale[0] = scale[1] = scale[2] = EmBodyFx_ChargeBlink1[obj->timer & 1];
             spin = obj->timer << 11;
             break;
@@ -2780,7 +2630,7 @@ void EmBodyFx_Draw(DrawSlot *node)
         Mtx_RotateZ(mtx, (6.2831855f * spin) / 65536.0f);
         Mtx_Concat3x3(mtx, gCamMatrix);
         color = blue | ((green << 8) | ((alpha8 << 24) | (red << 16)));
-        Gs_SetState(0x6C, 0);
+        Gs_SetState(RS_ZWRITE, 0);
         break;
     case EMBODYFX_SHAKALAKA_COVER:
         if (obj->var2 == 0) {
@@ -2793,7 +2643,7 @@ void EmBodyFx_Draw(DrawSlot *node)
         color = ((u8) (255.0f * em->alpha) << 24) | 0xFFFFFF;
         break;
     case EMBODYFX_SHAKALAKA_PROP:
-        Mtx_Copy(mtx, Em_Bone(em, 0xB));
+        Mtx_Copy(mtx, Em_Bone(em, SHAK_BONE_PROP));
         matSet = &mdl->matSets[obj->var2] - 1;
         color = ((u8) (255.0f * em->alpha) << 24) | 0xFFFFFF;
         break;
@@ -2834,7 +2684,7 @@ void EmBodyFx_Draw(DrawSlot *node)
         }
         break;
     }
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 /*
@@ -2903,7 +2753,7 @@ void EmBodyFx_Spawn(Em *em, s16 type)
         break;
     case 4:
         nblk = 0;
-        FireBlast_CreateOnEm(em, 0xC);
+        FireBlast_CreateOnEm(em, 12);
         break;
     default:
         nblk = 0;
@@ -2980,7 +2830,7 @@ void EmTail_Setup(StageObj *obj)
 
 /*
  * Sets where the tail lies: mode 0 from the tail bone (position, heading +
- * 0x4000, and in the current area 30 above the floor probed from 100 above),
+ * ANGLE_TURN / 4, and in the current area 30 above the floor probed from 100 above),
  * mode 1 the monster's position and rotY.
  */
 void EmTail_SetDropPos(Em *em, StageObj *obj, s16 from)
@@ -2992,7 +2842,7 @@ void EmTail_SetDropPos(Em *em, StageObj *obj, s16 from)
         bone = em->model->bones;
         bone = &bone[EmTail_RootBone(em) & 0xFF];
         Mtx_GetTrans(obj->pos, bone->world);
-        obj->angle = (Mtx_Heading((f32 *) bone) & 0xFFFF) + 0x4000;
+        obj->angle = (Mtx_Heading((f32 *) bone) & 0xFFFF) + ANGLE_TURN / 4;
         if (gScene.area == obj->angle2) {
             Em_BonePos(em, EmTail_RootBone(em) & 0xFF, pos);
             pos[1] += 100.0f;
@@ -3107,7 +2957,7 @@ void EmTail_Run(StageObj *obj)
                 break;
             default:
                 obj->var1 += 2;
-                if (obj->var1 > 0x54) {
+                if (obj->var1 > 84) {
                     EmTail_AddCarvePoint(obj);
                 }
                 break;
@@ -3123,7 +2973,7 @@ void EmTail_Run(StageObj *obj)
                 break;
             default:
                 obj->var1 += 2;
-                if (obj->var1 > 0x54) {
+                if (obj->var1 > 84) {
                     EmTail_AddCarvePoint(obj);
                 }
                 break;
@@ -3135,7 +2985,7 @@ void EmTail_Run(StageObj *obj)
             }
             break;
         default:
-            if (em->motionId[0] == 0x429 && EmMotion_ReachedFrame(em, 0, 300.0f)) {
+            if (em->motionId[0] == 1065 && EmMotion_ReachedFrame(em, 0, 300.0f)) {
                 EmTail_Drop(obj);
             }
             break;
@@ -3169,9 +3019,9 @@ void EmTail_Run(StageObj *obj)
         obj->node->pos[1] = obj->pos[1];
         obj->node->pos[2] = obj->pos[2];
         if (1.0f == em->alpha) {
-            OT_AddByDepth(gDrawOt32, obj->node, 0x20, 1);
+            OT_AddByDepth(gDrawOt32, obj->node, 32, 1);
         } else {
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 1);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 1);
         }
     }
 }
@@ -3226,7 +3076,7 @@ void EmTail_Draw(DrawSlot *node)
             tailBone += EmTail_RootBone(em) & 0xFF;
             tailBones = em->model->partBones[1];
             if (obj->type == EMTAIL_ON_BODY) {
-                if ((em->type == EM_KIND_KUSHALA_DAORA || em->type == EM_KIND_RUSTED_KUSHALA_DAORA || (u32) (em->type - 0x40) <= 1 || em->type == EM_KIND_CHAMELEOS) && obj->var1 != 0) {
+                if ((em->type == EM_KIND_KUSHALA_DAORA || em->type == EM_KIND_RUSTED_KUSHALA_DAORA || (u32) (em->type - 64) <= 1 || em->type == EM_KIND_CHAMELEOS) && obj->var1 != 0) {
                     Key_LerpFloat((f32 *) EmTail_FlyOfsXKeys, (f32 *) &ofs[0], obj->var1);
                     Key_LerpFloat((f32 *) EmTail_FlyOfsYKeys, (f32 *) &ofs[1], obj->var1);
                     Key_LerpFloat((f32 *) EmTail_FlyOfsZKeys, (f32 *) &ofs[2], obj->var1);
@@ -3256,10 +3106,10 @@ void EmTail_Draw(DrawSlot *node)
             }
             Bone_StoreMatricesTo((struct MtxSlot *) gBoneMatrixBuf, tailBones);
             matSet = &model->matSets[1];
-            Tex_Prepare(0xA, em->modelSlot * 20 + 0xA3);
+            Tex_Prepare(10, em->modelSlot * 20 + 163);
             if (matSet->id != -1) {
                 GmEm_PrepareMeshSet(em, 1, model->matSets);
-                MtxSlot_LoadList((s16 *) (gModelPartLists + em->modelSlot * 0x420 + 0x42), (struct MtxSlot *) gBoneMatrixBuf);
+                MtxSlot_LoadList((s16 *) (gModelPartLists + em->modelSlot * 1056 + 66), (struct MtxSlot *) gBoneMatrixBuf);
                 Draw_ApplyStates(matSet->flags);
                 Model_Draw(matSet->id, 0);
             }
@@ -3269,21 +3119,22 @@ void EmTail_Draw(DrawSlot *node)
 }
 
 /*
- * Returns the monster's tail bone: 0x11 for the Kushala kinds (0x36, 0x3C,
- * 0x40, 0x41) and Chameleos, else 0x2B.
+ * Returns the monster's tail bone: 17 for the Kushala kinds
+ * (EM_KIND_KUSHALA_DAORA, EM_KIND_RUSTED_KUSHALA_DAORA, EM_KIND_LUNASTRA,
+ * EM_KIND_TEOSTRA) and Chameleos (its CHAM_BONE_TAIL_D), else 43.
  */
 s32 EmTail_RootBone(Em *em)
 {
     switch (em->type) {
     default:
-        return 0x2B;
+        return 43;
     case EM_KIND_KUSHALA_DAORA:
     case EM_KIND_RUSTED_KUSHALA_DAORA:
     case EM_KIND_LUNASTRA:
     case EM_KIND_TEOSTRA:
-        return 0x11;
+        return 17;
     case EM_KIND_CHAMELEOS:
-        return 0x11;
+        return 17;
     }
 }
 
@@ -3370,7 +3221,7 @@ void LaoshanDust_Setup(StageObj *obj)
     switch (obj->type) {
     case 0:
         Mtx_Copy(boneMtx, Em_Bone(em, LaoshanDust_Bones[obj->var2].bone));
-        obj->angle = Mtx_Heading(boneMtx) + 0x4000;
+        obj->angle = Mtx_Heading(boneMtx) + ANGLE_TURN / 4;
         obj->pos[0] = boneMtx[12];
         obj->pos[1] = em->floorY;
         obj->pos[2] = boneMtx[14];
@@ -3384,7 +3235,7 @@ void LaoshanDust_Setup(StageObj *obj)
         switch (obj->type) {
         case 0:
             piece->spin = Rand_Next(1);
-            piece->spinSpeed = (Rand_Next(1) & 0xFF) - 0x80;
+            piece->spinSpeed = (Rand_Next(1) & 0xFF) - 128;
             Vec_Copy(piece->base, obj->pos);
             break;
         }
@@ -3471,7 +3322,7 @@ void LaoshanDust_Run(StageObj *obj)
             piece->node->pos[0] = piece->base[0] + ofs[0];
             piece->node->pos[1] = piece->base[1] + ofs[1];
             piece->node->pos[2] = piece->base[2] + ofs[2];
-            OT_AddByDepth(gDrawOtSorted, piece->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, piece->node, 64, 0);
         }
     }
 }
@@ -3554,7 +3405,7 @@ void LaoshanDust_Draw(DrawSlot *node)
 
 /*
  * Creates the dust for monster em when it is in the current area
- * (Player_InCurrentArea): one buffer block, kind 0xA, type k, var2 the bone
+ * (Player_InCurrentArea): one buffer block, STAGEOBJ_KIND_LAOSHAN_DUST, type k, var2 the bone
  * row c, scale f, no node.
  */
 void LaoshanDust_Create(Em *em, u8 type, u8 boneRow, f32 scale)
@@ -3575,959 +3426,7 @@ void LaoshanDust_Create(Em *em, u8 type, u8 boneRow, f32 scale)
     }
 }
 
-/*
- * The update hook: Setup (0), Run (1), End (2), Free (3).
- */
-void PlayerHitBurst_Update(StageObj *obj)
-{
-    switch (obj->state) {
-    case STAGEOBJ_SETUP:
-        PlayerHitBurst_Setup(obj);
-        break;
-    case STAGEOBJ_RUN:
-        PlayerHitBurst_Run(obj);
-        break;
-    case STAGEOBJ_END:
-        PlayerHitBurst_End(obj);
-        break;
-    case STAGEOBJ_FREE:
-        PlayerHitBurst_Free(obj);
-        break;
-    }
-}
-
-/*
- * Moves to Run; draws three random angles into var0, var1, var2 (Rand_Next
- * stream 1) and gets a draw slot (draw PlayerHitBurst_Draw); frees the
- * object when none is free.
- */
-void PlayerHitBurst_Setup(StageObj *obj)
-{
-
-    obj->state++;
-    obj->var0 = 0;
-    obj->visible = 1;
-    obj->draw = 0;
-    obj->timer = 0;
-    obj->var0 = (s32) Rand_Next(1);
-    obj->var1 = (s32) Rand_Next(1);
-    obj->var2 = (s32) Rand_Next(1);
-    obj->slot = DrawSlot_Alloc();
-    if (obj->slot != -1) {
-        obj->node = DrawSlot_Get(obj->slot);
-        obj->node->owner = obj;
-        obj->node->draw = PlayerHitBurst_Draw;
-    } else {
-        PlayerHitBurst_Free(obj);
-        return;
-    }
-}
-
-/*
- * Counts timer; at 11 moves to End; else follows the hunter's bone 10
- * (Em_GetBonePos) and queues the node (gDrawOtSorted).
- */
-void PlayerHitBurst_Run(StageObj *obj)
-{
-    DrawSlot *node = obj->node;
-    Em *pl = obj->owner;
-
-    if (++obj->timer >= 11) {
-        obj->state++;
-    } else {
-        Em_GetBonePos(pl, 10, obj->pos);
-        Vec_Copy(node->pos, (f32 *) obj->pos);
-        OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
-    }
-}
-
-/*
- * Moves to Free and frees the draw slot.
- */
-void PlayerHitBurst_End(StageObj *obj)
-{
-    obj->state++;
-    if (obj->node != NULL) {
-        DrawSlot_Free(obj->slot);
-    }
-}
-
-/*
- * Frees the object (StageObj_Free).
- */
-void PlayerHitBurst_Free(StageObj *obj)
-{
-    StageObj_Free(obj);
-}
-
-/*
- * Draws by frame (timer - 1, at least 0) when the hunter is visible in the
- * current area: frames 0-4 the flash (common mesh 66, growing, fading,
- * turned by var0), frames 2-5 and 3-6 a streak each (common mesh 0, turned
- * by var1 / var2), frames 4-9 Kushala Daora's part mesh 9 (gScene.partModels
- * of its slot) growing and turning by the three angles, all additive
- * (Gfx_SetBlend 4, 1) with depth writes off.
- */
-void PlayerHitBurst_Draw(DrawSlot *node)
-{
-    StageObj *obj;
-    ModelMat *materials;
-    Model *commonSet;
-    Model *kushalaSet;
-    Em *pl;
-    s16 frame;
-    s32 burstFrame;
-    s32 kushalaFrame;
-    s8 kushalaSlot;
-    ModelMatSet *model;
-    ModelMat *kushalaMats;
-    ModelMatSet *kushalaModel;
-    s16 streakFrame;
-    f32 flashSize;
-    f32 scaleX;
-    f32 scaleY;
-    f32 scaleZ;
-    s32 pitch;
-    u16 roll;
-    f32 mtx[16];
-    f32 uvMtx[16];
-
-    obj = node->owner;
-    pl = obj->owner;
-    if (gScene.area != pl->area) {
-        return;
-    }
-    commonSet = gCommonModels[0];
-    if (commonSet == NULL || pl->visible == 0) {
-        return;
-    }
-    if (commonSet->active == 0) {
-        return;
-    }
-    Gs_SetState(0x60, 0);
-    Gs_SetState(0x6C, 0);
-    Gfx_SetTexFilter(1);
-    frame = obj->timer - 1;
-    materials = commonSet->mats;
-    if (frame <= 0) {
-        frame = 0;
-    }
-    Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-    Gs_SetState(0x19, (s32) uvMtx);
-    burstFrame = (s16) frame;
-    if (burstFrame < 5) {
-        model = &commonSet->matSets[66];
-        flashSize = 10.0f + 2.5f * frame;
-        Mtx_Scale(mtx, flashSize, flashSize, 1.0f);
-        Mtx_RotateZ(mtx, (6.2831855f * (obj->var0 << 8)) / 65536.0f);
-        Mtx_Concat3x3(mtx, gCamMatrix);
-        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, (u8) (0xEF - burstFrame * 0xB) | (((u8) (0xFF - burstFrame * 8) << 8) | (((u8) (0xFF - burstFrame * 0x3B) << 24) | 0xFF0000)));
-        Gs_SetLightList(materials, model);
-        Draw_ApplyStates(model->flags);
-        Gfx_SetBlend(4, 1);
-        Model_Draw(model->id, 0);
-    }
-    if (burstFrame >= 2 && burstFrame < 6) {
-        model = commonSet->matSets;
-        streakFrame = burstFrame - 2;
-        Mtx_Scale(mtx, 0.4f + 2.5333333f * streakFrame, 4.0f - streakFrame, 1.0f);
-        Mtx_RotateZ(mtx, (6.2831855f * (obj->var1 << 8)) / 65536.0f);
-        Mtx_Concat3x3(mtx, gCamMatrix);
-        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, 0xFFFFFFEF);
-        Gs_SetLightList(materials, model);
-        Draw_ApplyStates(model->flags);
-        Gfx_SetBlend(4, 1);
-        Model_Draw(model->id, 0);
-    }
-    if (burstFrame >= 3 && burstFrame < 7) {
-        model = commonSet->matSets;
-        streakFrame = burstFrame - 3;
-        Mtx_Scale(mtx, 0.4f + 2.5333333f * streakFrame, 4.0f - streakFrame, 1.0f);
-        Mtx_RotateZ(mtx, (6.2831855f * (obj->var2 << 8)) / 65536.0f);
-        Mtx_Concat3x3(mtx, gCamMatrix);
-        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, 0xFFFFFFEF);
-        Gs_SetLightList(materials, model);
-        Draw_ApplyStates(model->flags);
-        Gfx_SetBlend(4, 1);
-        Model_Draw(model->id, 0);
-    }
-    if (burstFrame >= 4 && burstFrame < 11) {
-        kushalaSlot = EmSlot_FindKind(0x36);
-        if (kushalaSlot == -1) {
-            return;
-        }
-        kushalaSet = gScene.partModels[kushalaSlot];
-        kushalaFrame = (s16) (burstFrame - 4);
-        kushalaMats = kushalaSet->mats;
-        kushalaModel = &kushalaSet->matSets[9];
-        if (kushalaFrame < 3) {
-            scaleY = scaleX = 0.1f + 0.10000001f * kushalaFrame;
-            scaleZ = 0.7f - 0.25f * kushalaFrame;
-        } else {
-            scaleY = scaleX = 0.3f + 0.024999999f * kushalaFrame;
-            scaleZ = 0.2f - -0.025f * kushalaFrame;
-        }
-        Mtx_Scale(mtx, scaleX, scaleY, scaleZ);
-        roll = (u16) (obj->var0 << 6) / 6 * burstFrame;
-        roll += (pitch = obj->var1 << 8);
-        Mtx_RotateXYZ(mtx, (6.2831855f * pitch) / 65536.0f, (6.2831855f * (obj->var2 << 8)) / 65536.0f, (6.2831855f * roll) / 65536.0f);
-        Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, (u8) (0xEF - kushalaFrame * 7) | (((u8) (0xFF - kushalaFrame * 5) << 8) | (((u8) (0xFF - kushalaFrame * 0x27) << 24) | 0xFF0000)));
-        Gs_SetLightList(kushalaMats, kushalaModel);
-        Draw_ApplyStates(kushalaModel->flags);
-        Gfx_SetBlend(4, 1);
-        Model_Draw(kushalaModel->id, 0);
-    }
-    Draw_SetDefaultState();
-    Gs_SetState(0x6C, 1);
-}
-
-/*
- * Creates the burst for hunter arg when it is in the current area
- * (Obj_InCurrentArea): no buffer, kind 0xB, owner arg.
- */
-void PlayerHitBurst_Create(void *pl)
-{
-    StageObj *obj;
-
-    if (Obj_InCurrentArea(pl) & 0xFF) {
-        obj = StageObj_Alloc(0);
-        if (obj != NULL) {
-            obj->kind = STAGEOBJ_KIND_PLAYER_HIT_BURST;
-            obj->update = PlayerHitBurst_Update;
-            obj->owner = pl;
-        }
-    }
-}
-
-/*
- * The update hook: Setup (0), Run (1), End (2), Free (3).
- */
-void ItemProp_Update(StageObj *obj)
-{
-    switch (obj->state) {
-    case STAGEOBJ_SETUP:
-        ItemProp_Setup(obj);
-        break;
-    case STAGEOBJ_RUN:
-        ItemProp_Run(obj);
-        break;
-    case STAGEOBJ_END:
-        ItemProp_End(obj);
-        break;
-    case STAGEOBJ_FREE:
-        ItemProp_Free(obj);
-        break;
-    }
-}
-
-/*
- * Moves to Run, clears var0, shows the object and calls the type's set-up
- * (0, 1, 3, 4; 5 and 6 ItemProp_SetupPuffs); frees an object of any other
- * type (type 2).
- */
-void ItemProp_Setup(StageObj *obj)
-{
-    obj->state++;
-    obj->var0 = 0;
-    obj->visible = 1;
-    switch (obj->type) {
-    case ITEMPROP_MEAT:
-        ItemProp_SetupMeat(obj);
-        break;
-    case ITEMPROP_SMOKE:
-        ItemProp_SetupSmoke(obj);
-        break;
-    case ITEMPROP_BAIT:
-        ItemProp_SetupBait(obj);
-        break;
-    case ITEMPROP_DROPPED:
-        ItemProp_SetupDropped(obj);
-        break;
-    case ITEMPROP_CLOUD:
-    case ITEMPROP_EAT_PUFF:
-        ItemProp_SetupPuffs(obj);
-        break;
-    default:
-        ItemProp_Free(obj);
-        break;
-    }
-}
-
-/*
- * Calls the type's run (0, 1, 3, 4; 5 and 6 ItemProp_RunPuffs); nothing for
- * the others.
- */
-void ItemProp_Run(StageObj *obj)
-{
-    switch (obj->type) {
-    case ITEMPROP_MEAT:
-        ItemProp_RunMeat(obj);
-        break;
-    case ITEMPROP_SMOKE:
-        ItemProp_RunSmoke(obj);
-        break;
-    case ITEMPROP_BAIT:
-        ItemProp_RunBait(obj);
-        break;
-    case ITEMPROP_DROPPED:
-        ItemProp_RunDropped(obj);
-        break;
-    case ITEMPROP_CLOUD:
-    case ITEMPROP_EAT_PUFF:
-        ItemProp_RunPuffs(obj);
-        
-    default:
-        break;
-    }
-}
-
-struct DrawSlot;
-/*
- * The draw slot callback of every type: calls the type's draw with the
- * object (and the node for types 1, 4, 5, 6).
- */
-void ItemProp_Draw(struct DrawSlot *node)
-{
-    StageObj *obj;
-    u8 type;
-
-    obj = node->owner;
-    type = obj->type;
-    switch (type) {
-    case 0:
-        ItemProp_DrawMeat(obj);
-        break;
-    case 1:
-        ItemProp_DrawSmoke(obj, node);
-        break;
-    case 3:
-        ItemProp_DrawBait(obj);
-        break;
-    case 4:
-        ItemProp_DrawDropped(obj, node);
-        break;
-    case 5:
-    case 6:
-        ItemProp_DrawPuff(obj, node);
-        
-    default:
-        break;
-    }
-}
-
-/*
- * Type 0: sits at the owner monster's bone 0x12, on its floorY raised 13
- * times the scale (1.75), with the owner's yaw; gets a draw slot (frees the
- * object when none) and runs the first frame. seen: no creator passes type
- * 0.
- */
-void ItemProp_SetupMeat(StageObj *obj)
-{
-    Em *em = obj->owner;
-
-    obj->draw = 0;
-    obj->timer = 0;
-    Em_GetBonePos(em, 0x12, obj->pos);
-    obj->pos[1] = em->floorY;
-    obj->angle = em->rotY;
-    obj->scale = 1.75f;
-    obj->pos[1] += 13.0f * obj->scale;
-    obj->slot = DrawSlot_Alloc();
-    if (obj->slot != -1) {
-        obj->node = DrawSlot_Get(obj->slot);
-        obj->node->owner = obj;
-        obj->node->draw = ItemProp_Draw;
-    } else {
-        StageObj_Free((struct StageObj *) obj);
-        return;
-    }
-    ItemProp_Run(obj);
-}
-
-/*
- * Type 0: after 300 frames hides the object and moves to End; else queues
- * the node at the object (gDrawOt32).
- */
-void ItemProp_RunMeat(StageObj *obj)
-{
-    if (obj->timer++ >= 300) {
-        obj->state++;
-        obj->visible = 0;
-        return;
-    }
-    obj->node->pos[0] = obj->pos[0];
-    obj->node->pos[1] = obj->pos[1];
-    obj->node->pos[2] = obj->pos[2];
-    OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
-}
-
-/*
- * Type 0: draws common mesh 58 (the meat model: VersusBait_Draw, the
- * hunter's carried meat) scaled, 30 higher, turned by the yaw, its two
- * materials set to fixed colours.
- */
-void ItemProp_DrawMeat(StageObj *obj)
-{
-    Model *commonSet = gCommonModels[0];
-    ModelMat *materials;
-    ModelMatSet *model;
-    f32 *mat;
-    s32 i;
-    f32 mtx[16];
-
-    if (commonSet != NULL && commonSet->active != 0) {
-        Gfx_SetTexFilter(0);
-        Mtx_Scale(mtx, obj->scale, obj->scale, obj->scale);
-        Mtx_SetTrans(mtx, obj->pos[0], 30.0f + obj->pos[1], obj->pos[2]);
-        Mtx_RotateY(mtx, (6.2831855f * (u16) obj->angle) / 65536.0f);
-        Gs_SetState(0x1A, (s32) mtx);
-        model = &commonSet->matSets[58];
-        Gs_SetState(0x67, -1);
-        if (model != NULL && model->id != -1) {
-            materials = commonSet->mats;
-            for (i = 0; i < model->count; i++) {
-                mat = (f32 *) &materials[model->mat[i]];
-                switch (i) {
-                case 0:
-                    mat[1] = 226.0f / 255.0f;
-                    mat[2] = 237.0f / 255.0f;
-                    mat[3] = 209.0f / 255.0f;
-                    break;
-                case 1:
-                    mat[1] = 1.0f;
-                    mat[2] = 210.0f / 255.0f;
-                    mat[3] = 192.0f / 255.0f;
-                    break;
-                }
-                Gs_SetState((u8) (i + 0x3A), (s32) mat);
-            }
-            Draw_ApplyStates(model->flags);
-            Draw_SetBlendFlags(0x10);
-            Model_Draw(model->id, 0);
-        }
-        Draw_SetDefaultState();
-    }
-}
-
-/*
- * Type 1 (smoke screen): fills the buffer's EmObj as a sight block (radius
- * 1500 kind 1 for colour row 0, radius 3000 kind 2 for row 1, the object's
- * area and position, SightBlock_Add) and sets up four rings (draw slot, ring
- * number + 1, random spin); runs the first frame.
- */
-void ItemProp_SetupSmoke(StageObj *obj)
-{
-    ItemPropRing *ring = (ItemPropRing *) obj->buf;
-    ItemPropBuf *smoke = (ItemPropBuf *) obj->buf;
-    s16 i;
-
-    obj->draw = 0;
-    obj->timer = 0;
-    obj->angle = 0;
-    switch (obj->var1) {
-    case 0:
-        smoke->obj.radius = 1500.0f;
-        smoke->obj.kind = 1;
-        break;
-    case 1:
-        smoke->obj.radius = 3000.0f;
-        smoke->obj.kind = 2;
-        break;
-    }
-    smoke->obj.timer = 3;
-    smoke->obj.area = obj->angle2;
-    Vec_Set(smoke->obj.pos, obj->pos[0], obj->pos[1], obj->pos[2]);
-    SightBlock_Add(&smoke->obj);
-    for (i = 0; i < 4; i++, ring++) {
-        ring->slot = DrawSlot_Alloc();
-        if (ring->slot != -1) {
-            ring->view = i + 1;
-            ring->unk1C = 0;
-            ring->spin = Rand_Next(1);
-            ring->node = DrawSlot_Get(ring->slot);
-            ring->node->owner = obj;
-            ring->node->part = i;
-            ring->node->draw = ItemProp_Draw;
-        } else {
-            ring->node = NULL;
-        }
-    }
-    ItemProp_Run(obj);
-}
-
-extern s8 ItemProp_SmokeViewQueued;
-extern u8 ItemProp_SmokeViewAlpha;
-/*
- * Type 1: keeps the sight block alive (timer 3 each frame) through three
- * phases in var0: 120 frames fading in, 450 opaque, 120 fading out, then
- * hides, removes the sight block and moves to End. Seen from farther than
- * 1900, queues the four rings along the view axis with spins from
- * ItemProp_SmokeRingSpins; from closer, one full-screen layer just in front
- * of the camera, whose alpha is the highest of all smokes this frame
- * (ItemProp_SmokeViewAlpha; ItemProp_SmokeViewQueued lets only the first
- * queue it).
- */
-void ItemProp_RunSmoke(StageObj *obj)
-{
-    u8 viewAlpha;
-    u32 k;
-    ItemPropBuf *smoke = (ItemPropBuf *) obj->buf;
-    ItemPropRing *ring = smoke->ring;
-    s16 i;
-    u8 opaque;
-    u16 *spinStep;
-    f32 camPos[3];
-    f32 toCam[3];
-    f32 ahead[3];
-    f32 ofs[3];
-
-    (obj->angle)++;
-    smoke->obj.timer = 3;
-    switch (obj->var0) {
-    case 0:
-        opaque = 0;
-        if (++obj->timer >= 120) {
-            opaque = 1;
-            obj->var0++;
-            obj->timer = 0;
-        }
-        break;
-    case 1:
-        opaque = 1;
-        if (++obj->timer >= 450) {
-            opaque = 0;
-            obj->var0++;
-            obj->timer = 120;
-        }
-        break;
-    case 2:
-        opaque = 0;
-        if (--obj->timer <= 0) {
-            obj->state++;
-            obj->visible = 0;
-            SightBlock_Remove(&smoke->obj);
-        }
-        break;
-    }
-    if (obj->visible != 0) {
-        Mtx_GetTrans(camPos, gCamMatrix);
-        Vec_Sub(toCam, camPos, obj->pos);
-        if (!(Vec_Dot(toCam, toCam) <= 3610000.0f)) {
-            for (i = 0, spinStep = ItemProp_SmokeRingSpins; i < 4; i++, ring++, spinStep++) {
-                ring->spin += (s32) *spinStep;
-                ofs[0] = 0.0f;
-                ofs[1] = 0.0f;
-                ofs[2] = 400.0f * i;
-                Vec_RotateSelf(ofs, gCamMatrix);
-                if (!(opaque & 0xFF)) {
-                    ring->alpha = obj->timer / 120.0f;
-                } else {
-                    ring->alpha = 1.0f;
-                }
-                if (ring->node != NULL) {
-                    ring->view = i + 1;
-                    ring->node->pos[0] = obj->pos[0] + ofs[0];
-                    ring->node->pos[1] = obj->pos[1] + ofs[1];
-                    ring->node->pos[2] = obj->pos[2] + ofs[2];
-                    OT_AddByDepth(gDrawOtSorted, ring->node, 0x40, 0);
-                }
-            }
-        } else {
-            ahead[0] = 0.0f;
-            ahead[1] = 0.0f;
-            ahead[2] = -1.1f;
-            Vec_Rotate(ofs, ahead, gCamMatrix);
-            viewAlpha = opaque == 0 ? (u32) (2.125f * obj->timer) : 0xFF;
-            if (ItemProp_SmokeViewQueued == 0) {
-                ItemProp_SmokeViewAlpha = viewAlpha;
-                if (ring->node != NULL) {
-                    ring->view = 0;
-                    Mtx_GetTrans(ring->node->pos, gCamMatrix);
-                    ring->node->pos[0] += ofs[0];
-                    ring->node->pos[1] += ofs[1];
-                    ring->node->pos[2] += ofs[2];
-                    OT_AddByDepth(gDrawOtSorted, ring->node, 0x40, 0);
-                    *(u8 *)&ItemProp_SmokeViewQueued = 1;
-                }
-            } else if (ItemProp_SmokeViewAlpha < (viewAlpha & 0xFF)) {
-                ItemProp_SmokeViewAlpha = viewAlpha;
-            }
-        }
-    }
-}
-
-/*
- * Type 1, in the object's area: the inside layer (view 0) as common mesh 67
- * with a scrolling texture and the field of view narrowed (Camera_SetFov,
- * restored after); a ring as common mesh 77 scaled by
- * ItemProp_SmokeRingScales[ring] and turned by its spin, facing the camera;
- * both in ItemProp_SmokeColors[var1] with their alpha. Clears
- * ItemProp_SmokeViewQueued.
- */
-void ItemProp_DrawSmoke(StageObj *obj, DrawSlot *node)
-{
-    ItemPropRing *ring = (ItemPropRing *) obj->buf + node->part;
-    ModelMat *materials;
-    Model *commonSet = gCommonModels[0];
-    ModelMatSet *model;
-    u8 alpha;
-    f32 mtx[16];
-    f32 uvMtx[16];
-
-    if (obj->angle2 == gScene.area && commonSet != NULL && commonSet->active != 0) {
-        materials = commonSet->mats;
-        Gs_SetState(0x60, 0);
-        if (ring->view == 0) {
-            Mtx_Scale(mtx, 1.0f, 1.0f, 1.0f);
-            alpha = ItemProp_SmokeViewAlpha;
-            Mtx_Translation(uvMtx, (1.0f / 2048.0f) * (gScene.frame & 0xFF), 0.0f, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
-            model = &commonSet->matSets[67];
-            Camera_SetFov(0.87266463f);
-        } else {
-            Mtx_Scale(mtx, ItemProp_SmokeRingScales[node->part], ItemProp_SmokeRingScales[node->part], ItemProp_SmokeRingScales[node->part]);
-            Mtx_RotateZ(mtx, (6.2831855f * ring->spin) / 65536.0f);
-            alpha = 255.0f * ring->alpha;
-            Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
-            model = &commonSet->matSets[77];
-        }
-        Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
-        Mtx_Concat3x3(mtx, gCamMatrix);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, ItemProp_SmokeColorsB[obj->var1][0] | ((ItemProp_SmokeColorsG[obj->var1][0] << 8) | ((alpha << 24) | (ItemProp_SmokeColors[obj->var1][0] << 16))));
-        if (model != NULL && model->id != -1) {
-            Gs_SetLightList(materials, model);
-            Draw_ApplyStates(model->flags);
-            Model_Draw(model->id, 0);
-        }
-        *(u8 *)&ItemProp_SmokeViewQueued = 0;
-        Draw_SetDefaultState();
-        if (ring->view == 0) {
-            Camera_RestoreFov();
-        }
-    }
-}
-
-/*
- * Type 3 (a meat or bait a hunter put down): gets a draw slot from the kept
- * pool (DrawSlotB) when keep is set (the creators always set it), else the
- * normal pool; frees the object (ItemProp_Free) when none; runs the first
- * frame.
- */
-void ItemProp_SetupBait(StageObj *obj)
-{
-
-    obj->var0 = 0;
-    obj->draw = 0;
-    obj->timer = 0;
-    if (obj->keep == 0) {
-        obj->slot = DrawSlot_Alloc();
-    } else {
-        obj->slot = DrawSlotB_Alloc();
-    }
-    if (obj->slot != -1) {
-        if (obj->keep == 0) {
-            obj->node = DrawSlot_Get(obj->slot);
-        } else {
-            obj->node = DrawSlotB_Get(obj->slot);
-        }
-        obj->node->owner = obj;
-        obj->node->draw = ItemProp_Draw;
-    } else {
-        ItemProp_Free(obj);
-        return;
-    }
-    ItemProp_Run(obj);
-}
-
-/*
- * Type 3: after 5400 frames, or once a monster has used it (EmObj.done),
- * hides it, takes its EmObj off the area object list (ObjList_Remove) and
- * moves to End; else queues the node (gDrawOt32).
- */
-void ItemProp_RunBait(StageObj *obj)
-{
-    ItemPropBuf *bait = (ItemPropBuf *) obj->buf;
-
-    obj->timer++;
-    if (obj->timer > 5400 || bait->obj.done != 0) {
-        obj->state++;
-        obj->visible = 0;
-        ObjList_Remove(&bait->obj);
-        return;
-    }
-    obj->var0 = 0;
-    obj->node->pos[0] = obj->pos[0];
-    obj->node->pos[1] = obj->pos[1];
-    obj->node->pos[2] = obj->pos[2];
-    OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
-}
-
-/*
- * Type 3, in the object's area: common mesh 58 at the object turned by its
- * yaw, material 0 coloured by ItemProp_BaitColorsFirst[var1], material 1 by
- * ItemProp_BaitColorsSecond[var1] (var1 the bait kind).
- */
-void ItemProp_DrawBait(StageObj *obj)
-{
-    Model *commonSet = gCommonModels[0];
-    ModelMatSet *model;
-    ModelMat *materials;
-    s32 i;
-    f32 *mat;
-    u8 redFirst;
-    u8 greenFirst;
-    u8 blueFirst;
-    u8 redSecond;
-    u8 greenSecond;
-    u8 blueSecond;
-    f32 mtx[16];
-
-    if (obj->angle2 == gScene.area && commonSet != NULL && commonSet->active != 0) {
-        model = &commonSet->matSets[58];
-        Mtx_Translation(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
-        redSecond = ItemProp_BaitColorsSecond[obj->var1][0];
-        greenSecond = ItemProp_BaitColorsSecondG[obj->var1][0];
-        blueSecond = ItemProp_BaitColorsSecondB[obj->var1][0];
-        redFirst = ItemProp_BaitColorsFirst[obj->var1][0];
-        greenFirst = ItemProp_BaitColorsFirstG[obj->var1][0];
-        blueFirst = ItemProp_BaitColorsFirstB[obj->var1][0];
-        Mtx_RotateY(mtx, (6.2831855f * obj->angle) / 65536.0f);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, -1);
-        if (model != NULL && model->id != -1) {
-            materials = commonSet->mats;
-            for (i = 0; i < model->count; i++) {
-                mat = (f32 *) &materials[model->mat[i]];
-                switch (i) {
-                case 0:
-                    mat[1] = redFirst / 255.0f;
-                    mat[2] = greenFirst / 255.0f;
-                    mat[3] = blueFirst / 255.0f;
-                    break;
-                case 1:
-                    mat[1] = redSecond / 255.0f;
-                    mat[2] = greenSecond / 255.0f;
-                    mat[3] = blueSecond / 255.0f;
-                    break;
-                }
-                Gs_SetState((u8) (i + 0x3A), (s32) mat);
-            }
-            Draw_ApplyStates(model->flags);
-            Model_Draw(model->id, 0);
-        }
-        Draw_SetDefaultState();
-    }
-}
-
-/*
- * Turns v by the bone matrix m (in place) and writes m's translation plus v
- * to out. Used by ItemProp_CreateAtPlayer for a dropped item's start.
- */
-void ItemProp_OffsetFromBone(f32 *out, f32 *boneMtx, f32 *ofs)
-{
-    Vec_RotateSelf(ofs, boneMtx);
-    Mtx_GetTrans(out, boneMtx);
-    out[0] = out[0] + ofs[0];
-    out[1] = out[1] + ofs[1];
-    out[2] = out[2] + ofs[2];
-}
-
-/*
- * Type 4 (the item a hunter carried, let go): the node starts at the
- * object's position (the hand), the object's y becomes the owner's floorY;
- * frees the object when no draw slot; runs the first frame.
- */
-void ItemProp_SetupDropped(StageObj *obj)
-{
-
-    obj->var0 = 0;
-    obj->var1 = 0;
-    obj->draw = 0;
-    obj->timer = 0;
-    obj->slot = DrawSlot_Alloc();
-    if (obj->slot != -1) {
-        obj->node = DrawSlot_Get(obj->slot);
-        obj->node->owner = obj;
-        obj->node->draw = ItemProp_Draw;
-        Vec_Copy(obj->node->pos, (f32 *) obj->pos);
-        obj->pos[1] = ((Em *)obj->owner)->floorY;
-    } else {
-        StageObj_Free((struct StageObj *) obj);
-        return;
-    }
-    ItemProp_Run(obj);
-}
-
-/*
- * Type 4: falls with growing speed (var1 frames); on reaching the floor by
- * carry kind: 0, 1, 6 land (sound 0x74 of the common bank in the current
- * area) and stay 10 frames; 2, 3, 4 and unknown kinds vanish; 5 vanishes in
- * a bomb explosion (FireBlast_CreateScaled in the current area,
- * Explosion_CreateAt EXPLOSION_BOMB). Queues the node (gDrawOt32) while it
- * lasts.
- */
-void ItemProp_RunDropped(StageObj *obj)
-{
-    ItemPropCarry *held = (ItemPropCarry *) obj->buf;
-
-    obj->timer++;
-    obj->var1++;
-    switch (obj->var0) {
-    case 0:
-        obj->node->pos[1] += -0.72727275f * obj->var1;
-        if (obj->node->pos[1] < obj->pos[1]) {
-            switch (held->kind) {
-            case 0:
-            case 1:
-            case 6:
-                obj->node->pos[1] = obj->pos[1];
-                obj->timer = 0;
-                obj->var0++;
-                if (obj->angle2 == gScene.area) {
-                    Sound_PlaySeAtPosChecked(1, 0x74, 0, obj->node->pos, 1, 0);
-                }
-                break;
-            case 2:
-            case 3:
-            case 4:
-            default:
-                obj->state++;
-                obj->visible = 0;
-                return;
-            case 5:
-                obj->state++;
-                obj->visible = 0;
-                if (obj->angle2 == gScene.area) {
-                    FireBlast_CreateScaled(obj->node->pos, 0, 1.0f);
-                }
-                Explosion_CreateAt(obj->node->pos, EXPLOSION_BOMB, obj->angle2, 0);
-                return;
-            }
-        }
-        break;
-    case 1:
-    default:
-        if (obj->timer > 10) {
-            obj->state++;
-            obj->visible = 0;
-            return;
-        }
-        break;
-    }
-    OT_AddByDepth(gDrawOt32, obj->node, 0x20, 0);
-}
-
-/*
- * Type 4, in the object's area: while falling, the carried model with the
- * creator's matrix (buf->mtx) at the node: common mesh 133 for kinds 0, 1, 6
- * (texture row offset) and 2, mesh 41 tinted for 3, 4, 5 (as the hunter
- * draws it carried, player_draw.c); once landed, common mesh 119 turned with
- * the camera's yaw, scale 1.5, tinted. Returns for unknown kinds.
- */
-void ItemProp_DrawDropped(StageObj *obj, DrawSlot *node)
-{
-    Model *commonSet = gCommonModels[0];
-    ItemPropCarry *held = (ItemPropCarry *) obj->buf;
-    ModelMatSet *model;
-    ModelMat *materials;
-    s32 i;
-    f32 *mat;
-    u8 red;
-    u8 green;
-    u8 blue;
-    f32 mtx[16];
-    f32 uvMtx[16];
-
-    if (obj->angle2 == gScene.area && commonSet != NULL && commonSet->active != 0) {
-        switch (obj->var0) {
-        case 0:
-            Mtx_SetTrans(held->mtx, node->pos[0], node->pos[1], node->pos[2]);
-            Mtx_Copy(mtx, held->mtx);
-            switch (held->kind) {
-            case 0:
-            case 1:
-            case 6:
-                model = &commonSet->matSets[133];
-                Mtx_Translation(uvMtx, 0.0f, 0.0625f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
-                red = 0xFF;
-                green = 0xFF;
-                blue = 0xFF;
-                break;
-            case 2:
-                model = &commonSet->matSets[133];
-                Mtx_Translation(uvMtx, 0.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
-                red = 0xFF;
-                green = 0xFF;
-                blue = 0xFF;
-                break;
-            case 3:
-                model = &commonSet->matSets[41];
-                red = 0x3F;
-                green = 0x3F;
-                blue = 0xFF;
-                break;
-            case 4:
-                model = &commonSet->matSets[41];
-                red = 0xFF;
-                green = 0x3F;
-                blue = 0x3F;
-                break;
-            case 5:
-                model = &commonSet->matSets[41];
-                red = 0x3F;
-                green = 0x3F;
-                blue = 0x3F;
-                break;
-            default:
-                return;
-            }
-            break;
-        case 1:
-        default:
-            Mtx_Scale(mtx, 1.5f, 1.5f, 1.5f);
-            Mtx_Concat3x3(mtx, gCamYawMtx);
-            model = &commonSet->matSets[119];
-            Mtx_SetTrans(mtx, node->pos[0], node->pos[1], node->pos[2]);
-            red = 0xEE;
-            green = 0xDC;
-            blue = 0xA8;
-            break;
-        }
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x67, -1);
-        if (model != NULL && model->id != -1) {
-            materials = commonSet->mats;
-            for (i = 0; i < model->count; i++) {
-                mat = (f32 *) &materials[model->mat[i]];
-                switch (i) {
-                case 1:
-                    mat[1] = red / 255.0f;
-                    mat[2] = green / 255.0f;
-                    mat[3] = blue / 255.0f;
-                    break;
-                }
-                Gs_SetState((u8) (i + 0x3A), (s32) mat);
-            }
-            Draw_ApplyStates(model->flags);
-            Model_Draw(model->id, 0);
-        }
-        Draw_SetDefaultState();
-    }
-}
-
-/* The file's initialised data, in the game's order */
+/* The file's data, in the game's order. */
 DemonGlowPair DemonGlow_OfsLeft[32] = {
 #include "game/008CCC50.inc"
 };
@@ -4546,147 +3445,147 @@ s16 DemonGlow_BladeCounts[4] = {
 ThunderSparkPoint ThunderSpark_BodyPoints[10] = {
 #include "game/008CD050.inc"
 };
-u32 EmFxSpark_Curves_0[20] = {
+Vec3Key ThunderSpark_Keys_0[5] = {
 #include "game/008CD120.inc"
 };
-u32 EmFxSpark_Curves_2[12] = {
+Vec3Key ThunderSpark_Keys_2[3] = {
 #include "game/008CD170.inc"
 };
-u32 EmFxSpark_Curves_1[8] = {
+FloatKey ThunderSpark_Keys_1[4] = {
 #include "game/008CD1A0.inc"
 };
-u32 EmFxSpark_Curves_3[8] = {
+FloatKey ThunderSpark_Keys_3[4] = {
 #include "game/008CD1C0.inc"
 };
-s16 EmFxSpark_CurveSets_1[8] = {
+s16 ThunderSpark_PartEnds_1[8] = {
 #include "game/008CD1E0.inc"
 };
-u32 EmFxSpark_Curves_4[16] = {
+Vec3Key ThunderSpark_Keys_4[4] = {
 #include "game/008CD1F0.inc"
 };
-u32 EmFxSpark_Curves_5[12] = {
+FloatKey ThunderSpark_Keys_5[6] = {
 #include "game/008CD230.inc"
 };
-u32 EmFxSpark_Curves_6[20] = {
+Vec3Key ThunderSpark_Keys_6[5] = {
 #include "game/008CD260.inc"
 };
-u32 EmFxSpark_Curves_7[12] = {
+Vec3Key ThunderSpark_Keys_7[3] = {
 #include "game/008CD2B0.inc"
 };
-u32 EmFxSpark_Curves_8[12] = {
+Vec3Key ThunderSpark_Keys_8[3] = {
 #include "game/008CD2E0.inc"
 };
-u32 EmFxSpark_Curves_9[12] = {
+Vec3Key ThunderSpark_Keys_9[3] = {
 #include "game/008CD310.inc"
 };
-u8 ThunderSpark_FanChargeColors0[32] = {
+ColorKey ThunderSpark_FanChargeColors0[4] = {
 #include "game/008CD340.inc"
 };
-u8 ThunderSpark_FanChargeColors1[32] = {
+ColorKey ThunderSpark_FanChargeColors1[4] = {
 #include "game/008CD360.inc"
 };
-u8 ThunderSpark_FanChargeColors2[32] = {
+ColorKey ThunderSpark_FanChargeColors2[4] = {
 #include "game/008CD380.inc"
 };
-u8 ThunderSpark_FanChargeColors3[32] = {
+ColorKey ThunderSpark_FanChargeColors3[4] = {
 #include "game/008CD3A0.inc"
 };
-s16 EmFxSpark_CurveSets_3[8] = {
+s16 ThunderSpark_PartEnds_3[8] = {
 #include "game/008CD3C0.inc"
 };
-u32 EmFxSpark_Curves_11[24] = {
+Vec3Key ThunderSpark_Keys_11[6] = {
 #include "game/008CD3D0.inc"
 };
-u32 EmFxSpark_Curves_13[28] = {
+Vec3Key ThunderSpark_Keys_13[7] = {
 #include "game/008CD430.inc"
 };
-u32 EmFxSpark_Curves_14[20] = {
+Vec3Key ThunderSpark_Keys_14[5] = {
 #include "game/008CD4A0.inc"
 };
-u32 EmFxSpark_Curves_15[16] = {
+Vec3Key ThunderSpark_Keys_15[4] = {
 #include "game/008CD4F0.inc"
 };
-u32 EmFxSpark_Curves_16[10] = {
+f32 ThunderSpark_Keys_16[10] = {
 #include "game/008CD530.inc"
 };
-s16 EmFxSpark_CurveSets_4[6] = {
+s16 ThunderSpark_PartEnds_4[6] = {
 #include "game/008CD558.inc"
 };
-u8 EmFxSpark_KindCurves5_0[32] = {
+ColorKey ThunderSpark_FanBurstColors_0[4] = {
 #include "game/008CD570.inc"
 };
-u8 EmFxSpark_KindCurves5_2[32] = {
+ColorKey ThunderSpark_FanBurstColors_2[4] = {
 #include "game/008CD590.inc"
 };
-u8 EmFxSpark_KindCurves5_3[48] = {
+ColorKey ThunderSpark_FanBurstColors_3[6] = {
 #include "game/008CD5B0.inc"
 };
-u8 EmFxSpark_KindCurves5_4[32] = {
+ColorKey ThunderSpark_FanBurstColors_4[4] = {
 #include "game/008CD5E0.inc"
 };
-u8 *ThunderSpark_FanBurstColors[8] = {
-    EmFxSpark_KindCurves5_0, NULL, EmFxSpark_KindCurves5_2, EmFxSpark_KindCurves5_3,
-    EmFxSpark_KindCurves5_4, NULL, NULL, NULL,
+ColorKey *ThunderSpark_FanBurstColors[8] = {
+    ThunderSpark_FanBurstColors_0, NULL, ThunderSpark_FanBurstColors_2, ThunderSpark_FanBurstColors_3,
+    ThunderSpark_FanBurstColors_4, NULL, NULL, NULL,
 };
-u32 EmFxSpark_Curves_17[20] = {
+Vec3Key ThunderSpark_Keys_17[5] = {
 #include "game/008CD620.inc"
 };
-u32 EmFxSpark_Curves_19[18] = {
+f32 ThunderSpark_Keys_19[18] = {
 #include "game/008CD670.inc"
 };
-s16 EmFxSpark_CurveSets_5[4] = {
+s16 ThunderSpark_PartEnds_5[4] = {
 #include "game/008CD6B8.inc"
 };
-u8 EmFxSpark_KindCurves1_0[32] = {
+ColorKey ThunderSpark_GroundBoltColors_0[4] = {
 #include "game/008CD6C0.inc"
 };
-u8 EmFxSpark_KindCurves1_1[32] = {
+ColorKey ThunderSpark_GroundBoltColors_1[4] = {
 #include "game/008CD6E0.inc"
 };
-u8 *ThunderSpark_GroundBoltColors[4] = {
-    EmFxSpark_KindCurves1_0, EmFxSpark_KindCurves1_1, NULL, NULL,
+ColorKey *ThunderSpark_GroundBoltColors[4] = {
+    ThunderSpark_GroundBoltColors_0, ThunderSpark_GroundBoltColors_1, NULL, NULL,
 };
-u32 EmFxSpark_Curves_20[20] = {
+Vec3Key ThunderSpark_Keys_20[5] = {
 #include "game/008CD710.inc"
 };
-u32 EmFxSpark_Curves_21[22] = {
+f32 ThunderSpark_Keys_21[22] = {
 #include "game/008CD760.inc"
 };
-s16 EmFxSpark_CurveSets_6[4] = {
+s16 ThunderSpark_PartEnds_6[4] = {
 #include "game/008CD7B8.inc"
 };
-u32 EmFxSpark_Curves_22[24] = {
+Vec3Key ThunderSpark_Keys_22[6] = {
 #include "game/008CD7C0.inc"
 };
-u32 EmFxSpark_Curves_24[16] = {
+Vec3Key ThunderSpark_Keys_24[4] = {
 #include "game/008CD820.inc"
 };
-u32 EmFxSpark_Curves_26[20] = {
+Vec3Key ThunderSpark_Keys_26[5] = {
 #include "game/008CD860.inc"
 };
-u32 EmFxSpark_Curves_23[8] = {
+FloatKey ThunderSpark_Keys_23[4] = {
 #include "game/008CD8B0.inc"
 };
-u32 EmFxSpark_Curves_25[8] = {
+FloatKey ThunderSpark_Keys_25[4] = {
 #include "game/008CD8D0.inc"
 };
-u32 EmFxSpark_Curves_27[8] = {
+FloatKey ThunderSpark_Keys_27[4] = {
 #include "game/008CD8F0.inc"
 };
-s16 EmFxSpark_CurveSets_7[4] = {
+s16 ThunderSpark_PartEnds_7[4] = {
 #include "game/008CD910.inc"
 };
-s16 EmFxSpark_CurveSets_8[4] = {
+s16 ThunderSpark_PartEnds_8[4] = {
 #include "game/008CD918.inc"
 };
 void *ThunderSpark_Keys[28] = {
-    (void *)EmFxSpark_Curves_0, (void *)EmFxSpark_Curves_1, (void *)EmFxSpark_Curves_2, (void *)EmFxSpark_Curves_3,
-    (void *)EmFxSpark_Curves_4, (void *)EmFxSpark_Curves_5, (void *)EmFxSpark_Curves_6, (void *)EmFxSpark_Curves_7,
-    (void *)EmFxSpark_Curves_8, (void *)EmFxSpark_Curves_9, (void *)EmFxSpark_Curves_9, (void *)EmFxSpark_Curves_11,
-    (void *)EmFxSpark_Curves_11, (void *)EmFxSpark_Curves_13, (void *)EmFxSpark_Curves_14, (void *)EmFxSpark_Curves_15,
-    (void *)EmFxSpark_Curves_16, (void *)EmFxSpark_Curves_17, (void *)EmFxSpark_Curves_17, (void *)EmFxSpark_Curves_19,
-    (void *)EmFxSpark_Curves_20, (void *)EmFxSpark_Curves_21, (void *)EmFxSpark_Curves_22, (void *)EmFxSpark_Curves_23,
-    (void *)EmFxSpark_Curves_24, (void *)EmFxSpark_Curves_25, (void *)EmFxSpark_Curves_26, (void *)EmFxSpark_Curves_27,
+    (void *)ThunderSpark_Keys_0, (void *)ThunderSpark_Keys_1, (void *)ThunderSpark_Keys_2, (void *)ThunderSpark_Keys_3,
+    (void *)ThunderSpark_Keys_4, (void *)ThunderSpark_Keys_5, (void *)ThunderSpark_Keys_6, (void *)ThunderSpark_Keys_7,
+    (void *)ThunderSpark_Keys_8, (void *)ThunderSpark_Keys_9, (void *)ThunderSpark_Keys_9, (void *)ThunderSpark_Keys_11,
+    (void *)ThunderSpark_Keys_11, (void *)ThunderSpark_Keys_13, (void *)ThunderSpark_Keys_14, (void *)ThunderSpark_Keys_15,
+    (void *)ThunderSpark_Keys_16, (void *)ThunderSpark_Keys_17, (void *)ThunderSpark_Keys_17, (void *)ThunderSpark_Keys_19,
+    (void *)ThunderSpark_Keys_20, (void *)ThunderSpark_Keys_21, (void *)ThunderSpark_Keys_22, (void *)ThunderSpark_Keys_23,
+    (void *)ThunderSpark_Keys_24, (void *)ThunderSpark_Keys_25, (void *)ThunderSpark_Keys_26, (void *)ThunderSpark_Keys_27,
 };
 s16 ThunderSpark_PartCounts[16] = {
 #include "game/008CD990.inc"
@@ -4701,9 +3600,9 @@ s16 ThunderSpark_KeyStep[16] = {
 #include "game/008CD9F0.inc"
 };
 s16 *ThunderSpark_PartEnds[12] = {
-    NULL, EmFxSpark_CurveSets_1, NULL, EmFxSpark_CurveSets_3,
-    EmFxSpark_CurveSets_4, EmFxSpark_CurveSets_5, EmFxSpark_CurveSets_6, EmFxSpark_CurveSets_7,
-    EmFxSpark_CurveSets_8, NULL, NULL, NULL,
+    NULL, ThunderSpark_PartEnds_1, NULL, ThunderSpark_PartEnds_3,
+    ThunderSpark_PartEnds_4, ThunderSpark_PartEnds_5, ThunderSpark_PartEnds_6, ThunderSpark_PartEnds_7,
+    ThunderSpark_PartEnds_8, NULL, NULL, NULL,
 };
 f32 WeaponTrail_CurveWeights[6][3] = {
 #include "game/008CDA40.inc"
@@ -4735,7 +3634,7 @@ f32 EmBodyFx_ChargeBlink1[2] = {
 f32 EmBodyFx_FlashScaleKeys[8] = {
 #include "game/008CDF50.inc"
 };
-u8 EmBodyFx_FlashColorKeys[32] = {
+ColorKey EmBodyFx_FlashColorKeys[4] = {
 #include "game/008CDF70.inc"
 };
 f32 EmBodyFx_PropOffsets[6][3] = {
@@ -4744,25 +3643,25 @@ f32 EmBodyFx_PropOffsets[6][3] = {
 f32 EmBodyFx_RingOffsets[4][3] = {
 #include "game/008CDFE0.inc"
 };
-u8 EmTail_FlyOfsXKeys[48] = {
+FloatKey EmTail_FlyOfsXKeys[6] = {
 #include "game/008CE010.inc"
 };
-u8 EmTail_FlyOfsYKeys[304] = {
+FloatKey EmTail_FlyOfsYKeys[38] = {
 #include "game/008CE040.inc"
 };
-u8 EmTail_FlyOfsZKeys[144] = {
+FloatKey EmTail_FlyOfsZKeys[18] = {
 #include "game/008CE170.inc"
 };
-u8 EmTail_FlyRotKeys[704] = {
+Vec3Key EmTail_FlyRotKeys[44] = {
 #include "game/008CE200.inc"
 };
-u32 LaoshanDust_ScaleKeys[24] = {
+Vec3Key LaoshanDust_ScaleKeys[6] = {
 #include "game/008CE4C0.inc"
 };
-u32 LaoshanDust_OffsetKeys[24] = {
+Vec3Key LaoshanDust_OffsetKeys[6] = {
 #include "game/008CE520.inc"
 };
-u32 LaoshanDust_AlphaKeys[8] = {
+FloatKey LaoshanDust_AlphaKeys[4] = {
 #include "game/008CE580.inc"
 };
 LaoshanDustBone LaoshanDust_Bones[5] = {
@@ -4782,13 +3681,4 @@ s16 LaoshanDust_KeyStrides[4] = {
 };
 s16 LaoshanDust_PieceEnds[4] = {
 #include "game/008CE618.inc"
-};
-f32 ItemProp_SmokeRingScales[4] = {
-#include "game/008CE620.inc"
-};
-u32 ItemProp_BaitStatusAmounts[2] = {
-#include "game/008CE630.inc"
-};
-u16 ItemProp_SmokeRingSpins[4] = {
-#include "game/008CE638.inc"
 };

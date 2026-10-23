@@ -8,12 +8,12 @@
 
 /*
  * sub_main's effect objects for the fishing, the lure, the countdown and the sparks:
- * views of a stage object (StageObj, 0x40 bytes) with these kinds' own names for its
+ * views of a stage object (StageObj, 64 bytes) with these kinds' own names for its
  * fields.
  * The update at +0x20 takes the view.
  */
 
-/* A spark of an effect (0x34 bytes; the emitter's `sparks` array). */
+/* A spark of an effect (52 bytes; the emitter's `sparks` array). */
 typedef struct Spark {
     s16 id;                     /* 0x00: DrawSlot_Alloc, -1 none */
     s16 variant;                /* 0x02: random 0-7 for types 1, 2, 5 and 6 (bit 0 mirrors the model, the rest offsets its texture by eighths); else the spark's index */
@@ -30,7 +30,7 @@ typedef struct Spark {
 } Spark;
 typedef char Spark_size_check[(sizeof(Spark) == 0x34) ? 1 : -1];
 
-/* A spark emitter (effect kind 8: Effect08_Spawn, Effect08_SpawnAtEm; update SparkFx_Update). */
+/* A spark emitter (effect kind 8: SparkFx_Spawn, SparkFx_SpawnAtEm; update SparkFx_Update). */
 typedef struct SparkEmitter {
     u8 active;                  /* 0x00 */
     u8 visible;                 /* 0x01: cleared when its life is over (SparkFx_Run) */
@@ -38,7 +38,7 @@ typedef struct SparkEmitter {
     u8 type;                    /* 0x03: 0-7, row of gSparkFxCounts */
     u8 state;                   /* 0x04: 0 start, 1 run, 2 end, 3 free (SparkFx_Update) */
     u8 pad5[2];
-    u8 tint;                    /* 0x07: 0 white, 1 orange, else beige (Effect08_Spawn) */
+    u8 tint;                    /* 0x07: 0 white, 1 orange, else beige (SparkFx_Spawn) */
     s16 timer;                  /* 0x08: frames run (SparkFx_Run ends it past the type's life) */
     u8 padA[0xA];
     void *draw;                 /* 0x14: the stage object's own draw (StageObj.draw); NULL: it draws through its draw slot */
@@ -55,7 +55,7 @@ typedef struct SparkEmitter {
 } SparkEmitter;
 typedef char SparkEmitter_size_check[(sizeof(SparkEmitter) == 0x40) ? 1 : -1];
 
-/* An effect object of the fishing code (kinds 0x16 lure, 0x17 fish, 0x2C countdown; StageObj_Alloc,
+/* An effect object of the fishing code (kinds STAGEOBJ_KIND_LURE, 23 the fish, 44 the countdown; StageObj_Alloc,
  * StageObj_AllocTail): update at +0x20, a draw slot at +0x38. */
 typedef struct FxObj {
     u8 active;                  /* 0x00 */
@@ -87,12 +87,12 @@ typedef char FxObj_size_check[(sizeof(FxObj) == 0x40) ? 1 : -1];
 /* An entry of a fishing spot's fish table (Stage_GetSeasonalData): Fish_PickKind picks a kind
  * with a chance of weight in the table's total. */
 typedef struct FishTableEntry {
-    u8 weight;                  /* 0xFF ends the table */
+    u8 weight;                  /* 255 ends the table */
     u8 kind;                    /* the FishKind */
 } FishTableEntry;
 
-/* The work of a fish (effect kind 0x17, Effect17_Spawn): it swims around home within radius,
- * bites the lure (kind 0x16, Lure_Spawn) and waits. */
+/* The work of a fish (effect kind 23, Effect17_Spawn): it swims around home within radius,
+ * bites the lure (STAGEOBJ_KIND_LURE, Lure_Spawn) and waits. */
 typedef struct FishWork {
     f32 home[3];                /* 0x00 */
     f32 scale[3];               /* 0x0C: grows to its kind's in step 0 */
@@ -102,17 +102,17 @@ typedef struct FishWork {
     u8 pad24[2];
     s16 nibbles;                /* 0x26: nibbles left before the bite */
     FxObj *lure;                /* 0x28 */
-    FishTableEntry *table;      /* 0x2C: the spot's fish table, ended by weight 0xFF */
+    FishTableEntry *table;      /* 0x2C: the spot's fish table, ended by weight 255 */
     s32 heading;                /* 0x30 */
     s32 turn;                   /* 0x34 */
-    s32 wiggle;                 /* 0x38: added to the model's yaw: 0x100 when a stroke starts, then negated and halved each frame */
+    s32 wiggle;                 /* 0x38: added to the model's yaw: 256 when a stroke starts, then negated and halved each frame */
     s32 angles[3];              /* 0x3C */
     s8 kind;                    /* 0x48 */
     s8 bright;                  /* 0x49: 1 once landed (the lure past LURE_STEP_REEL): drawn at full brightness; 0 drawn at half */
 } FishWork;
 typedef char FishWork_size_check[(sizeof(FishWork) == 0x4C) ? 1 : -1];
 
-/* The work of a lure (effect kind 0x16, Lure_Spawn). */
+/* The work of a lure (effect kind STAGEOBJ_KIND_LURE, Lure_Spawn). */
 typedef struct LureWork {
     s16 mode;                   /* 0x00 */
     s16 counter;                /* 0x02: in LURE_STEP_BITE the player's fishTimer of the last frame (a rise is a bite); from LURE_STEP_PULL_OUT the frames since the reel ended */

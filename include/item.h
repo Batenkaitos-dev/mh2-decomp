@@ -4,8 +4,8 @@
 #include "common.h"
 
 /*
- * Item data: gItemData (0x45F110), 0x18 bytes per item id (0 is no
- * item; ids go up to 0x398). Item names are in gItemNames (0x464770).
+ * Item data: gItemData (0x45F110), 24 bytes per item id (0 is no
+ * item; ids go up to 920). Item names are in gItemNames (0x464770).
  */
 typedef struct ItemData {
     u8 type;            /* 0x00: 2 ammo, 3 coating (bowgun ammo slots) */
@@ -13,7 +13,7 @@ typedef struct ItemData {
     u8 rarity;          /* 0x02: Item_DrawRarity */
     u8 max;             /* 0x03: most the pouch holds; ITEM_MAX_UNLIMITED: no limit */
     u8 flags2;          /* 0x04: bit 0 the item icon (Item_DrawIcon, HelpWindow_Draw), bit 2 (Plsel_ResultsUpdate) */
-    u8 icon;            /* 0x05: the item icon, 0xFF none (drawn as icon + 1) */
+    u8 icon;            /* 0x05: the item icon, 255 none (drawn as icon + 1) */
     u8 color;           /* 0x06: index into gItemColors */
     u8 unk07;
     s16 ammoKind;       /* 0x08: bit number in the loadable-ammo mask */
@@ -112,7 +112,7 @@ enum EquipType {
 #define WEAPON_STATUS_TYPE2     2   /* builds up the monster's status 4 (ELEMF_EM_STATUS4) */
 #define WEAPON_STATUS_TYPE3     3   /* builds up the monster's status 2 (ELEMF_EM_STATUS2) */
 
-/* A blade weapon (0x18 bytes, gBladeData at 0x44CCA0, by weapon id). */
+/* A blade weapon (24 bytes, gBladeData at 0x44CCA0, by weapon id). */
 typedef struct BladeData {
     u16 kind;           /* 0x00: row of gWeaponKindClass, the weapon class */
     u8 rarity;          /* 0x02: low 4 bits: Equip_GetRarity */
@@ -136,7 +136,7 @@ typedef struct BladeData {
 } BladeData;
 typedef char BladeData_size_check[(sizeof(BladeData) == 0x18) ? 1 : -1];
 
-/* A gun (0x18 bytes, gGunData at 0x44FA30, by weapon id). */
+/* A gun (24 bytes, gGunData at 0x44FA30, by weapon id). */
 typedef struct GunData {
     u16 kind;           /* 0x00: row of gWeaponKindClass, the weapon class */
     u8 rarity;          /* 0x02: low 4 bits: Equip_GetRarity */
@@ -167,7 +167,7 @@ typedef char GunData_size_check[(sizeof(GunData) == 0x18) ? 1 : -1];
 #define FORGE_COND_PSP_LINK_7   3   /* EVENT_FLAG_PSP_LINK_7 set */
 #define FORGE_COND_PSP_LINK_8   4   /* EVENT_FLAG_PSP_LINK_8 set */
 #define FORGE_COND_PSP_LINK_9   5   /* EVENT_FLAG_PSP_LINK_9 set */
-#define FORGE_COND_GROUP        6   /* a monster of gMonsterGroups[0xB] hunted or captured */
+#define FORGE_COND_GROUP        6   /* a monster of gMonsterGroups[11] hunted or captured */
 #define FORGE_COND_HR_GROUP     7   /* both FORGE_COND_HR and FORGE_COND_GROUP */
 
 /* Forge_CheckRecipe's list, its `where` and its result. */
@@ -189,7 +189,7 @@ typedef struct SkillPoints {
     s8 points;
 } SkillPoints;
 
-/* An armour piece (0x28 bytes, by armour id): gArmorHeadData, gArmorBodyData, gArmorArmsData,
+/* An armour piece (40 bytes, by armour id): gArmorHeadData, gArmorBodyData, gArmorArmsData,
  * gArmorWaistData and gArmorLegsData (gArmorTables by armour type). */
 typedef struct ArmorData {
     u8 modelMale;       /* 0x00: the part's model for a male hunter (Equip_GetModelId) */
@@ -237,13 +237,6 @@ typedef union GunLevelRow {
 } GunLevelRow;
 
 extern BladeData gBladeData[];
-extern GunData gGunData[];
-extern GunLevelRow gGunLevelRows[];
-extern ArmorData gArmorHeadData[];
-extern ArmorData gArmorBodyData[];
-extern ArmorData gArmorArmsData[];
-extern ArmorData gArmorWaistData[];
-extern ArmorData gArmorLegsData[];
 
 /*
  * Skills (Player_HasSkill, Player_GetSkill). SKILL_GROUP_GATHER is the group
@@ -290,6 +283,9 @@ extern ArmorData gArmorLegsData[];
  * -50 (to at least 150). */
 #define SKILL_SHARPNESS_PLUS50  0x21
 #define SKILL_SHARPNESS_MINUS50 0x22
+/* The sharpness-loss skills (Player_AddSharpness): a loss is halved (at least 1) or doubled. */
+#define SKILL_SHARPNESS_LOSS_HALF   0x1F
+#define SKILL_SHARPNESS_LOSS_DOUBLE 0x20
 
 /* The item skills (Item_Use, Player_Heal, Player_ScaleItemDuration). */
 #define SKILL_ITEM_STAMINA      0x4E    /* any item used: 1 in 3 for maximum stamina +75 (Item_StaminaBonus) */
@@ -301,6 +297,10 @@ extern ArmorData gArmorLegsData[];
 #define SKILL_HEAL_DOWN         0xA4    /* heals a quarter less */
 #define SKILL_ITEM_TIME_UP      0xB4    /* the items' timed effects last 1.5 times as long */
 #define SKILL_ITEM_TIME_DOWN    0xB5    /* 0.66 times as long */
+/* The stamina skills (Player_UseStamina, Player_UseDashStamina): a cost is halved (a cost of 1
+ * taken every other frame; a dash 8 instead of 15), or doubled every fifth frame (a dash 18). */
+#define SKILL_STAMINA_COST_DOWN 0xB6
+#define SKILL_STAMINA_COST_UP   0xB7
 /* The status skills (Player_AddPoison, Item_Use's ITEM_ID_RANDOM, the
  * player's status updates in the game overlay). */
 #define SKILL_POISON_HALF       0x0A    /* poison halved */
@@ -408,6 +408,37 @@ extern ArmorData gArmorLegsData[];
 #define SKILL_ROAR_GUARD_MOST   0x8F
 #define SKILL_ROAR_GUARD_ALL    0x90
 #define SKILL_QUAKE_GUARD       0xC3    /* the quakes' stagger is ignored */
+
+/*
+ * Skills named from what the player's code does with them.
+ */
+#define SKILL_SHARPEN_FAST      38      /* the whetstone's motion skips from frame 98 to 238 (Player_StateSharpen) */
+#define SKILL_SHARPEN_HALF      39      /* the whetstone restores half the sharpness */
+#define SKILL_STAGE_SHOT_POWER  201     /* the mounted gun's and the cannon's shots at powerPct 110 (StageShot_CreateForPlayer) */
+#define SKILL_HEAT_DAMAGE_SLOW  132     /* the hot areas' damage interval (envTimer) doubled */
+#define SKILL_HEAT_DAMAGE_FAST  135     /* the hot areas' damage interval cut to two thirds */
+#define SKILL_HEAT_DAMAGE_FASTER 136    /* the hot areas' damage interval halved */
+#define SKILL_GATHER_FAST       151     /* the gathering, mining, netting and carving motions run faster (Player_StateGather) */
+#define SKILL_TOOL_LOSS_DOWN    152     /* a tool that would break or be lost is kept 1 time in 4 (a pickaxe, a net, a horn item) */
+#define SKILL_TOOL_LOSS_DOWN2   153     /* the same, 1 time in 2 */
+#define SKILL_TOOL_LOSS_UP      154     /* 1 time in 4 the tool's loss roll is made about twice as likely */
+#define SKILL_TOOL_LOSS_UP2     155     /* the same, 1 time in 2 */
+#define SKILL_ROLL_NO_HIT_PLUS2 175     /* the roll's noHitTimer 6 + 2 frames */
+#define SKILL_ROLL_NO_HIT_PLUS4 176     /* the roll's noHitTimer 6 + 4 frames */
+#define SKILL_SPREAD_HALF       185     /* shots' and arrows' random deviation halved (BowgunShot, BowArrow) */
+#define SKILL_SPREAD_DOUBLE     186     /* shots' and arrows' random deviation doubled */
+#define SKILL_EAT_FAST          188     /* PL_MOT_EATING runs at step 3.6 from frame 38 to 180 */
+#define SKILL_EAT_SLOW          189     /* PL_MOT_EATING goes back to frame 52 after frame 62, up to four times */
+#define SKILL_POISON_AREA_SLOW  191     /* a poison area's damage every 12 frames, not 8 */
+#define SKILL_POISON_AREA_SLOWER 192    /* every 24 frames */
+#define SKILL_POISON_AREA_FAST  193     /* every 6 frames */
+#define SKILL_POISON_AREA_FASTER 194    /* every 4 frames */
+#define SKILL_ROAST_WINDOW_WIDE 198     /* the spit roast's done window starts 2 earlier and lasts 4 longer (the gourmet window 1 and 2) */
+#define SKILL_ROAST_WINDOW_WIDER 199    /* starts 4 earlier and lasts 8 longer (the gourmet window 2 and 4) */
+#define SKILL_ROAST_WINDOW_HALF 200     /* the done and gourmet windows halved */
+#define SKILL_AMMO_POWER_A      54      /* BowgunShot's power skill bit 1: ammunition types 0-2 */
+#define SKILL_AMMO_POWER_B      55      /* bit 2: ammunition types 3-5 */
+#define SKILL_AMMO_POWER_C      56      /* bit 4: ammunition types 6-8 */
 
 /*
  * The resistance skills (Player_CalcResists): +3, +5 or +10, or -3, -5 or
@@ -550,13 +581,13 @@ typedef struct SkillDef {
 #define ITEM_ID_BAIT_STATUS2        0x02E   /* kind 2: status 2 */
 #define ITEM_ID_PITFALL_TRAP        0x054   /* PitfallTrap_Create */
 #define ITEM_ID_TRAP                0x055   /* PLACED_TRAP */
-#define ITEM_ID_NO_BOMB_AREA_ITEM   0x056   /* ItemAttack type 0x16, set down only where barrel bombs are barred (Scene_InNoBarrelBombArea) */
+#define ITEM_ID_NO_BOMB_AREA_ITEM   0x056   /* ITEMATK_NO_BOMB_AREA_ITEM, set down only where barrel bombs are barred (Scene_InNoBarrelBombArea) */
 #define ITEM_ID_SMALL_BARREL_BOMB   0x05B   /* ItemAttack type 4 */
-#define ITEM_ID_SMALL_BARREL_BOMB_B 0x05C   /* ItemAttack type 0x10 */
+#define ITEM_ID_SMALL_BARREL_BOMB_B 0x05C   /* ITEMATK_SMALL_BARREL_BOMB_B */
 #define ITEM_ID_LARGE_BARREL_BOMB   0x05D   /* PLACED_LARGE_BARREL_BOMB */
 #define ITEM_ID_LARGE_BARREL_BOMB_B 0x05E   /* PLACED_LARGE_BARREL_BOMB_B */
-#define ITEM_ID_LAUNCHED_BARREL_BOMB 0x05F  /* ItemAttack type 0x14 */
-#define ITEM_ID_LAUNCHED_BARREL_BOMB_B 0x060 /* ItemAttack type 0x18 */
+#define ITEM_ID_LAUNCHED_BARREL_BOMB 0x05F  /* ItemAttack type 20 */
+#define ITEM_ID_LAUNCHED_BARREL_BOMB_B 0x060 /* ItemAttack type 24 */
 #define ITEM_ID_MONSTER_BOMB        0x061   /* PLACED_MONSTER_BOMB, a bomb set on a monster */
 #define ITEM_ID_PLACED_BOMB         0x062   /* PLACED_BOMB; counts with the large barrel bombs (gScene.placed1) */
 #define ITEM_ID_SUPPLY_TRAP         0x296
@@ -564,7 +595,7 @@ typedef struct SkillDef {
 #define ITEM_ID_SUPPLY_LARGE_BARREL_BOMB 0x29A /* PLACED_LARGE_BARREL_BOMB_B */
 #define ITEM_ID_DELIVERY            0x2A6   /* set down at a delivery spot (Quest_DeliverFromPouch); Item_UseMisc does nothing */
 #define ITEM_ID_TRADE_GOODS         0x2A4   /* from the supply box, with its own notice; the trader
-                                             * (EM_KIND_TRADER) takes it for item 0x2A5; held, it costs
+                                             * (EM_KIND_TRADER) takes it for item 677; held, it costs
                                              * health as ITEM_ID_DELIVERY does (Player_CountSpecialItems) */
 /* The team items (PL_ACT_TEAM_ITEM_USE, Item_UseTeamPowder): on the user and
  * on the local player when on the same side (and, for a remote user, in the
@@ -583,21 +614,21 @@ typedef struct SkillDef {
 /* Used by the hunter's actions (Player_UseItem and the action states, game overlay):
  * the action each one starts. A letter ends the name of ids treated alike here, whose
  * difference lies in their data (an ItemAttack row, a gathering table ...). */
-#define ITEM_ID_RETURNING_THROW          0x040   /* PL_ACT_THROW_ITEM; Player_StateThrowItem: Boomerang_Create, used up only on a 1 in 8 roll (skill 0x2D saves more); its own notice */
-#define ITEM_ID_LOBBED_A                 0x041   /* PL_ACT_THROW_ITEM; ItemAttack type 0xC: lobbed (ItemAttack_LobSpeeds, falls faster after 15 frames) */
-#define ITEM_ID_LOBBED_B                 0x042   /* as ITEM_ID_LOBBED_A, ItemAttack type 0xD */
-#define ITEM_ID_LOBBED_C                 0x043   /* as ITEM_ID_LOBBED_A, ItemAttack type 0xE */
-#define ITEM_ID_LOBBED_D                 0x044   /* as ITEM_ID_LOBBED_A, ItemAttack type 0xF */
-#define ITEM_ID_LOBBED_NO_VERSUS         0x045   /* thrown only outside versus (Quest_IsVersus 0); ItemAttack type 0x15, lobbed */
+#define ITEM_ID_RETURNING_THROW          0x040   /* PL_ACT_THROW_ITEM; Player_StateThrowItem: Boomerang_Create, used up only on a 1 in 8 roll (SKILL_THROW_UP saves more); its own notice */
+#define ITEM_ID_LOBBED_A                 0x041   /* PL_ACT_THROW_ITEM; ITEMATK_LOBBED_A: lobbed (ItemAttack_LobSpeeds, falls faster after 15 frames) */
+#define ITEM_ID_LOBBED_B                 0x042   /* as ITEM_ID_LOBBED_A, ITEMATK_LOBBED_B */
+#define ITEM_ID_LOBBED_C                 0x043   /* as ITEM_ID_LOBBED_A, ITEMATK_LOBBED_C */
+#define ITEM_ID_LOBBED_D                 0x044   /* as ITEM_ID_LOBBED_A, ITEMATK_LOBBED_D */
+#define ITEM_ID_LOBBED_NO_VERSUS         0x045   /* thrown only outside versus (Quest_IsVersus 0); ITEMATK_LOBBED_NO_VERSUS, lobbed */
 #define ITEM_ID_THROWN_HIT_A             0x047   /* PL_ACT_THROW_ITEM; ItemAttack type 6 (a plain thrown hit; its effect is in its ItemAttack row) */
-#define ITEM_ID_THROWN_AIR_BURST         0x048   /* PL_ACT_THROW_ITEM; ItemAttack type 1: bursts in flight after 13 frames (8 with skill 0x2D) */
+#define ITEM_ID_THROWN_AIR_BURST         0x048   /* PL_ACT_THROW_ITEM; ItemAttack type 1: bursts in flight after 13 frames (8 with SKILL_THROW_UP) */
 #define ITEM_ID_THROWN_AIR_BURST_LATE    0x049   /* PL_ACT_THROW_ITEM; ItemAttack type 9: bursts in flight after 16 frames */
 #define ITEM_ID_THROWN_GROUND_MARK_B     0x04B   /* PL_ACT_THROW_ITEM_ALT standing, PL_ACT_THROW_ITEM on the move; ItemAttack type 5: leaves a stage object where it lands */
 #define ITEM_ID_THROWN_GROUND_MARK       0x04C   /* as ITEM_ID_THROWN_GROUND_MARK_B; ItemAttack type 0: leaves a stage object where it lands */
-#define ITEM_ID_THROWN_GROUND_BURST      0x04D   /* PL_ACT_THROW_ITEM_ALT; ItemAttack type 0xB: on the floor a stage object and its burst */
+#define ITEM_ID_THROWN_GROUND_BURST      0x04D   /* PL_ACT_THROW_ITEM_ALT; ItemAttack type 11: on the floor a stage object and its burst */
 #define ITEM_ID_RETURN_TO_CAMP           0x04E   /* only outside camp (Item_UsableOutsideCamp) -> PL_ACT_RETURN_TO_CAMP */
-#define ITEM_ID_THROWN_GROUND_BURST_C    0x04F   /* PL_ACT_THROW_ITEM_ALT; ItemAttack type 0x17: on the floor a stage object and its burst */
-#define ITEM_ID_THROWN_NO_VERSUS         0x050   /* thrown only outside versus; ItemAttack type 0xA */
+#define ITEM_ID_THROWN_GROUND_BURST_C    0x04F   /* PL_ACT_THROW_ITEM_ALT; ItemAttack type 23: on the floor a stage object and its burst */
+#define ITEM_ID_THROWN_NO_VERSUS         0x050   /* thrown only outside versus; ItemAttack type 10 */
 #define ITEM_ID_FISH_BAIT_A              0x08E   /* at an action spot of kind 2 -> PL_ACT_FISH_CAST (Lure_Spawn type 0); used up on a catch or a monster bite */
 #define ITEM_ID_FISH_BAIT_B              0x08F   /* as ITEM_ID_FISH_BAIT_A */
 #define ITEM_ID_FISH_BAIT_C              0x090   /* as ITEM_ID_FISH_BAIT_A */
@@ -625,18 +656,18 @@ typedef struct SkillDef {
 #define ITEM_ID_ROAST_SELF_E             0x0A7   /* as ITEM_ID_ROAST_SELF_A, row 9 */
 #define ITEM_ID_ROAST_SELF_F             0x0A8   /* as ITEM_ID_ROAST_SELF_A, row 11 */
 #define ITEM_ID_ROAST_SELF_G             0x0A9   /* as ITEM_ID_ROAST_SELF_A, row 12 */
-#define ITEM_ID_SHARPEN_150              0x0AC   /* not for gunners -> PL_ACT_SHARPEN; Player_StateSharpen: sharpness +150 (half with skill 0x27), one used up */
+#define ITEM_ID_SHARPEN_150              0x0AC   /* not for gunners -> PL_ACT_SHARPEN; Player_StateSharpen: sharpness +150 (half with skill 39), one used up */
 #define ITEM_ID_SCOPE_VIEW               0x0AD   /* Player_UseItem (Player_LocalCanUseBinoculars) -> PL_ACT_BINOCULARS or _CROUCHED: the aim view; not used up here */
 #define ITEM_ID_HORN_PLAY                0x0AF   /* PL_ACT_HORN_PLAY: up to 3 rounds; Player_StateInstrumentEnd uses it up 1 in 5 (skills and the hunting horn save it) */
 #define ITEM_ID_THROWN_WIND_DEFLECTED    0x0D7   /* PL_ACT_THROW_ITEM; ItemAttack type 8 (ATKF_WIND_DEFLECTS: wind turns it away) */
 #define ITEM_ID_SHARPEN_150_B            0x0EA   /* as ITEM_ID_SHARPEN_150 (+150) */
 #define ITEM_ID_SHARPEN_200              0x0F2   /* as ITEM_ID_SHARPEN_150, sharpness +200 */
-#define ITEM_ID_SUPPLY_ROAST_TOOL        0x294   /* as ITEM_ID_ROAST_TOOL_A, SpitMeat_Kind row 0; likely a SUPPLY_ id (between item.h's SUPPLY_ ids 0x292-0x29A) */
+#define ITEM_ID_SUPPLY_ROAST_TOOL        0x294   /* as ITEM_ID_ROAST_TOOL_A, SpitMeat_Kind row 0; likely a SUPPLY_ id (between item.h's SUPPLY_ ids ITEM_ID_SUPPLY_HEAL_30 to ITEM_ID_SUPPLY_LARGE_BARREL_BOMB) */
 #define ITEM_ID_SUPPLY_SHARPEN_100       0x295   /* as ITEM_ID_SHARPEN_150, sharpness +100; likely a SUPPLY_ id (same range) */
 #define ITEM_ID_SUPPLY_THROWN_AIR_BURST  0x297   /* same as ITEM_ID_THROWN_AIR_BURST (ItemAttack type 1); likely a SUPPLY_ id (same range) */
 #define ITEM_ID_MOUNTED_GUN_AMMO         0x29B   /* at an action spot of kind 6 walks there -> PL_ACT_MOUNTED_GUN_AIM */
 #define ITEM_ID_CANNON_AMMO              0x29C   /* Player_UpdateCarryInput: carried; PAD_CIRCLE at an action spot of kind 8 takes 10 (Pouch_Add -10) and starts PL_ACT_CANNON_FIRE */
-#define ITEM_ID_DELIVERY_CARRIED         0x2A3   /* Player_GatherAtSpot: a gathered carried item (Item_CarryKind) with the delivery notice (0x14); Player_CountSpecialItems: held, it costs health */
+#define ITEM_ID_DELIVERY_CARRIED         0x2A3   /* Player_GatherAtSpot: a gathered carried item (Item_CarryKind) with the delivery notice (20); Player_CountSpecialItems: held, it costs health */
 #define ITEM_ID_MINE_CLOSER              0x2DA   /* held, it keeps the mine closed further: Mine_IsOpen is 0 (the pickaxes keep their first tables) */
 #define ITEM_ID_BOX_UPGRADE_1            0x26D   /* sold in the shops and kept as obtained, not in the pouch: its purchase shows LOBBY_NOTICE_BOX_UPGRADE_1 (Shop_Buy) */
 #define ITEM_ID_BOX_UPGRADE_2            0x26E   /* likewise, with LOBBY_NOTICE_BOX_UPGRADE_2 */
@@ -649,10 +680,10 @@ typedef struct SkillDef {
 #define ITEM_ID_HORN_ITEM_C              0x2B4   /* as ITEM_ID_HORN_ITEM_A: 2 rounds, 1 in 16 (Side_HornItemPlaying 5) */
 #define ITEM_ID_HORN_ITEM_D              0x2B5   /* as ITEM_ID_HORN_ITEM_A: 2 rounds, 1 in 16 (Side_HornItemPlaying 6) */
 #define ITEM_ID_HORN_ITEM_LONG_B         0x2B6   /* as ITEM_ID_HORN_ITEM_A: 3 rounds, 1 in 8 (Side_HornItemPlaying 7) */
-#define ITEM_ID_SPOT_STRIKE_ITEM         0x2B7   /* at an action spot of kind 0xA -> PL_ACT_SPOT_ITEM_STRIKE (StageShot_CreateForPlayer type 7, one used up) */
-#define ITEM_ID_THROWN_GROUND_BURST_B    0x2BA   /* PL_ACT_THROW_ITEM_ALT; ItemAttack type 0x11: on the floor a stage object and its burst */
-#define ITEM_ID_THROWN_NO_PLAYER_HIT     0x2BB   /* PL_ACT_THROW_ITEM; ItemAttack type 0x12 (ATKF_NO_PLAYER: hits no player) */
-#define ITEM_ID_THROWN_HIT_B             0x2BC   /* PL_ACT_THROW_ITEM; ItemAttack type 0x13 (a plain thrown hit) */
+#define ITEM_ID_SPOT_STRIKE_ITEM         0x2B7   /* at an action spot of kind 10 -> PL_ACT_SPOT_ITEM_STRIKE (StageShot_CreateForPlayer type 7, one used up) */
+#define ITEM_ID_THROWN_GROUND_BURST_B    0x2BA   /* PL_ACT_THROW_ITEM_ALT; ItemAttack type 17: on the floor a stage object and its burst */
+#define ITEM_ID_THROWN_NO_PLAYER_HIT     0x2BB   /* PL_ACT_THROW_ITEM; ItemAttack type 18 (ATKF_NO_PLAYER: hits no player) */
+#define ITEM_ID_THROWN_HIT_B             0x2BC   /* PL_ACT_THROW_ITEM; ItemAttack type 19 (a plain thrown hit) */
 #define ITEM_ID_SPECIAL_MINE_A           0x2F8   /* when SpecialMine_IsFree -> PL_ACT_SET_TRAP; Item_UseMisc: SpecialMine_Create, one used up (all 28 special mine items below are treated alike) */
 #define ITEM_ID_SPECIAL_MINE_B           0x2F9   /* as ITEM_ID_SPECIAL_MINE_A */
 #define ITEM_ID_SPECIAL_MINE_C           0x2FA   /* as ITEM_ID_SPECIAL_MINE_A */
@@ -702,6 +733,12 @@ typedef struct WeaponKindRange {
     s16 hi;
 } WeaponKindRange;
 
-EquipData *Equip_GetData(EquipItem *item);
+/* An entry of a start item list (sub_main's gStartItemsByClass; game's
+ * gStartItemLists and gTrainingStartItems; read by Pouch_SetStartItems and
+ * plsel's Plsel_SetupPresetPouch): n of item; n == -1 ends the list. */
+typedef struct StartItem {
+    s16 n;
+    u16 item;
+} StartItem;
 
 #endif /* ITEM_H */

@@ -1,30 +1,33 @@
-// Symbols for overlay 3, game.bin: the monster families (src/game/em_*.c,
-// 0x736740-0x868110). Format: name = 0xADDRESS; // attributes
+// Symbols for overlay 3, game.bin: the monster families' functions and, after
+// them, the stage objects' hooks (0x7366C0-0x867D80).
+// Format: name = 0xADDRESS; // attributes
 //
-// Kept apart from game.txt so that the game overlay's two workers never edit
-// the same file: new names for functions and data in the families' range go
-// here, everything else in game.txt. game.yaml reads both.
+// game.txt names the rest of the overlay, a few of these families' functions
+// among them; config/overlays/game.yaml reads both files.
+//
+// Each family's state functions run its states, which its header names by
+// group (em.h's EmStateGroup). A comment above a function that several states
+// run lists them. Most families' event groups share one dispatcher
+// (EM_GROUP_EVENT2 runs EM_GROUP_EVENT's); a family's opening comment below
+// says where it shares others.
 
-// Per-state functions: Em<Family>_State<G>_<SS> is the function that the family
-// group-G dispatcher (Em<Family>_RunGroup<G>) calls for state SS (hex). A function
-// several states share is named after the first; the comment above it lists them.
-
-EmDrome_SpawnEffect01 = 0x007366C0; // type:func
+// Velocidrome, Gendrome and Iodrome, the raptor packs' leaders (EmDrome_*).
+EmDrome_SpawnShadow = 0x007366C0; // type:func
 EmDrome_Init = 0x007366D0; // type:func
 EmDrome_Start = 0x00736930; // type:func
 EmDrome_Reinit = 0x00736970; // type:func
 EmDrome_EndState = 0x00736980; // type:func
 EmDrome_IdleNone = 0x007369B0; // type:func
-// states 0:01, 0:0C
+// states DROME_IDLE, DROME_IDLE_WAIT
 EmDrome_Idle = 0x007369C0; // type:func
 EmDrome_IdleThreat = 0x00736A40; // type:func
 EmDrome_PackCall = 0x00736AC0; // type:func
 EmDrome_ShakeOff = 0x00736BC0; // type:func
 EmDrome_IdleAlert = 0x00736C40; // type:func
 EmDrome_GetUp = 0x00736CC0; // type:func
-// states 0:07, 0:0D
+// states DROME_IDLE_STATUS2, DROME_IDLE_STATUS1
 EmDrome_StatusCollapse = 0x00736D40; // type:func
-// states 0:08, 0:0E
+// states DROME_IDLE_STATUS2_END, DROME_IDLE_STATUS1_END
 EmDrome_StatusGetUp = 0x00736EB0; // type:func
 EmDrome_Blinded = 0x00736F40; // type:func
 EmDrome_Status4End = 0x00736FD0; // type:func
@@ -50,7 +53,7 @@ EmDrome_AttackLeapMediumA = 0x00737D90; // type:func
 EmDrome_AttackQuickStrikeA = 0x00737FF0; // type:func
 EmDrome_AttackLeapLongA = 0x00738100; // type:func
 EmDrome_AttackLeapHighA = 0x00738390; // type:func
-// states 3:06, 3:0E
+// states DROME_ATK_SPIT, DROME_ATK_SPIT_FAST
 EmDrome_AttackSpit = 0x00738620; // type:func
 EmDrome_AttackStrikeB = 0x00738720; // type:func
 EmDrome_AttackLeapMediumB = 0x007387D0; // type:func
@@ -104,11 +107,13 @@ EmDrome_CurveNone = 0x0073CD40; // type:func
 EmDrome_CurveVelY = 0x0073CD50; // type:func
 EmDrome_CurveSpeed = 0x0073CE70; // type:func
 EmDrome_UpdateCurves = 0x0073CF90; // type:func
+
+// Monster kind 29 (EmKind1D_*): no code shows its species; it never moves or
+// attacks.
 EmKind1D_Init = 0x0073D060; // type:func
 EmKind1D_EndState = 0x0073D260; // type:func
-// states 0:00 (groups 0 and 2)
 EmKind1D_IdleNop = 0x0073D270; // type:func
-// groups 0 and 2
+// run for EM_GROUP_IDLE and EM_GROUP_FLY
 EmKind1D_RunIdleState = 0x0073D280; // type:func
 EmKind1D_MoveEnd = 0x0073D2D0; // type:func
 EmKind1D_RunMoveState = 0x0073D2E0; // type:func
@@ -116,48 +121,38 @@ EmKind1D_AttackEnd = 0x0073D320; // type:func
 EmKind1D_RunAttackState = 0x0073D330; // type:func
 EmKind1D_Flinch = 0x0073D370; // type:func
 EmKind1D_ReactEnd = 0x0073D3E0; // type:func
-// groups 4, 6 and 7
+// run for EM_GROUP_REACT, EM_GROUP_EVENT and EM_GROUP_EVENT2
 EmKind1D_RunReactState = 0x0073D3F0; // type:func
-// group 5 (its steps): the sound of the kind table entry, effects; entry 4 also StageObj kind 0x0E
+// EM_GROUP_DEFEAT, whatever the state: the variant's death sound and effects
+// (variant 4 adds a fire blast)
 EmKind1D_Die = 0x0073D440; // type:func
 EmKind1D_Update = 0x0073D580; // type:func
 EmKind1D_RunState = 0x0073D670; // type:func
 EmKind1D_UpdateMotionEffects = 0x0073D730; // type:func
 EmKind1D_TableNop = 0x0073D770; // type:func
+
+// Kirin (EmKirin_*). EM_GROUP_FLY runs its idle states.
 EmKirin_MotionSounds = 0x0073D780; // type:func
 EmKirin_Init = 0x0073E160; // type:func
-// states 0:00, 2:00
 EmKirin_IdleNop = 0x0073E720; // type:func
-// states 0:01, 2:01
 EmKirin_Idle = 0x0073E730; // type:func
-// states 0:02, 2:02
 EmKirin_IdleActionA = 0x0073E7A0; // type:func
-// states 0:03, 2:03
 EmKirin_IdleActionB = 0x0073E810; // type:func
-// states 0:04, 2:04
 EmKirin_IdleActionC = 0x0073E880; // type:func
-// states 0:05, 2:05
 EmKirin_IdleActionD = 0x0073E8F0; // type:func
-// states 0:06, 2:06
 EmKirin_IdleActionE = 0x0073E960; // type:func
-// states 0:07, 2:07
 EmKirin_TurnToGoal = 0x0073E9D0; // type:func
-// states 0:08, 2:08
 EmKirin_Status2Collapse = 0x0073EAA0; // type:func
-// states 0:09, 2:09
 EmKirin_Status2GetUp = 0x0073EBB0; // type:func
-// states 0:0A, 2:0A
 EmKirin_Status4ShakeOff = 0x0073EC40; // type:func
-// states 0:0B, 2:0B
 EmKirin_IdleThreat = 0x0073ECC0; // type:func
-// states 0:0C, 2:0C
 EmKirin_IdleThreatThenIdle = 0x0073ED30; // type:func
 EmKirin_RunIdleState = 0x0073EE00; // type:func
 EmKirin_WalkTurnToGoal = 0x0073EF20; // type:func
 EmKirin_WalkToGoal = 0x0073EFE0; // type:func
-// states 1:02, 1:09
+// states KIRIN_MOVE_CHARGE, KIRIN_MOVE_CHARGE_WIDE
 EmKirin_ChargeToGoal = 0x0073F070; // type:func
-// states 1:03, 1:0A
+// states KIRIN_MOVE_GALLOP, KIRIN_MOVE_GALLOP_WIDE
 EmKirin_GallopToGoal = 0x0073F150; // type:func
 EmKirin_StrideA = 0x0073F290; // type:func
 EmKirin_StrideB = 0x0073F340; // type:func
@@ -171,29 +166,28 @@ EmKirin_RunMoveState = 0x0073FBE0; // type:func
 EmKirin_Threat = 0x0073FD10; // type:func
 EmKirin_Lunge = 0x0073FD80; // type:func
 EmKirin_JumpStrike = 0x0073FE30; // type:func
-// states 3:03, 3:09
+// states KIRIN_ATK_STRIKE_BOLTS, KIRIN_ATK_STRIKE_BOLTS_ALT
 EmKirin_StrikeBolts = 0x0073FEE0; // type:func
-// states 3:04, 3:0A
+// states KIRIN_ATK_BOLTS_A, KIRIN_ATK_BOLTS_A_ALT
 EmKirin_CallBoltsA = 0x0073FFE0; // type:func
-// states 3:05, 3:0B
+// states KIRIN_ATK_BOLTS_B, KIRIN_ATK_BOLTS_B_ALT
 EmKirin_CallBoltsB = 0x007400F0; // type:func
-// states 3:06, 3:0C
+// states KIRIN_ATK_BOLTS_C, KIRIN_ATK_BOLTS_C_ALT
 EmKirin_CallBoltsC = 0x00740200; // type:func
-// states 3:07, 3:0D
+// states KIRIN_ATK_BOLTS_D, KIRIN_ATK_BOLTS_D_ALT
 EmKirin_CallBoltsD = 0x00740310; // type:func
-// states 3:08, 3:0E
+// states KIRIN_ATK_BOLTS_E, KIRIN_ATK_BOLTS_E_ALT
 EmKirin_CallBoltsE = 0x00740420; // type:func
 EmKirin_RunAttackState = 0x00740530; // type:func
 EmKirin_FlinchA = 0x00740670; // type:func
 EmKirin_FlinchB = 0x007406F0; // type:func
-// states 4:02, 4:05
+// states KIRIN_REACT_KNOCKBACK, KIRIN_REACT_WAKE_KNOCKBACK
 EmKirin_KnockBack = 0x00740770; // type:func
 EmKirin_Status4 = 0x00740940; // type:func
 EmKirin_CollapseAndRise = 0x00740A30; // type:func
 EmKirin_RunReactState = 0x00740AF0; // type:func
 EmKirin_Hunted = 0x00740B90; // type:func
 EmKirin_RunDefeatState = 0x00740D50; // type:func
-// states 6:00, 7:00
 EmKirin_SnowyMountainsScene = 0x00740D90; // type:func
 EmKirin_RunEventState = 0x007411B0; // type:func
 EmKirin_EndState = 0x007414E0; // type:func
@@ -203,6 +197,8 @@ EmKirin_TableNop = 0x00741550; // type:func
 EmKirin_MotionEffectsDefault = 0x00741560; // type:func
 EmKirin_MotionEffects = 0x00741570; // type:func
 EmKirin_UpdateMotionEffects = 0x00741B30; // type:func
+
+// Yian Garuga (EmGaruga_*).
 EmGaruga_MotionSounds = 0x00741B80; // type:func
 EmGaruga_SpawnEffects = 0x00744440; // type:func
 EmGaruga_Init = 0x00744480; // type:func
@@ -244,15 +240,17 @@ EmGaruga_Status1Collapse = 0x00745F40; // type:func
 EmGaruga_Status1End = 0x00746060; // type:func
 EmGaruga_Status2Downed = 0x00746130; // type:func
 EmGaruga_Status1Downed = 0x00746280; // type:func
-// states 0:21, 0:23, 0:25
-EmGaruga_Roar = 0x007463D0; // type:func
-// states 0:08, 0:22, 0:24
+// states GARUGA_IDLE_STOMPS, GARUGA_IDLE_STOMPS_RAGE_BY_HP,
+// GARUGA_IDLE_STOMPS_PENDING_RAGE
+EmGaruga_Stomps = 0x007463D0; // type:func
+// states GARUGA_IDLE_HOLD2_SHAKE_OFF, GARUGA_IDLE_STATUS4_SHAKE_OFF,
+// GARUGA_IDLE_STUN_SHAKE_OFF
 EmGaruga_ShakeOffAfterStatus = 0x00746450; // type:func
 EmGaruga_Walk = 0x007464D0; // type:func
 EmGaruga_MoveEnd = 0x007465B0; // type:func
 EmGaruga_RunB = 0x007465D0; // type:func
 EmGaruga_Turn = 0x007466B0; // type:func
-// states 1:04, 1:08
+// states GARUGA_MOVE_RUN, GARUGA_MOVE_RUN_SLOW
 EmGaruga_Run = 0x00746760; // type:func
 EmGaruga_TurnInCombat = 0x00746840; // type:func
 EmGaruga_Limp = 0x007468F0; // type:func
@@ -286,12 +284,12 @@ EmGaruga_EscapeUpward = 0x00749240; // type:func
 EmGaruga_HoverRise = 0x00749480; // type:func
 EmGaruga_TurnAndStare = 0x007495A0; // type:func
 EmGaruga_Stare = 0x00749650; // type:func
-// states 3:02, 3:0C
+// states GARUGA_ATK_TAIL_SPIN, GARUGA_ATK_TAIL_SPIN_B
 EmGaruga_TailSpin = 0x007496D0; // type:func
 EmGaruga_TurnAndPeckA = 0x007497C0; // type:func
 EmGaruga_ChargeTrip = 0x00749870; // type:func
 EmGaruga_TurnAndPeckB = 0x00749980; // type:func
-EmGaruga_SingleAttack = 0x00749A50; // type:func
+EmGaruga_Roar = 0x00749A50; // type:func
 EmGaruga_Fireball = 0x00749AE0; // type:func
 EmGaruga_FireballLow = 0x00749CE0; // type:func
 EmGaruga_FireballHigh = 0x00749ED0; // type:func
@@ -322,11 +320,8 @@ EmGaruga_Stun = 0x0074B8F0; // type:func
 EmGaruga_StunDowned = 0x0074BA70; // type:func
 EmGaruga_StunDownedEnd = 0x0074BB90; // type:func
 EmGaruga_Hold2 = 0x0074BC80; // type:func
-// states 6:00, 7:00
 EmGaruga_StoryIntro = 0x0074BDC0; // type:func
-// states 6:04, 7:04
 EmGaruga_Captured = 0x0074C490; // type:func
-// states 6:05, 7:05
 EmGaruga_CapturedHold2 = 0x0074C680; // type:func
 EmGaruga_VersusEatBait = 0x0074C810; // type:func
 EmGaruga_VersusPoseA = 0x0074CA00; // type:func
@@ -362,94 +357,108 @@ EmGaruga_SetAttackState = 0x00751220; // type:func
 EmGaruga_SetReactState = 0x007514E0; // type:func
 EmGaruga_MoveByVelYCurve = 0x007518C0; // type:func
 EmGaruga_StartCurves = 0x007519D0; // type:func
+
+// Daimyo Hermitaur, Shogun Ceanataur, Hermitaur and Ceanataur (EmHermitaur_*).
 EmHermitaur_MotionSounds = 0x00751DD0; // type:func
 EmHermitaur_Init = 0x00758490; // type:func
 EmHermitaur_Reinit = 0x00758840; // type:func
-// states 0:00, 0:01
+// states HERM_IDLE_STAND, HERM_IDLE
 EmHermitaur_Idle = 0x007597C0; // type:func
 EmHermitaur_IdleAlert = 0x00759830; // type:func
-// states 0:03, 0:17
+// states HERM_IDLE_FEED, HERM_IDLE_FEED_REFILL
 EmHermitaur_Feed = 0x007598A0; // type:func
-// states 0:04, 0:11, 0:12
+// states HERM_IDLE_THREAT, HERM_IDLE_THREAT_RAGE, HERM_IDLE_THREAT_PENDING_RAGE
 EmHermitaur_Threat = 0x007599C0; // type:func
 EmHermitaur_IdleAction = 0x00759A30; // type:func
 EmHermitaur_IdleTurnLeftMotion = 0x00759AD0; // type:func
 EmHermitaur_TurnToGoalOnce = 0x00759B40; // type:func
-// states 0:08, 0:0D, 0:0E
+// states HERM_IDLE_STATUS2_COLLAPSE, HERM_IDLE_REST, HERM_IDLE_STATUS1_COLLAPSE
 EmHermitaur_LieDown = 0x00759C10; // type:func
-// states 0:09, 0:0F, 0:10
+// states HERM_IDLE_STATUS2_END, HERM_IDLE_STATUS1_END, HERM_IDLE_REST_END
 EmHermitaur_GetUp = 0x00759E60; // type:func
-// states 0:0A, 0:0B, 0:0C
+// states HERM_IDLE_STATUS4_SHAKE_OFF, HERM_IDLE_STUN_SHAKE_OFF,
+// HERM_IDLE_HOLD2_SHAKE_OFF
 EmHermitaur_ShakeOff = 0x00759EE0; // type:func
 EmHermitaur_Wait = 0x00759F60; // type:func
 EmHermitaur_WaitAlert = 0x00759FF0; // type:func
 EmHermitaur_EatStart = 0x0075A080; // type:func
 EmHermitaur_EatEnd = 0x0075A180; // type:func
 EmHermitaur_RunIdleState = 0x0075A200; // type:func
-// states 1:00, 1:03, 1:08, 1:09
+// states HERM_MOVE_TURN_TO_GOAL, HERM_MOVE_TURN_AWAY, HERM_MOVE_TURN_SIDE_A,
+// HERM_MOVE_TURN_SIDE_B
 EmHermitaur_TurnInPlace = 0x0075A3D0; // type:func
-// states 1:01, 1:04
+// states HERM_MOVE_WALK, HERM_MOVE_WALK_BACK
 EmHermitaur_Walk = 0x0075A6F0; // type:func
-// states 1:02, 1:05, 1:12, 1:13, 1:18
+// states HERM_MOVE_WALK_ALERT_FAST, HERM_MOVE_WALK_BACK_ALERT_FAST,
+// HERM_MOVE_WALK_ALERT, HERM_MOVE_WALK_BACK_ALERT, HERM_MOVE_BACK_ATTACK
 EmHermitaur_WalkAlert = 0x0075A950; // type:func
-// states 1:06, 1:07, 1:0A, 1:0B, 1:0C, 1:0D, 1:0E, 1:0F, 1:10, 1:11
+// states HERM_MOVE_SIDESTEP_A, HERM_MOVE_SIDESTEP_B, HERM_MOVE_SIDESTEP_FAST_A,
+// HERM_MOVE_SIDESTEP_FAST_B, HERM_MOVE_SIDESTEP_SHORT_A,
+// HERM_MOVE_SIDESTEP_SHORT_B, HERM_MOVE_SIDESTEP_LONG_A,
+// HERM_MOVE_SIDESTEP_LONG_B, HERM_MOVE_SIDESTEP_SHORT_C,
+// HERM_MOVE_SIDESTEP_SHORT_D
 EmHermitaur_Sidestep = 0x0075AC90; // type:func
-// states 1:14, 1:15, 1:16, 1:17
+// states HERM_MOVE_TURN_TO_GOAL_ALERT, HERM_MOVE_TURN_AWAY_ALERT,
+// HERM_MOVE_TURN_SIDE_A_ALERT, HERM_MOVE_TURN_SIDE_B_ALERT
 EmHermitaur_TurnInPlaceAlert = 0x0075AF90; // type:func
 EmHermitaur_RunMoveState = 0x0075B2B0; // type:func
 EmHermitaur_Burrow = 0x0075B4B0; // type:func
 EmHermitaur_BuriedTurnToGoal = 0x0075B560; // type:func
-// states 2:02, 2:0A
+// states HERM_DIG_MOVE_TO_GOAL, HERM_DIG_MOVE_THROUGH
 EmHermitaur_BuriedMoveToGoal = 0x0075B690; // type:func
 EmHermitaur_BuriedWait = 0x0075B880; // type:func
 EmHermitaur_ClimbToCeiling = 0x0075B910; // type:func
 EmHermitaur_CeilingHang = 0x0075BA90; // type:func
 EmHermitaur_CeilingDrop = 0x0075BB30; // type:func
 EmHermitaur_CeilingTurn = 0x0075BC90; // type:func
-// states 2:08, 2:0B
+// states HERM_DIG_CEIL_CRAWL, HERM_DIG_CEIL_CRAWL_FAST
 EmHermitaur_CeilingCrawl = 0x0075BD80; // type:func
-// states 2:09, 2:0C, 2:0D, 2:0E
+// states HERM_DIG_SHELL_SWAP, HERM_DIG_SHELL_SWAP_A, HERM_DIG_SHELL_SWAP_B,
+// HERM_DIG_SHELL_SWAP_C
 EmHermitaur_SwapShell = 0x0075BE90; // type:func
 EmHermitaur_RunDigState = 0x0075BF50; // type:func
 EmHermitaur_StrikeA = 0x0075C080; // type:func
-// states 3:01, 3:02, 3:06
+// states HERM_ATK_WINDUP_STRIKE, HERM_ATK_WINDUP_STRIKE_MID,
+// HERM_ATK_WINDUP_STRIKE_LONG
 EmHermitaur_WindUpStrike = 0x0075C0F0; // type:func
 EmHermitaur_WaterJet = 0x0075C220; // type:func
-// states 3:04, 3:19
+// states HERM_ATK_GUARD, HERM_ATK_GUARD_SHORT
 EmHermitaur_Guard = 0x0075C3F0; // type:func
 EmHermitaur_GuardEnd = 0x0075C540; // type:func
 EmHermitaur_BurrowToAmbush = 0x0075C5D0; // type:func
-// states 3:08, 3:13
+// states HERM_ATK_AMBUSH_THRUST, HERM_ATK_THRUST_RETURN
 EmHermitaur_UnderThrust = 0x0075C760; // type:func
 EmHermitaur_Emerge = 0x0075C8E0; // type:func
-// states 3:0A, 3:0B, 3:0C
+// states HERM_ATK_LEAP_LOW, HERM_ATK_LEAP_MID, HERM_ATK_LEAP_HIGH
 EmHermitaur_LeapPress = 0x0075C9B0; // type:func
-// states 3:0D, 3:0E
+// states HERM_ATK_STRIKE_B, HERM_ATK_STRIKE_B_MIRROR
 EmHermitaur_StrikeB = 0x0075CC00; // type:func
-// states 3:0F, 3:10
+// states HERM_ATK_STRIKE_C, HERM_ATK_STRIKE_C_MIRROR
 EmHermitaur_StrikeC = 0x0075CC90; // type:func
 EmHermitaur_AmbushWait = 0x0075CD20; // type:func
-// states 3:12, 3:14, 3:15
+// states HERM_ATK_THRUST_SERIES_A, HERM_ATK_THRUST_SERIES_B,
+// HERM_ATK_THRUST_ONCE
 EmHermitaur_UnderThrustSeries = 0x0075CF60; // type:func
 EmHermitaur_CeilingJet = 0x0075D220; // type:func
-// states 3:17, 3:18
+// states HERM_ATK_TURN_TO_GOAL, HERM_ATK_TURN_TO_GOAL_B
 EmHermitaur_TurnToGoal = 0x0075D400; // type:func
-// states 3:1A, 3:1B
+// states HERM_ATK_SPIN_A, HERM_ATK_SPIN_B
 EmHermitaur_SpinStrike = 0x0075D620; // type:func
 EmHermitaur_RunAttackState = 0x0075D740; // type:func
 EmHermitaur_Flinch = 0x0075D950; // type:func
-// states 4:01, 4:0F, 4:10
+// states HERM_REACT_FLINCH_CLAW, HERM_REACT_FLINCH_CLAW_BROKEN_A,
+// HERM_REACT_FLINCH_CLAW_BROKEN_B
 EmHermitaur_FlinchClaw = 0x0075DA10; // type:func
-// states 4:02, 4:03
+// states HERM_REACT_KNOCK_DOWN_A, HERM_REACT_KNOCK_DOWN_B
 EmHermitaur_KnockDown = 0x0075DA90; // type:func
 EmHermitaur_Status4 = 0x0075DC60; // type:func
 EmHermitaur_SpinFlinch = 0x0075DD50; // type:func
 EmHermitaur_GuardRecoil = 0x0075DE10; // type:func
 EmHermitaur_WindFlinch = 0x0075DEE0; // type:func
 EmHermitaur_Hold2 = 0x0075DFB0; // type:func
-// states 4:09, 4:0A
+// states HERM_REACT_STUN_A, HERM_REACT_STUN_B
 EmHermitaur_Stun = 0x0075E0F0; // type:func
-// states 4:0B, 4:0E
+// states HERM_REACT_RECOIL_CLAW_A, HERM_REACT_RECOIL_CLAW_B
 EmHermitaur_Recoil = 0x0075E2E0; // type:func
 EmHermitaur_FallFromAir = 0x0075E360; // type:func
 EmHermitaur_PartBreak = 0x0075E4F0; // type:func
@@ -485,6 +494,8 @@ EmHermitaur_MotionEffects = 0x00760B50; // type:func
 EmHermitaur_UpdateMotionEffects = 0x00761B20; // type:func
 EmHermitaur_ScriptQuery = 0x00761B70; // type:func
 EmHermitaur_AllowPartBreak = 0x00761CF0; // type:func
+
+// Gravios, Black Gravios and Basarios (EmGravios_*).
 EmGravios_PlaySeOnFrame = 0x00761D50; // type:func
 EmGravios_MotionSounds = 0x00761DF0; // type:func
 EmGravios_SpawnEffects = 0x00764E60; // type:func
@@ -516,30 +527,31 @@ EmGravios_IdleActionC = 0x007660E0; // type:func
 EmGravios_Rest = 0x007661B0; // type:func
 EmGravios_Status2Collapse = 0x00766320; // type:func
 EmGravios_HideAsRock = 0x00766440; // type:func
-// states 0:17, 0:18, 0:1C
+// states GRAV_IDLE_REST_END, GRAV_IDLE_STATUS2_END, GRAV_IDLE_STATUS1_END
 EmGravios_GetUp = 0x00766540; // type:func
-// states 0:19, 0:21, 0:22, 0:23
+// states GRAV_IDLE_SHAKE_OFF, GRAV_IDLE_STATUS4_SHAKE_OFF,
+// GRAV_IDLE_HOLD2_SHAKE_OFF, GRAV_IDLE_STUN_SHAKE_OFF
 EmGravios_ShakeOff = 0x00766620; // type:func
 EmGravios_RehideAsRock = 0x007666A0; // type:func
 EmGravios_Status1Collapse = 0x007667E0; // type:func
 EmGravios_Status2Downed = 0x00766900; // type:func
 EmGravios_Status1Downed = 0x00766A00; // type:func
 EmGravios_BurrowToNextArea = 0x00766B00; // type:func
-// states 0:25, 0:26
+// states GRAV_IDLE_SURFACE_AT_GOAL, GRAV_IDLE_SURFACE
 EmGravios_Surface = 0x00766D50; // type:func
-// states 0:27, 0:28
+// states GRAV_IDLE_RAGE_START, GRAV_IDLE_PENDING_RAGE_START
 EmGravios_Enrage = 0x00766E20; // type:func
-// states 1:00, 1:0D, 1:0E
+// states GRAV_MOVE_WALK, GRAV_MOVE_WALK_NO_HIT, GRAV_MOVE_WALK_FAST
 EmGravios_Walk = 0x00766EA0; // type:func
 EmGravios_EndMove = 0x00766FC0; // type:func
 EmGravios_ChargeStop = 0x00766FD0; // type:func
-// states 1:03, 1:0C
+// states GRAV_MOVE_TURN, GRAV_MOVE_TURN_NO_HIT
 EmGravios_Turn = 0x00767050; // type:func
-// states 1:04, 1:08
+// states GRAV_MOVE_CHARGE, GRAV_MOVE_CHARGE_SLOW
 EmGravios_Charge = 0x00767130; // type:func
 EmGravios_WalkB = 0x00767270; // type:func
 EmGravios_Limp = 0x00767350; // type:func
-// states 1:07, 1:09
+// states GRAV_MOVE_TURN_TO_GOAL, GRAV_MOVE_TURN_TO_GOAL_RAGE_CHECK
 EmGravios_TurnToGoal = 0x00767430; // type:func
 EmGravios_Burrow = 0x00767570; // type:func
 EmGravios_SurfaceHold = 0x007675F0; // type:func
@@ -559,9 +571,9 @@ EmGravios_TurnAndAttackA = 0x007687E0; // type:func
 EmGravios_TurnAndBeam = 0x00768890; // type:func
 EmGravios_LeapSlam = 0x007689A0; // type:func
 EmGravios_AttackALooking = 0x00768B60; // type:func
-// states 3:04, 3:0B
+// states GRAV_ATK_BEAM_OR_SHOT_A, GRAV_ATK_BEAM_OR_SHOT_B
 EmGravios_TurnAndBeamOrShot = 0x00768BF0; // type:func
-// states 3:05, 3:07, 3:0A
+// states GRAV_ATK_GAS_A, GRAV_ATK_GAS_B, GRAV_ATK_GAS_C
 EmGravios_Gas = 0x00768DF0; // type:func
 EmGravios_Spin = 0x007690E0; // type:func
 EmGravios_TurnAndAttackB = 0x00769270; // type:func
@@ -580,21 +592,21 @@ EmGravios_FallBlind = 0x00769C20; // type:func
 EmGravios_FlinchE = 0x00769D80; // type:func
 EmGravios_Status4 = 0x00769E10; // type:func
 EmGravios_Trapped = 0x00769F00; // type:func
-// states 4:0D, 4:12, 4:17
+// states GRAV_REACT_TRAPPED_STRUGGLE, GRAV_REACT_STATUS4_DOWNED_END,
+// GRAV_REACT_STUN_TRAPPED_STRUGGLE
 EmGravios_TrapStruggle = 0x0076A030; // type:func
-// states 4:0E, 4:16
+// states GRAV_REACT_STATUS4_DOWNED, GRAV_REACT_STUN_TRAPPED
 EmGravios_DownedWhileHeld = 0x0076A150; // type:func
 EmGravios_Flinch = 0x0076A300; // type:func
 EmGravios_Stun = 0x0076A390; // type:func
 EmGravios_PartBreakEnd = 0x0076A4E0; // type:func
-// states 4:13, 4:14
+// states GRAV_REACT_STATUS2_DOWNED_END, GRAV_REACT_STATUS1_DOWNED_END
 EmGravios_DownedGetUpHeld = 0x0076A550; // type:func
 EmGravios_Hold2 = 0x0076A630; // type:func
-// states 6:00, 6:01, 6:02, 6:03, 7:00, 7:01, 7:02, 7:03
+// states GRAV_EVENT_INTRO, GRAV_EVENT_INTRO_B, GRAV_EVENT_INTRO_C,
+// GRAV_EVENT_INTRO_D
 EmGravios_Intro = 0x0076A770; // type:func
-// states 6:04, 7:04
 EmGravios_Captured = 0x0076AD50; // type:func
-// states 6:05, 7:05
 EmGravios_CapturedHold2 = 0x0076AEC0; // type:func
 EmGravios_VsEatBait = 0x0076B050; // type:func
 EmGravios_VsPoseA = 0x0076B1F0; // type:func
@@ -630,6 +642,9 @@ EmGravios_MoveByVelYCurve = 0x0076FDC0; // type:func
 EmGravios_StartCurves = 0x0076FED0; // type:func
 EmGravios_IsHiding = 0x00770310; // type:func
 EmGravios_DownedPuffsAndSe = 0x00770380; // type:func
+
+// The Felyne cart that carries a fainted hunter back to the camp
+// (EmFelyneCart_*).
 EmFelyneCart_MotionSounds = 0x00770400; // type:func
 EmFelyneCart_Init = 0x007704D0; // type:func
 EmFelyneCart_IdleNone = 0x00770650; // type:func
@@ -645,15 +660,16 @@ EmFelyneCart_RunFlyState = 0x00770BC0; // type:func
 EmFelyneCart_AttackNone = 0x00770BD0; // type:func
 EmFelyneCart_RunAttackState = 0x00770BE0; // type:func
 EmFelyneCart_ReactNone = 0x00770C20; // type:func
-// groups 4 to 7
+// run for EM_GROUP_REACT to EM_GROUP_EVENT2
 EmFelyneCart_RunReactState = 0x00770C30; // type:func
 EmFelyneCart_Update = 0x00770C70; // type:func
 EmFelyneCart_RunState = 0x00770CE0; // type:func
 EmFelyneCart_MotionEffects = 0x00770DA0; // type:func
 EmFelyneCart_UpdateMotionEffects = 0x00770F50; // type:func
-// kind 0x12 (no quest names it); handler table D_0090DE10[0x12]
-EmFelyneCart_SpawnEffect01 = 0x00770FA0; // type:func
+EmFelyneCart_SpawnShadow = 0x00770FA0; // type:func
 EmFelyneCart_TableNop = 0x00770FB0; // type:func
+
+// Vespoid and Hornetaur (EmVespoid_*).
 EmVespoid_MotionSounds = 0x00770FC0; // type:func
 EmVespoid_Init = 0x00771410; // type:func
 EmVespoid_Start = 0x007715C0; // type:func
@@ -671,7 +687,7 @@ EmVespoid_Run = 0x00771F40; // type:func
 EmVespoid_HopTurn = 0x00771FF0; // type:func
 EmVespoid_RunMoveState = 0x00772100; // type:func
 EmVespoid_FlyForward = 0x00772170; // type:func
-// states 2:01, 2:07
+// states VESP_FLY_BACK, VESP_FLY_DASH_BACK
 EmVespoid_FlyBack = 0x00772260; // type:func
 EmVespoid_FlyHopAttack = 0x007723B0; // type:func
 EmVespoid_Hover = 0x007724F0; // type:func
@@ -705,13 +721,15 @@ EmVespoid_FlyIn = 0x00774310; // type:func
 EmVespoid_RunEnterState = 0x00774480; // type:func
 EmVespoid_MotionEffects = 0x00774800; // type:func
 EmVespoid_UpdateMotionEffects = 0x007748A0; // type:func
-EmVespoid_SpawnEffect01 = 0x007748F0; // type:func
+EmVespoid_SpawnShadow = 0x007748F0; // type:func
 EmVespoid_TableNop = 0x00774900; // type:func
 EmVespoid_CurveNone = 0x00774A00; // type:func
 EmVespoid_CurveVelY = 0x00774A10; // type:func
 EmVespoid_CurveSpeed = 0x00774B10; // type:func
 EmVespoid_UpdateCurves = 0x00774C10; // type:func
 EmVespoid_MoveByVelocity = 0x00774CE0; // type:func
+
+// Yian Kut-Ku, Blue Yian Kut-Ku, Gypceros and Purple Gypceros (EmKutku_*).
 EmKutku_MotionSounds = 0x00774D80; // type:func
 EmKutku_SpawnEffects = 0x00777C40; // type:func
 EmKutku_Init = 0x00777C80; // type:func
@@ -755,15 +773,17 @@ EmKutku_Status1Collapse = 0x0077A150; // type:func
 EmKutku_Status1End = 0x0077A270; // type:func
 EmKutku_Status2Downed = 0x0077A340; // type:func
 EmKutku_Status1Downed = 0x0077A490; // type:func
-// states 0:21, 0:23, 0:25
+// states KUTKU_IDLE_DISPLAY, KUTKU_IDLE_DISPLAY_RAGE,
+// KUTKU_IDLE_DISPLAY_PENDING_RAGE
 EmKutku_IdleDisplay = 0x0077A5E0; // type:func
-// states 0:08, 0:22, 0:24
+// states KUTKU_IDLE_HOLD2_SHAKE_OFF, KUTKU_IDLE_STATUS4_SHAKE_OFF,
+// KUTKU_IDLE_STUN_SHAKE_OFF
 EmKutku_StatusShakeOff = 0x0077A660; // type:func
 EmKutku_Walk = 0x0077A6E0; // type:func
 EmKutku_MoveEnd = 0x0077A7C0; // type:func
 EmKutku_WalkB = 0x0077A7E0; // type:func
 EmKutku_Turn = 0x0077A8C0; // type:func
-// states 1:04, 1:08
+// states KUTKU_MOVE_RUN, KUTKU_MOVE_RUN_SLOW
 EmKutku_Run = 0x0077A970; // type:func
 EmKutku_TurnInCombat = 0x0077AA50; // type:func
 EmKutku_Limp = 0x0077AB00; // type:func
@@ -800,7 +820,7 @@ EmKutku_Leap = 0x0077D840; // type:func
 EmKutku_Stare = 0x0077DA90; // type:func
 EmKutku_FeignDeath = 0x0077DB10; // type:func
 EmKutku_TailSpin = 0x0077DC30; // type:func
-// states 3:07, 3:20
+// states KUTKU_ATK_FEIGN_DEATH_RISE, KUTKU_ATK_FEIGN_DEATH_RISE_B
 EmKutku_FeignDeathRise = 0x0077DD20; // type:func
 EmKutku_SwoopThenLeave = 0x0077DDC0; // type:func
 EmKutku_FeignDeathLie = 0x0077E740; // type:func
@@ -808,7 +828,7 @@ EmKutku_PeckCombo = 0x0077E840; // type:func
 EmKutku_PeckSteal = 0x0077E8F0; // type:func
 EmKutku_ChargeTrip = 0x0077EA20; // type:func
 EmKutku_SwoopThenLand = 0x0077EB30; // type:func
-// states 3:17, 3:18, 3:19, 3:1A
+// states KUTKU_ATK_SPIT_B, KUTKU_ATK_SPIT_C, KUTKU_ATK_SPIT_D, KUTKU_ATK_SPIT
 EmKutku_Spit = 0x0077F3F0; // type:func
 EmKutku_SpitVolley = 0x0077F5E0; // type:func
 EmKutku_PeckComboB = 0x0077F6B0; // type:func
@@ -841,11 +861,8 @@ EmKutku_StunTrapped = 0x00780EA0; // type:func
 EmKutku_StunTrappedStruggle = 0x00780FC0; // type:func
 EmKutku_Hold2Flinch = 0x007810B0; // type:func
 EmKutku_FeignDeathCarvable = 0x007811F0; // type:func
-// states 6:00, 7:00
 EmKutku_JungleIntro = 0x00781340; // type:func
-// states 6:04, 7:04
 EmKutku_Captured = 0x00781860; // type:func
-// states 6:05, 7:05
 EmKutku_CapturedHold2 = 0x00781A50; // type:func
 EmKutku_VsEatBait = 0x00781BE0; // type:func
 EmKutku_VsPoseA = 0x00781DD0; // type:func
@@ -887,6 +904,8 @@ EmKutku_SetFarthestEscapePoint = 0x00787D20; // type:func
 EmKutku_StepPitch = 0x00787EA0; // type:func
 EmKutku_MoveByVelYCurve = 0x00788040; // type:func
 EmKutku_StartCurves = 0x00788150; // type:func
+
+// Plesioth and Green Plesioth (EmPlesioth_*).
 EmPlesioth_MotionSounds = 0x00788550; // type:func
 EmPlesioth_SpawnEffects = 0x00789FF0; // type:func
 EmPlesioth_Init = 0x0078A030; // type:func
@@ -898,19 +917,20 @@ EmPlesioth_SetStance = 0x0078A2E0; // type:func
 EmPlesioth_IdleStand = 0x0078A430; // type:func
 EmPlesioth_Idle = 0x0078A510; // type:func
 EmPlesioth_IdleAction = 0x0078A600; // type:func
-// states 0:04, 0:09
+// states PLES_IDLE_LAND_FLOP_A, PLES_IDLE_LAND_FLOP_B
 EmPlesioth_LandFlop = 0x0078A6C0; // type:func
-// states 0:05, 0:29
+// states PLES_IDLE_STATUS2_COLLAPSE, PLES_IDLE_STATUS1_COLLAPSE_B
 EmPlesioth_StatusCollapse = 0x0078A810; // type:func
-// states 0:06, 0:0D, 0:2A
+// states PLES_IDLE_STATUS2_END, PLES_IDLE_STATUS1_END, PLES_IDLE_STATUS1_END_B
 EmPlesioth_StatusGetUp = 0x0078A990; // type:func
-// states 0:07, 0:14, 0:15, 0:16
+// states PLES_IDLE_SHAKE_OFF, PLES_IDLE_STATUS4_SHAKE_OFF,
+// PLES_IDLE_HOLD2_SHAKE_OFF, PLES_IDLE_STUN_SHAKE_OFF
 EmPlesioth_ShakeOff = 0x0078AA60; // type:func
 EmPlesioth_Status2Trapped = 0x0078AAF0; // type:func
 EmPlesioth_Status1Trapped = 0x0078AC40; // type:func
 EmPlesioth_Status1Collapse = 0x0078AD90; // type:func
 EmPlesioth_Status2CollapseBeached = 0x0078AEB0; // type:func
-// states 0:0F, 0:11
+// states PLES_IDLE_STATUS2_END_BEACHED, PLES_IDLE_STATUS1_END_BEACHED
 EmPlesioth_StatusGetUpBeached = 0x0078B010; // type:func
 EmPlesioth_Status1CollapseBeached = 0x0078B0E0; // type:func
 EmPlesioth_Rest = 0x0078B230; // type:func
@@ -919,7 +939,7 @@ EmPlesioth_Walk = 0x0078B460; // type:func
 EmPlesioth_RunAndStop = 0x0078B540; // type:func
 EmPlesioth_TurnToTarget = 0x0078B660; // type:func
 EmPlesioth_Limp = 0x0078B710; // type:func
-// states 2:00, 2:1B
+// states PLES_SWIM_IDLE, PLES_SWIM_IDLE_B
 EmPlesioth_SwimIdle = 0x0078B7F0; // type:func
 EmPlesioth_SwimIdleApplyArea = 0x0078B890; // type:func
 EmPlesioth_SwimNone = 0x0078B940; // type:func
@@ -936,7 +956,7 @@ EmPlesioth_SwimCircleRight = 0x0078C4F0; // type:func
 EmPlesioth_SwimCircleLeft = 0x0078C5F0; // type:func
 EmPlesioth_LeapFromWater = 0x0078C6F0; // type:func
 EmPlesioth_SurfaceFlop = 0x0078C9D0; // type:func
-// states 2:10, 2:1A
+// states PLES_SWIM_LEAP_IN, PLES_SWIM_LEAP_IN_TO_GOAL
 EmPlesioth_LeapIntoWater = 0x0078CAA0; // type:func
 EmPlesioth_WaitForBait = 0x0078CE50; // type:func
 EmPlesioth_HookedPulled = 0x0078D040; // type:func
@@ -945,7 +965,7 @@ EmPlesioth_SwimStatus1Collapse = 0x0078D660; // type:func
 EmPlesioth_SwimStatus4Recover = 0x0078D960; // type:func
 EmPlesioth_SwimToIdle = 0x0078D9F0; // type:func
 EmPlesioth_TrapEscape = 0x0078DA00; // type:func
-// states 2:18, 2:19
+// states PLES_SWIM_STATUS2_END, PLES_SWIM_STATUS1_END
 EmPlesioth_SwimStatusRecover = 0x0078DB10; // type:func
 EmPlesioth_LandAttackA = 0x0078DBC0; // type:func
 EmPlesioth_Breath = 0x0078DC50; // type:func
@@ -960,33 +980,31 @@ EmPlesioth_FlinchB = 0x0078E5F0; // type:func
 EmPlesioth_FlinchC = 0x0078E680; // type:func
 EmPlesioth_FlinchD = 0x0078E710; // type:func
 EmPlesioth_FlinchLying = 0x0078E7A0; // type:func
-// states 4:05, 4:17, 4:19, 4:1A
+// states PLES_REACT_KNOCK_DOWN, PLES_REACT_KNOCK_DOWN_PART3, PLES_REACT_STUN_A,
+// PLES_REACT_STUN_B
 EmPlesioth_KnockDown = 0x0078E8B0; // type:func
 EmPlesioth_FallFromAir = 0x0078EB80; // type:func
 EmPlesioth_Status4Lying = 0x0078ED20; // type:func
-// states 4:08, 4:1B
+// states PLES_REACT_STATUS4_HELD_END, PLES_REACT_STUN_HELD_END
 EmPlesioth_HeldStatusStruggle = 0x0078EE90; // type:func
 EmPlesioth_FallBlinded = 0x0078EFC0; // type:func
 EmPlesioth_FlinchBlinded = 0x0078F170; // type:func
 EmPlesioth_Status4 = 0x0078F200; // type:func
 EmPlesioth_Trapped = 0x0078F300; // type:func
 EmPlesioth_TrappedStruggle = 0x0078F420; // type:func
-// states 4:0E, 4:1C
+// states PLES_REACT_STATUS4_HELD, PLES_REACT_STUN_HELD
 EmPlesioth_HeldStatus = 0x0078F550; // type:func
 EmPlesioth_PulledAshore = 0x0078F720; // type:func
 EmPlesioth_LandAfterFall = 0x0078FA80; // type:func
 EmPlesioth_ThrownOutOfWater = 0x0078FB70; // type:func
 EmPlesioth_Status4Under = 0x0078FDD0; // type:func
-// states 4:13, 4:14
+// states PLES_REACT_STATUS2_TRAPPED_END, PLES_REACT_STATUS1_TRAPPED_END
 EmPlesioth_WakeInTrap = 0x00790020; // type:func
 EmPlesioth_Status4LyingEnd = 0x00790100; // type:func
 EmPlesioth_Status1Under = 0x007901A0; // type:func
 EmPlesioth_Hold2 = 0x007904A0; // type:func
-// states 6:00, 7:00
 EmPlesioth_Captured = 0x007905E0; // type:func
-// states 6:01, 7:01
 EmPlesioth_EntranceScene = 0x007907B0; // type:func
-// states 6:02, 7:02
 EmPlesioth_CapturedHold2 = 0x007910E0; // type:func
 EmPlesioth_Die = 0x00791270; // type:func
 EmPlesioth_DieHeld = 0x00791420; // type:func
@@ -1009,7 +1027,7 @@ EmPlesioth_UpdateFins = 0x00794E60; // type:func
 EmPlesioth_UpdateMotionEffects = 0x00794EC0; // type:func
 EmPlesioth_SetFinMode = 0x00794F40; // type:func
 EmPlesioth_SpawnLandingDust = 0x00795000; // type:func
-// func_3E3D10 effect 2 at the surface height unk730 (every 4 frames)
+// the wake: SparkFx_Spawn type 2 at the water surface above the monster
 EmPlesioth_SpawnWakeEvery4 = 0x00795020; // type:func
 EmPlesioth_SpawnSurfaceSplash = 0x007950E0; // type:func
 EmPlesioth_SpawnWakeEvery8 = 0x00795170; // type:func
@@ -1023,6 +1041,9 @@ EmPlesioth_CurveVelY = 0x00795D50; // type:func
 EmPlesioth_CurveSpeed = 0x00795E70; // type:func
 EmPlesioth_UpdateCurves = 0x00795F70; // type:func
 EmPlesioth_NextAreaPoint = 0x00796040; // type:func
+
+// The trader met in the field (EM_KIND_TRADER, EmTrader_*), who trades items
+// with the hunter.
 EmTrader_MotionSounds = 0x007961E0; // type:func
 EmTrader_MsgIdForVariant = 0x007969D0; // type:func
 EmTrader_FormatMessage = 0x00796A40; // type:func
@@ -1037,22 +1058,22 @@ EmTrader_WaitHidden = 0x00798490; // type:func
 EmTrader_JumpOut = 0x00798570; // type:func
 EmTrader_GreetPlayer = 0x00798700; // type:func
 EmTrader_Talk = 0x007989D0; // type:func
-// states 0:05, 0:07, 0:08
+// states TRADER_IDLE_REFUSE_A, TRADER_IDLE_REFUSE_B, TRADER_IDLE_REFUSE_C
 EmTrader_RefuseTrade = 0x00798A90; // type:func
 EmTrader_RestIdle = 0x00798BF0; // type:func
 EmTrader_AgreeGesture = 0x00798D80; // type:func
 EmTrader_WanderNearHome = 0x00798E90; // type:func
 EmTrader_Fidget = 0x00798FE0; // type:func
-// every group
+// run for every group
 EmTrader_RunIdleState = 0x007990C0; // type:func
 EmTrader_Update = 0x007991D0; // type:func
 EmTrader_RunState = 0x00799220; // type:func
 EmTrader_MotionEffects = 0x007992E0; // type:func
 EmTrader_UpdateMotionEffects = 0x00799300; // type:func
-// kind 0xA (no quest names it): trades items with the player (Pouch_*); handler table D_0090DE10[0xA]
-EmTrader_SpawnEffect01 = 0x00799350; // type:func
-// empty handler table entry
+EmTrader_SpawnShadow = 0x00799350; // type:func
 EmTrader_TableNop = 0x00799360; // type:func
+
+// Apceros, with the Popo and kind 12 (EmApceros_*).
 EmApceros_PlaySeOnFrame = 0x00799370; // type:func
 EmApceros_MotionSounds = 0x00799490; // type:func
 EmApceros_Init = 0x0079A130; // type:func
@@ -1097,17 +1118,17 @@ EmApceros_RunAttackState = 0x0079C420; // type:func
 EmApceros_ReactResetHp = 0x0079C4C0; // type:func
 EmApceros_FlinchA = 0x0079C570; // type:func
 EmApceros_FlinchB = 0x0079C6A0; // type:func
-// states 4:03, 4:04
+// states APC_REACT_KNOCK_DOWN_A, APC_REACT_KNOCK_DOWN_B
 EmApceros_KnockDown = 0x0079C7E0; // type:func
 EmApceros_FlinchRandom = 0x0079CB60; // type:func
 EmApceros_Status4 = 0x0079CD20; // type:func
 EmApceros_RunReactState = 0x0079CFE0; // type:func
-// states 5:00, 5:01
+// states APC_DEFEAT_DIE_A, APC_DEFEAT_DIE_B
 EmApceros_Die = 0x0079D090; // type:func
 EmApceros_DieFading = 0x0079D600; // type:func
 EmApceros_WaitReappear = 0x0079D710; // type:func
 EmApceros_RunDefeatState = 0x0079D790; // type:func
-EmApceros_SpawnEffect02AtBone2 = 0x0079D820; // type:func
+EmApceros_SpawnHitSparkAtBody = 0x0079D820; // type:func
 EmApceros_EventFlinch = 0x0079DA10; // type:func
 EmApceros_EventFall = 0x0079DAB0; // type:func
 EmApceros_EventLie = 0x0079DC30; // type:func
@@ -1121,9 +1142,11 @@ EmApceros_EnterWalking = 0x0079E1E0; // type:func
 EmApceros_RunEnterState = 0x0079E2B0; // type:func
 EmApceros_MotionEffects = 0x0079EA80; // type:func
 EmApceros_UpdateMotionEffects = 0x0079EF70; // type:func
-EmApceros_SpawnAttachedEffect = 0x0079EFC0; // type:func
+EmApceros_SpawnShadow = 0x0079EFC0; // type:func
 EmApceros_TableNop = 0x0079EFD0; // type:func
 EmApceros_ScriptQuery = 0x0079EFE0; // type:func
+
+// Diablos, Black Diablos, Monoblos and White Monoblos (EmDiablos_*).
 EmDiablos_MotionSounds = 0x0079F1A0; // type:func
 EmDiablos_SpawnEffects = 0x007A1660; // type:func
 EmDiablos_Init = 0x007A16A0; // type:func
@@ -1150,7 +1173,7 @@ EmDiablos_UpperGestureD = 0x007A2390; // type:func
 EmDiablos_IdleNopC = 0x007A2460; // type:func
 EmDiablos_IdlePairB = 0x007A2470; // type:func
 EmDiablos_IdlePairC = 0x007A25A0; // type:func
-// states 0:11, 0:24, 0:25
+// states DIAB_IDLE_ALERT, DIAB_IDLE_ALERT_RAGE, DIAB_IDLE_ALERT_PENDING_RAGE
 EmDiablos_Alert = 0x007A26D0; // type:func
 EmDiablos_Rest = 0x007A2750; // type:func
 EmDiablos_IdleNopD = 0x007A28C0; // type:func
@@ -1158,9 +1181,10 @@ EmDiablos_Status2Collapse = 0x007A28D0; // type:func
 EmDiablos_Status2LieDown = 0x007A29F0; // type:func
 EmDiablos_IdlePairD = 0x007A2B60; // type:func
 EmDiablos_RestGetUp = 0x007A2BE0; // type:func
-// states 0:18, 0:1C
+// states DIAB_IDLE_STATUS2_END, DIAB_IDLE_STATUS1_END
 EmDiablos_StatusGetUp = 0x007A2CB0; // type:func
-// states 0:19, 0:21, 0:22, 0:23
+// states DIAB_IDLE_SHAKE_OFF, DIAB_IDLE_STATUS4_SHAKE_OFF,
+// DIAB_IDLE_HOLD2_SHAKE_OFF, DIAB_IDLE_STUN_SHAKE_OFF
 EmDiablos_ShakeOff = 0x007A2D80; // type:func
 EmDiablos_IdleNopE = 0x007A2E00; // type:func
 EmDiablos_Status1Collapse = 0x007A2E10; // type:func
@@ -1169,7 +1193,7 @@ EmDiablos_Walk = 0x007A3130; // type:func
 EmDiablos_MoveEnd = 0x007A3210; // type:func
 EmDiablos_Run = 0x007A3220; // type:func
 EmDiablos_Turn = 0x007A3320; // type:func
-// states 1:04, 1:08
+// states DIAB_MOVE_RUN_AND_STOP, DIAB_MOVE_RUN_AND_STOP_SLOW
 EmDiablos_RunAndStop = 0x007A33D0; // type:func
 EmDiablos_TurnInCombat = 0x007A3510; // type:func
 EmDiablos_Limp = 0x007A35C0; // type:func
@@ -1197,7 +1221,7 @@ EmDiablos_ChargeAttackA = 0x007A4C50; // type:func
 EmDiablos_ChargeAttackB = 0x007A4D80; // type:func
 EmDiablos_TurnAttackA = 0x007A4EB0; // type:func
 EmDiablos_TurnAttackB = 0x007A4F60; // type:func
-// states 3:1C, 3:1F
+// states DIAB_ATK_ATTACK_C, DIAB_ATK_ATTACK_C_B
 EmDiablos_AttackC = 0x007A5010; // type:func
 EmDiablos_TurnAttackD = 0x007A5090; // type:func
 EmDiablos_Roar = 0x007A5140; // type:func
@@ -1206,7 +1230,8 @@ EmDiablos_FlinchB = 0x007A5250; // type:func
 EmDiablos_FlinchC = 0x007A52E0; // type:func
 EmDiablos_FlinchD = 0x007A5370; // type:func
 EmDiablos_PartBreak = 0x007A5400; // type:func
-// states 4:05, 4:10, 4:14, 4:15
+// states DIAB_REACT_KNOCK_DOWN, DIAB_REACT_KNOCK_DOWN_PART3, DIAB_REACT_STUN,
+// DIAB_REACT_STUN_B
 EmDiablos_KnockDown = 0x007A55B0; // type:func
 EmDiablos_PopOutOfSand = 0x007A5850; // type:func
 EmDiablos_Part6Break = 0x007A59D0; // type:func
@@ -1215,18 +1240,15 @@ EmDiablos_FallFromAirBlind = 0x007A5BC0; // type:func
 EmDiablos_FlinchE = 0x007A5D20; // type:func
 EmDiablos_Status4 = 0x007A5DB0; // type:func
 EmDiablos_SandStruggle = 0x007A5E90; // type:func
-// states 4:0E, 4:16
+// states DIAB_REACT_STATUS4_IN_SAND, DIAB_REACT_STUN_IN_SAND
 EmDiablos_HitDownedInSand = 0x007A5FB0; // type:func
 EmDiablos_PartBreakEnd = 0x007A6290; // type:func
-// states 4:11, 4:17
+// states DIAB_REACT_STATUS4_SAND_STRUGGLE, DIAB_REACT_STUN_SAND_STRUGGLE
 EmDiablos_SandDownedStruggle = 0x007A6300; // type:func
 EmDiablos_Status2SandGetUp = 0x007A6410; // type:func
 EmDiablos_Hold2Flinch = 0x007A64E0; // type:func
-// states 6:00, 7:00
 EmDiablos_DiablosDesertScene = 0x007A6620; // type:func
-// states 6:01, 7:01
 EmDiablos_MonoblosDesertScene = 0x007A68A0; // type:func
-// states 6:02, 7:02
 EmDiablos_Captured = 0x007A6BF0; // type:func
 EmDiablos_VsBait = 0x007A6D80; // type:func
 EmDiablos_VsPoseA = 0x007A6EB0; // type:func
@@ -1262,6 +1284,8 @@ EmDiablos_MoveByVelYCurve = 0x007ABE10; // type:func
 EmDiablos_StartCurves = 0x007ABF20; // type:func
 EmDiablos_IsBuriedOffSand = 0x007AC360; // type:func
 EmDiablos_InSandStuckMotion = 0x007AC460; // type:func
+
+// Khezu and Red Khezu (EmKhezu_*).
 EmKhezu_MotionSounds = 0x007AC5C0; // type:func
 EmKhezu_SpawnEffects = 0x007AE410; // type:func
 EmKhezu_Init = 0x007AE450; // type:func
@@ -1283,17 +1307,18 @@ EmKhezu_WaitAlert = 0x007AECE0; // type:func
 EmKhezu_IdleTurnToGoal = 0x007AED70; // type:func
 EmKhezu_IdleActionD = 0x007AEE70; // type:func
 EmKhezu_EatNeed2 = 0x007AEF80; // type:func
-// states 0:11, 0:29, 0:2A
+// states KHEZU_IDLE_ALERT, KHEZU_IDLE_ROAR_RAGE, KHEZU_IDLE_ROAR_PENDING_RAGE
 EmKhezu_AlertIdle = 0x007AF300; // type:func
 EmKhezu_EatStart = 0x007AF380; // type:func
 EmKhezu_Eat = 0x007AF480; // type:func
 EmKhezu_Rest = 0x007AF540; // type:func
 EmKhezu_Status2Collapse = 0x007AF6B0; // type:func
 EmKhezu_Status2LieDown = 0x007AF7D0; // type:func
-// states 0:16, 0:19, 0:21, 0:22
+// states KHEZU_IDLE_STATUS4_SHAKE_OFF, KHEZU_IDLE_SHAKE_OFF,
+// KHEZU_IDLE_HOLD2_SHAKE_OFF, KHEZU_IDLE_STUN_SHAKE_OFF
 EmKhezu_ShakeOff = 0x007AF930; // type:func
 EmKhezu_RestEnd = 0x007AF9B0; // type:func
-// states 0:18, 0:1C
+// states KHEZU_IDLE_STATUS2_END, KHEZU_IDLE_STATUS1_END
 EmKhezu_GetUpAfterStatus = 0x007AFA80; // type:func
 EmKhezu_EatNeed1 = 0x007AFB50; // type:func
 EmKhezu_Status1Collapse = 0x007AFCA0; // type:func
@@ -1351,23 +1376,23 @@ EmKhezu_Flinch = 0x007B36C0; // type:func
 EmKhezu_CeilingFall = 0x007B3750; // type:func
 EmKhezu_FlinchB = 0x007B38C0; // type:func
 EmKhezu_FlinchC = 0x007B3950; // type:func
-// states 4:04, 4:05, 4:12, 4:13
+// states KHEZU_REACT_KNOCK_DOWN_PART3, KHEZU_REACT_KNOCK_DOWN,
+// KHEZU_REACT_STUN, KHEZU_REACT_STUN_B
 EmKhezu_KnockDown = 0x007B39E0; // type:func
 EmKhezu_Fall = 0x007B3C90; // type:func
-// states 4:0A, 4:0D, 4:15
+// states KHEZU_REACT_STATUS4_DOWNED_END, KHEZU_REACT_TRAPPED_STRUGGLE,
+// KHEZU_REACT_STUN_DOWNED_END
 EmKhezu_Struggle = 0x007B3E00; // type:func
 EmKhezu_Status4 = 0x007B3F30; // type:func
 EmKhezu_Trapped = 0x007B4020; // type:func
-// states 4:0E, 4:14
+// states KHEZU_REACT_STATUS4_DOWNED, KHEZU_REACT_STUN_DOWNED
 EmKhezu_HeldDowned = 0x007B4150; // type:func
-// states 4:0F, 4:10
+// states KHEZU_REACT_STATUS2_DOWNED_END, KHEZU_REACT_STATUS1_DOWNED_END
 EmKhezu_DownedGetUp = 0x007B4330; // type:func
 EmKhezu_Hold2 = 0x007B4410; // type:func
-// states 6:00, 7:00
 EmKhezu_StoryScene = 0x007B4550; // type:func
-// states 6:01, 6:02, 6:03, 6:04, 7:01, 7:02, 7:03, 7:04
+// states 1 to 3 and KHEZU_EVENT_CAPTURED
 EmKhezu_Captured = 0x007B48B0; // type:func
-// states 6:05, 7:05
 EmKhezu_CapturedHold2 = 0x007B4A90; // type:func
 EmKhezu_VersusEatBait = 0x007B4C20; // type:func
 EmKhezu_VersusPoseA = 0x007B4D80; // type:func
@@ -1402,15 +1427,17 @@ EmKhezu_SetAttackState = 0x007B9140; // type:func
 EmKhezu_MoveByVelYCurve = 0x007B9520; // type:func
 EmKhezu_StartCurves = 0x007B9630; // type:func
 EmKhezu_NearestCeilingPoint = 0x007B9A60; // type:func
+
+// Velociprey, Genprey, Ioprey and Giaprey (EmVelociprey_*).
 EmVelociprey_MotionSounds = 0x007B9C00; // type:func
-EmVelociprey_SpawnEffect01 = 0x007BA470; // type:func
+EmVelociprey_SpawnShadow = 0x007BA470; // type:func
 EmVelociprey_Init = 0x007BA480; // type:func
 EmVelociprey_Start = 0x007BA830; // type:func
 EmVelociprey_Reinit = 0x007BA8A0; // type:func
 EmVelociprey_Respawn = 0x007BA8B0; // type:func
 EmVelociprey_EndState = 0x007BA9C0; // type:func
 EmVelociprey_IdleStand = 0x007BAA50; // type:func
-// states 0:01, 0:0D
+// states VPREY_IDLE, VPREY_IDLE_WAIT
 EmVelociprey_Idle = 0x007BAB00; // type:func
 EmVelociprey_IdleActionA = 0x007BAB80; // type:func
 EmVelociprey_PackCall = 0x007BABF0; // type:func
@@ -1440,7 +1467,7 @@ EmVelociprey_AttackStrikeA = 0x007BBC50; // type:func
 EmVelociprey_AttackNone = 0x007BBD50; // type:func
 EmVelociprey_AttackLeapMediumA = 0x007BBD60; // type:func
 EmVelociprey_AttackQuickStrikeA = 0x007BBFF0; // type:func
-// states 3:04, 3:0D
+// states VPREY_ATK_SHOT_A, VPREY_ATK_SHOT_A_FAST
 EmVelociprey_AttackShotA = 0x007BC100; // type:func
 EmVelociprey_AttackLeapLongA = 0x007BC200; // type:func
 EmVelociprey_AttackLeapHighA = 0x007BC490; // type:func
@@ -1450,7 +1477,7 @@ EmVelociprey_AttackQuickStrikeB = 0x007BC9F0; // type:func
 EmVelociprey_AttackLeapLongB = 0x007BCA90; // type:func
 EmVelociprey_AttackLeapHighB = 0x007BCCB0; // type:func
 EmVelociprey_AttackStrikeC = 0x007BCED0; // type:func
-// states 3:0E, 3:0F
+// states VPREY_ATK_SHOT_B, VPREY_ATK_SHOT_B_FAST
 EmVelociprey_AttackShotB = 0x007BCFA0; // type:func
 EmVelociprey_RunAttackState = 0x007BD0A0; // type:func
 EmVelociprey_Flinch = 0x007BD1E0; // type:func
@@ -1499,40 +1526,30 @@ EmVelociprey_CurveNone = 0x007C1050; // type:func
 EmVelociprey_CurveVelY = 0x007C1060; // type:func
 EmVelociprey_CurveSpeed = 0x007C1180; // type:func
 EmVelociprey_UpdateCurves = 0x007C12A0; // type:func
+
+// Anteka and EM_KIND_KELBI (EmAnteka_*). EM_GROUP_FLY runs their idle states.
 EmAnteka_MotionSounds = 0x007C1370; // type:func
 EmAnteka_Init = 0x007C1D70; // type:func
 EmAnteka_Start = 0x007C2020; // type:func
 EmAnteka_Reinit = 0x007C2060; // type:func
-// states 0:00, 2:00
 EmAnteka_IdleNone = 0x007C2440; // type:func
-// states 0:01, 2:01
 EmAnteka_Idle = 0x007C2450; // type:func
-// states 0:02, 2:02
 EmAnteka_IdleActionA = 0x007C24C0; // type:func
-// states 0:03, 2:03
 EmAnteka_IdleActionB = 0x007C2530; // type:func
-// states 0:04, 2:04
 EmAnteka_IdleActionC = 0x007C25A0; // type:func
-// states 0:05, 2:05
 EmAnteka_IdleActionD = 0x007C2610; // type:func
-// states 0:06, 2:06
 EmAnteka_IdleActionE = 0x007C2680; // type:func
-// states 0:07, 2:07
 EmAnteka_FaceGoal = 0x007C26F0; // type:func
-// states 0:08, 2:08
 EmAnteka_Status2Collapse = 0x007C27C0; // type:func
-// states 0:09, 2:09
 EmAnteka_Status2End = 0x007C28B0; // type:func
-// states 0:0A, 2:0A
 EmAnteka_Status4End = 0x007C2940; // type:func
-// states 0:0B, 2:0B
 EmAnteka_IdleActionF = 0x007C29D0; // type:func
 EmAnteka_RunIdleState = 0x007C2A40; // type:func
 EmAnteka_WalkTurn = 0x007C2B50; // type:func
 EmAnteka_Walk = 0x007C2C10; // type:func
-// states 1:02, 1:09
+// states ANTEKA_MOVE_RUN, ANTEKA_MOVE_RUN_FAR
 EmAnteka_Run = 0x007C2CA0; // type:func
-// states 1:03, 1:0A
+// states ANTEKA_MOVE_CHARGE, ANTEKA_MOVE_CHARGE_FAR
 EmAnteka_Charge = 0x007C2D70; // type:func
 EmAnteka_MoveActionA = 0x007C2E90; // type:func
 EmAnteka_MoveActionB = 0x007C2F40; // type:func
@@ -1555,7 +1572,7 @@ EmAnteka_AttackNoneF = 0x007C3C00; // type:func
 EmAnteka_RunAttackState = 0x007C3C10; // type:func
 EmAnteka_FlinchA = 0x007C3CF0; // type:func
 EmAnteka_FlinchB = 0x007C3D70; // type:func
-// states 4:02, 4:05
+// states ANTEKA_REACT_BLOWN_BACK, ANTEKA_REACT_BLOWN_BACK_LYING
 EmAnteka_BlownBack = 0x007C3DF0; // type:func
 EmAnteka_Status4 = 0x007C3FF0; // type:func
 EmAnteka_CollapseAndGetUp = 0x007C40C0; // type:func
@@ -1564,51 +1581,40 @@ EmAnteka_Die = 0x007C4220; // type:func
 EmAnteka_Reappear = 0x007C4470; // type:func
 EmAnteka_FadeAndLeave = 0x007C44E0; // type:func
 EmAnteka_RunDefeatState = 0x007C4590; // type:func
-// states 6:00, 7:00
 EmAnteka_EventFadeAndLeave = 0x007C4600; // type:func
-// states 6:01, 7:01
 EmAnteka_EventScene = 0x007C4690; // type:func
-// states 6:02, 7:02
 EmAnteka_EventIdle = 0x007C47B0; // type:func
 EmAnteka_RunEventState = 0x007C4830; // type:func
 EmAnteka_EndState = 0x007C4AD0; // type:func
 EmAnteka_SetMotion = 0x007C4B00; // type:func
-EmAnteka_SpawnEffect01 = 0x007C4C00; // type:func
+EmAnteka_SpawnShadow = 0x007C4C00; // type:func
 EmAnteka_TableNop = 0x007C4C10; // type:func
 // empty: the default case of EmAnteka_MotionEffects
 EmAnteka_MotionEffectsDefault = 0x007C4C20; // type:func
 EmAnteka_MotionEffects = 0x007C4C30; // type:func
 EmAnteka_UpdateMotionEffects = 0x007C5300; // type:func
+
+// Mosswine and Bullfango (EmMosswine_*). EM_GROUP_FLY runs their idle states,
+// and EM_GROUP_EVENT2 their react states.
 EmMosswine_Init = 0x007C5350; // type:func
 EmMosswine_Start = 0x007C5560; // type:func
 EmMosswine_Reinit = 0x007C55A0; // type:func
 EmMosswine_EndState = 0x007C5880; // type:func
-// states 0:00, 2:00
 EmMosswine_IdleNone = 0x007C58A0; // type:func
-// states 0:01, 2:01
 EmMosswine_Idle = 0x007C58B0; // type:func
-// states 0:02, 2:02
 EmMosswine_IdleActionA = 0x007C5920; // type:func
-// states 0:03, 2:03
 EmMosswine_IdleActionB = 0x007C5A00; // type:func
-// states 0:04, 0:07, 0:08, 2:04, 2:07, 2:08
+// states MOSS_IDLE_ACTION_C, MOSS_IDLE_ACTION_C_TWICE, MOSS_IDLE_ACTION_C_4
 EmMosswine_IdleActionC = 0x007C5A90; // type:func
-// states 0:05, 2:05
 EmMosswine_IdleActionD = 0x007C5B50; // type:func
-// states 0:06, 2:06
 EmMosswine_IdleAlertBullfango = 0x007C5BD0; // type:func
-// states 0:0A, 2:0A
 EmMosswine_Status2Lie = 0x007C5C50; // type:func
-// states 0:0B, 2:0B
 EmMosswine_Status2End = 0x007C5D10; // type:func
-// states 0:09, 2:09
 EmMosswine_Recover = 0x007C5DB0; // type:func
-// states 0:0C, 2:0C
 EmMosswine_IdleAlertMosswine = 0x007C5E30; // type:func
-// states 0:0D, 2:0D
 EmMosswine_StunEnd = 0x007C5EB0; // type:func
 EmMosswine_RunIdleState = 0x007C5F50; // type:func
-// states 1:00, 1:06
+// states MOSS_MOVE_TURN, MOSS_MOVE_TURN_QUARTER
 EmMosswine_Turn = 0x007C6080; // type:func
 EmMosswine_Walk = 0x007C61B0; // type:func
 EmMosswine_Run = 0x007C6290; // type:func
@@ -1616,20 +1622,15 @@ EmMosswine_WalkB = 0x007C6370; // type:func
 EmMosswine_WalkScripted = 0x007C6450; // type:func
 EmMosswine_WanderHome = 0x007C6540; // type:func
 EmMosswine_RunMoveState = 0x007C6620; // type:func
-// states 3:00, 3:01, 3:02, 3:03, 3:04, 3:05
+// states MOSS_ATK_CHARGE_A, MOSS_ATK_CHARGE_B, MOSS_ATK_CHARGE_C,
+// MOSS_ATK_CHARGE_D, MOSS_ATK_CHARGE_E, MOSS_ATK_CHARGE_F
 EmMosswine_Charge = 0x007C66D0; // type:func
 EmMosswine_RunAttackState = 0x007C6960; // type:func
-// states 4:00, 7:00
 EmMosswine_Flinch = 0x007C6A00; // type:func
-// states 4:01, 7:01
 EmMosswine_BlownAway = 0x007C6AF0; // type:func
-// states 4:02, 7:02
 EmMosswine_BlownAwayQuick = 0x007C6D30; // type:func
-// states 4:03, 7:03
 EmMosswine_Status4 = 0x007C6F30; // type:func
-// states 4:04, 7:04
 EmMosswine_Down = 0x007C7060; // type:func
-// states 4:05, 7:05
 EmMosswine_Stun = 0x007C7130; // type:func
 EmMosswine_RunReactState = 0x007C7220; // type:func
 EmMosswine_Die = 0x007C72C0; // type:func
@@ -1639,11 +1640,13 @@ EmMosswine_RunDefeatState = 0x007C7990; // type:func
 EmMosswine_EventHideA = 0x007C7A00; // type:func
 EmMosswine_EventHideB = 0x007C7A80; // type:func
 EmMosswine_RunEventState = 0x007C7B00; // type:func
-EmMosswine_SpawnEffect01 = 0x007C8010; // type:func
+EmMosswine_SpawnShadow = 0x007C8010; // type:func
 EmMosswine_TableNop = 0x007C8020; // type:func
 EmMosswine_ScriptQuery = 0x007C8030; // type:func
+
+// Lao-Shan Lung and Ashen Lao-Shan Lung (EmLaoshan_*).
 EmLaoshan_MotionSounds = 0x007C80B0; // type:func
-EmLaoshan_SpawnEffect01 = 0x007CB330; // type:func
+EmLaoshan_SpawnShadow = 0x007CB330; // type:func
 EmLaoshan_GetMinePointPos = 0x007CB340; // type:func
 EmLaoshan_AddMinePoint = 0x007CB3E0; // type:func
 EmLaoshan_AddCarcassMinePoints = 0x007CB540; // type:func
@@ -1654,7 +1657,7 @@ EmLaoshan_EndState = 0x007CBAF0; // type:func
 EmLaoshan_LayerMotionDone = 0x007CBB60; // type:func
 EmLaoshan_IdleHold = 0x007CBBB0; // type:func
 EmLaoshan_Idle = 0x007CBC40; // type:func
-EmLaoshan_IdleStomp = 0x007CBD10; // type:func
+EmLaoshan_IdleRoar = 0x007CBD10; // type:func
 EmLaoshan_IdleRearUp = 0x007CBDD0; // type:func
 EmLaoshan_IdleReared = 0x007CBE70; // type:func
 EmLaoshan_IdleRearDown = 0x007CBEF0; // type:func
@@ -1701,18 +1704,15 @@ EmLaoshan_RunReactState = 0x007CE210; // type:func
 EmLaoshan_Die = 0x007CE2C0; // type:func
 EmLaoshan_DieReared = 0x007CE430; // type:func
 EmLaoshan_RunDefeatState = 0x007CE540; // type:func
-// states 6:00, 7:00
 EmLaoshan_IntroScene = 0x007CE590; // type:func
-// states 6:01, 7:01
 EmLaoshan_RepelledLeave = 0x007CE870; // type:func
 EmLaoshan_RunEventState = 0x007CEAC0; // type:func
-// on motion frame N: func_0031FF90(em, i), request i of the slot D_005AFA30 (sub_main, next to the camera state)
 EmLaoshan_CamShakeOnFrame = 0x007CF020; // type:func
 // empty: the default case of EmLaoshan_MotionEffects
 EmLaoshan_MotionEffectsDefault = 0x007CF070; // type:func
 EmLaoshan_MotionEffects = 0x007CF080; // type:func
 EmLaoshan_UpdateMotionEffects = 0x007D2260; // type:func
-// SE, Effect02 and Effect0D at a fixed point per area
+// the fort impacts' effects, each at a fixed point of the fort in the area
 EmLaoshan_SpawnSmashImpactEffects = 0x007D22B0; // type:func
 EmLaoshan_SpawnRamImpactEffects = 0x007D2400; // type:func
 EmLaoshan_TableNop = 0x007D2560; // type:func
@@ -1720,6 +1720,8 @@ EmLaoshan_SetIdleState = 0x007D2570; // type:func
 EmLaoshan_SetMoveState = 0x007D2590; // type:func
 EmLaoshan_SetFlyState = 0x007D2770; // type:func
 EmLaoshan_SetAttackState = 0x007D2790; // type:func
+
+// Cephadrome and Cephalos (EmCephadrome_*).
 EmCephadrome_MotionSounds = 0x007D28E0; // type:func
 EmCephadrome_SpawnEffects = 0x007D4450; // type:func
 EmCephadrome_Init = 0x007D4490; // type:func
@@ -1731,16 +1733,17 @@ EmCephadrome_IdleStand = 0x007D4770; // type:func
 EmCephadrome_Idle = 0x007D4840; // type:func
 EmCephadrome_IdleAction = 0x007D4920; // type:func
 EmCephadrome_EatNeed2 = 0x007D49D0; // type:func
-// states 0:04, 0:09
+// states CEPH_IDLE_LAND_FLOP_A, CEPH_IDLE_LAND_FLOP_B
 EmCephadrome_LandFlop = 0x007D4D50; // type:func
-// states 0:05, 0:29
+// states CEPH_IDLE_STATUS2_COLLAPSE, CEPH_IDLE_STATUS1_COLLAPSE
 EmCephadrome_StatusCollapse = 0x007D4E60; // type:func
-// states 0:06, 0:2A
+// states CEPH_IDLE_STATUS2_END, CEPH_IDLE_STATUS1_END
 EmCephadrome_StatusGetUp = 0x007D4FE0; // type:func
-// states 0:07, 0:15, 0:16, 0:17
+// states CEPH_IDLE_SHAKE_OFF, CEPH_IDLE_STATUS4_SHAKE_OFF,
+// CEPH_IDLE_HOLD2_SHAKE_OFF, CEPH_IDLE_STUN_SHAKE_OFF
 EmCephadrome_ShakeOff = 0x007D50B0; // type:func
 EmCephadrome_Status2CollapseBeached = 0x007D5130; // type:func
-// states 0:0F, 0:11
+// states CEPH_IDLE_STATUS2_END_BEACHED, CEPH_IDLE_STATUS1_END_BEACHED
 EmCephadrome_StatusGetUpBeached = 0x007D5340; // type:func
 EmCephadrome_Status1CollapseBeached = 0x007D5410; // type:func
 EmCephadrome_Rest = 0x007D5620; // type:func
@@ -1754,18 +1757,18 @@ EmCephadrome_Limp = 0x007D5C30; // type:func
 EmCephadrome_SandIdle = 0x007D5CD0; // type:func
 EmCephadrome_SandIdleB = 0x007D5D60; // type:func
 EmCephadrome_SandCircleRightB = 0x007D5DF0; // type:func
-// states 2:03, 2:1A
+// states CEPH_SAND_TURN, CEPH_SAND_TURN_NO_REACT
 EmCephadrome_SandTurn = 0x007D5EF0; // type:func
 EmCephadrome_SandForward = 0x007D5FD0; // type:func
-// states 2:05, 2:1B
+// states CEPH_SAND_DASH, CEPH_SAND_DASH_NO_REACT
 EmCephadrome_SandDash = 0x007D61A0; // type:func
 EmCephadrome_SandCurve = 0x007D6300; // type:func
 EmCephadrome_SandRise = 0x007D63A0; // type:func
 EmCephadrome_SandDive = 0x007D64F0; // type:func
 EmCephadrome_SandRoundTurn = 0x007D6630; // type:func
-// states 2:0A, 2:13
+// states CEPH_SAND_ROUND_NEXT, CEPH_SAND_ROUND_NEXT_LEG
 EmCephadrome_SandRoundNext = 0x007D6730; // type:func
-// states 2:0B, 2:14
+// states CEPH_SAND_ROUND_PREV, CEPH_SAND_ROUND_PREV_LEG
 EmCephadrome_SandRoundPrev = 0x007D6930; // type:func
 EmCephadrome_SandCircleRight = 0x007D6B30; // type:func
 EmCephadrome_SandCircleLeft = 0x007D6C30; // type:func
@@ -1776,7 +1779,7 @@ EmCephadrome_LeapFromSand = 0x007D7390; // type:func
 EmCephadrome_LeapOnLand = 0x007D77B0; // type:func
 EmCephadrome_SandStatus4Recover = 0x007D7950; // type:func
 EmCephadrome_LeapToFixedPoint = 0x007D79D0; // type:func
-// states 2:18, 2:19
+// states CEPH_SAND_STATUS2_END, CEPH_SAND_STATUS1_END
 EmCephadrome_SandStatusRecover = 0x007D7B70; // type:func
 EmCephadrome_LandAttackA = 0x007D7C10; // type:func
 EmCephadrome_Breath = 0x007D7C90; // type:func
@@ -1792,7 +1795,8 @@ EmCephadrome_FlinchB = 0x007D8D00; // type:func
 EmCephadrome_FlinchC = 0x007D8D90; // type:func
 EmCephadrome_FlinchD = 0x007D8E20; // type:func
 EmCephadrome_FlinchLying = 0x007D8EB0; // type:func
-// states 4:05, 4:14, 4:16, 4:17
+// states CEPH_REACT_KNOCK_DOWN, CEPH_REACT_KNOCK_DOWN_PART3, CEPH_REACT_STUN_A,
+// CEPH_REACT_STUN_B
 EmCephadrome_KnockDown = 0x007D8FB0; // type:func
 EmCephadrome_FallFromAir = 0x007D9280; // type:func
 EmCephadrome_Status4Lying = 0x007D9390; // type:func
@@ -1800,15 +1804,12 @@ EmCephadrome_FallBlinded = 0x007D9500; // type:func
 EmCephadrome_FlinchBlinded = 0x007D9620; // type:func
 EmCephadrome_Status4 = 0x007D96B0; // type:func
 EmCephadrome_LandAfterFall = 0x007D97A0; // type:func
-// states 4:11, 4:12
+// states CEPH_REACT_THROWN_OUT, CEPH_REACT_THROWN_OUT_ATTACK5
 EmCephadrome_ThrownOutOfSand = 0x007D9880; // type:func
 EmCephadrome_Status4LyingEnd = 0x007D9AF0; // type:func
 EmCephadrome_Hold2 = 0x007D9B80; // type:func
-// states 6:00, 7:00
 EmCephadrome_EntranceScene = 0x007D9CC0; // type:func
-// states 6:01, 7:01
 EmCephadrome_HiddenToIdle = 0x007DA3C0; // type:func
-// states 6:02, 7:02
 EmCephadrome_Captured = 0x007DA440; // type:func
 EmCephadrome_Die = 0x007DA5D0; // type:func
 EmCephadrome_DieHeld = 0x007DA7B0; // type:func
@@ -1830,12 +1831,13 @@ EmCephadrome_UpdateFinFold = 0x007DD8F0; // type:func
 EmCephadrome_UpdateFinWave = 0x007DDAC0; // type:func
 EmCephadrome_UpdateFins = 0x007DDE20; // type:func
 EmCephadrome_UpdateMotionEffects = 0x007DDE80; // type:func
-// work mode for UpdateFins; 1 becomes 2 at hp <= 10 %
+// mode 1 becomes 2 at a tenth of hpMax or less, and 3 becomes 0 above it
 EmCephadrome_SetFinMode = 0x007DDF00; // type:func
 EmCephadrome_SpawnLandingDust = 0x007DDFC0; // type:func
 EmCephadrome_SpawnWakeEvery4 = 0x007DDFE0; // type:func
 EmCephadrome_SpawnSurfaceSplash = 0x007DE090; // type:func
-// CephadromeAttack_Create for kind 8, CephalosAttack_Create for the others
+// CephadromeAttack_Create for EM_KIND_CEPHADROME, CephalosAttack_Create for
+// the Cephalos
 EmCephadrome_CreateAttack = 0x007DE110; // type:func
 // pad vibration 3 for the local player when in the same area within 1000 units
 EmCephadrome_VibrateNearby = 0x007DE150; // type:func
@@ -1851,6 +1853,8 @@ EmCephadrome_UpdateCurves = 0x007DEC90; // type:func
 EmCephadrome_NextAreaPoint = 0x007DED60; // type:func
 EmCephadrome_IsUnderOffSand = 0x007DEEB0; // type:func
 EmCephadrome_StepAreaPoint = 0x007DEF20; // type:func
+
+// Melynx and kind 9 (EmMelynx_*). EM_GROUP_EVENT2 runs their idle states.
 EmMelynx_MotionSounds = 0x007DF170; // type:func
 EmMelynx_Reset = 0x007E03D0; // type:func
 EmMelynx_Start = 0x007E05D0; // type:func
@@ -1860,35 +1864,21 @@ EmMelynx_CapTimerOffTarget = 0x007E06E0; // type:func
 EmMelynx_EndState = 0x007E08E0; // type:func
 EmMelynx_StealItem = 0x007E09B0; // type:func
 EmMelynx_ReturnItem = 0x007E0B70; // type:func
-// states 0:00, 7:00
 EmMelynx_IdleWait = 0x007E0C70; // type:func
-// states 0:01, 7:01
 EmMelynx_IdleStand = 0x007E0D00; // type:func
-// states 0:02, 0:03, 0:04, 7:02, 7:03, 7:04
+// states MELYNX_IDLE_ACTION_A, MELYNX_IDLE_ACTION_B, MELYNX_IDLE_ACTION_C
 EmMelynx_IdleAction = 0x007E0D80; // type:func
-// states 0:05, 7:05
 EmMelynx_IdleActionD = 0x007E0E50; // type:func
-// states 0:06, 7:06
 EmMelynx_IdleDizzy = 0x007E0ED0; // type:func
-// states 0:07, 7:07
 EmMelynx_IdleActionE = 0x007E0FB0; // type:func
-// states 0:08, 7:08
 EmMelynx_IdleActionF = 0x007E1020; // type:func
-// states 0:09, 7:09
 EmMelynx_IdlePosture = 0x007E10A0; // type:func
-// states 0:0A, 7:0A
 EmMelynx_IdleActionG = 0x007E1160; // type:func
-// states 0:0B, 7:0B
 EmMelynx_HoldBomb = 0x007E11E0; // type:func
-// states 0:0C, 7:0C
 EmMelynx_Status2Lie = 0x007E12A0; // type:func
-// states 0:0D, 7:0D
 EmMelynx_Status2End = 0x007E1380; // type:func
-// states 0:0E, 7:0E
 EmMelynx_BurrowAway = 0x007E1410; // type:func
-// states 0:0F, 7:0F
 EmMelynx_HoldBigBomb = 0x007E1510; // type:func
-// states 0:10, 7:10
 EmMelynx_StunEnd = 0x007E15D0; // type:func
 EmMelynx_RunIdleState = 0x007E1650; // type:func
 EmMelynx_ChaseGoal = 0x007E17B0; // type:func
@@ -1907,10 +1897,10 @@ EmMelynx_RunMoveState = 0x007E2300; // type:func
 EmMelynx_Fall = 0x007E2400; // type:func
 EmMelynx_RunFlyState = 0x007E24A0; // type:func
 EmMelynx_Pounce = 0x007E24E0; // type:func
-// states 3:01, 3:03
+// states MELYNX_ATK_STEAL, MELYNX_ATK_STEAL_CHASE
 EmMelynx_StealAttack = 0x007E2750; // type:func
 EmMelynx_Leap = 0x007E2970; // type:func
-// states 3:04, 3:05
+// states MELYNX_ATK_THROW_BOMB, MELYNX_ATK_THROW_BOMB_FAR
 EmMelynx_ThrowBomb = 0x007E2BA0; // type:func
 EmMelynx_RunAttackState = 0x007E2D00; // type:func
 EmMelynx_Flinch = 0x007E2DA0; // type:func
@@ -1930,8 +1920,10 @@ EmMelynx_MotionEffectsDefault = 0x007E4020; // type:func
 EmMelynx_MotionEffects = 0x007E4030; // type:func
 EmMelynx_UpdateFace = 0x007E4360; // type:func
 EmMelynx_SetMeshSetAlpha = 0x007E4470; // type:func
-EmMelynx_SpawnEffect01 = 0x007E4650; // type:func
+EmMelynx_SpawnShadow = 0x007E4650; // type:func
 EmMelynx_TableNop = 0x007E4660; // type:func
+
+// Rathian, Rathalos and their subspecies (EmRathalos_*).
 EmRathalos_MotionSounds = 0x007E4670; // type:func
 EmRathalos_SpawnEffects = 0x007E7250; // type:func
 EmRathalos_Init = 0x007E7290; // type:func
@@ -1973,17 +1965,19 @@ EmRathalos_Status1Collapse = 0x007E99D0; // type:func
 EmRathalos_Status1End = 0x007E9AF0; // type:func
 EmRathalos_Status2Downed = 0x007E9BC0; // type:func
 EmRathalos_Status1Downed = 0x007E9D10; // type:func
-// states 0:21, 0:22, 0:23
+// states RATH_IDLE_STATUS4_SHAKE_OFF, RATH_IDLE_STUN_SHAKE_OFF,
+// RATH_IDLE_HOLD2_SHAKE_OFF
 EmRathalos_ShakeOffAfterStatus = 0x007E9E60; // type:func
 EmRathalos_Walk = 0x007E9EE0; // type:func
 EmRathalos_MoveEnd = 0x007E9F80; // type:func
 EmRathalos_MoveEnd2 = 0x007E9F90; // type:func
 EmRathalos_Turn = 0x007E9FA0; // type:func
-// states 1:04, 1:08
+// states RATH_MOVE_RUN, RATH_MOVE_RUN_SLOW
 EmRathalos_Run = 0x007EA050; // type:func
 EmRathalos_TurnInCombat = 0x007EA0F0; // type:func
 EmRathalos_Limp = 0x007EA1A0; // type:func
-// states 1:07, 1:09, 1:0A
+// states RATH_MOVE_TURN_TO_GOAL, RATH_MOVE_TURN_RAGE,
+// RATH_MOVE_TURN_PENDING_RAGE
 EmRathalos_TurnToGoal = 0x007EA250; // type:func
 EmRathalos_TakeOff = 0x007EA380; // type:func
 EmRathalos_Land = 0x007EA4C0; // type:func
@@ -2025,7 +2019,8 @@ EmRathalos_RoarAtPoint = 0x007EEAF0; // type:func
 EmRathalos_SingleAttackA = 0x007EEC60; // type:func
 EmRathalos_SingleAttackB = 0x007EECE0; // type:func
 EmRathalos_Charge = 0x007EED70; // type:func
-// states 3:10, 3:1F, 3:20
+// states RATH_ATK_BACK_HOP_FIREBALL, RATH_ATK_BACK_HOP_FIREBALL_LEFT,
+// RATH_ATK_BACK_HOP_FIREBALL_RIGHT
 EmRathalos_BackHopFireball = 0x007EEE20; // type:func
 EmRathalos_AirFireballDouble = 0x007EF040; // type:func
 EmRathalos_ChargeTrip = 0x007EF310; // type:func
@@ -2066,13 +2061,9 @@ EmRathalos_Stun = 0x007F2410; // type:func
 EmRathalos_StunDowned = 0x007F2590; // type:func
 EmRathalos_StunDownedEnd = 0x007F26B0; // type:func
 EmRathalos_Hold2 = 0x007F27A0; // type:func
-// states 6:02, 7:02
 EmRathalos_QuestIntro = 0x007F28E0; // type:func
-// states 6:04, 7:04
 EmRathalos_Captured = 0x007F3220; // type:func
-// states 6:05, 7:05
 EmRathalos_CapturedHold2 = 0x007F3410; // type:func
-// states 6:06, 7:06
 EmRathalos_StoryEvent = 0x007F35A0; // type:func
 EmRathalos_VersusEatBait = 0x007F39C0; // type:func
 EmRathalos_VersusPoseA = 0x007F3BB0; // type:func
@@ -2111,17 +2102,23 @@ EmRathalos_SetAttackState = 0x007F8AC0; // type:func
 EmRathalos_SetEscapePoint = 0x007F9410; // type:func
 EmRathalos_StepPitch = 0x007F9590; // type:func
 EmRathalos_MoveByVelYCurve = 0x007F9730; // type:func
+
+// Fatalis's three kinds (EM_KIND_FATALIS, EM_KIND_FATALIS_B, EM_KIND_FATALIS_C;
+// EmFatalis_*).
 EmFatalis_MotionSounds = 0x007F9C50; // type:func
 EmFatalis_Init = 0x007FBAE0; // type:func
 EmFatalis_UpdateRageTimer = 0x007FBC40; // type:func
 EmFatalis_AddMinePoints = 0x007FBD40; // type:func
 EmFatalis_UpdateMinePoints = 0x007FBFB0; // type:func
 EmFatalis_RemoveMinePoints = 0x007FC080; // type:func
-// kind 0x47: StageObj K1C 0x26 on the monster; others: StageObj K11 0x33 at bones 1 and 2
+// EM_KIND_FATALIS_C: a STAGEOBJ_KIND_MONSTER_FX object on the monster; the
+// others: two STAGEOBJ_KIND_ATTACK_BURST objects at FAT_BONE_BREATH
 EmFatalis_SpawnFireball = 0x007FC0F0; // type:func
-// kind 0x47: EmEffectAttack 0x0D; others: EmRangedAttack at bone 0x33
+// EM_KIND_FATALIS_C: EmEffectAttack EMFX_FATALIS_FIREBALL; the others:
+// EmRangedAttack EMRANGED_FATALIS_FIREBALL at FAT_BONE_BREATH
 EmFatalis_SpawnFireballEffect = 0x007FC170; // type:func
-// kind 0x47: EmEffectAttack 0x0C; others: EmRangedAttack 0x0C at bone 0
+// EM_KIND_FATALIS_C: EmEffectAttack EMFX_FATALIS_SWEEP_BLAST; the others:
+// EmRangedAttack EMRANGED_FATALIS_SWEEP from FAT_BONE_ROOT
 EmFatalis_SpawnSweepEffect = 0x007FC1D0; // type:func
 EmFatalis_EndState = 0x007FC230; // type:func
 EmFatalis_EndAirState = 0x007FC250; // type:func
@@ -2135,11 +2132,11 @@ EmFatalis_Status4End = 0x007FCDA0; // type:func
 EmFatalis_Walk = 0x007FCE20; // type:func
 EmFatalis_TurnToTarget = 0x007FCEC0; // type:func
 EmFatalis_TurnToGoal = 0x007FCF60; // type:func
-// states 2:00, 2:0F
+// states FAT_FLY_TAKE_OFF, FAT_FLY_TAKE_OFF_HIGH
 EmFatalis_TakeOff = 0x007FD240; // type:func
 EmFatalis_Land = 0x007FD360; // type:func
 EmFatalis_Hover = 0x007FD530; // type:func
-// states 2:03, 2:0D
+// states FAT_FLY_HOVER_TURN, FAT_FLY_HOVER_TURN_STOP
 EmFatalis_HoverTurn = 0x007FD6B0; // type:func
 EmFatalis_FlyToGoal = 0x007FD7D0; // type:func
 EmFatalis_FlyRise = 0x007FD920; // type:func
@@ -2147,18 +2144,19 @@ EmFatalis_FlyStraightToGoal = 0x007FDA50; // type:func
 EmFatalis_FlyDescend = 0x007FDBA0; // type:func
 EmFatalis_FlyRiseHigh = 0x007FDCD0; // type:func
 EmFatalis_FlyLevelToGoal = 0x007FDDE0; // type:func
-// states 2:0A, 2:0C
+// states FAT_FLY_CLIMB_TO_GOAL, FAT_FLY_CLIMB_TO_GOAL_NEAR
 EmFatalis_FlyClimbToGoal = 0x007FDF20; // type:func
 EmFatalis_TakeOffAndRise = 0x007FE0C0; // type:func
 EmFatalis_LandAtHeight = 0x007FE230; // type:func
-// states 3:00, 3:13
+// states FAT_ATK_SINGLE_A, FAT_ATK_SINGLE_C
 EmFatalis_SingleAttackA = 0x007FE430; // type:func
 EmFatalis_SingleAttackB = 0x007FE4D0; // type:func
 EmFatalis_Fireball = 0x007FE550; // type:func
 EmFatalis_FireballB = 0x007FE610; // type:func
-// states 3:04, 3:0E, 3:0F, 3:10, 3:11
+// states FAT_ATK_SWEEP_NO_EFFECT, FAT_ATK_SWEEP_A, FAT_ATK_SWEEP_B,
+// FAT_ATK_SWEEP_C, FAT_ATK_SWEEP_D
 EmFatalis_Sweep = 0x007FE6D0; // type:func
-// states 3:05, 3:0A, 3:0B
+// states FAT_ATK_AIR_FIREBALL, FAT_ATK_AIR_FIREBALL_B, FAT_ATK_AIR_FIREBALL_C
 EmFatalis_AirFireball = 0x007FE830; // type:func
 EmFatalis_Charge = 0x007FEA60; // type:func
 EmFatalis_HopFireball = 0x007FEB70; // type:func
@@ -2187,15 +2185,10 @@ EmFatalis_RunFlyState = 0x00800B30; // type:func
 EmFatalis_RunAttackState = 0x00800C70; // type:func
 EmFatalis_RunReactState = 0x00800E10; // type:func
 EmFatalis_RunDefeatState = 0x00800EE0; // type:func
-// states 6:00, 7:00
 EmFatalis_EventLeave = 0x00800F50; // type:func
-// states 6:01, 7:01
 EmFatalis_EventFlyIn = 0x00801100; // type:func
-// states 6:02, 7:02
 EmFatalis_EventLeaveFromAir = 0x008015E0; // type:func
-// states 6:03, 7:03
 EmFatalis_EventGetUp = 0x00801760; // type:func
-// states 6:04, 7:04
 EmFatalis_EventDescend = 0x00801B30; // type:func
 EmFatalis_RunEventState = 0x00801FF0; // type:func
 EmFatalis_SpawnRageObject = 0x00802170; // type:func
@@ -2205,23 +2198,25 @@ EmFatalis_MotionEffectsDefault = 0x00802330; // type:func
 EmFatalis_MotionEffects = 0x00802340; // type:func
 EmFatalis_ShakeOnFrame = 0x00804440; // type:func
 EmFatalis_UpdateMotionEffects = 0x00804490; // type:func
-EmFatalis_SpawnEffect01 = 0x008044E0; // type:func
+EmFatalis_SpawnShadow = 0x008044E0; // type:func
 EmFatalis_TableNop = 0x008044F0; // type:func
-// kinds 0x33, 0x3D (Blangonga, Blango)
+
+// Blangonga, Congalala, Rajang, Blango and Conga (EmBlangonga_*).
+// for Blangonga and Blango
 EmBlangonga_MotionSounds = 0x00804500; // type:func
-// kinds 0x34, 0x3E (Congalala, Conga)
+// for Congalala and Conga
 EmBlangonga_MotionSoundsCongalala = 0x00807330; // type:func
-// kind 0x35
+// for Rajang
 EmBlangonga_MotionSoundsRajang = 0x0080A1D0; // type:func
-EmBlangonga_SpawnEffect01 = 0x0080CE00; // type:func
+EmBlangonga_SpawnShadow = 0x0080CE00; // type:func
 EmBlangonga_Init = 0x0080CE50; // type:func
-// unreferenced: Init, quest placement, first ChangeState (the families' Start functions)
 EmBlangonga_Start = 0x0080D150; // type:func
 EmBlangonga_Reinit = 0x0080D260; // type:func
 EmBlangonga_EndState = 0x0080DCF0; // type:func
 EmBlangonga_EndBuriedState = 0x0080DD20; // type:func
 EmBlangonga_PickCarried = 0x0080DD50; // type:func
-// 1 unless the part flag (EmBlangonga_SetPartFlag) is set; part 6: unless func_007257E0(em, 2) is 1
+// 1 when carried item part (0 to 2) is shown; for part 6, 1 while part 2 is
+// unbroken
 EmBlangonga_CarriedShown = 0x0080DF10; // type:func
 EmBlangonga_IsSmallKind = 0x0080DFD0; // type:func
 EmBlangonga_IsBlangonga = 0x0080E000; // type:func
@@ -2231,36 +2226,38 @@ EmBlangonga_UpdateRageTimer = 0x0080E2B0; // type:func
 EmBlangonga_UpdateTint = 0x0080E490; // type:func
 EmBlangonga_EatPropMode = 0x0080E400; // type:func
 EmBlangonga_RageTimerFull = 0x0080E950; // type:func
-// Effect06 kind 4 at a bone on frames 0, 10, 20 of every 90 (func_007082E0)
-EmBlangonga_SpawnPeriodicEffect06 = 0x0080E9B0; // type:func
+// the lying puffs (Em_SpawnLyingPuffs) at a bone
+EmBlangonga_SpawnLyingPuffs = 0x0080E9B0; // type:func
 EmBlangonga_ShouldEndState = 0x0080EA30; // type:func
-// unk680 = unk684; position from the old area (unk882)
 EmBlangonga_EnterNewArea = 0x0080EDE0; // type:func
 EmBlangonga_IdleNone = 0x0080F2C0; // type:func
 EmBlangonga_Idle = 0x0080F2D0; // type:func
 EmBlangonga_Rest = 0x0080F340; // type:func
-// states 0:04, 0:1A, 0:26
+// states BLANG_IDLE_STATUS2_END, BLANG_IDLE_REST_END, BLANG_IDLE_STATUS1_END
 EmBlangonga_GetUp = 0x0080F540; // type:func
-// states 0:05, 0:25
+// states BLANG_IDLE_STATUS2_COLLAPSE, BLANG_IDLE_STATUS1_COLLAPSE
 EmBlangonga_StatusCollapse = 0x0080F5E0; // type:func
 EmBlangonga_AlertIdle = 0x0080F760; // type:func
-// states 0:07, 0:14, 0:15, 0:23, 0:28, 0:29
+// states BLANG_IDLE_ROAR, BLANG_IDLE_ROAR_CALL, BLANG_IDLE_ROAR_RAISE_RAGE,
+// BLANG_IDLE_ROAR_SIGNAL, BLANG_IDLE_ROAR_RAGE, BLANG_IDLE_ROAR_PENDING_RAGE
 EmBlangonga_Roar = 0x0080F7E0; // type:func
-// states 0:08, 0:09
+// states BLANG_IDLE_TURN_ABOUT, BLANG_IDLE_TURN_ABOUT_B
 EmBlangonga_TurnAbout = 0x0080F960; // type:func
-// states 0:0A, 0:19, 0:1B
+// states BLANG_IDLE_STATUS4_SHAKE_OFF, BLANG_IDLE_STUN_SHAKE_OFF,
+// BLANG_IDLE_HOLD2_SHAKE_OFF
 EmBlangonga_ShakeOff = 0x0080FB70; // type:func
 EmBlangonga_EatNeed2 = 0x0080FBF0; // type:func
-// states 0:0C, 0:1C, 0:1D, 0:1E, 0:1F, 0:21
+// states BLANG_IDLE_EAT_NEED1, BLANG_IDLE_EAT_KIND_A, BLANG_IDLE_EAT_KIND_B,
+// BLANG_IDLE_EAT_KIND_C, BLANG_IDLE_EAT_KIND_D, BLANG_IDLE_EAT_NEED1_B
 EmBlangonga_EatNeed1 = 0x0080FD10; // type:func
 EmBlangonga_ClearPaint = 0x0080FF70; // type:func
 EmBlangonga_LeaveTrap = 0x0080FFF0; // type:func
-// states 0:0F, 0:27
+// states BLANG_IDLE_EAT_START_B, BLANG_IDLE_EAT_START
 EmBlangonga_EatStart = 0x008100D0; // type:func
 EmBlangonga_IdleActionA = 0x00810200; // type:func
-EmBlangonga_IdleActionB = 0x00810280; // type:func
+EmBlangonga_RoarC = 0x00810280; // type:func
 EmBlangonga_AlertBrief = 0x00810390; // type:func
-// states 0:13, 0:24
+// states BLANG_IDLE_STATUS2_DOWNED, BLANG_IDLE_STATUS1_DOWNED
 EmBlangonga_StatusDowned = 0x00810430; // type:func
 EmBlangonga_RoarB = 0x008106E0; // type:func
 EmBlangonga_IdleActionC = 0x00810780; // type:func
@@ -2268,27 +2265,29 @@ EmBlangonga_WaitBuried = 0x00810800; // type:func
 EmBlangonga_LeaveMinePoint = 0x00810870; // type:func
 EmBlangonga_Eat = 0x00810920; // type:func
 EmBlangonga_RunIdleState = 0x008109B0; // type:func
-// states 1:00, 1:09
+// states BLANG_MOVE_TURN, BLANG_MOVE_TURN_AWAY
 EmBlangonga_Turn = 0x00810C80; // type:func
-// states 1:01, 1:02
+// states BLANG_MOVE_WALK, BLANG_MOVE_LIMP
 EmBlangonga_WalkToGoal = 0x00810D40; // type:func
-// states 1:03, 1:08, 1:0A
+// states BLANG_MOVE_TURN_QUICK, BLANG_MOVE_TURN_TO_EXIT,
+// BLANG_MOVE_TURN_AWAY_QUICK
 EmBlangonga_TurnQuick = 0x00810E20; // type:func
 EmBlangonga_MoveActionA = 0x00810F70; // type:func
 EmBlangonga_MoveActionB = 0x00810FF0; // type:func
 EmBlangonga_MoveActionC = 0x00811070; // type:func
-// states 1:07, 1:0F
+// states BLANG_MOVE_ACTION_D, BLANG_MOVE_ACTION_E
 EmBlangonga_MoveActionD = 0x008110F0; // type:func
-// states 1:0B, 1:0C, 1:0D, 1:0E
+// states BLANG_MOVE_START_AND_APPROACH, BLANG_MOVE_LIMP_APPROACH,
+// BLANG_MOVE_APPROACH, BLANG_MOVE_START_AND_WALK
 EmBlangonga_Approach = 0x00811170; // type:func
 EmBlangonga_RunMoveState = 0x00811370; // type:func
-// states 2:00, 2:0C, 2:10
+// states BLANG_LEAP_JUMP, BLANG_LEAP_JUMP_HIGH, BLANG_LEAP_JUMP_TO_GOAL
 EmBlangonga_Jump = 0x008114B0; // type:func
-// states 2:01, 2:0E, 2:0F
+// states BLANG_LEAP_HOP_SHORT, BLANG_LEAP_HOP, BLANG_LEAP_HOP_LONG
 EmBlangonga_Hop = 0x00811840; // type:func
 EmBlangonga_DigIn = 0x00811AC0; // type:func
 EmBlangonga_Buried = 0x00811BC0; // type:func
-// states 2:04, 2:0A
+// states BLANG_LEAP_DIG_OUT, BLANG_LEAP_DIG_OUT_RAGE
 EmBlangonga_DigOut = 0x00811C80; // type:func
 EmBlangonga_BuriedTurn = 0x00811E40; // type:func
 EmBlangonga_BuriedMove = 0x00812010; // type:func
@@ -2299,27 +2298,27 @@ EmBlangonga_CrossArea = 0x00812680; // type:func
 EmBlangonga_BuriedWaitRandom = 0x00812860; // type:func
 EmBlangonga_RunLeapState = 0x00812930; // type:func
 EmBlangonga_TripleHit = 0x00812A80; // type:func
-// states 3:01, 3:0D
+// states BLANG_ATK_SLAM, BLANG_ATK_SLAM_HEAVY
 EmBlangonga_Slam = 0x00812C10; // type:func
-// states 3:02, 3:03
+// states BLANG_ATK_STRIKE_A, BLANG_ATK_STRIKE_B
 EmBlangonga_Strike = 0x00812DF0; // type:func
 EmBlangonga_CongalalaEmission = 0x00812F60; // type:func
 EmBlangonga_BlangoThrow = 0x00813040; // type:func
 EmBlangonga_Charge = 0x00813120; // type:func
-// states 3:07, 3:0F, 3:10
+// states BLANG_ATK_DIG_THROW_A, BLANG_ATK_DIG_THROW_B, BLANG_ATK_DIG_THROW_C
 EmBlangonga_DigThrow = 0x00813300; // type:func
 EmBlangonga_CongalalaEatenEmission = 0x00813460; // type:func
 EmBlangonga_CongalalaCombo = 0x00813590; // type:func
 EmBlangonga_CongalalaHitzoneCombo = 0x00813710; // type:func
-// states 3:0B, 3:19
+// states BLANG_ATK_CONGALALA_THROW_A, BLANG_ATK_CONGALALA_THROW_B
 EmBlangonga_CongalalaThrow = 0x00813850; // type:func
 EmBlangonga_BackStrike = 0x00813970; // type:func
 EmBlangonga_EffectStrike = 0x008139F0; // type:func
-// states 3:11, 3:1A
+// states BLANG_ATK_RAJANG_COMBO_SLAM_A, BLANG_ATK_RAJANG_COMBO_SLAM_B
 EmBlangonga_RajangComboSlam = 0x00813BA0; // type:func
-// states 3:12, 3:1B
+// states BLANG_ATK_RAJANG_SHOT_A, BLANG_ATK_RAJANG_SHOT_B
 EmBlangonga_RajangShot = 0x00813DB0; // type:func
-// states 3:13, 3:18
+// states BLANG_ATK_RAJANG_BEAM_A, BLANG_ATK_RAJANG_BEAM_B
 EmBlangonga_RajangBeam = 0x00813F40; // type:func
 EmBlangonga_RajangJumpShot = 0x008140D0; // type:func
 EmBlangonga_RajangStrike = 0x00814370; // type:func
@@ -2327,22 +2326,25 @@ EmBlangonga_RajangCharge = 0x00814440; // type:func
 EmBlangonga_CongalalaCharge = 0x00814570; // type:func
 EmBlangonga_RunAttackState = 0x00814660; // type:func
 EmBlangonga_Flinch = 0x00814860; // type:func
-// states 4:01, 4:14
+// states BLANG_REACT_FLINCH_B, BLANG_REACT_PART_BREAK
 EmBlangonga_FlinchB = 0x008148F0; // type:func
-// states 4:02, 4:03, 4:0C, 4:0D
+// states BLANG_REACT_KNOCK_DOWN, BLANG_REACT_KNOCK_DOWN_B, BLANG_REACT_STUN,
+// BLANG_REACT_STUN_B
 EmBlangonga_KnockDown = 0x00814980; // type:func
 EmBlangonga_Status4 = 0x00814C10; // type:func
 EmBlangonga_Trapped = 0x00814D00; // type:func
-// states 4:06, 4:0A, 4:0F
+// states BLANG_REACT_TRAPPED_STRUGGLE, BLANG_REACT_STATUS4_DOWNED_END,
+// BLANG_REACT_STUN_DOWNED_END
 EmBlangonga_TrappedStruggle = 0x00814E20; // type:func
 EmBlangonga_Fall = 0x00814FD0; // type:func
 EmBlangonga_ReactNop = 0x00815170; // type:func
-// states 4:09, 4:0E
+// states BLANG_REACT_STATUS4_DOWNED, BLANG_REACT_STUN_DOWNED
 EmBlangonga_HeldDowned = 0x00815180; // type:func
-// states 4:0B, 4:13
+// states BLANG_REACT_STATUS2_DOWNED_END, BLANG_REACT_STATUS1_DOWNED_END
 EmBlangonga_HeldStatusEnd = 0x00815440; // type:func
 EmBlangonga_Hold2 = 0x00815520; // type:func
-// states 4:11, 4:15, 4:16, 4:17
+// states BLANG_REACT_DROP_CARRIED, BLANG_REACT_DROP_CARRIED_A,
+// BLANG_REACT_DROP_CARRIED_B, BLANG_REACT_DROP_CARRIED_C
 EmBlangonga_DropCarried = 0x00815610; // type:func
 EmBlangonga_FlinchAttack = 0x008156D0; // type:func
 EmBlangonga_TrapEscape = 0x00815840; // type:func
@@ -2353,19 +2355,14 @@ EmBlangonga_DieArmored = 0x00815E40; // type:func
 EmBlangonga_DieFalling = 0x00816040; // type:func
 EmBlangonga_Reappear = 0x00816250; // type:func
 EmBlangonga_RunDefeatState = 0x00816370; // type:func
-// states 6:00, 7:00
 EmBlangonga_Captured = 0x00816470; // type:func
-// states 6:01, 7:01
 EmBlangonga_CapturedHold2 = 0x008166F0; // type:func
-// states 6:02, 7:02
 EmBlangonga_CongalalaScene = 0x00816880; // type:func
-// states 6:03, 7:03
 EmBlangonga_StartBlangongaScene = 0x00816B50; // type:func
-// states 6:04, 7:04
 EmBlangonga_BlangongaLeapDown = 0x00816C60; // type:func
-// states 6:05, 6:06, 6:07, 7:05, 7:06, 7:07
+// states BLANG_EVENT_BLANGO_EMERGE_A, BLANG_EVENT_BLANGO_EMERGE_B,
+// BLANG_EVENT_BLANGO_EMERGE_C
 EmBlangonga_BlangoEmerge = 0x00816F80; // type:func
-// states 6:08, 7:08
 EmBlangonga_BlangoHidden = 0x00817230; // type:func
 EmBlangonga_RunEventState = 0x008172F0; // type:func
 EmBlangonga_VersusEatBait = 0x008173C0; // type:func
@@ -2386,12 +2383,16 @@ EmBlangonga_UpdateMotionEffects = 0x0081AA30; // type:func
 EmBlangonga_TableNop = 0x0081AA80; // type:func
 EmBlangonga_ScriptQuery = 0x0081AA90; // type:func
 EmBlangonga_AllowPartBreak = 0x0081AD80; // type:func
+
+// Shen Gaoren's state setters (EmShenGaoren_Set*State).
 EmShenGaoren_SetIdleState = 0x0081AE00; // type:func
 EmShenGaoren_SetMoveState = 0x0081AE50; // type:func
 EmShenGaoren_SetFlyState = 0x0081B040; // type:func
 EmShenGaoren_SetAttackState = 0x0081B060; // type:func
 EmShenGaoren_SetReactState = 0x0081B080; // type:func
-// Kushala's wind (work +8, 90-frame timer); off while unk8A2/unk70C, unk6AE 4, state 4:0C or parts 0/2 (func_007257E0)
+
+// Kushala Daora, Rusted Kushala Daora, Lunastra and Teostra: the wind
+// (EmKushala_SetWind, EmKushala_WindActive) and the state setters.
 EmKushala_SetWind = 0x0081B2A0; // type:func
 EmKushala_WindActive = 0x0081B2D0; // type:func
 EmKushala_WindActiveTesca = 0x0081B390; // type:func
@@ -2400,10 +2401,12 @@ EmKushala_SetMoveState = 0x0081B730; // type:func
 EmKushala_SetFlyState = 0x0081B9E0; // type:func
 EmKushala_SetAttackState = 0x0081BC50; // type:func
 EmKushala_SetReactState = 0x0081BCE0; // type:func
+
+// Shen Gaoren (EmShenGaoren_*).
 EmShenGaoren_PlaySeAtOffset = 0x0081C4E0; // type:func
 EmShenGaoren_PlaySeOnFrame = 0x0081C5C0; // type:func
 EmShenGaoren_MotionSounds = 0x0081C630; // type:func
-EmShenGaoren_SpawnEffect01 = 0x00822F60; // type:func
+EmShenGaoren_SpawnShadow = 0x00822F60; // type:func
 EmShenGaoren_GetMinePointPos = 0x00822F70; // type:func
 EmShenGaoren_AddMinePoint = 0x00823010; // type:func
 EmShenGaoren_RemoveMinePoints = 0x008230F0; // type:func
@@ -2429,33 +2432,36 @@ EmShenGaoren_TurnAwayLow = 0x008241D0; // type:func
 EmShenGaoren_RunMoveState = 0x00824260; // type:func
 EmShenGaoren_RunFlyState = 0x00824320; // type:func
 EmShenGaoren_ShotTall = 0x00824330; // type:func
-// states 3:01, 3:09, 3:0A
+// states SHEN_ATK_SHOT_FORT, SHEN_ATK_SHOT_TOWN_A, SHEN_ATK_SHOT_TOWN_B
 EmShenGaoren_ShotLow = 0x00824480; // type:func
 EmShenGaoren_StrikeFort = 0x00824710; // type:func
-// states 3:03, 3:08
+// states SHEN_ATK_SMASH, SHEN_ATK_SMASH_FORT
 EmShenGaoren_Smash = 0x00824820; // type:func
 EmShenGaoren_StrikeA = 0x008249A0; // type:func
 EmShenGaoren_StrikeB = 0x00824A20; // type:func
 EmShenGaoren_TrampleTall = 0x00824AA0; // type:func
 EmShenGaoren_TrampleLow = 0x00824B20; // type:func
 EmShenGaoren_RunAttackState = 0x00824BA0; // type:func
-// states 4:00, 4:09, 4:0A, 4:0B, 4:0C
+// states SHEN_REACT_FLINCH_TALL, SHEN_REACT_LEG_A_TALL, SHEN_REACT_LEG_B_TALL,
+// SHEN_REACT_LEG_C_TALL, SHEN_REACT_LEG_D_TALL
 EmShenGaoren_FlinchTall = 0x00824C90; // type:func
 EmShenGaoren_FlinchLow = 0x00824D20; // type:func
-// states 4:02, 4:03, 4:04, 4:05, 4:11, 4:12, 4:13, 4:14
+// states SHEN_REACT_LEG_A_LOW, SHEN_REACT_LEG_B_LOW, SHEN_REACT_LEG_C_LOW,
+// SHEN_REACT_LEG_D_LOW, SHEN_REACT_LEG_A_AGAIN_LOW, SHEN_REACT_LEG_B_AGAIN_LOW,
+// SHEN_REACT_LEG_C_AGAIN_LOW, SHEN_REACT_LEG_D_AGAIN_LOW
 EmShenGaoren_FlinchLegLow = 0x00824DB0; // type:func
-// states 4:06, 4:15
+// states SHEN_REACT_LEGS_COLLAPSE, SHEN_REACT_KNOCKDOWN_LOW
 EmShenGaoren_CollapseLow = 0x00824E40; // type:func
-// states 4:07, 4:0D, 4:0E, 4:0F, 4:10
+// states SHEN_REACT_KNOCKDOWN_TALL, SHEN_REACT_LEG_A_DOWN_TALL,
+// SHEN_REACT_LEG_B_DOWN_TALL, SHEN_REACT_LEG_C_DOWN_TALL,
+// SHEN_REACT_LEG_D_DOWN_TALL
 EmShenGaoren_KnockdownTall = 0x00824F50; // type:func
 EmShenGaoren_CollapseFromShot = 0x00825050; // type:func
 EmShenGaoren_RunReactState = 0x00825110; // type:func
 EmShenGaoren_DieTall = 0x008252B0; // type:func
 EmShenGaoren_DieLow = 0x00825400; // type:func
 EmShenGaoren_RunDefeatState = 0x00825500; // type:func
-// states 6:00, 7:00
 EmShenGaoren_EventCutsceneShot = 0x00825550; // type:func
-// states 6:01, 7:01
 EmShenGaoren_EventLeave = 0x008258C0; // type:func
 EmShenGaoren_RunEventState = 0x00825B30; // type:func
 EmShenGaoren_EaseDownPose = 0x008261F0; // type:func
@@ -2468,8 +2474,10 @@ EmShenGaoren_UpdateMotionEffects = 0x00827FD0; // type:func
 EmShenGaoren_SpawnAreaImpactEffects = 0x00828020; // type:func
 EmShenGaoren_TableNop = 0x008281E0; // type:func
 EmShenGaoren_ScriptQuery = 0x008281F0; // type:func
+
+// Kushala Daora, Rusted Kushala Daora, Lunastra and Teostra (EmKushala_*).
 EmKushala_MotionSounds = 0x00828200; // type:func
-// for kinds 0x40, 0x41 (Lunastra, Teostra); EmKushala_MotionSounds for 0x36, 0x3C
+// for Lunastra and Teostra (EmKushala_MotionSounds serves the other two)
 EmKushala_MotionSoundsTesca = 0x0082A4A0; // type:func
 EmKushala_SpawnEffects = 0x0082CEF0; // type:func
 EmKushala_Init = 0x0082CF80; // type:func
@@ -2479,18 +2487,18 @@ EmKushala_ToIdle = 0x0082D740; // type:func
 EmKushala_EndState = 0x0082D860; // type:func
 EmKushala_EndFlyState = 0x0082D870; // type:func
 EmKushala_BreakParts = 0x0082D8E0; // type:func
-// KushalaBreath_CreateAtBone, with the bone moved on when D_006ADCB0.unk030 is 0x0B or 0x15
+// a larger breath on the snowy mountains
 EmKushala_CreateBreathAtBone = 0x0082DAB0; // type:func
 EmKushala_Stand = 0x0082DB20; // type:func
 EmKushala_Idle = 0x0082DBF0; // type:func
 EmKushala_HoverIdle = 0x0082DC90; // type:func
 EmKushala_AlertIdle = 0x0082DD20; // type:func
-// states 0:04, 0:19
+// states KUSH_IDLE_EAT_NEED1_START, KUSH_IDLE_EAT_NEED2_START
 EmKushala_EatNeedStart = 0x0082DDA0; // type:func
-// states 0:05, 0:1A
+// states KUSH_IDLE_EAT_NEED1, KUSH_IDLE_EAT_NEED2
 EmKushala_EatNeed = 0x0082E000; // type:func
 EmKushala_IdleActionA = 0x0082E0C0; // type:func
-// states 0:07, 0:18
+// states KUSH_IDLE_STATUS4_SHAKE_OFF, KUSH_IDLE_STUN_SHAKE_OFF
 EmKushala_StatusShakeOff = 0x0082E140; // type:func
 EmKushala_ShakeOff = 0x0082E1C0; // type:func
 EmKushala_Rest = 0x0082E240; // type:func
@@ -2499,7 +2507,8 @@ EmKushala_Status2Collapse = 0x0082E4E0; // type:func
 EmKushala_Status2End = 0x0082E5F0; // type:func
 EmKushala_EatStart = 0x0082E710; // type:func
 EmKushala_Eat = 0x0082E800; // type:func
-// states 0:0F, 0:10, 0:11, 0:14
+// states KUSH_IDLE_WIND_ROAR, KUSH_IDLE_WIND_ROAR_B, KUSH_IDLE_WIND_ROAR_C,
+// KUSH_IDLE_WIND_ROAR_OR_SWEEP
 EmKushala_Roar = 0x0082E8A0; // type:func
 EmKushala_IdleActionB = 0x0082EA10; // type:func
 EmKushala_AlertIdleB = 0x0082EA90; // type:func
@@ -2512,22 +2521,24 @@ EmKushala_Limp = 0x0082EFD0; // type:func
 EmKushala_Turn = 0x0082F0C0; // type:func
 EmKushala_TurnAlert = 0x0082F170; // type:func
 EmKushala_WalkB = 0x0082F350; // type:func
-// states 1:05, 1:08, 1:09, 1:0A, 1:0B, 1:0C
+// states KUSH_MOVE_RUN, KUSH_MOVE_RUN_PAST, KUSH_MOVE_RUN_PAST_ARC_A,
+// KUSH_MOVE_RUN_PAST_ARC_B, KUSH_MOVE_RUN_PAST_ARC_C, KUSH_MOVE_RUN_PAST_ARC_D
 EmKushala_Run = 0x0082F450; // type:func
 EmKushala_Stomp = 0x0082F630; // type:func
 EmKushala_LiftToHover = 0x0082F730; // type:func
 EmKushala_TakeOffToHover = 0x0082F830; // type:func
-// states 1:15, 1:16
+// states KUSH_MOVE_SIDE_DASH_A, KUSH_MOVE_SIDE_DASH_B
 EmKushala_SideDash = 0x0082F960; // type:func
-// states 1:17, 1:1C, 1:1D
+// states KUSH_MOVE_HOVER_FORWARD, KUSH_MOVE_HOVER_FORWARD_PAST,
+// KUSH_MOVE_HOVER_BACKWARD
 EmKushala_HoverForward = 0x0082FB60; // type:func
 EmKushala_HoverDash = 0x0082FCC0; // type:func
 EmKushala_HoverTurn = 0x0082FEE0; // type:func
-// states 1:1A, 1:1E
+// states KUSH_MOVE_LAND, KUSH_MOVE_LAND_QUICK
 EmKushala_LandFromHover = 0x00830070; // type:func
 EmKushala_HoverSpin = 0x00830180; // type:func
 EmKushala_TakeOff = 0x00830250; // type:func
-// states 2:01, 2:0E
+// states KUSH_FLY_LAND, KUSH_FLY_LAND_IN_COMBAT
 EmKushala_Land = 0x008303C0; // type:func
 EmKushala_Hover = 0x00830620; // type:func
 EmKushala_HoverGuarded = 0x008306E0; // type:func
@@ -2541,29 +2552,34 @@ EmKushala_CrossArea = 0x00831100; // type:func
 EmKushala_DashToGoal = 0x00831450; // type:func
 EmKushala_BrakeDash = 0x00831660; // type:func
 EmKushala_DashCircuit = 0x008317C0; // type:func
-// states 2:0F, 2:10, 2:11
+// states KUSH_FLY_RISE_TO_AREA_HEIGHT, KUSH_FLY_RISE_TO_FIXED_HEIGHT,
+// KUSH_FLY_RISE_TO_GOAL_HEIGHT
 EmKushala_RiseToHeight = 0x008319F0; // type:func
 EmKushala_TurnSweepA = 0x00831C50; // type:func
 EmKushala_TurnSweepB = 0x00831D20; // type:func
 EmKushala_StrikeBreath = 0x00831DF0; // type:func
 EmKushala_BreathChain = 0x00831F20; // type:func
 EmKushala_TescaActionA = 0x00832030; // type:func
-// states 3:05, 3:07, 3:1A, 3:1B
+// states KUSH_ATK_BLAST_RING_A, KUSH_ATK_BLAST_RING_B, KUSH_ATK_BLAST_RING_C,
+// KUSH_ATK_BLAST_RING_D
 EmKushala_BlastRing = 0x008320B0; // type:func
 EmKushala_TescaActionB = 0x008321F0; // type:func
 EmKushala_TescaActionC = 0x00832270; // type:func
 EmKushala_HoverActionA = 0x00832330; // type:func
 EmKushala_StepForward = 0x008323C0; // type:func
-// states 3:0A, 3:15, 3:16
+// states KUSH_ATK_BREATH_STREAM_ADVANCE, KUSH_ATK_BREATH_STREAM_WEAVE,
+// KUSH_ATK_BREATH_STREAM_SPIN
 EmKushala_BreathStream = 0x00832480; // type:func
 EmKushala_LungeBlast = 0x00832690; // type:func
 EmKushala_HoverActionB = 0x008327F0; // type:func
-// states 3:0D, 3:0E
+// states KUSH_ATK_HOVER_SWEEP_A, KUSH_ATK_HOVER_SWEEP_B
 EmKushala_HoverSweep = 0x00832880; // type:func
-// states 3:0F, 3:10, 3:11, 3:12, 3:13, 3:14, 3:17, 3:19
+// states KUSH_ATK_BREATH_QUICK, KUSH_ATK_BREATH_FAN, KUSH_ATK_BREATH_FULL,
+// KUSH_ATK_AIR_BREATH_QUICK, KUSH_ATK_AIR_BREATH_FAN, KUSH_ATK_AIR_BREATH_FULL,
+// KUSH_ATK_AIR_BREATH_TRIPLE, KUSH_ATK_AIR_BREATH_SINGLE
 EmKushala_BreathAttack = 0x00832990; // type:func
 EmKushala_BlastRingFort = 0x00832E80; // type:func
-// states 4:00, 4:0F
+// states KUSH_REACT_FLINCH, KUSH_REACT_FIRST_BREAK_FLINCH
 EmKushala_Flinch = 0x008330E0; // type:func
 EmKushala_FlinchHeavy = 0x00833170; // type:func
 EmKushala_FlinchHover = 0x00833250; // type:func
@@ -2579,23 +2595,15 @@ EmKushala_HoverKnockDown = 0x00833C40; // type:func
 EmKushala_Stun = 0x00833D60; // type:func
 EmKushala_HoldRise = 0x00833EE0; // type:func
 EmKushala_HoldSettle = 0x00833FF0; // type:func
-// states 6:00, 7:00
 EmKushala_Leave = 0x00834100; // type:func
-// states 6:01, 7:01
 EmKushala_LeaveFromAir = 0x00834370; // type:func
-// states 6:02, 7:02
 EmKushala_SceneWalkIn = 0x008344F0; // type:func
-// states 6:03, 7:03
 EmKushala_SceneRise = 0x008347C0; // type:func
-// states 6:04, 7:04
 EmKushala_Captured = 0x00834A90; // type:func
-// states 6:05, 7:05
 EmKushala_SceneDescend = 0x00834B70; // type:func
-// states 6:06, 7:06
 EmKushala_SceneFlyIn = 0x00834EB0; // type:func
-// states 6:07, 7:07
 EmKushala_SceneWake = 0x00835390; // type:func
-// states 5:00, 5:01
+// states KUSH_DEFEAT_DIE, KUSH_DEFEAT_DIE_B
 EmKushala_Die = 0x008355E0; // type:func
 EmKushala_DieFalling = 0x008357B0; // type:func
 EmKushala_Reappear = 0x00835A30; // type:func
@@ -2606,23 +2614,30 @@ EmKushala_RunAttackState = 0x00835FD0; // type:func
 EmKushala_RunReactState = 0x008361D0; // type:func
 EmKushala_RunDefeatState = 0x00836320; // type:func
 EmKushala_RunEventState = 0x008363B0; // type:func
-// 1 in the states whose ground effects still spawn while the wind (EmKushala_WindActive) blows
+// 1 in the ground states where the wind's ring replaces the footfall dust while
+// the wind blows
 EmKushala_StateHasWindRing = 0x008372C0; // type:func
 EmKushala_SpawnGroundEffect = 0x008373D0; // type:func
 EmKushala_SpawnDustNearGround = 0x00837450; // type:func
-// spawns stage object kind 0x14 (func_0087E9F0) when near the ground
+// DustCloud_Create (STAGEOBJ_KIND_DUST_CLOUD) within 1000 of the floor, unless
+// the wind's ring replaces it
 EmKushala_SpawnK14NearGround = 0x00837510; // type:func
 // empty: the default case of EmKushala_MotionEffects
 EmKushala_MotionEffectsNop = 0x008375D0; // type:func
-// in some motions, every 45 frames while unk80A: stage object kind 0x1C type 0xD (func_0088A960)
+// every 45 frames while enraged, in its idle and moving motions:
+// MonsterFx_CreateOnEm type 13
 EmKushala_SpawnRageAura = 0x008375E0; // type:func
 EmKushala_MotionEffects = 0x00837700; // type:func
 EmKushala_UpdateMotionEffects = 0x00838E10; // type:func
-// KushalaAttack_Create for kinds 0x36 and 0x3C, TeostraAttack_Create for the others
+// KushalaAttack_Create for Kushala Daora's two kinds, TeostraAttack_Create for
+// Lunastra and Teostra
 EmKushala_CreateAttack = 0x00838E60; // type:func
 EmKushala_SpawnBlastBurst = 0x00838EB0; // type:func
 EmKushala_TableNop = 0x00838F90; // type:func
 EmKushala_AllowHit8 = 0x00838FA0; // type:func
+
+// Monster kind 56 (EmKind38_*): a small hovering monster that charges. The
+// quest places it, or Yama Tsukami summons it.
 EmKind38_UpdateLoopSe = 0x008390A0; // type:func
 EmKind38_Init = 0x00839170; // type:func
 EmKind38_HitByIce = 0x0083B8F0; // type:func 1 when an ice hit marked part 0 (partFlags 0x20) outside the defeat group
@@ -2636,30 +2651,31 @@ EmKind38_Idle = 0x00839440; // type:func
 EmKind38_RunIdleState = 0x008394C0; // type:func
 EmKind38_MoveNop = 0x00839520; // type:func
 EmKind38_RunMoveState = 0x00839530; // type:func
-// states 2:00, 2:02
+// states K38_FLY_FORWARD_SHORT, K38_FLY_FORWARD_LONG
 EmKind38_FlyForward = 0x00839570; // type:func
 EmKind38_FlyBackward = 0x00839790; // type:func
 EmKind38_Hover = 0x008398E0; // type:func
 EmKind38_Climb = 0x00839990; // type:func
 EmKind38_Descend = 0x00839B20; // type:func
-// states 2:06, 2:07
+// states K38_FLY_SIDESTEP_A, K38_FLY_SIDESTEP_B
 EmKind38_Sidestep = 0x00839CD0; // type:func
 EmKind38_Drift = 0x00839E80; // type:func
 EmKind38_FlyNop = 0x0083A030; // type:func
 EmKind38_BurstOut = 0x0083A040; // type:func
 EmKind38_RunFlyState = 0x0083A270; // type:func
-// states 3:00, 3:01
+// states K38_ATK_CHARGE_SHORT, K38_ATK_CHARGE_LONG
 EmKind38_Charge = 0x0083A360; // type:func
-// BulldromeAttack_Create, variant 2 when the state random byte is under D_008CA278[unk01B]
+// BulldromeAttack_Create, type 2 by the variant's chance
+// (EmKind38_Effect02Chance), else type 0
 EmKind38_CreateChargeAttack = 0x0083A570; // type:func
 EmKind38_SelfDestruct = 0x0083A5B0; // type:func
 EmKind38_RunAttackState = 0x0083A800; // type:func
-// states 4:00, 4:01
+// states K38_REACT_FLINCH_AIR, K38_REACT_STATUS_FLINCH
 EmKind38_Flinch = 0x0083A870; // type:func
 EmKind38_ReactNop = 0x0083A8E0; // type:func
 EmKind38_FlinchGround = 0x0083A8F0; // type:func
 EmKind38_RunReactState = 0x0083A960; // type:func
-// states 5:00, 5:01
+// states K38_DEFEAT_DIE, K38_DEFEAT_VANISH
 EmKind38_Die = 0x0083A9F0; // type:func
 EmKind38_Reappear = 0x0083AB60; // type:func
 EmKind38_RunDefeatState = 0x0083AC10; // type:func
@@ -2671,7 +2687,6 @@ EmKind38_Update = 0x0083AE60; // type:func
 EmKind38_RunState = 0x0083B0E0; // type:func
 EmKind38_MotionEffects = 0x0083B1A0; // type:func
 EmKind38_UpdateMotionEffects = 0x0083B1C0; // type:func
-// kind 0x38 (no quest names it); handler table D_0090DE10[0x38]
 EmKind38_SpawnEffects = 0x0083B210; // type:func
 EmKind38_TableNop = 0x0083B250; // type:func
 EmKind38_ChangeState = 0x0083B260; // type:func
@@ -2681,55 +2696,52 @@ EmKind38_ApplyHover = 0x0083B5C0; // type:func
 EmKind38_MoveByVelocity = 0x0083B660; // type:func
 EmKind38_ClampVelocity = 0x0083B710; // type:func
 EmKind38_KeepHeight = 0x0083B820; // type:func
-// made by EmYamaTsukami_State3_00 (QuestEm_Spawn of kind 0x38)
+// Yama Tsukami's summons (EmYamaTsukami_Summon)
 EmKind38_SpawnAtEmBone = 0x0083B930; // type:func
 EmKind38_PlaySe = 0x0083BA80; // type:func
+
+// Shakalaka (EmShakalaka_*). EM_GROUP_EVENT2 runs its idle states.
 EmShakalaka_MotionSounds = 0x0083BA90; // type:func
 EmShakalaka_Init = 0x0083C8C0; // type:func
 EmShakalaka_Start = 0x0083CC20; // type:func
 EmShakalaka_Reinit = 0x0083CCF0; // type:func
 EmShakalaka_ShortenMoveIfTargetLost = 0x0083CD50; // type:func
 EmShakalaka_EndState = 0x0083CF00; // type:func
-// states 0:00, 7:00
 EmShakalaka_WaitIdle = 0x0083CFD0; // type:func
-// states 0:01, 7:01
 EmShakalaka_Idle = 0x0083D060; // type:func
-// states 0:02, 0:03, 0:04, 7:02, 7:03, 7:04
+// states SHAK_IDLE_ACTION_A, SHAK_IDLE_ACTION_B, SHAK_IDLE_ACTION_C
 EmShakalaka_IdleAction = 0x0083D0E0; // type:func
-// states 0:05, 7:05
 EmShakalaka_IdleActionD = 0x0083D1F0; // type:func
-// states 0:06, 7:06
 EmShakalaka_IdleActionE = 0x0083D260; // type:func
-// states 0:07, 7:07
 EmShakalaka_IdleActionF = 0x0083D2D0; // type:func
-// states 0:08, 7:08
 EmShakalaka_Ambush = 0x0083D340; // type:func
-// states 0:09, 7:09
 EmShakalaka_Status2Collapse = 0x0083D470; // type:func
-// states 0:0A, 7:0A
 EmShakalaka_Status2GetUp = 0x0083D590; // type:func
-// states 0:0B, 7:0B
 EmShakalaka_StunGetUp = 0x0083D620; // type:func
 EmShakalaka_RunIdleState = 0x0083D6A0; // type:func
-// states 1:00, 1:01, 1:02, 1:0A, 1:0B, 1:0C, 1:14
+// states SHAK_MOVE_WALK, SHAK_MOVE_WALK_B, SHAK_MOVE_RUN, SHAK_MOVE_RUN_FAST,
+// SHAK_MOVE_RUN_STOP_AT_300, SHAK_MOVE_RUN_STOP_AT_600,
+// SHAK_MOVE_WALK_STOP_AT_700
 EmShakalaka_MoveToGoal = 0x0083D7B0; // type:func
-// states 1:03, 1:04
+// states SHAK_MOVE_ACTION_A, SHAK_MOVE_ACTION_B
 EmShakalaka_MoveAction = 0x0083D9A0; // type:func
 EmShakalaka_TurnInPlace = 0x0083DAF0; // type:func
-// states 1:06, 1:07
+// states SHAK_MOVE_WALK_STRAIGHT, SHAK_MOVE_RUN_STRAIGHT
 EmShakalaka_MoveStraight = 0x0083DBC0; // type:func
-// states 1:08, 1:09
+// states SHAK_MOVE_WANDER_HOME, SHAK_MOVE_WANDER_HOME_B
 EmShakalaka_WanderHome = 0x0083DCD0; // type:func
-// states 1:0D, 1:0E, 1:0F, 1:10, 1:11, 1:12
+// states SHAK_MOVE_FLANK_BACK, SHAK_MOVE_FLANK_BACK_FAST,
+// SHAK_MOVE_FLANK_SIDE_A, SHAK_MOVE_FLANK_SIDE_A_FAST, SHAK_MOVE_FLANK_SIDE_B,
+// SHAK_MOVE_FLANK_SIDE_B_FAST
 EmShakalaka_RunToFlank = 0x0083DDE0; // type:func
 EmShakalaka_DashPastTarget = 0x0083DFE0; // type:func
 EmShakalaka_RunMoveState = 0x0083E110; // type:func
 EmShakalaka_RunFlyState = 0x0083E2A0; // type:func
 EmShakalaka_Strike = 0x0083E2B0; // type:func
-// states 3:01, 3:07
+// states SHAK_ATK_BOMB_LOB, SHAK_ATK_BOMB_FLAT
 EmShakalaka_ThrowBomb = 0x0083E320; // type:func
 EmShakalaka_JumpSlam = 0x0083E480; // type:func
-// states 3:03, 3:04, 3:05
+// states SHAK_ATK_LEAP_SHORT, SHAK_ATK_LEAP_MEDIUM, SHAK_ATK_LEAP_LONG
 EmShakalaka_Leap = 0x0083E660; // type:func
 EmShakalaka_AmbushAttack = 0x0083E7E0; // type:func
 EmShakalaka_RunAttackState = 0x0083E860; // type:func
@@ -2753,8 +2765,10 @@ EmShakalaka_SpawnGroundEffectOffset = 0x0083FA80; // type:func
 EmShakalaka_MotionEffects = 0x0083FB80; // type:func
 EmShakalaka_UpdateMotionEffects = 0x00840220; // type:func
 EmShakalaka_ScriptQuery = 0x00840270; // type:func
-EmShakalaka_SpawnEffect01 = 0x008402D0; // type:func
+EmShakalaka_SpawnShadow = 0x008402D0; // type:func
 EmShakalaka_TableNop = 0x008402E0; // type:func
+
+// Yama Tsukami (EM_KIND_YAMA_TSUKAMI, EM_KIND_YAMA_TSUKAMI_B; EmYamaTsukami_*).
 EmYamaTsukami_SetIdleState = 0x00840700; // type:func
 EmYamaTsukami_SetMoveState = 0x00840740; // type:func
 EmYamaTsukami_SetFlyState = 0x00840890; // type:func
@@ -2777,22 +2791,23 @@ EmYamaTsukami_Recover = 0x00844ED0; // type:func
 EmYamaTsukami_RunIdleState = 0x00844F50; // type:func
 EmYamaTsukami_WalkForward = 0x00844FF0; // type:func
 EmYamaTsukami_WalkBackward = 0x00845140; // type:func
-// states 1:02, 2:02, 2:03
+// states YAMA_MOVE_TURN, YAMA_FLY_TURN, YAMA_FLY_TURN_GUARDED
 EmYamaTsukami_Turn = 0x008452A0; // type:func
 EmYamaTsukami_RunMoveState = 0x00845500; // type:func
 EmYamaTsukami_FlyIdle = 0x00845570; // type:func
 EmYamaTsukami_RecoverPause = 0x008455F0; // type:func
-// states 2:04, 2:05, 2:06, 2:13
+// states YAMA_FLY_DRIFT_TO_GOAL, YAMA_FLY_DRIFT_TO_GOAL_GUARDED,
+// YAMA_FLY_DASH_TO_GOAL, YAMA_FLY_CRUISE_TO_GOAL
 EmYamaTsukami_FlyToGoal = 0x008456C0; // type:func
-// states 2:07, 2:08
+// states YAMA_FLY_RISE_TO_GOAL_HEIGHT, YAMA_FLY_RISE_TO_GOAL_HEIGHT_GUARDED
 EmYamaTsukami_RiseToGoalHeight = 0x00845A80; // type:func
-// states 2:09, 2:0D, 2:15
+// states YAMA_FLY_RISE, YAMA_FLY_RISE_GUARDED, YAMA_FLY_RISE_B
 EmYamaTsukami_Rise = 0x00845BC0; // type:func
-// states 2:0A, 2:0E
+// states YAMA_FLY_DESCEND, YAMA_FLY_DESCEND_GUARDED
 EmYamaTsukami_Descend = 0x00845C90; // type:func
-// states 2:0B, 2:0F
+// states YAMA_FLY_SURGE_FORWARD, YAMA_FLY_SURGE_FORWARD_GUARDED
 EmYamaTsukami_SurgeForward = 0x00845D70; // type:func
-// states 2:0C, 2:10
+// states YAMA_FLY_SURGE_BACK, YAMA_FLY_SURGE_BACK_GUARDED
 EmYamaTsukami_SurgeBack = 0x00845E60; // type:func
 EmYamaTsukami_FlyRecover = 0x00845F40; // type:func
 EmYamaTsukami_RecoverRise = 0x00845FC0; // type:func
@@ -2801,14 +2816,14 @@ EmYamaTsukami_SinkToFloor = 0x00846140; // type:func
 EmYamaTsukami_RunFlyState = 0x008462B0; // type:func
 EmYamaTsukami_Summon = 0x00846460; // type:func
 EmYamaTsukami_TurnByKeys = 0x008465C0; // type:func
-// states 3:01, 3:0F
+// states YAMA_ATK_SPIN_TO_HEIGHT, YAMA_ATK_SPIN
 EmYamaTsukami_Spin = 0x00846700; // type:func
 EmYamaTsukami_HoldPose = 0x00846A10; // type:func
 EmYamaTsukami_TentacleSlamA = 0x00846AE0; // type:func
 EmYamaTsukami_TentacleSlamB = 0x00846B80; // type:func
 EmYamaTsukami_TentacleSlamC = 0x00846C20; // type:func
 EmYamaTsukami_TentacleSlamD = 0x00846CC0; // type:func
-// states 3:07, 3:10
+// states YAMA_ATK_SMASH, YAMA_ATK_SMASH_FORT
 EmYamaTsukami_Smash = 0x00846D60; // type:func
 EmYamaTsukami_DiveSlam = 0x00846EE0; // type:func
 EmYamaTsukami_Crash = 0x00846F80; // type:func
@@ -2820,11 +2835,12 @@ EmYamaTsukami_StrikeB = 0x00847450; // type:func
 EmYamaTsukami_RunAttackState = 0x00847560; // type:func
 EmYamaTsukami_FallLand = 0x008476B0; // type:func
 EmYamaTsukami_FallRecover = 0x00847820; // type:func
-// states 4:02, 4:09
+// states YAMA_REACT_FLINCH_A, YAMA_REACT_GROUND_FLINCH_A
 EmYamaTsukami_FlinchA = 0x008479D0; // type:func
-// states 4:03, 4:0A
+// states YAMA_REACT_FLINCH_B, YAMA_REACT_GROUND_FLINCH_B
 EmYamaTsukami_FlinchB = 0x00847A90; // type:func
-// states 4:04, 4:05, 4:0B, 4:0C
+// states YAMA_REACT_FLINCH_C_FROM_FULL, YAMA_REACT_FLINCH_C_FROM_HALF,
+// YAMA_REACT_GROUND_FLINCH_C_FROM_FULL, YAMA_REACT_GROUND_FLINCH_C_FROM_HALF
 EmYamaTsukami_FlinchC = 0x00847B60; // type:func
 EmYamaTsukami_FlinchD = 0x00847C30; // type:func
 EmYamaTsukami_FlinchDB = 0x00847CC0; // type:func
@@ -2834,9 +2850,7 @@ EmYamaTsukami_RunReactState = 0x00847ED0; // type:func
 EmYamaTsukami_Die = 0x00847FF0; // type:func
 EmYamaTsukami_DieFalling = 0x008480F0; // type:func
 EmYamaTsukami_RunDefeatState = 0x00848280; // type:func
-// states 6:00, 7:00
 EmYamaTsukami_TowerFlyby = 0x008482D0; // type:func
-// states 6:01, 7:01
 EmYamaTsukami_WalkIn = 0x00848600; // type:func
 EmYamaTsukami_RunEventState = 0x00848980; // type:func
 // empty: the default case of EmYamaTsukami_MotionEffects
@@ -2850,6 +2864,8 @@ EmYamaTsukami_UpdateTentacleDust = 0x00849AA0; // type:func
 EmYamaTsukami_IsQuakeFreeMotion = 0x00849C20; // type:func
 EmYamaTsukami_TableNop = 0x00849C50; // type:func
 EmYamaTsukami_ScriptQuery = 0x00849C60; // type:func
+
+// Chameleos (EmChameleos_*).
 EmChameleos_MotionSounds = 0x00849CD0; // type:func
 EmChameleos_SpawnEffects = 0x0084BD70; // type:func
 EmChameleos_Init = 0x0084BDB0; // type:func
@@ -2865,7 +2881,7 @@ EmChameleos_FaceGoal = 0x0084C460; // type:func
 EmChameleos_CloakFull = 0x0084C560; // type:func
 EmChameleos_CloakShimmer = 0x0084C5E0; // type:func
 EmChameleos_IdleActionA = 0x0084C660; // type:func
-// states 0:0A, 0:0B
+// states CHAM_IDLE_EAT_NEED1, CHAM_IDLE_EAT_NEED2
 EmChameleos_Eat = 0x0084C6E0; // type:func
 EmChameleos_Rest = 0x0084C9D0; // type:func
 EmChameleos_Status2Down = 0x0084CB10; // type:func
@@ -2874,13 +2890,13 @@ EmChameleos_Status2End = 0x0084CCA0; // type:func
 EmChameleos_ShakeOff = 0x0084CD40; // type:func
 EmChameleos_Status1Down = 0x0084CDC0; // type:func
 EmChameleos_Status1End = 0x0084CEB0; // type:func
-// states 0:20, 0:21
+// states CHAM_IDLE_STUN_SHAKE_OFF, CHAM_IDLE_STATUS4_SHAKE_OFF
 EmChameleos_StatusShakeOff = 0x0084CF50; // type:func
 EmChameleos_Walk = 0x0084CFD0; // type:func
 EmChameleos_Limp = 0x0084D070; // type:func
-// states 1:02, 1:08
+// states CHAM_MOVE_TURN, CHAM_MOVE_TURN_RANDOM
 EmChameleos_Turn = 0x0084D1C0; // type:func
-// states 1:04, 1:07
+// states CHAM_MOVE_RUN, CHAM_MOVE_RUN_NO_HIT
 EmChameleos_Run = 0x0084D330; // type:func
 EmChameleos_SpinTurn = 0x0084D470; // type:func
 EmChameleos_BackHop = 0x0084D530; // type:func
@@ -2909,37 +2925,34 @@ EmChameleos_StrafeToGoal = 0x0084F190; // type:func
 EmChameleos_Brake = 0x0084F2D0; // type:func
 EmChameleos_FlyNoneG = 0x0084F440; // type:func
 EmChameleos_Rise = 0x0084F450; // type:func
-// states 3:00, 3:0B
+// states CHAM_ATK_TONGUE, CHAM_ATK_TONGUE_QUICK
 EmChameleos_Tongue = 0x0084F570; // type:func
 EmChameleos_TongueLow = 0x0084F6D0; // type:func
 EmChameleos_Stomp = 0x0084F7A0; // type:func
 EmChameleos_TailSlam = 0x0084F830; // type:func
 EmChameleos_TongueB = 0x0084F8C0; // type:func
 EmChameleos_TongueHigh = 0x0084F9C0; // type:func
-// states 3:06, 3:09
+// states CHAM_ATK_BALL_PITCHED, CHAM_ATK_BREATH_PITCHED
 EmChameleos_MistPitched = 0x0084FA90; // type:func
-// states 3:07, 3:0A
+// states CHAM_ATK_BALL_LEVEL, CHAM_ATK_BREATH_LEVEL
 EmChameleos_MistLevel = 0x0084FC30; // type:func
 EmChameleos_BackHopBall = 0x0084FDD0; // type:func
 EmChameleos_TailPounds = 0x0084FF00; // type:func
 EmChameleos_FlinchA = 0x0084FF80; // type:func
 EmChameleos_FlinchB = 0x00850010; // type:func
-// states 4:02, 4:0C
+// states CHAM_REACT_STAGGER, CHAM_REACT_DECLOAK
 EmChameleos_Stagger = 0x008500A0; // type:func
-// states 4:03, 4:05
+// states CHAM_REACT_KNOCK_DOWN, CHAM_REACT_STUN
 EmChameleos_KnockDown = 0x008501A0; // type:func
 EmChameleos_PartBreak = 0x00850390; // type:func
 EmChameleos_ReactNoneA = 0x008504E0; // type:func
 EmChameleos_ReactNoneB = 0x008504F0; // type:func
-// states 4:08, 4:09, 4:0D
+// states CHAM_REACT_FALL, CHAM_REACT_FALL_BLIND, CHAM_REACT_DECLOAK_FALL
 EmChameleos_Fall = 0x00850500; // type:func
 EmChameleos_FlinchC = 0x00850710; // type:func
 EmChameleos_Status4 = 0x008507A0; // type:func
-// states 6:00, 7:00
 EmChameleos_ForestEvent = 0x00850890; // type:func
-// states 6:01, 7:01
 EmChameleos_LeaveQuest = 0x00850B70; // type:func
-// states 6:02, 7:02
 EmChameleos_LeaveQuestFromAir = 0x00850E70; // type:func
 EmChameleos_Die = 0x00850FF0; // type:func
 EmChameleos_DefeatNone = 0x008511A0; // type:func
@@ -2965,6 +2978,8 @@ EmChameleos_UpdateMotionEffects = 0x008535B0; // type:func
 EmChameleos_TableNop = 0x00853600; // type:func
 EmChameleos_ScriptQuery = 0x00853610; // type:func
 EmChameleos_AllowPartBreak = 0x008536A0; // type:func
+
+// Remobra (EmRemobra_*).
 EmRemobra_MotionSounds = 0x00853720; // type:func
 EmRemobra_Init = 0x00854510; // type:func
 EmRemobra_Start = 0x00854590; // type:func
@@ -2980,27 +2995,31 @@ EmRemobra_StopHop = 0x00854BC0; // type:func
 EmRemobra_UpdateHop = 0x00854BD0; // type:func
 EmRemobra_Hover = 0x00854CE0; // type:func
 EmRemobra_SwoopEnd = 0x00854DD0; // type:func
-// states 2:02, 2:14
+// states REMOBRA_FLY_SWOOP, REMOBRA_FLY_SWOOP_SPIT
 EmRemobra_Swoop = 0x00854E50; // type:func
-// states 2:03, 2:04, 2:05, 2:06
+// states REMOBRA_FLY_BANK_SLOW_A, REMOBRA_FLY_BANK_SLOW_B,
+// REMOBRA_FLY_BANK_FAST_A, REMOBRA_FLY_BANK_FAST_B
 EmRemobra_Bank = 0x00855110; // type:func
-// states 2:07, 2:08
+// states REMOBRA_FLY_BACK_OFF_A, REMOBRA_FLY_BACK_OFF_B
 EmRemobra_BackOff = 0x008552B0; // type:func
-// states 2:09, 2:0B, 2:0E
+// states REMOBRA_FLY_TAKE_OFF_START, REMOBRA_FLY_TAKE_OFF,
+// REMOBRA_FLY_TAKE_OFF_STATUS4
 EmRemobra_TakeOff = 0x008553C0; // type:func
-// states 2:0A, 2:12
+// states REMOBRA_FLY_TURN_TO_GOAL, REMOBRA_FLY_TURN_RANDOM
 EmRemobra_TurnInAir = 0x008554C0; // type:func
-// states 2:0C, 2:0D, 2:1A
+// states REMOBRA_FLY_CHANGE_HEIGHT_RANDOM, REMOBRA_FLY_CHANGE_HEIGHT_GOAL,
+// REMOBRA_FLY_RISE_HIGH
 EmRemobra_ChangeHeight = 0x008555D0; // type:func
-// states 2:0F, 2:13
+// states REMOBRA_FLY_GLIDE_TO_GOAL, REMOBRA_FLY_GLIDE_FIXED
 EmRemobra_Glide = 0x00855750; // type:func
 EmRemobra_RiseAndCry = 0x00855990; // type:func
 EmRemobra_ReturnHome = 0x00855AB0; // type:func
-// states 2:15, 2:16, 2:17, 2:18, 2:19
+// states REMOBRA_FLY_SHIFT_FORWARD, REMOBRA_FLY_SHIFT_BACK,
+// REMOBRA_FLY_SHIFT_SIDE_A, REMOBRA_FLY_SHIFT_SIDE_B, REMOBRA_FLY_SHIFT_BACK_UP
 EmRemobra_Shift = 0x00855BA0; // type:func
 EmRemobra_RunFlyState = 0x00855D70; // type:func
 EmRemobra_Strike = 0x00855FA0; // type:func
-// states 3:01, 3:02, 3:03
+// states REMOBRA_ATK_SPIT_A, REMOBRA_ATK_SPIT_B, REMOBRA_ATK_SPIT_C
 EmRemobra_SpitAimed = 0x00856050; // type:func
 EmRemobra_SpitDown = 0x00856230; // type:func
 EmRemobra_SwoopStrike = 0x008562F0; // type:func
@@ -3027,22 +3046,27 @@ EmRemobra_StartCurves = 0x00857530; // type:func
 EmRemobra_CurveVelY = 0x00857570; // type:func
 EmRemobra_CurveSpeed = 0x00857670; // type:func
 EmRemobra_UpdateCurves = 0x00857770; // type:func
-EmRemobra_SpawnEffect01 = 0x00857810; // type:func
+EmRemobra_SpawnShadow = 0x00857810; // type:func
 EmRemobra_TableNop = 0x00857820; // type:func
+
+// Chameleos's state setters, curves and cloak.
 EmChameleos_SetIdleState = 0x00857830; // type:func
 EmChameleos_SetMoveState = 0x008579B0; // type:func
 EmChameleos_SetFlyState = 0x00857B90; // type:func
 EmChameleos_SetAttackState = 0x00857E60; // type:func
 EmChameleos_StartCurves = 0x008581A0; // type:func
-// fading (invisFade != 0xFFFF) or WantsInvisible
+// 1 while the cloak shimmer runs or EmChameleos_WantsInvisible gives a mode
 EmChameleos_IsInvisible = 0x00858540; // type:func
 EmChameleos_UpdateInvisibility = 0x008585A0; // type:func
 EmChameleos_WantsInvisible = 0x00858760; // type:func
-// unk89C & 1 and part 0 not broken; 2 without the flag
+// 2 before the part-break reaction, 1 after it while part 0 is unbroken, 0 once
+// part 0 is broken
 EmChameleos_CanTurnInvisible = 0x00858880; // type:func
 EmChameleos_InvisibilityBlocked = 0x008588D0; // type:func
 EmChameleos_SpawnLyingPuffs = 0x00858940; // type:func
 EmChameleos_TongueHitPlayer = 0x00858980; // type:func
+
+// Bulldrome (EmBulldrome_*).
 EmBulldrome_Init = 0x00858A10; // type:func
 EmBulldrome_Start = 0x00858B90; // type:func
 EmBulldrome_Reinit = 0x00858BD0; // type:func
@@ -3051,29 +3075,31 @@ EmBulldrome_IdleNopA = 0x00858C10; // type:func
 EmBulldrome_Idle = 0x00858C20; // type:func
 EmBulldrome_IdleNopB = 0x00858C90; // type:func
 EmBulldrome_Forage = 0x00858CA0; // type:func
-// states 0:04, 0:07, 0:08
+// states BULL_IDLE_AIM_SHORT, BULL_IDLE_AIM_MEDIUM, BULL_IDLE_AIM_LONG
 EmBulldrome_AimAtGoal = 0x00858D30; // type:func
 EmBulldrome_IdleNopC = 0x00858DD0; // type:func
-// states 0:06, 0:0A, 0:14, 0:15
+// states BULL_IDLE_DISPLAY, BULL_IDLE_DISPLAY_B, BULL_IDLE_DISPLAY_RAGE,
+// BULL_IDLE_DISPLAY_PENDING_RAGE
 EmBulldrome_Display = 0x00858DE0; // type:func
 EmBulldrome_ShakeOff = 0x00858E60; // type:func
-// states 0:0B, 0:0E, 0:12
+// states BULL_IDLE_STATUS2_LIE, BULL_IDLE_STATUS1_LIE, BULL_IDLE_REST
 EmBulldrome_LieDown = 0x00858EE0; // type:func
-// states 0:0C, 0:0F, 0:13
+// states BULL_IDLE_STATUS2_END, BULL_IDLE_STATUS1_END, BULL_IDLE_REST_END
 EmBulldrome_LieGetUp = 0x00859130; // type:func
-// states 0:0D, 0:10, 0:11
+// states BULL_IDLE_HOLD2_GET_UP, BULL_IDLE_STATUS4_GET_UP,
+// BULL_IDLE_STUN_GET_UP
 EmBulldrome_DownGetUp = 0x008591F0; // type:func
 EmBulldrome_RunIdleState = 0x00859290; // type:func
-// states 1:00, 1:06
+// states BULL_MOVE_TURN_TO_TARGET, BULL_MOVE_QUARTER_TURN_FIXED
 EmBulldrome_TurnInPlace = 0x00859440; // type:func
-// states 1:01, 1:02
+// states BULL_MOVE_WALK, BULL_MOVE_WALK_B
 EmBulldrome_WalkToGoal = 0x00859580; // type:func
 EmBulldrome_MoveNopA = 0x00859610; // type:func
 EmBulldrome_MoveNopB = 0x00859620; // type:func
 EmBulldrome_WanderHome = 0x00859630; // type:func
-// states 1:07, 1:09
+// states BULL_MOVE_QUARTER_TURN, BULL_MOVE_QUARTER_TURN_NEW_GOAL
 EmBulldrome_QuarterTurn = 0x00859710; // type:func
-// states 1:08, 1:0A
+// states BULL_MOVE_HALF_TURN, BULL_MOVE_TURN_TO_NEW_GOAL
 EmBulldrome_HalfTurn = 0x00859890; // type:func
 EmBulldrome_RunMoveState = 0x008599C0; // type:func
 EmBulldrome_TravelStart = 0x00859AB0; // type:func
@@ -3081,21 +3107,17 @@ EmBulldrome_TravelTurn = 0x00859B90; // type:func
 EmBulldrome_TravelToGoal = 0x00859D00; // type:func
 EmBulldrome_TravelEnd = 0x00859F00; // type:func
 EmBulldrome_RunTravelState = 0x00859FA0; // type:func
-// states 3:00, 3:01, 3:02, 3:03, 3:04, 3:05
+// states BULL_ATK_CHARGE_A, BULL_ATK_CHARGE_B, BULL_ATK_CHARGE_SHORT,
+// BULL_ATK_CHARGE_SHORT_KEEP_A, BULL_ATK_CHARGE_SHORT_KEEP_B,
+// BULL_ATK_CHARGE_SHORT_KEEP_C
 EmBulldrome_Charge = 0x0085A030; // type:func
 EmBulldrome_Spin = 0x0085A180; // type:func
 EmBulldrome_RunAttackState = 0x0085A370; // type:func
-// states 4:00, 7:00
 EmBulldrome_Flinch = 0x0085A420; // type:func
-// states 4:01, 7:01
 EmBulldrome_KnockedAway = 0x0085A510; // type:func
-// states 4:02, 7:02
 EmBulldrome_KnockedAwayInAir = 0x0085A690; // type:func
-// states 4:03, 7:03
 EmBulldrome_Status4Down = 0x0085A7C0; // type:func
-// states 4:04, 7:04
 EmBulldrome_Stun = 0x0085A8B0; // type:func
-// states 4:05, 7:05
 EmBulldrome_Hold2Down = 0x0085A9A0; // type:func
 EmBulldrome_RunReactState = 0x0085AAD0; // type:func
 EmBulldrome_Die = 0x0085AB70; // type:func
@@ -3112,23 +3134,30 @@ EmBulldrome_VsPoseC = 0x0085B780; // type:func
 EmBulldrome_VsWaitBoth = 0x0085B820; // type:func
 EmBulldrome_VsEnd = 0x0085B8C0; // type:func
 EmBulldrome_RunVersusState = 0x0085B960; // type:func
-EmBulldrome_SpawnEffect01 = 0x0085BF10; // type:func
+EmBulldrome_SpawnShadow = 0x0085BF10; // type:func
 EmBulldrome_TableNop = 0x0085BF20; // type:func
 EmBulldrome_SetIdleState = 0x0085BF30; // type:func
 EmBulldrome_SetMoveState = 0x0085C060; // type:func
 EmBulldrome_SetTravelState = 0x0085C130; // type:func
 EmBulldrome_SetAttackState = 0x0085C1E0; // type:func
 EmBulldrome_SetReactState = 0x0085C2D0; // type:func
-// velocity D_008CB4E0 turned away from hitAngle, acceleration D_008CB4F0, stance 2
+// velocity EmBulldrome_LaunchVel turned away from hitAngle, acceleration
+// EmBulldrome_LaunchAccel, EM_STANCE_AIR: the knock-away jump
 EmBulldrome_LaunchFromHit = 0x0085C540; // type:func
 EmBulldrome_SetKnockedMotion = 0x0085C5B0; // type:func
+
+// Fatalis's state setters and curves.
 EmFatalis_SetIdleState = 0x0085C5F0; // type:func
 EmFatalis_SetMoveState = 0x0085C6D0; // type:func
 EmFatalis_SetFlyState = 0x0085C770; // type:func
 EmFatalis_SetAttackState = 0x0085CA60; // type:func
 EmFatalis_MoveByVelYCurve = 0x0085CE60; // type:func
 EmFatalis_StartCurves = 0x0085CF70; // type:func
-// kind 0x00: made by the great sword states (ImpactRocks_Create)
+
+// The stage objects of kinds STAGEOBJ_KIND_IMPACT_ROCKS to
+// STAGEOBJ_KIND_ITEM_PROP: each kind's hooks (Update runs Setup, Run, End and
+// Free by step) and its Create.
+// STAGEOBJ_KIND_IMPACT_ROCKS: the great sword's ground impact
 ImpactRocks_Update = 0x0085D320; // type:func
 ImpactRocks_Setup = 0x0085D3B0; // type:func
 ImpactRocks_Run = 0x0085D7C0; // type:func
@@ -3136,6 +3165,7 @@ ImpactRocks_End = 0x0085D900; // type:func
 ImpactRocks_Free = 0x0085D970; // type:func
 ImpactRocks_DrawRock = 0x0085D980; // type:func
 ImpactRocks_Create = 0x0085DB30; // type:func
+// STAGEOBJ_KIND_DEMON_GLOW: the dual swords' demon mode glow
 DemonGlow_Update = 0x0085DBD0; // type:func
 DemonGlow_Setup = 0x0085DC60; // type:func
 DemonGlow_Run = 0x0085DDC0; // type:func
@@ -3144,6 +3174,7 @@ DemonGlow_Free = 0x0085E0D0; // type:func
 DemonGlow_DrawBlade = 0x0085E0E0; // type:func
 DemonGlow_BladeMatrix = 0x0085E210; // type:func
 DemonGlow_Create = 0x0085E4B0; // type:func
+// STAGEOBJ_KIND_THUNDER_SPARK: the Khezu's and the Kirin's electric sparks
 ThunderSpark_Update = 0x0085E520; // type:func
 ThunderSpark_Setup = 0x0085E5B0; // type:func
 ThunderSpark_Run = 0x0085EDF0; // type:func
@@ -3156,7 +3187,8 @@ ThunderSpark_TurnToCamera = 0x008611E0; // type:func
 ThunderSpark_CreateOnEm = 0x008612A0; // type:func
 ThunderSpark_CreateAt = 0x00861320; // type:func
 ThunderSpark_CreateTimed = 0x008613B0; // type:func
-// kind 0x05: made for players (weapon_states.c) and monsters; its offsets and bones follow Player_DualSwordIndex
+// STAGEOBJ_KIND_WEAPON_TRAIL: a blade's swing trail; its offsets and bones
+// follow Player_DualSwordIndex
 WeaponTrail_Update = 0x008614B0; // type:func
 WeaponTrail_Setup = 0x00861540; // type:func
 WeaponTrail_Run = 0x00861780; // type:func
@@ -3167,6 +3199,7 @@ WeaponTrail_GetBladeMatrix = 0x008621A0; // type:func
 WeaponTrail_GetBladeOffset = 0x00862460; // type:func
 WeaponTrail_Create = 0x008625F0; // type:func
 WeaponTrail_CreateTwoMotions = 0x00862730; // type:func
+// STAGEOBJ_KIND_EM_BODY_FX: a monster's glow, cover or prop drawn on its bones
 EmBodyFx_Update = 0x00862760; // type:func
 EmBodyFx_Setup = 0x008627F0; // type:func
 EmBodyFx_Run = 0x00862B60; // type:func
@@ -3176,7 +3209,9 @@ EmBodyFx_Draw = 0x008636C0; // type:func
 
 EmBodyFx_CoverMesh = 0x008641D0; // type:func
 EmBodyFx_Spawn = 0x00864340; // type:func
-// kind 0x09: one per monster (EmTail_Create from the families' Init, kept at Em +0x7CC); a mine (EmHolder_CreateMine) at a bone
+// STAGEOBJ_KIND_EM_TAIL: a monster's severable tail, one per monster
+// (EmTail_Create from the families' Init, kept in Em.tailObj); the carve point
+// at the tail once it is cut off (EmTail_AddCarvePoint)
 EmTail_Update = 0x00864410; // type:func
 EmTail_Setup = 0x008644A0; // type:func
 EmTail_SetDropPos = 0x008645B0; // type:func
@@ -3189,7 +3224,8 @@ EmTail_Draw = 0x00864CF0; // type:func
 EmTail_RootBone = 0x00865240; // type:func
 EmTail_OwnerInvisible = 0x008652A0; // type:func
 EmTail_Create = 0x008652E0; // type:func
-// kind 0x0A: made by EmLaoshan_MotionEffects (LaoshanDust_Create)
+// STAGEOBJ_KIND_LAOSHAN_DUST: the Lao-Shan Lung's dust clouds (from
+// EmLaoshan_MotionEffects)
 LaoshanDust_Update = 0x00865350; // type:func
 LaoshanDust_Setup = 0x008653E0; // type:func
 LaoshanDust_Run = 0x008655A0; // type:func
@@ -3197,7 +3233,7 @@ LaoshanDust_End = 0x00865960; // type:func
 LaoshanDust_Free = 0x00865A10; // type:func
 LaoshanDust_Draw = 0x00865A20; // type:func
 LaoshanDust_Create = 0x00865C60; // type:func
-// kind 0x0B
+// STAGEOBJ_KIND_PLAYER_HIT_BURST: a burst on a hunter who was hit
 PlayerHitBurst_Update = 0x00865CF0; // type:func
 PlayerHitBurst_Setup = 0x00865D80; // type:func
 PlayerHitBurst_Run = 0x00865E40; // type:func
@@ -3205,6 +3241,8 @@ PlayerHitBurst_End = 0x00865ED0; // type:func
 PlayerHitBurst_Free = 0x00865F10; // type:func
 PlayerHitBurst_Draw = 0x00865F20; // type:func
 PlayerHitBurst_Create = 0x00866630; // type:func
+// STAGEOBJ_KIND_ITEM_PROP: what an item leaves in the stage (meat, smoke, bait,
+// a dropped item)
 ItemProp_Update = 0x00866690; // type:func
 ItemProp_Setup = 0x00866720; // type:func
 ItemProp_Run = 0x008667D0; // type:func
@@ -3222,14 +3260,12 @@ ItemProp_OffsetFromBone = 0x00867A50; // type:func
 ItemProp_SetupDropped = 0x00867AD0; // type:func
 ItemProp_RunDropped = 0x00867B80; // type:func
 ItemProp_DrawDropped = 0x00867D80; // type:func
-// Round 20 (ndata-h1)
-EmChameleos_HasFullCloak = 0x00858590; // type:func em->unk43C != 0 (next to SetFlag43C and ClearFlag43C)
 
-// Round 25 (names h1)
-EmTrader_ToIdle = 0x00798110; // type:func picks state 0/0, 0/0xA or 0/6 by Em +0x294 with its motion, sets fieldCollide (as EmKutku_ToIdle)
-EmApceros_CheckHerdHurt = 0x0079A650; // type:func type 0x46 not variant 2, work +0x3D = 1 when another type 0x46 of variant 2 in its area is in state group 4 or 5
-
-// Round 27 (names)
-EmMelynx_BombState = 0x007E0950; // type:func the state EmBomb follows, -1 inactive, -2 hit, 1 when work 0xE is set
-EmShakalaka_BombState = 0x0083CD00; // type:func the state EmBomb follows, -1 inactive, 1 when work 0xE is set
-EmYamaTsukami_EaseToSize = 0x00849640; // type:func eases work 0x20-0x28 toward EmYamatsukami_EaseTargets entry work 0x34 while work 0x35 is 0
+// Out of address order: one function each of Chameleos, the trader, Apceros,
+// Melynx, Shakalaka and Yama Tsukami.
+EmChameleos_HasFullCloak = 0x00858590; // type:func em->fullCloak != 0, the full cloak allowed
+EmTrader_ToIdle = 0x00798110; // type:func mode 0 picks the idle state 0/0, 0/10 or 0/6 (stand, walk, rest) by em->yawCenter with its motion, and sets fieldCollide
+EmApceros_CheckHerdHurt = 0x0079A650; // type:func a Popo other than variant 2 is alarmed when a variant-2 Popo in its area reacts or is defeated
+EmMelynx_BombState = 0x007E0950; // type:func the state EmBomb follows, -1 inactive, -2 hit, 1 while holdBomb is set
+EmShakalaka_BombState = 0x0083CD00; // type:func the state EmBomb follows, -1 inactive, 1 while bombHeld is set
+EmYamaTsukami_EaseToSize = 0x00849640; // type:func eases bodyScale toward EmYamaTsukami_SizeScales' row bodySize while easeMode is 0

@@ -9,6 +9,13 @@
  * error, AVE_ERR_RPC when the RPC itself fails) and any outputs in the
  * payload. The sizes sent and received are rounded up to 16 bytes.
  *
+ * The calls are grouped by layer, the groups in the order of the
+ * wrapper's call numbers (AVE_FN_*). The interface's event and option
+ * calls (AVE_FN_IF_POLL_EVENT on) have the highest numbers, so they come
+ * last, apart from the other AveIf_* calls. Every layer is the same
+ * client of one RPC server, through one buffer and one lock, so the file
+ * is one subject and isn't cut by layer.
+ *
  * The callers are the Net* layer (NetIf_*, NetPpp_*, NetTcp_*, NetDns_*),
  * which turns the game's network settings into these calls, and the
  * sockets and DNS cache built on it. The library behind the wrapper
@@ -17,6 +24,7 @@
 #include "common.h"
 #include "sif.h"
 #include "ave.h"
+#include "libkernl.h"
 
 extern s32 gAveWrapSema;
 extern s16 gAveWrapUnused;
@@ -30,12 +38,6 @@ void *memset(void *p, s32 c, u32 n);
 void *memcpy(void *dst, void *src, u32 n);
 char *strcpy(char *dst, char *src);
 char *strncpy(char *dst, char *src, u32 n);
-void SyncDCache(void *start, void *end);
-
-s16 AveWrap_CallAsync(s32 funcNo, s32 sendSize, s32 recvSize);
-s32 AveWrap_IsIdle(void);
-void AveWrap_Lock(void);
-void AveWrap_Unlock(void);
 
 /*
  * Creates the semaphore gAveWrapSema if it does not exist yet (it starts
@@ -151,7 +153,7 @@ s16 AveIf_Up(s32 ifFlag, s32 ifKind)
     AveWrap_Lock();
     gAveWrapBuf.arg[0] = ifFlag;
     gAveWrapBuf.arg[1] = ifKind;
-    callResult = AveWrap_Call(AVE_FN_IF_UP, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_IF_UP, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -165,7 +167,7 @@ s16 AveIf_Down(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_IF_DOWN, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_IF_DOWN, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -184,7 +186,7 @@ s16 AveIf_SetAddress(s32 address, s32 netmask, s32 broadcast)
     payload->ifAddr.address = address;
     payload->ifAddr.netmask = netmask;
     payload->ifAddr.broadcast = broadcast;
-    callResult = AveWrap_Call(AVE_FN_IF_SET_ADDRESS, 0x2C, 0x20);
+    callResult = AveWrap_Call(AVE_FN_IF_SET_ADDRESS, 44, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -198,14 +200,14 @@ s16 AveIf_ClearAddress(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_IF_CLEAR_ADDRESS, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_IF_CLEAR_ADDRESS, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
 
 /*
  * Sets option number option of TCP connection sock to the len bytes at
- * src (AVE_FN_TCP_SET_OPTION; at most 0x100 bytes fit). Returns the
+ * src (AVE_FN_TCP_SET_OPTION; at most 256 bytes fit). Returns the
  * wrapper result.
  */
 s16 AveTcp_SetOption(s16 sock, s16 option, s16 len, void *src)
@@ -219,7 +221,7 @@ s16 AveTcp_SetOption(s16 sock, s16 option, s16 len, void *src)
     payload->tcpOpt.option = option;
     payload->tcpOpt.len = len;
     memcpy(payload->tcpOpt.data, src, len);
-    callResult = AveWrap_Call(AVE_FN_TCP_SET_OPTION, 0x126, 0x20);
+    callResult = AveWrap_Call(AVE_FN_TCP_SET_OPTION, 294, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -240,7 +242,7 @@ s16 AveTcp_GetOption(s16 sock, s16 option, s16 len, void *dst)
     payload->tcpOpt.sock = sock;
     payload->tcpOpt.option = option;
     payload->tcpOpt.len = len;
-    callResult = AveWrap_Call(AVE_FN_TCP_GET_OPTION, 0x126, 0x126);
+    callResult = AveWrap_Call(AVE_FN_TCP_GET_OPTION, 294, 294);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -268,7 +270,7 @@ s16 AveTcp_Open(s32 addr, u16 port, u16 openArg)
     payload->tcpOpen.addr = addr;
     payload->tcpOpen.port = port;
     payload->tcpOpen.openArg = openArg;
-    callResult = AveWrap_Call(AVE_FN_TCP_OPEN, 0x28, 0x20);
+    callResult = AveWrap_Call(AVE_FN_TCP_OPEN, 40, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -285,7 +287,7 @@ s16 AveTcp_Abort(s16 sock)
     AveWrap_Lock();
     payload = &gAveWrapBuf.data;
     payload->tcpIo.sock = sock;
-    callResult = AveWrap_Call(AVE_FN_TCP_ABORT, 0x22, 0x20);
+    callResult = AveWrap_Call(AVE_FN_TCP_ABORT, 34, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -304,7 +306,7 @@ s16 AveTcp_Status(s16 sock, u16 *state, u16 *sendSpace, u16 *recvLen)
     AveWrap_Lock();
     payload = &gAveWrapBuf.data;
     payload->tcpStatus.sock = sock;
-    callResult = AveWrap_Call(AVE_FN_TCP_STATUS, 0x2A, 0x2A);
+    callResult = AveWrap_Call(AVE_FN_TCP_STATUS, 42, 42);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -347,7 +349,7 @@ s16 AveTcp_Send(s16 sock, u8 *data, s16 len)
         memcpy(payload->tcpIo.data, data, chunkLen);
         gAveWrapBuf.arg[0] = 0;
         gAveWrapBuf.arg[1] = 0;
-        callResult = AveWrap_Call(AVE_FN_TCP_SEND, chunkLen + 0x26, chunkLen + 0x26);
+        callResult = AveWrap_Call(AVE_FN_TCP_SEND, chunkLen + 38, chunkLen + 38);
         if (callResult < 0) {
             AveWrap_Unlock();
             return callResult;
@@ -388,7 +390,7 @@ s16 AveTcp_Recv(s16 sock, void *buf, s16 len)
     payload = &gAveWrapBuf.data;
     payload->tcpIo.sock = sock;
     payload->tcpIo.len = len;
-    callResult = AveWrap_Call(AVE_FN_TCP_RECV, len + 0x26, len + 0x26);
+    callResult = AveWrap_Call(AVE_FN_TCP_RECV, len + 38, len + 38);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -415,7 +417,7 @@ s16 AveTcp_Delete(s16 sock)
     AveWrap_Lock();
     payload = &gAveWrapBuf.data;
     payload->tcpIo.sock = sock;
-    callResult = AveWrap_Call(AVE_FN_TCP_DELETE, 0x22, 0x20);
+    callResult = AveWrap_Call(AVE_FN_TCP_DELETE, 34, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -433,7 +435,7 @@ s16 AveRoute_Add(s32 dest, s32 gateway)
     payload = &gAveWrapBuf.data;
     payload->route.dest = dest;
     payload->route.gateway = gateway;
-    callResult = AveWrap_Call(AVE_FN_ROUTE_ADD, 0x28, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ROUTE_ADD, 40, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -451,7 +453,7 @@ s16 AveRoute_Delete(s32 dest, s32 gateway)
     payload = &gAveWrapBuf.data;
     payload->route.dest = dest;
     payload->route.gateway = gateway;
-    callResult = AveWrap_Call(AVE_FN_ROUTE_DELETE, 0x28, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ROUTE_DELETE, 40, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -465,7 +467,7 @@ s16 AvePpp_Init(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_PPP_INIT, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_PPP_INIT, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -479,7 +481,7 @@ s16 AvePpp_Term(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_PPP_TERM, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_PPP_TERM, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -515,7 +517,7 @@ s16 AvePpp_Connect(AveConfig *settings)
     payload->pppConfig.modemOpt[2] = settings->modemOpt[2];
     payload->pppConfig.modemOpt[3] = settings->modemOpt[3];
     payload->pppConfig.modemOpt[4] = settings->modemOpt[4];
-    callResult = AveWrap_Call(AVE_FN_PPP_CONNECT, 0x32E, 0x20);
+    callResult = AveWrap_Call(AVE_FN_PPP_CONNECT, 814, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -529,7 +531,7 @@ s16 AvePpp_Disconnect(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_PPP_DISCONNECT, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_PPP_DISCONNECT, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -546,7 +548,7 @@ s16 AvePpp_GetStatus(AveInfo *out)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_PPP_GET_STATUS, 0x20, 0x4C);
+    callResult = AveWrap_Call(AVE_FN_PPP_GET_STATUS, 32, 76);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -568,7 +570,7 @@ s16 AvePpp_GetLinkState(s32 *out)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_PPP_GET_LINK_STATE, 0x20, 0x4C);
+    callResult = AveWrap_Call(AVE_FN_PPP_GET_LINK_STATE, 32, 76);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -581,7 +583,7 @@ s16 AvePpp_GetLinkState(s32 *out)
 
 /*
  * Sets PPP option number option to the len bytes at src
- * (AVE_FN_PPP_SET_OPTION; at most 0x100 bytes fit; seen: option 1 with
+ * (AVE_FN_PPP_SET_OPTION; at most 256 bytes fit; seen: option 1 with
  * a 4-byte value). Returns the wrapper result.
  */
 s16 AvePpp_SetOption(s16 option, s16 len, void *src)
@@ -594,7 +596,7 @@ s16 AvePpp_SetOption(s16 option, s16 len, void *src)
     payload->pppOpt.option = option;
     payload->pppOpt.len = len;
     memcpy(payload->pppOpt.data, src, len);
-    callResult = AveWrap_Call(AVE_FN_PPP_SET_OPTION, 0x124, 0x20);
+    callResult = AveWrap_Call(AVE_FN_PPP_SET_OPTION, 292, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -608,7 +610,7 @@ s16 AveEth_Init(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_ETH_INIT, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ETH_INIT, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -622,7 +624,7 @@ s16 AveEth_Term(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_ETH_TERM, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ETH_TERM, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -637,7 +639,7 @@ s16 AveEth_Start(s16 phyMode)
 
     AveWrap_Lock();
     gAveWrapBuf.arg[0] = phyMode;
-    callResult = AveWrap_Call(AVE_FN_ETH_START, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ETH_START, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -652,7 +654,7 @@ s16 AveEth_IsLinkUp(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_ETH_IS_LINK_UP, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ETH_IS_LINK_UP, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -663,7 +665,7 @@ s16 AveEth_Stop(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_ETH_STOP, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_ETH_STOP, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -677,7 +679,7 @@ s16 AveDhcp_Init(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DHCP_INIT, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DHCP_INIT, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -691,7 +693,7 @@ s16 AveDhcp_Term(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DHCP_TERM, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DHCP_TERM, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -708,7 +710,7 @@ s16 AveDhcp_GetDns(char *domain, s32 *primaryDns, s32 *secondaryDns)
     AvePayload *payload;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DHCP_GET_DNS, 0x20, 0x128);
+    callResult = AveWrap_Call(AVE_FN_DHCP_GET_DNS, 32, 296);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -732,7 +734,7 @@ s16 AveDhcp_GetRouter(s32 *out)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DHCP_GET_ROUTER, 0x20, 0x24);
+    callResult = AveWrap_Call(AVE_FN_DHCP_GET_ROUTER, 32, 36);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -756,7 +758,7 @@ s16 AveDhcp_Start(s32 address, s32 dhcpArg)
     payload = &gAveWrapBuf.data;
     payload->dhcp.address = address;
     payload->dhcp.dhcpArg = dhcpArg;
-    callResult = AveWrap_Call(AVE_FN_DHCP_START, 0x28, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DHCP_START, 40, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -773,7 +775,7 @@ s16 AveDhcp_GetAddress(s32 *address, s32 *netmask, s32 *broadcast)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DHCP_GET_ADDRESS, 0x20, 0x2C);
+    callResult = AveWrap_Call(AVE_FN_DHCP_GET_ADDRESS, 32, 44);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;
@@ -795,7 +797,7 @@ s16 AveDhcp_GetState(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DHCP_GET_STATE, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DHCP_GET_STATE, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -813,7 +815,7 @@ s16 AveDhcp_Release(s32 address, s32 dhcpArg)
     payload = &gAveWrapBuf.data;
     payload->dhcp.address = address;
     payload->dhcp.dhcpArg = dhcpArg;
-    callResult = AveWrap_Call(AVE_FN_DHCP_RELEASE, 0x28, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DHCP_RELEASE, 40, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -837,7 +839,7 @@ s16 AveDns_Init(char *domain, s32 primaryDns, s32 secondaryDns)
     }
     payload->dns.primaryDns = primaryDns;
     payload->dns.secondaryDns = secondaryDns;
-    callResult = AveWrap_Call(AVE_FN_DNS_INIT, 0x128, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DNS_INIT, 296, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -848,13 +850,13 @@ s16 AveDns_Term(void)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_DNS_TERM, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DNS_TERM, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
 
 /*
- * Starts looking up host name name (copied with at most 0x1FF
+ * Starts looking up host name name (copied with at most 511
  * characters and always terminated; AVE_FN_DNS_REQUEST). Returns the
  * wrapper result: the id of the request for AveDns_LookUp and
  * AveDns_Free, or negative on error.
@@ -868,7 +870,7 @@ s16 AveDns_Request(char *name)
     payload = &gAveWrapBuf.data;
     strncpy(payload->dnsName, name, sizeof(payload->dnsName));
     payload->dnsName[sizeof(payload->dnsName) - 1] = 0;
-    callResult = AveWrap_Call(AVE_FN_DNS_REQUEST, 0x220, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DNS_REQUEST, 544, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -882,7 +884,7 @@ s16 AveDns_Free(s16 id)
     AveWrap_Lock();
     payload = &gAveWrapBuf.data;
     payload->dnsLookUp.id = id;
-    callResult = AveWrap_Call(AVE_FN_DNS_FREE, 0x22, 0x20);
+    callResult = AveWrap_Call(AVE_FN_DNS_FREE, 34, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -901,7 +903,7 @@ s16 AveDns_LookUp(s16 id, s32 *addr)
     AveWrap_Lock();
     payload = &gAveWrapBuf.data;
     payload->dnsLookUp.id = id;
-    callResult = AveWrap_Call(AVE_FN_DNS_LOOKUP, 0x28, 0x28);
+    callResult = AveWrap_Call(AVE_FN_DNS_LOOKUP, 40, 40);
     if (0 <= callResult) {
         *addr = payload->dnsLookUp.addr;
     }
@@ -920,7 +922,7 @@ s16 AveIf_PollEvent(s32 *out)
     s16 callResult;
 
     AveWrap_Lock();
-    callResult = AveWrap_Call(AVE_FN_IF_POLL_EVENT, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_IF_POLL_EVENT, 32, 32);
     if (0 <= callResult) {
         *out = gAveWrapBuf.arg[0];
     }
@@ -941,7 +943,7 @@ s16 AveIf_GetEvent(s32 selector, s32 *status, s32 *eventArgA, s32 *eventArgB)
 
     AveWrap_Lock();
     gAveWrapBuf.arg[0] = selector;
-    callResult = AveWrap_Call(AVE_FN_IF_GET_EVENT, 0x20, 0x32C);
+    callResult = AveWrap_Call(AVE_FN_IF_GET_EVENT, 32, 812);
     payload = &gAveWrapBuf.data;
     *status = payload->ifEvent.status;
     *eventArgA = payload->ifEvent.eventArgA;
@@ -961,7 +963,7 @@ s16 AveIf_AckEvent(s32 status)
 
     AveWrap_Lock();
     gAveWrapBuf.arg[0] = status;
-    callResult = AveWrap_Call(AVE_FN_IF_ACK_EVENT, 0x20, 0x20);
+    callResult = AveWrap_Call(AVE_FN_IF_ACK_EVENT, 32, 32);
     AveWrap_Unlock();
     return callResult;
 }
@@ -981,7 +983,7 @@ s16 AveIf_GetOption(s32 option, s32 len, void *dst)
     payload = &gAveWrapBuf.data;
     payload->ifOpt.option = option;
     payload->ifOpt.len = len;
-    callResult = AveWrap_Call(AVE_FN_IF_GET_OPTION, 0x128, 0x128);
+    callResult = AveWrap_Call(AVE_FN_IF_GET_OPTION, 296, 296);
     if (callResult < 0) {
         AveWrap_Unlock();
         return callResult;

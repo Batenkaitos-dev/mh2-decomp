@@ -1,16 +1,19 @@
 /*
- * Town pieces drawn and run around the lobby's minigames, in three groups:
- * - the elder dragon raid's town movies: LobbyTown_WantsMovie says whether
- *   one waits (LobbyState.movieState, set by the raid's world events),
- *   LobbyTown_StartMovie starts it and records the raid as seen in the save,
- *   LobbyTown_MovieDone waits for its end;
- * - the minigames' drawing: the arm-wrestling contest's time, power gauge and
- *   mashing buttons, and the result banner of it and of the drinking contest;
- * - the gallery's gun-aim debug view (three offsets moved with the second
- *   pad) and the model it draws, and the drinking contest's two helpers on
- *   the last persistent monster.
- * The data after the functions includes the gallery's walls and frames, which
- * the gallery's own files use.
+ * The minigames' drawing, the gallery's gun-aim debug view and the
+ * drinking contest's questions about the persistent monster:
+ * - the arm-wrestling contest's screen: the time left (Lobby_DrawTimeLeft),
+ *   the power gauge (Contest_DrawGauge, its frame and marker drawn from the
+ *   minigame texture, TEX_SLOT_MINIGAME) and the buttons to mash
+ *   (Contest_DrawButtons);
+ * - the result banner of the arm-wrestling and the drinking contests
+ *   (Minigame_DrawResult): a win, a loss or a draw, scaled and moved in by
+ *   key frames;
+ * - the gallery's gun-aim debug view (Gallery_DrawGunDebug: three offsets
+ *   moved with the second pad), with its aim line and marker model;
+ * - the drinking contest's two questions about the persistent monster saved
+ *   last: its kind and how worn it is.
+ * The data after the functions also holds the gallery's walls and frames,
+ * which the gallery's own files use.
  */
 #include "common.h"
 #include "window.h"
@@ -25,111 +28,41 @@
 #include "lobby_globals.h"
 #include "pad.h"
 #include "area.h"
+#include "hud.h"
+#include "texture.h"
+#include "render_state.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "sprite_queue.h"
+#include "text.h"
+#include "stageobj.h"
+#include "minigame_draw.h"
+#include "draw_helpers.h"
+#include "elder_forecast.h"
+#include "engine_math.h"
+#include "font.h"
+#include "town_players.h"
+#include "libc.h"
+#include "libgcc.h"
 
+/* The game built this file at optimization level 4: the pragma gives its code. */
 #pragma optimization_level 4
-void Font_SetSpacing(u8 a, u8 b);
 
 extern u8 gPersistentEmKinds[];
-s32 LobbyMovie_Run(void);
-s32 LobbyBgm_GetTrack(void);
 extern s32 gTownMode;
-void Hud_DrawButtonIcon(s32 id, s32 x, s32 y, s32 depth, u32 color, f32 scale);
 extern s16 gDrinkHpStages[][3];
-extern ElderRaidEvent gElderRaidEvent;
 extern LobbyMenu *gLobbyMenu;
-s32 TownPc_IsSeatedState(u8, u8);
-void Actor_SetState(void *, s32, s32);
-void Game_ResetSubsystems(void);
-void LobbyMovie_Prepare(s32);
-void LobbyBgm_SetUnk11F(s32);
-void Gfx_SetTexFilter(s32 a);
-void Tex_Prepare(s32 n, s32 tex);
-void Tex_Bind(s32 a);
 struct TexRect;
-void TexRect_Draw(struct TexRect *r, s8 mode);
 
-/* Starts the raid's town movie that waits: stands the player up if seated,
- * resets the town's subsystems and hides the menu layers, and records in the
- * save that this raid's start (or end) movie has been played. In the hub area
- * 0x87 the town music is told to stop with it. */
-void LobbyTown_StartMovie(void)
-{
-    Player *pl = &gPlayers[gScene.localPlayer];
-    ElderRaidEvent *raid = &gElderRaidEvent;
-
-    if (TownPc_IsSeatedState(pl->stateGroup, pl->state) == 1) {
-        Actor_SetState(pl, 0, 0x15);
-    }
-    Game_ResetSubsystems();
-    gLobbyMenu->hideLayers = 1;
-    gLobby->seqStep = 0;
-    if (gLobby->movieState == RAID_MOVIE_START) {
-        LobbyMovie_Prepare(0);
-        gSave.raidStartMovieId = raid->id;
-    } else {
-        LobbyMovie_Prepare(1);
-        gSave.raidEndMovieId = raid->id;
-    }
-    if (gScene.area == AREA_TOWN_ARENA) {
-        LobbyBgm_SetUnk11F(0);
-    }
-}
-
-/* Runs the movie; 1 once it has finished (LobbyMovie_Run's last step, 3). */
-s32 LobbyTown_MovieDone(void)
-{
-    switch (LobbyMovie_Run()) {
-    case 3:
-        return 1;
-    }
-    return 0;
-}
-
-/* 1 if the raid's town movie should play now: the raid has its movies, the
- * player is connected, in no town menu, with a movie waiting and no quest
- * taken, and not in hub area 0x87 while its town music plays. */
-s32 LobbyTown_WantsMovie(void)
-{
-    if (gElderRaidEvent.noMovie == 1) {
-        return 0;
-    }
-    if (gLobby->connected == 0) {
-        return 0;
-    }
-    if (gTownMode != 0) {
-        return 0;
-    }
-    if (gLobby->movieState == RAID_MOVIE_NONE) {
-        return 0;
-    }
-    if (gLobby->questTaken != 0) {
-        return 0;
-    }
-    if (0 < LobbyBgm_GetTrack() && gScene.area == AREA_TOWN_ARENA) {
-        return 0;
-    }
-    switch (gScene.area) {
-    case AREA_HUB_0x83:
-    case AREA_HUB_0x84:
-        return 1;
-    }
-    return 1;
-}
-
-extern char gTimeLeftFormat[];
-void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
 /* Prints the time left, in seconds rounded up (frames / 30). */
 void Lobby_DrawTimeLeft(s16 frames)
 {
     if (frames >= 0) {
-        Font_SetSpacing(0x17, 0x14);
-        Text_PrintfAt(0xF0, 0x54, 5, gTimeLeftFormat, (frames - 1) / 30 + 1);
+        Font_SetSpacing(23, 20);
+        Text_PrintfAt(240, 84, 5, gTimeLeftFormat, (frames - 1) / 30 + 1);
     }
 }
 
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void Contest_DrawBar(u32 color, f32 x, f32 y);
-void Contest_DrawBarPiece(u32 color, f32 x, f32 y);
 /* Draws the arm-wrestling contest's power gauge: the difference of the two
  * powers, clamped to +-50, splits a 160-pixel bar into the two colours, with
  * the frame and the marker at the split. */
@@ -147,35 +80,28 @@ void Contest_DrawGauge(s32 mine, s32 theirs)
         split = 50.0f + diff;
     }
     width = 0.8f * (f32)(split * 2);
-    Gfx_DrawLine(0xE8, 0x32, width, 0xA, 0xB23971FF);
-    Gfx_DrawLine(33.0f + (200.0f + width), 0x32, 160.0f - width, 0xA, 0xB2FFE242);
-    Contest_DrawBar(0xB2324435, 200.0f, 40.0f);
-    Contest_DrawBarPiece(0xB2FF4545, 216.0f + 1.6f * (f32)split, 8.0f);
+    Gfx_DrawLine(232, 50, width, 10, 0xB23971FF);
+    Gfx_DrawLine(33.0f + (200.0f + width), 50, 160.0f - width, 10, 0xB2FFE242);
+    Contest_DrawGaugeFrame(0xB2324435, 200.0f, 40.0f);
+    Contest_DrawGaugeMarker(0xB2FF4545, 216.0f + 1.6f * (f32)split, 8.0f);
 }
 
-extern u8 gMinigameResultScaleKeys[];
-extern u8 gMinigameResultPosKeys[];
+extern FloatKey gMinigameResultScaleKeys[];
+extern Vec3Key gMinigameResultPosKeys[];
 extern char gDrinkWinText[];
 extern char gContestWinText[];
 extern char gMinigameLoseText[];
 extern char gMinigameDrawText[];
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: as this file calls it, with 16-bit coordinates and a 32-bit kind; with the definition's types the call compiles differently */
 void Gfx_SetBlend(s32 a, s32 b);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-s32 sprintf(char *buf, const char *fmt, ...);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16, s16);
-void Text_PrintfColored(const char *fmt, ...);
-s32 Sprite_Draw(Sprite *s);
 /* Draws a minigame's result banner (MinigameResult) while frames counts
  * down from 60: a window sized for the text, an icon that scales and moves
  * along its key frames, and the text. isContest picks the arm-wrestling
  * contest's win text over the drinking contest's. */
 void Minigame_DrawResult(s8 result, s16 frames, s8 isContest)
 {
-    u8 *scaleKey = gMinigameResultScaleKeys;
-    u8 *posKey = gMinigameResultPosKeys;
+    FloatKey *scaleKey = gMinigameResultScaleKeys;
+    Vec3Key *posKey = gMinigameResultPosKeys;
     f32 pos[3];
     f32 scale;
     Sprite icon;
@@ -189,23 +115,23 @@ void Minigame_DrawResult(s8 result, s16 frames, s8 isContest)
     switch (result) {
     default:
         if (isContest == 0) {
-            width = 0xDC;
+            width = 220;
         } else {
-            width = 0xC8;
+            width = 200;
         }
         break;
     case MINIGAME_LOSE:
-        width = 0xB4;
+        width = 180;
         break;
     case MINIGAME_DRAW:
-        width = 0x8C;
+        width = 140;
         break;
     }
-    Win_Draw(0x140 - width / 2, 0xCC, width, 0x28, 0xBDB59F6C, 0xA0000000, 3);
-    Gfx_SetTexFilter(1);
-    Gfx_SetBlend(4, 1);
-    Tex_Prepare(1, 0x144);
-    Tex_Bind(0x144);
+    Win_Draw(320 - width / 2, 204, width, 40, 0xBDB59F6C, 0xA0000000, 3);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_ONE);
+    Tex_Prepare(1, 324);
+    Tex_Bind(324);
     elapsed = 60.0f - frames;
     Key_LerpFloat((f32 *) scaleKey, (f32 *) &scale, elapsed);
     Key_LerpVec3((f32 *) posKey, (f32 *) pos, elapsed);
@@ -216,9 +142,9 @@ void Minigame_DrawResult(s8 result, s16 frames, s8 isContest)
     switch ((u8)result) {
     case MINIGAME_WIN:
         icon.u0 = 2;
-        icon.v0 = 0xE3;
-        icon.u1 = 0x1F;
-        icon.v1 = 0xFD;
+        icon.v0 = 227;
+        icon.u1 = 31;
+        icon.v1 = 253;
         icon.color = 0xFFFFFF80;
         if (isContest == 0) {
             sprintf(buf, gDrinkWinText);
@@ -227,26 +153,26 @@ void Minigame_DrawResult(s8 result, s16 frames, s8 isContest)
         }
         break;
     case MINIGAME_LOSE:
-        icon.u0 = 0x41;
-        icon.v0 = 0xE1;
-        icon.u1 = 0x70;
-        icon.v1 = 0xFF;
+        icon.u0 = 65;
+        icon.v0 = 225;
+        icon.u1 = 112;
+        icon.v1 = 255;
         icon.color = 0xFF884A84;
         sprintf(buf, gMinigameLoseText);
         break;
     case MINIGAME_DRAW:
-        icon.u0 = 0x1C;
-        icon.v0 = 0xE2;
-        icon.u1 = 0x3D;
-        icon.v1 = 0x101;
+        icon.u0 = 28;
+        icon.v0 = 226;
+        icon.u1 = 61;
+        icon.v1 = 257;
         icon.color = 0xFFFFFFFF;
         sprintf(buf, gMinigameDrawText);
         break;
     }
     Sprite_Draw(&icon);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Font_SetColor(0xFFFF80FF);
-    Font_SetPos(Text_CenterX(buf, 0x140, 0x14), 0xD6);
+    Font_SetPos(Text_CenterX(buf, 320, 20), 214);
     Text_PrintfColored(buf);
 }
 
@@ -276,8 +202,8 @@ void Contest_DrawButtons(f32 *circleScale, f32 *crossScale, s16 *bumpFrames)
             *crossScale -= 0.1f;
         }
     }
-    Hud_DrawButtonIcon(0, 0x14F, 320.0f - 24.0f * *circleScale, 0x155, -1, *circleScale);
-    Hud_DrawButtonIcon(1, 0x131, 320.0f - 24.0f * *crossScale, 0x155, -1, *crossScale);
+    Hud_DrawButtonIcon(BUTTON_ICON_CIRCLE, 335, 320.0f - 24.0f * *circleScale, 341, -1, *circleScale);
+    Hud_DrawButtonIcon(BUTTON_ICON_CROSS, 305, 320.0f - 24.0f * *crossScale, 341, -1, *crossScale);
 }
 
 #include "prim.h"
@@ -288,12 +214,6 @@ extern f32 gGunDebugRight;
 extern char gGunDebugRightFormat[];
 extern char gGunDebugUpFormat[];
 extern char gGunDebugForwardFormat[];
-void Vec_Normalize(f32 *v);
-s32 Debug_IsOn(s32 a);
-f64 fptodp(f32 x);
-void Camera_ProjectPoint(f32 *out, f32 *pos);
-s32 Prim_DrawLineF(PrimLineF *l);
-void Contest_DrawModel(f32 *pos, f32 *scale, u32 color);
 /* dst = from + dir * dist */
 static inline void Vec_AddScaled(f32 *dst, f32 *from, f32 *dir, f32 dist)
 {
@@ -329,7 +249,7 @@ void Gallery_DrawGunDebug(f32 *base, f32 *out)
     right[1] = gCamMatrix[1];
     right[2] = gCamMatrix[2];
     Vec_Normalize(right);
-    if (Debug_IsOn(0xA0)) {
+    if (Debug_IsOn(160)) {
         pad = gPadState[1].held;
         if (pad & PAD_UP) {
             gGunDebugForward += 2.0f;
@@ -354,10 +274,10 @@ void Gallery_DrawGunDebug(f32 *base, f32 *out)
             gGunDebugUp = 0.0f;
             gGunDebugRight = 0.0f;
         }
-        Font_SetSpacing(0x10, 0x10);
-        Text_PrintfAt(0x168, 0x11C, 7, gGunDebugRightFormat, fptodp(gGunDebugRight));
-        Text_PrintfAt(0x168, 0x12C, 7, gGunDebugUpFormat, fptodp(gGunDebugUp));
-        Text_PrintfAt(0x168, 0x13C, 7, gGunDebugForwardFormat, fptodp(gGunDebugForward));
+        Font_SetSpacing(16, 16);
+        Text_PrintfAt(360, 284, 7, gGunDebugRightFormat, fptodp(gGunDebugRight));
+        Text_PrintfAt(360, 300, 7, gGunDebugUpFormat, fptodp(gGunDebugUp));
+        Text_PrintfAt(360, 316, 7, gGunDebugForwardFormat, fptodp(gGunDebugForward));
     }
     out[0] = base[0] + right[0] * gGunDebugRight + up[0] * gGunDebugUp + fwd[0] * gGunDebugForward;
     out[1] = base[1] + right[1] * gGunDebugRight + up[1] * gGunDebugUp + fwd[1] * gGunDebugForward;
@@ -371,19 +291,13 @@ void Gallery_DrawGunDebug(f32 *base, f32 *out)
     scale[0] = 1.0f;
     scale[1] = 1.0f;
     scale[2] = 1.0f;
-    Contest_DrawModel(out, scale, -1);
+    GunDebug_DrawMarker(out, scale, -1);
 }
 
-s32 Model_Draw(u32 h, s32 flags);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-s32 Gs_SetState(u8, u32);
-s32 Debug_IsOn(s32 a);
-extern f32 gCamMatrix[];
 /* Draws common model 0 at pos, turned half a turn, scaled and tinted with
  * color: material set 34, or set 2 (half transparent) with debug flag 0x32
  * on. */
-void Contest_DrawModel(f32 *pos, f32 *scale, u32 color)
+void GunDebug_DrawMarker(f32 *pos, f32 *scale, u32 color)
 {
     Model *mdl = gCommonModels[0];
     f32 rot[3];
@@ -398,45 +312,43 @@ void Contest_DrawModel(f32 *pos, f32 *scale, u32 color)
         rot[2] = 0.0f;
         Mtx_FromScaleRotTrans(scale, rot, pos, 5, mtx);
         Mtx_Concat3x3(mtx, gCamMatrix);
-        Gs_SetState(0x1A, (s32)mtx);
-        if (Debug_IsOn(0x32) != 0) {
+        Gs_SetState(RS_MTX_SLOT(0), (s32)mtx);
+        if (Debug_IsOn(50) != 0) {
             set = &mdl->matSets[2];
             color = (color & 0xFFFFFF) + 0x80000000;
         } else {
             set = &mdl->matSets[34];
         }
         tex = (s32) gCommonModels[0]->mats;
-        Gs_SetState(0x67, color);
+        Gs_SetState(RS_COLOR2, color);
         if (set->id != -1) {
             for (i = 0; i < set->count; i++) {
-                Gs_SetState((i + 0x3A) & 0xFF, tex + set->mat[i] * 0x4C);
+                Gs_SetState((i + 58) & 0xFF, tex + set->mat[i] * 76);
             }
             Model_Draw(set->id, 0);
         }
-        Gs_SetState(0x67, -1);
+        Gs_SetState(RS_COLOR2, -1);
     }
 }
 
-#include "sprite.h"
-s32 Sprite_Draw(Sprite *s);
 /* Draws the gauge's frame at x, y in color: a left end, five middle pieces
  * and a right end, 32 pixels each. */
-void Contest_DrawBar(u32 color, f32 x, f32 y)
+void Contest_DrawGaugeFrame(u32 color, f32 x, f32 y)
 {
     Sprite left;
     Sprite mid;
     Sprite right;
     u8 i;
 
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x168);
-    Tex_Bind(0x168);
-    left.v0 = 0x80;
-    left.u0 = 0x20;
-    left.u1 = 0x10;
-    left.w = 0x20;
-    left.v1 = 0x70;
-    left.h = 0x20;
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, TEX_SLOT_MINIGAME);
+    Tex_Bind(TEX_SLOT_MINIGAME);
+    left.v0 = 128;
+    left.u0 = 32;
+    left.u1 = 16;
+    left.w = 32;
+    left.v1 = 112;
+    left.h = 32;
     left.color = color;
     left.y = y;
     left.x = x;
@@ -445,11 +357,11 @@ void Contest_DrawBar(u32 color, f32 x, f32 y)
     mid.color = color;
     x += 32.0f;
     i = 0;
-    mid.u1 = 0xF;
-    mid.v1 = 0x80;
-    mid.v0 = 0x70;
-    mid.w = 0x20;
-    mid.h = 0x20;
+    mid.u1 = 15;
+    mid.v1 = 128;
+    mid.v0 = 112;
+    mid.w = 32;
+    mid.h = 32;
     mid.y = y;
     do {
         mid.x = x;
@@ -457,12 +369,12 @@ void Contest_DrawBar(u32 color, f32 x, f32 y)
         x += 32.0f;
         i++;
     } while (i < 5);
-    right.v0 = 0x70;
-    right.u0 = 0x11;
-    right.v1 = 0x80;
-    right.u1 = 0x20;
-    right.w = 0x20;
-    right.h = 0x20;
+    right.v0 = 112;
+    right.u0 = 17;
+    right.v1 = 128;
+    right.u1 = 32;
+    right.w = 32;
+    right.h = 32;
     right.color = color;
     right.y = y;
     right.x = x;
@@ -470,18 +382,18 @@ void Contest_DrawBar(u32 color, f32 x, f32 y)
 }
 
 /* Draws the gauge's marker at x, y in color. */
-void Contest_DrawBarPiece(u32 color, f32 x, f32 y)
+void Contest_DrawGaugeMarker(u32 color, f32 x, f32 y)
 {
     Sprite marker;
 
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x168);
-    Tex_Bind(0x168);
-    marker.v0 = 0x60;
-    marker.u0 = 0x20;
-    marker.v1 = 0x6F;
-    marker.w = 0x20;
-    marker.h = 0x40;
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, TEX_SLOT_MINIGAME);
+    Tex_Bind(TEX_SLOT_MINIGAME);
+    marker.v0 = 96;
+    marker.u0 = 32;
+    marker.v1 = 111;
+    marker.w = 32;
+    marker.h = 64;
     marker.color = color;
     marker.u1 = 0;
     marker.y = y;
@@ -518,10 +430,10 @@ s32 DrinkContest_HpStage(void)
 
 /* The result banner's key frames, the drinking contest's thresholds, the gun
  * debug offsets, and the gallery's walls and frames. */
-u8 gMinigameResultScaleKeys[48] = {
+FloatKey gMinigameResultScaleKeys[6] = {
 #include "lobby/007EC1E0.inc"
 };
-u8 gMinigameResultPosKeys[48] = {
+Vec3Key gMinigameResultPosKeys[3] = {
 #include "lobby/007EC210.inc"
 };
 s16 gDrinkHpStages[4][3] = {
@@ -533,10 +445,10 @@ f32 gGunDebugForward = {
 f32 gGunDebugUp = {
 #include "lobby/007EC260.inc"
 };
-u32 gGalleryWalls[12] = {
+Vec3f gGalleryWalls[4] = {
 #include "lobby/007EC270.inc"
 };
-u32 gGalleryWallYRange[4] = {
+f32 gGalleryWallYRange[4] = {
 #include "lobby/007EC2A0.inc"
 };
 Frame gGalleryPrizeFrame = {
@@ -548,25 +460,25 @@ Frame gGalleryFrame = {
 
 /* The result banner's texts and the gun debug lines' formats. */
 #pragma rodata on
-char gDrinkWinText[0x20] = {
+char gDrinkWinText[32] = {
 #include "lobby/00838490.inc"
 };
-char gContestWinText[0x20] = {
+char gContestWinText[32] = {
 #include "lobby/008384B0.inc"
 };
-char gMinigameLoseText[0x18] = {
+char gMinigameLoseText[24] = {
 #include "lobby/008384D0.inc"
 };
 char gMinigameDrawText[13] = {
 #include "lobby/008384E8.inc"
 };
-char gGunDebugRightFormat[0x20] = {
+char gGunDebugRightFormat[32] = {
 #include "lobby/00838500.inc"
 };
-char gGunDebugUpFormat[0x20] = {
+char gGunDebugUpFormat[32] = {
 #include "lobby/00838520.inc"
 };
-char gGunDebugForwardFormat[0x20] = {
+char gGunDebugForwardFormat[32] = {
 #include "lobby/00838540.inc"
 };
 #pragma rodata off

@@ -23,6 +23,8 @@
 #include "combine.h"
 #include "award.h"
 #include "hud.h"
+#include "area_draw.h"
+#include "rand.h"
 
 
 extern u8 gRecipeIndex[];       /* per item: count, first recipe */
@@ -37,24 +39,14 @@ extern u8 gCombineBookBonus[];         /* rate bonus by combination books owned 
 extern u16 gCombineBookItems[];  /* the combination books (items), COMBINE_BOOK_COUNT of them */
 extern u8 gRecipeYieldBase[];         /* quantity made, by yield class */
 extern u8 *gRecipeYieldChances[];        /* quantity: base, then chances of one more */
-extern char *gRecipeYieldLabels[];
 
-s32 Recipe_CanUse(Player *player, Recipe *r);
-s32 Player_HasSkill(Player *p, u8 skill);
 u8 Player_GetSkill(Player *p, u8 group);
-s32 Recipe_IsKnown(Recipe *r);
-s16 Pouch_Count(Player *player, u16 item);
 u8 Pouch_Add(Player *p, u16 item, s16 n);
 s32 SavePouch_Count(u16 item);
-s16 ItemBox_Remove(u16 item, s16 count);
 u8 SavePouch_Add(u16 item, s16 n);
-u16 Rand_Next(s32 stream);
-s32 Combine_HasFixedYield(Player *player, u16 item);
 
-s32 Combine_RecipeRate(Recipe *r, s32 mode);
 Recipe *Combine_FindRecipe3(s32, s32, s32); /* unit's own declaration: the K&R definition's narrow parameters arrive promoted, as this prototype says (a narrow prototype is incompatible with it) */
 s32 Save_HasTitle(s32 n);
-s32 Recipe_MatchesFlags(Recipe *o, s32 flags);
 s32 Award_Grant(s32 n);
 
 /* 1 if some recipe that uses item can be made now. */
@@ -119,8 +111,6 @@ Recipe *Combine_FindRecipe(s16 itemA, s16 itemB)
     }
     return NULL;
 }
-
-s32 Combine_GetRate(s16 a, s16 b, s32 mode);
 
 /*
  * Combines items itemA and itemB. Returns the item made, or -1 on failure,
@@ -455,13 +445,6 @@ Recipe *Combine_FindRecipe3(itemA, itemB, itemC)
     return NULL;
 }
 
-u8 Pouch_Add(Player *p, u16 item, s16 n);
-s32 SavePouch_Count(u16 item);
-s16 ItemBox_Remove(u16 item, s16 count);
-u8 SavePouch_Add(u16 item, s16 n);
-u16 Rand_Next(s32 stream);
-s32 Player_HasSkill(Player *p, u8 skill);
-s32 Combine_RecipeRate3(s32 a, s32 b, s32 c, s32 mode);
 extern u8 gRecipeYieldBase[];
 extern u8 *gRecipeYieldChances[];
 
@@ -554,7 +537,6 @@ s32 Combine_IsKnown3(s32 itemA, s32 itemB, s32 itemC)
     return (gSave.recipeBits[(s32) bit >> 3] & (1 << (bit & 7))) != 0;
 }
 
-s32 Recipe_IsKnown(Recipe *r);
 
 /* 1 when the player knows (Recipe_IsKnown) at least 90% of the recipes that need no skill
  * (RECIPE_NEEDS_SKILL clear), of both tables. */
@@ -585,7 +567,7 @@ s32 Combine_KnowsMostRecipes(void)
     return known >= (s16)(0.9f * total);
 }
 
-/* Grants AWARD_RECIPES (Award_Grant) once 0xD5 of the RECIPE_TOTAL recipes are known, and
+/* Grants AWARD_RECIPES (Award_Grant) once 213 of the RECIPE_TOTAL recipes are known, and
  * then returns 1; 0 otherwise, and once it is granted. */
 s32 Recipe_CheckAllKnown(void)
 {
@@ -602,7 +584,7 @@ s32 Recipe_CheckAllKnown(void)
             known++;
         }
     }
-    if (known >= 0xD5) {
+    if (known >= 213) {
         Award_Grant(AWARD_RECIPES);
         return 1;
     }
@@ -632,9 +614,6 @@ void Recipe_SetKnown(Recipe *recipe, s16 *unused)
     bits = (u8 *)gSave.recipeBits + ((s32) bit >> 3);
     *bits |= (1 << (bit & 7)) & 0xFF;
 }
-
-s32 Combine_ItemHasRecipe(s16 item);
-s32 Combine_ItemUsable(s16 item);
 
 /* 1 if the player can use a recipe with the item: a two-item one (flag 0,
  * Combine_ItemHasRecipe) or a three-item one (else, Combine_ItemUsable). */
@@ -705,8 +684,6 @@ s32 Combine_FindRecipeIndex(Recipe *recipe, s16 *items)
     return 0;
 }
 
-s32 Combine_FindRecipeIndex(Recipe *r, s16 *info);
-
 /* Lists in out (at most 3) the recipes, two-item then three-item, that make `item` and pass
  * Recipe_MatchesFlags with flags (RECIPE_LIST_*), each with its ingredients
  * (Combine_FindRecipeIndex); returns how many. */
@@ -761,9 +738,6 @@ s32 Recipe_IsListedFor(s16 item, s32 flags)
     }
     return 0;
 }
-
-s32 Player_HasSkill(Player *p, u8 skill);
-s16 Pouch_Count(Player *p, u16 item);
 
 /* 1 if the player can use the recipe: one without RECIPE_NEEDS_SKILL always; else with
  * SKILL_RECIPE_FLAG1, or with ITEM_ID_RECIPE_UNLOCK in the pouch. */
@@ -826,8 +800,6 @@ s32 Item_IsBait(u16 item, s32 unused1)
     return 0;
 }
 
-s32 Recipe_CanUse(Player *p, Recipe *o);
-s32 Recipe_IsKnown(Recipe *o);
 /* 1 if the recipe passes the list's filter (RECIPE_LIST_*): usable by the local player
  * (Recipe_CanUse) unless RECIPE_LIST_NO_SKILL or RECIPE_LIST_USABLE_OR_NOT says otherwise, and
  * known (Recipe_IsKnown) unless RECIPE_LIST_UNKNOWN. */

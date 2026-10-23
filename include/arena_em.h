@@ -4,7 +4,7 @@
 #include "common.h"
 
 /*
- * A monster kept for the arena (0x1C bytes): SaveData.arenaEms[3] (save.h)
+ * A monster kept for the arena (28 bytes): SaveData.arenaEms[3] (save.h)
  * and the plsel work's copy (PlselWork.unk06D8, plsel.h).
  */
 typedef struct ArenaEm {

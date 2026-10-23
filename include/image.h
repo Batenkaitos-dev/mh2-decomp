@@ -44,6 +44,8 @@ s32 Image_PutPixel(Image *img, ImagePixel *px);
 void Image_SetPixel(Image *img, s32 x, s32 y, u32 color);
 u32 Image_GetPixel(s32 x, s32 y, Image *img);
 s32 Image_Convert(Image *dst, Image *src);
+s32 Sys_InitCard(void);
+s32 Packet_SetMode1Ok(void);
 
 /*
  * Channel layouts of direct-colour pixels, as the texture code sets them
@@ -152,8 +154,8 @@ typedef struct Tim2PictureHeader {
     u32 gsTexClut;              /* 0x2C */
 } Tim2PictureHeader;
 
-/* After the picture header when there is more than one level: 0x20 bytes
- * for up to 4 levels, 0x30 for more. */
+/* After the picture header when there is more than one level: 32 bytes
+ * for up to 4 levels, 48 for more. */
 typedef struct Tim2MipHeader {
     u64 gsMiptbp1;              /* 0x00 */
     u64 gsMiptbp2;              /* 0x08 */

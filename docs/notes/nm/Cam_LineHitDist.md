@@ -1,4 +1,4 @@
-# Cam_LineHitDist (sub_main, src/sub_main/cam_control.c)
+# Cam_LineHitDist (sub_main, src/sub_main/cam_script.c)
 
 ## Status
 Round 30 (s4, FAKEMATCH review): matched with the FAKEMATCH tag (`D_0041CE40[0, 0]` on a[0]'s

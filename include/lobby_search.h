@@ -47,4 +47,12 @@ enum AreaResultsStep {
     AREA_RESULTS_LIST = 1,
 };
 
+void AreaSearch_Open(void);
+s32 AreaSearch_Update(u16 pad);
+void AreaSearch_BuildPage(AreaSearchMenu *menu, s16 page);
+void AreaSearch_ShowResults(AreaSearchMenu *menu);
+s32 AreaSearch_ResultsInput(AreaSearchMenu *menu, u16 pad);
+void AreaSearch_Draw(MenuTask *task);
+void AreaSearch_Draw2(MenuTask *task);
+
 #endif

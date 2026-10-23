@@ -52,24 +52,30 @@ segments:
       - [0x40, asm, text]
       - [0x80, c, weapon_states]      # 0x6AF280: starts with game_entry
       - [0xC7D0, c, horn_gunlance_bow]
-      - [0x188E0, c, bowgun_shot]   # 0x6C7AE0: BowgunShot_* and EffEm07_*
+      - [0x13680, c, attack_objects]  # 0x6C2880: PlayerAttack_* to LaoShanAttack_*
+      - [0x17C40, c, bowgun_shot]   # 0x6C6E40: Bowgun_FireShot, BowgunShot_*
+      - [0x1B7E0, c, em_impact_attack]  # 0x6CA9E0: EmImpactAttack_*
       - [0x1BBF0, c, em_ranged_attack]  # 0x6CADF0: EffEm08_*, level 4
-      - [0x237F0, c, explosion]     # 0x6D29F0: Eff09_* and Eff10_*
-      - [0x24950, c, attack_families]
-      - [0x31450, c, elder_attacks]  # 0x6E0650: Eff28_* to EffYamatsukami31_*
+      - [0x237F0, c, explosion]     # 0x6D29F0: Explosion_*
+      - [0x244C0, c, attack_families]
+      - [0x31720, c, elder_attacks]  # 0x6E0920: KushalaBreath_* to YamaTsukamiAttack_*
       - [0x34900, c, em_effect_attack]  # 0x6E3B00: EffEm33_*, level 4
-      - [0x3B020, c, shakalaka_teostra_bulldrome]  # 0x6EA220: EffShakalaka34_*, EffKushala30b_*, EffEm02_*
-      - [0x3BE60, c, volcano_hazard]  # 0x6EB060: object state handlers (two jump tables)
-      - [0x3C390, c, gunlance_blast]
-      - [0x3D8A0, c, area_objects]
-      - [0x49810, c, area_scenery]
-      - [0x50430, c, em_sight]      # 0x6FF630-0x701810: compiled at optimization level 4
+      - [0x3B020, c, shakalaka_teostra_bulldrome]  # 0x6EA220: ShakalakaAttack_*, TeostraAttack_*, BulldromeAttack_*
+      - [0x3BFF0, c, volcano_hazard]  # 0x6EB1F0: VolcanoHazard_*
+      - [0x3C2C0, c, gunlance_teostra_chameleos]
+      - [0x3E160, c, msg_event]  # 0x6ED360: Quest_CheckCampAdvice, MsgEvent_*
+      - [0x3F790, c, area_objects]
+      - [0x45700, c, ambient_life]  # 0x6F4900: AmbientLife_*, the area objects of kind 9
+      - [0x4A630, c, area_scenery]
+      - [0x51830, c, em_sight]      # 0x700A30-0x701810: a monster's sight, at optimization level 4
       - [0x52610, c, em_common]
       - [0x585A0, c, em_status]     # 0x7077A0: monster status effects and helpers
-      - [0x59650, c, em_helpers]    # 0x708850: monster hit points, motions, sound effects at bones
-      - [0x5B090, c, player_states]
-      - [0x84990, c, em_script_set]  # 0x733B90: small accessors of an object's tables
-      - [0x84CA0, c, player_hit]
+      - [0x59650, c, em_helpers]    # 0x708850: monster hit points, motions, sound effects at bones, turning and flight
+      - [0x5CAE0, c, scene_events]   # 0x70BCE0: the scene events (ScEvent_*)
+      - [0x5E010, c, player_states]
+      - [0x74C10, c, em_damage]      # 0x723E10: the monsters' status ailments and damage
+      - [0x770D0, c, em_script]      # 0x7262D0: the monsters' script interpreter, then the script set's accessors and helpers
+      - [0x85180, c, player_hit]
       - [0x86BB0, c, em_drome]        # 0x735DB0: Velocidrome, Gendrome, Iodrome (kinds 0x1B, 0x1C, 0x1F)
       - [0x8DE60, c, em_kind1d]             # 0x73D060: kind 0x1D
       - [0x8E580, c, em_kirin]              # 0x73D780: Kirin (0x21)
@@ -105,17 +111,19 @@ segments:
       - [0x1A8630, c, em_chameleos_states] # 0x857830: Chameleos's state changes, curves, invisibility
       - [0x1A9810, c, em_bulldrome]   # 0x858A10: Bulldrome (0x44)
       - [0x1AD3F0, c, em_fatalis_states] # 0x85C5F0: Fatalis's state changes and curves
-      - [0x1AE120, c, stage_objects]    # 0x85D320: stage objects, effect particles, item props
-      - [0x1B8F10, c, hit_effects]
-      - [0x1C5990, c, dust_flash_effects]
-      - [0x1D1B50, c, monster_effects]
-      - [0x1DF560, c, player_effects]
+      - [0x1AE120, c, stage_objects]    # 0x85D320: stage objects, effect particles
+      - [0x1B6AF0, c, hit_effects]
+      - [0x1C6680, c, dust_flash_effects]
+      - [0x1D23F0, c, monster_effects]
+      - [0x1DC270, c, player_effects]
       # the zeros from StageObj_BowArc_Create's end to .data (0x895300): with the last function
       # in C they are a piece of their own
       - { start: 0x1E60A0, type: data, name: text_end, linker_section_order: .text }
       - [0x1E6100, .data, weapon_states]
       - [0x1E7CD0, .data, horn_gunlance_bow]
-      - [0x1ECD88, .data, bowgun_shot]
+      - [0x1E7E40, .data, attack_objects]
+      - [0x1EC2B0, .data, bowgun_shot]
+      - [0x1ECFB0, .data, em_impact_attack]
       - [0x1ED4F0, .data, em_ranged_attack]
       - [0x1EEC10, .data, explosion]
       - [0x1EFA80, .data, attack_families]
@@ -123,15 +131,18 @@ segments:
       - [0x1FC400, .data, em_effect_attack]
       - [0x1FE1A0, .data, shakalaka_teostra_bulldrome]
       - [0x1FF5D0, .data, volcano_hazard]
-      - [0x1FF670, .data, gunlance_blast]
-      - [0x1FFB60, .data, area_objects]
-      - [0x201810, .data, area_scenery]
-      - [0x2022A8, .data, em_sight]
+      - [0x1FF670, .data, gunlance_teostra_chameleos]
+      - [0x2001F0, .data, msg_event]
+      - [0x200EB8, .data, area_objects]
+      - [0x2017E0, .data, ambient_life]
+      - [0x2018A8, .data, area_scenery]
+      - [0x2023D0, .data, em_sight]
       - [0x20BA10, .data, em_common]
       - [0x20DA98, .data, em_status]
-      - [0x210250, .data, player_hit]
       - [0x2107C0, .data, em_helpers]
-      - [0x214300, .data, player_states]
+      - [0x214300, .data, scene_events]
+      - [0x2148E0, .data, player_states]
+      - [0x214C38, .data, em_script]
       - [0x214C50, .data, em_drome]
       - [0x214F40, .data, em_kind1d]
       - [0x214FC0, .data, em_kirin]
@@ -167,25 +178,32 @@ segments:
       - [0x21C280, .data, em_bulldrome]
       - [0x21D3E0, .data, em_fatalis_states]
       - [0x21DA50, .data, stage_objects]
-      - [0x21F440, .data, hit_effects]
+      - [0x21F420, .data, hit_effects]
       - [0x221620, .data, dust_flash_effects]
-      - [0x2261B0, .data, monster_effects]
-      - [0x229990, .data, player_effects]
+      - [0x2263B0, .data, monster_effects]
+      - [0x229120, .data, player_effects]
       - [0x22B370, .rodata, weapon_states]
       - [0x22DD80, .rodata, horn_gunlance_bow]
-      - [0x22E150, .rodata, bowgun_shot]
+      - [0x22DFE0, .rodata, attack_objects]
+      - [0x22E100, .rodata, bowgun_shot]
+      - [0x22E280, .rodata, em_impact_attack]
       - [0x22E2B0, .rodata, em_ranged_attack]
       - [0x22E5F0, .rodata, explosion]
-      - [0x22E740, .rodata, attack_families]
+      - [0x22E6D0, .rodata, attack_families]
       - [0x22EC30, .rodata, elder_attacks]
       - [0x22ED10, .rodata, em_effect_attack]
       - [0x22EF60, .rodata, shakalaka_teostra_bulldrome]
-      - [0x22EFF0, .rodata, volcano_hazard]
-      - [0x22F040, .rodata, gunlance_blast]
-      - [0x22F0A0, .rodata, area_objects]
+      - [0x22F010, .rodata, volcano_hazard]
+      - [0x22F040, .rodata, gunlance_teostra_chameleos]
+      - [0x22F100, .rodata, msg_event]
+      - [0x23CF00, .rodata, area_objects]
+      - [0x23CF80, .rodata, ambient_life]
       - [0x23D050, .rodata, area_scenery]
       - [0x23D1B0, .rodata, em_common]
-      - [0x23D400, .rodata, player_states]
+      - [0x23D400, .rodata, scene_events]
+      - [0x23D460, .rodata, player_states]
+      - [0x23DB20, .rodata, em_damage]
+      - [0x23DFB0, .rodata, em_script]
       - [0x23E080, .rodata, player_hit]
       - [0x23E120, .rodata, em_drome]
       - [0x23E550, .rodata, em_kind1d]
@@ -223,9 +241,9 @@ segments:
       - [0x244A30, .rodata, em_bulldrome]
       - [0x244C40, .rodata, em_fatalis_states]
       - [0x244D20, .rodata, stage_objects]
-      - [0x244F10, .rodata, hit_effects]
+      - [0x244E70, .rodata, hit_effects]
       - [0x245350, .rodata, dust_flash_effects]
       - [0x2457B0, .rodata, monster_effects]
-      - [0x245CB0, .rodata, player_effects]
+      - [0x245BD0, .rodata, player_effects]
       - { type: bss, vram: 0x8F5200, name: bss }
   - [0x246000]

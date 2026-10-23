@@ -1,5 +1,6 @@
 #ifndef EM_VELOCIPREY_H
 #define EM_VELOCIPREY_H
+#include "em.h"
 
 /*
  * The Velociprey family's vocabulary (EmVelociprey_*):
@@ -13,6 +14,14 @@
  * names say what the states that play a motion show. Sides A and B are the
  * two side hits (by the hit angle's quarter); which one is the left is not
  * settled.
+ *
+ * Bones: with the motion table the four kinds share the dromes' skeleton,
+ * and their code uses each bone as the dromes' code does, so it writes the
+ * dromes' names (DROME_BONE_*): the spit (EMRANGED_PREY_SPIT, _B) and the
+ * lying puffs at DROME_BONE_MOUTH, the stun stars, the dust of the hops and
+ * the pounce, and every sound at DROME_BONE_ROOT. A sound number indexes
+ * the kind's own sound bank; none is named, as the code shows only where
+ * each plays.
  */
 enum EmVelocipreyMotion {
     VPREY_MOT_IDLE = 0x01,              /* the standing loop; Init's row */
@@ -211,5 +220,32 @@ typedef struct EmVelocipreyAppearAt {
     f32 pos[3];
     u16 angle;
 } EmVelocipreyAppearAt;
+
+extern void *EmVelociprey_Callbacks[8];
+void EmVelociprey_Init(Em *em);
+void EmVelociprey_Start(Em *em);
+void EmVelociprey_Respawn(Em *em);
+void EmVelociprey_Walk(Em *em, EmWork *work);
+void EmVelociprey_RunAttackState(Em *em, EmWork *work);
+void EmVelociprey_DieBack(Em *em, EmWork *work);
+void EmVelociprey_DieForward(Em *em, EmWork *work);
+void EmVelociprey_DieSideA(Em *em, EmWork *work);
+void EmVelociprey_DieSideB(Em *em, EmWork *work);
+void EmVelociprey_Reappear(Em *em);
+void EmVelociprey_DieInAirBack(Em *em, EmWork *work);
+void EmVelociprey_DieInAirForward(Em *em, EmWork *work);
+void EmVelociprey_DieInAirSideA(Em *em, EmWork *work);
+void EmVelociprey_DieInAirSideB(Em *em, EmWork *work);
+void EmVelociprey_EventLookAround(Em *em, EmWork *work);
+void EmVelociprey_Update(Em *em);
+void EmVelociprey_RunState(Em *em, s32 work);
+void EmVelociprey_MotionEffects(Em *em, EmWork *work);
+void EmVelociprey_SetIdleState(Em *em, u16 state, u8 mode);
+void EmVelociprey_SetMoveState(Em *em, u16 state, u8 mode);
+void EmVelociprey_SetHopState(Em *em, u16 state, u8 mode);
+void EmVelociprey_SetAttackState(Em *em, u16 state, u8 mode);
+void EmVelociprey_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmVelociprey_StartCurves(Em *em, u8 kind);
+u8 EmVelociprey_UpdateCurves(Em *em);
 
 #endif /* EM_VELOCIPREY_H */

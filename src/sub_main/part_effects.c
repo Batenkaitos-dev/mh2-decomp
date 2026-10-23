@@ -10,8 +10,12 @@
  * monster (PartFx_EmPos), or at a point. Where the type has a ground kind
  * (gPartFxGroundKinds) and there is ground, the ground puffs of
  * Effect_SpawnGround are made instead. The players' motion effects and the
- * monsters' code call them. The .data holds the key curves and the tables
- * by type.
+ * monsters' code call them. Last come the ground effects themselves:
+ * Effect_SpawnGround, the puffs a footfall or a landing raises by the
+ * ground's kind (spark emitters, with their sounds), and
+ * Player_SpawnGroundEffect, a part effect on the ground at a player's
+ * weapon (the motion effects' slams). The .data holds the key curves and
+ * the tables by type.
  */
 #include "common.h"
 #include "scene.h"
@@ -22,39 +26,19 @@
 #include "area.h"
 #include "render_state.h"
 #include "sound.h"
+#include "fishing.h"
+#include "text.h"
+#include "part_effects.h"
+#include "attack_objects.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "rand.h"
+#include "spark_fx.h"
+#include "vec_math.h"
 
 /* prototypes */
-u16 Rand_Next(s32 a);
-void StageObj_Free(StageObj *o);
-void DrawSlot_Free(s32 id);
-void PartFx_Setup(StageObj *o);
-void PartFx_Run(StageObj *o);
-void PartFx_End(StageObj *o);
-void PartFx_Delete(StageObj *o);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Player_PlaySe(Player *pl, s32 id, s32 a, void *pos, s32 b, s32 c);
 /* The calls cast Obj_InCurrentArea's result to u8: the game's code reads only its low byte. */
-s32 Obj_InCurrentArea(void *obj);
-StageObj *StageObj_Alloc(s32 nblk);
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Vec_Copy(f32 *dst, f32 *src);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void Vec_Scale(f32 *out, f32 *v, f32 s);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_Add(f32 *out, f32 *a, f32 *b);
 extern f32 gCamMatrix[];
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-void PartFx_SpawnForPlayerScaled(Player *p, s16 arg, s32 type, f32 scale);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-s32 Gs_SetState(u8 reg, u32 v);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-s16 Effect_MapTexId(s16 id);
 
 /* PartFx_Run builds as the game's code only at optimization level 4; the
  * other functions build the same at levels 3 and 4. */
@@ -79,24 +63,21 @@ void PartFx_Update(StageObj *o)
     }
 }
 
-/* A part of a STAGEOBJ_KIND_PART_FX effect object (StageObj.buf, 0x30 bytes each): a model or
+/* A part of a STAGEOBJ_KIND_PART_FX effect object (StageObj.buf, 48 bytes each): a model or
  * sprite whose size and alpha follow key curves over its frames. */
 typedef struct PartFxPart {
-    s16 variant;                /* 0x00: its role in types 14 (0/1), 35 (0-5) and 36 (0/1: mirrored); 0xFF: gone (type 13) */
+    s16 variant;                /* 0x00: its role in types 14 (0/1), 35 (0-5) and 36 (0/1: mirrored); 255: gone (type 13) */
     s16 frame;                  /* 0x02: counted up by PartFx_Run; 0 or less: still waiting */
     f32 pos[3];                 /* 0x04: its offset from the object (most types) or its place */
     f32 size[3];                /* 0x10: from its first key curve; times scale, the model's size */
     f32 scale;                  /* 0x1C */
     f32 alpha;                  /* 0x20: from its last key curve (0 to 1) */
-    u16 heading;                /* 0x24: type 13: the owner's bone 2 heading plus 0x6000 */
+    u16 heading;                /* 0x24: type 13: the owner's bone 2 heading plus ANGLE_TURN * 3 / 8 */
     u16 roll;                   /* 0x26: the model's turn about the view axis */
     s16 rollSpeed;              /* 0x28: added to roll every frame */
     s16 slot;                   /* 0x2A: its draw slot */
     DrawSlot *draw;             /* 0x2C: NULL when none */
 } PartFxPart;
-void Vec_RotateY(f32 *v, f32 angle);
-void PartFx_PlaySound(StageObj *o);
-void PartFx_DrawPart(DrawSlot *s);
 extern s16 gPartFxPartCounts[];
 extern s16 gPartFxType14Starts[];
 extern s16 gPartFxType19Starts[];
@@ -249,7 +230,7 @@ void PartFx_Setup(StageObj *fx)
             part->frame = 0;
             part->scale = fx->scale;
             part->roll = Rand_Next(1);
-            part->rollSpeed = (Rand_Next(1) & 0xFF) - 0x80;
+            part->rollSpeed = (Rand_Next(1) & 0xFF) - 128;
             break;
         case 34:
             part->frame = -i * 3;
@@ -313,12 +294,6 @@ void PartFx_Setup(StageObj *fx)
     }
 }
 
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
-u16 Mtx_Heading(f32 *m);
-void Mtx_GetTrans(f32 *out, f32 *m);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-extern f32 gCamMatrix[];
 extern void *gPartFxKeys[];
 extern u16 gPartFxLens[];
 extern s16 gPartFxKeyStarts[];
@@ -335,7 +310,7 @@ extern u16 gPartFxType35Lens[];
  * places its draw slot around the object (turned by the object's heading,
  * the parts `step` apart in some types) and adds it to the sorted ordering
  * table. Type 13 starts each part on the floor at its owner's bone 2, and
- * the whole run stops once the owner is gone (variant 0xFF).
+ * the whole run stops once the owner is gone (variant 255).
  */
 void PartFx_Run(StageObj *fx)
 {
@@ -353,10 +328,10 @@ void PartFx_Run(StageObj *fx)
 
     switch (fx->type) {
     case 6:
-        step = 0x2AAA;
+        step = 10922;
         break;
     case 8:
-        step = 0x2AAA;
+        step = 10922;
         break;
     case 7:
     case 11:
@@ -367,18 +342,18 @@ void PartFx_Run(StageObj *fx)
     case 25:
     case 38:
     case 39:
-        step = 0x3333;
+        step = 13107;
         break;
     case 19:
-        step = 0x2000;
+        step = 8192;
         break;
     case 40:
-        step = 0x2000;
+        step = 8192;
         break;
     case 21:
     case 26:
     case 29:
-        fx->angle += 0xB6;
+        fx->angle += 182;
         break;
     }
     if (++fx->timer > dur) {
@@ -443,9 +418,9 @@ void PartFx_Run(StageObj *fx)
                     Mtx_Copy((f32 *) boneMtx, (f32 *) (Em_GetBone(fx->owner, 2)));
                     Mtx_GetTrans(part->pos, boneMtx);
                     part->pos[1] = ((Player *)fx->owner)->floorY;
-                    part->heading = Mtx_Heading(boneMtx) + 0x6000;
+                    part->heading = Mtx_Heading(boneMtx) + ANGLE_TURN * 3 / 8;
                 } else {
-                    part->variant = 0xFF;
+                    part->variant = 255;
                     part++;
                     key += stride;
                     continue;
@@ -456,7 +431,7 @@ void PartFx_Run(StageObj *fx)
             key += stride;
             continue;
         }
-        if (part->variant == 0xFF) {
+        if (part->variant == 255) {
             return;
         }
         Key_LerpVec3(gPartFxKeys[key], part->size, part->frame);
@@ -640,13 +615,12 @@ void PartFx_Run(StageObj *fx)
                 part->draw->pos[2] = offset[2] + fx->pos[2];
                 break;
             }
-            OT_AddByDepth(gDrawOtSorted, part->draw, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, part->draw, 64, 0);
         }
         part++;
     }
 }
 
-extern s16 gPartFxPartCounts[];
 /* Frees a STAGEOBJ_KIND_PART_FX effect object's draw slots (gPartFxPartCounts: the parts of each type). */
 void PartFx_End(StageObj *fx)
 {
@@ -669,10 +643,6 @@ void PartFx_Delete(StageObj *fx)
     StageObj_Free(fx);
 }
 
-void Effect_GetColor(s32 arg0, u8 *arg1, u8 *arg2, u8 *arg3, u8 *arg4);
-s32 Model_DrawFade(void *mdl, f32 *a1, u16 flags, void *a3, f32 alpha);
-void Mtx_TurnZ(f32 *m, f32 a);
-void Gfx_SetTexFilter(s32 a);
 extern f32 gCamYawMtx[];
 extern u8 gPartFxOfferColors[][3];
 /*
@@ -711,7 +681,7 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = part->scale * part->size[0];
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            id = 0x4A;
+            id = 74;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -746,7 +716,7 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = part->scale * part->size[0];
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            id = 0x4A;
+            id = 74;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -756,7 +726,7 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = part->scale * part->size[0];
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            id = 0x4A;
+            id = 74;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -765,7 +735,7 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = 0.8f * part->size[0];
             scale[1] = 0.8f * part->size[1];
             scale[2] = 0.8f * part->size[2];
-            id = 0x4A;
+            id = 74;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -773,17 +743,17 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
         case 14:
             switch (part->variant) {
             case 0:
-                id = 0x4A;
-                red = 0xFF;
-                green = 0xFF;
-                blue = 0xFF;
+                id = 74;
+                red = 255;
+                green = 255;
+                blue = 255;
                 bright = 1.0f;
                 break;
             case 1:
-                id = 0x23;
-                red = 0x33;
-                green = 0x33;
-                blue = 0x33;
+                id = 35;
+                red = 51;
+                green = 51;
+                blue = 51;
                 bright = 1.0f;
                 break;
             }
@@ -798,27 +768,27 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
         case 26:
         case 29:
             if (drawSlot->part == 0) {
-                id = 0x41;
+                id = 65;
             } else {
-                id = 0x40;
+                id = 64;
             }
             flags |= 2;
-            if (fx->type == 0x15) {
-                red = 0xBF;
-                blue = 0xFF;
-                green = 0xBF;
-            } else if (fx->type == 0x1D) {
-                red = 0xFF;
-                green = 0x7F;
-                blue = 0x7F;
+            if (fx->type == 21) {
+                red = 191;
+                blue = 255;
+                green = 191;
+            } else if (fx->type == 29) {
+                red = 255;
+                green = 127;
+                blue = 127;
             } else if (gScene.inLobby == 0) {
                 red = gPartFxOfferColors[fx->ownerIndex][0];
                 green = gPartFxOfferColors[fx->ownerIndex][1];
                 blue = gPartFxOfferColors[fx->ownerIndex][2];
             } else {
-                red = 0xFF;
-                green = 0xFF;
-                blue = 0xFF;
+                red = 255;
+                green = 255;
+                blue = 255;
             }
             bright = 1.0f;
             scale[0] = part->scale * part->size[0];
@@ -832,11 +802,11 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = part->scale * part->size[0];
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            red = 0xFF;
-            green = 0xFF;
-            blue = 0xFF;
+            red = 255;
+            green = 255;
+            blue = 255;
             bright = 1.0f;
-            id = 0x48;
+            id = 72;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -845,11 +815,11 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = part->scale * part->size[0];
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            red = 0xD8;
-            green = 0xCE;
-            blue = 0xB9;
+            red = 216;
+            green = 206;
+            blue = 185;
             bright = 1.0f;
-            id = 0x48;
+            id = 72;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -858,11 +828,11 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[0] = part->scale * part->size[0];
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            red = 0xFF;
-            green = 0xFF;
-            blue = 0xFF;
+            red = 255;
+            green = 255;
+            blue = 255;
             bright = 1.0f;
-            id = 0x4A;
+            id = 74;
             rot[2] = 6.2831855f * part->roll / 65536.0f;
             Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
             Mtx_Concat3x3(mtx, gCamMatrix);
@@ -876,18 +846,18 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             scale[2] = part->scale * part->size[2];
             switch (part->variant) {
             case 0:
-                red = 0xFF;
-                id = 0x4A;
-                green = 0x33;
-                blue = 0x33;
+                red = 255;
+                id = 74;
+                green = 51;
+                blue = 51;
                 Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 0, mtx);
                 Mtx_Concat3x3(mtx, gCamYawMtx);
                 break;
             case 1:
-                red = 0xFF;
-                green = 0xFF;
-                blue = 0xFF;
-                id = 0x51;
+                red = 255;
+                green = 255;
+                blue = 255;
+                id = 81;
                 rot[2] = 6.2831855f * part->roll / 65536.0f;
                 Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
                 Mtx_Concat3x3(mtx, gCamMatrix);
@@ -896,10 +866,10 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             case 3:
             case 4:
             default:
-                id = 0x26;
-                red = 0xFF;
-                green = 0x33;
-                blue = 0x33;
+                id = 38;
+                red = 255;
+                green = 51;
+                blue = 51;
                 switch (part->variant) {
                 case 2:
                     rot[0] = -0.7853982f;
@@ -924,10 +894,10 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
                 Mtx_TurnZ(mtx, rot[2]);
                 break;
             case 5:
-                id = 0x3B;
-                red = 0xFF;
-                green = 0xAF;
-                blue = 0x6F;
+                id = 59;
+                red = 255;
+                green = 175;
+                blue = 111;
                 rot[2] = 6.2831855f * part->roll / 65536.0f;
                 Mtx_FromScaleRotTrans(scale, rot, drawSlot->pos, 3, mtx);
                 Mtx_Concat3x3(mtx, gCamMatrix);
@@ -941,11 +911,11 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
             bright = 1.0f;
             scale[1] = part->scale * part->size[1];
             scale[2] = part->scale * part->size[2];
-            red = 0xFF;
-            green = 0x33;
-            blue = 0x33;
+            red = 255;
+            green = 51;
+            blue = 51;
             rot[0] = -0.5235988f;
-            id = 0x26;
+            id = 38;
             if (part->variant == 0) {
                 rot[1] = -1.308997f;
             } else {
@@ -961,22 +931,22 @@ void PartFx_DrawPart(DrawSlot *drawSlot)
         if (id != -1) {
             mdl = &set->matSets[id];
             /* types 1, 2 and 16; the unsigned compare is the game's form of 1 <= type <= 2 */
-            if ((u32)(fx->type - 1) <= 1 || fx->type == 0x10) {
+            if ((u32)(fx->type - 1) <= 1 || fx->type == 16) {
                 Model_DrawFade(mdl, mtx, flags, base, part->alpha);
             } else {
                 Effect_DrawModel(mdl, mtx, ((u8)(u32)(255.0f * bright * part->alpha) << 24) | (red << 16) | (green << 8) | blue, flags, base);
             }
         }
-        Gfx_SetTexFilter(1);
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
         Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
 /*
  * A STAGEOBJ_KIND_PART_FX effect's sound as it starts, by type: type 26 (the item
- * offer's sparkle) plays system sound 0x1A when the giver (its owner) or
+ * offer's sparkle) plays system sound 26 when the giver (its owner) or
  * the player offered to (ownerIndex) is the local player; type 35 plays
- * the player's sound 0xC when the player holds a long sword.
+ * the player's sound 12 when the player holds a long sword.
  */
 void PartFx_PlaySound(StageObj *fx)
 {
@@ -985,13 +955,13 @@ void PartFx_PlaySound(StageObj *fx)
     switch (fx->type) {
     case 26:
         if (((Player *)fx->owner)->index == gScene.localPlayer || fx->ownerIndex == gScene.localPlayer) {
-            Sound_PlaySeAtPosChecked(SE_SLOT_SYSTEM, 0x1A, 0, fx->pos, 1, 0);
+            Sound_PlaySeAtPosChecked(SE_SLOT_SYSTEM, 26, 0, fx->pos, 1, 0);
         }
         break;
     case 35:
         pl = fx->owner;
         if (pl->weaponType == WEAPON_LONG_SWORD) {
-            Player_PlaySe(pl, 0xC, 0, pl->pos, 1, 0);
+            Player_PlaySe(pl, 12, 0, pl->pos, 1, 0);
         }
         break;
     }
@@ -999,7 +969,6 @@ void PartFx_PlaySound(StageObj *fx)
 
 /* unit's own declaration: returning s32, though the function returns u8: PartFx_PutOnGround builds as the game's code only with this declaration. */
 s32 AreaGrid2_GetFloorHeight(f32 *pos, f32 *h);
-f32 Area_GroundOffset(u16 area);
 extern s16 gPartFxGroundKinds[];
 extern s16 gAreaKinds[];
 /*
@@ -1035,7 +1004,6 @@ s32 PartFx_PutOnGround(Player *pl, f32 *pos, s32 type)
     return 0;
 }
 
-u16 Mtx_Heading(f32 *m);
 /*
  * Makes fx a STAGEOBJ_KIND_PART_FX effect object of the given type that follows pl,
  * facing pl's heading. Types 0, 3, 4, 9, 18 and 20 note the foot in var0
@@ -1073,7 +1041,7 @@ void PartFx_InitForPlayer(Player *pl, s16 bone, s32 type, StageObj *fx)
         break;
     case 22:
         Mtx_Copy((f32 *) boneMtx[0], (f32 *) (Em_GetBone(pl, bone)));
-        fx->angle = Mtx_Heading(boneMtx[0]) + 0x4000;
+        fx->angle = Mtx_Heading(boneMtx[0]) + ANGLE_TURN / 4;
         break;
     case 26:
         fx->ownerIndex = pl->offerTo;
@@ -1082,16 +1050,13 @@ void PartFx_InitForPlayer(Player *pl, s16 bone, s32 type, StageObj *fx)
     fx->owner = pl;
 }
 
-f32 AreaGrid2_GetFloorY(f32 *pos);
-void Vec_RotateY(f32 *v, f32 angle);
 void AttackBurst_CreateAtScaled(f32 *pos, u16 ang, s32 n, f32 scale); /* unit's own declaration: the definition (game) is void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale); the calls here match only with this one */
-void PartFx_SpawnForPlayerScaled(Player *p, s16 arg, s32 type, f32 scale);
 /*
  * Sets pos to where an effect of the given type goes on pl: at or near
  * bone `bone`, on pl's floor or in front of pl, by type (types 8 and 39
  * move 50 ahead during the hard landing). Then puts it on the ground
- * (PartFx_PutOnGround) and returns the ground kind; type 0x13 with no
- * ground kind adds an attack burst 20 above pos and a type 0xE effect.
+ * (PartFx_PutOnGround) and returns the ground kind; type 19 with no
+ * ground kind adds an attack burst 20 above pos and a type 14 effect.
  */
 s32 PartFx_PlayerPos(f32 *pos, Player *pl, s16 bone, s32 type)
 {
@@ -1325,19 +1290,16 @@ s32 PartFx_PlayerPos(f32 *pos, Player *pl, s16 bone, s32 type)
         break;
     }
     groundKind = (s16)PartFx_PutOnGround(pl, pos, type);
-    if ((s16)type == 0x13 && (s16)groundKind == 0) {
+    if ((s16)type == 19 && (s16)groundKind == 0) {
         offset[0] = pos[0];
         offset[1] = 20.0f + pos[1];
         offset[2] = pos[2];
         AttackBurst_CreateAtScaled(offset, pl->rot[1], 10, 0.4f);
-        PartFx_SpawnForPlayerScaled(pl, 0xE, 0xE, 1.0f);
+        PartFx_SpawnForPlayerScaled(pl, 14, 14, 1.0f);
     }
     return groundKind;
 }
 
-s32 PartFx_PlayerPos(f32 *pos, Player *p, s16 arg, s32 type);
-s8 Effect_SpawnGround(void *owner, f32 *pos, s16 k, f32 scale);
-void PartFx_InitForPlayer(Player *p, s16 arg, s32 type, StageObj *o);
 /*
  * When pl is in the current area: the ground puffs of the type's ground
  * kind at its place on pl (PartFx_PlayerPos), or, when they make
@@ -1357,9 +1319,6 @@ void PartFx_SpawnForPlayer(Player *pl, s16 bone, s32 type)
     }
 }
 
-s32 PartFx_PlayerPos(f32 *pos, Player *p, s16 arg, s32 type);
-s8 Effect_SpawnGround(void *owner, f32 *pos, s16 k, f32 scale);
-void PartFx_InitForPlayer(Player *p, s16 arg, s32 type, StageObj *o);
 /* PartFx_SpawnForPlayer at the given size (the ground puffs keep size 1). */
 void PartFx_SpawnForPlayerScaled(Player *pl, s16 bone, s32 type, f32 scale)
 {
@@ -1379,13 +1338,12 @@ void PartFx_SpawnForPlayerScaled(Player *pl, s16 bone, s32 type, f32 scale)
 EmBone *Em_Bone(void *obj, s32 a);
 u8 Em_TypeUsesK14(u8 type); /* unit's own declaration: the definition (game) is s32 Em_TypeUsesK14(u8 type); the calls here match only with this one */
 void RathalosAttack_CreateOnObj(StageObj *s, s8 kind);
-void LaoShanAttack_CreateOnObj(StageObj *s, s8 kind);
 /*
  * Makes fx a STAGEOBJ_KIND_PART_FX effect object of the given type that follows em,
  * facing its heading. Types 0, 3, 6, 7, 19/40 and 20 take a size by em's
  * kind and scale. Type 7 at bone 2 of the Rathalos family adds a Rathalos
- * attack object (0x2F for the kinds Em_TypeUsesK14 names, else 0xE); types
- * 19 and 40 on Lao-Shan Lung add its attack object 0x50. Types 28 (the
+ * attack object (47 for the kinds Em_TypeUsesK14 names, else 14); types
+ * 19 and 40 on Lao-Shan Lung add its attack object 80. Types 28 (the
  * trader, or kind 1 in the town) and 30 face across the bone's heading.
  */
 void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
@@ -1400,7 +1358,7 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
     switch (fx->type) {
     case 0:
         switch (em->type) {
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = 4.0f * em->scaleX;
@@ -1424,13 +1382,13 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
         case EM_KIND_MOSSWINE:
         case EM_KIND_BULLFANGO:
         case EM_KIND_BULLDROME:
-        case 0x20:
+        case 32:
             break;
         case 9:
         case EM_KIND_MELYNX:
             fx->scale = 2.0f * em->scaleX;
             break;
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
         case EM_KIND_KHEZU:
@@ -1476,7 +1434,7 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
         case EM_KIND_YIAN_GARUGA:
             fx->scale = 1.3f * em->scaleX;
             break;
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = 2.0f * em->scaleX;
@@ -1491,8 +1449,8 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
         case EM_KIND_MOSSWINE:
         case EM_KIND_BULLFANGO:
         case EM_KIND_BULLDROME:
-        case 0x20:
-        case 0xC:
+        case 32:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = em->scaleX;
@@ -1528,9 +1486,9 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
             fx->scale = em->scaleX;
             if ((s16)bone == 2) {
                 if (Em_TypeUsesK14(em->type) == 0) {
-                    RathalosAttack_CreateOnObj(fx, 0xE);
+                    RathalosAttack_CreateOnObj(fx, 14);
                 } else {
-                    RathalosAttack_CreateOnObj(fx, 0x2F);
+                    RathalosAttack_CreateOnObj(fx, 47);
                 }
             }
             break;
@@ -1552,14 +1510,14 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
             break;
         case EM_KIND_LAO_SHAN_LUNG:
         case EM_KIND_ASHEN_LAO_SHAN_LUNG:
-            LaoShanAttack_CreateOnObj(fx, 0x50);
+            LaoShanAttack_CreateOnObj(fx, 80);
             break;
         }
         /* no break: the game's code goes on into type 20's test (it only
          * changes kinds that types 19 and 40 do not list) */
     case 20:
         switch (em->type) {
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = 5.0f * em->scaleX;
@@ -1569,19 +1527,18 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
     case 28:
         if ((gScene.inLobby != 0 && em->type == 1) || (gScene.inLobby == 0 && em->type == EM_KIND_TRADER)) {
             Mtx_Copy((f32 *) boneMtx[0], (f32 *) (Em_Bone(em, bone)));
-            fx->angle = Mtx_Heading(boneMtx[0]) + 0x4000;
+            fx->angle = Mtx_Heading(boneMtx[0]) + ANGLE_TURN / 4;
         }
         break;
     case 30:
         Mtx_Copy((f32 *) boneMtx[0], (f32 *) (Em_Bone(em, bone)));
-        fx->angle = Mtx_Heading(boneMtx[0]) - 0x4000;
+        fx->angle = Mtx_Heading(boneMtx[0]) - ANGLE_TURN / 4;
         break;
     }
 }
 
 /* unit's own declaration: with an s32 bone, though the function takes an s16: PartFx_EmPos builds as the game's code only with this declaration. */
 void Em_BonePos(void *obj, s32 part, f32 *out);
-void Vec_RotateY(f32 *v, f32 angle);
 /*
  * Sets pos to where an effect of the given type goes on em: mostly bone
  * `bone` at em's floor height, with offsets by em's kind for some types.
@@ -1596,7 +1553,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
     switch ((s16)fxType) {
     case 0:
         switch (em->type) {
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             Em_BonePos(em, bone, pos);
@@ -1631,10 +1588,10 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
         case EM_KIND_MOSSWINE:
         case EM_KIND_BULLFANGO:
         case EM_KIND_BULLDROME:
-        case 0x20:
-            if ((s16)bone == 0x11) {
+        case 32:
+            if ((s16)bone == 17) {
                 Em_BonePos(em, bone, pos);
-                Em_BonePos(em, 0xE, offset);
+                Em_BonePos(em, 14, offset);
                 Vec_Add(pos, pos, offset);
                 Vec_Scale(pos, pos, 0.5f);
             } else {
@@ -1646,7 +1603,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
         case EM_KIND_MELYNX:
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
-            offset[0] = 0.02f * ((Rand_Next(1) & 0x3FF) - 0x200);
+            offset[0] = 0.02f * ((Rand_Next(1) & 0x3FF) - 512);
             offset[1] = 0.0f;
             offset[2] = 0.0f;
             Vec_RotateY(offset, 6.2831855f * em->rotY / 65536.0f);
@@ -1666,7 +1623,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
             break;
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             pos[0] = em->posX;
@@ -1711,7 +1668,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
             break;
-        case 0xC:
+        case 12:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             Em_BonePos(em, bone, pos);
@@ -1765,9 +1722,6 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
     return (s16)PartFx_PutOnGround((Player *)em, pos, fxType);
 }
 
-u8 Player_InCurrentArea(void *obj);
-s32 PartFx_EmPos(f32 *pos, Em *em, s32 a, s32 b);
-void PartFx_InitForEm(Em *em, s32 a, s32 b, StageObj *o);
 /*
  * When em is in the current area: the ground puffs of the type's ground
  * kind at its place on em (PartFx_EmPos), or, when they make nothing, a
@@ -1802,7 +1756,6 @@ void PartFx_SpawnForEmScaled(Em *em, s32 bone, s32 fxType, f32 scale)
     }
 }
 
-void Vec_Copy(f32 *dst, f32 *src);
 /* A STAGEOBJ_KIND_PART_FX effect object of the given type at pos (PartFx_Update updates it). */
 void PartFx_SpawnAt(f32 *pos, s32 type, f32 scale)
 {
@@ -1818,7 +1771,6 @@ void PartFx_SpawnAt(f32 *pos, s32 type, f32 scale)
     }
 }
 
-void PartFx_SpawnAt(f32 *pos, s32 type, f32 scale);
 /* PartFx_SpawnAt when owner is in the current area. */
 void PartFx_SpawnIfHere(void *owner, f32 *pos, s32 type, f32 scale)
 {
@@ -1827,8 +1779,6 @@ void PartFx_SpawnIfHere(void *owner, f32 *pos, s32 type, f32 scale)
     }
 }
 
-void PartFx_SpawnAt(f32 *pos, s32 type, f32 scale);
-s32 PartFx_PutOnGround(Player *p, f32 *pos, s32 type);
 /* The ground puffs of the type's ground kind at pos, or, when they make nothing, PartFx_SpawnAt. */
 void PartFx_SpawnOnGround(f32 *pos, s32 type, f32 scale)
 {
@@ -1837,104 +1787,214 @@ void PartFx_SpawnOnGround(f32 *pos, s32 type, f32 scale)
     }
 }
 
+/*
+ * Spawns the ground effects of ground kind `groundKind` at pos (kind 8
+ * effects: dust, splashes and the like, two of them a frame apart in
+ * kinds 2 and 8) and raises pos by 5. Kind 1 (and any unknown kind) plays
+ * the landing playSound 46; the others play step playSound 118 when the puffs'
+ * scale is above 4, else 112, except kind 4 and, seven frames in eight,
+ * kind 5. Kind 5 follows its owner (an Em). Returns 0 for kind 0 (no
+ * ground effect) and for kind 5 without an owner, else 1.
+ */
+s8 Effect_SpawnGround(void *owner, f32 *pos, s16 groundKind, f32 scale)
+{
+    s32 playSound = 1;
+    f32 puffScale;
+
+    switch (groundKind) {
+    case 0:
+        return 0;
+    case 1:
+    default:
+        puffScale = 1.2f * scale;
+        SparkFx_Spawn(pos, 3, 0, puffScale);
+        pos[1] += 5.0f;
+        SparkFx_Spawn(pos, 0, 0, puffScale);
+        Sound_PlaySeAtPosChecked(1, 46, 0, pos, 1, 0);
+        return 1;
+    case 2:
+        if (gScene.frame & 2) {
+            SparkFx_Spawn(pos, 4, 0, 1.5f * scale);
+        }
+        pos[1] += 5.0f;
+        puffScale = 2.0f * scale;
+        SparkFx_Spawn(pos, 2, 0, puffScale);
+        break;
+    case 3:
+        puffScale = 1.5f * scale;
+        SparkFx_Spawn(pos, 4, 0, puffScale);
+        pos[1] += 5.0f;
+        SparkFx_Spawn(pos, 5, 0, puffScale);
+        break;
+    case 4:
+        playSound = 0;
+    case 9:
+        puffScale = 2.7f * scale;
+        pos[1] += 5.0f;
+        SparkFx_Spawn(pos, 1, 0, puffScale);
+        break;
+    case 5:
+        if (owner == NULL) {
+            return 0;
+        }
+        puffScale = 2.0f * scale;
+        pos[1] += 5.0f;
+        SparkFx_SpawnAtEm(owner, 6, 0, puffScale, pos[1]);
+        if (!(gScene.frame & 7)) {
+            playSound = 0;
+        }
+        break;
+    case 6:
+        puffScale = 2.5f * scale;
+        SparkFx_Spawn(pos, 4, 0, puffScale);
+        pos[1] += 5.0f;
+        SparkFx_Spawn(pos, 5, 0, puffScale);
+        break;
+    case 7:
+        puffScale = 3.0f * scale;
+        SparkFx_Spawn(pos, 4, 0, puffScale);
+        pos[1] += 5.0f;
+        SparkFx_Spawn(pos, 5, 0, puffScale);
+        break;
+    case 8:
+        if (gScene.frame & 4) {
+            SparkFx_Spawn(pos, 4, 0, 1.5f * scale);
+        }
+        puffScale = 2.0f * scale;
+        pos[1] += 5.0f;
+        SparkFx_Spawn(pos, 2, 0, puffScale);
+        break;
+    }
+    if (playSound != 0) {
+        if (puffScale > 4.0f) {
+            Sound_PlaySeAtPosChecked(1, 118, 0, pos, 1, 0);
+        } else {
+            Sound_PlaySeAtPosChecked(1, 112, 0, pos, 1, 0);
+        }
+    }
+    return 1;
+}
+
+/*
+ * When the player is in the current area: a STAGEOBJ_KIND_PART_FX effect of type `kind`
+ * on the ground (at the player's floor height) below its weapon model's
+ * bone 3. Type 19 adds an attack burst along the player's heading and a
+ * type 14 effect. The calls take only the low byte of Obj_InCurrentArea's
+ * result and of `kind` (the casts), as the game's code does.
+ */
+void Player_SpawnGroundEffect(Player *pl, s32 kind, f32 scale)
+{
+    f32 pos[3];
+
+    if ((u8)Obj_InCurrentArea(pl) != 0) {
+        Mtx_GetTrans(pos, pl->weaponModel->partBones[0][3].world);
+        pos[1] = pl->floorY;
+        PartFx_SpawnOnGround(pos, (u8)kind, scale);
+        if ((u8)kind == 19) {
+            AttackBurst_CreateAtScaled(pos, *(u16 *)&pl->rot[1], 10, 0.3f);
+            PartFx_SpawnOnGround(pos, 14, 0.9f);
+        }
+    }
+}
+
 /* The .data: the parts' key curves, then the tables by type. */
-u32 gPartFxKeys_0[20] = {
+f32 gPartFxKeys_0[20] = {
 #include "sub_main/00466940.inc"
 };
-u32 gPartFxKeys_1[16] = {
+Vec3Key gPartFxKeys_1[4] = {
 #include "sub_main/00466990.inc"
 };
-u32 gPartFxKeys_2[8] = {
+FloatKey gPartFxKeys_2[4] = {
 #include "sub_main/004669D0.inc"
 };
-u32 gPartFxKeys_3[24] = {
+Vec3Key gPartFxKeys_3[6] = {
 #include "sub_main/004669F0.inc"
 };
-u32 gPartFxKeys_4[20] = {
+Vec3Key gPartFxKeys_4[5] = {
 #include "sub_main/00466A50.inc"
 };
-u32 gPartFxKeys_5[12] = {
+FloatKey gPartFxKeys_5[6] = {
 #include "sub_main/00466AA0.inc"
 };
-u32 gPartFxKeys_6[24] = {
+Vec3Key gPartFxKeys_6[6] = {
 #include "sub_main/00466AD0.inc"
 };
-u32 gPartFxKeys_7[20] = {
+Vec3Key gPartFxKeys_7[5] = {
 #include "sub_main/00466B30.inc"
 };
-u32 gPartFxKeys_8[12] = {
+FloatKey gPartFxKeys_8[6] = {
 #include "sub_main/00466B80.inc"
 };
-u32 gPartFxKeys_9[24] = {
+Vec3Key gPartFxKeys_9[6] = {
 #include "sub_main/00466BB0.inc"
 };
-u32 gPartFxKeys_10[20] = {
+Vec3Key gPartFxKeys_10[5] = {
 #include "sub_main/00466C10.inc"
 };
-u32 gPartFxKeys_11[12] = {
+FloatKey gPartFxKeys_11[6] = {
 #include "sub_main/00466C60.inc"
 };
-u32 gPartFxKeys_12[24] = {
+Vec3Key gPartFxKeys_12[6] = {
 #include "sub_main/00466C90.inc"
 };
-u32 gPartFxKeys_13[16] = {
+Vec3Key gPartFxKeys_13[4] = {
 #include "sub_main/00466CF0.inc"
 };
-u32 gPartFxKeys_14[8] = {
+FloatKey gPartFxKeys_14[4] = {
 #include "sub_main/00466D30.inc"
 };
-u32 gPartFxKeys_15[20] = {
+Vec3Key gPartFxKeys_15[5] = {
 #include "sub_main/00466D50.inc"
 };
-u32 gPartFxKeys_16[16] = {
+Vec3Key gPartFxKeys_16[4] = {
 #include "sub_main/00466DA0.inc"
 };
-u32 gPartFxKeys_17[8] = {
+FloatKey gPartFxKeys_17[4] = {
 #include "sub_main/00466DE0.inc"
 };
-u32 gPartFxKeys_18[24] = {
+Vec3Key gPartFxKeys_18[6] = {
 #include "sub_main/00466E00.inc"
 };
-u32 gPartFxKeys_19[12] = {
+Vec3Key gPartFxKeys_19[3] = {
 #include "sub_main/00466E60.inc"
 };
-u32 gPartFxKeys_20[12] = {
+FloatKey gPartFxKeys_20[6] = {
 #include "sub_main/00466E90.inc"
 };
-u32 gPartFxKeys_21[16] = {
+Vec3Key gPartFxKeys_21[4] = {
 #include "sub_main/00466EC0.inc"
 };
-u32 gPartFxKeys_22[16] = {
+Vec3Key gPartFxKeys_22[4] = {
 #include "sub_main/00466F00.inc"
 };
-u32 gPartFxKeys_23[8] = {
+FloatKey gPartFxKeys_23[4] = {
 #include "sub_main/00466F40.inc"
 };
-u32 gPartFxKeys_24[16] = {
+Vec3Key gPartFxKeys_24[4] = {
 #include "sub_main/00466F60.inc"
 };
-u32 gPartFxKeys_27[16] = {
+Vec3Key gPartFxKeys_27[4] = {
 #include "sub_main/00466FA0.inc"
 };
-u32 gPartFxKeys_30[16] = {
+Vec3Key gPartFxKeys_30[4] = {
 #include "sub_main/00466FE0.inc"
 };
-u32 gPartFxKeys_25[16] = {
+Vec3Key gPartFxKeys_25[4] = {
 #include "sub_main/00467020.inc"
 };
-u32 gPartFxKeys_28[28] = {
+Vec3Key gPartFxKeys_28[7] = {
 #include "sub_main/00467060.inc"
 };
-u32 gPartFxKeys_31[24] = {
+Vec3Key gPartFxKeys_31[6] = {
 #include "sub_main/004670D0.inc"
 };
-u32 gPartFxKeys_26[8] = {
+FloatKey gPartFxKeys_26[4] = {
 #include "sub_main/00467130.inc"
 };
-u32 gPartFxKeys_29[8] = {
+FloatKey gPartFxKeys_29[4] = {
 #include "sub_main/00467150.inc"
 };
-u32 gPartFxKeys_32[8] = {
+FloatKey gPartFxKeys_32[4] = {
 #include "sub_main/00467170.inc"
 };
 s16 gPartFxType14Starts[4] = {
@@ -1943,106 +2003,106 @@ s16 gPartFxType14Starts[4] = {
 u16 gPartFxType14Lens[4] = {
 #include "sub_main/00467198.inc"
 };
-u32 gPartFxKeys_33[16] = {
+Vec3Key gPartFxKeys_33[4] = {
 #include "sub_main/004671A0.inc"
 };
-u32 gPartFxKeys_34[16] = {
+Vec3Key gPartFxKeys_34[4] = {
 #include "sub_main/004671E0.inc"
 };
-u32 gPartFxKeys_35[8] = {
+FloatKey gPartFxKeys_35[4] = {
 #include "sub_main/00467220.inc"
 };
-u32 gPartFxKeys_36[24] = {
+Vec3Key gPartFxKeys_36[6] = {
 #include "sub_main/00467240.inc"
 };
-u32 gPartFxKeys_37[16] = {
+Vec3Key gPartFxKeys_37[4] = {
 #include "sub_main/004672A0.inc"
 };
-u32 gPartFxKeys_38[12] = {
+FloatKey gPartFxKeys_38[6] = {
 #include "sub_main/004672E0.inc"
 };
 s16 gPartFxType19Starts[8] = {
 #include "sub_main/00467310.inc"
 };
-u32 gPartFxKeys_39[16] = {
+Vec3Key gPartFxKeys_39[4] = {
 #include "sub_main/00467320.inc"
 };
-u32 gPartFxKeys_40[8] = {
+FloatKey gPartFxKeys_40[4] = {
 #include "sub_main/00467360.inc"
 };
-u32 gPartFxKeys_41[16] = {
+Vec3Key gPartFxKeys_41[4] = {
 #include "sub_main/00467380.inc"
 };
-u32 gPartFxKeys_43[16] = {
+Vec3Key gPartFxKeys_43[4] = {
 #include "sub_main/004673C0.inc"
 };
-u32 gPartFxKeys_45[16] = {
+Vec3Key gPartFxKeys_45[4] = {
 #include "sub_main/00467400.inc"
 };
-u32 gPartFxKeys_47[20] = {
+Vec3Key gPartFxKeys_47[5] = {
 #include "sub_main/00467440.inc"
 };
-u32 gPartFxKeys_49[16] = {
+Vec3Key gPartFxKeys_49[4] = {
 #include "sub_main/00467490.inc"
 };
-u32 gPartFxKeys_51[16] = {
+Vec3Key gPartFxKeys_51[4] = {
 #include "sub_main/004674D0.inc"
 };
-u32 gPartFxKeys_42[8] = {
+FloatKey gPartFxKeys_42[4] = {
 #include "sub_main/00467510.inc"
 };
-u32 gPartFxKeys_44[8] = {
+FloatKey gPartFxKeys_44[4] = {
 #include "sub_main/00467530.inc"
 };
-u32 gPartFxKeys_46[8] = {
+FloatKey gPartFxKeys_46[4] = {
 #include "sub_main/00467550.inc"
 };
-u32 gPartFxKeys_50[8] = {
+FloatKey gPartFxKeys_50[4] = {
 #include "sub_main/00467570.inc"
 };
 u16 gPartFxType21Lens[8] = {
 #include "sub_main/00467590.inc"
 };
-u32 gPartFxKeys_53[20] = {
+Vec3Key gPartFxKeys_53[5] = {
 #include "sub_main/004675A0.inc"
 };
-u32 gPartFxKeys_54[16] = {
+Vec3Key gPartFxKeys_54[4] = {
 #include "sub_main/004675F0.inc"
 };
-u32 gPartFxKeys_55[8] = {
+FloatKey gPartFxKeys_55[4] = {
 #include "sub_main/00467630.inc"
 };
 u8 gPartFxOfferColors[10][3] = {
 #include "sub_main/00467650.inc"
 };
-u32 gPartFxKeys_56[20] = {
+Vec3Key gPartFxKeys_56[5] = {
 #include "sub_main/00467670.inc"
 };
-u32 gPartFxKeys_57[8] = {
+FloatKey gPartFxKeys_57[4] = {
 #include "sub_main/004676C0.inc"
 };
-u32 gPartFxKeys_58[20] = {
+Vec3Key gPartFxKeys_58[5] = {
 #include "sub_main/004676E0.inc"
 };
-u32 gPartFxKeys_60[16] = {
+Vec3Key gPartFxKeys_60[4] = {
 #include "sub_main/00467730.inc"
 };
-u32 gPartFxKeys_62[16] = {
+Vec3Key gPartFxKeys_62[4] = {
 #include "sub_main/00467770.inc"
 };
-u32 gPartFxKeys_68[12] = {
+Vec3Key gPartFxKeys_68[3] = {
 #include "sub_main/004677B0.inc"
 };
-u32 gPartFxKeys_59[8] = {
+FloatKey gPartFxKeys_59[4] = {
 #include "sub_main/004677E0.inc"
 };
-u32 gPartFxKeys_61[8] = {
+FloatKey gPartFxKeys_61[4] = {
 #include "sub_main/00467800.inc"
 };
-u32 gPartFxKeys_63[8] = {
+FloatKey gPartFxKeys_63[4] = {
 #include "sub_main/00467820.inc"
 };
-u32 gPartFxKeys_69[6] = {
+FloatKey gPartFxKeys_69[3] = {
 #include "sub_main/00467840.inc"
 };
 s16 gPartFxType35Starts[6] = {
@@ -2051,13 +2111,13 @@ s16 gPartFxType35Starts[6] = {
 u16 gPartFxType35Lens[6] = {
 #include "sub_main/00467868.inc"
 };
-u32 gPartFxKeys_70[16] = {
+Vec3Key gPartFxKeys_70[4] = {
 #include "sub_main/00467880.inc"
 };
-u32 gPartFxKeys_71[16] = {
+Vec3Key gPartFxKeys_71[4] = {
 #include "sub_main/004678C0.inc"
 };
-u32 gPartFxKeys_72[8] = {
+FloatKey gPartFxKeys_72[4] = {
 #include "sub_main/00467900.inc"
 };
 s16 gPartFxType36Starts[8] = {

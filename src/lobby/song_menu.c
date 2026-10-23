@@ -25,10 +25,22 @@
 #include "pad.h"
 #include "area.h"
 #include "lobby_labels.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "lobby_net.h"
+#include "text.h"
+#include "song_menu.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "libc.h"
 
-void CamFocus_End(void);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern u8 gMenuWork;
@@ -63,16 +75,8 @@ typedef struct SongMenu {
     s8 infoMode;                /* 0x37: square flips the item description's page */
 } SongMenu;
 
-s32 LobbyBgm_IsActive(void);
-void *memset(void *dst, s32 c, u32 n);
-void Font_SetSpacing(u8 a, u8 b);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: declared with s16 coordinates as the song list passes them; with the definition's s32 coordinates and s16 kind the call compiles differently */
 void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Text_PrintfColored(const char *fmt, ...);
-void Text_Printf(const char *fmt, ...);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 
 /* Returns 1 while a requested track plays in the hub area (the lobby's music
  * stream is active there), else 0. The hub's residents check it. */
@@ -88,11 +92,6 @@ s32 SongMenu_IsPlaying(void)
 }
 
 extern SongMenuEntry gSongMenuItems[];
-void *memcpy(void *dst, const void *src, u32 n);
-s32 WinSlide_Step(WinSlide *m, s16 from, s16 to);
-void LobbySe_Play(s32);
-s32 Items_HaveEnough(u16 item, s32 n);
-void SongMenu_Draw(MenuTask *task);
 
 /* Opens the song menu: clears gMenuWork, sets TOWN_MODE_SONG_MENU and the
  * draw callback, starts the window's slide and plays the confirm sound. It
@@ -110,7 +109,7 @@ void SongMenu_Open(u8 *npc)
     gTownMenuOpen = 1;
     LobbyMenu_Init();
     LobbyMenu_SetDraw(SongMenu_Draw, 0, 0, 0);
-    WinSlide_Step(&menu->win, 0x280, 0x118);
+    WinSlide_Step(&menu->win, 640, 280);
     LobbySe_Play(LOBBY_SE_CONFIRM);
     menu->count = 0;
     entry = gSongMenuItems;
@@ -138,15 +137,6 @@ void SongMenu_Close(void)
     CamFocus_End();
 }
 
-u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 LobbyBgm_EndsToday(s32 kind);
-s32 LobbyBgm_GetTrack(void);
-s32 LobbyTime_IsPm(void);
-void TownMsg_SendSongAsk(s32 kind);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 Menu_PushNoticeOnce(s32);
-
 /* Runs the song menu once a frame. After the slide-in, circle requests the
  * track under the cursor when it can be played now (it ends before the day
  * does, no track is playing, and it is afternoon): the request goes to the
@@ -162,7 +152,7 @@ void SongMenu_Update(void)
     Chat_SetWindowMode(1, 2);
     switch (menu->state) {
     case SONG_MENU_SLIDE_IN:
-        switch (WinSlide_Step(&menu->win, 0x280, 0x118)) {
+        switch (WinSlide_Step(&menu->win, 640, 280)) {
         case 0:
             menu->state++;
             break;
@@ -211,11 +201,6 @@ void SongMenu_OnBusy(void)
     }
 }
 
-void Items_Take(s32 item, s32 n);
-s32 Save_TestEventFlag(s32 flag);
-void Save_SetEventFlag(s32 flag);
-void Menu_PushNotice(s32 msg);
-
 /* The host accepted this hunter's request: if the menu waits for the reply,
  * takes one of the entry's item (when it costs one) and adds the entry's
  * points to gSave.songPoints while that is under SONG_POINTS_MAX. The first
@@ -242,12 +227,6 @@ void SongMenu_OnAccepted(void)
     }
 }
 
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Menu_DrawItemCountRow(s16 x, s16 y, u16 item, u32 color);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 mode, s32 item, u16 extra, s8 attr, u32 color);
-extern char *gSongHelpTexts[];
-
 /* Draws the song list at (x, y): the label bar and the window, one row per
  * entry (the item's name and the count held, or the free entry's grey name)
  * with the cursor's bar, a separator, then the selected item's description
@@ -260,41 +239,39 @@ void SongMenu_DrawList(s16 x, s16 y)
     u16 item;
     u16 selItem;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x118, 0x12, 0x8C, 0xFFB0B000, gSongMenuTexts[SONG_TEXT_TITLE], 2, 1);
-    Win_Draw(x, y, 0x154, 0x122, 0xBDB59F6C, 0x80202020, 2);
-    rowY += 0x1E;
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(280, 18, 140, 0xFFB0B000, gSongMenuTexts[SONG_TEXT_TITLE], 2, 1);
+    Win_Draw(x, y, 340, 290, 0xBDB59F6C, 0x80202020, 2);
+    rowY += 30;
+    Font_SetSpacing(20, 20);
     for (i = 0; i < SONG_MENU_ENTRIES; i++) {
         if (menu->entries[i].track == SONG_LIST_END) {
             break;
         }
         item = menu->entries[i].item;
-        Font_SetPos(x + 0x32, rowY);
+        Font_SetPos(x + 50, rowY);
         if (i == menu->cursor) {
             selItem = item;
-            Menu_DrawLine(x + 10, rowY - 1, 0x140, 0x18, 0);
+            Menu_DrawRowHighlight(x + 10, rowY - 1, 320, 24, 0);
         }
         if (item == 0) {
             Font_SetColor(0x807F7F7F);
             Text_PrintfColored("%-16s%s%s", gSongMenuTexts[SONG_TEXT_SOUL_SONG], gLobbyWords[LOBBY_WORD_COLON], gSongMenuTexts[SONG_TEXT_DASHES]);
         } else {
-            Menu_DrawItemCountRow(x + 0x32, rowY, item, 0x807F7F7F);
+            Menu_DrawItemCountRow(x + 50, rowY, item, 0x807F7F7F);
         }
-        rowY += 0x16;
+        rowY += 22;
     }
-    Gfx_DrawLine(x + 0x14, y + 0xBA, 0x12C, 2, 0xBDB59F6C);
+    Gfx_DrawLine(x + 20, y + 186, 300, 2, 0xBDB59F6C);
     if (selItem != 0) {
-        ItemInfo_Draw((s16)(x + 0x32) - 0x28, y + 0xBE, 0x154, menu->infoMode, selItem, 0, -1, 0x807F7F7F);
+        ItemInfo_Draw((s16)(x + 50) - 40, y + 190, 340, menu->infoMode, selItem, 0, -1, 0x807F7F7F);
     } else {
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(x + 0x5A, 0x100);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(x + 90, 256);
         Text_Printf(gSongHelpTexts[0]);
     }
-    Win_DrawText(x, y + 0x12A, 0x154, 0x50, 0xBDB59F6C, 0x80202020, gSongHelpTexts[1]);
+    Win_DrawText(x, y + 298, 340, 80, 0xBDB59F6C, 0x80202020, gSongHelpTexts[1]);
 }
-
-void Text_SetSize(s32);
 
 /* The song menu's draw callback: sets the task's text size and draws the
  * list at the window's sliding x while the menu slides in or the hunter
@@ -309,7 +286,7 @@ void SongMenu_Draw(MenuTask *task)
     switch (menu->state) {
     case SONG_MENU_SLIDE_IN:
     case SONG_MENU_CHOOSE:
-        SongMenu_DrawList(x, 0x3A);
+        SongMenu_DrawList(x, 58);
         break;
     }
 }

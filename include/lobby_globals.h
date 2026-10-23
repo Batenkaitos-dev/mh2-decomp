@@ -35,25 +35,16 @@ extern s32 gNetSock;
 
 /* config/symbols/lobby.txt */
 extern void *gPadPtr;
-extern s32 gNetSetupTexPack;
 extern char *gInfoMenuLabels[]; /* sub_main area_draw.c: the info menu labels (the town info prints [0]) */
 extern s32 gActiveSkillsTitle;
-extern char *gMemberCardNumFmt;
-extern char *gSkillDetailTitle;
-extern char *gSkillDetailTitleDim;
-extern s8 *gStartText;
-extern char *gPageFmt;
 extern s32 gPouchFullTakeText;
-extern char *gPriceLegendTexts[];
 extern char *gItemNames[];
-extern f32 gLobbyDayFrac;
-extern u16 D_581AFC;
+extern u16 gKbdHeldKey; /* the first key held in sub_main's copy of the USB keyboard's report (gKbdSettings.keys[0]) */
 extern NetMsgState gNetMsgState; /* the connect state machine's state */
-extern s16 D_59D666;
-extern s16 D_59D668;
+extern s16 gNetCancelHold;
+extern s16 gNetRetries;
 extern u8 gNetProgress;
 extern s16 gLobbyCommonSeBank;
-extern u32 D_5BAE0C;
 extern s8 gChatHidden;
 extern u8 gChatHideNames;
 extern u8 gChatToAll;
@@ -80,7 +71,8 @@ extern u8 gMemberNamesOffSaved;
 extern u8 gOnlineMark;
 extern u8 gLobbyServerCount;
 extern s8 gPortalExit;
-/* gPortalExit: how the portal's browser ended (seen: 0 none). */
+/* gPortalExit: how the portal's browser ended. */
+#define PORTAL_EXIT_LEAVE 0         /* left (the menu's leave line, the leave dialog) */
 #define PORTAL_EXIT_GAME_MENU 1     /* for the game's menu (Portal_GameMenuStep) */
 #define PORTAL_EXIT_CANCEL 2        /* cancelled (Portal_CancelStep) */
 extern s8 gProxyMode;
@@ -89,13 +81,10 @@ extern u8 D_5CAA40;
 extern u8 gServerTriedCount;
 extern u8 gLobbyConnDone;
 extern s8 gLobbyNetError;
-extern s8 D_5D46A1;
-extern u8 D_5D4704;
-extern s8 D_5D4705;
 extern u8 gPoogieErrand;
 extern u8 gSeasonFlags;
 extern u8 gQuestRecordPhase;
-extern u32 D_5D4928;
+extern u32 gQuestRecordElapsed;
 extern s32 gQuestTimeLeft;
 extern s32 gQuestReward;
 extern struct QuestInfo *gQuestInfo;
@@ -111,9 +100,9 @@ extern u8 gSoundLoading;
 extern s8 gSysBusy;
 extern s8 gGmSubLoaded;
 extern u8 *gMemAreas;
-extern u8 *gObjBufBlocks;            /* the object buffer: 0x100 blocks of 0x200 bytes (StageObj_Alloc, sub_main bgm.c) */
-extern struct ModelMatSet *gMatSets;     /* 0x180 material sets of 0x8C bytes (sub_main model_pool.c) */
-extern struct Obj50 *gMaterials;     /* 0x400 materials of 0x50 bytes (sub_main model_pool.c) */
+extern u8 *gObjBufBlocks;            /* the object buffer: 256 blocks of 512 bytes (StageObj_Alloc) */
+extern struct ModelMatSet *gMatSets;     /* 384 material sets of 140 bytes (sub_main model_pool.c) */
+extern struct Obj50 *gMaterials;     /* 1024 materials of 80 bytes (sub_main model_pool.c) */
 extern u8 *gLobbyWorkBuf;
 #define LOBBY_WORK_TOWN_MOVE_FRAMES 0x7A90 /* u16 in gLobbyWorkBuf: the server's period of the town's position messages, 0 for the default (Lobby_ApplyServerTimers) */
 #define LOBBY_WORK_RECRUIT_FRAMES 0x7A92 /* u16: the server's recruiting period, likewise */
@@ -142,7 +131,7 @@ extern s32 D_6AEFA8;
 /* An offer townsperson (gOfferNpcs, ended by id 0). */
 typedef struct OfferNpc {
     s8 kind;            /* 0-2: the townsperson's group, which takes offers in turn (Offer_PickKind) */
-    u8 defs[4];         /* gRequestDefs indexes: the first two always, the last two once condition 0x15 holds */
+    u8 defs[4];         /* gRequestDefs indexes: the first two always, the last two once condition 21 holds */
     u8 pad5;
     u16 id;             /* the townsperson (an NPC id) */
 } OfferNpc;
@@ -159,8 +148,8 @@ typedef struct TownEntry {
 
 /* gTownQuestLists (0x8BECA0) and sub_main's copy gTownQuestListsCopy (the
  * lobby keeps the lists from the copy when the day and the list are the same).
- * The lobby also lends it to request 6884 as four 0x100-byte reply buffers,
- * past its 0xD0 bytes. */
+ * The lobby also lends it to request 6884 as four 256-byte reply buffers,
+ * past its 208 bytes. */
 typedef struct TownQuestLists {
     /* 0x00 */ u8 townEvent;        /* the town data's (6884) slot 0 starts here: LobbyState.townEvent */
     /* 0x01 */ u8 pad1[3];
@@ -174,8 +163,9 @@ extern TownQuestLists gTownQuestLists;
 extern TownQuestLists gTownQuestListsCopy;
 
 
-/* A message of the table gLobbyMsgTexts (item_shop.c, 152 of them; LobbyText_Open in
- * lobby_dialog.c): its kind and flags (0x80: no ...), its text. */
+/* A message of the table gLobbyMsgTexts (152 of them; LobbyText_Open opens
+ * one): its dialog kind with the flag LOBBY_MSG_DIM (the screen dimmed
+ * behind the box), and its text. */
 typedef struct LobbyMsgDef {
     /* 0x0 */ u16 flags;
     /* 0x2 */ u16 pad2;

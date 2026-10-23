@@ -187,7 +187,7 @@ typedef union AvePayload {
 
 /*
  * The buffer of every call, sent to the wrapper and overwritten by its
- * reply. A call's sizes count the 0x1C bytes before the payload.
+ * reply. A call's sizes count the 28 bytes before the payload.
  */
 typedef struct AveWrapBuf {
     s32 arg[3];             /* 0x00: the call's argument words */
@@ -198,5 +198,53 @@ typedef struct AveWrapBuf {
     } result;               /* 0x18 */
     AvePayload data;        /* 0x1C */
 } AveWrapBuf;
+
+s32 AveWrap_Bind(void);
+s32 AveWrap_Unbind(void);
+s16 AveWrap_CallAsync(s32 funcNo, s32 sendSize, s32 recvSize);
+s32 AveWrap_IsIdle(void);
+void AveWrap_Lock(void);
+void AveWrap_Unlock(void);
+s16 AveIf_Up(s32 ifFlag, s32 ifKind);
+s16 AveIf_Down(void);
+s16 AveIf_SetAddress(s32 address, s32 netmask, s32 broadcast);
+s16 AveIf_ClearAddress(void);
+s16 AveTcp_SetOption(s16 sock, s16 option, s16 len, void *src);
+s16 AveTcp_GetOption(s16 sock, s16 option, s16 len, void *dst);
+s16 AveTcp_Open(s32 addr, u16 port, u16 openArg);
+s16 AveTcp_Abort(s16 sock);
+s16 AveTcp_Status(s16 sock, u16 *state, u16 *sendSpace, u16 *recvLen);
+s16 AveTcp_Send(s16 sock, u8 *data, s16 len);
+s16 AveTcp_Recv(s16 sock, void *buf, s16 len);
+s16 AveTcp_Delete(s16 sock);
+s16 AveRoute_Add(s32 dest, s32 gateway);
+s16 AveRoute_Delete(s32 dest, s32 gateway);
+s16 AvePpp_Init(void);
+s16 AvePpp_Term(void);
+s16 AvePpp_Connect(AveConfig *settings);
+s16 AvePpp_Disconnect(void);
+s16 AvePpp_GetStatus(AveInfo *out);
+s16 AvePpp_GetLinkState(s32 *out);
+s16 AveEth_Init(void);
+s16 AveEth_Term(void);
+s16 AveEth_Start(s16 phyMode);
+s16 AveEth_IsLinkUp(void);
+s16 AveEth_Stop(void);
+s16 AveDhcp_Init(void);
+s16 AveDhcp_Term(void);
+s16 AveDhcp_GetDns(char *domain, s32 *primaryDns, s32 *secondaryDns);
+s16 AveDhcp_GetRouter(s32 *out);
+s16 AveDhcp_Start(s32 address, s32 dhcpArg);
+s16 AveDhcp_GetAddress(s32 *address, s32 *netmask, s32 *broadcast);
+s16 AveDhcp_GetState(void);
+s16 AveDhcp_Release(s32 address, s32 dhcpArg);
+s16 AveDns_Init(char *domain, s32 primaryDns, s32 secondaryDns);
+s16 AveDns_Term(void);
+s16 AveDns_Free(s16 id);
+s16 AveDns_LookUp(s16 id, s32 *addr);
+s16 AveIf_PollEvent(s32 *out);
+s16 AveIf_GetEvent(s32 selector, s32 *status, s32 *eventArgA, s32 *eventArgB);
+s16 AveIf_AckEvent(s32 status);
+s16 AveIf_GetOption(s32 option, s32 len, void *dst);
 
 #endif /* AVE_H */

@@ -20,6 +20,7 @@
  * game's code and share their data block, so the file keeps them.
  */
 #include "common.h"
+#include "stageobj.h"
 #include "sprite.h"
 #include "em.h"
 #include "lobby_vobj.h"
@@ -37,49 +38,34 @@
 #include "texture.h"
 #include "award.h"
 #include "lobby_labels.h"
+#include "npc_motion.h"
+#include "area_draw.h"
+#include "camera.h"
+#include "capsule.h"
+#include "card.h"
+#include "window.h"
+#include "gallery_objects.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "font.h"
+#include "gallery_board.h"
+#include "item_shop.h"
+#include "lobby_util.h"
+#include "rand.h"
+#include "shooting_gallery.h"
+#include "talk.h"
+#include "town_players.h"
+#include "village_records.h"
+#include "screen_fade.h"
+#include "libc.h"
+#include "vec_math.h"
 /* Built at optimisation level 4: the compiler gives the target's draw the
  * game's code only at this level (the others match at either). */
 #pragma optimization_level 4
-void *memset(void *, s32, u32);
 
-void ActorParticles_Init(StageObj *);
-void ActorParticles_Run(StageObj *o);
-void ActorParticles_End(StageObj *);
-void ActorParticles_Free(StageObj *o);
-void GalleryScore_Init(StageObj *o);
-void GalleryScore_Run(StageObj *o);
-void GalleryScore_End(StageObj *);
-void GalleryScore_Free(StageObj *o);
-void GalleryShot_Init(StageObj *o);
-void GalleryShot_Run(StageObj *o);
-void GalleryShot_End(StageObj *o);
-void GalleryShot_Free(StageObj *o);
-void GalleryShot_SetHit(StageObj *o);
-void GalleryScore_Spawn(s16 arg0, u16 arg1);
-void ActorParticles_SpawnSpray(void *arg0);
-void GalleryPoints_Init(StageObj *o);
-void GalleryPoints_Run(StageObj *o);
-void GalleryPoints_End(StageObj *o);
-void GalleryPoints_Free(StageObj *o);
-void MealScene_Close(void);
-void GalleryMuzzle_Init(StageObj *o);
-void GalleryMuzzle_Run(StageObj *o);
-void GalleryMuzzle_End(StageObj *o);
-void GalleryMuzzle_Free(StageObj *o);
-void DrawSlot_Free(s32);
-void GalleryScore_Update(StageObj *);
-void ActorParticles_Update(StageObj *);
-void CamFocus_End(void);
-void CamReq_Cancel(void);
-void Npc_EnterRoutePoint(Em *npc);
-void LobbyMenu_Init(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern u8 gMenuWork[];
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
-s32 Gallery_InMenuOrClose(void);
-s32 Gallery_InResults(void);
-void LobbySe_Play(s32);
 
 /* Returns 1 once the board has flipped down and waited: the round refills
  * it. */
@@ -105,23 +91,13 @@ void GalleryBoard_SwingTarget(StageObj *obj, u8 i)
     board->swing[i] = GALLERY_SWING_FRAMES;
 }
 
-void Mtx_Identity(f32 *m);
-s32 Gs_SetState(u8, u32);
-void Camera_ProjectPoint(f32 *out, f32 *v);
 void Gfx_SetTexFilter(s32);
-void Tex_Prepare(s32 n, s32 tex);
 void Tex_Bind(s32);
-f32 Math_Sin(f32 a);
-void Vec_RotateX(f32 *v, f32 angle);
-void Vec_RotateY(f32 *v, f32 a);
-s32 EntryPicture_GetUVf(f32 *uv0, f32 *uv1, u16 id);
-s32 Prim_DrawTexTriF(PrimTexTriF *t);
 extern f32 gGalleryTargetSwingAmps[];
-extern f32 gGalleryTargetSizes[];
 
 /* Draws a target: its kind's picture (a cell of the pictures' texture) on
  * a square of its size, centred on pos, its top edge tilted about x by tilt
- * and the whole turned to yaw (both 0x10000 a turn), as two triangles.
+ * and the whole turned to yaw (both ANGLE_TURN to a turn), as two triangles.
  * While *swing runs, the tilt is replaced by a swing that fades
  * (gGalleryTargetSwingAmps, a fifth of the frames each) and *swing counts
  * down. */
@@ -143,7 +119,7 @@ void GalleryBoard_DrawTarget(Vec3f *pos, u8 kind, u32 tilt, u32 yaw, s8 *timer)
     f32 w;
     f32 swingRad;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, TEX_SLOT_PICTURES);
     Tex_Bind(TEX_SLOT_PICTURES);
     w = gGalleryTargetSizes[gGalleryTargetKinds[kind].size];
@@ -241,12 +217,6 @@ void GalleryShot_Update(StageObj *obj)
 }
 
 extern s8 gGalleryShotDelays[];
-f32 Rand_Signed(void);
-void Vec_RotateY(f32 *v, f32 a);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-u16 Rand_Next(s32 stream);
-void GalleryShot_Draw(DrawSlot *);
 
 /* The shot's init state. The bullet starts not hit. The flash and the
  * puffs take a random roll and their start delays; the puffs also move a
@@ -297,15 +267,10 @@ void GalleryShot_Init(StageObj *obj)
     }
 }
 
-extern u8 gGalleryShotAlphaKeys0[];
-extern u8 gGalleryShotScaleKeys0[];
-extern u8 gGalleryShotAlphaKeys1[];
-extern u8 gGalleryShotScaleKeys1[];
-void Key_LerpVec3(f32 *k, f32 *out, f32 t);
-void Key_LerpFloat(f32 *k, f32 *out, f32 t);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-s32 Gallery_AddObj(StageObj *, u8 mode);
-void Vec_Copy(f32 *dst, f32 *src);
+extern FloatKey gGalleryShotAlphaKeys0[];
+extern Vec3Key gGalleryShotScaleKeys0[];
+extern FloatKey gGalleryShotAlphaKeys1[];
+extern f32 gGalleryShotScaleKeys1[];
 
 /* The shot's run state. The bullet moves by vel, keeping its last
  * position, is drawn and put on the gallery's list of shots, and ends once
@@ -314,8 +279,8 @@ void Vec_Copy(f32 *dst, f32 *src);
 void GalleryShot_Run(StageObj *obj)
 {
     GalleryShot *shot = (GalleryShot *)obj->buf;
-    u8 *alphaKeys;
-    u8 *scaleKeys;
+    FloatKey *alphaKeys;
+    Vec3Key *scaleKeys;
 
     switch (obj->type) {
     case GALLERY_SHOT_BULLET:
@@ -328,7 +293,7 @@ void GalleryShot_Run(StageObj *obj)
             if (obj->timer++ > GALLERY_SHOT_FRAMES) {
                 obj->state = LOBBY_OBJ_END;
             }
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
             Gallery_AddObj(obj, GALLERY_OBJ_SHOT);
         } else {
             obj->state = LOBBY_OBJ_END;
@@ -343,7 +308,7 @@ void GalleryShot_Run(StageObj *obj)
             Key_LerpVec3((f32 *) scaleKeys, (f32 *) &shot->scale, obj->timer);
             Key_LerpFloat((f32 *) alphaKeys, (f32 *) &shot->alpha, obj->timer);
             Vec_Copy(obj->node->pos, (f32 *)&obj->pos);
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
         }
         break;
     case GALLERY_SHOT_PUFF1:
@@ -353,7 +318,7 @@ void GalleryShot_Run(StageObj *obj)
             break;
         }
         alphaKeys = gGalleryShotAlphaKeys1;
-        scaleKeys = gGalleryShotScaleKeys1;
+        scaleKeys = (Vec3Key *)gGalleryShotScaleKeys1;
         if (obj->timer > 30) {        /* frames */
             obj->state++;
         } else {
@@ -361,7 +326,7 @@ void GalleryShot_Run(StageObj *obj)
             Key_LerpFloat((f32 *) alphaKeys, (f32 *) &shot->alpha, obj->timer);
             obj->pos[1] += shot->speed;
             Vec_Copy(obj->node->pos, (f32 *)&obj->pos);
-            OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
         }
         break;
     }
@@ -382,9 +347,6 @@ void GalleryShot_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
 extern f32 gCamMatrix[];
 
 /* The shot's draw slot callback: the bullet's model at its full size; the
@@ -445,8 +407,6 @@ void GalleryShot_Draw(DrawSlot *slot)
     }
 }
 
-void Vec_Normalize(f32 *v);
-
 /* Fires a bullet from 155 units ahead of from (the gun's muzzle) towards
  * to, at 50 units a frame. */
 void GalleryShot_Spawn(Vec3f *muzzle, Vec3f *target)
@@ -486,10 +446,8 @@ void GalleryShot_Spawn(Vec3f *muzzle, Vec3f *target)
     }
 }
 
-void Vec_Normalize(f32 *v);
 struct HitCapsule;
 struct Capsule;
-void Capsule_Copy(struct HitCapsule *src, struct Capsule *dst);
 /* Writes the stretch the bullet crossed this frame (from its last position
  * to its new one) as a capsule of the given radius to out, and sets
  * capsule up from it for the gallery's hit tests. */
@@ -515,8 +473,6 @@ void GalleryShot_SetHit(StageObj *obj)
     ((GalleryShot *)obj->buf)->hit = 1;
 }
 
-u16 Math_Heading(f32 x, f32 z, f32 a, f32 b);
-void Vec_RotateY(f32 *v, f32 a);
 
 /* Spawns the flash and the three puffs where a shot hits a wall: at pos,
  * moved 25 units along the shot's yaw (dir's heading). */
@@ -565,9 +521,6 @@ void GalleryScore_Update(StageObj *obj)
     }
 }
 
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void GalleryScore_Draw(DrawSlot *slot);
 /* The score's init state: splits the value into its digits and takes a
  * draw slot (without one the object frees itself). */
 void GalleryScore_Init(StageObj *obj)
@@ -611,7 +564,7 @@ void GalleryScore_Init(StageObj *obj)
     }
 }
 
-/* The score's run state: a digit settles every 30 frames (with sound 0xA)
+/* The score's run state: a digit settles every 30 frames (with sound 10)
  * while the next place rolls through 0 to 9, a step every 2 frames; every
  * digit shows at once while Gallery_InResults answers 1. Once all are
  * shown, the score ends when the gallery goes back to its menu or
@@ -634,7 +587,7 @@ void GalleryScore_Run(StageObj *obj)
             score->shown = (s16) (score->shown + 1);
             obj->timer = 0;
             score->rolling = 0;
-            LobbySe_Play(0xA);
+            LobbySe_Play(10);
         } else {
             rollFrames = score->rollTimer + 1;
             score->rollTimer = rollFrames;
@@ -671,12 +624,9 @@ void GalleryScore_Free(StageObj *obj)
 }
 
 void Text_SetSize(s32 size);
-void Font_SetColor(s32 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
 void Text_PrintfColored(char *s, ...);
 /* The score's draw slot callback: prints the settled digits from the
- * right (x 0x1B3, 15 apart), then the rolling one in the next place. */
+ * right (x 435, 15 apart), then the rolling one in the next place. */
 void GalleryScore_Draw(DrawSlot *slot)
 {
     StageObj *obj = slot->owner;
@@ -686,7 +636,7 @@ void GalleryScore_Draw(DrawSlot *slot)
     if (obj->visible) {
         Text_SetSize(0);
         Font_SetColor(0x80101010);
-        Font_SetSpacing(0x14, 0x14);
+        Font_SetSpacing(20, 20);
         if (obj->timer <= 0) {
             s32 rest;
             rest = score->shown;
@@ -694,16 +644,16 @@ void GalleryScore_Draw(DrawSlot *slot)
                 rest--;
             }
             for (i = 0; i <= rest; i++) {
-                Font_SetPos(0x1B3 - i * 15, score->y);
+                Font_SetPos(435 - i * 15, score->y);
                 Text_PrintfColored("%d", score->digit[i]);
             }
         } else {
 
             for (i = 0; i < score->shown; i++) {
-                Font_SetPos(0x1B3 - i * 15, score->y);
+                Font_SetPos(435 - i * 15, score->y);
                 Text_PrintfColored("%d", score->digit[i]);
             }
-            Font_SetPos(0x1B3 - score->shown * 15, score->y);
+            Font_SetPos(435 - score->shown * 15, score->y);
             Text_PrintfColored("%d", score->rolling);
         }
     }
@@ -745,18 +695,6 @@ void ActorParticles_Update(StageObj *obj)
     }
 }
 
-void Em_GetBonePos(void *obj, s16 bone, f32 *out);
-s32 Npc_HasSecondHead(Em *arg0);
-f32 Rand_Unit(void);
-s32 Motion_PassedFrame(void *, s32 layer, f32 frame);
-void Vec_RotateX(f32 *v, f32 angle);
-
-EmBone *Em_GetBone(void *obj, s16 bone);
-void Mtx_Copy(f32 *dst, f32 *src);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void ActorParticles_Draw(DrawSlot *slot);
-
 /* The particles' init state: throws the six parts (SPRAY and HAIR from the
  * owner's bone, BARBER at the barber's bones 6 and 9, three a side), gives
  * each a draw slot, then runs the first frame. */
@@ -787,25 +725,25 @@ void ActorParticles_Init(StageObj *obj)
         switch (obj->type) {
         case ACTOR_PARTICLES_SPRAY:
             if (Npc_HasSecondHead(obj->owner) != 0) {
-                Em_GetBonePos(obj->owner, 0xC, &parts->pos[i].x);
+                Em_GetBonePos(obj->owner, 12, &parts->pos[i].x);
             } else {
-                Em_GetBonePos(obj->owner, 0x14, &parts->pos[i].x);
+                Em_GetBonePos(obj->owner, 20, &parts->pos[i].x);
             }
             parts->timer[i] = (u16)Rand_Next(1) % 3 + 6;
             parts->speed[i] = 12.0f + (f32)((u16)Rand_Next(1) % 4);
             parts->dir[i].x = 0.0f;
             parts->dir[i].y = 0.0f;
             parts->dir[i].z = 1.0f;
-            pitch = (u16)Rand_Next(1) % 32767 + 0x8000;
+            pitch = (u16)Rand_Next(1) % 32767 + ANGLE_TURN / 2;
             yaw = (u16)Rand_Next(1);
             Vec_RotateX(&parts->dir[i].x, 6.2831855f * pitch / 65536.0f);
             Vec_RotateY((f32 *)&parts->dir[i], 6.2831855f * yaw / 65536.0f);
             break;
         case ACTOR_PARTICLES_HAIR:
             if (Npc_HasSecondHead(obj->owner) != 0) {
-                Em_GetBonePos(obj->owner, 0xC, &parts->pos[i].x);
+                Em_GetBonePos(obj->owner, 12, &parts->pos[i].x);
             } else {
-                Em_GetBonePos(obj->owner, 0x14, &parts->pos[i].x);
+                Em_GetBonePos(obj->owner, 20, &parts->pos[i].x);
             }
             parts->vy[i] = 8.0f + 6.0f * Rand_Unit();
             parts->pos[i].y += 15.0f;
@@ -826,7 +764,7 @@ void ActorParticles_Init(StageObj *obj)
             parts->dir[i].x = 0.0f;
             parts->dir[i].y = 0.0f;
             parts->dir[i].z = 1.0f;
-            pitch = (u16)Rand_Next(1) % 32767 + 0x8000;
+            pitch = (u16)Rand_Next(1) % 32767 + ANGLE_TURN / 2;
             yaw = (u16)Rand_Next(1);
             Vec_RotateX(&parts->dir[i].x, 6.2831855f * pitch / 65536.0f);
             Vec_RotateY((f32 *)&parts->dir[i], 6.2831855f * yaw / 65536.0f);
@@ -891,8 +829,8 @@ void ActorParticles_Init(StageObj *obj)
  * frames. While on, SPRAY and HAIR parts move (the hair falling, slowing
  * and tumbling) and are thrown again from the bone when their timers run
  * out; BARBER parts age, the middle pair rolling, and each shows for its
- * life. The object ends when the owner leaves state 0x6F (SPRAY), when the
- * barber passes frame 50 of motion 0x43D (HAIR), or after its 30 frames
+ * life. The object ends when the owner leaves NPC_STATE_CONTEST_GRIP (SPRAY), when the
+ * barber passes frame 50 of SERVICE_MOT_HAIR_CUT_NEXT (HAIR), or after its 30 frames
  * (BARBER). */
 void ActorParticles_Run(StageObj *obj)
 {
@@ -941,14 +879,14 @@ void ActorParticles_Run(StageObj *obj)
                         parts->dir[i].x = 0.0f;
                         parts->dir[i].y = 0.0f;
                         parts->dir[i].z = 1.0f;
-                        pitch = (u16)Rand_Next(1) % 32767 + 0x8000;
+                        pitch = (u16)Rand_Next(1) % 32767 + ANGLE_TURN / 2;
                         yaw = (u16)Rand_Next(1);
                         Vec_RotateX(&parts->dir[i].x, 6.2831855f * pitch / 65536.0f);
                         Vec_RotateY((f32 *)&parts->dir[i], 6.2831855f * yaw / 65536.0f);
                         if (Npc_HasSecondHead(obj->owner) != 0) {
-                            Em_GetBonePos(obj->owner, 0xC, &parts->pos[i].x);
+                            Em_GetBonePos(obj->owner, 12, &parts->pos[i].x);
                         } else {
-                            Em_GetBonePos(obj->owner, 0x14, &parts->pos[i].x);
+                            Em_GetBonePos(obj->owner, 20, &parts->pos[i].x);
                         }
                         switch (obj->type) {
                         case ACTOR_PARTICLES_SPRAY:
@@ -984,19 +922,19 @@ void ActorParticles_Run(StageObj *obj)
                 }
                 if (obj->type != ACTOR_PARTICLES_BARBER || parts->frame[i] <= parts->timer[i]) {
                     Vec_Copy(parts->part[i]->pos, (f32 *)&parts->pos[i]);
-                    OT_AddByDepth(gDrawOtSorted, parts->part[i], 0x40, 0);
+                    OT_AddByDepth(gDrawOtSorted, parts->part[i], 64, 0);
                 }
             }
         }
     }
     switch (obj->type) {
     case ACTOR_PARTICLES_SPRAY:
-        if (((Em *)obj->owner)->state != 0x6F) {
+        if (((Em *)obj->owner)->state != NPC_STATE_CONTEST_GRIP) {
             obj->state = LOBBY_OBJ_END;
         }
         break;
     case ACTOR_PARTICLES_HAIR:
-        if (parts->em->motionId[0] == 0x43D && Motion_PassedFrame(parts->em, 0, 50.0f) != 0) {
+        if (parts->em->motionId[0] == EM_MOTION_ID(0, SERVICE_MOT_HAIR_CUT_NEXT) && Motion_PassedFrame(parts->em, 0, 50.0f) != 0) {
             obj->state = LOBBY_OBJ_END;
         }
         break;
@@ -1028,14 +966,13 @@ void ActorParticles_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-extern u8 gActorParticleHairAlphaKeys[];
-extern u8 gActorParticleBarberScaleKeys0[];
-extern u8 gActorParticleBarberColorKeys0[];
-extern u8 gActorParticleBarberScaleKeys1[];
-extern u8 gActorParticleBarberColorKeys1[];
-extern u8 gActorParticleBarberScaleKeys2[];
-extern u8 gActorParticleBarberColorKeys2[];
-void Color_EvalKeys(s32 *k, s32 t, u32 *out);
+extern FloatKey gActorParticleHairAlphaKeys[];
+extern Vec3Key gActorParticleBarberScaleKeys0[];
+extern ColorKey gActorParticleBarberColorKeys0[];
+extern Vec3Key gActorParticleBarberScaleKeys1[];
+extern ColorKey gActorParticleBarberColorKeys1[];
+extern Vec3Key gActorParticleBarberScaleKeys2[];
+extern ColorKey gActorParticleBarberColorKeys2[];
 
 /* The particles' draw slot callback, for one part: the spray as small
  * translucent models facing the camera; the hair tumbling in the owner's
@@ -1049,8 +986,8 @@ void ActorParticles_Draw(DrawSlot *slot)
     ModelMat *tex;
     ModelMatSet *set;
     u16 flags = 0;
-    u8 *scaleKeys;
-    u8 *colorKeys;
+    Vec3Key *scaleKeys;
+    ColorKey *colorKeys;
     u32 rgb;
     f32 boneMtx[16];
     Vec3f rot;
@@ -1128,7 +1065,7 @@ void ActorParticles_Draw(DrawSlot *slot)
     }
 }
 
-/* Starts the spray on owner (an actor entering state 0x6F). */
+/* Starts the spray on owner (an actor entering NPC_STATE_CONTEST_GRIP). */
 void ActorParticles_SpawnSpray(void *obj)
 {
     StageObj *spray;
@@ -1178,7 +1115,6 @@ void GalleryPoints_Update(StageObj *obj)
     }
 }
 
-void GalleryPoints_Draw(DrawSlot *slot);
 /* The points' init state: 6 frames to show, the position and age
  * cleared, and a draw slot (without one the object frees itself). */
 void GalleryPoints_Init(StageObj *obj)
@@ -1220,7 +1156,7 @@ void GalleryPoints_Run(StageObj *obj)
         Gs_SetState(RS_MTX_SLOT(0), (u32)&mtx);
         Camera_ProjectPoint((f32 *) pts, (f32 *) &obj->pos);
         pts->y -= pts->age * 20;
-        OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+        OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
     }
 }
 
@@ -1254,12 +1190,11 @@ void GalleryPoints_Draw(DrawSlot *slot)
 
     if (obj->visible) {
         x = 640.0f * pts->x / 512.0f;
-        Font_SetSpacing(0x28, 0x28);
+        Font_SetSpacing(40, 40);
         Text_PrintfAt(-15.0f + x, 7.0f + pts->y, 5, gGalleryPointsFmt, pts->value);
     }
 }
 
-void GalleryPoints_Update(StageObj *o);
 /* Shows the points n of a downed target, rising from pos. */
 void GalleryPoints_Spawn(Vec3f *pos, s16 points)
 {
@@ -1274,10 +1209,6 @@ void GalleryPoints_Spawn(Vec3f *pos, s16 points)
     }
 }
 
-s16 Village_MealVisitTalk(s32 id);
-void Talk_Say(s32 msg, s8 a);
-void Npc_HoldRoute(Em *npc);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
 extern s8 gMenuInputLock;
 
 /* Opens the meal scene with the house's cook npc: the cook's offer, and
@@ -1336,24 +1267,19 @@ void MealScene_Close(void)
 }
 
 extern MealEffect gMealEffects[][3];
-extern char **gMealTasteTexts[];
-u8 Notice_PushItem(char *);
-u16 Rand_Next(s32 stream);
 /* unit's own declaration: declared returning s32 as the game's callers use it; with the definition's u8 the calls compile differently */
 s32 Village_FacilityLevel(s32 sub);
-void Village_ClearMealVisit(u16 id);
-s32 RateFlag_SetAndNotify(s32 a);
 s32 Award_Grant(s32 a);
 
 /* Gives the meal's bonuses, by the cook's group (three groups of
  * townspeople) and the house's level, with a notice for each and a random
  * line on the taste; marks the meal eaten, adds meal points (the level
- * times 12, while below 0x136) and counts it in the meal record (two a
- * meal), which at 100 sets rate flag 10 and grants award 0x21. arg is the
+ * times 12, while below 310) and counts it in the meal record (two a
+ * meal), which at 100 sets rate flag 10 and grants AWARD_MEALS. arg is the
  * scene, read as its cook. */
 void Meal_ApplyEffects(u8 **scene)
 {
-    u8 *kind = *scene + 0x438;    /* the cook's NpcWork.id (Em.work) */
+    u8 *kind = *scene + 1080;    /* the cook's NpcWork.id (Em.work) */
     s8 cookGroup;
     s8 houseLevel;
     MealEffect *effect;
@@ -1394,10 +1320,10 @@ void Meal_ApplyEffects(u8 **scene)
     }
     gLobby->mealEaten = 1;
     Village_ClearMealVisit(*kind);
-    if (gSave.mealPoints < 0x136) {
+    if (gSave.mealPoints < 310) {
         gSave.mealPoints += houseLevel * 12;
     }
-    if (gSave.recordCounts[RECORD_MEALS] < 0xFDE8) {
+    if (gSave.recordCounts[RECORD_MEALS] < RECORD_TALLY_MAX) {
         gSave.recordCounts[RECORD_MEALS] += 2;
         if (gSave.recordCounts[RECORD_MEALS] >= 100) {
             if (!(gSave.rateFlags & (1 << 10))) {
@@ -1410,17 +1336,8 @@ void Meal_ApplyEffects(u8 **scene)
     Notice_PushItem(tasteTexts[(u16)Rand_Next(1) % 4]);
 }
 
-s32 Talk_Update(void);
-void FadeA_Start(s32 a);
-u8 FadeA_GetState(void);
-void Actor_SetState(void *, s32, s32);
-void Actor_MoveToSceneSpot(Player *p, s16 id);
 /* unit's own declaration: declared with the argument types the game's callers pass; with the definition's (s8, s32, s32) the call compiles differently */
 void NpcScene_Start(s32 a, s32 mask, u8 level);
-s32 NpcScene_IsDone(void);
-void Npc_HideAndAdvance(Em *npc);
-void CamReq_Kitchen(s32 a);
-u16 LobbyPad_Get(s32 a);
 
 /* TOWN_MODE_MEAL_SCENE's update: one MEAL_STEP_* at a time (enum
  * MealStep). Talk_Update's answer 0 is taken as accepting, 3 as
@@ -1460,8 +1377,8 @@ void MealScene_Update(void)
             CamFocus_End();
             Actor_MoveToSceneSpot(scene->pl, scene->plSpot);
             Actor_MoveToSceneSpot((Player *)scene->npc, scene->npcSpot);
-            Actor_SetState(scene->pl, 0, 0x25);
-            Actor_SetState(scene->npc, 0, 0x25);
+            Actor_SetState(scene->pl, 0, 37);
+            Actor_SetState(scene->npc, 0, 37);
         }
         break;
     case MEAL_STEP_SEATED:
@@ -1490,15 +1407,15 @@ void MealScene_Update(void)
     case MEAL_STEP_COOKING:
         if (NpcScene_IsDone() == 1) {
             scene->step++;
-            Actor_SetState(scene->pl, 0, 0x29);
-            Actor_SetState(scene->npc, 0, 0x29);
+            Actor_SetState(scene->pl, 0, 41);
+            Actor_SetState(scene->npc, 0, 41);
         }
         break;
     case MEAL_STEP_SERVE:
-        if (scene->pl->motionId[0] == 0x261) {
+        if (scene->pl->motionId[0] == PL_MOT_TOWN_SEATED) {
             scene->step++;
-            Actor_SetState(scene->pl, 0, 0x18);
-            Actor_SetState(scene->npc, 0, 0x18);
+            Actor_SetState(scene->pl, 0, 24);
+            Actor_SetState(scene->npc, 0, 24);
             Meal_ApplyEffects((u8 **)scene);
         }
         break;
@@ -1585,7 +1502,6 @@ void GalleryMuzzle_Update(StageObj *obj)
     }
 }
 
-void GalleryMuzzle_Draw(DrawSlot *slot);
 /* The muzzle flash's init state: its roll (none for type 0, random for the
  * others) and its life by type, and a draw slot (without one the object
  * frees itself). */
@@ -1633,7 +1549,7 @@ void GalleryMuzzle_Run(StageObj *obj)
         obj->state++;
     } else if (obj->node != NULL) {
         Vec_Copy(obj->node->pos, (f32 *)&obj->pos);
-        OT_AddByDepth(gDrawOtSorted, obj->node, 0x40, 0);
+        OT_AddByDepth(gDrawOtSorted, obj->node, 64, 0);
     }
 }
 
@@ -1652,12 +1568,12 @@ void GalleryMuzzle_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-extern u8 gGalleryMuzzleScaleKeys0[];
-extern u8 gGalleryMuzzleColorKeys0[];
-extern u8 gGalleryMuzzleScaleKeys1[];
-extern u8 gGalleryMuzzleColorKeys1[];
-extern u8 gGalleryMuzzleScaleKeys2[];
-extern u8 gGalleryMuzzleColorKeys2[];
+extern Vec3Key gGalleryMuzzleScaleKeys0[];
+extern ColorKey gGalleryMuzzleColorKeys0[];
+extern Vec3Key gGalleryMuzzleScaleKeys1[];
+extern ColorKey gGalleryMuzzleColorKeys1[];
+extern Vec3Key gGalleryMuzzleScaleKeys2[];
+extern ColorKey gGalleryMuzzleColorKeys2[];
 
 /* The muzzle flash's draw (its draw slot's): its type's model set of the
  * common effect models, scaled and coloured by the type's keys at its frame
@@ -1669,14 +1585,14 @@ void GalleryMuzzle_Draw(DrawSlot *slot)
     StageObj *obj = slot->owner;
     Vec3f scale;
     Vec3f rot;
-    u8 *scaleKeys;
+    Vec3Key *scaleKeys;
     u32 color;
     f32 mtx[16];
     GalleryMuzzle *muzzle = (GalleryMuzzle *)obj->buf;
     Model *model = gCommonModels[0];
     ModelMat *mats;
     ModelMatSet *set;
-    u8 *colorKeys;
+    ColorKey *colorKeys;
     u16 flags = 0;
 
     if (model != NULL && model->active != 0 && obj->visible != 0) {
@@ -1713,8 +1629,6 @@ void GalleryMuzzle_Draw(DrawSlot *slot)
     }
 }
 
-void GalleryMuzzle_Update(StageObj *obj);
-
 /* Spawns the muzzle flash as the gallery's gun fires: its three types at
  * one point 75 units ahead of pos along the camera's view (the reverse of
  * gCamMatrix's third row). */
@@ -1746,60 +1660,60 @@ void GalleryMuzzle_Spawn(f32 *pos)
 /* The shot's keys (0 the flash, 1 the puffs) and the puffs' start delays,
  * the particles' keys (the hair's alpha, the barber's three pairs), the
  * meals' bonuses, and the muzzle flash's scale and colour keys by type. */
-u8 gGalleryShotAlphaKeys0[32] = {
+FloatKey gGalleryShotAlphaKeys0[4] = {
 #include "lobby/007DCDF0.inc"
 };
-u8 gGalleryShotScaleKeys0[48] = {
+Vec3Key gGalleryShotScaleKeys0[3] = {
 #include "lobby/007DCE10.inc"
 };
-u8 gGalleryShotAlphaKeys1[32] = {
+FloatKey gGalleryShotAlphaKeys1[4] = {
 #include "lobby/007DCE40.inc"
 };
-u8 gGalleryShotScaleKeys1[56] = {
+f32 gGalleryShotScaleKeys1[14] = {
 #include "lobby/007DCE60.inc"
 };
 s8 gGalleryShotDelays[8] = {
 #include "lobby/007DCE98.inc"
 };
-u8 gActorParticleHairAlphaKeys[32] = {
+FloatKey gActorParticleHairAlphaKeys[4] = {
 #include "lobby/007DCEA0.inc"
 };
-u8 gActorParticleBarberScaleKeys0[64] = {
+Vec3Key gActorParticleBarberScaleKeys0[4] = {
 #include "lobby/007DCEC0.inc"
 };
-u8 gActorParticleBarberColorKeys0[32] = {
+ColorKey gActorParticleBarberColorKeys0[4] = {
 #include "lobby/007DCF00.inc"
 };
-u8 gActorParticleBarberScaleKeys1[80] = {
+Vec3Key gActorParticleBarberScaleKeys1[5] = {
 #include "lobby/007DCF20.inc"
 };
-u8 gActorParticleBarberColorKeys1[32] = {
+ColorKey gActorParticleBarberColorKeys1[4] = {
 #include "lobby/007DCF70.inc"
 };
-u8 gActorParticleBarberScaleKeys2[64] = {
+Vec3Key gActorParticleBarberScaleKeys2[4] = {
 #include "lobby/007DCF90.inc"
 };
-u8 gActorParticleBarberColorKeys2[32] = {
+ColorKey gActorParticleBarberColorKeys2[4] = {
 #include "lobby/007DCFD0.inc"
 };
 MealEffect gMealEffects[3][3] = {
 #include "lobby/007DCFF0.inc"
 };
-u8 gGalleryMuzzleScaleKeys0[64] = {
+Vec3Key gGalleryMuzzleScaleKeys0[4] = {
 #include "lobby/007DD030.inc"
 };
-u8 gGalleryMuzzleColorKeys0[32] = {
+ColorKey gGalleryMuzzleColorKeys0[4] = {
 #include "lobby/007DD070.inc"
 };
-u8 gGalleryMuzzleScaleKeys1[48] = {
+Vec3Key gGalleryMuzzleScaleKeys1[3] = {
 #include "lobby/007DD090.inc"
 };
-u8 gGalleryMuzzleColorKeys1[32] = {
+ColorKey gGalleryMuzzleColorKeys1[4] = {
 #include "lobby/007DD0C0.inc"
 };
-u8 gGalleryMuzzleScaleKeys2[96] = {
+Vec3Key gGalleryMuzzleScaleKeys2[6] = {
 #include "lobby/007DD0E0.inc"
 };
-u8 gGalleryMuzzleColorKeys2[48] = {
+ColorKey gGalleryMuzzleColorKeys2[6] = {
 #include "lobby/007DD140.inc"
 };

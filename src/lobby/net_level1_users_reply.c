@@ -5,16 +5,45 @@
  */
 #include "common.h"
 #include "lobby_net.h"
+#include "libc.h"
 
+/*
+ * Sends 630A as a request; onReply gets its reply. Returns the request's
+ * slot, -1 if none is free.
+ */
+s32 LobbyReq_Level1Users(u16 id, void (*onReply)(NetMsg, NetMsg *))
+{
+    s32 req;
 
-void NetList_Select(s32 level, u16 id);
-void NetList_Enter(u8 level);
-void LobbyNotify_UserInOut(u8 kind);
-void LobbyReply_Level1UsersRead(void);
-void LobbyMsg_ReadUsers(u8 *count, NetUserRec *out);
-s32 LobbyPkt_CurrentPlace(void);
-s32 LobbyPkt_Level1Open(u16 id);
-u8 *LobbyMsg_ReadU32(void *dst);
+    req = NetReq_Alloc(1, 0, onReply);
+    if (req != -1) {
+        memset(gLobbyNet.users, 0, sizeof(gLobbyNet.users));
+        gLobbyNet.req[req].seq = LobbyPkt_Level1Users(id);
+        return req;
+    }
+    return -1;
+}
+
+/* user i of 630A's reply: id, name and text */
+s32 LobbyNet_GetUser(u16 i, char *id, char *name, u8 *text)
+{
+    strcpy(id, gLobbyNet.users[i].u.id);
+    strcpy(name, gLobbyNet.users[i].u.name);
+    memcpy(text, gLobbyNet.users[i].u.text, 256);
+    return 0;
+}
+
+/* Sends 630A for level-1 entry id; returns its sequence number. */
+s32 LobbyPkt_Level1Users(u16 id)
+{
+    s32 seq;
+
+    seq = LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_LEVEL1_USERS) & 0xFFFF;
+    LobbyPkt_PutU16(&gLobbyPkt, id);
+    LobbyPkt_End(&gLobbyPkt);
+    LobbyPkt_Send(&gLobbyPkt);
+    return seq;
+}
 
 /* the reply to 630A */
 void LobbyReply_Level1Users(void)
@@ -33,7 +62,7 @@ void LobbyReply_Level1UsersRead(void)
 }
 
 /* 630A's reply: u16, u8 fields per user, u8 users (at most 10), then per user
- * blob id (8), blob name (0x10), blob text (0x100) and the fields after the
+ * blob id (8), blob name (16), blob text (256) and the fields after the
  * third skipped (u16 length, bytes) */
 void LobbyMsg_ReadUsers(u8 *count, NetUserRec *out)
 {
@@ -53,8 +82,8 @@ void LobbyMsg_ReadUsers(u8 *count, NetUserRec *out)
     *count = n;
     for (i = 0; i < n; i++) {
         cur = LobbyMsg_GetBlob(out->u.id, 8, cur);
-        cur = LobbyMsg_GetBlob(out->u.name, 0x10, cur);
-        cur = LobbyMsg_GetBlob(out->u.text, 0x100, cur);
+        cur = LobbyMsg_GetBlob(out->u.name, 16, cur);
+        cur = LobbyMsg_GetBlob(out->u.text, 256, cur);
         out++;
         if (fields > 3) {
             for (j = 0; j < fields - 3; j++) {
@@ -76,7 +105,7 @@ void LobbyNotify_Level1UserIn(void)
     LobbyNotify_UserInOut(0);
 }
 
-/* the reply to 6890 and its notification: u32; route 0x2B */
+/* the reply to 6890 and its notification: u32; route NET_ROUTE_6890 */
 void LobbyReply_6890(void)
 {
     if (gLobbyNet.replyErr == 0) {

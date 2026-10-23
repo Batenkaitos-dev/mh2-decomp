@@ -137,7 +137,7 @@ typedef struct CseVagiChunk {
 
 typedef struct CseMergeHead {
     u32 tag;
-    u32 size;           /* 0x04: 0x20 */
+    u32 size;           /* 0x04: 32 */
     u32 version;        /* 0x08: 1 */
     u32 unkC;
     u32 bodySize;       /* 0x10 */
@@ -168,7 +168,7 @@ typedef struct CseMergeHead {
  * numbers (a program present in two banks is an error, -1), the samples
  * and Vagi records are appended, their indices and SPU addresses moved
  * past the banks before them. Each chunk is padded to 16 bytes with
- * 0xFF. Returns the merged header's size (also stored in its unkC).
+ * bytes of 255. Returns the merged header's size (also stored in its unkC).
  * Compiled at optimization level 4: at level 3 the same C allocates
  * other registers (the max loop's counter, the unrolled loop's limit and
  * the Prog merge loop's walkers). max is unsigned (the search compares
@@ -205,7 +205,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
 
     pos = 0;
     mergedHead->tag = CSE_TAG("Head");
-    mergedHead->size = 0x20;
+    mergedHead->size = 32;
     mergedHead->version = 1;
     mergedHead->unkC = 0;
     mergedHead->bodySize = 0;
@@ -216,13 +216,13 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
         mergedHead->bodySize += srcHeads[i]->bodySize;
     }
 
-    pos += 0x20;
+    pos += 32;
     mergedHead->progOffset = pos;
     prog = (CseMergeProg *)((u8 *)mergedHead + pos);
     smplBase = 0;
     size = 0;
     max = 0;
-    size += 0x10;
+    size += 16;
     prog->h.tag = CSE_TAG("Prog");
     prog->h.size = 0;
     prog->h.max = 0;
@@ -261,7 +261,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
         smplBase += smplCountChunk->max + 1;
     }
     for (; size & 0xF; size++) {
-        ((u8 *)prog)[size] = 0xFF;
+        ((u8 *)prog)[size] = 255;
     }
     pos += size;
     prog->h.size = size;
@@ -270,7 +270,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     smpl = (CseChunk *)((u8 *)mergedHead + pos);
     size = 0;
     vagiBase = 0;
-    size += 0x10;
+    size += 16;
     smpl->tag = CSE_TAG("Smpl");
     smpl->size = 0;
     smpl->max = 0;
@@ -290,7 +290,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     }
     smpl->max--;
     for (; size & 0xF; size++) {
-        ((u8 *)smpl)[size] = 0xFF;
+        ((u8 *)smpl)[size] = 255;
     }
     pos += size;
     smpl->size = size;
@@ -299,7 +299,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     vagi = (CseChunk *)((u8 *)mergedHead + pos);
     size = 0;
     spuBase = 0;
-    size += 0x10;
+    size += 16;
     vagi->tag = CSE_TAG("Vagi");
     vagi->size = 0;
     vagi->max = 0;
@@ -318,7 +318,7 @@ s32 CseBank_Merge(void *out, void *banks, s32 count)
     }
     vagi->max--;
     for (; size & 0xF; size++) {
-        ((u8 *)vagi)[size] = 0xFF;
+        ((u8 *)vagi)[size] = 255;
     }
     vagi->size = size;
     pos += size;

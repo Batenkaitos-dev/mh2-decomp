@@ -2,6 +2,7 @@
 #define COMBINE_H
 
 #include "common.h"
+#include "player.h"
 
 /*
  * A combination recipe (8 bytes). gRecipes holds the two-item recipes, listed per first
@@ -13,7 +14,7 @@ typedef struct Recipe {
     s16 result;         /* 0x02: the item made */
     s8 rateClass;       /* 0x04: base success rate, gRecipeRates (gRecipeRateLabels) */
     u8 yieldClass;      /* 0x05: the quantity made: gRecipeYieldBase, gRecipeYieldChances, gRecipeYieldLabels */
-    u8 listBit;         /* 0x06: its bit in gSave.recipeBits, and its number (gRecipesEx's from 0xBD: Combine_FindRecipeIndex) */
+    u8 listBit;         /* 0x06: its bit in gSave.recipeBits, and its number (gRecipesEx's from RECIPE_COUNT: Combine_FindRecipeIndex) */
     u8 flags;           /* 0x07: RECIPE_* below */
 } Recipe;
 typedef char Recipe_size_check[(sizeof(Recipe) == 8) ? 1 : -1];
@@ -28,6 +29,31 @@ typedef char Recipe_size_check[(sizeof(Recipe) == 8) ? 1 : -1];
                                        the two-item ones' */
 #define RECIPE_TOTAL        (RECIPE_COUNT + RECIPE_EX_COUNT) /* the bits of gSave.recipeBits */
 
+s32 Combine_ItemHasRecipe(s16 item);
+Recipe *Combine_FindRecipe(s16 itemA, s16 itemB);
+s16 Combine_Do(u8 *count, Player *player, s16 itemA, s16 itemB, s32 mode);
+s32 Combine_HasFixedYield(Player *player, u16 item);
+s32 Combine_RecipeRate(Recipe *recipe, s32 mode);
+s32 Combine_GetRate(s16 itemA, s16 itemB, s32 mode);
+u8 Recipe_YieldBase(Recipe *recipe);
+u8 Recipe_YieldAmount(Recipe *recipe);
+void *Recipe_YieldLabel(Recipe *recipe);
+s32 Combine_IsKnown(s16 itemA, s16 itemB);
+s32 Combine_ItemUsable(s16 item);
+s32 Combine_CanUsePair(s16 itemA, s16 itemB);
+s16 Combine_Do3(u8 *count, Player *player, s32 itemA, s32 itemB, s32 itemC, s32 mode);
+s32 Combine_RecipeRate3(s32 itemA, s32 itemB, s32 itemC, s32 mode);
+s32 Combine_IsKnown3(s32 itemA, s32 itemB, s32 itemC);
+s32 Combine_KnowsMostRecipes(void);
+s32 Recipe_CheckAllKnown(void);
+s32 Recipe_IsKnown(Recipe *recipe);
+void Recipe_SetKnown(Recipe *recipe, s16 *unused);
+s32 Combine_ItemHasRecipeIn(s16 item, u8 flag);
+s32 Combine_FindRecipeIndex(Recipe *recipe, s16 *items);
+s32 Recipe_IsListedFor(s16 item, s32 flags);
+s32 Recipe_CanUse(Player *player, Recipe *recipe);
+s32 Item_IsBait(u16 item, s32 unused1);
+s32 Recipe_MatchesFlags(Recipe *recipe, s32 flags);
 extern Recipe gRecipes[];
 extern Recipe gRecipesEx[];
 

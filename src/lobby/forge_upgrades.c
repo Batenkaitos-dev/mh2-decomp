@@ -21,8 +21,10 @@
 extern RecipeId gForgeRecipeList[];
 extern ArmorUpgradeRow *gArmorUpgradeRows[];
 #include "save.h"
-void *memset(void *, s32, u32);
-s32 Save_IsItemObtained(SaveData *save, u16 item);
+#include "lobby_forge.h"
+#include "font.h"
+#include "offer_menu.h"
+#include "libc.h"
 
 /*
  * Returns 1 when the recipe (an equipment type and id) is in gForgeRecipeList,
@@ -91,8 +93,6 @@ static ArmorData *ArmorPiece_GetData(EquipItem *piece)
         return NULL;
     }
 }
-
-s32 ArmorUpgrade_GetMaterials(EquipItem *piece, ItemStack *out, s8 *cond);
 
 /*
  * Returns 1 when the piece can't be upgraded yet: it isn't armour, it is at
@@ -236,11 +236,8 @@ s32 ArmorUpgrade_GetDerived(EquipItem *piece, u16 *out)
     return count;
 }
 
-s32 Items_DrawNeedLine(s16, s16, u16, s32, u32);
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, u32 c1, u32 c2, s32 k); /* unit's own declaration: the coordinates are passed as s16 and the kind as s32 here; with the definition's s32 coordinates and s16 kind, the call converts them differently */
 void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 void Text_PrintfColored(char *fmt, ...);
 
 /*
@@ -254,23 +251,23 @@ void Forge_DrawMaterials(s16 x, s16 y, ItemStack *need, s8 count)
     s16 i;
     s16 shown;
 
-    Win_Draw(x, y, 0x132, 0x72, 0xBDB59F6C, 0xA0202020, 6);
+    Win_Draw(x, y, 306, 114, 0xBDB59F6C, 0xA0202020, 6);
     y += 6;
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0xE, y);
+    Font_SetPos(x + 14, y);
     Text_PrintfColored(gForgeTexts[FORGE_TEXT_MATERIALS_HEAD]);
     shown = 0;
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < count; i++, need++) {
         if (need->item != 0) {
-            y += 0x14;
-            Items_DrawNeedLine(x + 0x22, y, need->item, need->count, 0x807F7F7F);
+            y += 20;
+            Items_DrawNeedLine(x + 34, y, need->item, need->count, 0x807F7F7F);
             shown++;
         }
     }
     if (shown == 0) {
-        Font_SetPos(x + 0x28, y + 0x28);
+        Font_SetPos(x + 40, y + 40);
         Text_PrintfColored(gForgeTexts[FORGE_TEXT_NO_MATERIALS]);
     }
 }

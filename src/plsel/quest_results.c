@@ -10,9 +10,15 @@
  * enum PlselResStep, one page after another. The pages' lines are formatted
  * from sub_main's text tables (gPlselTexts, gHelpTexts_6), indexed by
  * number where each entry is used once.
+ *
+ * The parts share one file because their data does: the .data tables lie
+ * in another order than the code that reads them (the item box menu's
+ * windows after the awards' tables), so no cut between two parts splits
+ * the file's data in two.
  */
 #include "common.h"
 #include "sprite.h"
+#include "screen_fade.h"
 extern u8 gHelpShow;
 extern u8 gHelpPage;
 extern s8 gHelpColumn;
@@ -33,114 +39,53 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "prim.h"
 #include "hud.h"
 #include "plsel/quest_results.h"   /* the texts this file uses (tools/content_gen.py) */
-
-/* sub_main's tables of texts: the player select screens' (PLSEL_TEXT_*)
- * and page 6 of the help, the item box menu's (IBOX_TEXT_*). */
-extern char *gPlselTexts[];
-extern char *gHelpTexts_6[];
-
-/* sub_main's result-page texts */
-extern char *gDeathPenaltyText;
-extern char *gWtdClassCText;
-extern char *gHrUpText;
-extern char *gHrpNoLossText;
-extern char *gHrMaxText;
-extern char *gHrpNotMetText;
+#include "texture.h"
+#include "area_draw.h"
+#include "fishing.h"
+#include "model.h"
+#include "shake.h"
+#include "stream.h"
+#include "draw_helpers.h"
+#include "draw_slots.h"
+#include "file_load.h"
+#include "font.h"
+#include "frame.h"
+#include "game_util.h"
+#include "menu_util.h"
+#include "packet_tim2.h"
+#include "rand.h"
+#include "libc.h"
+#include "sprite_queue.h"
 
 /* The game compiled this file at optimization level 4, as the other plsel
  * files: Plsel_UpdateSizeRecords matches only there. */
 #pragma optimization_level 4
 
-s32 Gs_SetState(u8 reg, u32 v);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n); /* sub_main: table is a u32 * */
-void Plsel_UpdateSizeRecords(void);
-void Plsel_CheckTargetBonus(PlselWork *w);
 struct ListWin;
 void ListPanel_DrawAlpha(struct ListWin *w, s8 *title, s32 sel, u8 alpha); /* sub_main: w is a struct ListWin * */
 void Gfx_SetBlend(s32, s32);
 void Text_SetSize(s32 size);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16, s16);
 void Text_Printf(s8 *fmt, ...);
 void Text_SetColor(s16 color);
-s32 Quest_IsDrill(void);
-void PlselRes_EmptyCloseHook(void);
-void Stream_Play(s32 ch, s32 flid);
-void Plsel_BuildResultText(s32);
-void PlselRes_PlayDecideSe(void);
 
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void Stream_FadeTo(s32 ch, s16 frames, s16 level);
-void *memcpy(void *, const void *, u32);
-void *memset(void *, s32, u32);
 extern u8 gPouchBackup[];
 
-void Save_AddMoney(s32 n);
-void ScreenCapture_Draw(void);
-void Plsel_DrawSaveRecordMenu(void);
-void Plsel_DrawItemBoxMenu(void);
-s32 Game_IsOnline(void);
-s32 Quest_GetOutcome(s32 withLoss);
-s32 Save_TestEventFlag(s32);
-s32 Quest_IsTraining(void);
-s32 Save_IsQuestCleared(u16);
 /* unit's own declaration: declared here taking a u16; with the definition's s32 parameter the award checks compile differently */
 s32 Award_Grant(u16);
 
-void Tex_LoadQuestEndFile(void);
-void Tex_SetQuestEndImages(void);
-s32 LoadCompressedFile(u8 *dst, s32 id);
-u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
-void Sound_ReloadBank7(void);
-s32 Save_AddCounterPoints(void);
-s32 Save_HasTitle(s32);
-void Save_SetTitle(s32);
 
 
 
 
 
-s32 EventFlag_Test(s32);
-void EventFlag_Set(s32);
-
-void Shake_Start(u8 id, u8 flags, f32 amp);
-void Hud_ResetMenuState(void);
-
-
-
-
-
-
-u16 Record_GroupLargest(SaveData *save, u8 group, u8 *out);
-u16 Record_GroupSmallest(SaveData *save, u8 group, u8 *out);
-
-void PlselRes_Close(void);
-void PlselRes_BeginClose(void);
 
 void Gfx_SetTexFilter(s32);
-void Tex_Prepare(s32, s32);
 void Tex_Bind(s32);
-s32 Sprite_Draw(Sprite *s);
 struct TexRect;
-void TexRect_DrawRotated(struct TexRect *r, s32 angle);
-void Plsel_QueueQuestUnlock(u16 *, s32);
 
-u16 Rand_Next(s32);
-s32 MonsterNote_Record(u16 id, u16 val);
 extern NextQuest gNextQuest;
 
-void PlselRes_PlayPageSe(void);
-void Plsel_ComputeReward(void);
-void Plsel_SumRecordRewards(void);
-void Plsel_SumQuestRewards(void);
-void Plsel_TallyRewards(void);
-void Plsel_CheckQuestAwards(void);
-s32 Plsel_CheckSizeRecords(SceneState *scene, s32 arg1);
-void Plsel_CheckMonsterAwards(void);
-
-void Plsel_DrawResultsBg(void);
 void Text_PrintfColored(const char *fmt, ...);
-void PlselRes_DrawArrow(s32, s16, s16, s32);
 extern char gPlselArrowUp[];
 extern char gPlselArrowDown[];
 
@@ -148,73 +93,20 @@ extern char gPlselArrowDown[];
 u16 Pouch_Add(Player *, u16, s16);
 extern Player gPlayers[];
 
-u8 MonsterGroup_First(u8);
-
-char *strcpy(char *dst, const char *src);
-char *strcat(char *dst, const char *src);
-s32 sprintf(char *, const char *, ...);
 extern const char gPlselStrFmt[];
-extern char **gAwardNoticeLines[];
-extern char *gAwardGalleryTitles[];
-extern char *gAwardDojoTitles[];
-char *strchr(char *, s32);
 
-void Sjis_Widen(char *, char *);
 void Text_Draw(char *);
 
-f32 Monster_SizeFromPercent(u8 kind, u16 x);
 char *fptodp(f32);
-s8 SaveRecord_KindIndex_Unk(u8 *);
-extern char *gArenaEmLineFmts[];
-extern char *gMonsterNames[];
-extern char *gArenaEmRankNames[];
 
-extern char *gHunterTitleDescs[];
-
-void Plsel_DrawMoney(void);
-void *Shake_GetOffset(u8 id);
-void HelpWindow_DrawCurrent(void);
-void Draw_Icons(Icon *icons, u8 count);
-void HelpWindow_Draw(u8 page, u16 idx, s8 c);
-void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag);
-void ItemList_DrawPouch(s32 a, s32 b, s32 flags);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void Window_DrawText(void *p, s16 *pos, u8 *text);
-
-s32 Quest_IsMustOrder(void);
-u16 Save_RankFromPoints(SaveData *s);
-s32 QuestGoal_IsDone(s32);
-s32 Hr_AddPoints(s32);
-
-void Plsel_CheckRankAwards(s16 arg0);
 
 extern PlselKind gRecordCountEntries[];
-s32 Save_IsItemObtained(SaveData *save, u16 item);
 
-void Plsel_CheckVersusAwards(void);
-
-
-MonsterNoteDef *MonsterNote_FindKind(s32 kind);
-
-s32 Records_HuntedAtLeast(f32 f, SaveData *save, u8 m, u16 n);
-
-s32 QuestGoal_IsUsed(s32);
-
-extern char *gArenaEmPenHelp[];
-void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
-
-u16 Record_GetLargest(SaveData *save, u16 monster);
-u16 Record_GetSmallest(SaveData *save, u16 monster);
-void Record_SetLargest(SaveData *save, u16 monster, u16 size);
-void Record_SetSmallest(SaveData *save, u16 monster, u16 size);
-
-extern char *gResultRuleText;
 s32 Str_Length(char *);
 
 extern char gPlselPageFmt[];
-
-s32 Rate_GetSnapshot(s32);
 
 /* The file's .bss, declared from the highest address down: the compiler
  * places them last-declared first. */
@@ -278,13 +170,13 @@ ListPanel gPlselItemBoxWin = {
 Panel gPlselItemBoxTimeWin = {
 #include "plsel/00D78EB0.inc"
 };
-u32 gPlselItemBoxHintIcon[2] = {
+Icon gPlselItemBoxHintIcon[1] = {
 #include "plsel/00D78EC8.inc"
 };
-u32 gPlselItemBoxNextIcon[2] = {
+Icon gPlselItemBoxNextIcon[1] = {
 #include "plsel/00D78ED0.inc"
 };
-u32 gPlselResultsBgIcon[2] = {
+Icon gPlselResultsBgIcon[1] = {
 #include "plsel/00D78ED8.inc"
 };
 Frame gPlselItemBoxFrame = {
@@ -329,10 +221,9 @@ u16 gPlselOfflineAwardsE[88] = {
 u16 gPlselAwardTblD[16] = {
 #include "plsel/00D79230.inc"
 };
-u32 gPlselResultsBgDepth[8] = {
+f32 gPlselResultsBgDepth[4][2] = {
 #include "plsel/00D79250.inc"
 };
-extern char *gArenaEmPenMenuTexts[];
 ListPanel gPlselSaveRecPanel = {
 #include "plsel/00D79270.inc"
 };
@@ -348,13 +239,13 @@ ListPanel gPlselSaveRecWinB = {
 ListWin gPlselSaveRecPanel2 = {
 #include "plsel/00D792F0.inc"
 };
-u32 gPlselQuestUnlocks0[4] = {
+u16 gPlselQuestUnlocks0[8] = {
 #include "plsel/00D79310.inc"
 };
-u32 gPlselQuestUnlocks1[8] = {
+u16 gPlselQuestUnlocks1[16] = {
 #include "plsel/00D79320.inc"
 };
-u32 gPlselQuestUnlocks2[10] = {
+u16 gPlselQuestUnlocks2[20] = {
 #include "plsel/00D79340.inc"
 };
 u16 gPlselQuestUnlockIds[4] = {
@@ -398,18 +289,18 @@ void PlselRes_DrawPanel(void)
 {
     Text_SetSize(4);
     Gs_SetState(RS_ALPHA_REF, 0);
-    Gfx_SetBlend(4, 5);
-    ListPanel_DrawAlpha(gPlselResPanels[0], 0, -1, 0xFF);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    ListPanel_DrawAlpha(gPlselResPanels[0], 0, -1, 255);
 }
 
 void Plsel_FadeOutMusic(void)
 {
-    Stream_FadeTo(0, 0x1E, 0);
+    Stream_FadeTo(0, 30, 0);
 }
 
 void Plsel_RestorePouch(void)
 {
-    memcpy(gSave.pouch, gPouchBackup, 0x50);
+    memcpy(gSave.pouch, gPouchBackup, 80);
 }
 
 void PlselRes_PlayDecideSe(void)
@@ -734,8 +625,8 @@ extern u16 gQuestCapturedKind;
 /*
  * Rolls whether the captured monster may be kept as an arena record: never
  * in a drill, a training quest or a quest without a fee, nor before save
- * event flag 0xC4. gPlselArenaRecordChances gives each kind's chance in 32;
- * one kind also needs hunter title 0x8D. Returns 1 to open the arena record
+ * event flag EVENT_FLAG_ARENA_CUP_OPEN. gPlselArenaRecordChances gives each kind's chance in 32;
+ * one kind also needs hunter title 141. Returns 1 to open the arena record
  * menu (PLRES_ARENA_MENU), else 0.
  */
 s32 Plsel_RollArenaRecord(void)
@@ -756,7 +647,7 @@ s32 Plsel_RollArenaRecord(void)
     if (gScene.questPaid == 0) {
         return 0;
     }
-    if (Save_TestEventFlag(0xC4) == 0) {
+    if (Save_TestEventFlag(EVENT_FLAG_ARENA_CUP_OPEN) == 0) {
         return 0;
     }
     capturedKind = gQuestCapturedKind;
@@ -769,7 +660,7 @@ s32 Plsel_RollArenaRecord(void)
         entry += 2;
         entryKind = *entry;
     }
-    if (capturedKind == 0x35 && Save_HasTitle(0x8D) == 0) {
+    if (capturedKind == 53 && Save_HasTitle(141) == 0) {
         return 0;
     }
     if ((Rand_Next(1) & 0x1F) < entry[1]) {
@@ -780,7 +671,7 @@ s32 Plsel_RollArenaRecord(void)
 
 /*
  * Whether an offline clear goes on to the opening movie (SCENE_OPENING,
- * OPENING_SUB_MOVIE): save event flag 0x184 set, 0x187 and 0x185 (which the
+ * OPENING_SUB_MOVIE): save event flag 388 set, 391 and 389 (which the
  * movie sets) clear, and gSave.awayFromVillage 0. Returns 1 or 0.
  */
 s32 Plsel_ShouldPlayOpening(void)
@@ -791,13 +682,13 @@ s32 Plsel_ShouldPlayOpening(void)
     if (Quest_GetOutcome(1) != 1) {
         return 0;
     }
-    if (Save_TestEventFlag(0x184) == 0) {
+    if (Save_TestEventFlag(388) == 0) {
         return 0;
     }
-    if (Save_TestEventFlag(0x187) == 1) {
+    if (Save_TestEventFlag(391) == 1) {
         return 0;
     }
-    if (Save_TestEventFlag(0x185) == 1) {
+    if (Save_TestEventFlag(389) == 1) {
         return 0;
     }
     if (gSave.awayFromVillage == 0) {
@@ -807,7 +698,7 @@ s32 Plsel_ShouldPlayOpening(void)
 }
 
 /*
- * Whether an offline clear of quest 0x138F goes on to the ending
+ * Whether an offline clear of quest QUEST_ID_LUNASTRA_TEOSTRA_TOWER_SCENE goes on to the ending
  * (SCENE_OPENING, OPENING_SUB_ENDING: its movie, then the ending overlay)
  * while save event flag 0x58 is clear. Returns 1 or 0.
  */
@@ -819,70 +710,19 @@ s32 Plsel_ShouldPlayEnding(void)
     if (Quest_GetOutcome(1) != 1) {
         return 0;
     }
-    if (gQuest.stage != 0x138F) {
+    if (gQuest.stage != QUEST_ID_LUNASTRA_TEOSTRA_TOWER_SCENE) {
         return 0;
     }
-    if (Save_TestEventFlag(0x58) == 1) {
+    if (Save_TestEventFlag(88) == 1) {
         return 0;
     }
     return 1;
 }
 
-void FadeA_Start(s32);
-void Sound_Silence(void);
-void QuestRecord_Fill(void);
-void QuestStats_Tally(void);
-void Save_RestorePouch(Player *);
-void Save_StorePouch(Player *);
-void Rand_StepSaved(void);
 void Rate_ListAdd(s16 kind, s8 n); /* unit's own declaration: the definition (main) takes s32; Plsel_ResultsUpdate is 842 words off with it */
 void Player_BackupPouch(Player *, s32);
-void Versus_ConsumeTeamItem(void);
-void Quest_UpdateSaveRecords(s32);
-void Save_MarkQuestCleared(u16);
-void QuestEm_SavePersistentHp(void);
-void Quest_RollRewards(void);
-void Stream_FadeOut(s32, s32);
-void Stream_FadeToMax(s32, s16);
-void Game_ResetSubsystems(void);
-void Plsel_QueueFlagUnlocks(void);
-void Plsel_LoadResultsTextures(void);
-void Plsel_SnapshotVersusMonster(void);
-void Plsel_CheckTrainingAwards(void);
-void Plsel_CheckDrillAwards(void);
-void Plsel_AddCounterPoints(void);
-void Plsel_QueueQuestUnlocks(void);
-void Plsel_QueueDrillClearNotice(void);
-void Plsel_InitSaveRecordMenu(void);
-void Plsel_InitItemBoxMenu(void);
-void PlselRes_InitMonsterPage(void);
-void Plsel_ComputeAllRewards(void);
-s32 Quest_IsVersus(void);
-void PlselRes_InitPointsPage(void);
-void Plsel_BuildTitleText(void);
-void Plsel_DrawTitleText(void);
-void PlselRes_InitRecordPage(void);
-void Plsel_BuildNoticeText(void);
-void Plsel_DrawNoticeText(void);
-void Plsel_DrawResultPage(s32);
-s32 PlselRes_RewardPageInput(SceneState *);
-s32 PlselRes_RecordPageInput(SceneState *);
-s32 PlselRes_PointsPageInput(SceneState *);
-s32 PlselRes_MonsterPageInput(SceneState *sc);
-s32 Plsel_SaveRecordMenu(void);
-s32 Plsel_HasNotices(void);
-s32 PlselRes_NoticePageInput(void);
-s32 PlselRes_TitlePageInput(void);
-s32 Plsel_RewardListTask(SceneState *task);
-void Plsel_RewardListDrawText(SceneState *task);
-void Plsel_ComputeRewards(Player *);
 extern DrawSlot gNetMenuDrawHooks[2];
 
-void PlselRes_DrawQuitNotice(void);
-s16 Plsel_ItemBoxMenu(void);
-void Plsel_CountHunts(PlselWork *);
-
-extern char *gRecordDashesText;
 /* The quest results screen: its steps (SceneState.state) from the tally at
  * the quest's end through the rewards, items and awards pages to the next
  * scene. */
@@ -898,7 +738,7 @@ void Plsel_ResultsUpdate(void)
     Text_SetSize(4);
     switch (gScene.step) {
     case PLRES_START:
-        memset(&gPlselBonus, 0, 0xC4);
+        memset(&gPlselBonus, 0, 196);
         Sound_Silence();
         sceneState->stateSyncFrame = 0;
         gAreaState.drawSky = 0;
@@ -921,7 +761,7 @@ void Plsel_ResultsUpdate(void)
         if (gScene.questPhase == QUEST_PHASE_QUIT) {
             sceneState->step = PLRES_QUIT_NOTICE;
             sceneState->subStep = 0;
-            sceneState->timer = 0x96;
+            sceneState->timer = 150;
             sceneState->timer2 = 1;
             Plsel_FlushMoney();
             FadeA_Start(FADE_IN_BLACK);
@@ -936,7 +776,7 @@ void Plsel_ResultsUpdate(void)
             if (Plsel_HasNotices() == 0) {
                 sceneState->step = PLRES_EXIT;
                 w->timeout = PLRES_PAGE_TIMEOUT;
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
                 FadeA_Start(FADE_BLACK);
                 Plsel_FadeOutMusic();
             } else {
@@ -1012,7 +852,7 @@ void Plsel_ResultsUpdate(void)
                 sceneState->subStep = 0;
                 Plsel_InitItemBoxMenu();
             }
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             FadeA_Start(FADE_IN_BLACK);
         } else {
             Quest_UpdateSaveRecords(1);
@@ -1044,7 +884,7 @@ void Plsel_ResultsUpdate(void)
                     w->timeout = PLRES_PAGE_TIMEOUT;
                     w->closeState = PLRES_OPEN;
                     gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
-                    sceneState->timer = 0x1E;
+                    sceneState->timer = 30;
                     FadeA_Start(FADE_IN_BLACK);
                     break;
                 }
@@ -1052,7 +892,7 @@ void Plsel_ResultsUpdate(void)
                     sceneState->step = PLRES_ARENA_MENU;
                     sceneState->subStep = 0;
                     Plsel_InitSaveRecordMenu();
-                    sceneState->timer = 0x1E;
+                    sceneState->timer = 30;
                     FadeA_Start(FADE_IN_BLACK);
                     break;
                 }
@@ -1062,7 +902,7 @@ void Plsel_ResultsUpdate(void)
             Save_StorePouch(&gPlayers[sceneState->localPlayer]);
             Plsel_ComputeAllRewards();
             gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             FadeA_Start(FADE_IN_BLACK);
         }
         break;
@@ -1070,20 +910,20 @@ void Plsel_ResultsUpdate(void)
         if (Plsel_ItemBoxMenu() <= 0) {
             sceneState->step++;
             FadeA_Start(FADE_OUT_BLACK);
-            sceneState->timer = 0x1E;
-            Stream_FadeOut(0, 0x1E);
+            sceneState->timer = 30;
+            Stream_FadeOut(0, 30);
             Save_StorePouch(&gPlayers[sceneState->localPlayer]);
         }
         break;
     case PLRES_ITEMBOX_OUT:
         if (--sceneState->timer <= 0) {
             Plsel_LoadResultsTextures();
-            Stream_FadeToMax(0, 0x1E);
+            Stream_FadeToMax(0, 30);
             if (Quest_IsDrill() == 1) {
                 sceneState->step = PLRES_REWARD_LIST;
                 sceneState->subStep = 0;
                 FadeA_Start(FADE_IN_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             } else {
                 if (Quest_IsVersus() == 1) {
                     Plsel_CheckQuestAwards();
@@ -1104,7 +944,7 @@ void Plsel_ResultsUpdate(void)
                 }
                 gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
                 FadeA_Start(FADE_IN_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             }
         }
         break;
@@ -1117,7 +957,7 @@ void Plsel_ResultsUpdate(void)
             if (w->timeout == 0 || i != 0) {
                 sceneState->step++;
                 FadeA_Start(FADE_OUT_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             }
         }
         Plsel_DrawResultPage(0);
@@ -1140,10 +980,10 @@ void Plsel_ResultsUpdate(void)
             w->closeState = PLRES_OPEN;
             PlselRes_InitPointsPage();
             FadeA_Start(FADE_IN_BLACK);
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
             if (w->rankChange == 1) {
-                Stream_Play(1, 0x1D);
+                Stream_Play(1, 29);
             }
         }
         break;
@@ -1156,7 +996,7 @@ void Plsel_ResultsUpdate(void)
             if (w->timeout == 0 || i != 0) {
                 sceneState->step++;
                 FadeA_Start(FADE_OUT_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             }
         }
         Plsel_DrawResultPage(0);
@@ -1186,8 +1026,8 @@ void Plsel_ResultsUpdate(void)
             Plsel_BuildTitleText();
             gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
             FadeA_Start(FADE_IN_BLACK);
-            sceneState->timer = 0x1E;
-            Stream_Play(1, 0x1D);
+            sceneState->timer = 30;
+            Stream_Play(1, 29);
         }
         break;
     case PLRES_TITLES:
@@ -1199,7 +1039,7 @@ void Plsel_ResultsUpdate(void)
             if (w->timeout == 0 || i != 0) {
                 sceneState->step++;
                 FadeA_Start(FADE_OUT_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             }
         }
         Plsel_DrawTitleText();
@@ -1229,7 +1069,7 @@ void Plsel_ResultsUpdate(void)
             w->timeout = PLRES_PAGE_TIMEOUT;
             w->closeState = PLRES_OPEN;
             FadeA_Start(FADE_IN_BLACK);
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
         }
         break;
@@ -1242,7 +1082,7 @@ void Plsel_ResultsUpdate(void)
             if (w->timeout == 0 || i != 0) {
                 sceneState->step++;
                 FadeA_Start(FADE_OUT_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             }
         }
         Plsel_DrawResultPage(0);
@@ -1273,7 +1113,7 @@ void Plsel_ResultsUpdate(void)
     case PLRES_NOTICES_START:
         if (Plsel_HasNotices() == 0) {
             w->timeout = PLRES_PAGE_TIMEOUT;
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             Plsel_FadeOutMusic();
             sceneState->step = PLRES_EXIT;
             gNetMenuDrawHooks[0].draw = NULL;
@@ -1282,7 +1122,7 @@ void Plsel_ResultsUpdate(void)
             sceneState->step = PLRES_NOTICES;
             w->timeout = PLRES_PAGE_TIMEOUT;
             w->closeState = PLRES_OPEN;
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             FadeA_Start(FADE_IN_BLACK);
             gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
         }
@@ -1295,7 +1135,7 @@ void Plsel_ResultsUpdate(void)
             w->timeout--;
             if (w->timeout == 0 || i != 0) {
                 sceneState->step = PLRES_NOTICES_OUT;
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
                 FadeA_Start(FADE_BLACK);
             }
         }
@@ -1306,7 +1146,7 @@ void Plsel_ResultsUpdate(void)
             sceneState->timer--;
             Plsel_DrawNoticeText();
         } else {
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
             w->timeout = PLRES_PAGE_TIMEOUT;
             Plsel_FadeOutMusic();
             sceneState->step = PLRES_EXIT;
@@ -1316,7 +1156,7 @@ void Plsel_ResultsUpdate(void)
         if (Plsel_SaveRecordMenu() <= 0) {
             sceneState->step++;
             FadeA_Start(FADE_OUT_BLACK);
-            sceneState->timer = 0x1E;
+            sceneState->timer = 30;
         }
         break;
     case PLRES_ARENA_OUT:
@@ -1326,7 +1166,7 @@ void Plsel_ResultsUpdate(void)
                 sceneState->step = PLRES_ITEMBOX;
                 sceneState->subStep = 0;
                 FadeA_Start(FADE_IN_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             } else {
                 Plsel_LoadResultsTextures();
                 sceneState->step = PLRES_MONEY;
@@ -1334,7 +1174,7 @@ void Plsel_ResultsUpdate(void)
                 Save_StorePouch(&gPlayers[sceneState->localPlayer]);
                 Plsel_ComputeAllRewards();
                 gNetMenuDrawHooks[0].draw = (DrawSlotFn)Plsel_DrawResultsBg;
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
                 FadeA_Start(FADE_IN_BLACK);
             }
         }
@@ -1348,7 +1188,7 @@ void Plsel_ResultsUpdate(void)
             if (w->timeout == 0 || i != 0) {
                 sceneState->step++;
                 FadeA_Start(FADE_OUT_BLACK);
-                sceneState->timer = 0x1E;
+                sceneState->timer = 30;
             }
         }
         Plsel_DrawResultPage(0);
@@ -1416,16 +1256,16 @@ void Plsel_ResultsUpdate(void)
 void PlselRes_DrawQuitNotice(void)
 {
     Text_SetColor(0);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(0x113, 0x61);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(275, 97);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_QUIT_NOTICE + 0]);
-    Font_SetPos(0xB0, 0x85);
+    Font_SetPos(176, 133);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_QUIT_NOTICE + 1]);
-    Font_SetPos(0xB0, 0x97);
+    Font_SetPos(176, 151);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_QUIT_NOTICE + 2]);
-    Font_SetPos(0xB0, 0xA9);
+    Font_SetPos(176, 169);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_QUIT_NOTICE + 3]);
-    Font_SetPos(0xB0, 0xBB);
+    Font_SetPos(176, 187);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_QUIT_NOTICE + 4]);
 }
 
@@ -1439,7 +1279,7 @@ void Plsel_InitItemBoxMenu(void)
     gPlselItemBox.sold = 0;
     gPlselItemBox.entryCount = 2;
     gPlselItemBox.noRoom = -1;
-    gPlselItemBox.blinkTimer = 0xFF;
+    gPlselItemBox.blinkTimer = 255;
     gPlselItemBox.timeLeft = IBOX_TIME_LIMIT;
     gPlselItemBox.boxCursor = 0;
     gHelpShow = 0;
@@ -1448,15 +1288,6 @@ void Plsel_InitItemBoxMenu(void)
     Shake_Start(SHAKE_RESULTS_MENU, 0, -180.0f);
     Hud_ResetMenuState();
 }
-
-
-u16 Menu_ReadDpad(u8 pad);
-s32 Shake_Update(u8 id);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-s16 Pouch_Space(Player *, u16);
-u16 Plsel_ItemBoxHandlePad(PlselItemBoxMenu *menu, u16 pad);
-void Pouch_MoveCursor(u8 *, u16);
-s16 Pouch_ClearSlot(Player *p, s16 slot);
 
 /* The item box menu after a quest (the box items to the pouch, selling). */
 s16 Plsel_ItemBoxMenu(void)
@@ -1524,7 +1355,7 @@ s16 Plsel_ItemBoxMenu(void)
                 }
                 item = gScene.supply[menu->t.boxCursor].item;
                 room = Pouch_Space(pl, item);
-                if (room == 0xFF || room == 0) {
+                if (room == 255 || room == 0) {
                     menu->t.noRoom = 0;
                 } else {
                     menu->t.noRoom = -1;
@@ -1581,7 +1412,7 @@ s16 Plsel_ItemBoxMenu(void)
                 Pouch_MoveCursor(&menu->t.pouchCursor, pad);
                 if (pad & PAD_CIRCLE) {
                     /* the box as u16 pairs, as the plsel loops read it: &gScene.supply[k]
-                     * folds the 0x140 into the loads and stores */
+                     * folds the offset 0x140 into the loads and stores */
                     ItemStack *boxSlot = (ItemStack *)((u16 *)gScene.supply + menu->t.boxCursor * 2);
 
                     boxStack = *boxSlot;
@@ -1597,7 +1428,7 @@ s16 Plsel_ItemBoxMenu(void)
             case 2:
                 if (pad & PAD_CIRCLE) {
                     gHelpLine = 0;
-                    menu->t.blinkTimer = 0xFF;
+                    menu->t.blinkTimer = 255;
                     menu->t.subStep = 0;
                     Sound_PlaySeFlat(0, SE_SYS_CONFIRM, 0);
                 } else {
@@ -1629,13 +1460,13 @@ s16 Plsel_ItemBoxMenu(void)
                         goto cancel;
                     }
                     if (menu->t.sellChoice == 0) {
-                        if (Save_HasTitle(0x1E) == 0) {
+                        if (Save_HasTitle(30) == 0) {
                             menu->flag = 1;
                         } else {
                             menu->flag = 0;
                         }
                         Save_AddMoney(menu->money);
-                        if (Save_HasTitle(0x1E) == 0) {
+                        if (Save_HasTitle(30) == 0) {
                             menu->flag = 0;
                         }
                         menu->t.subStep = 1;
@@ -1686,7 +1517,7 @@ void Plsel_MoveGridCursor(u8 *cursor, u16 pad)
     if (pad & PAD_DOWN) {
         y++;
     }
-    if (y == 0xFF) {
+    if (y == 255) {
         y = 5;
     }
     next = (x & 7) | ((y % 6) << 3);
@@ -1733,7 +1564,7 @@ void Plsel_DrawItemBoxMenu(void)
     PlselItemBoxMenu *menu;
     Player *pl;
     s32 id;
-    char buf[0x40];
+    char buf[64];
     ListPanel win;
 
     menu = &gPlselItemBox;
@@ -1747,16 +1578,16 @@ void Plsel_DrawItemBoxMenu(void)
     case 0:
         if (gHelpShow != 0) {
             HelpWindow_DrawCurrent();
-            if ((menu->blinkTimer & 0x1F) < 0x14) {
-                Draw_Icons((Icon *)gPlselItemBoxNextIcon, 1);
+            if ((menu->blinkTimer & 0x1F) < 20) {
+                Draw_Icons(gPlselItemBoxNextIcon, 1);
             }
         }
         break;
     case 1:
-        HelpWindow_Draw(1, gScene.supply[menu->boxCursor].item + 0x18, gHelpColumn);
+        HelpWindow_Draw(1, gScene.supply[menu->boxCursor].item + 24, gHelpColumn);
         break;
     case 2:
-        HelpWindow_Draw(1, pl->pouch[menu->pouchCursor].item + 0x18, gHelpColumn);
+        HelpWindow_Draw(1, pl->pouch[menu->pouchCursor].item + 24, gHelpColumn);
         break;
     }
     switch (menu->state) {
@@ -1771,14 +1602,14 @@ void Plsel_DrawItemBoxMenu(void)
             case 0:
                 Plsel_DrawItemBox(menu->boxCursor, 0, menu->noRoom);
                 if (menu->infoWindow == 0) {
-                    Draw_Icons((Icon *)gPlselItemBoxHintIcon, 1);
+                    Draw_Icons(gPlselItemBoxHintIcon, 1);
                 }
                 break;
             case 1:
                 Plsel_DrawItemBox(menu->boxCursor, 1, menu->noRoom);
                 ItemList_DrawPouch(menu->pouchCursor, 0xA9182, 8);
                 if (menu->infoWindow == 0) {
-                    Draw_Icons((Icon *)gPlselItemBoxHintIcon, 1);
+                    Draw_Icons(gPlselItemBoxHintIcon, 1);
                 }
                 break;
             case 2:
@@ -1816,7 +1647,7 @@ void Plsel_ComputeItemBoxValue(void)
 
     gPlselItemBoxSale[0] = 0;
     slot = (u16 *)gScene.supply;
-    for (i = 0; i < 0x30; i++, slot += 2) {
+    for (i = 0; i < 48; i++, slot += 2) {
         if (slot[0] != 0) {
             if (slot[0] != 0) {
                 gPlselItemBoxSale[0] += gItemData[slot[0]].value * (s16)slot[1];
@@ -1831,49 +1662,49 @@ void Plsel_ComputeItemBoxValue(void)
  */
 void Plsel_DrawMoney(void)
 {
-    char num[0x20];
-    char txt[0x20];
+    char num[32];
+    char txt[32];
     Sprite icon;
     s32 i;
     s16 x;
 
     sprintf(num, gHelpTexts_6[IBOX_TEXT_MONEY_FMT], gSave.money);
     Sjis_Widen(num, txt);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Text_SetColor(1);
-    Font_SetPos(0x1BA, 0x12);
+    Font_SetPos(442, 18);
     Text_Draw(txt);
     Text_SetColor(0);
-    Font_SetPos(0x1B8, 0x10);
+    Font_SetPos(440, 16);
     Text_Draw(txt);
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
-    icon.u0 = 0x9B;
-    icon.v0 = 0x84;
-    icon.u1 = 0xB2;
-    icon.v1 = 0x8B;
-    icon.w = 0x18;
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
+    icon.u0 = 155;
+    icon.v0 = 132;
+    icon.u1 = 178;
+    icon.v1 = 139;
+    icon.w = 24;
     icon.h = 8;
-    for (x = 400, i = 0; i < 8; i++, x += 0x18) {
+    for (x = 400, i = 0; i < 8; i++, x += 24) {
         icon.x = x + 3;
-        icon.y = 0x20;
+        icon.y = 32;
         icon.color = 0xFF000000;
         Sprite_Draw(&icon);
         icon.x = x;
-        icon.y = 0x1E;
+        icon.y = 30;
         icon.color = 0xFF806000;
         Sprite_Draw(&icon);
     }
-    icon.x = 0x19A;
+    icon.x = 410;
     icon.y = 10;
-    icon.w = 0x18;
-    icon.h = 0x18;
+    icon.w = 24;
+    icon.h = 24;
     icon.color = 0xFFE0E000;
-    icon.u0 = 0x67;
-    icon.v0 = 0xAB;
-    icon.u1 = 0x7E;
-    icon.v1 = 0xC2;
+    icon.u0 = 103;
+    icon.v0 = 171;
+    icon.u1 = 126;
+    icon.v1 = 194;
     Sprite_Draw(&icon);
 }
 
@@ -1891,12 +1722,9 @@ s32 Plsel_ItemStackValue(u16 *stack)
 
 
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *pos);
 struct PrimLine;
-s32 Prim_FillRect(struct PrimLine *r);
 extern u32 gItemColors[];
 extern char *gItemNames[];
-s32 Plsel_ItemStackValue(u16 *p);
 
 /* Draws the item box grid (48 slots), the item under the cursor with its
  * name and count, and the selling window. */
@@ -1905,8 +1733,8 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
     PlselShop *menu;
     PrimLine cell;
     Sprite iconSprite;
-    char buf[0x30];
-    char num[0x20];
+    char buf[48];
+    char num[32];
     ItemStack *stack;
     s16 i;
     u16 *slot;
@@ -1917,34 +1745,34 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
     s32 value;
 
     menu = (PlselShop *)&gPlselItemBox;
-    x = dim == 0 ? 0xFF : 0x60;
+    x = dim == 0 ? 255 : 96;
     alpha = x;
     WindowFrame_Draw(&gPlselItemBoxFrame, NULL);
     cell.color = 0xFF200000;
-    for (i = 0; i < 0x30; i++) {
+    for (i = 0; i < 48; i++) {
         cell.x0 = (s16)(313.0f + 36.0f * (i & 7)) + 4;
-        cell.x1 = cell.x0 + 0x20;
-        cell.y0 = (i >> 3) * 32 + 0x42;
-        cell.y1 = cell.y0 + 0x1C;
+        cell.x1 = cell.x0 + 32;
+        cell.y0 = (i >> 3) * 32 + 66;
+        cell.y1 = cell.y0 + 28;
         Prim_FillRect(&cell);
     }
-    Gfx_SetTexFilter(0);
-    Tex_Prepare(1, 0x144);
-    Tex_Bind(0x144);
-    iconSprite.w = 0x28;
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Tex_Prepare(1, 324);
+    Tex_Bind(324);
+    iconSprite.w = 40;
     slot = (u16 *)gScene.supply;
-    iconSprite.h = 0x20;
-    for (i = 0; i < 0x30; i++, slot += 2) {
+    iconSprite.h = 32;
+    for (i = 0; i < 48; i++, slot += 2) {
         iconSprite.x = 313.0f + 36.0f * (i & 7);
-        iconSprite.y = (i >> 3) * 32 + 0x40;
+        iconSprite.y = (i >> 3) * 32 + 64;
         if (slot[0] != 0) {
             itemData = &gItemData[slot[0]];
-            if (itemData->icon != 0xFF) {
+            if (itemData->icon != 255) {
                 k = itemData->icon + 1;
                 iconSprite.u0 = (k & 7) * 32 + 1;
                 iconSprite.v0 = (k >> 3) * 32 + 1;
-                iconSprite.u1 = iconSprite.u0 + 0x1E;
-                iconSprite.v1 = iconSprite.v0 + 0x1E;
+                iconSprite.u1 = iconSprite.u0 + 30;
+                iconSprite.v1 = iconSprite.v0 + 30;
                 iconSprite.color = gItemColors[itemData->color];
                 iconSprite.color = ((u32)iconSprite.color & 0xFFFFFF) | (alpha << 24);
                 Sprite_Draw(&iconSprite);
@@ -1953,12 +1781,12 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
     }
     if (sel >= 0) {
         iconSprite.x = 313.0f + 36.0f * (sel & 7);
-        iconSprite.y = (sel >> 3) * 32 + 0x40;
+        iconSprite.y = (sel >> 3) * 32 + 64;
         *(s32 *)&iconSprite.u0 = 0;
         *(s32 *)&iconSprite.u1 = 0x200020;
         iconSprite.color = (alpha << 24) | 0xFFFFFF;
         Sprite_Draw(&iconSprite);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetSpacing(18, 18);
         if (dim == 0) {
             Text_SetColor(0);
         } else {
@@ -1972,7 +1800,7 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
             case 1:
                 sprintf(buf, gItemNames[stack->item]);
                 break;
-            case 0xFF:
+            case 255:
                 sprintf(buf, gPlselTexts[PLSEL_TEXT_STACK_NAME], gItemNames[stack->item]);
                 break;
             default:
@@ -1980,7 +1808,7 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
                 break;
             }
         }
-        Font_SetPos(0x1CB - Str_Length(buf) * 9 / 2, 0x120);
+        Font_SetPos(459 - Str_Length(buf) * 9 / 2, 288);
         Text_Draw(buf);
         if (Quest_IsDrill() == 0 && menu->t.state == IBOX_ENTRY && menu->t.cursor == IBOX_ENTRY_BOX) {
             value = Plsel_ItemStackValue((u16 *)stack);
@@ -1990,13 +1818,13 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
                 Sjis_Widen(buf, num);
                 strcpy(buf, gHelpTexts_6[IBOX_TEXT_STACK_VALUE]);
                 strcat(buf, num);
-                Font_SetPos((s32)((306.0f - 9.0f * (Str_Length(buf) - 8)) / 2.0f) + 0x132, 0x138);
+                Font_SetPos((s32)((306.0f - 9.0f * (Str_Length(buf) - 8)) / 2.0f) + 306, 312);
                 Text_Printf((s8 *) buf);
             }
         }
         if (flag >= 0) {
             Text_SetColor(2);
-            Font_SetPos(0x13B, 0x108);
+            Font_SetPos(315, 264);
             Text_Draw(gPlselTexts[PLSEL_TEXT_NO_ROOM]);
         }
     }
@@ -2007,10 +1835,10 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
         Sjis_Widen(buf, num);
         strcpy(buf, gHelpTexts_6[IBOX_TEXT_SALE_TOTAL]);
         strcat(buf, num);
-        Font_SetPos((s32)((306.0f - 9.0f * Str_Length(buf)) / 2.0f) + 0x132, 0x108);
+        Font_SetPos((s32)((306.0f - 9.0f * Str_Length(buf)) / 2.0f) + 306, 264);
         Text_Draw(buf);
         strcpy(buf, gHelpTexts_6[IBOX_TEXT_SELL_YES + menu->t.sellChoice]);
-        Font_SetPos(0x13C, 0x18C);
+        Font_SetPos(316, 396);
         Text_Printf((s8 *) buf);
     }
 }
@@ -2058,13 +1886,8 @@ s32 Plsel_DrillPayout(void)
 
 extern u8 gQuestStats[];
 extern s16 gPlselKillRewards[];
-u16 Dojo_GetParMinutes(u16);
-s32 Dojo_GetBestTime(u16 id);
-s32 Dojo_GetBestScore(u16);
 /* unit's own declaration: declared here with u16 and u32 parameters; with the definition's (s32, s32) Plsel_ComputeRewards compiles differently */
 void Dojo_SetBestTime(u16, u32);
-void Dojo_SetBestScore(s32 a, s32 value);
-s32 Save_GetPoints(void);
 
 /* Works out the quest rewards into the rewards list: the pouch sold, the
  * goals, the hunting categories and monsters, the time bonus and the pages
@@ -2097,7 +1920,7 @@ void Plsel_ComputeRewards(Player *pl)
     w->rewList.pageCount[1] = 1;
     list = &w->rewList;
     w->rewList.pageCount[2] = 1;
-    memcpy(list->pouch, pl->pouch, 0x50);
+    memcpy(list->pouch, pl->pouch, 80);
     values = list->val;
     for (i = 0; i < 20; i++) {
         if (list->pouch[i].item != 0 && list->pouch[i].count != 0 && !(gItemData[list->pouch[i].item].flags2 & 4)) {
@@ -2113,13 +1936,13 @@ void Plsel_ComputeRewards(Player *pl)
     }
     goalReward++;
     if (QuestGoal_IsDone(1) == 1) {
-        *goalReward = *(s32 *)(questInfo + 0x14) / gScene.playerCount;
+        *goalReward = *(s32 *)(questInfo + 20) / gScene.playerCount;
     }
     goalReward++;
     if (QuestGoal_IsDone(2) == 1) {
-        *goalReward = *(s32 *)(questInfo + 0x18) / gScene.playerCount;
+        *goalReward = *(s32 *)(questInfo + 24) / gScene.playerCount;
     }
-    list->clearTime = *(s32 *)(stats + 0x14);
+    list->clearTime = *(s32 *)(stats + 20);
     list->parTime = Dojo_GetParMinutes(gQuest.stage) * 1800;
     if (list->clearTime <= list->parTime) {
         list->fastClear = 1;
@@ -2153,10 +1976,10 @@ void Plsel_ComputeRewards(Player *pl)
     /* w->huntedByGroup[group of the marked monster], written as an offset
      * from w: indexing the array adds the two registers the other way
      * round, which the game's code doesn't. */
-    if (*(u16 *)((u8 *)w + MonsterGroup_First(stats[0x10]) * 2 + 0x464) != 0) {
+    if (*(u16 *)((u8 *)w + MonsterGroup_First(stats[16]) * 2 + 1124) != 0) {
         list->catReward[12] = 1;
     }
-    k = *(u16 *)(stats + 0x12);
+    k = *(u16 *)(stats + 18);
     if (k >= 13) {
         k++;
     }
@@ -2225,7 +2048,7 @@ void PlselRes_BeginClose(void)
     PlselRes_EmptyCloseHook();
     w->closeState = PLRES_CLOSE_ASKED;
     w->unk06C2 = 0;
-    w->closeTimer = 0x1E;
+    w->closeTimer = 30;
 }
 
 extern char gPlselPadSpace[];
@@ -2241,8 +2064,8 @@ extern char gPlselPercentMark[];
  * own, its kill walker and counter took each other's saved registers. */
 void Plsel_BuildRewardLines(PlselList *list)
 {
-    char buf[0x80];
-    char wide[0x80];
+    char buf[128];
+    char wide[128];
     char **tbl;
     s32 k;
     char **str;
@@ -2333,7 +2156,7 @@ void Plsel_BuildRewardLines(PlselList *list)
             list->markHuntLine = -1;
             for (n = 0, str = tbl, statId = gPlselRewardSteps; n < 17; n++) {
                 if (n != 13) {
-                    if (*(u16 *)&gQuestStats[0x12] == k && *reward != 0) {
+                    if (*(u16 *)&gQuestStats[18] == k && *reward != 0) {
                         list->markHuntLine = list->lineCount;
                     }
                     k++;
@@ -2380,10 +2203,10 @@ void Plsel_BuildRewardLines(PlselList *list)
                     if (*reward != 0) {
                         sprintf(buf, *str, gQuest.stats[*statId]);
                         Sjis_Widen(buf, wide);
-                        if ((padLen = Str_Length(wide)) < 0x1C) {
+                        if ((padLen = Str_Length(wide)) < 28) {
                             do {
                                 strcat(wide, gPlselPadSpace);
-                            } while (++padLen < 0x1C);
+                            } while (++padLen < 28);
                         }
                         strcpy(LINE(list), wide);
                         strcat(LINE(list), gPlselValueSep);
@@ -2450,15 +2273,15 @@ void Plsel_BuildRewardLines(PlselList *list)
             list->markMonsterLine = -1;
             for (group = 0; group < PLSEL_GROUP_COUNT; group++) {
                 if (list->kill[group] != 0) {
-                    if (*(u16 *)&gQuestStats[0x10] == (u16)group) {
+                    if (*(u16 *)&gQuestStats[16] == (u16)group) {
                         list->markMonsterLine = list->lineCount;
                     }
                     sprintf(buf, gPlselNameCountFmt, gMonsterNames[group], w->huntedByGroup[group]);
                     Sjis_Widen(buf, wide);
-                    if ((padLen = Str_Length(wide)) < 0x1E) {
+                    if ((padLen = Str_Length(wide)) < 30) {
                         do {
                             strcat(wide, gPlselPadSpace);
-                        } while (++padLen < 0x1E);
+                        } while (++padLen < 30);
                     }
                     strcpy(buf, wide);
                     strcpy(LINE(list), buf);
@@ -2484,10 +2307,10 @@ void Plsel_BuildRewardLines(PlselList *list)
                 if (list->val[i] != 0 && list->pouch[i].item != 0 && list->pouch[i].count != 0) {
                     sprintf(buf, gPlselNameCountFmt, gItemNames[list->pouch[i].item], list->pouch[i].count);
                     Sjis_Widen(buf, wide);
-                    if ((itemPadLen = Str_Length(wide)) < 0x1E) {
+                    if ((itemPadLen = Str_Length(wide)) < 30) {
                         do {
                             strcat(wide, gPlselPadSpace);
-                        } while (++itemPadLen < 0x1E);
+                        } while (++itemPadLen < 30);
                     }
                     strcpy(LINE(list), wide);
                     sprintf(wide, gPlselPointsFmt, list->val[i]);
@@ -2544,13 +2367,6 @@ INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselNameCountFmt);
 INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselPointsFmt);
 
 INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselPercentMark);
-
-
-void Plsel_RewardListDraw(void);
-void Plsel_BuildRewardLines(PlselList *l);
-void PlselRes_BeginClose(void);
-void Save_AddPoints(s32);
-void FadeA_Start(s32);
 
 /*
  * One frame of the drill's rewards list (PLRES_REWARD_LIST; task is gScene):
@@ -2726,21 +2542,21 @@ void Plsel_RewardListDraw(void)
         Text_SetSize(4);
         if (list->scrollable == 1) {
             if (list->topLine > 0) {
-                y = 0x80 - list->arrowBob;
-                Font_SetSpacing(0x1C, 0x1C);
-                Font_SetPos(0x1F4, y);
+                y = 128 - list->arrowBob;
+                Font_SetSpacing(28, 28);
+                Font_SetPos(500, y);
                 Text_PrintfColored(gPlselArrowUp);
             }
             if (list->lineCount > list->topLine + list->linesShown) {
-                y = list->arrowBob + 0x10E;
-                Font_SetSpacing(0x1C, 0x1C);
-                Font_SetPos(0x1F4, y);
+                y = list->arrowBob + 270;
+                Font_SetSpacing(28, 28);
+                Font_SetPos(500, y);
                 Text_PrintfColored(gPlselArrowDown);
             }
         }
         if (list->pageCount[list->screen] > 1) {
-            PlselRes_DrawArrow(1, 0x228, 0x58, 1);
-            PlselRes_DrawArrow(0, 0x1E6, 0x58, 1);
+            PlselRes_DrawArrow(1, 552, 88, 1);
+            PlselRes_DrawArrow(0, 486, 88, 1);
         }
         break;
     }
@@ -2759,31 +2575,31 @@ void Plsel_RewardListDrawText(SceneState *task)
     s32 i;
     char **tbl;
     PlselList *list;
-    char buf[0x80];
-    char num[0x80];
+    char buf[128];
+    char num[128];
 
     list = &gPlselWork->rewList;
     Text_SetColor(0);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     w = Str_Length(gResultRuleText);
     w *= 9.0f; /* `w = len * 9.0f` puts the literal first */
     x = (s32)(640.0f - w) / 2.0f;
-    y = 0x58;
-    Text_SetColor(0x31);
-    Font_SetSpacing(0x12, 0x12);
+    y = 88;
+    Text_SetColor(49);
+    Font_SetSpacing(18, 18);
     tbl = &gPlselTexts[PLSEL_TEXT_REWARD_LIST];
     switch (list->screen) {
     case 0:
         switch (list->pages[list->pageCur]) {
         case 0:
-            Font_SetSpacing(0x18, 0x18);
-            Font_SetPos(x, 0x52);
+            Font_SetSpacing(24, 24);
+            Font_SetPos(x, 82);
             Text_Printf((s8 *) gPlselStrFmt, tbl[1]);
-            Font_SetSpacing(0x12, 0x12);
-            Font_SetPos(x, 0x6E);
+            Font_SetSpacing(18, 18);
+            Font_SetPos(x, 110);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            y += 0x2C;
-            for (i = 0; i < list->linesShown; y += 0x16, i++) {
+            y += 44;
+            for (i = 0; i < list->linesShown; y += 22, i++) {
                 Font_SetPos(x, y);
                 if (list->ent[i].flag) {
                     Text_Printf((s8 *) &list->ent[i]);
@@ -2791,11 +2607,11 @@ void Plsel_RewardListDrawText(SceneState *task)
             }
             while (i < 8) {
                 i++;
-                y += 0x16;
+                y += 22;
             }
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            Font_SetPos(x, y + 0x16);
+            Font_SetPos(x, y + 22);
             sprintf(buf, tbl[8], list->itemTotal + list->rewardTotal);
             Sjis_Widen(buf, num);
             Text_Printf((s8 *) gPlselStrFmt, num);
@@ -2803,12 +2619,12 @@ void Plsel_RewardListDrawText(SceneState *task)
         case 1:
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, tbl[16]);
-            Font_SetPos(x, 0x6E);
+            Font_SetPos(x, 110);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            y += 0x2C;
-            for (i = list->topLine; i < list->topLine + list->linesShown; y += 0x16, i++) {
+            y += 44;
+            for (i = list->topLine; i < list->topLine + list->linesShown; y += 22, i++) {
                 if (i == list->markHuntLine && list->markHuntLine >= 0) {
-                    Font_SetPos(x - 0x1E, y);
+                    Font_SetPos(x - 30, y);
                     Text_Printf((s8 *) gPlselTexts[162]);
                 }
                 Font_SetPos(x, y);
@@ -2818,11 +2634,11 @@ void Plsel_RewardListDrawText(SceneState *task)
             }
             while (i < 8) {
                 i++;
-                y += 0x16;
+                y += 22;
             }
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            Font_SetPos(x, y + 0x16);
+            Font_SetPos(x, y + 22);
             sprintf(buf, tbl[21], list->huntReward);
             Sjis_Widen(buf, num);
             Text_Printf((s8 *) gPlselStrFmt, num);
@@ -2830,12 +2646,12 @@ void Plsel_RewardListDrawText(SceneState *task)
         case 2:
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, tbl[19]);
-            Font_SetPos(x, 0x6E);
+            Font_SetPos(x, 110);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            y += 0x2C;
-            for (i = list->topLine; i < list->topLine + list->linesShown; y += 0x16, i++) {
+            y += 44;
+            for (i = list->topLine; i < list->topLine + list->linesShown; y += 22, i++) {
                 if (i == list->markMonsterLine && list->markMonsterLine >= 0) {
-                    Font_SetPos(x - 0x1E, y);
+                    Font_SetPos(x - 30, y);
                     Text_Printf((s8 *) gPlselTexts[161]);
                 }
                 Font_SetPos(x, y);
@@ -2845,11 +2661,11 @@ void Plsel_RewardListDrawText(SceneState *task)
             }
             while (i < 8) {
                 i++;
-                y += 0x16;
+                y += 22;
             }
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            Font_SetPos(x, y + 0x16);
+            Font_SetPos(x, y + 22);
             sprintf(buf, tbl[22], list->killTotal);
             Sjis_Widen(buf, num);
             Text_Printf((s8 *) gPlselStrFmt, num);
@@ -2857,10 +2673,10 @@ void Plsel_RewardListDrawText(SceneState *task)
         case 3:
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, tbl[20]);
-            Font_SetPos(x, 0x6E);
+            Font_SetPos(x, 110);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            y += 0x2C;
-            for (i = list->topLine; i < list->topLine + list->linesShown; y += 0x16, i++) {
+            y += 44;
+            for (i = list->topLine; i < list->topLine + list->linesShown; y += 22, i++) {
                 Font_SetPos(x, y);
                 if (list->ent[i].flag) {
                     Text_Printf((s8 *) &list->ent[i]);
@@ -2868,29 +2684,29 @@ void Plsel_RewardListDrawText(SceneState *task)
             }
             while (i < 8) {
                 i++;
-                y += 0x16;
+                y += 22;
             }
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            Font_SetPos(x, y + 0x16);
+            Font_SetPos(x, y + 22);
             sprintf(buf, tbl[23], list->itemTotal);
             Sjis_Widen(buf, num);
             Text_Printf((s8 *) gPlselStrFmt, num);
             break;
         }
-        Font_SetPos(0x202, 0x58);
+        Font_SetPos(514, 88);
         sprintf(buf, gPlselPageFmt, list->pageCur + 1, list->pageCount[0]);
         Text_PrintfColored(buf);
         break;
     case 2:
-            Font_SetSpacing(0x18, 0x18);
-            Font_SetPos(x, 0x52);
+            Font_SetSpacing(24, 24);
+            Font_SetPos(x, 82);
             Text_Printf((s8 *) gPlselStrFmt, tbl[11]);
-            Font_SetSpacing(0x12, 0x12);
-            Font_SetPos(x, 0x6E);
+            Font_SetSpacing(18, 18);
+            Font_SetPos(x, 110);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            y += 0x2C;
-            for (i = 0; i < list->linesShown; y += 0x16, i++) {
+            y += 44;
+            for (i = 0; i < list->linesShown; y += 22, i++) {
                 Font_SetPos(x, y);
                 if (list->ent[i].flag) {
                     Text_Printf((s8 *) &list->ent[i]);
@@ -2898,24 +2714,22 @@ void Plsel_RewardListDrawText(SceneState *task)
             }
             while (i < 8) {
                 i++;
-                y += 0x16;
+                y += 22;
             }
             Font_SetPos(x, y);
             Text_Printf((s8 *) gPlselStrFmt, gResultRuleText);
-            Font_SetPos(x, y + 0x16);
+            Font_SetPos(x, y + 22);
             sprintf(buf, tbl[15], list->zenny);
             Sjis_Widen(buf, num);
             Text_Printf((s8 *) gPlselStrFmt, num);
             break;
     }
-    Font_SetPos(0x1EA, 0x164);
+    Font_SetPos(490, 356);
     Text_Printf((s8 *) gPlselTexts[PLSEL_TEXT_PROMPT]);
-    Font_SetPos(0x1B8, 0x17C);
+    Font_SetPos(440, 380);
     sprintf(num, gPlselTexts[PLSEL_TEXT_COUNTDOWN], task->timeout / 30);
     Text_Printf((s8 *) num);
 }
-
-extern char *gArenaEmTameNames[];
 
 /* The line being written of the results screen's text. */
 #define WLINE(w) ((w)->lines[(w)->lineCount])
@@ -2951,8 +2765,8 @@ static f64 Stripped_Sub(f64 lhs, f64 rhs)
 void Plsel_BuildResultText(s32 kind)
 {
     char **fmts;
-    char bufA[0x80];
-    char bufB[0x80];
+    char bufA[128];
+    char bufB[128];
     char **str;
     s32 rec;
     s32 goal;
@@ -3470,7 +3284,7 @@ void Plsel_SumQuestRewards(void)
         }
         if (QuestGoal_IsDone(0) == 1) {
             w->mainDone = 1;
-            if (gQuest.reward != *(s32 *)(questInfo + 0xC)) {
+            if (gQuest.reward != *(s32 *)(questInfo + 12)) {
                 w->questMoneyCut = 1;
             }
             w->mainMoney = gQuest.reward;
@@ -3483,7 +3297,7 @@ void Plsel_SumQuestRewards(void)
                 if (w->mustOrder == 0) {
                     w->subADone = 1;
                 }
-                w->subAMoney = *(s32 *)(questInfo + 0x14);
+                w->subAMoney = *(s32 *)(questInfo + 20);
                 w->subAMoney = w->subAMoney / gScene.playerCount;
             } else {
                 w->subAMoney = 0;
@@ -3494,7 +3308,7 @@ void Plsel_SumQuestRewards(void)
                 if (w->mustOrder == 0) {
                     w->subBDone = 1;
                 }
-                w->subBMoney = *(s32 *)(questInfo + 0x18);
+                w->subBMoney = *(s32 *)(questInfo + 24);
                 w->subBMoney = w->subBMoney / gScene.playerCount;
             } else {
                 w->subBMoney = 0;
@@ -3577,13 +3391,13 @@ void Plsel_QueueAward(s32 id)
     PlselWork *w;
 
     w = gPlselWork;
-    if (w->awardCount < 0x20) {
+    if (w->awardCount < 32) {
         w->awards[w->awardCount] = id;
         w->awardCount++;
     }
 }
 
-/* Queues the rank awards (gPlselRankAwardRanks: the rank that earns each, 0xFF ends;
+/* Queues the rank awards (gPlselRankAwardRanks: the rank that earns each, 255 ends;
  * gPlselRankAwards: the award) up to rank arg0. */
 void Plsel_CheckRankAwards(s16 rankAfter)
 {
@@ -3591,7 +3405,7 @@ void Plsel_CheckRankAwards(s16 rankAfter)
     u8 rank;
     u8 *rankList = gPlselRankAwardRanks;
 
-    for (i = 0, rank = *rankList; rank != 0xFF; i++, rank = *++rankList) {
+    for (i = 0, rank = *rankList; rank != 255; i++, rank = *++rankList) {
         if ((s16)(rank & 0xFF) > rankAfter) {
             break;
         }
@@ -3603,7 +3417,7 @@ void Plsel_CheckRankAwards(s16 rankAfter)
 
 void Plsel_ResetPointRate(PlselWork *w)
 {
-    w->pointRate = 0x64;
+    w->pointRate = 100;
 }
 
 /*
@@ -3704,8 +3518,8 @@ void Plsel_CheckQuestAwards(void)
     totalMoney += w->extraMoney;
     totalMoney += w->monsterMoney;
     totalMoney += w->itemMoney;
-    if (gSave.money + totalMoney >= 2000000 && (Award_Grant(0x1E) == 1 || gPlselItemBoxSale[1] == 1)) {
-        Plsel_QueueAward(0x1E);
+    if (gSave.money + totalMoney >= 2000000 && (Award_Grant(30) == 1 || gPlselItemBoxSale[1] == 1)) {
+        Plsel_QueueAward(30);
     }
     Plsel_CheckVersusAwards();
     entry = gRecordCountEntries;
@@ -3725,15 +3539,15 @@ void Plsel_CheckQuestAwards(void)
                 sum += gSave.recordCounts[k];
             }
         }
-        if (gSave.recordCounts[k] >= 0x1E && Award_Grant(gPlselCountAwards[j]) == 1) {
+        if (gSave.recordCounts[k] >= 30 && Award_Grant(gPlselCountAwards[j]) == 1) {
             Plsel_QueueAward(gPlselCountAwards[j]);
         }
         entry++;
         j++;
         entryId = entry->id;
     }
-    if (sum >= 0x1E && Award_Grant(0x81) == 1) {
-        Plsel_QueueAward(0x81);
+    if (sum >= 30 && Award_Grant(129) == 1) {
+        Plsel_QueueAward(129);
     }
     list = gPlselAwardTblA;
     entryId = *list;
@@ -3749,8 +3563,8 @@ void Plsel_CheckQuestAwards(void)
     stageId = *list;
     while (stageId != 0xFFFF) {
         if (stageId == gQuest.stage) {
-            if (gSave.recordCounts[14] >= 0x1E && Award_Grant(0x8F) == 1) {
-                Plsel_QueueAward(0x8F);
+            if (gSave.recordCounts[14] >= 30 && Award_Grant(143) == 1) {
+                Plsel_QueueAward(143);
             }
             return;
         }
@@ -3761,8 +3575,8 @@ void Plsel_CheckQuestAwards(void)
     stageId = *list;
     while (stageId != 0xFFFF) {
         if (stageId == gQuest.stage) {
-            if (gSave.recordCounts[15] >= 0x1E && Award_Grant(0x90) == 1) {
-                Plsel_QueueAward(0x90);
+            if (gSave.recordCounts[15] >= 30 && Award_Grant(144) == 1) {
+                Plsel_QueueAward(144);
             }
             return;
         }
@@ -3778,8 +3592,8 @@ void Plsel_CheckQuestAwards(void)
         list++;
         stageId = *list;
     }
-    if (*list == 0xFFFF && Award_Grant(0x91) == 1) {
-        Plsel_QueueAward(0x91);
+    if (*list == 0xFFFF && Award_Grant(145) == 1) {
+        Plsel_QueueAward(145);
     }
     n = 0;
     list = gPlselOfflineAwardsD;
@@ -3793,8 +3607,8 @@ void Plsel_CheckQuestAwards(void)
     }
     if (*list == 0xFFFF) {
         n++;
-        if (Award_Grant(0x92) == 1) {
-            Plsel_QueueAward(0x92);
+        if (Award_Grant(146) == 1) {
+            Plsel_QueueAward(146);
         }
     }
     list = gPlselOfflineAwardsE;
@@ -3806,15 +3620,11 @@ void Plsel_CheckQuestAwards(void)
         list++;
         stageId = *list;
     }
-    if (*list == 0xFFFF && ++n == 2 && Award_Grant(0x93) == 1) {
-        Plsel_QueueAward(0x93);
+    if (*list == 0xFFFF && ++n == 2 && Award_Grant(147) == 1) {
+        Plsel_QueueAward(147);
     }
 }
 
-void Plsel_QueueAward(s32 arg0);
-void Plsel_CheckCounterNotices(void);
-s32 RateFlag_SetQuiet(u8 bit);
-s32 Quest_IsVersus(void);
 /*
  * After a versus quest: the awards for 50 wins (with its rate flag) and 50
  * losses.
@@ -3822,14 +3632,14 @@ s32 Quest_IsVersus(void);
 void Plsel_CheckVersusAwards(void)
 {
     if (Quest_IsVersus() == 1) {
-        if (((s32) gSave.versusWins >= 0x32) && (Award_Grant(0x8D) == 1)) {
-            Plsel_QueueAward(0x8D);
+        if (((s32) gSave.versusWins >= 50) && (Award_Grant(141) == 1)) {
+            Plsel_QueueAward(141);
             if (RateFlag_SetQuiet(7) == 1) {
                 Plsel_CheckCounterNotices();
             }
         }
-        if (((s32) gSave.versusLosses >= 0x32) && (Award_Grant(0x8E) == 1)) {
-            Plsel_QueueAward(0x8E);
+        if (((s32) gSave.versusLosses >= 50) && (Award_Grant(142) == 1)) {
+            Plsel_QueueAward(142);
         }
     }
 }
@@ -3875,15 +3685,15 @@ void Plsel_CheckDrillAwards(void)
                 sum += gSave.recordCounts[k];
             }
         }
-        if (gSave.recordCounts[k] >= 0x1E && Award_Grant(gPlselCountAwards[j]) == 1) {
+        if (gSave.recordCounts[k] >= 30 && Award_Grant(gPlselCountAwards[j]) == 1) {
             Plsel_QueueAward(gPlselCountAwards[j]);
         }
         entry++;
         j++;
         entryId = entry->id;
     }
-    if (sum >= 0x1E && Award_Grant(0x81) == 1) {
-        Plsel_QueueAward(0x81);
+    if (sum >= 30 && Award_Grant(129) == 1) {
+        Plsel_QueueAward(129);
     }
     list = gPlselAwardTblA;
     entryId = *list;
@@ -3895,19 +3705,19 @@ void Plsel_CheckDrillAwards(void)
         }
         entryId = *list;
     }
-    if (rewards->zenny + rewards->payout >= 200000 && Award_Grant(0x88) == 1) {
-        Plsel_QueueAward(0x88);
+    if (rewards->zenny + rewards->payout >= 200000 && Award_Grant(136) == 1) {
+        Plsel_QueueAward(136);
     }
     for (list = gPlselAwardTblD, i = 0; i < 12; i++, list++) {
         if (Save_IsItemObtained(&gSave, *list) == 0) {
             break;
         }
     }
-    if (i == 12 && Award_Grant(0x89) == 1) {
-        Plsel_QueueAward(0x89);
+    if (i == 12 && Award_Grant(137) == 1) {
+        Plsel_QueueAward(137);
     }
-    if (rewards->zenny + rewards->payout >= 15000 && Award_Grant(0x8A) == 1) {
-        Plsel_QueueAward(0x8A);
+    if (rewards->zenny + rewards->payout >= 15000 && Award_Grant(138) == 1) {
+        Plsel_QueueAward(138);
     }
     list = gPlselAwardTblB;
     stage = *list;
@@ -3918,8 +3728,8 @@ void Plsel_CheckDrillAwards(void)
         list++;
         stage = *list;
     }
-    if (*list == 0xFFFF && Award_Grant(0x8B) == 1) {
-        Plsel_QueueAward(0x8B);
+    if (*list == 0xFFFF && Award_Grant(139) == 1) {
+        Plsel_QueueAward(139);
     }
     list = gPlselAwardTblC;
     stage = *list;
@@ -3930,8 +3740,8 @@ void Plsel_CheckDrillAwards(void)
         list++;
         stage = *list;
     }
-    if (*list == 0xFFFF && Award_Grant(0x8B) == 1) {
-        Plsel_QueueAward(0x8B);
+    if (*list == 0xFFFF && Award_Grant(139) == 1) {
+        Plsel_QueueAward(139);
     }
     list = gPlselTrainingAwards;
     stage = *list;
@@ -3942,8 +3752,8 @@ void Plsel_CheckDrillAwards(void)
         list++;
         stage = *list;
     }
-    if (*list == 0xFFFF && Award_Grant(0x8C) == 1) {
-        Plsel_QueueAward(0x8C);
+    if (*list == 0xFFFF && Award_Grant(140) == 1) {
+        Plsel_QueueAward(140);
     }
 }
 
@@ -3966,8 +3776,8 @@ void Plsel_CheckTrainingAwards(void)
             stage++;
             id = *stage;
         }
-        if (*stage == 0xFFFF && Award_Grant(0x8C) == 1) {
-            Plsel_QueueAward(0x8C);
+        if (*stage == 0xFFFF && Award_Grant(140) == 1) {
+            Plsel_QueueAward(140);
         }
     }
 }
@@ -3991,7 +3801,7 @@ void Plsel_CheckMonsterAwards(void)
 
     entry = gPlselHuntAwards;
     byMonster = entry->byMonster;
-    while (byMonster != 0xFF) {
+    while (byMonster != 255) {
         k = entry->award;
         /* `+ 0` makes the last argument an int expression, which the game
          * loads before entry->monster (as a call or macro there would). */
@@ -4001,13 +3811,13 @@ void Plsel_CheckMonsterAwards(void)
         entry++;
         byMonster = entry->byMonster;
     }
-    if (gSave.recordCounts[16] >= 100 && Award_Grant(0x63) == 1) {
-        Plsel_QueueAward(0x63);
+    if (gSave.recordCounts[16] >= 100 && Award_Grant(99) == 1) {
+        Plsel_QueueAward(99);
     }
     big = 0;
     small = 0;
     crown = 0;
-    for (i = 1; i < 0x49; i++) {
+    for (i = 1; i < 73; i++) {
         note = MonsterNote_FindKind(MonsterGroup_First(i));
         if (note != NULL) {
             largest = gSave.sizeMax[i];
@@ -4022,37 +3832,37 @@ void Plsel_CheckMonsterAwards(void)
             }
         }
     }
-    if (big >= 5 && Award_Grant(0x64) == 1) {
-        Plsel_QueueAward(0x64);
+    if (big >= 5 && Award_Grant(100) == 1) {
+        Plsel_QueueAward(100);
     }
-    if (big >= 10 && Award_Grant(0x65) == 1) {
-        Plsel_QueueAward(0x65);
+    if (big >= 10 && Award_Grant(101) == 1) {
+        Plsel_QueueAward(101);
     }
     if (big >= 15) {
-        if (Award_Grant(0x66) == 1) {
-            Plsel_QueueAward(0x66);
+        if (Award_Grant(102) == 1) {
+            Plsel_QueueAward(102);
         }
         if (RateFlag_SetQuiet(9) == 1) {
             Plsel_CheckCounterNotices();
         }
     }
-    if (crown >= 5 && Award_Grant(0x67) == 1) {
-        Plsel_QueueAward(0x67);
+    if (crown >= 5 && Award_Grant(103) == 1) {
+        Plsel_QueueAward(103);
     }
-    if (crown >= 10 && Award_Grant(0x68) == 1) {
-        Plsel_QueueAward(0x68);
+    if (crown >= 10 && Award_Grant(104) == 1) {
+        Plsel_QueueAward(104);
     }
-    if (crown >= 15 && Award_Grant(0x69) == 1) {
-        Plsel_QueueAward(0x69);
+    if (crown >= 15 && Award_Grant(105) == 1) {
+        Plsel_QueueAward(105);
     }
-    if (small >= 5 && Award_Grant(0x6A) == 1) {
-        Plsel_QueueAward(0x6A);
+    if (small >= 5 && Award_Grant(106) == 1) {
+        Plsel_QueueAward(106);
     }
-    if (small >= 10 && Award_Grant(0x6B) == 1) {
-        Plsel_QueueAward(0x6B);
+    if (small >= 10 && Award_Grant(107) == 1) {
+        Plsel_QueueAward(107);
     }
-    if (small >= 15 && Award_Grant(0x6C) == 1) {
-        Plsel_QueueAward(0x6C);
+    if (small >= 15 && Award_Grant(108) == 1) {
+        Plsel_QueueAward(108);
     }
 }
 
@@ -4094,11 +3904,6 @@ void Plsel_ComputeAllRewards(void)
     Plsel_BuildResultText(w->page);
 }
 
-s32 Gs_GetState(u8 reg);
-s32 Tex_Use(s32 n, u32 *handles);
-s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
-s32 MonsterNote_DrawLargeCrown(u16 i, s16 x, s16 y, s32 v);
-s32 MonsterNote_DrawSmallCrown(u16 i, s16 x, s16 y, s32 v);
 extern s32 gResultsBgTex;
 extern s32 gResultsIconTex;
 extern s32 gPlselResultsTex;
@@ -4133,12 +3938,12 @@ void Plsel_DrawResultsBg(void)
     Gs_SetState(RS_TEXTURE, gResultsBgTex);
     sprite.x = 0;
     sprite.y = 0;
-    sprite.w = 0x280;
-    sprite.h = 0x1C0;
+    sprite.w = 640;
+    sprite.h = 448;
     sprite.u0 = 0;
     sprite.v0 = 0;
-    sprite.u1 = 0xFF;
-    sprite.v1 = 0xFF;
+    sprite.u1 = 255;
+    sprite.v1 = 255;
     sprite.color = -1;
     Sprite_Draw(&sprite);
     if (gScene.step < PLRES_NOTICES_START || gScene.step > PLRES_NOTICES_OUT) {
@@ -4151,22 +3956,22 @@ void Plsel_DrawResultsBg(void)
             Gs_SetState(RS_TEX_FILTER, 0x10000);
             Tex_Use(1, (u32 *)&gResultsIconTex);
             Gs_SetState(RS_TEXTURE, gResultsIconTex);
-            sprite.x = 0x6E;
-            sprite.y = 0x9A;
-            sprite.w = 0x40;
-            sprite.h = 0x40;
+            sprite.x = 110;
+            sprite.y = 154;
+            sprite.w = 64;
+            sprite.h = 64;
             EntryPicture_GetUV((s32 *)&sprite.u0, (s32 *)&sprite.u1, id);
             sprite.color = -1;
             Sprite_Draw(&sprite);
-            sprite.y = 0xF2;
+            sprite.y = 242;
             Sprite_Draw(&sprite);
         }
         if (Quest_IsDrill() != 1) {
             if ((u32)w->page <= 2 || w->page == RES_PAGE_ITEMS) {
                 Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
                 if (w->pageCount > 1) {
-                    PlselRes_DrawArrow(1, 0x228, 0x58, 1);
-                    PlselRes_DrawArrow(0, 0x1E6, 0x58, 1);
+                    PlselRes_DrawArrow(1, 552, 88, 1);
+                    PlselRes_DrawArrow(0, 486, 88, 1);
                 }
             }
         }
@@ -4176,7 +3981,7 @@ void Plsel_DrawResultsBg(void)
         Gs_SetState(RS_TEX_FILTER, 0);
         Tex_Use(1, (u32 *)&gPlselResultsTex);
         Gs_SetState(RS_TEXTURE, gPlselResultsTex);
-        zoomStep = 0x1D - w->closeTimer;
+        zoomStep = 29 - w->closeTimer;
         if (zoomStep > 2) {
             zoomStep = 2;
         }
@@ -4189,8 +3994,8 @@ void Plsel_DrawResultsBg(void)
         sprite.h = size;
         sprite.u0 = 0;
         sprite.v0 = 0;
-        sprite.u1 = 0x4F;
-        sprite.v1 = 0x4F;
+        sprite.u1 = 79;
+        sprite.v1 = 79;
         sprite.color = ((u32)alpha << 24) | 0x50140A;
         Sprite_Draw(&sprite);
     }
@@ -4201,24 +4006,23 @@ void Plsel_DrawResultsBg(void)
     if (gScene.step >= PLRES_RECORDS_START && gScene.step < PLRES_NOTICES_START && w->page == RES_PAGE_RECORDS) {
         def = MonsterNote_FindKind(MonsterGroup_First((u8)w->shownGroup));
         if (w->oldLargest > 0) {
-            MonsterNote_DrawLargeCrown(def->note, 0xC9, 0xB1, (s16)w->oldLargest);
+            MonsterNote_DrawLargeCrown(def->note, 201, 177, (s16)w->oldLargest);
         }
         if (w->oldSmallest > 0) {
-            MonsterNote_DrawSmallCrown(def->note, 0xC9, 0xC5, (s16)w->oldSmallest);
+            MonsterNote_DrawSmallCrown(def->note, 201, 197, (s16)w->oldSmallest);
         }
         if (w->oldLargest < w->newLargest && w->newLargest > 0) {
-            MonsterNote_DrawLargeCrown(def->note, 0xC9, 0x108, (s16)w->newLargest);
+            MonsterNote_DrawLargeCrown(def->note, 201, 264, (s16)w->newLargest);
         }
         if (w->oldSmallest == 0) {
-            MonsterNote_DrawSmallCrown(def->note, 0xC9, 0x11C, (s16)w->newSmallest);
+            MonsterNote_DrawSmallCrown(def->note, 201, 284, (s16)w->newSmallest);
         } else if (w->newSmallest < w->oldSmallest && w->newSmallest > 0) {
-            MonsterNote_DrawSmallCrown(def->note, 0xC9, 0x11C, (s16)w->newSmallest);
+            MonsterNote_DrawSmallCrown(def->note, 201, 284, (s16)w->newSmallest);
         }
     }
-    Draw_Icons((Icon *)gPlselResultsBgIcon, 1);
+    Draw_Icons(gPlselResultsBgIcon, 1);
 }
 
-extern s32 gHighClassBonusText;
 /*
  * Draws the current page's lines (the first one larger), the prompt and the
  * countdown, and what the mode adds: the page counter and the high rank
@@ -4233,23 +4037,23 @@ void Plsel_DrawResultPage(s32 unused)
     s32 y;
     PlselWork *w;
     s32 width;
-    char buf[0x80];
+    char buf[128];
 
     w = gPlselWork;
-    size = 0x12;
+    size = 18;
     width = Str_Length(gResultRuleText);
     width *= 9.0f;
     width = 640.0f - width;
     x = width / 2.0f;
-    y = 0x58;
-    Text_SetColor(0x31);
+    y = 88;
+    Text_SetColor(49);
     Font_SetSpacing(size, size);
     for (i = 0; i < w->lineCount; i++) {
         if (i == 0) {
-            Font_SetSpacing(0x18, 0x18);
+            Font_SetSpacing(24, 24);
             Font_SetPos(x, y - 6);
             Text_Printf((s8 *) w->lines[i]);
-            size = 0x12;
+            size = 18;
             Font_SetSpacing(size, size);
         } else {
             Font_SetPos(x, y);
@@ -4259,24 +4063,24 @@ void Plsel_DrawResultPage(s32 unused)
         }
         y += size + 4;
     }
-    Font_SetPos(0x1EA, 0x164);
+    Font_SetPos(490, 356);
     Text_Printf((s8 *) gPlselTexts[PLSEL_TEXT_PROMPT]);
-    Font_SetPos(0x1B8, 0x17C);
+    Font_SetPos(440, 380);
     sprintf(buf, gPlselTexts[PLSEL_TEXT_COUNTDOWN], w->timeout / 30);
     Text_Printf((s8 *) buf);
     if (w->resMode == RES_MODE_MONEY) {
         switch (w->page) {
         case 0:
             if (w->moneyTotal != 0 && w->questMoneyCut != 0 && w->lowRankCut != 0) {
-                Font_SetPos(0x12C, 0x58);
+                Font_SetPos(300, 88);
                 Text_Printf((s8 *) gHighClassBonusText);
             }
             break;
         case 2:
             if (w->monsterMoney != 0 && w->questMoneyCut != 0 && w->lowRankCut != 0) {
-                Font_SetPos(0x12C, 0x58);
+                Font_SetPos(300, 88);
                 Text_Printf((s8 *) gHighClassBonusText);
-                Font_SetPos(0x202, 0x58);
+                Font_SetPos(514, 88);
                 sprintf(buf, gPlselPageFmt, w->page + 1, w->pageCount);
                 Text_PrintfColored(buf);
                 return;
@@ -4284,56 +4088,56 @@ void Plsel_DrawResultPage(s32 unused)
             break;
         case 1:
             if (w->questMoney != 0 && w->questMoneyCut != 0 && w->lowRankCut != 0) {
-                Font_SetPos(0x12C, 0x58);
+                Font_SetPos(300, 88);
                 Text_Printf((s8 *) gHighClassBonusText);
             }
             break;
         }
-        Font_SetPos(0x202, 0x58);
+        Font_SetPos(514, 88);
         sprintf(buf, gPlselPageFmt, w->page + 1, w->pageCount);
         Text_PrintfColored(buf);
     }
     if (w->resMode == RES_MODE_POINTS && w->hrpTotal != 0 && w->lowRankCut != 0) {
-        Font_SetPos(0x19A, 0x58);
+        Font_SetPos(410, 88);
         Text_Printf((s8 *) gHighClassBonusText);
     }
     if (w->resMode == RES_MODE_MONEY && w->page == RES_PAGE_ITEMS) {
         if (w->firstLine > 0) {
-            Font_SetSpacing(0x1C, 0x1C);
-            Font_SetPos(0x1F4, 0x78);
+            Font_SetSpacing(28, 28);
+            Font_SetPos(500, 120);
             if (gFrameTick & 0x10) {
                 Text_PrintfColored(gPlselArrowUp);
             }
         }
         if (w->firstLine + 7 < w->itemLines) {
-            Font_SetSpacing(0x1C, 0x1C);
-            Font_SetPos(0x1F4, 0x122);
+            Font_SetSpacing(28, 28);
+            Font_SetPos(500, 290);
             if (gFrameTick & 0x10) {
                 Text_PrintfColored(gPlselArrowDown);
             }
         }
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (w->resMode == RES_MODE_RECORDS && w->page == RES_PAGE_RECORDS) {
         if (w->newLargest > 0 && ((w->oldLargest == 0 && w->newLargest > 0) || (w->oldLargest > 0 && w->oldLargest < w->newLargest))) {
-            Font_SetPos(0x1D8, 0xB0);
+            Font_SetPos(472, 176);
             Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_NEW_RECORD]);
         }
         if (w->newSmallest > 0 && ((w->oldSmallest == 0 && w->newSmallest > 0) || (w->oldSmallest > 0 && w->newSmallest < w->oldSmallest))) {
-            Font_SetPos(0x1D8, 0xC6);
+            Font_SetPos(472, 198);
             Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_NEW_RECORD]);
         }
         if (w->recordGroupCount != 1) {
             if (w->recordGroupCur > 0) {
-                Font_SetSpacing(0x1C, 0x1C);
-                Font_SetPos(0x1F4, 0x78);
+                Font_SetSpacing(28, 28);
+                Font_SetPos(500, 120);
                 if (gFrameTick & 0x10) {
                     Text_PrintfColored(gPlselArrowUp);
                 }
             }
             if (w->recordGroupCur < w->recordGroupCount - 1) {
-                Font_SetSpacing(0x1C, 0x1C);
-                Font_SetPos(0x1F4, 0x122);
+                Font_SetSpacing(28, 28);
+                Font_SetPos(500, 290);
                 if (gFrameTick & 0x10) {
                     Text_PrintfColored(gPlselArrowDown);
                 }
@@ -4428,7 +4232,7 @@ void PlselRes_InitRecordPage(void)
     w->page = RES_PAGE_RECORDS;
     Plsel_BuildResultText(w->page);
     if (w->newRecord == 1) {
-        Stream_Play(1, 0x1D);
+        Stream_Play(1, 29);
     }
 }
 
@@ -4551,7 +4355,7 @@ void PlselRes_InitMonsterPage(void)
     }
     Plsel_BuildResultText(w->page);
     if (w->friendChanged == 1 || w->strengthChanged == 1 || w->sizeChanged == 1) {
-        Stream_Play(1, 0x1D);
+        Stream_Play(1, 29);
     }
 }
 
@@ -4626,7 +4430,7 @@ s32 Plsel_SaveRecordMenu(void)
             return 0;
         }
         if (w->menuStep < ARENA_MENU_SAVED) {
-            w->timeout = 0x5A;
+            w->timeout = 90;
             w->menuStep = ARENA_MENU_TIMED_OUT;
             PlselRes_PlayCancelSe();
         }
@@ -4717,7 +4521,6 @@ s32 Plsel_SaveRecordMenu(void)
     return ret;
 }
 
-extern char *gArenaEmBlankLine[];
 /*
  * Writes line `line` of arena record `arenaEm` (ARENA_LINE_*: the name, the
  * monster, the rank or the size) into `out`, widened; a blank line for an
@@ -4725,7 +4528,7 @@ extern char *gArenaEmBlankLine[];
  */
 void Plsel_FormatRecord(s32 line, ArenaEm *arenaEm, char *out)
 {
-    char buf[0x80];
+    char buf[128];
 
     if (arenaEm->emKind == 0) {
         strcpy(out, gArenaEmBlankLine[0]);
@@ -4753,7 +4556,6 @@ void Plsel_FormatRecord(s32 line, ArenaEm *arenaEm, char *out)
     Sjis_Widen(buf, out);
 }
 
-extern char *gArenaEmReleasedText;
 /*
  * Draws the arena record menu: the countdown, the captured monster's four
  * lines, the three slots with the cursor, and the help lines; after a
@@ -4768,25 +4570,25 @@ void Plsel_DrawSaveRecordMenu(void)
     s32 lineY;
     char **tbl;
     ArenaEm *slotEm;
-    char buf[0x80];
-    char text[0x80];
+    char buf[128];
+    char text[128];
     ListPanel win;
     ArenaEm rec;
     s8 emLevel;
 
     w = gPlselWork;
-    y = 0x28;
+    y = 40;
     if (w->menuStep == ARENA_MENU_TIMED_OUT) {
-        ListPanel_DrawAlpha(&gPlselSaveRecPanel2, 0, -1, 0xA0);
+        ListPanel_DrawAlpha(&gPlselSaveRecPanel2, 0, -1, 160);
         Text_SetColor(0);
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(0xCB, 0xD7);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(203, 215);
         Text_Printf((s8 *) gArenaEmReleasedText);
         return;
     }
     if (w->menuStep < ARENA_MENU_SAVED) {
         win = gPlselSaveRecWinA;
-        win.x = 0x20;
+        win.x = 32;
         win.y = y;
         ListPanel_Draw(&win, (s16 *)0, (char *)0, -1);
     }
@@ -4797,8 +4599,8 @@ void Plsel_DrawSaveRecordMenu(void)
         sprintf(buf, gPlselTexts[PLSEL_TEXT_ITEMBOX_TIME], w->timeout / 30);
     }
     Window_DrawText(&gPlselSaveRecText, (s16 *)0, (u8 *)buf);
-    Text_SetColor(0x20);
-    Font_SetSpacing(0x12, 0x12);
+    Text_SetColor(32);
+    Font_SetSpacing(18, 18);
     if (w->menuStep < ARENA_MENU_SAVED) {
         rec.emKind = gQuestCapturedKind;
         rec.conditionPoints = 100;
@@ -4806,8 +4608,8 @@ void Plsel_DrawSaveRecordMenu(void)
         rec.condition = 2;
         rec.level = emLevel;
         rec.sizePct = gQuest.capturedSize;
-        for (i = 0, tbl = gArenaEmLineFmts; i < 4; i++, y += 0x14, tbl++) {
-            Font_SetPos(0x20, y);
+        for (i = 0, tbl = gArenaEmLineFmts; i < 4; i++, y += 20, tbl++) {
+            Font_SetPos(32, y);
             switch (i) {
             case 0:
                 sprintf(buf, *tbl, gRecordDashesText);
@@ -4827,34 +4629,34 @@ void Plsel_DrawSaveRecordMenu(void)
         }
     }
     if (w->menuStep != ARENA_MENU_ASK) {
-        y = 0x28;
+        y = 40;
         slotEm = gSave.arenaEms;
         for (i = 0; i < 3; i++) {
             win = gPlselSaveRecWinA;
-            win.x = 0x16A;
+            win.x = 362;
             win.y = y;
             ListPanel_Draw(&win, (s16 *)0, (char *)0, -1);
             if (w->menuStep != ARENA_MENU_ASK && i == w->recordSlot && w->recordCount == 3) {
-                Menu_DrawGlowBar(0x1D8, y, 0xDC, 0x50, 0xFF20C0C0);
+                Menu_DrawGlowBar(472, y, 220, 80, 0xFF20C0C0);
             }
-            for (lineY = y, j = 0; j < 4; j++, lineY += 0x14) {
+            for (lineY = y, j = 0; j < 4; j++, lineY += 20) {
                 Plsel_FormatRecord(j, slotEm, text);
-                Font_SetPos(0x16A, lineY);
+                Font_SetPos(362, lineY);
                 Text_PrintfColored(text);
             }
-            y += 0x64;
+            y += 100;
             slotEm++;
         }
         win = gPlselSaveRecWinB;
-        win.x = 0x168;
-        win.y = 0x15E;
+        win.x = 360;
+        win.y = 350;
         ListPanel_Draw(&win, (s16 *)0, (char *)0, -1);
         if (w->help1 > 0) {
-            Font_SetPos(0x168, 0x15E);
+            Font_SetPos(360, 350);
             Text_PrintfColored(gArenaEmPenHelp[w->help1]);
         }
         if (w->help2 > 0) {
-            Font_SetPos(0x168, 0x186);
+            Font_SetPos(360, 390);
             Text_Printf((s8 *) gArenaEmPenHelp[w->help2]);
         }
     }
@@ -4894,30 +4696,30 @@ void PlselRes_DrawArrow(s32 facesRight, s16 x, s16 y, s32 isSmall)
 {
     Sprite sprite;
 
-    Gfx_SetTexFilter(1);
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
     sprite.x = x;
     sprite.y = y;
     if (isSmall == 0) {
-        sprite.w = 0x1E;
-        sprite.h = 0x26;
+        sprite.w = 30;
+        sprite.h = 38;
     } else {
-        sprite.w = 0x12;
-        sprite.h = 0x14;
+        sprite.w = 18;
+        sprite.h = 20;
     }
     sprite.color = 0xFF32BC64;
     if (facesRight == 0) {
-        sprite.u0 = 0xFF;
-        sprite.u1 = 0xF0;
+        sprite.u0 = 255;
+        sprite.u1 = 240;
     } else {
-        sprite.u0 = 0xF0;
-        sprite.u1 = 0xFF;
+        sprite.u0 = 240;
+        sprite.u1 = 255;
     }
-    sprite.v0 = 0xEC;
-    sprite.v1 = 0xFF;
+    sprite.v0 = 236;
+    sprite.v1 = 255;
     if (isSmall == 0) {
-        TexRect_DrawRotated((struct TexRect *)&sprite, 0xC000);
+        TexRect_DrawRotated((struct TexRect *)&sprite, 49152);
         return;
     }
     Sprite_Draw(&sprite);
@@ -4925,7 +4727,7 @@ void PlselRes_DrawArrow(s32 facesRight, s16 x, s16 y, s32 isSmall)
 
 extern s32 gPlselResultsSubTex;
 /*
- * Loads the results screen's textures (compressed files 0x26 and 0x22, once
+ * Loads the results screen's textures (compressed files 38 and 34, once
  * each) and reloads sound bank 7.
  */
 void Plsel_LoadResultsTextures(void)
@@ -4933,14 +4735,14 @@ void Plsel_LoadResultsTextures(void)
     Tex_LoadQuestEndFile();
     Tex_SetQuestEndImages();
     if (gPlselResultsTex == 0) {
-        LoadCompressedFile(gSysSettings.loadBuf, 0x26);
-        gPlselResultsTex = Tex_CreateFromTim2(gSysSettings.loadBuf, 4);
+        LoadCompressedFile(gSysSettings.loadBuf, 38);
+        gPlselResultsTex = Tex_CreateFromTim2(gSysSettings.loadBuf, TEX_MODE_ON_DEMAND);
     }
     if (gPlselResultsSubTex == 0) {
-        LoadCompressedFile(gSysSettings.loadBuf, 0x22);
-        gPlselResultsSubTex = Tex_CreateFromTim2(gSysSettings.loadBuf, 4);
+        LoadCompressedFile(gSysSettings.loadBuf, 34);
+        gPlselResultsSubTex = Tex_CreateFromTim2(gSysSettings.loadBuf, TEX_MODE_ON_DEMAND);
     }
-    Sound_ReloadBank7();
+    Sound_LoadResultsBank();
 }
 
 void PlselRes_EmptyCloseHook(void)
@@ -4978,7 +4780,7 @@ void Plsel_QueueFlagUnlocks(void)
 
     w = gPlselWork;
     memset(w->notices, 0, sizeof(w->notices));
-    for (i = 0, entry = gPlselFlagUnlocks; i < 0x39; i++, entry += 2) {
+    for (i = 0, entry = gPlselFlagUnlocks; i < 57; i++, entry += 2) {
         if (entry[0] == 0xFFFF) {
             break;
         }
@@ -5001,20 +4803,20 @@ void Plsel_CheckCounterNotices(void)
     PlselWork *w;
 
     w = gPlselWork;
-    if (Save_TestEventFlag(0xB6) == 1 && w->rateNoticeQueued == 0) {
-        w->notices[w->noticeCount] = 0x500;
+    if (Save_TestEventFlag(182) == 1 && w->rateNoticeQueued == 0) {
+        w->notices[w->noticeCount] = 1280;
         w->noticeCount++;
         w->rateNoticeQueued = 1;
     }
-    if ((gSave.rateFlags & 0x800) && Save_HasTitle(0x7A) == 0) {
-        Save_SetTitle(0x7A);
-        Plsel_QueueAward(0x7A);
+    if ((gSave.rateFlags & 0x800) && Save_HasTitle(122) == 0) {
+        Save_SetTitle(122);
+        Plsel_QueueAward(122);
     }
 }
 
 /*
  * On a drill's first clear: queues the notice of the quest's entry in
- * gPlselDrillNoticeStages, and a second one for quest 0x2777.
+ * gPlselDrillNoticeStages, and a second one for quest 10103.
  */
 void Plsel_QueueDrillClearNotice(void)
 {
@@ -5032,8 +4834,8 @@ void Plsel_QueueDrillClearNotice(void)
             if (stageId == gQuest.stage) {
                 w->notices[w->noticeCount] = i | 0x300;
                 w->noticeCount++;
-                if (gQuest.stage == 0x2777) {
-                    w->notices[w->noticeCount] = 0x400;
+                if (gQuest.stage == 10103) {
+                    w->notices[w->noticeCount] = 1024;
                     w->noticeCount++;
                 }
                 return;
@@ -5055,14 +4857,14 @@ void Plsel_AddCounterPoints(void)
 
     w = gPlselWork;
     if (Save_AddCounterPoints() == 1) {
-        if (Save_TestEventFlag(0xB6) != 0 && w->rateNoticeQueued == 0) {
-            w->notices[w->noticeCount] = 0x500;
+        if (Save_TestEventFlag(182) != 0 && w->rateNoticeQueued == 0) {
+            w->notices[w->noticeCount] = 1280;
             w->noticeCount++;
             w->rateNoticeQueued = 1;
         }
-        if ((gSave.rateFlags & 0x800) && Save_HasTitle(0x7A) == 0) {
-            Save_SetTitle(0x7A);
-            Plsel_QueueAward(0x7A);
+        if ((gSave.rateFlags & 0x800) && Save_HasTitle(122) == 0) {
+            Save_SetTitle(122);
+            Plsel_QueueAward(122);
         }
     }
 }
@@ -5074,7 +4876,7 @@ s32 Plsel_HasNotices(void)
     PlselWork *w;
 
     w = gPlselWork;
-    for (i = 0; i < 0x39; i++) {
+    for (i = 0; i < 57; i++) {
         if (w->notices[i] != 0) {
             return 1;
         }
@@ -5096,15 +4898,15 @@ void Plsel_BuildNoticeText(void)
     char *pct;
     s32 i;
     PlselWork *w;
-    char buf[0x80];
-    char spliced[0x80];
+    char buf[128];
+    char spliced[128];
 
     w = gPlselWork;
     memset(w->lines, 0, sizeof(w->lines));
     w->unk0748 = 0;
     w->scroll = 0;
     w->lineCount = 0;
-    for (i = 0; i < 0x39; i++) {
+    for (i = 0; i < 57; i++) {
         if (w->notices[i] != 0) {
             noticeKind = (w->notices[i] & 0xFF00) >> 8;
             titleIndex = w->notices[i] & 0xFF;
@@ -5135,7 +4937,7 @@ void Plsel_BuildNoticeText(void)
             }
         }
     }
-    Stream_Play(1, 0x1D);
+    Stream_Play(1, 29);
 }
 
 /*
@@ -5193,7 +4995,7 @@ void Plsel_DrawNoticeText(void)
     s32 x;
     s32 y;
     s32 width;
-    char buf[0x80];
+    char buf[128];
 
     w = gPlselWork;
     ruleText = &gResultRuleText;
@@ -5201,16 +5003,16 @@ void Plsel_DrawNoticeText(void)
     width *= 9.0f;
     width = 640.0f - width;
     x = width / 2.0f;
-    y = 0x58;
-    Text_SetColor(0x31);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetSpacing(0x18, 0x18);
-    Font_SetPos(x, 0x52);
+    y = 88;
+    Text_SetColor(49);
+    Font_SetSpacing(18, 18);
+    Font_SetSpacing(24, 24);
+    Font_SetPos(x, 82);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_NOTICES_HEADING]);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x, 0x6E);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x, 110);
     Text_Printf((s8 *) *(s32 *)&gResultRuleText);
-    y += 0x58;
+    y += 88;
     end = w->noticePage * 3 + 3;
     for (i = w->noticePage * 3; i < end; i++) {
         if (w->lines[i][0] != 0) {
@@ -5221,28 +5023,28 @@ void Plsel_DrawNoticeText(void)
             Font_SetPos(width, y);
             Text_Printf((s8 *) w->lines[i]);
         }
-        y += 0x16;
+        y += 22;
     }
-    Font_SetPos(x, 0x134);
+    Font_SetPos(x, 308);
     Text_Printf((s8 *) *ruleText);
     if (w->noticePage > 0) {
-        Font_SetSpacing(0x1C, 0x1C);
-        Font_SetPos(0x132, 0x78);
+        Font_SetSpacing(28, 28);
+        Font_SetPos(306, 120);
         if (gFrameTick & 0x10) {
             Text_PrintfColored(gPlselArrowUp);
         }
     }
     if (w->noticePage * 3 + 3 < w->lineCount) {
-        Font_SetSpacing(0x1C, 0x1C);
-        Font_SetPos(0x132, 0x122);
+        Font_SetSpacing(28, 28);
+        Font_SetPos(306, 290);
         if (gFrameTick & 0x10) {
             Text_PrintfColored(gPlselArrowDown);
         }
     }
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(0x1EA, 0x164);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(490, 356);
     Text_Printf((s8 *) gPlselTexts[PLSEL_TEXT_PROMPT]);
-    Font_SetPos(0x1B8, 0x17C);
+    Font_SetPos(440, 380);
     sprintf(buf, gPlselTexts[PLSEL_TEXT_COUNTDOWN], w->timeout / 30);
     Text_Printf((s8 *) buf);
 }
@@ -5271,7 +5073,7 @@ void Plsel_BuildTitleText(void)
     award = w->awards;
     titles = gHunterTitles;
     for (i = 0; i < w->awardCount; i++, award++) {
-        if (w->lineCount + 4 >= 0x50) {
+        if (w->lineCount + 4 >= 80) {
             break;
         }
         strcpy(w->lines[w->lineCount++], titles[*award].text);
@@ -5361,7 +5163,7 @@ void Plsel_DrawTitleText(void)
     s32 x;
     s32 y;
     s32 width;
-    char buf[0x80];
+    char buf[128];
 
     w = gPlselWork;
     ruleText = &gResultRuleText;
@@ -5369,17 +5171,17 @@ void Plsel_DrawTitleText(void)
     width *= 9.0f;
     width = 640.0f - width;
     x = width / 2.0f;
-    y = 0x58;
-    Text_SetColor(0x31);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetSpacing(0x18, 0x18);
-    Font_SetPos(x, 0x52);
+    y = 88;
+    Text_SetColor(49);
+    Font_SetSpacing(18, 18);
+    Font_SetSpacing(24, 24);
+    Font_SetPos(x, 82);
     Text_Printf((s8 *)gPlselTexts[PLSEL_TEXT_TITLES_HEADING]);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x, 0x6E);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x, 110);
     Text_Printf((s8 *) *(s32 *)&gResultRuleText);
-    size = 0x18;
-    y += 0x58;
+    size = 24;
+    y += 88;
     i = w->scroll * 4;
     end = i + 4;
     Font_SetSpacing(size, size);
@@ -5393,31 +5195,31 @@ void Plsel_DrawTitleText(void)
             Text_Printf((s8 *) w->lines[i]);
         }
         y += size + 4;
-        size = 0x12;
+        size = 18;
         Font_SetSpacing(size, size);
     }
-    y = 0x58;
+    y = 88;
     y += (size + 4) * 10;
     Font_SetPos(x, y);
     Text_Printf((s8 *) *ruleText);
     if (w->scroll > 0) {
-        Font_SetSpacing(0x1C, 0x1C);
-        Font_SetPos(0x132, 0x78);
+        Font_SetSpacing(28, 28);
+        Font_SetPos(306, 120);
         if (gFrameTick & 0x10) {
             Text_PrintfColored(gPlselArrowUp);
         }
     }
     if (w->scroll + 1 < w->lineCount) {
-        Font_SetSpacing(0x1C, 0x1C);
-        Font_SetPos(0x132, 0x122);
+        Font_SetSpacing(28, 28);
+        Font_SetPos(306, 290);
         if (gFrameTick & 0x10) {
             Text_PrintfColored(gPlselArrowDown);
         }
     }
     Font_SetSpacing(size, size);
-    Font_SetPos(0x1EA, 0x164);
+    Font_SetPos(490, 356);
     Text_Printf((s8 *) gPlselTexts[PLSEL_TEXT_PROMPT]);
-    Font_SetPos(0x1B8, 0x17C);
+    Font_SetPos(440, 380);
     sprintf(buf, gPlselTexts[PLSEL_TEXT_COUNTDOWN], w->timeout / 30);
     Text_Printf((s8 *) buf);
 }
@@ -5483,28 +5285,28 @@ void Plsel_QueueQuestUnlock(u16 *list, s32 idx)
 
 /*
  * Checks the three quest unlock lists; online, the first clear of quest
- * 0x3AA9 sets four system flags and queues four notices.
+ * 15017 sets four system flags and queues four notices.
  */
 void Plsel_QueueQuestUnlocks(void)
 {
     PlselWork *w;
 
     w = gPlselWork;
-    Plsel_QueueQuestUnlock((u16 *)gPlselQuestUnlocks0, 0);
-    Plsel_QueueQuestUnlock((u16 *)gPlselQuestUnlocks1, 1);
-    Plsel_QueueQuestUnlock((u16 *)gPlselQuestUnlocks2, 2);
-    if (Game_IsOnline() != 0 && gQuest.stage == 0x3AA9 && EventFlag_Test(0x31) != 1) {
-        EventFlag_Set(0x31);
-        EventFlag_Set(0x32);
-        EventFlag_Set(0x33);
-        EventFlag_Set(0x34);
-        w->notices[w->noticeCount] = 0x700;
+    Plsel_QueueQuestUnlock(gPlselQuestUnlocks0, 0);
+    Plsel_QueueQuestUnlock(gPlselQuestUnlocks1, 1);
+    Plsel_QueueQuestUnlock(gPlselQuestUnlocks2, 2);
+    if (Game_IsOnline() != 0 && gQuest.stage == 15017 && EventFlag_Test(49) != 1) {
+        EventFlag_Set(49);
+        EventFlag_Set(50);
+        EventFlag_Set(51);
+        EventFlag_Set(52);
+        w->notices[w->noticeCount] = 1792;
         w->noticeCount++;
-        w->notices[w->noticeCount] = 0x800;
+        w->notices[w->noticeCount] = 2048;
         w->noticeCount++;
-        w->notices[w->noticeCount] = 0x900;
+        w->notices[w->noticeCount] = 2304;
         w->noticeCount++;
-        w->notices[w->noticeCount] = 0xA00;
+        w->notices[w->noticeCount] = 2560;
         w->noticeCount++;
     }
 }

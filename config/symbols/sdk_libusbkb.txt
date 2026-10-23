@@ -1,12 +1,14 @@
-// Symbols for the boot ELF (SLPM_662.80): Sony libusbkb, "PsIIlibusbkb3020" (.data 0x1998F0), text 0x1285D0-0x129B30; asm piece sdk/libusbkb
-// Library code: it stays assembly. Public API
-// names only, where the evidence is clear. Format: name = 0xADDRESS; // attributes
+// The boot ELF (SLPM_662.80): Sony's libusbkb (version 3020, by its id
+// string in .data at 0x1998F0), text 0x1285D0-0x129B30; asm piece sdk/libusbkb.
+// Sony's library code, kept as assembly: public API names only, where the
+// binary shows them. Format: name = 0xADDRESS; // attributes
 sceUsbKbInit = 0x001285D0; // type:func
 sceUsbKbGetInfo = 0x00128890; // type:func
 sceUsbKbRead = 0x00128938; // type:func
 sceUsbKbSync = 0x00128DB8; // type:func
 
-// Round 27 (names h1) - library functions the C calls, named from the evidence
+// Functions the game's C calls, named from what each does (its line's
+// comment).
 sceUsbKbSetLEDStatus = 0x00128AF8; // type:func own error string sceUsbKbSetLEDStatus, RPC 4
 sceUsbKbSetLEDMode = 0x00128BD0; // type:func own error string sceUsbKbSetLEDMode, RPC 5
 sceUsbKbSetRepeat = 0x00128CD0; // type:func stores the repeat start time and interval in the port record

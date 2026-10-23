@@ -14,6 +14,11 @@
  * choice back to the monster script. Flights move along curves
  * (EmRathalos_StartCurves, UpdateCurves) and Em_UpdateFlight;
  * EmRathalos_MotionEffects adds each motion's effects and sounds.
+ *
+ * Motions are written EM_MOTION_ID(layer, RATH_MOT_*) where they are
+ * compared with a layer's motion id, and by name where they are played;
+ * bones (RATH_BONE_*) and sounds (RATH_SE_*) by name where the code shows
+ * what they are. The other motion, bone and sound numbers stay numbers.
  */
 #include "common.h"
 #include "scene.h"
@@ -25,204 +30,51 @@
 #include "objattach.h"
 #include "stageobj.h"
 #include "area.h"
+#include "shadow.h"
+#include "capsule.h"
+#include "card.h"
+#include "save.h"
+#include "sound.h"
+#include "attack_objects.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "vec_math.h"
+#include "em_hermitaur.h"
+#include "em_script.h"
+#include "hud.h"
 /* prototypes of callees */
-void Em_SetPartScaled(Em *em, s32 bit);
 void EmTail_Create(Em *);
-void Em_AreaExitPoint(Em *em, f32 *out);
-s32 Area_ContainsPos(s32, f32 *);
-void Em_EnterNextArea(Em *);
 struct EmIdEntry;
 f32 *Em_AreaEntryValue(Em *em, struct EmIdEntry *entry);
-u16 Rand_Next(s32 stream);
 
-s8 EmMine_CreateTimed0(Em *em, f32 *pos);
-void EmRathalos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 /* unit's own declaration: the amount is declared s32, as the callers pass it; with the definition's s16 the compiler narrows the amount to 16 bits before each call (EmRathalos_EatNeed1, EmRathalos_EatNeed2), which the game's code doesn't do */
 void Em_AddHp(Em *em, s32 n);
-void Em_BeginStatus1(Em *em);
-void Em_PlaySeAtBone(Em *em, s32 se, s32 bone);
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_SetLayerMotion(Em *em, s32 motion, s32 blend, s32 frame, s32 layer);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-void QuestEm_Captured(Em *em);
-void RathalosAttack_Create(Em *, s8);
 void EmRangedAttack_CreateAtBone(Em *em, s32 a, s32 b, s32 c, s32 d, s32 e);
-void Em_SelectSightRow(Em *em, u8 idx);
-void Em_MoveRotated(Em *em, void *src);
-void Em_MoveRotatedAccel(Em *em, void *ang);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_LoadReactionSet(Em *em, u8 k);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_GetPitchToGoal(Em *em, s32 *out, f32 a, f32 b);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_ClearNeed1State(Em *em);
-void Em_ClearNeed2State(Em *em);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_AddNeed2(Em *em, s32 n);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_SetTrapTimeGoal(Em *em);
-void Em_ClearPoison(Em *em);
-void Em_SetHold2(Em *em);
-void Em_SetCaptured(Em *em, s32 a);
-void Em_PlayCommonSeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-void Em_PlaySeAtBoneVolOnLayerFrame(Em *em, s32 frame, s32 se, s32 bone, s32 flag, s32 vol);
-void Em_UpdateFlight(Em *em, s32 flags, EmFlyParam *p);
-s32 Em_TurnToTargetMotion(Em *em, u16 range, u16 motFront, u16 motLeft, u16 motRight);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void EmRathalos_Init(Em *);
-void EmRathalos_TurnToGoal(Em *, EmWork *);
-void EmRathalos_TakeOff(Em *, EmWork *);
-void EmRathalos_Land(Em *, EmWork *);
-void EmRathalos_HopToGoal(Em *, EmWork *);
-void EmRathalos_FlyOutOfArea(Em *em, EmWork *work);
-void EmRathalos_FlyToGoalAndLand(Em *, EmWork *);
-void EmRathalos_FlyOutOfAreaAlt(Em *em, EmWork *work);
-void EmRathalos_FlyIntoArea(Em *, EmWork *);
-void EmRathalos_StepForward(Em *, s32);
-void EmRathalos_QuestIntro(Em *, EmWork *);
-void EmRathalos_Captured(Em *em);
-void EmRathalos_StoryEvent(Em *);
-void EmRathalos_VersusEatBait(Em *em, EmWork *work);
-void EmRathalos_VersusPoseC(Em *, EmWork *);
-void EmRathalos_Die(Em *em, EmWork *work);
-void EmRathalos_DieHeld(Em *em, EmWork *work);
-void EmRathalos_DieFalling(Em *em, EmWork *work);
-void EmRathalos_RunIdleState(Em *em, EmWork *work);
-void EmRathalos_RunAttackState(Em *em, EmWork *work);
-void PartFx_SpawnForEmScaled(Em *em, s32 a, s32 b, f32 scale);
-void EmRathalos_MotionSounds(Em *em, EmWork *work);
-void ElementBurst_CreateOnEm(Em *em, u8 k, u8 c, f32 scale);
-void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work);
-void EmRathalos_SpawnLandingDust(Em *em);
-void EmRathalos_SpawnK14Type0AEvery5(Em *em);
-void EmRathalos_MoveByVelYCurve(Em *em, s32 kind);
-void EmRathalos_StartCurves(Em *em, u8 kind);
-u8 EmRathalos_UpdateCurves(Em *em);
-void AttackBurst_CreateAtBone(Em *em, s16 bone, s16 k, u16 c);
-void AlertMark_Create(void *owner, s16 v, u8 k);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
 /* unit's own declaration: the arguments are declared s32, as the callers pass them; with the definition's u8 and s16 parameters the compiler narrows them before the call (EmRathalos_Stun, EmRathalos_StunDowned), which the game's code doesn't do */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-f32 Vec_Distance(f32 *a, f32 *b);
-void CamShake_ReqAIf(Em *obj, s32 i);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 Versus_BothDefeated(void);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Player_ClearAccel2(void *);
-void Motion_InitTime(void *p, s16 step);
-void Shadow_Spawn(void *obj, s16 type);
-extern f32 gAreaGroundY[];
 extern EmFlyParam EmRathalos_FlyParam;
 extern EmFlyParam EmRathalos_FlyParam2;
 extern EmTurnParams EmRathalos_TurnParams[2];
-void QuestEm_Hunted(Em *em);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void EmRathalos_SetIdleState(Em *em, u16 state, u8 mode);
-void EmRathalos_SetMoveState(Em *em, u16 state, u8 mode);
-void EmRathalos_SetFlyState(Em *em, u16 state, u8 mode);
-void EmRathalos_SetAttackState(Em *em, u16 state, u8 mode);
 /* unit's own declaration: group and state are declared u16; with the definition's s32 the callers (EmRathalos_ChangeState, EmRathalos_SetIdleState ...) pass the state without the 16-bit mask the game's code applies */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_TypeSetup(Em *em);
-void Em_SetTargetAngle(Em *em);
-void Em_StartRage(Em *em);
-void Em_StartPendingRage(Em *em);
-s32 Game_IsOnline(void);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-void EmRathalos_SetEscapePoint(Em *em);
-void Em_TargetPlayerInRange(Em *);
-void Versus_MarkDefeat(Em *);
-s8 QuestEm_Appear(Em *em);
-void Em_ResetToBasePose(Em *em);
-void Em_BreakPart(Em *em, s32 part);
 void Em_EndAllStatus(Em *em);
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_EndStatus1(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_CheckRageByHp(Em *em, s16 n);
-void Em_ResetNotice(Em *em);
-void Em_RefillNeed3(Em *em);
-void Em_StartGoalAction(Em *em, s32 arg1);
-void Em_ClearPart(Em *em, u16 part);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-void VersusBait_Create(Player *p, Em *em, u8 k, s32 unused, f32 *pos);
-void Versus_RouteEmByTeam(Em *em);
-s32 Versus_DefeatCamera(Em *pl);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
 extern EmCurveKey *EmRathalos_MoveVelYCurves[];
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
 /* A position copied whole (EmRathalos_CarveThrowPt): the original copies it as one struct. */
 extern Vec3f EmRathalos_CarveThrowPt __attribute__((aligned(8)));
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
 /* unit's own declaration: the arguments are declared s32, as the callers pass them; with the definition's s16 parameters the compiler narrows them before the call (EmRathalos_Rest, EmRathalos_Status2LieDown), which the game's code doesn't do */
 s32 Em_RegenHp(Em *em, s32 n, s32 max, s32 interval);
-void Em_ClearLowHpNeed(Em *em);
-s32 Save_TestEventFlag(s32);
 u16 Area_IdForCurrentTime(u16);
-s8 Em_NearestActionToBone(Em *em, s32 bone, f32 *pos);
-void GmEm_ResetSize(Em *em);
-void CamShake_ReqC(Em *em, s32 a);
-void Em_AimAtTarget(Em *em);
-void Em_GetPitchToTarget(Em *em, s32 *out, f32 a, f32 b);
-f32 Math_Sqrtf(f32 x);
-void Em_RaisePlayerAreaTriggerLax(Em *em);
-u16 Area_DayId(u16 id);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void Em_DecayNeed3(Em *em);
-void Em_CheckCarryRequest(Em *em);
-void EmRathalos_RunState(Em *em, s32 arg1);
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_SetTrapTime(Em *em, u8 *p);
-void Em_SetStatus1Timer(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetKindTimer(Em *em);
-s32 Em_IsHeld(Em *em);
-u16 Map_DayId(u16);
-void Em_CheckLowHp(Em *em, f32 ratio);
-void Em_DecayNeed2(Em *em);
-void Em_DecayNeed1Only(Em *em);
-void Em_DecayNeed1(Em *em);
-void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-s32 EmRathalos_ReachedTarget(Em *em);
-void EmRathalos_EndSwoop(Em *em, s32 arg1);
-void EmRathalos_StepPitch(Em *em, s32 mode, f32 height);
-AreaRecord *Stage_GetAreaRecord(u16 x);
-void Area_ToWorld(s32 area, f32 *pos, f32 *out);
-u8 Em_AllPlayersHere(Em *em);
-s32 Obj_SameArea(void *obj, Player *b);
-s32 EmRathalos_ReachedPoint(Em *em);
-void PartFx_SpawnForEm(Em *em, s32 a, s32 b);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-void Em_PlaySeTypeAtBoneInFrames(Em *em, s32 frame, s32 frame2, s32 se, s32 bone, s32 vol, s32 a);
-void Em_PlaySeTypeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
 /* end of prototypes */
 
 /*
@@ -237,695 +89,695 @@ void EmRathalos_MotionSounds(Em *em, EmWork *work)
 
     motion = work->sndMotion;
     switch (motion) {
-    case EM_MOTION_ID(0, 0x2):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 3, 0x1A);
+    case EM_MOTION_ID(0, 2):
+        Em_PlaySeAtBoneOnFrame(em, 6, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 3, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_WALK):
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 52, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x4):
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 6, 0x1A);
+    case EM_MOTION_ID(0, 4):
+        Em_PlaySeAtBoneOnFrame(em, 40, 6, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 76, 6, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_RIGHT):
-        Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 25, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_LEFT):
-        Em_PlaySeAtBoneOnFrame(em, 0x19, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 25, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x7):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x14);
+    case EM_MOTION_ID(0, 7):
+        Em_PlaySeAtBoneOnFrame(em, 6, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 38, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x8):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
+    case EM_MOTION_ID(0, 8):
+        Em_PlaySeAtBoneOnFrame(em, 6, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_RUN_STOP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 4, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 6, 19, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 38, 4, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_LIMP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x59, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 6, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x12, 0x14);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 89, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 6, 4, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 0, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 18, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DESCEND):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 14, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 66, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 122, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 126, 11, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_GLIDE):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x19, 6);
+        Em_PlaySeAtBoneOnFrame(em, 6, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 64, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 6, 25, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 25, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 38, 25, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 25, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 70, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 72, 25, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 76, 25, RATH_BONE_WING_A);
         break;
-    case EM_MOTION_ID(0, 0xD):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xF, 0xC);
+    case EM_MOTION_ID(0, 13):
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 44, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 40, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 66, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 70, 15, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLY):
-    case EM_MOTION_ID(0, 0x55):
-    case EM_MOTION_ID(0, 0x56):
-    case EM_MOTION_ID(0, 0x58):
-    case EM_MOTION_ID(0, 0x59):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x19, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x19, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0x19, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x19, 6);
+    case EM_MOTION_ID(0, 85):
+    case EM_MOTION_ID(0, 86):
+    case EM_MOTION_ID(0, 88):
+    case EM_MOTION_ID(0, 89):
+        Em_PlaySeAtBoneOnFrame(em, 10, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 14, 25, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 18, 25, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 42, 25, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 46, 25, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 25, RATH_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_HOVER):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD4, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD8, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 142, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 138, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 212, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 216, 11, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_RUN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x12, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 18, 79, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 6, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 6, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TAKE_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 7, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB6, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBA, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 40, 7, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 82, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 86, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 140, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 182, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 186, 11, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TOUCH_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 7, 9);
+        Em_PlaySeAtBoneOnFrame(em, 2, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 12, 4, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 96, 0, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 14, 7, 9);
         break;
-    case EM_MOTION_ID(0, 0x1D):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xE, 6);
+    case EM_MOTION_ID(0, 29):
+        Em_PlaySeAtBoneOnFrame(em, 30, 19, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 2, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 14, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 8, 14, RATH_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_LIE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x57, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 36, 87, RATH_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, RATH_MOT_ROAR):
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 2, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xCC, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xFE, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x126, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x15, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x23, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x30, 0x49, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x22, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xB8, 0x4C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x120, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 50, 2, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 58, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 84, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 104, 4, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 124, 17, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 204, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 210, 2, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 254, 18, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 288, 2, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 36, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 132, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 290, 14, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 294, 14, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 2, 21, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 2, 35, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 48, 73, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 128, 34, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 184, 76, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 288, 34, RATH_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x24):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x24, 0x4C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x28, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0x15, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0, 0x1A);
+    case EM_MOTION_ID(0, 36):
+        Em_PlaySeTypeAtBoneOnFrame(em, 36, 76, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 0, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 40, 0, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 60, 21, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 60, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 12, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 166, 0, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_GET_UP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x1E, 0x48, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xC, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 30, 72, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 12, 12, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 46, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_COLLAPSE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 3, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 4, 0x22);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 87, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 72, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 164, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 144, 3, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, 14, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 178, 4, RATH_BONE_BREATH);
         break;
     case EM_MOTION_ID(0, RATH_MOT_LIE_DOWN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 2, 0x57, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x10, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 2, 87, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 2, 23, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 64, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 102, 16, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEAP):
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x88, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 7, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xDA, 0x1B, 6);
+        Em_PlaySeAtBoneOnFrame(em, 42, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 46, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 102, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 106, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 136, 10, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 140, 10, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 2, 19, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 52, 4, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 5, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, 7, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 112, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 116, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 120, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 142, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 148, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 150, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 176, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 180, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 184, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 176, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 214, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 218, 27, RATH_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEAP_LAND):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xC, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x60, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x11, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x10, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 8, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x8E, 6, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 12, 79, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 2, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 6, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 14, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 14, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 10, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 10, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 92, 10, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 96, 10, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 18, 17, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 16, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 8, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 92, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 112, 6, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 142, 6, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 8, 75, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 42, 0, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 8, 0x4B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x14, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 1, 0x14);
+        Em_PlaySeTypeAtBoneOnFrame(em, 8, 75, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 30, 20, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 42, 0, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 72, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_SWOOP_DIVE):
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1B, 6);
+        Em_PlaySeAtBoneOnFrame(em, 28, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 32, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 6, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 10, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 14, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 42, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 27, RATH_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_SWOOP_CLAW):
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x5B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1E, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1E, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x5E, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x1D, 6);
+        Em_PlaySeAtBoneOnFrame(em, 34, 91, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 50, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 54, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 102, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 152, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 156, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 28, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 29, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 8, 29, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 34, 30, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 34, 29, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 38, 29, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 64, 30, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 64, 29, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 68, 29, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 94, 28, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 94, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 124, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 124, 29, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 128, 29, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 154, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 154, 29, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 158, 29, RATH_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x18, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xF, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 6, RATH_SE_FIREBALL, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 81, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 14, 15, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FIREBALL):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 2, 18, RATH_BONE_ROOT);
         if ((em->stateGroup != 8) || (em->state != 3)) {
-            Em_PlaySeAtBoneOnFrame(em, 0x50, 0x18, 0x23);
+            Em_PlaySeAtBoneOnFrame(em, 80, RATH_SE_FIREBALL, RATH_BONE_HEAD);
         }
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x28, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x4A, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x13, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xBB, 0x13, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xF0, 0x12, 0);
+        Em_PlaySeAtBoneOnFrame(em, 20, 40, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 74, 81, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 76, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 180, 19, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 187, 19, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 240, 18, RATH_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x30):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x72, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x14);
+    case EM_MOTION_ID(0, 48):
+        Em_PlaySeAtBoneOnFrame(em, 2, 34, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 34, 34, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 64, 34, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 114, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL_RISE):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x48, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xBE, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC2, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 2, 72, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 32, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 116, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 120, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 190, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 194, 11, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FIREBALL_B):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x14, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x4E, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x18, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x12A, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0x13, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 20, 86, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 78, 81, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 78, RATH_SE_FIREBALL, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 120, RATH_SE_FIREBALL, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 164, RATH_SE_FIREBALL, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 18, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 64, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 64, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 250, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 298, 18, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 286, 19, RATH_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 6, 0x1A);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xA0, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0xE6, 0x5D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xEE, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 38, 16, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, 18, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 6, RATH_BONE_STEP_B);
+        Em_PlaySeTypeAtBoneOnFrame(em, 160, 86, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 230, 93, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 238, 22, RATH_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, RATH_MOT_BACK_HOP):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x16, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x48, 0x51, 0x23);
-        if ((em->stateGroup == 3) && (em->state == 0x10)) {
-            Em_PlaySeAtBoneOnFrame(em, 0x52, 0x18, 0x23);
+        Em_PlaySeTypeAtBoneOnFrame(em, 22, 86, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 72, 81, RATH_BONE_HEAD);
+        if ((em->stateGroup == 3) && (em->state == 16)) {
+            Em_PlaySeAtBoneOnFrame(em, 82, RATH_SE_FIREBALL, RATH_BONE_HEAD);
         }
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x14, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 0xB, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 6, 20, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 22, 0, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 106, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 110, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 172, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 176, 11, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_DIVE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x50, 0x49, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x30, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x70, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x92, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x96, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xBC, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xB8, 0xB, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 80, 73, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 88, 48, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 66, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 62, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 92, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 88, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 112, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 146, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 150, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 188, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 184, 11, RATH_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, RATH_MOT_TURN_IN_PLACE):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x56, 0x23);
-        Em_PlaySeTypeAtBoneInFrames(em, 0x6E, 0x118, 0x5C, 0x23, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 4, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x14, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xC, 6);
+    case EM_MOTION_ID(0, RATH_MOT_TURN_ROAR):
+        Em_PlaySeTypeAtBoneOnFrame(em, 16, 86, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneInFrames(em, 110, 280, 92, RATH_BONE_HEAD, 7, 0);
+        Em_PlaySeAtBoneOnFrame(em, 2, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 28, 4, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 56, 4, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 28, 5, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 120, 4, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 264, 4, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 20, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 16, 12, RATH_BONE_WING_A);
         break;
-    case EM_MOTION_ID(0, 0x37):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x3C, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 1, 0x14);
+    case EM_MOTION_ID(0, 55):
+        Em_PlaySeAtBoneOnFrame(em, 8, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 8, 8, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 60, 5, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 74, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_BACK_HOP_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x28, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x2E, 8, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 2, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 12, 18, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 10, 40, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 46, 8, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 2, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FEED):
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 3, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 6, 34, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 104, 3, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x3C):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x11, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC4, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xD, 0xC);
+    case EM_MOTION_ID(0, 60):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 83, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 72, 19, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 17, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 116, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 148, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 196, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 13, RATH_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x3D):
-        Em_PlaySeTypeAtBoneOnFrame(em, 6, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xAC, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 0x15, 0);
+    case EM_MOTION_ID(0, 61):
+        Em_PlaySeTypeAtBoneOnFrame(em, 6, 83, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 38, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 78, 4, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 110, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 172, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 90, 21, RATH_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, RATH_MOT_SHAKE_OFF):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x7E, 3, 0x1A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 79, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 86, 31, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 19, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 126, 3, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x3F):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0, 0x1A);
+    case EM_MOTION_ID(0, 63):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 76, 31, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 14, 0, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x40):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x7A, 0, 0x1A);
+    case EM_MOTION_ID(0, 64):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 68, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 122, 0, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x41):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x54, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x2C);
-        Em_PlaySeAtBoneOnFrame(em, 0xFC, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 4, 0x2C);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x12, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x142, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x3E, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x11E, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0xD, 0xC);
+    case EM_MOTION_ID(0, 65):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 84, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 168, 42, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 39, RATH_BONE_TAIL_C);
+        Em_PlaySeAtBoneOnFrame(em, 252, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 304, 39, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 62, 4, RATH_BONE_TAIL_C);
+        Em_PlaySeAtBoneOnFrame(em, 18, 18, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 44, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 16, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 210, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 322, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 62, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 74, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 100, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 162, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 14, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 286, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 290, 13, RATH_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x42):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0);
+    case EM_MOTION_ID(0, 66):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x43):
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x17, 0);
+    case EM_MOTION_ID(0, 67):
+        Em_PlaySeAtBoneOnFrame(em, 70, 45, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 23, RATH_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DIE):
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 2, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 4, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xDC, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 7, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x114, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x180, 0x16, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x18, 0x52, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x28, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x2C, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x13A, 0x2F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x174, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x176, 0xE, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 28, 2, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 4, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 220, 16, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 30, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 264, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 264, 7, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 276, 23, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 384, 22, RATH_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 24, 82, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 140, 40, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 180, 44, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 314, 47, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 372, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 374, 14, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_KNOCK_DOWN):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 17, RATH_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DOWN):
-    case EM_MOTION_ID(0, 0x4B):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x31, 0x23);
+    case EM_MOTION_ID(0, 75):
+        Em_PlaySeAtBoneOnFrame(em, 8, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 48, 49, RATH_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DOWN_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x1A);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 48, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 70, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x48):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 1, 0x14);
+    case EM_MOTION_ID(0, 72):
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 30, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 48, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 70, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
-    case EM_MOTION_ID(0, 0x49):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1E, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1D, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 7, 0);
+    case EM_MOTION_ID(0, 73):
+        Em_PlaySeAtBoneOnFrame(em, 4, 30, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 29, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 29, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 42, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 76, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 24, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 16, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 30, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 34, 7, RATH_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x4A):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x13, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 0x11, 0);
+    case EM_MOTION_ID(0, 74):
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 19, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 24, 17, RATH_BONE_ROOT);
         break;
-    case EM_MOTION_ID(0, 0x4C):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x10, 0x54, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x74, 0x5A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 1, 0x1A);
+    case EM_MOTION_ID(0, 76):
+        Em_PlaySeTypeAtBoneOnFrame(em, 16, 84, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 116, 90, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 16, RATH_SE_STEP, RATH_BONE_STEP_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FALL):
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xB, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x1B, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 83, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 20, 11, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 58, 20, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 88, 28, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 88, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 92, 27, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FALL_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 7, 0x2A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x2C, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 10, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 7, RATH_BONE_TAIL_B);
+        Em_PlaySeAtBoneOnFrame(em, 12, 17, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 44, RATH_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, RATH_MOT_HEAD_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x24, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x66, 0x22, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0x22, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 38, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 12, 36, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 36, 34, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 102, 34, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 164, 34, RATH_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x50):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x1A);
+    case EM_MOTION_ID(0, 80):
+        Em_PlaySeAtBoneOnFrame(em, 2, 22, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 100, 23, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 38, 45, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 320, 3, RATH_BONE_STEP_B);
         break;
-    case EM_MOTION_ID(0, 0x51):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x17, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x2D, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xC8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x140, 3, 0x14);
+    case EM_MOTION_ID(0, 81):
+        Em_PlaySeAtBoneOnFrame(em, 2, 22, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 100, 23, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 38, 45, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 200, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 28, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 320, 3, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DIE_FALLING):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x32, 0x54, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 50, 84, RATH_BONE_HEAD);
         break;
-    case EM_MOTION_ID(0, 0x53):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x17, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x10, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xC6, 0, 0x14);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA8, 0x27, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA2, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0xD, 0xC);
+    case EM_MOTION_ID(0, 83):
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 23, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 16, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 0, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 28, 0, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, 0, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 0, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 0, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 198, 0, RATH_BONE_STEP_A);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 83, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 168, 39, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 162, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 166, 13, RATH_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x54):
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x2A, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x1A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 0xE, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xE, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xA, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x56, 3, 0x14);
+    case EM_MOTION_ID(0, 84):
+        Em_PlaySeAtBoneOnFrame(em, 48, 42, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 22, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 26, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 52, 10, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 14, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 78, 14, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 74, 10, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 92, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 32, 5, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 80, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 86, 3, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_SWOOP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1A, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1B, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1B, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x1C, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x1C, 0x22);
+        Em_PlaySeAtBoneOnFrame(em, 4, 26, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 8, 27, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 27, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 34, 28, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 64, 28, RATH_BONE_BREATH);
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEVEL_OUT):
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x30, 0x51, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x20, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x24, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0xB, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0xB, 0xC);
+        Em_PlaySeTypeAtBoneOnFrame(em, 48, 81, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 32, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 36, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 74, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 78, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 124, 11, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 128, 11, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_CHARGE_TRIP):
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 6, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x38, 6, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0xB0, 3, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 3, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x108, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x130, 1, 0x1A);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x5B, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 0x11, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x10A, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x10E, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 16, 6, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 56, 6, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 176, 3, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 214, 3, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 264, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 304, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 91, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 100, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 92, 16, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 140, 17, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 16, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 266, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 270, 12, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP):
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 1, 0x14);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 1, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0xD, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x4A, 0xD, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x14, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x13, 0);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x54, 0x4F, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0xF, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xA4, 0xF, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xD6, 0xC, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 30, RATH_SE_STEP, RATH_BONE_STEP_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, RATH_SE_STEP, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 70, 13, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 74, 13, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 106, 20, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 106, 19, RATH_BONE_ROOT);
+        Em_PlaySeTypeAtBoneOnFrame(em, 84, 79, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 160, 15, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 164, 15, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 210, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 214, 12, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP_FALL):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xA, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0xA, 0xC);
+        Em_PlaySeAtBoneOnFrame(em, 8, 10, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 10, RATH_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 8, 8, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 5, 0x1A);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 1, 0x14);
+        Em_PlaySeAtBoneOnFrame(em, 8, 32, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 8, 8, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 34, 22, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 104, 5, RATH_BONE_STEP_B);
+        Em_PlaySeAtBoneOnFrame(em, 108, RATH_SE_STEP, RATH_BONE_STEP_A);
         break;
     case EM_MOTION_ID(0, RATH_MOT_TRAPPED):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x10, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 9, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x27, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x52, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 16, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 10, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 20, 9, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 39, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 82, RATH_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, RATH_MOT_STRUGGLE):
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x12, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xC, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0xC, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x13, 0);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x28, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 0x28, 0x53, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 0);
+        Em_PlaySeAtBoneOnFrame(em, 22, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 72, 18, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 12, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 12, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 48, 19, RATH_BONE_ROOT);
+        Em_PlaySeAtBoneOnFrame(em, 4, 40, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 40, 83, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_ROOT);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DOWNED):
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 4, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x2A, 0x23);
-        Em_PlaySeTypeAtBoneOnFrame(em, 4, 0x53, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 34, 22, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 38, 22, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 4, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 108, 3, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 42, RATH_BONE_HEAD);
+        Em_PlaySeTypeAtBoneOnFrame(em, 4, 83, RATH_BONE_HEAD);
         break;
     case EM_MOTION_ID(0, RATH_MOT_DOWNED_GET_UP):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x16, 6);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x16, 0xC);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 3, 0x22);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x50, 0x23);
-        Em_PlaySeAtBoneOnFrame(em, 0x46, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 4, 22, RATH_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 22, RATH_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 108, 3, RATH_BONE_BREATH);
+        Em_PlaySeAtBoneOnFrame(em, 4, 80, RATH_BONE_HEAD);
+        Em_PlaySeAtBoneOnFrame(em, 70, 32, RATH_BONE_HEAD);
         
     case EM_MOTION_ID(0, RATH_MOT_IDLE):
     default:
@@ -942,13 +794,13 @@ void EmRathalos_Setup(Em *em)
 }
 
 /*
- * Creates the family's attached objects: a stage object of kind 0x13 (type
- * 0x22) and attached effect 0.
+ * Callback slots 0 and 1: creates the alert mark at RATH_BONE_BREATH
+ * (AlertMark_Create) and the monster's shadow (SHADOW_MODEL).
  */
 void EmRathalos_SpawnEffects(void *em)
 {
-    AlertMark_Create(em, 0x22, 0);
-    Shadow_Spawn((Player *) em, 0);
+    AlertMark_Create(em, RATH_BONE_BREATH, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /*
@@ -967,7 +819,7 @@ void EmRathalos_Init(Em *em)
     Em_SetPartScaled(em, 4);
     Em_SetPartScaled(em, 8);
     if (gQuest.stage == 0) {
-        em->rotY = 0x8000;
+        em->rotY = ANGLE_TURN / 2;
         switch (gScene.area) {
         case 0:
             em->posX = 8000.0f + 1500.0f * (f32) em->slotNo;
@@ -993,7 +845,7 @@ void EmRathalos_Init(Em *em)
             em->posX = 10000.0f + 1500.0f * (f32) em->slotNo;
             em->posY = 0.0f;
             em->posZ = 5700.0f;
-            em->rotY = 0x4000;
+            em->rotY = ANGLE_TURN / 4;
             break;
         case AREA_VOLCANO_NIGHT_9:
             em->posX = 14300.0f + 1500.0f * (f32) em->slotNo;
@@ -1017,7 +869,7 @@ void EmRathalos_Init(Em *em)
             break;
         }
     }
-    Em_SetMotionRow(em, 1, 0, 0);
+    Em_SetMotionRow(em, RATH_MOT_IDLE, 0, 0);
     em->stance = EM_STANCE_GROUND;
     w->fxMotion = 0;
     maxHp = Em_ComputeMaxHp(em, 0);
@@ -1026,11 +878,11 @@ void EmRathalos_Init(Em *em)
     em->scriptPending = 1;
     em->blind = 0;
     em->unk_InitFlag = 1;
-    em->aimAngle = 0x4000;
+    em->aimAngle = ANGLE_TURN / 4;
     w->pitchStep = 0x100;
-    ((EmWork *)w)->turnSpeed = 0x200;
+    ((EmWork *)w)->turnSpeed = 512;
     w->rollSpeed = 0x100;
-    w->moveAngBY = 0x2000;
+    w->moveAngBY = ANGLE_TURN / 8;
     w->moveAngBX = 0;
     if ((em->fxFlags &= 1) == 0) {
         switch (em->type) {
@@ -1157,27 +1009,27 @@ void EmRathalos_LayerMotionToIdle(Em *em, s32 layer)
 {
     switch (layer) {
     case 0:
-        if (em->motionId[0] == EM_MOTION_ID(0, 0x1D)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 0xA, 0, 0);
+        if (em->motionId[0] == EM_MOTION_ID(0, 29)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 10, 0, 0);
         }
         if (em->motionId[0] == EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 10, 0, 0);
         }
         break;
     case 1:
-        if (em->motionId[1] == EM_MOTION_ID(1, 0x1D)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, RATH_MOT_IDLE), 0xA, 0, 1);
+        if (em->motionId[1] == EM_MOTION_ID(1, 29)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, RATH_MOT_IDLE), 10, 0, 1);
         }
         if (em->motionId[1] == EM_MOTION_ID(1, RATH_MOT_ALERT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, RATH_MOT_IDLE), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, RATH_MOT_IDLE), 10, 0, 1);
         }
         break;
     case 2:
-        if (em->motionId[2] == EM_MOTION_ID(2, 0x1D)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 0xA, 0, 2);
+        if (em->motionId[2] == EM_MOTION_ID(2, 29)) {
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 10, 0, 2);
         }
         if (em->motionId[2] == EM_MOTION_ID(2, RATH_MOT_ALERT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 10, 0, 2);
         }
         break;
     }
@@ -1194,13 +1046,13 @@ void EmRathalos_Stand(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         if (em->motionId[0] != EM_MOTION_ID(0, RATH_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 0xA, 0, 0);
+            Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 10, 0, 0);
         }
         if (em->motionId[1] != EM_MOTION_ID(1, RATH_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(1, RATH_MOT_IDLE), 0xA, 0, 1);
+            Em_SetLayerMotion(em, EM_MOTION_ID(1, RATH_MOT_IDLE), 10, 0, 1);
         }
         if (em->motionId[2] != EM_MOTION_ID(2, RATH_MOT_IDLE)) {
-            Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 0xA, 0, 2);
+            Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 10, 0, 2);
         }
         break;
     case 1:
@@ -1212,7 +1064,7 @@ void EmRathalos_Stand(Em *em)
 }
 
 /*
- * RATH_IDLE: plays motion 0x1D, then the idle loop, then ends the state;
+ * RATH_IDLE: plays motion 29, then the idle loop, then ends the state;
  * the state every action falls back to on the ground.
  */
 void EmRathalos_Idle(Em *em)
@@ -1222,7 +1074,7 @@ void EmRathalos_Idle(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1D, 0, 0);
+        Em_SetMotion(em, 29, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1240,7 +1092,7 @@ void EmRathalos_Idle(Em *em)
 }
 
 /*
- * RATH_IDLE_ACTION_A: plays motion 0x17 once, the layers kept on their idle
+ * RATH_IDLE_ACTION_A: plays motion 23 once, the layers kept on their idle
  * loops.
  */
 void EmRathalos_IdleActionA(Em *em)
@@ -1250,7 +1102,7 @@ void EmRathalos_IdleActionA(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x17, 0, 0);
+        Em_SetMotion(em, 23, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 1);
         break;
@@ -1265,7 +1117,7 @@ void EmRathalos_IdleActionA(Em *em)
     EmRathalos_RestartLayerMotion(em, 1);
 }
 
-/* RATH_IDLE_ACTION_B: motion 0x17 with a sound at a bone. */
+/* RATH_IDLE_ACTION_B: motion 23 with a sound at a bone. */
 void EmRathalos_IdleActionB(Em *em)
 {
     switch (em->step) {
@@ -1273,7 +1125,7 @@ void EmRathalos_IdleActionB(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x17, 0, 0);
+        Em_SetMotion(em, 23, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 1);
         break;
@@ -1286,7 +1138,7 @@ void EmRathalos_IdleActionB(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 1);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x4E, 0x17, 0x2A, 2, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 78, 23, RATH_BONE_TAIL_B, 2, 13);
 }
 
 /*
@@ -1316,7 +1168,7 @@ void EmRathalos_IdleActionC(Em *em)
 }
 
 /*
- * RATH_IDLE_ACTION_D: motion 0x18 with a sound, layers 0 and 2 on their
+ * RATH_IDLE_ACTION_D: motion 24 with a sound, layers 0 and 2 on their
  * idle loops.
  */
 void EmRathalos_IdleActionD(Em *em)
@@ -1326,9 +1178,9 @@ void EmRathalos_IdleActionD(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x18, 0, 0);
-        Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 0xA, 0, 0);
-        Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 0xA, 0, 2);
+        Em_SetMotion(em, 24, 0, 0);
+        Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 10, 0, 0);
+        Em_SetLayerMotion(em, EM_MOTION_ID(2, RATH_MOT_IDLE), 10, 0, 2);
         break;
     case 1:
         if (em->motion[1].playing == 0) {
@@ -1339,10 +1191,10 @@ void EmRathalos_IdleActionD(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x20, 0x2F, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 32, 47, RATH_BONE_HEAD, 1, 13);
 }
 
-/* RATH_IDLE_ACTION_E: motion 0x19 with a sound. */
+/* RATH_IDLE_ACTION_E: motion 25 with a sound. */
 void EmRathalos_IdleActionE(Em *em)
 {
     switch (em->step) {
@@ -1350,7 +1202,7 @@ void EmRathalos_IdleActionE(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x19, 0, 0);
+        Em_SetMotion(em, 25, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 2);
         break;
@@ -1363,11 +1215,11 @@ void EmRathalos_IdleActionE(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x20, 0x20, 0x23, 1, 0xD);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0xA0, 0x17, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 32, 32, RATH_BONE_HEAD, 1, 13);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 160, 23, RATH_BONE_HEAD, 1, 13);
 }
 
-/* RATH_IDLE_ACTION_F: motion 0x1A with a sound. */
+/* RATH_IDLE_ACTION_F: motion 26 with a sound. */
 void EmRathalos_IdleActionF(Em *em)
 {
     switch (em->step) {
@@ -1375,7 +1227,7 @@ void EmRathalos_IdleActionF(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1A, 0, 0);
+        Em_SetMotion(em, 26, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 2);
         break;
@@ -1388,11 +1240,11 @@ void EmRathalos_IdleActionF(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 4, 0x2D, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 4, 45, RATH_BONE_HEAD, 1, 13);
 }
 
 /*
- * RATH_IDLE_ACTION_G: motion 0x1B with a sound, and attached effect 1 at
+ * RATH_IDLE_ACTION_G: motion 27 with a sound, and attached effect 1 at
  * frame 2.
  */
 void EmRathalos_IdleActionG(Em *em)
@@ -1402,16 +1254,16 @@ void EmRathalos_IdleActionG(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1B, 0, 0);
+        Em_SetMotion(em, 27, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 1);
         break;
     case 1:
         if (EmMotion_PassedFrameScaled(em, 26.0f, 2U) != 0) {
-            RathalosAttack_Create(em, 0x29);
+            RathalosAttack_Create(em, 41);
         }
         if (EmMotion_PassedFrameScaled(em, 90.0f, 2U) != 0) {
-            RathalosAttack_Create(em, 0x29);
+            RathalosAttack_Create(em, 41);
         }
         if (em->motion[2].playing == 0) {
             em->step++;
@@ -1421,10 +1273,10 @@ void EmRathalos_IdleActionG(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 1);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x10, 0x16, 0x2A, 2, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 16, 22, RATH_BONE_TAIL_B, 2, 13);
 }
 
-/* RATH_IDLE_PAIR_A: motion 0x50 or 0x51 (stateRand's bit 0) once. */
+/* RATH_IDLE_PAIR_A: motion 80 or 81 (stateRand's bit 0) once. */
 void EmRathalos_IdlePairA(Em *em)
 {
     switch (em->step) {
@@ -1433,10 +1285,10 @@ void EmRathalos_IdlePairA(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         if (em->stateRand & 1) {
-            Em_SetMotion(em, 0x50, 0, 0);
+            Em_SetMotion(em, 80, 0, 0);
             break;
         }
-        Em_SetMotion(em, 0x51, 0, 0);
+        Em_SetMotion(em, 81, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1448,7 +1300,7 @@ void EmRathalos_IdlePairA(Em *em)
 
 /*
  * RATH_IDLE_TURN_TO_GOAL: turns in place to the goal, 0x200 a frame, with
- * RATH_MOT_TURN_IN_PLACE.
+ * RATH_MOT_TURN_ROAR.
  */
 void EmRathalos_IdleTurnToGoal(Em *em)
 {
@@ -1459,7 +1311,7 @@ void EmRathalos_IdleTurnToGoal(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, RATH_MOT_TURN_IN_PLACE, 0, 0);
+        Em_SetMotion(em, RATH_MOT_TURN_ROAR, 0, 0);
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
@@ -1480,7 +1332,7 @@ void EmRathalos_IdleTurnToGoal(Em *em)
     }
 }
 
-/* RATH_IDLE_ACTION_H: motion 0x1C with a sound. */
+/* RATH_IDLE_ACTION_H: motion 28 with a sound. */
 void EmRathalos_IdleActionH(Em *em)
 {
     switch (em->step) {
@@ -1488,7 +1340,7 @@ void EmRathalos_IdleActionH(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1C, 0, 0);
+        Em_SetMotion(em, 28, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 2);
         break;
@@ -1501,11 +1353,11 @@ void EmRathalos_IdleActionH(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x10, 0x21, 0x23, 1, 0xD);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x72, 0x1F, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 16, 33, RATH_BONE_HEAD, 1, 13);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 114, 31, RATH_BONE_HEAD, 1, 13);
 }
 
-/* RATH_IDLE_ACTION_I: motion 0x1D once. */
+/* RATH_IDLE_ACTION_I: motion 29 once. */
 void EmRathalos_IdleActionI(Em *em)
 {
     switch (em->step) {
@@ -1513,7 +1365,7 @@ void EmRathalos_IdleActionI(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x1D, 0, 0);
+        Em_SetMotion(em, 29, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1524,7 +1376,7 @@ void EmRathalos_IdleActionI(Em *em)
     }
 }
 
-/* RATH_IDLE_ACTION_J: motion 0x14 with a sound. */
+/* RATH_IDLE_ACTION_J: motion 20 with a sound. */
 void EmRathalos_IdleActionJ(Em *em)
 {
     switch (em->step) {
@@ -1532,7 +1384,7 @@ void EmRathalos_IdleActionJ(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x14, 0, 0);
+        Em_SetMotion(em, 20, 0, 0);
         EmRathalos_LayerMotionToIdle(em, 0);
         EmRathalos_LayerMotionToIdle(em, 2);
         break;
@@ -1545,8 +1397,8 @@ void EmRathalos_IdleActionJ(Em *em)
     }
     EmRathalos_RestartLayerMotion(em, 0);
     EmRathalos_RestartLayerMotion(em, 2);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 2, 0x20, 0x23, 1, 0xD);
-    Em_PlaySeAtBoneVolOnLayerFrame(em, 0x32, 0x1F, 0x23, 1, 0xD);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 2, 32, RATH_BONE_HEAD, 1, 13);
+    Em_PlaySeAtBoneVolOnLayerFrame(em, 50, 31, RATH_BONE_HEAD, 1, 13);
 }
 
 /*
@@ -1571,7 +1423,7 @@ void EmRathalos_EatNeed2(Em *em)
     case 1:
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0U) || EmMotion_PassedFrameScaled(em, 108.0f, 0U) || EmMotion_PassedFrameScaled(em, 126.0f, 0U)
             || EmMotion_PassedFrameScaled(em, 138.0f, 0U) || EmMotion_PassedFrameScaled(em, 170.0f, 0U)) {
-            Em_PlaySeAtBone(em, 0x26, 0x23);
+            Em_PlaySeAtBone(em, 38, RATH_BONE_HEAD);
             DustCloud_Create(em, 7, 0, 5.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 210.0f, 0U) != 0) || (EmMotion_PassedFrameScaled(em, 218.0f, 0U) != 0)) {
@@ -1587,10 +1439,10 @@ void EmRathalos_EatNeed2(Em *em)
             DustCloud_Create(em, 6, 1, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 170.0f, 0U) != 0) {
-            DustCloud_Create(em, 0xF, 0, 1.0f);
+            DustCloud_Create(em, 15, 0, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 192.0f, 0U) != 0) {
-            DustCloud_Create(em, 0x10, 0, 1.0f);
+            DustCloud_Create(em, 16, 0, 1.0f);
         }
         if ((em->motion[0].playing == 0) && ((em->step += 1, Em_SetMotion(em, RATH_MOT_FEED, 0, 0), Em_AddHp(em, (s32) (0.05f * (f32) em->hpMax)), kind = em->type, (kind == EM_KIND_RATHIAN)) || (kind == EM_KIND_GOLD_RATHIAN) || (kind == EM_KIND_PINK_RATHIAN))) {
             EmMine_CreateTimed0(em, &em->posX);
@@ -1606,10 +1458,10 @@ void EmRathalos_EatNeed2(Em *em)
         }
         break;
     }
-    Em_AddNeed2(em, 0xDE);
+    Em_AddNeed2(em, 222);
 }
 
-/* RATH_IDLE_PAIR_B: motion 0x50, the idle motion, 0x51, the idle motion. */
+/* RATH_IDLE_PAIR_B: motion 80, the idle motion, 81, the idle motion. */
 void EmRathalos_IdlePairB(Em *em)
 {
     switch (em->step) {
@@ -1617,7 +1469,7 @@ void EmRathalos_IdlePairB(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x50, 0, 0);
+        Em_SetMotion(em, 80, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1628,7 +1480,7 @@ void EmRathalos_IdlePairB(Em *em)
     case 2:
         if (em->motion[0].blend == 0) {
             em->step++;
-            Em_SetMotion(em, 0x51, 0, 0);
+            Em_SetMotion(em, 81, 0, 0);
         }
         break;
     case 3:
@@ -1646,7 +1498,7 @@ void EmRathalos_IdlePairB(Em *em)
     }
 }
 
-/* RATH_IDLE_PAIR_C: as RATH_IDLE_PAIR_B with 0x51 first. */
+/* RATH_IDLE_PAIR_C: as RATH_IDLE_PAIR_B with 81 first. */
 void EmRathalos_IdlePairC(Em *em)
 {
     switch (em->step) {
@@ -1654,7 +1506,7 @@ void EmRathalos_IdlePairC(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x51, 0, 0);
+        Em_SetMotion(em, 81, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -1665,7 +1517,7 @@ void EmRathalos_IdlePairC(Em *em)
     case 2:
         if (em->motion[0].blend == 0) {
             em->step++;
-            Em_SetMotion(em, 0x50, 0, 0);
+            Em_SetMotion(em, 80, 0, 0);
         }
         break;
     case 3:
@@ -1887,7 +1739,7 @@ void EmRathalos_Status2LieDown(Em *em, EmWork *work)
     }
 }
 
-/* RATH_IDLE_ACTION_K: motion 0x50 once. */
+/* RATH_IDLE_ACTION_K: motion 80 once. */
 void EmRathalos_IdleActionK(Em *em)
 {
     switch (em->step) {
@@ -1895,7 +1747,7 @@ void EmRathalos_IdleActionK(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x50, 0, 0);
+        Em_SetMotion(em, 80, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -2085,7 +1937,7 @@ void EmRathalos_Status1End(Em *em)
 
 /*
  * RATH_IDLE_STATUS2_DOWNED: status 2 in a hold: lies downed, with the
- * periodic effect at bone 0x22, until it ends.
+ * periodic effect at RATH_BONE_BREATH, until it ends.
  */
 void EmRathalos_Status2Downed(Em *em, EmWork *work)
 {
@@ -2117,9 +1969,9 @@ void EmRathalos_Status2Downed(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, RATH_BONE_BREATH, pos, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, RATH_BONE_HEAD);
     }
 }
 
@@ -2154,9 +2006,9 @@ void EmRathalos_Status1Downed(Em *em, EmWork *work)
     pos[0] = 0.0f;
     pos[1] = 10.0f;
     pos[2] = 140.0f;
-    Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+    Em_SpawnLyingPuffs(em, RATH_BONE_BREATH, pos, 1.6f);
     if (em->timer % 135 == 0) {
-        Em_PlaySeAtBone(em, 0x57, 0x23);
+        Em_PlaySeAtBone(em, 87, RATH_BONE_HEAD);
     }
 }
 
@@ -2192,7 +2044,7 @@ void EmRathalos_Walk(Em *em, EmWork *work)
         Em_SetMotion(em, RATH_MOT_WALK, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             EmRathalos_EndState(em, 0, 0);
         }
@@ -2246,7 +2098,7 @@ void EmRathalos_Run(Em *em, EmWork *work)
         Em_SetMotion(em, RATH_MOT_RUN, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 0) == 1) {
+        if (Em_StepToGoal(em, 64, 0) == 1) {
             em->step++;
             EmRathalos_EndState(em, 0, 0);
         }
@@ -2285,7 +2137,7 @@ void EmRathalos_Limp(Em *em, EmWork *work)
         Em_SetMotion(em, RATH_MOT_LIMP, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x40, 1) == 1) {
+        if (Em_StepToGoal(em, 64, 1) == 1) {
             em->timer = 1;
         }
         if (--em->timer <= 0) {
@@ -2311,14 +2163,14 @@ void EmRathalos_TurnToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, RATH_MOT_TURN_IN_PLACE, 0, 0);
+        Em_SetMotion(em, RATH_MOT_TURN_ROAR, 0, 0);
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         break;
     case 1:
         rotY = em->rotY;
         aimAngle = em->aimAngle;
         diff = (aimAngle - (rotY & 0xFFFF)) & 0xFFFF;
-        if ((u32) ((diff + 0x200) & 0xFFFF) < 0x400U) {
+        if ((u32) ((diff + 512) & 0xFFFF) < 1024U) {
             em->rotY = (s32) aimAngle;
         } else if (diff < 0x8000U) {
             em->rotY = (rotY + 0x200) & 0xFFFF;
@@ -2339,7 +2191,7 @@ void EmRathalos_TurnToGoal(Em *em, EmWork *work)
 
 /*
  * RATH_FLY_TAKE_OFF: takes off (airborne from frame 38) along the family's
- * take-off curve (0xF for the Rathalos kinds, 2 for the Rathian kinds),
+ * take-off curve (15 for the Rathalos kinds, 2 for the Rathian kinds),
  * then picks a short flight.
  */
 void EmRathalos_TakeOff(Em *em, EmWork *work)
@@ -2351,7 +2203,7 @@ void EmRathalos_TakeOff(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_TAKE_OFF, 0, 0);
         if (em->type == EM_KIND_RATHALOS || em->type == EM_KIND_SILVER_RATHALOS || em->type == EM_KIND_AZURE_RATHALOS) {
-            EmRathalos_StartCurves(em, 0xF);
+            EmRathalos_StartCurves(em, 15);
         } else {
             EmRathalos_StartCurves(em, 2);
         }
@@ -2416,7 +2268,7 @@ void EmRathalos_Land(Em *em, EmWork *work)
             if (!(em->velY < 0.0f)) {
                 em->velY = -10.0f;
             }
-            em->timer = 0x1E;
+            em->timer = 30;
         }
         break;
     case 2:
@@ -2460,7 +2312,7 @@ void EmRathalos_Hover(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2471,7 +2323,7 @@ void EmRathalos_Hover(Em *em, EmWork *work)
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
         }
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 1);
-        if (em->timer == 0x12C) {
+        if (em->timer == 300) {
             EmRathalos_EndAirState(em, 0U);
         }
         break;
@@ -2503,7 +2355,7 @@ void EmRathalos_HopToGoal(Em *em, EmWork *work)
         Em_SetMotion(em, RATH_MOT_TAKE_OFF, 0, 0);
         Player_ClearVelocity(em);
         if (em->type == EM_KIND_RATHALOS || em->type == EM_KIND_SILVER_RATHALOS || em->type == EM_KIND_AZURE_RATHALOS) {
-            EmRathalos_StartCurves(em, 0xF);
+            EmRathalos_StartCurves(em, 15);
         } else {
             EmRathalos_StartCurves(em, 2);
         }
@@ -2548,7 +2400,7 @@ void EmRathalos_HopToGoal(Em *em, EmWork *work)
         break;
     case 4:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmRathalos_EndState(em, 0, 0);
         }
@@ -2595,7 +2447,7 @@ void EmRathalos_HopForward(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmRathalos_EndState(em, 0, 0);
         }
@@ -2639,7 +2491,7 @@ void EmRathalos_HopBack(Em *em, EmWork *work)
         break;
     case 2:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmRathalos_EndState(em, 0, 0);
         }
@@ -2698,7 +2550,7 @@ void EmRathalos_FlyRoute(Em *em, EmWork *work)
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 225, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2725,7 +2577,7 @@ void EmRathalos_HoverToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -2750,7 +2602,6 @@ void EmRathalos_HoverToGoal(Em *em, EmWork *work)
     }
 }
 
-void Hud_TriggerGlow(Em *em);
 /*
  * RATH_FLY_OUT_OF_AREA: rises, flies to the area's exit point and out; then
  * flies to the goal in the next area (RATH_FLY_INTO_AREA) or, when it
@@ -2791,7 +2642,7 @@ void EmRathalos_FlyOutOfArea(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x4E1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 1249, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2843,7 +2694,7 @@ void EmRathalos_FlyToGoalAndLand(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
@@ -2855,7 +2706,7 @@ void EmRathalos_FlyToGoalAndLand(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE5, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 229, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2870,7 +2721,7 @@ void EmRathalos_FlyToGoalAndLand(Em *em, EmWork *work)
         break;
     case 2:
         if (em->remote == 0) {
-            em->timer = 0x258;
+            em->timer = 600;
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
         }
         break;
@@ -2896,7 +2747,7 @@ void EmRathalos_FlyOutOfAreaAlt(Em *em, EmWork *work)
         em->step++;
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
         em->stance = EM_STANCE_AIR;
         Player_ClearVelocity(em);
@@ -2919,7 +2770,7 @@ void EmRathalos_FlyOutOfAreaAlt(Em *em, EmWork *work)
     case 3:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x4E1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 1249, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -2968,19 +2819,19 @@ void EmRathalos_GlideToGoal(Em *em, EmWork *work)
                 em->velZ = 50.0f;
             }
             em->step++;
-            em->timer = 0x12C;
+            em->timer = 300;
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
         } else {
             em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
             em->aimAngle = em->aimAngle - em->rotY;
-            Em_UpdateFlight(em, 0xE1, &EmRathalos_FlyParam);
+            Em_UpdateFlight(em, 225, &EmRathalos_FlyParam);
             work->moveAngX = em->rotX;
             work->moveAngY = em->rotY;
             work->moveAngZ = 0;
             Em_MoveRotated(em, &work->moveAngX);
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x12C;
+                em->timer = 300;
                 EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
             }
         }
@@ -2988,13 +2839,13 @@ void EmRathalos_GlideToGoal(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 225, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
         Em_MoveRotated(em, &work->moveAngX);
         if (--em->timer <= 0) {
-            em->timer = 0x12C;
+            em->timer = 300;
             if (em->remote == 0) {
                 EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
             }
@@ -3023,7 +2874,7 @@ void EmRathalos_BackHop(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_BACK_HOP, 0, 0);
-        EmRathalos_StartCurves(em, 0xE);
+        EmRathalos_StartCurves(em, 14);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 76.0f) != 0) {
@@ -3067,7 +2918,7 @@ void EmRathalos_FlyIntoArea(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
         Player_ClearVelocity(em);
         em->velZ = 80.0f;
@@ -3089,7 +2940,7 @@ void EmRathalos_FlyIntoArea(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE5, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 229, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3103,7 +2954,7 @@ void EmRathalos_FlyIntoArea(Em *em, EmWork *work)
     case 2:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xE1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 225, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3209,11 +3060,11 @@ void EmRathalos_HoverTurn(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         em->stance = EM_STANCE_AIR;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
-        work->turnSpeed = 0x180;
+        work->turnSpeed = 384;
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
         work->flyGuard = 0;
-        em->timer = 0x96;
+        em->timer = 150;
         break;
     case 1:
         EmRathalos_MoveByVelYCurve(em, 1U);
@@ -3271,13 +3122,13 @@ void EmRathalos_FlyRouteB(Em *em, EmWork *work)
             em->curGoalNo++;
             em->curGoalNo &= 3;
             Em_ComputeGoal2(em, em->goal);
-            em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f) + 0x96;
+            em->timer = (s32) ((1.5f * Vec_DistanceXZ(&em->posX, em->goal)) / 50.0f) + 150;
             em->step++;
             Em_SetStateRand(em, EM_GROUP_FLY, RATH_FLY_ROUTE_B);
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x321, &EmRathalos_FlyParam2);
+        Em_UpdateFlight(em, 801, &EmRathalos_FlyParam2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3312,7 +3163,7 @@ void EmRathalos_LevelOutAndLand(Em *em, EmWork *work)
     case 1:
         rotX = em->rotX;
         if (rotX != 0) {
-            if (rotX < 0x8000) {
+            if (rotX < (ANGLE_TURN / 2)) {
                 em->rotX = rotX - work->pitchStep;
             } else {
                 em->rotX = rotX + work->pitchStep;
@@ -3321,7 +3172,7 @@ void EmRathalos_LevelOutAndLand(Em *em, EmWork *work)
         }
         rotZ = em->rotZ;
         if (rotZ != 0) {
-            if (rotZ < 0x8000) {
+            if (rotZ < (ANGLE_TURN / 2)) {
                 em->rotZ = rotZ - work->rollSpeed;
             } else {
                 em->rotZ = rotZ + work->rollSpeed;
@@ -3332,13 +3183,13 @@ void EmRathalos_LevelOutAndLand(Em *em, EmWork *work)
             em->step++;
             Player_ClearVelocity(em);
             Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
-            em->timer = 0x12C;
+            em->timer = 300;
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
         }
         break;
     case 2:
         if (--em->timer <= 0) {
-            em->timer = 0x12C;
+            em->timer = 300;
             Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
             if (em->remote == 0) {
                 EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
@@ -3395,7 +3246,7 @@ void EmRathalos_GlideToGoalB(Em *em, EmWork *work)
         }
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0x121, &EmRathalos_FlyParam2);
+        Em_UpdateFlight(em, 289, &EmRathalos_FlyParam2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -3428,7 +3279,7 @@ void EmRathalos_HoverStraightToGoal(Em *em, EmWork *work)
         em->step++;
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
-        work->turnSpeed = 0x100;
+        work->turnSpeed = 256;
         Em_SetMotion(em, RATH_MOT_HOVER, 0, 0);
         work->flyGuard = 0;
         break;
@@ -3473,7 +3324,7 @@ void EmRathalos_LevelOut(Em *em, EmWork *work)
     case 1:
         rotX = em->rotX;
         if (rotX != 0) {
-            if (rotX < 0x8000) {
+            if (rotX < (ANGLE_TURN / 2)) {
                 em->rotX = rotX - work->pitchStep;
             } else {
                 em->rotX = rotX + work->pitchStep;
@@ -3482,7 +3333,7 @@ void EmRathalos_LevelOut(Em *em, EmWork *work)
         }
         rotZ = em->rotZ;
         if (rotZ != 0) {
-            if (rotZ < 0x8000) {
+            if (rotZ < (ANGLE_TURN / 2)) {
                 em->rotZ = rotZ - work->rollSpeed;
             } else {
                 em->rotZ = rotZ + work->rollSpeed;
@@ -3518,7 +3369,7 @@ void EmRathalos_EscapeUpward(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, RATH_MOT_TAKE_OFF, 0xA, 0x1E);
+        Em_SetMotion(em, RATH_MOT_TAKE_OFF, 10, 30);
         EmRathalos_StartCurves(em, 2);
         em->stance = EM_STANCE_AIR;
         em->holdTimer = 0;
@@ -3562,7 +3413,7 @@ void EmRathalos_EscapeUpward(Em *em, EmWork *work)
         break;
     case 4:
         if (em->motion[0].playing == 0) {
-            work->fxMotion = 0x96;
+            work->fxMotion = 150;
             em->step++;
             EmRathalos_EndState(em, 0, 0);
         }
@@ -3611,16 +3462,16 @@ void EmRathalos_HoverRise(Em *em, EmWork *work)
     }
 }
 
-/* RATH_ATK_TURN_AND_STARE: turns to the target, then plays motion 0x24. */
+/* RATH_ATK_TURN_AND_STARE: turns to the target, then plays motion 36. */
 void EmRathalos_TurnAndStare(Em *em)
 {
     switch (em->step) {
     case 0:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
-            Em_SetMotion(em, 0x24, 0, 0);
+            Em_SetMotion(em, 36, 0, 0);
         }
         break;
     case 1:
@@ -3650,7 +3501,7 @@ void EmRathalos_Leap(Em *em, EmWork *work)
             em->stance = EM_STANCE_GROUND;
             
         case 1:
-            if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+            if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
                 em->lookAtTarget = 0;
                 em->step++;
                 Em_SetMotion(em, RATH_MOT_LEAP, 0, 0);
@@ -3704,7 +3555,7 @@ void EmRathalos_Leap(Em *em, EmWork *work)
     }
 }
 
-/* RATH_ATK_STARE: motion 0x24 with the body bent toward the target. */
+/* RATH_ATK_STARE: motion 36 with the body bent toward the target. */
 void EmRathalos_Stare(Em *em)
 {
     switch (em->step) {
@@ -3712,7 +3563,7 @@ void EmRathalos_Stare(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 1;
-        Em_SetMotion(em, 0x24, 0, 0);
+        Em_SetMotion(em, 36, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -3726,8 +3577,8 @@ void EmRathalos_Stare(Em *em)
 
 /*
  * RATH_ATK_FIREBALL (and RATH_ATK_FIREBALL_LOW and _HIGH): turns to the
- * target and breathes a fireball (two projectiles from bone 0x24 at frame
- * 78), countdown times.
+ * target and breathes a fireball (from RATH_BONE_BREATH at frame 78, with
+ * two bursts at RATH_BONE_FIREBALL_BURST), countdown times.
  */
 void EmRathalos_Fireball(Em *em, EmWork *work)
 {
@@ -3737,7 +3588,7 @@ void EmRathalos_Fireball(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, RATH_MOT_FIREBALL, 0, 0);
@@ -3746,12 +3597,12 @@ void EmRathalos_Fireball(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 154.0f) != 0 && EmMotion_ReachedFrame(em, 0, 276.0f) == 0) {
             if (!(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 0, 0, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -3819,7 +3670,7 @@ void EmRathalos_TailSpin(Em *em)
 
 /*
  * RATH_ATK_LIE_AND_RISE: turns to the target, plays RATH_MOT_LIE and at
- * frame 30 motion 0x30.
+ * frame 30 motion 48.
  */
 void EmRathalos_LieAndRise(Em *em)
 {
@@ -3835,7 +3686,7 @@ void EmRathalos_LieAndRise(Em *em)
             em->lookAtTarget = 0;
             
         case 1:
-            if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+            if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
                 em->step++;
                 em->lookAtTarget = 0;
                 Em_SetMotion(em, RATH_MOT_LIE, 0, 0);
@@ -3846,7 +3697,7 @@ void EmRathalos_LieAndRise(Em *em)
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 30.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x30, 0, 0);
+            Em_SetMotion(em, 48, 0, 0);
         }
         break;
     case 2:
@@ -3887,7 +3738,7 @@ void EmRathalos_SwoopThenLeave(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
         if (100.0f < em->velZ) {
             em->velZ -= 2.0f;
         } else if (Vec_DistanceXZ(&em->posX, em->goal) <= 3000.0f) {
@@ -3919,13 +3770,13 @@ void EmRathalos_SwoopThenLeave(Em *em, EmWork *work)
         Area_ToWorld(player->area, pos, targetWorldPos);
         em->aimAngle = Math_AngleXZ(em->mapPos, targetWorldPos);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
-        if (em->aimAngle <= 0x800 || em->aimAngle >= 0xF800) {
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
+        if (em->aimAngle <= (ANGLE_TURN / 32) || em->aimAngle >= ANGLE_TURN * 31 / 32) {
             if (!(4000.0f < Vec_DistanceXZ(&em->posX, pos))) {
                 EmRathalos_EndSwoop(em, (s32) work);
             } else {
                 em->step++;
-                work->turnSpeed = 0x100;
+                work->turnSpeed = 256;
                 Em_SetMotion(em, RATH_MOT_SWOOP_DIVE, 0, 0);
                 em->timer = 600;
             }
@@ -3940,7 +3791,7 @@ void EmRathalos_SwoopThenLeave(Em *em, EmWork *work)
         break;
     case 3:
         if (em->rotZ != 0) {
-            if (em->rotZ <= 0x8000) {
+            if (em->rotZ <= ANGLE_TURN / 2) {
                 em->rotZ -= work->rollSpeed;
             } else {
                 em->rotZ += work->rollSpeed;
@@ -3963,7 +3814,7 @@ void EmRathalos_SwoopThenLeave(Em *em, EmWork *work)
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
-        work->moveAngZ = 0xF;
+        work->moveAngZ = 15;
         Em_MoveRotated(em, &work->moveAngX);
         em->posY -= 0.1f;
         if (--em->timer <= 0 || Em_AllPlayersHere(em) == 0) {
@@ -4051,7 +3902,7 @@ void EmRathalos_SwoopThenLeave(Em *em, EmWork *work)
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
         EmRathalos_StepPitch(em, 1, 0.0f);
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -4065,7 +3916,7 @@ void EmRathalos_SwoopThenLeave(Em *em, EmWork *work)
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
         EmRathalos_StepPitch(em, 2, 0.0f);
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
         work->moveAngZ = 0;
@@ -4099,30 +3950,30 @@ void EmRathalos_AirFireball(Em *em, EmWork *work)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_AIR_FIREBALL_RISE, 0, 0);
-        EmRathalos_StartCurves(em, 0xD);
+        EmRathalos_StartCurves(em, 13);
         break;
     case 1:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         EmRathalos_UpdateCurves(em);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
-            EmRathalos_StartCurves(em, 0x10);
+            EmRathalos_StartCurves(em, 16);
         }
         break;
     case 2:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         EmRathalos_UpdateCurves(em);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 1, 0x1E94, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 1, 7828, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
+            Em_SetMotion(em, RATH_MOT_HOVER, 2, 34);
         }
         break;
     case 3:
@@ -4153,17 +4004,17 @@ void EmRathalos_AirFireballB(Em *em, EmWork *work)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_AIR_FIREBALL_RISE, 0, 0);
-        EmRathalos_StartCurves(em, 0xD);
+        EmRathalos_StartCurves(em, 13);
         break;
     case 1:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         EmRathalos_UpdateCurves(em);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
-            EmRathalos_StartCurves(em, 0x10);
+            EmRathalos_StartCurves(em, 16);
         }
         break;
     case 2:
@@ -4171,13 +4022,13 @@ void EmRathalos_AirFireballB(Em *em, EmWork *work)
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 7828, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
+            Em_SetMotion(em, RATH_MOT_HOVER, 2, 34);
         }
         break;
     case 4:
@@ -4230,7 +4081,7 @@ void EmRathalos_AirDive(Em *em, EmWork *work)
     case 1:
         EmRathalos_MoveByVelYCurve(em, 1);
         if (--em->timer <= 0) {
-            em->step = 0x62;
+            em->step = 98;
             em->timer = 300;
             EmRathalos_ChangeState(em, EM_GROUP_FLY, RATH_FLY_LAND, 1);
             break;
@@ -4317,8 +4168,8 @@ void EmRathalos_AirDive(Em *em, EmWork *work)
             EmRathalos_EndAirState(em, 0);
         }
         break;
-    case 0x62:
-    case 0x63:
+    case 98:
+    case 99:
         if (--em->timer <= 0) {
             em->timer = 300;
             if (em->remote == 0) {
@@ -4330,8 +4181,8 @@ void EmRathalos_AirDive(Em *em, EmWork *work)
 }
 
 /*
- * RATH_ATK_ROAR_AT_POINT: looks at the action point nearest bone 0x23 and
- * roars at it, then motion 0x30.
+ * RATH_ATK_ROAR_AT_POINT: looks at the action point nearest RATH_BONE_HEAD and
+ * roars at it, then motion 48.
  */
 void EmRathalos_RoarAtPoint(Em *em, EmWork *work)
 {
@@ -4346,8 +4197,8 @@ void EmRathalos_RoarAtPoint(Em *em, EmWork *work)
         em->lookAtPoint = 1;
         break;
     case 1:
-        hasPoint = Em_NearestActionToBone(em, 0x23, em->lookPoint);
-        Em_BonePos(em, 0x23, pos);
+        hasPoint = Em_NearestActionToBone(em, RATH_BONE_HEAD, em->lookPoint);
+        Em_BonePos(em, RATH_BONE_HEAD, pos);
         if (!(150.0f < Vec_Distance((f32 *) pos, (f32 *) em->lookPoint))) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_ROAR, 0, 0);
@@ -4362,7 +4213,7 @@ void EmRathalos_RoarAtPoint(Em *em, EmWork *work)
     case 2:
         if (em->motion[1].playing == 0) {
             em->step++;
-            Em_SetMotion(em, 0x30, 0, 0);
+            Em_SetMotion(em, 48, 0, 0);
         }
         break;
     case 3:
@@ -4376,7 +4227,7 @@ void EmRathalos_RoarAtPoint(Em *em, EmWork *work)
     }
 }
 
-/* RATH_ATK_SINGLE_A: motion 0x53 once. */
+/* RATH_ATK_SINGLE_A: motion 83 once. */
 void EmRathalos_SingleAttackA(Em *em)
 {
     switch (em->step) {
@@ -4384,7 +4235,7 @@ void EmRathalos_SingleAttackA(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x53, 0, 0);
+        Em_SetMotion(em, 83, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -4395,7 +4246,7 @@ void EmRathalos_SingleAttackA(Em *em)
     }
 }
 
-/* RATH_ATK_SINGLE_B: motion 0x38 once. */
+/* RATH_ATK_SINGLE_B: motion 56 once. */
 void EmRathalos_SingleAttackB(Em *em)
 {
     switch (em->step) {
@@ -4403,7 +4254,7 @@ void EmRathalos_SingleAttackB(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
-        Em_SetMotion(em, 0x38, 0, 0);
+        Em_SetMotion(em, 56, 0, 0);
         
     case 1:
         if (em->motion[0].playing == 0) {
@@ -4425,7 +4276,7 @@ void EmRathalos_Charge(Em *em)
         Em_SetMotion(em, RATH_MOT_RUN, 0, 0);
         break;
     case 1:
-        if (Em_StepToGoal(em, 0x80, 1) == 1) {
+        if (Em_StepToGoal(em, 128, 1) == 1) {
             em->timer = 1;
         }
         if (--em->timer <= 0) {
@@ -4471,9 +4322,9 @@ void EmRathalos_BackHopFireball(Em *em, EmWork *work, s32 variant)
             }
         }
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x2222, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 8738, 0);
         }
         if (EmMotion_ReachedFrame(em, 0, 76.0f) != 0) {
             em->stance = EM_STANCE_AIR;
@@ -4512,17 +4363,17 @@ void EmRathalos_AirFireballDouble(Em *em, EmWork *work)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_AIR_FIREBALL_RISE, 0, 0);
-        EmRathalos_StartCurves(em, 0xDU);
+        EmRathalos_StartCurves(em, 13U);
         break;
     case 1:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
-            EmRathalos_StartCurves(em, 0x10U);
+            EmRathalos_StartCurves(em, 16U);
         }
         break;
     case 3:
@@ -4530,9 +4381,9 @@ void EmRathalos_AirFireballDouble(Em *em, EmWork *work)
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 7828, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4543,13 +4394,13 @@ void EmRathalos_AirFireballDouble(Em *em, EmWork *work)
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 7828, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
+            Em_SetMotion(em, RATH_MOT_HOVER, 2, 34);
         }
         break;
     case 5:
@@ -4580,14 +4431,14 @@ void EmRathalos_ChargeTrip(Em *em)
         Em_SetMotion(em, RATH_MOT_RUN, 0, 0);
         break;
     case 1:
-        Em_StepToGoal(em, 0x40, 1);
+        Em_StepToGoal(em, 64, 1);
         if (em->goalDist <= 500.0f) {
             em->timer = 1;
         }
         if (--em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_CHARGE_TRIP, 0, 0);
-            RathalosAttack_Create(em, 0x24);
+            RathalosAttack_Create(em, 36);
         }
         break;
     case 2:
@@ -4634,7 +4485,7 @@ void EmRathalos_Somersault(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_FLIP, 0, 0);
-        EmRathalos_StartCurves(em, 0xA);
+        EmRathalos_StartCurves(em, 10);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 94.0f) != 0) {
@@ -4644,7 +4495,7 @@ void EmRathalos_Somersault(Em *em)
         if ((ended != 0) && (em->posY <= (372.0f + em->floorY))) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_FLIP_FALL, 0, 0);
-            EmRathalos_StartCurves(em, 0xB);
+            EmRathalos_StartCurves(em, 11);
         }
         break;
     case 2:
@@ -4699,7 +4550,7 @@ void EmRathalos_SwoopThenLand(Em *em, EmWork *work)
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
         if (100.0f < em->velZ) {
             em->velZ -= 2.0f;
         } else if (Vec_DistanceXZ(&em->posX, em->goal) <= 3000.0f) {
@@ -4727,13 +4578,13 @@ void EmRathalos_SwoopThenLand(Em *em, EmWork *work)
         Area_ToWorld(((Player *) &gPlayers[idx])->area, pos, targetWorldPos);
         em->aimAngle = Math_AngleXZ(em->mapPos, targetWorldPos);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
-        if (em->aimAngle <= 0x800 || em->aimAngle >= 0xF800) {
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
+        if (em->aimAngle <= (ANGLE_TURN / 32) || em->aimAngle >= ANGLE_TURN * 31 / 32) {
             if (!(4000.0f < Vec_DistanceXZ(&em->posX, pos))) {
                 EmRathalos_EndSwoop(em, (s32) work);
             } else {
                 em->step++;
-                work->turnSpeed = 0x100;
+                work->turnSpeed = 256;
                 Em_SetMotion(em, RATH_MOT_SWOOP_DIVE, 0, 0);
                 em->timer = 600;
             }
@@ -4748,7 +4599,7 @@ void EmRathalos_SwoopThenLand(Em *em, EmWork *work)
         break;
     case 3:
         if (em->rotZ != 0) {
-            if (em->rotZ <= 0x8000) {
+            if (em->rotZ <= ANGLE_TURN / 2) {
                 em->rotZ -= work->rollSpeed;
             } else {
                 em->rotZ += work->rollSpeed;
@@ -4769,7 +4620,7 @@ void EmRathalos_SwoopThenLand(Em *em, EmWork *work)
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 2);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
-        work->moveAngZ = 0xF;
+        work->moveAngZ = 15;
         Em_MoveRotated(em, &work->moveAngX);
         em->posY -= 0.1f;
         if (--em->timer <= 0 || Em_AllPlayersHere(em) == 0) {
@@ -4895,17 +4746,17 @@ void EmRathalos_AirFireballDoubleB(Em *em, EmWork *work)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_AIR_FIREBALL_RISE, 0, 0);
-        EmRathalos_StartCurves(em, 0xDU);
+        EmRathalos_StartCurves(em, 13U);
         break;
     case 1:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
-            EmRathalos_StartCurves(em, 0x10U);
+            EmRathalos_StartCurves(em, 16U);
         }
         break;
     case 3:
@@ -4914,9 +4765,9 @@ void EmRathalos_AirFireballDoubleB(Em *em, EmWork *work)
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 7828, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -4927,13 +4778,13 @@ void EmRathalos_AirFireballDoubleB(Em *em, EmWork *work)
         EmRathalos_UpdateCurves(em);
         Em_TurnToGoal(em, (s32) ((EmFlyerWork *)work)->turnSpeed, 2);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x1E94, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 7828, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
+            Em_SetMotion(em, RATH_MOT_HOVER, 2, 34);
         }
         break;
     case 6:
@@ -4962,7 +4813,7 @@ void EmRathalos_FireballB(Em *em)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, RATH_MOT_FIREBALL_B, 0, 0);
@@ -4970,22 +4821,22 @@ void EmRathalos_FireballB(Em *em)
         break;
     case 2:
         if ((EmMotion_ReachedFrame(em, 0, 256.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 316.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create((Em *) em, 0x1A, 1, 1.0f);
+            DustCloud_Create((Em *) em, 26, 1, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x5B0, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 0, 1456, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 120.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x4FA, 0xF1C8);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 0, 1274, 61896);
         }
         if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0x444, 0x9F5);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 0, 1092, 2549);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -5005,7 +4856,7 @@ void EmRathalos_FireballLow(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, RATH_MOT_FIREBALL, 0, 0);
@@ -5014,12 +4865,12 @@ void EmRathalos_FireballLow(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 154.0f) != 0 && EmMotion_ReachedFrame(em, 0, 276.0f) == 0) {
             if (!(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xE39, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 0, 3641, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -5044,7 +4895,7 @@ void EmRathalos_FireballHigh(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         break;
     case 1:
-        if (Em_TurnToTargetMotion(em, 0xE38, 3, 6, 5) != 0) {
+        if (Em_TurnToTargetMotion(em, 3640, RATH_MOT_WALK, RATH_MOT_TURN_LEFT, RATH_MOT_TURN_RIGHT) != 0) {
             em->step++;
             em->lookAtTarget = 0;
             Em_SetMotion(em, RATH_MOT_FIREBALL, 0, 0);
@@ -5053,12 +4904,12 @@ void EmRathalos_FireballHigh(Em *em, EmWork *work)
     case 2:
         if (EmMotion_ReachedFrame(em, 0, 154.0f) != 0 && EmMotion_ReachedFrame(em, 0, 276.0f) == 0) {
             if (!(gScene.frame & 3)) {
-                DustCloud_Create((Em *) em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                DustCloud_Create((Em *) em, 26, (u16) Rand_Next(1) & 1, 1.0f);
             }
         } else if (EmMotion_PassedFrameScaled(em, 78.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 0, 0xF1C8, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 0, 61896, 0);
         }
         if (em->motion[0].playing == 0) {
             em->lookAtTarget = 0;
@@ -5116,7 +4967,7 @@ void EmRathalos_RunAndStop(Em *em)
         Em_SetMotion(em, RATH_MOT_RUN, 0, 0);
         break;
     case 1:
-        Em_StepToGoal(em, 0x40, 1);
+        Em_StepToGoal(em, 64, 1);
         if (em->goalDist <= 500.0f) {
             em->timer = 1;
         }
@@ -5166,30 +5017,30 @@ void EmRathalos_AirFireballForward(Em *em, s32 work)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_AIR_FIREBALL_RISE, 0, 0);
-        EmRathalos_StartCurves(em, 0xD);
+        EmRathalos_StartCurves(em, 13);
         break;
     case 1:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
-            EmRathalos_StartCurves(em, 0x10);
+            EmRathalos_StartCurves(em, 16);
         }
         break;
     case 2:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 1, 0x2D83, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 1, 11651, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
+            Em_SetMotion(em, RATH_MOT_HOVER, 2, 34);
         }
         break;
     case 3:
@@ -5220,17 +5071,17 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
         em->stance = EM_STANCE_AIR;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_AIR_FIREBALL_RISE, 0, 0);
-        EmRathalos_StartCurves(em, 0xDU);
+        EmRathalos_StartCurves(em, 13U);
         break;
     case 1:
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x20, 0x23);
+        Em_PlaySeAtBoneOnFrame(em, 120, 32, RATH_BONE_HEAD);
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0U) != 0) {
             em->step++;
             em->step++;
             Em_SetMotion(em, RATH_MOT_AIR_FIREBALL, 0, 0);
-            EmRathalos_StartCurves(em, 0x10U);
+            EmRathalos_StartCurves(em, 16U);
         }
         break;
     case 3:
@@ -5239,9 +5090,9 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x2D83, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 11651, 0);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
@@ -5252,13 +5103,13 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
         EmRathalos_UpdateCurves(em);
         EmRathalos_StepForward(em, work);
         if (EmMotion_PassedFrameScaled(em, 6.0f, 1U) != 0) {
-            AttackBurst_CreateAtBone(em, 0x24, 1, 0);
-            AttackBurst_CreateAtBone(em, 0x24, 2, 0);
-            EmRangedAttack_CreateAtBone(em, 0x22, 0, 2, 0x2D83, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 1, 0);
+            AttackBurst_CreateAtBone(em, RATH_BONE_FIREBALL_BURST, 2, 0);
+            EmRangedAttack_CreateAtBone(em, RATH_BONE_BREATH, EMRANGED_FIREBALL, 2, 11651, 0);
         }
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0U) != 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HOVER, 2, 0x22);
+            Em_SetMotion(em, RATH_MOT_HOVER, 2, 34);
         }
         break;
     case 6:
@@ -5276,7 +5127,7 @@ void EmRathalos_AirFireballDoubleForward(Em *em, s32 work)
 }
 
 /*
- * RATH_ATK_SOMERSAULT_DOUBLE: a somersault, motion 0x37, and a second
+ * RATH_ATK_SOMERSAULT_DOUBLE: a somersault, motion 55, and a second
  * somersault.
  */
 void EmRathalos_SomersaultDouble(Em *em)
@@ -5293,7 +5144,7 @@ void EmRathalos_SomersaultDouble(Em *em)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_SetMotion(em, RATH_MOT_FLIP, 0, 0);
-        EmRathalos_StartCurves(em, 0xAU);
+        EmRathalos_StartCurves(em, 10U);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 94.0f) != 0) {
@@ -5303,14 +5154,14 @@ void EmRathalos_SomersaultDouble(Em *em)
         if ((ended != 0) && (em->posY <= (372.0f + em->floorY))) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_FLIP_FALL, 0, 0);
-            EmRathalos_StartCurves(em, 0xBU);
+            EmRathalos_StartCurves(em, 11U);
         }
         break;
     case 2:
         EmRathalos_UpdateCurves(em);
         if (em->posY <= em->floorY) {
             em->step++;
-            Em_SetMotion(em, 0x37, 0, 0);
+            Em_SetMotion(em, 55, 0, 0);
             em->stance = EM_STANCE_GROUND;
             em->posY = em->floorY;
             EmRathalos_SpawnLandingDust(em);
@@ -5319,12 +5170,12 @@ void EmRathalos_SomersaultDouble(Em *em)
         break;
     case 3:
         if (EmMotion_InFrameRange(em, 0, 50.0f, 70.0f) != 0) {
-            Em_TurnToGoal(em, 0x100, 2);
+            Em_TurnToGoal(em, 256, 2);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_FLIP, 2, 0x46);
-            EmRathalos_StartCurves(em, 0xAU);
+            Em_SetMotion(em, RATH_MOT_FLIP, 2, 70);
+            EmRathalos_StartCurves(em, 10U);
         }
         break;
     case 4:
@@ -5335,7 +5186,7 @@ void EmRathalos_SomersaultDouble(Em *em)
         if ((ended != 0) && (em->posY <= (372.0f + em->floorY))) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_FLIP_FALL, 0, 0);
-            EmRathalos_StartCurves(em, 0xBU);
+            EmRathalos_StartCurves(em, 11U);
         }
         break;
     case 5:
@@ -5362,7 +5213,7 @@ void EmRathalos_SomersaultDouble(Em *em)
     }
 }
 
-/* RATH_REACT_FLINCH: flinches (motion 0x3C); the script restarts. */
+/* RATH_REACT_FLINCH: flinches (motion 60); the script restarts. */
 void EmRathalos_Flinch(Em *em, EmWork *work)
 {
     switch (em->step) {
@@ -5371,7 +5222,7 @@ void EmRathalos_Flinch(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3C, 0, 0);
+        Em_SetMotion(em, 60, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -5382,7 +5233,7 @@ void EmRathalos_Flinch(Em *em, EmWork *work)
     }
 }
 
-/* RATH_REACT_FLINCH_B: flinches (motion 0x42). */
+/* RATH_REACT_FLINCH_B: flinches (motion 66). */
 void EmRathalos_FlinchB(Em *em, EmWork *work)
 {
     switch (em->step) {
@@ -5391,7 +5242,7 @@ void EmRathalos_FlinchB(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x42, 0, 0);
+        Em_SetMotion(em, 66, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -5402,7 +5253,7 @@ void EmRathalos_FlinchB(Em *em, EmWork *work)
     }
 }
 
-/* RATH_REACT_FLINCH_C: flinches (motion 0x3F). */
+/* RATH_REACT_FLINCH_C: flinches (motion 63). */
 void EmRathalos_FlinchC(Em *em, EmWork *work)
 {
     switch (em->step) {
@@ -5411,7 +5262,7 @@ void EmRathalos_FlinchC(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3F, 0, 0);
+        Em_SetMotion(em, 63, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -5422,7 +5273,7 @@ void EmRathalos_FlinchC(Em *em, EmWork *work)
     }
 }
 
-/* RATH_REACT_FLINCH_D: flinches (motion 0x40). */
+/* RATH_REACT_FLINCH_D: flinches (motion 64). */
 void EmRathalos_FlinchD(Em *em, EmWork *work)
 {
     switch (em->step) {
@@ -5431,7 +5282,7 @@ void EmRathalos_FlinchD(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x40, 0, 0);
+        Em_SetMotion(em, 64, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -5443,7 +5294,7 @@ void EmRathalos_FlinchD(Em *em, EmWork *work)
 }
 
 /*
- * RATH_REACT_PART_BREAK: the once-only reaction (motion 0x41), then
+ * RATH_REACT_PART_BREAK: the once-only reaction (motion 65), then
  * RATH_REACT_PART_BREAK_END, which breaks part 3.
  */
 void EmRathalos_PartBreak(Em *em, EmWork *work)
@@ -5458,7 +5309,7 @@ void EmRathalos_PartBreak(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x41, 0, 0);
+        Em_SetMotion(em, 65, 0, 0);
         break;
     case 1:
         if ((EmMotion_PassedFrameScaled(em, 6.0f, 0U) != 0) && ((s8) em->meshShown[1] != 0)) {
@@ -5503,7 +5354,7 @@ void EmRathalos_KnockDown(Em *em, EmWork *work)
         break;
     case 2:
         em->timer++;
-        if (em->timer >= 0x78) {
+        if (em->timer >= 120) {
             em->step++;
             Em_SetMotion(em, RATH_MOT_DOWN_GET_UP, 0, 0);
         }
@@ -5522,13 +5373,13 @@ void EmRathalos_KnockDown(Em *em, EmWork *work)
 /* RATH_REACT_END_AIR: glides once. */
 void EmRathalos_ReactEndAir(Em *em, EmWork *work)
 {
-    EmRathalos_EndAirState(em, 0x1);
+    EmRathalos_EndAirState(em, 1);
 }
 
 /* RATH_REACT_END_AIR_B: glides once. */
 void EmRathalos_ReactEndAirB(Em *em, EmWork *work)
 {
-    EmRathalos_EndAirState(em, 0x1);
+    EmRathalos_EndAirState(em, 1);
 }
 
 /* RATH_REACT_FALL: falls out of the air, hits the floor and gets up. */
@@ -5624,7 +5475,7 @@ void EmRathalos_FallB(Em *em, EmWork *work)
     }
 }
 
-/* RATH_REACT_FLINCH_E: flinches (motion 0x3D). */
+/* RATH_REACT_FLINCH_E: flinches (motion 61). */
 void EmRathalos_FlinchE(Em *em, EmWork *work)
 {
     switch (em->step) {
@@ -5633,7 +5484,7 @@ void EmRathalos_FlinchE(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3D, 0, 0);
+        Em_SetMotion(em, 61, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -5644,7 +5495,7 @@ void EmRathalos_FlinchE(Em *em, EmWork *work)
     }
 }
 
-/* RATH_REACT_STATUS4: status 4 (motion 0x4C, no flinch), then shakes it off. */
+/* RATH_REACT_STATUS4: status 4 (motion 76, no flinch), then shakes it off. */
 void EmRathalos_Status4(Em *em, EmWork *work)
 {
     Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
@@ -5654,7 +5505,7 @@ void EmRathalos_Status4(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4C, 0, 0);
+        Em_SetMotion(em, 76, 0, 0);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -5790,7 +5641,7 @@ void EmRathalos_PartBreakEnd(Em *em, EmWork *work)
 
 /*
  * RATH_REACT_KNOCK_DOWN_PART3: the reaction to a hit on the broken part 3
- * (motions 0x4A, 0x4B, 0x48).
+ * (motions 74, 75, 72).
  */
 void EmRathalos_KnockDownPart3(Em *em, EmWork *work)
 {
@@ -5800,20 +5651,20 @@ void EmRathalos_KnockDownPart3(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x4A, 0, 0);
+        Em_SetMotion(em, 74, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
             em->step++;
             em->timer = 0;
-            Em_SetMotion(em, 0x4B, 0, 0);
+            Em_SetMotion(em, 75, 0, 0);
         }
         break;
     case 2:
         em->timer++;
-        if (em->timer >= 0x78) {
+        if (em->timer >= 120) {
             em->step++;
-            Em_SetMotion(em, 0x48, 0, 0);
+            Em_SetMotion(em, 72, 0, 0);
         }
         break;
     case 3:
@@ -5933,7 +5784,7 @@ void EmRathalos_Stun(Em *em, EmWork *work)
         em->lookAtTarget = 0;
         Em_RestartScript(em);
         Em_SetMotion(em, RATH_MOT_KNOCK_DOWN, 0, 0);
-        StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, 34, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -5975,7 +5826,7 @@ void EmRathalos_StunDowned(Em *em, EmWork *work)
         Em_SetMotion(em, RATH_MOT_DOWNED, 0, 0);
         Em_RestartScript(em);
         em->noReact = 1;
-        StunStars_CreateEm(em, 1, 0x22, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
+        StunStars_CreateEm(em, 1, 34, (s32) ((f32) em->timer + (em->motion[0].frameCount / 2.0f)), 150.0f, 3.0f);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -6033,13 +5884,13 @@ void EmRathalos_Hold2(Em *em, EmWork *work)
         em->stance = EM_STANCE_GROUND;
         em->lookAtTarget = 0;
         Em_RestartScript(em);
-        Em_SetMotion(em, 0x3C, 0, 0);
+        Em_SetMotion(em, 60, 0, 0);
         Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
         break;
     case 1:
         if (EmMotion_ReachedFrame(em, 0, 52.0f) != 0) {
             em->step++;
-            Em_SetMotion(em, 0x4C, 0xC, 0);
+            Em_SetMotion(em, 76, 12, 0);
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
         }
         break;
@@ -6077,7 +5928,7 @@ void EmRathalos_QuestIntro(Em *em, EmWork *work)
 
     Stage_GetAreaRecord(em->area);
     for (i = 0, otherEm = gEms; i < 20; i++, otherEm++) {
-        if ((otherEm->type == 0xC || otherEm->type == EM_KIND_POPO) && otherEm->active != 0 && otherEm->variant == 0) {
+        if ((otherEm->type == 12 || otherEm->type == EM_KIND_POPO) && otherEm->active != 0 && otherEm->variant == 0) {
             goto found;
         }
     }
@@ -6108,7 +5959,7 @@ found:
     case 1:
         em->aimAngle = Math_AngleXZ(&em->posX, em->goal);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xD5, &EmRathalos_FlyParam);
+        Em_UpdateFlight(em, 213, &EmRathalos_FlyParam);
         if (Vec_DistanceXZ(&em->posX, em->goal) <= 1000.0f) {
             em->step++;
             em->timer = 900;
@@ -6124,10 +5975,10 @@ found:
         }
         em->aimAngle = Math_AngleXZ(&em->posX, pos);
         em->aimAngle = em->aimAngle - em->rotY;
-        Em_UpdateFlight(em, 0xD1, &EmRathalos_FlyParam);
-        if ((em->aimAngle <= 0x800 || em->aimAngle >= 0xF800) && 4000.0f < Vec_DistanceXZ(&em->posX, pos)) {
+        Em_UpdateFlight(em, 209, &EmRathalos_FlyParam);
+        if ((em->aimAngle <= (ANGLE_TURN / 32) || em->aimAngle >= ANGLE_TURN * 31 / 32) && 4000.0f < Vec_DistanceXZ(&em->posX, pos)) {
             em->step++;
-            work->turnSpeed = 0x100;
+            work->turnSpeed = 256;
             Em_SetMotion(em, RATH_MOT_SWOOP_DIVE, 0, 0);
             em->timer = 1800;
         }
@@ -6138,7 +5989,7 @@ found:
         break;
     case 3:
         if (em->rotZ != 0) {
-            if (em->rotZ <= 0x8000) {
+            if (em->rotZ <= ANGLE_TURN / 2) {
                 em->rotZ -= work->rollSpeed;
             } else {
                 em->rotZ += work->rollSpeed;
@@ -6157,7 +6008,7 @@ found:
         Em_TurnToGoal(em, (s32) (u16) work->turnSpeed, 0);
         work->moveAngX = em->rotX;
         work->moveAngY = em->rotY;
-        work->moveAngZ = 0xF;
+        work->moveAngZ = 15;
         Em_MoveRotated(em, &work->moveAngX);
         em->posY -= 1.0f;
         break;
@@ -6209,7 +6060,7 @@ found:
                 otherEm->posZ = em->posZ + out[2];
                 if (otherEm->stateGroup != EM_GROUP_EVENT || otherEm->state != 1) {
                     Em_SetStateRand(otherEm, 6, 1);
-                    otherEm->rotY = (em->rotY - 0x4000) & 0xFFFF;
+                    otherEm->rotY = (em->rotY - ANGLE_TURN / 4) & 0xFFFF;
                 }
             }
         }
@@ -6236,14 +6087,14 @@ found:
         break;
     case 7:
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 202.0f, 0)) {
-            PartFx_SpawnForEm(em, 0x1C, 6);
+            PartFx_SpawnForEm(em, RATH_BONE_FOOT_B, 6);
         }
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 208.0f, 0)) {
-            PartFx_SpawnForEm(em, 0x16, 6);
+            PartFx_SpawnForEm(em, RATH_BONE_FOOT_A, 6);
         }
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_HEAD_DOWN, 0xA, 0);
+            Em_SetMotion(em, RATH_MOT_HEAD_DOWN, 10, 0);
             if (otherEm != NULL) {
                 Em_SetStateRand(otherEm, 6, 3);
             }
@@ -6258,7 +6109,7 @@ found:
     case 9:
         if (em->motion[0].playing == 0) {
             em->step++;
-            Em_SetMotion(em, RATH_MOT_TURN_IN_PLACE, 0, 0);
+            Em_SetMotion(em, RATH_MOT_TURN_ROAR, 0, 0);
             if (otherEm != NULL) {
                 otherEm->motionSpeed = 0.0f;
             }
@@ -6328,9 +6179,9 @@ void EmRathalos_Captured(Em *em)
         pos[0] = 0.0f;
         pos[1] = 10.0f;
         pos[2] = 140.0f;
-        Em_SpawnLyingPuffs(em, 0x22, pos, 1.6f);
+        Em_SpawnLyingPuffs(em, RATH_BONE_BREATH, pos, 1.6f);
         if (++em->stateVar0 % 135 == 0) {
-            Em_PlaySeAtBone(em, 0x57, 0x23);
+            Em_PlaySeAtBone(em, 87, RATH_BONE_HEAD);
         }
     }
 }
@@ -6360,14 +6211,14 @@ void EmRathalos_CapturedHold2(Em *em)
             em->step++;
             Em_SetMotion(em, RATH_MOT_LIE, 0, 0);
             QuestEm_Captured(em);
-            em->timer = 0x708;
+            em->timer = 1800;
         }
         break;
     case 2:
         if (QuestEm_CanAppear(em) != 0) {
             if (--em->timer <= 0) {
                 em->step++;
-                em->timer = 0x96;
+                em->timer = 150;
                 break;
             }
         }
@@ -6432,12 +6283,12 @@ void EmRathalos_StoryEvent(Em *em)
         if (--em->timer <= 0 || goalDistXZ <= 150.0f) {
             em->step++;
             em->timer = 100;
-            Em_SetMotion(em, 0x51, 0, 0);
+            Em_SetMotion(em, 81, 0, 0);
             em->timer = 90;
             em->posX = 8551.0f;
             em->posY = 0.0f;
             em->posZ = 9386.0f;
-            em->rotY = 0xB000;
+            em->rotY = ANGLE_TURN * 11 / 16;
         } else if (EmMotion_PassedFrameScaled(em, 32.0f, 0U) != 0) {
             CamShake_ReqC(em, 2);
         } else if (EmMotion_PassedFrameScaled(em, 88.0f, 0U) != 0) {
@@ -6448,17 +6299,17 @@ void EmRathalos_StoryEvent(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             em->timer = 100;
-            Em_SetMotion(em, 0x50, 0, 0);
+            Em_SetMotion(em, 80, 0, 0);
         }
         break;
     case 4:
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotionRow(em, 0x33, 0, 0);
+            Em_SetMotionRow(em, RATH_MOT_ALERT_IDLE, 0, 0);
             em->posX = 8384.0f;
             em->posY = 0.0f;
             em->posZ = 9396.0f;
-            em->rotY = 0x5000;
+            em->rotY = ANGLE_TURN * 5 / 16;
         }
         break;
     case 5:
@@ -6515,7 +6366,7 @@ void EmRathalos_VersusEatBait(Em *em, EmWork *work)
     case 0:
         if (Versus_DefeatCamera(em) == 1) {
             em->step++;
-            Em_SetMotion(em, 0x1A, 0, 0);
+            Em_SetMotion(em, 26, 0, 0);
             Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 0, 0, 0);
             Em_SetLayerMotion(em, EM_MOTION_ID(0, RATH_MOT_IDLE), 0, 0, 2);
             em->timer = 30;
@@ -6553,7 +6404,7 @@ void EmRathalos_VersusEatBait(Em *em, EmWork *work)
 }
 
 /*
- * RATH_VS_POSE_A: motion 0x3D, then waits for both sides
+ * RATH_VS_POSE_A: motion 61, then waits for both sides
  * (RATH_VS_WAIT_BOTH).
  */
 void EmRathalos_VersusPoseA(Em *em, EmWork *work)
@@ -6563,7 +6414,7 @@ void EmRathalos_VersusPoseA(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, 0x3D, 0, 0);
+        Em_SetMotion(em, 61, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -6575,7 +6426,7 @@ void EmRathalos_VersusPoseA(Em *em, EmWork *work)
     }
 }
 
-/* RATH_VS_POSE_B: motion 0x36, then waits for both sides. */
+/* RATH_VS_POSE_B: RATH_MOT_TURN_ROAR, then waits for both sides. */
 void EmRathalos_VersusPoseB(Em *em, EmWork *work)
 {
     em->senseDelay = 5;
@@ -6583,7 +6434,7 @@ void EmRathalos_VersusPoseB(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        Em_SetMotion(em, RATH_MOT_TURN_IN_PLACE, 0, 0);
+        Em_SetMotion(em, RATH_MOT_TURN_ROAR, 0, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -6612,7 +6463,7 @@ void EmRathalos_VersusPoseC(Em *em, EmWork *work)
             em->stance = EM_STANCE_GROUND;
             em->lookAtTarget = 0;
             Em_SetMotion(em, RATH_MOT_FLIP, 0, 0);
-            EmRathalos_StartCurves(em, 0xA);
+            EmRathalos_StartCurves(em, 10);
             break;
         case 1:
             if (EmMotion_ReachedFrame(em, 0, 94.0f) != 0) {
@@ -6622,7 +6473,7 @@ void EmRathalos_VersusPoseC(Em *em, EmWork *work)
             if (done != 0 && em->posY <= 372.0f + em->floorY) {
                 em->step++;
                 Em_SetMotion(em, RATH_MOT_FLIP_FALL, 0, 0);
-                EmRathalos_StartCurves(em, 0xB);
+                EmRathalos_StartCurves(em, 11);
             }
             break;
         case 2:
@@ -6698,7 +6549,7 @@ void EmRathalos_VersusEnd(Em *em, EmWork *work)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x5A;
+        em->timer = 90;
         if (em->motionId[0] != EM_MOTION_ID(0, RATH_MOT_IDLE)) {
             Em_SetMotion(em, RATH_MOT_IDLE, 0, 0);
         }
@@ -7714,9 +7565,10 @@ static void EmRathalos_MotionEffectsDefault(Em *em)
 
 /*
  * The effects of each motion: plays its sounds (EmRathalos_MotionSounds)
- * and on given frames creates attached effects, ground effects (stage
- * object kind 0x14; more of them while enraged) and camera shakes, at the
- * frames of the motion on layer 0 (work->sndMotion keeps its id).
+ * and on given frames creates attached effects, dust clouds
+ * (STAGEOBJ_KIND_DUST_CLOUD; more of them while enraged) and camera
+ * shakes, at the frames of the motion on layer 0 (work->sndMotion keeps
+ * its id).
  */
 void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
 {
@@ -7728,8 +7580,8 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
     EmRathalos_MotionSounds(em, (EmWork *) work);
     switch (work->sndMotion) {
     case EM_MOTION_ID(0, RATH_MOT_WALK):
-        EmRathalos_CamShakeOnFrame(em, 0x34, 1);
-        EmRathalos_CamShakeOnFrame(em, 0x74, 1);
+        EmRathalos_CamShakeOnFrame(em, 52, 1);
+        EmRathalos_CamShakeOnFrame(em, 116, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             RathalosAttack_Create(em, 2);
         }
@@ -7740,7 +7592,7 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             RathalosAttack_Create(em, 4);
         }
         break;
-    case EM_MOTION_ID(0, 0x4):
+    case EM_MOTION_ID(0, 4):
         if (EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) {
             DustCloud_Create(em, 2, 0, 1.0f);
         }
@@ -7752,7 +7604,7 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_RIGHT):
-        EmRathalos_CamShakeOnFrame(em, 0x3C, 1);
+        EmRathalos_CamShakeOnFrame(em, 60, 1);
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
             RathalosAttack_Create(em, 5);
         }
@@ -7760,11 +7612,11 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             RathalosAttack_Create(em, 6);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 78.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 26, 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TURN_LEFT):
-        EmRathalos_CamShakeOnFrame(em, 0x3C, 1);
+        EmRathalos_CamShakeOnFrame(em, 60, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
             RathalosAttack_Create(em, 7);
         }
@@ -7772,74 +7624,74 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             RathalosAttack_Create(em, 8);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 78.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 0, 1.0f);
+            DustCloud_Create(em, 26, 0, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x7):
+    case EM_MOTION_ID(0, 7):
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
             RathalosAttack_Create(em, 9);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0xA);
+            RathalosAttack_Create(em, 10);
         }
         if (em->rage != 0) {
             if ((EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) == 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 26, 1, 1.0f);
             }
             if ((EmMotion_ReachedFrame(em, 0, 20.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 70.0f) == 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 26, 0, 1.0f);
                 break;
             }
         }
         break;
-    case EM_MOTION_ID(0, 0x8):
+    case EM_MOTION_ID(0, 8):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0xB);
+            RathalosAttack_Create(em, 11);
         }
         if (EmMotion_PassedFrameScaled(em, 18.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0xC);
+            RathalosAttack_Create(em, 12);
         }
         if (em->rage != 0) {
             if ((EmMotion_ReachedFrame(em, 0, 2.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) == 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 0, 1.0f);
+                DustCloud_Create(em, 26, 0, 1.0f);
             }
             if ((EmMotion_ReachedFrame(em, 0, 20.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 70.0f) == 0) && !(gScene.frame & 3)) {
-                DustCloud_Create(em, 0x1A, 1, 1.0f);
+                DustCloud_Create(em, 26, 1, 1.0f);
                 break;
             }
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LIMP):
         if (EmMotion_PassedFrameScaled(em, 42.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x19);
+            RathalosAttack_Create(em, 25);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1A);
+            RathalosAttack_Create(em, 26);
         }
         if (EmMotion_PassedFrameScaled(em, 74.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1A);
+            RathalosAttack_Create(em, 26);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_DESCEND):
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0) || EmMotion_PassedFrameScaled(em, 104.0f, 0) || EmMotion_PassedFrameScaled(em, 162.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
-                PartFx_SpawnForEmScaled(em, 2, 7, 5.0f);
+                PartFx_SpawnForEmScaled(em, RATH_BONE_BODY, 7, 5.0f);
                 break;
             }
         }
         break;
-    case EM_MOTION_ID(0, 0xD):
+    case EM_MOTION_ID(0, 13):
         if (((EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 52.0f, 0) != 0)) && (em->posY <= (1000.0f + em->floorY))) {
             PartFx_SpawnForEmScaled(em, 1, 7, 5.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLY):
-    case EM_MOTION_ID(0, 0x55):
-    case EM_MOTION_ID(0, 0x56):
-    case EM_MOTION_ID(0, 0x58):
-    case EM_MOTION_ID(0, 0x59):
+    case EM_MOTION_ID(0, 85):
+    case EM_MOTION_ID(0, 86):
+    case EM_MOTION_ID(0, 88):
+    case EM_MOTION_ID(0, 89):
         if ((em->rage != 0) && (((s32) gScene.frame % 19) == 0)) {
-            DustCloud_Create(em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
+            DustCloud_Create(em, 25, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_HOVER):
@@ -7851,7 +7703,7 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         if (em->rage != 0) {
             if (((EmMotion_ReachedFrame(em, 0, 70.0f) != 0) && (EmMotion_PassedFrameScaled(em, 84.0f, 0) == 0)) || ((EmMotion_ReachedFrame(em, 0, 146.0f) != 0) && (EmMotion_PassedFrameScaled(em, 156.0f, 0) == 0)) || ((EmMotion_ReachedFrame(em, 0, 220.0f) != 0) && (EmMotion_PassedFrameScaled(em, 234.0f, 0) == 0))) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -7859,10 +7711,10 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, RATH_MOT_RUN):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x18);
+            RathalosAttack_Create(em, 24);
         }
         if ((em->rage != 0) && (((s32) gScene.frame % 10) == 0)) {
-            DustCloud_Create(em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
+            DustCloud_Create(em, 25, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 12.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 78.0f, 0) != 0)) {
             DustCloud_Create(em, 2, 0, 1.0f);
@@ -7878,39 +7730,39 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             }
         }
         if ((em->rage != 0) && (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0)) {
-            DustCloud_Create(em, 0x19, 4, 1.0f);
-            DustCloud_Create(em, 0x19, 5, 1.0f);
+            DustCloud_Create(em, 25, 4, 1.0f);
+            DustCloud_Create(em, 25, 5, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TOUCH_DOWN):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0xD);
+            RathalosAttack_Create(em, 13);
         }
         if (EmMotion_PassedFrameScaled(em, 16.0f, 0) != 0) {
             EmRathalos_SpawnLandingDust(em);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 44.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
+            DustCloud_Create(em, 25, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x1F):
+    case EM_MOTION_ID(0, 31):
     case EM_MOTION_ID(0, RATH_MOT_LIE):
         boneOffset[1] = 10.0f;
         boneOffset[2] = 140.0f;
         boneOffset[0] = 0.0f;
-        Em_SpawnLyingPuffs(em, 0x22, boneOffset, 1.6f);
+        Em_SpawnLyingPuffs(em, RATH_BONE_BREATH, boneOffset, 1.6f);
         break;
-    case EM_MOTION_ID(0, 0x24):
+    case EM_MOTION_ID(0, 36):
         if (EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) {
             RathalosAttack_Create(em, 1);
         }
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x29);
+            RathalosAttack_Create(em, 41);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_COLLAPSE):
         if (EmMotion_PassedFrameScaled(em, 148.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0xF);
+            RathalosAttack_Create(em, 15);
         }
         if (EmMotion_PassedFrameScaled(em, 156.0f, 0) != 0) {
             DustCloud_Create(em, 0, 0, 1.0f);
@@ -7918,15 +7770,15 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEAP):
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x22);
+            RathalosAttack_Create(em, 34);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 142.0f) != 0) && (EmMotion_PassedFrameScaled(em, 236.0f, 0) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEAP_LAND):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x23);
+            RathalosAttack_Create(em, 35);
         }
         if ((EmMotion_ReachedFrame(em, 0, 20.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 50.0f) == 0) && !(gScene.frame & 3)) {
             DustCloud_Create(em, 2, 0, 1.0f);
@@ -7941,42 +7793,42 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             DustCloud_Create(em, 3, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 46.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 134.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN_B):
-        EmRathalos_CamShakeOnFrame(em, 0x2C, 1);
-        EmRathalos_CamShakeOnFrame(em, 0x49, 1);
+        EmRathalos_CamShakeOnFrame(em, 44, 1);
+        EmRathalos_CamShakeOnFrame(em, 73, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x11);
+            RathalosAttack_Create(em, 17);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 6.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 38.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 0, 1.0f);
+            DustCloud_Create(em, 26, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TAIL_SPIN):
-        EmRathalos_CamShakeOnFrame(em, 0x2C, 1);
-        EmRathalos_CamShakeOnFrame(em, 0x49, 1);
+        EmRathalos_CamShakeOnFrame(em, 44, 1);
+        EmRathalos_CamShakeOnFrame(em, 73, 1);
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x11);
+            RathalosAttack_Create(em, 17);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 6.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 38.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, 1, 1.0f);
+            DustCloud_Create(em, 26, 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_SWOOP_CLAW):
         if (EmMotion_PassedFrameScaled(em, 22.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x14);
-            RathalosAttack_Create(em, 0x15);
+            RathalosAttack_Create(em, 20);
+            RathalosAttack_Create(em, 21);
         }
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) || EmMotion_PassedFrameScaled(em, 68.0f, 0) || EmMotion_PassedFrameScaled(em, 114.0f, 0)) {
             if (em->posY <= (1000.0f + em->floorY)) {
                 DustCloud_Create(em, 9, 0, 1.0f);
-                DustCloud_Create(em, 0xE, 0, 1.0f);
+                DustCloud_Create(em, 14, 0, 1.0f);
             }
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 18.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 110.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL_RISE):
@@ -7984,18 +7836,18 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             DustCloud_Create(em, 1, 0, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 60.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 132.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_ALERT_IDLE):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1B);
+            RathalosAttack_Create(em, 27);
         }
         if (EmMotion_PassedFrameScaled(em, 168.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1B);
+            RathalosAttack_Create(em, 27);
         }
         if (EmMotion_PassedFrameScaled(em, 56.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1C);
+            RathalosAttack_Create(em, 28);
         }
         if (EmMotion_PassedFrameScaled(em, 54.0f, 0) != 0) {
             DustCloud_Create(em, 2, 2, 0.8f);
@@ -8003,7 +7855,7 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         if (em->rage != 0) {
             if (EmMotion_InFrameRange(em, 0, 154.0f, 244.0f) || EmMotion_InFrameRange(em, 0, 254.0f, 330.0f)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -8022,24 +7874,24 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, RATH_MOT_AIR_DIVE):
         if (EmMotion_PassedFrameScaled(em, 90.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x16);
+            RathalosAttack_Create(em, 22);
         }
         if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x17);
+            RathalosAttack_Create(em, 23);
         }
         break;
-    case EM_MOTION_ID(0, RATH_MOT_TURN_IN_PLACE):
+    case EM_MOTION_ID(0, RATH_MOT_TURN_ROAR):
         if (EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x12);
+            RathalosAttack_Create(em, 18);
         }
         if (EmMotion_PassedFrameScaled(em, 110.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x13);
+            RathalosAttack_Create(em, 19);
             ElementBurst_CreateOnEm(em, 5, 4, 1.0f);
         }
         if (em->rage != 0) {
             if (((EmMotion_ReachedFrame(em, 0, 20.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 36.0f) == 0)) || ((EmMotion_ReachedFrame(em, 0, 46.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 168.0f) == 0)) || ((EmMotion_ReachedFrame(em, 0, 172.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 192.0f) == 0)) || ((EmMotion_ReachedFrame(em, 0, 196.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 216.0f) == 0)) || ((EmMotion_ReachedFrame(em, 0, 230.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 238.0f) == 0))) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -8053,40 +7905,40 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             DustCloud_Create(em, 5, 0, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 28.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1D);
+            RathalosAttack_Create(em, 29);
         }
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x25);
+            RathalosAttack_Create(em, 37);
         }
         if (EmMotion_PassedFrameScaled(em, 36.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x28);
+            RathalosAttack_Create(em, 40);
         }
         break;
-    case EM_MOTION_ID(0, 0x3C):
+    case EM_MOTION_ID(0, 60):
         if (EmMotion_PassedFrameScaled(em, 80.0f, 0) != 0) {
-            DustCloud_Create(em, 1, 0x80, 0.5f);
+            DustCloud_Create(em, 1, 128, 0.5f);
         }
         if (EmMotion_PassedFrameScaled(em, 44.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1B, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, 27, 7, 1.0f);
         }
         if (EmMotion_PassedFrameScaled(em, 62.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x16, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, RATH_BONE_FOOT_A, 7, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x3D):
+    case EM_MOTION_ID(0, 61):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0) != 0) {
-            PartFx_SpawnForEmScaled(em, 0x1A, 7, 1.0f);
+            PartFx_SpawnForEmScaled(em, RATH_BONE_STEP_B, 7, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x41):
+    case EM_MOTION_ID(0, 65):
         if (EmMotion_PassedFrameScaled(em, 20.0f, 0) != 0) {
-            DustCloud_Create(em, 3, 0x80, 1.0f);
+            DustCloud_Create(em, 3, 128, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 128.0f, 0) != 0) || (EmMotion_PassedFrameScaled(em, 164.0f, 0) != 0)) {
-            DustCloud_Create(em, 3, 0x80, 0.6f);
+            DustCloud_Create(em, 3, 128, 0.6f);
         }
         if (EmMotion_PassedFrameScaled(em, 60.0f, 0) != 0) {
-            DustCloud_Create(em, 1, 0x80, 1.0f);
+            DustCloud_Create(em, 1, 128, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_DIE):
@@ -8095,46 +7947,46 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_KNOCK_DOWN):
-        EmRathalos_CamShakeOnFrame(em, 0x1A, 2);
+        EmRathalos_CamShakeOnFrame(em, 26, 2);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            DustCloud_Create(em, 0x12, 0x80, 1.0f);
+            DustCloud_Create(em, 18, 128, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x49):
-        EmRathalos_CamShakeOnFrame(em, 0x1A, 2);
+    case EM_MOTION_ID(0, 73):
+        EmRathalos_CamShakeOnFrame(em, 26, 2);
         if ((EmMotion_ReachedFrame(em, 0, 28.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 52.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0xA, 0x80, 1.0f);
+            DustCloud_Create(em, 10, 128, 1.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x4A):
-        EmRathalos_CamShakeOnFrame(em, 0x1A, 2);
+    case EM_MOTION_ID(0, 74):
+        EmRathalos_CamShakeOnFrame(em, 26, 2);
         if (EmMotion_PassedFrameScaled(em, 26.0f, 0) != 0) {
-            DustCloud_Create(em, 0x12, 0x81, 1.0f);
+            DustCloud_Create(em, 18, 129, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_FALL_LAND):
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0) != 0) {
-            DustCloud_Create(em, 0xB, 0, 1.0f);
+            DustCloud_Create(em, 11, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_HEAD_DOWN):
         if (EmMotion_PassedFrameScaled(em, 48.0f, 0) || EmMotion_PassedFrameScaled(em, 106.0f, 0) || EmMotion_PassedFrameScaled(em, 174.0f, 0)) {
-            RathalosAttack_Create(em, 0x10);
+            RathalosAttack_Create(em, 16);
         }
         break;
-    case EM_MOTION_ID(0, 0x54):
+    case EM_MOTION_ID(0, 84):
         if (EmMotion_PassedFrameScaled(em, 38.0f, 0) || EmMotion_PassedFrameScaled(em, 60.0f, 0) || EmMotion_PassedFrameScaled(em, 78.0f, 0)) {
-            PartFx_SpawnForEmScaled(em, 2, 7, 5.0f);
+            PartFx_SpawnForEmScaled(em, RATH_BONE_BODY, 7, 5.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_LEVEL_OUT):
         if ((EmMotion_PassedFrameScaled(em, 50.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             DustCloud_Create(em, 9, 0, 1.0f);
-            DustCloud_Create(em, 0xE, 0, 1.0f);
+            DustCloud_Create(em, 14, 0, 1.0f);
         }
         if ((EmMotion_PassedFrameScaled(em, 102.0f, 0) != 0) && (em->posY <= (1000.0f + em->floorY))) {
             DustCloud_Create(em, 9, 0, 1.0f);
-            DustCloud_Create(em, 0xE, 0, 1.0f);
+            DustCloud_Create(em, 14, 0, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_CHARGE_TRIP):
@@ -8145,15 +7997,15 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
             DustCloud_Create(em, 2, 0, 1.0f);
         }
         if ((EmMotion_ReachedFrame(em, 0, 96.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 120.0f) == 0) && (((s32) gScene.frame % 6) == 0)) {
-            DustCloud_Create(em, 0x12, 0, 1.0f);
+            DustCloud_Create(em, 18, 0, 1.0f);
         }
         if ((em->rage != 0) && (((s32) gScene.frame % 19) == 0)) {
-            DustCloud_Create(em, 0x19, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
+            DustCloud_Create(em, 25, ((u16) Rand_Next(1) & 1) + 2, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP):
         if (EmMotion_PassedFrameScaled(em, 108.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1E);
+            RathalosAttack_Create(em, 30);
         }
         if (EmMotion_PassedFrameScaled(em, 104.0f, 0) != 0) {
             DustCloud_Create(em, 1, 0, 1.0f);
@@ -8164,22 +8016,22 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
         break;
     case EM_MOTION_ID(0, RATH_MOT_FLIP_LAND):
         if (EmMotion_PassedFrameScaled(em, 2.0f, 0) != 0) {
-            RathalosAttack_Create(em, 0x1F);
+            RathalosAttack_Create(em, 31);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_TRAPPED):
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
-            DustCloud_Create(em, 0xB, 0x80, 1.0f);
+            DustCloud_Create(em, 11, 128, 1.0f);
         }
         if ((em->rage != 0) && (EmMotion_ReachedFrame(em, 0, 4.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 60.0f) == 0) && !(gScene.frame & 3)) {
-            DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+            DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
         }
         break;
     case EM_MOTION_ID(0, RATH_MOT_STRUGGLE):
         if (em->rage != 0) {
             if (((EmMotion_ReachedFrame(em, 0, 12.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 24.0f) == 0)) || (EmMotion_ReachedFrame(em, 0, 46.0f) != 0) && (EmMotion_ReachedFrame(em, 0, 90.0f) == 0)) {
                 if (!(gScene.frame & 3)) {
-                    DustCloud_Create(em, 0x1A, (u16) Rand_Next(1) & 1, 1.0f);
+                    DustCloud_Create(em, 26, (u16) Rand_Next(1) & 1, 1.0f);
                     break;
                 }
             }
@@ -8191,33 +8043,33 @@ void EmRathalos_MotionEffects(Em *em, EmFlyerWork *work)
     case EM_MOTION_ID(0, RATH_MOT_IDLE):
     case EM_MOTION_ID(0, RATH_MOT_RUN_STOP):
     case EM_MOTION_ID(0, RATH_MOT_GLIDE):
-    case EM_MOTION_ID(0, 0x10):
-    case EM_MOTION_ID(0, 0x1D):
-    case EM_MOTION_ID(0, 0x1E):
+    case EM_MOTION_ID(0, 16):
+    case EM_MOTION_ID(0, 29):
+    case EM_MOTION_ID(0, 30):
     case EM_MOTION_ID(0, RATH_MOT_ROAR):
     case EM_MOTION_ID(0, RATH_MOT_GET_UP):
     case EM_MOTION_ID(0, RATH_MOT_LIE_DOWN):
     case EM_MOTION_ID(0, RATH_MOT_SWOOP_DIVE):
     case EM_MOTION_ID(0, RATH_MOT_AIR_FIREBALL):
     case EM_MOTION_ID(0, RATH_MOT_FIREBALL):
-    case EM_MOTION_ID(0, 0x30):
+    case EM_MOTION_ID(0, 48):
     case EM_MOTION_ID(0, RATH_MOT_FIREBALL_B):
     case EM_MOTION_ID(0, RATH_MOT_FEED):
     case EM_MOTION_ID(0, RATH_MOT_SHAKE_OFF):
-    case EM_MOTION_ID(0, 0x3F):
-    case EM_MOTION_ID(0, 0x40):
-    case EM_MOTION_ID(0, 0x42):
-    case EM_MOTION_ID(0, 0x43):
+    case EM_MOTION_ID(0, 63):
+    case EM_MOTION_ID(0, 64):
+    case EM_MOTION_ID(0, 66):
+    case EM_MOTION_ID(0, 67):
     case EM_MOTION_ID(0, RATH_MOT_DOWN):
     case EM_MOTION_ID(0, RATH_MOT_DOWN_GET_UP):
-    case EM_MOTION_ID(0, 0x48):
-    case EM_MOTION_ID(0, 0x4B):
-    case EM_MOTION_ID(0, 0x4C):
+    case EM_MOTION_ID(0, 72):
+    case EM_MOTION_ID(0, 75):
+    case EM_MOTION_ID(0, 76):
     case EM_MOTION_ID(0, RATH_MOT_FALL):
-    case EM_MOTION_ID(0, 0x50):
-    case EM_MOTION_ID(0, 0x51):
+    case EM_MOTION_ID(0, 80):
+    case EM_MOTION_ID(0, 81):
     case EM_MOTION_ID(0, RATH_MOT_DIE_FALLING):
-    case EM_MOTION_ID(0, 0x53):
+    case EM_MOTION_ID(0, 83):
     case EM_MOTION_ID(0, RATH_MOT_SWOOP):
     case EM_MOTION_ID(0, RATH_MOT_FLIP_FALL):
     case EM_MOTION_ID(0, RATH_MOT_DOWNED):
@@ -8244,17 +8096,17 @@ void EmRathalos_UpdateMotionEffects(Em *em)
     }
 }
 
-/* Creates the ground effect of kind 0x14 type 0xB (made at the landings). */
+/* Creates a dust cloud of type 11 (STAGEOBJ_KIND_DUST_CLOUD), made at the landings. */
 void EmRathalos_SpawnLandingDust(Em *em)
 {
-    DustCloud_Create((Em *) em, 0xB, 0, 1.0f);
+    DustCloud_Create((Em *) em, 11, 0, 1.0f);
 }
 
-/* Creates the ground effect of kind 0x14 type 0xA every fifth frame. */
+/* Creates a dust cloud of type 10 (STAGEOBJ_KIND_DUST_CLOUD) every fifth frame. */
 void EmRathalos_SpawnK14Type0AEvery5(Em *em)
 {
     if (((s32) gScene.frame % 5) == 0) {
-        DustCloud_Create((Em *) em, 0xA, 0, 1.0f);
+        DustCloud_Create((Em *) em, 10, 0, 1.0f);
     }
 }
 
@@ -8279,7 +8131,7 @@ s32 EmRathalos_ReachedTarget(Em *em)
         return 1;
     }
     if (dist <= (4.5f + (30.0f * em->velZ))) {
-        Em_SetMotion(em, RATH_MOT_SWOOP_CLAW, 0xA, 0);
+        Em_SetMotion(em, RATH_MOT_SWOOP_CLAW, 10, 0);
         return 1;
     }
     return 0;
@@ -8295,7 +8147,7 @@ s32 EmRathalos_ReachedPoint(Em *em)
         return 1;
     }
     if (dist <= (2.4199998f + (22.0f * em->velZ))) {
-        Em_SetMotion(em, RATH_MOT_SWOOP_CLAW, 0xA, 0);
+        Em_SetMotion(em, RATH_MOT_SWOOP_CLAW, 10, 0);
         return 1;
     }
     return 0;
@@ -8384,7 +8236,7 @@ void EmRathalos_SetIdleState(Em *em, u16 state, u8 mode)
         em->holdTimer2 = 0;
         break;
     case RATH_IDLE_EAT:
-        Em_StartGoalAction(em, 0x2710);
+        Em_StartGoalAction(em, 10000);
         break;
     }
     em->stance = EM_STANCE_GROUND;
@@ -8923,7 +8775,7 @@ void EmRathalos_SetEscapePoint(Em *em)
 
 /*
  * Steps rotX by the work area's pitchStep toward the pitch of `mode`: 0 at
- * the target's position raised by `height`, 1 nose up (0xD000), 2 level.
+ * the target's position raised by `height`, 1 nose up (ANGLE_TURN * 13 / 16), 2 level.
  */
 void EmRathalos_StepPitch(Em *em, s32 mode, f32 height)
 {
@@ -8937,11 +8789,11 @@ void EmRathalos_StepPitch(Em *em, s32 mode, f32 height)
     switch (mode) {
     case 0:
         Em_GetTargetPos(em, em->targetNo, pos);
-        pitchDelta = 0x10000 - Math_Heading(Vec_Distance((f32 *) &em->posX, (f32 *) pos), em->posY, 0.0f, pos[1] + height);
+        pitchDelta = ANGLE_TURN - Math_Heading(Vec_Distance((f32 *) &em->posX, (f32 *) pos), em->posY, 0.0f, pos[1] + height);
         pitchDelta = (pitchDelta - em->rotX) & 0xFFFF;
         break;
     case 1:
-        pitchDelta = (0xD000 - em->rotX) & 0xFFFF;
+        pitchDelta = ((ANGLE_TURN * 13 / 16) - em->rotX) & 0xFFFF;
         break;
     case 2:
         pitchDelta = -em->rotX & 0xFFFF;
@@ -8950,8 +8802,8 @@ void EmRathalos_StepPitch(Em *em, s32 mode, f32 height)
     if (pitchDelta == 0) {
         return;
     }
-    if (pitchDelta < 0x8000) {
-        if (em->rotX < 0x3000 || em->rotX >= 0xD000) {
+    if (pitchDelta < (ANGLE_TURN / 2)) {
+        if (em->rotX < (ANGLE_TURN * 3 / 16) || em->rotX >= ANGLE_TURN * 13 / 16) {
             if (pitchDelta <= work->pitchStep) {
                 em->rotX += pitchDelta;
             } else {
@@ -8959,9 +8811,9 @@ void EmRathalos_StepPitch(Em *em, s32 mode, f32 height)
             }
         }
     } else {
-        if (em->rotX > 0xD000 || em->rotX <= 0x3000) {
-            if (pitchDelta >= 0x10000 - work->pitchStep) {
-                em->rotX -= 0x10000 - pitchDelta;
+        if (em->rotX > (ANGLE_TURN * 13 / 16) || em->rotX <= ANGLE_TURN * 3 / 16) {
+            if (pitchDelta >= ANGLE_TURN - work->pitchStep) {
+                em->rotX -= ANGLE_TURN - pitchDelta;
             } else {
                 em->rotX -= work->pitchStep;
             }
@@ -9026,22 +8878,22 @@ void EmRathalos_StartCurves(Em *em, u8 kind)
     case 2:
     case 15:
         w->curveVelY = 1;
-        w->curveFrame = 0x26;
+        w->curveFrame = 38;
         break;
     case 3:
         w->curveVelY = 1;
-        w->curveFrame = 0x1E;
+        w->curveFrame = 30;
         break;
     case 5:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x3C;
+        w->curveFrame = 60;
         break;
     case 8:
     case 14:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x4C;
+        w->curveFrame = 76;
         break;
     case 9:
         w->curveVelY = 1;
@@ -9051,7 +8903,7 @@ void EmRathalos_StartCurves(Em *em, u8 kind)
     case 10:
         w->curveVelY = 1;
         w->curveSpeed = 1;
-        w->curveFrame = 0x5C;
+        w->curveFrame = 92;
         break;
     case 11:
         w->curveVelY = 1;
@@ -9059,7 +8911,7 @@ void EmRathalos_StartCurves(Em *em, u8 kind)
         break;
     case 12:
         w->curveVelY = 1;
-        w->curveFrame = 0x2C;
+        w->curveFrame = 44;
         break;
     case 13:
         w->curveVelY = 1;
@@ -9067,7 +8919,7 @@ void EmRathalos_StartCurves(Em *em, u8 kind)
         break;
     case 16:
         w->curveVelY = 1;
-        w->curveFrame = 0x40;
+        w->curveFrame = 64;
         break;
     }
     Player_ClearVelocity(em);
@@ -9215,7 +9067,6 @@ EmTurnParams EmRathalos_TurnParams[2] = {
 Vec3f EmRathalos_CarveThrowPt = {
 #include "game/008C91F8.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
 void *EmRathalos_Callbacks[8] = {
     EmRathalos_SpawnEffects, EmRathalos_SpawnEffects, EmRathalos_TableNop, EmRathalos_UpdateMotionEffects,
     GmEm_ReturnZero, EmRathalos_Reinit, EmRathalos_AllowPartBreak, NULL,

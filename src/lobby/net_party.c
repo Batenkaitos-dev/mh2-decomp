@@ -8,26 +8,30 @@
  *   id, name, text...), 6915 the room's name, 6914 a text, and 6916 the
  *   address (IPv4, port) of the quest server to connect to. The data goes
  *   to gLobbyNet.party (NetParty) and gLobbyNet.partyAddr.
- * - The reply to 640E, a level-2 command of unknown meaning, comes first.
+ * - First come 6910, the notification that the party is complete, 6508,
+ *   the quest's payment notice, and the reply to 640E, a level-2 command
+ *   of unknown meaning.
  */
 #include "common.h"
 #include "lobby_net.h"
+#include "arena.h"
 
-s32 LobbyPkt_SetOut(u8 value);
-void Lobby_RouteMessage(s32);
-s32 LobbyPkt_PartyCount(void);
 extern u8 gNetPartyFetchIdx;           /* the server asked for next (1-based) */
-u8 *LobbyMsg_ReadU8(void *dst);
-void LobbyMsg_ReadErrText(void);
-void NetPartyTask_Finish(NetMsg m);
-void LobbyPkt_PartySelf(u8 arg0);
-void LobbyPkt_PartyMember(u8 arg0);
-void LobbyPkt_PartyMemberValues(u8 arg0);
-void LobbyPkt_PartyText(void);
-void LobbyPkt_PartyRoom(void);
-void LobbyPkt_PartyServer(void);
-s32 LobbyPkt_PartyFail(void);
-u16 Swap16(s32);
+
+/* The notification that the quest's party is ready. */
+void LobbyNotify_PartyReady(void)
+{
+    Lobby_RouteMessage(NET_ROUTE_PARTY_READY);
+}
+
+/* Sends the quest's payment notice; returns 0. */
+s32 LobbyPkt_QuestPaid(void)
+{
+    LobbyPkt_BeginCmd(&gLobbyPkt, LOBBY_CMD_QUEST_PAID);
+    LobbyPkt_End(&gLobbyPkt);
+    LobbyPkt_Send(&gLobbyPkt);
+    return 0;
+}
 
 /* The reply to 640E: completes its request. */
 void LobbyReply_640E(void)
@@ -203,7 +207,7 @@ void LobbyReply_PartyMemberValues(void)
     }
 }
 
-/* the reply to 6915: string (0x10), u16; then 6914 */
+/* the reply to 6915: string (16), u16; then 6914 */
 void LobbyReply_PartyRoom(void)
 {
     NetParty *partyRec;

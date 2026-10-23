@@ -22,31 +22,27 @@
 #include "em.h"
 #include "lobby_menu.h"
 #include "lobby_npc.h"
+#include "village_cond.h"
+#include "quest_offers.h"
+#include "game_util.h"
+#include "kitchen.h"
+#include "lobby_world.h"
+#include "my_house.h"
+#include "offer_menu.h"
+#include "quest_desk_draw.h"
+#include "quest_order_terms.h"
+#include "rand.h"
+#include "libc.h"
 
-
-QuestInfo *Quest_GetDiscInfo(u16 id);
-s32 Quest_CheckOrderTerms(u8, u8);
-s32 LobbyTime_IsPm(void);
-s32 LobbyWorld_GetSeason(void);
-s32 Quest_MatchesSeasonTime(u16 id, s32 season, s32 isPm);
-s32 Game_IsOnline(void);
-s32 Cond_Check(u16 id);
-s32 Save_TestEventFlag(s32 flag);
 /* unit's own declaration: returning s32, as Quest_IsOffered passes it on; with the definition's u16 the call compiles differently */
 s32 Map_Group(u16 id);
-s32 Monster_IsAvailable(u16 id);
-s32 ElderForecast_QuestAppears(u16 id, s32 listKind);
 extern u16 gQuestLists[QUEST_SETS][QUEST_SET_LEN];
-void *memset(void *dst, s32 c, u32 n);
-u16 Rand_Next(s32);
-s32 QuestList_CountGroup(s32 group, s8 set);
-void QuestList_DropGroup(s32 group, s32 keep, s8 set);
 
 /*
  * 1 when the quests of map group `map` (Map_Group of a quest's map) are open,
  * else 0. Offline the jungle always, the others by the village's conditions
- * (Cond_Check): the desert 7, the swamp 0xA, the snowy mountains 0x10, the
- * volcano and the towers 0x15, the forest and hills 0x4F while away from the
+ * (Cond_Check): the desert 7, the swamp 10, the snowy mountains 16, the
+ * volcano and the towers 21, the forest and hills 79 while away from the
  * village (gSave.awayFromVillage). Online the jungle, the desert and the
  * swamp always, the snowy mountains from hunter rank 5, the volcano from 11,
  * the towers from 22, the forest and hills with event flag 0x122.
@@ -63,29 +59,29 @@ s32 MapGroup_IsOpen(u16 map)
             }
             break;
         case MAP_SWAMP:
-            if (Cond_Check(0xA) == 1) {
+            if (Cond_Check(10) == 1) {
                 return 1;
             }
             break;
         case MAP_SNOWY_MOUNTAINS:
-            if (Cond_Check(0x10) == 1) {
+            if (Cond_Check(16) == 1) {
                 return 1;
             }
             break;
         case MAP_VOLCANO:
-            if (Cond_Check(0x15) == 1) {
+            if (Cond_Check(21) == 1) {
                 return 1;
             }
             break;
         case MAP_TOWER:
         case MAP_TOWER_B:
         case MAP_TOWER_C:
-            if (Cond_Check(0x15) == 1) {
+            if (Cond_Check(21) == 1) {
                 return 1;
             }
             break;
         case MAP_FOREST_HILLS:
-            if (Cond_Check(0x4F) == 1 && gSave.awayFromVillage != 0) {
+            if (Cond_Check(79) == 1 && gSave.awayFromVillage != 0) {
                 return 1;
             }
             break;
@@ -102,19 +98,19 @@ s32 MapGroup_IsOpen(u16 map)
             }
             break;
         case MAP_VOLCANO:
-            if (gSave.hr >= 0xB) {
+            if (gSave.hr >= 11) {
                 return 1;
             }
             break;
         case MAP_TOWER:
         case MAP_TOWER_B:
         case MAP_TOWER_C:
-            if (gSave.hr >= 0x16) {
+            if (gSave.hr >= 22) {
                 return 1;
             }
             break;
         case MAP_FOREST_HILLS:
-            if (Save_TestEventFlag(0x122) == 1) {
+            if (Save_TestEventFlag(290) == 1) {
                 return 1;
             }
             break;
@@ -225,7 +221,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
             return 0;
         }
         switch (id) {
-        case 1001:
+        case QUEST_ID_STARTER_A:
             break;
         case 1002:
         case 1003:
@@ -253,7 +249,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
         case 1040:
         case 1042:
         case 1044:
-            if (Cond_Check(0xA) == 0) {
+            if (Cond_Check(10) == 0) {
                 return 0;
             }
             break;
@@ -262,7 +258,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
         case 1056:
         case 1059:
         case 1060:
-            if (Cond_Check(0x10) == 0) {
+            if (Cond_Check(16) == 0) {
                 return 0;
             }
             break;
@@ -279,7 +275,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
         case 1068:
         case 1070:
         case 1071:
-            if (Cond_Check(0x15) == 0) {
+            if (Cond_Check(21) == 0) {
                 return 0;
             }
             break;
@@ -291,7 +287,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
         case 1075:
         case 1084:
         case 1085:
-            if (Cond_Check(0x1A) == 0) {
+            if (Cond_Check(26) == 0) {
                 return 0;
             }
             break;
@@ -301,12 +297,12 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
         case 1055:
         case 1072:
         case 1073:
-            if (Cond_Check(0x1B) == 0) {
+            if (Cond_Check(27) == 0) {
                 return 0;
             }
             break;
         case 1009:
-            if (Save_TestEventFlag(0x9A) == 0) {
+            if (Save_TestEventFlag(154) == 0) {
                 return 0;
             }
             break;
@@ -318,7 +314,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
             break;
         case 1047:
         case 1048:
-            if (Save_TestEventFlag(0xA5) == 0) {
+            if (Save_TestEventFlag(165) == 0) {
                 return 0;
             }
             break;
@@ -329,17 +325,17 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
             }
             break;
         case 1046:
-            if (Save_TestEventFlag(0x9C) == 0) {
+            if (Save_TestEventFlag(156) == 0) {
                 return 0;
             }
             break;
         case 1045:
-            if (Save_TestEventFlag(0xA7) == 0) {
+            if (Save_TestEventFlag(167) == 0) {
                 return 0;
             }
             break;
         case 1078:
-            if (Save_TestEventFlag(0xAB) == 0) {
+            if (Save_TestEventFlag(171) == 0) {
                 return 0;
             }
             break;
@@ -348,8 +344,8 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
                 return 0;
             }
             break;
-        case 1086:
-        case 1087:
+        case QUEST_ID_STARTER_B:
+        case QUEST_ID_STARTER_C:
             break;
         }
     } else {
@@ -379,33 +375,29 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
     return 1;
 }
 
-void *memset(void *dst, s32 c, u32 n);
-void Npc_RefreshOffers(void);
-void QuestList_Build(s32);
 extern s32 gTownMode;
 extern s8 gQuestListRebuildPending;
 
 /*
  * 1 when the elder's forecast is told: online under the village's condition
- * 0x61, offline under condition 0x15 (Cond_Check); else 0.
+ * 97, offline under condition 21 (Cond_Check); else 0.
  */
 s32 ElderForecast_IsUnlocked(void)
 {
     if (Game_IsOnline() == 1) {
-        if (Cond_Check(0x61) == 0) {
+        if (Cond_Check(97) == 0) {
             return 0;
         }
-    } else if (Cond_Check(0x15) == 0) {
+    } else if (Cond_Check(21) == 0) {
         return 0;
     }
     return 1;
 }
 
-s32 LobbyWorld_GetSeason(void);
 
 /*
  * 1 when the forecast puts quest id on the list of kind listKind, else 0:
- * the forecast must be told (ElderForecast_IsUnlocked), quest 0x2F2E also
+ * the forecast must be told (ElderForecast_IsUnlocked), quest 12078 also
  * needs monster 11 hunted (gSave.hunted), and the quest must be one of the
  * season's five forecast quests (gTownQuestLists' first row for the list
  * kinds of quest list set 0, the second for QUEST_LIST_ONLINE_DESK_2's);
@@ -421,7 +413,7 @@ s32 ElderForecast_QuestAppears(u16 id, s32 listKind)
     if (ElderForecast_IsUnlocked() == 0) {
         return 0;
     }
-    if (id == 0x2F2E && gSave.hunted[11] == 0) {
+    if (id == 12078 && gSave.hunted[11] == 0) {
         return 0;
     }
     if ((u32)listKind <= QUEST_LIST_ONLINE || listKind == QUEST_LIST_AWAY) {
@@ -440,14 +432,11 @@ s32 ElderForecast_QuestAppears(u16 id, s32 listKind)
 
 extern s8 gOffersRefreshPending;
 struct Em;
-s16 OfferMenu_BuildList(struct Em *e, s32 b);
-s32 MyHouse_IsOwner(void);
-s32 Kitchen_SetCourseReady(void);
 
 /*
  * Sets each townsperson's offer mark (NpcWork.offerMark) from the
  * offers it has (OfferMenu_BuildList): 0 none, 2 for its result 4, else 1;
- * townsperson 0x71 shows 2 at the player's own house when the meal points
+ * townsperson NPC_HOUSE_COOK shows 2 at the player's own house when the meal points
  * are ready (Kitchen_SetCourseReady). While a menu other than a talk is
  * open, the refresh is put off (gOffersRefreshPending).
  */
@@ -472,7 +461,7 @@ void Npc_RefreshOffers(void)
                     npc->offerMark = 2;
                     break;
                 }
-                if (npc->id == 0x71 && MyHouse_IsOwner() != 0 && Kitchen_SetCourseReady() == 1) {
+                if (npc->id == NPC_HOUSE_COOK && MyHouse_IsOwner() != 0 && Kitchen_SetCourseReady() == 1) {
                     npc->offerMark = 2;
                 }
             }
@@ -553,9 +542,6 @@ s32 QuestList_PickShown(s8 set)
 }
 
 extern u16 *gQuestIdLists[];
-s32 Quest_IsOffered(u16 id, s32 kind, s32 c);
-s32 QuestId_IsStandard(s32 id);
-void QuestList_DropRandom(s8 set);
 
 /*
  * Builds the quest list set of list kind `kind` (enum QuestListKind):

@@ -17,49 +17,11 @@
 #include "html.h"
 #include "arena.h"
 #include "browser.h"
+#include "libc.h"
 
 /* Compiled at optimization level 4, as the lobby's HTML parser
  * (html_parse.c): every function of the file matches with it. */
 #pragma optimization_level 4
-
-void Draw_Cell(u16 x, u16 y, u16 x2, u16 y2, u8 size, s32 color, u8 border, s32 bcolor, u8 *background);
-void Layout_CellValign(HtmlCell *cell);
-void Layout_CellAlign(HtmlCell *cell);
-char *Layout_PopBackground(void);
-void Layout_CellPlaceRun(HtmlLine *line);
-void Draw_Rule(u16 x, u16 y, u16 x2, u16 y2);
-void Layout_NextLine(void);
-void Html_NoteBottom(HtmlPen *pen);
-void Layout_DrawRun(u16 x, u16 y, HtmlLine *line);
-void Layout_NextLineEntry(HtmlLine **lp);
-void Layout_PenNewLine(HtmlPen *pen, HtmlLine **lp);
-s32 Layout_CellText(u8 *text, HtmlLine **lp);
-void Layout_CellFlushRun(HtmlLine *line);
-void Layout_CellEndLine(HtmlLine **lp);
-u16 Layout_CellWrap(HtmlCell *cell, HtmlLine **lp, u16 x);
-void Layout_DrawImage(u16 x, u16 y, HtmlLine *line);
-void Draw_SelectEnd(u16 x, u16 y, u16 x2, u16 y2);
-void Layout_Input(u16 x, u16 y, u16 *runX, u16 *px, u16 w);
-s32 Layout_OpenCell(s32 kind);
-void Layout_CellFromRow(HtmlCell *cell, HtmlCell *row);
-void Html_ClearTdAttrs(void);
-s32 Html_TagEndTable(u8 **cur, u8 *text);
-s32 Html_TagEndTr(u8 **cur, u8 *text);
-s32 Html_TagEndTd(u8 **cur, u8 *text);
-void Draw_Table(u16 x, u16 y, u16 x2, u16 y2, u8 size, u32 color, u8 border, u8 *background);
-void Html_ClearTableAttrs(void);
-void Html_ClearTrAttrs(void);
-void Html_TagTableEnd(u8 **cur, u8 *text);
-s32 Html_TagTrEnd(u8 **cur, u8 *text);
-s32 Html_TagTdEnd(u8 **cur, u8 *text);
-void *memset(void *dst, s32 c, u32 n);
-u8 *Layout_CellSkipSpaces(u8 *p);
-void Layout_CellBreakLine(HtmlLine **lp);
-void Layout_AddWideChar(u8 **p, HtmlPen *pen);
-void Layout_AddNbsp(u8 **p, HtmlPen *pen);
-void Layout_AddChar(u8 **p, HtmlPen *pen);
-
-extern u8 gCharClass[]; /* character classes */
 
 /* Raises *dst to value. */
 static inline void Html_MaxU16(u16 *dst, s32 value)
@@ -1456,13 +1418,12 @@ void Layout_CellFlushBlock(u8 *text)
 extern Arena gImgHeap;
 extern ArenaBlk gImgBlocks[IMG_HEAP_RECS];
 extern BrowserWork *gBrowserWork;
-void Arena_Init(Arena *heap); /* sub_main: set up a heap */
 
 /* Sets up the image heap gImgHeap: an Arena of 16-byte-aligned blocks
  * over the browser work area's buf64k, with gImgBlocks' records. */
 void Img_InitHeap(void)
 {
-    gImgHeap.align = 0x10;
+    gImgHeap.align = 16;
     gImgHeap.base = (s32)gBrowserWork->buf64k;
     gImgHeap.size = IMG_HEAP_SIZE;
     gImgHeap.recs = gImgBlocks;
@@ -1471,8 +1432,6 @@ void Img_InitHeap(void)
     gImgHeap.locked = 0;
     Arena_Init(&gImgHeap);
 }
-
-void *Arena_Alloc(Arena *h, s32 size); /* sub_main: allocate from a heap */
 
 /* zlib's allocator, the game's own version of zcalloc: items * size
  * bytes from the image heap gImgHeap, cleared. NULL when the heap is full. */

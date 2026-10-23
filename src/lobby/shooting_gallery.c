@@ -37,86 +37,60 @@
 #include "render_state.h"
 #include "prim.h"
 #include "lobby_text.h"
+#include "lobby_npc.h"
 #include "texture.h"
 #include "lobby/shooting_gallery.h"   /* the texts this file uses (tools/content_gen.py) */
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "camera.h"
+#include "capsule.h"
+#include "fishing.h"
+#include "hud.h"
+#include "village_cond.h"
+#include "shooting_gallery.h"
+#include "engine_math.h"
+#include "font.h"
+#include "gallery_board.h"
+#include "gallery_objects.h"
+#include "gallery_targets.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_util.h"
+#include "lobby_world.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "minigame_draw.h"
+#include "name_tags.h"
+#include "rand.h"
+#include "town_players.h"
+#include "vibration.h"
+#include "lobby_net.h"
 
-void Gallery_ClearShots(void);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void Chat_HideWindows(void);
 void *memset(void *dst, s32 c, u32 n);
-void Gallery_InitPrizes(void);
-void Gallery_ResetWork(void);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern MenuWork gMenuWork;
-void Gallery_DrawShooting(MenuTask *task);
 /* prototypes */
-void Gallery_TakePrize(void);
-Em *Npc_Find(u8);
-void Actor_ReturnToIdle(void *, s32, s32, s32);
-void TownMsg_SendStateNow(Player *p);
-void ItemShop_Open(u8 *npc, s8 sel);
-void CamFocus_End(void);
-void CamFocus_SetAside(s8 arg0);
-void Chat_ShowWindows(void);
 extern u8 gTownAreaMsgPending;
 /* end of prototypes */
 extern s8 gGalleryCourseTimes[];
-void Gallery_DrawGunDebug(f32 *base, f32 *out);
 /* prototypes */
-void Hud_FadeStart(s32 mode, s16 x, s16 y);
 /* end of prototypes */
-void Gallery_MarkAllTaken(void);
-s16 GalleryBoard_GetTargetPoints(StageObj *o, u8 i);
 /* the calls cast to s8: this unit's code takes the value as s8 */
-s32 SavePouch_Space(u16 item);
-s16 SavePouch_CountFree(void);
-void Gallery_MarkFullStacks(void);
-u8 Gallery_IsRepeatPrize(u8 n);
-s32 SavePouch_Room(u16 item);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 a2, u32 a3, char *label, u8 t1, u8 t2);
-void Font_SetSpacing(u8 a, u8 b);
 extern s16 gGalleryCourseFees[];
-void Save_AddMoney(s32 n);
-void LobbySe_Play(s32 se);
-s32 Save_TestEventFlag(s32 flag);
 u8 SavePouch_Add(u16 item, s16 n);
-s32 Sprite_Draw(Sprite *s);
-s32 Prim_FillTri(PrimTri *t);
-s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
-u16 LobbyPad_Get(s32 a);
 void Gfx_SetTexFilter(s32);
-s32 Gs_SetState(u8, u32);
-s32 Gs_GetState(u8 reg);
 void Text_SetSize(s32 size);
 void Text_SetColor(s16 color);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
 void Text_PrintfColored(char *fmt, ...);
 void Text_Printf(const char *fmt, ...);
-void Gallery_DrawPrizeWindow(s16 x, u8 flag);
-void Gallery_DrawPrizeList(s16 x);
-void Gallery_DrawPrizePage(s16 x);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
-s32 Menu_WrapLeftRight(s32 arg0, s32 arg1);
-void Gallery_DrawShotMarks(s8 n, s8 hit);
 s32 sprintf(char *buf, char *fmt, ...);
-void Menu_DrawRowBar(s16 x, s16 y, s16 w, u32 color, u8 sel, u8 kind);
 void Text_DrawShadowRgb(s16 x, s16 y, u32 c1, u32 c2, char *s);
 struct Frame;
-void WindowFrame_Draw(struct Frame *, s16 *);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
 void Gfx_SetBlend(s32 a, s32 b);
-void Tex_Prepare(s32 a, s32 b);
 void Tex_Bind(s32);
-s16 Lobby_DrawButtonIcon(s16, s16, s32);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 extern s8 gGalleryCourseShots[];
-extern Frame gGalleryFrame;
-extern char *gMonsterNames[];
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
 
 /*
@@ -129,7 +103,7 @@ void Gallery_Open(void)
 {
     gTownMenuOpen = 1;
     gTownMode = TOWN_MODE_GALLERY;
-    memset(&gMenuWork, 0, 0xF00);
+    memset(&gMenuWork, 0, 3840);
     gFieldControl = 0;
     Chat_HideWindows();
     LobbyMenu_Init();
@@ -143,7 +117,7 @@ void Gallery_Open(void)
 
 /*
  * Leaves the gallery. Without a paid round, goes back to the shop menu of
- * gallery keeper (npc 0x39; cursor on line 2). After a round, gives the chosen prizes and
+ * gallery keeper (NPC_GALLERY_KEEPER; cursor on line 2). After a round, gives the chosen prizes and
  * charges the course fee (Gallery_TakePrize), returns to TOWN_MODE_FREE,
  * idles the local player, sends its state, ends the camera focus and
  * clears aimMode.
@@ -153,7 +127,7 @@ void Gallery_Close(void)
     gLobby->connected = 1;
     gTownAreaMsgPending = 1;
     if (gMenuWork.prize.played == 0) {
-        ItemShop_Open((u8 *) (Npc_Find(0x39)), 2); /* back to the gallery keeper's menu */
+        ItemShop_Open((u8 *) (Npc_Find(NPC_GALLERY_KEEPER)), 2); /* back to its shop menu */
         CamFocus_SetAside(0);
         gFieldControl = 1;
         Chat_ShowWindows();
@@ -171,8 +145,6 @@ void Gallery_Close(void)
     gPlayers[gScene.localPlayer].aimMode = 0;
 }
 
-s32 LobbyWorld_GetSeason(void);
-s32 Village_Is3924Kind4(void);
 extern PrizeEntry gGalleryPrizeList0[];
 extern PrizeEntry gGalleryPrizeList1[];
 extern PrizeEntry gGalleryPrizeList2[];
@@ -199,7 +171,7 @@ void Gallery_InitPrizes(void)
         gal->list = gGalleryPrizeList1;
         break;
     }
-    if (Village_Is3924Kind4() == 1) {
+    if (Town_IsSaleEvent() == 1) {
         gal->list = gGalleryPrizeList3;
     }
     gal->tooDear[0] = 0;
@@ -218,7 +190,7 @@ void Gallery_InitPrizes(void)
 
 /*
  * Resets the menu state for a new visit or round: aim to its centre (0,
- * 0x5000), cursor, page, prize view, details, chosen count, flags, window
+ * ANGLE_TURN * 5 / 16), cursor, page, prize view, details, chosen count, flags, window
  * state, points, pouchFull, shotsLive, skipped.
  */
 void Gallery_ResetWork(void)
@@ -226,7 +198,7 @@ void Gallery_ResetWork(void)
     PrizeMenu *gal = (PrizeMenu *)gMenuWork.raw;
 
     gal->yaw = 0;
-    gal->pitch = 0x5000;
+    gal->pitch = ANGLE_TURN * 5 / 16;
     gal->cursor = 0;
     gal->prizeView = 0;
     gal->details = 0;
@@ -253,9 +225,6 @@ void Gallery_ClearTargets(void)
         gal->slots[i] = 0;
     }
 }
-
-u16 Rand_Next(s32 stream);
-void GalleryBoard_SetTargetKind(StageObj *o, u8 i, u8 k);
 
 /* A field's offset in PrizeMenu, for the work read as bytes. */
 #define PRIZE_OFS(field) ((s32)&((PrizeMenu *)0)->field)
@@ -353,10 +322,10 @@ void Gallery_ResetShots(void)
 
 /*
  * Moves the aim from the d-pad (held, step 0x240) and the left stick (step
- * by tilt: >=0x3C,0x5A,0x78), honouring gScene.aimReverse while in
+ * by tilt: >= 60, 90, 120), honouring gScene.aimReverse while in
  * aimMode. Up/down moves the `yaw` field (clamped to +-0xAAB), left/right
- * the `pitch` field (clamped 0x3000-0x7000). Does nothing unless aiming
- * (L1 held, not L2).
+ * the `pitch` field (clamped ANGLE_TURN * 3 / 16 to ANGLE_TURN * 7 / 16).
+ * Does nothing unless aiming (L1 held, not L2).
  */
 void Gallery_Aim(void)
 {
@@ -406,11 +375,11 @@ void Gallery_Aim(void)
             gal->pitch -= 0x240;
         }
     }
-    if (gal->pitch < 0x3000) {
-        gal->pitch = 0x3000;
+    if (gal->pitch < (ANGLE_TURN * 3 / 16)) {
+        gal->pitch = ANGLE_TURN * 3 / 16;
     }
-    if (gal->pitch > 0x7000) {
-        gal->pitch = 0x7000;
+    if (gal->pitch > (ANGLE_TURN * 7 / 16)) {
+        gal->pitch = ANGLE_TURN * 7 / 16;
     }
     if ((s16)gal->yaw < -0xAAB) {
         gal->yaw = -0xAAB;
@@ -419,26 +388,26 @@ void Gallery_Aim(void)
         gal->yaw = 0xAAB;
     }
 
-    if (!(pl->input.stickDir & 0x3C00) || (tilt = gPadInput.stickTilt[0].left) < 0x28) {
+    if (!(pl->input.stickDir & 0x3C00) || (tilt = gPadInput.stickTilt[0].left) < 40) {
         return;
     }
-    if (tilt >= 0x78) {
+    if (tilt >= 120) {
         if (pl->input.stickDir & 0x3000) {
-            step = 0x111;
+            step = 273;
         } else {
-            step = 0x1B0;
+            step = 432;
         }
-    } else if (tilt >= 0x5A) {
+    } else if (tilt >= 90) {
         if (pl->input.stickDir & 0x3000) {
-            step = 0x6D;
+            step = 109;
         } else {
-            step = 0xC0;
+            step = 192;
         }
-    } else if (tilt >= 0x3C) {
+    } else if (tilt >= 60) {
         if (pl->input.stickDir & 0x3000) {
-            step = 0x24;
+            step = 36;
         } else {
-            step = 0x40;
+            step = 64;
         }
     }
     if (pl->input.stickDir & 0x3000) {
@@ -473,11 +442,11 @@ void Gallery_Aim(void)
             gal->pitch -= step;
         }
     }
-    if (gal->pitch < 0x3000) {
-        gal->pitch = 0x3000;
+    if (gal->pitch < (ANGLE_TURN * 3 / 16)) {
+        gal->pitch = ANGLE_TURN * 3 / 16;
     }
-    if (gal->pitch > 0x7000) {
-        gal->pitch = 0x7000;
+    if (gal->pitch > (ANGLE_TURN * 7 / 16)) {
+        gal->pitch = ANGLE_TURN * 7 / 16;
     }
     if ((s16)gal->yaw < -0xAAB) {
         gal->yaw = -0xAAB;
@@ -487,16 +456,8 @@ void Gallery_Aim(void)
     }
 }
 
-u16 LobbyPad_Get(s32 a);
-void LobbySe_Play(s32 se);
-void Jingle_Play(void *obj, s32 id);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
 extern f32 gCamMatrix[];
 extern f32 gGalleryGunPos[4];
-void GalleryShot_Spawn(Vec3f *from, Vec3f *to);
-void GalleryMuzzle_Spawn(f32 *pos);
-void Vib_StartLocal(void *port, s32 i);
-void Gallery_Aim(void);
 
 /*
  * Runs one shot of the round: on PAD_R3 (the fire button) spawns a shot
@@ -521,7 +482,7 @@ s32 Gallery_ShootInput(void)
     case GALLERY_SHOOT_AIM:
         if (pad & PAD_R3) {
             gal->shootStep++;
-            gal->recoil = 0x1E;
+            gal->recoil = 30;
             aimPoint[0] = 0.0f;
             aimPoint[1] = 0.0f;
             aimPoint[2] = -400.0f;
@@ -555,43 +516,14 @@ s32 Gallery_ShootInput(void)
             Jingle_Play(pl, GALLERY_JINGLE_END);
             return 1;
         }
-        gal->timer = 0x1E;
+        gal->timer = 30;
     }
     return 2;
 }
 
 extern ShootCfg *gGalleryCourseCfgs[];
-extern s8 gGalleryCourseShots[];
-extern s16 gGalleryCourseFees[];
 extern f32 gGalleryCourseHoldFrames[];
-void Gallery_MarkTooDearCourses(void);
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
-s32 CamFocus_GetState(void);
-void Actor_SetState(void *, s32, s32);
-void Gallery_ResetShots(void);
-void Effect2C_Spawn(s16 n);
-s32 Menu_PushNoticeOnce(s32 a);
-void Gallery_CheckPouchFull(void);
-void Gallery_MarkFullPrizes(void);
-void Gallery_MarkFullStacks(void);
-s32 Menu_WrapUpDown(s32 a, s32 b);
-s32 Menu_WrapLeftRight(s32 a, s32 b);
-void Vec_RotateSelf(f32 *v, f32 *m);
-void Vec_Copy(f32 *out, f32 *in);
-void GalleryBoard_Spawn(u8 *kinds, u8 *order, Vec3f *pos, f32 f);
-void Gallery_UpdateShots(void);
-u8 GalleryBoard_IsCleared(StageObj *o);
-void GalleryScore_Spawn(s16 a, u16 b);
-s32 Save_TestEventFlag(s32 flag);
-void Save_SetEventFlag(s32 flag);
-u8 Notice_PushItem(char *);
 s32 Award_Grant(s32 a);
-s16 SavePouch_CountFree(void);
-void Gallery_MarkTooDear(void);
-void Gallery_ChoosePrize(void);
-s32 Menu_YesNoInput(void);
-void Menu_SetYesNo(s8 a);
-void CamAim_Set(f32 *pos, s16 a, s16 b);
 
 /*
  * TOWN_MODE_GALLERY's update, by PrizeMenu.step: slides the window in,
@@ -613,17 +545,17 @@ void Gallery_Run(void)
     switch (gal->step) {
     case GALLERY_STEP_OPEN:
         Gallery_MarkTooDearCourses();
-        gal->win.pos = 0x280;
+        gal->win.pos = 640;
         gal->step = GALLERY_STEP_SLIDE_IN;
-        LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+        LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         break;
     case GALLERY_STEP_SLIDE_IN:
-        if (WinSlide_Step(&gal->win, 0x280, 0x118) == 0) {
+        if (WinSlide_Step(&gal->win, 640, 280) == 0) {
             if (gal->toPrizes == 0) {
                 gal->step = GALLERY_STEP_COURSE;
             } else {
                 gal->step = GALLERY_STEP_PRIZES;
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             }
         }
         break;
@@ -635,7 +567,7 @@ void Gallery_Run(void)
 
                     gal->step = GALLERY_STEP_COUNTDOWN;
                     gal->shootStep = 0;
-                    gal->timer = 0x5A;
+                    gal->timer = 90;
                     gal->cfg = gGalleryCourseCfgs[gal->course];
                     gal->restart = 0;
                     gal->hitsB = 0;
@@ -669,7 +601,7 @@ void Gallery_Run(void)
         } else if (pad & PAD_CROSS) {
             if (gal->prizeView == 1) {
                 gal->step = GALLERY_STEP_SLIDE_IN;
-                gal->win.pos = 0x280;
+                gal->win.pos = 640;
                 gal->prizeView = 0;
                 gal->details = 0;
             } else {
@@ -679,8 +611,8 @@ void Gallery_Run(void)
         } else if (pad & PAD_SQUARE) {
             if (gal->prizeView == 0) {
                 gal->step = GALLERY_STEP_SLIDE_IN;
-                gal->win.pos = 0x280;
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                gal->win.pos = 640;
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             }
             gal->prizeView = 1;
             Gallery_CheckPouchFull();
@@ -693,7 +625,7 @@ void Gallery_Run(void)
         if (--gal->timer < -9) {
             gal->step = GALLERY_STEP_SHOOT;
             gal->shootStep = 0;
-            gal->timer = 0x1E;
+            gal->timer = 30;
             gal->details = 0;
             gal->cursor = 0;
             for (i = 0; i < GALLERY_PRIZE_COUNT; i++) {
@@ -715,14 +647,14 @@ void Gallery_Run(void)
             if (--gal->shotsLeft <= 0) {
                 Jingle_Play(pl, GALLERY_JINGLE_END);
                 gal->step = GALLERY_STEP_ROUND_END;
-                gal->timer = 0x1E;
+                gal->timer = 30;
             } else {
                 gal->shootStep = 0;
             }
             break;
         case 1:
             gal->step = GALLERY_STEP_ROUND_END;
-            gal->timer = 0x1E;
+            gal->timer = 30;
             break;
         }
         if (GalleryBoard_IsCleared(gal->targets)) {
@@ -759,16 +691,16 @@ void Gallery_Run(void)
             u16 height;
 
             gal->step = GALLERY_STEP_SCORE;
-            gal->timer = 0xA0;
+            gal->timer = 160;
             if (gal->course == 0) {
-                ybase = 0x50;
-                height = 0xC8;
+                ybase = 80;
+                height = 200;
             } else {
-                ybase = 0x28;
-                height = 0x122;
+                ybase = 40;
+                height = 290;
             }
             if (gal->points > 0) {
-                GalleryScore_Spawn(gal->points, ybase + height - 0x40);
+                GalleryScore_Spawn(gal->points, ybase + height - 64);
             }
         }
         break;
@@ -795,7 +727,7 @@ void Gallery_Run(void)
                 gal->prizeView = 1;
                 gal->toPrizes = 1;
                 gal->step = GALLERY_STEP_SLIDE_IN;
-                gal->win.pos = 0x280;
+                gal->win.pos = 640;
                 if (SavePouch_CountFree() <= 0) {
                     Gallery_MarkFullStacks();
                 }
@@ -879,7 +811,7 @@ s32 Gallery_BeforeShooting(void)
 {
     PrizeMenu *gal = (PrizeMenu *)gMenuWork.raw;
 
-    if (gTownMode != 0x2F) {
+    if (gTownMode != 47) {
         return 0;
     }
     return gal->step < 6;
@@ -957,7 +889,7 @@ void Gallery_RunGunDebug(void)
 void Gallery_DrawShooting(MenuTask *task)
 {
     PrizeMenu *gal = (PrizeMenu *)gMenuWork.raw;
-    char buf[0x20];
+    char buf[32];
     Sprite spr;
     PrimTri tri;
     u8 rows;
@@ -979,11 +911,11 @@ void Gallery_DrawShooting(MenuTask *task)
     s32 top;
 
     pad = LobbyPad_Get(0);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Gs_SetState(RS_ALPHA_REF, 0);
     Text_SetSize(task->textSize);
     Text_SetColor(0);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (gal->step) {
     case GALLERY_STEP_SLIDE_IN:
         if (gal->toPrizes == 1) {
@@ -1015,31 +947,31 @@ void Gallery_DrawShooting(MenuTask *task)
                 }
                 LobbySe_Play(LOBBY_SE_DESCRIPTION);
             }
-            Gallery_DrawPrizePage(0x118);
+            Gallery_DrawPrizePage(280);
             return;
         }
-        Gallery_DrawPrizeList(0x118);
+        Gallery_DrawPrizeList(280);
         return;
     case GALLERY_STEP_SHOOT:
         Gallery_DrawShotMarks(gGalleryCourseShots[gal->course], gal->shotsLeft);
         sprintf(buf, TXT(0x00838660) /* the time left, with its label */, gal->time);
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawRowBar(0x1E, 0x10, 0xA0, 0xFFB0B000, 2, 1);
-        Text_DrawShadowRgb(0x1E, 0x10, 0xFF202020, -1, buf);
+        Font_SetSpacing(22, 22);
+        Menu_DrawRowBar(30, 16, 160, 0xFFB0B000, 2, 1);
+        Text_DrawShadowRgb(30, 16, 0xFF202020, -1, buf);
         sprintf(buf, TXT(0x00838670) /* the points, with their label */, gal->points);
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawRowBar(0x1AE, 0x10, 0xB4, 0xFFB0B000, 2, 1);
-        Text_DrawShadowRgb(0x1AE, 0x10, 0xFF202020, -1, buf);
-        y = 0x150;
+        Font_SetSpacing(22, 22);
+        Menu_DrawRowBar(430, 16, 180, 0xFFB0B000, 2, 1);
+        Text_DrawShadowRgb(430, 16, 0xFF202020, -1, buf);
+        y = 336;
         WindowFrame_Draw(&gGalleryFrame, 0);
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(0x1B0, y);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(432, y);
         Text_PrintfColored(TXT(0x00838680) /* the name of the control for aiming */);
-        Font_SetPos(0x1B0, y += 0x14);
+        Font_SetPos(432, y += 20);
         Text_PrintfColored(TXT(0x008386A0) /* what that control does (aiming the gun) */);
-        Font_SetPos(0x1B0, y += 0x16);
+        Font_SetPos(432, y += 22);
         Text_PrintfColored(TXT(0x008386B0) /* the name of the control for shooting */);
-        Font_SetPos(0x1B0, y + 0x14);
+        Font_SetPos(432, y + 20);
         Text_PrintfColored(TXT(0x008386D0) /* what that control does (firing) */);
         Gallery_RunGunDebug();
         return;
@@ -1047,34 +979,34 @@ void Gallery_DrawShooting(MenuTask *task)
     case GALLERY_STEP_RESULT:
         level = gal->course;
         if (level == 0) {
-            ybase = 0x50;
-            height = 0xC8;
+            ybase = 80;
+            height = 200;
             level = 1;
             rows = 1;
         } else {
-            ybase = 0x28;
-            height = 0x122;
+            ybase = 40;
+            height = 290;
             rows = 4;
         }
-        Icon_Draw(0x6E, ybase, 0x1A4, height, -0x2223, 0);
+        Icon_Draw(110, ybase, 420, height, -8739, 0);
         Font_SetColor(0x80101010);
-        Font_SetSpacing(0x14, 0x14);
+        Font_SetSpacing(20, 20);
         top = ybase;
-        Font_SetPos(0x104, top + 0x19);
+        Font_SetPos(260, top + 25);
         Text_PrintfColored(gGalleryCourseTexts[gal->course]);
-        Menu_DrawRowBar(0xF5, top + 0x14, 0xA0, 0xBDB59F6C, 2, 1);
-        y = top + 0x23;
-        Gfx_SetTexFilter(1);
-        Gfx_SetBlend(4, 5);
+        Menu_DrawRowBar(245, top + 20, 160, 0xBDB59F6C, 2, 1);
+        y = top + 35;
+        Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
         Tex_Prepare(1, TEX_SLOT_PICTURES);
         Tex_Bind(TEX_SLOT_PICTURES);
         spr.color = -1;
         firstKind = level * 4 - 3;
-        spr.w = 0x19;
+        spr.w = 25;
         tri.color = 0xFF000000;
-        spr.h = 0x19;
-        savedAlphaTest = Gs_GetState(0x5F);
-        savedBlend = Gs_GetState(0x5E);
+        spr.h = 25;
+        savedAlphaTest = Gs_GetState(RS_ALPHA_TEST);
+        savedBlend = Gs_GetState(RS_BLEND);
         Gs_SetState(RS_ALPHA_TEST, RS_CMP_ALWAYS);
         Gs_SetState(RS_BLEND, RS_BLEND_OPAQUE);
         nameX = 227.0f;
@@ -1084,10 +1016,10 @@ void Gallery_DrawShooting(MenuTask *task)
             sprY = &spr.y;
             triY = &tri.y0;
             do {
-            Font_SetPos(nameX, y += 0x20);
+            Font_SetPos(nameX, y += 32);
             monster = &gGalleryKindMonsters[firstKind + i];
             Text_PrintfColored("%-20sx%3d", gMonsterNames[*monster], gal->kindHits[i]);
-            spr.x = 0xC0;
+            spr.x = 192;
             *sprY = y;
             tri.x0 = spr.x;
             *triY = *sprY;
@@ -1106,7 +1038,7 @@ void Gallery_DrawShooting(MenuTask *task)
         Gs_SetState(RS_ALPHA_TEST, savedAlphaTest);
         Gs_SetState(RS_BLEND, savedBlend);
         lim = height;
-        Font_SetPos(0xC0, top + lim - 0x40);
+        Font_SetPos(192, top + lim - 64);
         label = TXT(0x008386F0) /* the label of the points won */;
         if (gal->points > 0) {
             Text_PrintfColored("%-20s      P", label);
@@ -1114,20 +1046,20 @@ void Gallery_DrawShooting(MenuTask *task)
             Text_PrintfColored("                       0 P", label);
         }
         if (gal->step == GALLERY_STEP_RESULT) {
-            Lobby_DrawButtonIcon(0x19C, top + lim - 0x23, 0);
-            Font_SetPos(0x1BD, top + lim - 0x23);
+            Lobby_DrawButtonIcon(412, top + lim - 35, 0);
+            Font_SetPos(445, top + lim - 35);
             Text_PrintfColored(TXT(0x00838730) /* the label of the next button */);
             return;
         }
         break;
     case GALLERY_STEP_PRIZES:
-        Gallery_DrawPrizeWindow(0x118, 0);
+        Gallery_DrawPrizeWindow(280, 0);
         return;
     case GALLERY_STEP_QUIT_ASK:
-        Gallery_DrawPrizeWindow(0x118, 1);
+        Gallery_DrawPrizeWindow(280, 1);
         sprintf(buf, TXT(0x00838740) /* the question whether to quit */);
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, buf);
-        Font_SetPos(0x1A2, 0x192);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, buf);
+        Font_SetPos(418, 402);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
@@ -1176,7 +1108,7 @@ s32 Gallery_CountShots(s32 doCount)
             n += 1;
         }
         i += 1;
-    } while (i < 0xA);
+    } while (i < 10);
     return n;
 }
 
@@ -1189,7 +1121,7 @@ void Gallery_ScoreTarget(void *board, u8 i)
     PrizeMenu *gal = (PrizeMenu *)gMenuWork.raw;
 
     gal->points += GalleryBoard_GetTargetPoints(board, i);
-    Hud_FadeStart(1, 0x1FE, 0x46);
+    Hud_FadeStart(1, 510, 70);
 }
 
 /* Empties the 10 shot slots. */
@@ -1200,33 +1132,10 @@ void Gallery_ClearShots(void)
     memset(gal->shots, 0, sizeof(gal->shots));
 }
 
-s32 Gallery_CountShots(s32 arg0);
-void GalleryShot_GetCapsule(f32 *out, f32 *a, StageObj *o, f32 f);
-s32 Seg_ClipYRange(void *arg0, f32 lo, f32 hi, void *arg1, f32 *arg2, void *arg3);
-void GalleryShot_SetHit(StageObj *o);
-void GalleryShot_SpawnWallHit(struct Vec3f *hit, struct Vec3f *dir);
-void LobbySe_Play(s32 se);
-u8 GalleryBoard_GetTargetSize(StageObj *o, u8 i);
-f32 GalleryBoard_GetTargetTilt(StageObj *o, u8 i);
-f32 Math_Cos(f32);
-void GalleryBoard_GetTargetPos(struct Vec3f *out, StageObj *o, u8 i);
-u16 GalleryBoard_GetTargetFacing(StageObj *o, u8 i);
 u8 Capsule_HitsRect(f32 *ray, Vec3f *pos, s32 a, f32 c, f32 r); /* unit's own declaration: declared as the gallery calls it, with a shot's ray, a target's position and an angle as an int; with the definition's types (a capsule, a centre, a u16 angle) the call compiles differently */
 u8 GalleryBoard_IsTargetDown(StageObj *o, u8 i);
-s32 GalleryBoard_IsFlippedDown(StageObj *o);
-s32 GalleryBoard_HitTarget(StageObj *o, u8 i);
-void GalleryBoard_DownTarget(StageObj *o, u8 i);
-void Gallery_ScoreTarget(void *g, u8 i);
-void GalleryPoints_Spawn(struct Vec3f *pos, s16 n);
-void GalleryBurst_SpawnDowned(struct Vec3f *pos);
-u16 GalleryBoard_GetTargetPicture(StageObj *o, u8 i);
-void Gallery_PlayHitSe(u16 id);
-void GalleryBurst_SpawnHit(struct Vec3f *pos);
-void GalleryBoard_SwingTarget(StageObj *o, u8 i);
-void Gallery_ClearShots(void);
 extern Vec3f gGalleryWalls[];
 extern f32 gGalleryWallYRange[];
-extern f32 gGalleryTargetSizes[];
 
 /*
  * Updates shotsLive, then tests each shot in flight as a capsule: against
@@ -1235,7 +1144,7 @@ extern f32 gGalleryTargetSizes[];
  * either downs it (points, the kind's hit count, kindB hits, the points
  * popup, a burst, LOBBY_SE_GALLERY_DOWN and the monster's cry) or only
  * swings it (LOBBY_SE_GALLERY_SWING). Empties the shot slots at the end.
- * The 0x40-byte buffer goes to GalleryShot_GetCapsule as a pointer: passed
+ * The 64-byte buffer goes to GalleryShot_GetCapsule as a pointer: passed
  * as an int, its address would be kept in a saved register, which the
  * game's code doesn't do.
  */
@@ -1315,11 +1224,9 @@ void Gallery_UpdateShots(void)
     Gallery_ClearShots();
 }
 
-void Tex_Prepare(s32 a, s32 b);
-void Tex_Bind(s32);
 
 /*
- * Draws n shot marks, 20 to a line from (0x1E,0x32); the first `lit` of
+ * Draws n shot marks, 20 to a line from (30, 50); the first `lit` of
  * them in the lit sprite, the rest in the spent sprite.
  */
 void Gallery_DrawShotMarks(s8 count, s8 lit)
@@ -1327,34 +1234,34 @@ void Gallery_DrawShotMarks(s8 count, s8 lit)
     Sprite spr;
     u8 i;
     u8 col = 0;
-    s16 y = 0x32;
+    s16 y = 50;
     s16 x;
 
-    Tex_Prepare(1, 0x155);
-    Tex_Bind(0x155);
+    Tex_Prepare(1, 341);
+    Tex_Bind(341);
     for (i = 0; i < count; i++) {
-        if (col < 0x14) {
-            x = col * 0x14 + 0x1E;
+        if (col < 20) {
+            x = col * 20 + 30;
             col++;
         } else {
-            y += 0x14;
+            y += 20;
             col = 1;
-            x = 0x1E;
+            x = 30;
         }
         if (i < lit) {
-            spr.u0 = 0x89;
-            spr.v0 = 0xA4;
-            spr.u1 = 0x97;
-            spr.v1 = 0xBC;
+            spr.u0 = 137;
+            spr.v0 = 164;
+            spr.u1 = 151;
+            spr.v1 = 188;
         } else {
-            spr.u0 = 0x95;
-            spr.v0 = 0xA4;
-            spr.u1 = 0xA3;
-            spr.v1 = 0xBA;
+            spr.u0 = 149;
+            spr.v0 = 164;
+            spr.u1 = 163;
+            spr.v1 = 186;
         }
         spr.color = -1;
-        spr.w = 0x14;
-        spr.h = 0x14;
+        spr.w = 20;
+        spr.h = 20;
         spr.y = y;
         spr.x = x;
         Sprite_Draw(&spr);
@@ -1364,21 +1271,8 @@ void Gallery_DrawShotMarks(s8 count, s8 lit)
 INCLUDE_RODATA("asm/lobby/nonmatchings/shooting_gallery", gGalleryLabelText);
 
 extern u8 gGalleryLabelText[];
-extern s8 gGalleryCourseShots[];
-extern s8 gGalleryCourseTimes[];
 extern s16 gGalleryCourseBest[];
 extern u8 gGalleryCourseLevels[];
-void Gallery_DrawLabelBar(s32 arg0);
-void Gallery_DrawCourseCard(s16 x, s16 y, s16 time, s8 shots, s16 best, u8 level);
-s32 Gallery_IsPouchFull(void);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Text_PrintfColored(char *fmt, ...);
 
 /* the prize list of the shooting gallery: each prize, its points (or free),
  * the cursor; the round card below. Level 4 (the file is at 3): at 3, xs is re-extended
@@ -1405,19 +1299,19 @@ void Gallery_DrawPrizeList(s16 x)
 
 
     Gallery_DrawLabelBar((s32)gGalleryLabelText);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
-    y = 0x32;
-    Icon_Draw(x, y, 0x15E, 0x132, -0x2223, 0);
-    Font_SetSpacing(0x14, 0x14);
+    Menu_DrawMoney(480, 16, 0);
+    y = 50;
+    Icon_Draw(x, y, 350, 306, -8739, 0);
+    Font_SetSpacing(20, 20);
     left = x + 0;
-    y += 0x14;
-    Font_SetPos(left + 0x18, y);
+    y += 20;
+    Font_SetPos(left + 24, y);
     for (i = 0, feePtr = gGalleryCourseFees, name = gGalleryCourseTexts; i < 6; i++) {
         idx = i;
         if (idx == gal->course) {
             blink = (gFrameTick & 0x10) ? (s16)0 : (s16)6;
-            Icon_Draw(left + 0x28, y + 0xE, 0x112, 8, 0x99106060, 0x6F);
-            Menu_DrawCursorIcon(left - blink, y - 2, 0x18, 0xFF20C0C0);
+            Icon_Draw(left + 40, y + 14, 274, 8, 0x99106060, 111);
+            Menu_DrawCursorIcon(left - blink, y - 2, 24, 0xFF20C0C0);
         }
         fee = *feePtr;
         if (fee > 0) {
@@ -1431,15 +1325,15 @@ void Gallery_DrawPrizeList(s16 x)
             Font_SetColor(0x80101010);
             Text_PrintfColored("%-24s %s", *name, TXT(0x008387B0) /* the price shown when it costs nothing */);
         }
-        Font_SetPos(left + 0x18, y += 0x16);
+        Font_SetPos(left + 24, y += 22);
         feePtr++;
         name++;
     }
     row = gal->course;
-    Gallery_DrawCourseCard(left + 0x18, 0xF1, gGalleryCourseTimes[row], gGalleryCourseShots[row], gGalleryCourseBest[row], gGalleryCourseLevels[row]);
-    Menu_DrawDashLine(left + 0x18, 0xE6, 0x12C, 0xFF000000);
+    Gallery_DrawCourseCard(left + 24, 241, gGalleryCourseTimes[row], gGalleryCourseShots[row], gGalleryCourseBest[row], gGalleryCourseLevels[row]);
+    Menu_DrawDashLine(left + 24, 230, 300, 0xFF000000);
     if (Gallery_IsPouchFull() == 1) {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_COURSE]);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_COURSE]);
         gal->pouchFull = 1;
     }
 }
@@ -1448,14 +1342,10 @@ void Gallery_DrawPrizeList(s16 x)
 /* Draws the screen's label bar with the given text at the top. */
 void Gallery_DrawLabelBar(s32 label)
 {
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x12E, 0x12, 0xA0, -0x4F5000, (char *)label, 2, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(302, 18, 160, -0x4F5000, (char *)label, 2, 1);
 }
 
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Text_PrintfColored(char *fmt, ...);
-s16 Lobby_DrawButtonIcon(s16, s16, s32);
 
 /*
  * Draws a course card: the time limit and shots line, the difficulty and
@@ -1463,16 +1353,16 @@ s16 Lobby_DrawButtonIcon(s16, s16, s32);
  */
 void Gallery_DrawCourseCard(s16 x, s16 y, s16 time, s8 shots, s16 best, u8 level)
 {
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x80101010);
-    Font_SetPos(x + 0x12, y);
+    Font_SetPos(x + 18, y);
     Text_PrintfColored(TXT(0x008387C0) /* the time limit and the number of shots */, time, shots);
-    Font_SetPos(x + 0x12, y += 0x16);
+    Font_SetPos(x + 18, y += 22);
     Text_PrintfColored(TXT(0x008387E0) /* the difficulty and the best score */, level, best);
-    Font_SetPos(x + 0xD2, y + 0x16);
-    Font_SetPos(x + 0xDC, y + 0x32);
+    Font_SetPos(x + 210, y + 22);
+    Font_SetPos(x + 220, y + 50);
     Text_PrintfColored(gListTitles[LIST_TITLE_PRIZE_CHECK]); /* the start prompt, the table's second line */
-    Lobby_DrawButtonIcon(x + 0xBE, y + 0x2D, 3);
+    Lobby_DrawButtonIcon(x + 190, y + 45, 3);
 }
 
 INCLUDE_RODATA("asm/lobby/nonmatchings/shooting_gallery", gGalleryPrizeHeadText);
@@ -1482,9 +1372,6 @@ INCLUDE_RODATA("asm/lobby/nonmatchings/shooting_gallery", gGalleryPrizeRowFmt);
 extern char gGalleryPrizeHeadText[];
 extern char gGalleryPrizeRowFmt[];
 extern char *gItemNames[];
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
-void ItemInfo_Draw(s16 x, s16 y, s16 w, u8 a3, s32 item, u16 t1, s8 t2, u32 color);
 
 /*
  * Draws the prize page (7 prizes per page, 2 pages): label bar, money,
@@ -1503,48 +1390,45 @@ void Gallery_DrawPrizePage(s16 x)
     u8 i;
 
     Gallery_DrawLabelBar((s32)gGalleryLabelText);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
-    y = 0x32;
-    Icon_Draw(x, y, 0x15E, 0x132, -0x2223, 0);
+    Menu_DrawMoney(480, 16, 0);
+    y = 50;
+    Icon_Draw(x, y, 350, 306, -8739, 0);
     left = x + 0;
-    Menu_DrawPageNum(left + 0x109, 0x37, gal->page, 2, 1);
+    Menu_DrawPageNum(left + 265, 55, gal->page, 2, 1);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
 
-    Font_SetPos(left + 0x14, y += 0x14);
+    Font_SetPos(left + 20, y += 20);
     Text_PrintfColored(gGalleryPrizeHeadText);
-    Font_SetPos(x, y += 0x16);
+    Font_SetPos(x, y += 22);
     first = gal->page * 7;
     last = first + 6;
-    if (last >= 0xD) {
-        last = 0xC;
+    if (last >= 13) {
+        last = 12;
     }
     for (i = first; i <= last; i++) {
         if (i % 7 == gal->cursor) {
             blink = (gFrameTick & 0x10) ? (s16)0 : (s16)6;
-            Icon_Draw(left + 0x28, y + 0xE, 0x112, 8, 0x99106060, 0x6F);
-            Menu_DrawCursorIcon(left - blink, y - 2, 0x18, 0xFF20C0C0);
+            Icon_Draw(left + 40, y + 14, 274, 8, 0x99106060, 111);
+            Menu_DrawCursorIcon(left - blink, y - 2, 24, 0xFF20C0C0);
         }
         if (gal->locked[i] <= 0) {
             Font_SetColor(0x80101010);
         } else {
             Font_SetColor(0x8042352E);
         }
-        Item_DrawIcon(left + 0x14, y, 0x14, gal->list[i].item);
-        Font_SetPos(left + 0x32, y);
+        Item_DrawIcon(left + 20, y, 20, gal->list[i].item);
+        Font_SetPos(left + 50, y);
         Text_PrintfColored(gGalleryPrizeRowFmt, gItemNames[gal->list[i].item], gal->list[i].points);
-        y += 0x16;
+        y += 22;
     }
     Font_SetColor(0x80101010);
-    ItemInfo_Draw(x + 8, 0xFC, 0x14A, gal->details, gal->list[(u8)(gal->cursor + gal->page * 7)].item, 0, -1, 0x80101010);
-    Menu_DrawDashLine(left + 0x14, 0xFA, 0x12C, 0xFF000000);
+    ItemInfo_Draw(x + 8, 252, 330, gal->details, gal->list[(u8)(gal->cursor + gal->page * 7)].item, 0, -1, 0x80101010);
+    Menu_DrawDashLine(left + 20, 250, 300, 0xFF000000);
     if (gal->pouchFull == 1) {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PRIZES_NOW]); /* the pouch is full */
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PRIZES_NOW]); /* the pouch is full */
     }
 }
-
-extern Frame gGalleryPrizeFrame;
-void WindowFrame_Draw(struct Frame *, s16 *);
 
 /*
  * As Gallery_DrawPrizePage, under a frame with the course name and the
@@ -1566,43 +1450,43 @@ void Gallery_DrawPrizeWindow(s16 x, u8 asking)
 
     WindowFrame_Draw(&gGalleryPrizeFrame, 0);
     Font_SetColor(0x807F7F7F);
-    Font_SetSpacing(0x14, 0x14);
-    Font_SetPos(0x46, 0x46);
+    Font_SetSpacing(20, 20);
+    Font_SetPos(70, 70);
     Text_PrintfColored(gGalleryCourseTexts[gal->course]);
-    Font_SetPos(0x28, 0x5A);
+    Font_SetPos(40, 90);
     Text_PrintfColored(TXT(0x00838820) /* the points won, with their label and unit */, gal->points);
     Gallery_DrawLabelBar((s32)gGalleryLabelText);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
-    y = 0x32;
-    Icon_Draw(x, y, 0x15E, 0x132, -0x2223, 0);
+    Menu_DrawMoney(480, 16, 0);
+    y = 50;
+    Icon_Draw(x, y, 350, 306, -8739, 0);
     left = x + 0;
-    Menu_DrawPageNum(left + 0x109, 0x37, gal->page, 2, 1);
+    Menu_DrawPageNum(left + 265, 55, gal->page, 2, 1);
     Font_SetColor(0x80101010);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
 
-    Font_SetPos(left + 0x14, y += 0x14);
+    Font_SetPos(left + 20, y += 20);
     Text_PrintfColored(gGalleryPrizeHeadText);
-    Font_SetPos(x, y += 0x16);
+    Font_SetPos(x, y += 22);
     first = gal->page * 7;
     last = first + 6;
-    if (last >= 0xD) {
-        last = 0xC;
+    if (last >= 13) {
+        last = 12;
     }
     for (i = first; i <= last; i++) {
         if (i % 7 == gal->cursor) {
             blink = (gFrameTick & 0x10) ? (s16)0 : (s16)6;
-            Icon_Draw(left + 0x28, y + 0xE, 0x112, 8, 0x99106060, 0x6F);
-            Menu_DrawCursorIcon(left - blink, y - 2, 0x18, 0xFF20C0C0);
+            Icon_Draw(left + 40, y + 14, 274, 8, 0x99106060, 111);
+            Menu_DrawCursorIcon(left - blink, y - 2, 24, 0xFF20C0C0);
         }
         if (gal->locked[i] <= 0) {
             Font_SetColor(0x80101010);
         } else {
             Font_SetColor(0x8042352E);
         }
-        Item_DrawIcon(left + 0x14, y, 0x14, gal->list[i].item);
-        Font_SetPos(left + 0x32, y);
+        Item_DrawIcon(left + 20, y, 20, gal->list[i].item);
+        Font_SetPos(left + 50, y);
         Text_PrintfColored(gGalleryPrizeRowFmt, gItemNames[gal->list[i].item], gal->list[i].points);
-        y += 0x16;
+        y += 22;
     }
     Font_SetColor(0x80101010);
     have = 0;
@@ -1612,10 +1496,10 @@ void Gallery_DrawPrizeWindow(s16 x, u8 asking)
             have++;
         }
     }
-    ItemInfo_Draw(x + 8, 0xFC, 0x14A, gal->details, gal->list[sel].item, have, -1, 0x80101010);
-    Menu_DrawDashLine(left + 0x14, 0xFA, 0x12C, 0xFF000000);
+    ItemInfo_Draw(x + 8, 252, 330, gal->details, gal->list[sel].item, have, -1, 0x80101010);
+    Menu_DrawDashLine(left + 20, 250, 300, 0xFF000000);
     if (gal->stacksChecked == 1 && asking == 0) {
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_PRIZE]); /* no room for the prizes chosen */
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_PRIZE]); /* no room for the prizes chosen */
     }
 }
 
@@ -1862,43 +1746,43 @@ void Gallery_PlayHitSe(u16 picture)
     case EM_KIND_IOPREY:
     case EM_KIND_IODROME:
     case EM_KIND_GENPREY:
-        LobbySe_Play(0x1D);
+        LobbySe_Play(29);
         break;
     case EM_KIND_YIAN_KUT_KU:
-        LobbySe_Play(0x1E);
+        LobbySe_Play(30);
         break;
     case EM_KIND_GYPCEROS:
-        LobbySe_Play(0x1F);
+        LobbySe_Play(31);
         break;
     case EM_KIND_GRAVIOS:
     case EM_KIND_FELYNE_CART:
     case EM_KIND_DIABLOS:
     case EM_KIND_BASARIOS:
-        LobbySe_Play(0x20);
+        LobbySe_Play(32);
         break;
     case EM_KIND_KHEZU:
-        LobbySe_Play(0x21);
+        LobbySe_Play(33);
         break;
     case EM_KIND_RATHIAN:
-        LobbySe_Play(0x22);
+        LobbySe_Play(34);
         break;
     case EM_KIND_KIRIN:
-        LobbySe_Play(0x23);
+        LobbySe_Play(35);
         break;
     case EM_KIND_BLANGONGA:
-        LobbySe_Play(0x24);
+        LobbySe_Play(36);
         break;
     case EM_KIND_CONGALALA:
-        LobbySe_Play(0x25);
+        LobbySe_Play(37);
         break;
     case EM_KIND_DAIMYO_HERMITAUR:
-        LobbySe_Play(0x26);
+        LobbySe_Play(38);
         break;
     case EM_KIND_SHOGUN_CEANATAUR:
-        LobbySe_Play(0x27);
+        LobbySe_Play(39);
         break;
     case EM_KIND_BULLDROME:
-        LobbySe_Play(0x28);
+        LobbySe_Play(40);
         break;
     }
 }

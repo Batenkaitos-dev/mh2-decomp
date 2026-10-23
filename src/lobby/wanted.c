@@ -17,12 +17,15 @@
 #include "pad.h"
 #include "area.h"
 #include "quest.h"
+#include "camera.h"
+#include "save.h"
+#include "wanted.h"
+#include "game_util.h"
+#include "item_shop.h"
+#include "lobby_world.h"
 
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-u16 LobbyPad_Get(s32);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void CamFocus_End(void);
 
 /*
  * The update of TOWN_MODE_WAIT_CANCEL: on PAD_CROSS, closes the town's
@@ -37,10 +40,6 @@ void TownMode_WaitCancel(void)
         CamFocus_End();
     }
 }
-
-s32 LobbyWorld_GetSeason(void);
-s32 Game_IsOnline(void);
-s32 Wanted_IsSet(s16 *values);
 
 /*
  * Counts the wanted entries posted for this season: the first hub's three
@@ -81,8 +80,6 @@ s32 Wanted_IsSet(s16 *values)
     return 1;
 }
 
-u8 MonsterGroup_First(u8 group);
-
 /*
  * 1 if the quest's goal hunts a monster of the same group as the wanted
  * entry's monster (the low byte of v[1]): the entry must be posted, its
@@ -105,8 +102,6 @@ s32 Wanted_MatchesQuest(QuestGoal *goal, TownEntry *entry)
     group = MonsterGroup_First(goal->target) & 0xFF;
     return group == (MonsterGroup_First(*(u8 *)&entry->v[1]) & 0xFF);
 }
-
-s32 Wanted_MatchesQuest(QuestGoal *goal, TownEntry *entry);
 
 /*
  * 1 if the quest (a QuestInfo, which the quest desk passes as bytes) hunts

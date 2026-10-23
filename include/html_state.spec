@@ -4,11 +4,11 @@
 name HtmlState
 size 0xFBC4
 0x000 s32 parseState // 0 text, 1 in a tag (Html_ParseTag)
-0x004 s32 textLen // characters in text[] (0xD8E4)
+0x004 s32 textLen // characters in text[]
 0x008 s32 mode // the tag table in use: index into gHtmlModeTags (2 = body)
 0x00C s32 inComment // set by "<!--" until "-->"
-0x010 u16 width // the page's width (0x248)
-0x012 u16 indent // left margin (<DD>: 0x3C)
+0x010 u16 width // the page's width (PAGE_VIEW_W while the page is measured, then pageWidth)
+0x012 u16 indent // left margin (<DD>: 60)
 0x014 u8 center // low nibble: <CENTER> depth, high nibble: <DIV ALIGN=CENTER> depth
 0x016 u16 cellPenX // the pen x within the current table cell: each text, image and select width is added (Layout_CellText, Layout_CellImage, Layout_CellSelectEnd); the cell maxW is kept from it
 0x018 u16 selectWidth // the longest <OPTION> text of the <SELECT>

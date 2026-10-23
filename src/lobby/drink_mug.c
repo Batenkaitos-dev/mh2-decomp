@@ -9,7 +9,7 @@
  * phase (enum DrinkMugPhase). The contest's menu waits for it to be back
  * (DrinkMug_IsBack).
  *
- * The 16-bit angles are turned into radians as 2 pi * angle / 0x10000.
+ * The 16-bit angles are turned into radians as 2 pi * angle / ANGLE_TURN.
  */
 #include "common.h"
 #include "sprite.h"
@@ -17,14 +17,15 @@
 #include "lobby_vobj.h"
 #include "stageobj.h"
 #include "lobby_globals.h"
+#include "card.h"
+#include "drink_mug.h"
+#include "draw_slots.h"
+#include "drink_contest.h"
+#include "engine_math.h"
+#include "rand.h"
+#include "vec_math.h"
 #pragma optimization_level 4
 
-void DrinkMug_Init(StageObj *o);
-void DrinkMug_Step(StageObj *o);
-void DrinkMug_End(StageObj *o);
-void DrinkMug_Free(StageObj *o);
-void DrawSlot_Free(s32);
-u16 Rand_Next(s32 stream);
 extern StageObj gStageObjs[];
 
 /* The mug's update (StageObj.update): runs its set-up, its frame, its end or
@@ -51,11 +52,6 @@ void DrinkMug_Update(StageObj *obj)
 }
 
 struct EmBone *Em_Bone(void *obj, s16 bone);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateY(f32 *v, f32 a);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void DrinkMug_Draw(DrawSlot *);
 
 /*
  * Sets the mug up in the townsperson's hand, DRINK_MUG_HAND_OFFSET ahead of
@@ -113,16 +109,6 @@ void DrinkMug_Init(StageObj *obj)
     }
 }
 
-void Em_BonePos(void *em, s16 bone, f32 *out);
-f32 Rand_Signed(void);
-f32 Math_Absf(f32 x);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void Vec_Copy(f32 *dst, f32 *src);
-f32 Vec_Length(f32 *v);
-void Vec_Normalize(f32 *v);
-s32 DrinkContest_IsOn(void);
-f32 Math_Ceil(f32);
-
 /*
  * The mug's frame, by its phase (StageObj.type, enum DrinkMugPhase). Held, it
  * follows the hand and swivels at random. When the contest starts it lifts
@@ -178,7 +164,7 @@ void DrinkMug_Step(StageObj *obj)
                 obj->var0 = DRINK_MUG_SWIVEL;
                 mug->swivelGoal = (u16)(s32)(0.5f + 65536.0f * (f32)(Rand_Next(1) % 90) / 360.0f);
                 mug->swivelFrames = Rand_Next(1) % 3 + 1;
-                mug->swivelEnd = mug->swivelGoal - 0x2000;
+                mug->swivelEnd = mug->swivelGoal - 8192;
                 mug->swivelStep = (s16)(mug->swivelEnd - mug->swivelOffset) / mug->swivelFrames;
             } else {
                 mug->swivelStep = 0.0f;
@@ -432,10 +418,6 @@ void DrinkMug_Free(StageObj *obj)
     StageObj_Free(obj);
 }
 
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-void Mtx_FromScaleRotTrans(f32 *scale, f32 *rot, f32 *trans, u16 order, f32 *m);
-s32 Effect_DrawModel(void *mdl, f32 *a1, s32 color, u16 flags, void *a4);
-
 /*
  * The mug's draw (its draw slot's callback): a material set of the common
  * model by the phase, at scale 0.7. The phases that animate show one material
@@ -503,7 +485,7 @@ void DrinkMug_Draw(DrawSlot *slot)
                 rot[0] = 0.0f;
             }
             if (dx != 0.0f || dy != 0.0f || dz != 0.0f) {
-                mug->heading = 6.2831855f * (f32)(Math_Heading(dx, dz, 0.0f, 0.0f) + 0x4000) / 65536.0f;
+                mug->heading = 6.2831855f * (f32)(Math_Heading(dx, dz, 0.0f, 0.0f) + ANGLE_TURN / 4) / 65536.0f;
             }
             rot[1] = mug->heading;
             rot[2] = 0.0f;
@@ -568,8 +550,6 @@ void DrinkMug_Spawn(Em *npc)
     }
 }
 
-StageObj *StageObj_FindKind(s32 kind);
-
 /*
  * Returns 1 when the mug is back in the hand (within 5 on each axis of the
  * point DRINK_MUG_HAND_OFFSET ahead of the hand) or when its backTimeout has
@@ -608,7 +588,7 @@ s32 DrinkMug_IsBack(void)
     return 0;
 }
 
-/* Returns the first object of the stage object pool (gStageObjs, 0x80
+/* Returns the first object of the stage object pool (gStageObjs, 128
  * objects) whose kind is kind, or NULL. */
 StageObj *StageObj_FindKind(s32 kind)
 {
@@ -623,7 +603,7 @@ StageObj *StageObj_FindKind(s32 kind)
         }
         i = (i + 1) & 0xFF;
         obj++;
-        if (i >= 0x80) {
+        if (i >= 128) {
             return NULL;
         }
     }

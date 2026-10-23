@@ -33,81 +33,30 @@
 #include "area.h"
 #include "lobby_npc.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "camera.h"
+#include "text.h"
+#include "combine_shop.h"
+#include "font.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "talk.h"
+#include "town_frame.h"
 
 /* prototypes */
-s32 WinSlide_Step(WinSlide *s, s16 from, s16 to);
 /* end of prototypes */
-
-/* The combination shop's menu, in the shared menu work gMenuWork: the buy
- * and sell list, the combination window's slide, the top menu, and the
- * list's page: up to 7 items, each with up to 3 recipes and what each
- * makes. */
-typedef struct CombMenu {
-    /* 0x000 */ ItemListWin list;   /* the buy and sell list (Shop_StartBuy, Shop_StartSell) */
-    /* 0x040 */ WinSlide slideWin;  /* the combination window's slide in (its pos is the window's x) */
-    /* 0x048 */ s16 menu[4];        /* the top menu's entries: 5 combine, 1 buy, 2 sell, 4 the offers (when the shopkeeper has some) */
-    /* 0x050 */ s16 cursor;         /* the top menu's cursor */
-    /* 0x052 */ s16 menuCount;      /* the top menu's entry count */
-    /* 0x054 */ u16 items[8];       /* the page's items (7 used: CombShop_BuildList clears 7) */
-    /* 0x064 */ s32 yieldBase[7][3]; /* per item and recipe, what one combination makes with the fixed-yield skill (Recipe_YieldBase) */
-    /* 0x0B8 */ u8 recipeCounts[8]; /* per item, its recipes (Combine_ListRecipesFor; 7 used) */
-    /* 0x0C0 */ RecipeHit lines[7][3];
-    /* 0x1BC */ s16 listPage;     /* the page of 7 combinable items shown */
-    /* 0x1BE */ s16 listPages;
-    /* 0x1C0 */ s16 itemCount;    /* the items on this page (item[], per[], count[], lines[]) */
-    /* 0x1C2 */ s16 itemCursor;     /* the cursor on the page's items */
-    /* 0x1C4 */ s16 infoPage;       /* a decoration's details page, 0-2 (ItemInfo_Draw's page): PAD_R1 and PAD_L1 turn it */
-    /* 0x1C6 */ s16 amount;
-    /* 0x1C8 */ s16 line;
-    /* 0x1CA */ s16 lineCount;
-    /* 0x1CC */ s8 details;         /* 1 while the item's details show (PAD_SQUARE; ItemInfo_Draw's mode) */
-    /* 0x1CD */ u8 npc;             /* the shopkeeper's id (NpcWork.id): Npc_Find, Shop_StartBuy's stock */
-    /* 0x1CE */ s8 state;           /* 0 the top menu, 1 the combination, 2 buying, 3 selling, 4 the goodbye talk */
-    /* 0x1CF */ s8 step;            /* CombShop_Steps: 0 the window slides in, 1 the item, 2 the recipe, 3 the amount, 4 the yes/no */
-} CombMenu;
-
-/* CombMenu.state: what the shop shows (CombShop_Update, CombShop_Draw). */
-enum CombState {
-    COMB_STATE_TOP = 0,         /* the top menu */
-    COMB_STATE_COMBINE = 1,     /* the combination's window (CombShop_Steps) */
-    COMB_STATE_BUY = 2,         /* the buy list */
-    COMB_STATE_SELL = 3,        /* the sell list */
-    COMB_STATE_TALK = 4         /* the shopkeeper's goodbye */
-};
-
-/* CombMenu.step: the combination's steps (CombShop_Steps). */
-enum CombStep {
-    COMB_STEP_SLIDE_IN = 0,     /* the window slides in */
-    COMB_STEP_ITEM = 1,         /* an item of the list */
-    COMB_STEP_RECIPE = 2,       /* one of its recipes */
-    COMB_STEP_AMOUNT = 3,       /* how many times */
-    COMB_STEP_CONFIRM = 4       /* the yes/no */
-};
-
-/* CombMenu.menu's entries: the top menu's choices. */
-enum CombEntry {
-    COMB_ENTRY_BUY = 1,
-    COMB_ENTRY_SELL = 2,
-    COMB_ENTRY_OFFERS = 4,      /* only when the shopkeeper has offers */
-    COMB_ENTRY_COMBINE = 5
-};
-
-#define COMB_PAGE_ITEMS 7       /* the items on a page of the combination list */
-#define ITEM_INFO_PAGES 3       /* a decoration's details pages (CombMenu.infoPage) */
-
-void CombShop_BuildList(CombMenu *m, s16 page);
 
 void *memset(void *p, s32 c, u32 n);
 struct Em;
-s16 OfferMenu_BuildList(struct Em *t, s32 b);
-void CombShop_Draw(MenuTask *task);
 extern u8 gMenuWork[];
 extern u8 gMenuInputLock;
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void CamFocus_End(void);
-void LobbySe_Play(s32 se);
-void Chat_SetColor(s16);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
@@ -119,7 +68,7 @@ extern s32 gTownMenuOpen;
 void CombShop_Open(u8 *npc)
 {
     CombMenu *shop = (CombMenu *)gMenuWork;
-    NpcWork *npcWork = (NpcWork *)(npc + 0x438);
+    NpcWork *npcWork = (NpcWork *)(npc + 1080);
 
     gTownMenuOpen = 1;
     gTownMode = TOWN_MODE_COMBINE_SHOP;
@@ -154,45 +103,15 @@ void CombShop_Close(void)
 }
 
 extern Player gPlayers[];
-s16 Combine_Do(u8 *count, struct Player *player, s16 a, s16 b, s32 mode);
-s16 Combine_Do3(u8 *count, struct Player *player, s32 a, s32 b, s32 c, s32 mode);
-s32 CombShop_Price(u16 item);
-void Save_AddMoney(s32 n);
-void LobbySe_Play(s32 se);
-s8 Items_Give(s32 item, s32 n);
-s32 Menu_PushNoticeOnce(s32);
 
-
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-s32 Item_IsOnePerPouch(u16 item);
-s32 Recipe_IsListedFor(s16 item, s32 arg1);
-void Text_SetSize(s32 size);
-void CombShop_DrawWindow(CombMenu *m, s16 x, s16 y);
 void Shop_DrawBuy(void *);
 void Shop_DrawSell(void *);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
-extern u8 gMenuWork[];
-s32 Recipe_IsKnown(Recipe *r);
-s32 Items_HaveEnough(u16 item, s32 n);
-s32 Items_Room(s32 item);
 
-void CombShop_OpenList(CombMenu *m);
-s32 CombShop_MenuInput(CombMenu *m, u16 pad);
 u16 LobbyPad_Get(s32 a);
-void Chat_SetWindowMode(s8 a, s8 b);
-s32 CombShop_Steps(CombMenu *m, u16 pad);
-void Chat_SetColor(s16 color);
-void CamFocus_SetAside(s8 a);
 void Shop_StartBuy(ItemListWin *list, u16 kind);
 void Shop_StartSell(ItemListWin *list);
-Em *Npc_Find(u8 kind);
-struct Em;
-void OfferMenu_Open(struct Em *t);
-void Talk_Say(s32 a, s8 b);
 s32 Shop_BuyStep(u16 pad, ItemListWin *list);
 s32 Shop_SellStep(u16 pad, ItemListWin *list);
-s32 Talk_Update(void);
-void CombShop_Close(void);
 
 /* The combination shop's menu, each frame, by CombMenu.state: the top menu
  * (PAD_CIRCLE takes its entry: the combination's window slides in, the buy
@@ -216,13 +135,13 @@ void CombShop_Update(void)
                 CombShop_OpenList(shop);
                 Chat_SetColor(0);
                 CamFocus_SetAside(1);
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 break;
             case COMB_ENTRY_BUY:
                 shop->state = COMB_STATE_BUY;
                 Shop_StartBuy(&shop->list, shop->npc);
                 CamFocus_SetAside(1);
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 break;
             case COMB_ENTRY_SELL:
                 shop->state = COMB_STATE_SELL;
@@ -286,19 +205,12 @@ void CombShop_Update(void)
 void CombShop_OpenList(CombMenu *shop)
 {
     CombShop_BuildList(shop, 0);
-    WinSlide_Step(&shop->slideWin, 0x280, 0x10E);
+    WinSlide_Step(&shop->slideWin, 640, 270);
     shop->amount = 1;
     shop->details = 0;
 }
 
-s32 CombShop_InputItem(CombMenu *m, u16 pad);
-s32 CombShop_InputLine(CombMenu *m, u16 pad);
-s32 CombShop_InputAmount(CombMenu *m, u16 pad);
-void Menu_SetYesNo(s8 a);
-extern u8 gMenuInputLock;
 s32 Item_IsDeco(u16 id);
-s32 Menu_YesNoInput(void);
-void CombShop_Combine(CombMenu *m);
 
 /* The combination's steps (CombMenu.step): the window slides in; an item
  * is picked from the list (CombShop_InputItem); one of its recipes
@@ -311,7 +223,7 @@ s32 CombShop_Steps(CombMenu *shop, u16 pad)
 {
     switch (shop->step) {
     case COMB_STEP_SLIDE_IN:
-        switch (WinSlide_Step(&shop->slideWin, 0x280, 0x10E)) {
+        switch (WinSlide_Step(&shop->slideWin, 640, 270)) {
         case MENU_DONE: /* settled */
             (shop->step)++;
             break;
@@ -421,7 +333,6 @@ void CombShop_Combine(CombMenu *shop)
     }
 }
 
-s32 CombShop_CanCombine(RecipeHit *l, u16 item, s32 n, s32 per);
 /* The amount step's input: PAD_CIRCLE takes the amount (MENU_DONE) and
  * PAD_CROSS goes back (MENU_CANCEL); PAD_SQUARE shows or hides the item's
  * details, and while they show a decoration PAD_R1 and PAD_L1 turn its
@@ -494,8 +405,6 @@ s32 CombShop_InputAmount(CombMenu *shop, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 CombShop_CanCombine(RecipeHit *l, u16 item, s32 n, s32 per);
-s32 Item_IsDeco(u16 id);
 
 /* The recipe step's input: PAD_CIRCLE takes the recipe under the cursor
  * when it can be made once (MENU_DONE; else the refuse sound); PAD_CROSS
@@ -545,9 +454,6 @@ s32 CombShop_InputLine(CombMenu *shop, u16 pad)
     }
     return MENU_RUNNING;
 }
-
-s32 Menu_WrapLeftRight(s32 arg0, s32 arg1);
-s32 CombShop_ItemReady(CombMenu *shop, s16 index);
 
 /* The list step's input: PAD_CIRCLE takes the item under the cursor when
  * CombShop_ItemReady allows it (MENU_DONE, its recipes' cursor at the first;
@@ -654,11 +560,8 @@ s32 CombShop_ItemReady(CombMenu *shop, s16 index)
 #pragma optimization_level reset
 
 void *memset(void *d, s32 c, u32 n);
-s32 Item_IsCombinable(u16 item);
 u8 Combine_ListRecipesFor(struct RecipeHit *lines, s16 item, s32 flags);
 struct Recipe;
-u8 Recipe_YieldBase(struct Recipe *r);
-s32 Menu_CountPages(s16 n, s16 per);
 
 /* Builds page `page` of the combination list: of the items the shop lists
  * (Item_IsCombinable), that page's 7, each with its recipes (the unknown
@@ -726,8 +629,7 @@ s32 CombShop_MenuInput(CombMenu *shop, u16 pad)
 
 
 /* The combination's fee for an item: 14% of its price (42% above rarity
- * 2), halved while the town's event (LobbyState.townEvent) is 4; at least
- * 1. */
+ * 2), halved during the town's sale (TOWN_EVENT_SALE); at least 1. */
 s32 CombShop_Price(u16 item)
 {
     f32 rate;
@@ -743,7 +645,7 @@ s32 CombShop_Price(u16 item)
         rate = 0.42f;
         break;
     }
-    if (gLobby->townEvent == 4) { /* the town event that halves the fees */
+    if (gLobby->townEvent == TOWN_EVENT_SALE) {
         rate *= 0.5f;
     }
     fee = rate * (f32)(u32)gItemData[item].price;
@@ -756,15 +658,7 @@ s32 CombShop_Price(u16 item)
 INCLUDE_RODATA("asm/lobby/nonmatchings/combine_shop", gCombStrFmt);
 INCLUDE_RODATA("asm/lobby/nonmatchings/combine_shop", gCombFeeFmt);
 
-void Text_PrintfColored(const char *fmt, ...);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2);
 void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
 /* unit's own declaration: the width, mode, extra value, page and colour are declared s32 (the definition takes s16, u8, u16, s8 and u32); with the definition's types the calls in CombShop_DrawLineWindow build differently from the game's code */
 void ItemInfo_Draw(s16 x, s16 y, s32 w, s32 mode, s32 item, s32 extra, s32 page, s32 color);
 extern char *gItemNames[];
@@ -784,20 +678,20 @@ void CombShop_DrawList(CombMenu *shop, s16 x, s16 y)
     char *text;
     s16 rowY = y;
 
-    Icon_Draw(x, y, 0x15E, 0x132, -0x23, 0);
-    Icon_Draw(x + 0x64, y + 0x4E, 0x96, 0x96, 0x60FFFFFF, 0x22);
+    Icon_Draw(x, y, 350, 306, -35, 0);
+    Icon_Draw(x + 100, y + 78, 150, 150, 0x60FFFFFF, 34);
     if (shop->itemCount == 0) {
-        Font_SetSpacing(0x14, 0x14);
+        Font_SetSpacing(20, 20);
         text = gMiscTexts[MISC_TEXT_NO_COMBINE];
         Font_SetColor(0x8000052C);
-        Font_SetPos(Text_CenterX(text, x + 0xAF, 0x14), y + 0x78);
+        Font_SetPos(Text_CenterX(text, x + 175, 20), y + 120);
         Text_PrintfColored(gCombStrFmt, text);
         return;
     }
     rowY += 10;
     Font_SetColor(0x80000000);
-    Menu_DrawPageNum(x + 0xFA, rowY, shop->listPage, shop->listPages, 1);
-    Font_SetSpacing(0x14, 0x14);
+    Menu_DrawPageNum(x + 250, rowY, shop->listPage, shop->listPages, 1);
+    Font_SetSpacing(20, 20);
     for (i = 0; i < shop->itemCount; i++) {
         item = shop->items[i];
         price = CombShop_Price(item);
@@ -806,34 +700,23 @@ void CombShop_DrawList(CombMenu *shop, s16 x, s16 y)
         } else {
             Font_SetColor(0x8042352E);
         }
-        Font_SetSpacing(0x14, 0x14);
-        Font_SetPos(x + 0x2E, rowY += 0x18);
+        Font_SetSpacing(20, 20);
+        Font_SetPos(x + 46, rowY += 24);
         Text_PrintfColored(gCombStrFmt, gItemNames[(u16)item]);
-        Font_SetSpacing(0x14, 0x14);
-        Font_SetPos(x + 0xF8, rowY);
+        Font_SetSpacing(20, 20);
+        Font_SetPos(x + 248, rowY);
         Text_PrintfColored(gCombFeeFmt, price);
-        Item_DrawIcon(x + 0x10, rowY - 1, 0x18, (u16)item);
+        Item_DrawIcon(x + 16, rowY - 1, 24, (u16)item);
         if (shop->itemCursor == i) {
-            Menu_DrawCursorRow(x + 0x2E, rowY, 0xFA, 0x32, 0xC0106060, 0xFF106060);
+            Menu_DrawCursorRow(x + 46, rowY, 250, 50, 0xC0106060, 0xFF106060);
         }
     }
     item = shop->items[shop->itemCursor];
-    Menu_DrawDashLine(x + 0x14, y + 0xCA, 0x136, 0xFF000000);
+    Menu_DrawDashLine(x + 20, y + 202, 310, 0xFF000000);
     if (item == 0 || item >= ITEM_ID_COUNT) {} /* an empty check of the item's range, as the game's code has it */
-    ItemInfo_Draw(x, y + 0xCE, 0x15E, 0, (u16)item, 0, -1, 0x80101010);
+    ItemInfo_Draw(x, y + 206, 350, 0, (u16)item, 0, -1, 0x80101010);
 }
 
-void Text_PrintfColored(const char *fmt, ...);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2);
-void Item_DrawIcon(s16 x, s16 y, s16 size, s32 item);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-extern char *gItemNames[];
-extern char gCombStrFmt[];
-extern char gCombFeeFmt[];
 
 /* The combination list drawn small at the window's left while the details
  * show (its place is fixed: the position passed is unused): the page
@@ -846,12 +729,12 @@ void CombShop_DrawListSmall(CombMenu *shop, s16 unusedX, s16 unusedY)
     s32 item;
     s16 rowY;
 
-    Icon_Draw(0, 0x32, 0x122, 0xB4, -0x23, 0);
-    Icon_Draw(0x69, 0x5A, 0x50, 0x64, 0x60FFFFFF, 0x22);
-    rowY = 0x3C;
+    Icon_Draw(0, 50, 290, 180, -35, 0);
+    Icon_Draw(105, 90, 80, 100, 0x60FFFFFF, 34);
+    rowY = 60;
     Font_SetColor(0x80000000);
-    Font_SetSpacing(0x11, 0x11);
-    Menu_DrawPageNum(0xAA, rowY, shop->listPage, shop->listPages, 1);
+    Font_SetSpacing(17, 17);
+    Menu_DrawPageNum(170, rowY, shop->listPage, shop->listPages, 1);
     for (i = 0; i < shop->itemCount; i++) {
         item = shop->items[i];
         price = CombShop_Price(item);
@@ -860,23 +743,16 @@ void CombShop_DrawListSmall(CombMenu *shop, s16 unusedX, s16 unusedY)
         } else {
             Font_SetColor(0x8042352E);
         }
-        Font_SetPos(0x38, rowY += 0x14);
+        Font_SetPos(56, rowY += 20);
         Text_PrintfColored(gCombStrFmt, gItemNames[(u16)item]);
-        Font_SetPos(0xCA, rowY);
+        Font_SetPos(202, rowY);
         Text_PrintfColored(gCombFeeFmt, price);
-        Item_DrawIcon(0x1A, rowY - 1, 0x14, (u16)item);
+        Item_DrawIcon(26, rowY - 1, 20, (u16)item);
         if (shop->itemCursor == i) {
-            Menu_DrawCursorRow(0x38, rowY, 0xB4, 0x32, 0xC0106060, 0xFF106060);
+            Menu_DrawCursorRow(56, rowY, 180, 50, 0xC0106060, 0xFF106060);
         }
     }
 }
-
-void Text_PrintfColored(const char *fmt, ...);
-void Font_SetPos(s16 x, s16 y);
-void Font_SetColor(s32 color);
-s32 Items_DrawNeedLine(s16 x, s16 y, u16 item, s32 n, u32 color);
-s32 Items_DrawNeedLineAfter(s16 x, s16 y, u16 item, s32 n, u32 color);
-extern char gCombStrFmt[];
 
 /* Draws recipe `entry` at (x, y): its label (number lineIndex), then each
  * of its ingredients with the count needAmount combinations need (on the amount and yes/no
@@ -896,26 +772,24 @@ void CombShop_DrawLine(CombMenu *shop, RecipeHit *entry, u8 lineIndex, s16 needA
         for (k = 0; k < 3; k++) {
             if (entry->info[k] != 0) {
                 if (shop->step == COMB_STEP_AMOUNT || shop->step == COMB_STEP_CONFIRM) {
-                    y += 0x14;
-                    Items_DrawNeedLineAfter(x + 0x28, y, entry->info[k], shop->amount, MENU_INK_WHITE);
+                    y += 20;
+                    Items_DrawNeedLineAfter(x + 40, y, entry->info[k], shop->amount, MENU_INK_WHITE);
                 } else {
-                    y += 0x14;
-                    Items_DrawNeedLine(x + 0x28, y, entry->info[k], needAmount, MENU_INK_WHITE);
+                    y += 20;
+                    Items_DrawNeedLine(x + 40, y, entry->info[k], needAmount, MENU_INK_WHITE);
                 }
             }
         }
     } else {
         text = gCombineShopTexts[COMBINE_SHOP_TEXT_UNKNOWN];
         Font_SetColor(0x807F212E);
-        Font_SetPos(Text_CenterX(text, x + 0xA6, 0x12), y + 0x28);
+        Font_SetPos(Text_CenterX(text, x + 166, 18), y + 40);
         Text_PrintfColored(gCombStrFmt, text);
     }
 }
 
-void CombShop_DrawLine(CombMenu *m, RecipeHit *l, u8 i, s16 n, s16 x, s16 y);
 /* unit's own declaration: x and y are declared s16 and the kind s32 (the definition takes s32 x and y and an s16 kind); with the definition's types the window draws here build differently from the game's code */
 void Win_Draw(s16 x, s16 y, s32 w, s32 h, s32 color1, s32 color2, s32 kind);
-void Font_SetSpacing(u8 a, u8 b);
 
 /* The details' recipe window at (x, y): each recipe of the cursor's item
  * (CombShop_DrawLine, for one combination), 90 apart. */
@@ -924,24 +798,21 @@ void CombShop_DrawLines(CombMenu *shop, s16 x, s16 y)
     s16 i;
     s32 offset;
 
-    Win_Draw(x, y, 0x14C, 0x126, 0xBDB59F6C, 0xA0202020, 4);
-    Font_SetSpacing(0x12, 0x12);
+    Win_Draw(x, y, 332, 294, 0xBDB59F6C, 0xA0202020, 4);
+    Font_SetSpacing(18, 18);
     i = 0;
     y += 10;
     if (i < shop->recipeCounts[shop->itemCursor]) {
         offset = 0;
         do {
-            /* the recipe is reached by its byte offset in CombMenu.lines (rows of three 0xC-byte recipes, 0x24 bytes, from 0xC0): written by index, the compiler adds the addresses in another order than the game's code */
-            CombShop_DrawLine(shop, (RecipeHit *)((u8 *)shop + shop->itemCursor * 0x24 + offset + 0xC0), i, 1, x, y);
+            /* the recipe is reached by its byte offset in CombMenu.lines (rows of three 12-byte recipes, 36 bytes, from offset 0xC0): written by index, the compiler adds the addresses in another order than the game's code */
+            CombShop_DrawLine(shop, (RecipeHit *)((u8 *)shop + shop->itemCursor * 36 + offset + 192), i, 1, x, y);
             y += 90;
-            offset += 0xC;
+            offset += 12;
             i++;
         } while (i < shop->recipeCounts[shop->itemCursor]);
     }
 }
-
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 
 /* The recipe step's window at (x, y): the item's details (a decoration's
  * on its page), the item's recipe labels (bright when CombShop_CanCombine
@@ -954,36 +825,33 @@ void CombShop_DrawLineWindow(CombMenu *shop, s16 x, s16 y)
     s32 top;
     u16 item = shop->items[shop->itemCursor];
 
-    Win_Draw(x, y, 0x14C, 0x126, 0xBDB59F6C, 0xA0202020, 4);
-    Font_SetSpacing(0x12, 0x12);
+    Win_Draw(x, y, 332, 294, 0xBDB59F6C, 0xA0202020, 4);
+    Font_SetSpacing(18, 18);
     if (Item_IsDeco(item) != 0) {
-        ItemInfo_Draw(x, y, 0x158, (u8)shop->details, item, 0, (s8)shop->infoPage, MENU_INK_WHITE);
+        ItemInfo_Draw(x, y, 344, (u8)shop->details, item, 0, (s8)shop->infoPage, MENU_INK_WHITE);
     } else {
-        ItemInfo_Draw(x, y, 0x158, (u8)shop->details, item, 0, -1, MENU_INK_WHITE);
+        ItemInfo_Draw(x, y, 344, (u8)shop->details, item, 0, -1, MENU_INK_WHITE);
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     top = y;
-    Gfx_DrawLine(x + 0x14, top + 0x5E, 0x136, 2, 0xBDB59F6C);
-    rowY = top + 0x66;
+    Gfx_DrawLine(x + 20, top + 94, 310, 2, 0xBDB59F6C);
+    rowY = top + 102;
     for (i = 0; i < shop->lineCount; i++) {
         if (CombShop_CanCombine(&shop->lines[shop->itemCursor][i], shop->items[shop->itemCursor], 1, shop->yieldBase[shop->itemCursor][i]) == 1) {
             Font_SetColor(MENU_INK_WHITE);
         } else {
             Font_SetColor(0x80404040);
         }
-        Font_SetPos(x + 0x14, rowY);
+        Font_SetPos(x + 20, rowY);
         Text_PrintfColored(gCombineShopTexts[i + 3]);
         if (i == shop->line) {
-            Menu_DrawLine(x + 0xA, rowY - 1, 0x138, 0x18, shop->step != COMB_STEP_RECIPE);
+            Menu_DrawRowHighlight(x + 10, rowY - 1, 312, 24, shop->step != COMB_STEP_RECIPE);
         }
-        rowY += 0x14;
+        rowY += 20;
     }
-    Gfx_DrawLine(x + 0x14, top + 0xC0, 0x136, 2, 0xBDB59F6C);
-    CombShop_DrawLine(shop, &shop->lines[shop->itemCursor][shop->line], shop->line, shop->amount, x, top + 0xC4);
+    Gfx_DrawLine(x + 20, top + 192, 310, 2, 0xBDB59F6C);
+    CombShop_DrawLine(shop, &shop->lines[shop->itemCursor][shop->line], shop->line, shop->amount, x, top + 196);
 }
-
-void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode);
-u8 Recipe_YieldAmount(struct Recipe *r);
 
 /* The amount step's window at (x, y): the item's details, the chosen
  * recipe's ingredients for the amount, a down arrow, then the item's icon
@@ -1006,52 +874,42 @@ void CombShop_DrawAmount(CombMenu *shop, s16 x, s16 y)
     s32 price;
     s32 yieldFixed;
 
-    Win_Draw(x, y, 0x14C, 0x126, 0xBDB59F6C, 0xA0202020, 4);
-    Font_SetSpacing(0x12, 0x12);
+    Win_Draw(x, y, 332, 294, 0xBDB59F6C, 0xA0202020, 4);
+    Font_SetSpacing(18, 18);
     if (Item_IsDeco(item) != 0) {
         id = item;
-        ItemInfo_Draw(x, y, 0x158, (u8)shop->details, id, 0, (s8)shop->infoPage, MENU_INK_WHITE);
+        ItemInfo_Draw(x, y, 344, (u8)shop->details, id, 0, (s8)shop->infoPage, MENU_INK_WHITE);
     } else {
         id = item;
-        ItemInfo_Draw(x, y, 0x158, (u8)shop->details, id, 0, -1, MENU_INK_WHITE);
+        ItemInfo_Draw(x, y, 344, (u8)shop->details, id, 0, -1, MENU_INK_WHITE);
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     top = y;
     left = x;
-    Gfx_DrawLine(left + 0x14, top + 0x5E, 0x136, 2, 0xBDB59F6C);
-    CombShop_DrawLine(shop, &shop->lines[shop->itemCursor][shop->line], shop->line, shop->amount, x, top + 0x66);
-    Icon_DrawMode(left + 0xA3, top + 0xC0, 0x24, 0x16, 0xFF00FF00, 0x28, 2);
-    rowY = top + 0xD2;
-    Font_SetSpacing(0x12, 0x12);
-    textX = left + 0x28;
-    Font_SetPos(textX, top + 0xD2);
+    Gfx_DrawLine(left + 20, top + 94, 310, 2, 0xBDB59F6C);
+    CombShop_DrawLine(shop, &shop->lines[shop->itemCursor][shop->line], shop->line, shop->amount, x, top + 102);
+    Icon_DrawMode(left + 163, top + 192, 36, 22, 0xFF00FF00, 40, 2);
+    rowY = top + 210;
+    Font_SetSpacing(18, 18);
+    textX = left + 40;
+    Font_SetPos(textX, top + 210);
     Text_PrintfColored(gCombStrFmt, gItemNames[item]);
-    Item_DrawIcon(left + 0xC, (s16)(top + 0xD2) - 1, 0x14, id);
-    Font_SetPos(textX, rowY += 0x18);
-    /* the recipe is reached by its byte offset in CombMenu.lines (rows of three 0xC-byte recipes, 0x24 bytes, from 0xC0): written by index, the compiler adds the addresses in another order than the game's code */
-    yieldMin = (u8)Recipe_YieldAmount((struct Recipe *)(*(s32 *)((u8 *)shop + shop->itemCursor * 0x24 + shop->line * 0xC + 0xC0)));
+    Item_DrawIcon(left + 12, (s16)(top + 210) - 1, 20, id);
+    Font_SetPos(textX, rowY += 24);
+    /* the recipe is reached by its byte offset in CombMenu.lines (rows of three 12-byte recipes, 36 bytes, from offset 0xC0): written by index, the compiler adds the addresses in another order than the game's code */
+    yieldMin = (u8)Recipe_YieldAmount((struct Recipe *)(*(s32 *)((u8 *)shop + shop->itemCursor * 36 + shop->line * 12 + 192)));
     yieldMin *= shop->amount;
     yieldFixed = shop->yieldBase[shop->itemCursor][shop->line];
     yieldFixed *= shop->amount;
     Text_PrintfColored("%-17s%s%3d%s%3d", gCombineShopTexts[COMBINE_SHOP_TEXT_RESULT], gLobbyWords[LOBBY_WORD_COLON], yieldMin, gLobbyWords[LOBBY_WORD_TILDE],
                        yieldFixed, shop->amount);
     price = shop->amount * CombShop_Price(item);
-    Font_SetPos(textX, rowY + 0x18);
+    Font_SetPos(textX, rowY + 24);
     Text_PrintfColored("%-17s%s%7dz", gCombineShopTexts[COMBINE_SHOP_TEXT_FEE], gLobbyWords[LOBBY_WORD_COLON], price);
 }
 
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
 void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
 s32 sprintf(char *buf, char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
-void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i, u8 mode);
-char *Text_FillDollar(char *fmt, M2C_UNK n);
-void Text_Printf(const char *fmt, ...);
-void CombShop_DrawList(CombMenu *m, s16 x, s16 y);
-void CombShop_DrawLineWindow(CombMenu *m, s16 x, s16 y);
-void CombShop_DrawAmount(CombMenu *m, s16 x, s16 y);
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
 
 /* The combination window at (x, y) by step: the list (or its details),
@@ -1059,12 +917,12 @@ extern LobbyMenu *gLobbyMenu;
  * or the total price. */
 void CombShop_DrawWindow(CombMenu *shop, s16 x, s16 y)
 {
-    char buf[0x20];
-    char wide[0x20];
+    char buf[32];
+    char wide[32];
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x10E, 0x12, 0xA0, 0xFFB0B000, gItemShopMenuTexts[0], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(270, 18, 160, 0xFFB0B000, gItemShopMenuTexts[0], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (shop->step) {
     case COMB_STEP_SLIDE_IN:
     case COMB_STEP_ITEM:
@@ -1072,45 +930,45 @@ void CombShop_DrawWindow(CombMenu *shop, s16 x, s16 y)
             CombShop_DrawList(shop, x, y);
         } else {
             CombShop_DrawListSmall(shop, x, y);
-            CombShop_DrawLines(shop, 0x120, y + 4);
+            CombShop_DrawLines(shop, 288, y + 4);
         }
         break;
     case COMB_STEP_RECIPE:
-        CombShop_DrawLineWindow(shop, 0x120, y + 4);
+        CombShop_DrawLineWindow(shop, 288, y + 4);
         break;
     case COMB_STEP_AMOUNT:
     case COMB_STEP_CONFIRM:
-        CombShop_DrawAmount(shop, 0x120, y + 4);
+        CombShop_DrawAmount(shop, 288, y + 4);
         break;
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (shop->step) {
     case COMB_STEP_SLIDE_IN:
     case COMB_STEP_ITEM:
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_COMBINE]);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_COMBINE]);
         break;
     case COMB_STEP_RECIPE:
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_RECIPE]);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_PICK_RECIPE]);
         break;
     case COMB_STEP_AMOUNT:
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_COMBINE_COUNT]);
-        Font_SetPos(0x1FB, 0x184);
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010, gShopPromptTexts[SHOP_PROMPT_COMBINE_COUNT]);
+        Font_SetPos(507, 388);
         sprintf(buf, "%02d", shop->amount);
         Sjis_Widen(buf, wide);
         Text_PrintfColored(wide);
         if (shop->amount <= 98 &&
             CombShop_CanCombine(&shop->lines[shop->itemCursor][shop->line], shop->items[shop->itemCursor], shop->amount + 1,
                                 shop->yieldBase[shop->itemCursor][shop->line])) {
-            Icon_DrawMode(0x1FC, 0x16E, 0x24, 0x16, 0xFF00FF00, 0x29, 2);
+            Icon_DrawMode(508, 366, 36, 22, 0xFF00FF00, 41, 2);
         }
         if (shop->amount > 1) {
-            Icon_DrawMode(0x1FD, 0x196, 0x24, 0x16, 0xFF00FF00, 0x28, 2);
+            Icon_DrawMode(509, 406, 36, 22, 0xFF00FF00, 40, 2);
         }
         break;
     case COMB_STEP_CONFIRM:
-        Win_DrawText(0x120, 0x160, 0x14C, 0x50, 0xBDB59F6C, 0xC0101010,
+        Win_DrawText(288, 352, 332, 80, 0xBDB59F6C, 0xC0101010,
                       Text_FillDollar(gShopPromptTexts[SHOP_PROMPT_PRICE_ASK], shop->amount * CombShop_Price(shop->items[shop->itemCursor])));
-        Font_SetPos(0x1A2, 0x192);
+        Font_SetPos(418, 402);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
@@ -1127,7 +985,7 @@ void CombShop_Draw(MenuTask *task)
     Text_SetSize(task->textSize);
     switch (shop->state) {
     case COMB_STATE_TOP:
-        Menu_DrawLabelList(0x1CC, gItemShopMenuTexts, shop->menuCount, shop->cursor, 0xFFB0B000);
+        Menu_DrawLabelList(460, gItemShopMenuTexts, shop->menuCount, shop->cursor, 0xFFB0B000);
         break;
     case COMB_STATE_BUY:
         Shop_DrawBuy(shop);
@@ -1136,7 +994,7 @@ void CombShop_Draw(MenuTask *task)
         Shop_DrawSell(shop);
         break;
     case COMB_STATE_COMBINE:
-        CombShop_DrawWindow(shop, shop->slideWin.pos, 0x31);
+        CombShop_DrawWindow(shop, shop->slideWin.pos, 49);
         break;
     }
 }

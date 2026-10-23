@@ -22,11 +22,30 @@
 #include "lobby_text.h"
 #include "bgm.h"
 #include "lobby_labels.h"
+#include "chat_log.h"
+#include "net_mode.h"
+#include "scene.h"
+#include "stream.h"
+#include "area_list.h"
+#include "font.h"
+#include "friend_list.h"
+#include "game_util.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "lobby_village.h"
+#include "lobby_web_users.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "move_menu.h"
+#include "name_tags.h"
+#include "quit_menu.h"
+#include "rand.h"
+#include "screen_fade.h"
+#include "libc.h"
 
-void LobbyText_Open(s32);
-void LobbyHelp_SetBox(s16, s16, s16);
-void Lobby_ClearRequests(void);
-void *memset(void *dst, s32 c, u32 n);
 extern MenuWork gMenuWork;
 extern LobbyMenu *gLobbyMenu;
 
@@ -47,7 +66,7 @@ void AreaList_Begin(void)
     gLobbyMenu->redraw = 1;
     memset(&gMenuWork, 0, MENU_WORK_SIZE);
     gMenuWork.areaList.wait = AREA_LIST_SLIDE_FRAMES;
-    LobbyHelp_SetBox(0x24, 0x16A, 0x154);
+    LobbyHelp_SetBox(36, 362, 340);
 }
 
 /* The game built the functions below at optimization level 4, and
@@ -56,85 +75,18 @@ void AreaList_Begin(void)
 
 s32 LobbyNet_GetErrText(char *);
 extern u16 gLobbyLevel0Count;
-s32 NetList0_GetCount(u16 *count);
-s32 NetList0_GetByte(u16 id, u8 *out);
-s32 NetList0_GetUsers(u16 id, u16 *users, u16 *questUsers);
-s32 NetList0_GetName(u16 id, char *dst);
-s32 NetList0_GetText(u16 id, char *dst);
-s32 NetList0_GetMaxUsers(u16 id, u16 *out);
-s32 NetList0_GetValue10(u16 id, u16 *out);
-s32 NetList0_GetKind(u16 id, u8 *out);
-
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-void Lobby_Disconnect(s32);
-s32 NetLevel0ListTask_Start(s32 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *));
-void LobbyStep_Level0ListDone(NetMsg msg, NetMsg *msgPtr);
 
 u32 LobbyLogin_LitColor(u8 slot); /* unit's own declaration: a u8 slot, as this file passes it; with the definition's s32 the call compiles differently */
 
-void LobbyTitle_Set(s32);
-void ChatLog_Clear(void);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LoginWave_Clear(void);
-void LoginWave_Mark(s32);
-u8 FadeA_GetState(void);
-void FadeA_Start(s32);
-void Bgm_PlayWithVolume(s32, s32);
-/* The menu layer's argument; the draws read only its text size. */
-typedef struct TextBox { u8 pad[0x18]; s32 size; } TextBox;
-void AreaList_DrawFrame(TextBox *box);
-void AreaList_DrawPanels(TextBox *box);
-void AreaList_DrawList(void);
 void Text_SetSize(s32 size);
-void Font_SetSpacing(u8 a, u8 b);
-void LobbyLogin_DrawMenu(void);
 void LobbySrv_DrawServerPanel(s16 x, s16 y);
-void LobbySrv_DrawListNamePanel(s16 x, s16 y);
-void AreaList_DrawEntries(s16 x, s16 y);
-void AreaList_DrawGuide(void);
-void LobbyHelp_Draw(void);
-s32 Lobby_StrLength(char *);
-void Gfx_DrawPulseGradient(s16 x, s16 y, s16 w, s16 h, u32 color, u8 dir);
-s16 Lobby_DrawButtonIcon(s16, s16, s32);
-void Font_SetPos(s16, s16);
 void Text_SetColor(s16 color);
 void Text_PrintfColored(char *s, ...);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void LobbyUi_DrawIcon(s16 x, s16 y, s16 size, u32 color, s8 kind);
-u32 AreaList_KindColor(u8 kind);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 seed, s16 lvl);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 colour);
-void Font_SetColor(s32 color);
-extern LobbyMenu *gLobbyMenu;
 extern u8 gLobbyLevel0Sel;
 extern s8 gLobbyLevel1Sel;
 extern s8 gLobbyLevel2Sel;
 
 extern LevelEntry gLobbyLevel0Entries[LEVEL0_ENTRY_MAX];   /* the areas, as sub_main keeps them */
-
-void AreaList_Init(void);
-s32 LobbyStep_Level0List(void);
-void AreaList_Group(AreaList *list);
-s32 AreaList_WaitSlide(void);
-s32 AreaList_Input(void);
-void LobbyHelp_SetText(void *text);
-void LobbyHelp_SetBox(s16 x, s16 y, s16 w);
-void LobbySe_Play(s32 se);
-void LobbyText_Open(s32 msg);
-u16 Rand_Next(s32 stream);
-void QuitMenu_Open(void);
-s32 LobbyLevel_SelId(s32 level);
-s32 LobbyLogin_EnterEntry(s32 id, s32 level);
-void LobbyVillage_Begin(void);
-void Stream_FadeOut(s32, s32);
-void LobbyDialog_OpenWait(void *text);
-u16 Pad_GetCursorButtons(s32 pad);
-s32 QuitMenu_Update(u16 pad);
-s32 LoginWave_Update(void);
 
 /*
  * Runs the area list each frame, by the steps of enum AreaListStep: it
@@ -164,7 +116,7 @@ void AreaList_Run(void)
             gLobby->phaseStep++;
             gLobby->mode = AREA_LIST_MODE_LIST;
             LobbyHelp_SetText(QDL_AREA_KIND_HELP(0));
-            LobbyHelp_SetBox(0x24, 0x16A, 0x154);
+            LobbyHelp_SetBox(36, 362, 340);
             AreaList_Group(list);
             LobbySe_Play(LOBBY_SE_WINDOW_IN);
             list->wait = AREA_LIST_SLIDE_FRAMES;
@@ -293,7 +245,7 @@ void AreaList_Init(void)
     gLobbyLevel1Sel = 0;
     gLobbyLevel2Sel = 0;
     memset(&gLobbyLevel0Entries, 0, LEVEL0_ENTRY_MAX * sizeof(LevelEntry));
-    Bgm_PlayWithVolume(BGM_AREA_LIST, 0x1E);
+    Bgm_PlayWithVolume(BGM_AREA_LIST, 30);
     for (i = 0; i < LEVEL0_ENTRY_MAX; i++) {
         gLobbyLevel0Entries[i].state = 0;
     }
@@ -374,17 +326,6 @@ s32 AreaList_WaitSlide(void)
     return MENU_RUNNING;
 }
 
-u16 Pad_GetCursorButtons(s32 pad);
-s32 Lobby_CanEnterByRank(s32 id, s32 again);
-void LobbyText_Open(s32 msg);
-void LobbySe_Play(s32 se);
-void FriendList_Open(s32 mode);
-s32 FriendList_Update(u16 pad);
-s32 Pad_StepWrap(s32 cur, s32 n, u16 pad);
-s32 Menu_WrapUpDownPad(s32 cur, s32 n, u16 pad);
-void LobbyHelp_SetText(void *text);
-void LobbyHelp_SetBox(s16 x, s16 y, s16 w);
-
 /*
  * The list's input. PAD_CIRCLE, or a pending group join (its area chosen
  * first; a join without a land is dropped), takes the area under the
@@ -461,7 +402,7 @@ s32 AreaList_Input(void)
         }
         if (kind != list->groups[list->group].kind) {
             LobbyHelp_SetText(QDL_AREA_KIND_HELP(list->groups[list->group].kind));
-            LobbyHelp_SetBox(0x24, 0x16A, 0x154);
+            LobbyHelp_SetBox(36, 362, 340);
         }
         break;
     case AREA_LIST_MODE_FRIENDS:
@@ -500,8 +441,8 @@ u32 AreaList_KindColor(u8 kind)
  * the cursor in its kind's colour (with the stamp while it is chosen and
  * entered), the page number, the title and the headings, then a line per
  * area of the page, its name and users of the maximum, with the cursor's
- * bar and blinking mark on the cursor's line. The text's x + 0x14 and
- * y + 0x14 stay ints, narrowed at each call, as the game's code has them.
+ * bar and blinking mark on the cursor's line. The text's x + 20 and
+ * y + 20 stay ints, narrowed at each call, as the game's code has them.
  */
 void AreaList_DrawEntries(s16 x, s16 y)
 {
@@ -514,45 +455,45 @@ void AreaList_DrawEntries(s16 x, s16 y)
     s32 i;
     s16 lineY = y;
 
-    Icon_Draw(x, y, 0x10E, 0x130, -1, 0);
+    Icon_Draw(x, y, 270, 304, -1, 0);
     area = &gLobbyLevel0Entries[list->groups[list->group].ids[list->index] - 1];
     color = AreaList_KindColor(area->kind);
-    LobbyUi_DrawIcon((s16)(x + 0x87), (s16)(y + 0x98), 0x70, color, 2);
+    LobbyUi_DrawLevelMarks((s16)(x + 135), (s16)(y + 152), 112, color, 2);
     switch (gLobby->phaseStep) {
     case AREA_LIST_STAMP:
     case AREA_LIST_ENTER:
-        Menu_DrawStamp(x, y, 0x10E, 0x130, (u16)list->stampSeed, list->shake);
+        Menu_DrawStamp(x, y, 270, 304, (u16)list->stampSeed, list->shake);
         break;
     }
-    textY = y + 0x14;
-    numX = (s16)(x + 0x14) + 0xB4;
+    textY = y + 20;
+    numX = (s16)(x + 20) + 180;
     Menu_DrawPageNum(numX, textY, list->group, list->groupCount, 1);
-    Font_SetPos(x + 0x14, textY);
+    Font_SetPos(x + 20, textY);
     Text_PrintfColored("%s", gListTitles[LIST_TITLE_AREA_LIST]);
     Font_SetColor(0xFF202060);
-    textY = y + 0x28;
-    Font_SetPos(x + 0x14, textY);
+    textY = y + 40;
+    Font_SetPos(x + 20, textY);
     Text_PrintfColored("%s", gListTitles[LIST_TITLE_AREA_NAME]);
     Font_SetPos(numX, textY);
     Text_PrintfColored(gCountLabels[COUNT_LABEL_PEOPLE]);
-    Menu_DrawDashLine(x + 0x14, (s16)textY + 0x10, 0xFA, 0xFF000000);
-    lineY += 0x2C;
+    Menu_DrawDashLine(x + 20, (s16)textY + 16, 250, 0xFF000000);
+    lineY += 44;
     Font_SetColor(0x80101010);
     for (i = 0; i < list->groups[list->group].count; i++) {
         area = &gLobbyLevel0Entries[list->groups[list->group].ids[i] - 1];
-        lineY += 0x14;
-        Font_SetPos(x + 0x14, lineY);
+        lineY += 20;
+        Font_SetPos(x + 20, lineY);
         if (i == list->index) {
             if (gFrameTick & 0x10) {
                 blink = 0;
             } else {
                 blink = 6;
             }
-            Icon_Draw(x + 0x14, lineY + 0xE, 0xE2, 8, 0x99106060, 0x6F);
-            Menu_DrawCursorIcon((s16)(x + 0x14) - 0x18 - blink, lineY - 2, 0x18, 0xFF20C0C0);
+            Icon_Draw(x + 20, lineY + 14, 226, 8, 0x99106060, 111);
+            Menu_DrawCursorIcon((s16)(x + 20) - 24 - blink, lineY - 2, 24, 0xFF20C0C0);
         }
         Text_PrintfColored("%s", area->name);
-        Font_SetPos((s16)(x + 0x14) + 0xAA, lineY);
+        Font_SetPos((s16)(x + 20) + 170, lineY);
         Text_PrintfColored("%3d/%3d", area->users, area->maxUsers);
     }
 }
@@ -560,22 +501,22 @@ void AreaList_DrawEntries(s16 x, s16 y)
 /*
  * Menu layer 0: the login screen's frame (LobbyLogin_DrawMenu) and the
  * panel of the server under the server menu's cursor (LobbySrv_DrawServerPanel),
- * which slides in from the left with the counter AreaList.wait (x = 0x14 -
- * 0x30 * it, 0x1A once it is out). The panel isn't drawn while the list
+ * which slides in from the left with the counter AreaList.wait (x = 20 -
+ * 48 * it, 26 once it is out). The panel isn't drawn while the list
  * is fetched or the friend list is open.
  */
-void AreaList_DrawFrame(TextBox *box)
+void AreaList_DrawFrame(MenuTask *layer)
 {
     s16 x;
     u8 step;
 
-    Text_SetSize(box->size);
-    Font_SetSpacing(0x12, 0x12);
+    Text_SetSize(layer->textSize);
+    Font_SetSpacing(18, 18);
     LobbyLogin_DrawMenu();
     if (((AreaList *)&gMenuWork)->wait < 0) {
-        x = 0x1A;
+        x = 26;
     } else {
-        x = 0x14 - ((AreaList *)&gMenuWork)->wait * 0x30;
+        x = 20 - ((AreaList *)&gMenuWork)->wait * 48;
     }
     step = gLobby->phaseStep;
     if (step == AREA_LIST_INPUT && gLobby->mode == AREA_LIST_MODE_FRIENDS) {
@@ -584,15 +525,15 @@ void AreaList_DrawFrame(TextBox *box)
     if (step == AREA_LIST_SETUP || step == AREA_LIST_FETCH) {
         return;
     }
-    LobbySrv_DrawServerPanel(x, 0x44);
+    LobbySrv_DrawServerPanel(x, 68);
 }
 
 /*
  * Menu layer 1, at the same steps: the current server's name panel
- * (LobbySrv_DrawListNamePanel), sliding in with the counter (x = 0x28 - 0x33 *
- * it, 0x2E once it is out), then the list (AreaList_DrawList).
+ * (LobbySrv_DrawListNamePanel), sliding in with the counter (x = 40 - 51 *
+ * it, 46 once it is out), then the list (AreaList_DrawList).
  */
-void AreaList_DrawPanels(TextBox *box)
+void AreaList_DrawPanels(MenuTask *layer)
 {
     AreaList *list = (AreaList *)&gMenuWork;
     s16 x;
@@ -605,20 +546,20 @@ void AreaList_DrawPanels(TextBox *box)
     if (step == AREA_LIST_SETUP || step == AREA_LIST_FETCH) {
         return;
     }
-    Text_SetSize(box->size);
-    Font_SetSpacing(0x12, 0x12);
+    Text_SetSize(layer->textSize);
+    Font_SetSpacing(18, 18);
     if (list->wait < 0) {
-        x = 0x2E;
+        x = 46;
     } else {
-        x = 0x28 - list->wait * 0x33;
+        x = 40 - list->wait * 51;
     }
-    LobbySrv_DrawListNamePanel(x, 0x62);
+    LobbySrv_DrawListNamePanel(x, 98);
     AreaList_DrawList();
 }
 
 /*
  * The button guide at the foot of the screen: a bar from the text's left
- * edge (0x238 less 9 per character, Lobby_StrLength) to the screen's
+ * edge (568 less 9 per character, Lobby_StrLength) to the screen's
  * right, a mark (Lobby_DrawButtonIcon) and the guide's text.
  */
 void AreaList_DrawGuide(void)
@@ -626,19 +567,19 @@ void AreaList_DrawGuide(void)
     s16 x;
     f32 leftEdge;
 
-    x = 0x238 - Lobby_StrLength(gGameMenuLabels[MENU_LABEL_FRIEND_LIST]) * 9;
+    x = 568 - Lobby_StrLength(gGameMenuLabels[MENU_LABEL_FRIEND_LIST]) * 9;
     leftEdge = x;
-    Gfx_DrawPulseGradient(leftEdge, 0x18E, 640.0f - leftEdge, 0x16, 0x80006000, 1);
-    Lobby_DrawButtonIcon(x + 4, 0x18E, 3);
-    Font_SetPos(x + 0x26, 0x190);
-    Font_SetSpacing(0x12, 0x12);
+    Gfx_DrawPulseGradient(leftEdge, 398, 640.0f - leftEdge, 22, 0x80006000, 1);
+    Lobby_DrawButtonIcon(x + 4, 398, 3);
+    Font_SetPos(x + 38, 400);
+    Font_SetSpacing(18, 18);
     Text_SetColor(0);
     Text_PrintfColored(gGameMenuLabels[MENU_LABEL_FRIEND_LIST]);
 }
 
 /*
  * The list's window (AreaList_DrawEntries), sliding in with the counter
- * (x = 0x1E - 0x32 * it, 0x24 once it is out) and moved by the stamp's
+ * (x = 30 - 50 * it, 36 once it is out) and moved by the stamp's
  * shake; the button guide while no area is chosen and no join is pending;
  * the help line from the input on.
  */
@@ -647,13 +588,13 @@ void AreaList_DrawList(void)
     AreaList *list = (AreaList *)&gMenuWork;
     s16 x;
 
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     if (list->wait < 0) {
-        x = 0x24;
+        x = 36;
     } else {
-        x = 0x1E - list->wait * 0x32;
+        x = 30 - list->wait * 50;
     }
-    AreaList_DrawEntries(x + list->shakeX, list->shakeY + 0x80);
+    AreaList_DrawEntries(x + list->shakeX, list->shakeY + 128);
     if (gLobby->groupJoin == 0 && gLobbyLevel0Sel == 0) {
         AreaList_DrawGuide();
     }

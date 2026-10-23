@@ -22,15 +22,16 @@
 #include "lobby_state.h"
 #include "window.h"
 #include "lobby_labels.h"
+#include "text.h"
+#include "online_mark.h"
+#include "lobby_steps.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "libc.h"
 
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void OnlineMark_Close(void);
-void OnlineMark_Draw(MenuTask *task);
-void LobbySe_Play(s32);
-s32 Menu_WrapUpDown(s32, s32);
-void HunterCard_SendOnlineMark(void);
 extern LobbyMenu *gLobbyMenu;
 
 /* Opens the online mark window: the cursor on the hunter's mark, and the
@@ -86,10 +87,6 @@ s32 OnlineMark_Input(s32 pad)
     return pad;
 }
 
-void *memcpy(void *dst, const void *src, u32 n);
-void Text_SetSize(s32);
-u32 Color_PulseAlpha(u32 color);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
 extern ListPanel gOnlineMarkPanel;
 
 /* Draws the online mark window. First each mark's text gets its colour code
@@ -117,15 +114,15 @@ void OnlineMark_Draw(MenuTask *task)
         }
     }
     Text_SetSize(task->textSize);
-    gOnlineMarkPanel.cursorColor = Color_PulseAlpha(0x8080);
+    gOnlineMarkPanel.cursorColor = Color_PulseAlpha(32896);
     ListPanel_Draw(&gOnlineMarkPanel, (s16 *)0, gNetLabels[NET_LABEL_ONLINE_MARK], gLobbyMenu->cursor);
-    for (y = 0x6B, i = 1; i < ONLINE_MARK_COUNT; y += 0x17, i++) {
+    for (y = 107, i = 1; i < ONLINE_MARK_COUNT; y += 23, i++) {
         if (myCard->onlineMark == i || myCard->onlineMark == ONLINE_MARK_NONE) {
             color = -1; /* untinted */
         } else {
             color = 0xFF707070; /* grey */
         }
-        Icon_Draw(0x1A3, y, 0x19, 0x14, color, ICON_ONLINE_MARK + i);
+        Icon_Draw(419, y, 25, 20, color, ICON_ONLINE_MARK + i);
     }
 }
 

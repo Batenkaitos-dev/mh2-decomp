@@ -1,5 +1,6 @@
 #ifndef EM_HERMITAUR_H
 #define EM_HERMITAUR_H
+#include "em.h"
 
 /*
  * The Hermitaur family's vocabulary (src/game/em_hermitaur.c): Daimyo
@@ -13,7 +14,7 @@
  * whose row N plays motion N, so one number serves Em_SetMotion's row and
  * the motion id EM_MOTION_ID(layer, motion) kept in Em.motionId. The names
  * say what the states that play a motion show; motions no state plays
- * (0x0D-0x10, 0x12, 0x18, which have sounds only) stay numbers.
+ * (13-16, 18, 24, which have sounds only) stay numbers.
  */
 enum EmHermitaurMotion {
     HERM_MOT_IDLE = 0x01,               /* standing; the versus poses end with it */
@@ -39,7 +40,7 @@ enum EmHermitaurMotion {
     HERM_MOT_EMERGE = 0x22,             /* coming up out of the ground */
     HERM_MOT_BURIED = 0x23,             /* under the ground: the shadow is hidden */
     HERM_MOT_CEIL_JET = 0x24,           /* the Shogun's jet from the ceiling (frame 50) */
-    HERM_MOT_BACK_ATTACK_WALK = 0x25,   /* walking backward into the goal with a hit (HermitaurAttack 0x1B) */
+    HERM_MOT_BACK_ATTACK_WALK = 0x25,   /* walking backward into the goal with a hit (HermitaurAttack 27) */
     HERM_MOT_WATER_JET_END = 0x26,
     HERM_MOT_WATER_JET = 0x27,          /* the jet at frame 82, its hit after frame 86 */
     HERM_MOT_GUARD = 0x28,              /* the Daimyo's guard; for the Shogun a turn (EmHermitaur_TurnToGoal) */
@@ -77,6 +78,46 @@ enum EmHermitaurMotion {
     HERM_MOT_RECOIL = 0x4A,             /* thrown back: a guarded wind hit, a broken claw's flinch */
     HERM_MOT_RECOIL_END = 0x4B,
     HERM_MOT_FLINCH_END = 0x4C          /* after HERM_MOT_FLINCH */
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code and its hit shapes show a bone to be:
+ * the monster's own hit shapes (gEmBoneHits: each shape's bone and the part
+ * it belongs to), the shapes of the hits HermitaurAttack_Create makes on
+ * given frames of a motion (HermitaurAttack_HitShapes, by the attack rows'
+ * hit lists), where a shot or an effect starts, and the bones the steps'
+ * sounds take turns at. "A" and "B" follow the parts and the reactions: claw
+ * A is part 5 (HERM_REACT_RECOIL_CLAW_A), claw B part 6, the legs of side A
+ * are part 3 (HERM_REACT_KNOCK_DOWN_A), those of side B part 4. Which side
+ * is left the code doesn't show. Bone 14 stays a number: most of the
+ * family's sounds play there, but no hit shape or effect explains it.
+ */
+enum EmHermitaurBone {
+    HERM_BONE_LANDING = 1,      /* the landing's ground effect (HERM_MOT_LEAP_LAND, frame 8, with the impact attacks) */
+    HERM_BONE_BODY = 2,         /* part 1's sphere, the body's in the wide hits; the digging, falls and landings sound here */
+    HERM_BONE_CLAW_A = 6,       /* claw A (part 5): the sphere of its hits (hit list 0, with a capsule on bone 5), the dust where its strikes land, and the Shogun's claw that swells with its rage (Em_AdjustKindBones) */
+    HERM_BONE_CLAW_B = 10,      /* claw B (part 6): the same, with hit list 1's capsule on bone 9 */
+    HERM_BONE_SIDE_A = 11,      /* the ground effects and dust of side A: HERM_MOT_KNOCK_DOWN lands there at frame 28; also the digging, the windup strike and the thrust up out of the ground */
+    HERM_BONE_SIDE_B = 12,      /* the same for side B: HERM_MOT_KNOCK_DOWN_B lands there at frame 28; also the leaps, falls and coming up out of the ground */
+    HERM_BONE_LEG_A1 = 17,      /* side A's legs (part 3's capsules on bones 17, 18, 21 and 22): the steps sound at 17 and 21 in turn with side B's */
+    HERM_BONE_LEG_A2 = 21,
+    HERM_BONE_LEG_B1 = 26,      /* side B's legs (part 4's capsules on bones 25, 26, 29 and 30): the steps sound at 26 and 30 */
+    HERM_BONE_LEG_B2 = 30,
+    HERM_BONE_BREATH = 31,      /* part 0's sphere; where the Ceanataur's shot (EMRANGED_HERMITAUR_SHOT) and the lying puffs start */
+    HERM_BONE_STUN_STARS = 37   /* where the stun stars circle (StunStars_CreateEm, EmHermitaur_Stun) */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (the program
+ * gSeBankByType gives the kind; Em_PlaySeAtBone and Em_PlaySeChecked). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmHermitaurSe {
+    HERM_SE_GUARD_HIT = 45,     /* a hit landing on the Daimyo's guard (Em.hermitTimer running): EmHermitaur_Update plays it on that frame */
+    HERM_SE_RAGE_CLAW = 46      /* the Shogun's rage starting: at HERM_BONE_CLAW_B on that frame, at HERM_BONE_CLAW_A three frames later, while its claws turn and swell (EmHermitaur_RageFxRatio) */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmHermitaur_RunIdleState). In combat,
@@ -246,5 +287,46 @@ enum EmHermitaurVersusState {
     HERM_VS_WAIT_BOTH = 0x98,           /* Versus_MarkDefeat */
     HERM_VS_END = 0x99
 };
+
+extern void *EmHermitaur_Callbacks[8];
+void EmHermitaur_MotionSounds(Em *em, EmWork *work);
+void EmHermitaur_Init(Em *em, s16 keepState);
+void EmHermitaur_Start(Em *em);
+f32 EmHermitaur_RageFxRatio(Em *em);
+void EmHermitaur_Update(Em *em);
+void EmHermitaur_TurnInPlace(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_Walk(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_WalkAlert(Em *em, EmWork *work, s32 direction, s32 fast);
+void EmHermitaur_Sidestep(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_TurnInPlaceAlert(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_BuriedTurnToGoal(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_BuriedMoveToGoal(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_CeilingTurn(Em *em, s32 work, s32 variant);
+void EmHermitaur_WaterJet(Em *em, EmWork *work);
+void EmHermitaur_Guard(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_BurrowToAmbush(Em *em, EmWork *work);
+void EmHermitaur_AmbushWait(Em *em, EmWork *work);
+void EmHermitaur_UnderThrustSeries(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_CeilingJet(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_TurnToGoal(Em *em, EmWork *work, s32 variant);
+void EmHermitaur_KnockDown(Em *em, EmWork *work, s16 variant);
+void EmHermitaur_Die(Em *em, EmWork *work);
+void EmHermitaur_Reappear(Em *em, EmWork *work);
+void EmHermitaur_DaimyoIntro(Em *em);
+void EmHermitaur_ShogunIntro(Em *em);
+void EmHermitaur_VsEatBait(Em *em, EmWork *work);
+void EmHermitaur_VsPoseA(Em *em, EmWork *work);
+void EmHermitaur_VsPoseC(Em *em, EmWork *work);
+void EmHermitaur_RunState(Em *em);
+void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmHermitaur_EndToIdle(Em *em);
+void EmHermitaur_EndToIdleAlert(Em *em);
+void EmHermitaur_EndToBuried(Em *em);
+void EmHermitaur_EndToCeiling(Em *em);
+void EmHermitaur_SpawnGroundEffect(Em *em, s32 bone, s32 effectKind, f32 scale);
+void EmHermitaur_MotionEffectsDefault(Em *em);
+void EmHermitaur_MotionEffects(Em *em, EmWork *work);
+s32 EmHermitaur_SprayBoosted(Em *em);
+s32 EmHermitaur_AreaHasCeiling(u16 area);
 
 #endif /* EM_HERMITAUR_H */

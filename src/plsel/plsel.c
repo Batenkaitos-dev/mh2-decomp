@@ -16,6 +16,7 @@
 #include "common.h"
 #include "sprite.h"
 #include "syssettings.h"
+#include "screen_fade.h"
 extern u16 gFrameTick; /* sub_main: the frame counter */
 extern s8 gChatTarget;
 extern s32 gTexHandles[];
@@ -36,182 +37,75 @@ extern s32 gTexHandles[];
 #include "hud.h"               /* IconUV: the weapon icons' texture corners */
 #include "prim.h"              /* PrimLine: Prim_FillRect's rectangle */
 #include "plsel/plsel.h"   /* the texts this file uses (tools/content_gen.py) */
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "place_rules.h"
+#include "fishing.h"
+#include "kbd.h"
+#include "light.h"
+#include "model.h"
+#include "qnet.h"
+#include "stream.h"
+#include "text.h"
+#include "texture.h"
+#include "area.h"
+#include "chat_phrases.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "file_load.h"
+#include "font.h"
+#include "frame.h"
+#include "game_util.h"
+#include "gs_setup.h"
+#include "sys_main.h"
+#include "tex_files.h"
+#include "libc.h"
 
 /* The game compiled this file at optimization level 4 (the build's -O3,p
  * plus MWCC's level-4 passes): Plsel_InitSlots matches only there, and every
  * other function compiles the same at both levels. */
 #pragma optimization_level 4
 
-void FadeA_Reset(void);
-void Text_Printf(const char *fmt, ...);
-s32 Tex_LoadPack(s32 id, s32 slot, s32 kind);
-void Tex_LoadSystemPack(s32);
-void Tex_LoadFile(s32 file, s32 slot, s32 kind);
-void Game_ResetSubsystems(void);
-void Area_ClearState(void);
-void Player_ClearAll(void);
-void Sound_PlaySeMusicVol(u32 slot, u32 id, s32 prog);
-s32 Sound_LoadSelectBanks(void *task);
-void Sound_OnBanksLoaded(void);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16, s16);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel); /* sub_main: b is a ListPanel * */
-void Text_SetColor(s16 color);
 
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 /* Plsel_ChatRunKbd's call passes held as a full word and takes the result
  * as an int; with the definition's s8 (char *dst, s16 held, s16 pressed),
  * the call would narrow both first, which the game's code doesn't do.
  * unit's own declaration: declared as the caller uses it. */
 s32 Kbd_Run(char *dst, s32, s16);
-s32 Kbd_ActHotkeys(void);
-s32 sprintf(char *, const char *, ...);
-char *strcat(char *dst, const char *src);
-void Sjis_Widen(char *src, char *dst);
 extern PlselPreset *gPlselPresets[];
 extern u16 gPlselPresetStages[];
 
-void Gfx_SetTexFilter(s32);
-void Tex_Prepare(s32, s32);
-void Tex_Bind(s32);
-s32 Sprite_Draw(Sprite *s);
-s32 Game_IsOnline(void);
-void Plsel_ChatOpenKbd(s32 mode);
-void Plsel_ChatInput(u16 unused);
-char *strcpy(char *dst, const char *src);
-void *memset(void *, s32, u32);
 extern s32 gItemColors[];
-extern char gMemberNames[][0x11];
+extern char gMemberNames[][17];
 
-void QSync_SendState(u8 kind, u8 who);
-void TaskSlot_End(TaskSlot *t);
-void Player_SetColorWord(Player *pl, u8 idx);
-void Plsel_InitPlayer(Player *p, s16 id);
 void Player_SetMotionPair(Player *p, s32 motion, s32 a, s16 b);
-void Player_UpdateMotionStep(struct Player *);
 
-s32 Pouch_SetAtLeast(Player *p, u16 mode, u16 item, s16 n);
 extern s16 *gStartItemLists[];
 
-u8 Plsel_PresetSetForStage(void);
-void Plsel_InitSelWork(void);
-
-void Kbd_SetPos(s32 n, f32 f);
-void Chat_OpenKbd(s32 flags, s32 b, u16 c, void *d);
-void Kbd_SetSubmitWait(s32 arg0);
-void Vec_Copy(f32 *dst, f32 *src);
-
-void Window_DrawText(void *p, s16 *pos, u8 *text);
-
-u16 Equip_GetKind(EquipItem *e);
 extern PlselPreset *gTrainingPresets[];
 
-s32 Tex_Use(s32 n, u32 *handles);
-void Plsel_Setup(TaskSlot *task);
-void Plsel_Finish(TaskSlot *task);
-void Plsel_WaitPlayersReady(TaskSlot *task);
-void Plsel_DebugMenu(TaskSlot *task);
-void Loading_Stop(void);
-void Quest_Finish(void);
-void Frame_Draw(void);
-
-void QuestSync_Clear(void);
-void Plsel_InitSlots(void);
-
-void Loading_SetMessage(u32 mode);
-
-s32 Quest_DefaultEmKind(void);
-
-void Chat_FilterWords(char *s);
 void Plsel_AddChatLog(u8 who, char *msg, NetUserRec *from, u8 flag);
 extern u8 gChatClassColors[];
 extern char gPlayerIds[][8];
 
-s32 Chat_FilterIfNotBlank(u8 *);
-void QSync_SendChat(u8 who, u8 kind, char *text, u8 toPlayer);
-void Kbd_Cancel(void);
-u8 Plsel_ChatRunKbd(u8 *, s32, s16);
-
-void Plsel_DrawFrame(s32 arg0);
-s32 Gs_SetState(u8 reg, u32 v);
-void Plsel_DrawHeader(u16);
-void Plsel_DrawEquipPage(DrawSlot *hook);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 extern DrawSlot gSelectDrawHook;
 
-void Player_InitPartTable(s32 idx);
 void Player_LoadPartModels(struct Player *);
-void Player_ClearFxBlock(Player *p);
-void Player_InitRecords(Player *p);
 extern f32 gStartPos[][3];
-void QNetIf_Ready(s32);
-void Gs_SetTableColor(s32);
-void Anim_LoadCommon(s32);
-void Camera_Reset(void);
-void CamCtl_Clear(void);
-void Light_InitAll(s32 unused0);
-void Plsel_SetupPresetPlayer(Player *, s16);
-void FadeA_Start(s32);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void Kbd_Close(void);
-void DrawCb_LocalPlayer(DrawSlot *r);
 
 struct PlModels;
 void Player_FreeModels(struct Player *p);
 void Player_FreeWeaponModel(Player *p);
-void Plsel_SetupSavedPlayer(Player *p, s16 id);
-void QNetIf_Unready(void);
-void Stream_Play(s32, s32);
 
-void Plsel_SetupPresetPouch(Player *p, s32 n);
 u8 Equip_GetClass(EquipItem *e);
-u8 WeaponClass_IsGunner(u8);
-u8 WeaponType_Flags(u8);
-u8 Equip_GetBladeSpecial(EquipItem *e);
-void Player_LoadWeaponModel(s32 kind, s32 pl);
-
-s8 Kbd_IsOpen(void);
-void Stream_FadeOut(s32 ch, s32 frames);
-u8 FadeA_GetState(void);
 
 extern char gMyUserId[];
 extern char gMyName[];
 
 extern char gPlselFmtString[];
-
-void Plsel_StateReady(TaskSlot *task);
-void Plsel_SelectInit(TaskSlot *task);
-void Plsel_SelectWaitSound(TaskSlot *task);
-void Plsel_SelectStartChoose(TaskSlot *task);
-void Plsel_SelectSetupPlayers(TaskSlot *task);
-void Plsel_StateChoose(TaskSlot *task);
-void Players_RunEquipEffects(void);
-void Players_UpdateMatrices(void);
-void LightSet_UpdateAll(void);
-void Camera_Update(void);
-s32 Gs_GetState(u8 reg);
-s32 Gs_ClearColor(u8 mode, u32 color);
-void Gfx_SetBlend(s32, s32);
-void Chat_DrawKbdBox(s32 text);
-void Text_FlushPages(void);
-void Plsel_DrawChatWindow(s32 arg0, u8 n, s32 arg2);
-void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size);
-void Text_DrawAllPages(void);
-void Plsel_TickTimers(void);
-
-void Plsel_PlayDecideSe(void);
-void Plsel_PlayCursorSe(void);
-void Plsel_PlayChooseSe(void);
-PlselPreset *Plsel_CurPreset(void);
-void Plsel_SetCamera(void);
-s32 Plsel_ChatUpdate(void);
-void Plsel_DrawChooseScreen(TaskSlot *task);
-void Plsel_PlayerMenuUpdate(u16 pad);
-void Plsel_OpenPlayerMenu(u16 idx);
-void Sound_PlayCancel(void);
 
 /* The overlay's data: the preset hunters' looks, the weapon icons' tints
  * and texture corners, the slot colours, the panels. */
@@ -224,13 +118,13 @@ u32 gPlselWeaponIconColors[4] = {
 IconUV gPlselWeaponIconUVs[11] = {
 #include "plsel/00D75FB0.inc"
 };
-u32 gPlselSlotColors[2] = {
+u8 gPlselSlotColors[8] = {
 #include "plsel/00D76008.inc"
 };
 ListPanel gPlselListPanel = {
 #include "plsel/00D76010.inc"
 };
-u32 gPlselEquipIconIds[4] = {
+u8 gPlselEquipIconIds[16] = {
 #include "plsel/00D76030.inc"
 };
 Panel gPlselChatWin = {
@@ -278,7 +172,6 @@ void plsel_entry(TaskSlot *task)
     }
 }
 
-extern s32 gPlselTexPack;
 /*
  * PLSEL_ENTRY_SETUP: resets the subsystems, the players, the area and the
  * fade, loads the texture file and the overlay's pack (PLSEL_TEX_BG on), and
@@ -318,7 +211,7 @@ void Plsel_WaitPlayersReady(TaskSlot *task)
         QuestSync_Clear();
         Plsel_InitSlots();
         sync->ready[self] = 1;
-        sync->timer = 0xE10;
+        sync->timer = 3600;
         QSync_SendState(QSYNC_STATE_SETUP, gScene.localPlayer);
         break;
     case 1:
@@ -357,7 +250,7 @@ void Plsel_Finish(TaskSlot *task)
     switch (sync->step) {
     case 0:
         sync->step++;
-        sync->timer = 0x1E;
+        sync->timer = 30;
         QSync_SendState(QSYNC_STATE_SETUP, gScene.localPlayer);
     case 1:
         if (--sync->timer <= 0) {
@@ -381,7 +274,7 @@ static void Plsel_DrawDebugMenu(QuestSync *sync, TaskSlot *task)
 
 /*
  * PLSEL_ENTRY_DEBUG, a debug menu of the quest's monsters: up and down pick
- * a monster group (0-3), right and left change its kind (0-0x49, wrapping),
+ * a monster group (0-3), right and left change its kind (0-73, wrapping),
  * cross and circle its count (0-15); start ends the task when the four
  * counts total under 16. The pad and the scene are read through raw
  * addresses: their named forms change the code.
@@ -416,7 +309,7 @@ void Plsel_DebugMenu(TaskSlot *task)
             }
         }
         if (pad & PAD_RIGHT) {
-            if (sync->emKind[sync->cursor] >= 0x49) {
+            if (sync->emKind[sync->cursor] >= 73) {
                 sync->emKind[sync->cursor] = 0;
             } else {
                 sync->emKind[sync->cursor]++;
@@ -424,7 +317,7 @@ void Plsel_DebugMenu(TaskSlot *task)
         }
         if (pad & PAD_LEFT) {
             if (sync->emKind[sync->cursor] <= 0) {
-                sync->emKind[sync->cursor] = 0x49;
+                sync->emKind[sync->cursor] = 73;
             } else {
                 sync->emKind[sync->cursor]--;
             }
@@ -435,7 +328,7 @@ void Plsel_DebugMenu(TaskSlot *task)
             }
         }
         if (pad & PAD_CIRCLE) {
-            if (sync->emCount[sync->cursor] < 0xF) {
+            if (sync->emCount[sync->cursor] < 15) {
                 sync->emCount[sync->cursor]++;
             }
         }
@@ -444,7 +337,7 @@ void Plsel_DebugMenu(TaskSlot *task)
             for (i = 0; i < 4; i++) {
                 sum += sync->emCount[i];
             }
-            if (sum < 0x10) {
+            if (sum < 16) {
                 Loading_SetMessage(4);
                 gSysSettings.unk03 = 1;
                 Game_ResetSubsystems();
@@ -510,7 +403,6 @@ void Plsel_InitSlots(void)
     sync->emCount[3] = 0;
 }
 
-extern s32 gChatTitleText;
 /*
  * The training quest's select task (sub_main starts it when Quest_IsDrill):
  * runs its steps (PlselSelMode), updates the players, the lights and the
@@ -559,14 +451,14 @@ void Plsel_SelectTask(TaskSlot *task)
         Gs_SetState(RS_ZWRITE, 1);
         Gs_ClearColor(0, 0);
         Gs_SetState(RS_ZWRITE, 0);
-        Gfx_SetBlend(4, 5);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
         Chat_DrawKbdBox(w->kbdOpen != 0 ? 0xBDB59F6C : 0xBD6C6CC5);
         Gs_SetState(RS_ZWRITE, zwrite);
         Text_FlushPages();
     }
     if ((s8)Kbd_IsOpen() != 0 || w->logShowTimer != 0) {
-        Plsel_DrawChatWindow(gChatTitleText, 0x12, 1);
-        Plsel_DrawChatLog(0, 0, 0, 0x12);
+        Plsel_DrawChatWindow(gChatTitleText, 18, 1);
+        Plsel_DrawChatLog(0, 0, 0, 18);
         Text_DrawAllPages();
     }
     Plsel_TickTimers();
@@ -591,18 +483,18 @@ void Plsel_DrawHeader(u16 row)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, PLSEL_TEX_HEADER);
     Tex_Bind(PLSEL_TEX_HEADER);
-    spr.x = -0xA;
+    spr.x = -10;
     spr.u0 = 0;
-    spr.y = 0xA;
-    spr.w = 0xC0;
-    spr.h = 0x30;
+    spr.y = 10;
+    spr.w = 192;
+    spr.h = 48;
     spr.color = -1;
     spr.v0 = row << 5;
-    spr.u1 = 0x7F;
-    spr.v1 = spr.v0 + 0x1F;
+    spr.u1 = 127;
+    spr.v1 = spr.v0 + 31;
     Sprite_Draw(&spr);
 }
 
@@ -615,30 +507,30 @@ void Plsel_DrawFrame(s32 unused)
     Sprite spr;
 
     Gs_SetState(RS_ZWRITE, 0);
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, PLSEL_TEX_BG);
     Tex_Bind(PLSEL_TEX_BG);
     spr.x = 0;
     spr.y = 0;
-    spr.w = 0x280;
-    spr.h = 0x1C0;
+    spr.w = 640;
+    spr.h = 448;
     spr.color = -1;
     spr.v0 = 0;
     spr.u0 = 0;
-    spr.u1 = 0x1FF;
-    spr.v1 = 0x1BF;
+    spr.u1 = 511;
+    spr.v1 = 447;
     Sprite_Draw(&spr);
     Tex_Prepare(1, PLSEL_TEX_PANEL);
     Tex_Bind(PLSEL_TEX_PANEL);
-    spr.x = 0x20;
-    spr.y = 0x174;
-    spr.w = 0x100;
-    spr.h = 0x46;
+    spr.x = 32;
+    spr.y = 372;
+    spr.w = 256;
+    spr.h = 70;
     spr.color = 0xE0202020;
     spr.v0 = 0;
     spr.u0 = 0;
-    spr.u1 = 0xFF;
-    spr.v1 = 0x45;
+    spr.u1 = 255;
+    spr.v1 = 69;
     Sprite_Draw(&spr);
     Gs_SetState(RS_ZWRITE, 1);
 }
@@ -661,7 +553,6 @@ void Plsel_SetCamera(void)
     gCamera->eye[2] += 160.0f;
 }
 
-extern s32 gSystemTexFiles[];
 extern u16 gNextQuestId;
 /*
  * PLSEL_SEL_INIT: resets, loads the system packs (PLSEL_TEX_ICONS and
@@ -686,7 +577,7 @@ void Plsel_SelectInit(TaskSlot *task)
     task->unk14 = 0;
     task->unk15 = gSysSettings.unk45;
     Plsel_InitSlots();
-    gNextQuestId = 0xFFFF;
+    gNextQuestId = 65535;
     gQuestSync.presetSet = Plsel_PresetSetForStage();
     gQuestSync.builtSet = PLSEL_SET_NONE;
     gQuestSync.pick = 1;
@@ -710,7 +601,7 @@ void Plsel_SelectInit(TaskSlot *task)
             pl->drawSlot->draw = DrawCb_LocalPlayer;
         }
     }
-    task->timeLeft = 0xE10;
+    task->timeLeft = 3600;
     gScene.plselOpen = 1;
     Plsel_InitSelWork();
     Kbd_Close();
@@ -728,7 +619,7 @@ void Plsel_SelectWaitSound(TaskSlot *task)
         Sound_OnBanksLoaded();
         task->mode++;
         task->step = 0;
-        gQuestSync.timer = 0xF;
+        gQuestSync.timer = 15;
         Sound_PlaySeMusicVol(1, 0, 0);
         Sound_PlaySeMusicVol(1, 1, 0);
     }
@@ -768,7 +659,7 @@ void Plsel_InitPlayer(Player *pl, s16 slotIndex)
 
 /*
  * Builds the preview hunter from gPlselPresetPlayers[gender]: its look and
- * armour, no weapon, at PLSEL_PREVIEW_PLAYER, in motion 0x2B9.
+ * armour, no weapon, at PLSEL_PREVIEW_PLAYER, in motion 697.
  */
 void Plsel_SetupPresetPlayer(Player *pl, s16 n)
 {
@@ -791,7 +682,7 @@ void Plsel_SetupPresetPlayer(Player *pl, s16 n)
     pl->weaponType = 0;
     pl->weaponKind = 0;
     Plsel_InitPlayer(pl, PLSEL_PREVIEW_PLAYER);
-    Player_SetMotionPair(pl, 0x2B9, 0, 0);
+    Player_SetMotionPair(pl, 697, 0, 0);
     Player_UpdateMotionStep(pl);
 }
 
@@ -962,7 +853,7 @@ void Plsel_SelectSetupPlayers(TaskSlot *task)
             Plsel_SetupSavedPlayer(pl, i);
         }
     }
-    sync->yaw = 0x1000;
+    sync->yaw = ANGLE_TURN / 16;
     gCamera->at[0] += 80.0f;
     gCamera->eye[0] = gCamera->at[0];
     gCamera->eye[2] += 190.0f;
@@ -971,7 +862,7 @@ void Plsel_SelectSetupPlayers(TaskSlot *task)
     FadeA_Start(FADE_IN_BLACK);
     QNetIf_Unready();
     Loading_Stop();
-    Stream_Play(0, 0x125);
+    Stream_Play(0, 293);
 }
 
 /*
@@ -982,8 +873,8 @@ void Plsel_DrawEquipPanel(void)
 {
     ListPanel_Draw(&gPlselListPanel, 0, 0, -1);
     Text_SetColor(0);
-    Font_SetPos(0x146, 0x14E);
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetPos(326, 334);
+    Font_SetSpacing(20, 20);
 }
 
 /*
@@ -1024,21 +915,21 @@ void Plsel_DrawItemIcon(u16 item, s16 x, s16 y)
     n = data->icon + 1;
     spr.x = x;
     spr.y = y;
-    spr.w = 0x1B;
-    spr.h = 0x14;
+    spr.w = 27;
+    spr.h = 20;
     cellU = (n & 7) * 32;
     cellV = (n >> 3) * 32;
     spr.u0 = cellU + 1;
-    spr.u1 = cellU + 0x1F;
+    spr.u1 = cellU + 31;
     spr.v0 = cellV + 1;
-    spr.v1 = cellV + 0x1F;
+    spr.v1 = cellV + 31;
     spr.color = gItemColors[data->color];
     Sprite_Draw(&spr);
 }
 
 /*
- * Draws an equipment icon: flag 0 weapon class n's (icon n + 0x3F), flag 1
- * armour piece n's (gPlselEquipIconIds' byte n + 0x4A).
+ * Draws an equipment icon: flag 0 weapon class n's (icon n + 63), flag 1
+ * armour piece n's (gPlselEquipIconIds' byte n + 74).
  */
 void Plsel_DrawEquipIcon(s16 x, s16 y, u8 flag, u8 n, s32 unused)
 {
@@ -1048,20 +939,20 @@ void Plsel_DrawEquipIcon(s16 x, s16 y, u8 flag, u8 n, s32 unused)
     s32 cellV;
 
     if (flag == 0) {
-        id = n + 0x3F;
+        id = n + 63;
     } else {
-        id = ((u8 *)gPlselEquipIconIds)[n] + 0x4A;
+        id = gPlselEquipIconIds[n] + 74;
     }
     spr.x = x;
     spr.y = y - 2;
-    spr.w = 0x18;
-    spr.h = 0x18;
+    spr.w = 24;
+    spr.h = 24;
     cellU = (id & 7) * 32;
     cellV = (id >> 3) * 32;
     spr.u0 = cellU + 1;
-    spr.u1 = cellU + 0x1F;
+    spr.u1 = cellU + 31;
     spr.v0 = cellV + 1;
-    spr.v1 = cellV + 0x1F;
+    spr.v1 = cellV + 31;
     spr.color = -1;
     Sprite_Draw(&spr);
 }
@@ -1074,32 +965,30 @@ void Plsel_DrawArrow(s32 flag, s16 x, s16 y)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, PLSEL_TEX_WEAPON_ICONS);
     Tex_Bind(PLSEL_TEX_WEAPON_ICONS);
-    spr.w = 0x18;
+    spr.w = 24;
     spr.x = x;
     spr.y = y;
-    spr.h = 0x1E;
+    spr.h = 30;
     spr.color = 0xFF32BC64;
     if (flag == 0) {
         spr.x -= gQuestSync.bumpLeft;
-        spr.u0 = 0xFF;
-        spr.u1 = 0xF0;
+        spr.u0 = 255;
+        spr.u1 = 240;
     } else {
         spr.x += gQuestSync.bumpRight;
-        spr.u0 = 0xF0;
-        spr.u1 = 0xFF;
+        spr.u0 = 240;
+        spr.u1 = 255;
     }
-    spr.v0 = 0xEC;
-    spr.v1 = 0xFF;
+    spr.v0 = 236;
+    spr.v1 = 255;
     Sprite_Draw(&spr);
 }
 
 INCLUDE_RODATA("asm/plsel/nonmatchings/plsel", gPlselFmtConcat);
 
-extern char *gPlayerNumFormat;
-extern char *gPlselReadyText;
 /*
  * Draws the local player's panel (the weapon-class icon of the preset under
  * its cursor and its player number), then a smaller panel for each other
@@ -1108,79 +997,54 @@ extern char *gPlselReadyText;
 void Plsel_DrawPlayerList(void)
 {
     ListPanel win;
-    char buf[0x10];
-    char txt[0x10];
+    char buf[16];
+    char txt[16];
     s16 x;
     s16 i;
 
-    x = 0x1E;
+    x = 30;
     win = gPlselListPanel;
     win.flags = 0;
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     win.x = x;
-    win.y = 0x50;
-    win.charW = 0x12;
-    win.charH = 0xF;
+    win.y = 80;
+    win.charW = 18;
+    win.charH = 15;
     win.lineChars = 3;
     win.lines = 3;
     ListPanel_Draw(&win, 0, 0, -1);
-    Plsel_DrawWeaponIcon(x, 0x50, 0x30, gScene.localPlayer, (s16)gPlayers[gQuestSync.pick].weaponType);
+    Plsel_DrawWeaponIcon(x, 80, 48, gScene.localPlayer, (s16)gPlayers[gQuestSync.pick].weaponType);
     sprintf(buf, gPlayerNumFormat, gScene.localPlayer + 1);
     Sjis_Widen(buf, txt);
-    Font_SetPos(0x26, 0x38);
+    Font_SetPos(38, 56);
     Text_Printf("~C00%s", txt);
     win.lineChars = 2;
-    x += 0x50;
+    x += 80;
     win.lines = 2;
     for (i = 0; i < gScene.playerCount; i++) {
         if (i != gScene.localPlayer && gScene.inQuest[i] == IN_QUEST_YES) {
             win.x = x;
             ListPanel_Draw(&win, 0, 0, -1);
-            Plsel_DrawWeaponIcon(x, 0x50, 0x20, i, (s16)gPlayers[gQuestSync.picks[i] & QSYNC_PICK_INDEX].weaponType);
-            Font_SetSpacing(0x10, 0x10);
+            Plsel_DrawWeaponIcon(x, 80, 32, i, (s16)gPlayers[gQuestSync.picks[i] & QSYNC_PICK_INDEX].weaponType);
+            Font_SetSpacing(16, 16);
             sprintf(buf, gPlayerNumFormat, i + 1);
             Sjis_Widen(buf, txt);
-            Font_SetPos(x + 4, 0x3A);
+            Font_SetPos(x + 4, 58);
             Text_Printf("~C00%s", txt);
             if (gQuestSync.picks[i] & QSYNC_PICK_TAKEN) {
-                Font_SetPos(x - 8, 0x7C);
+                Font_SetPos(x - 8, 124);
                 Text_Printf(gPlselFmtString, gPlselReadyText);
             }
-            Font_SetSpacing(0x12, 0x12);
-            x += 0x36;
+            Font_SetSpacing(18, 18);
+            x += 54;
         }
     }
 }
 
 INCLUDE_RODATA("asm/plsel/nonmatchings/plsel", gPlselFmtString);
 
-f32 Math_Sin(f32);
-s32 Prim_FillRect(PrimLine *r);
-s32 Text_DisplayLength(char *);
-void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
-u8 Weapon_GetClass(u8, u16);
-void Plsel_DrawPlayerMenu(void);
-extern char *gWeaponTypeNames[];
-extern char *gPlselYesNoTexts[];
-extern char *gBladeNames[];
-extern char *gGunNames[];
-extern char *gArmorHeadNames[];
-extern char *gArmorBodyNames[];
-extern char *gArmorArmsNames[];
-extern char *gArmorWaistNames[];
-extern char *gArmorLegsNames[];
 extern char gPlselFmtConcat[];
 
-extern char *gPlselHelpOffline;
-extern char *gPlselHelpOnline;
-extern char *gPlselEquipPrompt;
-extern char *gPlselStartPrompt;
-extern char *gPlselNoRechooseText;
-extern char *gPlselPointRateFormat;
-extern char *gPlselEquipTypeLabel;
-extern char *gPlselWaitLine1;
-extern char *gPlselWaitLine2;
-extern char*gPlselTexts[];
 /* The equipment page, a draw callback (hook is the draw slot, its owner the
  * select task): the preset's name and number, the weapon and the armour
  * pieces, the items, then the prompt of the task's step. */
@@ -1188,8 +1052,8 @@ void Plsel_DrawEquipPage(DrawSlot *hook)
 {
     ListPanel win;
     PrimLine rect;
-    char buf[0x80];
-    char txt[0x80];
+    char buf[128];
+    char txt[128];
     s16 x;
     PlselPreset *preset;
     TaskSlot *task;
@@ -1208,37 +1072,37 @@ void Plsel_DrawEquipPage(DrawSlot *hook)
     }
     Math_Sin((f32)(u16)((gFrameTick & 0x3F) << 10) * 0.0000958738f);
     win = gPlselListPanel;
-    win.x = 0x148;
-    win.y = 0x1E;
-    win.lineChars = 0xE;
+    win.x = 328;
+    win.y = 30;
+    win.lineChars = 14;
     win.lines = 7;
     win.flags = 0;
     ListPanel_Draw(&win, 0, " ", -1);
     sel = sync->pick;
     preset = Plsel_CurPreset();
-    Font_SetSpacing(0x10, 0x10);
-    Text_PrintfAt(0x15A, 0x22, 5, gPlselFmtConcat, gPlselEquipTypeLabel, gWeaponTypeNames[(u8)Weapon_GetClass(preset->weaponType, preset->weaponId)]);
-    Text_PrintfAt(0x236, 0x22, 5, "%d/%d", (u8)Plsel_ViewedSlotNo(sync->presetSet, sel), (u8)Plsel_SlotCount(sync->presetSet));
-    Plsel_DrawArrow(0, 0x13A, 0x1A);
-    Plsel_DrawArrow(1, 0x256, 0x1A);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(16, 16);
+    Text_PrintfAt(346, 34, 5, gPlselFmtConcat, gPlselEquipTypeLabel, gWeaponTypeNames[(u8)Weapon_GetClass(preset->weaponType, preset->weaponId)]);
+    Text_PrintfAt(566, 34, 5, "%d/%d", (u8)Plsel_ViewedSlotNo(sync->presetSet, sel), (u8)Plsel_SlotCount(sync->presetSet));
+    Plsel_DrawArrow(0, 314, 26);
+    Plsel_DrawArrow(1, 598, 26);
+    Font_SetSpacing(18, 18);
     Tex_Prepare(1, PLSEL_TEX_ICONS);
     Tex_Bind(PLSEL_TEX_ICONS);
-    Plsel_DrawEquipIcon(0x152, 0x3C, 0, Weapon_GetClass(preset->weaponType, preset->weaponId), 0);
+    Plsel_DrawEquipIcon(338, 60, 0, Weapon_GetClass(preset->weaponType, preset->weaponId), 0);
     if (preset->weaponType == EQUIP_BLADE) {
-        Text_PrintfAt(0x16A, 0x3C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gBladeNames[preset->weaponId]);
+        Text_PrintfAt(362, 60, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gBladeNames[preset->weaponId]);
     } else {
-        Text_PrintfAt(0x16A, 0x3C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gGunNames[preset->weaponId]);
+        Text_PrintfAt(362, 60, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gGunNames[preset->weaponId]);
     }
-    for (i = 0, y = 0x54; i < 5; i++, y += 0x18) {
-        Plsel_DrawEquipIcon(0x152, y, 1, i, 0);
+    for (i = 0, y = 84; i < 5; i++, y += 24) {
+        Plsel_DrawEquipIcon(338, y, 1, i, 0);
     }
-    Text_PrintfAt(0x16A, 0x54, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorHeadNames[preset->head]);
-    Text_PrintfAt(0x16A, 0x6C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorBodyNames[preset->body]);
-    Text_PrintfAt(0x16A, 0x84, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorArmsNames[preset->arms]);
-    Text_PrintfAt(0x16A, 0x9C, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorWaistNames[preset->waist]);
-    Text_PrintfAt(0x16A, 0xB4, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorLegsNames[preset->legs]);
-    win.y = 0xDC;
+    Text_PrintfAt(362, 84, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorHeadNames[preset->head]);
+    Text_PrintfAt(362, 108, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorBodyNames[preset->body]);
+    Text_PrintfAt(362, 132, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorArmsNames[preset->arms]);
+    Text_PrintfAt(362, 156, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorWaistNames[preset->waist]);
+    Text_PrintfAt(362, 180, 0, TXT(0x00D795C0) /* a full-width colon, then the equipment's name */, gArmorLegsNames[preset->legs]);
+    win.y = 220;
     win.lines = 4;
     ListPanel_Draw(&win, 0, 0, -1);
     rect.x0 = win.x;
@@ -1249,7 +1113,7 @@ void Plsel_DrawEquipPage(DrawSlot *hook)
     Prim_FillRect(&rect);
     rect.y0 = win.y + win.charH * 3 + 6;
     rect.x1 = rect.x0 + win.charW * win.lineChars;
-    rect.y1 = rect.y0 + 0x15;
+    rect.y1 = rect.y0 + 21;
     rect.color = (win.color & 0xFFFFFF) | 0x60000000;
     Prim_FillRect(&rect);
     Tex_Prepare(1, PLSEL_TEX_ICONS);
@@ -1257,15 +1121,15 @@ void Plsel_DrawEquipPage(DrawSlot *hook)
     list = gStartItemLists[preset->startItems + gQuestSync.presetSet * 4];
     for (i = 0; *list != -1; i++) {
         list++;
-        Plsel_DrawItemIcon(*list++, i % 10 * 28 + 0x149, i / 10 * 28 + 0xE2);
+        Plsel_DrawItemIcon(*list++, i % 10 * 28 + 329, i / 10 * 28 + 226);
     }
     Plsel_DrawPlayerList();
     switch (task->step) {
     case PLSEL_CHOOSE_BROWSE:
     default:
     case PLSEL_CHOOSE_RETURN:
-        Font_SetPos(0x14C, 0x11F);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetPos(332, 287);
+        Font_SetSpacing(18, 18);
         if (gScene.playerCount < 2) {
             Text_Printf(gPlselFmtString, gPlselHelpOffline);
         } else {
@@ -1273,41 +1137,41 @@ void Plsel_DrawEquipPage(DrawSlot *hook)
         }
         Plsel_DrawEquipPanel();
         preset = Plsel_CurPreset();
-        Font_SetPos(0x146, 0x150);
+        Font_SetPos(326, 336);
         sprintf(buf, TXT(0x00D795C8) /* the rate, then a full-width percent sign */, preset->pointRatePct);
         Sjis_Widen(buf, txt);
         Text_Printf(gPlselPointRateFormat, txt);
         break;
     case PLSEL_CHOOSE_CONFIRM:
     case 4: /* no code sets step 4; it draws as the question */
-        Font_SetPos(0x152, 0x11F);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetPos(338, 287);
+        Font_SetSpacing(18, 18);
         Text_Printf(gPlselFmtString, gPlselNoRechooseText);
         Plsel_DrawEquipPanel();
         if (gScene.playerCount < 2) {
-            x = (0x118 - Text_DisplayLength(gPlselStartPrompt) * 10) / 2.0f;
-            Font_SetPos(x + 0x146, 0x158);
+            x = (280 - Text_DisplayLength(gPlselStartPrompt) * 10) / 2.0f;
+            Font_SetPos(x + 326, 344);
             Text_Printf(gPlselFmtString, gPlselStartPrompt);
         } else {
-            x = (0x118 - Text_DisplayLength(gPlselEquipPrompt) * 10) / 2.0f;
-            Font_SetPos(x + 0x146, 0x158);
+            x = (280 - Text_DisplayLength(gPlselEquipPrompt) * 10) / 2.0f;
+            Font_SetPos(x + 326, 344);
             Text_Printf(gPlselFmtString, gPlselEquipPrompt);
         }
-        x = (0x118 - Text_DisplayLength(gPlselYesNoTexts[0]) * 10) / 2.0f;
-        Font_SetPos(x + 0x146, 0x16C);
+        x = (280 - Text_DisplayLength(gPlselYesNoTexts[0]) * 10) / 2.0f;
+        Font_SetPos(x + 326, 364);
         Text_Printf(gPlselFmtString, gPlselYesNoTexts[task->flag & 1]);
         break;
     case PLSEL_CHOOSE_TAKEN:
-        Font_SetPos(0x152, 0x11F);
-        Font_SetSpacing(0x12, 0x12);
+        Font_SetPos(338, 287);
+        Font_SetSpacing(18, 18);
         Text_Printf(gPlselFmtString, gPlselNoRechooseText);
         Plsel_DrawEquipPanel();
         if (gScene.playerCount > 1 && !(gFrameTick & 0x10)) {
-            x = (0x118 - Text_DisplayLength(gPlselWaitLine1) * 10) / 2.0f;
-            Font_SetPos(x + 0x146, 0x158);
+            x = (280 - Text_DisplayLength(gPlselWaitLine1) * 10) / 2.0f;
+            Font_SetPos(x + 326, 344);
             Text_Printf(gPlselFmtString, gPlselWaitLine1);
-            x = (0x118 - Text_DisplayLength(gPlselWaitLine2) * 10) / 2.0f;
-            Font_SetPos(x + 0x146, 0x16C);
+            x = (280 - Text_DisplayLength(gPlselWaitLine2) * 10) / 2.0f;
+            Font_SetPos(x + 326, 364);
             Text_Printf(gPlselFmtString, gPlselWaitLine2);
         }
         break;
@@ -1315,9 +1179,9 @@ void Plsel_DrawEquipPage(DrawSlot *hook)
     if (Game_IsOnline() != 0 && task->timeLeft != 0) {
         Text_SetColor(0);
         if (task->step == PLSEL_CHOOSE_MENU) {
-            Font_SetPos(0x1CC, 0x1C);
+            Font_SetPos(460, 28);
         } else {
-            Font_SetPos(0x1CC, 0x196);
+            Font_SetPos(460, 406);
         }
         Text_Printf(gPlselTexts[112], task->timeLeft / 30);
     }
@@ -1340,21 +1204,21 @@ void Plsel_DrawChooseScreen(TaskSlot *task)
     Plsel_DrawHeader(3);
     gSelectDrawHook.owner = task;
     gSelectDrawHook.draw = Plsel_DrawEquipPage;
-    OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 0x40);
+    OT_AddAt(gDrawOtSorted, &gSelectDrawHook, 0, 64);
     for (i = 0, pl = gPlayers; i < PLSEL_SET_PRESETS; i++, pl++) {
         Player_UpdateMotionStep(pl);
         pl->pos[1] = -40.0f;
         pl->rot[1] = sync->yaw;
         if (i == sync->pick) {
-            OT_AddByDepth(gDrawOt32, pl->drawSlot, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, pl->drawSlot, 32, 0);
         }
     }
     if (Game_IsOnline() == 1 && task->timeLeft != 0) {
         Text_SetColor(0);
         if (task->step == PLSEL_CHOOSE_MENU) {
-            Font_SetPos(0x1CC, 0x1C);
+            Font_SetPos(460, 28);
         } else {
-            Font_SetPos(0x1CC, 0x196);
+            Font_SetPos(460, 406);
         }
         Text_Printf(gPlselTexts[112], task->timeLeft / 30);
     }
@@ -1439,7 +1303,7 @@ void Plsel_StateChoose(TaskSlot *task)
             task->step = PLSEL_CHOOSE_BROWSE;
             Plsel_SetCamera();
             FadeA_Start(FADE_IN_BLACK);
-            sync->timer = 0xF;
+            sync->timer = 15;
             return;
         }
         break;
@@ -1528,7 +1392,7 @@ void Plsel_StateReady(TaskSlot *task)
         break;
     case 2:
         if (FadeA_GetState() != 1) {
-            task->count = 0x3C;
+            task->count = 60;
             task->flag++;
         }
         break;
@@ -1808,8 +1672,8 @@ void Plsel_ChatOpenKbd(s32 mode)
         if (mode == 2) {
             flags |= CHAT_KBD_INACTIVE;
         }
-        Kbd_SetPos(0x6E, 80.0f);
-        Chat_OpenKbd(flags | CHAT_KBD_TARGETED, 0xE, 0x2C, 0);
+        Kbd_SetPos(110, 80.0f);
+        Chat_OpenKbd(flags | CHAT_KBD_TARGETED, 14, 44, 0);
         Kbd_SetSubmitWait(w->sendWait);
         Sound_PlaySeFlat(0, SE_SYS_OPEN, 0);
         Plsel_ChatInput(0);
@@ -1854,7 +1718,7 @@ void Plsel_ChatInput(u16 unused)
 {
     s16 held;
     s16 pressed;
-    u8 text[0x4C];
+    u8 text[76];
     u8 mask;
     Player *pl;
     PlselSelWork *w;
@@ -1872,7 +1736,7 @@ void Plsel_ChatInput(u16 unused)
                 if ((s8)text[0] != 0) {
                     pl = &gPlayers[gScene.localPlayer];
                     if (target < 0) {
-                        mask = 0xFF;
+                        mask = 255;
                     } else {
                         mask = 1 << target;
                     }
@@ -1880,10 +1744,10 @@ void Plsel_ChatInput(u16 unused)
                     QSync_SendChat(pl->index, QSYNC_CHAT_TEXT, (char *)text, mask);
                     w->newMsg = 1;
                     w->newMsgMine = 1;
-                    w->logShowTimer = 0x12C;
+                    w->logShowTimer = 300;
                 }
             }
-            w->sendWait = 0x3C;
+            w->sendWait = 60;
         }
         Kbd_Cancel();
         w->kbdOpen = 0;
@@ -1930,13 +1794,13 @@ s32 Plsel_ChatUpdate(void)
 }
 
 /*
- * PAD_SELECT cancels (dst emptied, 0xFF returned); otherwise returns Kbd_Run's result.
+ * PAD_SELECT cancels (dst emptied, 255 returned); otherwise returns Kbd_Run's result.
  */
 u8 Plsel_ChatRunKbd(u8 *dst, s32 held, s16 pressed)
 {
     if (pressed & PAD_SELECT) {
         *dst = 0;
-        return 0xFF;
+        return 255;
     }
     return Kbd_Run((char *) dst, held, pressed);
 }
@@ -1972,13 +1836,13 @@ void Plsel_AddChatLog(u8 who, char *msg, NetUserRec *from, u8 flag)
         strcpy((char *)entry->id, from->u.id);
         strcpy((char *)entry->name, from->u.name);
     } else {
-        if (flag == 0xFF) {
+        if (flag == 255) {
             flag = 3;
         } else {
             flag = 1;
         }
         entry->color[0] = 0;
-        entry->color[1] = entry->color[2] = ((u8 *)gPlselSlotColors)[entry->who];
+        entry->color[1] = entry->color[2] = gPlselSlotColors[entry->who];
         entry->color[3] = gChatClassColors[flag];
         strcpy((char *)entry->id, gMyUserId);
         strcpy((char *)entry->name, gMyName);
@@ -2005,7 +1869,7 @@ void Plsel_AddChatLog(u8 who, char *msg, NetUserRec *from, u8 flag)
                 return;
             }
             byte = *msg;
-            if ((byte >= 0x80 && byte <= 0x9F) || (byte >= 0xE0 && byte <= 0xFF)) {
+            if ((byte >= 128 && byte <= 159) || (byte >= 224 && byte <= 255)) {
                 dst[0] = byte;
                 dst[1] = msg[1];
                 room -= 2;
@@ -2035,7 +1899,7 @@ void Plsel_DrawChatWindow(s32 text, u8 n, s32 color)
 
     lineH = n * 18 / 21;
     pos[0] = 0;
-    pos[1] = 0x1A4 - (lineH + 1) * 12;
+    pos[1] = 420 - (lineH + 1) * 12;
     w = gPlselChatWin;
     w.charW = n;
     w.charH = lineH - 1;
@@ -2050,8 +1914,8 @@ extern char *gChatTypeTexts;
  */
 void Plsel_FormatPlayerTag(char *buf, ChatLine *entry)
 {
-    char tag[0x40];
-    char wide[0x40];
+    char tag[64];
+    char wide[64];
 
     sprintf(buf, gChatTypeTexts, entry->name);
     sprintf(tag, "%dP", entry->who + 1);
@@ -2082,9 +1946,6 @@ s32 Plsel_ChatLogLineCount(void)
     return sum;
 }
 
-void Text_Draw(char *);
-void Text_DrawShadow2(s16 x, s16 y, s32 c1, s32 c2, char *s);
-
 /* Draws the chat log: newest first from the bottom when it is full (12
  * lines or more) and `all` is 0, else from the oldest down. The upward
  * branch has its own y offset (yOffUp) and counts lines in the parameter
@@ -2105,7 +1966,7 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
     s16 lineY;
     char *row;
     s32 yOffUp;
-    char buf[0x20];
+    char buf[32];
 
     w = gPlselSelWork;
     if (w->logCount == 0) {
@@ -2117,8 +1978,8 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
     lineH = fsz + 1;
     yScaled = (s16)y * (u8)size / 21;
     if ((u32)Plsel_ChatLogLineCount() > 11 && (u8)all == 0) {
-        lineY = 0x1A4 - lineH;
-        lim = 0x1A4 - lineH * 11;
+        lineY = 420 - lineH;
+        lim = 420 - lineH * 11;
         idx = w->logHead - 1 - skip;
         left = w->logCount - skip;
         if (left == 0) {
@@ -2131,7 +1992,7 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
             Text_SetColor(entry->color[3]);
             for (all = entry->rows - 1; all >= 0; all--) {
                 row = (char *)entry->text[all];
-                Font_SetPos(0x18, lineY + yOffUp);
+                Font_SetPos(24, lineY + yOffUp);
                 if (row[PLSEL_CHAT_ROW_LEN] != 0) {
                     Font_SetSpacing(small, fsz);
                     Text_Draw(row);
@@ -2146,7 +2007,7 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
             }
             if (entry->id[0] != 0) {
                 Plsel_FormatPlayerTag(buf, entry);
-                Text_DrawShadow2(0x18, (s16)(lineY + yOffUp), 1, entry->color[2], buf);
+                Text_DrawShadow2(24, (s16)(lineY + yOffUp), 1, entry->color[2], buf);
                 lineY -= lineH;
                 if (lineY < lim) {
                     return;
@@ -2158,7 +2019,7 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
     } else {
         all = w->logCount;
         idx = w->logHead - all;
-        lineY = 0x1A4 - lineH * 11;
+        lineY = 420 - lineH * 11;
         if (all == 0) {
             return;
         }
@@ -2168,16 +2029,16 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
             entry = &w->log[idx];
             if (entry->id[0] != 0) {
                 Plsel_FormatPlayerTag(buf, entry);
-                Text_DrawShadow2(0x18, (s16)(lineY + yOffDown), 1, entry->color[2], buf);
+                Text_DrawShadow2(24, (s16)(lineY + yOffDown), 1, entry->color[2], buf);
                 lineY += lineH;
-                if (lineY >= 0x1A4) {
+                if (lineY >= 420) {
                     return;
                 }
             }
             Text_SetColor(entry->color[3]);
             for (left = 0; left < entry->rows; left++) {
                 row = (char *)entry->text[left];
-                Font_SetPos(0x18, lineY + yOffDown);
+                Font_SetPos(24, lineY + yOffDown);
                 if (row[PLSEL_CHAT_ROW_LEN] != 0) {
                     Font_SetSpacing(small, fsz);
                     Text_Draw(row);
@@ -2186,7 +2047,7 @@ void Plsel_DrawChatLog(u8 skip, s32 y, s32 all, u8 size)
                     Text_Draw(row);
                 }
                 lineY += lineH;
-                if (lineY >= 0x1A4) {
+                if (lineY >= 420) {
                     return;
                 }
             }
@@ -2205,16 +2066,16 @@ void Plsel_LogChatFrom(u8 slot, u8 flag, char *text)
 {
     struct {
         NetUserRec user;
-        u8 pad[4];              /* unused: the game's frame holds 0x124 bytes here */
+        u8 pad[4];              /* unused: the game's frame holds 292 bytes here */
     } rec;
     PlselSelWork *w;
     u8 k;
 
     w = gPlselSelWork;
     Chat_FilterWords(text);
-    k = (flag == 0xFF) ? 3 : 1;
+    k = (flag == 255) ? 3 : 1;
     rec.user.color[0] = 0;
-    rec.user.color[1] = rec.user.color[2] = ((u8 *)gPlselSlotColors)[slot];
+    rec.user.color[1] = rec.user.color[2] = gPlselSlotColors[slot];
     if (slot >= 10 || flag > 1) { /* compiled-out check */
     }
     rec.user.color[3] = gChatClassColors[k];
@@ -2223,14 +2084,14 @@ void Plsel_LogChatFrom(u8 slot, u8 flag, char *text)
     Plsel_AddChatLog(slot, (char *)text, &rec.user, 0);
     if ((u32)Plsel_ChatLogLineCount() > 11) {
         w->logScroll++;
-        if (w->logScroll > 0x3F) {
-            w->logScroll = 0x3F;
+        if (w->logScroll > 63) {
+            w->logScroll = 63;
         }
     }
     w->newMsg = 1;
     w->newMsgMine = 0;
-    w->logShowTimer = 0x12C;
-    Sound_PlaySeFlat(0, 0x18, 0);
+    w->logShowTimer = 300;
+    Sound_PlaySeFlat(0, 24, 0);
 }
 
 /* Returns player slot's colour byte; slots above 3 take colour 4. */
@@ -2239,5 +2100,5 @@ u8 Plsel_SlotColor(s32 slot)
     if (slot > 3) {
         slot = 4;
     }
-    return ((u8 *)gPlselSlotColors)[slot];
+    return gPlselSlotColors[slot];
 }

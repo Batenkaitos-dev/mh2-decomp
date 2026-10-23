@@ -2,6 +2,9 @@
 #define WINDOW_H
 
 #include "common.h"
+#include "player.h"
+#include "grid.h"
+#include "chat_log.h"
 
 /*
  * sub_main's menu windows (src/sub_main/menu_windows.c): a position, the
@@ -70,7 +73,7 @@ typedef struct Panel {
     u8 lines;                   /* 0x07 */
     u8 padX;                    /* 0x08 */
     u8 padY;                    /* 0x09 */
-    u16 flags;                  /* 0x0A: 0-7 frame style (at most 5), 0x4000, 0x8000 */
+    u16 flags;                  /* 0x0A: the frame style (WINDOW_STYLE_MASK, at most WINDOW_STYLE_MAX), WINDOW_INSET, WINDOW_FILL */
     u32 color;                  /* 0x0C: frame colours */
     u32 color2;                 /* 0x10 */
     s16 textColor;              /* 0x14: a text colour; with rgbText an RGBA for the whole word */
@@ -80,8 +83,8 @@ typedef struct Panel {
 
 typedef char Panel_size_check[(sizeof(Panel) == 0x18) ? 1 : -1];
 
-/* A list window (ListPanel_DrawAlpha): a Window with its entries and cursor. 0x1C bytes: lobby
- * NetMode_DrawPart and plsel Plsel_DrawPlayerMenuList copy 0x1C into a local they draw, and
+/* A list window (ListPanel_DrawAlpha): a Window with its entries and cursor. 28 bytes: lobby
+ * NetMode_DrawPart and plsel Plsel_DrawPlayerMenuList copy its 28 bytes into a local they draw, and
  * every object is followed by the next at +0x20 even when that one is 8-aligned
  * (select gGalleryListPanel); nothing reads +0x18. */
 typedef struct ListWin {
@@ -92,7 +95,7 @@ typedef struct ListWin {
     u8 lineChars;               /* 0x06: characters per line (the text is charW * lineChars wide) */
     u8 lines;                   /* 0x07 */
     s16 color;                  /* 0x08: text colour */
-    u16 flags;                  /* 0x0A: 0-7 frame style, 0x2000 taller lines, 0x8000 color2 given */
+    u16 flags;                  /* 0x0A: the frame style (WINDOW_STYLE_MASK), WINDOW_RULED taller lines, WINDOW_FILL color2 given */
     char **items;               /* 0x0C: NULL-terminated */
     s32 cursorColor;            /* 0x10: the cursor bar colour (0xRRGGBB; ListPanel_DrawCursorBar pulses its alpha) */
     u32 color2;                 /* 0x14 */
@@ -111,7 +114,7 @@ typedef struct ListPanel {
     u8 lines;                   /* 0x07 */
     u8 padX;                    /* 0x08 */
     u8 padY;                    /* 0x09 */
-    u16 flags;                  /* 0x0A: 0-7 frame style, 0x2000 lines between the entries, 0x4000, 0x8000 */
+    u16 flags;                  /* 0x0A: the frame style (WINDOW_STYLE_MASK), WINDOW_RULED lines between the entries, WINDOW_INSET, WINDOW_FILL */
     u32 color;                  /* 0x0C */
     u32 color2;                 /* 0x10 */
     s16 textColor;              /* 0x14 */
@@ -122,5 +125,98 @@ typedef struct ListPanel {
 } ListPanel;
 
 typedef char ListPanel_size_check[(sizeof(ListPanel) == 0x20) ? 1 : -1];
+
+void WindowFrame_Draw(Frame *frame, s16 *off);
+void Menu_DrawFrame(void *win, s16 *pos);
+void Window_DrawSides(Window *win, s16 *pos, u32 color);
+void Window_DrawText(void *window, s16 *pos, u8 *text);
+void ListPanel_DrawDim(struct ListWin *win, char *title, s32 sel);
+void Window_DrawTextB2(Window *w, u8 *text);
+void Sprite_DrawStretch3(Sprite *src, s16 capW, s16 capU);
+void Sprite_DrawStretch9(Sprite *src, s16 capW, s16 capH, s16 capU, s16 capV);
+void Sprite_DrawList(Sprite *sprites, s32 count);
+void Menu_DrawArrow(s16 x, s16 y, s16 width, s16 height, u32 color, u8 flags);
+void Chat_DrawArrow(s16 x, s16 y, s16 width, s16 height, u32 color, u8 flags);
+void Hud_DrawTargetMarker(f32 *pos);
+s32 CombineList_Setup(Grid *grid, s16 *out, s32 filter);
+void CombineList_MoveCursor(Grid *grid, s16 *out, u16 buttons);
+s32 MonsterNote_AnyKnown(void);
+s32 MonsterNote_SetKnown(s32 kind);
+s32 MonsterNote_CountKnown(void);
+u8 MonsterNote_Number(u8 limit);
+s32 EntryPicture_GetUVf(f32 *uv0, f32 *uv1, u16 id);
+s32 EntryPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
+s32 WantedPicture_GetUV(s32 *uv0, s32 *uv1, u16 id);
+void HelpWindow_DrawCurrent(void);
+void HelpWindow_DrawLine(u8 page, u16 line);
+void HelpWindow_Draw(u8 page, u16 line, s8 column);
+void Deco_DrawDetails(u16 item, s16 x, s16 y, s8 view, u8 pal);
+s32 Notice_OpenTalk(char *text, u32 width, s32 mode, s32 sel);
+s32 Notice_OpenText(char *text, u32 width, s32 mode, s32 sel, s32 title, char **list);
+void Chat_OpenKbd(s32 flags, s32 layout, u16 maxChars, void *text);
+s32 Chat_IsAvailable(void);
+void Chat_PickSendTarget(void);
+void Chat_OpenInput(u8 active);
+void Chat_SendInput(u16 unused);
+void Chat_PlayAct(s32 text);
+s32 Chat_StripActTags(s8 *src);
+s8 Chat_ParseActTag(s8 *tag);
+s8 *Str_Find(s8 *str, s8 *sub);
+void Chat_LogAdd(u8 who, s8 *msg, ChatMsg *header, u8 wide);
+void Chat_AddReceived(u8 who, s8 *msg);
+void Chat_ClearBeep(void);
+void Chat_Beep(void);
+void Chat_LogAddLocal(u8 who, u8 kind, char *msg);
+void Chat_ResetScroll(void);
+s32 Chat_OpenWindow(void);
+u16 Chat_LogScroll(u16 buttons);
+s32 Chat_LogRowsBefore(u8 skip);
+void Chat_DrawHudLog(void);
+void Chat_DrawLogLines(u8 scroll, s16 dy, u8 atEnd, u8 size);
+void Chat_DrawLog(void);
+void Chat_UpdateWindowsOnline(u16 buttons);
+void Chat_UpdateWindow(u16 unused0);
+void Chat_DrawHud(void);
+void Chat_DrawWindow(u8 kind);
+void Chat_HideWindows(void);
+void Chat_ShowWindows(void);
+void Players_UpdatePresent(void);
+void Notice_Draw(void);
+void PersonalStatus_DrawPage(struct Player *pl, u8 page);
+s16 StatusPage_DrawHeader(struct Player *pl, s16 x, s16 y);
+s16 StatusPage_DrawSymbolColor(s16 x, s16 y);
+s16 StatusPage_DrawRank(s16 x, s16 y);
+s16 StatusPage_DrawArenaRecord(s16 x, s16 y);
+s16 StatusPage_DrawOnline(s16 x, s16 y);
+void StatusPage_DrawStats(Player *pl, Player *other, s32 x, s32 y);
+u32 Player_ShownAttack(Player *pl);
+void PersonalStatus_DrawEquipment(Player *pl);
+void StatusPage_DrawEquipment(EquipItem *weapon, EquipItem *equip);
+void StatusPage_DrawWeaponClass(Player *pl);
+s32 Player_SkillApplies(Player *pl, u8 slot);
+u8 Player_ArmorHasTorsoUp(Player *pl);
+u8 SkillList_PageCount(void);
+void SkillList_Build(Player *pl, Player *other);
+void SkillList_Insert(Player *pl, u8 tree, Player *other);
+void Player_RecomputeStats(Player *pl);
+u8 Equip_LevelMark(EquipItem *item, u8 flags, EquipItem *other);
+void EquipWindow_DrawLocal(EquipItem *item, s16 x, s16 y, u8 flags, EquipItem *other);
+void StatusPage_DrawBox(s32 x, s16 y, s32 alpha);
+void Player_SetWeapon(Player *pl, EquipItem *item);
+Player *Player_PreviewWith(Player *pl, EquipItem *item);
+void EquipWindow_DrawDetails(Player *pl, EquipItem *item, s16 x, s16 y, u8 flags, EquipItem *other);
+void EquipWindow_DrawWeaponValue(Player *pl, EquipItem *item, s16 x, s16 y, EquipItem *other);
+void EquipWindow_DrawSlots(EquipItem *item, s16 x, s16 y, u8 plain);
+void EquipWindow_DrawDecorations(EquipItem *item, s16 x, s16 y, u8 flag);
+void EquipWindow_DrawWeaponKind(EquipItem *item, s16 x, s16 y);
+void EquipWindow_DrawMarks(EquipItem *item, s16 x, s16 y);
+void EquipWindow_DrawRow(Player *pl, EquipItem *item, s16 x, s16 y);
+void EquipWindow_DrawItemList(GunData *gun, s16 x, s16 y);
+extern s32 gWeaponClassMultipliers[12];
+extern u32 gHornNoteColors[8];
+extern u8 gChatTextSizes[8]; /* the chat's text sizes, by gSysSave.options.chatSize (sub_main) */
+extern u32 gEquipColors[10];
+extern u8 gRarityColorSlots[14];
+extern u8 gRarityColors[8];
 
 #endif

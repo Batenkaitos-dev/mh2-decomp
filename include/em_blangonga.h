@@ -1,5 +1,6 @@
 #ifndef EM_BLANGONGA_H
 #define EM_BLANGONGA_H
+#include "em.h"
 
 /*
  * The Blangonga family's vocabulary (src/game/em_blangonga.c): Blangonga,
@@ -23,9 +24,9 @@ enum EmBlangongaMotion {
     BLANG_MOT_TURN_LEFT_QUICK = 0x07,   /* the quick turn (turn[1]: frames 2-30 instead of 2-50) */
     BLANG_MOT_TURN_RIGHT_QUICK = 0x08,
     BLANG_MOT_LIMP = 0x09,              /* walking with low hp (ChangeState picks it) */
-    BLANG_MOT_MOVE_ACTION_D = 0x0A,     /* BLANG_MOVE_ACTION_D: a hit (BlangongaAttack 0xB) at frame 10; Blangonga's scene jump off its ledge */
-    BLANG_MOT_MOVE_ACTION_A = 0x0C,     /* BLANG_MOVE_ACTION_A: a hit (BlangongaAttack 0xC) at frame 18 */
-    BLANG_MOT_MOVE_ACTION_B = 0x0E,     /* BLANG_MOVE_ACTION_B: a hit (BlangongaAttack 0xD) at frame 18 */
+    BLANG_MOT_MOVE_ACTION_D = 0x0A,     /* BLANG_MOVE_ACTION_D: a hit (BlangongaAttack 11) at frame 10; Blangonga's scene jump off its ledge */
+    BLANG_MOT_MOVE_ACTION_A = 0x0C,     /* BLANG_MOVE_ACTION_A: a hit (BlangongaAttack 12) at frame 18 */
+    BLANG_MOT_MOVE_ACTION_B = 0x0E,     /* BLANG_MOVE_ACTION_B: a hit (BlangongaAttack 13) at frame 18 */
     BLANG_MOT_MOVE_ACTION_C = 0x10,     /* BLANG_MOVE_ACTION_C: footstep effects only */
     BLANG_MOT_JUMP = 0x11,              /* crouch and take-off (airborne at frame 52, 56 or 48 by kind) */
     BLANG_MOT_JUMP_FALL = 0x12,         /* falling after a jump's apex */
@@ -91,13 +92,56 @@ enum EmBlangongaMotion {
     BLANG_MOT_RAJANG_JUMP_SHOT_LAND = 0x54,
     BLANG_MOT_CONGALALA_EAT = 0x54,     /* Congalala: BLANG_IDLE_EAT_START_B, the versus bait */
     BLANG_MOT_BACK_STRIKE = 0x55,       /* hits behind (BLANG_ATK_BACK_STRIKE); also BLANG_IDLE_ACTION_A */
-    BLANG_MOT_IDLE_ACTION_B = 0x56,     /* a hit (BlangongaAttack 0x22) at frame 128 */
+    BLANG_MOT_ROAR_C = 0x56,            /* a roar of Blangonga's and Congalala's (BLANG_IDLE_ROAR_C): at frame 128 the roar's rings (ElementBurst type 5) and attack row 34 (radius 700 at bone 2, no power), as BLANG_MOT_ROAR's at frame 38; Congalala's rings follow BLANG_BONE_HEAD from frame 100 (ElementBurst_RoarBone); also BLANG_IDLE_LEAVE_MINE_POINT's motion */
     BLANG_MOT_RAJANG_STRIKE = 0x56,     /* Rajang: BLANG_ATK_RAJANG_STRIKE */
-    BLANG_MOT_IDLE_ACTION_B_END = 0x57, /* also BLANG_IDLE_CLEAR_PAINT's motion */
+    BLANG_MOT_ROAR_C_END = 0x57,        /* after BLANG_MOT_ROAR_C; also BLANG_IDLE_CLEAR_PAINT's motion */
     BLANG_MOT_RAJANG_CHARGE = 0x57,     /* Rajang: BLANG_ATK_RAJANG_CHARGE */
     BLANG_MOT_SLAM = 0x58,              /* after BLANG_MOT_SLAM_WINDUP */
     BLANG_MOT_IDLE_ACTION_C = 0x59,     /* also Blangonga's first versus pose */
     BLANG_MOT_RAJANG_CHARGE_END = 0x5A
+};
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes BlangongaAttack_Create makes on given frames of a motion
+ * (BlangongaAttack_HitShapes, by the attack rows' hit lists), where a throw,
+ * the roar's rings or the lying puffs start, and the bones the walk's steps
+ * take turns at (the three kinds' sound functions play them at the same four
+ * bones). "A" and "B" tell two of a kind apart: which side each is, and
+ * which arm goes with which hand or foot, the code doesn't show. Bones no
+ * code explains stay numbers: 1 (the dust under the body as it falls, the
+ * slam's widest sphere, where Rajang's beam and Congalala's lying puffs
+ * start), 2, 3 (the falls' and the landings' sounds), 6 and 11 (a pair: the
+ * knock-downs' sounds), 15, 16 (the dust and the burst where the slam meets
+ * the floor), 17, 22, 24, 26, 28 and 31.
+ */
+enum EmBlangongaBone {
+    BLANG_BONE_BODY = 4,        /* the body's sphere (radius 125 to 155) in the slam, the charges and the triple hit; the dust where it lands in BLANG_MOT_KNOCK_DOWN and _DOWNED */
+    BLANG_BONE_ARM_B = 7,       /* the sphere of BLANG_MOT_STRIKE_B's blow; with BLANG_BONE_ARM_A's in the slam, the quick turns and the dig */
+    BLANG_BONE_HAND_A = 9,      /* the walk's first step of the pair that plays sound 0 (the other pair, the feet, plays 3) */
+    BLANG_BONE_ARM_A = 12,      /* the sphere of BLANG_MOT_STRIKE_A's blow and of the triple hit's */
+    BLANG_BONE_FIST = 13,       /* where Blangonga's dug-up lump starts (EMRANGED_BLANGONGA_LUMP); Rajang's combo slam strikes the floor under it */
+    BLANG_BONE_HAND_B = 14,     /* the walk's second step of that pair; where the Blango's throw starts (EMRANGED_BLANGO_THROW) */
+    BLANG_BONE_BREATH = 18,     /* where the lying puffs start, for every kind but Congalala */
+    BLANG_BONE_HEAD = 19,       /* the roar's sphere (radius 700, BLANG_MOT_ROAR and _ROAR_B) and the back strike's; the roar's rings follow it; most sounds but the steps play here */
+    BLANG_BONE_FOOT_B = 23,     /* the walk's second step of the pair that plays sound 3 */
+    BLANG_BONE_FOOT_A = 27,     /* the walk's first step of that pair */
+    BLANG_BONE_CONGALALA_THROW = 33 /* where Congalala's throw starts (EMRANGED_CONGALALA_THROW) */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBone and its frame variants). A sound
+ * is named where the code shows what it is: it plays on the frame of the
+ * thing it goes with, alike in the three kinds' sound functions. The others
+ * stay numbers; the steps' sounds (0 at the hands, 3 at the feet) show only
+ * where they play.
+ */
+enum EmBlangongaSe {
+    BLANG_SE_FALL = 7,          /* the body striking the floor: two frames before its dust rises in BLANG_MOT_KNOCK_DOWN (twice), _DOWN and _DOWN_B; with Rajang's dust in BLANG_MOT_JUMP_LAND and _STRIKE_B */
+    BLANG_SE_THUD = 8           /* a heavy landing: on the frame its dust rises in BLANG_MOT_JUMP_LAND, _FALL_LAND, _COLLAPSE and BLANG_MOT_RAJANG_CHARGE_END, and with Congalala's impact in BLANG_MOT_CONGALALA_COMBO */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmBlangonga_RunIdleState). */
@@ -118,7 +162,7 @@ enum EmBlangongaIdleState {
     BLANG_IDLE_LEAVE_TRAP = 0x0E,       /* after BLANG_REACT_TRAPPED_STRUGGLE */
     BLANG_IDLE_EAT_START_B = 0x0F,
     BLANG_IDLE_ACTION_A = 0x10,
-    BLANG_IDLE_ACTION_B = 0x11,
+    BLANG_IDLE_ROAR_C = 0x11,           /* roars with BLANG_MOT_ROAR_C */
     BLANG_IDLE_ALERT_BRIEF = 0x12,      /* instead of BLANG_LEAP_DIG_IN where the floor isn't snow (ScriptQuery 1) */
     BLANG_IDLE_STATUS2_DOWNED = 0x13,   /* status 2 in a hold */
     BLANG_IDLE_ROAR_CALL = 0x14,        /* adds the sensed object other monsters react to */
@@ -306,5 +350,66 @@ typedef struct EmBlangongaTurnData {
     EmBlangongaPickRow pick0[4];        /* map 6 (Map_DayId) */
     EmBlangongaPickRow pick1[4];        /* map 4 */
 } EmBlangongaTurnData;
+
+extern void *EmBlangonga_Callbacks[8];
+void EmBlangonga_MotionSounds(Em *em, EmWork *work);
+void EmBlangonga_MotionSoundsCongalala(Em *em, EmWork *work);
+void EmBlangonga_MotionSoundsRajang(Em *em, EmWork *work);
+void EmBlangonga_Init(Em *em);
+void EmBlangonga_Start(Em *em);
+void EmBlangonga_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+u16 EmBlangonga_PickCarried(EmBlangongaPickRow *row, u16 seed);
+void EmBlangonga_HideCarried(Em *em, u16 part);
+void EmBlangonga_ShowCarried(Em *em, u16 part);
+s32 EmBlangonga_CarriedShown(Em *em, u16 part);
+s32 EmBlangonga_IsSmallKind(Em *em);
+s32 EmBlangonga_IgnoresFlash(Em *em);
+s32 EmBlangonga_InStateArmor(Em *em);
+f32 EmBlangonga_ShadowFade(Em *em);
+s32 EmBlangonga_EatPropMode(Em *em);
+s32 EmBlangonga_RageTimerFull(Em *em);
+void EmBlangonga_SpawnLyingPuffs(Em *em, s32 kind);
+void EmBlangonga_StartCurves(Em *em, u8 kind);
+void EmBlangonga_EnterNewArea(Em *em);
+void EmBlangonga_TurnAbout(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_EatNeed1(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RunIdleState(Em *em, EmWork *work);
+void EmBlangonga_Turn(Em *em, s32 unused, s32 variant);
+void EmBlangonga_Approach(Em *em, s32 unused, s32 variant);
+void EmBlangonga_Jump(Em *em, EmWork *work, u8 variant);
+void EmBlangonga_Hop(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_DigOut(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_BuriedTurn(Em *em);
+void EmBlangonga_LeapOutOfArea(Em *em, EmWork *work);
+void EmBlangonga_DropIn(Em *em, EmWork *work);
+void EmBlangonga_CrossArea(Em *em, EmWork *work);
+void EmBlangonga_Slam(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_Strike(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_DigThrow(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_CongalalaEatenEmission(Em *em, EmWork *work);
+void EmBlangonga_CongalalaCombo(Em *em, EmWork *work);
+void EmBlangonga_EffectStrike(Em *em, EmWork *work);
+void EmBlangonga_RajangComboSlam(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RajangShot(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RajangBeam(Em *em, EmWork *work, s32 variant);
+void EmBlangonga_RunAttackState(Em *em, EmWork *work);
+void EmBlangonga_KnockDown(Em *em, EmWork *work, u8 variant);
+void EmBlangonga_HeldDowned(Em *em, EmWork *work, u8 variant);
+void EmBlangonga_RunReactState(Em *em, EmWork *work);
+void EmBlangonga_Die(Em *em, s32 unused);
+void EmBlangonga_DieHeld(Em *em, s32 unused);
+void EmBlangonga_DieFalling(Em *em, s32 unused);
+void EmBlangonga_Reappear(Em *em, s32 unused);
+void EmBlangonga_CongalalaScene(Em *em, EmWork *work);
+void EmBlangonga_StartBlangongaScene(Em *em, EmWork *work);
+void EmBlangonga_BlangongaLeapDown(Em *em, EmWork *work);
+void EmBlangonga_BlangoEmerge(Em *em, EmWork *work, u8 variant);
+void EmBlangonga_RunEventState(Em *em, EmWork *work);
+void EmBlangonga_VersusEatBait(Em *em, EmWork *work);
+void EmBlangonga_Update(Em *em);
+void EmBlangonga_RunState(Em *em, s32 work);
+void EmBlangonga_BreakParts(Em *em, s32 apply);
+void EmBlangonga_MotionEffects(Em *em, EmWork *work);
+u8 EmBlangonga_ScriptQuery(Em *em, u8 query);
 
 #endif /* EM_BLANGONGA_H */

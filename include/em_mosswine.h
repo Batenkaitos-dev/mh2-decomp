@@ -1,5 +1,6 @@
 #ifndef EM_MOSSWINE_H
 #define EM_MOSSWINE_H
+#include "em.h"
 
 /*
  * The Mosswine family's vocabulary (EmMosswine_*):
@@ -45,6 +46,24 @@ enum EmMosswineMotion {
     MOSS_MOT_STATUS2_GET_UP = 0x49
 };
 
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the effect helpers read the position from); the Mosswine's,
+ * the Bullfango's and the Bulldrome's skeletons share the numbers this
+ * code uses (em_bulldrome.h's BULL_BONE_* are the same bones). The names
+ * say what the code shows a bone to be: the kinds' own hit shapes
+ * (gEmBoneHits), the shapes of the charge's hits (EmContactAttack_Create,
+ * EmContactAttack_HitShapes) and where an effect starts.
+ *
+ * Sounds: the family's code plays none of its own (no Em_PlaySe* call), so
+ * there is no sound vocabulary here.
+ */
+enum EmMosswineBone {
+    MOSS_BONE_ROOT = 0,     /* the skeleton's first bone: the stun stars circle above it (StunStars_CreateEm) */
+    MOSS_BONE_BODY = 2,     /* the body's capsule (part 0) in the kinds' own hit shapes, the sphere of every charge's hit (EmContactAttack 3, 8 to 10, 14, 15) and the status-4 effect (Em_SpawnStatus4Effect) */
+    MOSS_BONE_BREATH = 11   /* where the lying puffs start (MOSS_MOT_LIE) and the poison effect (Em_UpdateStatus) */
+};
+
 /* Group 0, EM_GROUP_IDLE (EmMosswine_RunIdleState). */
 enum EmMosswineIdleState {
     MOSS_IDLE_NONE = 0x00,              /* an empty function */
@@ -69,7 +88,7 @@ enum EmMosswineMoveState {
     MOSS_MOVE_WALK = 0x01,              /* to the goal, within 200, for at most 1800 frames */
     MOSS_MOVE_RUN = 0x02,               /* to the goal, within 100 */
     MOSS_MOVE_WALK_B = 0x03,
-    MOSS_MOVE_WALK_SCRIPTED = 0x04,     /* from a fixed start to a fixed goal by Em.variant (EmMosswine_VariantParams) */
+    MOSS_MOVE_WALK_SCRIPTED = 0x04,     /* from a fixed start to a fixed goal by Em.variant (EmMosswine_ScriptedWalks) */
     MOSS_MOVE_WANDER_HOME = 0x05,       /* walks a while, turning toward its home (EmMosswineWork.home) */
     MOSS_MOVE_TURN_QUARTER = 0x06
 };
@@ -106,5 +125,24 @@ enum EmMosswineEventState {
     MOSS_EVENT_HIDE_A = 0x00,
     MOSS_EVENT_HIDE_B = 0x01
 };
+
+extern void *EmMosswine_Callbacks[8];
+void EmMosswine_Init(Em *em);
+void EmMosswine_Start(Em *em);
+void EmMosswine_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmMosswine_Status2Lie(Em *em);
+void EmMosswine_Turn(Em *em, s32 quarterTurn);
+void EmMosswine_Walk(Em *em);
+void EmMosswine_Run(Em *em);
+void EmMosswine_WalkB(Em *em);
+void EmMosswine_WalkScripted(Em *em);
+void EmMosswine_WanderHome(Em *em);
+void EmMosswine_Charge(Em *em, u32 charge);
+void EmMosswine_BlownAway(Em *em);
+void EmMosswine_BlownAwayQuick(Em *em);
+void EmMosswine_Die(Em *em);
+void EmMosswine_DieQuick(Em *em);
+void EmMosswine_Update(Em *em);
+void EmMosswine_RunState(Em *em);
 
 #endif /* EM_MOSSWINE_H */

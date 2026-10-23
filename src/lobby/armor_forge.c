@@ -14,7 +14,9 @@
  * short list (WorkshopMenu.shortList) the forge opens on making and lists
  * only gForgeRecipeList's recipes. The pages, their states and views and the
  * closing question's steps are lobby_forge.h's, shared with the weapon
- * forge. */
+ * forge. Equip_CopyEquipped, among the forge's functions, copies the worn
+ * piece of a type for the comparison; the decorations counter calls it
+ * too. */
 #include "common.h"
 #include "lobby_state.h"
 #include "lobby_text.h"
@@ -27,37 +29,34 @@
 #include "lobby_forge.h"
 #include "pad.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "box_menu.h"
+#include "camera.h"
+#include "model.h"
+#include "text.h"
+#include "draw_helpers.h"
+#include "equip_parts.h"
+#include "equip_shop.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "town_frame.h"
+#include "libc.h"
+#include "window.h"
 
 /* The game built this file at optimization level 4. */
 #pragma optimization_level 4
-s32 Forge_CheckRecipe(u16 which, s16 idx, s32 mode);
-u16 Box_FindFreeSlot(void *unused0);
-u32 Equip_HalfPrice(s32 type, s32 id);
-void Items_Take(s32 item, s32 n);
-void LobbySe_Play(s32 se);
-s32 Menu_PushNoticeOnce(s32);
-void Save_AddMoney(s32 n);
-void ArmorForge_OpenMake(ArmorForgeWork *forge);
-void Chat_SetColor(s16 color);
-s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
-s16 Box_GetPageCount(SaveData *save);
-void *memset(void *dst, s32 c, u32 n);
-s32 Menu_WrapUpDown(s32 arg0, s32 arg1);
-s32 Menu_WrapLeftRight(s32 cursor, s32 count);
-s32 Menu_CountPages(s16 n, s16 per);
 extern s8 gMenuInputLock;
 /* end of prototypes */
 
 struct Player;
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-void Font_SetColor(s32 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
-void Text_Printf(const char *fmt, ...);
 /*
  * Sets up the armour forge when the workshop opens it: the model preview
  * starts hidden and the workshop's short-list flag
@@ -80,13 +79,6 @@ void ArmorForge_Open(WorkshopMenu *menu)
     }
 }
 
-void ArmorForge_LoadBox(ArmorForgeWork *m);
-void ArmorForge_AddUpgrade(ArmorForgeWork *m, s32 i);
-s32 ArmorForge_UpgradeInput(ArmorForgeWork *m, u16 pad);
-s32 ArmorForge_MakeInput(ArmorForgeWork *m, u16 pad);
-void CamFocus_SetAside(s8 arg0);
-void EquipPreview_Reset(void);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
 /*
  * The forge's input each frame, by step: the choice between production and
  * upgrades (circle enters one, cross leaves the forge), then the upgrade
@@ -97,7 +89,7 @@ s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
  */
 s32 ArmorForge_Input(u8 *task, u16 pad)
 {
-    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 0xC);
+    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 12);
 
     switch (forge->step) {
     case FORGE_STEP_CHOOSE:
@@ -181,11 +173,10 @@ void ArmorForge_LoadBox(ArmorForgeWork *forge)
             }
         }
     }
-    WinSlide_Step(&forge->listWin, 0x280, 0x12C);
-    WinSlide_Step(&forge->upgradeWin, -0x128, 10);
+    WinSlide_Step(&forge->listWin, 640, 300);
+    WinSlide_Step(&forge->upgradeWin, -296, 10);
 }
 
-u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b);
 /*
  * The equipment box's input on the upgrade screen: circle takes the armour
  * piece under the cursor when it has upgrades (MENU_DONE), refusing a
@@ -283,18 +274,7 @@ s32 ArmorForge_BoxInput(ArmorForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 ArmorUpgrade_IsLocked(EquipItem *e);
-s32 ArmorUpgrade_GetMaterials(EquipItem *e, ItemStack *out, s8 *cond);
-s32 ArmorUpgrade_GetDerived(EquipItem *e, u16 *out);
-s32 ArmorUpgrade_GetMakeMaterials(EquipItem *e, ItemStack *out, s8 *cond);
-s32 Save_IsItemObtained(SaveData *save, u16 item);
 s32 Forge_CheckCondition(s16 cond);
-s32 Armor_GetUpgradeCost(EquipItem *e);
-void *memcpy(void *dst, const void *src, u32 n);
-u8 Equip_GetWearMask(SaveData *save, EquipItem *item);
-s32 Equip_TestFlag(EquipItem *e, s16 bit);
-void Equip_SetFlag(EquipItem *e, s16 bit);
-void Equip_CopyEquipped(EquipItem *out, s16 type);
 /*
  * Builds the list of what the box slot's armour piece can become: first
  * the same piece one level up (unless it is at its last level), then each
@@ -393,12 +373,6 @@ void ArmorForge_AddUpgrade(ArmorForgeWork *forge, s32 slot)
     }
 }
 
-void EquipPreview_Hide(u8 hide);
-extern s8 gMenuInputLock;
-s32 ArmorForge_UpgradeListInput(ArmorForgeWork *m, u16 pad);
-void ArmorForge_UpgradeDetail(ArmorForgeWork *m);
-void Menu_SetYesNo(s8 arg0);
-s32 Menu_YesNoInput(void);
 /*
  * The upgrade screen, by state: the windows slide in, the box
  * (ArmorForge_BoxInput), the list of upgrades of the chosen piece
@@ -410,8 +384,8 @@ s32 ArmorForge_UpgradeInput(ArmorForgeWork *forge, u16 pad)
 {
     switch (forge->state) {
     case FORGE_UPGRADE_SLIDE_IN:
-        WinSlide_Step(&forge->upgradeWin, -0x128, 10);
-        switch (WinSlide_Step(&forge->listWin, 0x280, 0x12C)) {
+        WinSlide_Step(&forge->upgradeWin, -296, 10);
+        switch (WinSlide_Step(&forge->listWin, 640, 300)) {
         case MENU_DONE:
             forge->state++;
             break;
@@ -425,7 +399,7 @@ s32 ArmorForge_UpgradeInput(ArmorForgeWork *forge, u16 pad)
             forge->view = FORGE_UPGRADE_VIEW_STATS;
             if (forge->previewOff == 0) {
                 EquipPreview_Hide(0);
-                forge->detailPages = Equip_LevelMark(&forge->boxPiece, 0x10, &forge->result);
+                forge->detailPages = Equip_LevelMark(&forge->boxPiece, 16, &forge->result);
             }
             ArmorForge_UpgradeDetail(forge);
             break;
@@ -473,8 +447,8 @@ s32 ArmorForge_UpgradeInput(ArmorForgeWork *forge, u16 pad)
             case MENU_DONE:
                 forge->state = FORGE_UPGRADE_SLIDE_IN;
                 forge->detailPage = 0;
-                WinSlide_Step(&forge->upgradeWin, -0x128, 10);
-                WinSlide_Step(&forge->listWin, 0x280, 0x12C);
+                WinSlide_Step(&forge->upgradeWin, -296, 10);
+                WinSlide_Step(&forge->listWin, 640, 300);
                 return MENU_DONE;
             case MENU_CANCEL:
                 forge->state--;
@@ -488,9 +462,6 @@ s32 ArmorForge_UpgradeInput(ArmorForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Equip_CanWear(SaveData *save, EquipItem *item);
-s32 Armor_GetUpgradeCost(EquipItem *e);
-s32 Items_HaveEnough(u16 item, s32 n);
 /*
  * Whether upgrade `index` of the list can be done now: the player can wear
  * the result, has the money and has every material. Returns 1 or 0.
@@ -519,8 +490,6 @@ s32 ArmorForge_CanUpgrade(ArmorForgeWork *forge, s16 index)
     return 1;
 }
 
-s32 Equip_IsNoModelArmor(EquipItem *e);
-void EquipPreview_Free(void);
 /* unit's own declaration: declared with a byte type and gender as the calls here pass them; with the definition's u16 kind, id and female the calls compile differently */
 s32 Equip_GetModelId(u8 type, u16 id, u8 x);
 void EquipPreview_Load(u8 type, s32 n, u8 x); /* unit's own declaration: declared with the types the calls here pass; with the definition's (u16 kind, u16 id, u8 female) the calls compile differently */
@@ -599,7 +568,6 @@ s32 ArmorForge_UpgradeListInput(ArmorForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-u8 Equip_PreviewSkills(Player *player, EquipItem *e);
 /*
  * Sets up the upgrade screen's detail view for the chosen upgrade: its
  * page count and, for the preview views, the chosen piece's model (loaded
@@ -618,10 +586,10 @@ void ArmorForge_UpgradeDetail(ArmorForgeWork *forge)
         break;
     default:
         EquipPreview_Hide(1);
-        forge->detailPages = Equip_LevelMark(&forge->result, 0x10, NULL);
+        forge->detailPages = Equip_LevelMark(&forge->result, 16, NULL);
         break;
     case FORGE_UPGRADE_VIEW_COMPARE:
-        forge->detailPages = Equip_LevelMark(&forge->boxPiece, 0x10, &forge->result);
+        forge->detailPages = Equip_LevelMark(&forge->boxPiece, 16, &forge->result);
         EquipPreview_Hide(1);
         break;
     case FORGE_UPGRADE_VIEW_STATS:
@@ -668,10 +636,10 @@ void ArmorForge_MakeDetail(ArmorForgeWork *forge)
         break;
     default:
         EquipPreview_Hide(1);
-        forge->detailPages = Equip_LevelMark(&forge->result, 0x10, NULL);
+        forge->detailPages = Equip_LevelMark(&forge->result, 16, NULL);
         break;
     case FORGE_MAKE_VIEW_COMPARE:
-        forge->detailPages = Equip_LevelMark(&forge->worn, 0x50, &piece);
+        forge->detailPages = Equip_LevelMark(&forge->worn, 80, &piece);
         EquipPreview_Hide(1);
         break;
     case FORGE_MAKE_VIEW_STATS:
@@ -753,11 +721,6 @@ void Equip_CopyEquipped(EquipItem *out, s16 type)
 }
 
 extern s16 gEquipTabTypes[];
-void Menu_PushNotice(s32 msg);
-s32 ArmorForge_CanMake(ArmorForgeWork *m, s16 i);
-void Equip_CopyEquipped(EquipItem *out, s16 type);
-s32 LobbyMenu_YesNoInput(s32 msg);
-void ArmorForge_LoadMakePage(ArmorForgeWork *m, s32 page);
 /*
  * The production screen, by state: the list of the five armour types
  * (circle opens its recipes, warning when the box is full; cross leaves),
@@ -784,11 +747,11 @@ s32 ArmorForge_MakeInput(ArmorForgeWork *forge, u16 pad)
             forge->view = FORGE_MAKE_VIEW_LIST;
             forge->detailPage = 0;
             forge->cursor = 0;
-            WinSlide_Step(&forge->listWin, 0x280, 0x118);
+            WinSlide_Step(&forge->listWin, 640, 280);
             ArmorForge_LoadMakePage(forge, 0);
             ArmorForge_MakeDetail(forge);
             Equip_CopyEquipped(&forge->worn, gEquipTabTypes[forge->row]);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             CamFocus_SetAside(1);
             EquipPreview_Reset();
             if ((u16)Box_FindFreeSlot(&gSave) == BOX_NONE) {
@@ -803,7 +766,7 @@ s32 ArmorForge_MakeInput(ArmorForgeWork *forge, u16 pad)
         }
         break;
     case FORGE_MAKE_SLIDE_IN:
-        switch (WinSlide_Step(&forge->listWin, 0x280, 0x118)) {
+        switch (WinSlide_Step(&forge->listWin, 640, 280)) {
         case MENU_DONE:
             forge->state++;
             break;
@@ -833,7 +796,7 @@ s32 ArmorForge_MakeInput(ArmorForgeWork *forge, u16 pad)
                 CamFocus_SetAside(0);
                 EquipPreview_Hide(1);
             }
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         } else if (pad & PAD_SQUARE) {
             if (forge->count != 0) {
                 if (++forge->view == FORGE_MAKE_VIEW_COUNT) {
@@ -912,7 +875,7 @@ s32 ArmorForge_MakeInput(ArmorForgeWork *forge, u16 pad)
             case MENU_DONE:
                 forge->state = FORGE_MAKE_TAB;
                 forge->detailPage = 0;
-                WinSlide_Step(&forge->listWin, 0x280, 0x118);
+                WinSlide_Step(&forge->listWin, 640, 280);
                 return MENU_DONE;
             case MENU_CANCEL:
                 forge->state = FORGE_MAKE_LIST;
@@ -932,9 +895,6 @@ void ArmorForge_OpenMake(ArmorForgeWork *forge)
 {
 }
 
-u8 Equip_GetWearMask(SaveData *save, EquipItem *item);
-s32 Equip_TestFlag(EquipItem *e, s16 bit);
-void Equip_SetFlag(EquipItem *e, s16 bit);
 /*
  * Whether recipe `recipeIdx` belongs on the production list of armour type
  * `tab`: its type is the tab's, the local player's gender can wear it and
@@ -965,7 +925,6 @@ s32 ArmorForge_IsListed(s16 tab, ForgeRecipe *recipe, s32 recipeIdx)
     return 1;
 }
 
-s32 Recipe_IsInList(s32 type, s32 id);
 /*
  * Fills the production list with page `page` (7 entries) of the recipes
  * listed for the current armour type and filter (only gForgeRecipeList's
@@ -1010,15 +969,6 @@ void ArmorForge_LoadMakePage(ArmorForgeWork *forge, s32 page)
     forge->pages = Menu_CountPages(listed, FORGE_LIST_ROWS);
 }
 
-void Box_SetSlot(SaveData *save, u16 idx, EquipItem *item);
-void Equip_Refresh(SaveData *save);
-struct Player;
-void Player_LoadFromSave(struct Player *player);
-s32 Equip_EquipSlot(SaveData *save, u16 idx);
-void Player_SetupFromSave(struct Player *player, struct SaveData *save);
-void Player_CalcSkills(struct Player *player);
-void Town_ReloadLocalPlayer(void);
-void Player_SetColorWord(struct Player *pl, u8 idx);
 extern u8 gLobbyTextDirty;
 /*
  * Does the chosen upgrade: takes the materials and the cost, writes the
@@ -1066,7 +1016,6 @@ void ArmorForge_Upgrade(ArmorForgeWork *forge)
     ArmorForge_AddUpgrade(forge, slot);
 }
 
-s32 Equip_IsSlotEquipped(SaveData *save, s32 idx);
 /*
  * The upgrade's confirmation, by step: a piece already worn is put on
  * again without asking, a piece the player can't wear is not asked about,
@@ -1091,7 +1040,7 @@ s32 ArmorForge_UpgradeConfirm(ArmorForgeWork *forge, u16 pad)
             gMenuInputLock = 9;
             forge->step = ARMOR_CONFIRM_ASK;
         }
-        forge->detailPages = Equip_LevelMark(&forge->worn, 0x10, &forge->result);
+        forge->detailPages = Equip_LevelMark(&forge->worn, 16, &forge->result);
         break;
     case ARMOR_CONFIRM_ASK:
         if (pad & PAD_R1) {
@@ -1132,15 +1081,13 @@ s32 ArmorForge_UpgradeConfirm(ArmorForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 ArmorForge_UpgradeConfirm(ArmorForgeWork *m, u16 pad);
-s32 ArmorForge_MakeConfirm(ArmorForgeWork *m, u16 pad);
 /*
  * The forge's confirmation (the workshop's confirm state): runs the
  * production's or the upgrade's, by choice, and returns what it returns.
  */
 s32 ArmorForge_Confirm(u8 *task, u16 pad)
 {
-    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 0xC);
+    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 12);
 
     if (forge->choice == FORGE_CHOICE_MAKE) {
         return ArmorForge_MakeConfirm(forge, pad);
@@ -1194,7 +1141,6 @@ void ArmorForge_Make(ArmorForgeWork *forge)
     }
 }
 
-void ArmorForge_Make(ArmorForgeWork *m);
 /*
  * The production's confirmation, by step: a piece the player can't wear is
  * not asked about, otherwise the equip-now yes/no (R1/L1 turn the
@@ -1221,7 +1167,7 @@ s32 ArmorForge_MakeConfirm(ArmorForgeWork *forge, u16 pad)
             gMenuInputLock = 9;
             forge->step = ARMOR_CONFIRM_ASK;
         }
-        forge->detailPages = Equip_LevelMark(&forge->worn, 0x10, &piece);
+        forge->detailPages = Equip_LevelMark(&forge->worn, 16, &piece);
         break;
     case ARMOR_CONFIRM_ASK:
         if (pad & PAD_R1) {
@@ -1257,7 +1203,7 @@ s32 ArmorForge_MakeConfirm(ArmorForgeWork *forge, u16 pad)
         forge->view = FORGE_MAKE_VIEW_LIST;
         ArmorForge_Make(forge);
         Equip_CopyEquipped(&forge->worn, gEquipTabTypes[forge->row]);
-        WinSlide_Step(&forge->listWin, 0x280, 0x118);
+        WinSlide_Step(&forge->listWin, 640, 280);
         return MENU_DONE;
     }
     return MENU_RUNNING;
@@ -1269,11 +1215,8 @@ s32 ArmorForge_MakeConfirm(ArmorForgeWork *forge, u16 pad)
 static const char sStringFormat[3] = {
 #include "lobby/0082E950.inc"
 };
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
-void EquipShop_DrawLine(s16 x, s16 y, EquipItem *e);
 void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: declared with s16 coordinates as the forge's draws pass them; with the definition's s32 ones the calls compile differently */
 char *Equip_GetName(u8 type, u16 id);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
 /*
  * Draws the production list in its wide form (no detail view): the page
  * number, each recipe's new mark (blinking) or icon, name and price,
@@ -1297,36 +1240,36 @@ void ArmorForge_DrawMakeListFull(ArmorForgeWork *forge, s16 x, s16 y)
     s16 msgX;
 
     memset(&piece, 0, sizeof(piece));
-    Icon_Draw(x, y, 0x154, 0x122, 0xFFFFDDDD, 0);
+    Icon_Draw(x, y, 340, 290, 0xFFFFDDDD, 0);
     winY = rowY;
     winX = x;
     msgY = rowY;
-    Icon_Draw(winX + 0x6E, winY + 0x2D, 0x78, 0xC8, 0x60FFFFFF, 0x24);
+    Icon_Draw(winX + 110, winY + 45, 120, 200, 0x60FFFFFF, 36);
     Font_SetColor(0x80101010);
     if (forge->count == 0) {
         text = gNoArmorToMakeTexts[0];
-        msgX = Text_CenterX(text, winX + 0xAA, 0x12);
+        msgX = Text_CenterX(text, winX + 170, 18);
         Font_SetColor(0x8000052C);
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(msgX, msgY + 0x5A);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(msgX, msgY + 90);
         Text_PrintfColored(sStringFormat, text);
-        Menu_DrawDashLine(winX + 0x14, winY + 0xBA, 0x12C, 0xFF010101);
+        Menu_DrawDashLine(winX + 20, winY + 186, 300, 0xFF010101);
         return;
     }
-    Menu_DrawPageNum(winX + 0xFA, winY + 0xE, forge->page, forge->pages, 1);
-    rowY += 0x22;
-    Font_SetSpacing(0x14, 0x14);
+    Menu_DrawPageNum(winX + 250, winY + 14, forge->page, forge->pages, 1);
+    rowY += 34;
+    Font_SetSpacing(20, 20);
     i = 0;
     if (i < forge->count) {
-        textX = winX + 0x28;
+        textX = winX + 40;
         do {
             recipe = &gArmorRecipes[forge->makeList[i]];
             piece.type = recipe->type;
             piece.id = recipe->id;
             if (Equip_TestFlag(&piece, EQUIP_FLAG_NEW) == 1 && (gFrameTick & 0x10)) {
-                Icon_Draw((s16)textX - 0x16, rowY, 0x10, 0x14, 0xFFC03000, 0x63);
+                Icon_Draw((s16)textX - 22, rowY, 16, 20, 0xFFC03000, 99);
             } else {
-                Lobby_DrawEquipIcon((s16)textX - 0x1C, rowY, 0x14, 0x14, &piece);
+                Lobby_DrawEquipIcon((s16)textX - 28, rowY, 20, 20, &piece);
             }
             if (i == forge->cursor) {
                 selPiece = piece;
@@ -1335,8 +1278,8 @@ void ArmorForge_DrawMakeListFull(ArmorForgeWork *forge, s16 x, s16 y)
                 } else {
                     cursorShift = 10;
                 }
-                Icon_Draw(textX, rowY + 0xE, 0x112, 8, 0x99106060, 0x6F);
-                Menu_DrawCursorIcon((s16)textX - 0x32 - cursorShift, rowY - 2, 0x18, 0xFF20C0C0);
+                Icon_Draw(textX, rowY + 14, 274, 8, 0x99106060, 111);
+                Menu_DrawCursorIcon((s16)textX - 50 - cursorShift, rowY - 2, 24, 0xFF20C0C0);
             }
             if (ArmorForge_CanMake(forge, i) == 0) {
                 Font_SetColor(0x8042352E);
@@ -1345,12 +1288,12 @@ void ArmorForge_DrawMakeListFull(ArmorForgeWork *forge, s16 x, s16 y)
             }
             Font_SetPos(textX, rowY);
             Text_PrintfColored("%-20s %6d%s", Equip_GetName(recipe->type, recipe->id), Equip_HalfPrice(recipe->type, recipe->id), gLobbyWords[LOBBY_WORD_ZENNY]);
-            rowY += 0x16;
+            rowY += 22;
             i++;
         } while (i < forge->count);
     }
-    Menu_DrawDashLine(winX + 0x14, winY + 0xBA, 0x12C, 0xFF010101);
-    EquipShop_DrawLine(winX + 0x10, winY + 0xC9, &selPiece);
+    Menu_DrawDashLine(winX + 20, winY + 186, 300, 0xFF010101);
+    EquipShop_DrawLine(winX + 16, winY + 201, &selPiece);
 }
 
 /*
@@ -1372,25 +1315,25 @@ void ArmorForge_DrawMakeList(ArmorForgeWork *forge, s16 x, s16 y)
 
     memset(&piece, 0, sizeof(piece));
     memset(&selPiece, 0, sizeof(selPiece));
-    Icon_Draw(x, y, 0x122, 0xB4, 0xFFFFDDDD, 0);
+    Icon_Draw(x, y, 290, 180, 0xFFFFDDDD, 0);
     winY = rowY;
     winX = x;
-    Icon_Draw(winX + 0x64, winY + 0xF, 0x5A, 0x96, 0x60FFFFFF, 0x24);
+    Icon_Draw(winX + 100, winY + 15, 90, 150, 0x60FFFFFF, 36);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(winX + 0xC8, winY + 0xC, forge->page, forge->pages, 1);
-    rowY += 0x22;
-    Font_SetSpacing(0x11, 0x11);
+    Menu_DrawPageNum(winX + 200, winY + 12, forge->page, forge->pages, 1);
+    rowY += 34;
+    Font_SetSpacing(17, 17);
     i = 0;
     if (i < forge->count) {
-        textX = winX + 0x28;
+        textX = winX + 40;
         do {
             recipe = &gArmorRecipes[forge->makeList[i]];
             piece.type = recipe->type;
             piece.id = recipe->id;
             if (Equip_TestFlag(&piece, EQUIP_FLAG_NEW) == 1 && (gFrameTick & 0x10)) {
-                Icon_Draw((s16)textX - 0x14, rowY, 0x10, 0x14, 0xFFC03000, 0x63);
+                Icon_Draw((s16)textX - 20, rowY, 16, 20, 0xFFC03000, 99);
             } else {
-                Lobby_DrawEquipIcon((s16)textX - 0x1A, rowY, 0x14, 0x14, &piece);
+                Lobby_DrawEquipIcon((s16)textX - 26, rowY, 20, 20, &piece);
             }
             if (i == forge->cursor) {
                 selPiece = piece;
@@ -1399,8 +1342,8 @@ void ArmorForge_DrawMakeList(ArmorForgeWork *forge, s16 x, s16 y)
                 } else {
                     cursorShift = 10;
                 }
-                Icon_Draw((s16)textX - 8, rowY + 0xC, 0xF8, 8, 0x99106060, 0x6F);
-                Menu_DrawCursorIcon((s16)textX - 0x2A - cursorShift, rowY - 2, 0x16, 0xFF20C0C0);
+                Icon_Draw((s16)textX - 8, rowY + 12, 248, 8, 0x99106060, 111);
+                Menu_DrawCursorIcon((s16)textX - 42 - cursorShift, rowY - 2, 22, 0xFF20C0C0);
             }
             if (ArmorForge_CanMake(forge, i) == 0) {
                 Font_SetColor(0x8042352E);
@@ -1409,9 +1352,9 @@ void ArmorForge_DrawMakeList(ArmorForgeWork *forge, s16 x, s16 y)
             }
             Font_SetPos(textX, rowY);
             Text_PrintfColored("%-20s", Equip_GetName(recipe->type, recipe->id));
-            Font_SetPos((s16)textX + 0xB2, rowY);
+            Font_SetPos((s16)textX + 178, rowY);
             Text_PrintfColored("%6d%s", Equip_HalfPrice(recipe->type, recipe->id), gLobbyWords[LOBBY_WORD_ZENNY]);
-            rowY += 0x14;
+            rowY += 20;
             i++;
         } while (i < forge->count);
     }
@@ -1429,29 +1372,19 @@ void ArmorForge_DrawMaterials(ArmorForgeWork *forge, s16 x, s16 y)
     ForgeRecipe *recipe = &gArmorRecipes[forge->makeList[forge->cursor]];
     s16 i;
 
-    Win_Draw(x, y, 0x132, 0x72, 0xBDB59F6C, 0xA0202020, 6);
+    Win_Draw(x, y, 306, 114, 0xBDB59F6C, 0xA0202020, 6);
     y += 10;
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F28);
     Font_SetPos(x + 14, y);
     Text_PrintfColored(gForgeTexts[FORGE_TEXT_MATERIALS_HEAD]);
     for (i = 0; i < FORGE_RECIPE_MATS; i++) {
         y += 20;
-        Items_DrawNeedLine(x + 0x22, y, recipe->mat[i].item, recipe->mat[i].count, 0x807F7F7F);
+        Items_DrawNeedLine(x + 34, y, recipe->mat[i].item, recipe->mat[i].count, 0x807F7F7F);
     }
 }
 
-void EquipWindow_DrawLocal(EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
-void Equip_DrawPreviewHelp(u32 color, s8 k);
-void EquipCompare_Draw(EquipItem *a, EquipItem *b, s32 c, s16 y, u8 flags);
-void EquipDetail_Draw(Player *a, s16 x, s16 y, u32 flags);
-char *Text_FillDollar(char *fmt, M2C_UNK n);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
-void ArmorForge_DrawMakeListFull(ArmorForgeWork *m, s16 x, s16 y);
-void ArmorForge_DrawMaterials(ArmorForgeWork *m, s16 x, s16 y);
 /*
  * Draws the production screen: the armour type's title bar and the money,
  * then by state the list of armour types, the recipe list with the current
@@ -1471,26 +1404,26 @@ void ArmorForge_DrawMake(ArmorForgeWork *forge)
 
     memset(&piece, 0, sizeof(piece));
     if (forge->state != FORGE_MAKE_TAB) {
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawLabelBar(10, 0x12, 0xA0, 0xFFB0B000, gEquipGroupTexts[EQUIP_GROUP_TEXT_ARMOR + forge->row], 2, 1);
-        Menu_DrawMoney(0x1E0, 0x10, 0);
+        Font_SetSpacing(22, 22);
+        Menu_DrawLabelBar(10, 18, 160, 0xFFB0B000, gEquipGroupTexts[EQUIP_GROUP_TEXT_ARMOR + forge->row], 2, 1);
+        Menu_DrawMoney(480, 16, 0);
         recipe = &gArmorRecipes[forge->makeList[cursorIdx]];
         piece.used = 1;
-        y = 0x34;
+        y = 52;
         piece.type = recipe->type;
         piece.id = recipe->id;
         x = forge->listWin.pos;
     }
     switch (forge->state) {
     case FORGE_MAKE_TAB:
-        Font_SetSpacing(0x14, 0x14);
-        Menu_DrawLabelList(0x1CC, &gEquipGroupTexts[EQUIP_GROUP_TEXT_ARMOR], ARMOR_TAB_COUNT, forge->row, 0xFFB0B000);
+        Font_SetSpacing(20, 20);
+        Menu_DrawLabelList(460, &gEquipGroupTexts[EQUIP_GROUP_TEXT_ARMOR], ARMOR_TAB_COUNT, forge->row, 0xFFB0B000);
         break;
     case FORGE_MAKE_SLIDE_IN:
     case FORGE_MAKE_LIST:
         switch (forge->view) {
         case FORGE_MAKE_VIEW_LIST:
-            ArmorForge_DrawMakeListFull(forge, x + 0xC, y);
+            ArmorForge_DrawMakeListFull(forge, x + 12, y);
             break;
         case FORGE_MAKE_VIEW_STATS:
             if (forge->previewOff == 0) {
@@ -1500,13 +1433,13 @@ void ArmorForge_DrawMake(ArmorForgeWork *forge)
             if (forge->previewOff == 0 && Equip_IsNoModelArmor(&forge->shown) == 1) {
                 text = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(text, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(text, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(text);
             }
-            ArmorForge_DrawMakeList(forge, 10, 0x32);
-            EquipWindow_DrawLocal(&piece, 0x136, 0xD8, forge->detailPage | 0x40, NULL);
+            ArmorForge_DrawMakeList(forge, 10, 50);
+            EquipWindow_DrawLocal(&piece, 310, 216, forge->detailPage | 0x40, NULL);
             break;
         case FORGE_MAKE_VIEW_MATERIALS:
             if (forge->previewOff == 0) {
@@ -1516,38 +1449,37 @@ void ArmorForge_DrawMake(ArmorForgeWork *forge)
             if (forge->previewOff == 0 && Equip_IsNoModelArmor(&forge->shown) == 1) {
                 text = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(text, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(text, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(text);
             }
-            ArmorForge_DrawMakeList(forge, 10, 0x32);
-            ArmorForge_DrawMaterials(forge, 0x136, 0xD8);
+            ArmorForge_DrawMakeList(forge, 10, 50);
+            ArmorForge_DrawMaterials(forge, 310, 216);
             break;
         case FORGE_MAKE_VIEW_COMPARE:
-            ArmorForge_DrawMakeList(forge, 10, 0x32);
-            EquipCompare_Draw(&forge->worn, &piece, 0x136, 0x36, forge->detailPage | 0x50);
+            ArmorForge_DrawMakeList(forge, 10, 50);
+            EquipCompare_Draw(&forge->worn, &piece, 310, 54, forge->detailPage | 0x50);
             break;
         case FORGE_MAKE_VIEW_HUNTER:
-            ArmorForge_DrawMakeList(forge, 10, 0x32);
-            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, 0x3A, forge->detailPage);
+            ArmorForge_DrawMakeList(forge, 10, 50);
+            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, 58, forge->detailPage);
             break;
         }
         if (forge->view != FORGE_MAKE_VIEW_HUNTER) {
-            Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_ARMOR_TO_MAKE]);
+            Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_ARMOR_TO_MAKE]);
         }
         break;
     case FORGE_MAKE_ASK:
-        EquipCompare_Draw(&forge->worn, &piece, 0x136, 0x36, forge->detailPage | 0x50);
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020,
+        EquipCompare_Draw(&forge->worn, &piece, 310, 54, forge->detailPage | 0x50);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020,
                       Text_FillDollar(gForgeTexts[FORGE_TEXT_MATERIALS_ASK], Equip_HalfPrice(piece.type, piece.id)));
-        Font_SetPos(0x1BC, 0x190);
+        Font_SetPos(444, 400);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
 }
 
-void BoxMenu_DrawItemList(s16 cur, u32 flags, f32 fx);
 void Forge_DrawMaterials(s16 x, s16 y, ItemStack *need, s8 n);
 /*
  * Draws the upgrade screen's right side, by state: on the list of
@@ -1573,15 +1505,15 @@ void ArmorForge_DrawUpgradeDetail(ArmorForgeWork *forge, s16 x, s16 y)
             if (forge->previewOff == 0 && Equip_IsNoModelArmor(&forge->shown) == 1) {
                 text = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(text, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(text, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(text);
             }
-            EquipWindow_DrawLocal(&forge->result, 0x136, 0xE0, forge->detailPage | 0x40, NULL);
+            EquipWindow_DrawLocal(&forge->result, 310, 224, forge->detailPage | 0x40, NULL);
             break;
         case FORGE_UPGRADE_VIEW_COMPARE:
-            EquipCompare_Draw(&forge->boxPiece, &forge->result, 0x136, y + 4, forge->detailPage | 0x50);
+            EquipCompare_Draw(&forge->boxPiece, &forge->result, 310, y + 4, forge->detailPage | 0x50);
             break;
         case FORGE_UPGRADE_VIEW_MATERIALS:
             if (forge->previewOff == 0) {
@@ -1591,28 +1523,28 @@ void ArmorForge_DrawUpgradeDetail(ArmorForgeWork *forge, s16 x, s16 y)
             if (forge->previewOff == 0 && Equip_IsNoModelArmor(&forge->shown) == 1) {
                 text = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(text, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(text, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(text);
             }
-            Forge_DrawMaterials(0x136, 0xE0, forge->mats[forge->cursor].need, ARMOR_UP_MATS);
+            Forge_DrawMaterials(310, 224, forge->mats[forge->cursor].need, ARMOR_UP_MATS);
             break;
         case FORGE_UPGRADE_VIEW_HUNTER:
-            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, 0x3A, forge->detailPage);
+            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, 58, forge->detailPage);
             return;
         }
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_UPGRADE_KIND]);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_UPGRADE_KIND]);
         break;
     case FORGE_UPGRADE_ASK:
-        EquipCompare_Draw(&forge->boxPiece, &forge->result, 0x136, y + 4, forge->detailPage | 0x50);
+        EquipCompare_Draw(&forge->boxPiece, &forge->result, 310, y + 4, forge->detailPage | 0x50);
         if (forge->boxPiece.id != forge->result.id) {
             text = Text_FillDollar(gForgeTexts[FORGE_TEXT_MATERIALS_FEE_ASK], forge->cost[forge->cursor]);
         } else {
             text = Text_FillDollar(gForgeTexts[FORGE_TEXT_MATERIALS_ASK], forge->cost[forge->cursor]);
         }
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, text);
-        Font_SetPos(0x1BC, 0x190);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, text);
+        Font_SetPos(444, 400);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     default:
@@ -1622,15 +1554,14 @@ void ArmorForge_DrawUpgradeDetail(ArmorForgeWork *forge, s16 x, s16 y)
             BoxMenu_DrawItemList(slot, (forge->detailPage & 7) | 0x2800078, x);
         }
         if (forge->state == FORGE_UPGRADE_BOX || forge->state == FORGE_UPGRADE_SLIDE_IN) {
-            Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_ARMOR_UPGRADE]);
+            Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_ARMOR_UPGRADE]);
         } else {
-            Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_UPGRADE_KIND]);
+            Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_UPGRADE_KIND]);
         }
         break;
     }
 }
 
-void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
 /*
  * Draws the list of upgrades of box piece `piece`: the heading, then for
  * an armour piece each upgrade (its name, or the level-up label when it
@@ -1650,8 +1581,8 @@ void ArmorForge_DrawUpgradeList(ArmorForgeWork *forge, EquipItem *piece, s16 x, 
     u8 *type;
 
     memset(&upgrade, 0, sizeof(upgrade));
-    rowY += 0xA;
-    Font_SetPos(winX + 0xA, rowY);
+    rowY += 10;
+    Font_SetPos(winX + 10, rowY);
     Font_SetColor(0x807F7F28);
     Text_PrintfColored(gForgeTexts[FORGE_TEXT_ARMOR_UPGRADE_HEAD]);
     switch (piece->type) {
@@ -1664,7 +1595,7 @@ void ArmorForge_DrawUpgradeList(ArmorForgeWork *forge, EquipItem *piece, s16 x, 
     }
     if (forge->count == 0) {
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(Text_CenterX(gForgeTexts[FORGE_TEXT_CANNOT_UPGRADE], winX + 0x8A, 0x11), y + 0x33);
+        Font_SetPos(Text_CenterX(gForgeTexts[FORGE_TEXT_CANNOT_UPGRADE], winX + 138, 17), y + 51);
         Text_PrintfColored(gForgeTexts[FORGE_TEXT_CANNOT_UPGRADE]);
         return;
     }
@@ -1678,7 +1609,7 @@ void ArmorForge_DrawUpgradeList(ArmorForgeWork *forge, EquipItem *piece, s16 x, 
             }
             upgrade = forge->upgrades[i];
             cost = forge->cost[i];
-            Font_SetPos(winX + 0xE, rowY += 0x14);
+            Font_SetPos(winX + 14, rowY += 20);
             id = &upgrade.id;
             if (*id != forge->boxPiece.id) {
                 type = &upgrade.type;
@@ -1686,20 +1617,19 @@ void ArmorForge_DrawUpgradeList(ArmorForgeWork *forge, EquipItem *piece, s16 x, 
             } else {
                 Text_PrintfColored(gForgeTexts[FORGE_TEXT_GUN_MODS]);
             }
-            Font_SetPos(winX + 0xC8, rowY);
+            Font_SetPos(winX + 200, rowY);
             Text_PrintfColored("%7dz", cost);
             if (Equip_TestFlag(&upgrade, EQUIP_FLAG_NEW) == 1 && (gFrameTick & 0x10)) {
-                Icon_Draw(x, rowY - 4, 0x10, 0x14, 0xFFC03000, 0x63);
+                Icon_Draw(x, rowY - 4, 16, 20, 0xFFC03000, 99);
             }
             if (forge->cursor == i && forge->state == FORGE_UPGRADE_LIST) {
-                Menu_DrawGlowBar(winX + 0x8A, rowY - 1, 0x114, 0x12, 0xB05050F0);
+                Menu_DrawGlowBar(winX + 138, rowY - 1, 276, 18, 0xB05050F0);
             }
             i++;
         } while (i < forge->count);
     }
 }
 
-void ArmorForge_DrawUpgradeList(ArmorForgeWork *m, EquipItem *e, s16 x, s16 y);
 /*
  * Draws the upgrade screen's left window: the title bar, the money, the
  * window (brighter while its list is active) and the list of upgrades of
@@ -1712,8 +1642,8 @@ void ArmorForge_DrawUpgradePanel(ArmorForgeWork *forge, s16 x, s16 y)
     s32 slot = forge->row * BOX_PAGE_COLS + forge->page * BOX_PAGE_SLOTS + forge->col;
 
     Font_SetSpacing(22, 22);
-    Menu_DrawLabelBar(10, 0x12, 0xA0, 0xFFB0B000, gArmorForgeTexts[ARMOR_FORGE_TITLE_UPGRADE], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Menu_DrawLabelBar(10, 18, 160, 0xFFB0B000, gArmorForgeTexts[ARMOR_FORGE_TITLE_UPGRADE], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (forge->state) {
     case FORGE_UPGRADE_LIST:
         frameColor = 0xBDB59F6C;
@@ -1725,13 +1655,10 @@ void ArmorForge_DrawUpgradePanel(ArmorForgeWork *forge, s16 x, s16 y)
         break;
     }
     Font_SetSpacing(17, 17);
-    Win_Draw(x, y, 0x114, 0xAE, frameColor, fillColor, 6);
+    Win_Draw(x, y, 276, 174, frameColor, fillColor, 6);
     ArmorForge_DrawUpgradeList(forge, &gSave.box[slot], x, y);
 }
 
-void ArmorForge_DrawMake(ArmorForgeWork *m);
-void ArmorForge_DrawUpgradeDetail(ArmorForgeWork *m, s16 x, s16 y);
-void ArmorForge_DrawUpgradePanel(ArmorForgeWork *m, s16 x, s16 y);
 /*
  * The forge's draw while it runs: by step, the production/upgrade choice,
  * the production screen, or the upgrade screen (its right side and its
@@ -1739,19 +1666,19 @@ void ArmorForge_DrawUpgradePanel(ArmorForgeWork *m, s16 x, s16 y);
  */
 void ArmorForge_Draw(u8 *task)
 {
-    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 0xC);
+    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 12);
 
     switch (forge->step) {
     case FORGE_STEP_CHOOSE:
-        Font_SetSpacing(0x14, 0x14);
-        Menu_DrawLabelList(0x1CC, gArmorForgeTexts, 2, forge->choice, 0xFFB0B000);
+        Font_SetSpacing(20, 20);
+        Menu_DrawLabelList(460, gArmorForgeTexts, 2, forge->choice, 0xFFB0B000);
         break;
     case FORGE_STEP_MAKE:
         ArmorForge_DrawMake(forge);
         break;
     case FORGE_STEP_UPGRADE:
-        ArmorForge_DrawUpgradeDetail(forge, forge->listWin.pos + 12, 0x32);
-        ArmorForge_DrawUpgradePanel(forge, forge->upgradeWin.pos + 6, 0x36);
+        ArmorForge_DrawUpgradeDetail(forge, forge->listWin.pos + 12, 50);
+        ArmorForge_DrawUpgradePanel(forge, forge->upgradeWin.pos + 6, 54);
         break;
     }
 }
@@ -1763,7 +1690,7 @@ void ArmorForge_Draw(u8 *task)
  */
 void ArmorForge_DrawEquipPrompt(u8 *task)
 {
-    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 0xC);
+    ArmorForgeWork *forge = (ArmorForgeWork *)(task + 12);
     EquipItem piece;
     char *text;
     ForgeRecipe *recipe;
@@ -1786,9 +1713,9 @@ void ArmorForge_DrawEquipPrompt(u8 *task)
             text = gForgeTexts[FORGE_TEXT_EQUIP_ASK];
             break;
         }
-        EquipCompare_Draw(&forge->worn, &piece, 0x132, 0x38, forge->detailPage | 0x50);
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, text);
-        Font_SetPos(0x144, 0x190);
+        EquipCompare_Draw(&forge->worn, &piece, 306, 56, forge->detailPage | 0x50);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, text);
+        Font_SetPos(324, 400);
         Text_Printf(gEquipNowTexts[gLobbyMenu->yesNo]);
     }
 }

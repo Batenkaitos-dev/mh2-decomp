@@ -1,5 +1,6 @@
 #ifndef SHADOW_H
 #define SHADOW_H
+#include "stageobj.h"
 
 /*
  * The shadows drawn under players and monsters: stage objects of kind 1
@@ -13,5 +14,12 @@ enum ShadowType {
     SHADOW_GROUND_BONES = 3, /* the shadow model's bones laid on the ground one by one (Bone_SnapToGround) */
     SHADOW_OWN_MODEL = 4     /* the monster's own model set, drawn as its shadow */
 };
+
+void Shadow_Setup(StageObj *shadow);
+void Shadow_Run(StageObj *shadow);
+void Shadow_End(StageObj *shadow);
+void Shadow_Delete(StageObj *shadow);
+void Shadow_Draw(DrawSlot *slot);
+void Shadow_Spawn(void *obj, s16 type);
 
 #endif

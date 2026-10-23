@@ -31,7 +31,7 @@ typedef struct Mtx44 {
 #define GALLERY_ROW_TARGETS     5   /* the targets of a row */
 #define GALLERY_FLIP_FRAMES     12  /* the frames of a flip up or down (turnStep a frame) */
 #define GALLERY_TILT_DOWN       0xA000  /* a target's tilt while flipped down, before it flips up */
-#define GALLERY_FLIP_STEP       0x800   /* a target's tilt a frame of a flip (0x10000 a turn) */
+#define GALLERY_FLIP_STEP       0x800   /* a target's tilt a frame of a flip (ANGLE_TURN to a turn) */
 #define GALLERY_FALL_STEP       0xCCD   /* a downed target's tilt a frame as it falls */
 #define GALLERY_FALL_FRAMES     6   /* a downed target falls this long, then leaves its spot */
 #define GALLERY_CLEAR_WAIT      10  /* frames between the flip down and the board's refill */
@@ -58,7 +58,7 @@ enum GalleryMuzzleType {
     GALLERY_MUZZLE_TYPES = 3
 };
 typedef struct GalleryMuzzle {
-    /* 0x0 */ s32 roll;             /* its roll (0x10000 a turn) */
+    /* 0x0 */ s32 roll;             /* its roll (ANGLE_TURN to a turn) */
     /* 0x4 */ u16 life;             /* the frames it shows */
 } GalleryMuzzle;
 
@@ -88,7 +88,7 @@ enum GalleryBoardPhase {
 typedef struct GalleryBoard {
     /* 0x000 */ Vec3f spots[GALLERY_TARGETS];  /* the spots (GalleryBoard_Init: five a row from gGalleryRowBases) */
     /* 0x0B4 */ s8 hitsLeft[16];    /* per target: the hits it still takes (its kind's hits; GalleryBoard_HitTarget) */
-    /* 0x0C4 */ u16 tilt[GALLERY_TARGETS];  /* per target: its tilt about x (0x10000 a turn) */
+    /* 0x0C4 */ u16 tilt[GALLERY_TARGETS];  /* per target: its tilt about x (ANGLE_TURN to a turn) */
     /* 0x0E2 */ u16 facing[16];     /* per target: its yaw, away from the board's direction; [15] a burst's roll */
     /* 0x102 */ u8 downed[GALLERY_TARGETS];   /* per target: 1 once its last hit is counted (it falls) */
     /* 0x111 */ s8 swing[GALLERY_TARGETS];    /* per target: frames left of the swing a hit gives (GalleryBoard_SwingTarget) */
@@ -132,15 +132,15 @@ enum LobbyObjState {
 /* A model object's type (StageObj.type; the gModelObj* tables' index), by
  * the spawns seen. Types 3 to 5 have table entries but no spawner. */
 enum ModelObjType {
-    MODEL_OBJ_NPC_BURST = 0,    /* townsperson 0x4F's state 0x55, once: 7 parts */
-    MODEL_OBJ_NPC_PUFF = 1,     /* the same townsperson's state 0x54, every 3 to 7 frames; the parts drift */
-    MODEL_OBJ_SPARKLE = 2,      /* a townsperson's motion 0x400 every 10 frames, and fixed spots in AREA_HUB_0x85 */
-    MODEL_OBJ_PLAYER_FX_A = 6,  /* the player's motion 0xFA at frame 250, with PLAYER_FX_B */
+    MODEL_OBJ_NPC_BURST = 0,    /* the pet's PET_STATE_JOY (Pet_StateJoy), once: 7 parts */
+    MODEL_OBJ_NPC_PUFF = 1,     /* the pet's PET_STATE_ANGRY (Pet_StateAngry), every 3 to 7 frames; the parts drift */
+    MODEL_OBJ_SPARKLE = 2,      /* a stationed townsperson's STATIONED_MOT_BUSY_IDLE_FIDGET, every 10 frames from frame 38 to 198, and fixed spots in AREA_HUB_0x85 */
+    MODEL_OBJ_PLAYER_FX_A = 6,  /* the player's motion 250 at its frame 250, with PLAYER_FX_B */
     MODEL_OBJ_PLAYER_FX_B = 7,  /* eight parts appearing one after another */
     MODEL_OBJ_PET_JOY = 8       /* shown on the player while a petting pleases (Poogie_UpdatePetting); lives Poogie_JoyFrames frames */
 };
 
-/* A part of a model object (0x34 bytes, in the object's buffer), drawn by
+/* A part of a model object (52 bytes, in the object's buffer), drawn by
  * ModelObj_DrawPart through its draw slot. */
 typedef struct ModelObjPart {
     /* 0x00 */ s16 slot;            /* its draw slot (DrawSlot_Alloc; -1: none) */
@@ -149,7 +149,7 @@ typedef struct ModelObjPart {
     /* 0x10 */ Vec3f pos;
     /* 0x1C */ f32 alpha;           /* from a key curve, in the types that have one */
     /* 0x20 */ u8 unk20[4];
-    /* 0x24 */ u16 angle;           /* its roll (0x10000 a turn) */
+    /* 0x24 */ u16 angle;           /* its roll (ANGLE_TURN to a turn) */
     /* 0x26 */ s16 spin;            /* added to angle each frame */
     /* 0x28 */ f32 scale;
     /* 0x2C */ struct DrawSlot *draw;   /* DrawSlot_Get(slot); NULL: not drawn */
@@ -166,7 +166,6 @@ typedef struct ModelObjTables {
     u16 *partFrames[10];
     s16 burstTexIds[12];
 } ModelObjTables;
-extern ModelObjTables gModelObjTables;
 
 /* A kind of the gallery's targets (gGalleryTargetKinds, 8 bytes each). */
 typedef struct GalleryTargetKind {
@@ -269,7 +268,7 @@ typedef struct RecordMenu {
     /* 0x2B0 */ u16 hunts[0x80];    /* per monster: gSave.hunted + captured (Records_RecvMonsterRecords kind 2) */
     /* 0x3B0 */ u16 ids[8];         /* the rows of the page shown (monster and item lists) */
     /* 0x3C0 */ s16 kind[9];        /* the menu's entries (Records_Open: up to 9) */
-    /* 0x3D2 */ u8 equipBits[0x282]; /* the equipment list's flags packed (Bits_Pack of gSave's bladeFlags, gunFlags, armorFlags; a member's from Records_RecvEquipBits); Records_EquipInput clears 0x280 bytes */
+    /* 0x3D2 */ u8 equipBits[0x282]; /* the equipment list's flags packed (Bits_Pack of gSave's bladeFlags, gunFlags, armorFlags; a member's from Records_RecvEquipBits); Records_EquipInput clears 640 bytes */
     /* 0x654 */ void *rows[10];     /* the rows of the page shown (category lists) */
     /* 0x67C */ EquipItem items[8];
     /* 0x6DC */ s32 tally[9][2];    /* per item category: seen, total (Records_TallyTitles, Records_TallyItems) */
@@ -369,8 +368,6 @@ enum HouseAccessStep {
  * flags (TownMsg_SendRecordsAsk): 0xA plus the EquipItem type. */
 #define RECORDS_REQ_EQUIP(type) (0xA + (type))
 
-extern RecordCat gRecordGuideCats[];
-
 /*
  * A flock of birds in the town's hubs (a stage object of kind
  * LOBBY_OBJ_BIRD_FLOCK, BirdFlock_Spawn; its buf is a BirdFlock).
@@ -413,7 +410,7 @@ typedef struct FlockBirdAnim {
     FlockBirdPair *list;
 } FlockBirdAnim;
 
-/* A bird of a flock, 0x4C bytes. */
+/* A bird of a flock, 76 bytes. */
 typedef struct FlockBird {
     /* 0x00 */ Vec3f pos;
     /* 0x0C */ Vec3f vel;           /* the speeds: x, then z (in vel.y), then the height (in vel.z) */
@@ -421,7 +418,7 @@ typedef struct FlockBird {
     /* 0x1C */ u8 unk1C[2];
     /* 0x1E */ s16 timer;           /* frames: (1-5) * 30 sitting before it may fly off; the landing's and lift-off's frames */
     /* 0x20 */ s16 turnWait;        /* frames until the sitting bird may turn: 30 */
-    /* 0x22 */ u16 ang;             /* the heading, 0x10000 a turn */
+    /* 0x22 */ u16 ang;             /* the heading, ANGLE_TURN to a turn */
     /* 0x24 */ s32 color;           /* its tint (RS_COLOR2); -1: none */
     /* 0x28 */ FlockBirdPair *list; /* the animation's (part, frames) pairs */
     /* 0x2C */ f32 climb;           /* the height gained flying off */
@@ -450,10 +447,10 @@ typedef struct BirdFlock {
 } BirdFlock;
 
 /* the lobby scene's object of LobbyFlock_Run (a sub_main object, Obj_Alloc(1); a view of the Obj):
- * 16 parts, each drawn by its own draw slot (LobbyActor_DrawPart) */
+ * 16 parts, each drawn by its own draw slot (LobbyFlock_DrawPart) */
 typedef struct LobbyPart {
     /* 0x00 */ f32 vel[3];          /* its speed, in its own axes */
-    /* 0x0C */ u16 rot[3];          /* angles, 0x10000 a turn; random at the start (LobbyActor_DrawPart draws with rot[0], rot[1]) */
+    /* 0x0C */ u16 rot[3];          /* angles, ANGLE_TURN to a turn; random at the start (LobbyFlock_DrawPart draws with rot[0], rot[1]) */
     /* 0x12 */ s16 spin;            /* rot[0]'s step per frame */
     /* 0x14 */ s16 unk14;
     /* 0x16 */ s16 unk16;
@@ -465,7 +462,7 @@ typedef struct LobbyPart {
 typedef struct LobbyFlock {
     /* 0x00 */ u8 active;           /* Obj.active */
     /* 0x01 */ u8 visible;          /* Obj.visible */
-    /* 0x02 */ u8 kind;             /* Obj.kind: 0x18 (LobbyFlock_Spawn) */
+    /* 0x02 */ u8 kind;             /* Obj.kind: 24 (LobbyFlock_Spawn) */
     /* 0x03 */ u8 type;             /* Obj.type: 0 */
     /* 0x04 */ u8 state;            /* Obj.state: LobbyFlock_Run's switch */
     /* 0x05 */ s8 unk5;             /* Obj.var0: Rand_Next(1) & 3 at the start */
@@ -500,7 +497,7 @@ typedef struct GalleryShot {
     /* 0x41 */ u8 pad41[3];
     /* 0x44 */ Vec3f scale;         /* the flash's and puffs' scale, from their keys */
     /* 0x50 */ f32 alpha;           /* their alpha, from their keys */
-    /* 0x54 */ s16 roll;            /* their random roll (0x10000 a turn) */
+    /* 0x54 */ s16 roll;            /* their random roll (ANGLE_TURN to a turn) */
 } GalleryShot;
 
 /* The results' score (kind LOBBY_OBJ_GALLERY_SCORE): its value split into
@@ -520,11 +517,13 @@ typedef struct GalleryScore {
  * Particles thrown from an actor (kind LOBBY_OBJ_ACTOR_PARTICLES; owner the
  * actor they come from): six parts, each with its own draw slot. The
  * types (ACTOR_PARTICLES_*):
- * - SPRAY: small pale bits thrown fast from the owner's bone 0xC or 0x14,
+ * - SPRAY: small pale bits thrown fast from the owner's bone 12 or 20,
  *   thrown again on a timer, the spray turning on and off at random, while
- *   the owner stays in actor state 0x6F;
+ *   the owner stays in NPC_STATE_CONTEST_GRIP (the arm-wrestling grip,
+ *   whose state function spawns them);
  * - HAIR: bits in the owner's hair colour (a Player) that fly up, fall and
- *   tumble, until the barber (em) passes frame 50 of its motion 0x43D;
+ *   tumble, until the barber (em) passes frame 50 of its
+ *   SERVICE_MOT_HAIR_CUT_NEXT;
  * - BARBER: three pairs of short effects at the barber's bones 6 and 9,
  *   for 30 frames.
  */
@@ -579,7 +578,7 @@ enum MealStep {
     MEAL_STEP_SEAT = 2,         /* faded out: both are seated */
     MEAL_STEP_SEATED = 3,       /* 3 frames, then a fade in, the kitchen camera and the cooking lesson */
     MEAL_STEP_COOKING = 4,      /* until the lesson is done */
-    MEAL_STEP_SERVE = 5,        /* until the player's motion 0x261; then the meal's effects */
+    MEAL_STEP_SERVE = 5,        /* until the player's motion is PL_MOT_TOWN_SEATED; then the meal's effects */
     MEAL_STEP_EATING = 6,       /* until the player's motion ends */
     MEAL_STEP_EATEN = 7,        /* the same, then the cook's line after the meal */
     MEAL_STEP_THANKS = 8,       /* that line, then a fade out */
@@ -602,7 +601,7 @@ typedef struct MealEffect {
  * The mug a drinking townsperson holds (kind LOBBY_OBJ_DRINK_MUG): the work
  * in its StageObj.buf. StageObj.type is its phase (enum DrinkMugPhase), and
  * in DRINK_MUG_HELD StageObj.var0 is DRINK_MUG_WAIT or DRINK_MUG_SWIVEL.
- * Angles named yaw or swivel are 16-bit (0x10000 a turn); the headings are
+ * Angles named yaw or swivel are 16-bit (ANGLE_TURN to a turn); the headings are
  * radians.
  */
 typedef struct DrinkMugWork {

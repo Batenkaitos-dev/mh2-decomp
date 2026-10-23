@@ -55,15 +55,18 @@ segments:
       # with its .data, .rodata and .bss below.
       - [0x80, asm, sdk/netcnfif]
       - [0x16D0, c, yn_card]           # 0xAC96D0: memory card slot checks
-      - [0x1B90, c, yn_main]           # 0xAC9B90: the network settings screens
+      - [0x1B80, c, yn_main]           # 0xAC9B80: the network settings screens
+      - [0x77D0, c, yn_netcnf]         # 0xACF7D0: the settings file through netcnfif, the devices
       # the zeros from Yn_LoadModule's end to .data (0xAD1180): the linker aligned
-      # .data to 0x80; with yn_main's last function in C they are a piece of their own
+      # .data to 0x80; with the last function in C they are a piece of their own
       - { start: 0x913C, type: data, name: text_end, linker_section_order: .text }
       - [0x9180, data, data]             # .data (0xAD1180): netcnfif's
       - [0x91A0, .data, yn_main]
+      - [0xA1E0, .data, yn_netcnf]
       - { start: 0xA280, type: data, name: rodata, linker_section_order: .rodata }  # .rodata (0xAD2280): netcnfif's
       - [0xA770, .rodata, yn_card]
       - [0xA780, .rodata, yn_main]
+      - [0xB960, .rodata, yn_netcnf]
       # the zeros from the last string to 0xAD3A80: the linker aligned the end of the
       # overlay (where .bss starts) to 0x80
       - { start: 0xBA34, type: data, name: rodata_end, linker_section_order: .rodata }

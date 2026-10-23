@@ -9,18 +9,16 @@
 #include "m2c_macros.h"
 #include "yn.h"
 
-void Stream_Reset(void);
 void CardTask_Begin(s32 mode);
 void CardTask_Update(void);
 void CardTask_StartPoll(void);
 void CardTask_StartList(s32 a, char *b, u8 *c);
 s32 CardTask_Result(void);
-s32 YnCard_MapError(s32 err);
 
 /* .bss, declared from the highest address down (MWCC emits them last-declared
  * first). */
 YnWork *gYnWork;
-u8 gYnCardDirBuf[0x4000];
+u8 gYnCardDirBuf[16384];
 
 /* Clears a card check's states and puts sub_main's card task in mode 2. */
 void YnCard_Reset(YnCardCheck *check)
@@ -173,7 +171,7 @@ s32 YnCard_ListNetcnfDir(YnCardCheck *check)
 
 /*
  * Maps the card task's error codes to yn's: 0 -> -1, -1 -> -2,
- * -0x100 -> -3, -0xFF -> -4, -0xFE -> -5, -0xFD -> -7, -0xFC -> -6, any
+ * -256 -> -3, -255 -> -4, -254 -> -5, -253 -> -7, -252 -> -6, any
  * other -> -3.
  */
 s32 YnCard_MapError(s32 err)
@@ -196,10 +194,4 @@ s32 YnCard_MapError(s32 err)
     default:
         return -3;
     }
-}
-
-/* Resets sub_main's streams. */
-void Yn_ResetStreams(void)
-{
-    Stream_Reset();
 }

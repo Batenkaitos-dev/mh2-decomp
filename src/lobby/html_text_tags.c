@@ -1,34 +1,23 @@
-/* The HTML tag handlers, first part: <HTML>, <HEAD>, <TITLE>, <B>, <U>,
- * <S>, <CENTER>, <Hn>, <DL>/<DT>/<DD>, <P>, <IMG> and its attributes.
+/* The HTML tag handlers, first part: the handler of the tags the parser
+ * skips, then <HTML>, <HEAD>, <TITLE>, <B>, <U>, <S>, <CENTER>, <Hn>,
+ * <DL>/<DT>/<DD> and <P>, the tags of the text.
  * The parser's tag sets (gHtmlModeTags) point at them. Each handler gets
  * the parse position and the pending text and returns 0 (or < 0 to stop
  * the page). */
 #include "common.h"
 #include "html.h"
-
-char *strcpy(char *dst, const char *src);
-u8 *strstr(const u8 *s, const char *w); /* strstr */
-
-void Html_DecodeEntities(char *s);
-void Html_SetCharWidths(u8 bold);
-void Html_ReadAttrValue(u8 **cur, char *buf, s32 size);
-s32 Html_ParseNumber(char *s);
-void Html_ClearImgAttrs(void);
-void Layout_Image(void);
-void Layout_Flush(u8 *text);
-void Layout_FlushBreak(u8 *text);
-void Layout_FlushBlock(u8 *text);
-void Html_ClearFontAttrs(void);
-void Html_PushFont(void);
-void Html_PopFont(void);
-void Html_SetTitle(u8 *text);
-void Layout_CellAlign(HtmlCell *cell);
-void Html_SetBase(char *url);
+#include "browser.h"
+#include "libc.h"
 
 extern u8 gHtmlHeadingSizes[];
-extern char gHtmlTagClose[]; /* ">" */
 extern char gHtmlBlack[]; /* "#000000": the default text colour */
 extern char gHtmlBlue[]; /* "#0000FF": the default link colour */
+
+/* <!--, <HTML ...>, <MAP ...> and ends that do nothing. */
+s32 Html_TagIgnore(u8 **cur, u8 *text)
+{
+    return 0;
+}
 
 /* <HTML>, and <HTML ...>'s ">": start a page. */
 s32 Html_TagHtml(u8 **cur, u8 *text)
@@ -81,7 +70,7 @@ s32 Html_TagEndTitle(u8 **cur, u8 *text)
 /* <BASE HREF=...> */
 s32 Html_AttrBaseHref(u8 **cur, u8 *text)
 {
-    char buf[0x100];
+    char buf[256];
 
     Html_ReadAttrValue(cur, buf, sizeof(buf));
     if (gHtml->measure == HTML_PASS_DRAW && gHtml->inFrame == 0) {
@@ -307,9 +296,9 @@ s32 Html_TagDd(u8 **cur, u8 *text)
     if (gHtml->tableDepth != 0) {
         cell = &gHtml->cells[gHtml->curCell];
         Layout_CellAlign(cell);
-        cell->indent = 0x3C;    /* 60 dots */
+        cell->indent = 60;    /* 60 dots */
     } else {
-        gHtml->indent = 0x3C;
+        gHtml->indent = 60;
     }
     return 0;
 }
@@ -333,61 +322,3 @@ s32 Html_TagFlush(u8 **cur, u8 *text)
     return 0;
 }
 
-/* <IMG>: laid out at once */
-s32 Html_TagImg(u8 **cur, u8 *text)
-{
-    Layout_Flush(text);
-    Html_ClearImgAttrs();
-    Layout_Image();
-    return 0;
-}
-
-/* <IMG ...> */
-s32 Html_TagImgAttrs(u8 **cur, u8 *text)
-{
-    Layout_Flush(text);
-    Html_ClearImgAttrs();
-    return 0;
-}
-
-/* <IMG SRC=...> */
-s32 Html_AttrImgSrc(u8 **cur, u8 *text)
-{
-    Html_ReadAttrValue(cur, gHtml->imgSrc, sizeof(gHtml->imgSrc));
-    return 0;
-}
-
-/* <IMG WIDTH=...> */
-s32 Html_AttrImgWidth(u8 **cur, u8 *text)
-{
-    char buf[HTML_ATTR_MAX + 1];
-
-    Html_ReadAttrValue(cur, buf, HTML_ATTR_MAX);  /* a byte less than buf */
-    gHtml->imgWidth = Html_ParseNumber(buf);
-    return 0;
-}
-
-/* <IMG HEIGHT=...> */
-s32 Html_AttrImgHeight(u8 **cur, u8 *text)
-{
-    char buf[HTML_ATTR_MAX + 1];
-
-    Html_ReadAttrValue(cur, buf, HTML_ATTR_MAX);  /* a byte less than buf */
-    gHtml->imgHeight = Html_ParseNumber(buf);
-    return 0;
-}
-
-/* <IMG ALT=...> */
-s32 Html_AttrImgAlt(u8 **cur, u8 *text)
-{
-    Html_ReadAttrValue(cur, gHtml->imgAlt, sizeof(gHtml->imgAlt));
-    Html_DecodeEntities(gHtml->imgAlt);
-    return 0;
-}
-
-/* <IMG USEMAP=...> */
-s32 Html_AttrImgUsemap(u8 **cur, u8 *text)
-{
-    Html_ReadAttrValue(cur, gHtml->imgUsemap, sizeof(gHtml->imgUsemap));
-    return 0;
-}

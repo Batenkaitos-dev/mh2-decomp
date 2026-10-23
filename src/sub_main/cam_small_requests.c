@@ -11,17 +11,126 @@
 #include "net_menu.h"
 #include "area.h"
 #include "camera.h"
+#include "quest.h"
+#include "save.h"
+#include "libc.h"
+#include "cam_helpers.h"
 
 extern u8 gStageCamReqs[];
-extern u8 gCamRequests[0xBC];
+extern u8 gCamRequests[188];
 extern u8 gSysBusy;
+extern u8 gQuestTargetCamIds[];
 
-void CamReq_QuestTarget(s32 flag);
-void CamReq_Set(s32 req, void *arg);
-void CamReq_Cancel(void);
-s32 CamCtl_IsRailMode(void);
-u16 Area_DayId(u16 area);
-void *memset(void *p, s32 c, u32 n);
+/*
+ * Starts the camera request that shows the quest's monster: CamReq_Start
+ * when flag is 0 (CamReq_TargetDown), else CamReq_Change
+ * (CamReq_BossHunted), with the monster as the request's object. Nothing
+ * when the latest done goal (gQuest.goalIdx, from the end) is not a
+ * monster goal (QUEST_GOAL_MONSTER) or not of downEm's kind. The monster
+ * is gQuest.downEm, else gQuest.spawnedEm when that is a Lao-Shan Lung,
+ * Fatalis or Shen Gaoren kind; it must be in the current area. Request
+ * CAM_REQ_LAO_SHAN_DOWN for the Lao-Shan Lungs in AREA_FORTRESS_5 (by Area_DayId), CAM_REQ_FATALIS_DOWN
+ * for the Fatalis kinds, CAM_REQ_SHEN_GAOREN_DOWN for Shen Gaoren, CAM_REQ_ELDER_DOWN for Kushala Daora, its
+ * rusted kind, Chameleos, Lunastra and Teostra, each only when no monster
+ * is left (emLeft 0). The other kinds take gQuestTargetCamIds by family
+ * (MonsterGroup_First), none for CAM_REQ_NONE; Plesioth and Green Plesioth get
+ * none in EM_GROUP_DEFEAT state 2.
+ */
+void CamReq_QuestTarget(s32 flag)
+{
+    Em *em;
+    s32 i;
+    u8 goalNo;
+    s32 req;
+
+    for (i = 2; i >= 0; i--) {
+        if (gQuest.goalIdx[i] != QUEST_GOAL_NONE) {
+            goalNo = gQuest.goalIdx[i];
+            if (!(gQuest.goals[goalNo].flags & QUEST_GOAL_MONSTER)) {
+                return;
+            }
+            if (gQuest.downEm != NULL && gQuest.downEm->type != gQuest.goals[goalNo].target) {
+                return;
+            }
+            break;
+        }
+    }
+    em = gQuest.downEm;
+    if (em == NULL) {
+        em = gQuest.spawnedEm;
+        if (em == NULL) {
+            return;
+        }
+        if (em->type != EM_KIND_LAO_SHAN_LUNG && em->type != EM_KIND_ASHEN_LAO_SHAN_LUNG && em->type != EM_KIND_FATALIS && em->type != EM_KIND_FATALIS_B && em->type != EM_KIND_FATALIS_C && em->type != EM_KIND_SHEN_GAOREN) {
+            return;
+        }
+    }
+    if (gScene.area != em->area) {
+        return;
+    }
+    switch (em->type) {
+    case EM_KIND_LAO_SHAN_LUNG:
+    case EM_KIND_ASHEN_LAO_SHAN_LUNG:
+        if (Area_DayId(gScene.area) != AREA_FORTRESS_5) {
+            return;
+        }
+        if (gQuest.emLeft == 0) {
+            req = CAM_REQ_LAO_SHAN_DOWN;
+        } else {
+            return;
+        }
+        break;
+    case EM_KIND_FATALIS:
+    case EM_KIND_FATALIS_B:
+    case EM_KIND_FATALIS_C:
+        if (gQuest.emLeft == 0) {
+            req = CAM_REQ_FATALIS_DOWN;
+        } else {
+            return;
+        }
+        break;
+    case EM_KIND_SHEN_GAOREN:
+        if (gQuest.emLeft == 0) {
+            req = CAM_REQ_SHEN_GAOREN_DOWN;
+        } else {
+            return;
+        }
+        break;
+    case EM_KIND_KUSHALA_DAORA:
+    case EM_KIND_RUSTED_KUSHALA_DAORA:
+    case EM_KIND_CHAMELEOS:
+        if (gQuest.emLeft == 0) {
+            req = CAM_REQ_ELDER_DOWN;
+        } else {
+            return;
+        }
+        break;
+    case EM_KIND_LUNASTRA:
+    case EM_KIND_TEOSTRA:
+        if (gQuest.emLeft == 0) {
+            req = 7;
+        } else {
+            return;
+        }
+        break;
+    case EM_KIND_PLESIOTH:
+    case EM_KIND_GREEN_PLESIOTH:
+        if (em->stateGroup == EM_GROUP_DEFEAT && em->state == 2) {
+            return;
+        }
+    default:
+        req = gQuestTargetCamIds[MonsterGroup_First(em->type)];
+        if (req == CAM_REQ_NONE) {
+            return;
+        }
+        break;
+    }
+    if (flag == 0) {
+        CamReq_Start(req, em);
+    } else {
+        CamReq_Change(req, em);
+    }
+}
 
 /* The view of the quest's target monster when it goes down (CamReq_QuestTarget(0)). */
 void CamReq_TargetDown(void)
@@ -213,12 +322,15 @@ s32 CamReq_ResetStub(void)
 }
 
 /* This file's initialised data. */
+u8 gQuestTargetCamIds[80] = {
+#include "sub_main/0041CE60.inc"
+};
 u8 gStageCamReqs[16] = {
 #include "sub_main/0041CEB0.inc"
 };
-u32 gEffectColors[8] = {
+u8 gEffectColors[8][4] = {
 #include "sub_main/0041CEC0.inc"
 };
-u32 gFishColors[8] = {
+u8 gFishColors[10][3] = {
 #include "sub_main/0041CEE0.inc"
 };

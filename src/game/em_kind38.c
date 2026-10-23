@@ -1,101 +1,48 @@
 /*
- * Monster kind 0x38 (no code shows its species): the hovering monster Yama
- * Tsukami calls up, which a quest can also place in a row at the start
- * (EmKind38_Start). It hovers and drifts at a height between two limits,
- * charges with one contact attack, can blow itself up, and keeps a looping
- * sound going (EmKind38_UpdateLoopSe). The state
- * functions take the monster and its work area (EmKind38Work, its view of
- * EmWork); Em.step is the step within the current state.
+ * Monster kind 56 (the names EmKind38_* give it in hex; no code shows its
+ * species): the hovering monster Yama Tsukami calls up, which a quest can
+ * also place in a row at the start (EmKind38_Start). It hovers and drifts at
+ * a height between two limits, charges with one contact attack, can blow
+ * itself up, and keeps a looping sound going (EmKind38_UpdateLoopSe). The
+ * state functions take the monster and its work area (EmKind38Work, its view
+ * of EmWork); Em.step is the step within the current state.
  */
 #include "common.h"
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_kind38.h"
+#include "em_yamatsukami.h"
 #include "player.h"
 #include "objattach.h"
 #include "area.h"
-s32 EmKind38_MoveByVelocity(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
+#include "capsule.h"
+#include "engine_math.h"
+#include "gm_load.h"
+#include "hit_effects.h"
+#include "shakalaka_teostra_bulldrome.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* unit's own declaration: group and state are declared u16; with the definition's s32 the callers (EmKind38_ChangeState, EmShakalaka_ChangeState ...) pass the state without the 16-bit mask the game's code applies */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-f32 Math_Sin(f32 x);
-s8 QuestEm_Appear(Em *em);
-ObjAttach *BulldromeAttack_Create(Em *em, s8 kind);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_PlaySeAtBoneVol(Em *em, s32 se, s32 bone, s32 vol);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-s32 Em_StepToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmKind38_UpdateLoopSe(Em *em, EmWork *work);
-void EmKind38_Init(Em *);
-void EmKind38_FlyForward(Em *, s16);
-void EmKind38_FlyBackward(Em *);
-void EmKind38_Climb(Em *);
-void EmKind38_Descend(Em *);
-void EmKind38_Sidestep(Em *, s32);
-void EmKind38_Drift(Em *);
-void EmKind38_BurstOut(Em *);
-void EmKind38_Charge(Em *, u8);
-void EmKind38_SelfDestruct(Em *);
-void EmKind38_Die(Em *, u8);
-void EmKind38_Reappear(Em *);
-void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
 void EmBodyFx_Spawn(Em *em, s16 kind);
-void Vec_RotateY(f32 *v, f32 angle);
-void Vec_Copy(f32 *out, f32 *in);
-void Vec_Add(f32 *, f32 *, f32 *);
-s32 QuestEm_CanAppear(Em *em);
-void Player_Integrate(void *);
-void Player_ClearVelocity(void *);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
-u8 Player_InCurrentArea(void *obj);
-void Shadow_Spawn(void *obj, s16 type);
 extern u16 EmKind38_Effect02Chance[];
 extern f32 EmKind38_HeightRange[][2];
 EmBone *Em_Bone(void *obj, s16 bone);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateSelf(f32 *v, f32 *m);
-f32 Math_Absf(f32 x);
-Em *QuestEm_Spawn(QuestEm *q);
-f32 Math_Sqrtf(f32 x);
-f32 Math_Atan2(f32 y, f32 x);
 extern f32 EmKind38_SpawnOfs[];
-void QuestEm_Hunted(Em *em);
-void EmMine_Drop(Em *em, f32 *pos);
-void EmKind38_PlaySe(Em *em, s32 arg1);
-void EmKind38_ClampVelocity(Em *em, f32 *lim);
 extern f32 EmKind38_VelLimits[];
-void EmKind38_KeepHeight(Em *em, u8 k);
 extern Vec3f EmKind38_DriftAccels[];
 extern f32 EmKind38_DriftVelLimits[];
-void Em_InitParts(Em *em);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-void EmKind38_InitHover(Em *em, EmWork *work);
 extern f32 gStartPos[];
 typedef struct { f32 x, y; } EmKPair;
 extern EmKPair EmKind38_ChargeReach[][2];
-void *EmKind38_CreateChargeAttack(Em *em);
-void Vec_RotateX(f32 *v, f32 angle);
-void Vec_Scale(f32 *out, f32 *in, f32 s);
-void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void Explosion_CreateAt(f32 *pos, s32 kind, u16 area, u8 arg3);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-s32 Em_UpdateCombatTimer(Em *em);
-s32 EmKind38_HitByIce(Em *em);
-void EmKind38_RunState(Em *em);
-void EmKind38_SteerHover(Em *em, EmWork *work);
-void EmKind38_ApplyHover(Em *em, EmWork *work);
-void Em_EndStatus5(Em *em);
 /* end of prototypes */
 
 /*
- * The looped sound by seKind: kind 1 plays sound 0 at bone 2 every 10
- * frames, kind 2 sound 1 every 11 frames; otherwise the timer stays at 0.
+ * The looped sound by seKind: kind 1 plays K38_SE_FLY_LOOP every 10 frames,
+ * kind 2 K38_SE_CHARGE_LOOP every 11 frames; otherwise the timer stays at 0.
  */
 void EmKind38_UpdateLoopSe(Em *em, EmWork *work)
 {
@@ -104,7 +51,7 @@ void EmKind38_UpdateLoopSe(Em *em, EmWork *work)
     switch (w->seKind) {
     case 1:
         if (w->seTimer == 0) {
-            Em_PlaySeAtBoneVol(em, 0, 2, 3);
+            Em_PlaySeAtBoneVol(em, K38_SE_FLY_LOOP, K38_BONE_BODY, 3);
         }
         (w->seTimer)++;
         if (w->seTimer >= 10) {
@@ -113,7 +60,7 @@ void EmKind38_UpdateLoopSe(Em *em, EmWork *work)
         break;
     case 2:
         if (w->seTimer == 0) {
-            Em_PlaySeAtBoneVol(em, 1, 2, 3);
+            Em_PlaySeAtBoneVol(em, K38_SE_CHARGE_LOOP, K38_BONE_BODY, 3);
         }
         (w->seTimer)++;
         if (w->seTimer >= 11) {
@@ -176,7 +123,7 @@ void EmKind38_Start(Em *em)
     EmKind38_Init(em);
     if (em->spawnParam & 1) {
         em->stance = EM_STANCE_AIR;
-        w->stayTimer = 0x708;
+        w->stayTimer = 1800;
         em->scriptPending = 0;
         EmKind38_ChangeState(em, EM_GROUP_FLY, K38_FLY_BURST_OUT, EM_SYNC_LOCAL);
         return;
@@ -225,7 +172,7 @@ void EmKind38_Idle(Em *em)
     case 0:
         em->stance = EM_STANCE_GROUND;
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0xF) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 15) + 30;
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -270,7 +217,7 @@ void EmKind38_RunMoveState(Em *em)
 
 /*
  * K38_FLY_FORWARD_SHORT and _LONG (variant 0, 1): flies toward the goal at
- * its hover height (at most 800 or 1200 ahead), turning up to 0x20 a frame,
+ * its hover height (at most 800 or 1200 ahead), turning up to 32 a frame,
  * then brakes.
  */
 void EmKind38_FlyForward(Em *em, s16 variant)
@@ -309,7 +256,7 @@ void EmKind38_FlyForward(Em *em, s16 variant)
         if (!(em->velZ <= lim)) {
             em->velZ = lim;
         }
-        if (Em_StepToGoal(em, 0x20, 2) == 1) {
+        if (Em_StepToGoal(em, 32, 2) == 1) {
             em->accelZ = 0.0625f * -em->velZ;
             em->accelY = 0.0f;
             em->step++;
@@ -372,7 +319,7 @@ void EmKind38_Hover(Em *em)
     case 0:
         em->stance = EM_STANCE_AIR;
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0x1E) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 30) + 30;
         break;
     case 1:
         em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
@@ -404,7 +351,7 @@ void EmKind38_Climb(Em *em)
         if (--em->timer <= 0) {
             em->step++;
             em->stance = EM_STANCE_AIR;
-            em->timer = (em->stateRand & 3) * 8 + 0x1E;
+            em->timer = (em->stateRand & 3) * 8 + 30;
             em->accelY = 0.777f;
             em->accelZ = 0.55f;
         }
@@ -451,7 +398,7 @@ void EmKind38_Descend(Em *em)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = (em->stateRand & 3) * 8 + 0x1E;
+            em->timer = (em->stateRand & 3) * 8 + 30;
             em->accelY = -0.777f;
             em->accelZ = 0.55f;
         }
@@ -488,7 +435,7 @@ void EmKind38_Descend(Em *em)
 
 /*
  * K38_FLY_SIDESTEP_A and _B (variant 0, 1): flies 90 frames with its
- * heading 0x3800 off the goal's direction, keeping its height, then brakes.
+ * heading 14336 off the goal's direction, keeping its height, then brakes.
  */
 void EmKind38_Sidestep(Em *em, s32 dir)
 {
@@ -498,9 +445,9 @@ void EmKind38_Sidestep(Em *em, s32 dir)
     w->seKind = 1;
     em->rotY = Math_AngleXZ(&em->posX, em->goal) & 0xFFFF;
     if (dir == 0) {
-        turn = -0x3800;
+        turn = -14336;
     } else {
-        turn = 0x3800;
+        turn = 14336;
     }
     em->rotY += turn;
     switch (em->step) {
@@ -508,7 +455,7 @@ void EmKind38_Sidestep(Em *em, s32 dir)
         em->stance = EM_STANCE_AIR;
         em->step++;
         w->bobGainGoal = 0.6f;
-        em->timer = 0x5A;
+        em->timer = 90;
         em->accelZ = 0.333f;
         break;
     case 1:
@@ -553,7 +500,7 @@ void EmKind38_Drift(Em *em)
     case 1:
         if (--em->timer <= 0) {
             em->step++;
-            em->timer = (em->stateRand & 3) * 4 + 0xF;
+            em->timer = (em->stateRand & 3) * 4 + 15;
             Vec_Copy(&em->accelX, &EmKind38_DriftAccels[em->stateVar0].x);
         }
         break;
@@ -600,14 +547,14 @@ void EmKind38_BurstOut(Em *em)
         em->stance = EM_STANCE_AIR;
         em->step++;
         w->bobGainGoal = 0.0f;
-        w->scaleFrames = em->timer = (em->stateRand & 3) * 3 + 0xF;
+        w->scaleFrames = em->timer = (em->stateRand & 3) * 3 + 15;
         em->rotX += (em->stateRand & 0xF00) + 0x600;
         em->rotY += ((em->stateRand >> 4) & 0xF00) - 0x780;
         Player_ClearVelocity(em);
         em->velZ = 50.0f + 7.0f * ((em->stateRand >> 2) & 3);
         Vec_RotateX(&em->velX, (6.2831855f * (f32) em->rotX) / 65536.0f);
         em->noPushTimer = 5;
-        EmKind38_PlaySe(em, 2);
+        EmKind38_PlaySe(em, K38_SE_BURST_OUT);
         break;
     case 1:
         em->noPushTimer = 5;
@@ -755,7 +702,7 @@ void * EmKind38_CreateChargeAttack(Em *em)
 
 /*
  * K38_ATK_SELF_DESTRUCT: waits 20 frames, flies at the target with its body
- * pulsing, and explodes at bone 2 on arrival (K38_DEFEAT_VANISH).
+ * pulsing, and explodes at K38_BONE_BODY on arrival (K38_DEFEAT_VANISH).
  */
 void EmKind38_SelfDestruct(Em *em)
 {
@@ -792,9 +739,9 @@ void EmKind38_SelfDestruct(Em *em)
         if (!(em->velZ <= 9.6f)) {
             em->velZ = 9.6f;
         }
-        if (Em_StepToGoal(em, 0x20, 2) == 1) {
+        if (Em_StepToGoal(em, 32, 2) == 1) {
             if ((s32)Player_InCurrentArea(em) & 0xFF) {
-                Mtx_GetTrans(pos, em->model->bones[2].world);
+                Mtx_GetTrans(pos, em->model->bones[K38_BONE_BODY].world);
                 FireBlast_CreateScaled(pos, 0, 1.0f);
                 Explosion_CreateAt(pos, EXPLOSION_DIVE_IMPACT, em->area, 0);
             }
@@ -901,7 +848,7 @@ void EmKind38_Die(Em *em, u8 variant)
         QuestEm_Hunted(em);
         em->step++;
         if (variant == 0) {
-            em->stateVar0 = 0x3C;
+            em->stateVar0 = 60;
         } else {
             em->stateVar0 = 0;
             em->alpha = 0.0f;
@@ -918,7 +865,7 @@ void EmKind38_Die(Em *em, u8 variant)
         if (em->stateVar0 != 0) {
             em->stateVar0--;
             if (em->stateVar0 == 0) {
-                EmKind38_PlaySe(em, 3);
+                EmKind38_PlaySe(em, K38_SE_VANISH);
             }
         } else if ((em->alpha -= 0.016666668f) <= 0.0f) {
             em->visible = 0;
@@ -964,8 +911,8 @@ void EmKind38_Reappear(Em *em)
  */
 void EmKind38_RunDefeatState(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->state) {
     case K38_DEFEAT_DIE:
         EmKind38_Die(em, 0U);
@@ -1008,7 +955,7 @@ void EmKind38_FadeIn(Em *em)
         em->stance = EM_STANCE_AIR;
         Player_ClearVelocity(em);
         em->velY = -10.0f;
-        em->timer = 0x1E;
+        em->timer = 30;
         break;
     case 1:
         em->alpha += 0.033333335f;
@@ -1035,8 +982,8 @@ void EmKind38_FadeIn(Em *em)
 /* Runs the current group 7 state's function, unhittable and unpushable. */
 void EmKind38_RunEvent2State(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     em->senseDelay = 5;
     switch (em->state) {
     case K38_EVENT_FADE_IN:
@@ -1077,7 +1024,7 @@ void EmKind38_Update(Em *em)
         if (em->stateGroup != EM_GROUP_DEFEAT) {
             EmKind38_ChangeState(em, EM_GROUP_DEFEAT, K38_DEFEAT_DIE, EM_SYNC_OWNER);
             if (EmKind38_HitByIce(em) == 1) {
-                EmKind38_PlaySe(em, 4);
+                EmKind38_PlaySe(em, K38_SE_ICE_KILL);
             }
         }
         em->scriptPending = 0;
@@ -1085,10 +1032,10 @@ void EmKind38_Update(Em *em)
     case 5:
         if (EmKind38_HitByIce(em) == 1) {
             EmKind38_ChangeState(em, EM_GROUP_DEFEAT, K38_DEFEAT_DIE, EM_SYNC_OWNER);
-            EmKind38_PlaySe(em, 4);
+            EmKind38_PlaySe(em, K38_SE_ICE_KILL);
         } else if (em->stateGroup != EM_GROUP_REACT || em->state != K38_REACT_STATUS_FLINCH) {
             EmKind38_ChangeState(em, EM_GROUP_REACT, K38_REACT_STATUS_FLINCH, EM_SYNC_OWNER);
-            EmKind38_PlaySe(em, 5);
+            EmKind38_PlaySe(em, K38_SE_FLINCH);
         }
         em->scriptPending = 0;
         break;
@@ -1096,14 +1043,14 @@ void EmKind38_Update(Em *em)
     case 14:
         if (EmKind38_HitByIce(em) == 1) {
             EmKind38_ChangeState(em, EM_GROUP_DEFEAT, K38_DEFEAT_DIE, EM_SYNC_OWNER);
-            EmKind38_PlaySe(em, 4);
+            EmKind38_PlaySe(em, K38_SE_ICE_KILL);
         } else {
             if (em->stance == EM_STANCE_AIR) {
                 EmKind38_ChangeState(em, EM_GROUP_REACT, K38_REACT_FLINCH_AIR, EM_SYNC_OWNER);
             } else {
                 EmKind38_ChangeState(em, EM_GROUP_REACT, K38_REACT_FLINCH_GROUND, EM_SYNC_OWNER);
             }
-            EmKind38_PlaySe(em, 5);
+            EmKind38_PlaySe(em, K38_SE_FLINCH);
         }
         em->scriptPending = 0;
         break;
@@ -1181,8 +1128,8 @@ void EmKind38_MotionEffects(Em *em, EmWork *work)
 {
     s16 *words = (s16 *) work;
 
-    if (em->motionId[0] != words[0x21]) {
-        words[0x21] = em->motionId[0];
+    if (em->motionId[0] != words[33]) {
+        words[33] = em->motionId[0];
     }
     EmKind38_UpdateLoopSe(em, work);
 }
@@ -1212,7 +1159,7 @@ void EmKind38_UpdateMotionEffects(Em *em)
 void EmKind38_SpawnEffects(void *em)
 {
     EmBodyFx_Spawn(em, 2);
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* Callback slot 2: nothing. */
@@ -1440,8 +1387,8 @@ s32 EmKind38_HitByIce(Em *em)
 }
 
 /*
- * Spawns a kind 0x38 monster at bone 0x22 of the given monster (Yama
- * Tsukami), facing along the bone, when that monster is in the current
+ * Spawns a kind 56 monster at the given monster's YAMA_BONE_SUMMON (Yama
+ * Tsukami's), facing along the bone, when that monster is in the current
  * area.
  */
 void EmKind38_SpawnAtEmBone(Em *em)
@@ -1452,7 +1399,7 @@ void EmKind38_SpawnAtEmBone(Em *em)
     f32 *mtx;
 
     if (em->area == gScene.area) {
-        entry.kind = 0x38;
+        entry.kind = 56;
         entry.variant = 1;
         entry.hp = -1;
         entry.spawnParam = 1;
@@ -1460,7 +1407,7 @@ void EmKind38_SpawnAtEmBone(Em *em)
         entry.level = em->level;
         minion = QuestEm_Spawn(&entry);
         if (minion != NULL) {
-            mtx = (f32 *)Em_Bone(em, 0x22);
+            mtx = (f32 *)Em_Bone(em, YAMA_BONE_SUMMON);
             Vec_RotateSelf(EmKind38_SpawnOfs, mtx);
             Vec_Add(&minion->posX, spawnPos, mtx + 12);
             spawnPos[2] = Math_Sqrtf(mtx[8] * mtx[8] + mtx[10] * mtx[10]);
@@ -1480,14 +1427,13 @@ u8 EmKind38_IsCharging(Em *em)
     return ((EmKind38Work *)&em->work)->charging;
 }
 
-/* Plays a sound of the kind at bone 2. */
+/* Plays a sound of the kind at K38_BONE_BODY. */
 void EmKind38_PlaySe(Em *em, s32 soundId)
 {
-    Em_PlaySeAtBoneVol(em, soundId, 0x2, 0x3);
+    Em_PlaySeAtBoneVol(em, soundId, K38_BONE_BODY, 3);
 }
 
 /* The file's initialised data, in the game's order */
-s32 GmEm_ReturnZero(void); /* gm_sub */
 f32 EmKind38_VelLimits[6] = {
 #include "game/008CA260.inc"
 };

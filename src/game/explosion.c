@@ -5,9 +5,7 @@
  * Explosion_CreateAt each make an explosion of a given type. The type picks
  * its row of Explosion_Rows and its hit shapes in Explosion_HitShapes. The
  * bombs bring a second explosion that hits monsters only, and the fireballs
- * bring a follow-up burst (Explosion_Spawn). Then come PlacedItem_Create and
- * PlacedItem_Update, for the items set on the ground (enum PlacedItemType);
- * PlacedItem's Setup, Run, Hit, End and Free come with the other families.
+ * bring a follow-up burst (Explosion_Spawn).
  */
 #include "common.h"
 #include "em.h"
@@ -17,42 +15,17 @@
 #include "item.h"
 #include "sprite.h"
 #include "capsule.h"
+#include "quest.h"
+#include "sound.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "hit_effects.h"
+#include "hit_setup.h"
+#include "rand.h"
+#include "obj.h"
 
-void Explosion_CreateInArea(Player *owner, f32 *pos, s32 kind, u16 area);
 void Explosion_CreateOwned(Player *owner, f32 *pos, s32 kind);
-s32 Player_IsLocal(void *obj);
-s32 Em_HitQuadsVertical(f32 *p, Em **hitEm, s16 *hitBone, f32 *hit);
-void FireBlast_CreateScaled(f32 *pos, s16 k, f32 scale);
-void PlacedItem_Update(ObjAttach *o);
-void Vec_RotateY(f32 *v, f32 angle);
-void ObjAttach_Free(ObjAttach *p);
-s32 Player_HasSkill(Player *p, u8 skill);
-u16 Rand_Next(s32 stream);
-void Explosion_Setup(ObjAttach *o);
-void Explosion_Run(ObjAttach *);
-void Explosion_Hit(ObjAttach *o);
-void Explosion_End(ObjAttach *o);
-void Explosion_Free(ObjAttach *o);
-void PlacedItem_Setup(struct ObjAttach *o);
-void PlacedItem_Run(struct ObjAttach *o);
-void PlacedItem_Hit(struct ObjAttach *);
-void PlacedItem_End(ObjAttach *o);
-void PlacedItem_Free(ObjAttach *o);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void Vec_Copy(f32 *out, f32 *in);
-void DrawSlot_Free(s32);
-ObjAttach *ObjAttach_Alloc(s32 n);
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
-void ObjAttach_StartAttack(ObjAttach *, s32 a, void *b);
-s32 Player_TestSetFlags(void *obj, s32 mask);
-void ObjAttach_StartOwnedAttack(ObjAttach *o, s32 a, s32 b, void *c);
 extern HitShape *Explosion_HitShapes[];
-extern void *Explosion_RowsPtr;
-extern u8 Explosion_TakesOwnerSide[];
-void Explosion_Init(ObjAttach *);
-void Explosion_BoostPower(ObjAttach *);
-void Explosion_Spawn(ObjAttach *);
-void Explosion_Update(ObjAttach *);
 
 /*
  * Makes o an Explosion (ATTACH_EXPLOSION, updated by Explosion_Update) and
@@ -288,28 +261,28 @@ void Explosion_Update(ObjAttach *o)
  */
 void Explosion_PlaySound(Em *em)
 {
-    if (*(u16 *)((u8 *)em + 0xCE) == gScene.area) {
+    if (*(u16 *)((u8 *)em + 206) == gScene.area) {
         switch (em->subType) {
         case 0:
         case 16:
         case 20:
         case 34:
         case 38:
-            Sound_PlaySeAtPosChecked(1, 0x4D, 0, em->rotMtx[1], 0xF, 0);
+            Sound_PlaySeAtPosChecked(1, 77, 0, em->rotMtx[1], 15, 0);
             break;
         case 2:
         case 22:
-            Sound_PlaySeAtPosChecked(1, 0x4F, 0, em->rotMtx[1], 0xF, 0);
+            Sound_PlaySeAtPosChecked(1, 79, 0, em->rotMtx[1], 15, 0);
             break;
         case 7:
             if (Rand_Next(1) & 0xFFFF & 1) {
-                Sound_PlaySeAtPosChecked(1, 0x4E, 0, em->rotMtx[1], 0xF, 0);
+                Sound_PlaySeAtPosChecked(1, 78, 0, em->rotMtx[1], 15, 0);
             }
             break;
         case 8:
         case 14:
         case 15:
-            Sound_PlaySeAtPosChecked(1, 0x4E, 0, em->rotMtx[1], 0xF, 0);
+            Sound_PlaySeAtPosChecked(1, 78, 0, em->rotMtx[1], 15, 0);
             break;
         }
     }
@@ -411,7 +384,7 @@ void Explosion_Run(ObjAttach *o)
     u8 explType = o->type;
     s16 lifeFrames;
 
-    if (explType == EXPLOSION_FIREBALL || explType == EXPLOSION_FIREBALL_BIG || explType == EXPLOSION_FATALIS_FIREBALL || explType == EXPLOSION_KUTKU_FIREBALL_SIDE_B) {
+    if (explType == EXPLOSION_FIREBALL || explType == EXPLOSION_FIREBALL_BIG || explType == EXPLOSION_FATALIS_FIREBALL || explType == EXPLOSION_GYPCEROS_SHOT_B) {
         if (o->hitFrames <= 0) {
             Explosion_Spawn(o);
             o->hitFrames = 0;
@@ -436,12 +409,12 @@ void Explosion_Run(ObjAttach *o)
     }
     if (o->drawSlotBuf != NULL) {
         Vec_Copy(o->drawSlotBuf->pos, o->pos);
-        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 0x20U, 0);
+        OT_AddByDepth(gDrawOt32, o->drawSlotBuf, 32U, 0);
     }
 }
 
 /*
- * After a hit, the lingering bursts (types 0x13, 0x1A, 0x24) keep running
+ * After a hit, the lingering bursts (EXPLOSION_THROWN_CLOUD_A, _B and _C) keep running
  * (Explosion_Run); every other type ends.
  */
 void Explosion_Hit(ObjAttach *o)
@@ -459,14 +432,14 @@ void Explosion_Hit(ObjAttach *o)
 }
 
 /*
- * Ends the explosion. When fireball types 1, 4 or 0x12 end from a hit
+ * Ends the explosion. When EXPLOSION_FIREBALL, EXPLOSION_FIREBALL_BIG or EXPLOSION_FATALIS_FIREBALL ends from a hit
  * (ATTACH_HIT), it first makes their follow-up (Explosion_Spawn). Then it
  * closes the hit window, hides the explosion, frees its draw slot and moves
  * it to ATTACH_FREE.
  */
 void Explosion_End(ObjAttach *o)
 {
-    if ((o->type == 1 || o->type == 4 || o->type == 0x12) && o->state == ATTACH_HIT) {
+    if ((o->type == 1 || o->type == 4 || o->type == 18) && o->state == ATTACH_HIT) {
         Explosion_Spawn(o);
     }
     o->hitPhase = 0;
@@ -501,167 +474,12 @@ void Explosion_BoostPower(ObjAttach *o)
         case EXPLOSION_LARGE_BARREL_BOMB_B:
         case 38:
             boosted = 1.5f * o->power;
-            if (boosted > 0xFF) {
-                boosted = 0xFF;
+            if (boosted > 255) {
+                boosted = 255;
             }
             o->power = boosted;
             break;
         }
-        break;
-    }
-}
-
-/*
- * Makes a PlacedItem of `type` (enum PlacedItemType) that pl sets down at pos
- * in `area`, kept (keep) and facing pl's yaw. PLACED_TRAP and
- * PLACED_MONSTER_BOMB take the second pool. The barrel bombs and PLACED_BOMB
- * sit 50, 75 or 35 above pos, with the set-down sound. Types 2-4 move 80
- * ahead of the player, and 2 and 3 take its side. The monster bomb sticks to
- * the monster Em_HitQuadsVertical finds (the buffer keeps the monster at +4,
- * the hit point at +8 and the bone at +0x14), with powerPct 250 and two
- * sounds. With no monster found it is freed, with a puff in the scene's area.
- * The local player's items count in gScene.placed1 (stateVar1 1), or for a
- * trap in gScene.placed2 (stateVar1 2). SKILL_COMBINE_SURE sets stateVar0 1,
- * which Explosion_BoostPower reads.
- */
-void PlacedItem_Create(f32 *pos, u8 placedType, u16 area, Player *pl)
-{
-    ObjAttach *o;
-    f32 offset[3];
-    s16 pool;
-
-    switch (placedType) {
-    case PLACED_TRAP:
-    case PLACED_MONSTER_BOMB:
-        pool = 1;
-        break;
-    default:
-        pool = 0;
-        break;
-    }
-    if ((o = ObjAttach_Alloc(pool)) != NULL) {
-        o->kind = ATTACH_PLACED_ITEM;
-        o->type = placedType;
-        o->update = PlacedItem_Update;
-        o->isEm = 0;
-        o->owner = pl;
-        o->idx = pl->index;
-        o->pos[0] = pos[0];
-        o->pos[1] = pos[1];
-        o->pos[2] = pos[2];
-        o->area = area;
-        o->keep = 1;
-        o->rotY = pl->rot[1];
-        switch (o->type) {
-        case PLACED_LARGE_BARREL_BOMB:
-        default:
-            o->pos[1] += 50.0f;
-            if (gScene.area == o->area) {
-                Sound_PlaySeAtPosChecked(1, 0x3C, 0, o->pos, 1, 0);
-            }
-            break;
-        case PLACED_LARGE_BARREL_BOMB_B:
-            o->pos[1] += 75.0f;
-            if (gScene.area == o->area) {
-                Sound_PlaySeAtPosChecked(1, 0x3C, 0, o->pos, 1, 0);
-            }
-            break;
-        case PLACED_PLAYER_HIT_A:
-        case PLACED_PLAYER_HIT_B:
-            o->side = pl->side;
-        case PLACED_TRAP:
-            offset[0] = 0.0f;
-            offset[1] = 0.0f;
-            offset[2] = 80.0f;
-            Vec_RotateY(offset, (6.2831855f * pl->rot[1]) / 65536.0f);
-            o->pos[0] += offset[0];
-            o->pos[1] += offset[1];
-            o->pos[2] += offset[2];
-            break;
-        case PLACED_MONSTER_BOMB:
-            if (!Em_HitQuadsVertical((f32 *) pos, (Em **) (o->buf + 4), (s16 *) (o->buf + 0x14), (f32 *) (o->buf + 8))) {
-                if (area == gScene.area) {
-                    FireBlast_CreateScaled((f32 *) pos, 0, 0.5f);
-                }
-                ObjAttach_Free((ObjAttach *)o);
-                return;
-            }
-            o->powerPct = 0xFA;
-            if (gScene.area == o->area) {
-                Sound_PlaySeAtPosChecked(1, 0x3C, 0, o->pos, 1, 0);
-                Sound_PlaySeAtPosChecked(1, 0x94, 0, o->pos, 1, 0);
-            }
-            break;
-        case PLACED_BOMB:
-            o->pos[1] += 35.0f;
-            if (gScene.area == o->area) {
-                Sound_PlaySeAtPosChecked(1, 0x3C, 0, o->pos, 1, 0);
-            }
-            break;
-        }
-        o->stateVar0 = 0;
-        if (pl != NULL) {
-            if (Player_IsLocal(pl)) {
-                switch (o->type) {
-                case PLACED_LARGE_BARREL_BOMB:
-                case PLACED_LARGE_BARREL_BOMB_B:
-                case PLACED_PLAYER_HIT_A:
-                case PLACED_PLAYER_HIT_B:
-                case PLACED_BOMB:
-                default:
-                    (gScene.placed1)++;
-                    o->stateVar1 = 1;
-                    break;
-                case PLACED_TRAP:
-                    (gScene.placed2)++;
-                    o->stateVar1 = 2;
-                    break;
-                case PLACED_MONSTER_BOMB:
-                    break;
-                }
-            }
-            if (Player_HasSkill(pl, SKILL_COMBINE_SURE) == 1) {
-                o->stateVar0 = 1;
-            }
-        }
-    }
-}
-
-/*
- * A placed item's update: switches on o->state to PlacedItem_Setup, Run, Hit,
- * End or Free. Every other state ends it.
- */
-void PlacedItem_Update(ObjAttach *o)
-{
-    switch (o->state) {
-    case ATTACH_SETUP:
-        PlacedItem_Setup(o);
-        break;
-    case ATTACH_RUN:
-        PlacedItem_Run(o);
-        break;
-    case ATTACH_END:
-        PlacedItem_End(o);
-        break;
-    case ATTACH_HIT:
-        PlacedItem_Hit(o);
-        break;
-    case 4:
-        PlacedItem_End(o);
-        break;
-    case ATTACH_DEFLECTED:
-        PlacedItem_End(o);
-        break;
-    case ATTACH_DEFLECTED_AURA:
-        PlacedItem_End(o);
-        break;
-    case 7:
-        PlacedItem_End(o);
-        break;
-    case ATTACH_FREE:
-        PlacedItem_Free(o);
-        
-    default:
         break;
     }
 }
@@ -767,7 +585,7 @@ HitShape *Explosion_HitShapes[32] = {
     Explosion_HitShapes_24, Explosion_HitShapes_25, Explosion_HitShapes_26, Explosion_HitShapes_27,
     Explosion_HitShapes_28, Explosion_HitShapes_29, 0, 0,
 };
-u32 Explosion_Rows[252] = {
+AttackRow Explosion_Rows[42] = {
 #include "game/0089E850.inc"
 };
 void *Explosion_RowsPtr = (void *)Explosion_Rows;

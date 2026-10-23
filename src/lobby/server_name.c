@@ -10,19 +10,14 @@
 #include "m2c_macros.h"
 #include "lobby_net.h"
 #include "lobby_state.h"
+#include "server_name.h"
+#include "game_util.h"
+#include "lobby_disconnect.h"
 
-#define SERVER_NAME_LEN 0x80    /* the bytes the reply may write into gCurServerName */
+#define SERVER_NAME_LEN 128     /* the bytes the reply may write into gCurServerName */
 
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-void Lobby_Disconnect(s32);
-s32 LobbyReq_ServerName(void *id, void *dst, s32 arg2, void (*onReply)(NetMsg, NetMsg *));
 extern char gCurServerId[];
 extern u8 gCurServerName;
-void LobbyStep_ServerNameDone(NetMsg msg, NetMsg *msgPtr);
-
-s32 Lobby_HasQuest(void);
-s32 Game_IsOnline(void);
 
 /* A reply handler for requests whose reply needs nothing done. */
 void Lobby_IgnoreReply(NetMsg msg, NetMsg *msgPtr)

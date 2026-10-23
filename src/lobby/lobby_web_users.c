@@ -23,69 +23,43 @@
 #include "lobby_globals.h"
 #include "lobby_text.h"
 #include "browser.h"
-s32 LobbyKddi_WaitPage(void);
+#include "kbd.h"
+#include "scene.h"
+#include "stream.h"
+#include "text.h"
+#include "lobby_web_users.h"
+#include "hunter_card.h"
+#include "lobby_connect.h"
+#include "lobby_dialog_box.h"
+#include "lobby_disconnect.h"
+#include "lobby_login.h"
+#include "lobby_queries.h"
+#include "lobby_steps.h"
+#include "town_frame.h"
+#include "screen_fade.h"
+#include "libc.h"
+#include "libkernl.h"
+#include "game_util.h"
 
 /* prototypes */
 s32 LobbyNet_GetErrText(char *);
-void LobbyDialog_OpenWait(void *arg0);
-s32 LobbyNet_GetUserCardFetch(NetUserCardPart *dst);       /* copies 6712's reply (gLobbyNet.userCardFetch) */
-s32 HunterCard_Sanitize(void *);
-s32 LobbyNet_GetUserFindByName(NetUserFindByNameFound **out);      /* the 6711 list (gLobbyNet.userFindByNameFound) */
 extern NetUserCardPart gFetchedCard;   /* the last hunter card part fetched (LobbyUser_FetchDetails) */
 extern NetUserFindByNameFound *gUserFindByNameFound;
 extern NetUserSearchFound *gUserSearchFound;
-s32 LobbyNet_GetUserSearch(NetUserSearchFound **out);
-s32 Browser_Update(void);
-void LobbyKddi_CloseBrowser(void);
-s32 memcmp(void *a, void *b, s32 n);
-void FadeA_Start(s32);
 extern LobbyMenu *gLobbyMenu;
-/* a page's data kept across the browser (0x1D0 bytes, 16-aligned) */
+/* a page's data kept across the browser (464 bytes, 16-aligned) */
 typedef struct LobbyPageData {
-    u8 b[0x1D0];
+    u8 b[464];
 } LobbyPageData __attribute__((aligned(16)));
 extern LobbyPageData gLobbyPageDataPrev;   /* the copy before */
 extern LobbyPageData gLobbyPageData;   /* the page's */
 extern char gLobbyWebUrl[];          /* the page's URL */
 extern u8 gConnCheckState;
-extern char gBrowserUrl[0x100];       /* the URL the browser opens */
-void Browser_Init(u8 mode);
-void Stream_Stop(s32 ch);
-void FlushCache(s32);
-void Town_SetDrawSky(s8 arg0);
-s32 LobbyEntry_AtWebPage(void);
-void Kbd_Cancel(void);
-u8 FadeA_GetState(void);
-void Game_ResetSubsystems(void);
-void NetScene_BackToPortal(void);
-void *memset(void *dst, s32 c, u32 n);
-char *strcpy(char *dst, const char *src);
+extern char gBrowserUrl[256];       /* the URL the browser opens */
 extern u8 gLobbyLevel0Sel;
 extern LevelEntry gLobbyLevel0Entries[];
-void LobbyText_Open(s32 msg);
-void LobbyMenu_StartTimer(void);
-s32 LobbyMenu_TickTimer(void);
-void Lobby_Disconnect(s32);
-s32 Lobby_Strlen(char *s);
-void LobbyNet_GetUserProfile(NetUserProfile *dst);
-s32 LobbyReq_UserFindByName(NetBlob b, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_UserCardFetch(void *id, u16 a, u16 b, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_UserProfile(void *id, void (*onReply)(NetMsg, NetMsg *));
-void LobbyUser_OnReply(NetMsg m, NetMsg *pm);
-void LobbyUser_OnUserCardFetchReply(NetMsg m, NetMsg *pm);
-void LobbyUser_OnUserFindByNameReply(NetMsg m, NetMsg *pm);
 extern NetBlob gFindNameBlob;
 extern char gMyUserId[];              /* the character's id (the save) */
-s32 LobbyReq_UserStatus(void *id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_UserSearch(NetUserSearchQuery q, void (*onReply)(NetMsg, NetMsg *));
-void LobbyUser_OnUserSearchReply(NetMsg m, NetMsg *pm);
-void LobbyLogin_OnEnterLevelsReply(NetMsg m, NetMsg *pm);
-s32 LobbyReq_EnterLevels(u16 a, u16 b, u16 c, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyStep_EnterLevel1(void);
-s32 LobbyStep_Level1List(s32);
-s32 LobbyStep_DownloadQuests(void);
-s32 Lobby_HrAtLeast31(void);
-void Lobby_ClearHost(void);
 extern u8 gLobbyLevel1Sel;
 extern LevelEntry gLobbyLevel1Entries[];
 /* end of prototypes */
@@ -94,7 +68,7 @@ extern LevelEntry gLobbyLevel1Entries[];
 #define USER_ID_LEN_MIN 6           /* the shortest user id looked up */
 #define USER_NAME_LEN_MAX 16        /* the longest name looked up */
 #define USER_QUERY_KIND 100         /* the kind sent with a user query's name or conditions (the only one seen) */
-#define USER_CARD_FETCH_LEN 0xD8    /* the hunter card's bytes fetched with a user's details */
+#define USER_CARD_FETCH_LEN 216     /* the hunter card's bytes fetched with a user's details */
 
 /*
  * The lobby's web page (LobbyState.webStep): stops the streams, opens the
@@ -112,7 +86,7 @@ void LobbyWeb_Run(void)
     case 0:
         gLobby->webStep++;
         gLobby->connected = 0;
-        gConnCheckState = 0;
+        gConnCheckState = CONN_LOST_NONE;
         Stream_Stop(0);
         Stream_Stop(1);
     case 1:
@@ -138,7 +112,7 @@ void LobbyWeb_Run(void)
             if (LobbyEntry_AtWebPage() == 1) {
                 if (gLobby->serverClose == SERVER_CLOSE_CLOSED) {
                     Lobby_Disconnect(LOBBY_QUIT_SERVER_CLOSE);
-                } else if (gConnCheckState != 0) {
+                } else if (gConnCheckState != CONN_LOST_NONE) {
                     Lobby_Disconnect(LOBBY_QUIT_LINK_LOST);
                 } else {
                     Lobby_Disconnect(LOBBY_QUIT_TO_PORTAL);
@@ -163,7 +137,7 @@ void LobbyWeb_Run(void)
             gLobby->webStep = 0;
             gLobby->connected = 1;
             gLobby->linkState = LINK_STATE_WEB_BACK;
-            gConnCheckState = 0;
+            gConnCheckState = CONN_LOST_NONE;
         }
         break;
     case 6:
@@ -174,7 +148,7 @@ void LobbyWeb_Run(void)
             gLobby->linkState = LINK_STATE_WEB_BACK;
             gLobbyMenu->hideLayers = 0;
             NetScene_BackToPortal();
-            gConnCheckState = 0;
+            gConnCheckState = CONN_LOST_NONE;
         }
         break;
     default:

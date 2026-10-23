@@ -48,11 +48,19 @@ segments:
     bss_size: 0x1FD900
     subsegments:
       - [0x40, asm, text]           # the 0x40 zero bytes (16 nops) every overlay's text starts with
-      - [0x80, c, engine_core]      # 0x2E3980
-      - [0xB720, c, bones]          # 0x2EF020: the bones (Bone_*), another unit than func_002E5780's
-      - [0xDEC0, c, vu1_packets]
-      - [0x128D0, c, skel_file]     # 0x2F61D0
-      - [0x12C40, c, model_file]    # 0x2F6540
+      - [0x80, c, sys_main]         # 0x2E3980
+      - [0x1130, c, motion]         # 0x2E4A30
+      - [0x2550, c, font]           # 0x2E5E50
+      - [0x4E40, c, model_draw]     # 0x2E8740
+      - [0x7990, c, anim_curve]     # 0x2EB290
+      - [0x89D0, c, engine_math]    # 0x2EC2D0
+      - [0xB5A0, c, bones]          # 0x2EEEA0
+      - [0xCDF0, c, vu1_packets]
+      - [0x118D0, c, anim_file]     # 0x2F51D0
+      - [0x128F0, c, skel_file]     # 0x2F61F0
+      - [0x12E70, c, model_file]    # 0x2F6770
+      - [0x15600, c, engine_util]   # 0x2F8F00
+      - [0x15F60, c, usb_kbd]       # 0x2F9860
       - [0x16480, asm, access/unk_2F9D80]   # 0x2F9D80: ACCESS's kana-kanji engine, to 0x305E60 (assembly from your copy)
       - [0x17490, asm, access/unk_2FAD90]   # 0x2FAD90: command builders for the interpreter at 0x2F9D80
       - [0x177C0, asm, access/unk_2FB0C0]
@@ -63,73 +71,123 @@ segments:
       - [0x205F0, asm, access/unk_303EF0]
       - [0x22560, c, ave_wrap]      # 0x305E60: NETWORK: AVE TCP wrapper RPC client
       - [0x23CC0, c, net_if]        # 0x3075C0: NETWORK: connection layer and NetTcp_*
-      - [0x252C0, c, net_front]
+      - [0x252C0, c, net_sockets]
+      - [0x26290, c, net_devices]   # 0x309B90
+      - [0x26FC0, c, net_codes]     # 0x30A8C0
+      - [0x275A0, c, net_connection] # 0x30AEA0
+      - [0x29D60, c, dnas_check]    # 0x30D660
+      - [0x2A890, c, net_settings]  # 0x30E190
       - [0x2AB20, c, net_arena]     # 0x30E420
       - [0x2B130, c, kbd_input]     # 0x30EA30 (Arena_Realloc, 0x30E8F0, is net_arena.c's)
+      - [0x2F6C0, c, kbd_convert]
       - [0x311D0, c, kbd_cand_box]  # 0x314AD0: Kbd_DrawCandidateBox, level 4
       - [0x31500, c, kbd]           # 0x314E00
-      - [0x36C80, c, camera]        # 0x31A580: CamCtl_Clear, level 4
-      - [0x38EE0, c, cam_modes]
+      - [0x36C80, c, camera]        # 0x31A580: CamCtl_Clear
+      - [0x37140, c, cam_follow]    # 0x31AA40: CamFollow_Init, level 4
+      - [0x38EE0, c, cam_rail]
+      - [0x39640, c, cam_aim]       # 0x31CF40: CamAim_Init
+      - [0x39DB0, c, cam_fixed]     # 0x31D6B0: CamFixed_Init
       - [0x3A670, c, cam_request]   # 0x31DF70
-      - [0x3A890, c, cam_control]
-      - [0x40390, c, cam_small_requests]  # 0x323C90: requests to the state machine at 0x31E080
-      - [0x407E0, c, scene]
-      - [0x453D0, c, area_collision]
+      - [0x3A890, c, cam_script]
+      - [0x3BBE0, c, cam_helpers]   # 0x31F4E0
+      - [0x3C570, c, cam_shake]     # 0x31FE70
+      - [0x3CA70, c, cam_areas]     # 0x320370
+      - [0x3D9D0, c, cam_paths]     # 0x3212D0
+      - [0x3F740, c, cam_collide]   # 0x323040
+      - [0x400B0, c, cam_small_requests]  # 0x3239B0: requests to the state machine at 0x31E080
+      - [0x407E0, c, stageobj_pool]  # 0x3240E0: the stage object pool
+      - [0x40DC0, c, stageobj_helpers]  # 0x3246C0: the stage objects' shared helpers
+      - [0x41CC0, c, screen_fade]    # 0x3255C0
+      - [0x427B0, c, scene]          # 0x3260B0
+      - [0x450C0, c, area_collision]
       - [0x4D940, c, combine]       # 0x331240: item combination (recipes, success rate)
       - [0x4F370, c, lights]
       - [0x50280, c, tex_pack]      # 0x333B80
       - [0x50960, c, file_load]     # 0x334260
-      - [0x51740, c, model_setup]
+      - [0x51740, c, player_looks]
+      - [0x52900, c, packs]         # 0x336200
+      - [0x52EB0, c, tex_files]     # 0x3367B0
+      - [0x53280, c, vec_math]      # 0x336B80
+      - [0x54430, c, player_parts]  # 0x337D30
+      - [0x551A0, c, model_setup]   # 0x338AA0
       - [0x565C0, c, model_pool]    # 0x339EC0
-      - [0x57780, c, model_load]
+      - [0x57360, c, player_models]  # 0x33AC60
+      - [0x58D90, c, scene_models]  # 0x33C690
       - [0x59940, c, task]          # 0x33D240: the task slots (gTaskSlots)
-      - [0x59ED0, c, hud_init]
-      - [0x5A930, c, hud_query]     # 0x33E230
+      - [0x5A0A0, c, hud_init]      # 0x33D9A0
+      - [0x5A8A0, c, hud_query]     # 0x33E1A0
       - [0x5AD20, c, hud]
       - [0x710F0, c, menu_util]     # 0x3549F0
       - [0x72A80, c, menu_windows]
       - [0x7DC70, c, equip_parts]   # 0x361570
-      - [0x7FAC0, c, shake]         # 0x3633C0: queries on the record owned by D_005BB0A8
-      - [0x7FC50, c, bgm]           # 0x363550
-      - [0x85200, c, rand]          # 0x368B00: random numbers, sound effect helpers
+      - [0x7F0E0, c, chat_phrases]
+      - [0x7F890, c, shake]         # 0x363190
+      - [0x7FBB0, c, chat_box]      # 0x3634B0
+      - [0x80410, c, obj_pools]
+      - [0x80FF0, c, place_rules]
+      - [0x812F0, c, sprite_queue]
+      - [0x82ED0, c, bgm]
+      - [0x85340, c, rand]          # 0x368C40: random numbers
       - [0x85610, c, text_layer]    # 0x368F10
-      - [0x87CB0, c, game_util]     # 0x36B5B0: game reset, pad getters, small queries
-      - [0x88570, c, frame_draw]    # 0x36BE70
-      - [0x8A8D0, c, player_draw]
-      - [0x93300, c, field_systems]  # 0x376C00
-      - [0x965C0, c, area_update]
+      - [0x87750, c, game_util]     # 0x36B050: game reset, pad getters, small queries
+      - [0x88570, c, draw_helpers]  # 0x36BE70
+      - [0x89210, c, frame]         # 0x36CB10
+      - [0x8A1F0, c, player_draw]
+      - [0x91730, c, equip_preview]  # 0x375030: the menus' equipment preview, then Em_DrawParts
+      - [0x93120, c, draw_slots]     # 0x376A20: the players' world matrices, then the draw slots
+      - [0x93CA0, c, vibration]      # 0x3775A0: the pads' vibration
+      - [0x93DD0, c, camera_view]    # 0x3776D0: the camera view
+      - [0x94350, c, em_slots]       # 0x377C50: the monster slots
+      - [0x94760, c, em_obj_lists]   # 0x378060: the five EmObj lists
+      - [0x94DA0, c, area_update]    # 0x3786A0: the area state, then its per-frame update
       - [0x97380, c, area_anim]     # 0x37AC80
       - [0x97C70, c, area_draw]
-      - [0xA2860, c, field_objects]  # 0x386160
-      - [0xA4CD0, c, player_motion_fx]
+      - [0xA33E0, c, field_objects]  # 0x386CE0
+      - [0xA47C0, c, player_motion_fx]  # 0x3880C0
       - [0xB6670, c, player_sys]    # 0x399F70
-      - [0xB8990, c, quest_rules]   # 0x39C290
+      - [0xB8990, c, item_use]      # 0x39C290: using the pouch's items, the timed buffs
+      - [0xBAB00, c, quest_rules]   # 0x39E400
       - [0xBD1A0, c, stage_data]    # 0x3A0AA0: stage data accessors (points, tables)
       - [0xBD770, c, quest]         # 0x3A1070: quest monsters and goals; mining points (0x3A5650); quest state and objectives, player state and flags (0x3A6130, 0x3AAD20)
-      - [0xC8AA0, c, player_idle]   # 0x3AC3A0: player action reset, per-player pad input
+      - [0xC7EB0, c, player_control]  # 0x3AB7B0: the player state machine's primitives (state, flags, idle), action reset, pad input
       - [0xC90C0, c, player_stats]  # 0x3AC9C0: player (skills, ...)
-      - [0xCDB00, c, gather]        # 0x3B1400: gathering points, the gathering item roll
+      - [0xCBBE0, c, push_apart]    # 0x3AF4E0: the push between bodies
+      - [0xCCAE0, c, player_move]   # 0x3B03E0: motions, movement, attack rows, hit shapes
+      - [0xCD0B0, c, hit_setup]     # 0x3B09B0: attack objects started on their rows, hit shapes placed
+      - [0xCD630, c, area_position]  # 0x3B0F30: the floor ahead, an object's area and map position
+      - [0xCD9E0, c, gather]        # 0x3B12E0: gathering points, the gathering item roll
       - [0xCE050, c, pouch]         # 0x3B1950: the player's item pouch
+      - [0xCECC0, c, player_condition]  # 0x3B25C0: health, sharpness, ammo, stamina, hunger
+      - [0xD0520, c, supply_box]    # 0x3B3E20: the supply box and delivery menus
       - [0xD1380, c, equip_save]    # 0x3B4C80: the player (item use, ...)
-      - [0xDA760, c, hit_detection]  # 0x3BE060: segment and sphere geometry, then ObjAttach
+      - [0xDA760, c, hit_geometry]   # 0x3BE060: segment, sphere and capsule geometry
+      - [0xDF3F0, c, hit_detection]  # 0x3C2CF0: the attack objects' hits
+      - [0xE3540, c, em_own_task]   # 0x3C6E40: the monsters sub_main runs itself
+      - [0xE41E0, c, shadow]        # 0x3C7AE0: the shadows
+      - [0xE5510, c, hit_spark]     # 0x3C8E10: the hit sparks
       - [0xE6E90, c, bone_effects]  # 0x3CA790: the kind 6 effect objects (Effect06_*)
       - [0xEA0C0, c, part_effects]  # 0x3CD9C0: the kind 0xD effect objects (PartFx_*), level 4
-      - [0xEE930, c, lock_on_mark]  # 0x3D2230: the ground effects, then the lobby lock-on mark (LockOnMark_*)
+      - [0xEEDB0, c, lock_on_mark]  # 0x3D26B0: the lobby's lock-on mark
       - [0xEF3B0, c, movie]         # 0x3D2CB0: movie player (Sofdec wrapper)
       - [0xF0800, c, loading_screen]
       - [0xF1BB0, c, card_menu]     # 0x3D54B0: the network menu (helpers, patch loader, states)
-      - [0xFA2A0, c, card_task]     # 0x3DDBA0
-      - [0xFD5C0, c, em_bones]
-      - [0x100400, c, fishing]      # 0x3E3D00: the fishing code
+      - [0xFAE60, c, card_task]     # 0x3DE760
+      - [0xFD0F0, c, em_body]
+      - [0xFF5E0, c, spark_fx]      # 0x3E2EE0: the spark effect (effect kind 8)
+      - [0x100550, c, fishing]      # 0x3E3E50: the fishing code
       # the 32 nops from func_003E7E00's end to vu1_microcode (0x3E7F00-0x3E7F80): with
       # fishing.c's last function in C they are a piece of their own
       - { start: 0x104600, type: data, name: text_end, linker_section_order: .text }
       # Capcom's 60 VU1 programs, the start of the overlay's data area: built from
       # src/sub_main/vu1_microcode.vsm (tools/vu1as.py); splat's .incbin of your copy is objdiff's target
       - [0x104680, textbin, vu1_microcode]
-      - [0x11E8C0, .data, engine_core]
+      - [0x11E8C0, .data, sys_main]
+      - [0x11E980, .data, font]
+      - [0x11EBB0, .data, model_draw]
+      - [0x11EC50, .data, engine_math]
       - [0x11EC70, .data, bones]
-      - [0x11F840, .data, model_file]
+      - [0x11EC80, .data, vu1_packets]
+      - [0x11F840, .data, usb_kbd]
       - [0x11F870, data, access/unk_2F9D80]
       - [0x11FA20, data, access/unk_2FB0C0]
       - [0x1204C0, data, access/unk_2FE1F0]
@@ -139,62 +197,93 @@ segments:
       - [0x1214C0, data, access/unk_303EF0]
       - [0x121878, .data, ave_wrap]
       - [0x121880, .data, net_if]
-      - [0x121AA8, .data, net_front]
+      - [0x121AA8, .data, net_sockets]
+      - [0x121AC0, .data, net_devices]
+      - [0x121BB8, .data, net_codes]
+      - [0x121BC0, .data, net_connection]
+      - [0x121BD0, .data, dnas_check]
       - [0x131BE0, .data, kbd]
-      - [0x134EB0, .data, cam_control]
-      - [0x1395B0, .data, cam_small_requests]
-      - [0x139600, .data, scene]
+      - [0x134EB0, .data, cam_script]
+      - [0x138F10, .data, cam_shake]
+      - [0x138F30, .data, cam_areas]
+      - [0x1394F0, .data, cam_paths]
+      - [0x139540, .data, cam_collide]
+      - [0x139560, .data, cam_small_requests]
+      - [0x139600, .data, stageobj_helpers]
+      - [0x1396D8, .data, screen_fade]
       - [0x1398F0, .data, area_collision]
       - [0x1399F0, .data, combine]
       - [0x13B130, .data, lights]
       - [0x13B450, .data, file_load]
-      - [0x13EBE0, .data, model_setup]
-      - [0x14C330, .data, model_load]
+      - [0x13EBE0, .data, player_looks]
+      - [0x14B8A0, .data, tex_files]
+      - [0x14BBA0, .data, player_parts]
+      - [0x14C200, .data, model_setup]
+      - [0x14C330, .data, player_models]
       - [0x14CDC0, .data, hud]
       - [0x14EDB8, .data, menu_windows]
       - [0x157728, .data, equip_parts]
-      - [0x1577E0, .data, bgm]
+      - [0x1577E0, .data, chat_box]
+      - [0x157840, .data, bgm]
       - [0x158FC0, .data, text_layer]
-      - [0x159090, .data, frame_draw]
+      - [0x159090, .data, draw_helpers]
       - [0x159130, .data, player_draw]
-      - [0x15B3F0, .data, field_systems]
+      - [0x15AD50, .data, equip_preview]
+      - [0x15B3F0, .data, vibration]
+      - [0x15B420, .data, camera_view]
+      - [0x15B480, .data, area_update]
       - [0x15D850, .data, area_draw]
-      - [0x165C30, .data, field_objects]
+      - [0x166680, .data, field_objects]
       - [0x166890, .data, player_sys]
-      - [0x167680, .data, quest_rules]
+      - [0x167680, .data, item_use]
+      - [0x1676D0, .data, quest_rules]
       - [0x167B50, .data, quest]
       - [0x168630, .data, equip_save]
-      - [0x181CE0, .data, hit_detection]
+      - [0x181CE0, .data, em_own_task]
+      - [0x181DC0, .data, shadow]
+      - [0x181E00, .data, hit_spark]
       - [0x181EA0, .data, bone_effects]
       - [0x183040, .data, part_effects]
       - [0x184340, .data, lock_on_mark]
       - [0x184378, .data, card_menu]
       - [0x184F50, .data, card_task]
-      - [0x1852A8, .data, em_bones]
+      - [0x1852A8, .data, em_body]
+      - [0x185C90, .data, spark_fx]
       - [0x185FE0, .data, fishing]
-      - [0x186800, .rodata, engine_core]
-      - [0x186A80, .rodata, model_file]
+      - [0x186800, .rodata, sys_main]
+      - [0x1868E0, .rodata, motion]
+      - [0x186900, .rodata, font]
+      - [0x186A10, .rodata, model_draw]
+      - [0x186A80, .rodata, engine_util]
       - [0x186AC0, rodata, access/unk_2FB0C0]
       - [0x186B00, rodata, access/unk_2FF510]
       - [0x186B20, rodata, access/unk_303EF0]
       - [0x186B50, .rodata, net_if]
-      - [0x186C08, .rodata, net_front]
+      - [0x186C08, .rodata, net_devices]
+      - [0x186F48, .rodata, net_codes]
+      - [0x186F60, .rodata, net_connection]
+      - [0x186FE0, .rodata, net_settings]
       - [0x187030, .rodata, kbd_input]
+      - [0x189090, .rodata, kbd_convert]
       - [0x1891D0, .rodata, kbd_cand_box]
       - [0x1891E0, .rodata, kbd]
-      - [0x189360, .rodata, cam_control]
-      - [0x189450, .rodata, scene]
+      - [0x189360, .rodata, cam_script]
+      - [0x189450, .rodata, stageobj_helpers]
+      - [0x189470, .rodata, scene]
       - [0x189520, .rodata, combine]
-      - [0x189540, .rodata, model_setup]
-      - [0x189640, .rodata, model_load]
+      - [0x189540, .rodata, player_looks]
+      - [0x189580, .rodata, tex_files]
+      - [0x1895A0, .rodata, model_setup]
+      - [0x189640, .rodata, player_models]
       - [0x1896B8, .rodata, hud]
       - [0x189810, .rodata, menu_windows]
       - [0x1AD078, .rodata, equip_parts]
       - [0x1AD080, .rodata, bgm]
       - [0x1AD0B8, .rodata, text_layer]
       - [0x1AD0D0, .rodata, game_util]
-      - [0x1AD110, .rodata, frame_draw]
+      - [0x1AD110, .rodata, draw_helpers]
       - [0x1AD130, .rodata, player_draw]
+      - [0x1AD250, .rodata, equip_preview]
       - [0x1AD270, .rodata, area_draw]
       - [0x1BC3A0, .rodata, field_objects]
       - [0x1BC3B0, .rodata, player_motion_fx]
@@ -204,12 +293,12 @@ segments:
       - [0x1BC500, .rodata, pouch]
       - [0x1BC530, .rodata, equip_save]
       - [0x1C76D0, .rodata, hit_detection]
+      - [0x1CAC90, .rodata, hit_spark]
       - [0x1CAD60, .rodata, bone_effects]
       - [0x1CAE40, .rodata, part_effects]
-      - [0x1CB220, .rodata, lock_on_mark]
       - [0x1CB248, .rodata, card_menu]
       - [0x1CCC70, .rodata, card_task]
-      - [0x1CCDF0, .rodata, em_bones]
+      - [0x1CCDF0, .rodata, spark_fx]
       - [0x1CCE30, .rodata, fishing]
       - { type: bss, vram: 0x4B1900, name: bss }
       - { type: .bss, vram: 0x59BF80, name: net_if }

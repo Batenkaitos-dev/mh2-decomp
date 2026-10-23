@@ -1,6 +1,5 @@
 /*
- * The movie library's start-up (CRI's Sofdec), then the core's pad input
- * (include/padio.h).
+ * The core's pad input (include/padio.h).
  *
  * Every frame Pad_Update reads the port (Pad_Read, which calls
  * Pad_ConvertData) into gPadRaw, copies it into gPadIn
@@ -12,18 +11,13 @@
  */
 #include "common.h"
 #include "padio.h"
+#include "pad.h"
+#include "texture.h"
+#include "libm.h"
 
 /* Built at optimization level 4: Pad_Remap needs it (a pointer kept
  * across its switches), and every other function matches either way. */
 #pragma optimization_level 4
-
-typedef struct SfdInitPrm {
-    /* 0x00 */ f32 vhz;         /* display rate */
-    /* 0x04 */ s32 dispCycle;
-    /* 0x08 */ s32 dispLatency;
-    /* 0x0C */ u8 decSvr;
-    /* 0x10 */ s32 rsv[4];
-} SfdInitPrm;
 
 extern u8 gPadConnected;           /* pads connected */
 extern PadInput gPad;
@@ -45,71 +39,8 @@ extern s32 gPadFirstSocket;
 extern PadLimits gPadDefaultLimits __attribute__((aligned(8)));
 extern u8 gPadDpadFix[16];
 extern PadConfig gPadConfigDefault;
-extern u32 gPadBit[];        /* bit i */
 extern u8 gPadDirRemap[][16];
 extern u8 gPadPressRemap[][4];
-
-
-double atan2(double y, double x);
-void func_00161F00(s32 arg0);
-void func_00161750(void (*func)(void), s32 arg1);
-void mwPlyInitSfdFx(SfdInitPrm *prm);
-void *memset(void *dst, s32 c, u32 n);
-
-void Movie_NullCallback(void);
-void Pad_ClearMem(void *dst, s32 size);
-void Pad_ClearInputs(void);
-void Pad_SetConfig(PadConfig *cfg, s32 port);
-void Pad_Remap(void);
-void Pad_RaisePressure(u8 *pressure, u8 value, u32 bits);
-void Pad_StickAngle(PadStick *s);
-void Pad_SetHeld(PadInput *p, u32 held);
-void Pad_CountHolds(PadInput *p);
-s32 Pad_Open(void);
-void Pad_Close(void);
-void Pad_SetVibrationFlag(u8 on);
-void Pad_SetLimits(s32 port, s16 pressMin, s16 deadL, s16 deadR);
-void Pad_Read(void);
-void Pad_ClearBuffers(void);
-
-/* The pad's lower half. */
-s32 Pad_ConvertData(s32 port);
-void Pad_StickPolar(PadStick *s, s16 dead);
-u8 Pad_StickDirBits(PadStick *s);
-s32 Pad_StartLibs(void);
-void Pad_OpenSocket(s32 port, s32 slot, PadPort *p);
-void Pad_EndLibs(void);
-
-/* The VBlank hook of the CRI libraries: Display_AdxVint calls it with 0,
- * which goes on to the library. */
-void AdxWrap_VintHook(s32 param)
-{
-    func_00161F00(param);
-}
-
-/* An empty callback Movie_InitSfd hands to the CRI library. */
-void Movie_NullCallback(void)
-{
-}
-
-/* Starts the Sofdec movie library for the display's rate (pal: 50 Hz,
- * else 59.94 Hz). */
-void Movie_InitSfd(s32 pal)
-{
-    SfdInitPrm prm;
-
-    memset(&prm, 0, sizeof(prm));
-    if (pal) {
-        prm.vhz = 50.0f;
-    } else {
-        prm.vhz = 59.94f;
-    }
-    prm.dispCycle = 1;
-    prm.dispLatency = 1;
-    prm.decSvr = 0;
-    func_00161750(Movie_NullCallback, 0);
-    mwPlyInitSfdFx(&prm);
-}
 
 /* Clears size bytes: words, then the bytes left. */
 void Pad_ClearMem(void *dst, s32 size)
@@ -222,7 +153,7 @@ void Pad_Remap(void)
      * byte offset (pressure[] is at 0x1C), as the match needs: indexing
      * pressure[] allocates the registers differently */
     for (i = 0; i < PAD_DIR_COUNT; i++) {
-        press[i] = ((u8 *)gPadInputPtr)[gPadPressRemap[cfg->dirMode][i] + 0x1C];
+        press[i] = ((u8 *)gPadInputPtr)[gPadPressRemap[cfg->dirMode][i] + 28];
     }
     for (i = PAD_DIR_COUNT; i < PAD_KEYS; i++) {
         press[i] = gPadInputPtr->pressure[i];
@@ -332,7 +263,7 @@ void Pad_SetHeld(PadInput *pad, u32 held)
     pad->changed = pad->pressed | pad->released;
 }
 
-/* Counts the frames each button has been held, up to 0xFF; a button let go
+/* Counts the frames each button has been held, up to 255; a button let go
  * clears its whole PadHold (one halfword store). */
 void Pad_CountHolds(PadInput *pad)
 {
@@ -340,7 +271,7 @@ void Pad_CountHolds(PadInput *pad)
 
     for (i = 0; i < PAD_BUTTONS; i++) {
         if (pad->held & gPadBit[i]) {
-            if (pad->hold[i].count != 0xFF) {
+            if (pad->hold[i].count != 255) {
                 pad->hold[i].count++;
             }
         } else {
@@ -368,8 +299,8 @@ s32 Pad_Open(void)
         return 0;
     }
     Pad_ClearBuffers();
-    gPadDataNone.status = 0xFF;
-    gPadDataNone.buttons = 0xFFFF;  /* active low: none held */
+    gPadDataNone.status = 255;
+    gPadDataNone.buttons = 65535;  /* active low: none held */
     gPadData[0] = gPadDataNone;
     gPadPort[0].buf = gPadSocketBuf;
     gPadPort[0].state = 0;

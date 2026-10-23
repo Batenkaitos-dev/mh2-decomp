@@ -11,51 +11,9 @@
 #include "common.h"
 #include "lobby_net.h"
 #include "em.h"
+#include "libc.h"
 
-void NetList_ReadValues(NetListEntry *e);
-s32 LobbyPkt_ListCount(u16 kind);
-s32 LobbyPkt_EntryValues(u16 kind, u16 id);
-void LobbyMsg_ReadU16(void *a0);
-void NetLevel2ListTask_Step1Reply(NetMsg m, NetMsg *pm);
-void NetLevel2ListTask_Step4Reply(NetMsg m, NetMsg *pm);
-s32 LobbyReq_Level2Count(void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Values(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2State(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Name(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Text(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Limits(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Color(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2PostedQuest(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Locked(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Members(u16 id, void (*onReply)(NetMsg, NetMsg *));
-s32 LobbyReq_Level2Kind(u16 arg0, void (*onReply)(NetMsg, NetMsg *));
-s32 NetReq_CountFree(void);
-void NetReq_ClearAll(void);
-void NetLevel2ListTask_Step1(NetTask *t);
-void NetLevel2ListTask_Step2(NetTask *t);
-void NetLevel2ListTask_Step3(NetTask *t);
-void NetLevel2ListTask_Step4(NetTask *t);
-void NetLevel2ListTask_Run(s32 task);
-void NetLevel2ListTask_Steps(NetTask *t);
-void NetLevel2ListTask_Done(NetTask *t);
-void NetLevel2ListTask_Failed(NetTask *t);
-void NetLevel2ListTask_Step0(NetTask *t);
-void NetLevel2ListTask_Step5(NetTask *t);
-char *strcpy(char *dst, const char *src);      /* strcpy */
-s32 LobbyPkt_EntryName(u16 kind, u16 id);
-s32 LobbyPkt_EntryState(u16 kind, u16 id);
-s32 LobbyPkt_EntryText(u16 kind, u16 id);
-s32 LobbyPkt_Level2Limits(u16 id);
-void LobbyMsg_ReadU16Str(void *a, void *b);
-void LobbyMsg_ReadU16U8b(void *a, void *b);
-void LobbyMsg_ReadU16Str2(void *a, void *b);
-u8 *LobbyMsg_ReadU16U32(void *a, void *b);
-s32 LobbyPkt_Level2Color(u16 id);
-s32 LobbyPkt_Level2PostedQuest(u16 id);
-s32 LobbyPkt_QuestAccept(u32 v);
-s32 LobbyPkt_QuestPost(void *data, u16 n);
 /* prototypes */
-void Lobby_RouteMessage(s32);
 /* end of prototypes */
 
 s32 NetLevel2ListTask_Start(s32 unused, s32 flags, void (*onDone)(NetMsg, NetMsg *))
@@ -161,7 +119,7 @@ void NetLevel2ListTask_Step0(NetTask *task)
     task->reply = NET_REPLY_NONE;
     flags = task->reqFlags;
     task->reqCount = 0;
-    for (i = 0; i < 0x20; i++) {
+    for (i = 0; i < 32; i++) {
         if (flags & 1) {
             task->reqCount++;
         }
@@ -210,8 +168,9 @@ void NetLevel2ListTask_Step3(NetTask *task)
     }
 }
 
-/* task 4, step 4: the requests of one entry (bits: 1 6403, 2 6404, 4 6402,
- * 0x20 640B, 8 640D, 0x10 6405, 0x40 6409, 0x80 650A, 0x100 650C, 0x400 6418) */
+/* task 4, step 4: the requests of one entry (NET_ENTRY_*: VALUES 6403,
+ * STATE 6404, NAME 6402, LIMITS 640B, TEXT 640D, LOCKED 6405, MEMBERS 6409,
+ * COLOR 650A, POSTED_QUEST 650C, KIND 6418) */
 void NetLevel2ListTask_Step4(NetTask *task)
 {
     u32 id;
@@ -365,7 +324,7 @@ s32 NetList2_GetUsers(u16 id, u16 *userCount, u16 *questUserCount)
     return 0;
 }
 
-/* the reply to 6403 and its notification; route 0x1E */
+/* the reply to 6403 and its notification; route NET_ROUTE_LEVEL2_VALUES */
 void LobbyReply_Level2Values(void)
 {
     if (gLobbyNet.replyErr == 0) {
@@ -393,7 +352,7 @@ s32 NetList2_GetByte(u16 id, u8 *out)
     return 0;
 }
 
-/* the reply to 6404 and its notification: u16 id, u8; route 0x1F */
+/* the reply to 6404 and its notification: u16 id, u8; route NET_ROUTE_LEVEL2_STATE */
 void LobbyReply_Level2State(void)
 {
     u16 id;
@@ -428,10 +387,10 @@ s32 NetList2_GetName(u16 id, char *dst)
     return 0;
 }
 
-/* the reply to 6402 and its notification: u16 id, string; route 0x1D */
+/* the reply to 6402 and its notification: u16 id, string; route NET_ROUTE_LEVEL2_NAME */
 void LobbyReply_Level2Name(void)
 {
-    char name[0x10C];
+    char name[268];
     u16 id;
 
     if (gLobbyNet.replyErr == 0) {
@@ -463,10 +422,10 @@ s32 NetList2_GetText(u16 id, char *dst)
     return 0;
 }
 
-/* the reply to 640D and its notification: u16 id, string; route 0x20 */
+/* the reply to 640D and its notification: u16 id, string; route NET_ROUTE_LEVEL2_TEXT */
 void LobbyReply_Level2Text(void)
 {
-    char text[0x10C];
+    char text[268];
     u16 id;
 
     if (gLobbyNet.replyErr == 0) {
@@ -515,7 +474,7 @@ s32 LobbyPkt_Level2Limits(u16 id)
     return seq;
 }
 
-/* the reply to 640B and its notification: u16 id, u16 x5; route 0x21 */
+/* the reply to 640B and its notification: u16 id, u16 x5; route NET_ROUTE_LEVEL2_LIMITS */
 void LobbyReply_Level2Limits(void)
 {
     NetListEntry *entry;
@@ -567,7 +526,7 @@ s32 LobbyPkt_Level2Color(u16 id)
     return seq;
 }
 
-/* the reply to 650A and its notification: u16 id, u32; route 0x23 */
+/* the reply to 650A and its notification: u16 id, u32; route NET_ROUTE_LEVEL2_COLOR */
 void LobbyReply_Level2Color(void)
 {
     s32 value;
@@ -596,12 +555,12 @@ s32 LobbyReq_Level2PostedQuest(u16 id, void (*onReply)(NetMsg, NetMsg *))
     return -1;
 }
 
-/* the 0x20 bytes 650C gave entry id */
+/* the 32 bytes 650C gave entry id */
 s32 Net_GetLevel2PostedQuest(u16 id, u8 *dst)
 {
     s32 i;
 
-    for (i = 0; i < 0x20; i++) {
+    for (i = 0; i < 32; i++) {
         dst[i] = gLobbyNet.list2[id - 1].postedQuest[i];
     }
     return 0;
@@ -619,7 +578,7 @@ s32 LobbyPkt_Level2PostedQuest(u16 id)
     return seq;
 }
 
-/* the reply to 650C and its notification: u16 id, blob (0x20 bytes); route 0x31 */
+/* the reply to 650C and its notification: u16 id, blob (32 bytes); route NET_ROUTE_LEVEL2_POSTED_QUEST */
 void LobbyReply_Level2PostedQuest(void)
 {
     u16 id;
@@ -627,7 +586,7 @@ void LobbyReply_Level2PostedQuest(void)
 
     if (gLobbyNet.replyErr == 0) {
         cur = LobbyMsg_GetU16(&id, gLobbyRecvData);
-        LobbyMsg_GetBlob(gLobbyNet.list2[id - 1].postedQuest, 0x20, cur);
+        LobbyMsg_GetBlob(gLobbyNet.list2[id - 1].postedQuest, 32, cur);
         gLobbyNet.list2[id - 1].id = id;
         gLobbyNet.lastId = id;
         gLobbyNet.list2[id - 1].flags |= NET_ENTRY_POSTED_QUEST;

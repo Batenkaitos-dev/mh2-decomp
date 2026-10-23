@@ -20,38 +20,21 @@ extern s8 gHelpColumn;
 #include "player.h"
 #include "save.h"
 #include "qsync.h"
+#include "render_state.h"
+#include "area_draw.h"
+#include "sound.h"
+#include "text.h"
+#include "font.h"
+#include "game_util.h"
+#include "menu_util.h"
+#include "libc.h"
 
-
-s32 Plsel_OpenStagePage(void);
-s32 Plsel_StagePageInput(s32 arg0);
-void Plsel_DrawPouchPage(void);
-
-void ItemList_DrawPouch(s32, s32, s32);
-s32 Game_IsOnline(void);
-void HelpWindow_DrawCurrent(void);
-void Plsel_DrawPlayerMenuList(void);
-void Plsel_DrawStagePage(void);
-
-void *Hud_Init(void);
-void *memcpy(void *, const void *, u32);
-void Player_RecomputeStats(Player *);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void Text_SetColor(s16 color);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Text_Printf(const char *fmt, ...);
 extern u16 gStagePageStageIds[];
 extern char **gStagePageTexts[];
 
-void Gfx_SetBlend(s32, s32);
 struct ListWin;
-void ListPanel_DrawDim(struct ListWin *win, char *title, s32 sel);
-extern char *gPlselMenuOnlineItems[];
-
-s32 Plsel_ChatUpdate(void);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
 
 extern s16 gHelpLine;
 
@@ -63,22 +46,16 @@ HudState *gPlselMenu;
 ListPanel gPlselStagePagePanel = {
 #include "plsel/00D76060.inc"
 };
-void EquipStatus_Draw(void); /* sub_main */
-s32 EquipStatus_Open(void); /* sub_main */
-u16 EquipStatus_Update(u16 buttons); /* sub_main */
-void PersonalStatus_Draw(void); /* sub_main */
-s32 PersonalStatus_Open(void); /* sub_main */
-u16 PersonalStatus_Update(u16 buttons); /* sub_main */
-s32 PouchMenu_Open(void *m); /* sub_main */
-u16 PouchMenu_Update(u16 buttons); /* sub_main */
-void QuestMenu_DrawInfo(void); /* sub_main */
-u16 QuestMenu_Update(u16 buttons); /* sub_main */
-u32 gPlselMenuOpens[8] = {
-#include "plsel/00D76080.inc"
+s32 QuestMenu_Begin(void); /* sub_main's hud.c (hud.h doesn't declare it) */
+
+/* Per menu entry, the function that opens its page (nonzero: refused). */
+s32 (*gPlselMenuOpens[8])(void) = {
+    (s32 (*)(void))PouchMenu_Open, PersonalStatus_Open, EquipStatus_Open, QuestMenu_Begin,
+    Plsel_OpenStagePage, NULL, NULL, NULL,
 };
 u32 gPlselMenuInputs[6] = {
     (u32)PouchMenu_Update, (u32)PersonalStatus_Update, (u32)EquipStatus_Update, (u32)QuestMenu_Update,
-    (u32)Plsel_StagePageInput, 0x00000000,
+    (u32)Plsel_StagePageInput, 0,
 };
 u8 gPlselMenuHelpOffline[8] = {
 #include "plsel/00D760B8.inc"
@@ -89,7 +66,6 @@ u8 gPlselMenuHelpOnline[16] = {
 u32 gPlselMenuDraws[4] = {
     (u32)Plsel_DrawPouchPage, (u32)PersonalStatus_Draw, (u32)EquipStatus_Draw, (u32)QuestMenu_DrawInfo,
 };
-extern char *D_00446F70[];
 ListWin gPlselMenuListBox = {
 #include "plsel/00D760E0.inc"
 };
@@ -128,7 +104,7 @@ void Plsel_OpenPlayerMenu(u16 player)
     memcpy(pl->name, gSave.name, sizeof(gSave.name));
     gScene.mealAttack = gScene.mealDefense = gScene.mealHealth = gScene.mealStamina = 0;
     Player_RecomputeStats(pl);
-    Sound_PlaySeFlat(0, 0x11, 0);
+    Sound_PlaySeFlat(0, 17, 0);
 }
 
 /* Goes back from a page to the menu's list, with the entry's help line. */
@@ -169,18 +145,18 @@ void Plsel_PlayerMenuUpdate(u16 pad)
             gHelpLine = gPlselMenuHelpOffline[gPlselMenu->fieldMenuCursor];
         }
         if (pad & PAD_CIRCLE) {
-            refused = ((s32 (*)(void))gPlselMenuOpens[gPlselMenu->fieldMenuCursor])();
+            refused = gPlselMenuOpens[gPlselMenu->fieldMenuCursor]();
             gPlselMenu->player = &gPlayers[gQuestSync.pick];
             if (refused == 0) {
                 gPlselMenu->menuPhase++;
                 gPlselMenu->state = 0;
-                Sound_PlaySeFlat(0, 0x13, 0);
+                Sound_PlaySeFlat(0, 19, 0);
             } else {
-                Sound_PlaySeFlat(0, 0x15, 0);
+                Sound_PlaySeFlat(0, 21, 0);
             }
         } else if (pad & (PAD_START | PAD_CROSS)) {
             Plsel_ClosePlayerMenu();
-            Sound_PlaySeFlat(0, 0x14, 0);
+            Sound_PlaySeFlat(0, 20, 0);
         }
         break;
     case 1:
@@ -190,22 +166,21 @@ void Plsel_PlayerMenuUpdate(u16 pad)
         ret = ((s32 (*)(s32))gPlselMenuInputs[gPlselMenu->fieldMenuCursor])(pad);
         if (ret & PAD_START) {
             Plsel_ClosePlayerMenu();
-            Sound_PlaySeFlat(0, 0x14, 0);
+            Sound_PlaySeFlat(0, 20, 0);
         } else if (ret & PAD_CROSS) {
             Plsel_PlayerMenuBack();
-            Sound_PlaySeFlat(0, 0x14, 0);
+            Sound_PlaySeFlat(0, 20, 0);
         }
         break;
     }
 }
 
-extern char *gFieldMenuTitle[];
 /* Draws the menu's list, with the online entries when online. */
 void Plsel_DrawPlayerMenuList(void)
 {
     ListWin box;
 
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     box = gPlselMenuListBox;
     if (Game_IsOnline() == 1) {
         box.items = gPlselMenuOnlineItems;
@@ -259,7 +234,7 @@ void Plsel_DrawPouchPage(void)
     menu = gPlselMenu;
     item = (s16)menu->player->pouch[menu->slot].item;
     gHelpColumn = 0;
-    gHelpLine = item + 0x18;
+    gHelpLine = item + 24;
     ItemList_DrawPouch(menu->slot, 0xA9182, 8);
 }
 
@@ -273,8 +248,6 @@ s32 Plsel_StagePageInput(s32 buttons)
     return buttons;
 }
 
-extern char *gPlselStageTitleOffline;
-extern char *gPlselStageTitleOnline;
 /*
  * The stage page: in its panel (titled for online or offline play), the
  * lines of gQuest.stage's entry in the game overlay's per-stage text table
@@ -306,12 +279,12 @@ void Plsel_DrawStagePage(void)
     }
     list = gStagePageTexts[i];
     Text_SetColor(0);
-    y = 0x56;
-    Font_SetSpacing(0x12, 0x12);
+    y = 86;
+    Font_SetSpacing(18, 18);
     while (*list != 0) {
-        Font_SetPos(0x148, y);
+        Font_SetPos(328, y);
         Text_Printf(*list);
         list++;
-        y += 0x14;
+        y += 20;
     }
 }

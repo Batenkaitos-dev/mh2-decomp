@@ -5,6 +5,8 @@
 #include "grid.h"
 #include "combine.h"
 #include "sprite.h"
+#include "player.h"
+#include "save.h"
 
 /*
  * The HUD and in-game menu state (gHudState, pointing to gHudStateBuf; Hud_Init fills it
@@ -23,13 +25,13 @@ typedef struct RecipeHit {
 
 /* Map_GetHalf: on stages 13 to 15 the map texture holds two maps side by
  * side, and an area's map is one half of it (the drawing in hud.c
- * takes u 0..0x78 for the left half, 0x78..0xF0 for the right). */
+ * takes u 0..120 for the left half, 120..240 for the right). */
 #define MAP_HALF_WHOLE  0   /* a stage with one map */
 #define MAP_HALF_LEFT   1   /* AREA_TOWER_0 to AREA_TOWER_2 */
 #define MAP_HALF_RIGHT  2   /* the stage's other areas */
 
 /* gMapIconKinds[monster kind]: how the map draws a monster
- * (Map_DrawMonsterIcon). Below 0x80, the icon's index into
+ * (Map_DrawMonsterIcon). Below MAP_ICON_DOT, the icon's index into
  * gMapMonsterIconU (8 more while the monster's stance is not 2). */
 #define MAP_ICON_NONE       0xFF    /* not drawn */
 #define MAP_ICON_DOT        0x80    /* a dot, not an icon */
@@ -38,8 +40,8 @@ typedef struct RecipeHit {
 
 /* Player_DetectLevel's bits: which monsters the map shows (Map_MonsterVisibility). */
 #define DETECT_TIMER        1   /* a detect effect runs (Player.detectTimer or actDetectTimer) */
-#define DETECT_SKILL        2   /* the detect skill (skill 0x1B), its lower level */
-#define DETECT_SKILL_HIGH   4   /* the detect skill at its higher level (0xA2) */
+#define DETECT_SKILL        2   /* the detect skill (skill 27), its lower level */
+#define DETECT_SKILL_HIGH   4   /* the detect skill at its higher level (162) */
 
 /* The field menu's entries (FieldMenu_Open): offline one more when the
  * quest has advice (Quest_HasAdvice). By fieldMenuCursor (the tables
@@ -162,7 +164,7 @@ typedef struct SpriteWords {
 /* Shake_Start's id: the menu window that slides in (flags SHAKE_AXIS_X)
  * or out (SHAKE_SLIDE) as it opens and closes; its draw takes the offset
  * from Shake_GetOffset(id), and Shake_Update(id) is 1 while it moves. The
- * game overlay uses 7, the lobby 0x10 (hud.c's menus). */
+ * game overlay uses 7, the lobby 16 (hud.c's menus). */
 #define SHAKE_FIELD_MENU    0       /* the field menu's list */
 #define SHAKE_POUCH_MENU    1       /* the pouch, combine and drop windows */
 #define SHAKE_QUEST_MENU    5       /* the quest info pages */
@@ -243,6 +245,25 @@ typedef struct AlphaKey {
     s32 time;           /* frames from the fade's start */
     f32 value;          /* 0 to 1 */
 } AlphaKey;
+
+/* gSharpnessGlowMasks (Hud_DrawWeaponBox): the bar's glow masks, then the
+ * weapon box's sprite lists, each read through an alias (one object: the
+ * lists sit at offsets MWCC would not place an object of their size at). */
+typedef struct WeaponBoxHud {
+    u32 glowMasks[13];          /* 0x00: by sharpness level (Player_GetSharpnessLevel), the colour mask of the bar's glow; 0: none */
+    Sprite longSwordGauge[8];   /* 0x34: gLongSwordGaugeSprites */
+    Sprite hornNotes[2];        /* 0xD4: gHornNoteSprites (Hud_DrawHornNotes) */
+    Sprite weaponBox;           /* 0xFC: gWeaponBoxSprite */
+} WeaponBoxHud;
+
+/* gAimViewSprites (Hud_DrawAimView): the view's three sprites, then the x
+ * and y of the bar's first sprite: the list of two drawn from there (an
+ * alias) runs on into gAimViewSizes. */
+typedef struct AimViewSprites {
+    Sprite views[3];            /* 0x00 */
+    s16 barX;                   /* 0x3C */
+    s16 barY;                   /* 0x3E */
+} AimViewSprites;
 
 typedef struct PosKey {
     s32 time;           /* frames from the fade's start */
@@ -326,7 +347,7 @@ typedef struct HudState {
     s16 pingTimer[4];           /* 0x03C: per player: frames since the map ping, -1: none */
     s16 pingHold;               /* 0x044: frames the ping button must be held (10) */
     u8 mapZoomed;               /* 0x046: 1: the zoomed map (Map_DrawZoomed) */
-    u8 glowTimer;               /* 0x047: frames of the glow effect (0x1A) */
+    u8 glowTimer;               /* 0x047: frames of the glow effect (26) */
     u8 menuPhase;               /* 0x048: the field menu: 0 the list, 1 a page (FieldMenu_Update) */
     u8 fieldMenuCount;          /* 0x049: the field menu entries (7 or 8) */
     u8 fieldMenuCursor;         /* 0x04A: the field menu entry (FieldMenu_Update tables) */
@@ -343,7 +364,7 @@ typedef struct HudState {
     u8 count;                   /* 0x055: the count given (Menu_AdjustCount) */
     u8 atMax;                   /* 0x056 */
     u8 dropChoice;              /* 0x057: the drop dialog yes/no (0 yes) */
-    s16 dropHelpLine;           /* 0x058: the help line of the drop dialog: 0x14/0x15/0x16 or item + 0x18 */
+    s16 dropHelpLine;           /* 0x058: the help line of the drop dialog: 20/21/22 or item + 24 */
     u16 dropItem;               /* 0x05A: the item that did not fit, 0: none */
     u8 dropNotice;              /* 0x05C: the notice id of the item-get notice, 0xFF: not posted */
     u8 dropBlink;               /* 0x05D: blink counter of the drop dialog */
@@ -355,7 +376,7 @@ typedef struct HudState {
     s8 blink64;                 /* 0x064 */
     s8 dir65;                   /* 0x065 */
     u16 ammoSlot;               /* 0x066 */
-    s16 supplyMsgTimer;         /* 0x068: frames of the supply box flash (0x1F) */
+    s16 supplyMsgTimer;         /* 0x068: frames of the supply box flash (31) */
     u8 supplyFlashSlot;         /* 0x06A: the supply box cursor flashed (Player +0x81B) */
     u8 supplyMoveFrames;        /* 0x06B: an item taken: its frames */
     u8 supplyMoveTimer;         /* 0x06C: its frames left */
@@ -389,7 +410,7 @@ typedef struct HudState {
     u8 questMenuInField;        /* 0x093: 1 outside the town (gScene.inLobby 0): picks the quest menu tables (gQuestMenuCursorMax/gQuestMenuKinds) */
     s8 unk94;                   /* 0x094: cleared by InfoMenu_Open; nothing reads it */
     s8 noteMonster;             /* 0x095: the monster shown in the monster notes, -1: none */
-    s8 notePage;                /* 0x096: the monster notes' page: MONSTER_NOTE_RECORD set, the records; clear, the materials (0x200 switches) */
+    s8 notePage;                /* 0x096: the monster notes' page: MONSTER_NOTE_RECORD set, the records; clear, the materials (PAD_SQUARE switches) */
     u8 phraseStep;              /* 0x097: the phrase menu step */
     u8 hidden;                  /* 0x098 */
     u8 optionKind;              /* 0x099: the option menu set (0-4, by Game_IsOnline) */
@@ -416,7 +437,7 @@ typedef struct HudState {
     u8 camReqStarted;           /* 0x0A9: CamReq_Started() of the last update */
     u8 detectLevel;             /* 0x0AA: Player_DetectLevel of the local player, set as the map draws (DETECT_*) */
     u8 unk0AB[0x0AC - 0x0AB];
-    u16 clockHand;              /* 0x0AC: the clock hand shown (16-bit turn), catches up 0x16C a frame */
+    u16 clockHand;              /* 0x0AC: the clock hand shown (16-bit turn), catches up 364 a frame */
     u16 dpadRepeat;             /* 0x0AE: the D-pad presses of this frame with key repeat (Menu_ReadDpad) */
     u16 dpadPrev;               /* 0x0B0: the D-pad held last frame (Menu_ReadDpad) */
     u8 mapHalf;                 /* 0x0B2: the map half shown, Player_GetMapHalf of the local player (MAP_HALF_*) */
@@ -425,8 +446,8 @@ typedef struct HudState {
     u8 cursorMax;               /* 0x0B5: the entry or page count for listCursor / pageCursor */
     u8 questMenuStep;           /* 0x0B6: the quest menu step */
     u8 popupOpen;               /* 0x0B7: nonzero while a message popup takes the input (MsgEvent_PopupInput, ItemHud_Update): Hud_InputBlocked offline, Hud_DrawLayer3 skips */
-    s32 gsSave6C;               /* 0x0B8: Gs state 0x6C saved by Hud_SaveGsState */
-    s32 gsSave6D;               /* 0x0BC: Gs state 0x6D saved by Hud_SaveGsState */
+    s32 gsSaveZWrite;           /* 0x0B8: RS_ZWRITE, saved by Hud_SaveGsState */
+    s32 gsSaveZTest;            /* 0x0BC: RS_ZTEST, saved by Hud_SaveGsState */
     s16 hpBlink;                /* 0x0C0: phase of the health bar colour pulse (16-bit turn) */
     s16 staminaBlink;           /* 0x0C2: phase of the stamina bar colour pulse */
     Grid grid;                  /* 0x0C4: the combine list's cursor (CombineList_Setup; grid.unk0 is
@@ -443,7 +464,190 @@ typedef struct HudState {
 
 typedef char HudState_size_check[(sizeof(HudState) == 0x108) ? 1 : -1];
 
-extern HudState gHudStateBuf;  /* the state (0x108 bytes, cleared by Hud_Reset) */
+extern HudState gHudStateBuf;  /* the state (264 bytes, cleared by Hud_Reset) */
 extern HudState *gHudState; /* points to gHudStateBuf */
+
+/* Hud_DrawButtonIcon's ids: the pad buttons' cells of the icon sheet
+ * (TEX_SLOT_ICONS). */
+enum ButtonIcon {
+    BUTTON_ICON_CIRCLE = 0,
+    BUTTON_ICON_CROSS = 1,
+    BUTTON_ICON_TRIANGLE = 2,
+    BUTTON_ICON_SQUARE = 3
+};
+
+void Hud_Reset(void);
+void *Hud_Init(void);
+void Hud_StartQuest(void);
+s32 Hud_InputBlocked(void);
+s32 Hud_TownMenuOpen(void);
+void ItemHud_Update(void);
+void Hud_Update(void);
+void FieldMenu_Open(void);
+void FieldMenu_Update(u16 buttons);
+void FieldMenu_Close(void);
+void FieldMenu_SetHelpLine(void);
+void FieldMenu_ToggleCockpit(void);
+void FieldMenu_DrawList(s8 dimmed);
+void FieldMenu_Draw(void);
+void FieldMenu_DrawCockpit(s16 rows, s16 *offset);
+s32 StatusMenu_Open(void *menu);
+u16 StatusMenu_Update(u16 buttons);
+s32 FriendLimit_Update(void);
+void StatusMenu_Draw(void);
+void InfoMenu_Reset(void);
+s32 InfoMenu_Open(void *menu);
+u16 InfoMenu_Update(u16 buttons);
+void InfoMenu_Draw(void);
+u16 LocationInfo_Update(u16 buttons);
+void LocationInfo_Draw(void);
+s32 CombineList_Open(void);
+u16 CombineList_Update(u16 buttons);
+void ItemList_DrawPage(void);
+s32 MonsterNote_Open(void);
+u16 MonsterNote_Update(u16 buttons);
+void MonsterNote_DrawPage(void);
+void Menu_DrawEntryPicture(MonsterNoteDef *note, s16 x, s16 y);
+s32 MonsterNote_DrawLargeCrown(u16 note, s16 x, s16 y, s32 size);
+s32 MonsterNote_DrawSmallCrown(u16 note, s16 x, s16 y, s32 size);
+void MonsterNote_DrawCrown(s16 x, s16 y, s16 size, u8 flags);
+s32 SizeRecord_DrawLarge(MonsterNoteDef *note, s16 x, s16 y, s32 value);
+s32 SizeRecord_DrawSmall(MonsterNoteDef *note, s16 x, s16 y, s32 value);
+MonsterNoteDef *MonsterNote_FindKind(s32 kind);
+void MonsterNote_OnItemGet(u16 item);
+s32 QuestMenu_CheckInfo(void);
+u16 QuestMenu_Update(u16 buttons); /* sub_main */
+void QuestMenu_DrawPage(void);
+void QuestMenu_DrawTimeLimit(s32 unused);
+void QuestMenu_DrawTime(u8 which);
+void QuestMenu_DrawNumber(s32 value);
+void Text_DrawStars(s32 count);
+void QuestMenu_DrawCount(u16 count, u16 max, u8 withMax);
+void QuestMenu_DrawRate(void);
+void QuestMenu_DrawFaints(void);
+void QuestMenu_DrawTargets(s16 x);
+s32 ChatMenu_Open(void);
+void ChatMenu_Draw(void);
+u16 PhraseMenu_Update(u16 buttons);
+void PhraseMenu_Draw(void);
+s32 PauseMenu_Open(void);
+void Pause_Update(void);
+void PauseMenu_Draw(void);
+s32 PouchMenu_CanTransfer(Player *pl);
+s32 PouchMenu_Open(void *menu); /* sub_main */
+u16 PouchMenu_Update(u16 buttons); /* sub_main */
+s32 Hud_ItemMenusAllowed(void);
+s32 CombineMenu_Open(void);
+u16 CombineMenu_Input(u16 btn);
+void CombineMenu_DrawInfo(void);
+void CombineMenu_DrawItemName(u8 slot, u16 item);
+s32 PersonalStatus_Open(void); /* sub_main */
+u16 PersonalStatus_Update(u16 buttons); /* sub_main */
+void PersonalStatus_Draw(void); /* sub_main */
+s32 EquipStatus_Open(void); /* sub_main */
+u16 EquipStatus_Update(u16 buttons); /* sub_main */
+s32 OptionMenu_Open(void *menu);
+s32 OptionMenu_Update(u16 buttons);
+void OptionMenu_Draw(void);
+s32 ItemGet_IsReady(struct Player *p);
+s32 ItemGet_Reserve(s32 pl, u16 *ticket);
+s16 Pouch_GiveItems(Player *pl, u16 item, s16 key, u8 flags, s16 n);
+u16 ItemGet_Result(void);
+s32 PouchDrop_Update(u16 buttons);
+s32 PouchDrop_UpdateSave(u16 buttons);
+void Hud_MapZoomInput(u16 btn, u16 unused);
+void Hud_UpdateMapPing(u16 buttons);
+void Hud_StartMapPing(s32 i);
+void Hud_DrawPlayerNames(void);
+void Hud_DrawVersusMonsterBars(void);
+void Hud_DrawBlockGauge(s16 x, s16 y, u16 value, u32 color);
+void Hud_DrawVersusMonsterBar(Em *em, s16 x, s16 y, u32 color, u8 *name);
+void PouchMenu_Draw(void);
+void PlayerNameList_DrawCount(void);
+void Menu_PlayerNameList(void);
+void ItemList_DrawPouch(s32 cursor, s32 cursorColor, s32 flags);
+void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags);
+void Menu_DrawListCursor(s16 *off, s32 row, u32 color);
+void Map_DrawDot(u32 color, f32 x, f32 y, f32 radius);
+s32 Em_IsHiddenFromHud(Em *em);
+void Map_DrawPingGlow(s16 x, s16 y, s16 frame, s32 color);
+void Map_DrawArea(f32 x, s16 y, f32 scale);
+s32 Map_GetPosition(f32 *x, f32 *y, s32 id);
+void Map_DrawAreaChange(void);
+void Map_DrawZoomed(f32 x, s16 y);
+void Hud_DrawMap(void);
+void Hud_DrawPouchItem(void);
+void Hud_DrawPouchSelector(void);
+void Hud_DrawPouchBar(void);
+void Hud_DrawButtonIcons(void);
+s32 Hud_DrawPouchSlotName(u8 slot, s16 y);
+void Hud_DrawPouchSlotIcon(u8 slot, s16 x, f32 scaleW, f32 scaleH);
+void Hud_DrawItemWindow(void);
+void Hud_DrawPartyStatus(void);
+void Hud_DrawPlayerStatus(Player *pl, s16 y, f32 x);
+void Hud_DrawStatusIcon(u16 mask, s32 slot, u32 x, u16 y);
+void Hud_DrawClock(void);
+void Hud_DrawCompass(s32 angle, u8 kind);
+void Compass_DrawMarker(s16 heading, s16 target, u8 kind);
+u16 Clock_Angle(s32 frames);
+void Hud_DrawCompassQuad(s32 angle, s32 k);
+void Hud_DrawHealthStamina(void);
+u32 Hud_HealthColor(s16 kind, Player *pl);
+u32 Hud_HealthBarColor(Player *pl);
+u32 Hud_StaminaColor(s16 kind, Player *pl);
+void Hud_DrawGaugeFrame(Gauge *gauge, s32 thin);
+void Hud_DrawGaugeFill(Gauge *gauge, s32 thin);
+void Hud_DrawWeaponBox(void);
+void Hud_DrawHornNotes(Player *pl);
+void Hud_DrawAimView(void);
+void Hud_DrawBowgun(void);
+void Hud_DrawBlinkIcon(s32 icon);
+void Hud_DrawBowgunClip(Player *pl, u8 kind);
+s32 Map_MonsterLocated(Em *em);
+void Hud_TriggerGlow(Em *em);
+void Hud_DrawGlowEffect(void);
+void Hud_DrawGlow(s16 x, s16 y, s32 color, f32 size, f32 frames);
+void SupplyBox_Draw(void);
+void Hud_StartSupplyMsg(u8 *player);
+void SupplyBox_StartMove(u16 item, u8 slot);
+void TentMenu_Draw(void);
+void QuestMenu_DrawDelivery(void);
+void EquipStatus_Draw(void); /* sub_main */
+void Hud_DrawBowgunAmmo(void);
+void Pause_DrawWindow(void);
+void Hud_DrawLayer0(void);
+void Hud_DrawLayer1(void);
+void Hud_DrawLayer2(void);
+void Hud_DrawLayer3(void);
+void Hud_DrawLayer1B(void);
+void Hud_DrawLayer2B(void);
+void Hud_DrawLayer3B(void);
+void CombineMenu_StartFade(s32 mode);
+void Hud_FadeStart(s32 mode, s16 x, s16 y);
+void Fade_UpdateAll(void);
+void Hud_FadeDraw(void);
+s32 Fade_ApplyPos(Fade *fade, PosKey *key, s16 frame);
+s32 Fade_ApplyAlpha(Fade *fade, AlphaKey *key, s16 frame);
+void QuestMenu_DrawWideNumber(s32 value);
+void QuestMenu_DrawParTime(s16 x);
+void QuestMenu_DrawBestRecord(s16 x);
+void QuestMenu_DrawInfo(void); /* sub_main */
+s32 QuestMenu_DrillItemList(s32 kind);
+void CommentEdit_Open(void);
+u16 Chat_InputLine(u16 buttons);
+void CommentEdit_Draw(void);
+extern u32 gItemFontColors[12];
+extern u8 gMapIconKinds[80];
+
+s32 Hud_ItemGetBusy(void);
+s32 Hud_ChatKeyAllowed(void);
+s32 Hud_SupplyBoxOpen(void);
+s32 Hud_SupplyBoxActive(void);
+s32 Hud_DeliveryOpen(void);
+void Hud_SetCancel(void);
+void Hud_SetCamReqStarted(void);
+void Hud_ResetMenuState(void);
+u16 Menu_ReadDpad(u8 pad);
+void FieldMenu_Exit(void);
 
 #endif /* HUD_H */

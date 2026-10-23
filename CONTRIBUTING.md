@@ -13,7 +13,7 @@ What is left, at the last count:
   and more in structs local to one file;
 - data objects still named by their address (`D_00XXXXXX`);
 - small groups of field accesses through raw byte offsets;
-- 31 fakematches ("Fakematches").
+- 30 fakematches ("Fakematches").
 
 ## Ground rules
 
@@ -105,6 +105,42 @@ the build writes them from your copy.
   its reason: what is not the game's (zlib's tables, the PNG format's
   constants).
 
+### The readable export
+
+For research and modifications with your own copy (the owner,
+2026-10-21), `python3 tools/export_readable.py [OUT]` writes a source
+tree with the content written out in C (default OUT: build/readable).
+Run it after configure.py, in a clone. OUT is a copy of every file git
+tracks, with src/'s C files changed in two ways:
+- **Each data initializer is inline:**
+  - one array element per line, as `[i] = ...`;
+  - each struct member labelled with its field name (`.bone = 14`): MWCC
+    and clang build designated initializers to the same bytes as the
+    plain list;
+  - integers in decimal, but a value above 0x7FFFFFFF, or one in a field
+    or table whose name says flags, mask, bits or colour, stays hex;
+  - pointers, floats and string literals as content_gen writes them;
+  - a `char` array that holds a text as its string literal, and any
+    other byte array as numbers.
+- **Each `TXT(0xADDR)` is its string literal,** and the texts header's
+  include is gone. A literal of the game's text has a comment with the
+  text decoded (Shift-JIS, written as UTF-8).
+
+Every other file is unchanged, so OUT configures and builds with the
+usual commands (`MH2_ORIG_DIR` set, `configure.py --split`, `ninja`).
+content_gen finds nothing to write there. Unedited, it builds the 13
+targets byte-identical. Edited, a changed value changes the built
+target at that value's bytes only. OUT/tools/deps is a link to the
+clone's toolchain (`--deps none`: run tools/setup.sh there), and
+OUT/README_EXPORT.md says what the tree is.
+
+**The export holds the game's data and text.** It stays on your machine:
+never commit it, publish it or share it. Keep OUT outside the
+repository or under build/ (git-ignored); the tool refuses any other
+place in the repository. Running it again needs `--force`, which
+replaces OUT and any edits in it.
+
+
 ## Setting up
 
 Follow the README's "Building" section: `tools/setup.sh` once, `source
@@ -162,7 +198,9 @@ Before you commit:
 - Functions are `Module_Name` (`Movie_Play`, `Player_CopyPadInput`). Game
   data is `gName` (`gPlayers`). An object reached only through entry N of
   a named table is `TABLE_N` until its own use is known.
-- Types that more than one C file needs go in `include/`. Some structs
+- Types and declarations go in `include/`: a header for each C file
+  (FILE.h, or its subject's), one for each library's functions (libc.h,
+  libkernl.h ...), and `common.h`. Some structs
   are generated: edit `include/NAME.spec`, then `python
   tools/gen_struct.py include/NAME.spec include/NAME.h` writes the padded
   struct into the header.
@@ -189,7 +227,7 @@ marker so that they can be counted:
   return type differs from the definition in another file, where the
   calling code matches only with it, is how the game's unit declared it.
   Mark it `/* unit's own declaration: <evidence> */`; proto_check counts
-  these apart (432 at the last count). Where a cast at the call gives the
+  these apart (428 at the last count). Where a cast at the call gives the
   same code, declare the callee as it is defined and cast the call
   instead.
 
@@ -209,7 +247,7 @@ Capcom's own assembly is source: main's 12 memory copy and fill loops
 (`Mem_*`, src/main/mem_loops.s) and sub_main's VU1 microcode (60
 programs, src/sub_main/vu1_microcode.vsm). sub_main's 42 VU0 routines
 are CodeWarrior `asm` functions inside their C files
-(src/sub_main/engine_core.c and vu1_packets.c): MWCC never emits VU0 macro
+(src/sub_main/engine_math.c, anim_curve.c and vu1_packets.c): MWCC never emits VU0 macro
 instructions from C (docs/mwcc-matching.md, "What can't come from C").
 - The YAML keeps an `asm` piece for the range, and configure.py builds it
   from src/<module>/<piece>.s when that file exists. splat still writes
@@ -227,7 +265,7 @@ MWCC puts a `switch`'s jump table and every string literal in the C file's
 `.rodata`, and initialized variables in its `.data`. In the game, each
 translation unit's objects sit together, in its functions' order. So each
 C file owns its data: its range of `.rodata` and `.data` is a subsegment
-of its own in the YAML (`[0x186B50, .rodata, net_tcp]`).
+of its own in the YAML (`[0x186B50, .rodata, net_if]`).
 - Strings are written as literals (the game's texts as `TXT()`,
   "Content"); MWCC emits a literal at its first use and reuses it for the
   same text later in the file.

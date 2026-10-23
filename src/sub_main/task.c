@@ -9,20 +9,45 @@
  * select's Boot_Task, which runs the boot screens or goes on to gm_sub, and
  * gm_sub's GmSub_Task, which ends by asking Task_RunFrame for one of the
  * lobby's tasks (gSysSettings.taskRequest).
+ *
+ * The file ends with the field's per-frame update (Field_UpdateAll), which
+ * the scene runs each frame (Scene_FieldFrame) and once as the field starts:
+ * the players, the monsters, the music, the collisions, the objects and the
+ * item HUD.
  */
 #include "common.h"
 #include "syssettings.h"
 #include "task.h"
 #include "overlay.h"
+#include "net_mode.h"
+#include "scene.h"
+#include "em.h"
+#include "player.h"
+#include "hud.h"
+#include "area_anim.h"
+#include "bgm.h"
+#include "obj.h"
+#include "camera.h"
+#include "light.h"
+#include "quest.h"
+#include "draw_slots.h"
+#include "frame.h"
+#include "gm_em.h"
+#include "gm_main.h"
+#include "main.h"
+#include "net_scene.h"
+#include "push_apart.h"
+#include "rand.h"
+#include "libc.h"
+#include "area.h"
 
 extern TaskSlot gTaskSlots[];
 extern u8 gBootMode;
 /* select's Boot_Task: the lobby has another function at this address, so
  * sub_main names it by address */
 void D_6B5230(TaskSlot *t);
-void GmSub_Task(TaskSlot *t);
 
-void *memset(void *p, s32 c, u32 n);
+extern Em gEms[20];
 
 /* Clears every task slot. */
 void TaskSlot_InitAll(void)
@@ -49,14 +74,7 @@ extern u16 gPadDebugMode;
 /* The tasks Task_RunFrame starts in the other overlays. select's Boot_Task
  * goes by its address: sub_main's link is given the names of the lobby's,
  * game's, gm_sub's and plsel's code, but not select's. */
-void NetScene_Run(TaskSlot *t);
-void NetSetupTask_Run(void *t);
 void D_6B5230(TaskSlot *t);         /* select's Boot_Task */
-u16 Rand_Next(s32 stream);
-void Callbacks_Clear(void);
-void LoadOverlay(s32 id);
-void TaskSlot_Set(void *func, s16 slot);
-void Scene_QuestTask(u8 *obj);
 
 /* The task slots' frame step: steps each slot's state (TaskSlot.state) and runs the tasks in
  * TASK_RUN. While gPadDebugMode or gSysSettings.unk07[0] is set, slots 2-11 are held: only
@@ -230,4 +248,64 @@ void Task_StartBootScreens(void)
     TaskSlot_Set(D_6B5230, TASK_SLOT_BOOT);
     gBootMode = BOOT_MODE_SCREENS;
     gSysSettings.bootFrom = BOOT_FROM_TASK;
+}
+
+/*
+ * The field's per-frame update: the players (outside events, or in a
+ * versus quest), then each monster: its bones, then the game overlay's
+ * monster task, or sub_main's own state runner for the objects set up by
+ * Em_SetupKind (Em.ownTask set). Then the push-apart (outside events), the
+ * BGM, a second field collision for each player and monster the push moved,
+ * and the matrices, lights, stage objects, attachments, objects, areas,
+ * timers and the item HUD.
+ */
+void Field_UpdateAll(void)
+{
+    s32 i;
+    Em *em;
+    Player *pl;
+
+    em = gEms;
+    if (gScene.eventRunning == 0 || Quest_IsVersus() == 1) {
+        PlayerSys_Update();
+    }
+    for (i = 0; i < 20; i++, em++) {
+        if (em->active) {
+            Em_CopyBoneMatrices(em);
+            if (em->ownTask == 0) {
+                if (GmEm_Task(em) == 0) {
+                    Em_UpdateMatrix(em);
+                    Em_CarryRiders(em);
+                }
+            } else if (Em_RunByState(em) == 0) {
+                Em_UpdateWorldMatrix(em);
+            }
+        }
+    }
+    if (gScene.eventRunning == 0) {
+        Field_PushApart();
+    }
+    Bgm_FieldUpdate();
+    /* a player keeps Em's layout up to +0x738 (Em.pushed) */
+    for (i = 0, pl = gPlayers; i < 10; i++, pl++) {
+        if (pl->active && ((Em *)pl)->pushed) {
+            Em_CollideField((Em *)pl, 1);
+        }
+    }
+    for (i = 0, em = gEms; i < 20; i++, em++) {
+        if (em->active && em->pushed) {
+            Em_CollideField(em, 1);
+        }
+    }
+    Players_UpdateMatrices();
+    Players_RunEquipEffects();
+    CamCtl_Update(0);
+    LightSet_UpdateAll();
+    StageObj_UpdateAll();
+    ObjAttach_UpdateAll();
+    Obj_UpdateAll();
+    FlashObj_Tick();
+    SightBlock_Tick();
+    Area_UpdateTimers();
+    ItemHud_Update();
 }

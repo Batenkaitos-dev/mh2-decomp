@@ -1,7 +1,7 @@
 /*
  * Monster family: Mosswine and Bullfango (EM_KIND_MOSSWINE and
  * EM_KIND_BULLFANGO), which share one set of state functions (EmMosswine_*);
- * the per-kind hooks also send kind 0x20 to its ChangeState. The code from
+ * the per-kind hooks also send kind 32 to its ChangeState. The code from
  * the family's first function, EmMosswine_Init, to its answers to the quest
  * scripts (EmMosswine_ScriptQuery): one function per state, a dispatcher per
  * state group (Run*State) and ChangeState, the per-frame Update that turns
@@ -14,81 +14,34 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_mosswine.h"
 #include "player.h"
 #include "objattach.h"
 #include "area.h"
-void QuestEm_Hunted(Em *em);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
-void Player_ClearAccel2(void *);
-void EmMosswine_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus2(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
+#include "capsule.h"
+#include "attack_objects.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "gm_load.h"
+#include "vec_math.h"
+#include "em_script.h"
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmAnteka_ChangeState, EmKhezu_ChangeState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-void Player_SetFlag(void *obj, u32 flag);
-ObjAttach *EmContactAttack_Create(Em *em, s8 kind);
-void Em_ComputeGoal2(Em *em, f32 *target);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void EmMosswine_Init(Em *);
-void EmMosswine_Status2Lie(Em *);
-void EmMosswine_Turn(Em *, s32);
-void EmMosswine_Walk(Em *);
-void EmMosswine_Run(Em *em);
-void EmMosswine_WalkB(Em *em);
-void EmMosswine_WalkScripted(Em *);
-void EmMosswine_WanderHome(Em *em);
-void EmMosswine_Charge(Em *, u32);
-void EmMosswine_BlownAway(Em *);
-void EmMosswine_BlownAwayQuick(Em *);
-void EmMosswine_Die(Em *);
-void EmMosswine_DieQuick(Em *);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, u8 k, s16 v, s16 t, f32 y, f32 scale), the calls in EmKhezu_HeldDowned compile differently */
 void StunStars_CreateEm(Em *, s32, s32, s32, f32, f32);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-s32 Angle_TurnToward(s32 *cur, s32 *target, s32 step);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Motion_InitTime(void *p, s16 step);
-void Shadow_Spawn(void *obj, s16 type);
-s8 QuestEm_Appear(Em *em);
-void Em_BeginStatus5(Em *em);
-void Em_EndStatus5(Em *em);
 /* unit's own declaration: declared here as the callers use it; with the definition's s16 (void *obj, u8 state, u8 sub), the calls in EmMosswine_ScriptQuery and EmMosswine_Update compile differently */
 s32 Player_IsState(void *obj, s32 group, s32 state);
-extern f32 EmMosswine_VariantParams[][6];
+/* MOSS_MOVE_WALK_SCRIPTED's walk, by Em.variant: where it starts and its goal. */
+typedef struct EmMosswineWalk {
+    f32 pos[3];         /* 0x00: the start position (Em.posX to posZ) */
+    f32 goal[3];        /* 0x0C: the goal (Em.goal) */
+} EmMosswineWalk;
+extern EmMosswineWalk EmMosswine_ScriptedWalks[3];
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-extern f32 EmMosswine_Effect0BOfs[3];
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-void Em_FindLink(Em *em);
-void Em_InitParts(Em *em);
-void GmEm_ApplySize(Em *em);
+extern f32 EmMosswine_LiePuffsOfs[3];
 extern EmTurnParams EmMosswine_TurnParams[1];
-s32 Player_MoveFall(Player *p);
-s32 Em_SetCombat(Em *em, u8 a, s16 b);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-void Em_SetStatus5Timer(Em *em);
-void Em_ResetPartHp(Em *em, u32 i);
-void EmMosswine_RunState(Em *em);
 /* end of prototypes */
 
 /*
@@ -180,7 +133,7 @@ void EmMosswine_Reinit(Em *em)
  * alert idle in combat; MOSS_IDLE_STUN_END ends status 5 and blocks
  * reactions; the walks and the run head for Em_ComputeGoal2's goal for at
  * most 1800 frames, MOSS_MOVE_WALK_SCRIPTED from its variant's fixed start
- * to its goal (EmMosswine_VariantParams) for 600; each charge gets its
+ * to its goal (EmMosswine_ScriptedWalks) for 600; each charge gets its
  * goal, its length (30 to 120 frames) and its motion speed; a Bullfango's
  * MOSS_REACT_STUN begins status 5; MOSS_DEFEAT_REAPPEAR lets the quest
  * place it first (QuestEm_Appear).
@@ -218,7 +171,7 @@ void EmMosswine_ChangeState(Em *em, u16 group, u16 state, u8 mode)
             break;
         case MOSS_MOVE_WALK_SCRIPTED:
             em->timer = 600;
-            params = EmMosswine_VariantParams[em->variant];
+            params = EmMosswine_ScriptedWalks[em->variant].pos;
             em->posX = *params++;
             em->posY = *params++;
             em->posZ = *params++;
@@ -303,7 +256,7 @@ void EmMosswine_Idle(Em *em)
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
-        Em_SetMotion(em, MOSS_MOT_IDLE, 0xA, 0);
+        Em_SetMotion(em, MOSS_MOT_IDLE, 10, 0);
         break;
     case 1:
         if (em->motion[0].playing == 0) {
@@ -323,7 +276,7 @@ void EmMosswine_IdleActionA(Em *em)
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
-        em->timer = ((s32) em->stateRand % 60) + 0x1E;
+        em->timer = ((s32) em->stateRand % 60) + 30;
         Em_SetMotion(em, MOSS_MOT_IDLE_ACTION_A, 6, 0);
         break;
     case 1:
@@ -354,7 +307,7 @@ void EmMosswine_IdleActionB(Em *em)
         Motion_InitTime(em, 0);
         break;
     case 1:
-        if (em->motionTime >= 0xF0) {
+        if (em->motionTime >= 240) {
             EmMosswine_EndState(em);
         }
         break;
@@ -441,7 +394,7 @@ void EmMosswine_Status2Lie(Em *em)
         Em_BeginStatus2(em);
         break;
     case 1:
-        Em_SpawnLyingPuffs(em, 0xB, (f32 *) &EmMosswine_Effect0BOfs, 1.0f);
+        Em_SpawnLyingPuffs(em, MOSS_BONE_BREATH, (f32 *) &EmMosswine_LiePuffsOfs, 1.0f);
         if (--em->timer <= 0) {
             EmMosswine_ChangeState(em, EM_GROUP_IDLE, MOSS_IDLE_STATUS2_END, EM_SYNC_OWNER_FLAGGED);
         }
@@ -607,9 +560,9 @@ void EmMosswine_Turn(Em *em, s32 quarterTurn)
         if (quarterTurn == 0) {
             Em_StartTurnToTarget(em, &EmMosswine_TurnParams[0]);
         } else {
-            em->aimAngle = em->rotY + 0x4000;
+            em->aimAngle = em->rotY + ANGLE_TURN / 4;
             turnDiff = em->aimAngle - em->rotY;
-            if (turnDiff <= 0x1000U || turnDiff >= 0xF000U) {
+            if (turnDiff <= 4096U || turnDiff >= 0xF000U) {
                 Player_SetFlag((Player *) em, EM_FLAG_NO_ROOT_MOTION);
                 Em_SetMotion(em, MOSS_MOT_WALK, 0, 0);
             } else if (turnDiff >= 0x8000U) {
@@ -732,7 +685,7 @@ void EmMosswine_WanderHome(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = (em->stateRand & 0x7F) + 0x78;
+        em->timer = (em->stateRand & 0x7F) + 120;
         Em_SetMotion(em, MOSS_MOT_WALK, 6, 0);
         break;
     case 1:
@@ -745,7 +698,7 @@ void EmMosswine_WanderHome(Em *em)
             break;
         }
         em->targetAngle = Math_AngleXZ(&em->posX, w->home) & 0xFFFF;
-        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x80);
+        Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 128);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
         break;
     }
@@ -783,7 +736,7 @@ void EmMosswine_RunMoveState(Em *em)
 
 /*
  * The charges (MOSS_ATK_CHARGE_A to _F, by `charge`): the contact attack of
- * the charge (EmContactAttack rows 3, 8, 9, 0xA, 0xE, 0xF), then a run at a
+ * the charge (EmContactAttack rows 3, 8, 9, 10, 14, 15), then a run at a
  * goal 100 past the target's position until within 100 of it or the
  * charge's time is up (cut to 15 frames when the target is gone or in
  * another area); the end motion, then EmMosswine_EndState.
@@ -799,7 +752,7 @@ void EmMosswine_Charge(Em *em, u32 charge)
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
-        Em_SetMotion(em, MOSS_MOT_CHARGE, 0xA, 0);
+        Em_SetMotion(em, MOSS_MOT_CHARGE, 10, 0);
         switch (charge) {
         case 0:
             EmContactAttack_Create(em, 3);
@@ -811,13 +764,13 @@ void EmMosswine_Charge(Em *em, u32 charge)
             EmContactAttack_Create(em, 9);
             break;
         case 3:
-            EmContactAttack_Create(em, 0xA);
+            EmContactAttack_Create(em, 10);
             break;
         case 4:
-            EmContactAttack_Create(em, 0xE);
+            EmContactAttack_Create(em, 14);
             break;
         case 5:
-            EmContactAttack_Create(em, 0xF);
+            EmContactAttack_Create(em, 15);
             break;
         }
         ang[0] = 0;
@@ -835,12 +788,12 @@ void EmMosswine_Charge(Em *em, u32 charge)
     case 1:
         if (Vec_Distance((f32 *) &em->posX, (f32 *) em->goal) < 100.0f || --em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, MOSS_MOT_CHARGE_END, 0xA, 0);
+            Em_SetMotion(em, MOSS_MOT_CHARGE_END, 10, 0);
             break;
         }
         Angle_TurnToward((s32 *) &em->rotY, (s32 *) &em->targetAngle, 0x200);
         Mtx_FromAnglesXYZ((s32 *) &em->rotX, em->rotMtx[0]);
-        if (em->timer > 0xF) {
+        if (em->timer > 15) {
             if (em->targetNo == -1) {
                 em->timer = 15;
             } else if (em->area != ((Player *) &gPlayers[em->targetNo])->area) {
@@ -930,7 +883,7 @@ void EmMosswine_BlownAway(Em *em)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         ang[0] = (u16) (em->hitAngle - em->rotY);
-        if (ang[0] < 0x8000) {
+        if (ang[0] < (ANGLE_TURN / 2)) {
             Em_SetMotion(em, MOSS_MOT_BLOWN_A, 0, 0);
         } else {
             Em_SetMotion(em, MOSS_MOT_BLOWN_B, 0, 0);
@@ -941,7 +894,7 @@ void EmMosswine_BlownAway(Em *em)
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             em->step++;
             ang[0] = 0;
-            ang[1] = em->hitAngle + 0x8000;
+            ang[1] = em->hitAngle + ANGLE_TURN / 2;
             ang[2] = 0;
             Mtx_FromAnglesXYZ((s32 *) ang, mtx);
             ofs[0] = 0.0f;
@@ -995,13 +948,13 @@ void EmMosswine_BlownAwayQuick(Em *em)
         em->step++;
         em->stance = EM_STANCE_AIR;
         ang[0] = (u16) (em->hitAngle - em->rotY);
-        if (ang[0] < 0x8000) {
-            Em_SetMotion(em, MOSS_MOT_BLOWN_A, 0, 0xA);
+        if (ang[0] < (ANGLE_TURN / 2)) {
+            Em_SetMotion(em, MOSS_MOT_BLOWN_A, 0, 10);
         } else {
-            Em_SetMotion(em, MOSS_MOT_BLOWN_B, 0, 0xA);
+            Em_SetMotion(em, MOSS_MOT_BLOWN_B, 0, 10);
         }
         ang[0] = 0;
-        ang[1] = em->hitAngle + 0x8000;
+        ang[1] = em->hitAngle + ANGLE_TURN / 2;
         ang[2] = 0;
         Mtx_FromAnglesXYZ((s32 *) ang, mtx);
         ofs[0] = 0.0f;
@@ -1043,8 +996,8 @@ void EmMosswine_BlownAwayQuick(Em *em)
 
 /*
  * MOSS_REACT_STATUS4: Em_BeginStatus4, down with the body turned away from
- * the hit and an effect on bone 2 while Em.timer counts down; then gets up
- * turning back (Em_EndStatus4), reactions blocked until then, and
+ * the hit and an effect on MOSS_BONE_BODY while Em.timer counts down; then
+ * gets up turning back (Em_EndStatus4), reactions blocked until then, and
  * EmMosswine_EndState.
  */
 void EmMosswine_Status4(Em *em)
@@ -1067,7 +1020,7 @@ void EmMosswine_Status4(Em *em)
         Em_RestartScript(em);
         break;
     case 1:
-        Em_SpawnStatus4Effect(em, 2);
+        Em_SpawnStatus4Effect(em, MOSS_BONE_BODY);
         if (em->timer <= 0) {
             em->step++;
             Em_SetMotion(em, MOSS_MOT_DOWN_GET_UP, 0, 0);
@@ -1126,7 +1079,7 @@ void EmMosswine_Stun(Em *em)
         Em_SetMotion(em, MOSS_MOT_DOWN, 0, 0);
         Em_RestartScript(em);
         em->noReact = 1;
-        StunStars_CreateEm(em, 1, 0, *(s16 *)&em->timer, 100.0f, 1.2f);
+        StunStars_CreateEm(em, 1, MOSS_BONE_ROOT, *(s16 *)&em->timer, 100.0f, 1.2f);
         break;
     case 1:
         if (--em->timer <= 0) {
@@ -1183,15 +1136,15 @@ void EmMosswine_Die(Em *em)
     s32 ang[4];
     f32 mtx[16];
 
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = EM_STANCE_GROUND;
         ang[0] = (u16) (em->hitAngle - em->rotY);
-        if (ang[0] < 0x8000) {
+        if (ang[0] < (ANGLE_TURN / 2)) {
             Em_SetMotion(em, MOSS_MOT_BLOWN_A, 0, 0);
         } else {
             Em_SetMotion(em, MOSS_MOT_BLOWN_B, 0, 0);
@@ -1202,7 +1155,7 @@ void EmMosswine_Die(Em *em)
         if (EmMotion_PassedFrameScaled(em, 10.0f, 0) != 0) {
             em->step++;
             ang[0] = 0;
-            ang[1] = em->hitAngle + 0x8000;
+            ang[1] = em->hitAngle + ANGLE_TURN / 2;
             ang[2] = 0;
             Mtx_FromAnglesXYZ((s32 *) ang, mtx);
             ofs[0] = 0.0f;
@@ -1280,22 +1233,22 @@ void EmMosswine_DieQuick(Em *em)
     s32 ang[4];
     f32 mtx[16];
 
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     Em_SetCombat(em, 0, 0);
     switch (em->step) {
     case 0:
         em->step++;
         em->stance = EM_STANCE_AIR;
         ang[0] = (u16) (em->hitAngle - em->rotY);
-        if (ang[0] < 0x8000) {
-            Em_SetMotion(em, MOSS_MOT_BLOWN_A, 0, 0xA);
+        if (ang[0] < (ANGLE_TURN / 2)) {
+            Em_SetMotion(em, MOSS_MOT_BLOWN_A, 0, 10);
         } else {
-            Em_SetMotion(em, MOSS_MOT_BLOWN_B, 0, 0xA);
+            Em_SetMotion(em, MOSS_MOT_BLOWN_B, 0, 10);
         }
         QuestEm_Hunted(em);
         ang[0] = 0;
-        ang[1] = em->hitAngle + 0x8000;
+        ang[1] = em->hitAngle + ANGLE_TURN / 2;
         ang[2] = 0;
         Mtx_FromAnglesXYZ((s32 *) ang, mtx);
         ofs[0] = 0.0f;
@@ -1591,9 +1544,9 @@ void EmMosswine_RunState(Em *em)
  * Callback slots 0 and 1 (EmVt.init, update): makes the monster's effect
  * 01, as the other families do.
  */
-void EmMosswine_SpawnEffect01(u8 *em)
+void EmMosswine_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* Callback slot 2: nothing. */
@@ -1621,17 +1574,16 @@ s32 EmMosswine_ScriptQuery(Em *em, u8 query)
 }
 
 /* The file's initialised data, in the game's order */
-void GmEm_UpdateSfx(Em *em); /* gm_sub */
-f32 EmMosswine_VariantParams[3][6] = {
+EmMosswineWalk EmMosswine_ScriptedWalks[3] = {
 #include "game/008C8B30.inc"
 };
 EmTurnParams EmMosswine_TurnParams[1] = {
 #include "game/008C8B80.inc"
 };
-f32 EmMosswine_Effect0BOfs[3] = {
+f32 EmMosswine_LiePuffsOfs[3] = {
 #include "game/008C8BA0.inc"
 };
 void *EmMosswine_Callbacks[8] = {
-    EmMosswine_SpawnEffect01, EmMosswine_SpawnEffect01, EmMosswine_TableNop, GmEm_UpdateSfx,
+    EmMosswine_SpawnShadow, EmMosswine_SpawnShadow, EmMosswine_TableNop, GmEm_UpdateSfx,
     EmMosswine_ScriptQuery, EmMosswine_Reinit, NULL, NULL,
 };

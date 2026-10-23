@@ -1,6 +1,10 @@
 /*
  * A run of small functions sub_main's code and the overlays share: the
- * reset that goes back to the title overlay, the pad and USB keyboard
+ * options applied to the system settings (Options_Apply), the quest to
+ * run (Quest_SetCurrent), the reset of the game's subsystems for a new
+ * scene (Game_ResetSubsystems, with the pools' clear and the motion
+ * table's frees), the reset that goes back to the title overlay, the pad
+ * and USB keyboard
  * getters (the chat's hotkeys), the menu sound shortcuts (sound.h's
  * SE_MENU_* and SE_SYS_*), the quest and scene queries, the supply box's
  * set-up, and the loading screen's captions (Loading_SetMessage, with the
@@ -15,6 +19,39 @@
 #include "player.h"
 #include "qsync.h"
 #include "overlay.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "obj.h"
+#include "card.h"
+#include "hud.h"
+#include "model.h"
+#include "task.h"
+#include "text.h"
+#include "window.h"
+#include "syssettings.h"
+#include "syssave.h"
+#include "movie.h"
+#include "stream.h"
+#include "texture.h"
+#include "game_util.h"
+#include "area.h"
+#include "camera.h"
+#include "display_util.h"
+#include "draw_slots.h"
+#include "em.h"
+#include "file_load.h"
+#include "font.h"
+#include "frame.h"
+#include "loading_screen.h"
+#include "main.h"
+#include "mem_util.h"
+#include "rand.h"
+#include "stage_data.h"
+#include "sys_main.h"
+#include "town_frame.h"
+#include "vibration.h"
+#include "screen_fade.h"
+#include "libc.h"
 
 
 extern u8 gSoundLoading;
@@ -25,35 +62,161 @@ extern s32 gLoadingState;
 extern s32 gLoadingArg;
 extern char *gLoadingMessage;
 
-void *memset(void *dst, s32 c, u32 n);
-void LoadOverlay(s32 id);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-void SysSettings_Reset(void);
-s8 Kbd_IsOpen(void);
-void Area_FreeModels(void);
-void TaskSlot_ClearFirstNine(void);
-void Task_StartBootToGmSub(void);
-void Hud_SetCancel(void);
-s32 QuestMenu_CheckInfo(void);
-s32 Chat_IsAvailable(void);
-void Jingle_Play(void *obj, s32 id);
-u16 Rand_Next(s32 a);
-void FreeList_InitAll(void);
-void Game_ResetSubsystems(void);
-void DrawSlot_ResetAll(void);
-void DrawSlotB_ResetAll(void);
-void Vib_StopAll(void);
-void EmSlot_ClearAll(void);
-void Area_ClearState(void);
-void Player_ClearAll(void);
-void *Stage_GetSupplyItems(void);
-void Player_RequestGesture(u8 a);
-void Loading_Open(u32 a, s32 b);
-void Loading_Close(void);
-s32 Town_IsPlayerHeld(void);
-void Scene_Clear(void);
-void QuestSync_Clear(void);
-void Loading_Reset(void);
+extern u8 gAreaSubModel[];
+extern void *gBones;
+extern void *gMatSets;
+extern void *gMaterials;
+extern void *gModelLoadBuf;
+extern void *gModels;
+extern void *gMotions[];
+extern void *gObjBufBlocks;
+extern void *gPrims;
+extern u8 gScreenCaptureOk;
+extern u8 gSysBusy;
+extern void *gWorkArea;
+
+/* Applies the options to the system settings. */
+void Options_Apply(void)
+{
+    SysSettings *sys = &gSysSettings;
+
+    gSysSettings.soundMode = gSysSave.options.soundMode;
+    gSysSettings.musicVolume = gSysSave.options.musicVolume;
+    gSysSettings.seVolume = gSysSave.options.seVolume;
+    gSysSettings.brightness = gSysSave.options.brightness;
+    if (gSysSettings.brightness < 56 || sys->brightness > 164) {
+        sys->brightness = 128;
+        gSysSave.options.brightness = 128;
+    }
+    Sound_ApplyOutputMode(sys->soundMode);
+    Stream_UpdateMaxVol(1);
+    Display_SetOffset(gSysSave.options.screenX, gSysSave.options.screenY);
+}
+
+/* Records the quest to run: its id, its data and whether it came from the
+ * quest list. */
+void Quest_SetCurrent(u16 questId, void *questData, s32 fromList)
+{
+    gSysSettings.questData = questData;
+    gSysSettings.questId = questId;
+    gSysSettings.questFromList = fromList;
+}
+
+/* Clears the model, material, bone and primitive pools, the work area,
+ * the camera data and the model load buffer. */
+void Gfx_ClearModelBuffers(void)
+{
+    memset(gObjBufBlocks, 0, 0x20000);
+    memset(gMatSets, 0, 53760);
+    memset(gMaterials, 0, 0x14000);
+    memset(gBones, 0, 0xC8000);
+    memset(gModels, 0, 16384);
+    memset(gPrims, 0, 20480);
+    memset(gSysSettings.extraBuf, 0, 0x14000);
+    memset(gWorkArea, 0, 0x18000);
+    memset(gSysSettings.camData, 0, 8192);
+    memset(gModelLoadBuf, 0, 0x134000);
+}
+
+/*
+ * Resets the game's subsystems for a new scene: the camera, render states,
+ * motions, models, textures, objects, players, monsters, areas, draw lists,
+ * sound and text, and reloads the two common texture files (slots 4 and 5).
+ */
+void Game_ResetSubsystems(void)
+{
+    s16 i;
+
+    FileQueue_Cancel();
+    Camera_Init();
+    Camera_SetPreset(0);
+    Gfx_ResetRenderStates(0);
+    Motion_FreeAll();
+    Model_FreeAll();
+    UnreadFlags_ClearAll();
+    Movie_Stop();
+    ScreenTex_Release();
+    Tex_ReleaseAll();
+    Mem_Compact();
+    Model_ResetAll();
+    Obj_InitAll();
+    Area_ResetStub();
+    Light_Reset();
+    Player_ClearAll();
+    EmSlot_ClearAll();
+    Area_ClearState();
+    EquipPreview_Clear();
+    memset(gAreaSubModels, 0, 16);
+    memset(gAreaSubModel, 0, 8);
+    memset(gCommonModels, 0, 20);
+    Mem_Compact();
+    Callbacks_Clear();
+    Gs_SetTableColor(0);
+    Tex_LoadFile(4, 328, 0);
+    Tex_LoadFile(5, 341, 0);
+    FadeA_Reset();
+    FreeList_InitAll();
+    DrawSlot_ResetAll();
+    DrawSlotB_ResetAll();
+    Sound_Silence();
+    Stream_Reset();
+    Vib_StopAll();
+    Sound_ReverbOn();
+    Sound_SetSpuMapPage(0);
+    gScreenCaptureOk = 0;
+    gFieldControl = 1;
+    gSysSettings.clearCapture = 0;
+    gSysBusy = 0;
+    Text_Reset();
+    gSoundLoading = 0;
+    gSysSettings.cardMenuDone = 1;
+    if (Overlay_IsLoaded(OVERLAY_SUB_MAIN) == 1) {
+        Notice_ResetQueue();
+    }
+    for (i = 0; i < MOTIONS_EM_SLOTS; i++) {
+        EmSlot_ForgetModel(i, 2);
+    }
+}
+
+/* Frees every loaded motion (gMotions) and clears its entry. */
+void Motion_FreeAll(void)
+{
+    s32 i;
+    void **motion = gMotions;
+
+    for (i = 0; i < MOTIONS_TOTAL; i++, motion++) {
+        if (*motion != NULL && Mem_FreeRet1(*motion) == 1) {
+            *motion = NULL;
+        }
+    }
+}
+
+/* Frees the common set's motions (those before the players'). */
+void Motion_FreeCommon(void)
+{
+    s32 i;
+    void **motion = gMotions;
+
+    for (i = 0; i < MOTIONS_PLAYER_FIRST; i++, motion++) {
+        if (*motion != NULL && Mem_FreeRet1(*motion) == 1) {
+            *motion = NULL;
+        }
+    }
+}
+
+/* Clears monster slot `slot`'s model and frees its motions. */
+void Motion_FreeEmSlot(s16 slot)
+{
+    s32 end;
+    s16 i;
+
+    EmSlot_ForgetModel(slot, 1);
+    for (i = slot * MOTIONS_PER_EM + MOTIONS_EM_FIRST, end = i + MOTIONS_PER_EM; i < end; i++) {
+        if (gMotions[i] != NULL && Mem_FreeRet1(gMotions[i]) == 1) {
+            gMotions[i] = NULL;
+        }
+    }
+}
 
 void Area_FreeAll(void)
 {
@@ -212,10 +375,10 @@ void Sound_PlayCancel(void)
     Sound_PlaySeFlat(0, SE_SYS_CANCEL, 0);
 }
 
-/* Plays jingle 0xC for the player: the carried object was lost. */
+/* Plays jingle 12 for the player: the carried object was lost. */
 void Jingle_CarryLost(Player *pl)
 {
-    Jingle_Play(pl, 0xC);
+    Jingle_Play(pl, 12);
 }
 
 s32 Game_IsOnline(void)
@@ -307,13 +470,7 @@ void Load_EmptyHook(void)
 {
 }
 
-void Loading_Start(void);
-void Loading_CaptionStub(s32 unused);
-void Font_SetSpacing(u8 a, u8 b);
 s32 Str_Length(char *s);
-void Text_DrawShadow(s16 x, s16 y, s16 c1, s16 c2, char *s);
-extern char *gLoadingCaptions[];
-extern char *gLoadingCaptionsAlt[];
 extern s8 gGalleryTitle[];
 
 extern s32 gLoadingScreenOn;
@@ -341,9 +498,9 @@ void Loading_SetMessage(u32 mode)
         gLoadingMessage = gLoadingCaptions[0];
         break;
     case 2:
-        Font_SetSpacing(0x18, 0x18);
+        Font_SetSpacing(24, 24);
         text = gLoadingCaptionsAlt[0];
-        Text_DrawShadow((0x280 - Str_Length(text) * 12) / 2, 0xC8, 1, 0, text);
+        Text_DrawShadow((640 - Str_Length(text) * 12) / 2, 200, 1, 0, text);
         break;
     case 3:
         gLoadingState = 2;

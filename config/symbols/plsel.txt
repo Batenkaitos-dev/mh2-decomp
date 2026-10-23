@@ -1,25 +1,26 @@
-// Symbols for overlay 11, plsel.bin. Format: name = 0xADDRESS; // attributes
+// The plsel overlay (overlay 11, plsel.bin): the player select before a
+// quest (the hunters, their equipment, the chat), the quest results screen,
+// the ending and the gallery's scenes. Format: name = 0xADDRESS; // attributes
 
-// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+// The first function, after the overlay's 64 bytes of padding.
 plsel_entry = 0x00D60280; // type:func
 
-// --- .data objects that other labels fall inside (splat then writes references
-// to those labels as sym + offset) -----------------------------------------------
+// .data objects that other labels fall inside (a reference to such a label
+// is written as the object plus an offset).
 gPlselWeaponIconUVs = 0x00D75FB0; // size:0x58
 gEndingRoll = 0x00D761A0; // size:0x1030 the staff roll, 345 EndRoll entries
 gEndingPics = 0x00D771D0; // size:0xB0
 gGalexQuests = 0x00D79370; // size:0x170 the gallery entries' quest, season and time limit, 46 of 8 bytes (Galex_QuestTask, Galex_Task)
 gGalexEntryPairs = 0x00D794E0; // size:0xA0 two lists of byte pairs, the entries' daytimes then the tours' facility levels
 
-// --- .bss --------------------------------------------------------------------------
+// .bss of the results screen: the records and items that pay extra
+// (gPlselBonus) and the item box menu.
 gPlselBonus = 0x00D7BD90; // size:0xD0
 gPlselItemBox = 0x00D7BE60; // size:0x10
 gPlselItemBoxSale = 0x00D7BE70; // size:0x10
 
-// --- sub_main variables that plsel's C names (a named global, unlike a cast
-// address, is known not to alias the other globals) --------------------------------
-
-// --- Named functions ------------------------------------------------------------
+// Functions: the player select and its chat, the ending, the results'
+// rewards and the item box menu.
 Plsel_WaitPlayersReady = 0x00D60460; // type:func
 Plsel_DebugMenu = 0x00D606E0; // type:func
 Plsel_InitSlots = 0x00D60940; // type:func
@@ -58,7 +59,7 @@ Plsel_RollArenaRecord = 0x00D68130; // type:func
 Plsel_DrawItemBoxMenu = 0x00D69F10; // type:func
 PlselRes_EmptyCloseHook = 0x00D72F10; // type:func empty, PlselRes_BeginClose calls it first
 
-// --- .rodata of the results screen (strings it formats with) ----------------------
+// .rodata of the results screen: the strings it formats with.
 gPlselStrFmt = 0x00D7BB38; // size:0x8 the plain string format
 gPlselPadSpace = 0x00D7BB88; // size:0x8 a full-width space that pads a name to its column
 gPlselValueSep = 0x00D7BB90; // size:0x8 the full-width separator between a name and its value
@@ -68,6 +69,8 @@ gPlselPercentMark = 0x00D7BBA8; // size:0x8 the full-width percent sign
 gPlselArrowUp = 0x00D7BBB0; // size:0x8 the up arrow drawn over a list that scrolls
 gPlselArrowDown = 0x00D7BBB8; // size:0x8 the down arrow drawn under it
 gPlselPageFmt = 0x00D7BBC0; // size:0x8 the format of the page number and count
+// Functions: the results' rewards, awards, pages and texts, the ending's
+// objects and the gallery's scene tasks.
 Plsel_SumQuestRewards = 0x00D6F8D0; // type:func
 Plsel_SumRecordRewards = 0x00D6FD00; // type:func
 Plsel_QueueAward = 0x00D6FE90; // type:func
@@ -104,7 +107,8 @@ Plsel_BuildResultText = 0x00D6D610; // type:func
 Plsel_DrawResultsBg = 0x00D71110; // type:func
 Galex_QuestTask = 0x00D74560; // type:func
 Galex_Task = 0x00D75020; // type:func
-// round 13 (ncoreh1): names
+// More functions: the player select's set-up and sounds, the results, the
+// ending's textures and the gallery's quest set-up.
 Plsel_Setup = 0x00D603E0; // type:func
 Plsel_Finish = 0x00D60610; // type:func
 Plsel_SetCamera = 0x00D60EF0; // type:func
@@ -143,9 +147,9 @@ Plsel_ComputeAllRewards = 0x00D70FD0; // type:func
 Plsel_HasNotices = 0x00D73280; // type:func
 Plsel_LoadResultsTextures = 0x00D72E70; // type:func
 
-// Round 17 (xref): names for raw addresses in the C.
-
-// Round 18 (ngame)
+// The player menu's state, and functions: the player select's presets,
+// equipment and chat, the player menu and its pages, the results' pages,
+// awards and notices, and the gallery's tour.
 gPlselMenu = 0x00D7BD80; // size:0x4 the player menu of the select screen (D64Obj)
 Plsel_DrawHeader = 0x00D60D00; // type:func texture 0xA5, row arg0
 Plsel_SelectInit = 0x00D60FC0; // type:func
@@ -213,7 +217,8 @@ Plsel_QueueQuestUnlocks = 0x00D74320; // type:func
 Galex_TourIndex = 0x00D74E70; // type:func the town tour of gSysSettings.galleryEntry 0x1F-0x24, 0-5
 Galex_StartTourCamera = 0x00D74EF0; // type:func
 
-// Round 20 (ndata)
+// Data: the player select's presets, colours, panels and menu tables, and
+// the ending's glyphs, objects, steps and pictures.
 gPlselPresetPlayers = 0x00D75F80; // size:0x20
 gPlselWeaponIconColors = 0x00D75FA0; // size:0x10
 gPlselSlotColors = 0x00D76008; // size:0x8
@@ -237,7 +242,8 @@ gEndingObjPlaces2 = 0x00D78A20; // size:0x60
 gEndingPictureUV = 0x00D78A80; // size:0x40
 gEndingSpriteGif = 0x00D78AC0; // size:0x50
 
-// Round 21 (ndata)
+// Data: the results' panels, rewards, awards, item box windows and quest
+// unlocks.
 gPlselResPanels = 0x00D78C10; // size:0x20
 gPlselRewardTbl = 0x00D78C30; // size:0x22
 gPlselRewardSteps = 0x00D78C60; // size:0x11
@@ -275,7 +281,8 @@ gPlselQuestUnlocks1 = 0x00D79320; // size:0x20
 gPlselQuestUnlocks2 = 0x00D79340; // size:0x28
 gPlselQuestUnlockIds = 0x00D79368; // size:0x8
 
-// Round 24 (nnames): entries of named tables, TABLE_N after the first table entry N that points to them
+// Objects that a table's entries point to, named TABLE_N after the first
+// entry N that points to them.
 gEndingCells_2 = 0x00D77660; // size:0xC0 the cells of gEndingObjDefs_2
 gEndingCells_0 = 0x00D778F0; // size:0xC0 the cells of gEndingObjDefs_0 and _11
 gEndingCells_1 = 0x00D77F90; // size:0x60 the cells of gEndingObjDefs_1
@@ -307,19 +314,17 @@ gPlselResPanels_5 = 0x00D78BB0; // size:0x20 entry 5 of gPlselResPanels
 gPlselResPanels_6 = 0x00D78BD0; // size:0x20 entry 6 of gPlselResPanels
 gPlselResPanels_7 = 0x00D78BF0; // size:0x20 entry 7 of gPlselResPanels
 
-// Round 27 (names)
+// The size records after a quest, the training payout, and two text formats.
 Plsel_UpdateSizeRecords = 0x00D676E0; // type:func the largest and smallest monster records after a quest, keeping the old ones for the results
 Plsel_DrillPayout = 0x00D6ABF0; // type:func the payout of a training quest, -1 for other quests (Quest_RollRewards)
 gPlselFmtConcat = 0x00D79598; // size:0x8 the text format that prints two strings one after the other
 gPlselFmtString = 0x00D795A8; // size:0x8 the text format that prints one string
 
-// gm_sub's names, which plsel doesn't link with (as select.txt names yn's entry)
+// gm_sub's functions that plsel calls (gm_sub isn't linked with it).
 QSync_SendState = 0x00901790; // type:func gm_sub, sends game message 10 (the quest setup, the preset picks)
 QSync_SendChat = 0x00901E80; // type:func gm_sub, sends a chat text (Plsel_SendChat)
+// The player select's debug menu display, compiled out.
 Plsel_DrawDebugMenu = 0x00D606D0; // type:func empty, the debug menu display compiled out (Plsel_DebugMenu)
 
-// the game overlay's data that plsel reads (inside the game object at 0x8962B0 and 0x896D80)
-gPlselPresetStages = 0x00896340; // size:0x44 per preset set, the two stages it serves (u16 pairs, Plsel_PresetSetForStage)
-gTrainingPresets = 0x00896D90; // size:0x50 per training stage, its preset hunter (PlselPreset pointers, Plsel_ApplyStageEquip)
-gStagePageTexts = 0x00896A80; // size:0x70 per stage of gStagePageStageIds, the stage page lines (a list of texts ended by 0, Plsel_DrawStagePage)
-gStagePageStageIds = 0x00896AF0; // size:0x3A the stages that have stage page lines (u16, ended by 0)
+// The game overlay's data that plsel reads (inside the game's objects at
+// 0x8962B0 and 0x896D80).

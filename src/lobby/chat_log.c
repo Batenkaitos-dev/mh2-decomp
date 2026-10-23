@@ -29,34 +29,31 @@
 #include "sound.h"
 #include "text.h"
 #include "lobby_labels.h"
-char *strcpy(char *, const char *);
+#include "render_state.h"
+#include "bgm.h"
+#include "kbd.h"
+#include "chat_phrases.h"
+#include "engine_math.h"
+#include "font.h"
+#include "item_shop.h"
+#include "menu_util.h"
+#include "libc.h"
 
 /* prototypes */
-void ChatLog_DrawFrame(s32, u8, u8);
 static s32 ChatLog_Lines(void);
-void ChatLog_DrawLines(u8 skip, s16 yoff, u8 fromTop, u8 size, u8 compact);
-void Chat_DrawWindow(u8);
-void Gfx_SetTexFilter(s32);
 /* end of prototypes */
-void Chat_FilterWords(char *s);
-void ChatLog_Add(char *text, ChatMsg *from, s32 unused);
-s32 strcmp(void *a, void *b);
-void Chat_Beep(void);
 extern u8 gMyUserId[];
 
-s32 sprintf(char *dst, const char *fmt, ...);  /* sprintf */
-
-void *memset(void *dst, s32 c, u32 n);
 extern u8 gChatBlockList[];
 
-#define CHAT_LOG_LINES 0x40         /* gChatLog.lines, a ring: indices wrap by & (CHAT_LOG_LINES - 1) */
+#define CHAT_LOG_LINES 64           /* gChatLog.lines, a ring: indices wrap by & (CHAT_LOG_LINES - 1) */
 #define CHAT_LOG_LINE_ROWS 2        /* the rows a line's text fills at most */
-#define CHAT_LOG_ROW_BYTES 30       /* the bytes of text in a row (of ChatLogLine.text's 0x20) */
+#define CHAT_LOG_ROW_BYTES 30       /* the bytes of text in a row (of ChatLogLine.text's 32) */
 #define CHAT_LOG_LARGE_ROWS 11      /* the rows the large window shows */
 #define CHAT_LOG_COMPACT_ROWS 4     /* the rows the compact window shows */
 #define CHAT_LOG_SHOW_FRAMES 300    /* frames: 5 s, the window's time on screen after a message */
-#define CHAT_LOG_BOTTOM_Y 0x1A4     /* the bottom of the window's text */
-#define CHAT_LOG_TEXT_X 0x18        /* the left of the sender's name */
+#define CHAT_LOG_BOTTOM_Y 420       /* the bottom of the window's text */
+#define CHAT_LOG_TEXT_X 24          /* the left of the sender's name */
 #define CHAT_TEXT_BASE_SIZE 21      /* the text size the layout is designed for */
 #define CHAT_TEXT_SIZES 3          /* the options' text sizes (gChatTextSizes) */
 
@@ -99,7 +96,7 @@ void ChatLog_Add(char *text, ChatMsg *from, s32 unused)
 
     if (*text != 0) {
         line = &gChatLog.lines[gChatLog.win.head];
-        line->unk5A = 0xFF;
+        line->unk5A = 255;
         line->cls = from->cls;
         line->color[0] = from->color[0];
         line->color[1] = from->color[1];
@@ -157,7 +154,7 @@ void ChatLog_Add(char *text, ChatMsg *from, s32 unused)
  * Adds a received chat message to the log, its words filtered
  * (Chat_FilterWords), and scrolls the log on by a line once it holds more
  * rows than the large window. A message from another player while the
- * log is closed plays the chat sound: always in AREA_HUB_0x83 or when
+ * log is closed plays the chat sound: always in AREA_ONLINE_VILLAGE or when
  * chatting to the lobby (gChatSendTo CHAT_SEND_LOBBY), else only when the
  * option asks for a sound at every message (chatBeep 0). The window then
  * shows for CHAT_LOG_SHOW_FRAMES, opening if it wasn't showing. The
@@ -175,7 +172,7 @@ void ChatLog_Receive(ChatMsg *msg)
         }
     }
     if (strcmp(msg->id, gMyUserId) != 0 && gChatLog.win.open == 0) {
-        if ((gScene.area != AREA_HUB_0x83) && (gChatSendTo != CHAT_SEND_LOBBY)) {
+        if ((gScene.area != AREA_ONLINE_VILLAGE) && (gChatSendTo != CHAT_SEND_LOBBY)) {
             if (gSysSave.options.chatBeep == 0) {
                 goto play;
             }
@@ -194,14 +191,9 @@ play:
  * three text sizes, then the compact window's. */
 extern ListPanel gChatLogBoxes[];
 extern Icon gChatLogIcons[][4];   /* by text size: the title's marks 1 to 4 (ChatLog_DrawFrame) */
-extern char *gAreaChatTexts[];              /* the chat window's title, then its marks 1 to 3 */
-extern u8 gChatTextSizes[];                   /* the chat's text sizes, by gSysSave.options.chatSize (sub_main) */
-s8 Kbd_IsOpen(void);
 struct ListPanel;
 void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
-void Gfx_DrawMarker(s16 x, s16 y, s16 w, s16 h, s32 flags);
 struct Icon;
-void Draw_Icons(struct Icon *, u8 count);
 
 /*
  * Draws the chat window in text size size, large or compact: its panel
@@ -213,7 +205,7 @@ void Draw_Icons(struct Icon *, u8 count);
  */
 void ChatLog_DrawFrame(s32 flags, u8 size, u8 compact)
 {
-    char buf[0x40];
+    char buf[64];
     s32 noTitle = flags & CHAT_FRAME_NO_TITLE;
     u8 panelIndex;
     char *text;
@@ -303,12 +295,6 @@ void ChatLog_FormatName(char *dst, char *name)
     sprintf(dst, TXT(0x00846BC0) /* a name (eight columns), then a full-width colon */, name);
 }
 
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16, s16);
-void Text_SetColor(s16 color);
-void Text_Draw(char *s);
-void Text_DrawShadow2(s16 x, s16 y, s32 c1, s32 c2, char *s);
-
 #pragma optimization_level 4
 /*
  * Draws the log's lines in the window, in text size size, yoff lower
@@ -321,7 +307,7 @@ void Text_DrawShadow2(s16 x, s16 y, s32 c1, s32 c2, char *s);
  */
 void ChatLog_DrawLines(u8 skip, s16 yoff, u8 fromTop, u8 size, u8 compact)
 {
-    char name[0x20];
+    char name[32];
     ChatLogLine *line;
     s32 k;
     s32 n;
@@ -429,7 +415,7 @@ void LobbyChat_DrawHud(void)
         }
     }
     if (gChatLog.win.timer != 0) {
-        Gfx_SetTexFilter(0);
+        Gfx_SetTexFilter(GFX_TEX_NEAREST);
         size = *(u8 *)&gSysSave.options.chatSize;
         ChatLog_DrawFrame(CHAT_FRAME_MARK, size, gChatLog.compact);
         ChatLog_DrawLines(0, 0, 0, size, gChatLog.compact);
@@ -456,9 +442,6 @@ s32 ChatLog_Close(void)
     ChatLog_ResetScroll();
     return 0;
 }
-
-u8 ChatLog_LinesBefore(u8 skip);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
 
 /*
  * Scrolls the open log by the buttons pad (PAD_UP back a line, PAD_DOWN
@@ -508,9 +491,6 @@ u16 ChatLog_Scroll(u16 pad)
     return pad;
 }
 
-f32 Math_Sin(f32 x);
-void Chat_DrawArrow(s16 x, s16 y, s16 w, s16 h, u32 color, u8 flags);
-
 #define CHAT_ARROW_DIM_COLOR 0xD8707070 /* an arrow with nothing to scroll to */
 #define CHAT_ARROW_RGB 0x10F213         /* a lit arrow, its alpha pulsing */
 
@@ -533,14 +513,14 @@ void ChatLog_Draw(void)
     u32 upColor;
     s8 pulse;
 
-    Gfx_SetTexFilter(0);
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
     size = gChatTextSizes[gSysSave.options.chatSize];
     ChatLog_DrawFrame(CHAT_FRAME_NO_TITLE, gSysSave.options.chatSize, 0);
     ChatLog_DrawLines(gChatLog.win.scroll, -10, gChatLog.win.atEnd, (s32)*(u8 *)&gSysSave.options.chatSize, 0);
     pulse = 48.0f * Math_Sin(9.5873801e-05f * (u16)((gFrameTick & 0x1F) << 11));
-    litColor = ((pulse + 0xCF) << 24) | CHAT_ARROW_RGB;
+    litColor = ((pulse + 207) << 24) | CHAT_ARROW_RGB;
     x = size * 10 + 9;
-    y = 0x194 - (size * 18 / CHAT_TEXT_BASE_SIZE + 1) * 12;
+    y = 404 - (size * 18 / CHAT_TEXT_BASE_SIZE + 1) * 12;
     if (gChatLog.win.flags & CHAT_WIN_MORE_BEFORE) {
         upColor = litColor;
         if (gChatLog.win.flags & CHAT_WIN_STEP_BACK) {
@@ -549,8 +529,8 @@ void ChatLog_Draw(void)
     } else {
         upColor = CHAT_ARROW_DIM_COLOR;
     }
-    Chat_DrawArrow(x, y, 0x1E, 0x18, upColor, ARROW_TEXRECT);
-    y = 0x19B;
+    Chat_DrawArrow(x, y, 30, 24, upColor, ARROW_TEXRECT);
+    y = 411;
     if (gChatLog.win.flags & CHAT_WIN_MORE_AFTER) {
         if (gChatLog.win.flags & CHAT_WIN_STEP_ON) {
             y += 2;
@@ -558,7 +538,7 @@ void ChatLog_Draw(void)
     } else {
         litColor = CHAT_ARROW_DIM_COLOR;
     }
-    Chat_DrawArrow(x, y, 0x1E, 0x18, litColor, ARROW_TEXRECT | ARROW_MIRROR);
+    Chat_DrawArrow(x, y, 30, 24, litColor, ARROW_TEXRECT | ARROW_MIRROR);
 }
 
 /* 1 when id isn't among the n speakers of list, else 0. */
@@ -574,8 +554,6 @@ s32 ChatLog_IsNewSpeaker(char *id, ChatSpeaker *list, s32 n)
     }
     return 1;
 }
-
-s32 memcmp(void *a, void *b, s32 n);
 
 #define CHAT_NO_SPEAKER 0xFF    /* ChatLogLine.color[0] of a line with no speaker */
 #define CHAT_STAFF_ID_LEN 5     /* the characters of the staff's ids' common start */

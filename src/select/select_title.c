@@ -15,7 +15,9 @@
  * (a screen's title in the header font) serve every screen of the
  * overlay. Sel_LoadCommonTextures loads the 16 textures they share.
  *
- * The file owns its .data and .rodata.
+ * The file owns its .data and .rodata. The three screens share it because
+ * their tables do not follow the code's order: the title's lie after the
+ * character selection's in .data.
  */
 #include "common.h"
 #include "window.h"
@@ -23,46 +25,38 @@
 #include "m2c_macros.h"
 #include "select.h"
 #include "syssave.h"
+#include "render_state.h"
+#include "texture.h"
+#include "card.h"
+#include "model.h"
+#include "text.h"
+#include "engine_math.h"
+#include "file_load.h"
+#include "frame.h"
+#include "gm_main.h"
+#include "mem_util.h"
+#include "packet_tim2.h"
+#include "rand.h"
+#include "packs.h"
+#include "font.h"
+#include "tex_files.h"
 
 /* Compiled at optimization level 4: Sel_DrawHeader needs it, and every other
  * function of the file matches at both levels. */
 #pragma optimization_level 4
 
-
-s32 Gs_GetState(u8 reg);
-
-
-void ModeSel_DrawButton(s32 *item);
-void ModeSel_DrawExtra(void);
-void ModeSel_DrawButtons(s32 sel, s32 arg1);
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *off);
-void CharaSel_DrawSlots(void);
-void CharaSel_DrawEntry(s32 *item, CharaSelPos *pos);
 
 extern s32 gOvlTex[];
-s32 LoadCompressedFile(u8 *dst, s32 id);
-s32 Pack_Count(s32 *buf);
-void *Pack_GetPart(u8 *buf, s32 a);
-u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 struct TexRect;
 void TexRect_DrawRotated(struct TexRect *, u16); /* unit's own declaration: a u16 angle as Sel_DrawPartsRotated passes it; with the definition's s32, the call compiles differently */
 
 extern void *gOptWork;
 extern void *gWorkArea; /* sub_main: the overlays' shared work area */
-void Title_DrawMenu(void *unused);
-void Sel_DrawHeader(s16 kind);
 extern TaskSlot gTaskSlots[16]; /* sub_main's task slots */
-void Option_Start(TaskSlot *t, u16 net); /* select_option.c: t is a TaskSlot * */
-void Option_Exit(void *t, s32 net);
-void NetOption_Update(TaskSlot *t, s32 unused); /* select_option.c: t is a TaskSlot * */
-void Gfx_SetBlend(s32, s32);
-void Frame_Draw(void);
-void Mem_Compact(void);
-void Tex_FreeRange(s32 first, s32 count);
 
 /* .data */
-u32 gSelHeaderTexts[16] = {
+char *gSelHeaderTexts[16] = {
 #include "select/006CACC0.inc"
 };
 /* The headers' letter size and y. */
@@ -75,10 +69,10 @@ Frame gTitleMenuFrame = {
 Frame gModeSelFrame = {
 #include "select/006CAD60.inc"
 };
-u32 gModeSelIcons[26] = {
+ModeIcon gModeSelIcons[5] = {
 #include "select/006CAD80.inc"
 };
-u32 gModeSelStartParams[2] = {
+u8 gModeSelStartParams[8] = {
 #include "select/006CADE8.inc"
 };
 s8 gModeSelOrders[8][2] = {
@@ -96,46 +90,46 @@ u32 gModeSelColorsDim[2] = {
 u32 gModeSelButtonColor[2] = {
 #include "select/006CAE18.inc"
 };
-u32 gModeSelButtonRects[20] = {
+s16 gModeSelButtonRects[2][5][4] = {
 #include "select/006CAE20.inc"
 };
-u32 gModeSelLayoutA[4] = {
+s16 gModeSelLayoutA[2][4] = {
 #include "select/006CAE70.inc"
 };
-u32 gModeSelLayoutB[16] = {
+s16 gModeSelLayoutB[2][16] = {
 #include "select/006CAE80.inc"
 };
-u32 gCharaSelEntryIcons[56] = {
+SelIcon gCharaSelEntryIcons[7] = {
 #include "select/006CAEC0.inc"
 };
 SelIcon gCharaSelSlotIcons[3] = {
 #include "select/006CAFA0.inc"
 };
-u32 gCharaSelStartBytes[4] = {
+u8 gCharaSelStartBytes[16] = {
 #include "select/006CB000.inc"
 };
-u32 gCharaSelStartPos[4] = {
+s16 gCharaSelStartPos[8] = {
 #include "select/006CB010.inc"
 };
-u32 gCharaSelInitA[4] = {
+s8 gCharaSelInitA[16] = {
 #include "select/006CB020.inc"
 };
 s8 gCharaSelSlotOrders[5][3] = {
 #include "select/006CB030.inc"
 };
-u32 gCharaSelInitB[6] = {
+s16 gCharaSelInitB[12] = {
 #include "select/006CB040.inc"
 };
-u32 gCharaSelOrder[3] = {
+s8 gCharaSelOrder[12] = {
 #include "select/006CB058.inc"
 };
-u32 gCharaSelInitF[10] = {
+f32 gCharaSelInitF[10] = {
 #include "select/006CB070.inc"
 };
 u32 gCharaSelEntryColors[3] = {
 #include "select/006CB098.inc"
 };
-u32 gCharaSelSlotPos[12] = {
+s16 gCharaSelSlotPos[12][2] = {
 #include "select/006CB0B0.inc"
 };
 /* The title logo's two parts. */
@@ -145,15 +139,13 @@ struct {
 } gTitleLogoParts = {
 #include "select/006CB0E0.inc"
 };
-u32 gTitleDigitParts[136] = {
+SelPart gTitleDigitParts[30] = {
 #include "select/006CB110.inc"
 };
-u32 gTitleLogoScales[4] = {
+f32 gTitleLogoScales[4] = {
 #include "select/006CB330.inc"
 };
 
-
-extern GmWork *gGmWork;
 /* Restarts the title menu's frame counters. */
 void Title_ResetBgAnim(void)
 {
@@ -174,10 +166,8 @@ void Title_StepBgAnim(void)
     }
 }
 
-u16 Rand_Next(s32 stream);
-
 /*
- * Places the logo's second part at random around (0xB8, 0x64), turned by a
+ * Places the logo's second part at random around (184, 100), turned by a
  * random small angle, in grey.
  */
 void Title_RandomView(void)
@@ -188,15 +178,15 @@ void Title_RandomView(void)
     if (Rand_Next(1) & 1) {
         offset = -offset;
     }
-    gGmWork->logoX = offset + 0xB8;
+    gGmWork->logoX = offset + 184;
     offset = Rand_Next(1) % 7 * 6;
     if (Rand_Next(1) & 1) {
         offset = -offset;
     }
-    gGmWork->logoY = offset + 0x64;
+    gGmWork->logoY = offset + 100;
     offset = Rand_Next(1) % 6 * 5;
     if (Rand_Next(1) & 1) {
-        offset = 0x167 - offset;
+        offset = 359 - offset;
     }
     gGmWork->logoAngle = (u16)(s32)(0.5f + 65536.0f * offset / 360.0f);
     gGmWork->logoColor = 0xFF505050;
@@ -236,7 +226,7 @@ void Sel_DrawParts(SelPart *part, s32 n, u32 color)
 }
 
 /*
- * Draws n parts of a SelPart table in one colour, turned by angle (0x10000
+ * Draws n parts of a SelPart table in one colour, turned by angle (ANGLE_TURN
  * a turn).
  */
 void Sel_DrawPartsRotated(SelPart *part, s32 n, u32 color, s32 angle)
@@ -274,9 +264,9 @@ void Title_DrawDigitScaled(s32 digit, s32 kind, f32 scale, s32 color, s32 y, s32
     }
     part = ((SelPart *)gTitleDigitParts)[kind + digit * 3];
     if (scale > 1.0f) {
-        part.x = x + 0x1C;
+        part.x = x + 28;
     } else {
-        part.x = x + 0x64;
+        part.x = x + 100;
     }
     part.y = y;
     part.w = (u16)(part.w * scale);
@@ -321,8 +311,8 @@ void Title_DrawLogo(void)
         }
     }
     work->logoScale = ((f32 *)gTitleLogoScales)[k];
-    Gs_SetState(0x6C, 0);
-    Gfx_SetBlend(4, 5);
+    Gs_SetState(RS_ZWRITE, 0);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     part = gTitleLogoParts.p[0];
     partW = &part.w;
     partH = &part.h;
@@ -338,8 +328,8 @@ void Title_DrawLogo(void)
     *partH = height;
     Sel_DrawParts(&part, 1, -1);
     if (gGmWork->logoAnim != 0) {
-        Gs_SetState(0xD, 0x800);
-        Gs_SetState(0x5E, 0x11);
+        Gs_SetState(RS_BLEND_OP, RF_BLEND_OP_REV_SUB);
+        Gs_SetState(RS_BLEND, RS_FACTOR_ONE | RS_BLEND_DST(RS_FACTOR_ONE));
         if (k == 0) {
             baseColor = gGmWork->logoColor;
             color = (baseColor & 0xFF000000) | (((baseColor & 0xFF0000) >> 1) & 0xFF0000) | (((baseColor & 0xFF00) >> 1) & 0xFF00) |
@@ -361,9 +351,9 @@ void Title_DrawLogo(void)
         *partH = height;
         Sel_DrawPartsRotated(&part, 1, color, work->logoAngle);
     }
-    Gs_SetState(0xD, 0);
-    Gs_SetState(0x5E, 0x32);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_BLEND_OP, RF_BLEND_OP_ADD);
+    Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 extern char *gTitleMenuA[];     /* messages (select_psp.c): the title menu */
@@ -373,7 +363,6 @@ void Hud_DrawButtonIcon(s32, s16, s16, s32, u32, f32);  /* a button icon */
 s32 Str_Length(char *);                         /* a message's width */
 char *strchr(char *, s32);                  /* strchr */
 char *strcpy(char *, char *);
-void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
 
 /*
  * Draws the title menu: the six entries (a big number and a name each; the
@@ -383,7 +372,7 @@ void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
  */
 void Title_DrawMenu(void *unused)
 {
-    char buf[0x100];
+    char buf[256];
     char *cursor;
     s32 y;
     s32 i;
@@ -403,10 +392,10 @@ void Title_DrawMenu(void *unused)
     WindowFrame_Draw(&gTitleMenuFrame, 0);
     gGmWork->menuSelColor = 0xFF195E32;
     gGmWork->menuColor = 0xFF0C2F19;
-    Gs_SetState(0x6C, 0);
-    Gfx_SetBlend(4, 5);
+    Gs_SetState(RS_ZWRITE, 0);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     texts = gTitleMenuA;
-    y = 0x5A;
+    y = 90;
     i = 0;
     sel = gGmWork->menuSel;
     do {
@@ -415,13 +404,13 @@ void Title_DrawMenu(void *unused)
             textColor = gGmWork->menuSelColor;
             scale = 1.5f;
             kind = gGmWork->count % 3;
-            x = 0x64;
+            x = 100;
         } else {
             textColor = gGmWork->menuColor;
             color = 0xFFA87600;
             scale = 1.0f;
             kind = 0;
-            x = 0x9C;
+            x = 156;
         }
         digitOffset = (44.0f - 32.0f * scale) / 2.0f;
         digit = i;
@@ -443,12 +432,12 @@ void Title_DrawMenu(void *unused)
         Font_Printf(*texts);
         i++;
         texts++;
-        y += 0x2C;
+        y += 44;
     } while (i < 6);
     texts = gTitleMenuB;
     texts += sel * 2;
-    y = 0x174;
-    Font_SetSpacing(0x12, 0x12);
+    y = 372;
+    Font_SetSpacing(18, 18);
     i = 0;
     do {
         if (Str_Length(*texts) != 0) {
@@ -460,27 +449,24 @@ void Title_DrawMenu(void *unused)
                     break;
                 }
                 if (mark[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, (mark - cursor) * 9 + 0x32, y, 0x155, -1, 0.9f);
+                    Hud_DrawButtonIcon(25, (mark - cursor) * 9 + 50, y, 341, -1, 0.9f);
                     mark[0] = ' ';
                     mark[1] = ' ';
                 }
             }
-            Text_PrintfAt(0x32, y, 0, buf);
+            Text_PrintfAt(50, y, 0, buf);
         }
         i++;
         texts++;
-        y += 0x14;
+        y += 20;
     } while (i < 2);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
-void ModeSel_Draw(s32 sel, s32 arg1);
 extern char *gTitleHelpMenu[];     /* messages (select_psp.c) */
 extern char *gTitleHelpTexts[];
-void Text_PrintfAt(s16 x, s16 y, s16 color, const char *fmt, ...);
 s32 Str_Length(char *);
 void Hud_DrawButtonIconWhite(s32, s32, s32, s32, f32);
-void Text_SetDefaults(void);
 
 /*
  * Draws mode select with the help lines of its entry and the two button
@@ -499,22 +485,22 @@ void ModeSel_DrawScreen(void)
     if (sel == 3) {
         sel = 4;
     }
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     line = &texts[sel * 2];
     width = Str_Length(*line);
     if (width != 0) {
-        Text_PrintfAt((s32)((640.0f - 9.0f * width) / 2.0f), 0x162, 0, *line);
+        Text_PrintfAt((s32)((640.0f - 9.0f * width) / 2.0f), 354, 0, *line);
     }
     line = &texts[sel * 2 + 1];
     width = Str_Length(*line);
     if (width != 0) {
-        Text_PrintfAt((s32)((640.0f - 9.0f * width) / 2.0f), 0x176, 0, *line);
+        Text_PrintfAt((s32)((640.0f - 9.0f * width) / 2.0f), 374, 0, *line);
     }
-    Text_PrintfAt(0xE6, 0x18E, 0, gTitleHelpTexts[0]);
-    Hud_DrawButtonIconWhite(0x14, 0xCA, 0x18C, 8, 0.9f);
-    Hud_DrawButtonIconWhite(0x15, 0x13A, 0x18C, 8, 0.9f);
+    Text_PrintfAt(230, 398, 0, gTitleHelpTexts[0]);
+    Hud_DrawButtonIconWhite(20, 202, 396, 8, 0.9f);
+    Hud_DrawButtonIconWhite(21, 314, 396, 8, 0.9f);
     Text_SetDefaults();
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 /*
@@ -525,21 +511,21 @@ void Sel_DrawBackground(u8 gray)
 {
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
     Tex_Prepare(1, 7);
     Tex_Bind(7);
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     spr.x = 0;
     spr.y = 0;
-    spr.w = 0x280;
-    spr.h = 0x1C0;
-    spr.color = (0xFF << 24) | (gray << 16) | (gray << 8) | gray;
+    spr.w = 640;
+    spr.h = 448;
+    spr.color = (255 << 24) | (gray << 16) | (gray << 8) | gray;
     spr.v0 = 0;
     spr.u0 = 0;
-    spr.u1 = 0xFF;
-    spr.v1 = 0xFF;
+    spr.u1 = 255;
+    spr.v1 = 255;
     Sprite_Draw(&spr);
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 char *strchr(char *, s32);             /* strchr */
@@ -550,8 +536,8 @@ char *strupr(char *);                  /* to upper case */
 
 /*
  * Draws a screen's title (gSelHeaderTexts[kind]) in the header font, one
- * sprite per letter, centred; %a, %b and %c in the text are spaces of 0x30,
- * 0x14 and 0x20 pixels. A shadow's y offset and colour are computed, then
+ * sprite per letter, centred; %a, %b and %c in the text are spaces of 48,
+ * 20 and 32 pixels. A shadow's y offset and colour are computed, then
  * overwritten (seen: nothing draws between them). Optimization level 4 and
  * the declaration order are what the match needs.
  */
@@ -560,19 +546,19 @@ void Sel_DrawHeader(s16 kind)
     char *text;
     f32 scale;
     s32 letter;
-    char out[0x20];
+    char out[32];
     char *mark;
     s32 size;
     char *cursor;
     s32 x;
     s32 extra;
     s32 y;
-    char buf[0x20];
+    char buf[32];
     s32 n;
     Sprite spr;
 
-    Gfx_SetTexFilter(1);
-    text = ((char **)gSelHeaderTexts)[kind];
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    text = gSelHeaderTexts[kind];
     size = gSelHeaderLayout[kind][0];
     y = gSelHeaderLayout[kind][1];
     extra = 0;
@@ -588,19 +574,19 @@ void Sel_DrawHeader(s16 kind)
         strcat(out, buf);
         switch (mark[1]) {
         case 'a':
-            extra += 0x30;
+            extra += 48;
             break;
         case 'b':
-            extra += 0x14;
+            extra += 20;
             break;
         case 'c':
-            extra += 0x20;
+            extra += 32;
             break;
         }
         cursor = mark + 2;
     }
     strcat(out, cursor);
-    x = (0x280 - (extra + size * Str_Length(out))) / 2.0f;
+    x = (640 - (extra + size * Str_Length(out))) / 2.0f;
     Tex_Prepare(1, 8);
     Tex_Bind(8);
     spr.h = size;
@@ -613,13 +599,13 @@ void Sel_DrawHeader(s16 kind)
         if (*cursor == '%') {
             switch (cursor[1]) {
             case 'A':
-                x += 0x30;
+                x += 48;
                 break;
             case 'B':
-                x += 0x14;
+                x += 20;
                 break;
             case 'C':
-                x += 0x20;
+                x += 32;
                 break;
             }
             cursor += 2;
@@ -628,8 +614,8 @@ void Sel_DrawHeader(s16 kind)
             spr.u0 = (letter % 8) * 32;
             spr.v0 = (letter / 8) * 32;
             scale = size / 32.0f;
-            spr.u1 = spr.u0 + 0x1F;
-            spr.v1 = spr.v0 + 0x1F;
+            spr.u1 = spr.u0 + 31;
+            spr.v1 = spr.v0 + 31;
             if (scale < 1.0f) {
                 scale = 1.0f;
             }
@@ -736,10 +722,10 @@ void ModeSel_StartSlide(void)
     base->modeSel.slideState[2] = 2;
     base->modeSel.slideSpeed[0] = -20.0f;
     base->modeSel.slideSpeed[1] = 20.0f;
-    base->modeSel.slidePhase[0] = 0x4000;
-    base->modeSel.slidePhase[1] = 0x4000;
-    base->modeSel.slidePhaseStep[0] = 0x1000;
-    base->modeSel.slidePhaseStep[1] = 0x1000;
+    base->modeSel.slidePhase[0] = 16384;
+    base->modeSel.slidePhase[1] = 16384;
+    base->modeSel.slidePhaseStep[0] = 4096;
+    base->modeSel.slidePhaseStep[1] = 4096;
 }
 
 extern s32 gTexHandles[];
@@ -757,8 +743,8 @@ void ModeSel_Start(s16 sel)
     u8 *params;
 
     mode = &((SelWork *)gSysSettings.workArea)->modeSel;
-    memset(mode, 0, 0x134);
-    for (j = 0xA3, i = 0; i < 16; i++, j++) {
+    memset(mode, 0, 308);
+    for (j = 163, i = 0; i < 16; i++, j++) {
         mode->tex[i] = gTexHandles[j];
     }
     params = (u8 *)gModeSelStartParams;
@@ -789,8 +775,6 @@ s32 ModeSel_IsIdle(void)
     return 0;
 }
 
-f32 Math_Sin(f32);
-
 /*
  * Mode select's buttons sliding out (state 2) and back in (3): swaps the
  * layout when both are out, and sets the new one when both are back.
@@ -816,7 +800,7 @@ void ModeSel_UpdateSlide(void)
             mode->buttonPos[i][0] += mode->slideSpeed[i] * Math_Sin(6.2831855f * mode->slidePhase[i] / 65536.0f);
             mode->slidePhase[i] = mode->slidePhaseStep[i] + mode->slidePhase[i];
             if (mode->slidePhase[i] >= 0xC000) {
-                mode->slidePhase[i] = 0xC000;
+                mode->slidePhase[i] = 49152;
             }
             if ((i == 0 && mode->buttonPos[i][0] >= mode->buttonHomeX[i]) || (i == 1 && mode->buttonPos[i][0] <= mode->buttonHomeX[i])) {
                 mode->buttonPos[i][0] = mode->buttonHomeX[i];
@@ -835,8 +819,6 @@ void ModeSel_DrawExtra(void)
 {
 
 }
-
-s32 Tex_Use(s32, u32 *);
 
 
 /*
@@ -866,7 +848,7 @@ void ModeSel_DrawButton(s32 *item)
     mode = &((SelWork *)gWorkArea)->modeSel;
     for (i = 0; i < 2; i++, item++) {
         k = *item;
-        if (k == 0xFF) {
+        if (k == 255) {
             continue;
         }
         *(iconPtr = &icon) = ((ModeIcon *)gModeSelIcons)[k];
@@ -927,11 +909,11 @@ void ModeSel_DrawButton(s32 *item)
         spr.v0 = iconPtr->v0;
         spr.u1 = iconPtr->u1;
         spr.v1 = iconPtr->v1;
-        if (spr.x < 0x280 && spr.x + spr.w >= 0 && *yPtr < 0x1C0 && *yPtr + spr.h >= 0) {
-            Gs_SetState(0x5E, 0x32);
-            Gs_SetState(0x63, 0);
+        if (spr.x < 640 && spr.x + spr.w >= 0 && *yPtr < 448 && *yPtr + spr.h >= 0) {
+            Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
+            Gs_SetState(RS_TEX_FILTER, 0);
             Tex_Use(1, (u32 *)&mode->tex[iconPtr->tex]);
-            Gs_SetState(4, mode->tex[iconPtr->tex]);
+            Gs_SetState(RS_TEXTURE, mode->tex[iconPtr->tex]);
             if (k == 1 || k == 3) {
                 savedX = spr.x;
                 savedY = *yPtr;
@@ -958,7 +940,6 @@ void ModeSel_DrawButton(s32 *item)
 }
 
 extern char *gModeSelTexts[];     /* messages (select_psp.c): the modes' names */
-s32 ModeSel_IsIdle(void);
 
 /*
  * Draws the two buttons' numbers and names; the button of the chosen mode
@@ -994,7 +975,7 @@ void ModeSel_DrawButtons(s32 sel, s32 frame)
         }
         piece = mode->piecePos[i == 0 ? 2 : 6];
         Title_DrawDigit(1, kind, color, (s32)(mode->buttonPos[i][0] + piece[0]), (s32)(mode->buttonPos[i][1] + piece[1]));
-        Font_SetSpacing(0x18, 0x18);
+        Font_SetSpacing(24, 24);
         piece = mode->piecePos[i == 0 ? 3 : 7];
         x = (s32)(mode->buttonPos[i][0] + piece[0]);
         y = (s16)(s32)(mode->buttonPos[i][1] + piece[1]);
@@ -1018,9 +999,9 @@ void ModeSel_Draw(s32 sel, s32 frame)
 {
     s32 i;
     ModeWork *mode;
-    s32 saved6C;
-    s32 saved63;
-    s32 saved5E;
+    s32 savedZWrite;
+    s32 savedTexFilter;
+    s32 savedBlend;
     SelWork *base;
     s32 k;
 
@@ -1028,14 +1009,14 @@ void ModeSel_Draw(s32 sel, s32 frame)
     mode = &base->modeSel;
     base->modeSel.order[1] = gModeSelOrders[base->modeSel.shownLayout][0];
     base->modeSel.order[2] = gModeSelOrders[base->modeSel.shownLayout][1];
-    saved6C = Gs_GetState(0x6C);
-    saved63 = Gs_GetState(0x63);
-    saved5E = Gs_GetState(0x5E);
-    Gs_SetState(0x6C, 0);
+    savedZWrite = Gs_GetState(RS_ZWRITE);
+    savedTexFilter = Gs_GetState(RS_TEX_FILTER);
+    savedBlend = Gs_GetState(RS_BLEND);
+    Gs_SetState(RS_ZWRITE, 0);
     mode->sel = sel;
     for (i = 0; i < mode->count; i++) {
         k = mode->order[i];
-        if (mode->items[k].kind != 0xFF) {
+        if (mode->items[k].kind != 255) {
             ModeSel_DrawButton(&mode->items[k].kind);
             if (mode->items[k].kind == 0) {
                 WindowFrame_Draw(&gModeSelFrame, 0);
@@ -1047,9 +1028,9 @@ void ModeSel_Draw(s32 sel, s32 frame)
     }
     ModeSel_DrawButtons(sel, frame);
     Sel_DrawHeader(1);
-    Gs_SetState(0x6C, saved6C);
-    Gs_SetState(0x63, saved63);
-    Gs_SetState(0x5E, saved5E);
+    Gs_SetState(RS_ZWRITE, savedZWrite);
+    Gs_SetState(RS_TEX_FILTER, savedTexFilter);
+    Gs_SetState(RS_BLEND, savedBlend);
 }
 
 
@@ -1068,8 +1049,8 @@ void CharaSel_Start(void)
 
     edit = &gChrEdit;
     work = &((SelWork *)gSysSettings.workArea)->charaSel;
-    memset(work, 0, 0x1A4);
-    for (j = 0xA3, i = 0; i < 16; i++, j++) {
+    memset(work, 0, 420);
+    for (j = 163, i = 0; i < 16; i++, j++) {
         work->tex[i] = gTexHandles[j];
     }
     params = (u8 *)gCharaSelStartBytes;
@@ -1095,7 +1076,7 @@ void CharaSel_Start(void)
         work->entryScale[i] = ((f32 *)gCharaSelInitF)[work->slot * 3 + i];
         work->entryY[i] = ((s16 *)gCharaSelInitB)[work->slot * 3 + i];
         work->delay[i + 1] = ((s8 *)gCharaSelInitA)[work->slot * 3 + i];
-        work->target[i + 1].x = work->entryScale[i] < 1.0f ? 0xF0 : 0x104;
+        work->target[i + 1].x = work->entryScale[i] < 1.0f ? 240 : 260;
     }
 }
 
@@ -1152,7 +1133,7 @@ void CharaSel_Update(void)
         }
     }
     for (i = 0; i < 5; i++) {
-        if (work->items[i].kind != 0xFF) {
+        if (work->items[i].kind != 255) {
             switch (work->slideState[i]) {
             case 1:
                 if (work->delay[i] == 0) {
@@ -1179,8 +1160,8 @@ void CharaSel_Update(void)
             case 5:
                 work->pos[i].x += work->speed[i].x;
                 if (!(work->pos[i].x < 860.0f)) {
-                    work->items[i].kind = 0xFF;
-                    work->items[i].pic2 = 0xFF;
+                    work->items[i].kind = 255;
+                    work->items[i].pic2 = 255;
                     work->slideState[i] = 6;
                     work->slidDone++;
                 }
@@ -1229,9 +1210,6 @@ s32 CharaSel_IsShown(void)
     return ((SelWork *)gSysSettings.workArea)->charaSel.shown;
 }
 
-s32 SaveMenu_SlotUsed(s32 slot);      /* the save slot is used */
-s32 Tex_Use(s32, u32 *);
-
 /*
  * Draws the save slots' frames: the slot under the cursor full size and
  * blinking, the other used slots smaller and dark.
@@ -1248,10 +1226,10 @@ void CharaSel_DrawSlots(void)
     iconPtr = &icon;
     work = &((SelWork *)gSysSettings.workArea)->charaSel;
     *iconPtr = gCharaSelSlotIcons[0];
-    Gs_SetState(0x5E, 0x32);
-    Gs_SetState(0x63, 0);
+    Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
+    Gs_SetState(RS_TEX_FILTER, 0);
     Tex_Use(1, (u32 *)&gTexHandles[iconPtr->tex]);
-    Gs_SetState(4, gTexHandles[iconPtr->tex]);
+    Gs_SetState(RS_TEXTURE, gTexHandles[iconPtr->tex]);
     pos = (s16 (*)[2])gCharaSelSlotPos + work->slot * 3;
     for (i = 0; i < 3; i++) {
         if (SaveMenu_SlotUsed(i) == 0) {
@@ -1298,7 +1276,7 @@ void CharaSel_DrawEntry(s32 *item, CharaSelPos *pos)
 
     work = &((SelWork *)gSysSettings.workArea)->charaSel;
     for (i = 0; i < 2; i++, item++) {
-        if (*item == 0xFF) {
+        if (*item == 255) {
             continue;
         }
         *(iconPtr = &icon) = ((SelIcon *)gCharaSelEntryIcons)[*item];
@@ -1320,13 +1298,13 @@ void CharaSel_DrawEntry(s32 *item, CharaSelPos *pos)
                 } else {
                     iconPtr->color = 0xFFA0A0A0;
                     if (work->slot == 0 && *item == 3) {
-                        dy = 0x14;
+                        dy = 20;
                     }
                     if (work->slot == 1 && *item == 1) {
-                        dy = 0x14;
+                        dy = 20;
                     }
                     if (work->slot == 2 && *item == 5) {
-                        dy = 0x14;
+                        dy = 20;
                     }
                 }
             }
@@ -1368,11 +1346,11 @@ void CharaSel_DrawEntry(s32 *item, CharaSelPos *pos)
         spr.u1 = iconPtr->u1;
         spr.v1 = iconPtr->v1;
         spr.color = iconPtr->color;
-        if (spr.x < 0x280 && spr.x + spr.w >= 0 && spr.y < 0x1C0 && spr.y + spr.h >= 0) {
-            Gs_SetState(0x5E, 0x32);
-            Gs_SetState(0x63, 0);
+        if (spr.x < 640 && spr.x + spr.w >= 0 && spr.y < 448 && spr.y + spr.h >= 0) {
+            Gs_SetState(RS_BLEND, RS_BLEND_ALPHA);
+            Gs_SetState(RS_TEX_FILTER, 0);
             Tex_Use(1, (u32 *)&work->tex[iconPtr->tex]);
-            Gs_SetState(4, work->tex[iconPtr->tex]);
+            Gs_SetState(RS_TEXTURE, work->tex[iconPtr->tex]);
             if (iconPtr->angle != 0) {
                 TexRect_DrawRotated((struct TexRect *)&spr, iconPtr->angle);
             } else {
@@ -1390,17 +1368,17 @@ void CharaSel_Draw(void)
 {
     s32 i;
     CharaSelWork *work;
-    s32 saved6C;
-    s32 saved63;
-    s32 saved5E;
+    s32 savedZWrite;
+    s32 savedTexFilter;
+    s32 savedBlend;
 
     work = &((SelWork *)gSysSettings.workArea)->charaSel;
-    saved6C = Gs_GetState(0x6C);
-    saved63 = Gs_GetState(0x63);
-    saved5E = Gs_GetState(0x5E);
-    Gs_SetState(0x6C, 0);
+    savedZWrite = Gs_GetState(RS_ZWRITE);
+    savedTexFilter = Gs_GetState(RS_TEX_FILTER);
+    savedBlend = Gs_GetState(RS_BLEND);
+    Gs_SetState(RS_ZWRITE, 0);
     for (i = 0; i < work->count; i++) {
-        if (work->items[work->order[i]].kind != 0xFF) {
+        if (work->items[work->order[i]].kind != 255) {
             CharaSel_DrawEntry(&work->items[work->order[i]].kind, &work->pos[work->order[i]]);
         }
     }
@@ -1408,12 +1386,11 @@ void CharaSel_Draw(void)
         CharaSel_DrawSlots();
     }
     Sel_DrawHeader(5);
-    Gs_SetState(0x6C, saved6C);
-    Gs_SetState(0x63, saved63);
-    Gs_SetState(0x5E, saved5E);
+    Gs_SetState(RS_ZWRITE, savedZWrite);
+    Gs_SetState(RS_TEX_FILTER, savedTexFilter);
+    Gs_SetState(RS_BLEND, savedBlend);
 }
 
-extern s32 D_0042F1DC;
 /*
  * Loads the overlay's common texture pack into gOvlTex (up to 16
  * textures), unless they are loaded already.
@@ -1429,18 +1406,18 @@ void Sel_LoadCommonTextures(void)
     n = Pack_Count((s32 *)buf);
     if (gOvlTex[0] == 0) {
         for (i = 0; i < n; i++) {
-            if (i >= 0x10) {
+            if (i >= 16) {
                 break;
             }
-            gOvlTex[i] = Tex_CreateFromTim2((u8 *) (Pack_GetPart((u8 *)buf, i)), 4);
+            gOvlTex[i] = Tex_CreateFromTim2((u8 *) (Pack_GetPart((u8 *)buf, i)), TEX_MODE_ON_DEMAND);
         }
         Mem_Compact();
     }
 }
 
-/* Frees the 16 textures from 0xA3 that Sel_LoadCommonTextures made. */
+/* Frees the 16 textures from 163 that Sel_LoadCommonTextures made. */
 void Sel_FreeTextures(void)
 {
-    Tex_FreeRange(0xA3, 0x10);
+    Tex_FreeRange(163, 16);
     Mem_Compact();
 }

@@ -15,6 +15,9 @@
 #include "common.h"
 #include "window.h"
 #include "syssettings.h"
+#include "stageobj.h"
+#include "stream.h"
+#include "screen_fade.h"
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
 #include "render_state.h"
@@ -23,55 +26,34 @@ extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "syssave.h"
 #include "save.h"
 #include "quest.h"
+#include "sif.h"
+#include "texture.h"
+#include "prim.h"
+#include "sound.h"
+#include "text.h"
+#include "engine_math.h"
+#include "file_load.h"
+#include "font.h"
+#include "frame.h"
+#include "main.h"
+#include "mem_util.h"
+#include "packet_tim2.h"
+#include "rand.h"
+#include "game_util.h"
 
-/* Sony's kernel thread parameters */
-struct ThreadParam {
-    s32 status;
-    void *entry;
-    void *stack;
-    s32 stackSize;
-    void *gpReg;
-    s32 initPriority;
-    s32 currentPriority;
-    u32 attr;
-    u32 option;
-    s32 waitType;
-    s32 waitId;
-    s32 wakeupCount;
-};
-
-s32 CreateThread(struct ThreadParam *);
-s32 TerminateThread(s32);
-s32 DeleteThread(s32);
 s32 func_114C60(s32, void *);       /* StartThread */
-void Sys_EmptyHook(void);
-s32 Save_TestEventFlag(s32);
-s32 Save_IsQuestCleared(u16 item);
-s32 LoadCompressedFile(u8 *dst, s32 id);
-u32 Tex_CreateFromTim2(u8 *tim2, s32 mode);
 extern s32 gOvlTex[];
-void Psp_LoadFiles(s32 *out);
-void Psp_ResetSceneActors(void);
-void Psp_MarkIcons(void);
-void Psp_UpdateObj(PspObj *o);
-void Psp_UpdateActor(s32 i, PspActor *a);
-void Psp_InitActors(void);
-void Psp_FreeTextures(void);
-void Psp_Thread(void *);
 extern char _gp;
 
 
 s32 sceSifLoadStartModule(char *, s32, char *, s32 *);
 s32 sceSifStopModule(s32 modid, s32 args, const char *argp, s32 *result); /* main's libsif: sceSifStopModule's arguments */
-s32 sceSifUnloadModule(s32);
-void Mem_Compact(void);
-void Tex_FreeRange(s32 first, s32 count);
 
 /* .bss, declared from the highest address down (MWCC emits uninitialized
  * variables last-declared first). */
-u8 gPspThreadStack[0x1070];
-u8 gPspDevctlArg[0x10];
-u8 gPspDevPath[0x40];
+u8 gPspThreadStack[4208];
+u8 gPspDevctlArg[16];
+u8 gPspDevPath[64];
 s32 gPspState;
 s32 gPspThreadId;
 PspWork *gPspWork;
@@ -83,58 +65,58 @@ Frame gPspFrameA = {
 Frame gPspFrameB = {
 #include "select/006CC200.inc"
 };
-u32 gPspAnimCells0[156] = {
+s16 gPspAnimCells0[312] = {
 #include "select/006CC220.inc"
 };
-u32 gPspObjAnims_0[300] = {
+PspAnim gPspObjAnims_0[50] = {
 #include "select/006CC490.inc"
 };
-u32 gPspObjAnims_8[36] = {
+PspAnim gPspObjAnims_8[6] = {
 #include "select/006CC940.inc"
 };
-u32 gPspObjAnims_9[8] = {
+PspAnim gPspObjAnims_9[1] = {
 #include "select/006CC9D0.inc"
 };
-u32 gPspAnimCells1[20] = {
+s16 gPspAnimCells1[40] = {
 #include "select/006CC9F0.inc"
 };
-u32 gPspObjAnims_1[60] = {
+PspAnim gPspObjAnims_1[10] = {
 #include "select/006CCA40.inc"
 };
-u32 gPspAnimCells2[56] = {
+s16 gPspAnimCells2[112] = {
 #include "select/006CCB30.inc"
 };
-u32 gPspObjAnims_2[132] = {
+PspAnim gPspObjAnims_2[22] = {
 #include "select/006CCC10.inc"
 };
-u32 gPspObjAnims_3[48] = {
+PspAnim gPspObjAnims_3[8] = {
 #include "select/006CCE20.inc"
 };
-u32 gPspAnimCells4[24] = {
+s16 gPspAnimCells4[48] = {
 #include "select/006CCEE0.inc"
 };
-u32 gPspObjAnims_4[36] = {
+PspAnim gPspObjAnims_4[6] = {
 #include "select/006CCF40.inc"
 };
-u32 gPspObjAnims_5[36] = {
+PspAnim gPspObjAnims_5[6] = {
 #include "select/006CCFD0.inc"
 };
-u32 gPspAnimCells6[36] = {
+s16 gPspAnimCells6[72] = {
 #include "select/006CD060.inc"
 };
-u32 gPspObjAnims_6[84] = {
+PspAnim gPspObjAnims_6[14] = {
 #include "select/006CD0F0.inc"
 };
-u32 gPspAnimCells7[56] = {
+s16 gPspAnimCells7[112] = {
 #include "select/006CD240.inc"
 };
-u32 gPspObjAnims_7[108] = {
+PspAnim gPspObjAnims_7[18] = {
 #include "select/006CD320.inc"
 };
 PspAnim *gPspObjAnims[12] = {
-    (PspAnim *)gPspObjAnims_0, (PspAnim *)gPspObjAnims_1, (PspAnim *)gPspObjAnims_2, (PspAnim *)gPspObjAnims_3,
-    (PspAnim *)gPspObjAnims_4, (PspAnim *)gPspObjAnims_5, (PspAnim *)gPspObjAnims_6, (PspAnim *)gPspObjAnims_7,
-    (PspAnim *)gPspObjAnims_8, (PspAnim *)gPspObjAnims_9, NULL, NULL,
+    gPspObjAnims_0, gPspObjAnims_1, gPspObjAnims_2, gPspObjAnims_3,
+    gPspObjAnims_4, gPspObjAnims_5, gPspObjAnims_6, gPspObjAnims_7,
+    gPspObjAnims_8, gPspObjAnims_9, NULL, NULL,
 };
 s16 gPspObjParams[56] = {
 #include "select/006CD500.inc"
@@ -189,71 +171,46 @@ s16 gPspActorSpeeds[4] = {
 
 void Psp_PlayDecideSe(void)
 {
-    Sound_PlaySeFlat(0, 0x13, 0);
+    Sound_PlaySeFlat(0, 19, 0);
 }
 
 void Psp_PlayCancelSe(void)
 {
-    Sound_PlaySeFlat(0, 0x14, 0);
+    Sound_PlaySeFlat(0, 20, 0);
 }
 
 void Psp_PlayMoveSe(void)
 {
-    Sound_PlaySeFlat(7, 0x26, 0);
+    Sound_PlaySeFlat(7, 38, 0);
 }
 
 void Psp_PlayStopSe(void)
 {
-    Sound_PlaySeFlat(7, 0x25, 0);
+    Sound_PlaySeFlat(7, 37, 0);
 }
 
 void Psp_PlayConfirmSe(void)
 {
-    Sound_PlaySeFlat(1, 0x73, 0);
+    Sound_PlaySeFlat(1, 115, 0);
 }
 
 /* Starts icon screen i's swing: its amplitude, phase, speed and decay. */
 void Psp_StartIconSwing(s32 icon)
 {
-    gPspWork->swingAmp[icon] = 0x1800;
+    gPspWork->swingAmp[icon] = 6144;
     gPspWork->swingPhase[icon] = 0;
-    gPspWork->swingSpeed[icon] = 0x4000;
-    gPspWork->swingDecay[icon] = 0x800;
+    gPspWork->swingSpeed[icon] = 16384;
+    gPspWork->swingDecay[icon] = 2048;
 }
 
 const char gPspDevName[10] = {
 #include "select/006D0720.inc"
 };
 
-void FadeA_Reset(void);
-void Chara_SelectTask(TaskSlot *t);
-void Game_ResetSubsystems(void);
-void Sound_LoadPspBank(void);
-void Tex_LoadSystemPack(s32);
-void Psp_Init(void);
-void Psp_UpdateScene(void);
-void Callbacks_Add(void (*fn)(void));
-void Psp_Draw(void);
-void Psp_DrawTexts(void);
-u8 FadeA_GetState(void);
-void Psp_Shutdown(PspWork *w);
-void Psp_StartThread(PspWork *w);
-void Psp_InitItemMask(void);
 s32 sceDevctl(const char *, s32, void *, s32, void *, s32);  /* devctl */
-void Psp_SelectFeatures(void);
-void Stream_Reset(void);
-void Stream_Play(s32, s32);
-void Psp_SpawnObject(s32 type, s32 flip);
-void Stream_FadeOut(s32 ch, s32 frames);
-s32 Psp_AnyObjectActive(void);
-void Psp_Release(void);
-void Stream_Stop(s32 ch);
-void Task_StartBootToGmSub(void);
 /* unit's own declaration: declared s32 as Psp_ConnectTask uses it; with the definition's u8 return, the call compiles differently */
 s32 NetMenu_Update(void);
 void Gfx_DrawBlackLineFixed(void);
-void Frame_Draw(void);
-void Task_StartBootToGmSubKeep(void);
 
 /* CONNECT's task, every frame: waits for the character selection's end,
  * connects to the PSP (step 4, by gPspWork->unk0: the link, the features,
@@ -324,7 +281,7 @@ void Psp_ConnectTask(TaskSlot *task)
                 Psp_StartThread(gPspWork);
                 Psp_InitItemMask();
                 task->mode++;
-                gPspWork->timer = 0x1E;
+                gPspWork->timer = 30;
             }
         }
         break;
@@ -389,11 +346,11 @@ void Psp_ConnectTask(TaskSlot *task)
                 Psp_PlayDecideSe();
                 gPspWork->textStep = PSP_TEXT_NONE;
                 if (gPspWork->spawnLeft == 0) {
-                    FadeA_Start(0xB);
+                    FadeA_Start(11);
                     Stream_Reset();
                     task->mode = PSP_MODE_FADE_DONE;
                 } else {
-                    Stream_Play(0, 0x2E);
+                    Stream_Play(0, 46);
                     gPspWork->step++;
                     gPspWork->subStep = PSP_SHOW_SPAWN;
                     gPspWork->timer = 1;
@@ -423,7 +380,7 @@ void Psp_ConnectTask(TaskSlot *task)
                         gPspWork->subStep++;
                         break;
                     }
-                    gPspWork->timer = 0x5A;
+                    gPspWork->timer = 90;
                 }
                 if (trig & PAD_CROSS) {
                     Psp_PlayCancelSe();
@@ -438,10 +395,10 @@ void Psp_ConnectTask(TaskSlot *task)
                 stop:
                     Psp_PlayStopSe();
                     gPspWork->textStep = PSP_TEXT_NONE;
-                    Stream_FadeOut(0, 0xA);
+                    Stream_FadeOut(0, 10);
                     memset(gPspWork->objs, 0, sizeof(gPspWork->objs));
                     gPspWork->subStep++;
-                    gPspWork->timer = 0x1E;
+                    gPspWork->timer = 30;
                 }
                 break;
             case PSP_SHOW_ICONS:
@@ -625,7 +582,7 @@ void Psp_ConnectTask(TaskSlot *task)
                 if (trig & PAD_CIRCLE) {
                     Psp_PlayConfirmSe();
                     gPspWork->textStep = PSP_TEXT_NONE;
-                    FadeA_Start(0xB);
+                    FadeA_Start(11);
                     Stream_Reset();
                     task->mode = PSP_MODE_FADE_DONE;
                 }
@@ -642,7 +599,7 @@ void Psp_ConnectTask(TaskSlot *task)
             TaskSlot_End(task);
             gSysSettings.systemSaved = 0;
             Task_StartBootToGmSub();
-            FadeA_Start(0xC);
+            FadeA_Start(12);
             return;
         }
         break;
@@ -667,13 +624,13 @@ void Psp_ConnectTask(TaskSlot *task)
         Stream_Stop(0);
         TaskSlot_End(task);
         Task_StartBootToGmSubKeep();
-        FadeA_Start(0xC);
+        FadeA_Start(12);
         return;
     case PSP_MODE_CANCELLED:
         gPspWork->textStep = PSP_TEXT_CANCELLED;
         if (trig & PAD_CIRCLE) {
             Psp_PlayDecideSe();
-            FadeA_Start(0xB);
+            FadeA_Start(11);
             task->mode = PSP_MODE_EXIT_TO_MENU;
         }
         break;
@@ -693,14 +650,14 @@ void Psp_Init(void)
     u8 *base;
 
     base = gSysSettings.selWork;
-    gPspWork = (PspWork *)(base + 0x100);
+    gPspWork = (PspWork *)(base + 256);
     memset(gPspWork, 0, sizeof(PspWork));
-    memset(gPspWork->recvBuf = (s32 *)(base + 0x15C0), 0, PSP_BUF_SIZE);
-    memset(gPspWork->sendBuf = (s32 *)(base + 0x1600), 0, PSP_BUF_SIZE);
-    memset(gPspWork->spareBuf = (s32 *)(base + 0x1640), 0, PSP_BUF_SIZE);
+    memset(gPspWork->recvBuf = (s32 *)(base + 5568), 0, PSP_BUF_SIZE);
+    memset(gPspWork->sendBuf = (s32 *)(base + 5632), 0, PSP_BUF_SIZE);
+    memset(gPspWork->spareBuf = (s32 *)(base + 5696), 0, PSP_BUF_SIZE);
     Psp_LoadFiles(gPspWork->tex);
     Psp_InitActors();
-    gPspWork->headerKind = 0xB;
+    gPspWork->headerKind = 11;
     gPspWork->modId = -1;
     gPspState = PSP_THREAD_IDLE;
 }
@@ -727,13 +684,13 @@ void Psp_InitItemMask(void)
     memset(gPspWork->sendBuf, 0, PSP_BUF_SIZE);
     memset(gPspWork->recvBuf, 0, PSP_BUF_SIZE);
     mask = gPspWork->sendBuf;
-    for (i = 0; i < 0xE; i++) {
+    for (i = 0; i < 14; i++) {
         if (i == 9) {
             if (Save_TestEventFlag(EVENT_FLAG_KUSHALA_SEEN) == 0) {
                 continue;
             }
         }
-        if (i == 0xA) {
+        if (i == 10) {
             if (Save_IsQuestCleared(QUEST_ID_KUSHALA_SNOW_SCENE) == 0) {
                 continue;
             }
@@ -784,7 +741,7 @@ void Psp_StartThread(PspWork *work)
     void *gpValue;
 
     if (work->modId < 0) {
-        id = Psp_LoadModule("cdrom0:\\IOP\\MODULES\\USBPSPCM.IRX;1", 0x20, "-psp=1\0-unit=1\0-title=ULJM05066");
+        id = Psp_LoadModule("cdrom0:\\IOP\\MODULES\\USBPSPCM.IRX;1", 32, "-psp=1\0-unit=1\0-title=ULJM05066");
         if (id >= 0) {
             work->modId = id;
             Sys_EmptyHook();
@@ -792,10 +749,10 @@ void Psp_StartThread(PspWork *work)
                 gPspState = PSP_THREAD_IDLE;
                 param.entry = Psp_Thread;
                 param.stack = gPspThreadStack;
-                param.stackSize = 0x1000;
+                param.stackSize = 4096;
                 __asm__ volatile ("move %0, $gp" : "=r"(gpValue));
                 param.gpReg = gpValue;
-                param.initPriority = 0x28;
+                param.initPriority = 40;
                 gPspThreadId = CreateThread(&param);
                 func_114C60(gPspThreadId, 0);
             }
@@ -824,13 +781,6 @@ void Psp_Shutdown(PspWork *work)
     }
 }
 
-void PspLink_AddCount(void);
-void EventFlag_Set(s32);
-void Save_ClearEventFlag(s32);
-void PspLink_SetFlags(u32 flags);
-u16 Rand_Next(s32 stream);
-s32 Psp_IsItemUnlocked(u16 id);
-
 /*
  * Picks what the link offers this time: the features of recvBuf's first
  * word whose event flag isn't set yet (and whose conditions hold), then the
@@ -847,25 +797,25 @@ void Psp_SelectFeatures(void)
     *recv |= 2;
     *recv |= 0x800;
     PspLink_AddCount();
-    EventFlag_Set(0x35);
-    Save_ClearEventFlag(0x31);
+    EventFlag_Set(53);
+    Save_ClearEventFlag(49);
     mask = 0;
     for (i = 0; i < 12; i++) {
         bit = 1 << i;
         if (*recv & bit) {
             switch (i) {
             case 0:
-                if (Save_TestEventFlag(0x78) == 0) {
+                if (Save_TestEventFlag(120) == 0) {
                     mask |= bit;
                 }
                 break;
             case 1:
-                if (Save_TestEventFlag(0x79) == 0 && Save_TestEventFlag(6) == 1) {
+                if (Save_TestEventFlag(121) == 0 && Save_TestEventFlag(6) == 1) {
                     mask |= bit;
                 }
                 break;
             case 2:
-                if (Save_TestEventFlag(0x7A) == 0 && Save_TestEventFlag(0xB6) == 1 && gSave.styleBits != 0
+                if (Save_TestEventFlag(122) == 0 && Save_TestEventFlag(182) == 1 && gSave.styleBits != 0
                     && !(gSave.rateFlags & 8)) {
                     mask |= bit;
                 }
@@ -874,37 +824,37 @@ void Psp_SelectFeatures(void)
                 mask |= bit;
                 break;
             case 4:
-                if (gSysSave.bonusUnlocked == 0 && Save_TestEventFlag(0x7C) == 0) {
+                if (gSysSave.bonusUnlocked == 0 && Save_TestEventFlag(124) == 0) {
                     mask |= bit;
                 }
                 break;
             case 5:
-                if (Save_TestEventFlag(0x7D) == 0) {
+                if (Save_TestEventFlag(125) == 0) {
                     mask |= bit;
                 }
                 break;
             case 6:
-                if (Save_TestEventFlag(0x7E) == 0) {
+                if (Save_TestEventFlag(126) == 0) {
                     mask |= bit;
                 }
                 break;
             case 7:
-                if (Save_TestEventFlag(0x7F) == 0) {
+                if (Save_TestEventFlag(127) == 0) {
                     mask |= bit;
                 }
                 break;
             case 8:
-                if (Psp_IsItemUnlocked(0xA) == 1 && Save_TestEventFlag(0x82) == 0) {
+                if (Psp_IsItemUnlocked(10) == 1 && Save_TestEventFlag(130) == 0) {
                     mask |= bit;
                 }
                 break;
             case 9:
-                if ((gSave.monsterFlags & 0x400) && Save_TestEventFlag(0x83) == 0) {
+                if ((gSave.monsterFlags & 0x400) && Save_TestEventFlag(131) == 0) {
                     mask |= bit;
                 }
                 break;
             case 10:
-                if (Save_TestEventFlag(0x49) == 0) {
+                if (Save_TestEventFlag(73) == 0) {
                     mask |= bit;
                 }
                 break;
@@ -953,7 +903,7 @@ void Psp_SelectFeatures(void)
     gPspWork->offerMask = mask;
 }
 
-/* Loads archive 0x27 and passes up to 13 of its files to Tex_CreateFromTim2; the
+/* Loads archive 39 and passes up to 13 of its files to Tex_CreateFromTim2; the
    results go to gOvlTex and out. The loop keeps the original's shape: i is
    set before the test, p after it. */
 void Psp_LoadFiles(s32 *out)
@@ -965,17 +915,17 @@ void Psp_LoadFiles(s32 *out)
     s32 i;
 
     buf = gSysSettings.loadBuf;
-    if (LoadCompressedFile(buf, 0x27) > 0) {
+    if (LoadCompressedFile(buf, 39) > 0) {
         count = *(s32 *)(buf + 4);
         ent = (PspFileEnt *)(buf + 8);
-        if (count > 0xD) {
-            count = 0xD;
+        if (count > 13) {
+            count = 13;
         }
         i = 0;
         if (i < count) {
             texSlot = gOvlTex;
             do {
-                *texSlot = Tex_CreateFromTim2(buf + (ent++)->offset, 4);
+                *texSlot = Tex_CreateFromTim2(buf + (ent++)->offset, TEX_MODE_ON_DEMAND);
                 out[i] = *texSlot;
                 texSlot++;
                 i++;
@@ -1026,8 +976,6 @@ void Psp_InitActors(void)
     gPspWork->sceneState = 0;
     memset(gPspWork->objs, 0, sizeof(gPspWork->objs));
 }
-
-s32 PspLink_HasFlag(s32 item);
 
 /* Marks the icons whose items are there: for each of the six icons, the
  * first entry of its list (gPspIconLists, 4 each, -1: none) that
@@ -1157,9 +1105,6 @@ static void Psp_SetAnim(PspObj *obj, PspAnim *first)
     obj->y += dy;
 }
 
-void Sound_PlaySeFlatPan(u32 slot, u32 id, s32 prog, s32 pan);
-void Psp_SpawnChild(PspObj *src, s32 type, s32 x, s32 y);
-
 /*
  * Moves an object of the show: its walk by type, then at the end of a
  * frame's time the next frame (random turns for types 2 and 6), the
@@ -1241,9 +1186,9 @@ void Psp_UpdateObj(PspObj *obj)
                 obj->count = 0;
                 obj->frame = 7;
                 if (obj->flip == 0) {
-                    Psp_SpawnChild(obj, 8, 0x14, -0x62);
+                    Psp_SpawnChild(obj, 8, 20, -98);
                 } else {
-                    Psp_SpawnChild(obj, 8, -0x14, -0x62);
+                    Psp_SpawnChild(obj, 8, -20, -98);
                 }
             } else {
                 obj->frame = cur->next;
@@ -1300,14 +1245,14 @@ void Psp_UpdateObj(PspObj *obj)
     }
     snd = cur->se;
     if (snd != 0) {
-        pan = obj->x - 0x140;
+        pan = obj->x - 320;
         pan = 0.15625f * pan;
         if (pan < 0) {
-            if (pan < -0x32) {
-                pan = -0x32;
+            if (pan < -50) {
+                pan = -50;
             }
-        } else if (pan > 0x32) {
-            pan = 0x32;
+        } else if (pan > 50) {
+            pan = 50;
         }
         if (snd == 10) {
             obj->count++;
@@ -1331,8 +1276,6 @@ void Psp_UpdateObj(PspObj *obj)
     }
 }
 
-void Gfx_SetBlend(s32 a, s32 b);
-
 /*
  * Draws object obj's current frame: its cell (u, v, texture and screen
  * sizes) as a sprite, mirrored when flipped.
@@ -1352,7 +1295,7 @@ void Psp_DrawObject(PspObj *obj)
     cur = &obj->anim[obj->frame];
     cellUV = cur->cells + cur->cell * 6;
     if (gPspWork->tex[cur->tex] != 0) {
-        Gfx_SetBlend(4, 5);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
         Tex_Prepare(1, cur->tex + PSP_TEX_FIRST);
         Tex_Bind(cur->tex + PSP_TEX_FIRST);
         Gs_SetState(RS_TEX_FILTER, 0);
@@ -1430,9 +1373,9 @@ void Psp_SpawnObject(s32 type, s32 flip)
         Psp_SetAnim(obj, gPspObjAnims[type]);
         if (type == 0) {
             if (obj->flip == 0) {
-                Psp_SpawnChild(obj, 9, 0x1D6, obj->y);
+                Psp_SpawnChild(obj, 9, 470, obj->y);
             } else {
-                Psp_SpawnChild(obj, 9, 0xAA, obj->y);
+                Psp_SpawnChild(obj, 9, 170, obj->y);
             }
         }
     }
@@ -1485,7 +1428,7 @@ void Psp_SetViewRect(u32 kind, PspActor *actor)
     case 5:
     case 6:
     case 7:
-        rect += 0x14;
+        rect += 20;
         rect += (kind - 2) * 4;
         break;
     case 8:
@@ -1494,7 +1437,7 @@ void Psp_SetViewRect(u32 kind, PspActor *actor)
     case 14:
     case 16:
     case 18:
-        rect += 0x10;
+        rect += 16;
         break;
     case 21:
         return;
@@ -1509,7 +1452,7 @@ void Psp_SetViewRect(u32 kind, PspActor *actor)
     case 19:
         return;
     case 22:
-        rect += 0x2C;
+        rect += 44;
         break;
     }
     actor->x = *rect++;
@@ -1531,8 +1474,6 @@ void Psp_SetViewRect(u32 kind, PspActor *actor)
         break;
     }
 }
-
-f32 Math_Sin(f32);
 
 /*
  * Moves screen i by its state (PspActorState): the two that slide in, the
@@ -1557,7 +1498,7 @@ void Psp_UpdateActor(s32 i, PspActor *actor)
             Psp_SetViewRect(i, actor);
             actor->x = 0.0f;
             actor->y = 0.0f;
-            actor->w = 0x280;
+            actor->w = 640;
             actor->speed = 30.0f;
             actor->state++;
             break;
@@ -1711,7 +1652,7 @@ void Psp_UpdateScene(void)
     state = &gPspWork->sceneState;
     switch (*state) {
     case 0:
-        if (gPspWork->step == 0xB && gPspWork->subStep == 2) {
+        if (gPspWork->step == 11 && gPspWork->subStep == 2) {
             (*state)++;
             Psp_ResetSceneActors();
         }
@@ -1731,7 +1672,6 @@ void Psp_UpdateScene(void)
 }
 
 struct PrimLine;
-s32 Prim_FillRect(struct PrimLine *r);
 
 /*
  * Draws an actor: its part as a filled rectangle (kind 0) or a sprite,
@@ -1766,7 +1706,7 @@ void Psp_DrawActor(PspActor *actor)
     width = actor->w * actor->scaleX;
     height = actor->h * actor->scaleY;
     if (draw->kind == 0) {
-        Gfx_SetBlend(4, 5);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
         rect.x0 = parentX + (s16)actor->x;
         rect.y0 = parentY + (s16)actor->y;
         rect.x1 = rect.x0 + width;
@@ -1775,7 +1715,7 @@ void Psp_DrawActor(PspActor *actor)
         Prim_FillRect((struct PrimLine *)&rect);
         return;
     }
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (gPspWork->tex[draw->tex] == 0) {
         return;
     }
@@ -1813,9 +1753,7 @@ void Psp_DrawActor(PspActor *actor)
     Sprite_Draw(&spr);
 }
 
-void Vec_RotateZ(f32 *v, f32 a);
 struct PrimTexTri;
-s32 Prim_DrawTexTri(struct PrimTexTri *t);
 
 /*
  * Draws an icon screen's actor as two textured triangles, turned by icon
@@ -1868,7 +1806,7 @@ void Psp_DrawSwingActor(PspActor *actor, s32 icon)
     }
     width = actor->w * actor->scaleX;
     height = actor->h * actor->scaleY;
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (gPspWork->tex[draw->tex] == 0) {
         return;
     }
@@ -1940,7 +1878,7 @@ void Psp_DrawSwingActor(PspActor *actor, s32 icon)
 }
 
 /*
- * Draws the frame of icon screen k (texture 0xAF, its rectangle
+ * Draws the frame of icon screen k (texture 175, its rectangle
  * gPspFrameRects[kind]) as two triangles turned by the screen's swing
  * around the centre Psp_DrawSwingActor left in centerX/centerY; dimmed
  * unless kind is the chosen icon's.
@@ -1987,12 +1925,12 @@ void Psp_DrawSwingFrame(PspActor *actor, s32 icon)
     frameRect = gPspFrameRects[actor->kind];
     width = frameRect[2] * actor->scaleX;
     height = frameRect[3] * actor->scaleX;
-    Gfx_SetBlend(4, 5);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     if (gPspWork->tex[12] == 0) {
         return;
     }
-    Tex_Prepare(1, 0xAF);
-    Tex_Bind(0xAF);
+    Tex_Prepare(1, 175);
+    Tex_Bind(175);
     Gs_SetState(RS_TEX_FILTER, 0);
     tint = gPspFrameColors[actor->kind];
     if (actor->kind != gPspMarkKind[gPspWork->cursorIcon]) {
@@ -2065,28 +2003,22 @@ void Psp_DrawBackground(void)
     Sprite spr;
 
     if (gPspWork->tex[1] != 0) {
-        Gfx_SetBlend(4, 5);
-        Tex_Prepare(1, 0xA4);
-        Tex_Bind(0xA4);
+        Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+        Tex_Prepare(1, 164);
+        Tex_Bind(164);
         Gs_SetState(RS_TEX_FILTER, 0);
         spr.x = 0;
         spr.y = 0;
-        spr.w = 0x280;
-        spr.h = 0x1C0;
+        spr.w = 640;
+        spr.h = 448;
         spr.color = -1;
         spr.u0 = 0;
         spr.v0 = 0;
-        spr.u1 = 0xFF;
-        spr.v1 = 0xFF;
+        spr.u1 = 255;
+        spr.v1 = 255;
         Sprite_Draw(&spr);
     }
 }
-
-void Psp_DrawActor(PspActor *a);
-void Psp_DrawSwingActor(PspActor *a, s32 k);
-void Psp_DrawSwingFrame(PspActor *a, s32 k);
-void Psp_DrawObject(PspObj *o);
-void Sel_DrawHeader(s16);
 
 /*
  * Draws the frame: the listed actors (the odd 9-19 as swing frames, the
@@ -2099,7 +2031,7 @@ void Psp_Draw(void)
     PspObj *obj;
     s32 i;
 
-    Gs_SetState(0x6C, 0);
+    Gs_SetState(RS_ZWRITE, 0);
     for (i = 0, entry = gPspWork->drawList; i < PSP_ACTOR_COUNT; i++, entry++) {
         if (*entry != NULL) {
             switch (i) {
@@ -2134,7 +2066,7 @@ void Psp_Draw(void)
         Sel_DrawHeader(gPspWork->headerKind);
     }
     Psp_DrawBackground();
-    Gs_SetState(0x6C, 1);
+    Gs_SetState(RS_ZWRITE, 1);
 }
 
 extern u32 gPspStepTexts[12];
@@ -2147,13 +2079,6 @@ char *strchr(char *, s32);                  /* strchr */
 void Hud_DrawButtonIcon(s32 id, s16 x, s16 y, s32 depth, u32 color, f32 scale);  /* a button icon */
 s32 Str_Length(char *);                         /* a message's width */
 struct Frame;
-void WindowFrame_Draw(struct Frame *f, s16 *off);                    /* draws a window */
-void Font_SetPal(s32);
-void Text_Printf(const char *fmt, ...);
-void Text_PrintfColored(const char *fmt, ...);
-s32 Font_GetPage(void);
-void Text_DrawIcons(s32);
-void Font_DrawAllPages(void);
 
 /*
  * The link's texts: the found item's message (gPspValueNames) and the lines
@@ -2186,7 +2111,7 @@ void Psp_DrawTexts(void)
     s8 icon;
     s8 kind;
 
-    if (gPspWork->step == 0xB && gPspWork->subStep == 2 && gPspWork->timer == 0) {
+    if (gPspWork->step == 11 && gPspWork->subStep == 2 && gPspWork->timer == 0) {
         if (gPspWork->hideFrames == 0) {
             WindowFrame_Draw(&gPspFrameB, 0);
         }
@@ -2199,8 +2124,8 @@ void Psp_DrawTexts(void)
         }
         lines = NULL;
         if (str != NULL) {
-            Font_SetPos(0x32, 0x172);
-            Font_SetSpacing(0x14, 0x14);
+            Font_SetPos(50, 370);
+            Font_SetSpacing(20, 20);
             Font_SetPal(0);
             Font_SetColor(0x80808080);
             for (;;) {
@@ -2209,7 +2134,7 @@ void Psp_DrawTexts(void)
                     break;
                 }
                 if (esc[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, (esc - str) * 10 + 0x32, 0x172, 0x155, -1, 1.0f);
+                    Hud_DrawButtonIcon(25, (esc - str) * 10 + 50, 370, 341, -1, 1.0f);
                     esc[0] = ' ';
                     esc[1] = ' ';
                 }
@@ -2217,19 +2142,19 @@ void Psp_DrawTexts(void)
             Text_PrintfColored(str);
         }
     }
-    if (gPspWork->step < 0xB && gPspWork->hideFrames == 0) {
+    if (gPspWork->step < 11 && gPspWork->hideFrames == 0) {
         WindowFrame_Draw(&gPspFrameA, 0);
     }
     if (gPspWork->textStep == 0) {
         return;
     }
-    Font_SetSpacing(0x14, 0x14);
+    Font_SetSpacing(20, 20);
     Font_SetPal(0);
     Font_SetColor(0x80808080);
     lines = (char **)gPspStepTexts[gPspWork->textStep];
     x = gPspStepTextPos[gPspWork->textStep][0];
     y = gPspStepTextPos[gPspWork->textStep][1];
-    for (; *lines != NULL; lines++, y += 0x18) {
+    for (; *lines != NULL; lines++, y += 24) {
         str = buf;
         strcpy(buf, *lines);
         if (buf[0] == '%' && buf[1] == 'a') {
@@ -2263,7 +2188,7 @@ void Psp_DrawTexts(void)
                     break;
                 }
                 if (esc[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, textX + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                    Hud_DrawButtonIcon(25, textX + (esc - str) * 10, y, 341, -1, 1.0f);
                     esc[0] = ' ';
                     esc[1] = ' ';
                 }
@@ -2276,7 +2201,7 @@ void Psp_DrawTexts(void)
                     break;
                 }
                 if (esc[1] == 'r') {
-                    Hud_DrawButtonIcon(0x19, x + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                    Hud_DrawButtonIcon(25, x + (esc - str) * 10, y, 341, -1, 1.0f);
                     esc[0] = ' ';
                     esc[1] = ' ';
                 }
@@ -2288,7 +2213,7 @@ void Psp_DrawTexts(void)
         lines = (char **)gPspStepTexts[3];
         x = gPspStepTextPos[3][0];
         y = gPspStepTextPos[3][1];
-        for (; *lines != NULL; lines++, y += 0x18) {
+        for (; *lines != NULL; lines++, y += 24) {
             str = buf;
             strcpy(buf, *lines);
             if (buf[0] == '%' && buf[1] == 'a') {
@@ -2321,7 +2246,7 @@ void Psp_DrawTexts(void)
                         break;
                     }
                     if (esc[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, textX + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        Hud_DrawButtonIcon(25, textX + (esc - str) * 10, y, 341, -1, 1.0f);
                         esc[0] = ' ';
                         esc[1] = ' ';
                     }
@@ -2334,7 +2259,7 @@ void Psp_DrawTexts(void)
                         break;
                     }
                     if (esc[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, x + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        Hud_DrawButtonIcon(25, x + (esc - str) * 10, y, 341, -1, 1.0f);
                         esc[0] = ' ';
                         esc[1] = ' ';
                     }
@@ -2348,7 +2273,7 @@ void Psp_DrawTexts(void)
         lines = (char **)gPspLines[0];
         x = gPspLinePos[0][0];
         y = gPspLinePos[0][1];
-        for (; *lines != NULL; lines++, y += 0x18) {
+        for (; *lines != NULL; lines++, y += 24) {
             str = buf;
             strcpy(buf, *lines);
             if (buf[0] == '%' && buf[1] == 'a') {
@@ -2382,7 +2307,7 @@ void Psp_DrawTexts(void)
                         break;
                     }
                     if (esc[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, textX + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        Hud_DrawButtonIcon(25, textX + (esc - str) * 10, y, 341, -1, 1.0f);
                         esc[0] = ' ';
                         esc[1] = ' ';
                     }
@@ -2394,7 +2319,7 @@ void Psp_DrawTexts(void)
                         break;
                     }
                     if (esc[1] == 'r') {
-                        Hud_DrawButtonIcon(0x19, x + (esc - str) * 10, y, 0x155, -1, 1.0f);
+                        Hud_DrawButtonIcon(25, x + (esc - str) * 10, y, 341, -1, 1.0f);
                         esc[0] = ' ';
                         esc[1] = ' ';
                     }
@@ -2408,12 +2333,6 @@ void Psp_DrawTexts(void)
     Font_DrawAllPages();
 }
 
-s32 sceDevctl(const char *, s32, void *, s32, void *, s32);  /* devctl */
-s32 sceOpen(void *, s32, s32);                              /* open */
-s32 sceWrite(s32, void *, s32);
-s32 sceRead(s32, void *, s32);
-s32 sceClose(s32);                                           /* close */
-s32 DelayThread(s32);
 
 /*
  * The link's thread (PspThreadState): idle, or one exchange (the device's
@@ -2430,7 +2349,7 @@ void Psp_Thread(void *arg)
             break;
         case PSP_THREAD_EXCHANGE:
             *(s32 *)gPspDevctlArg = 0;
-            if (sceDevctl(gPspDevName, PSP_DEVCTL_GET_PATH, gPspDevctlArg, 8, gPspDevPath, 0x10) < 0) {
+            if (sceDevctl(gPspDevName, PSP_DEVCTL_GET_PATH, gPspDevctlArg, 8, gPspDevPath, 16) < 0) {
                 gPspState = PSP_THREAD_ERROR;
                 break;
             }
@@ -2476,118 +2395,118 @@ void Psp_Thread(void *arg)
 s32 Psp_IsItemUnlocked(u16 id)
 {
     switch (id) {
-    case 0xA:
-        if (Save_TestEventFlag(0x12) == 1) {
+    case 10:
+        if (Save_TestEventFlag(18) == 1) {
             return 1;
         }
         break;
-    case 0x9:
-        if (Save_TestEventFlag(0x11) == 1) {
+    case 9:
+        if (Save_TestEventFlag(17) == 1) {
             return 1;
         }
         break;
-    case 0x8:
-        if (Save_TestEventFlag(0xC) == 1) {
+    case 8:
+        if (Save_TestEventFlag(12) == 1) {
             return 1;
         }
         break;
-    case 0x7:
-        if (Save_TestEventFlag(0xB) == 1) {
+    case 7:
+        if (Save_TestEventFlag(11) == 1) {
             return 1;
         }
         break;
-    case 0x6:
-        if (Save_TestEventFlag(0x9) == 1) {
+    case 6:
+        if (Save_TestEventFlag(9) == 1) {
             return 1;
         }
         break;
-    case 0x5:
-        if (Save_TestEventFlag(0x8) == 1) {
+    case 5:
+        if (Save_TestEventFlag(8) == 1) {
             return 1;
         }
         break;
-    case 0x4:
-        if (Save_TestEventFlag(0x7) == 1) {
+    case 4:
+        if (Save_TestEventFlag(7) == 1) {
             return 1;
         }
         break;
-    case 0x3:
-        if (Save_TestEventFlag(0x6) == 1) {
+    case 3:
+        if (Save_TestEventFlag(6) == 1) {
             return 1;
         }
         break;
-    case 0x2:
-        if (Save_TestEventFlag(0x5) == 1) {
+    case 2:
+        if (Save_TestEventFlag(5) == 1) {
             return 1;
         }
         break;
-    case 0x1:
-        if (Save_TestEventFlag(0x0) == 1) {
+    case 1:
+        if (Save_TestEventFlag(0) == 1) {
             return 1;
         }
         break;
-    case 0x33:
-        if (Psp_IsItemUnlocked(0xA) != 0) {
+    case 51:
+        if (Psp_IsItemUnlocked(10) != 0) {
             return 1;
         }
         break;
-    case 0x32:
-        if (Psp_IsItemUnlocked(0x7) != 0) {
+    case 50:
+        if (Psp_IsItemUnlocked(7) != 0) {
             return 1;
         }
         break;
-    case 0x31:
-        if (Psp_IsItemUnlocked(0x3) != 0) {
+    case 49:
+        if (Psp_IsItemUnlocked(3) != 0) {
             return 1;
         }
         break;
-    case 0x30:
-        if (Psp_IsItemUnlocked(0x2) != 0) {
+    case 48:
+        if (Psp_IsItemUnlocked(2) != 0) {
             return 1;
         }
         break;
-    case 0x2F:
-        if (Psp_IsItemUnlocked(0x1) != 0) {
+    case 47:
+        if (Psp_IsItemUnlocked(1) != 0) {
             return 1;
         }
         break;
-    case 0x21:
-        if (Psp_IsItemUnlocked(0x6) != 0) {
+    case 33:
+        if (Psp_IsItemUnlocked(6) != 0) {
             return 1;
         }
         break;
-    case 0x20:
-        if (Psp_IsItemUnlocked(0x3) != 0) {
+    case 32:
+        if (Psp_IsItemUnlocked(3) != 0) {
             return 1;
         }
         break;
-    case 0x1F:
-        if (Psp_IsItemUnlocked(0x1) != 0) {
+    case 31:
+        if (Psp_IsItemUnlocked(1) != 0) {
             return 1;
         }
         break;
-    case 0x43:
-        if (Psp_IsItemUnlocked(0xA) != 0) {
+    case 67:
+        if (Psp_IsItemUnlocked(10) != 0) {
             return 1;
         }
         break;
-    case 0x42:
-        if (Psp_IsItemUnlocked(0x7) != 0) {
+    case 66:
+        if (Psp_IsItemUnlocked(7) != 0) {
             return 1;
         }
         break;
-    case 0x41:
-        if (Psp_IsItemUnlocked(0x3) != 0) {
+    case 65:
+        if (Psp_IsItemUnlocked(3) != 0) {
             return 1;
         }
         break;
-    case 0x40:
-        if (Psp_IsItemUnlocked(0x2) != 0) {
+    case 64:
+        if (Psp_IsItemUnlocked(2) != 0) {
             return 1;
         }
         break;
-    case 0x3F:
-        if (Psp_IsItemUnlocked(0x1) != 0) {
+    case 63:
+        if (Psp_IsItemUnlocked(1) != 0) {
             return 1;
         }
         break;
@@ -2605,137 +2524,137 @@ s32 Psp_IsItemUnlocked(u16 id)
  * this one; they are kept here because the build needs code in every C file.
  */
 /* .data */
-u32 gBootTexts[2] = {
+char *gBootTexts[2] = {
 #include "select/006CD7F8.inc"
 };
-u32 gContentWarningText[4] = {
+char *gContentWarningText[4] = {
 #include "select/006CD800.inc"
 };
-u32 gCharaPartNames[8] = {
+char *gCharaPartNames[8] = {
 #include "select/006CD810.inc"
 };
-u32 gCharaListHelpTexts[4] = {
+char *gCharaListHelpTexts[4] = {
 #include "select/006CD830.inc"
 };
-u32 gCharaPartHelpTexts[8] = {
+char *gCharaPartHelpTexts[8] = {
 #include "select/006CD840.inc"
 };
-u32 gCharaPartTitles[8] = {
+char *gCharaPartTitles[8] = {
 #include "select/006CD860.inc"
 };
-u32 gRotateTexts[2] = {
+char *gRotateTexts[2] = {
 #include "select/006CD880.inc"
 };
-u32 gNameInvalidTexts[2] = {
+char *gNameInvalidTexts[2] = {
 #include "select/006CD888.inc"
 };
-u32 gCharaConfirmTexts[2] = {
+char *gCharaConfirmTexts[2] = {
 #include "select/006CD890.inc"
 };
-u32 gCharaQuestionTexts[2] = {
+char *gCharaQuestionTexts[2] = {
 #include "select/006CD898.inc"
 };
-u32 gCharaYesNoTexts[2] = {
+char *gCharaYesNoTexts[2] = {
 #include "select/006CD8A0.inc"
 };
-u32 gCharaYesNoTexts2[2] = {
+char *gCharaYesNoTexts2[2] = {
 #include "select/006CD8A8.inc"
 };
-u32 gCharaEditHelpTexts[2] = {
+char *gCharaEditHelpTexts[2] = {
 #include "select/006CD8B0.inc"
 };
-u32 gCharaSelectTexts[2] = {
+char *gCharaSelectTexts[2] = {
 #include "select/006CD8B8.inc"
 };
-u32 gCardSavingTexts[4] = {
+char *gCardSavingTexts[4] = {
 #include "select/006CD8C0.inc"
 };
-u32 gCharaPageTexts[2] = {
+char *gCharaPageTexts[2] = {
 #include "select/006CD8D0.inc"
 };
-u32 gOkTypeTexts[2] = {
+char *gOkTypeTexts[2] = {
 #include "select/006CD8D8.inc"
 };
-u32 gGenderBackTexts[2] = {
+char *gGenderBackTexts[2] = {
 #include "select/006CD8E0.inc"
 };
-u32 gAgeFeatureTexts[2] = {
+char *gAgeFeatureTexts[2] = {
 #include "select/006CD8E8.inc"
 };
-u32 gHairRowTexts[2] = {
+char *gHairRowTexts[2] = {
 #include "select/006CD8F0.inc"
 };
-u32 gFaceHairRowTexts[2] = {
+char *gFaceHairRowTexts[2] = {
 #include "select/006CD8F8.inc"
 };
-u32 gNoMatchTexts[4] = {
+char *gNoMatchTexts[4] = {
 #include "select/006CD900.inc"
 };
-u32 gPartsLabels[40] = {
+char *gPartsLabels[40] = {
 #include "select/006CD910.inc"
 };
-u32 gTitleMenuA[8] = {
+char *gTitleMenuA[8] = {
 #include "select/006CD9B0.inc"
 };
-u32 gTitleMenuB[12] = {
+char *gTitleMenuB[12] = {
 #include "select/006CD9D0.inc"
 };
-u32 gModeSelTexts[4] = {
+char *gModeSelTexts[4] = {
 #include "select/006CDA00.inc"
 };
-u32 gTitleHelpMenu[4] = {
+char *gTitleHelpMenu[4] = {
 #include "select/006CDA10.inc"
 };
-u32 gTitleHelpTexts[2] = {
+char *gTitleHelpTexts[2] = {
 #include "select/006CDA20.inc"
 };
-u32 gPspStepTexts_1[3] = {
+char *gPspStepTexts_1[3] = {
 #include "select/006CDA28.inc"
 };
-u32 gPspStepTexts_2[8] = {
+char *gPspStepTexts_2[8] = {
 #include "select/006CDA40.inc"
 };
-u32 gPspStepTexts_3[8] = {
+char *gPspStepTexts_3[8] = {
 #include "select/006CDA60.inc"
 };
-u32 gPspStepTexts_4[4] = {
+char *gPspStepTexts_4[4] = {
 #include "select/006CDA80.inc"
 };
-u32 gPspStepTexts_5[4] = {
+char *gPspStepTexts_5[4] = {
 #include "select/006CDA90.inc"
 };
-u32 gPspStepTexts_6[8] = {
+char *gPspStepTexts_6[8] = {
 #include "select/006CDAA0.inc"
 };
-u32 gPspStepTexts_7[4] = {
+char *gPspStepTexts_7[4] = {
 #include "select/006CDAC0.inc"
 };
-u32 gPspStepTexts_8[4] = {
+char *gPspStepTexts_8[4] = {
 #include "select/006CDAD0.inc"
 };
-u32 gPspStepTexts_9[2] = {
+char *gPspStepTexts_9[2] = {
 #include "select/006CDAE0.inc"
 };
-u32 gPspStepTexts_10[2] = {
+char *gPspStepTexts_10[2] = {
 #include "select/006CDAE8.inc"
 };
-u32 gPspStepTexts_11[2] = {
+char *gPspStepTexts_11[2] = {
 #include "select/006CDAF0.inc"
 };
-u32 gPspLines_0[2] = {
+char *gPspLines_0[2] = {
 #include "select/006CDAF8.inc"
 };
-u32 gPspLines_1[4] = {
+char *gPspLines_1[4] = {
 #include "select/006CDB00.inc"
 };
-u32 gPspPromptTexts_0[2] = {
+char *gPspPromptTexts_0[2] = {
 #include "select/006CDB10.inc"
 };
-u32 gPspPromptTexts_1[2] = {
+char *gPspPromptTexts_1[2] = {
 #include "select/006CDB18.inc"
 };
 u32 gPspStepTexts[12] = {
-    0x00000000, (u32)gPspStepTexts_1, (u32)gPspStepTexts_2, (u32)gPspStepTexts_3,
+    0, (u32)gPspStepTexts_1, (u32)gPspStepTexts_2, (u32)gPspStepTexts_3,
     (u32)gPspStepTexts_4, (u32)gPspStepTexts_5, (u32)gPspStepTexts_6, (u32)gPspStepTexts_7,
     (u32)gPspStepTexts_8, (u32)gPspStepTexts_9, (u32)gPspStepTexts_10, (u32)gPspStepTexts_11,
 };
@@ -2745,79 +2664,79 @@ u32 gPspLines[2] = {
 u32 gPspPromptTexts[2] = {
     (u32)gPspPromptTexts_0, (u32)gPspPromptTexts_1,
 };
-u32 gPspValueNames_0[4] = {
+char *gPspValueNames_0[4] = {
 #include "select/006CDB60.inc"
 };
-u32 gPspValueNames_5[4] = {
+char *gPspValueNames_5[4] = {
 #include "select/006CDB70.inc"
 };
-u32 gPspValueNames_2[4] = {
+char *gPspValueNames_2[4] = {
 #include "select/006CDB80.inc"
 };
-u32 gPspValueNames_3[4] = {
+char *gPspValueNames_3[4] = {
 #include "select/006CDB90.inc"
 };
-u32 gPspValueNames_1[4] = {
+char *gPspValueNames_1[4] = {
 #include "select/006CDBA0.inc"
 };
-u32 gPspValueNames_4[4] = {
+char *gPspValueNames_4[4] = {
 #include "select/006CDBB0.inc"
 };
 u32 gPspValueNames[8] = {
     (u32)gPspValueNames_0, (u32)gPspValueNames_1, (u32)gPspValueNames_2, (u32)gPspValueNames_3,
-    (u32)gPspValueNames_4, (u32)gPspValueNames_5, 0x00000000, 0x00000000,
+    (u32)gPspValueNames_4, (u32)gPspValueNames_5, 0, 0,
 };
-u32 gOptMainLabels[12] = {
+char *gOptMainLabels[12] = {
 #include "select/006CDBE0.inc"
 };
-u32 gOptMainHelp[12] = {
+char *gOptMainHelp[12] = {
 #include "select/006CDC10.inc"
 };
-u32 gOptControlLabels[8] = {
+char *gOptControlLabels[8] = {
 #include "select/006CDC40.inc"
 };
-u32 gOptControlHelp[8] = {
+char *gOptControlHelp[8] = {
 #include "select/006CDC60.inc"
 };
-u32 gSoundModeTexts[4] = {
+char *gSoundModeTexts[4] = {
 #include "select/006CDC80.inc"
 };
-u32 gVolumeBarTexts[8] = {
+char *gVolumeBarTexts[8] = {
 #include "select/006CDC90.inc"
 };
-u32 gOffOnTexts[2] = {
+char *gOffOnTexts[2] = {
 #include "select/006CDCB0.inc"
 };
-u32 gReverseTexts[3] = {
+char *gReverseTexts[3] = {
 #include "select/006CDCB8.inc"
 };
-u32 gSizeTexts[3] = {
+char *gSizeTexts[3] = {
 #include "select/006CDCC8.inc"
 };
-u32 gTypeNumTexts[2] = {
+char *gTypeNumTexts[2] = {
 #include "select/006CDCD8.inc"
 };
-u32 gNetOptLabels[8] = {
+char *gNetOptLabels[8] = {
 #include "select/006CDCE0.inc"
 };
-u32 gNetOptHelp[8] = {
+char *gNetOptHelp[8] = {
 #include "select/006CDD00.inc"
 };
-u32 gNetOptValueNames_0[4] = {
+char *gNetOptValueNames_0[4] = {
 #include "select/006CDD20.inc"
 };
-u32 gNetOptValueNames_1[4] = {
+char *gNetOptValueNames_1[4] = {
 #include "select/006CDD30.inc"
 };
-u32 gNetOptConfirmTexts[8] = {
+char *gNetOptConfirmTexts[8] = {
 #include "select/006CDD40.inc"
 };
-u32 gScreenPosTexts[2] = {
+char *gScreenPosTexts[2] = {
 #include "select/006CDD60.inc"
 };
-u32 gBackResetTexts[2] = {
+char *gBackResetTexts[2] = {
 #include "select/006CDD68.inc"
 };
-u32 gOptBrightnessTexts[4] = {
+char *gOptBrightnessTexts[4] = {
 #include "select/006CDD70.inc"
 };

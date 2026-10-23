@@ -1,35 +1,29 @@
 /*
  * The area objects of the later kinds: objects of the area's own list (Obj,
- * from Obj_Alloc) that
+ * from Obj_Alloc) that Area_StartObjects starts when an area is entered, by
+ * the area's id or by gAreaInfo's set-up ids. Each kind has a Create
+ * function, an Update that runs the state Obj.state names (0 set up, 1 run,
+ * 2 end, 3 free) and a Draw that its
+ * draw slot calls (DrawSlot_Alloc; the run state adds the slot to a
+ * depth-sorted list with OT_AddByDepth every frame). The models come from
+ * the area's sub-model (gAreaSubModels[0]) or the area model
+ * (gAreaState.model).
  *
- * Area_StartObjects starts when an area is entered, by the area's id or by
- * gAreaInfo's set-up ids, and
- *
- * the types 7 to 11 of AmbientLife, which AmbientLife_Setup, AmbientLife_Run
- * and AmbientLife_Draw call
- *
- * by Obj.type. Each kind has a Create function, an Update that runs the state
- * Obj.state names (0 set
- *
- * up, 1 run, 2 end, 3 free) and a Draw that its draw slot calls
- * (DrawSlot_Alloc; the run state adds
- *
- * the slot to a depth-sorted list with OT_AddByDepth every frame). The models
- * come from the area's
- *
- * sub-model (gAreaSubModels[0]) or the area model (gAreaState.model). The
- * kinds: FortressTremor,
- *
- * BreakableStructure, ScrollingOverlay, TurningProp, GroundTileGrid,
- * AnimatedScenery, CastleGate and
- *
- * DistantLightning. The file ends with their tables of positions, models and
- * texture steps. The Em
- *
- * views and prototypes declared at its top (EmReaction, EmReactView,
- * EmSenseView, EmSight,
- *
- * EmBendView) are used by no function here.
+ * The kinds: FortressTremor, BreakableStructure, ScrollingOverlay,
+ * TurningProp, GroundTileGrid, AnimatedScenery, CastleGate and
+ * DistantLightning, then two more:
+ * - the quest-end banner (kind 23, AreaObj_K17_*): Scene_ResultFade creates
+ *   it at the end of a quest with the quest phase. It draws a full-screen
+ *   picture and the phase's mark over the darkened screen, starts the
+ *   phase's event tune and ends after 300 frames;
+ * - the volcano's hazard spawner (kind 25, AreaObj_K19_*): Area_StartObjects
+ *   creates it in AREA_VOLCANO_1, 2, 5 and 6. It starts a VolcanoHazard
+ *   attack and its stage object at one of the area's points every 300
+ *   frames.
+ * The file ends with their tables of positions, models, texture steps and
+ * points. The Em views and prototypes declared at its top (EmReaction,
+ * EmReactView, EmSenseView, EmSight, EmBendView) are used by no function
+ * here.
  */
 #include "common.h"
 #include "quest.h"
@@ -39,31 +33,76 @@
 #include "scene.h"
 #include "sprite.h"
 #include "area.h"
+#include "bgm.h"
 #include "objattach.h"
+#include "render_state.h"
+#include "camera.h"
+#include "capsule.h"
+#include "card.h"
+#include "em_bulldrome.h"
+#include "em_diablos.h"
+#include "em_drome.h"
+#include "em_vespoid.h"
+#include "sound.h"
+#include "text.h"
+#include "ambient_life.h"
+#include "draw_slots.h"
+#include "engine_math.h"
+#include "game_util.h"
+#include "hit_effects.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "volcano_hazard.h"
+#include "cam_shake.h"
+#include "em_anteka.h"
+#include "em_apceros.h"
+#include "em_blangonga.h"
+#include "em_cephadrome.h"
+#include "em_chameleos.h"
+#include "em_fatalis.h"
+#include "em_garuga.h"
+#include "em_gravios.h"
+#include "em_hermitaur.h"
+#include "em_khezu.h"
+#include "em_kind38.h"
+#include "em_kirin.h"
+#include "em_kushala.h"
+#include "em_kutku.h"
+#include "em_laoshan.h"
+#include "em_melynx.h"
+#include "em_mosswine.h"
+#include "em_plesioth.h"
+#include "em_rathalos.h"
+#include "em_remobra.h"
+#include "em_shakalaka.h"
+#include "em_shengaoren.h"
+#include "em_velociprey.h"
+#include "em_yamatsukami.h"
+#include "prim.h"
+#include "sprite_queue.h"
+
+/* Built at optimization level 4, as the game's code was; DistantLightning_Draw alone is built
+ * at level 3. */
+#pragma optimization_level 4
 
 extern EmObj *gSightBlockObjs[32];
 
-/* 8 bytes per entry of the per-kind tables at gEmReactions. */
-typedef struct EmReaction {
-    s32 noticeAdd;
-    s32 noticeMax;
-} EmReaction;
 
 extern EmRate *gEmRateTbl[];
 
 /* A view of Em at its per-player reaction values: four s16, one per player, then their last-seen
  * copies (Em_UpdateReactions runs the reaction of a player whose value changed). */
 typedef struct EmReactView {
-    u8 pad[0x6C4];
+    u8 pad[1732];
     s16 cur[4];
     s16 last[4];
 } EmReactView;
 
 /* A view of Em at what Em_SensePlayers measures of each player every frame. */
 typedef struct EmSenseView {
-    u8 pad[0x7E4];
+    u8 pad[2020];
     s16 noticeTimer[4];              /* 0x7E4: Em unk7E4 */
-    u8 pad7EC[0x818 - 0x7EC];
+    u8 pad7EC[2072 - 2028];
     f32 dist[4];                /* 0x818: from the monster to the player */
     f32 distXZ[4];              /* 0x828: the same, in the ground plane */
     f32 range[4];               /* 0x838: the four reaction ranges (Em_GetReaction kinds 3 to 6) */
@@ -72,57 +111,26 @@ typedef struct EmSenseView {
 } EmSenseView;
 
 /* prototypes */
-void ScrollingOverlay_Draw(DrawSlot *ds);
 extern f32 CastleGate_SoundPos[];
 extern f32 D_008B149C[3];
 void StageShot_CreateAt(f32 *pos, u8 kind, u8 area, s32 ang);
-void CamShake_SetA(s32 kind, f32 *pos);
-extern s16 AreaObj_K17_AngleTbl[];
-void AttackBurst_CreateAtScaled(f32 *pos, s32 v, s16 k, f32 scale);
-extern EmMotionRow *gEmMotionRows[];
-extern EmMotionRow *gEmMotionAltRows[];
-extern EmMotionRow *gEmMotionTransRows[];
-extern f32 *gEmSenseLimits[];
-s8 Em_AngleSector(Em *em, s32 idx);
-void Em_AddAlertBuildup(Em *em, u8 player, u8 idx, s8 kind);
-extern s32 *gEmNoticeDecayRates[];
-s32 EmBlangonga_CarriedShown(Em *em, u16 part);
 s32 Em_PartBroken(Em *em, s32 arg1);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
-void PartFx_SpawnAt(f32 *pos, s32 kind, f32 scale);
-extern f32 BreakableStructure_SoundPos[];
 extern f32 D_008B0B8C[];
 extern f32 BreakableStructure_EffectPos[][3];
 extern EmObj *gFlashObjs[32];
-u16 Math_AngleXZ(f32 *from, f32 *to);
 typedef struct EmSight {
     f32 *pos;
     s32 target;
     s32 dir;
     u16 half;
 } EmSight;
-f32 Math_Cos(f32 x);
-f32 Math_Absf(f32 x);
 u8 AreaHit_Raycast(f32 *a, f32 *b, f32 *out, u16 mask);
-s32 Cyl_Contains(f32 *p, f32 *c, f32 r, f32 top, f32 bottom);
-f32 Math_Sin(f32 x);
-void Mtx_RotateXYZ(f32 *m, f32 x, f32 y, f32 z);
-extern s16 BreakableStructure_ModelsDay[];
-extern s16 BreakableStructure_ModelsNight[];
-extern u16 BreakableStructure_Yaw[];
-extern f32 AmbientLife_CrossingFlyerPoints[];
 extern f32 D_008B0A94[];
 extern f32 D_008B0A98[];
-extern f32 FortressTremor_ImpactOffsets[];
 extern f32 D_008B0AC4[];
 extern f32 D_008B0AC8[];
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-s32 Sound_PlaySeAtPosChecked(s32 slot, s32 id, s32 a, void *pos, s32 b, s32 c);
-void CamShake_SetAEverywhere(s32);
 extern f32 CastleGate_PosOpen[][3];
 extern f32 CastleGate_PosShut[][3];
-u8 Player_InCurrentArea(void *obj);
-void CastleGate_Draw(DrawSlot *ds);
 typedef struct BreakableStructurePiece {
     s16 slot;
     s16 idx;
@@ -132,530 +140,26 @@ typedef struct BreakableStructurePiece {
     DrawSlot *ds;
 } BreakableStructurePiece;
 extern f32 BreakableStructure_Pos[][3];
-extern f32 BreakableStructure_Rise[];
-extern s16 BreakableStructure_Tilt[];
-void BreakableStructure_Draw(DrawSlot *s);
-u8 Quest_GetSeedByte(u8 i);
-void PlayerFx_CreateAt(f32 *src, u8 k, u8 c, f32 scale);
-void VolcanoHazard_Create(f32 *pos, u8 k, u8 c);
-s32 AreaObj_K19_GetPoints(u16 arg0);
-s16 AreaObj_K19_PointCount(u16 arg0);
-extern f32 AmbientLife_GlowBugTowerPos[];
 extern f32 D_008B0A14[];
 extern f32 D_008B0A18[];
-void Mtx_GetTrans(f32 *out, f32 *m);
-void Vec_RotateY(f32 *v, f32 a);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *v, f32 *m);
-extern f32 *AnimatedScenery_Positions[];
-void AnimatedScenery_Draw(DrawSlot *ds);
-void CastleGate_Update(Obj *o);
-extern f32 FortressTremor_PosX;
 extern f32 D_008B0AAC;
-extern f32 FortressTremor_PosZ;
-void AreaObj_K17_Draw(DrawSlot *slot);
-void FortressTremor_Draw(DrawSlot *ds);
-void DistantLightning_Draw(DrawSlot *ds);
 extern f32 TurningProp_Pos[][3];
-void Vec_Copy(f32 *dst, f32 *src);
-void TurningProp_Update(Obj *o);
-void TurningProp_Draw(DrawSlot *ds);
-s16 DrawSlot_Alloc(void);
-DrawSlot *DrawSlot_Get(s32 i);
-void GroundTileGrid_Draw(DrawSlot *s);
-f32 *Mtx_FromAnglesXYZ(s32 *ang, f32 *mtx);
 void Player_BeginLayerMotion(Player *p, s32 frame, s32 n, s32 part);
-void Mtx_TurnZ(f32 *m, f32 a);
-void Mtx_RotateZ(f32 *m, f32 a);
-extern s16 TurningProp_Models[];
-extern f32 TurningProp_Scales[];
-void Mtx_RotateY(f32 *m, f32 a);
-void Gs_SetLightList(ModelMat *mats, ModelMatSet *set);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-f32 Vec_Distance(f32 *a, f32 *b);
-void Bone_GetAnimMoveFrom(f32 fparg0, f32 fparg1, f32 *out, EmBone *b);
-void Vec_Blend(f32 *out, f32 *a, f32 *b, f32 wa, f32 wb);
-f32 Math_Hermite(f32 x, f32 a, f32 b, f32 c, f32 d, f32 e, f32 f);
-void Mtx_SetTrans(f32 *m, f32 x, f32 y, f32 z);
-void Mtx_Concat3x3(f32 *m, f32 *a);
-void Mtx_Identity(f32 *m);
-void Mtx_Scale(f32 *m, f32 x, f32 y, f32 z);
-void AmbientLife_DrawModel(ModelMatSet *set, s32 arg1);
 extern f32 gCamMatrix[];
-s32 Obj_SameArea(void *obj, Player *b);
 struct Segment;
-void Segment_Init(f32 *a, f32 *b, struct Segment *seg);
-u8 Capsule_Classify(struct Segment *seg, f32 *p, f32 r);
 EmReaction *Em_GetReaction(Em *em, u8 kind, u8 player);
-void Em_AddNotice(Em *em, s32 a, s32 b, u8 player);
-void EmAnteka_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmApceros_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmBlangonga_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmBulldrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmCephadrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmChameleos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmDiablos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmDrome_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmFatalis_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmGaruga_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmGravios_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmHermitaur_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmKhezu_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmKirin_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmKushala_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmKutku_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmLaoshan_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmMelynx_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmMosswine_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmPlesioth_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmRathalos_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmRemobra_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmShakalaka_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmShenGaoren_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmVelociprey_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmVespoid_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void EmYamaTsukami_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Obj_Free(Obj *p);
-u16 Rand_Next(s32 stream);
 struct TexRect;
-void TexRect_DrawRotated(struct TexRect *r, s32 angle);
-void AmbientLife_ResetGlowBug(Obj *o);
-void FortressTremor_Setup(Obj *o);
-void FortressTremor_Run(Obj *o);
-void FortressTremor_End(Obj *o);
-void FortressTremor_Free(Obj *o);
-void BreakableStructure_Setup(Obj *o);
-void BreakableStructure_Run(Obj *o);
-void BreakableStructure_End(Obj *o);
-void BreakableStructure_Free(Obj *o);
-void ScrollingOverlay_Setup(Obj *o);
-void ScrollingOverlay_Run(Obj *o);
-void ScrollingOverlay_End(Obj *o);
-void ScrollingOverlay_Free(Obj *o);
-void TurningProp_Setup(Obj *o);
-void TurningProp_Run(Obj *o);
-void TurningProp_End(Obj *o);
-void TurningProp_Free(Obj *o);
-void GroundTileGrid_Setup(Obj *o);
-u32 GroundTileGrid_Run(Obj *o);
-void GroundTileGrid_End(Obj *o);
-void GroundTileGrid_Free(Obj *o);
-void AnimatedScenery_Setup(Obj *o);
-u32 AnimatedScenery_Run(Obj *o);
-void AnimatedScenery_End(Obj *o);
-void AnimatedScenery_Free(Obj *o);
-void CastleGate_Setup(Obj *o);
-void CastleGate_Run(Obj *o);
-void CastleGate_End(Obj *o);
-void CastleGate_Free(Obj *o);
-void DistantLightning_Setup(Obj *o);
-void DistantLightning_Run(Obj *o);
-void DistantLightning_End(Obj *o);
-void DistantLightning_Free(Obj *o);
-void AreaObj_K17_Setup(Obj *o);
-void AreaObj_K17_Run(Obj *);
-void AreaObj_K17_End(Obj *o);
-void AreaObj_K17_Free(Obj *o);
-void AreaObj_K19_Setup(Obj *o);
-void AreaObj_K19_Run(Obj *o);
-void AreaObj_K19_End(Obj *o);
-void AreaObj_K19_Free(Obj *o);
-void Em_TurnToward(Em *em, f32 *target, s32 mode);
-void Em_SetState(Em *em, s32 group, s32 state);
-void Em_SetStateRand(Em *em, s32 arg1, s32 arg2);
-void Em_ComputeGoal(Em *em, f32 *target);
-void Em_ComputeGoal2(Em *em, f32 *target);
-s32 Em_GetTargetPos(Em *em, u8 idx, f32 *out);
-void Em_AddNeed1(Em *em, s32 n);
-void Em_UseGoalAction(Em *em);
-void EmKind38_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-s32 Sprite_Draw(Sprite *s);
-void Tex_Prepare(s32 n, s32 tex);
-void Gfx_SetBlend(s32 a, s32 b);
-void Gfx_SetTexFilter(s32 a);
-void Tex_Bind(s32 i);
-void DrawSlot_Free(s32 i);
-extern u8 AreaObj_K19_PointsA2;
-extern u8 AreaObj_K19_PointsA3;
-extern u8 AreaObj_K19_PointsA6;
-extern u8 AreaObj_K19_PointsA7;
-extern u8 *gEmRows638[];
-void Player_ForceState(void *obj, s32 state, s32 sub);
-Obj *Obj_Alloc(s32 n);
-void FortressTremor_Update(Obj *o);
-void BreakableStructure_Update(Obj *o);
-void ScrollingOverlay_Update(Obj *o);
-void GroundTileGrid_Update(Obj *o);
-void DistantLightning_Update(Obj *o);
-void AreaObj_K19_Update(Obj *o);
-void AnimatedScenery_Update(Obj *o);
-void AreaObj_K17_Update(Obj *o);
-s32 Model_Draw(u32 h, s32 flags);
-void Mtx_Translation(f32 *m, f32 x, f32 y, f32 z);
-s32 Gs_SetState(u8 reg, u32 v);
-void Draw_ApplyStates(u32);
-void Draw_SetDefaultState(void);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 extern EmObj *gAreaObjList[32];
-u32 Player_TestFlag(void *obj, u32 flag);
-f32 Em_LevelAttackFactor(Em *em);
-f32 Em_LevelDamageFactor(Em *em);
-extern EmRageRow *gEmRageTbl[];
-extern s16 CastleGate_Models[];
-void Em_SyncState(Em *em, s32 kind, s32 b, s32 c);
-s32 Game_IsOnline(void);
-extern s32 *gEmPartBuildupLimits[];
-s32 Em_ScriptFlagsFrom(Em *em, u8 mask);
-u16 Area_DayId(u16 id);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-extern u8 GroundTileGrid_Jungle1Tiles[];
-extern u8 GroundTileGrid_Jungle6Tiles[];
-extern u16 GroundTileGrid_Jungle6Turns[];
 extern f32 gViewMatrix[];
 extern f32 gFrustumPlanes[];
-void Camera_BuildFrustum(f32);
-s32 Frustum_TestSphere(f32 *p, f32 *out, f32 *m, f32 *fr, f32 r);
 typedef struct EmBendView {
-    u8 pad[0x63C];
+    u8 pad[1596];
     u32 bend[4];
 } EmBendView;
-extern EmBendRow *gEmBendOrigins[];
 /* end of prototypes */
 
-s32 OT_AddByDepth(u32 *table, DrawSlot *node, u32 n, s32 clamp);
 /*
- * Run state of AmbientLife's circling flyer (type 7): adds its turn step
- * (AmbientLifeMover.circleStep) to its heading (AmbientLifeMover.rot[1]), places the draw slot
- * at the circle's centre (Obj.pos) plus the circle offset kept in AmbientLifeMover.m
- * turned by that heading, and adds the slot to gDrawOt32. Returns
- * OT_AddByDepth's result.
- */
-u32 AmbientLife_RunCirclingFlyer(Obj *obj)
-{
-    u8 *tumble = obj->buf;
-    f32 offset[4];
-
-    *(u16 *) (tumble + 0x4E) += (s32) *(u16 *) (tumble + 0x54);
-    Mtx_GetTrans(offset, (f32 *)tumble);
-    Vec_RotateY(offset, (6.2831855f * *(u16 *) (tumble + 0x4E)) / 65536.0f);
-    obj->ds->pos[0] = obj->pos[0] + offset[0];
-    obj->ds->pos[1] = obj->pos[1] + offset[1];
-    obj->ds->pos[2] = obj->pos[2] + offset[2];
-    return OT_AddByDepth(gDrawOt32, obj->ds, 0x20, 0);
-}
-
-/*
- * Draws the circling flyer: model 8 of the area's ambient set
- * (gAreaFxModels) from the area's sub-model, turned by its heading and its
- * facing (AmbientLifeMover.m), at the draw slot, banked 10 degrees about z into the
- * turn (Obj.var2 is the direction); AREA_FOREST_HILLS_6 draws it three times
- * bigger. Draws nothing without the sub-model or the model. The switch keeps
- * default first: the compiler then lays out the branches, with their empty
- * delay slots, as the game's code does.
- */
-void AmbientLife_DrawCirclingFlyer(DrawSlot *drawSlot)
-{
-    Obj *obj = drawSlot->owner;
-    Model *stage = gAreaSubModels[0];
-    f32 *orient = obj->buf;
-    ModelMatSet *model;
-    f32 mtx[16];
-    s16 k;
-    u16 area;
-
-    if (stage != NULL) {
-        if (stage->active == 0) {
-            return;
-        }
-        area = gScene.area;
-        k = gAreaFxModels[area][8];
-        if (k >= 0) {
-            model = &stage->matSets[k];
-            switch (area) {
-            default:
-                Mtx_Identity(mtx);
-                break;
-            case AREA_FOREST_HILLS_6:
-                Mtx_Scale(mtx, 3.0f, 3.0f, 3.0f);
-                break;
-            }
-            Mtx_RotateY(mtx, (6.2831855f * *(u16 *) ((u8 *) orient + 0x4E)) / 65536.0f);
-            Mtx_Concat3x3(mtx, orient);
-            Mtx_SetTrans(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
-            if (obj->var2 == 0) {
-                Mtx_TurnZ(mtx, -0.17453294f);
-            } else {
-                Mtx_TurnZ(mtx, 0.17453294f);
-            }
-            AmbientLife_DrawModel(model, (s32) mtx);
-        }
-    }
-}
-
-/*
- * Starts a life of AmbientLife's glow bug (type 8): unless it was placed at a
- * gathering point (Obj.var4 0xFF), moves it near a fixed point of
- * AREA_FOREST_HILLS_9 and its night, or to its place Obj.var4 of
- * AmbientLife_GlowBugTowerPos in AREA_TOWER_8; then picks a life of 5 to 8
- * seconds (Obj.var3), its drift directions on x and z (Obj.var1, Obj.var2)
- * and full brightness (Obj.fvar 1.0).
- */
-void AmbientLife_ResetGlowBug(Obj *obj)
-{
-
-    if (obj->var4 != 0xFF) {
-        switch (gScene.area) {
-        case AREA_FOREST_HILLS_9:
-        case AREA_FOREST_HILLS_NIGHT_9:
-            obj->pos[0] = 11750.0f + (f32) ((Rand_Next(1) & 0x1FF) - 0x100);
-            obj->pos[1] = 200.0f;
-            obj->pos[2] = 9500.0f + (f32) ((Rand_Next(1) & 0x1FF) - 0x100);
-            break;
-        case AREA_TOWER_8:
-            obj->pos[0] = AmbientLife_GlowBugTowerPos[obj->var4 * 3];
-            obj->pos[1] = D_008B0A14[obj->var4 * 3];
-            obj->pos[2] = D_008B0A18[obj->var4 * 3];
-            break;
-        }
-    }
-    obj->timer = 0;
-    obj->var3 = ((Rand_Next(1) & 3) + 5) * 60;
-    obj->var1 = Rand_Next(1) & 1;
-    obj->var2 = Rand_Next(1) & 1;
-    obj->fvar = 1.0f;
-}
-
-/* Set-up of the glow bug: AmbientLife_ResetGlowBug. */
-void AmbientLife_SetupGlowBug(Obj *obj)
-{
-    AmbientLife_ResetGlowBug(obj);
-}
-
-/*
- * Run state of the glow bug: while it lives (Obj.var0 0) its brightness
- * Obj.fvar pulses (|cos| of the frame count, a turn per 64 frames) and it
- * drifts 0.2 to 1.5 a frame on x and z, rising by their mean; then it dims by
- * a tenth a frame for 10 frames and starts a new life, or ends when it came
- * from a gathering point. Adds the draw slot to gDrawOtSorted.
- */
-void AmbientLife_RunGlowBug(Obj *obj)
-{
-    f32 x;
-    f32 z;
-
-    switch (obj->var0) {
-    case 0:
-        obj->timer++;
-        if (obj->timer >= obj->var3) {
-            obj->var0++;
-            obj->timer = 10;
-        } else {
-            obj->fvar = Math_Absf(Math_Cos((6.2831855f * (obj->timer << 10)) / 65536.0f));
-        }
-        x = 0.2f + 0.02f * (Rand_Next(1) & 0x3F);
-        z = 0.2f + 0.02f * (Rand_Next(1) & 0x3F);
-        if (obj->var1) {
-            x *= -1.0f;
-        }
-        if (obj->var2) {
-            z *= -1.0f;
-        }
-        obj->pos[0] += x;
-        obj->pos[2] += z;
-        obj->pos[1] += (x + z) / 2.0f;
-        break;
-    case 1:
-        if (--obj->timer <= 0) {
-            if (obj->var4 == 0xFF) {
-                obj->state++;
-                return;
-            }
-            obj->var0 = 0;
-            AmbientLife_ResetGlowBug(obj);
-        } else {
-            obj->fvar -= obj->fvar / 10.0f;
-        }
-        break;
-    }
-    obj->ds->pos[0] = obj->pos[0];
-    obj->ds->pos[1] = obj->pos[1];
-    obj->ds->pos[2] = obj->pos[2];
-    OT_AddByDepth(gDrawOtSorted, obj->ds, 0x40, 0);
-}
-
-/*
- * Draws the glow bug facing the camera: model 9 of the area's ambient set,
- * blended by Gfx_SetBlend(4, 1) without depth writes, scaled by its
- * brightness (not in AREA_TOWER_8), with alpha 255 * Obj.fvar; then restores
- * the blend and depth writes.
- */
-void AmbientLife_DrawGlowBug(DrawSlot *drawSlot)
-{
-    Obj *obj = drawSlot->owner;
-    Model *stage = gAreaSubModels[0];
-    ModelMatSet *model;
-    f32 mtx[16];
-    s16 k;
-
-    if (stage != NULL && stage->active != 0) {
-        k = gAreaFxModels[gScene.area][9];
-        if (k >= 0) {
-            model = &stage->matSets[k];
-            Gfx_SetBlend(4, 1);
-            Gs_SetState(0x60, 0);
-            Gs_SetState(0x6C, 0);
-            if (gScene.area == AREA_TOWER_8) {
-                Mtx_Identity(mtx);
-            } else {
-                Mtx_Scale(mtx, obj->fvar, obj->fvar, obj->fvar);
-            }
-            Mtx_SetTrans(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
-            Mtx_Concat3x3(mtx, gCamMatrix);
-            Gs_SetState(0x67, ((u8) (u32) (255.0f * obj->fvar) << 24) | 0xFFFFFF);
-            AmbientLife_DrawModel(model, (s32) mtx);
-            Gfx_SetBlend(4, 5);
-            Gs_SetState(0x6C, 1);
-        }
-    }
-}
-
-/* Set-up of AmbientLife's type 9, which no spawner creates: does nothing. */
-void AmbientLife_SetupUnused(void)
-{
-}
-
-/* Run state of the unused type 9: does nothing. */
-void AmbientLife_RunUnused(void)
-{
-}
-
-/* Draw of the unused type 9: does nothing. */
-void AmbientLife_DrawUnused(void)
-{
-}
-
-/* Set-up of AmbientLife's type 10, which no spawner creates: does nothing. */
-void AmbientLife_SetupUnusedNext(void)
-{
-}
-
-/* Run state of the unused type 10: does nothing. */
-void AmbientLife_RunUnusedNext(void)
-{
-}
-
-/* Draw of the unused type 10: does nothing. */
-void AmbientLife_DrawUnusedNext(void)
-{
-}
-
-/*
- * Set-up of AmbientLife's crossing flyer (type 11), which arrives with the
- * number of its points in Obj.var3 (2, from AmbientLife_SpawnChildWithPoints): picks a
- * start point (Obj.var0) and another end point (Obj.var1) of
- * AmbientLife_CrossingFlyerPoints, a bob height of 12.5 to 37.5 (Obj.fvar)
- * and a random phase (Obj.timer). In AREA_FOREST_HILLS_3 and its night it
- * starts at its point (height jittered by up to 128) heading for the end
- * point (Obj.var3). Obj.var0 then becomes half its bob period, 48 to 79
- * frames.
- */
-void AmbientLife_SetupCrossingFlyer(Obj *obj)
-{
-
-    obj->var0 = Rand_Next(1) % obj->var3;
-    obj->var1 = Rand_Next(1) % (obj->var3 - 1) + 1;
-    obj->var1 = obj->var1 + obj->var0;
-    if (obj->var1 >= obj->var3) {
-        obj->var1 -= obj->var3;
-    }
-    obj->fvar = 25.0f * (0.5f + 0.001f * (Rand_Next(1) & 0x3FF));
-    obj->var2 = 0;
-    obj->timer = Rand_Next(1);
-    switch (gScene.area) {
-    case AREA_FOREST_HILLS_3:
-    case AREA_FOREST_HILLS_NIGHT_3:
-        obj->pos[0] = AmbientLife_CrossingFlyerPoints[obj->var0 * 3];
-        obj->pos[1] = D_008B0A94[obj->var0 * 3] + (f32) ((u8) Rand_Next(1) - 0x80);
-        obj->pos[2] = D_008B0A98[obj->var0 * 3];
-        obj->var3 = Math_Heading(AmbientLife_CrossingFlyerPoints[obj->var1 * 3], D_008B0A98[obj->var1 * 3], obj->pos[0], obj->pos[2]) + 0x4000;
-        break;
-    }
-    obj->var0 = (Rand_Next(1) & 0x1F) + 0x30;
-}
-
-/*
- * Run state of the crossing flyer: steps its wing frame (Obj.var2, 0-3); ends
- * once within 100 of its end point; else moves 10 a frame along its heading
- * and places the draw slot bobbing by Obj.fvar times a sine of the frame
- * count (a wave per 2 * Obj.var0 frames), added to gDrawOt32.
- */
-void AmbientLife_RunCrossingFlyer(Obj *obj)
-{
-    f32 step[4];
-    f32 target[4];
-    f32 *stepY;
-    f32 *stepZ;
-    f32 wave;
-    f32 bob;
-
-    obj->timer++;
-    obj->var2++;
-    obj->var2 &= 3;
-    switch (gScene.area) {
-    case AREA_FOREST_HILLS_3:
-    case AREA_FOREST_HILLS_NIGHT_3:
-        target[0] = AmbientLife_CrossingFlyerPoints[obj->var1 * 3];
-        target[1] = D_008B0A94[obj->var1 * 3];
-        target[2] = D_008B0A98[obj->var1 * 3];
-        break;
-    }
-    if (Cyl_Contains(obj->pos, target, 100.0f, -1.0f, -1.0f) != 0) {
-        obj->state++;
-        return;
-    }
-    step[0] = 0.0f;
-    stepY = &step[1];
-    stepZ = &step[2];
-    *stepY = 0.0f;
-    *stepZ = 10.0f;
-    Vec_RotateY(step, (6.2831855f * obj->var3) / 65536.0f);
-    obj->pos[0] += step[0];
-    obj->pos[1] += *stepY;
-    obj->pos[2] += *stepZ;
-    wave = Math_Sin((6.2831855f * (360.0f * ((f32) obj->timer / (f32) (obj->var0 * 2)))) / 360.0f);
-    bob = obj->fvar * wave;
-    obj->ds->pos[0] = obj->pos[0];
-    obj->ds->pos[1] = obj->pos[1] + bob;
-    obj->ds->pos[2] = obj->pos[2];
-    OT_AddByDepth(gDrawOt32, obj->ds, 0x20, 0);
-}
-
-/*
- * Draws the crossing flyer: model 8 + Obj.var2 of the area's sub-model (its
- * four wing frames) at the draw slot, turned by its heading, with alpha test
- * reference 0x80.
- */
-void AmbientLife_DrawCrossingFlyer(DrawSlot *drawSlot)
-{
-    Obj *obj = drawSlot->owner;
-    Model *stage = gAreaSubModels[0];
-    f32 mtx[16];
-    ModelMatSet *mdl;
-    s16 k;
-
-    if (stage != NULL && stage->active != 0) {
-        k = obj->var2;
-        mdl = stage->matSets + k + 8;
-        Gs_SetState(0x60, 0x80);
-        Mtx_Translation(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
-        Mtx_RotateY(mtx, (6.2831855f * obj->var3) / 65536.0f);
-        AmbientLife_DrawModel(mdl, (s32) mtx);
-    }
-}
-
-/*
- * Creates the FortressTremor object (kind 0xA, no buffer); Area_StartObjects
+ * Creates the FortressTremor object (kind 10, no buffer); Area_StartObjects
  * calls it for AREA_FORTRESS_0 and its night.
  */
 void FortressTremor_Create(void)
@@ -663,7 +167,7 @@ void FortressTremor_Create(void)
     Obj *obj = Obj_Alloc(0);
 
     if (obj != NULL) {
-        obj->kind = 0xA;
+        obj->kind = 10;
         obj->type = 0;
         obj->update = FortressTremor_Update;
     }
@@ -720,9 +224,9 @@ void FortressTremor_Setup(Obj *obj)
 
 /*
  * Run state: when its wait (Obj.timer) runs out, a tremor: shakes the camera
- * for everyone, plays the rumble (area sound 0x60) at the local player and
+ * for everyone, plays the rumble (area sound 96) at the local player and
  * drops its model 62.5 a frame for 15 frames (drawn through gDrawOt32),
- * playing an impact (area sound 0x61) at one of four
+ * playing an impact (area sound 97) at one of four
  * FortressTremor_ImpactOffsets around the player on the third; then waits 60
  * to 91 frames back at its start height.
  */
@@ -738,28 +242,28 @@ void FortressTremor_Run(Obj *obj)
             obj->var0++;
             obj->timer = 16;
             CamShake_SetAEverywhere(0);
-            Sound_PlaySeAtPosChecked(7, 0x60, 0, pl->pos, 0x13, 0);
+            Sound_PlaySeAtPosChecked(7, 96, 0, pl->pos, 19, 0);
         }
         break;
     case 1:
         if (--obj->timer <= 0) {
             obj->var0 = 0;
-            obj->timer = (Rand_Next(1) & 0x1F) + 0x3C;
+            obj->timer = (Rand_Next(1) & 0x1F) + 60;
             obj->pos[1] = D_008B0AAC;
             break;
         }
-        if (obj->timer == 0xD) {
+        if (obj->timer == 13) {
             k = Rand_Next(1) & 3;
             impactPos[0] = pl->pos[0] + FortressTremor_ImpactOffsets[k * 3];
             impactPos[1] = pl->pos[1] + D_008B0AC4[k * 3];
             impactPos[2] = pl->pos[2] + D_008B0AC8[k * 3];
-            Sound_PlaySeAtPosChecked(7, 0x61, 0, impactPos, 0x13, 0);
+            Sound_PlaySeAtPosChecked(7, 97, 0, impactPos, 19, 0);
         }
         obj->pos[1] -= 62.5f;
         obj->ds->pos[0] = obj->pos[0];
         obj->ds->pos[1] = obj->pos[1];
         obj->ds->pos[2] = obj->pos[2];
-        OT_AddByDepth(gDrawOt32, obj->ds, 0x20, 1);
+        OT_AddByDepth(gDrawOt32, obj->ds, 32, 1);
         break;
     }
 }
@@ -779,7 +283,7 @@ void FortressTremor_Free(Obj *obj)
 
 /*
  * Draws the first model of the area's sub-model at the draw slot, alpha test
- * reference 0x80.
+ * reference 128.
  */
 void FortressTremor_Draw(DrawSlot *drawSlot)
 {
@@ -790,9 +294,9 @@ void FortressTremor_Draw(DrawSlot *drawSlot)
     subs = gAreaSubModels[0];
     if ((subs != NULL) && (subs->active != 0)) {
         model = subs->matSets;
-        Gs_SetState(0x60, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         Mtx_Translation(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         if (model->id != -1) {
             Draw_ApplyStates(model->flags);
             Model_Draw(model->id, 0);
@@ -802,16 +306,16 @@ void FortressTremor_Draw(DrawSlot *drawSlot)
 }
 
 /*
- * Creates the BreakableStructure object (kind 0xB, one buffer block for its
+ * Creates the BreakableStructure object (kind 11, one buffer block for its
  * five BreakableStructurePiece entries); Area_StartObjects calls it for
  * AREA_FORTRESS_3 and its night.
  */
 void BreakableStructure_Create(void)
 {
-    Obj *obj = Obj_Alloc(0x1);
+    Obj *obj = Obj_Alloc(1);
 
     if (obj != NULL) {
-        obj->kind = 0xB;
+        obj->kind = 11;
         obj->type = 0;
         obj->update = BreakableStructure_Update;
     }
@@ -886,7 +390,7 @@ void BreakableStructure_Setup(Obj *obj)
 /*
  * Run state: whole (Obj.var0 0), it waits for bit 0 of gScene.emEventFlags (a
  * fortress strike of Lao-Shan Lung or Shen Gaoren), then plays the break
- * sounds (0x1A, 0x1B) of the first such monster shown in the area and spawns
+ * sounds (26, 27) of the first such monster shown in the area and spawns
  * three effects (Effect0D kind 0, scale 25); for the next 5 frames each piece
  * rises and tilts by a fifth of its amounts; then it stays broken. Draws
  * pieces 0-3 while whole, all five while breaking, piece 4 alone once broken
@@ -904,9 +408,9 @@ void BreakableStructure_Run(Obj *obj)
         if (gScene.emEventFlags & 1) {
             for (i = 0; i < 20; i++, em++) {
                 if (em->active != 0 && em->visible != 0 && Player_InCurrentArea(em) != 0
-                    && (em->type == 7 || em->type == 0x32 || em->type == 0x37)) {
-                    Em_PlaySeChecked(em, 0x1A, 0, BreakableStructure_SoundPos, 8, 0);
-                    Em_PlaySeChecked(em, 0x1B, 0, D_008B0B8C, 8, 0);
+                    && (em->type == 7 || em->type == 50 || em->type == 55)) {
+                    Em_PlaySeChecked(em, 26, 0, BreakableStructure_SoundPos, 8, 0);
+                    Em_PlaySeChecked(em, 27, 0, D_008B0B8C, 8, 0);
                     break;
                 }
             }
@@ -945,7 +449,7 @@ void BreakableStructure_Run(Obj *obj)
             piece->ds->pos[0] = piece->pos[0];
             piece->ds->pos[1] = piece->pos[1];
             piece->ds->pos[2] = piece->pos[2];
-            OT_AddByDepth(gDrawOt32, piece->ds, 0x20, 0);
+            OT_AddByDepth(gDrawOt32, piece->ds, 32, 0);
         }
     }
 }
@@ -962,10 +466,10 @@ void BreakableStructure_End(Obj *obj)
     obj->state++;
     obj->visible = 0;
     for (i = 0; i < 5; i++) {
-        if (*(s32 *) (pieceBytes + 0x14) != 0) {
+        if (*(s32 *) (pieceBytes + 20) != 0) {
             DrawSlot_Free(*(s16 *) pieceBytes);
         }
-        pieceBytes += 0x18;
+        pieceBytes += 24;
     }
 }
 
@@ -979,7 +483,7 @@ void BreakableStructure_Free(Obj *obj)
  * Draws piece DrawSlot.part: its model (BreakableStructure_ModelsDay in
  * AREA_FORTRESS_3, BreakableStructure_ModelsNight in AREA_FORTRESS_NIGHT_3,
  * nothing elsewhere) at the slot, tilted about x by the piece's angle and
- * turned by BreakableStructure_Yaw, alpha test reference 0x80; skips a model
+ * turned by BreakableStructure_Yaw, alpha test reference 128; skips a model
  * whose id is 0.
  */
 void BreakableStructure_Draw(DrawSlot *drawSlot)
@@ -1000,21 +504,21 @@ void BreakableStructure_Draw(DrawSlot *drawSlot)
         default:
             return;
         }
-        Gs_SetState(0x60, 0x80);
+        Gs_SetState(RS_ALPHA_REF, 128);
         Mtx_Translation(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
         Mtx_RotateXYZ(mtx, (6.2831855f * piece->ang) / 65536.0f, (6.2831855f * BreakableStructure_Yaw[piece->idx]) / 65536.0f, 0.0f);
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         if (mdl != NULL && mdl->id != 0) {
             Draw_ApplyStates(mdl->flags);
             Model_Draw(mdl->id, 0);
-            Gs_SetState(0x60, 0);
+            Gs_SetState(RS_ALPHA_REF, 0);
             Draw_SetDefaultState();
         }
     }
 }
 
 /*
- * Creates the ScrollingOverlay object (kind 0xE, no buffer);
+ * Creates the ScrollingOverlay object (kind 14, no buffer);
  * Area_StartObjects calls it in the areas its set-up knows.
  */
 void ScrollingOverlay_Create(void)
@@ -1022,7 +526,7 @@ void ScrollingOverlay_Create(void)
     Obj *obj = Obj_Alloc(0);
 
     if (obj != NULL) {
-        obj->kind = 0xE;
+        obj->kind = 14;
         obj->type = 0;
         obj->update = ScrollingOverlay_Update;
     }
@@ -1339,7 +843,6 @@ extern s16 ScrollingOverlay_SlotsDesert2[4];
 extern s16 ScrollingOverlay_SlotsDesert3[4];
 extern s16 ScrollingOverlay_SlotsDesert9[4];
 extern s16 ScrollingOverlay_SlotsDesert10[8];
-f32 Math_Floor(f32 x);
 
 /* One sliding overlay of types 1-5: overlay 0 runs on Obj.var0 (its row), Obj.timer and Obj.var2
  * (its duration), overlay 1 on Obj.var1, Obj.var3 and Obj.var4; it moves 1000 along x from its row
@@ -1367,10 +870,10 @@ f32 Math_Floor(f32 x);
     } else if (duration - 20 < elapsed) {                                 \
         alpha = (u8) (255.0f * ((f32) (duration - elapsed) / 20.0f));         \
     } else {                                                 \
-        alpha = 0xFF;                                            \
+        alpha = 255;                                            \
     }                                                        \
     mdl = stage->matSets + off;                              \
-    Gs_SetState(0x67, alpha << 24 | 0xFFFFFF);                   \
+    Gs_SetState(RS_COLOR2, alpha << 24 | 0xFFFFFF);                   \
     break;
 
 /*
@@ -1418,8 +921,8 @@ void ScrollingOverlay_Draw(DrawSlot *drawSlot)
         case 6: slotOn = ScrollingOverlay_SlotsDesert10; break;
         default: return;
         }
-        Gs_SetState(0x6C, 0);
-        Gs_SetState(0x60, 0);
+        Gs_SetState(RS_ZWRITE, 0);
+        Gs_SetState(RS_ALPHA_REF, 0);
         pos = ScrollingOverlay_ForestHillsPos[0];
         for (i = 0, off = 0; i < 4; i++) {
             if (*slotOn++ != 0) {
@@ -1451,7 +954,7 @@ void ScrollingOverlay_Draw(DrawSlot *drawSlot)
                 texU -= Math_Floor(texU);
                 texV -= Math_Floor(texV);
                 Mtx_Translation(uvMtx, texU, texV, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 x = 0.0f;
                 y = x;
                 z = x;
@@ -1460,7 +963,7 @@ void ScrollingOverlay_Draw(DrawSlot *drawSlot)
                     x = pos[0];
                     y = pos[1];
                     z = pos[2];
-                    mdl = (ModelMatSet *) ((u8 *) stage->matSets + off + 0x8C);
+                    mdl = (ModelMatSet *) ((u8 *) stage->matSets + off + 140);
                     break;
                 case 1:
                     OVERLAY_SLIDE_ROW(ScrollingOverlay_RowsDesertNight7, 0)
@@ -1477,23 +980,23 @@ void ScrollingOverlay_Draw(DrawSlot *drawSlot)
                     break;
                 }
                 Mtx_Translation(posMtx, x, y, z);
-                Gs_SetState(0x1A, (s32) posMtx);
+                Gs_SetState(RS_MTX_SLOT(0), (s32) posMtx);
                 if (mdl->id != -1) {
                     Draw_ApplyStates(mdl->flags);
-                    Gfx_SetTexFilter(1);
+                    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
                     Model_Draw(mdl->id, 0);
                 }
             }
             pos += 3;
-            off += 0x8C;
+            off += 140;
         }
         Draw_SetDefaultState();
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
     }
 }
 
 /*
- * Creates the five TurningProp objects (kind 0x10, types 0-4, no buffer) in
+ * Creates the five TurningProp objects (kind 16, types 0-4, no buffer) in
  * AREA_BATTLE_TOWN_0 and its night, where Area_StartObjects calls it; creates
  * nothing elsewhere.
  */
@@ -1510,7 +1013,7 @@ void TurningProp_Create(void)
         for (i = 0; i < 5; i++) {
             obj = Obj_Alloc(0);
             if (obj != NULL) {
-                obj->kind = 0x10;
+                obj->kind = 16;
                 obj->type = i;
                 obj->update = TurningProp_Update;
             }
@@ -1583,7 +1086,7 @@ void TurningProp_Run(Obj *obj)
     obj->ds->pos[0] = obj->pos[0];
     obj->ds->pos[1] = obj->pos[1];
     obj->ds->pos[2] = obj->pos[2];
-    OT_AddByDepth(gDrawOt32, obj->ds, 0x20, 0);
+    OT_AddByDepth(gDrawOt32, obj->ds, 32, 0);
 }
 
 /* End state: hides the prop; its draw slot is not freed. */
@@ -1603,7 +1106,7 @@ void TurningProp_Free(Obj *obj)
  * Draws the prop: model TurningProp_Models[type] of the area model with its
  * lights, scaled by TurningProp_Scales[type] and turned about y once per
  * period (the angle falls as Obj.timer grows) at the prop's position, alpha
- * test reference 0x80.
+ * test reference 128.
  */
 void TurningProp_Draw(DrawSlot *drawSlot)
 {
@@ -1618,8 +1121,8 @@ void TurningProp_Draw(DrawSlot *drawSlot)
         Mtx_Scale(mtx, TurningProp_Scales[obj->type], TurningProp_Scales[obj->type], TurningProp_Scales[obj->type]);
         Mtx_RotateY(mtx, (6.2831855f * (360.0f * (1.0f - (f32) obj->timer / (f32) obj->var3))) / 360.0f);
         Mtx_SetTrans(mtx, obj->pos[0], obj->pos[1], obj->pos[2]);
-        Gs_SetState(0x1A, (s32) mtx);
-        Gs_SetState(0x60, 0x80);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
+        Gs_SetState(RS_ALPHA_REF, 128);
         if (model != NULL && model->id != -1) {
             Draw_ApplyStates(model->flags);
             Model_Draw(model->id, 0);
@@ -1629,7 +1132,7 @@ void TurningProp_Draw(DrawSlot *drawSlot)
 }
 
 /*
- * Creates the GroundTileGrid object (kind 0x11, no buffer); Area_StartObjects
+ * Creates the GroundTileGrid object (kind 17, no buffer); Area_StartObjects
  * calls it for AREA_JUNGLE_1, AREA_JUNGLE_6 and their nights.
  */
 void GroundTileGrid_Create(void)
@@ -1637,7 +1140,7 @@ void GroundTileGrid_Create(void)
     Obj *obj = Obj_Alloc(0);
 
     if (obj != NULL) {
-        obj->kind = 0x11;
+        obj->kind = 17;
         obj->type = 0;
         obj->update = GroundTileGrid_Update;
     }
@@ -1728,7 +1231,7 @@ void GroundTileGrid_Free(Obj *obj)
  * 2000-unit tiles (GroundTileGrid_Jungle1Tiles), AREA_JUNGLE_6 18 rows of 7
  * tiles of 500 by 1000 (GroundTileGrid_Jungle6Tiles), each turned by
  * GroundTileGrid_Jungle6Turns. A tile (its low 4 bits: its model of the
- * area's sub-model; 0xFF: none) is drawn at height 0 when its bounding sphere
+ * area's sub-model; 255: none) is drawn at height 0 when its bounding sphere
  * is in the view frustum (Camera_BuildFrustum out to 4000). In the first case
  * the assignments stay in this order: the compiler then loads the table's
  * address after the radius is stored, as the game's code does.
@@ -1755,12 +1258,12 @@ void GroundTileGrid_Draw(DrawSlot *drawSlot)
     f32 x;
 
     if (stage != NULL && stage->active != 0) {
-        Gs_SetState(0x60, 0x80);
-        Gs_SetState(0x67, -1);
+        Gs_SetState(RS_ALPHA_REF, 128);
+        Gs_SetState(RS_COLOR2, -1);
         day = Area_DayId(gScene.area);
         switch (day) {
         case 2:
-        case 0x6F:
+        case 111:
             z = 4000.0f;
             startX = 8000.0f;
             zstep = 2000.0f;
@@ -1771,7 +1274,7 @@ void GroundTileGrid_Draw(DrawSlot *drawSlot)
             tbl = GroundTileGrid_Jungle1Tiles;
             Camera_BuildFrustum(4000.0f);
             break;
-        case 0x74:
+        case 116:
             z = 5800.0f;
             startX = 10100.0f;
             rows = 18;
@@ -1784,22 +1287,22 @@ void GroundTileGrid_Draw(DrawSlot *drawSlot)
             break;
         }
         sph[2] = 0.0f;
-        Tex_Prepare(0x10, 0x128);
+        Tex_Prepare(16, 296);
         for (i = 0; i < rows; i++) {
             x = startX;
             for (j = 0; j < cols; j++) {
                 k = i * cols + j;
                 tileId = tbl[(s16) k];
-                if (tileId != 0xFF) {
+                if (tileId != 255) {
                     sph[1] = x;
                     sph[3] = z;
                     if (Frustum_TestSphere(&sph[1], out, gViewMatrix, gFrustumPlanes, sph[4]) != 0) {
                         mdl = stage->matSets + (tileId & 0xF);
                         Mtx_Translation(mtx, x, 0.0f, z);
-                        if (day == 0x74) {
+                        if (day == 116) {
                             Mtx_RotateY(mtx, (6.2831855f * GroundTileGrid_Jungle6Turns[k]) / 65536.0f);
                         }
-                        Gs_SetState(0x1A, (s32) mtx);
+                        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
                         Draw_ApplyStates(mdl->flags);
                         Model_Draw(mdl->id, 0);
                     }
@@ -1812,7 +1315,7 @@ void GroundTileGrid_Draw(DrawSlot *drawSlot)
 }
 
 /*
- * Creates the AnimatedScenery object (kind 0x13, no buffer) of scenery set
+ * Creates the AnimatedScenery object (kind 19, no buffer) of scenery set
  * setId (its Obj.type); Area_StartObjects passes the area's third set-up id
  * of gAreaInfo.
  */
@@ -1821,7 +1324,7 @@ void AnimatedScenery_Create(u8 setId)
     Obj *obj = Obj_Alloc(0);
 
     if (obj != NULL) {
-        obj->kind = 0x13;
+        obj->kind = 19;
         obj->type = setId;
         obj->update = AnimatedScenery_Update;
     }
@@ -1883,8 +1386,8 @@ void AnimatedScenery_Setup(Obj *obj)
 
 /*
  * Run state: counts Obj.timer up and the set's own counter Obj.var3: wrapping
- * at 896 (set 0x19), 600 (set 0x24, whose Obj.var5 wraps at 1200) or 800
- * (sets 0x36, 0x37), or stepping as an angle by 0x2E (set 0x25) or 0x5B (the
+ * at 896 (set 25), 600 (set 36, whose Obj.var5 wraps at 1200) or 800
+ * (sets 54, 55), or stepping as an angle by 46 (set 37) or 91 (the
  * others) a frame. Adds the draw slot to gDrawOt8 and returns OT_AddByDepth's
  * result.
  */
@@ -1893,39 +1396,39 @@ u32 AnimatedScenery_Run(Obj *obj)
 
     obj->timer++;
     switch (obj->type) {
-    case 0x19:
+    case 25:
         obj->var3++;
-        if (obj->var3 >= 0x380) {
+        if (obj->var3 >= 896) {
             obj->var3 = 0;
         }
         break;
-    case 0x24:
+    case 36:
         obj->var5++;
-        if (obj->var5 >= 0x4B0) {
+        if (obj->var5 >= 1200) {
             obj->var5 = 0;
         }
         obj->var3++;
-        if (obj->var3 >= 0x258) {
+        if (obj->var3 >= 600) {
             obj->var3 = 0;
         }
         break;
-    case 0x25:
-        obj->var3 += 0x2E;
+    case 37:
+        obj->var3 += 46;
         break;
-    case 0x36:
+    case 54:
         obj->var3++;
-        if (obj->var3 >= 0x320) {
+        if (obj->var3 >= 800) {
             obj->var3 = 0;
         }
         break;
-    case 0x37:
+    case 55:
         obj->var3++;
-        if (obj->var3 >= 0x320) {
+        if (obj->var3 >= 800) {
             obj->var3 = 0;
         }
         break;
     default:
-        obj->var3 += 0x5B;
+        obj->var3 += 91;
         break;
     }
     return OT_AddByDepth(gDrawOt8, obj->ds, 8, 1);
@@ -1946,17 +1449,17 @@ void AnimatedScenery_Free(Obj *obj)
 
 /*
  * Returns 1 for the scenery sets drawn from the area model with its lights
- * (0x20-0x22, 0x36, 0x37), else 0. obj is the AnimatedScenery object, passed
+ * (32-34, 54, 55), else 0. obj is the AnimatedScenery object, passed
  * as an Em (Em.subType lies where Obj.type does); type is unused.
  */
-s32 func_006FD010(Em *obj, u8 type)
+s32 AnimatedScenery_UsesAreaModel(Em *obj, u8 type)
 {
     switch (obj->subType) {
-    case 0x20:
-    case 0x21:
-    case 0x22:
-    case 0x36:
-    case 0x37:
+    case 32:
+    case 33:
+    case 34:
+    case 54:
+    case 55:
         return 1;
     }
     return 0;
@@ -1966,12 +1469,6 @@ extern s16 AnimatedScenery_FirstModel[56];
 extern s16 *AnimatedScenery_Hidden[56];
 extern f32 AnimatedScenery_FlipbookUV[16][2];
 
-/* The models of area object K13 (by type): type 0x11 first draws the other stage's model 8. Then up
- * to four models (the 0 entries of AnimatedScenery_Hidden[type]; AnimatedScenery_FirstModel[type] the first model, AnimatedScenery_Positions[type]
- * the positions), each with a texture scroll by type (unk008, unk00A; AnimatedScenery_FlipbookUV a 4x4 tile grid).
- * Level 4 (the 8 FPU register words of the two 0.0333f * 360 * unk00A lines differ at 3): the functions
- * GroundTileGrid_Create-CastleGate_Draw all match at 4, DistantLightning_Draw differs there. */
-#pragma optimization_level 4
 /*
  * Draws the set's models: up to four slots, each drawn when its
  * AnimatedScenery_Hidden[type] entry is 0, with the next model from
@@ -1979,11 +1476,8 @@ extern f32 AnimatedScenery_FlipbookUV[16][2];
  * AnimatedScenery_Positions[type], its texture scrolled by the set
  * (Obj.timer, Obj.var3 or Obj.var5; AnimatedScenery_FlipbookUV for the
  * 16-step sets); the first slot of the sets not listed turns about y by
- * Obj.var3. Set 0x11 first draws model 8 of the area model; the sets
- * AnimatedScenery_UsesAreaModel accepts draw from the area model with its
- * lights. The pragma compiles it at optimization level 4: at the file's level
- * the compiler allocates the floating-point registers of the two angle-scroll
- * lines differently from the game's code.
+ * Obj.var3. Set 17 first draws model 8 of the area model; sets 32-34, 54
+ * and 55 draw from the area model with its lights.
  */
 void AnimatedScenery_Draw(DrawSlot *drawSlot)
 {
@@ -2002,7 +1496,7 @@ void AnimatedScenery_Draw(DrawSlot *drawSlot)
     f32 texU;
     f32 texV;
 
-    if (obj->type == 0x11) {
+    if (obj->type == 17) {
         stage = areaState->model;
         lights = stage->mats;
         if (stage == NULL) {
@@ -2014,69 +1508,69 @@ void AnimatedScenery_Draw(DrawSlot *drawSlot)
         Mtx_Identity(mtx);
         mdl = stage->matSets + 8;
         Gs_SetLightList(lights, mdl);
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         Draw_ApplyStates(mdl->flags);
         Model_Draw(mdl->id, 0);
         stage = gAreaSubModels[0];
     }
-    if (func_006FD010((Em *) obj, obj->type)) {
+    if (AnimatedScenery_UsesAreaModel((Em *) obj, obj->type)) {
         stage = areaState->model;
         lights = stage->mats;
     }
     if (stage != NULL && stage->active != 0) {
-        Gs_SetState(0x67, -1);
+        Gs_SetState(RS_COLOR2, -1);
         pos = AnimatedScenery_Positions[obj->type];
         flags = AnimatedScenery_Hidden[obj->type];
         k = AnimatedScenery_FirstModel[obj->type];
         if (*flags++ == 0) {
             Mtx_Identity(mtx);
             mdl = stage->matSets + k++;
-            if (func_006FD010((Em *) obj, obj->type)) {
+            if (AnimatedScenery_UsesAreaModel((Em *) obj, obj->type)) {
                 Gs_SetLightList(lights, mdl);
             }
             x = 0.0f;
             y = x;
             switch (obj->type) {
-            case 0x14:
-            case 0x2C:
-                Gs_SetState(0x60, 0);
+            case 20:
+            case 44:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 x = (obj->timer & 0x1FF) / 512.0f;
                 break;
-            case 0x1B:
-            case 0x1F:
-            case 0x34:
-                Gs_SetState(0x60, 0);
+            case 27:
+            case 31:
+            case 52:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 x = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0x10:
-                Gs_SetState(0x60, 0);
+            case 16:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 break;
-            case 0xC:
-                Gs_SetState(0x60, 0);
+            case 12:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 x = 0.125f * (obj->timer & 7);
                 y = 0.125f * ((obj->timer >> 3) & 3);
                 break;
             case 0:
-            case 0x16:
-            case 0x17:
-            case 0x18:
-            case 0x1D:
-            case 0x35:
-                Gs_SetState(0x60, 0);
+            case 22:
+            case 23:
+            case 24:
+            case 29:
+            case 53:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 break;
-            case 0x1E:
-                Gs_SetState(0x60, 0);
+            case 30:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 x = 1.0f - (obj->timer & 0x1FF) / 512.0f;
                 break;
-            case 0xB:
-                Gs_SetState(0x60, 0);
+            case 11:
+                Gs_SetState(RS_ALPHA_REF, 0);
                 y = 1.0f - (obj->timer & 0x1FF) / 512.0f;
                 break;
             default:
-                if (obj->type == 0x25 || obj->type == 0x29) {
-                    Gs_SetState(0x60, 0);
+                if (obj->type == 37 || obj->type == 41) {
+                    Gs_SetState(RS_ALPHA_REF, 0);
                 } else {
-                    Gs_SetState(0x60, 0x80);
+                    Gs_SetState(RS_ALPHA_REF, 128);
                 }
                 x = 0.033333335f * ((360.0f * obj->var3) / 65536.0f);
                 x -= Math_Floor(x);
@@ -2084,78 +1578,78 @@ void AnimatedScenery_Draw(DrawSlot *drawSlot)
                 break;
             }
             Mtx_Translation(uvMtx, x, y, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             x = *pos++;
             y = *pos++;
             Mtx_SetTrans(mtx, x, y, *pos++);
-            Gs_SetState(0x1A, (s32) mtx);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
             Draw_ApplyStates(mdl->flags);
             Model_Draw(mdl->id, 0);
         }
-        Gs_SetState(0x60, 0);
+        Gs_SetState(RS_ALPHA_REF, 0);
         if (*flags++ == 0) {
             Mtx_Identity(mtx);
             mdl = stage->matSets + k++;
-            if (func_006FD010((Em *) obj, obj->type)) {
+            if (AnimatedScenery_UsesAreaModel((Em *) obj, obj->type)) {
                 Gs_SetLightList(lights, mdl);
             }
             switch (obj->type) {
             case 0:
             case 1:
-            case 0x14:
-            case 0x16:
-            case 0x17:
-            case 0x18:
-            case 0x1D:
-            case 0x2B:
-            case 0x2C:
+            case 20:
+            case 22:
+            case 23:
+            case 24:
+            case 29:
+            case 43:
+            case 44:
                 Mtx_Translation(uvMtx, (obj->timer & 0x1FF) / 512.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0x31:
-                Gs_SetState(0x6C, 0);
+            case 49:
+                Gs_SetState(RS_ZWRITE, 0);
                 Mtx_Translation(uvMtx, (obj->timer & 0x1FF) / 512.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0xC:
-            case 0x1B:
+            case 12:
+            case 27:
                 Mtx_Translation(uvMtx, 0.0f, (obj->timer & 0x7F) / 128.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
             case 8:
-            case 0x28:
+            case 40:
                 Mtx_Translation(uvMtx, 0.0f, 1.0f - (obj->timer & 0x1FF) / 512.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0xB:
+            case 11:
                 Mtx_Translation(uvMtx, 1.0f - (obj->timer & 0xF) / 16.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0x1E:
+            case 30:
                 Mtx_Translation(uvMtx, 0.125f * (obj->timer & 7), 0.125f * ((obj->timer >> 3) & 3), 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0x1F:
-            case 0x34:
+            case 31:
+            case 52:
                 Mtx_Translation(uvMtx, (obj->timer & 0xFF) / 256.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0x24:
+            case 36:
                 Mtx_Translation(uvMtx, (obj->timer & 0x7FF) / 2048.0f, 0.0f, 0.0f);
-                Gs_SetState(0x19, (s32) uvMtx);
+                Gs_SetState(RS_UV_MTX, (s32) uvMtx);
                 break;
-            case 0x10:
-            case 0x26:
-            case 0x29:
+            case 16:
+            case 38:
+            case 41:
                 break;
             }
             x = *pos++;
             y = *pos++;
             Mtx_SetTrans(mtx, x, y, *pos++);
-            Gs_SetState(0x1A, (s32) mtx);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
             Draw_ApplyStates(mdl->flags);
             Model_Draw(mdl->id, 0);
-            Gs_SetState(0x6C, 1);
+            Gs_SetState(RS_ZWRITE, 1);
         }
         if (*flags++ == 0) {
             Mtx_Identity(mtx);
@@ -2166,84 +1660,84 @@ void AnimatedScenery_Draw(DrawSlot *drawSlot)
             case 7:
                 texV = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0xC:
-            case 0x14:
-            case 0x2A:
-            case 0x2B:
-            case 0x2E:
+            case 12:
+            case 20:
+            case 42:
+            case 43:
+            case 46:
                 texU = (obj->timer & 0x1FF) / 512.0f;
                 break;
-            case 0x13:
+            case 19:
                 texU = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0x10:
-            case 0x1B:
+            case 16:
+            case 27:
                 break;
-            case 0x19:
+            case 25:
                 texV = obj->var3 / 896.0f;
                 texU = texV;
                 break;
-            case 0x1C:
+            case 28:
                 texV = (obj->timer & 0x7F) / 128.0f;
                 break;
             case 1:
-            case 0xD:
-            case 0x1F:
-            case 0x2C:
+            case 13:
+            case 31:
+            case 44:
                 texU = 0.125f * (obj->timer & 7);
                 texV = 0.125f * ((obj->timer >> 3) & 3);
                 break;
-            case 0x1E:
+            case 30:
                 texU = (obj->timer & 0x3F) / 64.0f;
                 break;
-            case 0x25:
+            case 37:
                 texU = 0.033333335f * ((360.0f * obj->var3) / 65536.0f);
                 texU -= Math_Floor(texU);
                 Mtx_RotateY(mtx, (6.2831855f * obj->var3) / 65536.0f);
                 texV = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0x12:
-            case 0x1A:
-            case 0x23:
-            case 0x27:
-            case 0x30:
+            case 18:
+            case 26:
+            case 35:
+            case 39:
+            case 48:
                 texU = (obj->timer & 0x1FF) / 512.0f;
                 break;
             case 8:
                 texU = (obj->timer & 0x1FF) / 512.0f;
                 texV = 1.0f - (obj->timer & 0x7F) / 128.0f;
                 break;
-            case 0x28:
-                Gs_SetState(0x6C, 0);
+            case 40:
+                Gs_SetState(RS_ZWRITE, 0);
                 texU = (obj->timer & 0x1FF) / 512.0f;
                 texV = 1.0f - (obj->timer & 0x7F) / 128.0f;
                 break;
-            case 0x24:
+            case 36:
                 texU = obj->var5 / 1200.0f;
                 break;
             case 9:
-            case 0x26:
-            case 0x29:
+            case 38:
+            case 41:
                 texV = (obj->timer & 0x7FF) / 2048.0f;
                 break;
-            case 0x21:
-            case 0x22:
+            case 33:
+            case 34:
                 texU = 1.0f - (obj->timer & 0x3FF) / 1024.0f;
                 break;
-            case 0x2D:
+            case 45:
                 texV = (obj->timer & 0x1FF) / 512.0f;
                 break;
-            case 0x33:
+            case 51:
                 texV = 1.0f - (obj->timer & 0x1FF) / 512.0f;
                 break;
-            case 0xB:
-            case 0x34:
+            case 11:
+            case 52:
                 break;
-            case 0x36:
-            case 0x37:
+            case 54:
+            case 55:
                 texU = (obj->timer & 0x3FF) / 1024.0f;
                 break;
-            case 0x20:
+            case 32:
                 texV = (obj->timer & 0x3FF) / 1024.0f;
                 break;
             default:
@@ -2252,22 +1746,22 @@ void AnimatedScenery_Draw(DrawSlot *drawSlot)
                 break;
             }
             Mtx_Translation(uvMtx, texU, texV, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             mdl = stage->matSets + k++;
-            if (func_006FD010((Em *) obj, obj->type)) {
+            if (AnimatedScenery_UsesAreaModel((Em *) obj, obj->type)) {
                 Gs_SetLightList(lights, mdl);
             }
             x = *pos++;
             y = *pos++;
             Mtx_SetTrans(mtx, x, y, *pos++);
-            Gs_SetState(0x1A, (s32) mtx);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
             Draw_ApplyStates(mdl->flags);
             Model_Draw(mdl->id, 0);
         }
-        Gs_SetState(0x6C, 1);
+        Gs_SetState(RS_ZWRITE, 1);
         if (*flags++ == 0) {
             mdl = stage->matSets + k++;
-            if (func_006FD010((Em *) obj, obj->type)) {
+            if (AnimatedScenery_UsesAreaModel((Em *) obj, obj->type)) {
                 Gs_SetLightList(lights, mdl);
             }
             Mtx_Identity(mtx);
@@ -2276,113 +1770,112 @@ void AnimatedScenery_Draw(DrawSlot *drawSlot)
             case 3:
             case 5:
             case 6:
-            case 0xF:
-            case 0x20:
-            case 0x21:
+            case 15:
+            case 32:
+            case 33:
                 y = 0.0f;
                 x = (obj->timer & 0x3FF) / 1024.0f;
                 break;
             case 8:
-            case 0x15:
-            case 0x28:
+            case 21:
+            case 40:
                 y = 0.0f;
                 x = (obj->timer & 0x7F) / 128.0f;
                 break;
             case 9:
-            case 0xC:
-            case 0x14:
-            case 0x23:
-            case 0x26:
-            case 0x27:
-            case 0x29:
-            case 0x2A:
-            case 0x2E:
-            case 0x2F:
+            case 12:
+            case 20:
+            case 35:
+            case 38:
+            case 39:
+            case 41:
+            case 42:
+            case 46:
+            case 47:
                 x = 0.125f * (obj->timer & 7);
                 y = 0.125f * ((obj->timer >> 3) & 3);
                 break;
-            case 0xB:
-                Gs_SetState(0x6C, 0);
+            case 11:
+                Gs_SetState(RS_ZWRITE, 0);
                 y = 0.0f;
                 x = (obj->timer & 0x7F) / 128.0f;
                 break;
-            case 0x1F:
+            case 31:
                 y = 0.0f;
                 x = (obj->timer & 0x3F) / 64.0f;
                 break;
-            case 0x1E:
+            case 30:
                 y = 0.0f;
                 x = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0x33:
-                Gs_SetState(0x6C, 0);
+            case 51:
+                Gs_SetState(RS_ZWRITE, 0);
                 y = 0.0f;
                 x = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0x11:
-            case 0x1A:
-            case 0x1B:
+            case 17:
+            case 26:
+            case 27:
                 y = 0.0f;
                 x = (obj->timer & 0x1FF) / 512.0f;
                 break;
             case 1:
-            case 0xD:
-            case 0x2C:
+            case 13:
+            case 44:
                 x = 0.0f;
                 y = (obj->timer & 0x7F) / 128.0f;
                 break;
-            case 0x22:
+            case 34:
                 x = 0.0f;
                 y = (obj->timer & 0x7FF) / 2048.0f;
                 break;
             case 0:
-            case 0x16:
-            case 0x17:
-            case 0x18:
-            case 0x1D:
-            case 0x30:
+            case 22:
+            case 23:
+            case 24:
+            case 29:
+            case 48:
                 x = 0.0f;
                 y = (obj->timer & 0xFF) / 256.0f;
                 break;
-            case 0x24:
+            case 36:
                 y = 0.0f;
                 x = obj->var3 / 600.0f;
                 break;
-            case 0x36:
+            case 54:
                 y = 0.0f;
                 x = obj->var3 / 800.0f;
                 break;
-            case 0x37:
+            case 55:
                 y = 0.0f;
                 x = obj->var3 / 800.0f;
-                Gs_SetState(0x67, 0xFF303030);
+                Gs_SetState(RS_COLOR2, 0xFF303030);
                 break;
-            case 0xA:
-            case 0x32:
+            case 10:
+            case 50:
                 x = 0.0f;
                 y = x;
                 break;
             }
             Mtx_Translation(uvMtx, x, y, 0.0f);
-            Gs_SetState(0x19, (s32) uvMtx);
+            Gs_SetState(RS_UV_MTX, (s32) uvMtx);
             x = *pos++;
             y = *pos++;
             Mtx_SetTrans(mtx, x, y, *pos++);
-            Gs_SetState(0x1A, (s32) mtx);
+            Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
             Draw_ApplyStates(mdl->flags);
             Model_Draw(mdl->id, 0);
-            Gs_SetState(0x6C, 1);
+            Gs_SetState(RS_ZWRITE, 1);
         }
         Draw_SetDefaultState();
     }
 }
-#pragma optimization_level reset
 
 /*
  * Creates the CastleGate object of gate gateType (0: AREA_CASTLE_0's, 1:
  * AREA_CASTLE_1's dropping gate). Unless gQuest.stage is 0 it first sets
  * gScene.skipFlaggedTris, the gate open (the collisions skip the triangles of
- * attribute 0x4000), in every quest but 0xBBC, which clears it.
+ * attribute 0x4000), in every quest but 3004, which clears it.
  */
 void CastleGate_Create(u8 gateType)
 {
@@ -2391,12 +1884,12 @@ void CastleGate_Create(u8 gateType)
     switch (gQuest.stage) {
     default:
         switch (gQuest.info->id) {
-        case 0xBBC:
+        case 3004:
             gScene.skipFlaggedTris = 0;
             break;
-        case 0xBBD:
-        case 0xBBE:
-        case 0xBBF:
+        case 3005:
+        case 3006:
+        case 3007:
         case 0xEA68:
         default:
             gScene.skipFlaggedTris = 1;
@@ -2408,7 +1901,7 @@ void CastleGate_Create(u8 gateType)
     }
     obj = Obj_Alloc(0);
     if (obj != NULL) {
-        obj->kind = 0x14;
+        obj->kind = 20;
         obj->arg = NULL;
         obj->type = gateType;
         obj->update = CastleGate_Update;
@@ -2464,12 +1957,12 @@ void CastleGate_Setup(Obj *obj)
         em = gEms;
         for (i = 0; i < 20; i++, em++) {
             if (em->active != 0 && em->visible != 0 && Player_InCurrentArea(em) != 0) {
-                if (em->type == 2 || em->type == 0x24 || em->type == 0x47) {
+                if (em->type == 2 || em->type == 36 || em->type == 71) {
                     break;
                 }
             }
         }
-        if (i == 20 || em->motionId[0] != 0x403) {
+        if (i == 20 || em->motionId[0] != 1027) {
             obj->var0 = 4;
         } else {
             obj->var0 = 2;
@@ -2512,7 +2005,7 @@ void CastleGate_Run(Obj *obj)
         case 0:
             for (i = 0; i < 20; i++, em++) {
                 if (em->active != 0 && em->visible != 0 && Player_InCurrentArea(em) != 0) {
-                    if (em->type == 2 || em->type == 0x24 || em->type == 0x47) {
+                    if (em->type == 2 || em->type == 36 || em->type == 71) {
                         break;
                     }
                 }
@@ -2520,7 +2013,7 @@ void CastleGate_Run(Obj *obj)
             if (i == 20) {
                 break;
             }
-            if (!(gScene.emEventFlags & 2) && em->motionId[0] != 0x403) {
+            if (!(gScene.emEventFlags & 2) && em->motionId[0] != 1027) {
                 if (em->stance != 0) {
                     break;
                 }
@@ -2528,8 +2021,8 @@ void CastleGate_Run(Obj *obj)
                     break;
                 }
             }
-            Em_PlaySeChecked(em, 0x36, 0, CastleGate_SoundPos, 9, 0);
-            Em_PlaySeChecked(em, 0x37, 0, D_008B149C, 9, 0);
+            Em_PlaySeChecked(em, 54, 0, CastleGate_SoundPos, 9, 0);
+            Em_PlaySeChecked(em, 55, 0, D_008B149C, 9, 0);
             obj->var0++;
             obj->fvar = -100.0f;
             hitPos[0] = obj->pos[0];
@@ -2560,7 +2053,7 @@ void CastleGate_Run(Obj *obj)
             }
             for (i = 0; i < 20; i++, em++) {
                 if (em->active != 0 && em->visible != 0 && Player_InCurrentArea(em) != 0) {
-                    if (em->type == 2 || em->type == 0x24 || em->type == 0x47) {
+                    if (em->type == 2 || em->type == 36 || em->type == 71) {
                         break;
                     }
                 }
@@ -2568,14 +2061,14 @@ void CastleGate_Run(Obj *obj)
             if (++obj->timer <= 180) {
                 break;
             }
-            if (i == 20 || em->motionId[0] != 0x403) {
+            if (i == 20 || em->motionId[0] != 1027) {
                 obj->var0++;
                 obj->timer = 0;
                 for (i = 0; i < 20; i++, em++) {
                     if (em->active != 0 && em->visible != 0 && Player_InCurrentArea(em) != 0) {
-                        if (em->type == 2 || em->type == 0x24 || em->type == 0x47) {
-                            Em_PlaySeChecked(em, 0x38, 0, CastleGate_SoundPos, 9, 0);
-                            Em_PlaySeChecked(em, 0x39, 0, D_008B149C, 9, 0);
+                        if (em->type == 2 || em->type == 36 || em->type == 71) {
+                            Em_PlaySeChecked(em, 56, 0, CastleGate_SoundPos, 9, 0);
+                            Em_PlaySeChecked(em, 57, 0, D_008B149C, 9, 0);
                             break;
                         }
                     }
@@ -2598,7 +2091,7 @@ void CastleGate_Run(Obj *obj)
     obj->ds->pos[0] = obj->pos[0];
     obj->ds->pos[1] = obj->pos[1];
     obj->ds->pos[2] = obj->pos[2];
-    OT_AddByDepth(gDrawOt32, obj->ds, 0x20, 0);
+    OT_AddByDepth(gDrawOt32, obj->ds, 32, 0);
 }
 
 /* End state: hides the gate and frees its draw slot. */
@@ -2629,8 +2122,8 @@ void CastleGate_Draw(DrawSlot *drawSlot)
     subs = gAreaSubModels[0];
     gate = (s32) drawSlot->owner;
     if ((subs != NULL) && (subs->active != 0)) {
-        Mtx_Translation((void *) mtx, *(f32 *)((u8 *)gate + 0x20), *(f32 *)((u8 *)gate + 0x24), *(f32 *)((u8 *)gate + 0x28));
-        Gs_SetState(0x1A, (s32) mtx);
+        Mtx_Translation((void *) mtx, *(f32 *)((u8 *)gate + 32), *(f32 *)((u8 *)gate + 36), *(f32 *)((u8 *)gate + 40));
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         model = &subs->matSets[CastleGate_Models[*(u8 *)((u8 *)gate + 3)]];
         if ((model != NULL) && (model->id != -1)) {
             Draw_ApplyStates(model->flags);
@@ -2641,7 +2134,7 @@ void CastleGate_Draw(DrawSlot *drawSlot)
 }
 
 /*
- * Creates the DistantLightning object (kind 0x16, no buffer);
+ * Creates the DistantLightning object (kind 22, no buffer);
  * Area_StartObjects calls it for AREA_CASTLE_1.
  */
 void DistantLightning_Create(void)
@@ -2649,7 +2142,7 @@ void DistantLightning_Create(void)
     Obj *obj = Obj_Alloc(0);
 
     if (obj != NULL) {
-        obj->kind = 0x16;
+        obj->kind = 22;
         obj->update = DistantLightning_Update;
     }
 }
@@ -2733,17 +2226,17 @@ void DistantLightning_Run(Obj *obj)
         case 1:
         case 5:
             offset[1] = 0.0f;
-            obj->var3 = (Rand_Next(1) & 0x7FF) - 0x400;
+            obj->var3 = (Rand_Next(1) & 0x7FF) - 1024;
             obj->fvar = 1.0f;
             break;
         case 2:
             offset[1] = 7300.0f + (Rand_Next(1) & 0x3FF);
-            obj->var3 = (Rand_Next(1) & 0xFFF) - 0x800;
+            obj->var3 = (Rand_Next(1) & 0xFFF) - 2048;
             obj->fvar = 1.0f;
             break;
         case 3:
             offset[1] = 6000.0f + (Rand_Next(1) & 0x3FF) * 3;
-            obj->var3 = (Rand_Next(1) & 0xFFF) - 0x800;
+            obj->var3 = (Rand_Next(1) & 0xFFF) - 2048;
             obj->fvar = 1.0f;
             break;
         case 4:
@@ -2760,7 +2253,7 @@ void DistantLightning_Run(Obj *obj)
             AttackBurst_CreateAtScaled(obj->pos, 0, 4, 0.15f);
             AttackBurst_CreateAtScaled(obj->pos, 0, 9, 1.0f);
             AttackBurst_CreateAtScaled(obj->pos, 0, 8, 1.0f);
-            AttackBurst_CreateAtScaled(obj->pos, 0, 0xB, 1.0f);
+            AttackBurst_CreateAtScaled(obj->pos, 0, 11, 1.0f);
         }
         break;
     case 1:
@@ -2773,7 +2266,7 @@ void DistantLightning_Run(Obj *obj)
         obj->ds->pos[1] = obj->pos[1];
         obj->ds->pos[2] = obj->pos[2];
         if (obj->var1 == 5) {
-            OT_AddByDepth(gDrawOtSorted, obj->ds, 0x40, 0);
+            OT_AddByDepth(gDrawOtSorted, obj->ds, 64, 0);
         } else {
             OT_AddByDepth(gDrawOt8, obj->ds, 8, 0);
         }
@@ -2795,6 +2288,9 @@ void DistantLightning_Free(Obj *obj)
     Obj_Free(obj);
 }
 
+/* Built at optimization level 3: at level 4 the compiler computes the address of the model pair
+ * Obj.var1 picks in another order of registers and additions than the game's code. */
+#pragma optimization_level 3
 /*
  * Draws the flash facing the camera: model pair Obj.var1 of the area's sub-
  * model (from model 3 on; the first for its first frame, the second after),
@@ -2812,23 +2308,23 @@ void DistantLightning_Draw(DrawSlot *drawSlot)
     s32 off;
 
     if (stage != NULL && stage->active != 0) {
-        Gs_SetState(0x60, 0);
-        Mtx_Scale(mtx, *(f32 *) (flash + 0x30), *(f32 *) (flash + 0x30), *(f32 *) (flash + 0x30));
-        Mtx_RotateZ(mtx, (6.2831855f * *(s16 *) (flash + 0xA)) / 65536.0f);
+        Gs_SetState(RS_ALPHA_REF, 0);
+        Mtx_Scale(mtx, *(f32 *) (flash + 48), *(f32 *) (flash + 48), *(f32 *) (flash + 48));
+        Mtx_RotateZ(mtx, (6.2831855f * *(s16 *) (flash + 10)) / 65536.0f);
         Mtx_SetTrans(mtx, drawSlot->pos[0], drawSlot->pos[1], drawSlot->pos[2]);
         Mtx_Concat3x3(mtx, gCamMatrix);
         if (*(s16 *) (flash + 8) < 4) {
             alpha = (u32) (255.0f * (*(s16 *) (flash + 8) / 4.0f));
         } else {
-            alpha = 0xFF;
+            alpha = 255;
         }
-        Gs_SetState(0x67, ((u8) alpha << 24) | 0xFFFFFF);
-        Gs_SetState(0x1A, (s32) mtx);
+        Gs_SetState(RS_COLOR2, ((u8) alpha << 24) | 0xFFFFFF);
+        Gs_SetState(RS_MTX_SLOT(0), (s32) mtx);
         /* The offset is computed in bytes and added before the table's address, as the game's code
          * does. */
         mdl = stage->matSets;
-        off = flash[6] * 0x118;
-        mdl = (ModelMatSet *) (off + (s32) mdl + 0x1A4);
+        off = flash[6] * 280;
+        mdl = (ModelMatSet *) (off + (s32) mdl + 420);
         if (*(s16 *) (flash + 8) < 6) {
             mdl++;
         }
@@ -2837,6 +2333,559 @@ void DistantLightning_Draw(DrawSlot *drawSlot)
             Model_Draw(mdl->id, 0);
         }
         Draw_SetDefaultState();
+    }
+}
+#pragma optimization_level reset
+
+extern s16 AreaObj_K17_RectX[];
+extern s16 AreaObj_K17_RectY[];
+extern s16 AreaObj_K17_RectW[];
+extern s16 AreaObj_K17_RectH[];
+extern f32 AreaObj_K17_Spread1[];
+extern s16 D_008F58C0[];
+extern s16 D_008F58F0[];
+extern u8 AreaObj_K19_PointsA2[];
+extern u8 AreaObj_K19_PointsA3[];
+extern u8 AreaObj_K19_PointsA6[];
+extern u8 AreaObj_K19_PointsA7[];
+
+/*
+ * Creates the quest-end banner, an area object of kind 23. Its type is
+ * `phase`, the quest phase: QUEST_PHASE_CLEARED, QUEST_PHASE_FAILED or
+ * QUEST_PHASE_ABORTED. Scene_ResultFade calls it once the screen has
+ * darkened. Nothing happens when no object is free.
+ */
+void AreaObj_K17_Create(u8 phase)
+{
+    Obj *obj = Obj_Alloc(1);
+
+    if (obj != NULL) {
+        obj->kind = 23;
+        obj->update = AreaObj_K17_Update;
+        obj->type = phase;
+    }
+}
+
+/*
+ * The banner's update. By the object's state (0 to 3) it runs
+ * QuestEndBanner_Setup, _Run, _End or _Free.
+ */
+void AreaObj_K17_Update(Obj *obj)
+{
+    switch (obj->state) {
+    case 0:
+        AreaObj_K17_Setup(obj);
+        break;
+    case 1:
+        AreaObj_K17_Run(obj);
+        break;
+    case 2:
+        AreaObj_K17_End(obj);
+        break;
+    case 3:
+        AreaObj_K17_Free(obj);
+        break;
+    }
+}
+
+/*
+ * Goes to the next state, clears var0 to var3 and timer, and makes the banner
+ * visible and kept. It takes a draw slot whose callback is
+ * QuestEndBanner_Draw, and frees the object when no slot is free. Then it
+ * runs QuestEndBanner_Run once.
+ */
+void AreaObj_K17_Setup(Obj *obj)
+{
+
+    obj->state++;
+    obj->var0 = 0;
+    obj->var1 = 0;
+    obj->var2 = 0;
+    obj->visible = 1;
+    obj->draw = NULL;
+    obj->keep = 1;
+    obj->timer = 0;
+    obj->var3 = 0;
+    obj->slot = DrawSlot_Alloc();
+    if (obj->slot != -1) {
+        obj->ds = DrawSlot_Get(obj->slot);
+        obj->ds->owner = obj;
+        obj->ds->draw = AreaObj_K17_Draw;
+    } else {
+        Obj_Free(obj);
+        return;
+    }
+    AreaObj_K17_Run(obj);
+}
+
+/*
+ * Counts the banner's frames in var3 and goes to the next state at 300. Until
+ * then it counts timer up to 100 (cleared, abandoned) or 113 (failed), with
+ * var0 counting the frames at the cap (only once for a cleared quest). Each
+ * frame it puts the draw slot into gDrawListText0b.
+ */
+void AreaObj_K17_Run(Obj *obj)
+{
+    obj->var3++;
+    if (obj->var3 >= 300) {
+        obj->state++;
+        return;
+    }
+    switch (obj->type) {
+    case 4:
+        if (obj->var0 == 0) {
+            if (++obj->timer > 100) {
+                obj->timer = 100;
+                obj->var0++;
+            }
+        }
+        break;
+    case 7:
+        if (++obj->timer >= 100) {
+            obj->timer = 100;
+            obj->var0++;
+        }
+        break;
+    case 6:
+        if (++obj->timer >= 113) {
+            obj->timer = 113;
+            obj->var0++;
+        }
+        break;
+    }
+    OT_AddByDepth(gDrawListText0b, obj->ds, 1, 1);
+}
+
+/* Goes to the next state, hides the banner and frees its draw slot. */
+void AreaObj_K17_End(Obj *obj)
+{
+    obj->state++;
+    obj->visible = 0;
+    DrawSlot_Free(obj->slot);
+}
+
+/* Frees the banner's object. */
+void AreaObj_K17_Free(Obj *obj)
+{
+    Obj_Free(obj);
+}
+
+/*
+ * Draws `rect` (a TexRect) rotated by `angle` (ANGLE_TURN is a full turn) with
+ * texture 340, unfiltered and blended.
+ */
+void AreaObj_K17_DrawTexRect(s16 *rect, s32 angle)
+{
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 340);
+    Tex_Bind(340);
+    TexRect_DrawRotated((struct TexRect *) rect, angle);
+}
+
+/*
+ * Draws the failed quest's mark from the box at `box` (x, y, w, h, colour) as
+ * two rotated rects of texture 340. The first is 12/17 of the box, turned a
+ * quarter turn past `angle`. The second is 5/17 of the box, turned three
+ * quarters past `angle`, set near the box's lower end and moved sideways by
+ * QuestEndBanner_PieceShift. The shift is read in 5-degree steps of the angle
+ * plus 10 degrees and interpolated between steps; past 25 degrees it is entry
+ * 2.
+ */
+void AreaObj_K17_DrawPart(s16 *box, u32 angle)
+{
+    Sprite piece;
+    u16 rot;
+    f32 degrees;
+    u8 i;
+    s32 shift;
+
+    Gfx_SetTexFilter(GFX_TEX_NEAREST);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 340);
+    Tex_Bind(340);
+    piece.color = *(s32 *) (box + 4);
+    piece.w = box[3] * 12 / 17;
+    piece.h = box[2];
+    piece.x = box[0] + (piece.h - piece.w) / 2;
+    piece.y = box[1] + (piece.w - piece.h) / 2;
+    rot = angle;
+    piece.u0 = 160;
+    piece.v0 = 112;
+    piece.u1 = piece.u0 + 95;
+    piece.v1 = piece.v0 + 143;
+    TexRect_DrawRotated((struct TexRect *) &piece, (u16) (rot + ANGLE_TURN / 4));
+    degrees = 10.0f + (360.0f * angle) / 65536.0f;
+    if (!(degrees < 360.0f)) {
+        degrees -= 360.0f;
+    }
+    i = degrees / 5.0f;
+    switch (i) {
+    case 0:
+    case 1:
+    case 2:
+    case 3:
+        shift = (s16) (AreaObj_K17_AngleTbl[i] + ((degrees - 5.0f * i) * (AreaObj_K17_AngleTbl[i + 1] - AreaObj_K17_AngleTbl[i])) / 5.0f);
+        break;
+    case 4:
+        shift = AreaObj_K17_AngleTbl[i];
+        break;
+    default:
+        shift = AreaObj_K17_AngleTbl[2];
+        break;
+    }
+    piece.w = box[3] * 5 / 17;
+    piece.h = box[2];
+    piece.x = box[0] + (piece.h - piece.w) / 2;
+    piece.y = (box[1] + box[3]) - (piece.w + piece.h) / 2;
+    piece.x = piece.x + shift;
+    piece.y -= 6;
+    piece.u0 = 160;
+    piece.v0 = 112;
+    piece.u1 = piece.u0 + 39;
+    piece.v1 = piece.v0 + 143;
+    TexRect_DrawRotated((struct TexRect *) &piece, (u16) (rot + 0x7FFF + 0x4001));
+}
+
+/*
+ * Draws `sprite` with the whole 256 x 256 of texture 326, filtered and
+ * blended. This is the banner's full-screen picture.
+ */
+void AreaObj_K17_DrawSprite(Sprite *sprite)
+{
+    sprite->u0 = 0;
+    sprite->v0 = 0;
+    sprite->u1 = sprite->u0 + 255;
+    sprite->v1 = sprite->v0 + 255;
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
+    Tex_Prepare(1, 326);
+    Tex_Bind(326);
+    Sprite_Draw(sprite);
+}
+
+/*
+ * Draw callback of the quest-end banner (slot->owner is its Obj). It draws
+ * the picture over the whole screen (QuestEndBanner_DrawPicture): fading in
+ * over the first 15 frames of timer (var1 phase 0), at 0.95 size in phase 3.
+ * From phase 2 it adds the type's mark at QuestEndBanner_RectX/Y, sized
+ * RectW/H times 1.15 at half alpha in phase 2, 0.9 in phase 3 and 1.0 after.
+ * The mark is tilted by pos[0] degrees, moved by the type's first
+ * QuestEndBanner_ShakeX/ShakeY entry (pos[1] is 0 or 8, and 8 reads as 0),
+ * and drawn in two pieces for a failed quest. Phase 1 ends at frame 60: it
+ * picks the tilt at random within the type's QuestEndBanner_TiltRange and
+ * starts the type's event tune; phases 2 and 3 last one frame each.
+ */
+void AreaObj_K17_Draw(DrawSlot *slot)
+{
+    Obj *obj = slot->owner;
+    Sprite sprite;
+    f32 scale;
+    f32 alpha;
+    u8 typeIdx;
+    u8 type;
+    u8 shakeIdx;
+
+    sprite.x = 0;
+    sprite.y = 0;
+    type = obj->type;
+    switch (type) {
+    case 4:
+        typeIdx = 0;
+        break;
+    case 7:
+        typeIdx = 1;
+        break;
+    case 6:
+        typeIdx = 2;
+        break;
+    }
+    switch (type) {
+    case 4:
+    case 7:
+    case 6:
+        sprite.w = 640;
+        sprite.h = 448;
+        switch (obj->var1) {
+        case 0:
+            scale = 1.0f;
+            alpha = obj->timer / 15.0f;
+            break;
+        case 1:
+        case 2:
+            scale = 1.0f;
+            alpha = 1.0f;
+            break;
+        case 3:
+            scale = 0.95f;
+            alpha = 1.0f;
+            break;
+        case 4:
+            scale = 1.0f;
+            alpha = 1.0f;
+            break;
+        }
+        sprite.x = 0;
+        sprite.y = 0;
+        sprite.w = 640.0f * scale;
+        sprite.h = 448.0f * scale;
+        sprite.x -= (s16) ((sprite.w - 640) / 2);
+        sprite.y -= (s16) ((sprite.h - 448) / 2);
+        sprite.color = ((u8) (255.0f * alpha) << 24) | 0xFFFFFF;
+        AreaObj_K17_DrawSprite(&sprite);
+        switch (obj->var1) {
+        case 0:
+        case 1:
+            break;
+        case 2:
+            scale = 1.15f;
+            alpha = 0.5f;
+            break;
+        case 3:
+            scale = 0.9f;
+            alpha = 1.0f;
+            break;
+        case 4:
+            scale = 1.0f;
+            alpha = 1.0f;
+            break;
+        }
+        switch (obj->var1) {
+        case 0:
+        case 1:
+            break;
+        case 2:
+        case 3:
+        case 4:
+            sprite.w = scale * AreaObj_K17_RectW[typeIdx];
+            sprite.h = scale * AreaObj_K17_RectH[typeIdx];
+            sprite.x = AreaObj_K17_RectX[typeIdx] - sprite.w / 2;
+            sprite.y = AreaObj_K17_RectY[typeIdx] - sprite.h / 2;
+            shakeIdx = obj->pos[1];
+            if (shakeIdx >= 8) {
+                shakeIdx = 0;
+            }
+            sprite.x += D_008F58C0[shakeIdx + typeIdx * 8];
+            sprite.y += D_008F58F0[shakeIdx + typeIdx * 8];
+            sprite.color = ((u8) (255.0f * alpha) << 24) | 0xFFFFFF;
+            switch (obj->type) {
+            case 4:
+            case 6:
+                sprite.u0 = 0;
+                sprite.v0 = 0;
+                sprite.u1 = sprite.u0 + 255;
+                sprite.v1 = sprite.v0 + 111;
+                break;
+            case 7:
+                sprite.u0 = 0;
+                sprite.v0 = 112;
+                sprite.u1 = sprite.u0 + 159;
+                sprite.v1 = sprite.v0 + 143;
+                break;
+            }
+            switch (obj->type) {
+            case 4:
+                AreaObj_K17_DrawTexRect(&sprite.x, (u16) (s32) (0.5f + (65536.0f * obj->pos[0]) / 360.0f));
+                break;
+            case 7:
+                AreaObj_K17_DrawTexRect(&sprite.x, (u16) (s32) (0.5f + (65536.0f * obj->pos[0]) / 360.0f));
+                break;
+            case 6:
+                AreaObj_K17_DrawPart(&sprite.x, (u16) (s32) (0.5f + (65536.0f * obj->pos[0]) / 360.0f));
+                break;
+            }
+            break;
+        }
+        switch (obj->var1) {
+        case 0:
+            if (obj->timer >= 15) {
+                obj->var1++;
+            }
+            break;
+        case 1:
+            if (obj->timer >= 60) {
+                obj->var1++;
+                obj->pos[0] = AreaObj_K17_Spread1[typeIdx] * (-1.0f + (2.0f * Rand_Next(1)) / 65536.0f);
+                obj->pos[1] = (u16) Rand_Next(1) & 8;
+                switch (obj->type) {
+                case 4:
+                    Bgm_PlayEvent(42);
+                    break;
+                case 7:
+                    Bgm_PlayEvent(44);
+                    break;
+                case 6:
+                    Bgm_PlayEvent(43);
+                    break;
+                }
+            }
+            break;
+        case 2:
+        case 3:
+            obj->var1++;
+            break;
+        }
+    }
+}
+
+/*
+ * Creates the volcano hazard spawner, an area object of kind 25 that keeps
+ * the current area in var3. Area_StartObjects calls it in AREA_VOLCANO_1, 2,
+ * 5 and 6.
+ */
+void AreaObj_K19_Create(void)
+{
+    Obj *obj = Obj_Alloc(0);
+
+    if (obj != NULL) {
+        obj->kind = 25;
+        obj->update = AreaObj_K19_Update;
+        *(u16 *) &obj->var3 = gScene.area;
+    }
+}
+
+/*
+ * The spawner's update. By the object's state (0 to 3) it runs
+ * VolcanoHazardSpawner_Setup, _Run, _End or _Free.
+ */
+void AreaObj_K19_Update(Obj *obj)
+{
+    switch (obj->state) {
+    case 0:
+        AreaObj_K19_Setup(obj);
+        break;
+    case 1:
+        AreaObj_K19_Run(obj);
+        break;
+    case 2:
+        AreaObj_K19_End(obj);
+        break;
+    case 3:
+        AreaObj_K19_Free(obj);
+        break;
+    }
+}
+
+/*
+ * Goes to the next state and makes the spawner visible, with no draw slot and
+ * its timer at 0.
+ */
+void AreaObj_K19_Setup(Obj *obj)
+{
+    obj->state++;
+    obj->visible = 1;
+    obj->draw = NULL;
+    obj->var0 = 0;
+    obj->timer = 0;
+    obj->ds = NULL;
+}
+
+/*
+ * When the timer runs out and no scripted event (gScene.eventRunning) is
+ * running, it does three things at one of the area's points: creates a
+ * PlayerFx (STAGEOBJ_KIND_PLAYER_FX) of type 15 (scale 0.7), starts a VolcanoHazard of
+ * type 1 lasting 130 frames, and sets the timer to 300. It does this only on
+ * a frame whose quest time (time left minus the limit) has bits 4 to 6 clear;
+ * on other frames it waits for the next such frame. The point is the quest
+ * time in 300-frame steps plus the quest's first seed byte, modulo the point
+ * count. An area without points creates nothing.
+ */
+void AreaObj_K19_Run(Obj *obj)
+{
+    u8 *point;
+    s32 questTime;
+    u16 pick;
+    s16 count;
+
+    questTime = Quest_GetTime(0) - Quest_GetTime(1);
+    pick = questTime / 300;
+    pick += Quest_GetSeedByte(0);
+    if (--obj->timer <= 0) {
+        if ((questTime & 0x40) != 64) {
+            if ((questTime & 0x30) == 0) {
+                if (gScene.eventRunning == 0) {
+                    point = (u8 *) AreaObj_K19_GetPoints(obj->var3);
+                    count = AreaObj_K19_PointCount(obj->var3);
+                    if (point == NULL || count == 0) {
+                        return;
+                    }
+                    point += (pick % count) * 12;
+                    PlayerFx_CreateAt((f32 *) point, 15, 150, 0.7f);
+                    VolcanoHazard_Create((f32 *) point, 1, 130);
+                    obj->timer = 300;
+                }
+            } else {
+                obj->timer = 0;
+            }
+        } else {
+            obj->timer = 0;
+        }
+    }
+}
+
+/*
+ * Frees the draw slot if the spawner has one, goes to the next state and
+ * hides it.
+ */
+void AreaObj_K19_End(Obj *obj)
+{
+    if (obj->ds != NULL) {
+        DrawSlot_Free(obj->slot);
+    }
+    obj->state++;
+    obj->visible = 0;
+}
+
+/* Frees the spawner's object. */
+void AreaObj_K19_Free(Obj *obj)
+{
+    Obj_Free(obj);
+}
+
+/*
+ * Returns, as an address, the hazard points ({x, y, z} floats) of `area`:
+ * VolcanoHazardSpawner_PointsVolcano1, 2, 5 or 6. Returns 0 for any other
+ * area.
+ */
+s32 AreaObj_K19_GetPoints(u16 area)
+{
+    s32 areaId;
+
+    areaId = area & 0xFFFF;
+    switch (areaId) {
+    case 162:
+        return (s32) AreaObj_K19_PointsA2;
+    case 163:
+        return (s32) AreaObj_K19_PointsA3;
+    case 166:
+        return (s32) AreaObj_K19_PointsA6;
+    case 167:
+        return (s32) AreaObj_K19_PointsA7;
+    default:
+        return 0;
+    }
+}
+
+/*
+ * Returns how many hazard points `area` has (6, 3, 2 and 5 for
+ * AREA_VOLCANO_1, 2, 5 and 6), or 0 for any other area.
+ */
+s16 AreaObj_K19_PointCount(u16 area)
+{
+    s32 areaId;
+
+    areaId = area & 0xFFFF;
+    switch (areaId) {
+    case 162:
+        return 6;
+    case 163:
+        return 3;
+    case 166:
+        return 2;
+    case 167:
+        return 5;
+    default:
+        return 0;
     }
 }
 
@@ -2893,12 +2942,6 @@ extern u32 D_008F5848[];
 extern u32 D_008F5860[];
 extern u32 D_008F5888[];
 extern u32 D_008F58A0[];
-f32 AmbientLife_GlowBugTowerPos[32] = {
-#include "game/008B0A10.inc"
-};
-f32 AmbientLife_CrossingFlyerPoints[6] = {
-#include "game/008B0A90.inc"
-};
 f32 FortressTremor_PosX = {
 #include "game/008B0AA8.inc"
 };
@@ -2992,187 +3035,187 @@ u8 GroundTileGrid_Jungle6Tiles[80] = {
 u16 GroundTileGrid_Jungle6Turns[72] = {
 #include "game/008B0EC0.inc"
 };
-u32 AnimatedScenery_Models_1[2] = {
+s16 AnimatedScenery_Hidden_1[4] = {
 #include "game/008B0F50.inc"
 };
-f32 AnimatedScenery_Params_2[3] = {
+f32 AnimatedScenery_Positions_2[3] = {
 #include "game/008B0F58.inc"
 };
-u32 AnimatedScenery_Models_2[2] = {
+s16 AnimatedScenery_Hidden_2[4] = {
 #include "game/008B0F68.inc"
 };
-f32 AnimatedScenery_Params_3[4] = {
+f32 AnimatedScenery_Positions_3[4] = {
 #include "game/008B0F70.inc"
 };
-u32 AnimatedScenery_Models_3[4] = {
+s16 AnimatedScenery_Hidden_3[8] = {
 #include "game/008B0F80.inc"
 };
-f32 AnimatedScenery_Params_4[10] = {
+f32 AnimatedScenery_Positions_4[10] = {
 #include "game/008B0F90.inc"
 };
-u32 AnimatedScenery_Models_4[2] = {
+s16 AnimatedScenery_Hidden_4[4] = {
 #include "game/008B0FB8.inc"
 };
-f32 AnimatedScenery_Params_5[4] = {
+f32 AnimatedScenery_Positions_5[4] = {
 #include "game/008B0FC0.inc"
 };
-u32 AnimatedScenery_Models_5[2] = {
+s16 AnimatedScenery_Hidden_5[4] = {
 #include "game/008B0FD0.inc"
 };
-f32 AnimatedScenery_Params_6[3] = {
+f32 AnimatedScenery_Positions_6[3] = {
 #include "game/008B0FD8.inc"
 };
-u32 AnimatedScenery_Models_6[2] = {
+s16 AnimatedScenery_Hidden_6[4] = {
 #include "game/008B0FE8.inc"
 };
-f32 AnimatedScenery_Params_7[6] = {
+f32 AnimatedScenery_Positions_7[6] = {
 #include "game/008B0FF0.inc"
 };
-u32 AnimatedScenery_Models_7[2] = {
+s16 AnimatedScenery_Hidden_7[4] = {
 #include "game/008B1008.inc"
 };
-u32 AnimatedScenery_Models_9[2] = {
+s16 AnimatedScenery_Hidden_9[4] = {
 #include "game/008B1010.inc"
 };
-u32 AnimatedScenery_Models_10[2] = {
+s16 AnimatedScenery_Hidden_10[4] = {
 #include "game/008B1018.inc"
 };
-u32 AnimatedScenery_Models_13[2] = {
+s16 AnimatedScenery_Hidden_13[4] = {
 #include "game/008B1020.inc"
 };
-u32 AnimatedScenery_Models_16[2] = {
+s16 AnimatedScenery_Hidden_16[4] = {
 #include "game/008B1028.inc"
 };
-u32 AnimatedScenery_Models_17[2] = {
+s16 AnimatedScenery_Hidden_17[4] = {
 #include "game/008B1030.inc"
 };
-u32 AnimatedScenery_Models_18[2] = {
+s16 AnimatedScenery_Hidden_18[4] = {
 #include "game/008B1038.inc"
 };
-u32 AnimatedScenery_Models_19[2] = {
+s16 AnimatedScenery_Hidden_19[4] = {
 #include "game/008B1040.inc"
 };
-u32 AnimatedScenery_Models_21[2] = {
+s16 AnimatedScenery_Hidden_21[4] = {
 #include "game/008B1048.inc"
 };
-u32 AnimatedScenery_Models_0[2] = {
+s16 AnimatedScenery_Hidden_0[4] = {
 #include "game/008B1050.inc"
 };
-f32 AnimatedScenery_Params_25[3] = {
+f32 AnimatedScenery_Positions_25[3] = {
 #include "game/008B1058.inc"
 };
-u32 AnimatedScenery_Models_25[2] = {
+s16 AnimatedScenery_Hidden_25[4] = {
 #include "game/008B1068.inc"
 };
-u32 AnimatedScenery_Models_26[2] = {
+s16 AnimatedScenery_Hidden_26[4] = {
 #include "game/008B1070.inc"
 };
-u32 AnimatedScenery_Models_28[2] = {
+s16 AnimatedScenery_Hidden_28[4] = {
 #include "game/008B1078.inc"
 };
-u32 AnimatedScenery_Models_32[2] = {
+s16 AnimatedScenery_Hidden_32[4] = {
 #include "game/008B1080.inc"
 };
-u32 AnimatedScenery_Models_33[2] = {
+s16 AnimatedScenery_Hidden_33[4] = {
 #include "game/008B1088.inc"
 };
-u32 AnimatedScenery_Models_34[2] = {
+s16 AnimatedScenery_Hidden_34[4] = {
 #include "game/008B1090.inc"
 };
-u32 AnimatedScenery_Models_35[2] = {
+s16 AnimatedScenery_Hidden_35[4] = {
 #include "game/008B1098.inc"
 };
-u32 AnimatedScenery_Models_36[4] = {
+s16 AnimatedScenery_Hidden_36[8] = {
 #include "game/008B10A0.inc"
 };
-f32 AnimatedScenery_Params_37[10] = {
+f32 AnimatedScenery_Positions_37[10] = {
 #include "game/008B10B0.inc"
 };
-u32 AnimatedScenery_Models_37[2] = {
+s16 AnimatedScenery_Hidden_37[4] = {
 #include "game/008B10D8.inc"
 };
-u32 AnimatedScenery_Models_38[2] = {
+s16 AnimatedScenery_Hidden_38[4] = {
 #include "game/008B10E0.inc"
 };
-u32 AnimatedScenery_Models_39[2] = {
+s16 AnimatedScenery_Hidden_39[4] = {
 #include "game/008B10E8.inc"
 };
-u32 AnimatedScenery_Models_8[4] = {
+s16 AnimatedScenery_Hidden_8[8] = {
 #include "game/008B10F0.inc"
 };
-f32 AnimatedScenery_Params_41[12] = {
+f32 AnimatedScenery_Positions_41[12] = {
 #include "game/008B1100.inc"
 };
-u32 AnimatedScenery_Models_42[2] = {
+s16 AnimatedScenery_Hidden_42[4] = {
 #include "game/008B1130.inc"
 };
-u32 AnimatedScenery_Models_43[2] = {
+s16 AnimatedScenery_Hidden_43[4] = {
 #include "game/008B1138.inc"
 };
-f32 AnimatedScenery_Params_45[4] = {
+f32 AnimatedScenery_Positions_45[4] = {
 #include "game/008B1140.inc"
 };
-u32 AnimatedScenery_Models_45[2] = {
+s16 AnimatedScenery_Hidden_45[4] = {
 #include "game/008B1150.inc"
 };
-u32 AnimatedScenery_Models_46[2] = {
+s16 AnimatedScenery_Hidden_46[4] = {
 #include "game/008B1158.inc"
 };
-u32 AnimatedScenery_Models_47[2] = {
+s16 AnimatedScenery_Hidden_47[4] = {
 #include "game/008B1160.inc"
 };
-u32 AnimatedScenery_Models_48[2] = {
+s16 AnimatedScenery_Hidden_48[4] = {
 #include "game/008B1168.inc"
 };
-u32 AnimatedScenery_Models_49[2] = {
+s16 AnimatedScenery_Hidden_49[4] = {
 #include "game/008B1170.inc"
 };
-u32 AnimatedScenery_Models_51[2] = {
+s16 AnimatedScenery_Hidden_51[4] = {
 #include "game/008B1178.inc"
 };
-u32 AnimatedScenery_Models_50[2] = {
+s16 AnimatedScenery_Hidden_50[4] = {
 #include "game/008B1180.inc"
 };
-u32 AnimatedScenery_Models_52[2] = {
+s16 AnimatedScenery_Hidden_52[4] = {
 #include "game/008B1188.inc"
 };
-u32 AnimatedScenery_Models_53[2] = {
+s16 AnimatedScenery_Hidden_53[4] = {
 #include "game/008B1190.inc"
 };
-u32 AnimatedScenery_Models_54[2] = {
+s16 AnimatedScenery_Hidden_54[4] = {
 #include "game/008B1198.inc"
 };
 f32 *AnimatedScenery_Positions[56] = {
-    (f32 *)D_008F5440, (f32 *)D_008F5290, AnimatedScenery_Params_2, AnimatedScenery_Params_3,
-    AnimatedScenery_Params_4, AnimatedScenery_Params_5, AnimatedScenery_Params_6, AnimatedScenery_Params_7,
+    (f32 *)D_008F5440, (f32 *)D_008F5290, AnimatedScenery_Positions_2, AnimatedScenery_Positions_3,
+    AnimatedScenery_Positions_4, AnimatedScenery_Positions_5, AnimatedScenery_Positions_6, AnimatedScenery_Positions_7,
     (f32 *)D_008F5720, (f32 *)D_008F52C0, (f32 *)D_008F52D8, (f32 *)D_008F52F0,
-    (f32 *)D_008F5330, (f32 *)D_008F5370, AnimatedScenery_Params_2, AnimatedScenery_Params_6,
+    (f32 *)D_008F5330, (f32 *)D_008F5370, AnimatedScenery_Positions_2, AnimatedScenery_Positions_6,
     (f32 *)D_008F5390, (f32 *)D_008F53B8, (f32 *)D_008F53C8, (f32 *)D_008F53D8,
     (f32 *)D_008F53F0, (f32 *)D_008F5428, (f32 *)D_008F5440, (f32 *)D_008F5470,
-    (f32 *)D_008F54B0, AnimatedScenery_Params_25, (f32 *)D_008F54F0, (f32 *)D_008F5510,
+    (f32 *)D_008F54B0, AnimatedScenery_Positions_25, (f32 *)D_008F54F0, (f32 *)D_008F5510,
     (f32 *)D_008F5548, (f32 *)D_008F5560, (f32 *)D_008F55A0, (f32 *)D_008F55E0,
     (f32 *)D_008F5620, (f32 *)D_008F5640, (f32 *)D_008F5660, (f32 *)D_008F5680,
-    (f32 *)D_008F56A0, AnimatedScenery_Params_37, (f32 *)D_008F56D0, (f32 *)D_008F5700,
-    (f32 *)D_008F5720, AnimatedScenery_Params_41, (f32 *)D_008F5750, (f32 *)D_008F5768,
-    (f32 *)D_008F5780, AnimatedScenery_Params_45, (f32 *)D_008F57C0, (f32 *)D_008F57D8,
+    (f32 *)D_008F56A0, AnimatedScenery_Positions_37, (f32 *)D_008F56D0, (f32 *)D_008F5700,
+    (f32 *)D_008F5720, AnimatedScenery_Positions_41, (f32 *)D_008F5750, (f32 *)D_008F5768,
+    (f32 *)D_008F5780, AnimatedScenery_Positions_45, (f32 *)D_008F57C0, (f32 *)D_008F57D8,
     (f32 *)D_008F57F0, (f32 *)D_008F5818, (f32 *)D_008F5848, (f32 *)D_008F5830,
     (f32 *)D_008F5860, (f32 *)D_008F5888, (f32 *)D_008F58A0, (f32 *)D_008F58A0,
 };
 s16 *AnimatedScenery_Hidden[56] = {
-    (s16 *)AnimatedScenery_Models_0, (s16 *)AnimatedScenery_Models_1, (s16 *)AnimatedScenery_Models_2, (s16 *)AnimatedScenery_Models_3,
-    (s16 *)AnimatedScenery_Models_4, (s16 *)AnimatedScenery_Models_5, (s16 *)AnimatedScenery_Models_6, (s16 *)AnimatedScenery_Models_7,
-    (s16 *)AnimatedScenery_Models_8, (s16 *)AnimatedScenery_Models_9, (s16 *)AnimatedScenery_Models_10, (s16 *)D_008F5320,
-    (s16 *)D_008F5360, (s16 *)AnimatedScenery_Models_13, (s16 *)AnimatedScenery_Models_2, (s16 *)AnimatedScenery_Models_6,
-    (s16 *)AnimatedScenery_Models_16, (s16 *)AnimatedScenery_Models_17, (s16 *)AnimatedScenery_Models_18, (s16 *)AnimatedScenery_Models_19,
-    (s16 *)D_008F5420, (s16 *)AnimatedScenery_Models_21, (s16 *)AnimatedScenery_Models_0, (s16 *)D_008F54A0,
-    (s16 *)D_008F54E0, (s16 *)AnimatedScenery_Models_25, (s16 *)AnimatedScenery_Models_26, (s16 *)D_008F5540,
-    (s16 *)AnimatedScenery_Models_28, (s16 *)D_008F5590, (s16 *)D_008F55D0, (s16 *)D_008F5610,
-    (s16 *)AnimatedScenery_Models_32, (s16 *)AnimatedScenery_Models_33, (s16 *)AnimatedScenery_Models_34, (s16 *)AnimatedScenery_Models_35,
-    (s16 *)AnimatedScenery_Models_36, (s16 *)AnimatedScenery_Models_37, (s16 *)AnimatedScenery_Models_38, (s16 *)AnimatedScenery_Models_39,
-    (s16 *)AnimatedScenery_Models_8, (s16 *)D_008F5748, (s16 *)AnimatedScenery_Models_42, (s16 *)AnimatedScenery_Models_43,
-    (s16 *)D_008F57B0, (s16 *)AnimatedScenery_Models_45, (s16 *)AnimatedScenery_Models_46, (s16 *)AnimatedScenery_Models_47,
-    (s16 *)AnimatedScenery_Models_48, (s16 *)AnimatedScenery_Models_49, (s16 *)AnimatedScenery_Models_50, (s16 *)AnimatedScenery_Models_51,
-    (s16 *)AnimatedScenery_Models_52, (s16 *)AnimatedScenery_Models_53, (s16 *)AnimatedScenery_Models_54, (s16 *)AnimatedScenery_Models_54,
+    AnimatedScenery_Hidden_0, AnimatedScenery_Hidden_1, AnimatedScenery_Hidden_2, AnimatedScenery_Hidden_3,
+    AnimatedScenery_Hidden_4, AnimatedScenery_Hidden_5, AnimatedScenery_Hidden_6, AnimatedScenery_Hidden_7,
+    AnimatedScenery_Hidden_8, AnimatedScenery_Hidden_9, AnimatedScenery_Hidden_10, (s16 *)D_008F5320,
+    (s16 *)D_008F5360, AnimatedScenery_Hidden_13, AnimatedScenery_Hidden_2, AnimatedScenery_Hidden_6,
+    AnimatedScenery_Hidden_16, AnimatedScenery_Hidden_17, AnimatedScenery_Hidden_18, AnimatedScenery_Hidden_19,
+    (s16 *)D_008F5420, AnimatedScenery_Hidden_21, AnimatedScenery_Hidden_0, (s16 *)D_008F54A0,
+    (s16 *)D_008F54E0, AnimatedScenery_Hidden_25, AnimatedScenery_Hidden_26, (s16 *)D_008F5540,
+    AnimatedScenery_Hidden_28, (s16 *)D_008F5590, (s16 *)D_008F55D0, (s16 *)D_008F5610,
+    AnimatedScenery_Hidden_32, AnimatedScenery_Hidden_33, AnimatedScenery_Hidden_34, AnimatedScenery_Hidden_35,
+    AnimatedScenery_Hidden_36, AnimatedScenery_Hidden_37, AnimatedScenery_Hidden_38, AnimatedScenery_Hidden_39,
+    AnimatedScenery_Hidden_8, (s16 *)D_008F5748, AnimatedScenery_Hidden_42, AnimatedScenery_Hidden_43,
+    (s16 *)D_008F57B0, AnimatedScenery_Hidden_45, AnimatedScenery_Hidden_46, AnimatedScenery_Hidden_47,
+    AnimatedScenery_Hidden_48, AnimatedScenery_Hidden_49, AnimatedScenery_Hidden_50, AnimatedScenery_Hidden_51,
+    AnimatedScenery_Hidden_52, AnimatedScenery_Hidden_53, AnimatedScenery_Hidden_54, AnimatedScenery_Hidden_54,
 };
 s16 AnimatedScenery_FirstModel[56] = {
 #include "game/008B1360.inc"
@@ -3191,4 +3234,35 @@ s16 CastleGate_Models[4] = {
 };
 f32 CastleGate_SoundPos[6] = {
 #include "game/008B1490.inc"
+};
+s16 AreaObj_K17_RectX[4] = {
+#include "game/008B14A8.inc"
+};
+s16 AreaObj_K17_RectY[4] = {
+#include "game/008B14B0.inc"
+};
+s16 AreaObj_K17_RectW[4] = {
+#include "game/008B14B8.inc"
+};
+s16 AreaObj_K17_RectH[4] = {
+#include "game/008B14C0.inc"
+};
+f32 AreaObj_K17_Spread1[3] = {
+#include "game/008B14C8.inc"
+};
+s16 AreaObj_K17_AngleTbl[6] = {
+#include "game/008B14D8.inc"
+};
+u8 AreaObj_K19_PointsA2[80] = {
+#include "game/008B14F0.inc"
+};
+u8 AreaObj_K19_PointsA3[48] = {
+#include "game/008B1540.inc"
+};
+u8 AreaObj_K19_PointsA6[32] = {
+#include "game/008B1570.inc"
+};
+/* Area object kind 0xA7: five points (x, y, z). */
+u8 AreaObj_K19_PointsA7[60] = {
+#include "game/008B1590.inc"
 };

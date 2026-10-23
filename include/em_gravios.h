@@ -1,5 +1,6 @@
 #ifndef EM_GRAVIOS_H
 #define EM_GRAVIOS_H
+#include "em.h"
 
 /*
  * The Gravios's vocabulary (the code in em_gravios.c), for its three kinds:
@@ -18,31 +19,31 @@
  */
 enum EmGraviosMotion {
     GRAV_MOT_IDLE = 0x01,            /* idle loop; layers 0-2 idle with EM_MOTION_ID(layer, 1); Start for Gravios kinds */
-    GRAV_MOT_WALK = 0x02,            /* intro walk to the goal on layers 0 and 2 (0x3EA, 0x57A) */
-    GRAV_MOT_TURN_RIGHT = 0x05,      /* intro: rotY -0x4000 at the start and -0x4000 more over half its length */
+    GRAV_MOT_WALK = 0x02,            /* intro walk to the goal on layers 0 and 2 (1002, 1402) */
+    GRAV_MOT_TURN_RIGHT = 0x05,      /* intro: rotY a quarter turn back at the start and a quarter turn more over half its length */
     GRAV_MOT_TURN_LEFT = 0x06,       /* motLeft of Em_TurnToTargetMotion in TURN_AND_BEAM */
-    GRAV_MOT_LIMP = 0x0A,            /* GRAV_MOVE_LIMP; GraviosAttack 0x13/0x14 */
+    GRAV_MOT_LIMP = 0x0A,            /* GRAV_MOVE_LIMP; GraviosAttack 19/20 */
     GRAV_MOT_DESCEND = 0x0B,         /* GRAV_FLY_LAND, HOP_TO_GOAL, TRAP_ESCAPE: velY set to reach the floor in 30 frames */
     GRAV_MOT_HOVER = 0x0F,           /* every hovering FLY state; dust under it near the floor at frames 8/86/160 */
-    GRAV_MOT_CHARGE = 0x11,          /* GRAV_MOVE_CHARGE: moves from frame 150, where EmGravios_MotionEffects makes GraviosAttack 0xB (0x1B Basarios) */
+    GRAV_MOT_CHARGE = 0x11,          /* GRAV_MOVE_CHARGE: moves from frame 150, where EmGravios_MotionEffects makes GraviosAttack 11 (27 Basarios) */
     GRAV_MOT_TAKE_OFF = 0x12,        /* GRAV_FLY_TAKE_OFF, HOP_*, TRAP_ESCAPE: curve 2 from frame 96 or curve 3, air from frame 30/96 */
-    GRAV_MOT_TOUCH_DOWN = 0x13,      /* back on the floor (EM_STANCE_GROUND), camera shake, GraviosAttack 0xD on frame 2 */
+    GRAV_MOT_TOUCH_DOWN = 0x13,      /* back on the floor (EM_STANCE_GROUND), camera shake, GraviosAttack 13 on frame 2 */
     GRAV_MOT_UPPER_D = 0x14,         /* layer-1 gesture of GRAV_IDLE_UPPER_D */
     GRAV_MOT_UPPER_A = 0x18,         /* layer-1 gesture of GRAV_IDLE_UPPER_A */
-    GRAV_MOT_UPPER_B = 0x19,         /* layer-1 gesture (id 0x4C9) the intro loops while walking and idling */
+    GRAV_MOT_UPPER_B = 0x19,         /* layer-1 gesture (id 1225) the intro loops while walking and idling */
     GRAV_MOT_UPPER_E = 0x1A,         /* layer-1 gesture of GRAV_IDLE_UPPER_E */
     GRAV_MOT_UPPER_C = 0x1C,         /* layer-1 gesture of GRAV_IDLE_UPPER_C */
     GRAV_MOT_IDLE_LEAD_IN = 0x1D,    /* GRAV_IDLE plays it before the idle; sounds only */
-    GRAV_MOT_LIE = 0x22,             /* EmGravios_CapturedHold2 after the collapse; effects: lying puffs at bone 0x22 every frame */
-    GRAV_MOT_ATTACK_A = 0x24,        /* GRAV_ATK_TURN_AND_ATTACK_A, ATTACK_A_LOOKING: GraviosAttack 0x15, then 1 (Gravios) / 0x19 (Basarios) */
+    GRAV_MOT_LIE = 0x22,             /* EmGravios_CapturedHold2 after the collapse; effects: lying puffs at GRAV_BONE_BREATH every frame */
+    GRAV_MOT_ATTACK_A = 0x24,        /* GRAV_ATK_TURN_AND_ATTACK_A, ATTACK_A_LOOKING: GraviosAttack 21, then 1 (Gravios) / 25 (Basarios) */
     GRAV_MOT_GET_UP = 0x25,          /* REST_END, STATUS1_END, STATUS2_END */
     GRAV_MOT_COLLAPSE = 0x26,        /* STATUS1/2_COLLAPSE (also GRAV_EVENT_CAPTURED_HOLD2) */
     GRAV_MOT_REST_LIE_DOWN = 0x27,   /* start of GRAV_IDLE_REST */
-    GRAV_MOT_SPIN_BASARIOS = 0x2A,   /* GRAV_ATK_SPIN for Basarios, rotY +0x200 a frame; GraviosAttack 0x1C at frame 30 */
-    GRAV_MOT_SPIN = 0x2B,            /* GRAV_ATK_SPIN for the Gravios kinds, rotY -0x200 a frame; GraviosAttack 0x10 at frame 30 */
-    GRAV_MOT_TURN_THREAT = 0x36,     /* turns to frame 60 (IDLE/MOVE TURN_TO_GOAL) */
+    GRAV_MOT_SPIN_BASARIOS = 0x2A,   /* GRAV_ATK_SPIN for Basarios, rotY +0x200 a frame; GraviosAttack 28 at frame 30 */
+    GRAV_MOT_SPIN = 0x2B,            /* GRAV_ATK_SPIN for the Gravios kinds, rotY -0x200 a frame; GraviosAttack 16 at frame 30 */
+    GRAV_MOT_TURN_ROAR = 0x36,       /* turns to the goal (to frame 60), then roars as GRAV_MOT_ROAR does: at frame 110 GraviosAttack row 18 (the roar's wide sphere: radius 2000 at GRAV_BONE_BODY, power 0) and its rings (ElementBurst type 5) */
     GRAV_MOT_FLINCH_B = 0x3C,        /* GRAV_REACT_FLINCH_PART6_BROKEN; GRAV_REACT_HOLD2 start (no root motion to frame 52) */
-    GRAV_MOT_FLINCH_F = 0x3D,        /* GRAV_VS_POSE_A; GRAV_REACT_FLINCH_E; effects: PartFx 0x1A at frame 30 */
+    GRAV_MOT_FLINCH_F = 0x3D,        /* GRAV_VS_POSE_A; GRAV_REACT_FLINCH_E; effects: PartFx 26 at frame 30 */
     GRAV_MOT_SHAKE_OFF = 0x3E,       /* GRAV_IDLE_SHAKE_OFF and the three status shake-offs */
     GRAV_MOT_FLINCH_D = 0x3F,        /* GRAV_REACT_FLINCH_C (part 5) */
     GRAV_MOT_FLINCH_E = 0x40,        /* GRAV_REACT_FLINCH_D (parts 1, 2) */
@@ -59,19 +60,19 @@ enum EmGraviosMotion {
     GRAV_MOT_DIE_FALLING = 0x52,     /* DIE_FALLING after landing (blend 6), EM_STANCE_DEAD */
     GRAV_MOT_TRAPPED = 0x5F,         /* GRAV_REACT_TRAPPED */
     GRAV_MOT_STRUGGLE = 0x60,        /* GRAV_REACT_TRAPPED_STRUGGLE, looped until trapTimer */
-    GRAV_MOT_DOWNED = 0x61,          /* GRAV_REACT_STATUS4_DOWNED, GRAV_REACT_STUN_TRAPPED (and the held lying GRAV_IDLE_STATUS2_DOWNED, 0x1F) */
+    GRAV_MOT_DOWNED = 0x61,          /* GRAV_REACT_STATUS4_DOWNED, GRAV_REACT_STUN_TRAPPED (and the held lying GRAV_IDLE_STATUS2_DOWNED) */
     GRAV_MOT_DOWNED_GET_UP = 0x62,   /* REACT_STATUS2/STATUS1_DOWNED_END, back to the struggle */
     GRAV_MOT_CHARGE_STOP = 0x64,     /* end of CHARGE, GRAV_MOVE_CHARGE_STOP; dust 2 at frame 28, PartFx 54-120 */
     GRAV_MOT_IDLE_ENRAGED = 0x65,    /* GRAV_IDLE_ENRAGED only; rage dust clouds */
     GRAV_MOT_IDLE_LOOP_B = 0x66,     /* GRAV_IDLE_TIMED_LOOP only; no sounds or effects */
     GRAV_MOT_IDLE_ACTION_A = 0x67,   /* GRAV_IDLE_ACTION_A only; sounds only */
-    GRAV_MOT_EAT = 0x68,             /* intro at the wall (FallingDebris and effects at bone 0x24 on frames 68/94/204) */
-    GRAV_MOT_BEAM_SHORT = 0x69,      /* GRAV_ATK_TURN_AND_BEAM: beam (bone 0x22, variant 0) held 20 frames from frame 122 */
-    GRAV_MOT_ROAR = 0x6A,            /* effects: GraviosAttack 0x12 and ElementBurst type 5 (the roar burst) at frame 110 */
+    GRAV_MOT_EAT = 0x68,             /* intro at the wall (FallingDebris and effects at bone 36 on frames 68/94/204) */
+    GRAV_MOT_BEAM_SHORT = 0x69,      /* GRAV_ATK_TURN_AND_BEAM: beam (GRAV_BONE_BREATH, variant 0) held 20 frames from frame 122 */
+    GRAV_MOT_ROAR = 0x6A,            /* effects: GraviosAttack 18 and ElementBurst type 5 (the roar burst) at frame 110 */
     GRAV_MOT_ROCK_POSE = 0x6B,       /* Basarios Start row; HIDE_AS_ROCK, REHIDE_AS_ROCK, ROCK_POSE; silent */
     GRAV_MOT_RISE_BURST = 0x6C,      /* rising out of the hiding pose GRAV_MOT_ROCK_POSE (GRAV_IDLE_ROCK_BURST, with a timed mine) */
-    GRAV_MOT_ATTACK_B = 0x6D,        /* GRAV_ATK_TURN_AND_ATTACK_B: GraviosAttack 2 (Gravios) / 0x1A (Basarios) at 68 */
-    GRAV_MOT_BEAM = 0x6E,            /* beam (bone 0x22, variant 1) at frame 136, held 35 frames (55 in the intro) */
+    GRAV_MOT_ATTACK_B = 0x6D,        /* GRAV_ATK_TURN_AND_ATTACK_B: GraviosAttack 2 (Gravios) / 26 (Basarios) at 68 */
+    GRAV_MOT_BEAM = 0x6E,            /* beam (GRAV_BONE_BREATH, variant 1) at frame 136, held 35 frames (55 in the intro) */
     GRAV_MOT_GAS = 0x6F,             /* GRAV_ATK_GAS_A/B/C held 120 frames with the per-variant cloud */
     GRAV_MOT_REAR_ATTACK = 0x70,     /* GRAV_ATK_REAR_ATTACK: backward-facing GraviosAttack 4 at frame 46 */
     GRAV_MOT_GAS_END = 0x71,         /* ATK_GAS_* after the 120 frames, clouds to frame 50 */
@@ -83,13 +84,13 @@ enum EmGraviosMotion {
     GRAV_MOT_LEAP = 0x77,            /* GRAV_ATK_LEAP_SLAM: jump at frame 70 */
     GRAV_MOT_BURROW = 0x78,          /* BURROW_TO_NEXT_AREA, GRAV_MOVE_BURROW; Basarios-only dust and PartFx */
     GRAV_MOT_SURFACE = 0x79,         /* SURFACE, SURFACE_AT_GOAL, GRAV_MOVE_SURFACE; Basarios-only AttackBurst at frame 8 */
-    GRAV_MOT_LEAP_LAND = 0x7A        /* GRAV_ATK_LEAP_SLAM landing: GraviosAttack 0x1E at frame 2 */
+    GRAV_MOT_LEAP_LAND = 0x7A        /* GRAV_ATK_LEAP_SLAM landing: GraviosAttack 30 at frame 2 */
 };
 
 /* Group 0, EM_GROUP_IDLE (EmGravios_RunIdleState): standing, turning, the beam, sleep, statuses and rage. */
 enum EmGraviosIdleState {
     GRAV_IDLE_STAND = 0x00,              /* idle on all layers, em->timer, scriptPending */
-    GRAV_IDLE = 0x01,                    /* EmGravios_EndState/Start target; LEAD_IN then idle; setter swaps to 0x02 when enraged */
+    GRAV_IDLE = 0x01,                    /* EmGravios_EndState/Start target; LEAD_IN then idle; setter swaps to GRAV_IDLE_ENRAGED when enraged */
     GRAV_IDLE_ENRAGED = 0x02,            /* the setter's GRAV_IDLE while em->rage; GRAV_MOT_IDLE_ENRAGED */
     GRAV_IDLE_TIMED_LOOP = 0x03,         /* GRAV_MOT_IDLE_LOOP_B for (stateRand & 3) * 300 frames */
     GRAV_IDLE_ACTION_A = 0x04,           /* GRAV_MOT_IDLE_ACTION_A once */
@@ -98,7 +99,7 @@ enum EmGraviosIdleState {
     GRAV_IDLE_UPPER_E = 0x07,            /* layer-1 gesture GRAV_MOT_UPPER_E */
     GRAV_IDLE_ROCK_POSE = 0x08,          /* GRAV_MOT_ROCK_POSE, blind, reaction set 1, timed */
     GRAV_IDLE_PAIR_A = 0x09,             /* PAIR_A or PAIR_B at random */
-    GRAV_IDLE_TURN_TO_GOAL = 0x0A,       /* GRAV_MOT_TURN_THREAT to frame 60, rotY snapped to goalYaw */
+    GRAV_IDLE_TURN_TO_GOAL = 0x0A,       /* GRAV_MOT_TURN_ROAR to frame 60, rotY snapped to goalYaw */
     GRAV_IDLE_UPPER_C = 0x0B,            /* layer-1 gesture GRAV_MOT_UPPER_C */
     GRAV_IDLE_ROCK_BURST = 0x0C,         /* GRAV_MOT_RISE_BURST, timed gathering point; EmGravios_ChangeState forces it during rock hiding */
     GRAV_IDLE_UPPER_D = 0x0D,            /* layer-1 gesture GRAV_MOT_UPPER_D */
@@ -124,20 +125,20 @@ enum EmGraviosIdleState {
     GRAV_IDLE_BURROW_TO_NEXT_AREA = 0x24, /* GRAV_MOT_BURROW, area = nextArea, then SURFACE */
     GRAV_IDLE_SURFACE_AT_GOAL = 0x25,    /* setter copies the goal to the position; GRAV_MOT_SURFACE */
     GRAV_IDLE_SURFACE = 0x26,            /* Em_TypeSetup; entered from BURROW_TO_NEXT_AREA; GRAV_MOT_SURFACE */
-    GRAV_IDLE_RAGE_START = 0x27,         /* Em_StartRage; GRAV_MOT_TURN_THREAT */
-    GRAV_IDLE_PENDING_RAGE_START = 0x28  /* Em_StartPendingRage; GRAV_MOT_TURN_THREAT */
+    GRAV_IDLE_RAGE_START = 0x27,         /* Em_StartRage; GRAV_MOT_TURN_ROAR */
+    GRAV_IDLE_PENDING_RAGE_START = 0x28  /* Em_StartPendingRage; GRAV_MOT_TURN_ROAR */
 };
 
 /* Group 1, EM_GROUP_MOVE (EmGravios_RunMoveState): walking, turning and digging. */
 enum EmGraviosMoveState {
-    GRAV_MOVE_WALK = 0x00,                   /* GRAV_MOT_WALK, Em_StepToGoal 0x80; becomes LIMP below 30% hp */
+    GRAV_MOVE_WALK = 0x00,                   /* GRAV_MOT_WALK, Em_StepToGoal 128; becomes LIMP below 30% hp */
     GRAV_MOVE_END = 0x01,                    /* setter only sets scriptPending; GRAV_MOVE_END calls EmGravios_EndState */
     GRAV_MOVE_CHARGE_STOP = 0x02,            /* GRAV_MOT_CHARGE_STOP once */
     GRAV_MOVE_TURN = 0x03,                   /* EmGravios_TurnParams[0] via Em_TurnStep */
     GRAV_MOVE_CHARGE = 0x04,                 /* GRAV_MOT_CHARGE, moves from frame 150, then CHARGE_STOP; Em_SetSpeedScaled mode 2 */
-    GRAV_MOVE_WALK_B = 0x05,                 /* GRAV_MOT_WALK, Em_StepToGoal 0x40; becomes LIMP below 30% hp */
+    GRAV_MOVE_WALK_B = 0x05,                 /* GRAV_MOT_WALK, Em_StepToGoal 64; becomes LIMP below 30% hp */
     GRAV_MOVE_LIMP = 0x06,                   /* GRAV_MOT_LIMP; Em_SetSpeedScaled mode 6 */
-    GRAV_MOVE_TURN_TO_GOAL = 0x07,           /* GRAV_MOT_TURN_THREAT, rotY 0x200 a frame */
+    GRAV_MOVE_TURN_TO_GOAL = 0x07,           /* GRAV_MOT_TURN_ROAR, rotY 0x200 a frame */
     GRAV_MOVE_CHARGE_SLOW = 0x08,            /* GRAV_MOVE_CHARGE at motionSpeed 0.7 */
     GRAV_MOVE_TURN_TO_GOAL_RAGE_CHECK = 0x09, /* setter Em_CheckRageByHp; EmGravios_TurnToGoal */
     GRAV_MOVE_BURROW = 0x0A,                 /* GRAV_MOT_BURROW once */
@@ -171,12 +172,12 @@ enum EmGraviosAttackState {
     GRAV_ATK_LEAP_SLAM = 0x02,        /* velY 73 jump, landing GRAV_MOT_LEAP_LAND with an attack */
     GRAV_ATK_ATTACK_A_LOOKING = 0x03, /* GRAV_MOT_ATTACK_A with lookAtTarget 1, no turn */
     GRAV_ATK_BEAM_OR_SHOT_A = 0x04,   /* EmGravios_TurnAndBeamOrShot variant 0 (Basarios shot row 0) */
-    GRAV_ATK_GAS_A = 0x05,            /* EmGravios_Gas variant 0: GraviosAttack 0xE, cloud 0 */
+    GRAV_ATK_GAS_A = 0x05,            /* EmGravios_Gas variant 0: GraviosAttack 14, cloud 0 */
     GRAV_ATK_SPIN = 0x06,             /* 0x200 a frame, twice; motion by kind */
-    GRAV_ATK_GAS_B = 0x07,            /* variant 1: GraviosAttack 0xC, cloud 1 */
+    GRAV_ATK_GAS_B = 0x07,            /* variant 1: GraviosAttack 12, cloud 1 */
     GRAV_ATK_TURN_AND_ATTACK_B = 0x08, /* turn, GRAV_MOT_ATTACK_B */
     GRAV_ATK_REAR_ATTACK = 0x09,      /* GRAV_MOT_REAR_ATTACK, backward-facing GraviosAttack 4 */
-    GRAV_ATK_GAS_C = 0x0A,            /* variant 2: GraviosAttack 0x1F, cloud 2 at 1.1x */
+    GRAV_ATK_GAS_C = 0x0A,            /* variant 2: GraviosAttack 31, cloud 2 at 1.1x */
     GRAV_ATK_BEAM_OR_SHOT_B = 0x0B,   /* variant 1 (Basarios shot row 1; same as _A for Gravios) */
     GRAV_ATK_BEAM_LONG = 0x0C         /* GRAV_MOT_BEAM_LONG, beam held 40, no turn */
 };
@@ -254,7 +255,80 @@ typedef struct EmGraviosWork {
     u8 unk01[0x02 - 0x01];
     s16 sndMotion;              /* 0x02: the layer-0 motion id EmGravios_MotionEffects keeps */
     u8 unk04[0x1B - 0x04];
-    u8 onFlaggedFloor;          /* 0x1B: AreaGrid2_OnFlaggedFloor at the position, each frame; while 1 the footsteps (bones 0x14 and 0x1A) play their other sound (se + 0x35) */
+    u8 onFlaggedFloor;          /* 0x1B: AreaGrid2_OnFlaggedFloor at the position, each frame; while 1 the sounds at GRAV_BONE_STEP_A and GRAV_BONE_STEP_B play their other sound (se + 53) */
 } EmGraviosWork;
+
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from). The
+ * names say what the family's code shows a bone to be: the bones of the
+ * attack hit shapes GraviosAttack_Create makes on given frames of a motion
+ * (GraviosAttack_HitShapes, by the attack rows' hit lists), where a beam,
+ * a shot or an effect starts, and the bones the steps' sounds take turns
+ * at. "A" and "B" are the two sides; which is left the code doesn't show.
+ * Bones no code explains stay numbers: 3 (a sphere in GRAV_MOT_KNOCK_DOWN),
+ * 36 (the debris and sparks while eating), 1, 26 and 27 (dust in the
+ * descent and two flinches).
+ */
+enum EmGraviosBone {
+    GRAV_BONE_ROOT = 0,     /* the skeleton's first bone: the body's sphere in GRAV_MOT_CHARGE */
+    GRAV_BONE_BODY = 2,     /* the body's spheres in GRAV_MOT_ATTACK_B, GRAV_MOT_RISE_BURST, the gas, a leap's landing and GRAV_MOT_BEAM_END; the roar's wide sphere; the dust and bursts of the rising and the landings */
+    GRAV_BONE_WING_A = 6,   /* the descent's (GRAV_MOT_DESCEND) paired sounds play here and at GRAV_BONE_WING_B, a few frames apart; the rising's dust */
+    GRAV_BONE_WING_B = 12,
+    GRAV_BONE_LEG_A = 19,   /* leg A's upper sphere in the walk's and the turns' steps (with GRAV_BONE_FOOT_A's) */
+    GRAV_BONE_STEP_A = 20,  /* leg A's step sounds (GRAV_SE_STEP in the walk and the turns) */
+    GRAV_BONE_FOOT_A = 22,  /* leg A's foot: the steps' larger sphere, and a landing on both feet (GRAV_MOT_TOUCH_DOWN) */
+    GRAV_BONE_LEG_B = 25,   /* the same for leg B */
+    GRAV_BONE_STEP_B = 26,
+    GRAV_BONE_FOOT_B = 28,
+    GRAV_BONE_BREATH = 34,  /* where the beams (EMRANGED_GRAVIOS_BEAM), the Basarios's shots (EMRANGED_GRAVIOS_SHOT) and the lying puffs start; the roar's rings follow it */
+    GRAV_BONE_HEAD = 35,    /* the head's sphere in GRAV_MOT_ATTACK_A and the beams; the voice sounds play here */
+    GRAV_BONE_TAIL_A = 41,  /* the tail's capsule, to GRAV_BONE_TAIL_B, in the spins (GRAV_MOT_SPIN, GRAV_MOT_SPIN_BASARIOS), GRAV_MOT_REAR_ATTACK and GRAV_MOT_ATTACK_A */
+    GRAV_BONE_TAIL_B = 44   /* the capsule's other end; the gas's cloud at the tail (GRAV_MOT_GAS) */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank (gSeBankByType
+ * gives the bank by kind; Em_PlaySeAtBone and Em_PlaySeType). A
+ * sound is named where the code shows what it is: it plays on the frame of
+ * the thing it goes with. The others stay numbers.
+ */
+enum EmGraviosSe {
+    GRAV_SE_STEP = 1,       /* a step: in GRAV_MOT_WALK on the frames of its camera shakes (44 and 116), at the step bones */
+    GRAV_SE_ROAR = 86       /* the roar: at the head two frames before its rings start (ElementBurst type 5) in GRAV_MOT_ROAR; also in GRAV_MOT_GAS */
+};
+
+extern void *EmGravios_Callbacks[8];
+void EmGravios_MotionSounds(Em *em, EmWork *work);
+void EmGravios_Reset(Em *em);
+void EmGravios_Start(Em *em);
+void EmGravios_BurrowToNextArea(Em *em, EmWork *work);
+void EmGravios_Turn(Em *em, s32 unused, s32 variant);
+void EmGravios_TurnToGoal(Em *em, EmWork *work);
+void EmGravios_FlyHopToGoal(Em *em, EmWork *work);
+void EmGravios_TurnAndBeamOrShot(Em *em, EmWork *work, s32 row);
+void EmGravios_Gas(Em *em, EmWork *work, s16 variant);
+void EmGravios_Intro(Em *em, EmWork *work);
+void EmGravios_VsEatBait(Em *em, EmWork *work);
+void EmGravios_Die(Em *em, EmWork *work);
+void EmGravios_DieHeld(Em *em, EmWork *work);
+void EmGravios_DieFalling(Em *em, EmWork *work);
+void EmGravios_DieRising(Em *em, EmWork *work);
+void EmGravios_Reappear(Em *em, EmWork *work);
+void EmGravios_StartPart6Flinch(Em *em);
+void EmGravios_RunAttackState(Em *em, EmWork *work);
+void EmGravios_RunReactState(Em *em, EmWork *work);
+void EmGravios_Update(Em *em);
+void EmGravios_RunState(Em *em, s32 work);
+void EmGravios_MotionEffects(Em *em, EmGraviosWork *work);
+void EmGravios_SetIdleState(Em *em, u16 state, u8 mode);
+void EmGravios_SetMoveState(Em *em, u16 state, u8 mode);
+void EmGravios_SetFlyState(Em *em, u16 state, u8 mode);
+void EmGravios_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmGravios_MoveByVelYCurve(Em *em, s32 kind);
+void EmGravios_StartCurves(Em *em, u8 kind);
+u8 EmGravios_UpdateCurves(Em *em);
+s32 EmGravios_IsHiding(Em *em);
+void EmGravios_DownedPuffsAndSe(Em *em);
 
 #endif

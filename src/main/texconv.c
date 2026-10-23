@@ -1,16 +1,19 @@
 /*
- * Textures in GS memory: making handles resident
- * (Tex_MakeResident), the GS memory they need, converting an Image to the
- * GS layout (flPS2ConvertTextureFromContext: channel order, alpha 0x80 =
- * 1.0, 4/8-bit swizzling), and the VramSlot list.
+ * Textures in GS memory: the sizes and GS memory a texture needs, and
+ * converting an Image to the GS layout (flPS2ConvertTextureFromContext:
+ * channel order, alpha 128 = 1.0, 4/8-bit swizzling).
  */
 #include "common.h"
 #include "dma.h"
 #include "texture.h"
+#include "heap.h"
+#include "gs_setup.h"
+#include "mem_util.h"
+#include "libc.h"
 
-/* This file was built at optimization level 4: Tex_MakeResident and the
- * 8-times unrolled level loop of Tex_VramBlocks only match so, every
- * other function matches either way. */
+/* This file was built at optimization level 4: the 8-times unrolled
+ * level loop of Tex_VramBlocks only matches so, every other function
+ * matches either way. */
 #pragma optimization_level 4
 
 /* Swizzle tables of the 4- and 8-bit layouts */
@@ -21,95 +24,7 @@ extern s32 gSwizzle4BlockOrder[32];
 extern s32 gSwizzle8BlockOrder[32];
 extern s32 *gTexSwizzle4Tbls[4];
 extern s32 *gTexSwizzle8Tbls[4];
-extern s32 D_002191A8;
 extern char D_001C7BF0[];       /* "Not supported texture bit depth @flPS2ConvertTextureFromContext" */
-
-void Mem_Fill(void *dst, u8 c, s32 n);
-void *memcpy(void *dst, const void *src, u32 n);
-void Mem_Copy(void *dst, void *src, s32 n);
-s32 Tex_UploadPacketSize(u32 unused0);
-void *Packet_Alloc(u32 size, s32 align);
-void *Mem_Alloc(u32 size, s32 flag);
-void *Mem_GetAddr(void *handle);
-u8 *MainHeap_MaxAlloc(u32 size);
-s32 Debug_Printf(const char *fmt, ...);
-void Dma_BuildEndPacket(u128 *pkt, s32 irq);
-s32 DmaQueue_AddChain(s32 mode, u32 entry, u32 *last, DmaQueue *q);
-extern DmaQueue gDmaQueue;
-s32 Tex_ConvertPixels(Image *src, Image *dst, s32 dir, s32 clut);
-s32 Tex_Swizzle(s32 w, s32 h, u8 *src, u8 *dst, s32 bits8);
-void Tex_Swizzle4(s32 w, s32 h, u8 *src, u8 *dst);
-void Tex_Swizzle4Block(u8 *block, u8 *dst, s32 bw);
-void Tex_Swizzle4Kernel(u8 *src, u8 *dst, s32 bw);
-void Tex_Swizzle8(s32 w, s32 h, u8 *src, u8 *dst);
-void Tex_Swizzle8Block(u8 *block, u8 *dst, s32 bw);
-void Tex_Swizzle8Kernel(u8 *src, u8 *dst, s32 bw);
-
-/*
- * Makes the textures and palettes of handleCount handles resident in GS
- * memory: each record not yet resident gets a gap (VramSlot_FindGap), or
- * else the slot of a texture not among handles (VramSlot_FindVictim,
- * asked again until one is found), and its pixels are queued
- * (Tex_SendLevels), then an end packet. Each handle holds a texture handle
- * in its low 16 bits and a palette handle in its high 16 bits (0: none).
- * Returns how many records were sent.
- */
-s32 Tex_MakeResident(s32 handleCount, u32 *handles)
-{
-    TexRec *last = NULL;
-    s32 i;
-    TexRec *texRec;
-    TexRec *palRec;
-    VramSlot *slot;
-
-    TexRec *rec;
-    s32 k;
-    s32 count = 0;
-    u32 texHandle;
-    u32 palHandle;
-    u128 *endPkt;
-
-    for (i = 0; i < handleCount; i++) {
-        texHandle = handles[i] & 0xFFFF;
-        palHandle = (handles[i] & 0xFFFF0000) >> 16;
-        texRec = &gTexRecs[texHandle - 1];
-        palRec = &gPalRecs[palHandle - 1];
-        for (k = 0; k < 2; k++) {
-            if (k == 0) {
-                if (texHandle == 0 || texHandle >= 0x100) {
-                    continue;
-                }
-                rec = texRec;
-            } else {
-                if (palHandle == 0 || palHandle >= 0x100) {
-                    continue;
-                }
-                rec = palRec;
-            }
-            if (rec->resident != 0) {
-                continue;
-            }
-            slot = VramSlot_FindGap(rec->blocks, rec->align);
-            if (slot != (VramSlot *)-1) {
-                VramSlot_Assign(slot, rec);
-            } else {
-                do {
-                    slot = VramSlot_FindVictim(rec, handles, handleCount);
-                } while (slot == (VramSlot *)-1);
-                VramSlot_Replace(slot, rec);
-            }
-            Tex_SendLevels(rec);
-            last = rec;
-            count++;
-        }
-    }
-    if (last != NULL) {
-        endPkt = Packet_Alloc(Tex_UploadPacketSize(0), 16);
-        Dma_BuildEndPacket(endPkt, 1);
-        DmaQueue_AddChain(0, (u32)endPkt & 0x0FFFFFFF, (u32 *)endPkt, &gDmaQueue);
-    }
-    return count;
-}
 
 /* log2 of a size (1..10) */
 s16 Tex_Log2(s16 size)
@@ -190,7 +105,7 @@ s16 Tex_VramBlocks(TexRec *rec)
     }
     levelWidth = rec->width;
     levelHeight = rec->height;
-    for (pow2Height = 32; pow2Height <= 0x400; pow2Height <<= 1) {
+    for (pow2Height = 32; pow2Height <= 1024; pow2Height <<= 1) {
         if (levelHeight <= pow2Height) {
             levelHeight = pow2Height;
             break;
@@ -229,7 +144,7 @@ s16 Pal_VramBlocks(TexRec *palRec)
 /*
  * Converts the levels of img (one Image per mip level) into the GS layout
  * in a new heap block (rec->mem): 4- and 8-bit pixels are copied, or
- * swizzled by Tex_Swizzle when rec->unk36 is set; 16-, 24- and 32-bit
+ * swizzled by Tex_Swizzle when rec->swizzled is set; 16-, 24- and 32-bit
  * pixels get the GS channel order and alpha (Tex_ConvertPixels).
  * reorderClut 1 puts the entries of a 256-colour palette in the GS CSM1
  * order. Returns 1.
@@ -260,7 +175,7 @@ s32 flPS2ConvertTextureFromContext(Image *img, TexRec *rec, s32 reorderClut)
             break;
         case GS_PSMT4:
             size = (levelWidth * levelHeight) >> 1;
-            if (rec->unk36 == 0) {
+            if (rec->swizzled == 0) {
                 Mem_Copy(dst, img->pixels, rec->size);
             } else {
                 gsImage.pixels = MainHeap_MaxAlloc(size);
@@ -270,7 +185,7 @@ s32 flPS2ConvertTextureFromContext(Image *img, TexRec *rec, s32 reorderClut)
             break;
         case GS_PSMT8:
             size = levelWidth * levelHeight;
-            if (rec->unk36 == 0) {
+            if (rec->swizzled == 0) {
                 Mem_Copy(dst, img->pixels, rec->size);
             } else {
                 gsImage.pixels = MainHeap_MaxAlloc(size);
@@ -310,7 +225,7 @@ s32 flPS2ConvertTextureFromContext(Image *img, TexRec *rec, s32 reorderClut)
 /*
  * Converts the pixels of src into dst (the size and channel layout of
  * dst), pixel by pixel: each channel is scaled through 8 bits. For 32-bit
- * pixels, fromGs 0 maps alpha 0xFF to 0x80 (1.0 on the GS) and halves the
+ * pixels, fromGs 0 maps alpha 255 to 128 (1.0 on the GS) and halves the
  * rest, fromGs 1 does the reverse. reorderClut 1 shuffles the pixel order
  * by gClutCsm1Order (the GS CSM1 palette layout): on the source side when
  * fromGs is 1, on the destination side when it is 0. Returns 1.
@@ -365,16 +280,16 @@ s32 Tex_ConvertPixels(Image *src, Image *dst, s32 fromGs, s32 reorderClut)
             }
             if (bpp == 4) {
                 if (fromGs == 0) {
-                    if (alpha == 0xFF) {
-                        alpha = 0x80;
+                    if (alpha == 255) {
+                        alpha = 128;
                     } else if (alpha != 0) {
                         alpha >>= 1;
                         if (alpha == 0) {
                             alpha = 1;
                         }
                     }
-                } else if (alpha == 0x80) {
-                    alpha = 0xFF;
+                } else if (alpha == 128) {
+                    alpha = 255;
                 } else {
                     alpha <<= 1;
                 }
@@ -430,7 +345,7 @@ void Tex_Swizzle4(s32 width, s32 height, u8 *src, u8 *dst)
     s32 widthBlocks;
     s32 heightBlocks;
     s32 y;
-    u8 block[0x2000];
+    u8 block[8192];
     s32 i;
     s32 x;
     u8 *srcRow;
@@ -440,10 +355,10 @@ void Tex_Swizzle4(s32 width, s32 height, u8 *src, u8 *dst)
     heightBlocks = (height - 1) / 128 + 1;
     for (y = 0; y < heightBlocks; y++) {
         for (x = 0; x < widthBlocks; x++) {
-            for (srcRow = src + widthBlocks * (y * 0x2000) + x * 0x40, blockRow = block, i = 0; i < 0x80; i++, srcRow += widthBlocks << 6, blockRow += 0x40) {
-                memcpy(blockRow, srcRow, 0x40);
+            for (srcRow = src + widthBlocks * (y * 8192) + x * 64, blockRow = block, i = 0; i < 128; i++, srcRow += widthBlocks << 6, blockRow += 64) {
+                memcpy(blockRow, srcRow, 64);
             }
-            Tex_Swizzle4Block(block, dst + widthBlocks * (y * 0x2000) + x * 0x100, widthBlocks);
+            Tex_Swizzle4Block(block, dst + widthBlocks * (y * 8192) + x * 256, widthBlocks);
         }
     }
 }
@@ -482,9 +397,9 @@ void Tex_Swizzle4Kernel(u8 *src, u8 *dst, s32 widthBlocks)
     u8 lowNibble;
     u8 highNibble;
 
-    for (i = 0; i < 4; i++, src += 0x100) {
+    for (i = 0; i < 4; i++, src += 256) {
         nibbleOrder = *tables++;
-        for (j = 0; j < 2; j++, dst += (widthBlocks << 8) - 0x20) {
+        for (j = 0; j < 2; j++, dst += (widthBlocks << 8) - 32) {
             for (k = 0; k < 32; k++) {
                 nibbleIdx = nibbleOrder[0];
                 if ((nibbleIdx & 1) == 0) {
@@ -517,7 +432,7 @@ void Tex_Swizzle8(s32 width, s32 height, u8 *src, u8 *dst)
     s32 widthBlocks;
     s32 heightBlocks;
     s32 y;
-    u8 block[0x2000];
+    u8 block[8192];
     s32 i;
     s32 x;
     u8 *srcRow;
@@ -527,10 +442,10 @@ void Tex_Swizzle8(s32 width, s32 height, u8 *src, u8 *dst)
     heightBlocks = (height - 1) / 64 + 1;
     for (y = 0; y < heightBlocks; y++) {
         for (x = 0; x < widthBlocks; x++) {
-            for (srcRow = src + widthBlocks * (y * 0x2000) + x * 0x80, blockRow = block, i = 0; i < 0x40; i++, srcRow += widthBlocks << 7, blockRow += 0x80) {
-                memcpy(blockRow, srcRow, 0x80);
+            for (srcRow = src + widthBlocks * (y * 8192) + x * 128, blockRow = block, i = 0; i < 64; i++, srcRow += widthBlocks << 7, blockRow += 128) {
+                memcpy(blockRow, srcRow, 128);
             }
-            Tex_Swizzle8Block(block, dst + widthBlocks * (y * 0x2000) + x * 0x100, widthBlocks);
+            Tex_Swizzle8Block(block, dst + widthBlocks * (y * 8192) + x * 256, widthBlocks);
         }
     }
 }
@@ -565,9 +480,9 @@ void Tex_Swizzle8Kernel(u8 *src, u8 *dst, s32 widthBlocks)
     s32 **tables = gTexSwizzle8Tbls;
     s32 *byteOrder;
 
-    for (i = 0; i < 4; i++, src += 0x200) {
+    for (i = 0; i < 4; i++, src += 512) {
         byteOrder = *tables++;
-        for (j = 0; j < 2; j++, dst += (widthBlocks << 8) - 0x20) {
+        for (j = 0; j < 2; j++, dst += (widthBlocks << 8) - 32) {
             for (k = 0; k < 32; k += 8) {
                 *dst++ = src[*byteOrder++];
                 *dst++ = src[*byteOrder++];
@@ -579,93 +494,6 @@ void Tex_Swizzle8Kernel(u8 *src, u8 *dst, s32 widthBlocks)
                 *dst++ = src[*byteOrder++];
             }
         }
-    }
-}
-
-/*
- * Clears the four GS memory blocks (gVramBlocks) and the VRAM slots
- * (gVramSlots, gVramSlotHead, gVramSlotCount), and sets the texture handle
- * the render state last bound to 1. The display set-up calls it.
- */
-void Vram_Init(void)
-{
-    s32 i;
-    VramBlock *block;
-    VramSlot *slot;
-
-    gVramBlockCount = 0;
-    D_002191A8 = 1;
-    for (i = 0, block = gVramBlocks; i < 4; i++, block++) {
-        Mem_Fill(block, 0, sizeof(VramBlock));
-    }
-    gVramSlotCount = 0;
-    gVramSlotHead = NULL;
-    for (i = 0, slot = gVramSlots; i < VRAM_SLOT_MAX; i++, slot++) {
-        Mem_Fill(slot, 0, sizeof(VramSlot));
-    }
-}
-
-/*
- * Takes the first free slot of gVramSlots (addr 0) and counts it in
- * gVramSlotCount; returns it, NULL when all VRAM_SLOT_MAX are in use.
- * table and count are not used (callers pass gVramSlots, VRAM_SLOT_MAX).
- */
-VramSlot *VramSlot_Alloc(VramSlot *table, s32 count)
-{
-    s32 i;
-    VramSlot *slot;
-
-    for (i = 0, slot = gVramSlots; i < VRAM_SLOT_MAX; i++, slot++) {
-        if (slot->addr == 0) {
-            gVramSlotCount++;
-            return &gVramSlots[i];
-        }
-    }
-    return NULL;
-}
-
-/* Unlinks and clears a slot; its texture loses its GS memory. */
-void VramSlot_Free(VramSlot *slot)
-{
-    VramSlot *prev = slot->prev;
-    VramSlot *next = slot->next;
-
-    if (prev != NULL) {
-        prev->next = next;
-    } else if (next != NULL) {
-        gVramSlotHead = next;
-    } else {
-        gVramSlotHead = NULL;
-    }
-    if (next != NULL) {
-        next->prev = prev;
-    }
-    if (slot->tex != NULL) {
-        slot->tex->resident = 0;
-        slot->tex->mode = 4;
-    }
-    Mem_Fill(slot, 0, sizeof(VramSlot));
-    gVramSlotCount--;
-}
-
-/* Links slot into the slot list after pos (at the head when pos is NULL). */
-void VramSlot_Insert(VramSlot *pos, VramSlot *slot)
-{
-    VramSlot *next = NULL;
-
-    if (pos != NULL) {
-        next = pos->next;
-        pos->next = slot;
-    } else if (gVramSlotHead == NULL) {
-        gVramSlotHead = slot;
-    } else {
-        next = gVramSlotHead;
-        gVramSlotHead = slot;
-    }
-    slot->prev = pos;
-    slot->next = next;
-    if (next != NULL) {
-        next->prev = slot;
     }
 }
 
@@ -706,7 +534,7 @@ s32 *gTexSwizzle8Tbls[4] = {
 
 /* This file's read-only data. */
 #pragma rodata on
-char D_001C7BF0[0x40] = {
+char D_001C7BF0[64] = {
 #include "main/001C7BF0.inc"
 };
 #pragma rodata off

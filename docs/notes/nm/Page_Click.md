@@ -1,4 +1,4 @@
-# Page_Click (lobby, src/lobby/unk_73C310.c)
+# Page_Click (lobby, src/lobby/page_input.c)
 
 ## Status
 

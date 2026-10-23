@@ -1,8 +1,7 @@
 /*
- * The field's per-frame update (Field_UpdateAll) and the HUD's setup:
- * Hud_Reset clears the HUD state (hud.h) and the chat state (chat_log.h),
- * Hud_Init and Hud_StartQuest prepare them for a stage and for a quest, and
- * Hud_InputBlocked tells the field code when the HUD's menus take the pad.
+ * The HUD's setup: Hud_Reset clears the HUD state (hud.h) and the chat state
+ * (chat_log.h), and Hud_Init and Hud_StartQuest prepare them for a stage and
+ * for a quest.
  */
 #include "common.h"
 #include "chat_log.h"
@@ -12,98 +11,25 @@
 #include "hud.h"
 #include "syssave.h"
 #include "sprite.h"
+#include "area_anim.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "box_menu.h"
+#include "camera.h"
+#include "game_menu.h"
+#include "kbd.h"
+#include "light.h"
+#include "quest.h"
+#include "window.h"
+#include "draw_slots.h"
+#include "game_util.h"
+#include "libc.h"
 
 extern DrawSlot gHudDrawHooks[4];
 
 /* prototypes */
-void Chat_ClearLog(void);
-void * memset(void *p, s32 c, u32 n);
 extern u8 gChatInputMode;
 /* end of prototypes */
-
-extern Em gEms[20];
-s32 Quest_IsVersus(void);
-void PlayerSys_Update(void);
-void Em_CopyBoneMatrices(Em *em);
-s32 GmEm_Task(Em *em);
-void Em_UpdateMatrix(Em *em);
-void Em_CarryRiders(Em *em);
-s32 Em_RunByState(Em *em);
-void Em_UpdateWorldMatrix(Em *em);
-void Field_PushApart(void);
-void Bgm_FieldUpdate(void);
-void Em_CollideField(Em *em, u8 keep);
-void Players_UpdateMatrices(void);
-void Players_RunEquipEffects(void);
-void CamCtl_Update(s32 a);
-void LightSet_UpdateAll(void);
-void StageObj_UpdateAll(void);
-void ObjAttach_UpdateAll(void);
-void Obj_UpdateAll(void);
-void FlashObj_Tick(void);
-void SightBlock_Tick(void);
-void Area_UpdateTimers(void);
-void ItemHud_Update(void);
-
-/*
- * The field's per-frame update: the players (outside events, or in a
- * versus quest), then each monster: its bones, then the game overlay's
- * monster task, or sub_main's own state runner for the objects set up by
- * Em_SetupKind (Em.ownTask set). Then the push-apart (outside events), the
- * BGM, a second field collision for each player and monster the push moved,
- * and the matrices, lights, stage objects, attachments, objects, areas,
- * timers and the item HUD.
- */
-void Field_UpdateAll(void)
-{
-    s32 i;
-    Em *em;
-    Player *pl;
-
-    em = gEms;
-    if (gScene.eventRunning == 0 || Quest_IsVersus() == 1) {
-        PlayerSys_Update();
-    }
-    for (i = 0; i < 20; i++, em++) {
-        if (em->active) {
-            Em_CopyBoneMatrices(em);
-            if (em->ownTask == 0) {
-                if (GmEm_Task(em) == 0) {
-                    Em_UpdateMatrix(em);
-                    Em_CarryRiders(em);
-                }
-            } else if (Em_RunByState(em) == 0) {
-                Em_UpdateWorldMatrix(em);
-            }
-        }
-    }
-    if (gScene.eventRunning == 0) {
-        Field_PushApart();
-    }
-    Bgm_FieldUpdate();
-    /* a player keeps Em's layout up to +0x738 (Em.pushed) */
-    for (i = 0, pl = gPlayers; i < 10; i++, pl++) {
-        if (pl->active && ((Em *)pl)->pushed) {
-            Em_CollideField((Em *)pl, 1);
-        }
-    }
-    for (i = 0, em = gEms; i < 20; i++, em++) {
-        if (em->active && em->pushed) {
-            Em_CollideField(em, 1);
-        }
-    }
-    Players_UpdateMatrices();
-    Players_RunEquipEffects();
-    CamCtl_Update(0);
-    LightSet_UpdateAll();
-    StageObj_UpdateAll();
-    ObjAttach_UpdateAll();
-    Obj_UpdateAll();
-    FlashObj_Tick();
-    SightBlock_Tick();
-    Area_UpdateTimers();
-    ItemHud_Update();
-}
 
 /* Points gHudState at its buffer and clears it and the chat state; the map
  * ping needs the button held 10 frames. */
@@ -116,22 +42,6 @@ void Hud_Reset(void)
     gHudState->pingHold = 10;
     Chat_ClearLog();
 }
-
-void DrawPool_ClearHud(void);
-void Hud_ResetMenuState(void);
-void Kbd_Close(void);
-void Chat_SetColor(s16 color);
-void Chat_PickSendTarget(void);
-void Chat_ShowWindows(void);
-void GameMenu_Reset(void);
-void BoxMenu_InitWork(void);
-void Hud_DrawLayer0(void);
-void Hud_DrawLayer1(void);
-void Hud_DrawLayer2(void);
-void Hud_DrawLayer3(void);
-void Hud_DrawLayer1B(void);
-void Hud_DrawLayer2B(void);
-void Hud_DrawLayer3B(void);
 
 extern s32 gChatSendWait;
 extern u16 gChatWinTimer;
@@ -149,8 +59,6 @@ extern u8 gChatMsgClass;
 extern u8 gChatHideNames;
 extern u8 gChatWinHold;
 extern f32 gMapScales[][2];
-s32 Game_IsOnline(void);
-s32 Quest_GetTime(s32 a);
 
 /*
  * Sets up the HUD for a stage: what Hud_StartQuest does, and also clears the
@@ -251,32 +159,7 @@ void *Hud_Init(void)
     return (void *)gHudState;
 }
 
-void DrawPool_ClearHud(void);
-void Hud_ResetMenuState(void);
-void Kbd_Close(void);
-void Chat_SetColor(s16 color);
-void Chat_PickSendTarget(void);
-void Chat_ShowWindows(void);
-void GameMenu_Reset(void);
-void BoxMenu_InitWork(void);
-void Hud_DrawLayer0(void);
-void Hud_DrawLayer1(void);
-void Hud_DrawLayer2(void);
-void Hud_DrawLayer3(void);
-void Hud_DrawLayer1B(void);
-void Hud_DrawLayer2B(void);
-void Hud_DrawLayer3B(void);
 
-extern s32 gChatSendWait;
-extern u16 gChatWinTimer;
-extern u8 gChatWinOpen;
-extern u8 gChatWindowSel;
-extern u8 gHelpShow;
-extern u8 gHelpColumn;
-extern s32 gNoticeWidth;
-extern u8 gNoticeFlags;
-extern u8 gPauseWinStep;
-extern u8 gPauseMenuReq;
 
 /*
  * Resets the HUD for a quest's start: the draw hooks (as Hud_Init), the
@@ -347,23 +230,4 @@ void Hud_StartQuest(void)
     gHudState->aimKind = -1;
     gPauseWinStep = 0;
     gPauseMenuReq = 0;
-}
-
-/* Whether the HUD's input is taken by something else: a menu, the chat
- * input, the pouch-full dialog, or in a quest a message popup. */
-s32 Hud_InputBlocked(void)
-{
-    if (gScene.menuOpen != 0) {
-        return 1;
-    }
-    if (gChatInputMode != 0) {
-        return 1;
-    }
-    if (gHudState->dropState != 0) {
-        return 1;
-    }
-    if ((gScene.inLobby == 0) && (gHudState->popupOpen != 0)) {
-        return 1;
-    }
-    return 0;
 }

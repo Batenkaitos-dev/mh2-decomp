@@ -1,5 +1,4 @@
 // Function starts of game, pinned for splat.
 // 261 unnamed functions; named ones are in the module's symbol files (config/symbols/, its YAML's list).
 func_006AF240 = 0x006AF240; // type:func
-func_006FD010 = 0x006FD010; // type:func
-func_0088C890 = 0x0088C890; // type:func
+AnimatedScenery_UsesAreaModel = 0x006FD010; // type:func

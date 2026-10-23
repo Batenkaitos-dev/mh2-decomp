@@ -19,7 +19,7 @@ size 0x1AF00
 0x001F u8 unk1F // only cleared (at each card scan)
 0x0021 u8 timer
 0x0024 u8 scanStep // Yn_ScanCards' state (0-5)
-0x0025 u8 triedSlots // slots tried by the connect scan (bit per slot; 0x80 after the first)
+0x0025 u8 triedSlots // slots tried by the connect scan (bit per slot; YN_TRIED_FIRST after the first)
 0x0026 u8 changed // 1: the chosen settings differ from the saved ones (gNetMode.ynResult = changed + 1)
 0x0027 u8 scanSlot // the slot Yn_ScanCards looks at
 0x0028 s32 msgTimer // 60 frames for the connect message
@@ -30,9 +30,9 @@ size 0x1AF00
 0x003E u16 numBackup // the value before the edit (put back on cancel)
 0x0040 u16 * numTarget // the number being edited (Yn_BeginNumberEdit)
 0x0044 u16 numStep // the digit being changed (1, 10, .. 10000)
-0x0046 s8 unk46 // only written: 1 on the list, 0x10 on the proxy screen
+0x0046 s8 unk46 // only written: 1 on the list, 16 on the proxy screen
 0x0047 s8 msgCloseMode // YN_MSG_CLOSE_CIRCLE: only PAD_CIRCLE closes the list's message; 2 or 4 (listDetail 2): either button
-0x0048 s8 unk48 // only written: 1 on the list, 0x13 on the proxy screen
+0x0048 s8 unk48 // only written: 1 on the list, 19 on the proxy screen
 0x0049 s8 screen // index into gYnScreenItems / gYnScreenItemCounts
 0x004A u8 msg // index into gYnMsgItems / gYnMsgItemCounts
 0x004B s8 help // index into gYnHelpItems / gYnHelpItemCounts

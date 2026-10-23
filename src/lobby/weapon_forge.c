@@ -21,6 +21,12 @@
  * sits in the workshop's menu task after the task's header (gMenuWork +
  * 0xC). The workshop's update calls WeaponForge_Open, WeaponForge_Input and
  * WeaponForge_Confirm.
+ *
+ * Three helpers sit among the forge's functions: Forge_IsRandomWeapon
+ * (whether a recipe is a random weapon's, which the equipment shop and the
+ * name tags also ask), and Equip_ItemHalfPrice and Equip_HalfPrice (the
+ * price of forging or upgrading into a piece, half its shop price; the
+ * armour forge prices its pieces with Equip_HalfPrice too).
  */
 #include "common.h"
 #include "lobby_state.h"
@@ -34,64 +40,38 @@
 #include "lobby_forge.h"
 #include "pad.h"
 #include "lobby_labels.h"
+#include "area_draw.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "box_menu.h"
+#include "camera.h"
+#include "text.h"
+#include "draw_helpers.h"
+#include "equip_parts.h"
+#include "equip_shop.h"
+#include "font.h"
+#include "item_shop.h"
+#include "lobby_dialog_box.h"
+#include "lobby_queries.h"
+#include "lobby_util.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "offer_menu.h"
+#include "rand.h"
+#include "town_frame.h"
+#include "libc.h"
+#include "window.h"
 
 /* prototypes */
 void Forge_DrawMaterials(s32, s32, ItemStack *need, s32); /* unit's own declaration: declared with s32 parameters as the forge passes them; with the definition's (s16 x, s16 y, ItemStack *need, s8 n) the call compiles differently */
 s32 WeaponForge_IsBow(EquipItem *e);
 /* end of prototypes */
 
-
-s32 Forge_CheckRecipe(u16 which, s16 idx, s32 mode);
-u16 Box_FindFreeSlot(void *unused0);
-u32 Equip_HalfPrice(s32 type, s32 id);
-s32 Forge_IsRandomWeapon(s16 id);
-
-void *memset(void *dst, s32 c, u32 n);
-u8 Weapon_GetClass(u8 type, u16 id);
-s32 Equip_TestFlag(EquipItem *e, s16 bit);
-void Equip_SetFlag(EquipItem *e, s16 bit);
-void Chat_SetColor(s16 color);
-u32 Equip_GetPrice(u8, u16);
-void Items_Take(s32 item, s32 n);
-void LobbySe_Play(s32 se);
-void Save_AddMoney(s32 n);
-s32 WinSlide_Step(WinSlide *, s16 from, s16 to);
 extern u8 gLobbyTextDirty;
-void WeaponForge_SetBladeKind(WeaponForgeWork *m);
 
 extern u8 gMenuInputLock;
-void Menu_SetYesNo(s8 arg0);
-void CamFocus_SetAside(s8 arg0);
-void EquipPreview_Reset(void);
-void Menu_PushNotice(s32 msg);
-s32 Menu_WrapUpDownSe(s32 cur, s32 n, s32 se);
-void WeaponForge_LoadGunMods(WeaponForgeWork *m, s32 idx);
-void WeaponForge_LoadUpgrades(WeaponForgeWork *m);
-s32 Equip_ItemHalfPrice(EquipItem *item);
-u8 Equip_LevelMark(EquipItem *a, u8 flags, EquipItem *b);
-void WeaponForge_OpenUpgrades(WeaponForgeWork *);
-s32 WeaponForge_UpgradeInput(WeaponForgeWork *m, u16 pad);
-s32 WeaponForge_MakeInput(WeaponForgeWork *m, u16 pad);
-void WeaponForge_Make(WeaponForgeWork *m);
 u16 Box_AddItem(SaveData *save, u8 type, u16 id, u16 level);
-void Equip_Refresh(SaveData *save);
-void Player_LoadFromSave(struct Player *player);
-s32 Equip_EquipSlot(SaveData *save, u16 idx);
-void Player_SetupFromSave(struct Player *player, struct SaveData *save);
-void Player_CalcSkills(struct Player *player);
-void Town_ReloadLocalPlayer(void);
-void Player_SetColorWord(struct Player *pl, u8 idx);
-s32 WeaponForge_MakeConfirm(WeaponForgeWork *m, u16 pad);
-s32 WeaponForge_UpgradeConfirm(WeaponForgeWork *m, u16 pad);
-s32 Menu_YesNoInput(void);
-void WeaponForge_Upgrade(WeaponForgeWork *m);
-s32 Equip_IsSlotEquipped(SaveData *save, s32 idx);
-void Box_GunLevelUp(SaveData *save, s16 idx);
-void Box_SetGunBarrel(SaveData *save, s16 idx, s32 off);
-void Box_SetGunSilencer(SaveData *save, s16 idx, s32 off);
-void Box_SetGunScope(SaveData *save, s16 idx, s32 off);
-void Box_SetGunShield(SaveData *save, s16 idx, s32 off);
-void Box_SetSlot(SaveData *save, u16 idx, EquipItem *item);
 /* The forge's opening, its top input and its make and upgrade steps are
  * built at optimization level 4, the rest of the file at the default. */
 #pragma optimization_level 4
@@ -124,9 +104,6 @@ s32 Forge_IsRandomWeapon(s16 id)
     return id >= WEAPON_ID_RANDOM_FIRST;
 }
 
-void WeaponForge_OpenUpgrades(WeaponForgeWork *);
-s32 WeaponForge_UpgradeInput(WeaponForgeWork *m, u16 pad);
-s32 WeaponForge_MakeInput(WeaponForgeWork *m, u16 pad);
 /*
  * The weapon forge's input, by step: the forge/upgrade choice, then the
  * upgrade pages or the forging pages. Returns MENU_DONE when a weapon is
@@ -242,9 +219,6 @@ void WeaponForge_Make(WeaponForgeWork *forge)
     }
 }
 
-s32 WeaponForge_MakeConfirm(WeaponForgeWork *m, u16 pad);
-s32 WeaponForge_UpgradeConfirm(WeaponForgeWork *m, u16 pad);
-void WeaponForge_Make(WeaponForgeWork *m);
 /*
  * The forging's confirm phase, using the step field as its own step: asks
  * whether to wear the new weapon (with a warning when its type differs
@@ -264,7 +238,7 @@ s32 WeaponForge_MakeConfirm(WeaponForgeWork *forge, u16 pad)
     made.id = recipe->id;
     switch (forge->step) {
     case WEAPON_CONFIRM_SETUP:
-        forge->detailPages = Equip_LevelMark(&gSave.equip[0], 0x10, &made);
+        forge->detailPages = Equip_LevelMark(&gSave.equip[0], 16, &made);
         Menu_SetYesNo(0);
         gMenuInputLock = 9;
         if (*type != gSave.equip[0].type) {
@@ -307,14 +281,12 @@ s32 WeaponForge_MakeConfirm(WeaponForgeWork *forge, u16 pad)
         forge->subStep = FORGE_MAKE_SLIDE_IN;
         forge->view = FORGE_MAKE_VIEW_LIST;
         WeaponForge_Make(forge);
-        WinSlide_Step(&forge->detailWin, 0x280, 0x118);
+        WinSlide_Step(&forge->detailWin, 640, 280);
         return MENU_DONE;
     }
     return MENU_RUNNING;
 }
 
-void WeaponForge_Upgrade(WeaponForgeWork *m);
-void WeaponForge_LoadUpgrades(WeaponForgeWork *m);
 /*
  * The upgrade's confirm phase, as WeaponForge_MakeConfirm: when the box
  * piece is worn it skips the question and wears the result, else asks
@@ -339,7 +311,7 @@ s32 WeaponForge_UpgradeConfirm(WeaponForgeWork *forge, u16 pad)
         } else {
             upgraded = forge->result;
         }
-        forge->detailPages = Equip_LevelMark(&gSave.equip[0], 0x10, &upgraded);
+        forge->detailPages = Equip_LevelMark(&gSave.equip[0], 16, &upgraded);
         if (Equip_IsSlotEquipped(&gSave, idx) == 1) {
             forge->wear = 1;
             forge->step = WEAPON_CONFIRM_APPLY;
@@ -408,12 +380,6 @@ s32 WeaponForge_Confirm(u8 *task, u16 pad)
     return WeaponForge_UpgradeConfirm(forge, pad);
 }
 
-void Box_GunLevelUp(SaveData *save, s16 idx);
-void Box_SetGunBarrel(SaveData *save, s16 idx, s32 off);
-void Box_SetGunSilencer(SaveData *save, s16 idx, s32 off);
-void Box_SetGunScope(SaveData *save, s16 idx, s32 off);
-void Box_SetGunShield(SaveData *save, s16 idx, s32 off);
-void WeaponForge_LoadGunMods(WeaponForgeWork *m, s32 idx);
 /*
  * Applies the upgrade at the cursor to the box piece under the box cursor:
  * a blade or a bow becomes the chosen weapon at level 0, for its three
@@ -610,8 +576,6 @@ s32 WeaponForge_CanMake(WeaponForgeWork *forge, s16 line)
     return (u16)Box_FindFreeSlot(&gSave) != BOX_NONE;
 }
 
-s32 Recipe_IsInList(s32 type, s32 id);
-s32 Menu_CountPages(s16 n, s16 per);
 /*
  * Fills the forge list with page `page` of the recipes listed on the
  * current tab that pass the filter (seven a page), sets the line count and
@@ -656,14 +620,6 @@ void WeaponForge_LoadMakePage(WeaponForgeWork *forge, s32 page)
     forge->pages = Menu_CountPages(listed, FORGE_LIST_ROWS);
 }
 
-void EquipPreview_Hide(u8 hide);
-s32 LobbyMenu_YesNoInput(s32 msg);
-void WeaponForge_RollRandom(EquipItem *out, u16 key);
-void LobbySe_Play(s32 se);
-s32 WinSlide_Step(WinSlide *win, s16 from, s16 to);
-void WeaponForge_MakeDetail(WeaponForgeWork *m);
-s32 Menu_WrapLeftRight(s32 cursor, s32 count);
-void EquipPreview_Free(void);
 /* unit's own declaration: declared with the u8 types the calls here pass; with the definition's u16 parameters the calls compile differently */
 s32 Equip_GetModelId(u8 type, u16 id, u8 x);
 void EquipPreview_Load(u8 type, s32 n, u8 x); /* unit's own declaration: declared with the types the calls here pass; with the definition's (u16 kind, u16 id, u8 female) the calls compile differently */
@@ -694,10 +650,10 @@ s32 WeaponForge_MakeInput(WeaponForgeWork *forge, u16 pad)
             forge->detailPage = 0;
             forge->cursor = 0;
             forge->view = FORGE_MAKE_VIEW_LIST;
-            WinSlide_Step(&forge->detailWin, 0x280, 0x118);
+            WinSlide_Step(&forge->detailWin, 640, 280);
             WeaponForge_LoadMakePage(forge, 0);
             WeaponForge_MakeDetail(forge);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             CamFocus_SetAside(1);
             EquipPreview_Reset();
             if ((u16)Box_FindFreeSlot(&gSave) == BOX_NONE) {
@@ -712,7 +668,7 @@ s32 WeaponForge_MakeInput(WeaponForgeWork *forge, u16 pad)
         }
         break;
     case FORGE_MAKE_SLIDE_IN:
-        switch (WinSlide_Step(&forge->detailWin, 0x280, 0x118)) {
+        switch (WinSlide_Step(&forge->detailWin, 640, 280)) {
         case MENU_DONE:
             forge->subStep++;
             break;
@@ -741,7 +697,7 @@ s32 WeaponForge_MakeInput(WeaponForgeWork *forge, u16 pad)
                 EquipPreview_Hide(1);
                 CamFocus_SetAside(0);
             }
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
         } else if (pad & PAD_SQUARE) {
             if (forge->count != 0) {
                 if (++forge->view == FORGE_MAKE_VIEW_COUNT) {
@@ -821,7 +777,7 @@ s32 WeaponForge_MakeInput(WeaponForgeWork *forge, u16 pad)
             case MENU_DONE:
                 forge->subStep = FORGE_MAKE_TAB;
                 forge->detailPage = 0;
-                WinSlide_Step(&forge->detailWin, 0x280, 0x118);
+                WinSlide_Step(&forge->detailWin, 640, 280);
                 if (Forge_IsRandomWeapon(gWeaponRecipes[forge->makeList[cur]].id)) {
                     WeaponForge_RollRandom(&forge->result, gWeaponRecipes[forge->makeList[cur]].mat[0].item);
                 }
@@ -838,7 +794,6 @@ s32 WeaponForge_MakeInput(WeaponForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-void Rand_StepSaved(void);
 extern RandEquip gRandomEquips[];
 /*
  * Rolls the weapon a random-weapon recipe gives: finds key's entry in
@@ -871,8 +826,6 @@ void WeaponForge_RollRandom(EquipItem *out, u16 key)
     Rand_StepSaved();
 }
 
-s16 Box_GetPageCount(SaveData *save);
-s32 WeaponForge_CanUpgrade(WeaponForgeWork *m, s16 i);
 extern WeaponUp gBladeUpgrades[];
 extern WeaponUp gGunUpgrades[];
 /*
@@ -892,8 +845,8 @@ void WeaponForge_OpenUpgrades(WeaponForgeWork *forge)
     forge->col = 0;
     forge->row = 0;
     forge->view = FORGE_BOX_VIEW_GRID;
-    WinSlide_Step(&forge->detailWin, 0x280, 0x12C);
-    WinSlide_Step(&forge->panelWin, -0x128, 10);
+    WinSlide_Step(&forge->detailWin, 640, 300);
+    WinSlide_Step(&forge->panelWin, -296, 10);
     for (i = 0; i < BOX_SLOT_COUNT; i++) {
         if ((&gSave.box[i])->used != 0) {
             switch ((&gSave.box[i])->type) {
@@ -943,9 +896,6 @@ void WeaponForge_OpenUpgrades(WeaponForgeWork *forge)
     WeaponForge_LoadUpgrades(forge);
 }
 
-s32 WeaponForge_BoxInput(WeaponForgeWork *m, u16 pad);
-s32 WeaponForge_UpgradeListInput(WeaponForgeWork *m, u16 pad);
-void WeaponForge_UpgradeDetail(WeaponForgeWork *m);
 /*
  * The upgrade pages' input, by sub-step: the windows slide in, the box
  * grid, the upgrade or mod list, then the price question (L1/R1 turn the
@@ -959,8 +909,8 @@ s32 WeaponForge_UpgradeInput(WeaponForgeWork *forge, u16 pad)
     memset(&unused, 0, sizeof(unused));
     switch (forge->subStep) {
     case FORGE_UPGRADE_SLIDE_IN:
-        WinSlide_Step(&forge->panelWin, -0x128, 10);
-        switch (WinSlide_Step(&forge->detailWin, 0x280, 0x12C)) {
+        WinSlide_Step(&forge->panelWin, -296, 10);
+        switch (WinSlide_Step(&forge->detailWin, 640, 300)) {
         case MENU_DONE:
             forge->subStep++;
             break;
@@ -1020,8 +970,8 @@ s32 WeaponForge_UpgradeInput(WeaponForgeWork *forge, u16 pad)
             case MENU_DONE:
                 forge->subStep = FORGE_UPGRADE_SLIDE_IN;
                 forge->detailPage = 0;
-                WinSlide_Step(&forge->panelWin, -0x128, 10);
-                WinSlide_Step(&forge->detailWin, 0x280, 0x12C);
+                WinSlide_Step(&forge->panelWin, -296, 10);
+                WinSlide_Step(&forge->detailWin, 640, 300);
                 return MENU_DONE;
             case MENU_CANCEL:
                 forge->subStep--;
@@ -1035,10 +985,6 @@ s32 WeaponForge_UpgradeInput(WeaponForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-u16 WeaponForge_ApplyGunMod(u16 flags, u16 ev);
-s32 Box_GetGunLevel(SaveData *save, s16 idx);
-s32 Box_TestGunOption(SaveData *save, s16 idx, s32 mask);
-u32 Equip_GetPrice(u8 type, u16 id);
 extern s32 gGunModCostRates[];
 
 
@@ -1184,8 +1130,6 @@ u16 WeaponForge_ApplyGunMod(u16 levelByte, u16 mod)
 INCLUDE_RODATA("asm/lobby/nonmatchings/weapon_forge", gForgePriceFmt);
 INCLUDE_RODATA("asm/lobby/nonmatchings/weapon_forge", gForgeTextFmt);
 
-s32 WeaponForge_IsUnlocked(s32 kind, s32 id);
-void *memcpy(void *dst, const void *src, u32 n);
 /*
  * Loads what the box piece under the cursor can become: for a blade or a
  * bow, each next weapon of its upgrade entry that may be forged, with its
@@ -1245,8 +1189,6 @@ void WeaponForge_LoadUpgrades(WeaponForgeWork *forge)
     }
 }
 
-void WeaponForge_LoadUpgrades(WeaponForgeWork *m);
-s32 Menu_WrapUpDown(s32 cur, s32 n);
 /*
  * The upgrade pages' box grid: circle on a blade or bow with upgrades
  * takes it (the cursor on its first upgrade, its model loaded unless
@@ -1454,7 +1396,6 @@ s32 WeaponForge_UpgradeListInput(WeaponForgeWork *forge, u16 pad)
     return MENU_RUNNING;
 }
 
-s32 Items_HaveEnough(u16 item, s32 n);
 /*
  * Whether line i of the upgrade list can be paid for: a mod's price, or an
  * upgrade's price and its three materials at hand. Returns 1 or 0.
@@ -1487,7 +1428,6 @@ s32 WeaponForge_CanUpgrade(WeaponForgeWork *forge, s16 line)
     return 1;
 }
 
-u8 Equip_PreviewSkills(Player *player, EquipItem *e);
 /*
  * Sets up the upgrade pages' detail for the current view: the result's own
  * stats (with its model for a blade or bow, unless hidden), the comparison
@@ -1509,11 +1449,11 @@ void WeaponForge_UpgradeDetail(WeaponForgeWork *forge)
         forge->detailPage = 0;
         break;
     default:
-        forge->detailPages = Equip_LevelMark(&gSave.box[idx], 0x10, &upgraded);
+        forge->detailPages = Equip_LevelMark(&gSave.box[idx], 16, &upgraded);
         EquipPreview_Hide(1);
         break;
     case FORGE_UPGRADE_VIEW_COMPARE:
-        forge->detailPages = Equip_LevelMark(&gSave.box[idx], 0x10, &upgraded);
+        forge->detailPages = Equip_LevelMark(&gSave.box[idx], 16, &upgraded);
         EquipPreview_Hide(1);
         break;
     case FORGE_UPGRADE_VIEW_STATS:
@@ -1567,11 +1507,11 @@ void WeaponForge_MakeDetail(WeaponForgeWork *forge)
         forge->detailPage = 0;
         break;
     default:
-        forge->detailPages = Equip_LevelMark(gSave.equip, 0x10, &made);
+        forge->detailPages = Equip_LevelMark(gSave.equip, 16, &made);
         EquipPreview_Hide(1);
         break;
     case FORGE_MAKE_VIEW_COMPARE:
-        forge->detailPages = Equip_LevelMark(gSave.equip, 0x50, &made);
+        forge->detailPages = Equip_LevelMark(gSave.equip, 80, &made);
         EquipPreview_Hide(1);
         break;
     case FORGE_MAKE_VIEW_STATS:
@@ -1579,7 +1519,7 @@ void WeaponForge_MakeDetail(WeaponForgeWork *forge)
         if (forge->view == FORGE_MAKE_VIEW_MATERIALS) {
             forge->detailPages = 0;
         } else {
-            forge->detailPages = Equip_LevelMark(&made, 0x40, NULL);
+            forge->detailPages = Equip_LevelMark(&made, 64, NULL);
         }
         if (forge->previewOff == 0) {
             if (*type != forge->shown.type || *id != forge->shown.id) {
@@ -1615,8 +1555,6 @@ void WeaponForge_DrawMaterials(WeaponForgeWork *forge, EquipItem *result, s32 x,
 
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: declared with s16 coordinates as the forge's draws pass them; with the definition's s32 coordinates and s16 kind the calls compile differently */
 void Font_SetSpacing(u8 a, u8 b);
-void Font_SetPos(s16 x, s16 y);
-void Text_Printf(const char *fmt, ...);
 /*
  * Draws the help window of the gun mod at the cursor, its description
  * text, at (x, y).
@@ -1625,23 +1563,13 @@ void WeaponForge_DrawGunModHelp(WeaponForgeWork *forge, s16 x, s16 y)
 {
     s32 helpText;
 
-    Win_Draw(x, y, 0x132, 0x72, 0xBDB59F6C, 0xA0202020, 6);
-    Font_SetSpacing(0x12, 0x12);
+    Win_Draw(x, y, 306, 114, 0xBDB59F6C, 0xA0202020, 6);
+    Font_SetSpacing(18, 18);
     Font_SetPos(x + 8, y + 4);
     helpText = forge->mod[forge->cursor] + GUN_MOD_HELP_OFFSET;
     Text_Printf(gForgeTexts[helpText]);
 }
 
-void EquipWindow_DrawLocal(EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other);
-void Equip_DrawPreviewHelp(u32 color, s8 k);
-void EquipCompare_Draw(EquipItem *a, EquipItem *b, s32 c, s16 y, u8 flags);
-void EquipDetail_Draw(Player *a, s16 x, s16 y, u32 flags);
-void BoxMenu_DrawItemList(s16 cur, u32 flags, f32 fx);
-char *Text_FillDollar(char *fmt, s32 n);
-void Win_DrawText(s16, s16, s16, s16, u32, u32, char *);
-void Font_SetColor(s32 color);
-void Text_PrintfColored(const char *fmt, ...);
-extern char *gYesNoTexts[];
 extern LobbyMenu *gLobbyMenu;
 /*
  * Draws the upgrade pages' right side by sub-step: in the list, the
@@ -1673,8 +1601,8 @@ void WeaponForge_DrawUpgradeDetail(WeaponForgeWork *forge, s32 x, s16 y)
         switch (forge->view) {
         case FORGE_UPGRADE_VIEW_STATS:
             if (forge->upgradeKind != EQUIP_BLADE) {
-                EquipWindow_DrawLocal(&shownItem, 0x136, y + 4, forge->detailPage | 0x40, NULL);
-                WeaponForge_DrawGunModHelp(forge, 0x136, 0xE0);
+                EquipWindow_DrawLocal(&shownItem, 310, y + 4, forge->detailPage | 0x40, NULL);
+                WeaponForge_DrawGunModHelp(forge, 310, 224);
             } else {
                 if (forge->previewOff == 0) {
                     EquipPreview_Hide(0);
@@ -1683,16 +1611,16 @@ void WeaponForge_DrawUpgradeDetail(WeaponForgeWork *forge, s32 x, s16 y)
                 if (forge->previewOff == 0 && Forge_IsRandomWeapon(forge->shown.id)) {
                     text = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                     EquipPreview_Hide(1);
-                    Font_SetSpacing(0x12, 0x12);
-                    Font_SetPos(Text_CenterX(text, 0x1CE, 0x12), 0x6E);
+                    Font_SetSpacing(18, 18);
+                    Font_SetPos(Text_CenterX(text, 462, 18), 110);
                     Font_SetColor(0x807F212E);
                     Text_PrintfColored(text);
                 }
-                EquipWindow_DrawLocal(&shownItem, 0x136, 0xE0, forge->detailPage | 0x40, NULL);
+                EquipWindow_DrawLocal(&shownItem, 310, 224, forge->detailPage | 0x40, NULL);
             }
             break;
         case FORGE_UPGRADE_VIEW_COMPARE:
-            EquipCompare_Draw(&gSave.box[idx], &shownItem, 0x136, y + 4, forge->detailPage | 0x50);
+            EquipCompare_Draw(&gSave.box[idx], &shownItem, 310, y + 4, forge->detailPage | 0x50);
             break;
         case FORGE_UPGRADE_VIEW_MATERIALS:
             if (forge->previewOff == 0) {
@@ -1702,21 +1630,21 @@ void WeaponForge_DrawUpgradeDetail(WeaponForgeWork *forge, s32 x, s16 y)
             if (forge->previewOff == 0 && Forge_IsRandomWeapon(forge->shown.id)) {
                 text = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(text, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(text, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(text);
             }
-            WeaponForge_DrawMaterials(forge, &shownItem, 0x136, 0xE0);
+            WeaponForge_DrawMaterials(forge, &shownItem, 310, 224);
             break;
         case FORGE_UPGRADE_VIEW_HUNTER:
-            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, 0x3A, forge->detailPage);
+            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, 58, forge->detailPage);
             return;
         }
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_UPGRADE_KIND]);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_UPGRADE_KIND]);
         break;
     case FORGE_UPGRADE_ASK:
-        EquipCompare_Draw(&gSave.box[idx], &shownItem, 0x136, y + 4, forge->detailPage | 0x50);
+        EquipCompare_Draw(&gSave.box[idx], &shownItem, 310, y + 4, forge->detailPage | 0x50);
         if (forge->upgradeKind == EQUIP_BLADE) {
             text = Text_FillDollar(gForgeTexts[FORGE_TEXT_MATERIALS_FEE_ASK], forge->upgradeCost[forge->cursor]);
         } else {
@@ -1738,30 +1666,27 @@ void WeaponForge_DrawUpgradeDetail(WeaponForgeWork *forge, s32 x, s16 y)
                 break;
             }
         }
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, text);
-        Font_SetPos(0x1BC, 0x190);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, text);
+        Font_SetPos(444, 400);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     default:
         if (forge->view == FORGE_BOX_VIEW_GRID) {
-            BoxMenu_DrawItemList(idx, 0x410, x);
+            BoxMenu_DrawItemList(idx, 1040, x);
         } else {
             BoxMenu_DrawItemList(idx, (forge->detailPage & 7) | 0x478, x);
         }
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_WEAPON_UPGRADE]);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_WEAPON_UPGRADE]);
         break;
     }
 }
 
-void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
 extern char gForgePriceFmt[];
-char *Equip_GetName(u8 type, u16 id);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
 /*
  * Draws the list of what the box piece can become at (x, y): the header,
  * each upgrade's name and price (greyed when it can't be paid for, the new
  * mark blinking), empty lines up to four, the cursor bar in the list's
- * sub-step; or the "can't be upgraded" text when there is none.
+ * sub-step; or the no-upgrade text when there is none.
  */
 void WeaponForge_DrawUpgrades(WeaponForgeWork *forge, s16 x, s16 y)
 {
@@ -1772,7 +1697,7 @@ void WeaponForge_DrawUpgrades(WeaponForgeWork *forge, s16 x, s16 y)
 
     if (forge->upgradeEntry->next[0] == 0 || forge->count == 0) {
         Font_SetColor(0x807F7F7F);
-        Font_SetPos(Text_CenterX(gForgeTexts[FORGE_TEXT_NO_UPGRADE], x + 0x8A, 0x11), y + 0x33);
+        Font_SetPos(Text_CenterX(gForgeTexts[FORGE_TEXT_NO_UPGRADE], x + 138, 17), y + 51);
         Text_PrintfColored(gForgeTexts[FORGE_TEXT_NO_UPGRADE]);
         return;
     }
@@ -1795,7 +1720,7 @@ void WeaponForge_DrawUpgrades(WeaponForgeWork *forge, s16 x, s16 y)
             Font_SetPos(x + 200, lineY);
             Text_PrintfColored(gForgePriceFmt, cost);
             if (Equip_TestFlag(upgrade, EQUIP_FLAG_NEW) == 1 && (gFrameTick & 0x10)) {
-                Icon_Draw(x, lineY - 4, 0x10, 0x14, 0xFFC03000, 0x63);
+                Icon_Draw(x, lineY - 4, 16, 20, 0xFFC03000, 99);
             }
         } else {
             Font_SetColor(0x8042352E);
@@ -1804,7 +1729,7 @@ void WeaponForge_DrawUpgrades(WeaponForgeWork *forge, s16 x, s16 y)
             Text_PrintfColored(gForgeTexts[FORGE_TEXT_EMPTY_LINE]);
         }
         if (forge->cursor == i && forge->subStep == FORGE_UPGRADE_LIST) {
-            Menu_DrawGlowBar(x + 138, lineY - 1, 0x114, 0x12, 0xB05050F0);
+            Menu_DrawGlowBar(x + 138, lineY - 1, 276, 18, 0xB05050F0);
         }
     }
 }
@@ -1837,16 +1762,13 @@ void WeaponForge_DrawGunMods(WeaponForgeWork *forge, s32 idx, s16 x, s16 y)
             Font_SetPos(x + 200, lineY);
             Text_PrintfColored(gForgePriceFmt, forge->modCost[i]);
             if (forge->cursor == i && forge->subStep == FORGE_UPGRADE_LIST) {
-                Menu_DrawGlowBar(x + 138, lineY - 1, 0x114, 0x12, 0xB05050F0);
+                Menu_DrawGlowBar(x + 138, lineY - 1, 276, 18, 0xB05050F0);
             }
         }
     }
 }
 
 extern char gForgeTextFmt[];
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void Gfx_DrawLine(s16 x, s16 y, s16 w, s16 h, s32 color);
 void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: declared with s16 coordinates as the forge's draws pass them; with the definition's s32 ones the calls compile differently */
 s32 Box_CountEquip(u8 type, u16 id);
 /*
@@ -1867,9 +1789,9 @@ void WeaponForge_DrawUpgradePanel(WeaponForgeWork *forge, s16 x, s16 y)
     u16 *id;
 
     memset(&shownItem, 0, sizeof(shownItem));
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(10, 0x12, 0xA0, 0xFFB0B000, gWeaponForgeTexts[forge->choice], 2, 1);
-    Menu_DrawMoney(0x1E0, 0x10, 0);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(10, 18, 160, 0xFFB0B000, gWeaponForgeTexts[forge->choice], 2, 1);
+    Menu_DrawMoney(480, 16, 0);
     switch (forge->subStep) {
     case FORGE_UPGRADE_LIST:
         frameColor = 0xBDB59F6C;
@@ -1885,8 +1807,8 @@ void WeaponForge_DrawUpgradePanel(WeaponForgeWork *forge, s16 x, s16 y)
         return;
     case EQUIP_BLADE:
     case EQUIP_GUN:
-        Font_SetSpacing(0x11, 0x11);
-        Win_Draw(x, y, 0x114, 0xAE, frameColor, fillColor, 6);
+        Font_SetSpacing(17, 17);
+        Win_Draw(x, y, 276, 174, frameColor, fillColor, 6);
         switch (forge->upgradeKind) {
         case EQUIP_BLADE:
             if (WeaponForge_IsBow(&gSave.box[idx]) == 1) {
@@ -1909,16 +1831,16 @@ void WeaponForge_DrawUpgradePanel(WeaponForgeWork *forge, s16 x, s16 y)
         }
         panelY = y;
         textX = x;
-        Gfx_DrawLine(textX + 8, panelY + 0x74, 0x104, 2, frameColor);
+        Gfx_DrawLine(textX + 8, panelY + 116, 260, 2, frameColor);
         id = &shownItem.id;
         if (*id != 0) {
-            Lobby_DrawEquipIcon(textX + 10, panelY + 0x76, 0x30, 0x30, &shownItem);
-            Font_SetSpacing(0x12, 0x12);
+            Lobby_DrawEquipIcon(textX + 10, panelY + 118, 48, 48, &shownItem);
+            Font_SetSpacing(18, 18);
             Font_SetColor(0x807F7F7F);
-            Font_SetPos(textX += 0x46, panelY + 0x7C);
+            Font_SetPos(textX += 70, panelY + 124);
             type = &shownItem.type;
             Text_PrintfColored(gForgeTextFmt, Equip_GetName(*type, *id));
-            Font_SetPos(textX, panelY + 0x90);
+            Font_SetPos(textX, panelY + 144);
             Text_PrintfColored("%s%s%3d", gCountLabels[COUNT_LABEL_HELD], gLobbyWords[LOBBY_WORD_TIMES], Box_CountEquip(*type, *id));
         }
         break;
@@ -1932,27 +1854,11 @@ u32 Equip_HalfPrice(s32 type, s32 id)
     return Equip_GetPrice(type & 0xFF, id & 0xFFFF) >> 1;
 }
 
-void *memset(void *dst, s32 c, u32 n);
-void Font_SetSpacing(u8 a, u8 b);
-void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-extern char gForgeTextFmt[];
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 i);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
-void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);
-s32 Equip_TestFlag(EquipItem *e, s16 bit);
-void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: declared with s16 coordinates as the forge's draws pass them; with the definition's s32 ones the calls compile differently */
-void Menu_DrawCursorIcon(s16 x, s16 y, s16 w, u32 color);
 /* gWorkshopTexts[WORKSHOP_TEXT_NO_WEAPON_TO_MAKE] under a name of its own (a linker
  * alias): read through the table, the load is scheduled differently from the
  * game's code. */
 extern char *gNoWeaponToMakeText;
 struct WeaponForgeWork;
-s32 WeaponForge_CanMake(struct WeaponForgeWork *m, s16 i);
-s32 Forge_IsRandomWeapon(s16 id);
-char *Equip_GetName(u8 type, u16 id);
-void EquipShop_DrawLine(s16 x, s16 y, EquipItem *e);
 /*
  * Draws the forge list on its own (no detail panel): a page of the chosen
  * weapon class's recipes with their names and prices, the page number, the
@@ -1978,36 +1884,36 @@ void WeaponForge_DrawMakeListFull(WeaponForgeWork *forge, s16 x, s16 y)
 
     memset(&item, 0, sizeof(item));
     memset(&selected, 0, sizeof(selected));
-    Icon_Draw(x, y, 0x154, 0x122, 0xFFFFDDDD, 0);
+    Icon_Draw(x, y, 340, 290, 0xFFFFDDDD, 0);
     top = rowY;
     left = x;
     boxTop = rowY;
-    Icon_Draw(left + 0x6E, top + 0x2D, 0x78, 0xC8, 0x60FFFFFF, 0x24);
+    Icon_Draw(left + 110, top + 45, 120, 200, 0x60FFFFFF, 36);
     Font_SetColor(0x80101010);
     if (forge->count == 0) {
         note = gNoWeaponToMakeText;
-        noteX = Text_CenterX(note, left + 0xAA, 0x12);
+        noteX = Text_CenterX(note, left + 170, 18);
         Font_SetColor(0x8000052C);
-        Font_SetSpacing(0x12, 0x12);
-        Font_SetPos(noteX, boxTop + 0x5A);
+        Font_SetSpacing(18, 18);
+        Font_SetPos(noteX, boxTop + 90);
         Text_PrintfColored(gForgeTextFmt, note);
-        Menu_DrawDashLine(left + 0x14, top + 0xBA, 0x12C, 0xFF010101);
+        Menu_DrawDashLine(left + 20, top + 186, 300, 0xFF010101);
         return;
     }
-    Menu_DrawPageNum(left + 0xFA, top + 0xE, forge->page, forge->pages, 1);
-    rowY += 0x22;
-    Font_SetSpacing(0x14, 0x14);
+    Menu_DrawPageNum(left + 250, top + 14, forge->page, forge->pages, 1);
+    rowY += 34;
+    Font_SetSpacing(20, 20);
     i = 0;
     if (i < forge->count) {
-        textX = left + 0x28;
+        textX = left + 40;
         do {
             recipe = &gWeaponRecipes[forge->makeList[i]];
             item.type = recipe->type;
             item.id = recipe->id;
             if (Equip_TestFlag(&item, EQUIP_FLAG_NEW) == 1 && (gFrameTick & 0x10)) {
-                Icon_Draw((s16)textX - 0x14, rowY, 0x10, 0x14, 0xFFC03000, 0x63);
+                Icon_Draw((s16)textX - 20, rowY, 16, 20, 0xFFC03000, 99);
             } else {
-                Lobby_DrawEquipIcon((s16)textX - 0x1A, rowY, 0x14, 0x14, &item);
+                Lobby_DrawEquipIcon((s16)textX - 26, rowY, 20, 20, &item);
             }
             if (i == forge->cursor) {
                 selected = item;
@@ -2016,8 +1922,8 @@ void WeaponForge_DrawMakeListFull(WeaponForgeWork *forge, s16 x, s16 y)
                 } else {
                     blink = 10;
                 }
-                Icon_Draw(textX, rowY + 0xE, 0x112, 8, 0x99106060, 0x6F);
-                Menu_DrawCursorIcon((s16)textX - 0x32 - blink, rowY - 2, 0x18, 0xFF20C0C0);
+                Icon_Draw(textX, rowY + 14, 274, 8, 0x99106060, 111);
+                Menu_DrawCursorIcon((s16)textX - 50 - blink, rowY - 2, 24, 0xFF20C0C0);
             }
             if (WeaponForge_CanMake((struct WeaponForgeWork *)forge, i) == 0) {
                 Font_SetColor(0x8042352E);
@@ -2030,12 +1936,12 @@ void WeaponForge_DrawMakeListFull(WeaponForgeWork *forge, s16 x, s16 y)
             } else {
                 Text_PrintfColored("%-20s %6d%s", Equip_GetName(recipe->type, recipe->id), Equip_HalfPrice(recipe->type, recipe->id), gLobbyWords[LOBBY_WORD_ZENNY]);
             }
-            rowY += 0x16;
+            rowY += 22;
             i++;
         } while (i < forge->count);
     }
-    Menu_DrawDashLine(left + 0x14, top + 0xBA, 0x12C, 0xFF000000);
-    EquipShop_DrawLine(left + 0x10, top + 0xC8, &selected);
+    Menu_DrawDashLine(left + 20, top + 186, 300, 0xFF000000);
+    EquipShop_DrawLine(left + 16, top + 200, &selected);
 }
 
 /*
@@ -2058,25 +1964,25 @@ void WeaponForge_DrawMakeList(WeaponForgeWork *forge, s16 x, s16 y)
 
     memset(&item, 0, sizeof(item));
     memset(&selected, 0, sizeof(selected));
-    Icon_Draw(x, y, 0x122, 0xB4, 0xFFFFDDDD, 0);
+    Icon_Draw(x, y, 290, 180, 0xFFFFDDDD, 0);
     top = rowY;
     left = x;
-    Icon_Draw(left + 0x64, top + 0xF, 0x5A, 0x96, 0x60FFFFFF, 0x24);
+    Icon_Draw(left + 100, top + 15, 90, 150, 0x60FFFFFF, 36);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(left + 0xC8, top + 0xC, forge->page, forge->pages, 1);
-    rowY += 0x22;
-    Font_SetSpacing(0x11, 0x11);
+    Menu_DrawPageNum(left + 200, top + 12, forge->page, forge->pages, 1);
+    rowY += 34;
+    Font_SetSpacing(17, 17);
     i = 0;
     if (i < forge->count) {
-        textX = left + 0x28;
+        textX = left + 40;
         do {
             recipe = &gWeaponRecipes[forge->makeList[i]];
             item.type = recipe->type;
             item.id = recipe->id;
             if (Equip_TestFlag(&item, EQUIP_FLAG_NEW) == 1 && (gFrameTick & 0x10)) {
-                Icon_Draw((s16)textX - 0x14, rowY, 0x10, 0x14, 0xFFC03000, 0x63);
+                Icon_Draw((s16)textX - 20, rowY, 16, 20, 0xFFC03000, 99);
             } else {
-                Lobby_DrawEquipIcon((s16)textX - 0x1A, rowY, 0x14, 0x14, &item);
+                Lobby_DrawEquipIcon((s16)textX - 26, rowY, 20, 20, &item);
             }
             if (i == forge->cursor) {
                 selected = item;
@@ -2085,8 +1991,8 @@ void WeaponForge_DrawMakeList(WeaponForgeWork *forge, s16 x, s16 y)
                 } else {
                     blink = 10;
                 }
-                Icon_Draw((s16)textX - 8, rowY + 0xC, 0xF8, 8, 0x99106060, 0x6F);
-                Menu_DrawCursorIcon((s16)textX - 0x2A - blink, rowY - 2, 0x16, 0xFF20C0C0);
+                Icon_Draw((s16)textX - 8, rowY + 12, 248, 8, 0x99106060, 111);
+                Menu_DrawCursorIcon((s16)textX - 42 - blink, rowY - 2, 22, 0xFF20C0C0);
             }
             if (WeaponForge_CanMake((struct WeaponForgeWork *)forge, i) == 0) {
                 Font_SetColor(0x8042352E);
@@ -2096,34 +2002,19 @@ void WeaponForge_DrawMakeList(WeaponForgeWork *forge, s16 x, s16 y)
             Font_SetPos(textX, rowY);
             if (Forge_IsRandomWeapon(item.id) != 0) {
                 Text_PrintfColored("%-20s", gGameMenuLabels[MENU_LABEL_UNKNOWN_NAME]);
-                Font_SetPos((s16)textX + 0xB2, rowY);
+                Font_SetPos((s16)textX + 178, rowY);
                 Text_PrintfColored("%6d%s", WEAPON_RANDOM_PRICE, gLobbyWords[LOBBY_WORD_ZENNY]);
             } else {
                 Text_PrintfColored("%-20s", Equip_GetName(recipe->type, recipe->id));
-                Font_SetPos((s16)textX + 0xB2, rowY);
+                Font_SetPos((s16)textX + 178, rowY);
                 Text_PrintfColored("%6d%s", Equip_HalfPrice(recipe->type, recipe->id), gLobbyWords[LOBBY_WORD_ZENNY]);
             }
-            rowY += 0x14;
+            rowY += 20;
             i++;
         } while (i < forge->count);
     }
 }
 
-extern LobbyMenu *gLobbyMenu;
-
-extern char *gYesNoTexts[];
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *label, u8 t1, u8 t2);
-void Menu_DrawMoney(s16 x, s16 y, s8 flag);
-void Menu_DrawLabelList(s16 x, char **lines, s16 n, s16 cur, u32 color);
-void EquipPreview_Hide(u8 hide);
-void Equip_DrawPreviewHelp(u32 color, s8 k);
-void EquipWindow_DrawLocal(EquipItem *e, s16 x, s16 y, u8 flags, EquipItem *other);
-void WeaponForge_DrawMakeMaterials(WeaponForgeWork *m, s16 x, s16 y);
-void EquipCompare_Draw(EquipItem *a, EquipItem *b, s32 c, s16 y, u8 flags);
-void EquipDetail_Draw(Player *a, s16 x, s16 y, u32 flags);
-char *Text_FillDollar(char *arg0, s32 arg1);
-void Text_Printf(const char *fmt, ...);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 /*
  * Draws the forging page for the make step: the class choice, then the
  * class's label bar, the money and the recipe list with the detail panel
@@ -2143,26 +2034,26 @@ void WeaponForge_DrawMake(WeaponForgeWork *forge)
 
     memset(&item, 0, sizeof(item));
     if (forge->subStep != FORGE_MAKE_TAB) {
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawLabelBar(10, 0x12, 0xBE, 0xFFB0B000, gWeaponClassTexts[forge->row], 2, 1);
-        Menu_DrawMoney(0x1E0, 0x10, 0);
+        Font_SetSpacing(22, 22);
+        Menu_DrawLabelBar(10, 18, 190, 0xFFB0B000, gWeaponClassTexts[forge->row], 2, 1);
+        Menu_DrawMoney(480, 16, 0);
         recipe = &gWeaponRecipes[forge->makeList[cursorIdx]];
         item.used = 1;
-        y = 0x34;
+        y = 52;
         item.type = recipe->type;
         item.id = recipe->id;
         x = forge->detailWin.pos;
     }
     switch (forge->subStep) {
     case FORGE_MAKE_TAB:
-        Font_SetSpacing(0x14, 0x14);
-        Menu_DrawLabelList(0x1A4, gWeaponClassTexts, WEAPON_TAB_COUNT, forge->row, 0xFFB0B000);
+        Font_SetSpacing(20, 20);
+        Menu_DrawLabelList(420, gWeaponClassTexts, WEAPON_TAB_COUNT, forge->row, 0xFFB0B000);
         break;
     case FORGE_MAKE_SLIDE_IN:
     case FORGE_MAKE_LIST:
         switch (forge->view) {
         case FORGE_MAKE_VIEW_LIST:
-            WeaponForge_DrawMakeListFull(forge, x + 0xC, y);
+            WeaponForge_DrawMakeListFull(forge, x + 12, y);
             break;
         case FORGE_MAKE_VIEW_STATS:
             if (forge->previewOff == 0) {
@@ -2172,13 +2063,13 @@ void WeaponForge_DrawMake(WeaponForgeWork *forge)
             if (forge->previewOff == 0 && Forge_IsRandomWeapon(forge->shown.id)) {
                 prompt = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(prompt, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(prompt, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(prompt);
             }
-            WeaponForge_DrawMakeList(forge, 10, 0x32);
-            EquipWindow_DrawLocal(&item, 0x136, 0xD8, forge->detailPage | 0x40, NULL);
+            WeaponForge_DrawMakeList(forge, 10, 50);
+            EquipWindow_DrawLocal(&item, 310, 216, forge->detailPage | 0x40, NULL);
             break;
         case FORGE_MAKE_VIEW_MATERIALS:
             if (forge->previewOff == 0) {
@@ -2188,43 +2079,41 @@ void WeaponForge_DrawMake(WeaponForgeWork *forge)
             if (forge->previewOff == 0 && Forge_IsRandomWeapon(forge->shown.id)) {
                 prompt = gForgeTexts[FORGE_TEXT_NO_SAMPLE];
                 EquipPreview_Hide(1);
-                Font_SetSpacing(0x12, 0x12);
-                Font_SetPos(Text_CenterX(prompt, 0x1CE, 0x12), 0x6E);
+                Font_SetSpacing(18, 18);
+                Font_SetPos(Text_CenterX(prompt, 462, 18), 110);
                 Font_SetColor(0x807F212E);
                 Text_PrintfColored(prompt);
             }
-            WeaponForge_DrawMakeList(forge, 10, 0x32);
-            WeaponForge_DrawMakeMaterials(forge, 0x136, 0xD8);
+            WeaponForge_DrawMakeList(forge, 10, 50);
+            WeaponForge_DrawMakeMaterials(forge, 310, 216);
             break;
         case FORGE_MAKE_VIEW_COMPARE:
-            WeaponForge_DrawMakeList(forge, 10, 0x32);
-            EquipCompare_Draw(gSave.equip, &item, 0x136, 0x36, forge->detailPage | 0x50);
+            WeaponForge_DrawMakeList(forge, 10, 50);
+            EquipCompare_Draw(gSave.equip, &item, 310, 54, forge->detailPage | 0x50);
             break;
         case FORGE_MAKE_VIEW_HUNTER:
-            WeaponForge_DrawMakeList(forge, 10, 0x32);
-            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 0x136, 0x3A, forge->detailPage);
+            WeaponForge_DrawMakeList(forge, 10, 50);
+            EquipDetail_Draw(&gPlayers[gScene.localPlayer], 310, 58, forge->detailPage);
             break;
         }
         if (forge->view != FORGE_MAKE_VIEW_HUNTER) {
-            Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_WEAPON_TO_MAKE]);
+            Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, gForgeTexts[FORGE_TEXT_PICK_WEAPON_TO_MAKE]);
         }
         break;
     case FORGE_MAKE_ASK:
-        EquipCompare_Draw(gSave.equip, &item, 0x136, 0x36, forge->detailPage | 0x50);
+        EquipCompare_Draw(gSave.equip, &item, 310, 54, forge->detailPage | 0x50);
         if (Forge_IsRandomWeapon(item.id)) {
             prompt = Text_FillDollar((char *) gForgeTexts[FORGE_TEXT_MATERIALS_ASK], WEAPON_RANDOM_PRICE);
         } else {
             prompt = Text_FillDollar((char *) gForgeTexts[FORGE_TEXT_MATERIALS_ASK], Equip_HalfPrice(item.type, item.id));
         }
-        Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, prompt);
-        Font_SetPos(0x1BC, 0x190);
+        Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, prompt);
+        Font_SetPos(444, 400);
         Text_Printf(gYesNoTexts[gLobbyMenu->yesNo]);
         break;
     }
 }
 
-void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: declared with s16 coordinates as the forge's draws pass them; with the definition's s32 coordinates and s16 kind the calls compile differently */
-s32 Items_DrawNeedLine(s16, s16, u16, s32, u32);
 /*
  * Draws the materials panel for the recipe under the cursor: a window with
  * its header and the four needed items, each with the count held against
@@ -2235,21 +2124,18 @@ void WeaponForge_DrawMakeMaterials(WeaponForgeWork *forge, s16 x, s16 y)
     ForgeRecipe *recipe = &gWeaponRecipes[forge->makeList[forge->cursor]];
     s16 i;
 
-    Win_Draw(x, y, 0x132, 0x72, 0xBDB59F6C, 0xA0202020, 6);
+    Win_Draw(x, y, 306, 114, 0xBDB59F6C, 0xA0202020, 6);
     y += 6;
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(0x807F7F28);
     Font_SetPos(x + 10, y);
     Text_PrintfColored(gForgeTexts[FORGE_TEXT_MATERIALS_HEAD]);
     for (i = 0; i < FORGE_RECIPE_MATS; i++) {
         y += 20;
-        Items_DrawNeedLine(x + 0x1E, y, recipe->mat[i].item, recipe->mat[i].count, 0x807F7F7F);
+        Items_DrawNeedLine(x + 30, y, recipe->mat[i].item, recipe->mat[i].count, 0x807F7F7F);
     }
 }
 
-struct WeaponForgeWork;
-void WeaponForge_DrawUpgradePanel(struct WeaponForgeWork *m, s16 x, s16 y);
-void WeaponForge_DrawMake(WeaponForgeWork *m);
 /*
  * Draws the weapon workshop by its step: the forge/upgrade choice, the
  * upgrade pages (the chosen weapon's detail and the upgrade box), or the
@@ -2262,12 +2148,12 @@ void WeaponForge_Draw(u8 *work)
 
     switch (forge->step) {
     case FORGE_STEP_CHOOSE:
-        Font_SetSpacing(0x14, 0x14);
-        Menu_DrawLabelList(0x1CC, gWeaponForgeTexts, 2, forge->choice, 0xFFB0B000);
+        Font_SetSpacing(20, 20);
+        Menu_DrawLabelList(460, gWeaponForgeTexts, 2, forge->choice, 0xFFB0B000);
         break;
     case FORGE_STEP_UPGRADE:
-        WeaponForge_DrawUpgradeDetail(forge, (s16)(forge->detailWin.pos + 10), 0x32);
-        WeaponForge_DrawUpgradePanel(forge, forge->panelWin.pos + 6, 0x36);
+        WeaponForge_DrawUpgradeDetail(forge, (s16)(forge->detailWin.pos + 10), 50);
+        WeaponForge_DrawUpgradePanel(forge, forge->panelWin.pos + 6, 54);
         break;
     case FORGE_STEP_MAKE:
         WeaponForge_DrawMake(forge);
@@ -2324,9 +2210,9 @@ void WeaponForge_DrawPreview(u8 *work)
     case WEAPON_CONFIRM_APPLY:
         return;
     }
-    EquipCompare_Draw(gSave.equip, &item, 0x134, 0x38, forge->detailPage | 0x50);
-    Win_DrawText(0x130, 0x160, 0x13C, 0x50, 0xBDB59F6C, 0xA0202020, question);
-    Font_SetPos(0x144, 0x190);
+    EquipCompare_Draw(gSave.equip, &item, 308, 56, forge->detailPage | 0x50);
+    Win_DrawText(304, 352, 316, 80, 0xBDB59F6C, 0xA0202020, question);
+    Font_SetPos(324, 400);
     Text_Printf(gEquipNowTexts[gLobbyMenu->yesNo]);
 }
 

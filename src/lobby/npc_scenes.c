@@ -20,9 +20,10 @@
 #include "scene.h"
 #include "player.h"
 #include "lobby_state.h"
-
-void *memset(void *dst, s32 c, u32 n);
-s32 OT_AddAt(u32 *table, void *node, s32 idx, s32 n);
+#include "draw_slots.h"
+#include "service_npc_states.h"
+#include "town_players.h"
+#include "libc.h"
 
 /* Starts a scene of the given kind (TUTORIAL_KIND_*): clears gNpcScene and
  * keeps the seat mask (the cooking scene's seats, one bit each; 0 for the
@@ -52,35 +53,31 @@ s32 NpcScene_IsDone(void)
     return isDone;
 }
 
-void Actor_SetState(void *, s32, s32);
-s32 Motion_ReachedFrame(void *, s32, f32);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-void Npc_SetLessonRoute(Em *npc, s32 arg1);
-void Npc_PlaceOnRoute(Em *arg0, u8 set, u8 i);
 u8 Area_GetSetIndex(u16 id);
 
 /*
  * Runs townsperson npc's part in the scene; each townsperson's state update
  * calls it every frame. The first call of a frame counts the frame (after
  * 5400 frames, 3 minutes, the scene ends as done) and the timer down.
- * - NPC_SCENE_WORKSHOP: townsperson 0x55 forges (state 0xA4); at its
- *   motion's frame 172 the three townspeople 0x59-0x5B hammer (state 0xA5,
- *   count: one call each); 30 frames on, townsperson 0x5C walks route
- *   table 1; 120 frames on, the three stop (state 0x9D); 0x5C walks route
- *   table 2, and once it is back in a plain state (not 2, 4, 0xAA or 0x81)
- *   the scene is done and 0x5C goes back to route table 0.
+ * - NPC_SCENE_WORKSHOP: townsperson 85 forges (NPC_STATE_FORGE); at its
+ *   motion's frame 172 the three townspeople 89-91 hammer (NPC_STATE_HAMMER,
+ *   count: one call each); 30 frames on, townsperson 92 walks route
+ *   table 1; 120 frames on, the three stop (state 157); 92 walks route
+ *   table 2, and once it is back in a plain state (not 2, NPC_STATE_RUN, 170 or NPC_STATE_ROUTE_TURN)
+ *   the scene is done and 92 goes back to route table 0.
  * - NPC_SCENE_WORKSHOP_HELPER: NPC_WORKSHOP_HELPER_ONLINE leads instead:
- *   route table 4, its forging motion 0x40B to frame 74, the three hammer,
- *   it reaches state 0xAE with motion 0x406 and walks route table 5, the
- *   three stop, and once it is in a plain state (not 4, 0xAD or 0x81) the
+ *   route table 4, its forging motion 1035 to frame 74, the three hammer,
+ *   it reaches state 174 with motion 1030 and walks route table 5, the
+ *   three stop, and once it is in a plain state (not NPC_STATE_RUN, 173 or NPC_STATE_ROUTE_TURN) the
  *   scene is done and it goes back to route table 3.
- * - NPC_SCENE_COOKING: only the kitchen helpers (townsperson 0x72) take
+ * - NPC_SCENE_COOKING: only the kitchen helpers (NPC_KITCHEN_HELPER) take
  *   part. Each frame the seats of the mask and the helpers present are
  *   counted and the route set is picked from the house's area; the helpers
  *   then take turns: in step 0 each of the first ones gets the next seat of
  *   the mask (Em.sceneSeat), is placed on that seat's route and enters
  *   its first point's state, the others go to route 0 with no seat (-1);
- *   step 1 waits until the seated helpers are all in state 0xB1, step 2
+ *   step 1 waits until the seated helpers are all in state 177, step 2
  *   moves them on to their next route point, and 30 frames later the scene
  *   is done.
  * Any other kind ends at once. The switches on the townsperson's state
@@ -119,14 +116,14 @@ void NpcScene_RunNpc(Em *npc)
     case NPC_SCENE_WORKSHOP:
         switch (scene->step) {
         case 0:
-            if (w->id == 0x55) {
+            if (w->id == 85) {
                 scene->step++;
                 Actor_SetState(npc, 0, NPC_STATE_FORGE);
                 scene->timer = 10;
             }
             break;
         case 1:
-            if (scene->timer <= 0 && w->id == 0x55 && Motion_ReachedFrame(npc, 0, 172.0f) != 0) {
+            if (scene->timer <= 0 && w->id == 85 && Motion_ReachedFrame(npc, 0, 172.0f) != 0) {
                 scene->step++;
                 scene->count = 3;
             }
@@ -148,7 +145,7 @@ void NpcScene_RunNpc(Em *npc)
             }
             break;
         case 3:
-            if (scene->timer <= 0 && w->id == 0x5C) {
+            if (scene->timer <= 0 && w->id == 92) {
                 scene->step++;
                 scene->timer = 120;
                 scene->count = 3;
@@ -162,7 +159,7 @@ void NpcScene_RunNpc(Em *npc)
                 case NPC_WORKSHOP_HAMMER_2:
                 case NPC_WORKSHOP_HAMMER_3:
                     if (Player_IsState((Player *) npc, 0, NPC_STATE_HAMMER) != 0) {
-                        Actor_SetState(npc, 0, 0x9D);
+                        Actor_SetState(npc, 0, 157);
                         npc->step = 3;
                     }
                     scene->count--;
@@ -175,13 +172,13 @@ void NpcScene_RunNpc(Em *npc)
             }
             break;
         case 5:
-            if (scene->timer <= 0 && w->id == 0x5C) {
+            if (scene->timer <= 0 && w->id == 92) {
                 scene->step++;
                 Npc_SetLessonRoute(npc, 2);
             }
             break;
         case 6:
-            if (w->id == 0x5C && npc->stateGroup == 0) {
+            if (w->id == 92 && npc->stateGroup == 0) {
                 switch (npc->state) {
                 default:
                     scene->step++;
@@ -191,8 +188,8 @@ void NpcScene_RunNpc(Em *npc)
                     break;
                 case 2:
                 case 4:
-                case 0xAA:
-                case 0x81:
+                case 170:
+                case 129:
                     break;
                 }
             }
@@ -208,7 +205,7 @@ void NpcScene_RunNpc(Em *npc)
             }
             break;
         case 1:
-            if (w->id == NPC_WORKSHOP_HELPER_ONLINE && npc->motionId[0] == 0x40B && Motion_ReachedFrame(npc, 0, 74.0f) != 0) {
+            if (w->id == NPC_WORKSHOP_HELPER_ONLINE && npc->motionId[0] == 1035 && Motion_ReachedFrame(npc, 0, 74.0f) != 0) {
                 scene->step++;
                 scene->count = 3;
             }
@@ -230,7 +227,7 @@ void NpcScene_RunNpc(Em *npc)
             }
             break;
         case 3:
-            if (w->id == NPC_WORKSHOP_HELPER_ONLINE && Player_IsState((Player *) npc, 0, 0xAE) != 0 && npc->motionId[0] == 0x406) {
+            if (w->id == NPC_WORKSHOP_HELPER_ONLINE && Player_IsState((Player *) npc, 0, 174) != 0 && npc->motionId[0] == 1030) {
                 scene->step++;
                 scene->count = 3;
                 Npc_SetLessonRoute(npc, 5);
@@ -242,7 +239,7 @@ void NpcScene_RunNpc(Em *npc)
             case NPC_WORKSHOP_HAMMER_2:
             case NPC_WORKSHOP_HAMMER_3:
                 if (Player_IsState((Player *) npc, 0, NPC_STATE_HAMMER) != 0) {
-                    Actor_SetState(npc, 0, 0x9D);
+                    Actor_SetState(npc, 0, 157);
                     npc->step = 3;
                 }
                 scene->count--;
@@ -263,8 +260,8 @@ void NpcScene_RunNpc(Em *npc)
                     Npc_SetLessonRoute(npc, 3);
                     break;
                 case 4:
-                case 0xAD:
-                case 0x81:
+                case 173:
+                case 129:
                     break;
                 }
             }
@@ -338,7 +335,7 @@ void NpcScene_RunNpc(Em *npc)
             }
             break;
         case 1:
-            if (scene->turn < scene->count && Player_IsState((Player *) npc, 0, 0xB1) != 0) {
+            if (scene->turn < scene->count && Player_IsState((Player *) npc, 0, 177) != 0) {
                 scene->seatIdx++;
                 if (scene->seatIdx >= scene->count || scene->seatIdx >= scene->helpers) {
                     scene->step++;

@@ -15,87 +15,37 @@
  */
 #include "common.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_remobra.h"
+#include "objattach.h"
 #include "player.h"
-void Em_PlaySeAtBoneOnFrame(Em *em, s32 frame, s32 se, s32 bone);
-s32 Sound_RandomSe(s32 id, s16 lo, s32 alt, s16 n);
-void EmRemobra_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus4(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
+#include "capsule.h"
+#include "quest.h"
+#include "sound.h"
+#include "engine_math.h"
+#include "gm_load.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "vec_math.h"
+#include "area.h"
+#include "em_script.h"
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmChameleos_ChangeState, EmChameleos_SetIdleState and others compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void Player_ClearFlag(void *, u32 flag);
-s8 QuestEm_Appear(Em *em);
 void EmRangedAttack_CreateAtBone(Em *, s32, s32, s32, s32, s32);
-void RemobraAttack_Create(Em *em, u8 k);
-void Em_MoveRotatedAccel(Em *, void *);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
-u8 Em_TurnToGoal(Em *em, u16 step, u8 flags);
-void Em_RestartScript(Em *em);
-void EmRemobra_MotionSounds(Em *em, EmWork *work);
-void EmRemobra_Init(Em *em);
-void EmRemobra_UpdateHop(Em *);
-void EmRemobra_Hover(Em *em);
-void EmRemobra_Swoop(Em *, s32);
-void EmRemobra_Bank(Em *, s32, s32);
-void EmRemobra_TakeOff(Em *em, s32 variant);
-void EmRemobra_TurnInAir(Em *);
-void EmRemobra_ChangeHeight(Em *em, s32 variant);
-void EmRemobra_Glide(Em *, s32);
-void EmRemobra_Shift(Em *, s32);
-void EmRemobra_SpitAimed(Em *, s32);
-void EmRemobra_Hunted(Em *);
-void EmRemobra_WaitAppear(Em *em);
-void EmRemobra_SpawnGroundEffect(Em *em, s32 a1, s32 a2, f32 scale);
-void EmRemobra_MoveByVelocity(Em *em);
-void EmRemobra_StartCurves(Em *em, u8 a);
-u8 EmRemobra_UpdateCurves(Em *);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-f32 Vec_Distance(f32 *a, f32 *b);
-f32 Vec_DistanceXZ(f32 *a, f32 *b);
-s32 QuestEm_CanAppear(Em *em);
-void Player_ClearVelocity(void *);
-void Shadow_Spawn(void *obj, s16 type);
-f32 Math_Absf(f32 x);
-void Em_InitParts(Em *em);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (void *obj, s16 bone, f32 *out), the calls in EmChameleos_SpawnGroundEffect, EmChameleos_SpawnGroundEffectOffset and others compile differently */
 void Em_BonePos(void *obj, s32 a, f32 *out);
-void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Vec_Copy(f32 *out, f32 *in);
-u16 Rand_Next(s32 stream);
 extern f32 EmRemobra_HopFrames[3];
-void QuestEm_Hunted(Em *em);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
 extern EmCurveKey *EmRemobra_VelYCurves[];
 extern EmCurveKey *EmRemobra_SpeedCurves[];
-void Vec_RotateY(f32 *v, f32 angle);
-f32 *Mtx_FromAnglesYXZ(s32 *angles, f32 *m);
-void Vec_Rotate(f32 *out, f32 *in, f32 *mtx);
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: MWCC keeps the game's andi that way */
-u8 Player_InCurrentArea(void *obj);
-s32 Em_UpdateCombatTimer(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus4Timer(Em *em);
-void EmRemobra_RunState(Em *em);
 /* end of prototypes */
 
 
 /*
  * Plays the sounds of the playing motion on their frames at their bones
  * (Em_PlaySeAtBoneOnFrame), switching on work->fxMotion (the layer-0 motion
- * ids of motions 1 to 0x1A).
+ * ids of motions 1 to 26).
  */
 void EmRemobra_MotionSounds(Em *em, EmWork *work)
 {
@@ -104,220 +54,220 @@ void EmRemobra_MotionSounds(Em *em, EmWork *work)
     motion = work->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, REMOBRA_MOT_FLY):
-        Em_PlaySeAtBoneOnFrame(em, 0x40, Sound_RandomSe(0xB, 2, 0xB, 2), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xDE, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 64, Sound_RandomSe(11, 2, 11, 2), 21);
+        Em_PlaySeAtBoneOnFrame(em, 72, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 76, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 148, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 152, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 222, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 224, 29, REMOBRA_BONE_WING_B);
         break;
-    case EM_MOTION_ID(0, 0x2):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x76, 1, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x50, 0x1A, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x20, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x98, 0x20, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 2, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xF4, 0x1B, 0x15);
+    case EM_MOTION_ID(0, 2):
+        Em_PlaySeAtBoneOnFrame(em, 2, 0, 21);
+        Em_PlaySeAtBoneOnFrame(em, 118, 1, 21);
+        Em_PlaySeAtBoneOnFrame(em, 80, 26, 3);
+        Em_PlaySeAtBoneOnFrame(em, 104, 32, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 152, 32, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 116, 2, 21);
+        Em_PlaySeAtBoneOnFrame(em, 244, 27, 21);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_SWOOP_END):
-        Em_PlaySeAtBoneOnFrame(em, 6, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0xB, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x58, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x5C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xDE, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 6, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 10, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 22, 11, 21);
+        Em_PlaySeAtBoneOnFrame(em, 38, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 42, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 88, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 92, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 128, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 132, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 222, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 224, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_SWOOP):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
         break;
-    case EM_MOTION_ID(0, 0x5):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x4E, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x52, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x55, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x7F, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x8A, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x9F, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0xB4, 0x14, 3);
+    case EM_MOTION_ID(0, 5):
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 16, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 64, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 78, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 82, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 85, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 106, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 127, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 138, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 159, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 180, 20, 3);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_BANK_SLOW_A):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_BANK_SLOW_B):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_BANK_FAST_A):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_BANK_FAST_B):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_BACK_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 6, 3, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x1E, 8);
+        Em_PlaySeAtBoneOnFrame(em, 6, 3, 21);
+        Em_PlaySeAtBoneOnFrame(em, 44, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 108, 30, REMOBRA_BONE_WING_A);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_TAKE_OFF):
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 4, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x1C, 0x22, 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x19, 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x22, 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x80, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x84, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xBC, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xC0, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xF2, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xF6, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x122, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x126, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 18, 4, 21);
+        Em_PlaySeAtBoneOnFrame(em, 28, 34, 29);
+        Em_PlaySeAtBoneOnFrame(em, 48, 25, 25);
+        Em_PlaySeAtBoneOnFrame(em, 68, 34, 25);
+        Em_PlaySeAtBoneOnFrame(em, 128, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 132, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 188, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 192, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 242, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 246, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 290, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 294, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_SPIT_DOWN):
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 5, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x15, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x2B, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 20, 5, 21);
+        Em_PlaySeAtBoneOnFrame(em, 0, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 21, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 43, 20, 3);
         break;
-    case EM_MOTION_ID(0, 0xD):
-        Em_PlaySeAtBoneOnFrame(em, 2, 5, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 4, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1D, 0xE);
+    case EM_MOTION_ID(0, 13):
+        Em_PlaySeAtBoneOnFrame(em, 2, 5, 21);
+        Em_PlaySeAtBoneOnFrame(em, 4, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 8, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_SPIT_AIM):
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 6, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 20, 6, 21);
+        Em_PlaySeAtBoneOnFrame(em, 72, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 76, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_SPIT):
-        Em_PlaySeAtBoneOnFrame(em, 4, 5, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 4, 5, 21);
+        Em_PlaySeAtBoneOnFrame(em, 8, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 12, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_STRIKE):
-        Em_PlaySeAtBoneOnFrame(em, 6, 7, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1E, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x1E, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 8, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x26, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x15, 0x20);
-        Em_PlaySeAtBoneOnFrame(em, 0x2A, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x94, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 6, 7, 21);
+        Em_PlaySeAtBoneOnFrame(em, 14, 30, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 18, 30, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 34, 8, 21);
+        Em_PlaySeAtBoneOnFrame(em, 38, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 21, REMOBRA_BONE_STRIKE);
+        Em_PlaySeAtBoneOnFrame(em, 42, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 72, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 76, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 104, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 108, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 144, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 148, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_SWOOP_STRIKE):
-        Em_PlaySeAtBoneOnFrame(em, 0x18, 9, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x3A, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x6E, 0x26, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x78, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x7C, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x8C, 4, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x9A, 0x29, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x2A, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x9C, 0x2B, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xA0, 0x2C, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xCC, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xD2, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xFA, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xFE, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 24, 9, 21);
+        Em_PlaySeAtBoneOnFrame(em, 58, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 66, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 110, 38, 3);
+        Em_PlaySeAtBoneOnFrame(em, 120, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 124, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 140, 4, 21);
+        Em_PlaySeAtBoneOnFrame(em, 154, 41, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 158, 42, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 156, 43, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 160, 44, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 204, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 210, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 250, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 254, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_FLINCH):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x16, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0xC, 2, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x10, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x14, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x44, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x48, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x64, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x68, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 2, 22, 3);
+        Em_PlaySeAtBoneOnFrame(em, 12, 2, 21);
+        Em_PlaySeAtBoneOnFrame(em, 16, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 20, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 44, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 48, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 68, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 72, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 100, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 104, 29, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_FALL):
-        Em_PlaySeAtBoneOnFrame(em, 0, 0x16, 3);
-        Em_PlaySeAtBoneOnFrame(em, 2, 3, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x12, 0x20, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x32, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x36, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x54, 0x14, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x14, 3);
+        Em_PlaySeAtBoneOnFrame(em, 0, 22, 3);
+        Em_PlaySeAtBoneOnFrame(em, 2, 3, 21);
+        Em_PlaySeAtBoneOnFrame(em, 18, 32, 3);
+        Em_PlaySeAtBoneOnFrame(em, 50, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 54, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 64, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 84, 20, 3);
+        Em_PlaySeAtBoneOnFrame(em, 98, 20, 3);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_FALL_LAND):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0x1A, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x22, 0x21, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x42, 0x20, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 4, 0, 21);
+        Em_PlaySeAtBoneOnFrame(em, 14, 26, 3);
+        Em_PlaySeAtBoneOnFrame(em, 34, 33, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 66, 32, REMOBRA_BONE_WING_B);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_DOWNED):
-        Em_PlaySeAtBoneOnFrame(em, 2, 0x17, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, Sound_RandomSe(0xA, 5, 2, 3), 0x15);
+        Em_PlaySeAtBoneOnFrame(em, 2, 23, 3);
+        Em_PlaySeAtBoneOnFrame(em, 48, Sound_RandomSe(10, 5, 2, 3), 21);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_STATUS4):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0xA, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x6C, Sound_RandomSe(0xB, 2, 0xB, 2), 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xDE, 0xA, 0x15);
+        Em_PlaySeAtBoneOnFrame(em, 4, 10, 21);
+        Em_PlaySeAtBoneOnFrame(em, 108, Sound_RandomSe(11, 2, 11, 2), 21);
+        Em_PlaySeAtBoneOnFrame(em, 222, 10, 21);
         break;
-    case EM_MOTION_ID(0, 0x17):
-        Em_PlaySeAtBoneOnFrame(em, 4, 0, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xE, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x74, 0xF, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x1A, 3);
-        Em_PlaySeAtBoneOnFrame(em, 0xB2, 0x1B, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0xF4, 0xD, 0x15);
+    case EM_MOTION_ID(0, 23):
+        Em_PlaySeAtBoneOnFrame(em, 4, 0, 21);
+        Em_PlaySeAtBoneOnFrame(em, 116, 14, 21);
+        Em_PlaySeAtBoneOnFrame(em, 116, 15, 21);
+        Em_PlaySeAtBoneOnFrame(em, 158, 26, 3);
+        Em_PlaySeAtBoneOnFrame(em, 178, 27, 21);
+        Em_PlaySeAtBoneOnFrame(em, 244, 13, 21);
         break;
-    case EM_MOTION_ID(0, 0x18):
-        Em_PlaySeAtBoneOnFrame(em, 6, 3, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x1E, 4, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x16, 0x22, 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x19, 0x19);
-        Em_PlaySeAtBoneOnFrame(em, 0x40, 0x22, 0x1D);
-        Em_PlaySeAtBoneOnFrame(em, 0x4C, 4, 0x15);
+    case EM_MOTION_ID(0, 24):
+        Em_PlaySeAtBoneOnFrame(em, 6, 3, 21);
+        Em_PlaySeAtBoneOnFrame(em, 30, 4, 21);
+        Em_PlaySeAtBoneOnFrame(em, 22, 34, 29);
+        Em_PlaySeAtBoneOnFrame(em, 44, 25, 25);
+        Em_PlaySeAtBoneOnFrame(em, 64, 34, 29);
+        Em_PlaySeAtBoneOnFrame(em, 76, 4, 21);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_DEATH):
-        Em_PlaySeAtBoneOnFrame(em, 8, 0x20, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xA, 1, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x30, 0x1F, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x5A, 2, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x90, 0x1B, 0x15);
+        Em_PlaySeAtBoneOnFrame(em, 8, 32, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 10, 1, 21);
+        Em_PlaySeAtBoneOnFrame(em, 48, 31, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 90, 2, 21);
+        Em_PlaySeAtBoneOnFrame(em, 144, 27, 21);
         break;
     case EM_MOTION_ID(0, REMOBRA_MOT_HOVER_CRY):
-        Em_PlaySeAtBoneOnFrame(em, 0xE, 0xC, 0x15);
-        Em_PlaySeAtBoneOnFrame(em, 0x2C, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x34, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x62, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0x6A, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0x9E, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xA6, 0x1D, 0xE);
-        Em_PlaySeAtBoneOnFrame(em, 0xE0, 0x1C, 8);
-        Em_PlaySeAtBoneOnFrame(em, 0xE6, 0x1D, 0xE);
+        Em_PlaySeAtBoneOnFrame(em, 14, 12, 21);
+        Em_PlaySeAtBoneOnFrame(em, 44, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 52, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 98, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 106, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 158, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 166, 29, REMOBRA_BONE_WING_B);
+        Em_PlaySeAtBoneOnFrame(em, 224, 28, REMOBRA_BONE_WING_A);
+        Em_PlaySeAtBoneOnFrame(em, 230, 29, REMOBRA_BONE_WING_B);
 
     default:
         break;
@@ -514,7 +464,7 @@ void EmRemobra_IdleGround(Em *em)
     case 0:
         em->stance = EM_STANCE_GROUND;
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0x1E) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 30) + 30;
         if (em->motionId[0] != EM_MOTION_ID(0, REMOBRA_MOT_IDLE_GROUND)) {
             Em_SetMotion(em, REMOBRA_MOT_IDLE_GROUND, 0, 0);
         }
@@ -579,7 +529,7 @@ void EmRemobra_StopHop(Em *em)
 
 /*
  * While REMOBRA_MOT_FLY plays, starts a hop at each of the three
- * EmRemobra_HopFrames (velocity 14 slowing over half of 0x22 frames) and
+ * EmRemobra_HopFrames (velocity 14 slowing over half of 34 frames) and
  * moves posY by the hop each frame; run after every EM_GROUP_FLY state.
  */
 void EmRemobra_UpdateHop(Em *em)
@@ -591,7 +541,7 @@ void EmRemobra_UpdateHop(Em *em)
     if (em->motionId[0] == EM_MOTION_ID(0, REMOBRA_MOT_FLY)) {
         for (i = 0, hopFrame = EmRemobra_HopFrames; i < 3; i++, hopFrame++) {
             if (EmMotion_PassedFrameScaled(em, *hopFrame, 0) != 0) {
-                w->hopFrames = 0x22;
+                w->hopFrames = 34;
                 w->hopVel = 14.0f;
                 w->hopAccel = -(w->hopVel / (w->hopFrames / 2));
                 w->hopFrames += 1;
@@ -620,7 +570,7 @@ void EmRemobra_Hover(Em *em)
         em->stateVar0 = 0;
         em->stateVar1 = 0;
         em->stance = EM_STANCE_AIR;
-        em->timer = 0x1E;
+        em->timer = 30;
         if (em->motionId[0] != EM_MOTION_ID(0, REMOBRA_MOT_FLY)) {
             Em_SetMotion(em, REMOBRA_MOT_FLY, 0, 0);
             EmRemobra_StopHop(em);
@@ -687,7 +637,7 @@ void EmRemobra_Swoop(Em *em, s32 variant)
     case 1:
         if (w->steerToGoal != 0) {
             yawDiff = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if (yawDiff <= 0x8000) {
+            if (yawDiff <= ANGLE_TURN / 2) {
                 if (yawDiff < 0x100) {
                     em->rotY += yawDiff;
                 } else {
@@ -720,7 +670,7 @@ void EmRemobra_Swoop(Em *em, s32 variant)
             if (em->motion[0].playing == 0) {
                 Em_SetMotion(em, REMOBRA_MOT_SPIT_DOWN, 8, 0);
             } else if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
+                EmRangedAttack_CreateAtBone(em, REMOBRA_BONE_SPIT, EMRANGED_REMOBRA_SPIT, 0, 15474, 0);
             }
         }
         break;
@@ -736,7 +686,7 @@ void EmRemobra_Swoop(Em *em, s32 variant)
 
 /*
  * REMOBRA_FLY_BANK_SLOW_A, _SLOW_B, _FAST_A, _FAST_B: flies a turning curve
- * for 30 frames (speed 24 turning 0x200 a frame, or 33.75 turning 0x400;
+ * for 30 frames (speed 24 turning 512 a frame, or 33.75 turning 1024;
  * dir picks the side and the motion), then enters REMOBRA_FLY_SWOOP.
  */
 void EmRemobra_Bank(Em *em, s32 fast, s32 side)
@@ -769,15 +719,15 @@ void EmRemobra_Bank(Em *em, s32 fast, s32 side)
     case 1:
         if (fast == 0) {
             if (side == 0) {
-                turnStep = 0x200;
+                turnStep = 512;
             } else {
-                turnStep = -0x200;
+                turnStep = -512;
             }
         } else {
             if (side == 0) {
-                turnStep = 0x400;
+                turnStep = 1024;
             } else {
-                turnStep = -0x400;
+                turnStep = -1024;
             }
         }
         em->rotY += turnStep;
@@ -840,7 +790,7 @@ void EmRemobra_TakeOff(Em *em, s32 variant)
         em->step++;
         em->stance = EM_STANCE_GROUND;
         if (variant == 0) {
-            Em_SetMotion(em, REMOBRA_MOT_TAKE_OFF, 0, 0x5A);
+            Em_SetMotion(em, REMOBRA_MOT_TAKE_OFF, 0, 90);
             break;
         }
         Em_SetMotion(em, REMOBRA_MOT_TAKE_OFF, 0, 0);
@@ -886,12 +836,12 @@ void EmRemobra_TurnInAir(Em *em)
         yaw = em->rotY;
         goalYaw = w->turnYaw;
         diff = (goalYaw - (yaw & 0xFFFF)) & 0xFFFF;
-        if ((u32) ((diff + 0x440) & 0xFFFF) < 0x880U) {
+        if ((u32) ((diff + 1088) & 0xFFFF) < 2176U) {
             em->rotY = (s32) goalYaw;
             em->step++;
             Player_ClearFlag(em, EM_FLAG_NO_ROOT_MOTION);
             EmRemobra_EndFlyState(em);
-        } else if (diff < 0x8000U) {
+        } else if (diff < ANGLE_TURN / 2) {
             em->rotY = (yaw + 0x440) & 0xFFFF;
         } else {
             em->rotY = (yaw - 0x440) & 0xFFFF;
@@ -979,7 +929,7 @@ void EmRemobra_Glide(Em *em, s32 variant)
     case 1:
         if (w->steerToGoal != 0) {
             yawDiff = (u16) (Math_AngleXZ(&em->posX, em->goal) - em->rotY);
-            if (yawDiff <= 0x8000) {
+            if (yawDiff <= ANGLE_TURN / 2) {
                 if (yawDiff < 0x280) {
                     em->rotY += yawDiff;
                 } else {
@@ -1073,7 +1023,7 @@ void EmRemobra_ReturnHome(Em *em)
     case 0:
         em->stance = EM_STANCE_AIR;
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0xF) + 0x1E;
+        em->timer = ((em->stateRand & 3) * 15) + 30;
         Em_SetMotion(em, REMOBRA_MOT_FLY, 0, 0);
         Player_ClearVelocity(em);
         em->velX = 0.0f;
@@ -1081,7 +1031,7 @@ void EmRemobra_ReturnHome(Em *em)
         em->velZ = 20.0f;
         break;
     case 1:
-        Em_TurnToGoal(em, 0x5B0, 0);
+        Em_TurnToGoal(em, 1456, 0);
         EmRemobra_MoveByVelocity(em);
         floorY = em->floorY;
         if (em->posY < floorY) {
@@ -1282,7 +1232,7 @@ void EmRemobra_Strike(Em *em, s32 unused)
 /*
  * REMOBRA_ATK_SPIT_A, _B, _C: holds REMOBRA_MOT_SPIT_AIM for 40, 50 or 60
  * frames, then plays REMOBRA_MOT_SPIT and spits (EMRANGED_REMOBRA_SPIT from
- * bone 0x13) at frame 8; REMOBRA_FLY_HOVER at its end.
+ * REMOBRA_BONE_SPIT) at frame 8; REMOBRA_FLY_HOVER at its end.
  */
 void EmRemobra_SpitAimed(Em *em, s32 variant)
 {
@@ -1318,13 +1268,13 @@ void EmRemobra_SpitAimed(Em *em, s32 variant)
         if (EmMotion_PassedFrameScaled(em, 8.0f, 0U) != 0) {
             switch (variant) {
             case 0:
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
+                EmRangedAttack_CreateAtBone(em, REMOBRA_BONE_SPIT, EMRANGED_REMOBRA_SPIT, 0, 8192, 0);
                 break;
             case 1:
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
+                EmRangedAttack_CreateAtBone(em, REMOBRA_BONE_SPIT, EMRANGED_REMOBRA_SPIT, 0, 8192, 0);
                 break;
             case 2:
-                EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x2000, 0);
+                EmRangedAttack_CreateAtBone(em, REMOBRA_BONE_SPIT, EMRANGED_REMOBRA_SPIT, 0, 8192, 0);
                 break;
             }
         }
@@ -1350,7 +1300,7 @@ void EmRemobra_SpitDown(Em *em, s32 unused)
             break;
         }
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0U) != 0) {
-            EmRangedAttack_CreateAtBone(em, 0x13, 0x18, 0, 0x3C72, 0);
+            EmRangedAttack_CreateAtBone(em, REMOBRA_BONE_SPIT, EMRANGED_REMOBRA_SPIT, 0, 15474, 0);
         }
         break;
     }
@@ -1492,7 +1442,7 @@ void EmRemobra_Downed(Em *em, s32 unused)
     case 0:
         em->step++;
         Em_RestartScript(em);
-        em->timer = 0x96;
+        em->timer = 150;
         Em_SetMotion(em, REMOBRA_MOT_DOWNED, 0, 0);
         break;
     case 1:
@@ -1678,8 +1628,8 @@ void EmRemobra_FallDead(Em *em)
  */
 void EmRemobra_RunDefeatState(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->state) {
     case REMOBRA_DEFEAT_HUNTED:
         EmRemobra_Hunted(em);
@@ -1739,8 +1689,8 @@ void EmRemobra_Reappear(Em *em)
  */
 void EmRemobra_RunEvent2State(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     em->senseDelay = 5;
     switch (em->state) {
     case 0:
@@ -1899,7 +1849,7 @@ void EmRemobra_MotionEffects(Em *em, EmWork *work)
             EmRemobra_SpawnGroundEffectNearGround(em, 1, 7, 2.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x2):
+    case EM_MOTION_ID(0, 2):
         if (EmMotion_PassedFrameScaled(em, 84.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
         }
@@ -1929,7 +1879,7 @@ void EmRemobra_MotionEffects(Em *em, EmWork *work)
             EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
         }
         break;
-    case EM_MOTION_ID(0, 0x17):
+    case EM_MOTION_ID(0, 23):
         if (EmMotion_PassedFrameScaled(em, 164.0f, 0U) != 0) {
             EmRemobra_SpawnGroundEffect(em, 3, 7, 2.0f);
         }
@@ -2096,9 +2046,9 @@ u8 EmRemobra_UpdateCurves(Em *em)
  * Spawns effect 01 type 0 for the monster (the first two entries of
  * EmRemobra_Callbacks).
  */
-void EmRemobra_SpawnEffect01(u8 *em)
+void EmRemobra_SpawnShadow(u8 *em)
 {
-    Shadow_Spawn((Player *) em, 0);
+    Shadow_Spawn((Player *) em, SHADOW_MODEL);
 }
 
 /* The empty entry of EmRemobra_Callbacks. */
@@ -2122,12 +2072,10 @@ EmCurveKey *EmRemobra_SpeedCurves[2] = {
 f32 EmRemobra_HopFrames[3] = {
 #include "game/008CAE40.inc"
 };
-s32 GmEm_ReturnZero(void); /* gm_sub */
-void GmEm_UpdateSfx(Em *em); /* gm_sub */
 void *EmRemobra_Callbacks[8] = {
-    EmRemobra_SpawnEffect01, EmRemobra_SpawnEffect01, EmRemobra_TableNop, EmRemobra_UpdateMotionEffects,
+    EmRemobra_SpawnShadow, EmRemobra_SpawnShadow, EmRemobra_TableNop, EmRemobra_UpdateMotionEffects,
     GmEm_ReturnZero, EmRemobra_Reinit, NULL, NULL,
 };
-u32 gEmMotionRows_Remobra[304] = {
+EmMotionRow gEmMotionRows_Remobra[101] = {
 #include "game/008CAE70.inc"
 };

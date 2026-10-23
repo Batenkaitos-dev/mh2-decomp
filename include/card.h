@@ -2,6 +2,7 @@
 #define CARD_H
 
 #include "common.h"
+#include "net_menu.h"
 
 /* The memory card: the card menus' modes, messages and states (gCardMenu, NetMenu), the card
  * task and its operations (gCardTask, gCardOps), the save files and the patch. */
@@ -17,14 +18,14 @@ enum NetMenuMode {
     NETMENU_MODE_SAVE = 5,              /* CardMenu_RunSave: offline in the town (the lobby's TownNetMenu_Update) */
     NETMENU_MODE_GAME_SAVE_TOWN = 6,    /* CardMenu_RunGameSaveNet: online in the town (TownNetMenu_Update) */
     NETMENU_MODE_GAME_SAVE_ENTRY = 7,   /* CardMenu_RunGameSaveNet (the lobby's LobbyEntry_Fetch) */
-    NETMENU_MODE_GAME_SAVE_LOGOUT = 8,  /* CardMenu_RunGameSaveNet (the lobby's LobbyLogin_Exit) */
+    NETMENU_MODE_GAME_SAVE_LOGOUT = 8,  /* CardMenu_RunGameSaveNet (the lobby's LobbyLogin_SaveAndExit) */
     NETMENU_MODE_SAVE_ASK = 9,          /* CardMenu_RunSave, asking first (the lobby's LobbyScreen_LoadBanks) */
     NETMENU_MODE_GAME_SAVE = 10,        /* CardMenu_RunGameSave: the save state switches to it when
                                          * a card is in use (NetMenu.hasSave) */
     NETMENU_MODE_SAVE_GALLERY = 14,     /* CardMenu_RunSaveSystem, asking with NETMENU_MSG_ASK_SAVE_GALLERY (no caller seen) */
     NETMENU_MODE_SAVE_B = 0x10,         /* runs as NETMENU_MODE_SAVE with NetMenu.openMode set; then
                                          * CardGame_AskRetry leads to CardGame_AskQuit (no caller seen) */
-    NETMENU_MODE_GAME_SAVE_EXTRA = 0x11, /* CardMenu_RunGameSaveExtra (the lobby's LobbyNetXfer_Run) */
+    NETMENU_MODE_GAME_SAVE_EXTRA = 0x11, /* CardMenu_RunGameSaveExtra (the lobby's LobbyPatch_Install) */
     NETMENU_MODE_DELETE_LOGIN_ID = 0x12 /* CardMenu_RunDeleteLoginId (select_option.c) */
 };
 
@@ -361,7 +362,7 @@ enum CardStep {
     CARD_STEP_COUNT = 10
 };
 
-/* The card task (gCardTask, 0xF4 bytes). */
+/* The card task (gCardTask, 244 bytes). */
 typedef struct CardTask {
     s32 step;             /* 0x00: the task step (the CardTask_*Step functions switch on it) */
     s32 subStep;          /* 0x04: the step within a card call (Card_ReadFile, Card_WriteFile, Card_GetInfo ...) */
@@ -431,7 +432,7 @@ typedef struct McDateTime {
     u16 year;           /* 0x6 */
 } McDateTime;
 
-/* A card directory entry as sceMcGetDir fills it (gCardDirEntry, gCardFileAttr; 0x40 bytes). */
+/* A card directory entry as sceMcGetDir fills it (gCardDirEntry, gCardFileAttr; 64 bytes). */
 typedef struct McDirEntry {
     McDateTime created;     /* 0x00 */
     McDateTime modified;    /* 0x08: Card_GetDate takes it as the date stamp of a file written */
@@ -444,7 +445,7 @@ typedef struct McDirEntry {
 #define MC_ATTR_NO_COPY     0x0008  /* the file may not be copied (Card_SetFileInfo) */
 #define MC_INFO_ATTR        4       /* sceMcSetFileInfo's flag: write only the attributes */
 
-/* The save's icon.sys (CardOp.files[0], 0x3C4 bytes), which the PS2's browser reads: the
+/* The save's icon.sys (CardOp.files[0], 964 bytes), which the PS2's browser reads: the
  * title and the save's three icon files. */
 typedef struct McIconSys {
     u8 pad000[6];
@@ -465,7 +466,7 @@ typedef struct McIconSys {
 #define PATCH_VERSION_LEN   10          /* PatchHeader.version, compared with gVersionString */
 #define PATCH_MAGIC_LEN     8           /* PatchRecords.magic, compared with gPatchMagic */
 
-/* The patch's header (PATCH_HEADER, 0x40 bytes). */
+/* The patch's header (PATCH_HEADER, 64 bytes). */
 typedef struct PatchHeader {
     char version[PATCH_VERSION_LEN];    /* 0x00: the patch's version; a newer one than gVersionString is loaded */
     char number[4];                     /* 0x0A: a 4-digit number, "1000" after Patch_Init */
@@ -497,8 +498,97 @@ typedef struct PatchFile {
 #define PATCH_LOADED    2
 #define PATCH_FAILED    (-1)    /* the transfer failed */
 
+u8 Card_GetSeed(void);
+void CardState_SetFlag(s32 files);
+s32 SaveBuf_Offset(s32 addr, s32 kind, s32 n);
+void SaveMenu_CopySystem(NetMenu *menu, u8 *data, s32 save);
+s32 SaveMenu_SaveSystem(NetMenu *menu);
+s32 SaveMenu_LoadSystem(NetMenu *menu, s32 mode);
+s32 SaveMenu_SaveExtra(NetMenu *menu);
+void Save_CopyToSlot(s32 slot);
+void SaveMenu_CopyCharacter(NetMenu *menu, s32 data, s32 save, s32 slot);
+s32 SaveMenu_SaveCharacter(NetMenu *menu);
+s32 SaveMenu_LoadCharacter(NetMenu *menu);
+s32 SaveFile_IsCharUsed(NetMenu *menu, s32 data, s32 save, s32 slot);
+s32 SaveMenu_CheckCharacter(NetMenu *menu);
+s32 Card_IsSystemSaved(void);
+s32 CardMenu_IsTexOn(void);
+s32 Card_SlotReady(s32 i);
+s32 Card_ReadyCount(void);
+void Card_Lock(void);
+void Card_Unlock(void);
+void Card_Init(void);
+s32 Card_Sync(CardTask *task);
+s32 Card_GetInfo(CardTask *task);
+s32 Card_GetDirEntry(CardTask *task);
+s32 Card_ReadFile(CardTask *task);
+s32 Card_MkDir(CardTask *task);
+s32 Card_CreateFile(CardTask *task);
+s32 Card_WriteFile(CardTask *task);
+s32 Card_SetFileInfo(CardTask *task);
+s32 Card_Delete(CardTask *task);
+s32 Card_Format(CardTask *task);
+s32 Card_DeleteDir(CardTask *task);
+s32 Card_GetDir(CardTask *task);
+void CardTask_Begin(s32 i);
+void CardTask_Update(void);
+void CardTask_End(void);
+void CardTask_EndIfDone(CardTask *task);
+void CardTask_StartPoll(void);
+void CardTask_StartRead(s32 port, u8 *buf);
+void CardTask_StartFind(s32 port, u8 *buf, s32 readFound);
+void CardTask_StartSave(s32 port, u8 *buf);
+void CardTask_SelectFile(s32 fileArg, s32 clear);
+void CardTask_StartFormat(s32 port);
+s32 CardTask_Result(void);
+s32 Card_PortState(s32 i);
+void Card_ClearChanged(void);
+s32 Card_IsChanged(s32 i);
+s32 CardOp_SetFiles(s32 *data);
+void Card_GetDate(void *dst);
+void McDate_SetWeekday(McDateTime *date);
+void CardOp_MakeIconSys(CardTask *task);
+void Em_BonePos(void *obj, s16 bone, f32 *out);
 extern CardOp *gCardOps[];
 extern void (*gCardSteps[])(CardTask *t);
 extern CardTask gCardTask;
+
+void Loading_CaptionStub(s32 unused);
+s32 TownReload_CheckStub(s32 unused);
+void TownReload_MarkStub(s32 unused);
+void LobbyDay_SetNoon(void);
+void Patch_Init(void);
+void PatchExecCS(u8 mode, u8 sub);
+void Patch_BeginLoad(PatchHeader *hdr, u8 *src, u8 *dst);
+void Patch_ExecAll(void);
+void CardMenu_DrawSlots(NetMenu *menu, s32 mode, u8 selectMode, s32 unused, s32 flag);
+s32 SaveMenu_SlotUsed(s32 i); /* the save slot is used */
+void SaveFile_Encrypt(u8 *buf);
+void SaveFile_Decrypt(NetMenu *menu, u16 *words);
+s32 SaveMenu_SystemDateMatches(NetMenu *menu);
+s32 SaveMenu_ReadBad(NetMenu *menu);
+void SysSave_MergeFlags(u8 *buf);
+void Patch_InstallFile(u8 *buf);
+void SaveExtra_CopyFile(s32 mode, s32 addr);
+void Patch_CopyFile(s32 mode, s32 addr);
+void Patch_BeginFile(u8 *buf);
+void Save_ClearCopy(void);
+void SaveMenu_CopyAll(NetMenu *menu);
+void SaveMenu_ClearCharacter(NetMenu *menu);
+void SaveMenu_CopyCharacterSlot(NetMenu *menu, s32 i);
+void CardMenu_InitBuffers(NetMenu *menu);
+s16 NetMenu_DrawMessageY(s16 y, s32 id);
+s16 NetMenu_DrawMessage(s32 x, s16 y, s32 id);
+s32 NetMenu_YesNo(NetMenu *menu, s32 x, s16 y, u8 *cursor);
+s32 NetMenu_CardChanged(s32 slot);
+void NetMenu_Open(u8 mode);
+void NetMenu_Draw(void);
+void CardNew_ChooseCharSlot(NetMenu *menu);
+void CardGame_AskQuit(NetMenu *menu);
+void CardSave_PrepareSave(NetMenu *menu);
+void CardSetup_Start(NetMenu *menu);
+void CardMenu_RunSetup(NetMenu *menu);
+void CardMenu_InitNetBuffers(NetMenu *menu);
+extern f32 gLobbyDayFrac;
 
 #endif /* CARD_H */

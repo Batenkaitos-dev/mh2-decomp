@@ -23,9 +23,6 @@ extern CseSeTable *gCseSeTables[16];
 
 void scePrintf(char *fmt, ...);
 s32 func_001145F0(void);    /* nonzero with interrupts disabled */
-s32 CseSe_SetTable(u32 bank, CseSeTable *table);
-CseSeRec *CseSe_GetRecord(u32 bank, u32 id);
-s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt);
 
 /*
  * Starts the CSE engine: CseRpc_Init, MlRpcQueue_Init and Cse_InitSeq,
@@ -160,7 +157,7 @@ s32 Cse_MergeBanks(void *out, void *banks, s32 count)
 /*
  * Plays SE id of bank bank: copies each value of opt whose bit is set in
  * opt->flags (opt may be NULL) into a CseSeOpt that starts with the
- * defaults v[11] (volume percentage) 100 and v[13], v[14] 0x7F, and
+ * defaults v[11] (volume percentage) 100 and v[13], v[14] 127, and
  * passes it to CseSe_Request. Returns CseSe_Request's result.
  */
 s32 Cse_RequestSe(u16 bank, u16 id, CseOpt *opt)
@@ -170,8 +167,8 @@ s32 Cse_RequestSe(u16 bank, u16 id, CseOpt *opt)
     u32 bit;
 
     seOpt.v[11] = 100;
-    seOpt.v[13] = 0x7F;
-    seOpt.v[14] = 0x7F;
+    seOpt.v[13] = 127;
+    seOpt.v[14] = 127;
     if (opt != NULL && (flags = opt->flags) != 0) {
         bit = 1;
         do {
@@ -188,37 +185,37 @@ s32 Cse_RequestSe(u16 bank, u16 id, CseOpt *opt)
             case 8:
                 seOpt.v[3] = opt->v[3];
                 break;
-            case 0x10:
+            case 16:
                 seOpt.v[4] = opt->v[4];
                 break;
-            case 0x20:
+            case 32:
                 seOpt.v[5] = opt->v[5];
                 break;
-            case 0x40:
+            case 64:
                 seOpt.v[6] = opt->v[6];
                 break;
-            case 0x80:
+            case 128:
                 seOpt.v[7] = opt->v[7];
                 break;
-            case 0x100:
+            case 256:
                 seOpt.v[8] = opt->v[8];
                 break;
-            case 0x200:
+            case 512:
                 seOpt.v[9] = opt->v[9];
                 break;
-            case 0x400:
+            case 1024:
                 seOpt.v[10] = opt->v[10];
                 break;
-            case 0x800:
+            case 2048:
                 seOpt.v[11] = opt->v[11];
                 break;
-            case 0x1000:
+            case 4096:
                 seOpt.v[12] = opt->v[12];
                 break;
-            case 0x2000:
+            case 8192:
                 seOpt.v[13] = opt->b38;
                 break;
-            case 0x4000:
+            case 16384:
                 seOpt.v[14] = opt->b39;
                 break;
             }
@@ -243,8 +240,8 @@ void Snd_Init(void)
 {
     Cse_Init(0);
     Cse_ReqSetMono(0);
-    Cse_ReqSetMixer(0, 0xFC0);
-    Cse_ReqSetMixer(1, 0xFCF);
+    Cse_ReqSetMixer(0, 4032);
+    Cse_ReqSetMixer(1, 4047);
 }
 
 s32 Snd_Update(void)
@@ -456,20 +453,20 @@ s32 CseSe_Request(u16 bank, u16 id, CseSeOpt *opt)
         if (param.vol < 0) {
             param.vol = 0;
         }
-        if (param.vol > 0x7F) {
-            param.vol = 0x7F;
+        if (param.vol > 127) {
+            param.vol = 127;
         }
         if (param.pan < 0) {
             param.pan = 0;
         }
-        if (param.pan > 0x7F) {
-            param.pan = 0x7F;
+        if (param.pan > 127) {
+            param.pan = 127;
         }
-        if (param.bend < -0x2000) {
-            param.bend = -0x2000;
+        if (param.bend < -8192) {
+            param.bend = -8192;
         }
-        if (param.bend > 0x2063) {
-            param.bend = 0x1FFF;
+        if (param.bend > 8291) {
+            param.bend = 8191;
         }
         switch (rec->type) {
         case 0:

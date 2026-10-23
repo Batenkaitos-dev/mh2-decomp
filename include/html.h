@@ -91,7 +91,7 @@ typedef struct HtmlTagSet {
 #define HTML_CELLS 500
 #define HTML_TABLE_DEPTH 16         /* tables nest at most 15 deep (HtmlState.tableDepth, bgStack) */
 
-/* The text waiting in HtmlState.text (0x80 bytes) is laid out first when
+/* The text waiting in HtmlState.text (128 bytes) is laid out first when
  * more than this many characters wait: room for a two-byte character and
  * the terminator. */
 #define HTML_TEXT_FULL 0x7D
@@ -127,6 +127,10 @@ typedef struct HtmlKeyword {
     u8 value;
     u8 pad[2];
 } HtmlKeyword;
+/* An HtmlKeyword's size: the keyword lookups take a table's size in bytes and
+ * count its entries by it. */
+#define HTML_KEYWORD_SIZE 8
+typedef char HtmlKeyword_size_check[(sizeof(HtmlKeyword) == HTML_KEYWORD_SIZE) ? 1 : -1];
 
 /* The <GAME-STYLE> keywords' values (gGameStyleKeywords; Html_GameStyle).
  * MOUSE to CHOICE_MV turn the page style bits on or off in bit order
@@ -152,10 +156,10 @@ enum GameStyleKeyword {
 
 /* The page keywords a comment opens with (gPageCommentKeywords;
  * Html_Comment keeps the value in HtmlState.pageKind, or in accessKey for
- * the access keys 8, 0xA, 0xB, 0x28 and 0x2C-0x2F). The page kinds'
+ * the access keys 8, 10, 11, 40 and 44-47). The page kinds'
  * keywords end as Page_SetKind's PAGE_KIND_* (Html_Parse). Seen of the
  * others: 2 and 5 are page kinds Page_SetKind doesn't take (2 draws the
- * page button), 0x14-0x20 are ignored. */
+ * page button), 20-32 are ignored. */
 #define PAGE_KW_NONE 0              /* no keyword: a <CSV> block of the kind set before may follow */
 #define PAGE_KW_TOP_SIGNUP 1
 #define PAGE_KW_INP_SIGNUP 3
@@ -164,7 +168,7 @@ enum GameStyleKeyword {
 #define PAGE_KW_CMP_PWCHANGE 7
 #define PAGE_KW_LOGIN_ID 9          /* on a COMP-SIGNUP page: the new login id follows (Form_SetLoginId) */
 #define PAGE_KW_PAGE_BUTTON 0xC     /* only draws the page button */
-#define PAGE_KW_CSV_SESSION 0xD     /* 0xD-0x11: a <CSV> block of kind keyword - 0xC follows (CSV_KIND_*) */
+#define PAGE_KW_CSV_SESSION 0xD     /* this one to PAGE_KW_CSV_RESULT: a <CSV> block follows, its CSV_KIND_* as far from CSV_KIND_SESSION as the keyword is from this one */
 #define PAGE_KW_CSV_ACCOUNT 0xE
 #define PAGE_KW_CSV_SERVERS 0x10
 #define PAGE_KW_CSV_RESULT 0x11
@@ -204,7 +208,7 @@ typedef struct HtmlLine {
     u16 h;
 } HtmlLine;
 
-/* The layout pen (HtmlState.pen, 0xD8BC). */
+/* The layout pen (HtmlState.pen). */
 typedef struct HtmlPen {
     u16 runX;   /* 0x00: x where the current run of text starts */
     u16 runY;   /* 0x02 */
@@ -217,7 +221,7 @@ typedef struct HtmlPen {
     u8 lineUsed; /* 0x10: nonzero once the line has content: leading spaces are skipped while 0 */
 } HtmlPen;
 
-/* A table cell (HtmlState.cells, 0x5C bytes). */
+/* A table cell (HtmlState.cells, 92 bytes). */
 typedef struct HtmlCell {
     struct HtmlCell *parent;    /* 0x000: the enclosing table or row (NULL: none) */
     struct HtmlCell *above;     /* 0x004: the previous sibling (a row: the row above) */
@@ -245,7 +249,7 @@ typedef struct HtmlCell {
     u16 textH;                  /* 0x038: the height of its text (gHtml->cellPen.runY when closed); VALIGN centres it in h (Layout_CellValign) */
     u16 alignX;                 /* 0x03A: x offset of the current line for ALIGN (Layout_CellAlign: 0, half or all the room left) */
     u16 valignY;                /* 0x03C: y offset of the text for VALIGN (Layout_CellValign) */
-    u16 indent;                 /* 0x03E: left margin (<DD>: 0x3C) */
+    u16 indent;                 /* 0x03E: left margin (<DD>: 60) */
     u16 spanH;                  /* 0x040: a ROWSPAN cell's text height, carried to the cells below (Layout_RowSpanCell) */
     u16 spanNext;               /* 0x042: the cell below that continues this ROWSPAN cell (0: none) */
     u8 cellCount;               /* 0x044: a row's cells (counted as they close, while measuring) */
@@ -275,7 +279,7 @@ typedef struct HtmlCol {
     u16 x; /* 0x02 */
 } HtmlCol;
 
-/* An image map's area (HtmlState.maps, 0x104 bytes). */
+/* An image map's area (HtmlState.maps, 260 bytes). */
 typedef struct HtmlMap {
     char usemap[0x100]; /* "#name": the <IMG USEMAP> */
     u16 x;              /* 0x100: where the image is */
@@ -289,14 +293,14 @@ typedef struct HtmlFontAttr {
     char size[0x10];
 } HtmlFontAttr;
 
-/* <INPUT ...>'s attributes (HtmlState.input, 0x40C bytes, cleared by
+/* <INPUT ...>'s attributes (HtmlState.input, 1036 bytes, cleared by
  * Html_ClearInputAttrs). */
 typedef struct HtmlInput {
     char name[0x100];
     char value[0x100]; /* 0x100 */
     u8 type;           /* 0x200: gInputTypeKeywords: 0 TEXT, 1 PASSWORD, 2 SUBMIT/BUTTON, 3 RESET, 4 RADIO, 5 CHECKBOX, 6 HIDDEN, 7 IMAGE */
     u16 size;          /* 0x202 (16 when 0) */
-    u16 maxLength;     /* 0x204 (0x100 when 0 or more) */
+    u16 maxLength;     /* 0x204 (256 when 0 or more) */
     u8 checked;        /* 0x206 */
     char src[0x100];   /* 0x207 */
     char alt[0x100];   /* 0x307 */
@@ -316,7 +320,7 @@ typedef struct HtmlOption {
     u8 selected; /* 0x100 */
 } HtmlOption;
 
-/* <TABLE ...>'s attributes (HtmlState.tableAttr, 0x114 bytes, cleared by
+/* <TABLE ...>'s attributes (HtmlState.tableAttr, 276 bytes, cleared by
  * Html_ClearTableAttrs). */
 typedef struct HtmlTableAttr {
     u8 border;
@@ -329,7 +333,7 @@ typedef struct HtmlTableAttr {
     char background[0x100]; /* 0x14 */
 } HtmlTableAttr;
 
-/* <TD ...>/<TH ...>'s attributes (HtmlState.tdAttr, 0x10C bytes, cleared by
+/* <TD ...>/<TH ...>'s attributes (HtmlState.tdAttr, 268 bytes, cleared by
  * Html_ClearTdAttrs). */
 typedef struct HtmlTdAttr {
     u16 width;
@@ -348,7 +352,7 @@ typedef struct HtmlForm {
     u8 post; /* 0x100: METHOD=POST */
 } HtmlForm;
 
-/* <META HTTP-EQUIV=REFRESH CONTENT=... URL=...> (HtmlState.meta, 0x108
+/* <META HTTP-EQUIV=REFRESH CONTENT=... URL=...> (HtmlState.meta, 264
  * bytes). */
 typedef struct HtmlMeta {
     u8 refresh;
@@ -356,7 +360,7 @@ typedef struct HtmlMeta {
     char url[0x100]; /* 0x08 */
 } HtmlMeta;
 
-/* An <AREA> of an image map (HtmlState.area, 0x318 bytes). */
+/* An <AREA> of an image map (HtmlState.area, 792 bytes). */
 typedef struct HtmlArea {
     char unk000[0x100];
     char alt[0x100];   /* 0x100 */
@@ -367,11 +371,11 @@ typedef struct HtmlArea {
 
 typedef struct HtmlState {
     s32 parseState;             /* 0x000: 0 text, 1 in a tag (Html_ParseTag) */
-    s32 textLen;                /* 0x004: characters in text[] (0xD8E4) */
+    s32 textLen;                /* 0x004: characters in text[] */
     s32 mode;                   /* 0x008: the tag table in use: index into gHtmlModeTags (2 = body) */
     s32 inComment;              /* 0x00C: set by "<!--" until "-->" */
-    u16 width;                  /* 0x010: the page's width (0x248) */
-    u16 indent;                 /* 0x012: left margin (<DD>: 0x3C) */
+    u16 width;                  /* 0x010: the page's width (PAGE_VIEW_W while the page is measured, then pageWidth) */
+    u16 indent;                 /* 0x012: left margin (<DD>: 60) */
     u8 center;                  /* 0x014: low nibble: <CENTER> depth, high nibble: <DIV ALIGN=CENTER> depth */
     u8 unk015[0x016 - 0x015];
     u16 cellPenX;               /* 0x016: the pen x within the current table cell: each text, image and select width is added (Layout_CellText, Layout_CellImage, Layout_CellSelectEnd); the cell maxW is kept from it */
@@ -538,5 +542,250 @@ typedef struct PngState {
 typedef char PngState_size_check[(sizeof(PngState) == 0xC0) ? 1 : -1];
 
 extern PngState gPng;
+
+void Html_ResetLoadStep(void);
+void Html_DecodeEntities(char *str);
+s32 Html_TagIgnore(u8 **cur, u8 *text);
+
+s32 Html_AttrTdBackground(u8 **cur, u8 *text);
+s32 Html_TagEndTd(u8 **cur, u8 *text);
+void Html_SetCharWidths(u8 bold);
+void Html_NoteBottom(HtmlPen *pen);
+void Html_ReadAttrValue(u8 **cur, char *buf, s32 size);
+void Html_ReadAttrKeyword(u8 **cur, char *buf, s32 size);
+void Html_ReadMetaContent(u8 **cur, char *buf, s32 size);
+s32 Html_ParseNumber(char *str);
+s32 Html_ParseLength(char *str, s32 whole);
+s32 Html_ParseFontSize(char *str);
+u8 *Html_SkipSpaces(u8 *pos);
+u8 Html_LookupKeyword(char *word, HtmlKeyword *table, u32 size);
+void Layout_DrawRun(u16 x, u16 y, HtmlLine *line);
+u16 Layout_CenterOffset(HtmlLine *line);
+void Layout_Anchor(char *name);
+void Layout_PlaceRun(HtmlLine *line);
+void Layout_NextLine(void);
+void Layout_NextLineEntry(HtmlLine **linePtr);
+void Layout_Rule(s32 center);
+void Layout_PenNewLine(HtmlPen *pen, HtmlLine **linePtr);
+u16 Layout_Wrap(HtmlLine **linePtr, u16 x);
+void Layout_Input(u16 x, u16 y, u16 *runX, u16 *penX, u16 w);
+void Layout_InputEnd(void);
+void Layout_SelectBegin(void);
+void Layout_Option(u8 *text);
+void Layout_SelectEnd(void);
+void Layout_DrawImage(u16 x, u16 y, HtmlLine *line);
+void Layout_MapArea(void);
+void Html_ClearImgAttrs(void);
+void Layout_Image(void);
+void Layout_BreakLine(HtmlLine **linePtr);
+void Layout_AddWideChar(u8 **src, HtmlPen *pen);
+void Layout_AddNbsp(u8 **src, HtmlPen *pen);
+void Layout_AddChar(u8 **src, HtmlPen *pen);
+s32 Layout_Text(u8 *text, HtmlLine **linePtr);
+void Layout_FlushRun(HtmlLine *line);
+void Layout_EndLine(HtmlLine **linePtr);
+void Layout_TextFull(u8 *text); /* Layout_TextFull */
+void Layout_Flush(u8 *text);
+void Layout_FlushBreak(u8 *text); /* Layout_FlushBreak */
+void Layout_FlushBlock(u8 *text);
+void Html_ClearInputAttrs(void);
+void Html_ClearFontAttrs(void);
+void Html_PushFont(void);
+void Html_PopFont(void);
+void Html_ApplyBody(void);
+void Html_SetTitle(u8 *text);
+void Html_ClearTableAttrs(void);
+void Html_ClearTrAttrs(void);
+void Html_ClearTdAttrs(void);
+void Layout_CellValign(HtmlCell *cell);
+void Layout_CellAlign(HtmlCell *cell);
+s32 Layout_OpenCell(s32 kind);
+void Layout_PushBackground(char *background);
+char *Layout_PopBackground(void);
+void Layout_TableFromAttrs(HtmlCell *table);
+s32 Layout_TableOrigin(HtmlCell *table);
+void Layout_CellPenStart(HtmlCell *cell, HtmlCell *parent);
+s32 Layout_CellSpanNext(void);
+s32 Layout_CellColSpan(HtmlCell *cell);
+s32 Layout_BeforeOpen(u8 **cur, u8 *text, u8 kind);
+s32 Layout_BeforeClose(u8 **cur, u8 *text, u8 kind);
+s32 Html_CloseTables(u8 **cur, u8 *text); /* Html_CloseTables */
+u16 Layout_MeasureColumns(HtmlCell *row, s32 measure);
+void Layout_DrawCell(HtmlCell *cell);
+void Layout_DrawCellBox(HtmlCell *cell);
+u8 *Layout_CellSkipSpaces(u8 *text);
+void Layout_CellRule(s32 center);
+void Layout_CellWrapBefore(u16 *xPtr, u16 *yPtr, u16 w, HtmlLine **linePtr);
+void Layout_CellInput(u16 w);
+void Layout_CellSelectEnd(void);
+void Layout_CellImage(void);
+void Layout_CellPlaceRun(HtmlLine *line);
+u16 Layout_CellWrap(HtmlCell *cell, HtmlLine **linePtr, u16 x);
+void Layout_CellBreakLine(HtmlLine **linePtr);
+s32 Layout_CellText(u8 *text, HtmlLine **linePtr);
+void Layout_CellFlushRun(HtmlLine *line);
+void Layout_CellEndLine(HtmlLine **linePtr);
+void Layout_CellFlush(u8 *text);
+void Layout_CellFlushBreak(u8 *text);
+void Layout_CellFlushBlock(u8 *text);
+extern u8 gCharClass[256]; /* character classes */
+extern u8 gHexDigitValues[256]; /* hex digits: value + 1, 0 for others */
+extern u8 gToUpper[256]; /* to upper case */
+extern char *gHtmlEntityNames[10]; /* "lt;", "gt;", "quot;", "amp;", "nbsp;", "#034;", "#34;", "#039;", "#39;" */
+
+s32 Html_AttrAreaShape(u8 **cur, u8 *text);
+s32 Html_AttrAreaCoords(u8 **cur, u8 *text);
+s32 Html_AttrAreaHref(u8 **cur, u8 *text);
+s32 Html_AttrAreaAlt(u8 **cur, u8 *text);
+s32 Html_TagAreaEnd(u8 **cur, u8 *text);
+s32 Html_TagBody(u8 **cur, u8 *text);
+s32 Html_AttrBodyBgcolor(u8 **cur, u8 *text);
+s32 Html_AttrBodyBackground(u8 **cur, u8 *text);
+s32 Html_AttrBodyText(u8 **cur, u8 *text);
+s32 Html_AttrBodyLink(u8 **cur, u8 *text);
+s32 Html_TagBodyEnd(u8 **cur, u8 *text);
+
+s32 Html_ReadQuoted(char *dst, s32 max, s32 skipNewlines);
+u8 Html_PageKeyword(u8 *text, HtmlKeyword *tbl, u32 size);
+void Html_GameStyle(void);
+void Lbs_ParseRow(u8 idx, u8 *field);
+void Mem_Swap(void *first, void *second, s32 n);
+void Lbs_Sort(void);
+void Html_Csv(u8 kind);
+s32 Html_ParseSome(u16 maxTags);
+s32 Html_TagHtml(u8 **cur, u8 *text);
+s32 Html_TagEndHtml(u8 **cur, u8 *text);
+s32 Html_TagBr(u8 **cur, u8 *text);
+s32 Html_TagDropText(u8 **cur, u8 *text);
+s32 Html_TagEndTitle(u8 **cur, u8 *text);
+s32 Html_AttrBaseHref(u8 **cur, u8 *text);
+s32 Html_TagB(u8 **cur, u8 *text);
+s32 Html_TagEndB(u8 **cur, u8 *text);
+s32 Html_TagU(u8 **cur, u8 *text);
+s32 Html_TagEndU(u8 **cur, u8 *text);
+s32 Html_TagS(u8 **cur, u8 *text);
+s32 Html_TagEndS(u8 **cur, u8 *text);
+s32 Html_TagCenter(u8 **cur, u8 *text);
+s32 Html_TagEndCenter(u8 **cur, u8 *text);
+s32 Html_TagH(u8 **cur, u8 *text);
+s32 Html_TagEndH(u8 **cur, u8 *text);
+s32 Html_TagDl(u8 **cur, u8 *text);
+s32 Html_TagEndForm(u8 **cur, u8 *text);
+s32 Html_TagP(u8 **cur, u8 *text);
+s32 Html_TagEndP(u8 **cur, u8 *text);
+s32 Html_TagEndDl(u8 **cur, u8 *text);
+s32 Html_TagDd(u8 **cur, u8 *text);
+s32 Html_TagDt(u8 **cur, u8 *text);
+s32 Html_TagFlush(u8 **cur, u8 *text);
+s32 Html_TagImg(u8 **cur, u8 *text);
+s32 Html_TagImgAttrs(u8 **cur, u8 *text);
+s32 Html_AttrImgSrc(u8 **cur, u8 *text);
+s32 Html_AttrImgWidth(u8 **cur, u8 *text);
+s32 Html_AttrImgHeight(u8 **cur, u8 *text);
+s32 Html_AttrImgAlt(u8 **cur, u8 *text);
+s32 Html_AttrImgUsemap(u8 **cur, u8 *text);
+s32 Html_TagImgEnd(u8 **cur, u8 *text);
+s32 Html_AttrMapName(u8 **cur, u8 *text);
+s32 Html_TagEndMap(u8 **cur, u8 *text);
+s32 Html_TagArea(u8 **cur, u8 *text);
+s32 Html_TagForm(u8 **cur, u8 *text);
+s32 Html_AttrFormAction(u8 **cur, u8 *text);
+s32 Html_AttrFormMethod(u8 **cur, u8 *text);
+s32 Html_TagFormEnd(u8 **cur, u8 *text);
+s32 Html_TagInput(u8 **cur, u8 *text);
+s32 Html_AttrInputType(u8 **cur, u8 *text);
+s32 Html_AttrInputName(u8 **cur, u8 *text);
+s32 Html_AttrInputValue(u8 **cur, u8 *text);
+s32 Html_AttrInputSize(u8 **cur, u8 *text);
+s32 Html_AttrInputMaxlength(u8 **cur, u8 *text);
+s32 Html_AttrInputChecked(u8 **cur, u8 *text);
+s32 Html_TagInputEnd(u8 **cur, u8 *text);
+s32 Html_AttrInputSrc(u8 **cur, u8 *text);
+s32 Html_AttrInputWidth(u8 **cur, u8 *text);
+s32 Html_AttrInputHeight(u8 **cur, u8 *text);
+s32 Html_AttrInputAlt(u8 **cur, u8 *text);
+s32 Html_TagOption(u8 **cur, u8 *text);
+s32 Html_TagOptionAttrs(u8 **cur, u8 *text);
+s32 Html_AttrOptionValue(u8 **cur, u8 *text);
+s32 Html_AttrOptionSelected(u8 **cur, u8 *text);
+s32 Html_TagEndOption(u8 **cur, u8 *text);
+s32 Html_TagA(u8 **cur, u8 *text);
+s32 Html_AttrAHref(u8 **cur, u8 *text);
+s32 Html_AttrAName(u8 **cur, u8 *text);
+s32 Html_TagAEnd(u8 **cur, u8 *text);
+s32 Html_TagEndA(u8 **cur, u8 *text);
+s32 Html_TagHr(u8 **cur, u8 *text);
+s32 Html_TagHrAttrs(u8 **cur, u8 *text);
+s32 Html_TagHrEnd(u8 **cur, u8 *text);
+s32 Html_AttrHrSize(u8 **cur, u8 *text);
+s32 Html_AttrHrWidth(u8 **cur, u8 *text);
+s32 Html_TagFont(u8 **cur, u8 *text);
+s32 Html_TagFontAttrs(u8 **cur, u8 *text);
+s32 Html_AttrFontColor(u8 **cur, u8 *text);
+s32 Html_AttrFontSize(u8 **cur, u8 *text);
+s32 Html_TagFontEnd(u8 **cur, u8 *text);
+s32 Html_TagEndFont(u8 **cur, u8 *text);
+s32 Html_TagSelect(u8 **cur, u8 *text);
+s32 Html_TagSelectAttrs(u8 **cur, u8 *text);
+s32 Html_AttrSelectName(u8 **cur, u8 *text);
+s32 Html_TagSelectEnd(u8 **cur, u8 *text);
+s32 Html_TagEndSelect(u8 **cur, u8 *text);
+s32 Html_TagMeta(u8 **cur, u8 *text);
+s32 Html_AttrMetaHttpEquiv(u8 **cur, u8 *text);
+s32 Html_AttrMetaContent(u8 **cur, u8 *text);
+s32 Html_AttrMetaUrl(u8 **cur, u8 *text);
+s32 Html_TagMetaEnd(u8 **cur, u8 *text);
+s32 Html_TagPre(u8 **cur, u8 *text);
+s32 Html_TagEndPre(u8 **cur, u8 *text);
+s32 Html_TagDiv(u8 **cur, u8 *text);
+s32 Html_AttrDivAlign(u8 **cur, u8 *text);
+s32 Html_TagEndDiv(u8 **cur, u8 *text);
+s32 Html_TagSmall(u8 **cur, u8 *text);
+s32 Html_TagBig(u8 **cur, u8 *text);
+s32 Html_EntityLt(u8 **cur, u8 *text);
+s32 Html_EntityGt(u8 **cur, u8 *text);
+s32 Html_EntityQuot(u8 **cur, u8 *text);
+s32 Html_EntityAmp(u8 **cur, u8 *text);
+s32 Html_EntityNbsp(u8 **cur, u8 *text);
+s32 Html_EntityApos(u8 **cur, u8 *text);
+s32 Html_TagTableAttrs(u8 **cur, u8 *text);
+s32 Html_TagTable(u8 **cur, u8 *text);
+void Html_TagTableEnd(u8 **cur, u8 *text);
+s32 Html_AttrTableBorder(u8 **cur, u8 *text);
+s32 Html_AttrTableCellpadding(u8 **cur, u8 *text);
+s32 Html_AttrTableCellspacing(u8 **cur, u8 *text);
+s32 Html_AttrTableWidth(u8 **cur, u8 *text);
+s32 Html_AttrTableHeight(u8 **cur, u8 *text);
+s32 Html_AttrTableBgcolor(u8 **cur, u8 *text);
+s32 Html_AttrTableBordercolor(u8 **cur, u8 *text);
+s32 Html_AttrTableBackground(u8 **cur, u8 *text);
+s32 Html_TagEndTable(u8 **cur, u8 *text);
+s32 Html_TagTrAttrs(u8 **cur, u8 *text);
+s32 Html_TagTr(u8 **cur, u8 *text);
+s32 Html_TagTrEnd(u8 **cur, u8 *text);
+s32 Html_AttrTrAlign(u8 **cur, u8 *text);
+s32 Html_AttrTrValign(u8 **cur, u8 *text);
+s32 Html_AttrTrBgcolor(u8 **cur, u8 *text);
+s32 Html_TagEndTr(u8 **cur, u8 *text);
+s32 Html_TagThAttrs(u8 **cur, u8 *text);
+s32 Html_TagTh(u8 **cur, u8 *text);
+s32 Html_TagTdAttrs(u8 **cur, u8 *text);
+s32 Html_TagTd(u8 **cur, u8 *text);
+s32 Html_TagTdEnd(u8 **cur, u8 *text);
+s32 Html_AttrTdAlign(u8 **cur, u8 *text);
+s32 Html_AttrTdValign(u8 **cur, u8 *text);
+s32 Html_AttrTdWidth(u8 **cur, u8 *text);
+s32 Html_AttrTdHeight(u8 **cur, u8 *text);
+s32 Html_AttrTdRowspan(u8 **cur, u8 *text);
+s32 Html_AttrTdColspan(u8 **cur, u8 *text);
+s32 Html_AttrTdBgcolor(u8 **cur, u8 *text);
+s32 Html_AttrTdNowrap(u8 **cur, u8 *text);
+extern char gHtmlTagClose[8];
+
+void Layout_RowFromTable(HtmlCell *row, HtmlCell *table);
+void Layout_RowOrigin(HtmlCell *row, HtmlCell *table);
+void Layout_CellFromRow(HtmlCell *cell, HtmlCell *row);
+void Layout_CellSize(HtmlCell *cell, HtmlCell *row);
+void Layout_CellOrigin(HtmlCell *cell, HtmlCell *row);
 
 #endif

@@ -27,30 +27,45 @@
 #include "lobby_menu.h"
 #include "lobby_labels.h"
 #include "lobby_group_board.h"
+#include "screen_fade.h"
 
 #include "save.h"
 #include "quest.h"
 #include "pad.h"
 #include "lobby_servers.h"
+#include "bgm.h"
+#include "chat_box.h"
+#include "sprite_queue.h"
+#include "scene.h"
+#include "stream.h"
+#include "text.h"
+#include "village_cond.h"
+#include "area_list.h"
+#include "font.h"
+#include "hunter_info.h"
+#include "item_shop.h"
+#include "lobby_disconnect.h"
+#include "lobby_queries.h"
+#include "lobby_town.h"
+#include "lobby_util.h"
+#include "lobby_web_users.h"
+#include "menu_sheets.h"
+#include "menu_steps.h"
+#include "menu_widgets.h"
+#include "name_tags.h"
+#include "rand.h"
+#include "libc.h"
 
-s32 Save_TestEventFlag(s32 flag);
-void LobbyMenu_Init(void);
-void LobbyMenu_SetDraw(void *, void *, void *, void *);
-void LobbySe_Play(s32);
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 extern s8 gMenuInputLock;
 extern s8 gLobbyLevel1Sel;
-s32 Lobby_HrAtLeast31(void);
-int abs(int);
 extern u8 gMenuWork;
 
-void *memset(void *dst, s32 c, u32 n);
 void LobbyText_Open(s32);
 void LobbyDialog_Grow(void);
 void Menu_SetYesNo(u8); /* unit's own declaration: the choice is passed as a u8 here; with the definition's s8, GroupBoard_Update compiles differently */
 void GroupBoard_Draw(MenuTask *task);
-void GroupBoard_DrawDetails(MenuTask *task);
 
 /* Opens the group board (TOWN_MODE_GROUP_BOARD): its first question,
  * recruit or search (LOBBY_TEXT_GROUP_BOARD_ASK, a two-way choice), and the
@@ -78,7 +93,6 @@ void GroupBoard_Open(void)
     LobbySe_Play(LOBBY_SE_CONFIRM);
 }
 
-s32 ElderRaid_InState1(void);
 /*
  * Whether quest questIndex of the room's quest list is open to the player:
  * it must be in use, and its unlock (RoomQuest.unlockKind, enum
@@ -115,7 +129,7 @@ s32 GroupBoard_QuestAllowed(s16 questIndex)
         }
         break;
     case ROOM_QUEST_UNLOCK_ELDER_RAID:
-        if (!ElderRaid_InState1()) {
+        if (!ElderRaid_IsOn()) {
             return 0;
         }
         break;
@@ -152,9 +166,6 @@ void GroupBoard_Close(void)
 #pragma optimization_level 4
 
 extern s16 gLobbyLevel1Count;
-s32 Menu_CountPages(s16 n, s16 per);
-u16 Rand_Next(s32 stream);
-s32 GroupBoard_QuestAllowed(s16 i);
 /*
  * Builds the pages of target quests (GROUP_TARGETS_PER_PAGE a page, at
  * most GROUP_TARGET_PAGES pages) from the room's quests open to the player
@@ -212,20 +223,8 @@ void GroupBoard_LoadTargets(s16 mode)
 
 extern LobbyMenu *gLobbyMenu;
 extern LobbyState *gLobby;
-u16 LobbyPad_Get(s32);
-void Chat_SetWindowMode(s8 a, s8 b);
-void GroupBoard_Close(void);
-s32 GroupBoard_AreaGroups(u16 pad);
-s32 GroupBoard_Search(u16 pad);
-s32 Win_Shake(WinShake *win);
-s32 WinSlide_Step(WinSlide *win, s16 from, s16 to);
-void LobbySe_Play(s32);
-s32 Menu_WrapUpDown(s32, s32);
-void LobbyText_Open(s32);
 void LobbyDialog_OpenWait(void *text);
 s32 LobbyStep_DownloadQuests(void);
-void LobbyTown_Begin(void);
-void Stream_Stop(s32);
 /*
  * The group board's frame (TOWN_MODE_GROUP_BOARD): the first question (the
  * area's groups or the group search; cross closes the board), then the
@@ -247,13 +246,13 @@ void GroupBoard_Update(void)
             switch (board->choice) {
             case GROUP_BOARD_CHOICE_AREA:
                 board->state++;
-                WinSlide_Step(&board->listWin, -0x104, 0x36);
+                WinSlide_Step(&board->listWin, -260, 54);
                 LobbySe_Play(LOBBY_SE_CONFIRM);
                 break;
             case GROUP_BOARD_CHOICE_SEARCH:
                 board->state = GROUP_BOARD_SEARCH;
-                WinSlide_Step(&board->panelWin, 0x280, 0x140);
-                LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+                WinSlide_Step(&board->panelWin, 640, 320);
+                LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
                 break;
             }
         } else if (pad & PAD_CROSS) {
@@ -329,10 +328,7 @@ void GroupBoard_Update(void)
 }
 
 extern NetLevel1SearchReply *gGroupSearchResults;
-s32 GroupBoard_SearchInput(u16 pad);
-s32 GroupBoard_Results(u16 pad);
 struct NetLevel1SearchQuery;
-s32 LobbyLevel1_Search(struct NetLevel1SearchQuery *p);
 /*
  * The group search: slides the search form in, runs it, sends the search
  * and either lists the results or shows that none was found. Returns
@@ -345,7 +341,7 @@ s32 GroupBoard_Search(u16 pad)
 
     switch (board->step) {
     case GROUP_SEARCH_SLIDE_IN:
-        switch (WinSlide_Step(&board->panelWin, 0x280, 0x140)) {
+        switch (WinSlide_Step(&board->panelWin, 640, 320)) {
         case MENU_DONE:
             board->step++;
             break;
@@ -374,7 +370,7 @@ s32 GroupBoard_Search(u16 pad)
             } else {
                 board->step++;
                 board->pageCount = Menu_CountPages(gGroupSearchResults->found.total, GROUP_ROWS_PER_PAGE);
-                WinSlide_Step(&board->listWin, -0x104, 0x36);
+                WinSlide_Step(&board->listWin, -260, 54);
             }
             break;
         case LOBBY_STEP_FAILED:
@@ -408,18 +404,6 @@ s32 GroupBoard_Search(u16 pad)
 
 extern u8 gCurServerId[];
 extern NetLevel1SearchInfo gGroupSearchInfo;
-s16 Menu_GridMove(u8 *colp, s16 *rowp, s32 cols, s16 total, u16 pad);
-s32 LobbyLevel1_FetchInfo(u8 id);
-void LobbyDialog_Grow(void);
-s32 memcmp(void *a, void *b, s32 n);
-void HunterInfo_Open(void *src, s32 flags);
-s32 HunterInfo_Update(u16 pad);
-s32 Menu_YesNoInput(void);
-void *memcpy(void *dst, const void *src, u32 n);
-void Lobby_Disconnect(s32);
-void FadeA_Start(s32);
-s32 LobbyLogin_EnterEntry(s32 entry, s32 sub);
-s32 Menu_WrapLeftRight(s32 cur, s32 n);
 /*
  * The search results: the cursor moves over pages of GROUP_ROWS_PER_PAGE
  * groups, and circle fetches the group's details and slides them in. On
@@ -439,7 +423,7 @@ s32 GroupBoard_Results(u16 pad)
 
     switch (board->subStep) {
     case GROUP_RESULTS_SLIDE_IN:
-        switch (WinSlide_Step(&board->listWin, -0x104, 0x36)) {
+        switch (WinSlide_Step(&board->listWin, -260, 54)) {
         case MENU_DONE:
             board->subStep++;
             break;
@@ -468,7 +452,7 @@ s32 GroupBoard_Results(u16 pad)
         case LOBBY_STEP_DONE:
             board->subStep++;
             board->infoPage = 0;
-            WinSlide_Step(&board->panelWin, 0x280, 0x140);
+            WinSlide_Step(&board->panelWin, 640, 320);
             board->memberCursor = 0;
             board->memberCount = 0;
             for (i = 0; i < GROUP_MEMBERS_SHOWN; i++) {
@@ -483,7 +467,7 @@ s32 GroupBoard_Results(u16 pad)
         }
         break;
     case GROUP_RESULTS_SLIDE_PANEL:
-        switch (WinSlide_Step(&board->panelWin, 0x280, 0x140)) {
+        switch (WinSlide_Step(&board->panelWin, 640, 320)) {
         case MENU_DONE:
             board->subStep++;
             break;
@@ -612,8 +596,6 @@ s32 GroupBoard_Results(u16 pad)
     return MENU_RUNNING;
 }
 
-void *memset(void *dst, s32 c, u32 n);
-s32 Lobby_HrAtLeast31(void);
 /*
  * Fills the search's request (board->query) from the form: up to
  * LEVEL1_SEARCH_MAX_FOUND results, a limit condition from the limit choice
@@ -692,8 +674,6 @@ void GroupBoard_BuildSearch(void)
     }
 }
 
-s32 abs(s32 x);
-void GroupBoard_BuildSearch(void);
 /*
  * The search form's input: up and down move over the rows, left and right
  * change the limit, circle on the targets opens the target list and circle
@@ -771,9 +751,6 @@ s32 GroupBoard_SearchInput(u16 pad)
     return MENU_RUNNING;
 }
 
-extern s8 gLobbyLevel1Sel;
-s32 GroupBoard_ListInput(u16 pad);
-s32 GroupBoard_NewGroup(u16 pad);
 s32 AreaBoard_LeaveEntry(u16 pad);
 struct AreaBoardMenu;
 s32 AreaBoard_Join(u16 pad, struct AreaBoardMenu *w, s32 slot);
@@ -791,7 +768,7 @@ s32 GroupBoard_AreaGroups(u16 pad)
 
     switch (board->step) {
     case GROUP_AREA_SLIDE_IN:
-        switch (WinSlide_Step(&board->listWin, -0x104, 0x36)) {
+        switch (WinSlide_Step(&board->listWin, -260, 54)) {
         case MENU_DONE:
             board->step++;
             break;
@@ -811,7 +788,7 @@ s32 GroupBoard_AreaGroups(u16 pad)
                 board->step = GROUP_AREA_JOIN;
                 board->showForm = 0;
                 LobbyText_Open(LOBBY_TEXT_GROUP_FETCHING);
-                WinSlide_Step(&board->joinWin, 0x280, 0x140);
+                WinSlide_Step(&board->joinWin, 640, 320);
                 break;
             }
             break;
@@ -878,7 +855,6 @@ s32 LobbyStep_Level1Open(u16 id); /* unit's own declaration: the entry is passed
 void AreaBoard_LoadPage(s16 page);
 struct RoomJoin;
 s16 GroupBoard_SendSettings(struct RoomJoin *p);
-s32 GroupBoard_NewGroupInput(u16 pad);
 /*
  * Opens the chosen free entry as the player's group
  * (LobbyStep_Level1Open), slides in the new group's form and runs it
@@ -903,7 +879,7 @@ s32 GroupBoard_NewGroup(u16 pad)
             board->join.textIdx = 0;
             AreaBoard_LoadPage(0);
             memset(board->join.groupInfo, 0, sizeof(board->join.groupInfo));
-            WinSlide_Step(&board->panelWin, 0x280, 0x140);
+            WinSlide_Step(&board->panelWin, 640, 320);
             break;
         case LOBBY_STEP_FAILED:
             board->subStep = GROUP_NEW_OPEN;
@@ -912,7 +888,7 @@ s32 GroupBoard_NewGroup(u16 pad)
         }
         break;
     case GROUP_NEW_SLIDE_IN:
-        switch (WinSlide_Step(&board->panelWin, 0x280, 0x140)) {
+        switch (WinSlide_Step(&board->panelWin, 640, 320)) {
         case MENU_DONE:
             board->subStep++;
             break;
@@ -1037,7 +1013,6 @@ s32 GroupBoard_NewGroupInput(u16 pad)
 }
 
 extern LevelEntry gLobbyLevel1Entries[];
-s32 Menu_WrapLeftRight(s32, s32);
 /*
  * The area's group list: the cursor moves over pages of
  * GROUP_ROWS_PER_PAGE entries. Circle on a free entry chooses to open a
@@ -1058,12 +1033,12 @@ s32 GroupBoard_ListInput(u16 pad)
             board->entryChoice = GROUP_ENTRY_NEW;
             board->entryNo = entryIdx + 1;
             LobbyText_Open(LOBBY_TEXT_GROUP_OPENING);
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_DONE;
         } else if (entryState == LEVEL_ENTRY_OPEN || entryState == LEVEL_ENTRY_OPEN_ALT) {
             board->entryChoice = GROUP_ENTRY_JOIN;
             board->entryNo = entryIdx + 1;
-            LobbySe_Play(LOBBY_SE_WINDOW_OUT);
+            LobbySe_Play(LOBBY_SE_WINDOW_SLIDE);
             return MENU_DONE;
         } else {
             LobbySe_Play(LOBBY_SE_REFUSE);
@@ -1079,20 +1054,10 @@ s32 GroupBoard_ListInput(u16 pad)
     return MENU_RUNNING;
 }
 
-void Font_SetSpacing(u8 a, u8 b);
-void Text_SetSize(s32);
-extern LevelEntry gLobbyLevel1Entries[];
 extern char gGroupBoardNumFmt[];
 extern char gGroupBoardStrFmt[];
-void Menu_DrawLabelBar(s16 x, s16 y, s16 w, u32 color, char *title, u8 a, u8 b);
-void Menu_DrawPageNum(s16 x, s16 y, s16 page, s16 n, u8 alt);
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: s16 coordinates and an s32 kind here; with the definition's s32 coordinates and s16 kind, the list and picker draws compile differently */
 void Font_SetColor(s32 color);
-void Font_SetPos(s16 x, s16 y);
-void Text_PrintfColored(const char *fmt, ...);
-void Text_SetColor(s16 color);
-void Menu_DrawLine(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
-void Win_DrawText(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2, char *s);
 /*
  * Draws the area's group list: the title and page number while the list
  * has the cursor, the column headers, then for each of the page's rows the
@@ -1112,27 +1077,27 @@ void GroupBoard_DrawAreaGroups(s16 x, s16 y)
     s8 dim;
 
     if (board->step == GROUP_AREA_LIST) {
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawLabelBar(0x14, 0x12, 0xF0, 0xFFB0B000, gNetLabels[NET_LABEL_GROUP_BOARD_TITLE], 2, 1);
-        Menu_DrawPageNum(x + 0x200, 0x16, board->page, board->pageCount, 1);
+        Font_SetSpacing(22, 22);
+        Menu_DrawLabelBar(20, 18, 240, 0xFFB0B000, gNetLabels[NET_LABEL_GROUP_BOARD_TITLE], 2, 1);
+        Menu_DrawPageNum(x + 512, 22, board->page, board->pageCount, 1);
     }
-    Win_Draw(x, y, 0x264, 0xFA, 0xBDB59F6C, 0xB02040F0, 7);
+    Win_Draw(x, y, 612, 250, 0xBDB59F6C, 0xB02040F0, 7);
     Font_SetColor(0x807F7F28);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x + 0x14, rowY += 2);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x + 20, rowY += 2);
     Text_PrintfColored(gNetLabels[NET_LABEL_NUMBER]);
-    Font_SetPos(x + 0x3C, rowY);
+    Font_SetPos(x + 60, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_LIMITED]);
-    Font_SetPos(x + 0x78, rowY);
+    Font_SetPos(x + 120, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_TARGET]);
-    Font_SetPos(x + 0x13A, rowY);
+    Font_SetPos(x + 314, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_RECRUIT_MSG]);
-    Font_SetPos(x + 0x1FE, rowY);
+    Font_SetPos(x + 510, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_HEADCOUNT]);
-    Font_SetPos(x + 0x23A, rowY);
+    Font_SetPos(x + 570, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_IN_TOWN]);
     for (i = 0; i < GROUP_ROWS_PER_PAGE; i++) {
-        rowY += 0x16;
+        rowY += 22;
         entryIdx = i + board->page * GROUP_ROWS_PER_PAGE;
         if ((u16)gLobbyLevel1Count > entryIdx) {
             entry = &gLobbyLevel1Entries[entryIdx];
@@ -1142,25 +1107,25 @@ void GroupBoard_DrawAreaGroups(s16 x, s16 y)
                 color = 0x807F7F7F;
             }
             Font_SetColor(color);
-            Font_SetPos(x + 0x14, rowY);
+            Font_SetPos(x + 20, rowY);
             Text_PrintfColored(gGroupBoardNumFmt, entryIdx + 1);
-            Font_SetPos(x + 0x3C, rowY);
+            Font_SetPos(x + 60, rowY);
             Text_PrintfColored(gGroupLimitTexts[entry->groupInfo[0] + GROUP_LIMIT_SHORT_TEXT]);
-            Font_SetPos(x + 0x78, rowY);
+            Font_SetPos(x + 120, rowY);
             Text_PrintfColored(QDL_ROOM->quests[entry->groupInfo[1]].name);
             if (color == 0x807F7F7F) {
                 Text_SetColor(entry->color);
             }
-            Font_SetPos(x + 0x13A, rowY);
+            Font_SetPos(x + 314, rowY);
             Text_PrintfColored(gGroupBoardStrFmt, entry->text);
             Font_SetColor(color);
-            Font_SetPos(x + 0x1F8, rowY);
+            Font_SetPos(x + 504, rowY);
             Text_PrintfColored("%2d/%2d", entry->users, entry->maxUsers);
-            Font_SetPos(x + 0x23A, rowY);
+            Font_SetPos(x + 570, rowY);
             Text_PrintfColored(gGroupBoardNumFmt, entry->users - entry->questUsers);
         } else {
             Font_SetColor(0x80404040);
-            Font_SetPos(x + 0xA, rowY);
+            Font_SetPos(x + 10, rowY);
             Text_PrintfColored(gNetLabels[NET_LABEL_DASHES]);
         }
         if (i == board->rowCursor && board->state == GROUP_BOARD_AREA) {
@@ -1173,13 +1138,12 @@ void GroupBoard_DrawAreaGroups(s16 x, s16 y)
                 dim = 1;
                 break;
             }
-            Menu_DrawLine(x, rowY - 1, 0x264, 0x14, dim);
+            Menu_DrawRowHighlight(x, rowY - 1, 612, 20, dim);
         }
     }
-    Win_DrawText(0x12C, 0x154, 0x140, 0x50, 0xBDB59F6C, 0xC0101020, gNetLabels[NET_LABEL_JOIN_PROMPT]);
+    Win_DrawText(300, 340, 320, 80, 0xBDB59F6C, 0xC0101020, gNetLabels[NET_LABEL_JOIN_PROMPT]);
 }
 
-char *LobbySrv_Name(char *id);
 /*
  * Draws the search results as GroupBoard_DrawAreaGroups draws the area's
  * list, with a land column and the recruiting text cut short; the cursor
@@ -1194,53 +1158,53 @@ void GroupBoard_DrawResults(s16 x, s16 y)
     s32 recIdx;
     s16 rowY = y;
     s8 dim;
-    char shortText[0x20];
+    char shortText[32];
 
     if (board->subStep != GROUP_RESULTS_SLIDE_IN) {
-        Font_SetSpacing(0x16, 0x16);
-        Menu_DrawLabelBar(0x14, 0x12, 0xF0, 0xFFB0B000, gNetLabels[NET_LABEL_SEARCH_RESULTS], 2, 1);
-        Menu_DrawPageNum(x + 0x200, 0x16, board->page, board->pageCount, 1);
+        Font_SetSpacing(22, 22);
+        Menu_DrawLabelBar(20, 18, 240, 0xFFB0B000, gNetLabels[NET_LABEL_SEARCH_RESULTS], 2, 1);
+        Menu_DrawPageNum(x + 512, 22, board->page, board->pageCount, 1);
     }
-    Win_Draw(x, y, 0x264, 0xFA, 0xBDB59F6C, 0xB02040F0, 7);
+    Win_Draw(x, y, 612, 250, 0xBDB59F6C, 0xB02040F0, 7);
     Font_SetColor(0x807F7F28);
-    Font_SetSpacing(0x12, 0x12);
-    Font_SetPos(x + 0x14, rowY += 2);
+    Font_SetSpacing(18, 18);
+    Font_SetPos(x + 20, rowY += 2);
     Text_PrintfColored(gNetLabels[NET_LABEL_NUMBER]);
-    Font_SetPos(x + 0x32, rowY);
+    Font_SetPos(x + 50, rowY);
     Text_PrintfColored(gLobbyWords[LOBBY_WORD_LAND]);
-    Font_SetPos(x + 0x9C, rowY);
+    Font_SetPos(x + 156, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_LIMITED]);
-    Font_SetPos(x + 0xD2, rowY);
+    Font_SetPos(x + 210, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_TARGET]);
-    Font_SetPos(x + 0x194, rowY);
+    Font_SetPos(x + 404, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_RECRUIT_MSG]);
-    Font_SetPos(x + 0x204, rowY);
+    Font_SetPos(x + 516, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_HEADCOUNT]);
-    Font_SetPos(x + 0x23A, rowY);
+    Font_SetPos(x + 570, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_IN_TOWN]);
     for (i = 0; i < GROUP_ROWS_PER_PAGE; i++) {
-        rowY += 0x16;
+        rowY += 22;
         recIdx = i + board->page * GROUP_ROWS_PER_PAGE;
         rec = &gGroupSearchResults->found.list[recIdx];
         if (gGroupSearchResults->found.total > recIdx) {
             color = rec->users == 0 ? 0x80404040 : 0x807F7F7F;
             Font_SetColor(color);
-            Font_SetPos(x + 0x14, rowY);
+            Font_SetPos(x + 20, rowY);
             Text_PrintfColored(gGroupBoardNumFmt, recIdx + 1);
-            Font_SetPos(x + 0x32, rowY);
+            Font_SetPos(x + 50, rowY);
             Text_PrintfColored(gGroupBoardStrFmt, LobbySrv_Name(rec->serverId));
-            Font_SetPos(x + 0x9C, rowY);
+            Font_SetPos(x + 156, rowY);
             Text_PrintfColored(gGroupLimitTexts[rec->groupInfo[0] + GROUP_LIMIT_SHORT_TEXT]);
-            Font_SetPos(x + 0xD2, rowY);
+            Font_SetPos(x + 210, rowY);
             Text_PrintfColored(QDL_ROOM->quests[rec->groupInfo[1]].name);
-            Font_SetPos(x + 0x194, rowY);
+            Font_SetPos(x + 404, rowY);
             memset(shortText, 0, sizeof(shortText));
             memcpy(shortText, rec->text, 8);
             Text_PrintfColored("%s%s", shortText, gLobbyWords[LOBBY_WORD_ELLIPSIS]);
             Font_SetColor(color);
-            Font_SetPos(x + 0x208, rowY);
+            Font_SetPos(x + 520, rowY);
             Text_PrintfColored("%d/%d", rec->users, rec->maxUsers);
-            Font_SetPos(x + 0x23A, rowY);
+            Font_SetPos(x + 570, rowY);
             Text_PrintfColored(gGroupBoardNumFmt, rec->usersInTown);
         }
         if (i == board->rowCursor) {
@@ -1257,23 +1221,14 @@ void GroupBoard_DrawResults(s16 x, s16 y)
             } else {
                 dim = 1;
             }
-            Menu_DrawLine(x, rowY - 1, 0x264, 0x14, dim);
+            Menu_DrawRowHighlight(x, rowY - 1, 612, 20, dim);
         }
     }
-    Win_DrawText(0x12C, 0x154, 0x140, 0x50, 0xBDB59F6C, 0xC0101020, gNetLabels[NET_LABEL_JOIN_PROMPT]);
+    Win_DrawText(300, 340, 320, 80, 0xBDB59F6C, 0xC0101020, gNetLabels[NET_LABEL_JOIN_PROMPT]);
 }
 
 extern u8 gLobbyLevel0Sel;
 extern LevelEntry gLobbyLevel0Entries[];
-u32 AreaList_KindColor(u8 slot);
-void LobbyUi_DrawIcon(s16 x, s16 y, s16 size, u32 color, s8 k);
-void Menu_DrawStamp(s16 x, s16 y, s16 w, s16 h, u16 a, s16 b);
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Menu_DrawArrows(s16 x, s16 y, s16 size, char *s, s32 color);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *s, s32 color);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 col);
-void Menu_DrawSideArrows(s16 x, s16 y, s16 w, s16 size, s8 flip, u32 color);
-void Text_Printf(const char *fmt, ...);
 /*
  * Draws the new group's form: the entry's name over the area's emblem, the
  * limit (with arrows while it has the cursor), the target quest and the
@@ -1293,71 +1248,71 @@ void GroupBoard_DrawNewGroupForm(s16 x, s16 y)
     LevelEntry *entry;
     s32 leftX;
 
-    Font_SetSpacing(0x16, 0x16);
-    Menu_DrawLabelBar(0x140, 0x12, 0xC8, 0xFFB0B000, gNetLabels[NET_LABEL_RECRUIT_MEMBERS], 2, 1);
-    Font_SetSpacing(0x12, 0x12);
-    Icon_Draw(x, y, 0x12C, 0x122, 0xFFE0D8C8, 1);
+    Font_SetSpacing(22, 22);
+    Menu_DrawLabelBar(320, 18, 200, 0xFFB0B000, gNetLabels[NET_LABEL_RECRUIT_MEMBERS], 2, 1);
+    Font_SetSpacing(18, 18);
+    Icon_Draw(x, y, 300, 290, 0xFFE0D8C8, 1);
     areaColor = AreaList_KindColor(gLobbyLevel0Entries[gLobbyLevel0Sel - 1].kind);
     topY = rowY;
-    LobbyUi_DrawIcon(x + 0x96, topY + 0x91, 0x70, areaColor, 3);
+    LobbyUi_DrawLevelMarks(x + 150, topY + 145, 112, areaColor, 3);
     Font_SetColor(0x80101010);
-    centerX = x + 0x96;
+    centerX = x + 150;
     entry = &gLobbyLevel1Entries[board->entryNo - 1];
     Font_SetColor(0x80301010);
-    Font_SetPos(Text_CenterX(entry->name, centerX, 0x12), rowY += 0x14);
+    Font_SetPos(Text_CenterX(entry->name, centerX, 18), rowY += 20);
     Text_PrintfColored(entry->name);
-    Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_RECRUIT_MEMBERS], centerX, 0x12), rowY += 0x16);
-    leftX = x + 0x1E;
-    Font_SetPos(leftX, rowY += 0x28);
+    Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_RECRUIT_MEMBERS], centerX, 18), rowY += 22);
+    leftX = x + 30;
+    Font_SetPos(leftX, rowY += 40);
     Text_PrintfColored(gNetLabels[NET_LABEL_LIMIT_COND]);
     Font_SetColor(0x80101010);
-    Font_SetPos(x + 0x9C, rowY);
+    Font_SetPos(x + 156, rowY);
     label = gGroupLimitTexts[board->join.groupInfo[0]];
     Text_PrintfColored(label);
     if (board->row == GROUP_NEW_ROW_LIMIT && board->picker == GROUP_PICK_NONE) {
-        Menu_DrawArrows(x + 0x9C, rowY, 0x12, label, 0xFF106060);
+        Menu_DrawArrows(x + 156, rowY, 18, label, 0xFF106060);
     }
     Font_SetColor(0x80301010);
-    Font_SetPos(leftX, rowY += 0x1E);
+    Font_SetPos(leftX, rowY += 30);
     Text_PrintfColored(gNetLabels[NET_LABEL_TARGET_COLON]);
     Font_SetColor(0x80101010);
     label = QDL_ROOM->quests[board->join.groupInfo[1]].name;
-    Font_SetPos(Text_CenterX(label, centerX, 0x12), rowY + 0x18);
+    Font_SetPos(Text_CenterX(label, centerX, 18), rowY + 24);
     Text_PrintfColored(label);
     if (board->row == GROUP_NEW_ROW_TARGET) {
-        Gfx_DrawRectFrame(frameX = x + 0x32, rowY + 0x16, 0xD8, 0x16, 0xFF106060);
+        Gfx_DrawRectFrame(frameX = x + 50, rowY + 22, 216, 22, 0xFF106060);
         if (board->picker == GROUP_PICK_NONE) {
-            Menu_DrawSideArrows(frameX, rowY + 0x16, 0xD8, 0x16, 0, 0xFF106060);
+            Menu_DrawSideArrows(frameX, rowY + 22, 216, 22, 0, 0xFF106060);
         }
     } else {
-        Gfx_DrawRectFrame(frameX = x + 0x32, rowY + 0x16, 0xD8, 0x16, 0xFF606060);
+        Gfx_DrawRectFrame(frameX = x + 50, rowY + 22, 216, 22, 0xFF606060);
     }
     Font_SetColor(0x80301010);
-    Font_SetPos(leftX, rowY += 0x32);
+    Font_SetPos(leftX, rowY += 50);
     Text_PrintfColored(gNetLabels[NET_LABEL_RECRUIT_MSG_LABEL]);
     Font_SetColor(0x80101010);
     label = QDL_ROOM->slots[board->textSlots[board->join.textIdx]].text;
-    Font_SetPos(Text_CenterX(label, centerX, 0x12), rowY + 0x18);
+    Font_SetPos(Text_CenterX(label, centerX, 18), rowY + 24);
     Text_PrintfColored(label);
     if (board->row == GROUP_NEW_ROW_TEXT) {
-        Gfx_DrawRectFrame(frameX, rowY + 0x16, 0xD8, 0x16, 0xFF106060);
+        Gfx_DrawRectFrame(frameX, rowY + 22, 216, 22, 0xFF106060);
         if (board->picker == GROUP_PICK_NONE) {
-            Menu_DrawSideArrows(frameX, rowY + 0x16, 0xD8, 0x16, 0, 0xFF106060);
+            Menu_DrawSideArrows(frameX, rowY + 22, 216, 22, 0, 0xFF106060);
         }
     } else {
-        Gfx_DrawRectFrame(frameX, rowY + 0x16, 0xD8, 0x16, 0xFF606060);
+        Gfx_DrawRectFrame(frameX, rowY + 22, 216, 22, 0xFF606060);
     }
     Font_SetColor(0x80301010);
-    labelX = Text_CenterX(gNetLabels[NET_LABEL_DECIDE], centerX, 0x12);
-    Font_SetPos(labelX, rowY += 0x3C);
+    labelX = Text_CenterX(gNetLabels[NET_LABEL_DECIDE], centerX, 18);
+    Font_SetPos(labelX, rowY += 60);
     Text_PrintfColored(gNetLabels[NET_LABEL_DECIDE]);
     if (board->row == GROUP_NEW_ROW_CONFIRM && board->picker == GROUP_PICK_NONE && board->subStep == GROUP_NEW_FORM) {
-        Menu_DrawArrowsRev(labelX, rowY - 2, 0x12, gNetLabels[NET_LABEL_DECIDE], 0xFF106060);
+        Menu_DrawArrowsRev(labelX, rowY - 2, 18, gNetLabels[NET_LABEL_DECIDE], 0xFF106060);
     }
-    Font_SetPos(x + 0x9C, topY + 0x100);
+    Font_SetPos(x + 156, topY + 256);
     Text_Printf(gArenaCupTexts[ARENA_TEXT_TIME_LEFT], board->formTimer / 30);
     if (board->stamped) {
-        Menu_DrawStamp(x, y, 0x12C, 0x122, (u16)board->stampSeed, board->stampShake.timer);
+        Menu_DrawStamp(x, y, 300, 290, (u16)board->stampSeed, board->stampShake.timer);
     }
 }
 
@@ -1372,30 +1327,25 @@ void GroupBoard_DrawTargetPicker(s16 x, s16 y)
     s16 i;
     s16 quest;
 
-    Win_Draw(x, y, 0x118, 0x122, 0xBDB59F6C, 0xC0101010, 2);
+    Win_Draw(x, y, 280, 290, 0xBDB59F6C, 0xC0101010, 2);
     rowY += 10;
-    Menu_DrawPageNum((s16)(x + 0x28) + 0xA0, rowY, board->targetPage, board->targetPages, 1);
+    Menu_DrawPageNum((s16)(x + 40) + 160, rowY, board->targetPage, board->targetPages, 1);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x28, rowY);
+    Font_SetPos(x + 40, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_TARGET]);
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < board->targetsOnPage[board->targetPage]; i++) {
         quest = board->targets[board->targetPage][i];
         if (QDL_ROOM->quests[quest].used) {
-            Font_SetPos(x + 0x28, rowY += 0x16);
+            Font_SetPos(x + 40, rowY += 22);
             Text_PrintfColored(gGroupBoardStrFmt, QDL_ROOM->quests[quest].name);
             if (board->targetCursor == i) {
-                Menu_DrawLine(x + 10, rowY - 1, 0x104, 0x14, 0);
+                Menu_DrawRowHighlight(x + 10, rowY - 1, 260, 20, 0);
             }
         }
     }
 }
 
-void Icon_Draw(s16 x, s16 y, s16 w, s16 h, u32 color, s32 spr);
-void Menu_DrawArrows(s16 x, s16 y, s16 size, char *s, s32 color);
-void Menu_DrawArrowsRev(s16 x, s16 y, s16 size, char *s, s32 color);
-void Gfx_DrawRectFrame(s16 x, s16 y, s16 w, s16 h, s32 col);
-void Menu_DrawSideArrows(s16 x, s16 y, s16 w, s16 size, s8 flip, u32 color);
 
 /*
  * Draws the search form: its title, the limit choice (the texts for the
@@ -1417,14 +1367,14 @@ void GroupBoard_DrawSearchForm(s16 x, s16 y)
     s16 *target;
     char *name;
 
-    Font_SetSpacing(0x12, 0x12);
-    Icon_Draw(x, y, 0x12C, 0x122, 0xFFE0D8C8, 1);
+    Font_SetSpacing(18, 18);
+    Icon_Draw(x, y, 300, 290, 0xFFE0D8C8, 1);
     Font_SetColor(0x80101010);
-    centerX = x + 0x96;
+    centerX = x + 150;
     Font_SetColor(0x80301010);
-    Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_GROUP_SEARCH], centerX, 0x12), rowY += 0x16);
+    Font_SetPos(Text_CenterX(gNetLabels[NET_LABEL_GROUP_SEARCH], centerX, 18), rowY += 22);
     Text_PrintfColored(gNetLabels[NET_LABEL_GROUP_SEARCH]);
-    Font_SetPos(x + 0x1E, rowY += 0x28);
+    Font_SetPos(x + 30, rowY += 40);
     Text_PrintfColored(gNetLabels[NET_LABEL_LIMIT_COND]);
     if (Lobby_HrAtLeast31() == 1) {
         label = gGroupLimitExpTexts[board->searchLimit];
@@ -1432,23 +1382,23 @@ void GroupBoard_DrawSearchForm(s16 x, s16 y)
         label = gGroupLimitNewTexts[board->searchLimit];
     }
     Font_SetColor(0x80101010);
-    labelX = Text_CenterX(label, centerX, 0x12);
-    Font_SetPos(labelX, rowY += 0x1A);
+    labelX = Text_CenterX(label, centerX, 18);
+    Font_SetPos(labelX, rowY += 26);
     Text_PrintfColored(label);
     if (board->row == GROUP_SEARCH_ROW_LIMIT && board->subStep == GROUP_FORM_ROWS) {
-        Menu_DrawArrows(labelX, rowY, 0x12, label, 0xFF106060);
+        Menu_DrawArrows(labelX, rowY, 18, label, 0xFF106060);
     }
     Font_SetColor(0x80301010);
-    Font_SetPos(x + 0x1E, rowY += 0x1E);
+    Font_SetPos(x + 30, rowY += 30);
     Text_PrintfColored(gNetLabels[NET_LABEL_TARGET_COLON]);
     Font_SetColor(0x80101010);
     if (board->row == GROUP_SEARCH_ROW_TARGETS) {
-        Gfx_DrawRectFrame(x + 0x32, rowY + 0x16, 0xD8, 0x57, 0xFF106060);
+        Gfx_DrawRectFrame(x + 50, rowY + 22, 216, 87, 0xFF106060);
         if (board->subStep == GROUP_FORM_ROWS) {
-            Menu_DrawSideArrows(x + 0x32, rowY + 0x32, 0xD8, 0x16, 0, 0xFF106060);
+            Menu_DrawSideArrows(x + 50, rowY + 50, 216, 22, 0, 0xFF106060);
         }
     } else {
-        Gfx_DrawRectFrame(x + 0x32, rowY + 0x16, 0xD8, 0x57, 0xFF606060);
+        Gfx_DrawRectFrame(x + 50, rowY + 22, 216, 87, 0xFF606060);
     }
     rowY += 3;
     nameY = rowY;
@@ -1458,23 +1408,23 @@ void GroupBoard_DrawSearchForm(s16 x, s16 y)
      * use of registers. */
     for (i = 0; i < GROUP_TARGET_PAGES; i++) {
         for (j = 0, target = (s16 *)((u8 *)board + i * GROUP_TARGETS_PER_PAGE * 2); j < GROUP_TARGETS_PER_PAGE; j++, target++) {
-            if (target[0xCB2 / 2] < 0) {
-                quest = -target[0xCB2 / 2];
+            if (target[3250 / 2] < 0) {
+                quest = -target[3250 / 2];
                 name = QDL_ROOM->quests[(s16)(quest - 1)].name;
-                nameY += 0x16;
-                Font_SetPos(Text_CenterX(name, centerX, 0x12), nameY);
+                nameY += 22;
+                Font_SetPos(Text_CenterX(name, centerX, 18), nameY);
                 Text_PrintfColored(name);
             }
         }
     }
     Font_SetColor(0x80301010);
-    labelX = Text_CenterX(gNetLabels[NET_LABEL_SEARCH_START], centerX, 0x12);
-    Font_SetPos(labelX, rowY += 0x78);
+    labelX = Text_CenterX(gNetLabels[NET_LABEL_SEARCH_START], centerX, 18);
+    Font_SetPos(labelX, rowY += 120);
     Text_PrintfColored(gNetLabels[NET_LABEL_SEARCH_START]);
     if (board->row == GROUP_SEARCH_ROW_START) {
-        Menu_DrawArrowsRev(labelX, rowY - 2, 0x12, gNetLabels[NET_LABEL_SEARCH_START], 0xFF106060);
+        Menu_DrawArrowsRev(labelX, rowY - 2, 18, gNetLabels[NET_LABEL_SEARCH_START], 0xFF106060);
     }
-    Win_DrawText(0x12C, 0x154, 0x140, 0x50, 0xBDB59F6C, 0xC0101020, gGroupSearchHelpTexts[0]);
+    Win_DrawText(300, 340, 320, 80, 0xBDB59F6C, 0xC0101020, gGroupSearchHelpTexts[0]);
 }
 
 
@@ -1490,25 +1440,25 @@ void GroupBoard_DrawSearchTargets(s16 x, s16 y)
     s16 i;
     s16 quest;
 
-    Win_Draw(x, y, 0x118, 0x122, 0xBDB59F6C, 0xC0101010, 2);
+    Win_Draw(x, y, 280, 290, 0xBDB59F6C, 0xC0101010, 2);
     rowY += 10;
     Font_SetColor(0x807F7F7F);
-    Menu_DrawPageNum((s16)(x + 0x28) + 0xA0, rowY, board->targetPage, board->targetPages, 1);
+    Menu_DrawPageNum((s16)(x + 40) + 160, rowY, board->targetPage, board->targetPages, 1);
     Font_SetColor(0x807F7F28);
-    Font_SetPos(x + 0x28, rowY);
+    Font_SetPos(x + 40, rowY);
     Text_PrintfColored(gNetLabels[NET_LABEL_TARGET]);
     Font_SetColor(0x807F7F7F);
     for (i = 0; i < board->targetsOnPage[board->targetPage]; i++) {
         quest = board->targets[board->targetPage][i];
-        Font_SetPos(x + 0x28, rowY += 0x16);
+        Font_SetPos(x + 40, rowY += 22);
         if (board->targetCursor == i) {
-            Menu_DrawLine(x + 10, rowY - 1, 0x104, 0x14, 0);
+            Menu_DrawRowHighlight(x + 10, rowY - 1, 260, 20, 0);
         }
         if (quest == GROUP_TARGET_ANY) {
             Text_PrintfColored(gGroupBoardStrFmt, gGroupLimitNewTexts[0]);
         } else {
             if (quest < 0) {
-                Icon_Draw(x + 0x12, rowY, 0x14, 0x14, 0xFFFF0000, 0x80);
+                Icon_Draw(x + 18, rowY, 20, 20, 0xFFFF0000, 128);
                 quest *= -1;
             }
             Text_PrintfColored(gGroupBoardStrFmt, QDL_ROOM->quests[(s16)(quest - 1)].name);
@@ -1516,12 +1466,8 @@ void GroupBoard_DrawSearchTargets(s16 x, s16 y)
     }
 }
 
-s32 LobbySrv_Color(char *id);
-void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2);
 void Icon_DrawWeaponClass(s16, s16, s32, s32, u8, s32); /* unit's own declaration: s16 coordinates and a u8 kind here; with the definition's types, GroupBoard_DrawGroupInfo compiles differently */
 s32 sprintf(char *buf, const char *fmt, ...);
-void Sjis_Widen(char *src, char *dst);
-void GroupBoard_DrawButtonHints(void *menu, s16 x, s16 y, u32 color);
 /*
  * Draws a searched group's details: its recruiting text and page number,
  * then either the members (name, hunter rank, weapon icon; the member
@@ -1533,70 +1479,69 @@ void GroupBoard_DrawGroupInfo(s16 x, s16 y)
 {
     GroupBoardMenu *board = (GroupBoardMenu *)&gMenuWork;
     u32 areaColor;
-    char hrText[0x20];
+    char hrText[32];
     NetLevel1SearchInfo *info = &gGroupSearchInfo;
     NetMember10 *member;
     s16 rowY = y;
-    char hrWide[0x20];
+    char hrWide[32];
     s16 i;
 
-    Font_SetSpacing(0x12, 0x12);
-    Icon_Draw(x, y, 0x12C, 0x122, 0xFFE0D8C8, 1);
+    Font_SetSpacing(18, 18);
+    Icon_Draw(x, y, 300, 290, 0xFFE0D8C8, 1);
     areaColor = AreaList_KindColor(gLobbyLevel0Entries[gLobbyLevel0Sel - 1].kind);
     Font_SetColor(0x80101010);
-    Menu_DrawPageNum(x + 0xD2, y + 0x14, board->infoPage, board->infoPages, 1);
+    Menu_DrawPageNum(x + 210, y + 20, board->infoPage, board->infoPages, 1);
     Font_SetColor(0x80301010);
-    Font_SetPos(x + 0x28, y + 0x14);
+    Font_SetPos(x + 40, y + 20);
     Text_PrintfColored(gGroupSearchInfo.level1Text);
-    rowY += 0x2A;
+    rowY += 42;
     if (board->infoPage == GROUP_INFO_MEMBERS) {
         Font_SetColor(0x80301010);
-        Font_SetPos(x + 0x28, rowY);
+        Font_SetPos(x + 40, rowY);
         Text_PrintfColored(gNetLabels[NET_LABEL_NAME]);
-        Font_SetPos(x + 0xBE, rowY);
+        Font_SetPos(x + 190, rowY);
         Text_PrintfColored(gNetLabels[NET_LABEL_HR]);
-        Font_SetPos(x + 0xF0, rowY);
+        Font_SetPos(x + 240, rowY);
         Text_PrintfColored(gNetLabels[NET_LABEL_WEAPON]);
         Font_SetColor(0x80101010);
         for (i = 0; i < GROUP_MEMBERS_SHOWN; i++) {
-            rowY += 0x16;
+            rowY += 22;
             member = &info->users[i];
             if (member->id[0] != 0) {
                 if (board->memberView == MEMBER_VIEW_CURSOR && i == board->memberCursor) {
-                    Menu_DrawCursorRow(x + 0x28, rowY, 0xBE, 0x14, 0xC0106060, 0xFF106060);
+                    Menu_DrawCursorRow(x + 40, rowY, 190, 20, 0xC0106060, 0xFF106060);
                 }
-                Font_SetPos(x + 0x28, rowY);
+                Font_SetPos(x + 40, rowY);
                 Text_PrintfColored(gGroupBoardStrFmt, member->name);
-                Font_SetPos(x + 0xAC, rowY);
+                Font_SetPos(x + 172, rowY);
                 sprintf(hrText, "%3d", member->hr);
                 Sjis_Widen(hrText, hrWide);
                 Text_PrintfColored(hrWide);
-                Icon_DrawWeaponClass(x + 0xF0, rowY, 0x18, -1, member->icon, 0);
+                Icon_DrawWeaponClass(x + 240, rowY, 24, -1, member->icon, 0);
             }
         }
     } else {
         Font_SetColor(0x80301010);
-        Font_SetPos(x + 0x28, rowY);
+        Font_SetPos(x + 40, rowY);
         Text_PrintfColored(gNetLabels[NET_LABEL_LOCATION]);
         Font_SetColor(0x80101010);
-        Font_SetPos(x + 0x64, rowY += 0x16);
+        Font_SetPos(x + 100, rowY += 22);
         Text_PrintfColored(gGroupBoardStrFmt, LobbySrv_Name(info->serverId));
-        Icon_Draw(x + 0x46, rowY - 2, 0x16, 0x16, LobbySrv_Color(info->serverId) | 0xB0000000, 0x75);
-        Font_SetPos(x + 0x64, rowY += 0x16);
+        Icon_Draw(x + 70, rowY - 2, 22, 22, LobbySrv_Color(info->serverId) | 0xB0000000, 117);
+        Font_SetPos(x + 100, rowY += 22);
         Text_PrintfColored(gGroupBoardStrFmt, info->level0Name);
-        Icon_Draw(x + 0x46, rowY - 2, 0x16, 0x16, areaColor, 0x76);
-        Font_SetPos(x + 0x64, rowY += 0x16);
+        Icon_Draw(x + 70, rowY - 2, 22, 22, areaColor, 118);
+        Font_SetPos(x + 100, rowY += 22);
         Text_PrintfColored(gGroupBoardStrFmt, info->level1Text);
-        Icon_Draw(x + 0x46, rowY - 2, 0x16, 0x16, areaColor, 0x77);
-        Icon_Draw(x + 0x5A, rowY + 0xF, strlen(info->level1Text) * 9 + 0x14, 8, 0xA0FF0000, 0x6F);
+        Icon_Draw(x + 70, rowY - 2, 22, 22, areaColor, 119);
+        Icon_Draw(x + 90, rowY + 15, strlen(info->level1Text) * 9 + 20, 8, 0xA0FF0000, 111);
     }
     if (board->stamped) {
-        Menu_DrawStamp(x, y, 0x12C, 0x122, board->stampSeed, board->stampShake.timer);
+        Menu_DrawStamp(x, y, 300, 290, board->stampSeed, board->stampShake.timer);
     }
-    GroupBoard_DrawButtonHints(board, x + 0x28, y + 0xDC, 0x80101010);
+    GroupBoard_DrawButtonHints(board, x + 40, y + 220, 0x80101010);
 }
 
-s16 Lobby_DrawButtonIcon(s16 x, s16 y, s32 i);
 /*
  * Draws the three button hints under a group's details: square for the
  * member details (only at MEMBER_VIEW_HINTS), circle to confirm and cross
@@ -1610,36 +1555,32 @@ void GroupBoard_DrawButtonHints(void *menu, s16 x, s16 y, u32 color)
     u16 pad = LobbyPad_Get(0);
     s16 pressed;
 
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     Font_SetColor(color);
     pressed = (pad & PAD_SQUARE) != 0;
     if (board->memberView == MEMBER_VIEW_HINTS) {
         Lobby_DrawButtonIcon(x, y + pressed, 3);
-        Font_SetPos(x + 0x1A, y + 2);
+        Font_SetPos(x + 26, y + 2);
         Text_PrintfColored(gNetLabels[NET_LABEL_MEMBER_DETAILS]);
     }
     pressed = (pad & PAD_CIRCLE) != 0;
     if (board->joinStep != 0 || gLobbyMenu->redraw != 0) {
         pressed = 0;
     }
-    y += 0x1A;
+    y += 26;
     Lobby_DrawButtonIcon(x, y + pressed, 0);
-    Font_SetPos(x + 0x1A, y + 2);
+    Font_SetPos(x + 26, y + 2);
     Text_PrintfColored(gNetLabels[NET_LABEL_DECIDE]);
     pressed = (pad & PAD_CROSS) != 0;
     if (board->joinStep != 0 || gLobbyMenu->redraw != 0) {
         pressed = 0;
     }
-    x += 0x78;
+    x += 120;
     Lobby_DrawButtonIcon(x, y + pressed, 1);
-    Font_SetPos(x + 0x1A, y + 2);
+    Font_SetPos(x + 26, y + 2);
     Text_PrintfColored(gNetLabels[NET_LABEL_CANCEL]);
 }
 
-void GroupBoard_DrawAreaGroups(s16 x, s16 y);
-void GroupBoard_DrawResults(s16 x, s16 y);
-void GroupBoard_DrawSearchForm(s16 x, s16 y);
-void GroupBoard_DrawSearchTargets(s16 x, s16 y);
 /*
  * The board's first draw callback, the group list: the area's list (or the
  * search results, when the group came from the search) in the area's flow
@@ -1652,34 +1593,31 @@ void GroupBoard_Draw(MenuTask *task)
     s16 listY;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     switch (board->state) {
     case GROUP_BOARD_AREA:
     case GROUP_BOARD_STAMP:
     case GROUP_BOARD_ENTER_TOWN:
         listY = board->listWin.pos;
         if (board->viaSearch == 0) {
-            GroupBoard_DrawAreaGroups(0xE, listY);
+            GroupBoard_DrawAreaGroups(14, listY);
         } else {
-            GroupBoard_DrawResults(0xE, listY);
+            GroupBoard_DrawResults(14, listY);
         }
         break;
     case GROUP_BOARD_SEARCH:
         if (board->step == GROUP_SEARCH_RESULTS) {
-            GroupBoard_DrawResults(0xE, board->listWin.pos);
+            GroupBoard_DrawResults(14, board->listWin.pos);
             break;
         }
-        GroupBoard_DrawSearchForm(board->panelWin.pos, 0x32);
+        GroupBoard_DrawSearchForm(board->panelWin.pos, 50);
         if (board->step == GROUP_SEARCH_FORM && board->subStep == GROUP_FORM_TARGETS) {
-            GroupBoard_DrawSearchTargets(0x1E, 0x36);
+            GroupBoard_DrawSearchTargets(30, 54);
         }
         break;
     }
 }
 
-void GroupBoard_DrawGroupInfo(s16 x, s16 y);
-void GroupBoard_DrawNewGroupForm(s16 x, s16 y);
-void HunterInfo_DrawIfOpen(void);
 void AreaBoard_DrawTextPicker(s16 x, s16 y, s16 cur, s16 n);
 void AreaBoard_DrawMembers(s16 x, s32 y, u32 entryNo, WinShake *shake, u16 stampSeed, s8 stamped); /* unit's own declaration: an s32 y and a u32 entry here; with the definition's s16 y and s32 entry, GroupBoard_DrawDetails compiles differently */
 /*
@@ -1696,7 +1634,7 @@ void GroupBoard_DrawDetails(MenuTask *task)
     s16 joinX;
 
     Text_SetSize(task->textSize);
-    Font_SetSpacing(0x12, 0x12);
+    Font_SetSpacing(18, 18);
     panelX = board->panelWin.pos + board->stampShake.dx;
     switch (board->state) {
     case GROUP_BOARD_SEARCH:
@@ -1707,7 +1645,7 @@ void GroupBoard_DrawDetails(MenuTask *task)
             case GROUP_RESULTS_JOIN_ASK:
             case GROUP_RESULTS_ENTER:
             case GROUP_RESULTS_MEMBERS:
-                GroupBoard_DrawGroupInfo(panelX, 0x32);
+                GroupBoard_DrawGroupInfo(panelX, 50);
                 break;
             case GROUP_RESULTS_HUNTER_CARD:
                 HunterInfo_DrawIfOpen();
@@ -1719,17 +1657,17 @@ void GroupBoard_DrawDetails(MenuTask *task)
         if (board->step == GROUP_AREA_NEW_GROUP) {
             switch (board->subStep) {
             case GROUP_NEW_SEND:
-                GroupBoard_DrawNewGroupForm(panelX, 0x32);
+                GroupBoard_DrawNewGroupForm(panelX, 50);
                 break;
             case GROUP_NEW_SLIDE_IN:
             case GROUP_NEW_FORM:
-                GroupBoard_DrawNewGroupForm(panelX, 0x32);
+                GroupBoard_DrawNewGroupForm(panelX, 50);
                 switch (board->picker) {
                 case GROUP_PICK_TARGET:
-                    GroupBoard_DrawTargetPicker(0x14, 0x32);
+                    GroupBoard_DrawTargetPicker(20, 50);
                     break;
                 case GROUP_PICK_TEXT:
-                    AreaBoard_DrawTextPicker(0x14, 0x32, board->textCursor, board->textCount);
+                    AreaBoard_DrawTextPicker(20, 50, board->textCursor, board->textCount);
                     break;
                 }
                 break;
@@ -1740,9 +1678,9 @@ void GroupBoard_DrawDetails(MenuTask *task)
                 if (board->memberView == MEMBER_VIEW_HUNTER_CARD) {
                     HunterInfo_DrawIfOpen();
                 } else {
-                    Font_SetSpacing(0x16, 0x16);
-                    Menu_DrawLabelBar(0x140, 0x12, 0xC8, 0xFFB0B000, gNetLabels[NET_LABEL_JOIN_GROUP], 2, 1);
-                    AreaBoard_DrawMembers(joinX, 0x32, board->entryNo, &board->stampShake, board->stampSeed, board->stamped);
+                    Font_SetSpacing(22, 22);
+                    Menu_DrawLabelBar(320, 18, 200, 0xFFB0B000, gNetLabels[NET_LABEL_JOIN_GROUP], 2, 1);
+                    AreaBoard_DrawMembers(joinX, 50, board->entryNo, &board->stampShake, board->stampSeed, board->stamped);
                 }
             }
         }
@@ -1750,11 +1688,11 @@ void GroupBoard_DrawDetails(MenuTask *task)
     case GROUP_BOARD_STAMP:
     case GROUP_BOARD_ENTER_TOWN:
         if (board->viaSearch) {
-            GroupBoard_DrawGroupInfo(panelX, 0x32);
+            GroupBoard_DrawGroupInfo(panelX, 50);
         } else if (board->showForm) {
-            GroupBoard_DrawNewGroupForm(panelX, 0x32);
+            GroupBoard_DrawNewGroupForm(panelX, 50);
         } else {
-            AreaBoard_DrawMembers(board->joinWin.pos + board->stampShake.dx, 0x32, board->entryNo, &board->stampShake, board->stampSeed, board->stamped);
+            AreaBoard_DrawMembers(board->joinWin.pos + board->stampShake.dx, 50, board->entryNo, &board->stampShake, board->stampSeed, board->stamped);
         }
         break;
     }

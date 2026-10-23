@@ -1,5 +1,6 @@
 #ifndef EM_ANTEKA_H
 #define EM_ANTEKA_H
+#include "em.h"
 
 /*
  * The Anteka family's vocabulary (EmAnteka_*): the
@@ -46,6 +47,41 @@ enum EmAntekaMotion {
     ANTEKA_MOT_STATUS4_END = 0x45
 };
 
+/*
+ * Bones: a bone number indexes the model's skeleton (Em.model->bones, the
+ * world matrix the sound and effect helpers read the position from); both
+ * kinds' skeletons share the numbers the family's code uses. The names say
+ * what the code shows a bone to be: the kinds' own hit shapes (gEmBoneHits),
+ * the shapes of the hits EmContactAttack_Create makes on given frames
+ * (EmContactAttack_HitShapes, by the attack rows' hit lists), and where the
+ * footfall dust rises (PartFx_SpawnForEmScaled, type 3) in the motion
+ * effects. "A" and "B" tell the two pairs of feet apart; which pair is in
+ * front, and which foot is left, the code doesn't show. Bones no code
+ * explains stay numbers: 13 (the second capsule of the kinds' own hit
+ * shapes, radius 27) and 22 (the dust of ANTEKA_MOT_ATK_SLAM's impact and of
+ * ANTEKA_MOT_TURN_QUICK).
+ */
+enum EmAntekaBone {
+    ANTEKA_BONE_ROOT = 0,       /* the skeleton's first bone: the steps' and the falls' sounds and half the others; the sphere of ANTEKA_MOT_ATK_COMBO's first hit (EmContactAttack 17, radius 80) */
+    ANTEKA_BONE_BODY = 2,       /* the body's capsule in the kinds' own hit shapes; the ground effect where the body lands in ANTEKA_MOT_BLOWN_BACK_LAND (frame 44); the status-4 effect (Em_SpawnStatus4Effect) */
+    ANTEKA_BONE_FOOT_A1 = 7,    /* the first pair of feet: their dust rises together as ANTEKA_MOT_RECOVER lands (frames 12 and 16) */
+    ANTEKA_BONE_FOOT_A2 = 11,
+    ANTEKA_BONE_FOOT_B1 = 17,   /* the second pair of feet, in turn in the run (frames 4 and 28) and the charge (12 and 18); the dust of the left turn-around and of the move actions */
+    ANTEKA_BONE_FOOT_B2 = 21,   /* the other foot of pair B; the right turn-around's dust */
+    ANTEKA_BONE_HEAD = 23       /* the sphere of the contact attacks (radius 70: the charge, the combo's second and third hits, the slam, the strike); the lying puffs; the other half of the sounds; the poison effect (Em_UpdateStatus) */
+};
+
+/*
+ * Sounds: a sound number indexes the kind's own sound bank
+ * (Em_PlaySeAtBoneOnFrame). A sound is named where the code shows what it
+ * is: it plays on the frame of the thing it goes with. The others stay
+ * numbers.
+ */
+enum EmAntekaSe {
+    ANTEKA_SE_STEP = 19,        /* the steps: on the frames of the footfall dust in ANTEKA_MOT_RECOVER (12, 16), ANTEKA_MOT_TURN_QUICK (26) and ANTEKA_MOT_CHARGE (12); through the run, the charge and the leap */
+    ANTEKA_SE_FALL = 20         /* the body hitting the ground: on the frame of ANTEKA_MOT_BLOWN_BACK_LAND's ground effect (44); late in ANTEKA_MOT_COLLAPSE */
+};
+
 /* Group 0, EM_GROUP_IDLE (EmAnteka_RunIdleState; also run for group 2). */
 enum EmAntekaIdleState {
     ANTEKA_IDLE_NONE = 0x00,            /* an empty function */
@@ -85,7 +121,7 @@ enum EmAntekaAttackState {
     ANTEKA_ATK_COMBO = 0x00,
     ANTEKA_ATK_SLAM = 0x01,
     ANTEKA_ATK_STRIKE = 0x02,           /* the leap's motion in place, then the strike */
-    ANTEKA_ATK_NONE_A = 0x03,           /* 0x03-0x08 end at once */
+    ANTEKA_ATK_NONE_A = 0x03,           /* 3-8 end at once */
     ANTEKA_ATK_NONE_B = 0x04,
     ANTEKA_ATK_NONE_C = 0x05,
     ANTEKA_ATK_NONE_D = 0x06,
@@ -116,5 +152,17 @@ enum EmAntekaEventState {
     ANTEKA_EVENT_SCENE = 0x01,          /* at a fixed spot, three motions */
     ANTEKA_EVENT_IDLE = 0x02
 };
+
+extern void *EmAnteka_Callbacks[8];
+void EmAnteka_Init(Em *em);
+void EmAnteka_Start(Em *em);
+void EmAnteka_Update(Em *em);
+void EmAnteka_BlownBack(Em *em, EmWork *work, s16 fromLying);
+void EmAnteka_Die(Em *em, EmWork *work);
+void EmAnteka_RunState(Em *em);
+void EmAnteka_ChangeState(Em *em, u16 group, u16 state, u8 mode);
+void EmAnteka_EndState(Em *em);
+void EmAnteka_SetMotion(Em *em, s32 motion, s32 blend, s32 frame);
+void EmAnteka_MotionEffects(Em *em, EmWork *work);
 
 #endif

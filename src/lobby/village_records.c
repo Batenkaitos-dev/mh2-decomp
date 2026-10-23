@@ -31,30 +31,25 @@
 #include "lobby_text.h"
 
 #include "area.h"
+#include "area_draw.h"
+#include "camera.h"
+#include "village_cond.h"
+#include "village_records.h"
+#include "item_shop.h"
+#include "menu_steps.h"
+#include "rand.h"
+#include "talk.h"
+#include "village_offers.h"
+#include "libc.h"
 extern u8 gMenuWork[];
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
-void CamFocus_Start(Em *obj);
 extern VillageNpcEvent gVillageMealVisitors[];
-s32 Cond_Check(u16 id);
-s32 Village_HouseTourPending(void);
-u16 Rand_Next(s32 stream);
-s32 Save_TestEventFlag(s32 flag);
 extern VillageNpcEvent gVillageGiftNpcs[];
-void *memset(void *d, s32 c, u32 n);
 u8 Village_FacilityLevel(s32 k);
-s32 Village_MilestoneReady(s32 kind);
 extern VillageMilestone gVillageMilestones[];
-void Save_SetEventFlag(s32 flag);
-void Save_ClearEventFlag(s32 flag);
-s32 SavePouch_Space(u16 item);
 u8 SavePouch_Add(u16 item, s16 n);
-u16 LobbyPad_Get(s32 a);
-s32 Talk_Update(void);
 struct Em;
-void Talk_Say(s32 msg, s8 a);
-void CamFocus_End(void);
-void LobbyMenu_Init(void);
 /* Returns the talk line of resident's meal visit (the meal scene says it), 0 for none. */
 s16 Village_MealVisitTalk(s32 resident)
 {
@@ -94,7 +89,6 @@ void Village_ClearMealVisit(u16 resident)
     }
 }
 
-extern OfferNpc gOfferNpcs[];
 /*
  * Checks the offer resident offerIdx (gOfferNpcs) after its points went from
  * before to after: past a multiple of OFFER_POINTS_PER_GIFT its gift flag
@@ -117,7 +111,7 @@ void Offer_CheckResidentRewards(u32 before, u32 after, s32 offerIdx)
             id = entry->id;
         }
     }
-    if (Cond_Check(0x1A) == 1 && resident == 1) { /* resident 1 makes no meal visits under condition 0x1A */
+    if (Cond_Check(26) == 1 && resident == 1) { /* resident 1 makes no meal visits under condition 26 */
         return;
     }
     if (before / OFFER_POINTS_PER_MEAL_VISIT < after / OFFER_POINTS_PER_MEAL_VISIT) {
@@ -156,7 +150,7 @@ void Village_CheckMilestone(u32 before, u32 after, s32 idx)
 
 /*
  * Returns whether a milestone can be reached: 0 needs the port at level 2,
- * 4 the smithy at level 2, 5 condition 0x1A, 2 event flag 0x49, 6
+ * 4 the smithy at level 2, 5 condition 26, 2 event flag 73, 6
  * EVENT_FLAG_PSP_LINK_1; the others always.
  */
 s32 Village_MilestoneReady(s32 milestone)
@@ -173,12 +167,12 @@ s32 Village_MilestoneReady(s32 milestone)
         }
         break;
     case 5:
-        if (Cond_Check(0x1A) == 0) {
+        if (Cond_Check(26) == 0) {
             return 0;
         }
         break;
     case 2:
-        if (Save_TestEventFlag(0x49) == 0) {
+        if (Save_TestEventFlag(73) == 0) {
             return 0;
         }
         break;
@@ -216,7 +210,7 @@ s32 Village_HouseTourPending(void)
  * starting again after the 20th; the others a random gift of the
  * resident's offer kind), and every reached milestone's timer; milestone 1
  * takes state 2 by a 30 percent chance once the item box is past level 1.
- * Event flag 0x49 without 0x4A keeps timer 2 running for one quest.
+ * Event flag 73 without 74 keeps timer 2 running for one quest.
  */
 void Village_ProcessEventFlags(void)
 {
@@ -297,17 +291,16 @@ void Village_ProcessEventFlags(void)
         }
         milestone++;
     }
-    if (Save_TestEventFlag(0x49) == 1 && Save_TestEventFlag(0x4A) == 0) {
+    if (Save_TestEventFlag(73) == 1 && Save_TestEventFlag(74) == 0) {
         gSave.villageTimers[2].state = 1;
         gSave.villageTimers[2].questsLeft = 1;
     }
 }
 
-void Village_SetFacilityLevel(s32 sub, u8 lvl);
 /*
  * After a quest: unless it was abandoned, a digging mine is dug and its
  * bonus counts down by the digs; at 0 the mine goes up a level (event flag
- * 0x1C7 from level 6). Then each village timer counts down one quest, and
+ * 455 from level 6). Then each village timer counts down one quest, and
  * every meal visit is cleared.
  */
 void Village_QuestTick(void)
@@ -327,7 +320,7 @@ void Village_QuestTick(void)
                 if (level < 9) { /* the mine's highest level */
                     Village_SetFacilityLevel(VILLAGE_FACILITY_MINE, level + 1);
                     if (level + 1 >= 6) {
-                        Save_SetEventFlag(0x1C7);
+                        Save_SetEventFlag(455);
                     }
                 }
                 gSave.mine.bonus = 0;
@@ -378,7 +371,7 @@ s32 Village_HasGift(u16 resident)
 
 /*
  * Returns 1 when resident has a meal visit waiting; never for resident 1
- * under condition 0x1A, nor while the house's tour is pending.
+ * under condition 26, nor while the house's tour is pending.
  */
 s32 Village_HasMealVisit(u16 resident)
 {
@@ -386,7 +379,7 @@ s32 Village_HasMealVisit(u16 resident)
     s32 i;
     u16 id;
 
-    if (Cond_Check(0x1A) == 1 && resident == 1) {
+    if (Cond_Check(26) == 1 && resident == 1) {
         return 0;
     }
     if (Village_HouseTourPending() == 1) {
@@ -409,7 +402,6 @@ extern NpcGiftItem *gNpcGiftsByKind[];
 extern NpcGiftItem gNpcMilestoneGifts[];
 extern u8 gMenuInputLock;
 extern u16 gLobbyEnterRand;
-s32 Offer_GetNpcIndex(u16 id);
 /*
  * Opens resident npc's gift (TOWN_MODE_NPC_GIFT): copies the gift from its
  * table (its offer kind's, or the milestone gifts), notes the record, turns
@@ -472,12 +464,6 @@ void NpcGift_Close(void)
     CamFocus_End();
 }
 
-u16 LobbyPad_Get(s32 a);
-s32 Talk_Update(void);
-s32 SavePouch_Space(u16 item);
-u8 SavePouch_Add(u16 item, s16 n);
-u8 Notice_Push(u8, s16, s16);
-void Menu_PushNotice(s32 msg);
 /* Runs the gift each frame: waits for the resident's words to end, then
  * puts the item in the pouch, shows the received-item notice and clears
  * the resident's record; with no room in the pouch it shows the pouch-full

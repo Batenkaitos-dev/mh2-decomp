@@ -1,6 +1,6 @@
 /*
  * The Apceros family (EM_KIND_APCEROS; the per-kind hooks send the Popo,
- * EM_KIND_POPO, and kind 0x0C to the same functions): herbivores that graze
+ * EM_KIND_POPO, and kind 12 to the same functions): herbivores that graze
  * near their spawn point, watch hunters, and charge them when the herd is
  * hurt (EmApceros_CheckHerdHurt). The file runs from the family's sound
  * helper (EmApceros_PlaySeOnFrame, which picks the small kinds' sounds) to
@@ -21,117 +21,42 @@
 #include "scene.h"
 #include "quest.h"
 #include "em.h"
+#include "shadow.h"
 #include "em_apceros.h"
 #include "player.h"
 #include "area.h"
+#include "capsule.h"
+#include "card.h"
+#include "save.h"
+#include "cam_shake.h"
+#include "dust_flash_effects.h"
+#include "engine_math.h"
+#include "gm_em.h"
+#include "part_effects.h"
+#include "rand.h"
+#include "hit_spark.h"
+#include "vec_math.h"
+#include "msg_event.h"
+#include "em_script.h"
+#include "sound.h"
 /* prototypes */
-void EmApceros_ChangeState(Em *em, u16 group, u16 state, u8 mode);
-void Em_BeginStatus2(Em *em);
-void Em_EndStatus2(Em *em);
-void Em_EndStatus4(Em *em);
-void Em_EndStatus5(Em *em);
-void Em_SetMotion(Em *em, s32 motion, s32 a, s32 b);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, s32 group, s32 state, u8 mode), the calls in EmApceros_ChangeState compile differently */
 void Em_SetStateSync(Em *em, u16 group, u16 state, u8 mode);
-u16 Math_AngleXZ(f32 *from, f32 *to);
-void QuestEm_Hunted(Em *em);
-void QuestEm_Leave(Em *em);
-u16 Rand_Next(s32 stream);
-s32 Save_TestEventFlag(s32);
-s32 MsgEvent_Check(u16 kind);
 /* unit's own declaration: declared here as the callers use it; with the definition's void (Em *em, u8 a, u8 prio), the calls in EmApceros_SetRequest compile differently */
 void Em_SetRequest(Em *em, s32 a, s32 prio);
-void Em_SpawnStatus4Effect(Em *em, s32 a);
-void Em_SetHitReactMode(Em *em, u8 a);
 void Em_SpawnLyingPuffs(Em *em, s32 bone, f32 *pos, f32 scale);
-void Em_StartTurnToTarget(Em *em, EmTurnParams *t);
-s32 Em_TurnStep(Em *em, EmTurnParams *t);
-void Em_RestartScript(Em *em);
-void EmApceros_Init(Em *em);
-void EmApceros_EndState(Em *);
-void EmApceros_IdleCircleHome(Em *);
-void EmApceros_Status2Collapse(Em *);
-void EmApceros_WanderHome(Em *);
-void EmApceros_WatchHunter(Em *);
-void EmApceros_WalkTurnA(Em *);
-void EmApceros_WalkTurnB(Em *);
-void EmApceros_TurnToGoal(Em *);
-void EmApceros_RunToGoal(Em *);
-void EmApceros_WalkToGoal(Em *);
-void EmApceros_FlinchA(Em *);
-void EmApceros_FlinchB(Em *);
-void EmApceros_KnockDown(Em *, s32);
-void EmApceros_FlinchRandom(Em *);
-void EmApceros_Status4(Em *);
-void EmApceros_Die(Em *, s32);
-void EmApceros_SpawnEffect02AtBone2(Em *em, f32 scale, s32 arg2);
-void EmApceros_EventFall(Em *);
-void EmApceros_EventIntroPrey(Em *);
-void EmApceros_EventReshow(Em *em);
-void EmApceros_MotionEffects(Em *, EmWork *);
-void DustCloud_Create(Em *em, s16 k, s16 c, f32 scale);
-s32 Em_PlaySeChecked(Em *em, s32 id, s32 a, void *pos, s32 b, s32 c);
 s32 EmMotion_PassedFrameScaled(void *p, f32 frame, s32 layer);
-s32 EmMotion_ReachedFrame(void *obj, s32 a, f32 frame);
-s32 EmMotion_InFrameRange(void *em, s32 layer, f32 from, f32 to);
-void Mtx_GetTrans(f32 *out, f32 *m);
-void CamShake_ReqAIf(Em *obj, s32 i);
-void Vec_Set(f32 *out, f32 x, f32 y, f32 z);
-void ObjListA70_Remove(EmObj *obj);
-s32 QuestEm_CanAppear(Em *em);
-u8 Player_InCurrentArea(void *obj);
-void Shadow_Spawn(void *obj, s16 type);
 extern EmTurnParams EmApceros_TurnParams[1];
-void GmEm_ResetSize(Em *em);
-s8 QuestEm_Appear(Em *em);
-void Em_BeginStatus4(Em *em);
-void Em_SetSpeedScaled(Em *em, u16 flags, f32 x, f32 y);
-void Vec_Copy(f32 *out, f32 *in);
-f32 *Mtx_FromAnglesXYZ(s32 *angles, f32 *m);
-u16 Math_Heading(f32 x1, f32 z1, f32 x2, f32 z2);
-void Em_SetMotionRow(Em *em, s32 row, s32 arg2, s32 arg3);
-s32 Em_ComputeMaxHp(Em *em, s16 idx);
-s8 EmMine_Create(Em *em, s32 idx);
-s32 EmMine_Update(Em *em);
-void EmMine_Remove(Em *em);
-void Vec_RotateY(f32 *v, f32 angle);
-s32 Quest_IsTraining(void);
-void Em_MotionDelta(Em *em, f32 *out);
-s8 Em_FindTargetPlayer(Em *em, u16 range, f32 maxDist, f32 maxHeight);
-s32 Obj_SameArea(void *obj, Player *b);
-s32 Em_UpdateCombatTimer(Em *em);
-u8 Em_UpdateDamage(Em *em, u8 *out);
-void Em_SetStatus4Timer(Em *em);
-void Em_SetStatus2Timer(Em *em);
-void Em_UpdatePendingScript(Em *em);
-void Em_ClearHitReactMode(Em *em);
-u8 Em_SenseObjects(Em *em, EmObj *self);
-s32 ObjListA70_Add(EmObj *obj);
-u16 Area_DayId(u16 id);
-void EmApceros_RunState(Em *em);
-extern u8 gEmShowsOnMap[];
-s32 Em_InBlockArea1(Em *em);
-void Mtx_Copy(f32 *dst, f32 *src);
 EmBone *Em_Bone(void *obj, s16 bone);
-void Vec_RotateSelf(f32 *v, f32 *m);
-f32 Effect_Scale(void);
-f32 Math_Atan2(f32 y, f32 x);
-f32 Math_Sqrtf(f32 x);
-void HitSpark_SpawnAtScaled(u16 ax, u16 ay, s32 kind, f32 *pos, f32 scale);
 extern f32 EmApceros_ScalesType0C[];
 extern f32 EmApceros_ScalesType46[];
-void GmEm_ApplySize(Em *em);
-void VespoidAttack_Create(Em *, s8);
-void PartFx_SpawnOnGround(f32 *pos, s32 a, f32 scale);
-void Em_BonePos(void *obj, s16 bone, f32 *out);
-void PartFx_SpawnForEm(Em *em, s32 a, s32 b);
 /* end of prototypes */
 
 /*
  * Plays sound id at the given bone position when motion layer 0 passes the
- * frame (Em_PlaySeChecked); kind 0x0C at scaleX <= 0.5 and the Popo
- * (EM_KIND_POPO) at scaleX <= 0.8 play id + 0x20 instead (the small-size
- * sounds).
+ * frame (Em_PlaySeChecked); kind 12 at scaleX <= 0.5 and the Popo
+ * (EM_KIND_POPO) at scaleX <= 0.8 play id + APC_SE_SMALL_SIZE instead (the
+ * small-size sounds).
  */
 void EmApceros_PlaySeOnFrame(Em *em, s32 frame, s32 id, s32 bone)
 {
@@ -141,8 +66,8 @@ void EmApceros_PlaySeOnFrame(Em *em, s32 frame, s32 id, s32 bone)
     if (EmMotion_PassedFrameScaled(em, (f32) frame, 0U) != 0) {
         Mtx_GetTrans(pos, em->model->bones[bone].world);
         type = em->type;
-        if ((type == 0xC && em->scaleX <= 0.5f) || (type == EM_KIND_POPO && em->scaleX <= 0.8f)) {
-            Em_PlaySeChecked(em, id + 0x20, 0, pos, 4, 0);
+        if ((type == 12 && em->scaleX <= 0.5f) || (type == EM_KIND_POPO && em->scaleX <= 0.8f)) {
+            Em_PlaySeChecked(em, id + APC_SE_SMALL_SIZE, 0, pos, 4, 0);
             return;
         }
         Em_PlaySeChecked(em, id, 0, pos, 4, 0);
@@ -160,196 +85,196 @@ void EmApceros_MotionSounds(Em *em, EmWork *work)
     motion = work->fxMotion;
     switch (motion) {
     case EM_MOTION_ID(0, APC_MOT_STAND):
-        EmApceros_PlaySeOnFrame(em, 0x100, 9, 0x10);
+        EmApceros_PlaySeOnFrame(em, 256, 9, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_REAR_UP):
-        EmApceros_PlaySeOnFrame(em, 0x20, 0xA, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x86, 0xB, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0xA0, 8, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x26, 0x14, 0);
-        EmApceros_PlaySeOnFrame(em, 0x52, 5, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0xCE, 4, 0x14);
+        EmApceros_PlaySeOnFrame(em, 32, 10, 16);
+        EmApceros_PlaySeOnFrame(em, 134, 11, 16);
+        EmApceros_PlaySeOnFrame(em, 160, 8, 16);
+        EmApceros_PlaySeOnFrame(em, 38, 20, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 82, 5, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 206, 4, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_IDLE_LOOP_B):
-        EmApceros_PlaySeOnFrame(em, 0x60, 0xB, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0xCC, 0xB, 0x10);
+        EmApceros_PlaySeOnFrame(em, 96, 11, 16);
+        EmApceros_PlaySeOnFrame(em, 204, 11, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_IDLE_ACTION_A):
-        EmApceros_PlaySeOnFrame(em, 0x46, 7, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x6A, 8, 0x10);
+        EmApceros_PlaySeOnFrame(em, 70, 7, 16);
+        EmApceros_PlaySeOnFrame(em, 106, 8, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_IDLE_ACTION_B):
-        EmApceros_PlaySeOnFrame(em, 0x20, 8, 0x10);
+        EmApceros_PlaySeOnFrame(em, 32, 8, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_STOMP):
-        EmApceros_PlaySeOnFrame(em, 0x2C, 7, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x28, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x26, 2, 0xA);
+        EmApceros_PlaySeOnFrame(em, 44, 7, 16);
+        EmApceros_PlaySeOnFrame(em, 40, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 38, 2, APC_BONE_FOOT_A2);
         break;
     case EM_MOTION_ID(0, APC_MOT_WALK):
-        EmApceros_PlaySeOnFrame(em, 0x20, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x6A, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0xBA, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x2E, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x84, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0xD0, 4, 0x14);
+        EmApceros_PlaySeOnFrame(em, 32, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 106, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 186, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 46, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 132, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 208, 4, APC_BONE_FOOT_B1);
         break;
-    case EM_MOTION_ID(0, 0xC):
-        EmApceros_PlaySeOnFrame(em, 0x26, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x30, 3, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0xC, 6, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x12, 6, 0x14);
+    case EM_MOTION_ID(0, 12):
+        EmApceros_PlaySeOnFrame(em, 38, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 48, 3, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 12, 6, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 18, 6, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_RUN):
-        EmApceros_PlaySeOnFrame(em, 0x14, 3, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x4E, 3, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x34, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x1A, 6, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x3A, 6, 0x17);
+        EmApceros_PlaySeOnFrame(em, 20, 3, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 78, 3, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 52, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 26, 6, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 58, 6, APC_BONE_FOOT_B2);
         break;
     case EM_MOTION_ID(0, APC_MOT_TURN_A):
-        EmApceros_PlaySeOnFrame(em, 0x40, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x60, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x8A, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0xAE, 4, 0x14);
+        EmApceros_PlaySeOnFrame(em, 64, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 96, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 138, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 174, 4, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_TURN_B):
-        EmApceros_PlaySeOnFrame(em, 0x40, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x60, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x8A, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0xAE, 4, 0x17);
+        EmApceros_PlaySeOnFrame(em, 64, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 96, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 138, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 174, 4, APC_BONE_FOOT_B2);
         break;
     case EM_MOTION_ID(0, APC_MOT_ALERT):
-        EmApceros_PlaySeOnFrame(em, 0x46, 7, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x46, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x20, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x36, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0x18, 2, 0xA);
+        EmApceros_PlaySeOnFrame(em, 70, 7, 16);
+        EmApceros_PlaySeOnFrame(em, 70, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 32, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 54, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 24, 2, APC_BONE_FOOT_A2);
         break;
     case EM_MOTION_ID(0, APC_MOT_ATTACK_REAR):
-        EmApceros_PlaySeOnFrame(em, 4, 0xE, 0);
-        EmApceros_PlaySeOnFrame(em, 0x2E, 0x14, 0x1B);
-        EmApceros_PlaySeOnFrame(em, 0x3C, 7, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x34, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x7A, 1, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0xA6, 5, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0xD2, 2, 0xA);
+        EmApceros_PlaySeOnFrame(em, 4, 14, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 46, 20, APC_BONE_TAIL_C);
+        EmApceros_PlaySeOnFrame(em, 60, 7, 16);
+        EmApceros_PlaySeOnFrame(em, 52, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 122, 1, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 166, 5, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 210, 2, APC_BONE_FOOT_A2);
         break;
     case EM_MOTION_ID(0, APC_MOT_WATCH):
-        EmApceros_PlaySeOnFrame(em, 0x46, 0x13, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0xE6, 0x13, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0xCE, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x144, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x38, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0xA2, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x4C, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0x7A, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0xFC, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0x128, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0x62, 2, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x90, 2, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0xE6, 2, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x118, 2, 0xA);
+        EmApceros_PlaySeOnFrame(em, 70, 19, 16);
+        EmApceros_PlaySeOnFrame(em, 230, 19, 16);
+        EmApceros_PlaySeOnFrame(em, 206, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 324, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 56, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 162, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 76, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 122, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 252, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 296, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 98, 2, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 144, 2, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 230, 2, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 280, 2, APC_BONE_FOOT_A2);
         break;
     case EM_MOTION_ID(0, APC_MOT_WATCH_TURN_A):
     case EM_MOTION_ID(0, APC_MOT_WATCH_TURN_B):
-        EmApceros_PlaySeOnFrame(em, 0x2C, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x70, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x1C, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x5C, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x3A, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0x7C, 2, 6);
-        EmApceros_PlaySeOnFrame(em, 0x26, 2, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x4A, 2, 0xA);
+        EmApceros_PlaySeOnFrame(em, 44, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 112, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 28, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 92, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 58, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 124, 2, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 38, 2, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 74, 2, APC_BONE_FOOT_A2);
         break;
     case EM_MOTION_ID(0, APC_MOT_ALERT_END):
-        EmApceros_PlaySeOnFrame(em, 0x2A, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x38, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x5A, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x6A, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x5A, 0xA, 0x10);
+        EmApceros_PlaySeOnFrame(em, 42, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 56, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 90, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 106, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 90, 10, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_ATTACK_B):
-        EmApceros_PlaySeOnFrame(em, 0x1A, 0xE, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x1A, 0x14, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x14, 0x13, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x14, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x18, 6, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x32, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x44, 4, 0x14);
+        EmApceros_PlaySeOnFrame(em, 26, 14, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 26, 20, 16);
+        EmApceros_PlaySeOnFrame(em, 20, 19, 16);
+        EmApceros_PlaySeOnFrame(em, 20, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 24, 6, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 50, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 68, 4, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_SPIN_ATTACK):
-        EmApceros_PlaySeOnFrame(em, 0x14, 7, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x5C, 7, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x1E, 0x14, 0x1B);
-        EmApceros_PlaySeOnFrame(em, 0x5C, 0x14, 0x1B);
-        EmApceros_PlaySeOnFrame(em, 0xA, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x50, 4, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x1E, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x5E, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x2C, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x74, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x18, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x42, 1, 6);
+        EmApceros_PlaySeOnFrame(em, 20, 7, 16);
+        EmApceros_PlaySeOnFrame(em, 92, 7, 16);
+        EmApceros_PlaySeOnFrame(em, 30, 20, APC_BONE_TAIL_C);
+        EmApceros_PlaySeOnFrame(em, 92, 20, APC_BONE_TAIL_C);
+        EmApceros_PlaySeOnFrame(em, 10, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 80, 4, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 30, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 94, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 44, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 116, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 24, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 66, 1, APC_BONE_FOOT_A1);
         break;
     case EM_MOTION_ID(0, APC_MOT_FLINCH_B):
-        EmApceros_PlaySeOnFrame(em, 4, 0x11, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x10, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x1A, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x68, 0xE, 0x1B);
-        EmApceros_PlaySeOnFrame(em, 0x6E, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x8C, 1, 0x17);
+        EmApceros_PlaySeOnFrame(em, 4, 17, 16);
+        EmApceros_PlaySeOnFrame(em, 16, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 26, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 104, 14, APC_BONE_TAIL_C);
+        EmApceros_PlaySeOnFrame(em, 110, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 140, 1, APC_BONE_FOOT_B2);
         break;
     case EM_MOTION_ID(0, APC_MOT_FLINCH_A):
-        EmApceros_PlaySeOnFrame(em, 4, 0x11, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x10, 1, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x1A, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x68, 0xE, 0x1B);
-        EmApceros_PlaySeOnFrame(em, 0x6E, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x8C, 1, 0x14);
+        EmApceros_PlaySeOnFrame(em, 4, 17, 16);
+        EmApceros_PlaySeOnFrame(em, 16, 1, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 26, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 104, 14, APC_BONE_TAIL_C);
+        EmApceros_PlaySeOnFrame(em, 110, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 140, 1, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_FALL):
-        EmApceros_PlaySeOnFrame(em, 4, 0x11, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x1C, 0x12, 0);
-        EmApceros_PlaySeOnFrame(em, 0x22, 0xF, 0);
-        EmApceros_PlaySeOnFrame(em, 0x44, 3, 0xA);
-        EmApceros_PlaySeOnFrame(em, 0x50, 4, 0x17);
+        EmApceros_PlaySeOnFrame(em, 4, 17, 16);
+        EmApceros_PlaySeOnFrame(em, 28, APC_SE_FALL, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 34, 15, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 68, 3, APC_BONE_FOOT_A2);
+        EmApceros_PlaySeOnFrame(em, 80, 4, APC_BONE_FOOT_B2);
         break;
     case EM_MOTION_ID(0, APC_MOT_LIE):
-        EmApceros_PlaySeOnFrame(em, 0x14, 0x10, 0x10);
-        EmApceros_PlaySeOnFrame(em, 4, 0x16, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x64, 0x15, 0);
-        EmApceros_PlaySeOnFrame(em, 0xC2, 0x15, 0);
-        EmApceros_PlaySeOnFrame(em, 0x32, 0xE, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x96, 0xE, 0x14);
+        EmApceros_PlaySeOnFrame(em, 20, 16, 16);
+        EmApceros_PlaySeOnFrame(em, 4, 22, 16);
+        EmApceros_PlaySeOnFrame(em, 100, 21, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 194, 21, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 50, 14, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 150, 14, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_DIE):
-        EmApceros_PlaySeOnFrame(em, 6, 8, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x42, 8, 0x10);
+        EmApceros_PlaySeOnFrame(em, 6, 8, 16);
+        EmApceros_PlaySeOnFrame(em, 66, 8, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_GET_UP):
-        EmApceros_PlaySeOnFrame(em, 0xA, 0xE, 6);
-        EmApceros_PlaySeOnFrame(em, 0x14, 0xA, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0x30, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x4E, 5, 0x14);
-        EmApceros_PlaySeOnFrame(em, 0x64, 4, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x82, 1, 6);
+        EmApceros_PlaySeOnFrame(em, 10, 14, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 20, 10, 16);
+        EmApceros_PlaySeOnFrame(em, 48, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 78, 5, APC_BONE_FOOT_B1);
+        EmApceros_PlaySeOnFrame(em, 100, 4, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 130, 1, APC_BONE_FOOT_A1);
         break;
     case EM_MOTION_ID(0, APC_MOT_FALL_B):
-        EmApceros_PlaySeOnFrame(em, 0x1A, 1, 6);
-        EmApceros_PlaySeOnFrame(em, 0x1A, 0xE, 6);
-        EmApceros_PlaySeOnFrame(em, 0x18, 0xE, 0x17);
-        EmApceros_PlaySeOnFrame(em, 0x54, 0x12, 0);
-        EmApceros_PlaySeOnFrame(em, 0x60, 0xF, 0);
-        EmApceros_PlaySeOnFrame(em, 0x7E, 3, 6);
-        EmApceros_PlaySeOnFrame(em, 0x8C, 4, 0x14);
+        EmApceros_PlaySeOnFrame(em, 26, 1, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 26, 14, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 24, 14, APC_BONE_FOOT_B2);
+        EmApceros_PlaySeOnFrame(em, 84, APC_SE_FALL, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 96, 15, APC_BONE_ROOT);
+        EmApceros_PlaySeOnFrame(em, 126, 3, APC_BONE_FOOT_A1);
+        EmApceros_PlaySeOnFrame(em, 140, 4, APC_BONE_FOOT_B1);
         break;
     case EM_MOTION_ID(0, APC_MOT_STATUS2_LIE):
-        EmApceros_PlaySeOnFrame(em, 2, 9, 0x10);
-        EmApceros_PlaySeOnFrame(em, 0xB4, 9, 0x10);
+        EmApceros_PlaySeOnFrame(em, 2, 9, 16);
+        EmApceros_PlaySeOnFrame(em, 180, 9, 16);
         break;
     case EM_MOTION_ID(0, APC_MOT_STATUS4):
-        EmApceros_PlaySeOnFrame(em, 6, 0x10, 0x10);
+        EmApceros_PlaySeOnFrame(em, 6, 16, 16);
         break;
     }
 }
@@ -374,7 +299,7 @@ void EmApceros_Init(Em *em)
     }
     Em_SetMotionRow(em, APC_MOT_STAND, 0, 0);
     em->stance = EM_STANCE_GROUND;
-    if (em->type == 0xC) {
+    if (em->type == 12) {
         if (em->variant == 0 || em->variant == 5) {
             hp = Em_ComputeMaxHp(em, 1);
             em->hp = hp;
@@ -497,7 +422,7 @@ void EmApceros_EndState(Em *em)
 }
 
 /*
- * Em_SetRequest with priority 0x90, except that request 2 (the hurt/alarm
+ * Em_SetRequest with priority 144, except that request 2 (the hurt/alarm
  * request) is dropped while alarmed is set.
  */
 void EmApceros_SetRequest(Em *em, s32 request)
@@ -510,7 +435,7 @@ void EmApceros_SetRequest(Em *em, s32 request)
             return;
         }
     }
-    Em_SetRequest(em, request, 0x90);
+    Em_SetRequest(em, request, 144);
 }
 
 /*
@@ -527,7 +452,7 @@ void EmApceros_CheckHerdHurt(Em *em)
     if (em->type == EM_KIND_POPO && em->variant != 2) {
         for (i = 0, other = gEms; i < 20; i++, other++) {
             if (em != other && other->active && other->visible && (u8) Obj_SameArea(em, (Player *) other)) {
-                if (other->type == 0x46 && other->variant == 2 && (other->stateGroup == EM_GROUP_REACT || other->stateGroup == EM_GROUP_DEFEAT)) {
+                if (other->type == EM_KIND_POPO && other->variant == 2 && (other->stateGroup == EM_GROUP_REACT || other->stateGroup == EM_GROUP_DEFEAT)) {
                     w->alarmed = 1;
                     return;
                 }
@@ -564,7 +489,7 @@ void EmApceros_IdleStand(Em *em)
 
 /*
  * APC_IDLE_CIRCLE_HOME: walks (APC_MOT_WALK) for 120 to 210 frames turning
- * 0x40 a frame, the side chosen from the heading to home (read through the
+ * 64 a frame, the side chosen from the heading to home (read through the
  * work at +0x10), so it circles near home; then EndState.
  */
 void EmApceros_IdleCircleHome(Em *em)
@@ -592,9 +517,9 @@ void EmApceros_IdleCircleHome(Em *em)
                 EmApceros_EndState(em);
             } else {
                 if (em->stateVar1) {
-                    turnStep = 0x40;
+                    turnStep = 64;
                 } else {
-                    turnStep = -0x40;
+                    turnStep = -64;
                 }
                 em->rotY += turnStep;
                 em->rotY = (u16) em->rotY;
@@ -614,7 +539,7 @@ void EmApceros_IdleLoopA(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = ((em->stateRand & 7) * 0x1E) + 0x168;
+        em->timer = ((em->stateRand & 7) * 30) + 360;
         if (em->motionId[0] != EM_MOTION_ID(0, APC_MOT_IDLE_LOOP_A)) {
             Em_SetMotion(em, APC_MOT_IDLE_LOOP_A, 0, 0);
         }
@@ -629,7 +554,7 @@ void EmApceros_IdleLoopA(Em *em)
 
 /*
  * APC_IDLE_STOMP: APC_MOT_REAR_UP then APC_MOT_STOMP (ground effect, camera
- * shake and attack 0xD in MotionEffects), then EndState.
+ * shake and attack 13 in MotionEffects), then EndState.
  */
 void EmApceros_IdleStomp(Em *em)
 {
@@ -665,7 +590,7 @@ void EmApceros_IdleLoopB(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = ((em->stateRand & 3) * 0x1E) + 0xB4;
+        em->timer = ((em->stateRand & 3) * 30) + 180;
         Em_SetMotion(em, APC_MOT_IDLE_LOOP_B, 0, 0);
         break;
     case 1:
@@ -812,19 +737,19 @@ void EmApceros_IdleAlertEnd(Em *em)
 
 /*
  * APC_IDLE_LEAVE: runs (APC_MOT_RUN) unhittable while fading out over 100
- * frames, then takes its sense object off the sensed-objects list, leaves the quest
- * (QuestEm_Leave), hides and advances taskPhase.
+ * frames, then takes its sense object off the sensed-objects list, leaves the
+ * quest (QuestEm_Leave), hides and advances taskPhase.
  */
 void EmApceros_RunOffAndLeave(Em *em)
 {
     EmApcerosWork *w = (EmApcerosWork *)&em->work;
 
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->step) {
     case 0:
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         if (em->motionId[0] != EM_MOTION_ID(0, APC_MOT_RUN)) {
             Em_SetMotion(em, APC_MOT_RUN, 0, 0);
         }
@@ -834,7 +759,7 @@ void EmApceros_RunOffAndLeave(Em *em)
         em->alpha = (f32) em->timer / 100.0f;
         if (em->timer <= 0) {
             if (w->objListed == 1) {
-                ObjListA70_Remove(&w->sense);
+                EmSenseObjs_Remove(&w->sense);
                 w->objListed = 0U;
             }
             QuestEm_Leave(em);
@@ -952,9 +877,9 @@ void EmApceros_WanderHome(Em *em)
                 EmApceros_EndState(em);
             } else {
                 if (em->stateVar1) {
-                    turnStep = 0x40;
+                    turnStep = 64;
                 } else {
-                    turnStep = -0x40;
+                    turnStep = -64;
                 }
                 em->rotY += turnStep;
                 em->rotY = (u16) em->rotY;
@@ -968,7 +893,7 @@ void EmApceros_WanderHome(Em *em)
 /*
  * APC_MOVE_WATCH_HUNTER: raises its head (APC_MOT_ALERT) and watches the
  * nearest hunter (Em_FindTargetPlayer): turns its back toward a hunter in
- * front (APC_MOT_WATCH_TURN_A or _B, or 0x42 a frame while watching),
+ * front (APC_MOT_WATCH_TURN_A or _B, or 66 a frame while watching),
  * attacks one standing behind it (APC_ATK_REAR), and ends with
  * APC_MOT_ALERT_END when none is left in range.
  */
@@ -988,9 +913,9 @@ void EmApceros_WatchHunter(Em *em)
         break;
     case 1:
         if (em->motion[0].playing == 0) {
-            if (Em_FindTargetPlayer(em, 0x78E4, 700.0f, 300.0f) != -1) {
+            if (Em_FindTargetPlayer(em, 30948, 700.0f, 300.0f) != -1) {
                 targetSide = (em->targetAngle - em->rotY) & 0xFFFF;
-                if (targetSide <= 0x2FFF) {
+                if (targetSide <= 12287) {
                     em->step = 4;
                     Em_SetMotion(em, APC_MOT_WATCH_TURN_B, 0, 0);
                     em->stateVar1 = 0;
@@ -1000,7 +925,7 @@ void EmApceros_WatchHunter(Em *em)
                     Em_SetMotion(em, APC_MOT_WATCH_TURN_A, 0, 0);
                     em->stateVar1 = 1;
                     w->turnOn = 0;
-                } else if (targetSide > 0x5400 && targetSide < 0xA600) {
+                } else if (targetSide > 21504 && targetSide < 0xA600) {
                     EmApceros_ChangeState(em, EM_GROUP_ATTACK, APC_ATK_REAR, EM_SYNC_OWNER_FLAGGED);
                 } else {
                     em->step++;
@@ -1018,9 +943,9 @@ void EmApceros_WatchHunter(Em *em)
         }
         break;
     case 3:
-        if (Em_FindTargetPlayer(em, 0x8000, 500.0f, 200.0f) != -1) {
+        if (Em_FindTargetPlayer(em, 32768, 500.0f, 200.0f) != -1) {
             targetSide2 = (em->targetAngle - em->rotY) & 0xFFFF;
-            if (targetSide2 > 0x5400 && targetSide2 < 0xA600) {
+            if (targetSide2 > 21504 && targetSide2 < 0xA600) {
                 EmApceros_ChangeState(em, EM_GROUP_ATTACK, APC_ATK_REAR, EM_SYNC_OWNER_FLAGGED);
                 break;
             }
@@ -1033,7 +958,7 @@ void EmApceros_WatchHunter(Em *em)
                         em->stateVar1 = 0;
                         w->turnOn = 0;
                     }
-                    em->rotY -= 0x42;
+                    em->rotY -= 66;
                 } else {
                     if (em->timer <= 0) {
                         em->step++;
@@ -1041,7 +966,7 @@ void EmApceros_WatchHunter(Em *em)
                         em->stateVar1 = 1;
                         w->turnOn = 0;
                     }
-                    em->rotY += 0x42;
+                    em->rotY += 66;
                 }
             }
         } else {
@@ -1205,8 +1130,8 @@ void EmApceros_RunToGoal(Em *em)
 }
 
 /*
- * APC_MOVE_WATCH_TURN_BACK: plays APC_MOT_WATCH turning so its back faces
- * the goal (aimAngle = angle to the goal + 0x8000, spread over frames 14 to
+ * APC_MOVE_WATCH_TURN_BACK: plays APC_MOT_WATCH turning so its back faces the
+ * goal (aimAngle = angle to the goal + half a turn, spread over frames 14 to
  * 332), then EndState (to APC_IDLE_WATCH).
  */
 void EmApceros_WatchTurnBack(Em *em)
@@ -1247,7 +1172,7 @@ void EmApceros_TurnBackOnGoal(Em *em)
     case 0:
         em->step++;
         em->aimAngle = ((Math_AngleXZ(&em->posX, em->goal) & 0xFFFF) - em->rotY) + 0x7FFF + 1;
-        if ((s32) em->aimAngle < 0x8000) {
+        if ((s32) em->aimAngle < (ANGLE_TURN / 2)) {
             Em_SetMotion(em, APC_MOT_WATCH_TURN_A, 0, 0);
             break;
         }
@@ -1322,7 +1247,7 @@ void EmApceros_TurnToTarget(Em *em)
     switch (em->step) {
     case 0:
         em->step++;
-        em->speedBonus = 0x32;
+        em->speedBonus = 50;
         Em_StartTurnToTarget(em, &EmApceros_TurnParams[0]);
         break;
     case 1:
@@ -1376,7 +1301,7 @@ void EmApceros_RunMoveState(Em *em)
 }
 
 /*
- * APC_ATK_REAR: APC_MOT_ATTACK_REAR (attack 9; kind 0x0C and Popo attack 1;
+ * APC_ATK_REAR: APC_MOT_ATTACK_REAR (attack 9; kind 12 and Popo attack 1;
  * at frame 30), then EndState; entered from APC_MOVE_WATCH_HUNTER when the
  * hunter is behind.
  */
@@ -1510,7 +1435,7 @@ void EmApceros_RunAttackState(Em *em)
 
 /*
  * APC_REACT_RESET_HP: restarts the script, plays APC_MOT_REACT_RESET, then
- * APC_IDLE_STAND and sets hp to 0x40; nothing in this file enters it.
+ * APC_IDLE_STAND and sets hp to 64; nothing in this file enters it.
  */
 void EmApceros_ReactResetHp(Em *em)
 {
@@ -1525,7 +1450,7 @@ void EmApceros_ReactResetHp(Em *em)
     case 1:
         if (em->motion[0].playing == 0) {
             EmApceros_ChangeState(em, EM_GROUP_IDLE, APC_IDLE_STAND, EM_SYNC_LOCAL);
-            em->hp = 0x40;
+            em->hp = 64;
             break;
         }
         EmMotion_PassedFrameScaled(em, 2.0f, 0U);
@@ -1755,10 +1680,10 @@ void EmApceros_Status4(Em *em)
         break;
     case 2:
         Em_SetHitReactMode(em, EM_HIT_REACT_STATUS);
-        Em_SpawnStatus4Effect(em, 2);
+        Em_SpawnStatus4Effect(em, APC_BONE_BODY);
         if (--em->timer <= 0) {
             em->step++;
-            Em_SetMotion(em, APC_MOT_FLINCH_B, 6, 0x1E);
+            Em_SetMotion(em, APC_MOT_FLINCH_B, 6, 30);
             Em_EndStatus4(em);
         }
         break;
@@ -1819,7 +1744,7 @@ void EmApceros_RunReactState(Em *em)
  * lie or death motion already playing from the event states), lies 40
  * frames, dies (APC_MOT_DIE), freezes the motion at frame 50 and leaves a
  * carcass to carve (EmMine_Create, type 1 in training quests) for 2400
- * frames (kind 0x0C, Popo) or 1800 (Apceros), fades out over 110 frames and
+ * frames (kind 12, Popo) or 1800 (Apceros), fades out over 110 frames and
  * goes to APC_DEFEAT_WAIT_REAPPEAR.
  */
 void EmApceros_Die(Em *em, s32 fallKind)
@@ -1831,17 +1756,17 @@ void EmApceros_Die(Em *em, s32 fallKind)
     switch (em->step) {
     case 0:
         QuestEm_Hunted(em);
-        MsgEvent_Check(0xC);
+        MsgEvent_Check(12);
         switch (em->motionId[0]) {
-        case 0x427:
-        case 0x42B:
+        case EM_MOTION_ID(0, APC_MOT_FALL):
+        case EM_MOTION_ID(0, APC_MOT_FALL_B):
             em->step = 2;
             break;
-        case 0x428:
+        case EM_MOTION_ID(0, APC_MOT_LIE):
             em->timer = 40;
             em->step = 3;
             break;
-        case 0x429:
+        case EM_MOTION_ID(0, APC_MOT_DIE):
             em->timer = 30;
             em->step = 4;
             break;
@@ -1906,7 +1831,7 @@ void EmApceros_Die(Em *em, s32 fallKind)
         if (EmMotion_ReachedFrame(em, 0, 50.0f) != 0) {
             em->step++;
             *(s32 *) &em->motionSpeed = 0;
-            if (em->type == 0xC || em->type == EM_KIND_POPO) {
+            if (em->type == 12 || em->type == EM_KIND_POPO) {
                 em->timer = 2400;
             } else {
                 em->timer = 1800;
@@ -1935,7 +1860,7 @@ void EmApceros_Die(Em *em, s32 fallKind)
         }
         if (em->timer <= 0) {
             if (w->objListed == 1) {
-                ObjListA70_Remove(&w->sense);
+                EmSenseObjs_Remove(&w->sense);
                 w->objListed = 0;
             }
             em->visible = 0;
@@ -1954,14 +1879,14 @@ void EmApceros_DieFading(Em *em)
 {
     EmApcerosWork *w = (EmApcerosWork *)&em->work;
 
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->step) {
     case 0:
         QuestEm_Hunted(em);
-        MsgEvent_Check(0xC);
+        MsgEvent_Check(12);
         em->step++;
-        em->timer = 0x64;
+        em->timer = 100;
         if (em->motionId[0] != EM_MOTION_ID(0, APC_MOT_WALK)) {
             Em_SetMotion(em, APC_MOT_WALK, 0, 0);
         }
@@ -1971,7 +1896,7 @@ void EmApceros_DieFading(Em *em)
         em->alpha = (f32) em->timer / 100.0f;
         if (em->timer <= 0) {
             if (w->objListed == 1) {
-                ObjListA70_Remove(&w->sense);
+                EmSenseObjs_Remove(&w->sense);
                 w->objListed = 0U;
             }
             em->visible = 0;
@@ -2005,8 +1930,8 @@ void EmApceros_WaitReappear(Em *em)
  */
 void EmApceros_RunDefeatState(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     switch (em->state) {
     case APC_DEFEAT_DIE_A:
         EmApceros_Die(em, 0);
@@ -2024,12 +1949,13 @@ void EmApceros_RunDefeatState(Em *em)
 }
 
 /*
- * Spawns Effect02 kind 3 near bone 2 (55 units back along X, spread at
- * random in Y and Z by scale), aimed along the (-1, -0.2, 0) direction of
- * the bone; the third argument is unused. Called every 4 frames by the
+ * Spawns a hit spark of type 3 (HitSpark_SpawnAtScaled) near APC_BONE_BODY
+ * (55 units back along X, spread at random in Y and Z by scale), aimed
+ * along the (-1, -0.2, 0) direction of the bone; the third argument is
+ * unused. Called every 4 frames by the
  * event fall, lie and death states.
  */
-void EmApceros_SpawnEffect02AtBone2(Em *em, f32 scale, s32 unused)
+void EmApceros_SpawnHitSparkAtBody(Em *em, f32 scale, s32 unused)
 {
     f32 mtx[16];
     f32 offset[3];
@@ -2038,9 +1964,9 @@ void EmApceros_SpawnEffect02AtBone2(Em *em, f32 scale, s32 unused)
     u16 yaw;
 
     offset[0] = -55.0f * em->scaleX;
-    offset[1] = em->scaleY * (scale * (f32) ((Rand_Next(1) & 0x3F) - 0x20));
-    offset[2] = em->scaleZ * (scale * (f32) ((Rand_Next(1) & 0x7F) - 0x20));
-    Mtx_Copy(mtx, (f32 *)Em_Bone(em, 2));
+    offset[1] = em->scaleY * (scale * (f32) ((Rand_Next(1) & 0x3F) - 32));
+    offset[2] = em->scaleZ * (scale * (f32) ((Rand_Next(1) & 0x7F) - 32));
+    Mtx_Copy(mtx, (f32 *)Em_Bone(em, APC_BONE_BODY));
     Vec_RotateSelf(offset, mtx);
     pos[0] = mtx[12] + offset[0];
     pos[1] = mtx[13] + offset[1];
@@ -2076,7 +2002,7 @@ void EmApceros_EventFlinch(Em *em)
 }
 
 /*
- * APC_EVENT_FALL: Effect02 at bone 2 every 4 frames, falls over
+ * APC_EVENT_FALL: hit sparks at APC_BONE_BODY every 4 frames, falls over
  * (APC_MOT_FALL) pushed sideways, then stays.
  */
 void EmApceros_EventFall(Em *em)
@@ -2084,7 +2010,7 @@ void EmApceros_EventFall(Em *em)
     f32 push[3];
 
     if (!(gScene.frame & 3)) {
-        EmApceros_SpawnEffect02AtBone2(em, 0.8f, 0);
+        EmApceros_SpawnHitSparkAtBody(em, 0.8f, 0);
     }
     em->noPushTimer = 5;
     switch (em->step) {
@@ -2114,7 +2040,7 @@ void EmApceros_EventFall(Em *em)
 }
 
 /*
- * APC_EVENT_LIE: Effect02 every 4 frames, lies (APC_MOT_LIE) until the
+ * APC_EVENT_LIE: hit sparks every 4 frames, lies (APC_MOT_LIE) until the
  * scene's predator, a Rathian or Rathalos of any colour, has left its event
  * states (stateGroup not EM_GROUP_EVENT), then APC_EVENT_DIE.
  */
@@ -2125,7 +2051,7 @@ void EmApceros_EventLie(Em *em)
 
     em->noPushTimer = 5;
     if (!(gScene.frame & 3)) {
-        EmApceros_SpawnEffect02AtBone2(em, 0.6f, 0);
+        EmApceros_SpawnHitSparkAtBody(em, 0.6f, 0);
     }
     switch (em->step) {
     case 0:
@@ -2149,9 +2075,9 @@ void EmApceros_EventLie(Em *em)
 }
 
 /*
- * APC_EVENT_DIE: plays APC_MOT_DIE with Effect02, the motion frozen while
- * the predator is out of its event states; once EVENT_FLAG_RATHALOS_SCENE is set, hp 0
- * and APC_DEFEAT_DIE_A.
+ * APC_EVENT_DIE: plays APC_MOT_DIE with hit sparks, the motion frozen while
+ * the predator is out of its event states; once EVENT_FLAG_RATHALOS_SCENE is
+ * set, hp 0 and APC_DEFEAT_DIE_A.
  */
 void EmApceros_EventDie(Em *em)
 {
@@ -2170,7 +2096,7 @@ void EmApceros_EventDie(Em *em)
         break;
     case 1:
         if (!(gScene.frame & 3)) {
-            EmApceros_SpawnEffect02AtBone2(em, 0.3f, 0);
+            EmApceros_SpawnHitSparkAtBody(em, 0.3f, 0);
         }
         /* the scene's Rathian or Rathalos: a pointer kept over Em.unk898 and demonMode, which no Em field types */
         predator = *(Em **)&em->unk898;
@@ -2191,8 +2117,9 @@ void EmApceros_EventDie(Em *em)
 }
 
 /*
- * APC_EVENT_INTRO_WAIT: stands (APC_MOT_STAND) until EVENT_FLAG_RATHALOS_SCENE is set
- * (the opening scene of the story quests seen), then EndState.
+ * APC_EVENT_INTRO_WAIT: stands (APC_MOT_STAND) until
+ * EVENT_FLAG_RATHALOS_SCENE is set (the opening scene of the story quests
+ * seen), then EndState.
  */
 void EmApceros_EventWaitIntro(Em *em)
 {
@@ -2211,10 +2138,11 @@ void EmApceros_EventWaitIntro(Em *em)
 }
 
 /*
- * APC_EVENT_INTRO_PREY: resets the size and stands (APC_MOT_STAND) at a
- * fixed spot and heading of Forest and Hills area 3 for the opening scene
- * (Update sends variant 0 here during the opening scene of quests QUEST_ID_RATHALOS_SCENE_1 and
- * 0x436, the scene of RATH_EVENT_INTRO); stays.
+ * APC_EVENT_INTRO_PREY: resets the size and stands (APC_MOT_STAND) at a fixed
+ * spot and heading of Forest and Hills area 3 for the opening scene (Update
+ * sends variant 0 here during the opening scene of quests
+ * QUEST_ID_RATHALOS_SCENE_1 and QUEST_ID_RATHALOS_SCENE_2, the scene of
+ * RATH_EVENT_INTRO); stays.
  */
 void EmApceros_EventIntroPrey(Em *em)
 {
@@ -2303,7 +2231,7 @@ void EmApceros_EnterRunning(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         Em_SetMotion(em, APC_MOT_RUN, 0, 0);
-        em->timer = 0x64;
+        em->timer = 100;
         break;
     case 1:
         em->alpha += 0.01f;
@@ -2329,7 +2257,7 @@ void EmApceros_EnterWalking(Em *em)
         em->step++;
         em->lookAtTarget = 0;
         Em_SetMotion(em, APC_MOT_WALK, 0, 0);
-        em->timer = 0x64;
+        em->timer = 100;
         break;
     case 1:
         em->alpha += 0.01f;
@@ -2352,8 +2280,8 @@ void EmApceros_EnterWalking(Em *em)
  */
 void EmApceros_RunEnterState(Em *em)
 {
-    em->noHitTimer = 0xA;
-    em->noPushTimer = 0xA;
+    em->noHitTimer = 10;
+    em->noPushTimer = 10;
     em->senseDelay = 5;
     switch (em->state) {
     case APC_ENTER_RUN:
@@ -2367,18 +2295,18 @@ void EmApceros_RunEnterState(Em *em)
 
 /*
  * Per frame: CheckHerdHurt; senses alarm objects (Em_SenseObjects:
- * EM_TRIGGER_SENSED, request 2) and takes its own sense object off the list
- * a frame after adding it; outside groups 6 and 7 makes request 1 when a
- * map-shown monster in the area is in combat (or calm while a kind 0x0C or
- * Popo variant 0 is in group 6); maps the Em_UpdateDamage results to states
- * (kill: APC_DEFEAT_DIE_A or _B by hit side; status 4: APC_REACT_STATUS4;
- * status 2: APC_IDLE_STATUS2_COLLAPSE; hit while lying:
- * APC_IDLE_STATUS2_END; part flinch or hit: flinch or knock-down); When
- * hurt it alarms itself (Popo herd members: alarmed; others: request 2) and
- * lists its sense object (radius 2000, kind 2) for the herd to sense;
- * request 3 in block area 1; the opening-scene check of quests QUEST_ID_RATHALOS_SCENE_1 and
- * 0x436, else Em_UpdatePendingScript; then runs the state (twice if
- * stateRequest).
+ * EM_TRIGGER_SENSED, request 2) and takes its own sense object off the list a
+ * frame after adding it; outside groups 6 and 7 makes request 1 when a
+ * map-shown monster in the area is in combat (or calm while a kind 12 or Popo
+ * variant 0 is in group 6); maps the Em_UpdateDamage results to states (kill:
+ * APC_DEFEAT_DIE_A or _B by hit side; status 4: APC_REACT_STATUS4; status 2:
+ * APC_IDLE_STATUS2_COLLAPSE; hit while lying: APC_IDLE_STATUS2_END; part
+ * flinch or hit: flinch or knock-down); When hurt it alarms itself (Popo herd
+ * members: alarmed; others: request 2) and lists its sense object (radius
+ * 2000, kind 2) for the herd to sense; request 3 in block area 1; the
+ * opening-scene check of quests QUEST_ID_RATHALOS_SCENE_1 and
+ * QUEST_ID_RATHALOS_SCENE_2, else Em_UpdatePendingScript; then runs the state
+ * (twice if stateRequest).
  */
 void EmApceros_Update(Em *em)
 {
@@ -2403,7 +2331,7 @@ void EmApceros_Update(Em *em)
         }
     }
     if (w->objListed == 1) {
-        ObjListA70_Remove(&w->sense);
+        EmSenseObjs_Remove(&w->sense);
         w->objListed = 2;
     }
     if (em->requested != 1 && em->stateGroup != EM_GROUP_EVENT && em->stateGroup != EM_GROUP_EVENT2) {
@@ -2417,7 +2345,7 @@ void EmApceros_Update(Em *em)
                     if (other->combat == 0) {
                         calmNear = 1;
                     }
-                } else if ((other->type == 0xC || other->type == 0x46) && other->variant == 0 && other->stateGroup == EM_GROUP_EVENT) {
+                } else if ((other->type == 12 || other->type == 70) && other->variant == 0 && other->stateGroup == EM_GROUP_EVENT) {
                     popoInEvent = 1;
                 }
             }
@@ -2487,7 +2415,7 @@ void EmApceros_Update(Em *em)
         case EM_DMG_PART_FLINCH:
             hitSide = em->hitAngle - em->rotY;
             hurt = 1;
-            if ((em->type == 0xC || em->type == EM_KIND_POPO) && em->hp > 0.2f * em->hpMax) {
+            if ((em->type == 12 || em->type == EM_KIND_POPO) && em->hp > 0.2f * em->hpMax) {
                 if (hitSide > 0x8000) {
                     EmApceros_ChangeState(em, EM_GROUP_REACT, APC_REACT_FLINCH_A, EM_SYNC_OWNER);
                 } else {
@@ -2517,7 +2445,7 @@ void EmApceros_Update(Em *em)
                 w->sense.radius = 2000.0f;
                 w->sense.area = (u8) em->area;
                 w->sense.kind = 2;
-                ObjListA70_Add(&w->sense);
+                EmSenseObjs_Add(&w->sense);
                 w->objListed = 1;
             }
         }
@@ -2587,7 +2515,7 @@ void EmApceros_RunState(Em *em)
 /*
  * Keeps motionId[0] in work->fxMotion, plays MotionSounds, then the effects
  * and attacks of the motion: APC_MOT_STOMP ground effect, camera shake and
- * attack 0xD; APC_MOT_RUN footstep effects; the VespoidAttack_Create kinds
+ * attack 13; APC_MOT_RUN footstep effects; the VespoidAttack_Create kinds
  * of the attack motions (per kind); APC_MOT_FALL dust; APC_MOT_LIE ground
  * effects; APC_MOT_STATUS2_LIE lying puffs.
  */
@@ -2609,22 +2537,22 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, APC_MOT_STOMP):
         if (EmMotion_PassedFrameScaled(em, 40.0f, 0)) {
-            Em_BonePos(em, 0xA, pos);
+            Em_BonePos(em, APC_BONE_FOOT_A2, pos);
             pos[1] = em->floorY;
             PartFx_SpawnOnGround(pos, 7, 2.0f);
             CamShake_ReqAIf(em, 1);
-            VespoidAttack_Create(em, 0xD);
+            VespoidAttack_Create(em, 13);
         }
         break;
     case EM_MOTION_ID(0, APC_MOT_WALK):
-    case EM_MOTION_ID(0, 0xC):
+    case EM_MOTION_ID(0, 12):
         break;
     case EM_MOTION_ID(0, APC_MOT_RUN):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-            PartFx_SpawnForEm(em, 0x17, 0x14);
+            PartFx_SpawnForEm(em, APC_BONE_FOOT_B2, 20);
         }
         if (EmMotion_PassedFrameScaled(em, 52.0f, 0)) {
-            PartFx_SpawnForEm(em, 0x14, 0x14);
+            PartFx_SpawnForEm(em, APC_BONE_FOOT_B1, 20);
         }
         break;
     case EM_MOTION_ID(0, APC_MOT_TURN_A):
@@ -2633,7 +2561,7 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, APC_MOT_ATTACK_REAR):
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0)) {
-            if (em->type == 0xC || em->type == EM_KIND_POPO) {
+            if (em->type == 12 || em->type == EM_KIND_POPO) {
                 VespoidAttack_Create(em, 1);
             } else {
                 VespoidAttack_Create(em, 9);
@@ -2648,10 +2576,10 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
     case EM_MOTION_ID(0, APC_MOT_ATTACK_B):
         if (em->type == EM_KIND_POPO) {
             if (EmMotion_PassedFrameScaled(em, 32.0f, 0)) {
-                VespoidAttack_Create(em, 0x12);
+                VespoidAttack_Create(em, 18);
             }
             if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-                DustCloud_Create(em, 2, 0x2C, em->scaleX);
+                DustCloud_Create(em, 2, 44, em->scaleX);
             }
             if (EmMotion_PassedFrameScaled(em, 52.0f, 0) && Player_InCurrentArea(em)) {
                 Em_BonePos(em, 7, pos);
@@ -2664,10 +2592,10 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, APC_MOT_SPIN_ATTACK):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-            if (em->type == 0xC || em->type == EM_KIND_POPO) {
+            if (em->type == 12 || em->type == EM_KIND_POPO) {
                 VespoidAttack_Create(em, 3);
             } else {
-                VespoidAttack_Create(em, 0xA);
+                VespoidAttack_Create(em, 10);
             }
         }
         break;
@@ -2681,13 +2609,13 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, APC_MOT_LIE):
         if (EmMotion_PassedFrameScaled(em, 46.0f, 0)) {
-            PartFx_SpawnForEm(em, 0, 6);
+            PartFx_SpawnForEm(em, APC_BONE_ROOT, 6);
         }
         if (EmMotion_PassedFrameScaled(em, 88.0f, 0)) {
-            PartFx_SpawnForEm(em, 0, 6);
+            PartFx_SpawnForEm(em, APC_BONE_ROOT, 6);
         }
         if (EmMotion_PassedFrameScaled(em, 190.0f, 0)) {
-            PartFx_SpawnForEm(em, 0, 6);
+            PartFx_SpawnForEm(em, APC_BONE_ROOT, 6);
         }
         break;
     case EM_MOTION_ID(0, APC_MOT_DIE):
@@ -2698,7 +2626,7 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         puffOffset[0] = 0.0f;
         puffOffset[1] = 0.0f;
         puffOffset[2] = 20.0f;
-        Em_SpawnLyingPuffs(em, 0xF, puffOffset, 1.2f);
+        Em_SpawnLyingPuffs(em, APC_BONE_BREATH, puffOffset, 1.2f);
         break;
     case EM_MOTION_ID(0, APC_MOT_STATUS4):
         break;
@@ -2727,9 +2655,9 @@ void EmApceros_UpdateMotionEffects(Em *em)
  * Callbacks slots 0 and 1: creates the attached effect 0 (Shadow_Spawn);
  * unlike EmPlesioth_SpawnEffects, no alert mark.
  */
-void EmApceros_SpawnAttachedEffect(u8 *obj)
+void EmApceros_SpawnShadow(u8 *obj)
 {
-    Shadow_Spawn((Player *) obj, 0);
+    Shadow_Spawn((Player *) obj, SHADOW_MODEL);
 }
 
 /* Callbacks slot 2: does nothing. */
@@ -2797,6 +2725,6 @@ EmTurnParams EmApceros_TurnParams[1] = {
 #include "game/008C7300.inc"
 };
 void *EmApceros_Callbacks[8] = {
-    EmApceros_SpawnAttachedEffect, EmApceros_SpawnAttachedEffect, EmApceros_TableNop, EmApceros_UpdateMotionEffects,
+    EmApceros_SpawnShadow, EmApceros_SpawnShadow, EmApceros_TableNop, EmApceros_UpdateMotionEffects,
     EmApceros_ScriptQuery, EmApceros_Reinit, NULL, NULL,
 };

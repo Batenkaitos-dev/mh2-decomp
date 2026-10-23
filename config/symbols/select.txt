@@ -1,9 +1,12 @@
-// Symbols for overlay 2, select.bin. Format: name = 0xADDRESS; // attributes
+// The select overlay (overlay 2, select.bin): the boot, the title menu and
+// mode select, character creation and selection, the options, the gallery
+// and the PSP link. Format: name = 0xADDRESS; // attributes
 
-// First function after the overlay's 0x40 bytes of padding (seeds the disassembler).
+// The first function, after the overlay's 64 bytes of padding.
 select_entry = 0x006AF280; // type:func
 
-// Data objects that other labels fall inside (splat then writes sym + offset).
+// Data objects that other labels fall inside (a reference to such a label is
+// written as the object plus an offset).
 gCharaHairConds0 = 0x006C7DD0; // size:0x40 part conditions of each hair style, 3 bytes, for gender 0 (conditions 3-5, Chara_CreateTask, Chara_FilterParts)
 gCharaHairConds1 = 0x006C7E10; // size:0x40 as gCharaHairConds0, for gender 1
 gCharaFaceConds0 = 0x006C7E50; // size:0x60 part conditions of each face, 3 bytes, for gender 0 (conditions 0-2)
@@ -50,7 +53,7 @@ gPspPromptTexts = 0x006CDB58; // size:0x8 the centred prompts that replace the %
 gScreenPosTexts = 0x006CDD60; // size:0x8
 gBackResetTexts = 0x006CDD68; // size:0x8 [0] the back label, [1] the reset-to-defaults label, under both option pages (select_option)
 
-// Out of first-use order in .rodata: spliced by INCLUDE_RODATA, not migrated.
+// A .rodata object out of its first-use order, so it stays in the assembly.
 gSelectFmtString = 0x006CDFB8; // force_not_migration:True size:0x8 the text format that prints one string
 // A literal with 13 bytes of zero padding after it (Gallery_DrawEntryPage).
 D_006D06F0 = 0x006D06F0; // force_not_migration:True
@@ -62,7 +65,9 @@ Ending_Update = 0x00D64D40; // plsel, the ending sequence each frame, 0 when don
 D_6ADAB0 = 0x006ADAB0;
 Yn_LaunchSetupGuide = 0x00ACE630; // yn, its entry (NetOption_ConfirmInput)
 
-// Functions named in round 4.
+// The overlay's functions: character creation and selection (Chara_,
+// CharaSel_, Parts_, NgWord_), the gallery, the options and network options,
+// the PSP link, the boot, mode select and the title.
 Chara_MakeSave = 0x006AF3D0; // type:func
 Chara_SetupEditPlayer = 0x006AF720; // type:func
 Chara_SetupCardPlayer = 0x006AFA10; // type:func
@@ -224,16 +229,18 @@ Psp_Draw = 0x006C6A80; // type:func
 Psp_Thread = 0x006C77E0; // type:func
 Psp_IsItemUnlocked = 0x006C79B0; // type:func
 
-// Data named in round 4.
+// The work areas and the main tables.
 gNgWords = 0x006C80A0;
 gGalleryEntries = 0x006CBAE0;
 gBootWork = 0x006D2180;
 gOptWork = 0x006D21A0;
 gPspWork = 0x006D21A8;
+// PSP link functions.
 Psp_MarkIcons = 0x006C4720; // type:func
 Psp_DrawActor = 0x006C5B50; // type:func
 Psp_SelectFeatures = 0x006C4150; // type:func
-// round 13 (ncoreh1): names
+// More functions: character creation, the PSP link, the boot, the gallery,
+// the network options and the name check.
 Chara_SetVoiceMotion = 0x006AF910; // type:func
 Chara_DrawBackground = 0x006AFBE0; // type:func
 Chara_PlayDecideSe = 0x006AFCF0; // type:func
@@ -301,12 +308,13 @@ Gallery_PlayOpenSe = 0x006BF4B0; // type:func
 Gallery_PlayCloseSe = 0x006BF4C0; // type:func
 Gallery_PlayPageSe = 0x006C2BC0; // type:func
 
-// Round 17 (xref): names for raw addresses in the C.
+// Words outside the overlay that its code reads, not yet named.
 D_5F8A74 = 0x005F8A74; // size:0x4
 D_6AA2A8 = 0x006AA2A8; // size:0x4
 D_5D75C0 = 0x005D75C0; // size:0x4
 
-// Round 18 (ngame)
+// Functions: the boot's arguments, the panels of character creation, the
+// gallery and the PSP link.
 Select_ParseVideoMode = 0x006B6630; // type:func the first character of gArgv[1], a digit 0 or 1, sets gSysSettings.pal
 Select_ApplyBootArgs = 0x006B6690; // type:func
 Parts_SlideInPanels = 0x006BD410; // type:func
@@ -321,7 +329,8 @@ Psp_StartIconSwing = 0x006C2E00; // type:func
 Psp_ResetSceneActors = 0x006C4A00; // type:func
 Psp_DrawBackground = 0x006C69F0; // type:func
 
-// Round 20 (ndata)
+// Data: the tables of the gallery, character creation, the options and
+// network options, mode select and the title.
 gCharaCameraModes = 0x006C7D80; // size:0x10
 gCharaHelpFrame = 0x006C7D90; // size:0x20
 gCharaNoMatchFrame = 0x006C7DB0; // size:0x20
@@ -409,7 +418,8 @@ gGalleryArrowPosA = 0x006CC1C0; // size:0x10
 gGalleryArrowPosB = 0x006CC1D0; // size:0x10
 gNetOptDefaults = 0x006D2190; // size:0x10
 
-// Round 21 (ndata)
+// Data: the PSP link's frames, actors, icons, lines and thread, and the
+// texts of the title, mode select, the options and character creation.
 gPartsLabels = 0x006CD910; // size:0xA0
 gPspFrameA = 0x006CC1E0; // size:0x20
 gPspFrameB = 0x006CC200; // size:0x20
@@ -443,15 +453,18 @@ gOptBrightnessTexts = 0x006CDD70; // size:0x10
 gPspThreadStack = 0x006D2210; // size:0x1070
 gPspThreadId = 0x006D21B0; // size:0x4
 gPspState = 0x006D21B8; // size:0x4
+// The PSP link's text drawing.
 Psp_DrawTexts = 0x006C6BD0; // type:func
 
-// Round 23 (ndata-h1)
+// Character creation's equipment view, and texts of the options and the
+// PSP link.
 Chara_EquipViewOn = 0x006AF3C0; // type:func ChrEdit.unk42 (the option byte D_6A9E55) nonzero, else Chara_DrawPrompts shows the rotate hint instead of the equipment
 gOkTypeTexts = 0x006CD8D8; // size:0x8
 gOffOnTexts = 0x006CDCB0; // size:0x8
 gPspCursorGrid = 0x006CD5E0; // size:0x10
 
-// Round 24 (nnames-h1)
+// The PSP link's icon tables and drawing, and the panels of character
+// creation and selection.
 gPspMarkKind = 0x006CD5D0; // size:0x8 per PSP icon actor the marker kind (Psp_MarkIcons)
 gPspIconIndex = 0x006CD5D8; // size:0x8 per PSP icon actor its icon (unkDE index)
 gPspIconPos = 0x006CD750; // size:0x18 per PSP icon actor its x y
@@ -461,7 +474,8 @@ Parts_DrawPanels = 0x006BDA00; // type:func the seven panels of character creati
 Psp_DrawSwingActor = 0x006C5ED0; // type:func an actor of the PSP link screens as two triangles turned by the screen swing
 Psp_DrawSwingFrame = 0x006C6500; // type:func a frame of the PSP link screens turned around the actor centre
 
-// Round 24 (nnames): entries of named tables, TABLE_N after the first table entry N that points to them
+// Objects that a table's entries point to, named TABLE_N after the first
+// entry N that points to them.
 gGalleryEntries_1 = 0x006CB780; // size:0x10 entry 1 of gGalleryEntries
 gGalleryEntries_4 = 0x006CB790; // size:0x10 entry 4 of gGalleryEntries
 gGalleryEntries_7 = 0x006CB7A0; // size:0x10 entry 7 of gGalleryEntries
@@ -544,7 +558,7 @@ gPspValueNames_4 = 0x006CDBB0; // size:0x10 entry 4 of gPspValueNames
 gNetOptValueNames_0 = 0x006CDD20; // size:0x10 entry 0 of gNetOptValueNames
 gNetOptValueNames_1 = 0x006CDD30; // size:0x10 entry 1 of gNetOptValueNames
 
-// Round 24 (nnames): entries of the tables named by their use (session 2), TABLE_N
+// The same for the PSP link's step and prompt texts.
 gPspStepTexts_1 = 0x006CDA28; // size:0xC entry 1 of gPspStepTexts
 gPspStepTexts_2 = 0x006CDA40; // size:0x20 entry 2 of gPspStepTexts
 gPspStepTexts_3 = 0x006CDA60; // size:0x20 entry 3 of gPspStepTexts
@@ -559,7 +573,8 @@ gPspStepTexts_11 = 0x006CDAF0; // size:0x8 entry 11 of gPspStepTexts
 gPspPromptTexts_0 = 0x006CDB10; // size:0x8 entry 0 of gPspPromptTexts
 gPspPromptTexts_1 = 0x006CDB18; // size:0x8 entry 1 of gPspPromptTexts
 
-// Round 31 (names)
+// Data: texts of character creation and the options, the PSP link's
+// frames, cursor and device arguments, and the gallery's timed entries.
 gCharaListHelpTexts = 0x006CD830; // size:0x10 [0] the button help under the list of panels (Chara_DrawPartHelp)
 gCharaPartTitles = 0x006CD860; // size:0x20 the titles of the character creation pages, one per page (select_parts)
 gSoundModeTexts = 0x006CDC80; // size:0x10 the value labels of the sound mode option, one per mode (select_option)

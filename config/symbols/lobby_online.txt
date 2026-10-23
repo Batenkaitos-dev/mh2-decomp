@@ -1,14 +1,10 @@
-// Symbols for overlay 4, lobby.bin: the online parts (0x700AF0-0x719A30: the
-// network message builders and handlers, lobby_net.c; 0x7AF6C0 to the end of
-// the code: packet receive and dispatch, lobby screens, login, KDDI
-// connection, patch download). The HTML browser (0x729AC0-0x757600) has
-// lobby_browser.txt. Format: name = 0xADDRESS; // attributes
-//
-// One symbol file per round-5 lobby worker, so that they never edit the same
-// file: new names in these ranges go here, sorted by address. lobby.txt has
-// the names from earlier rounds; lobby.yaml reads all three files.
+// The lobby overlay (overlay 4, lobby.bin): the names of its online parts.
+// 0x700AF0-0x719A30: the network message builders and handlers. 0x7AF6C0 to
+// the end of the code: the packet receive and dispatch, the lobby screens,
+// the login, the KDDI connection and the patch download.
+// Format: name = 0xADDRESS; // attributes
 
-// --- NETWORK (preserve for Phase 6): the lobby protocol, round 7 ------------
+// --- NETWORK: the lobby protocol ---
 // LobbyPkt_XXXX builds and sends command XXXX (returns the sequence number),
 // LobbyReq_XXXX takes a NetReq slot and sends XXXX as a request,
 // LobbyReply_XXXX / LobbyNotify_XXXX handle a reply / a notification from the
@@ -16,7 +12,9 @@
 // The LobbyPkt_Entry*, ListCount and Leave builders take a level (0, 1, 2)
 // and send one of three codes. NetTaskN_Start / NetTaskN_Run: the starter
 // and the step function of gLobbyNet.task[N].
-// --- round 8 (decomp-b8-lnet) ---
+// The shooting gallery's aim, run and shot marks, the connection, the lobby
+// dialog, the level-2 entry step, the chat log's scroll, the lobby screen's
+// lists and entry, the room close and the area list.
 Gallery_Aim = 0x0070D270; // type:func
 Gallery_Run = 0x0070D8B0; // type:func
 Gallery_DrawShotMarks = 0x0070EF20; // type:func
@@ -36,20 +34,22 @@ LobbyRoom_RunClose = 0x007BE210; // type:func
 LobbyRoomClose_Start = 0x007BE240; // type:func
 AreaList_Run = 0x007BF560; // type:func
 AreaList_Input = 0x007BFD40; // type:func
-// --- end of round 8 (decomp-b8-lnet) ---
-// --- round 9 (decomp-b9-lnet) ---
+// The lobby's exits, the login menu's draw, the patch install and the card
+// choice.
 LobbyExit_Run = 0x007BCE60; // type:func
 LobbyExit_RunPlanned = 0x007BCEB0; // type:func
 LobbyExit_RunCut = 0x007BD260; // type:func
 LobbyLogin_DrawMenu = 0x007CE120; // type:func
-LobbyNetXfer_Reset = 0x007D5730; // type:func
-LobbyNetXfer_Run = 0x007D5750; // type:func
+LobbyPatch_ResetInstall = 0x007D5730; // type:func
+LobbyPatch_Install = 0x007D5750; // type:func
 LobbyCard_Select = 0x007CAE70; // type:func
-// the login menu's colour tables (LobbyLogin_DrawMenu reads [i - 1] for items 2..5, func_007CEEF0 [sel + 1])
-// --- end of round 9 (decomp-b9-lnet) ---
-// --- round 10 (decomp-b10-lobby-h1) ---
+// The shooting gallery's draw.
 Gallery_DrawShooting = 0x0070E2A0; // type:func the shooting gallery draw callback (LobbyMenu_SetDraw)
-// --- end of round 10 (decomp-b10-lobby-h1) ---
+// The protocol's builders, requests, replies and notifications (LobbyPkt_,
+// LobbyReq_, LobbyReply_, LobbyNotify_, LobbySrvReq_), with the online code
+// around them: the lobby steps, levels, world, rooms, users and login, the
+// server menu, the id menu, the music and music actors, the tag texts, the
+// chat log and the area list.
 LobbyPkt_ChatSay = 0x00700B40; // type:func
 LobbyNotify_ChatMessage = 0x00700BE0; // type:func
 LobbyPkt_TownMsg = 0x00700CF0; // type:func
@@ -589,14 +589,14 @@ LobbyLevel2_OnLevel2UsersReply = 0x007C8E00; // type:func
 LobbyLevel2_OnLevel2ValuesReply = 0x007C8EB0; // type:func
 LobbyLevel2_OnLevel2MembersReply = 0x007C8F40; // type:func
 Lobby_CountPlayTime = 0x007C9010; // type:func
-LobbyLogin_StepConnect = 0x007C9670; // type:func
-LobbyLogin_StateConnect = 0x007C9740; // type:func
+NetScene_StepConnect = 0x007C9670; // type:func
+NetScene_StateOnline = 0x007C9740; // type:func
 LobbyKddi_Portal = 0x007CCDB0; // type:func
 LobbyLogin_FreeTextures = 0x007CDD80; // type:func the network mode textures released
 LobbyKddi_PortalScene = 0x007CDE10; // type:func
-LobbyLogin_DrawIcon = 0x007D0C60; // type:func
-LobbyLogin_DrawProgressBar = 0x007D0DE0; // type:func
-LobbyLogin_DrawSprites = 0x007D1E50; // type:func
+NetMode_DrawBarIcon = 0x007D0C60; // type:func
+NetMode_DrawProgress = 0x007D0DE0; // type:func
+NetMode_DrawSprites = 0x007D1E50; // type:func
 LobbyLogin_DrawWaveTitle = 0x007D21F0; // type:func
 LobbyCard_SaveNetFile = 0x007D2560; // type:func
 LobbyMsg_DrawCountdown = 0x007D28B0; // type:func
@@ -627,50 +627,49 @@ LobbyWorld_GetTime = 0x007D9B40; // type:func
 LobbyWorld_EventTime = 0x007D9CE0; // type:func
 LobbyWorld_ClearEvents = 0x007D9E40; // type:func
 LobbyWorld_RunEvents = 0x007D9EA0; // type:func
-LobbyActor_DrawPart = 0x007DB0A0; // type:func
-LobbyActor_StartScript = 0x007DB290; // type:func
-LobbyActor_Update = 0x007DB300; // type:func
-LobbyActor_RunScript = 0x007DB470; // type:func
-LobbyActor_GetScript = 0x007DB530; // type:func
-LobbyActor_SetMatrix = 0x007DB570; // type:func
-LobbyActor_Draw = 0x007DB600; // type:func
+LobbyFlock_DrawPart = 0x007DB0A0; // type:func
+MusicActor_StartScript = 0x007DB290; // type:func
+MusicActor_Update = 0x007DB300; // type:func
+MusicActor_RunScript = 0x007DB470; // type:func
+MusicActor_GetScript = 0x007DB530; // type:func
+MusicActor_SetMatrix = 0x007DB570; // type:func
+MusicActor_Draw = 0x007DB600; // type:func
 
-// Names left waiting after round 7, applied by the lead before round 8
-// draws the message window, its text a character a frame (round 7 lobby online)
+// draws the message window, its text a character a frame
 LobbyHelp_Draw = 0x007B2860; // type:func
-// round 7 lobby online; called from the village
+// called from the village
 LobbyStep_Level1Leave = 0x007B5810; // type:func
-// round 7 lobby online; called from the village
+// called from the village
 HunterCard_SendChanged = 0x007B5DE0; // type:func
-// round 7 lobby online; called from the village
+// called from the village
 HunterCard_SendOnlineMark = 0x007B5F50; // type:func
-// round 7 lobby online; called from the village
+// called from the village
 LobbySrv_MyName = 0x007B81B0; // type:func
-// adds a received chat line to the log (round 7 lobby online)
+// adds a received chat line to the log
 ChatLog_Receive = 0x007B8850; // type:func
-// the lobby's web page (round 7 lobby online h1)
+// the lobby's web page
 LobbyWeb_Run = 0x007C4F80; // type:func
-// round 7 lobby online h1
-Lobby_CheckDay = 0x007CA060; // type:func
-// once a frame (round 7 lobby online h1)
+// the offline pause's request, which online only clears
+Lobby_SetPause = 0x007CA060; // type:func
+// once a frame
 LobbyWorld_Tick = 0x007D8010; // type:func
-// round 7 lobby online h1
+// stops the stream
 LobbyBgm_Stop = 0x007D88B0; // type:func
-// the selected entry's position, 0 when idle (round 7 lobby online h1)
+// the selected entry's position, 0 when idle
 LobbyBgm_GetPos = 0x007D90A0; // type:func
-// the track playing, -1 when idle (round 7 lobby online h1)
+// the track playing, -1 when idle
 LobbyBgm_GetTrack = 0x007D9100; // type:func
-// track, position, flag (round 7 lobby online h1)
+// track, position, flag
 LobbyBgm_Play = 0x007D9700; // type:func
-// round 7 lobby online h1
-LobbyBgm_SetUnk11F = 0x007D9860; // type:func
+// a show's stage camera on or off
+LobbyBgm_SetStageCam = 0x007D9860; // type:func
 
-// h1 round 8
-// sub_main data the lobby reads by name (the schedule shows named objects); no sub_main symbol yet
+// sub_main's network mode entry, sent at login (no name yet), and the lobby
+// area's start event
 D_005D46B1 = 0x005D46B1; // the network mode entry sent at login (NetModeState + 0x11)
 LobbyArea_StartEvent = 0x007BAB20; // type:func
 
-// --- Round 13 names (decomp-b13-nlobby) ---
+// The download tasks (the list and the files), and a 16-bit bit test.
 NetDlListTask_Steps = 0x007012B0; // type:func
 NetDlListTask_Done = 0x00701340; // type:func
 NetDlListTask_Failed = 0x00701370; // type:func
@@ -687,7 +686,8 @@ NetDlFileTask_Step2 = 0x00701850; // type:func
 Bits16_Set = 0x007022C0; // type:func
 // the LobbyNet_Get* copy out the data of a reply once its step is done
 LobbyNet_GetTownData = 0x007023F0; // type:func
-// LobbyReq_TownData in a fixed slot of req2 (NetReq_TakeFixed)
+// LobbyReq_TownData in a fixed slot of req2 (NetReq_TakeFixed); then the
+// level-1 list task
 LobbyReq2_TownData = 0x00702470; // type:func
 LobbyReply_6417Read = 0x00702910; // type:func
 LobbyReply_Level1SearchInfoRead = 0x00702A40; // type:func
@@ -705,7 +705,9 @@ NetLevel1ListTask_Step1Reply = 0x00703360; // type:func
 NetLevel1ListTask_Step4Reply = 0x007033A0; // type:func
 LobbyNet_GetUser = 0x00704E40; // type:func
 LobbyReply_Level1UsersRead = 0x00704F70; // type:func
-// up to 10 users (id, name, text), skipping extra fields
+// up to 10 users (id, name, text), skipping extra fields; then the level-1
+// allowed and settings tasks, the level-0 list task, and the users' and the
+// login's data
 LobbyMsg_ReadUsers = 0x00704FB0; // type:func
 LobbyNet_GetCurrentPlace = 0x007051A0; // type:func
 NetLevel1AllowedTask_Steps = 0x007054C0; // type:func
@@ -755,7 +757,8 @@ NetLevel0ListTask_Step4Reply = 0x0070B750; // type:func
 LobbyMsg_ReadU16 = 0x0070BFE0; // type:func
 LobbyMsg_ReadU16Str = 0x0070BFF0; // type:func
 LobbyMsg_ReadU16U8b = 0x0070C030; // type:func
-// the save menu (memory card save, costs living expenses) (town mode 0x14)
+// the save menu (memory card save, costs living expenses) (TOWN_MODE_SAVE),
+// and the shooting gallery's open
 TownSave_Open = 0x0070C240; // type:func
 TownSave_Update = 0x0070C380; // type:func
 TownSave_Draw = 0x0070C800; // type:func
@@ -802,7 +805,7 @@ Gallery_ChoosePrize = 0x00710220; // type:func
 // the courses whose fee is above the money
 Gallery_MarkTooDearCourses = 0x007102B0; // type:func
 Gallery_MarkAllTaken = 0x00710480; // type:func
-// the sound of the target kind hit
+// the sound of the target kind hit; then the level-2 list task
 Gallery_PlayHitSe = 0x00710510; // type:func
 NetLevel2ListTask_Steps = 0x00713360; // type:func
 NetLevel2ListTask_Done = 0x00713400; // type:func
@@ -815,7 +818,7 @@ NetLevel2ListTask_Step4 = 0x00713620; // type:func
 NetLevel2ListTask_Step5 = 0x00713800; // type:func
 // reply 1 on success, 2 on failure
 NetLevel2ListTask_Step1Reply = 0x007138C0; // type:func
-// then onDone
+// then onDone; then the level-2 settings and records tasks
 NetLevel2ListTask_Step4Reply = 0x00713900; // type:func
 NetLevel2SettingsTask_Steps = 0x00714DB0; // type:func
 NetLevel2SettingsTask_Done = 0x00714EC0; // type:func
@@ -875,7 +878,7 @@ QuestDesk_HasEntry = 0x00719850; // type:func
 QuestDesk_Close = 0x007199A0; // type:func
 // aborts and deletes the TCP socket (gNetSock)
 LobbyNet_AbortSocket = 0x007B17A0; // type:func
-// the connection dialog, kind 1 (waiting); arg0 into D_008F8D38
+// the connection dialog, kind 1 (waiting), its text into gLobbyDialogWaitText
 LobbyDialog_OpenWait = 0x007B17D0; // type:func
 // the connection dialog, kind 3 (a countdown from arg1)
 LobbyDialog_OpenCountdown = 0x007B1800; // type:func
@@ -885,7 +888,8 @@ LobbyDialog_Clear = 0x007B1860; // type:func
 LobbyDialog_Grow = 0x007B1880; // type:func
 // the growing steps left
 LobbyDialog_GetGrow = 0x007B18A0; // type:func
-// opens the message box of a message (D_0080D7B0), run by HunterCard_SendChanged
+// opens the message box of a message (gLobbyMsgTexts), run by
+// HunterCard_SendChanged
 LobbyText_Open = 0x007B1940; // type:func
 // the player id and name box of the lobby screens
 LobbyMenu_DrawNameId = 0x007B2990; // type:func
@@ -904,11 +908,13 @@ LobbyMenu_Init = 0x007BC420; // type:func
 LobbyMenu_SetDraw = 0x007BCA00; // type:func
 // LobbyWorld_Tick
 LobbyTime_Tick = 0x007BCB60; // type:func
-// gLobbyTime before 12 -00
+// gLobbyTime before noon
 LobbyTime_IsAm = 0x007BCBA0; // type:func
-// gLobbyTime from 12 -00
+// gLobbyTime from noon
 LobbyTime_IsPm = 0x007BCBC0; // type:func
-// leaves the lobby - phase 5, reason 4 idle, 5 a menu timed out, 6/8 kicked, 7 the connection lost
+// leaves the lobby (LOBBY_PHASE_EXIT) for a reason: LOBBY_QUIT_IDLE,
+// LOBBY_QUIT_FAILED (a menu timed out), LOBBY_QUIT_SERVER_CLOSE or
+// LOBBY_QUIT_SENT_OUT (kicked), LOBBY_QUIT_LINK_LOST
 Lobby_Disconnect = 0x007BCD60; // type:func
 // 0-2 (LobbyWorld.season)
 LobbyWorld_GetSeason = 0x007D8460; // type:func
@@ -918,10 +924,11 @@ LobbyWorld_GetSeasonDay = 0x007D8470; // type:func
 LobbyWorld_HoldClock = 0x007D8480; // type:func
 // the time of day as a fraction of the day
 LobbyWorld_GetDayFrac = 0x007D84A0; // type:func
-// the area's music again (0x6ADCC4)
+// the area's music again (gSceneArea)
 LobbyWorld_PlayAreaMusic = 0x007D84B0; // type:func
 
-// --- Round 14 names (decomp-b14-nlobby) ---
+// The chat's and town messages' sends and reads, the level-1 list, and the
+// download tasks.
 LobbyNet_SendChatSay = 0x00700AF0; // type:func
 LobbyNet_GetChatMessage = 0x00700B00; // type:func
 LobbyNet_SendTownMsg = 0x00700CA0; // type:func
@@ -945,7 +952,8 @@ NetList1_GetGroupInfo = 0x00703EA0; // type:func
 LobbyNet_Reset = 0x00706D10; // type:func
 // copies the answer to the server's 6103 (NetClientInfo)
 LobbyNet_SetClientInfo = 0x00706EF0; // type:func
-// the player's id, name and text; sends 6132
+// the player's id, name and text; sends 6132. Then the lobby's other getters
+// and the level-0 list
 LobbyNet_SetMe = 0x00706F30; // type:func
 LobbyNet_GetCharaCount = 0x00707050; // type:func
 LobbyNet_GetCharaId = 0x00707060; // type:func
@@ -980,7 +988,8 @@ PriceInfo_Update = 0x007117D0; // type:func
 PriceInfo_ListInput = 0x00711AC0; // type:func
 // the heading of the A-rank wanted board
 PriceInfo_DrawWanted = 0x00711BF0; // type:func
-// the title of the monster trade prices
+// the title of the monster trade prices; then the price info's list and
+// draws, and the level-2 list
 PriceInfo_DrawTitle = 0x00711C90; // type:func
 PriceInfo_DrawList = 0x00712370; // type:func
 PriceInfo_DrawDetails = 0x00712820; // type:func
@@ -992,8 +1001,7 @@ NetList2_GetByte = 0x00713BD0; // type:func
 NetList2_GetName = 0x00713D30; // type:func
 NetList2_GetText = 0x00713ED0; // type:func
 NetList2_GetLimits = 0x00714070; // type:func
-// --- Round 14 names (decomp-b14-nlobby-h1) ---
-// runs jtbl_008193E0 by D_008F8AA1
+// runs its steps by gNetConnStep
 NetScreen_Run = 0x007B00E0; // type:func
 NetScreen_Step0 = 0x007B0850; // type:func
 NetScreen_Step1 = 0x007B0A60; // type:func
@@ -1004,10 +1012,10 @@ NetScreen_Step5 = 0x007B0DA0; // type:func
 // the id and name shown in the dialog
 LobbyDialog_SetMember = 0x007B18B0; // type:func
 LobbyDialog_ClearMember = 0x007B1900; // type:func
-// D_0080D4F0 - LOGIN, INFORMATION, LAND SELECT, AREA SELECT, ID SELECT
+// the screen's title (gLobbyTitleTexts), and the help's reset
 LobbyTitle_Set = 0x007B1B70; // type:func
 LobbyHelp_Reset = 0x007B1B90; // type:func
-// the help texts D_0080D510
+// the help texts (gLobbyHelpTexts)
 LobbyHelp_Set = 0x007B1BD0; // type:func
 LobbyHelp_SetText = 0x007B1BF0; // type:func
 LobbyHelp_SetBox = 0x007B1C00; // type:func
@@ -1015,21 +1023,21 @@ LobbyDialog_DrawMember = 0x007B27E0; // type:func
 LobbyTitle_Draw = 0x007B2840; // type:func
 IdMenu_Draw = 0x007B7180; // type:func
 ChatLog_ListSpeakers = 0x007B9630; // type:func
-// screen 7 of D_00819430
+// LOBBY_PHASE_ENTER's screen in gLobbyScreens
 LobbyEnter_Run = 0x007C0B90; // type:func
-// Net_SetHandler(route, handler)
+// Net_SetHandler(route, handler) for each route
 LobbyRoute_Register = 0x007C10B0; // type:func
-// route 1
+// the routes' handlers, NET_ROUTE_PARTY_READY first
 LobbyRoute_PartyReady = 0x007C1360; // type:func
 LobbyRoute_ServerClose = 0x007C14C0; // type:func
 LobbyRoute_DepartError = 0x007C1540; // type:func
 LobbyRoute_ServerLeave = 0x007C1590; // type:func
-// D_00819700
+// a chat digit's colour (gChatDigitColors)
 ChatMsg_ColorDigit = 0x007C15E0; // type:func
 // a chat line, dropped from muted ids
 LobbyRoute_ChatMessage = 0x007C1630; // type:func
 LobbyRoute_ChatTell = 0x007C17C0; // type:func
-// a mail
+// a mail; then the other routes' handlers
 LobbyRoute_ShortMail = 0x007C1900; // type:func
 LobbyRoute_Level0Name = 0x007C1AF0; // type:func
 LobbyRoute_Level0Values = 0x007C1B30; // type:func
@@ -1051,37 +1059,41 @@ LobbyRoute_Level2PostedQuest = 0x007C2490; // type:func
 LobbyRoute_Level0Kick = 0x007C2970; // type:func
 LobbyRoute_Level1Kick = 0x007C29D0; // type:func
 LobbyRoute_Level2Kick = 0x007C2A30; // type:func
-// screen 0 of D_00819430 - runs D_00819710 by gLobby->mode
+// LOBBY_PHASE_ENTRY's screen in gLobbyScreens, runs gLobbyEntrySteps by
+// gLobby->mode
 LobbyEntry_Run = 0x007C2C20; // type:func
-// mode 0 - title LOGIN, handlers registered
+// LOBBY_ENTRY_START, the screen's title set and the handlers registered
 LobbyEntry_Start = 0x007C2C80; // type:func
-// mode 1 - the local page N_KYK_TP.HTM
+// LOBBY_ENTRY_TERMS, the local terms page; then LOBBY_ENTRY_NOTICE and
+// LOBBY_ENTRY_PATCH
 LobbyEntry_Terms = 0x007C2EF0; // type:func
 LobbyEntry_Notice = 0x007C2FD0; // type:func
 LobbyEntry_Patch = 0x007C31F0; // type:func
-// mode 4 - IdMenu_Run
+// LOBBY_ENTRY_ID_SELECT, IdMenu_Run; then LOBBY_ENTRY_ERROR
 LobbyEntry_IdSelect = 0x007C33B0; // type:func
 LobbyEntry_Error = 0x007C38A0; // type:func
-// mode 6 - LobbyLogin_SendSummary, HunterCard_Build
+// LOBBY_ENTRY_SUMMARY, LobbyLogin_SendSummary and HunterCard_Build
 LobbyEntry_Summary = 0x007C3A30; // type:func
-// mode 7 - title INFORMATION, 614C
+// LOBBY_ENTRY_INFO, the screen's title set, 614C
 LobbyEntry_Info = 0x007C3CB0; // type:func
-// mode 8 - NetMenu, getting the area information
+// LOBBY_ENTRY_FETCH, NetMenu, getting the area information; then
+// LOBBY_ENTRY_WEB_PAGE
 LobbyEntry_Fetch = 0x007C3F20; // type:func
 LobbyEntry_WebPage = 0x007C4460; // type:func
 // expands %s %d %1 %2 %a %r ...
 LobbyMsg_Format = 0x007D3930; // type:func
 
-// Round 23 (ndata-h1)
+// The lobby's quest test, the connection's failure step, the lobby screen's
+// tour, the leave request and the connection message.
 Lobby_LacksQuest = 0x007B6330; // type:func Lobby_HasQuest() != 1
 LobbyConn_Fail = 0x007B1630; // type:func the last of gLobbyConnSteps, resets gNetConnStep
 LobbyScreen_RunTour = 0x007BBF70; // type:func the lobby screen mode LOBBY_SCREEN_TOUR, a camera tour with the player hidden, then placed at its start position
 Lobby_HandleLeaveRequest = 0x007B6730; // type:func starts the close, kick or leave the lobby state asks for (unk3962, unk3963, unk395F-unk3961), 1 when one started
 LobbyDialog_ShowConnMsg = 0x007B2B10; // type:func (opens lobby message 2, 0 or 1 for 1, 2, 3 unless it is already shown, then draws the dialog)
 
-// Round 24 (nnames-h1)
+// The level-2 records task's copy.
 NetLevel2RecsTask_GetRecs = 0x00718310; // type:func copies the records NetLevel2RecsTask fetched (D_00857E24)
 
-// Round 27 (names)
+// The price list's test and the departure's cancel route.
 PriceInfo_IsListed = 0x00711520; // type:func the id is in the price list ids at 0x7EC5F0 (up to 0x4A, zero ended), PriceInfo_Open
 LobbyRoute_DepartCancel = 0x007C1510; // type:func

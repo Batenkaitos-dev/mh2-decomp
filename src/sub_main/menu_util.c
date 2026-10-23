@@ -9,6 +9,10 @@
  * The menus take the game's button word (pad.h's PAD_*: GameMenu_GetPad,
  * Pad_StickToDpad); PAD_L1 and PAD_R1 also step left and right where a
  * list has columns.
+ *
+ * The file has no data. Its helpers go by kind (the cursors, then the tests and the pouch's
+ * sorting, then drawing helpers and colours, then the map's queries) rather than by menu: the
+ * pouch's appear in four places, so a cut by subject would split them.
  */
 #include "common.h"
 #include "grid.h"
@@ -18,6 +22,7 @@
 #include "save.h"
 #include "scene.h"
 #include "sprite.h"
+#include "supply_box.h"
 
 
 #include "prim.h"
@@ -25,6 +30,22 @@
 #include "sound.h"
 #include "area.h"
 #include "texture.h"
+#include "render_state.h"
+#include "bgm.h"
+#include "place_rules.h"
+#include "camera.h"
+#include "model.h"
+#include "quest.h"
+#include "stream.h"
+#include "text.h"
+#include "window.h"
+#include "menu_util.h"
+#include "engine_math.h"
+#include "file_load.h"
+#include "game_util.h"
+#include "tex_files.h"
+#include "cam_areas.h"
+#include "stageobj.h"
 
 /* An action spot (Player.spot): the start of gather.c's ActionSpot, which
  * no header shares yet. */
@@ -33,62 +54,16 @@ typedef struct Spot {
     u16 kind;       /* 0x2 */
 } Spot;
 
-s32 Tex_LoadPack(s32 id, s32 slot, s32 kind);
-s32 Player_Status6Active(Player *p);
 s32 Item_IsStealable(u16 id); /* unit's own declaration: the definition (game) is s32 Item_IsStealable(s32 arg0); the calls here match only with this one */
 s32 Item_RideItemUsable(void);
-s32 Item_CanPlaceLargeBarrelBomb(void);
-s32 Item_CanUseSmallBarrelBomb(void);
-s32 Item_CanPlaceKind2(void);
-s32 Scene_InNoBarrelBombArea(void);
-s32 Item_CanPlaceKind1(void);
-s32 Scene_CanPlaceKind3(void);
-s32 Player_LocalCanUseBinoculars(void);
-s32 Item_UsableOutsideCamp(void);
-s32 Quest_IsVersus(void);
-s16 Player_GetAreaPitModel(Player *p);
-s32 Pouch_HasMeat(Player *p);
-u16 Player_GetGatherPoint(Player *p, u16 *id, f32 *pos);
-s32 SpecialMine_IsFree(Player *unused0);
-u32 Player_TestFlag(void *obj, u32 flag);
-f32 Math_Sin(f32 x);
 struct PrimLine;
-s32 Prim_FillRect(struct PrimLine *r);
-void Gfx_SetTexFilter(s32 a);
-void Gfx_SetBlend(s32 a, s32 b);
-void Tex_Prepare(s32 a, s32 b);
-void Tex_Bind(s32 a);
-s32 Sprite_Draw(struct Sprite *spr);
-void Tex_LoadFile(s32 a, s32 b, s32 c);
-void Tex_LoadStageFile(s32 file, s32 unused, s32 slot, s32 kind);
-s32 Scene_RequestPause(s32 mode);
-void Stream_Pause(s32 a, s32 b);
-void Sound_PlaySeFlat(u32 slot, u32 id, s32 prog);
-s32 Save_TestEventFlag(s32 n);
 u8 Player_GetSkill(Player *p, u8 group);
 s16 Player_IsState(void *obj, u8 state, u8 sub);
-s16 Pouch_Count(Player *p, u16 item);
-void Text_Draw(char *s);
-s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count);
-s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count);
-void Pouch_MoveCursor(u8 *cur, u16 buttons);
-void PouchMenu_DecoCursor(u16 item, u16 buttons);
-s32 Save_HasRate(void);
-s16 Pouch_FixCursor(void);
-s32 Scene_InField(void);
 struct SortPair;
 void Sort_PairsDesc(struct SortPair *a, u32 n);
-u16 Bowgun_NextAmmoSlot(Player *p, u16 slot, u8 dir);
-void Bowgun_LoadAmmo(Player *p, s32 a);
-void Save_RestorePouch(Player *p);
-s32 Map_GetHalf(u8 stage, u8 area);
 
-extern s32 gSystemTexFiles[];
 extern u16 gFrameTick;
 extern IconUV gIconUVs[];
-extern u32 gEquipColors[];
-extern u8 gRarityColorSlots[];
-extern u8 gRarityColors[];
 extern s16 gHelpLine;
 extern u8 gHelpColumn;
 extern u8 gChatInputMode;
@@ -100,16 +75,16 @@ extern u8 gChatWinOpen;
  * every mode uses. */
 void Hud_LoadTextures(void)
 {
-    Tex_LoadPack(gSystemTexFiles[1], 0x144, 0);
+    Tex_LoadPack(gSystemTexFiles[1], 324, 0);
     if (gScene.inLobby == 0) {
-        Tex_LoadStageFile(gScene.map, gScene.questId, 0x145, 0);
-        Tex_LoadFile(2, 0x146, 0);
+        Tex_LoadStageFile(gScene.map, gScene.questId, 325, 0);
+        Tex_LoadFile(2, 326, 0);
     } else {
-        Tex_LoadFile(9, 0x168, 0);
-        Tex_LoadFile(10, 0x169, 0);
-        Tex_LoadFile(11, 0x16A, 0);
-        Tex_LoadFile(12, 0x16B, 0);
-        Tex_LoadFile(13, 0x16C, 0);
+        Tex_LoadFile(9, 360, 0);
+        Tex_LoadFile(10, 361, 0);
+        Tex_LoadFile(11, 362, 0);
+        Tex_LoadFile(12, 363, 0);
+        Tex_LoadFile(13, 364, 0);
     }
     Tex_LoadFile(7, TEX_SLOT_PICTURES, 0);
 }
@@ -170,7 +145,7 @@ s32 Menu_CursorUpDown(u8 *cur, u16 buttons, u8 count)
     return 0;
 }
 
-/* Menu_CursorUpDown for left and right (0x0808 back, 0x0480 forward). */
+/* Menu_CursorUpDown for left and right (PAD_LEFT or PAD_L1 back, PAD_RIGHT or PAD_R1 forward). */
 s32 Menu_CursorLeftRight(u8 *cur, u16 buttons, u8 count)
 {
     u8 n;
@@ -259,7 +234,7 @@ void Menu_GridCursor(Grid *grid, u16 buttons)
 }
 
 /* Moves the pouch menu's cursor (Pouch_MoveCursor), sets the help line to
- * the item's description and lets 0x80 page a decoration's help; returns
+ * the item's description and lets PAD_R1 page a decoration's help; returns
  * the item under the cursor. */
 u16 PouchMenu_MoveCursor(u8 *cur, u16 buttons)
 {
@@ -267,7 +242,7 @@ u16 PouchMenu_MoveCursor(u8 *cur, u16 buttons)
 
     Pouch_MoveCursor(cur, buttons);
     item = gPlayers[gScene.localPlayer].pouch[*cur].item;
-    gHelpLine = item + 0x18;
+    gHelpLine = item + 24;
     PouchMenu_DecoCursor(item, buttons & PAD_R1);
     return item;
 }
@@ -364,7 +339,7 @@ u8 YesNo_Toggle(u16 buttons, u8 choice, u16 mask)
     return choice;
 }
 
-/* The stick of pad as D-pad buttons: none inside the dead zone (0x40),
+/* The stick of pad as D-pad buttons: none inside the dead zone (64),
  * else one of eight directions by its angle (a 16-bit turn, turned by
  * 0x1200 so that each sector starts at 0): right, up-right, up, up-left,
  * left, down-left, down, down-right. The four straight sectors are wider
@@ -373,26 +348,26 @@ u16 Pad_StickToDpad(u8 pad)
 {
     u16 angle;
 
-    if (gPadState[pad].magR <= 0x40) {
+    if (gPadState[pad].magR <= 64) {
         return 0;
     }
     angle = gPadState[pad].degR + 0x1200;
     if (angle < 0x2400) {
         return PAD_RIGHT;
     }
-    if (angle < 0x4000) {
+    if (angle < (ANGLE_TURN / 4)) {
         return PAD_UP | PAD_RIGHT;
     }
     if (angle < 0x6400) {
         return PAD_UP;
     }
-    if (angle < 0x8000) {
+    if (angle < (ANGLE_TURN / 2)) {
         return PAD_UP | PAD_LEFT;
     }
     if (angle < 0xA400) {
         return PAD_LEFT;
     }
-    if (angle < 0xC000) {
+    if (angle < (ANGLE_TURN * 3 / 4)) {
         return PAD_DOWN | PAD_LEFT;
     }
     if (angle < 0xE400) {
@@ -425,7 +400,7 @@ s32 Pouch_IsSlotUsable(Player *pl, u16 slot)
  * ambient model, an action spot of a kind, a gathering point of a kind,
  * outside the camp), some a free placement (Item_CanPlace*), some are not
  * for gunners, some only offline-style quests (not versus). While the
- * player rides a monster only item 0x61 can be used. Items with icon 4 need
+ * player rides a monster only ITEM_ID_MONSTER_BOMB can be used. Items with icon 4 need
  * an action spot of kind 2 unless player flag 0x80000 is set. Returns 1 if
  * usable.
  */
@@ -441,89 +416,89 @@ s32 Item_IsUsable(u16 id)
     }
     ride = pl->rideState;
     if (ride == 1) {
-        if (id == 0x61) {
+        if (id == ITEM_ID_MONSTER_BOMB) {
             return Item_RideItemUsable();
         }
         return 0;
     }
     switch (id) {
-    case 0x54:
-    case 0x299:
+    case 84:
+    case 665:
         if (Player_GetAreaPitModel(pl) < 0) {
             return 0;
         }
         break;
-    case 0x2A6:
+    case 678:
         if (pl->spot == NULL) {
             return 0;
         }
-        if (((Spot *)pl->spot)->kind != 0xB) {
+        if (((Spot *)pl->spot)->kind != 11) {
             return 0;
         }
         break;
-    case 0x55:
-    case 0x296:
+    case 85:
+    case 662:
         return Item_CanPlaceKind2();
-    case 0x56:
+    case 86:
         return Scene_InNoBarrelBombArea();
-    case 0x9C:
-    case 0x294:
-    case 0x9D:
-    case 0x9E:
-    case 0x9F:
-    case 0xA0:
+    case 156:
+    case 660:
+    case 157:
+    case 158:
+    case 159:
+    case 160:
         return Pouch_HasMeat(pl);
-    case 0xA2:
-    case 0x2F7:
+    case 162:
+    case 759:
         return 0;
-    case 0x2F8:
-    case 0x2F9:
-    case 0x30A:
-    case 0x30B:
-    case 0x30D:
-    case 0x2FA:
-    case 0x2FB:
-    case 0x2FC:
-    case 0x2FF:
-    case 0x300:
-    case 0x301:
-    case 0x306:
-    case 0x307:
-    case 0x308:
-    case 0x309:
-    case 0x314:
-    case 0x318:
-    case 0x30F:
-    case 0x310:
-    case 0x311:
-    case 0x312:
-    case 0x315:
-    case 0x316:
-    case 0x317:
-    case 0x30C:
-    case 0x319:
-    case 0x313:
+    case 760:
+    case 761:
+    case 778:
+    case 779:
+    case 781:
+    case 762:
+    case 763:
+    case 764:
+    case 767:
+    case 768:
+    case 769:
+    case 774:
+    case 775:
+    case 776:
+    case 777:
+    case 788:
+    case 792:
+    case 783:
+    case 784:
+    case 785:
+    case 786:
+    case 789:
+    case 790:
+    case 791:
+    case 780:
+    case 793:
+    case 787:
         return SpecialMine_IsFree(pl);
-    case 0xAC:
-    case 0x295:
-    case 0xEA:
-    case 0xF2:
+    case 172:
+    case 661:
+    case 234:
+    case 242:
         if (pl->isGunner == 1) {
             return 0;
         }
         break;
-    case 0x5B:
-    case 0x5C:
-    case 0x5F:
-    case 0x60:
+    case 91:
+    case 92:
+    case 95:
+    case 96:
         return Item_CanUseSmallBarrelBomb();
-    case 0x5D:
-    case 0x5E:
-    case 0x29A:
+    case 93:
+    case 94:
+    case 666:
         return Item_CanPlaceLargeBarrelBomb();
-    case 0x62:
+    case 98:
         return Item_CanPlaceKind1();
-    case 0x61:
+    case 97:
         if (ride != 1) {
             return 0;
         }
@@ -531,14 +506,14 @@ s32 Item_IsUsable(u16 id)
             return 0;
         }
         break;
-    case 0x28:
-    case 0x2C:
-    case 0x2E:
-    case 0x2D:
+    case 40:
+    case 44:
+    case 46:
+    case 45:
         return Scene_CanPlaceKind3();
-    case 0x96:
-    case 0x97:
-    case 0x98:
+    case 150:
+    case 151:
+    case 152:
         if (Player_GetGatherPoint(pl, (u16 *) &pointKind, (f32 *) pointPos) == 0xFFFF) {
             return 0;
         }
@@ -546,9 +521,9 @@ s32 Item_IsUsable(u16 id)
             return 0;
         }
         break;
-    case 0x99:
-    case 0x9A:
-    case 0x9B:
+    case 153:
+    case 154:
+    case 155:
         if (Player_GetGatherPoint(pl, (u16 *) &pointKind, (f32 *) pointPos) == 0xFFFF) {
             return 0;
         }
@@ -556,7 +531,7 @@ s32 Item_IsUsable(u16 id)
             return 0;
         }
         break;
-    case 0x29B:
+    case 667:
         if (pl->spot == NULL) {
             return 0;
         }
@@ -564,20 +539,20 @@ s32 Item_IsUsable(u16 id)
             return 0;
         }
         break;
-    case 0x2B7:
+    case 695:
         if (pl->spot == NULL) {
             return 0;
         }
-        if (((Spot *)pl->spot)->kind != 0xA) {
+        if (((Spot *)pl->spot)->kind != 10) {
             return 0;
         }
         break;
-    case 0x4E:
+    case 78:
         return Item_UsableOutsideCamp();
-    case 0xAD:
+    case 173:
         return Player_LocalCanUseBinoculars();
-    case 0x45:
-    case 0x50:
+    case 69:
+    case 80:
         return Quest_IsVersus() == 0;
     default:
         if (gItemData[id].icon == 4 && Player_TestFlag(pl, 0x80000) == 0) {
@@ -604,7 +579,7 @@ s32 Save_HasRate(void)
 {
     SaveData *save = &gSave;
 
-    if (Save_TestEventFlag(0xB6) != 1) {
+    if (Save_TestEventFlag(182) != 1) {
         return 0;
     }
     if ((save->rateFlags & 0xFFF) != 0) {
@@ -694,10 +669,10 @@ void Pouch_Compact(u8 box)
         pl->roundsLoaded = loaded;
         pl->coatingSlot = coatSlot;
         cur = pl->pouch[pl->pouchCursor];
-        if (pl->ammoSlot != 0xFF) {
+        if (pl->ammoSlot != 255) {
             ammo = pl->pouch[pl->ammoSlot];
         }
-        if (pl->coatingSlot != 0xFF) {
+        if (pl->coatingSlot != 255) {
             coat = pl->pouch[pl->coatingSlot];
         }
     }
@@ -729,7 +704,7 @@ void Pouch_Compact(u8 box)
                     break;
                 }
             }
-            if (pl->ammoSlot != 0xFF) {
+            if (pl->ammoSlot != 255) {
                 for (slot = pl->pouch, i = 0; i < 20; i++, slot++) {
                     if (slot->item == ammo.item) {
                         pl->ammoSlot = i;
@@ -737,7 +712,7 @@ void Pouch_Compact(u8 box)
                     }
                 }
             }
-            if (pl->coatingSlot != 0xFF) {
+            if (pl->coatingSlot != 255) {
                 for (slot = pl->pouch, i = 0; i < 20; i++, slot++) {
                     if (slot->item == coat.item) {
                         pl->coatingSlot = i;
@@ -752,14 +727,14 @@ void Pouch_Compact(u8 box)
 }
 
 /* Whether pl looks through a scope (the HUD's aim view): the bowgun's
- * attack input runs with rounds loaded, or the player is in state 0x36 or
- * 0x7A with item 0x29B in the pouch. */
+ * attack input runs with rounds loaded, or the player is in state PL_ACT_MOUNTED_GUN_AIM or
+ * PL_ACT_MOUNTED_GUN_REAIM with ITEM_ID_MOUNTED_GUN_AMMO in the pouch. */
 s32 Player_IsAiming(Player *pl)
 {
     if (pl->bowgunReady != 0) {
         return 1;
     }
-    if ((Player_IsState(pl, 0, 0x36) != 0 || Player_IsState(pl, 0, 0x7A) != 0) && Pouch_Count(pl, 0x29B) != 0) {
+    if ((Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_AIM) != 0 || Player_IsState(pl, PL_GROUP_ACTION, PL_ACT_MOUNTED_GUN_REAIM) != 0) && Pouch_Count(pl, ITEM_ID_MOUNTED_GUN_AMMO) != 0) {
         return 1;
     }
     return 0;
@@ -767,7 +742,7 @@ s32 Player_IsAiming(Player *pl)
 
 /* Draws a list's cursor bar over entry index (rows step pixels apart from
  * top), from x left to x right, in colour rgb with its alpha pulsing
- * (0xBF +- 48, a 64-frame period). */
+ * (191 +- 48, a 64-frame period). */
 void ListPanel_DrawCursorBar(s32 left, s32 right, s16 top, s16 step, s32 index, s32 rgb)
 {
     PrimLine bar;
@@ -778,7 +753,7 @@ void ListPanel_DrawCursorBar(s32 left, s32 right, s16 top, s16 step, s32 index, 
     bar.y0 = top - 2 + step * index;
     bar.y1 = bar.y0 + step + 2;
     phase = (gFrameTick & 0x3F) << 10;
-    bar.color = (rgb & 0xFFFFFF) | (((s8)(48.0f * Math_Sin((6.2831855f / 65536.0f) * phase)) + 0xBF) << 24);
+    bar.color = (rgb & 0xFFFFFF) | (((s8)(48.0f * Math_Sin((6.2831855f / 65536.0f) * phase)) + 191) << 24);
     Prim_FillRect(&bar);
 }
 
@@ -788,8 +763,8 @@ void Draw_Icons(Icon *icons, u8 count)
 {
     TexRect spr;
 
-    Gfx_SetTexFilter(1);
-    Gfx_SetBlend(4, 5);
+    Gfx_SetTexFilter(GFX_TEX_BILINEAR);
+    Gfx_SetBlend(GFX_BLEND_SRC_ALPHA, GFX_BLEND_INV_SRC_ALPHA);
     Tex_Prepare(1, TEX_SLOT_ICONS);
     Tex_Bind(TEX_SLOT_ICONS);
     for (; count > 0; count--) {
@@ -821,32 +796,32 @@ s16 Rarity_Color(u8 rarity)
     return gRarityColors[rarity];
 }
 
-/* Whether pl's map shows: by the map skill (skill group 0x23) when the
- * player has one of its values, which shows it only at 0x91; else when
- * item 0x291 is in the pouch. */
+/* Whether pl's map shows: by the map skill (skill group 35) when the
+ * player has one of its values, which shows it only at 145; else when
+ * item 657 is in the pouch. */
 s32 Player_HasMap(Player *pl)
 {
-    u8 skill = Player_GetSkill(pl, 0x23);
+    u8 skill = Player_GetSkill(pl, 35);
 
     if (skill != 0) {
-        if (skill == 0x91) {
+        if (skill == 145) {
             return 1;
         }
         return 0;
     }
-    return Pouch_Count(pl, 0x291) != 0;
+    return Pouch_Count(pl, 657) != 0;
 }
 
 /* Which monsters pl's map shows (DETECT_* bits): the detect skill (skill
- * group 0x1B; 0xA2 is its higher level), and DETECT_TIMER while a detect
+ * group 27; 162 is its higher level), and DETECT_TIMER while a detect
  * effect runs. */
 u8 Player_DetectLevel(Player *pl)
 {
     u8 level = 0;
-    u8 skill = Player_GetSkill(pl, 0x1B);
+    u8 skill = Player_GetSkill(pl, 27);
 
     if (skill != 0) {
-        if (skill == 0xA2) {
+        if (skill == 162) {
             level = DETECT_SKILL_HIGH;
         } else {
             level = DETECT_SKILL;
@@ -865,7 +840,7 @@ s32 Player_GetMapHalf(Player *pl)
 }
 
 /* The map half (MAP_HALF_*) area is drawn on: on stages 13 to 15, areas
- * 0x79 to 0x7B are on the left half and the others on the right; every
+ * AREA_TOWER_0 to AREA_TOWER_2 are on the left half and the others on the right; every
  * other stage has a whole map. */
 s32 Map_GetHalf(u8 stage, u8 area)
 {
@@ -886,13 +861,13 @@ s32 Map_GetHalf(u8 stage, u8 area)
     }
 }
 
-/* Draws digit (0..9) as its full-width character (Shift-JIS 0x824F + digit). */
+/* Draws digit (0..9) as its full-width character (the Shift-JIS character 0x824F + digit). */
 void Text_DrawDigit(u8 digit)
 {
     char buf[3];
 
-    buf[0] = 0x82;
-    buf[1] = digit + 0x4F;
+    buf[0] = 130;
+    buf[1] = digit + 79;
     buf[2] = 0;
     Text_Draw(buf);
 }

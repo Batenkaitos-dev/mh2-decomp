@@ -24,6 +24,7 @@
 #include "sif.h"
 #include "ave.h"
 #include "net_tcp.h"
+#include "net_sockets.h"
 
 
 /*
@@ -31,8 +32,8 @@
  * reverse order of their declarations, so they are declared from the
  * highest address down.
  */
-char gModemInitChat[0x100];
-char gModemChat2[0x100];
+char gModemInitChat[256];
+char gModemChat2[256];
 u8 gNetIfStarted[NET_STARTED_COUNT];
 s32 gNetIfError;
 s32 gNetIfNoErrorCheck;
@@ -40,68 +41,20 @@ s32 gNetIfState;
 s32 gNetPendingEvent;
 u8 gNetEventPending;
 /* The modem chat scripts NetModem_GetChat chooses from (the file's .data). */
-static char gModemChatCxt[0x100] = {
+static char gModemChatCxt[256] = {
 #include "sub_main/00405180.inc"
 };
-static char gModemChatOst[0x100] = {
+static char gModemChatOst[256] = {
 #include "sub_main/00405280.inc"
 };
 static char gModemChatDefault[33] = {
 #include "sub_main/00405380.inc"
 };
-extern s32 gNetSockSema;
 
-s32 AveWrap_Bind(void);
 /* NetTcp_IsIdle takes its result as an s16 */
-s32 AveWrap_IsIdle(void);
-s32 AveWrap_Unbind(void);
-s16 AveIf_Up(s32 a, s32 b);
-s16 AveIf_Down(void);
-s16 AveIf_SetAddress(s32 a, s32 b, s32 c);
-s16 AveIf_ClearAddress(void);
-s16 AveTcp_SetOption(s16 sock, s16 opt, s16 len, void *src);
-s16 AveTcp_GetOption(s16 sock, s16 opt, s16 len, void *dst);
-s16 AveTcp_Open(s32 addr, u16 port, u16 unk);
-s16 AveTcp_Status(s16 sock, u16 *a, u16 *b, u16 *c);
-s16 AveTcp_Abort(s16 sock);
-s16 AveTcp_Send(s16 sock, u8 *data, s16 len);
-s16 AveTcp_Recv(s16 sock, void *buf, s16 len);
-s16 AveTcp_Delete(s16 sock);
-s16 AveRoute_Add(s32 a, s32 b);
-s16 AveRoute_Delete(s32 a, s32 b);
-s16 AvePpp_Init(void);
-s16 AvePpp_Term(void);
-s16 AvePpp_Connect(AveConfig *c);
-s16 AvePpp_Disconnect(void);
-s16 AvePpp_GetStatus(AveInfo *out);
-s16 AvePpp_GetLinkState(s32 *out);
 /* unit's own declaration: declared as this file's callers use it; with the definition's s16 (s16 a, s16 len, void *src), NetPpp_SetOption1 compiles differently */
 s32 AvePpp_SetOption(s16 a, s16 len, void *src);
-s16 AveEth_Init(void);
-s16 AveEth_Term(void);
-s16 AveEth_Start(s16 a);
-s16 AveEth_IsLinkUp(void);
-s16 AveEth_Stop(void);
-s16 AveDhcp_Init(void);
-s16 AveDhcp_Term(void);
-s16 AveDhcp_GetDns(char *name, s32 *a, s32 *b);
-s16 AveDhcp_GetRouter(s32 *out);
-s16 AveDhcp_Start(s32 a, s32 b);
-s16 AveDhcp_GetAddress(s32 *a, s32 *b, s32 *c);
-s16 AveDhcp_GetState(void);
-s16 AveDhcp_Release(s32 a, s32 b);
-s16 AveDns_Init(char *server, s32 a, s32 b);
-s16 AveDns_Term(void);
 s16 AveDns_Request(char *name);
-s16 AveDns_Free(s16 a);
-s16 AveDns_LookUp(s16 id, s32 *addr);
-s16 AveIf_PollEvent(s32 *out);
-s16 AveIf_GetEvent(s32 a, s32 *b, s32 *c, s32 *d);
-s16 AveIf_AckEvent(s32 a);
-s16 AveIf_GetOption(s32 a, s32 len, void *dst);
-s32 NetDhcp_GetState(void);
-s32 NetIf_PollEvent(s32 *out);
-s32 NetPpp_GetStatus(NetConnInfo *out);
 char *strcat(char *dst, char *src);
 s32 sprintf(char *dst, char *fmt, ...);
 
@@ -296,7 +249,7 @@ s32 NetTcp_Open(NetAddr *dest)
 }
 
 /*
- * Reads AVE TCP options 0x2008 into opts[0] and 0x2001 into opts[1] (4
+ * Reads AVE TCP options 8200 into opts[0] and 8193 into opts[1] (4
  * bytes each) for sock. Returns the last AVE result; stops at the first
  * negative one.
  */
@@ -304,30 +257,30 @@ s32 NetTcp_GetOptions(s32 sock, s32 *opts)
 {
     s32 result;
 
-    result = AveTcp_GetOption(sock, 0x2008, sizeof(s32), opts);
+    result = AveTcp_GetOption(sock, 8200, sizeof(s32), opts);
     result = NetTcp_Result(result);
     if (result < 0) {
         return result;
     }
-    result = AveTcp_GetOption(sock, 0x2001, sizeof(s32), opts + 1);
+    result = AveTcp_GetOption(sock, 8193, sizeof(s32), opts + 1);
     result = NetTcp_Result(result);
     return result;
 }
 
 /*
- * Sets AVE TCP options 0x2008 from opts[0] and 0x2001 from opts[1] for
+ * Sets AVE TCP options 8200 from opts[0] and 8193 from opts[1] for
  * sock. Returns the last AVE result; stops at the first negative one.
  */
 s32 NetTcp_SetOptions(s32 sock, s32 *opts)
 {
     s32 result;
 
-    result = AveTcp_SetOption(sock, 0x2008, sizeof(s32), opts);
+    result = AveTcp_SetOption(sock, 8200, sizeof(s32), opts);
     result = NetTcp_Result(result);
     if (result < 0) {
         return result;
     }
-    result = AveTcp_SetOption(sock, 0x2001, sizeof(s32), opts + 1);
+    result = AveTcp_SetOption(sock, 8193, sizeof(s32), opts + 1);
     result = NetTcp_Result(result);
     return result;
 }

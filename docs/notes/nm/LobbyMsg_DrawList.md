@@ -1,4 +1,4 @@
-# LobbyMsg_DrawList (lobby, src/lobby/unk_7D2C80.c)
+# LobbyMsg_DrawList (lobby, src/lobby/net_msg_pages.c)
 
 ## Status
 

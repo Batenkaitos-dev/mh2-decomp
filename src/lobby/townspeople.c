@@ -33,7 +33,6 @@
 #include "lobby_npc.h"
 #include "stageobj.h"
 #include "lobby_vobj.h"
-#include "m2c_macros.h"
 #include "scene.h"
 #include "player.h"
 #include "item.h"

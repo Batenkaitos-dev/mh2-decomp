@@ -15,7 +15,6 @@
  */
 #include "common.h"
 #include "sprite.h"
-#include "m2c_macros.h"
 #include "lobby_menu.h"
 #include "lobby_globals.h"
 #include "pad.h"
@@ -1419,7 +1418,13 @@ void EquipSet_RecalcStats(EquipIdx *slots, s32 compareTo)
 
 static s32 BoxMenu_CanSplit(void);
 s8 Kbd_Run(char *dst, s16 held, s16 pressed);
-INCLUDE_RODATA("asm/lobby/nonmatchings/item_box_menu", gBoxEmptyText);
+#pragma rodata on
+#pragma explicit_zero_data on
+char gBoxEmptyText[1] = {
+#include "lobby/0083B348.inc"
+};
+#pragma explicit_zero_data reset
+#pragma rodata off
 
 /*
  * Names the equipment set gBoxWork->set, once a frame (its step is gBoxWork->sub2); called first

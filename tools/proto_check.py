@@ -33,7 +33,7 @@ Without --list it prints one summary line per kind (and per module with
 import re, sys, os, glob, collections, argparse
 
 KW = {'if', 'while', 'for', 'switch', 'return', 'sizeof', 'else', 'do', 'case',
-      'goto', 'typedef', 'INCLUDE_ASM', 'INCLUDE_RODATA', 'defined'}
+      'goto', 'typedef', 'INCLUDE_DATA', 'defined'}
 INTS = {  # name -> (size, signed)
     's8': (1, 1), 'u8': (1, 0), 's16': (2, 1), 'u16': (2, 0), 's32': (4, 1),
     'u32': (4, 0), 's64': (8, 1), 'u64': (8, 0), 'char': (1, 1),

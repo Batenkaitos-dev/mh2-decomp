@@ -20,7 +20,6 @@
 #include "area_anim.h"
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "scene.h"
-#include "m2c_macros.h"
 #include "em.h"
 #include "stageobj.h"
 #include "player.h"

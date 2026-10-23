@@ -19,8 +19,6 @@ D_001BB9C6 = gMonsterNoteIds + 0x36;
 D_001BB13B = gOverlayWindow + 0xB;
 D_001BB37C = gRateGroups + 0xDC;
 D_001BA110 = gVif1Path3Unmask + 0x0;
-/* Round 19 (ndata): names the code uses inside named objects */
+/* Names the code uses inside named objects */
 D_6ADB30 = gNextQuest + 0x60;
-/* Round 25 (names): names the code uses inside named objects */
-/* Round 31 (names): names the code uses inside named objects */
 gDmcamPtName = gBrdataPtName + 0x8;

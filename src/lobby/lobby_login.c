@@ -30,7 +30,6 @@
 #include "lobby_menu.h"
 #include "net_mode.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_net.h"
 #include "scene.h"
 #include "player.h"

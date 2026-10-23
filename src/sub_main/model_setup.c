@@ -376,10 +376,20 @@ void Model_InitMatSetsSlot(Model *model, s32 setupFlags, u8 slot, s32 kind)
     Model_InitSkeleton(base, model, kind, 0);
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/model_setup", D_0046CEA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/model_setup", D_0046CEC0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/model_setup", D_0046CEE0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/model_setup", D_0046CF00);
+#pragma rodata on
+char D_0046CEA0[21] = {
+#include "sub_main/0046CEA0.inc"
+};
+char D_0046CEC0[27] = {
+#include "sub_main/0046CEC0.inc"
+};
+char D_0046CEE0[23] = {
+#include "sub_main/0046CEE0.inc"
+};
+char D_0046CF00[20] = {
+#include "sub_main/0046CF00.inc"
+};
+#pragma rodata off
 
 /* the calls cast to s16: this unit's code takes the value as s16 */
 struct MaterialSlot *Material_Get(s32 i);

@@ -25,7 +25,6 @@
 #include "save.h"
 #include "pad.h"
 #include "lobby_state.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "lobby_vobj.h"
 #include "lobby_menu.h"
@@ -229,8 +228,12 @@ s32 HunterInfo_Update(u16 pad)
     return MENU_RUNNING;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/hunter_info", gHunterInfoPairFmt);
-INCLUDE_RODATA("asm/lobby/nonmatchings/hunter_info", gHunterInfoLabelFmt);
+const char gHunterInfoPairFmt[15] = {
+#include "lobby/00838390.inc"
+};
+const char gHunterInfoLabelFmt[7] = {
+#include "lobby/008383A0.inc"
+};
 
 extern u8 gLobbyLevel0Sel;
 extern u8 gLobbyLevel1Sel;
@@ -429,10 +432,8 @@ s32 HunterInfo_ActionInput(HunterInfoMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-extern char gHunterInfoPairFmt[];
-extern char gHunterInfoLabelFmt[];
-extern char gHunterInfoLineFmt[];
-extern char gHunterInfoCountFmt[];
+extern const char gHunterInfoLineFmt[];
+extern const char gHunterInfoCountFmt[];
 /* HUNTER_PAGE_GROUP at (x, y): the hunter's name, id and online mark (the
  * name from its fifth byte, and the mark's icon); the location's four
  * lines as the online window draws the player's own (the server's
@@ -493,8 +494,12 @@ void HunterInfo_DrawGroup(HunterInfoMenu *menu, s16 x, s16 y)
     Text_Printf(gHunterInfoCountFmt, gNetLabels[NET_LABEL_GROUP_MEMBERS], menu->user.members, menu->user.maxMembers);
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/hunter_info", gHunterInfoLineFmt);
-INCLUDE_RODATA("asm/lobby/nonmatchings/hunter_info", gHunterInfoCountFmt);
+const char gHunterInfoLineFmt[13] = {
+#include "lobby/008383B0.inc"
+};
+const char gHunterInfoCountFmt[16] = {
+#include "lobby/008383C0.inc"
+};
 
 extern char *gHunterTitleTexts[];
 /* HUNTER_PAGE_STATUS at (x, y), from the hunter's card (gHunterPanel): the

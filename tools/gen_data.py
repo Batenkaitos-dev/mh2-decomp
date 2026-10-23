@@ -43,7 +43,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from func_diff import symbol_files  # noqa: E402  (a module's symbol files, from its YAML)
+from module_symbols import symbol_files  # noqa: E402  (a module's symbol files, from its YAML)
 
 ROOT = Path(__file__).resolve().parent.parent
 

@@ -11,7 +11,6 @@
  */
 #include "common.h"
 #include "syssettings.h"
-#include "m2c_macros.h"
 #include "em.h"
 #include "shadow.h"
 #include "em_bulldrome.h"

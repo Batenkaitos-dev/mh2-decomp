@@ -6,7 +6,6 @@
  * through sub_main's memory card task (gCardTask, the MC_* names in yn.h).
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "yn.h"
 
 void CardTask_Begin(s32 mode);

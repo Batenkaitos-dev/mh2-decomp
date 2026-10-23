@@ -27,7 +27,6 @@ extern s32 gNetDns2;
 extern s32 gNetDns1;
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
-#include "m2c_macros.h"
 #include "yn.h"
 #include "net_save.h"
 #include "syssave.h"

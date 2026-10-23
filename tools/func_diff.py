@@ -4,7 +4,7 @@
     python tools/func_diff.py MODULE FILE.c [FUNC ...] [-D NAME] [-C N]
 
 MODULE is main, sub_main, game, ... Every function MWCC emits for FILE.c
-(INCLUDE_ASM lines are ignored) is compared word by word with the original
+(INCLUDE_DATA lines are ignored) is compared word by word with the original
 bytes at its address, which comes from the name (func_XXXXXXXX) or from
 config/symbols/*.txt. Relocated fields are masked, and their targets are
 checked against the symbol addresses (a '?' after a symbol means its address
@@ -38,6 +38,8 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pathlib import Path
 
+from module_symbols import symbol_files  # noqa: E402  (a module's symbol files, from its YAML)
+
 ROOT = Path(__file__).resolve().parent.parent
 DEPS = ROOT / "tools" / "deps" / "linux-x64"
 WIBO = DEPS / "wibo" / "wibo"
@@ -45,7 +47,7 @@ MWCC = DEPS / "mwcc" / "mwccps2.exe"
 OBJDUMP = DEPS / "binutils" / "mips-ps2-decompals-objdump"
 CFLAGS = ["-c", "-nostdinc", "-O3,p", "-sdatathreshold", "0", "-str", "readonly", "-i", "include",
           "-i", "build/gen"]  # as tools/configure.py
-INCLUDE_ASM = re.compile(r"^\s*(INCLUDE_ASM|INCLUDE_RODATA)\(.*$")
+SPLICE_LINE = re.compile(r"^\s*INCLUDE_DATA\(.*$")
 SYM_LINE = re.compile(r"^\s*([A-Za-z_.$][\w.$]*)\s*=\s*(0x[0-9A-Fa-f]+)\s*;")
 AUTO_NAME = re.compile(r"^(?:func|D|jtbl)_([0-9A-Fa-f]{6,8})$")
 R_MIPS_32, R_MIPS_26, R_MIPS_HI16, R_MIPS_LO16 = 2, 4, 5, 6
@@ -64,20 +66,6 @@ def module_image(module: str) -> tuple[bytes, int]:
         sys.exit("no PT_LOAD segment in the boot ELF")
     data = (ROOT / f"build/orig/{module}.bin").read_bytes()
     return data, struct.unpack_from("<I", data, 8)[0]          # MWo3 header: load address
-
-
-def symbol_files(module: str) -> list[Path]:
-    """config/symbols/<module>.txt and the module's other symbol files, <module>_*.txt
-    (the game overlay's monster families have theirs in game_em.txt)."""
-    d = ROOT / "config" / "symbols"
-    files = [d / f"{module}.txt"] + sorted(d.glob(f"{module}_*.txt"))
-    # and the library files its YAML lists (main: sdk_*.txt, gcc_*.txt, cri_*.txt)
-    y = ROOT / "config" / ("main.yaml" if module == "main" else f"overlays/{module}.yaml")
-    if y.exists():
-        for p in re.findall(r"^\s*-\s*config/symbols/(\S+\.txt)\s*$", y.read_text(encoding="utf-8"), re.M):
-            if d / p not in files:
-                files.append(d / p)
-    return files
 
 
 def load_symbols(module: str) -> dict[str, int]:
@@ -268,7 +256,7 @@ def main() -> int:
     pieces = piece_starts(args.module, base)
     lines = args.cfile.resolve().read_text(encoding="utf-8").splitlines()
     text = "".join(f"#define {d}\n" for d in args.defines)
-    text += "\n".join("" if INCLUDE_ASM.match(l) else l for l in lines) + "\n"
+    text += "\n".join("" if SPLICE_LINE.match(l) else l for l in lines) + "\n"
     (ROOT / "build").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir=ROOT / "build") as td:
         src = Path(td) / args.cfile.name
@@ -303,7 +291,7 @@ def main() -> int:
         # compiler kept (an epilogue after an endless loop). Up to the next
         # function there may only be padding. The file's own piece of the YAML
         # ends the tail too: what follows the file's last function may be data or
-        # another file's code (round 25: Letterbox_Draw, Yn_LoadModule).
+        # another file's code (Letterbox_Draw, Yn_LoadModule).
         k = bisect.bisect_right(starts, addr)
         j = bisect.bisect_right(pieces, addr)
         end = min(starts[k] if k < len(starts) else 1 << 32, pieces[j] if j < len(pieces) else 1 << 32)

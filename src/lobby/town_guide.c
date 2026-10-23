@@ -13,7 +13,6 @@
 #include "common.h"
 #include "lobby_state.h"
 #include "lobby_text.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
 #include "scene.h"

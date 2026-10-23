@@ -99,29 +99,52 @@ extern char gTagTextLine[768];          /* a run's text, terminated */
 extern s16 gTagSizeWidths[];              /* the sizes' widths */
 extern u8 gTagColors[];                   /* the colours, Text_SetColorIndex's */
 void *memcpy(void *dst, const void *src, u32 n);
-extern char gTagNameEnd[];
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameEnd);
+#pragma rodata on
+char gTagNameEnd[4] = {
+#include "lobby/00846D58.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameDummy);
+char gTagNameDummy[6] = {
+#include "lobby/00846D60.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameBody);
+char gTagNameBody[5] = {
+#include "lobby/00846D68.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameSize);
+char gTagNameSize[5] = {
+#include "lobby/00846D70.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameColor);
+char gTagNameColor[6] = {
+#include "lobby/00846D78.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameBr);
+char gTagNameBr[3] = {
+#include "lobby/00846D80.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameCenter);
+char gTagNameCenter[7] = {
+#include "lobby/00846D88.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameLeft);
+char gTagNameLeft[5] = {
+#include "lobby/00846D90.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameRight);
+char gTagNameRight[6] = {
+#include "lobby/00846D98.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameLf);
+char gTagNameLf[3] = {
+#include "lobby/00846DA0.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/tag_text", gTagNameC);
+char gTagNameC[2] = {
+#include "lobby/00846DA8.inc"
+};
+#pragma rodata off
 
 /* Reads a tag's name, up to the '>', from the text (gTagTextPtr) into
  * gTagTextTagName. A name of TAG_NAME_MAX bytes or more, or one with a
@@ -492,16 +515,6 @@ void TagText_Print(char *text, f32 x, f32 y)
 }
 
 /* The tags' names, by enum TagTextTag, and the colours and the sizes' widths. */
-extern char gTagNameDummy[];
-extern char gTagNameBody[];
-extern char gTagNameSize[];
-extern char gTagNameColor[];
-extern char gTagNameBr[];
-extern char gTagNameCenter[];
-extern char gTagNameLeft[];
-extern char gTagNameRight[];
-extern char gTagNameLf[];
-extern char gTagNameC[];
 char *gTagNames[12] = {
     gTagNameDummy, gTagNameBody, gTagNameSize, gTagNameColor,
     gTagNameBr, gTagNameCenter, gTagNameLeft, gTagNameRight,

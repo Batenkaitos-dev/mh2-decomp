@@ -23,7 +23,6 @@ extern s32 gLoadLastVSync; /* sub_main: gVSyncCount when the loader last ran a f
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
 #include "render_state.h"
-#include "m2c_macros.h"
 #include "select.h"
 #include "syssettings.h"
 #include "save.h"
@@ -1324,10 +1323,12 @@ void Gallery_DrawList(GalWork *gal)
 
 s32 strcmp(char *, char *);                 /* strcmp */
 u32 strlen(char *);
-/* The full-width opening double angle bracket, which opens a centred line,
- * with its padding (16 bytes; a literal would take 8). */
-INCLUDE_RODATA("asm/select/nonmatchings/select_gallery", D_006D06F0);
-extern char D_006D06F0[];
+/* The full-width opening double angle bracket, which opens a centred line. */
+#pragma rodata on
+char D_006D06F0[3] = {
+#include "select/006D06F0.inc"
+};
+#pragma rodata off
 
 /* An entry's page (while pageShown): its picture, the frame and its four
  * parts, the four description lines (a line starting with that bracket is centred)

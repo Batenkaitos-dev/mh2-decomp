@@ -10,7 +10,6 @@
  * which reach the kinds' milestones (gOfferMilestonesA/B, event flags) and
  * the village's (Village_CheckMilestone). */
 #include "common.h"
-#include "m2c_macros.h"
 #include "em.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
@@ -274,7 +273,7 @@ s32 Offer_FindRequest(u8 npcId)
 
     npcIdx = Offer_FindNpc();
     /* gSave.offers[ret].active: the field form changes the address arithmetic */
-    if ((npcIdx != -1) && (M2C_FIELD(((u8 *)&gSave + (npcIdx * 20)), s8 *, 10665) != 0)) {
+    if ((npcIdx != -1) && (*((s8 *)&gSave + npcIdx * 20 + 10665) != 0)) {
         return npcIdx;
     }
     return -1;

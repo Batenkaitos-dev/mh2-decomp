@@ -163,7 +163,7 @@ void *Browser_Realloc(void *ptr, u32 size)
  * removed: the build compiles it and drops its code. Its body is unknown;
  * what shows is that the file compiled a two-argument floating-point call
  * before Browser_ReadPad, which changes that function's registers
- * (docs/notes/nm/Browser_ReadPad.md). */
+ * (docs/notes/hard-matches/Browser_ReadPad.md). */
 static f64 Stripped_Sub(f64 lhs, f64 rhs)
 {
     return lhs - rhs;

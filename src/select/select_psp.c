@@ -21,7 +21,6 @@
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
 #include "render_state.h"
-#include "m2c_macros.h"
 #include "select.h"
 #include "syssave.h"
 #include "save.h"

@@ -345,6 +345,13 @@ def main() -> int:
     out = Path(args.out).resolve()
     if out == ROOT or (ROOT in out.parents and (ROOT / "build") not in out.parents):
         sys.exit(f"export_readable: {out} is in the repository; use a directory outside it or under build/")
+    # the export holds the game's content: never inside a git work tree, where
+    # it could be committed (this repository's build/ is git-ignored)
+    if (ROOT / "build") not in out.parents:
+        for d in [out] + list(out.parents):
+            if (d / ".git").exists():
+                sys.exit(f"export_readable: {out} is inside the git work tree {d}; "
+                         "the export holds your copy's data and text: put it outside any repository")
     if not (ROOT / "build" / "orig").is_dir():
         sys.exit("export_readable: no build/orig: run tools/configure.py (--split) first")
     if out.exists() and any(out.iterdir()):

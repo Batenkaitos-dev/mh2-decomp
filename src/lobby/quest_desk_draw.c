@@ -29,7 +29,6 @@
 #include "common.h"
 #include "lobby_text.h"
 #include "lobby_state.h"
-#include "m2c_macros.h"
 #include "scene.h"
 #include "player.h"
 #include "save.h"
@@ -270,7 +269,11 @@ void Quest_DrawOverview(s16 x, s16 y, QuestInfo *quest)
     Text_PrintfColored(gQuestSheetStrFmt, gQuestSheetTexts[QUEST_SHEET_TEXT_SPECIAL_COND]);
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/quest_desk_draw", gQuestSheetStrFmt);
+#pragma rodata on
+char gQuestSheetStrFmt[3] = {
+#include "lobby/00838B30.inc"
+};
+#pragma rodata off
 
 /*
  * The quest sheet's second page, at (x, y): the title, then beside their

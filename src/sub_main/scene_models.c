@@ -53,7 +53,7 @@ Model *Model_SetupTexPackEx(s16 idx, s32 work, s16 texSlot, s32 packId, s32 setu
  * when 0): its model with its textures and motions (texture slots 20 per monster slot from
  * 163), and when the kind has one (gEmPartModelPackFiles not -1) a second model set (texture
  * slot 16 further on); else the set's count is -1.
- * FAKEMATCH (docs/notes/nm/EmSlot_LoadModels.md): written so that the compiler keeps the
+ * FAKEMATCH (docs/notes/hard-matches/EmSlot_LoadModels.md): written so that the compiler keeps the
  * values in the registers the game's code uses.
  * - Each path computes its own byte offset o = slot * sizeof(s16) and writes the halfword
  *   arrays through it.
@@ -193,7 +193,7 @@ void EmSlot_Clear(s16 i)
 /*
  * Frees the models of the quest's monster in slot i and its second model set, marks both
  * empty (count -1), frees its motions and clears its kind.
- * FAKEMATCH (docs/notes/nm/EmSlot_FreeModels.md): the game's code computes i and i * 2 in
+ * FAKEMATCH (docs/notes/hard-matches/EmSlot_FreeModels.md): the game's code computes i and i * 2 in
  * an order that plain C doesn't give, and three forms here reproduce it:
  * - the (s16) cast on the index of the first count read;
  * - n set from i with an explicit cast, and the last store indexed with i itself;

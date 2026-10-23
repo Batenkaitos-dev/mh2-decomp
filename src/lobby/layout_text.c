@@ -15,7 +15,6 @@ s32 strlen(const char *s);
 
 s32 strcmp(const char *a, const char *b); /* strcmp */
 
-extern char gHtmlMapNoSrc[];
 s32 Html_ParseColor(char *s);
 
 /* Raises *dst to value (inlined, as in the table handlers: the game's
@@ -556,7 +555,11 @@ void Layout_DrawImage(u16 x, u16 y, HtmlLine *line)
 }
 
 /* "": the target of an image map area (Layout_MapArea). */
-INCLUDE_RODATA("asm/lobby/nonmatchings/layout_text", gHtmlMapNoSrc);
+#pragma explicit_zero_data on
+const char gHtmlMapNoSrc[1] = {
+#include "lobby/0083A730.inc"
+};
+#pragma explicit_zero_data reset
 
 /* On the drawing pass, draws an <AREA> of the image map named by <MAP>
  * (HtmlState.mapName) as a link over the image that uses it, with its

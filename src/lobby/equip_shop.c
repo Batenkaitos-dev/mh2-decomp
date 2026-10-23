@@ -10,7 +10,6 @@
  * functions come next, with the townspeople's motion effects), the
  * lobby's shadow sizes and its monster hit tables. */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "scene.h"
 #include "save.h"
@@ -927,9 +926,12 @@ s32 Box_CountEquip(u8 type, u16 id)
     return count;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/equip_shop", gEquipShopStrFmt);
+#pragma rodata on
+char gEquipShopStrFmt[3] = {
+#include "lobby/0083AF90.inc"
+};
+#pragma rodata off
 
-extern char gEquipShopStrFmt[];
 
 /* A line of the equipment shop: the icon (with its rarity unless it is a
  * random weapon), the name, the count owned and the wearer. y steps inside

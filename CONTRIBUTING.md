@@ -9,11 +9,11 @@ which instructions with the game's compiler is in the MWCC matching
 reference, [docs/mwcc-matching.md](docs/mwcc-matching.md).
 
 What is left, at the last count:
-- about 1,200 struct fields in `include/` named by their offset (`unk1C`),
+- about 1,100 struct fields in `include/` named by their offset (`unk1C`),
   and more in structs local to one file;
 - data objects still named by their address (`D_00XXXXXX`);
 - small groups of field accesses through raw byte offsets;
-- 30 fakematches ("Fakematches").
+- 27 fakematches ("Fakematches").
 
 ## Ground rules
 
@@ -93,11 +93,10 @@ the build writes them from your copy.
   assert messages) stay literals.
 - **Comments** say what a text is, in English; they never quote the game's
   text.
-- **Converting a file** (new data in C, or a new literal of the game's
-  text): `python tools/content_conv.py src/MODULE/FILE.c` after a build
-  (it reads the objects' addresses and sizes in build/MODULE.elf), then
-  `python tools/configure.py` and `ninja`. `--text ADDR,...` makes the
-  listed ASCII literals `TXT()`.
+- **Describing an object:** declare it with its type and an initializer
+  that includes its content, `T NAME[N] = {` then
+  `#include "MODULE/ADDR.inc"` then `};` (ADDR its address, eight hex
+  digits): configure.py has content_gen write the values from your copy.
 - **The check:** `python tools/content_scan.py` fails on non-ASCII text in
   src/ and include/ and in the other committed text files (config/,
   tools/, the guides, docs/), and on data initializers with values.
@@ -107,8 +106,8 @@ the build writes them from your copy.
 
 ### The readable export
 
-For research and modifications with your own copy (the owner,
-2026-10-21), `python3 tools/export_readable.py [OUT]` writes a source
+For research and modifications with your own copy,
+`python3 tools/export_readable.py [OUT]` writes a source
 tree with the content written out in C (default OUT: build/readable).
 Run it after configure.py, in a clone. OUT is a copy of every file git
 tracks, with src/'s C files changed in two ways:
@@ -135,9 +134,9 @@ clone's toolchain (`--deps none`: run tools/setup.sh there), and
 OUT/README_EXPORT.md says what the tree is.
 
 **The export holds the game's data and text.** It stays on your machine:
-never commit it, publish it or share it. Keep OUT outside the
-repository or under build/ (git-ignored); the tool refuses any other
-place in the repository. Running it again needs `--force`, which
+never commit it, publish it or share it. Keep OUT under build/
+(git-ignored) or outside every git work tree: the tool refuses any other
+place inside one. Running it again needs `--force`, which
 replaces OUT and any edits in it.
 
 
@@ -154,13 +153,17 @@ also re-runs it when those files change); `python tools/configure.py
 Before you commit:
 
 1. `ninja` prints `OK` for all 13 targets: the build is byte-identical to
-   the game (config/targets.sha1).
+   the game (config/targets.sha1). It also runs tools/plain_check.py
+   (every function compiled with plain MWCC equals the build's) and
+   `tools/provenance.py --check` (no code from an unlabelled source):
+   either failing stops the build.
 2. `python tools/proto_check.py` reports 0 disagreements: every function
    declaration agrees with its definition, apart from the ones marked as
    the game's own ("Fakematches").
 3. `python tools/data_blobcheck.py` reports 0 blob-like definitions.
 4. `python tools/content_scan.py` reports 0 findings ("Content").
-5. `ninja progress` still shows the `game` row at 12,551/12,551.
+5. `ninja progress` still shows the `game` row at 12,532/12,532 and the
+   `zlib` row at 19/19.
 6. `git status` lists no generated file.
 
 ## Working on a function
@@ -182,7 +185,8 @@ Before you commit:
   reload what the callee leaves alone. Such a callee must be in the same
   file, before its callers.
 - C sources are UTF-8; tools/mwcc_cc.py converts them to Shift-JIS, the
-  game's encoding, before compiling.
+  game's encoding, before compiling. What else it does to MWCC's output,
+  none of it to the code, is in its docstring; `ninja plaincheck` shows it.
 - A rename or retype can change the code (a narrower type, another struct
   layout). When it does, the MWCC pattern catalogue
   (docs/mwcc-matching.md) and the permuter ("decomp-permuter") help find
@@ -237,9 +241,10 @@ a `#pragma optimization_level` pair around a function built at another
 level, a local view of a global, and per-kind views of a shared object (a
 struct with one kind's own field names over a generic object).
 
-`NON_MATCHING` blocks (C under `#ifdef NON_MATCHING`, with the assembly
-kept for the build) are something else: C that doesn't match yet. None is
-left.
+docs/mwcc-matching.md often mentions `NON_MATCHING` blocks: C that didn't
+match yet, kept under `#ifdef NON_MATCHING` while the build used the
+original's assembly. None is left, and the build no longer takes assembly
+in a C file.
 
 ## Hand-written assembly
 
@@ -281,10 +286,9 @@ of its own in the YAML (`[0x186B50, .rodata, net_if]`).
 
 ## Data in C
 
-All of Capcom's initialized data, 1.75 MB, is declared in C, with its
-values generated from your copy ("Content"; `python
-tools/data_progress.py` shows it per module); the libraries' data, and
-ACCESS's engine's, stays assembly.
+All of Capcom's initialized data is declared in C, with its values
+generated from your copy ("Content"; `ninja provenance` gives the bytes);
+the libraries' data, and ACCESS's engine's, stays assembly.
 - **Aliases.** A name inside a C object (a label splat made at a field, a
   table's second record) is defined for the linker relative to its
   object, in config/ld/MODULE_aliases.ld: `D_008C9BCC = D_008C9BB0 +
@@ -311,11 +315,17 @@ ACCESS's engine's, stays assembly.
 module, then by origin (tools/configure.py, `unit_kind`): `game`
 (Capcom's code), `sdk` (Sony's libraries, the toolchain's runtime, the
 network libraries), `middleware` (CRI), `access` (ACCESS's kana-kanji
-engine in sub_main, assembly from your copy like the libraries) and `vu1`
-(the microcode). The `named` column counts matched
+engine in sub_main, assembly from your copy like the libraries), `vu1`
+(the microcode) and `zlib` (zlib 1.1.4, third-party, decompiled: the four
+files `src/lobby/adler32.c`, `infblock.c`, `inflate.c` and `infutil.c`,
+which keep zlib's licence notice). The `named` column counts matched
 functions with a real name. objdiff counts a function as matched only if
 its relocations match too. Padding (the overlays' leading zeros) is not
 counted.
+
+`ninja provenance` (tools/provenance.py) counts where each byte of the 13
+files comes from, by origin, from the link maps: the table in the README's
+"Status". `--list ORIGIN` lists the pieces of one origin.
 
 ## decomp-permuter
 

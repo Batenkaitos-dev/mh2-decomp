@@ -13,7 +13,6 @@
  * starts the town again. The game menu's save line runs it too.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"

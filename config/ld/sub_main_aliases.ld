@@ -225,19 +225,16 @@ D_006AA2B4 = gSysSave + 0x464;
 D_0044AF64 = gVersusStartPos + 0x4;
 D_0044AF68 = gVersusStartPos + 0x8;
 D_0043ECF4 = gVibPatterns + 0x4;
-/* Round 20 (ndata): names the code uses inside named objects */
+/* Names the code uses inside named objects */
 D_005BAD78 = gEquipPreview + 0x18;
 D_005BAD84 = gEquipPreview + 0x24;
 D_005C3518 = gHttpsProxy + 0x8;
 D_005C3627 = gHttpProxy + 0x7;
-/* Round 22 (ndata): names the code uses inside named objects */
 gQuestRecordHunted = gQuestRecord + 0x1C;
 gQuestRecordCaptured = gQuestRecord + 0x7C;
-/* Round 23 (ndata): names the code uses inside named objects */
 D_005B214E = gAreaHitCapsulePos + 0x3E;
 gEmSlotModelVars = gEmSlotModelIds + 0x4;
 
-/* Round 25 (names): names the code uses inside named objects */
 D_0059CBC4 = gNetDevRpcBuf + 0x4;
 D_0059CBC8 = gNetDevRpcBuf + 0x8;
 D_0059CBCC = gNetDevRpcBuf + 0xC;
@@ -247,7 +244,6 @@ gBgmSeason = gBgmSeason + 0x0;
 gNoticeTitle = gNoticeTitle + 0x0;
 gGsColor2F = gGsColor2F + 0x0;
 gGsColorF = gGsColorF + 0x0;
-/* Round 31 (names): names the code uses inside named objects */
 gPadReplayOn = gPadReplay + 0xA;
 gPadReplayCursor = gPadReplay + 0xC;
 gPadReplayFramesLeft = gPadReplay + 0x14;
@@ -259,4 +255,3 @@ D_0059D694 = gNetOptList + 0x14;
 D_0059D698 = gNetOptList + 0x18;
 D_0059D69C = gNetOptList + 0x1C;
 D_005859AE = gDictHeader + 0x4E;
-/* Round 31 (names) compat: old spellings in the units worker's files, until the merge re-applies the renames there */

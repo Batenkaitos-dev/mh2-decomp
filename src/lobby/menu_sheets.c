@@ -200,7 +200,7 @@ extern SheetTurn gStripTurnOffsets[];
  * before each emblem call, where it goes second in the call's set-up as in the game; with the
  * constant written at both calls (or col set once, which the compiler folds in) it goes last.
  * The round-mark call takes the constant itself: col there moves its load too
- * (docs/notes/nm/Menu_DrawQuestSheet.md).
+ * (docs/notes/hard-matches/Menu_DrawQuestSheet.md).
  */
 void Menu_DrawQuestSheet(s16 x, s16 y, s16 w, s16 height, s16 *tabs, s16 page, s8 kind, s32 emblem)
 {

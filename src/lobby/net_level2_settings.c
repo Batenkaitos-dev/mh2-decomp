@@ -16,7 +16,6 @@
 #include "player.h"
 #include "save.h"
 #include "pad.h"
-#include "m2c_macros.h"
 
 struct LobbyPkt;
 

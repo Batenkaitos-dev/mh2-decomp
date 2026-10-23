@@ -6,7 +6,6 @@
  * display and render state as those do.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "browser.h"
 #include "html.h"
 #include "lobby_globals.h"

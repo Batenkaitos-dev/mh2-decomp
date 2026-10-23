@@ -782,7 +782,7 @@ s16 Player_IsState(void *obj, u8 state, u8 sub);
  * FAKEMATCH: the spit roast's last motion (PL_MOT_SPIT_ROAST_TURN) reaches off[1] and off[2] through the
  * pointers offY and offZ. Written as off[1] and off[2], the compiler gives that block its own
  * copies of their addresses, 4 instructions more than the game's
- * (docs/notes/nm/Player_DrawHeldProp.md). */
+ * (docs/notes/hard-matches/Player_DrawHeldProp.md). */
 void Player_DrawHeldProp(void *obj)
 {
     Model *set;

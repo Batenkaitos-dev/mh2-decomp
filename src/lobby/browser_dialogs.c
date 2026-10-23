@@ -1321,10 +1321,12 @@ void DlgBox_Draw(BrowserObj *obj)
 }
 
 /* An empty string, the password kept with a login id alone. The game kept
- * it as its own object beside the one Browser_OpenKeyboard uses, so it is
- * included as it is. */
-INCLUDE_RODATA("asm/lobby/nonmatchings/browser_dialogs", gEmptyPassword);
-extern char gEmptyPassword[];
+ * it as its own object beside the one Browser_OpenKeyboard uses. */
+#pragma explicit_zero_data on
+const char gEmptyPassword[1] = {
+#include "lobby/00838FE8.inc"
+};
+#pragma explicit_zero_data reset
 
 /* Copies into the kept login (loginId, password) what the login dialog's
  * answer says to keep (BrowserWork.loginSave): the login id from the form,

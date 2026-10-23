@@ -376,7 +376,7 @@ size 0x9D0
 0x95E u8 scriptAbort // nonzero: EmScript_Run stops and restarts the script (Em_RestartScript); EmScript_SetAbort sets it (2 after 1000 commands in a frame)
 0x95F u8 routeResult // EmScript_StartRoute: 0 found, 2 no route point near, 7 a route without points
 0x974 u8 routeHeight // EmScript_StartRoute byte 2: a height in tenths (h = 10.0f * it)
-# Round 25 (types h1): pads split from their indexed uses and the file-local views of Em
+# pads split from their indexed uses and the file-local views of Em
 0x060 f32 worldMtx[4][4] // the world matrix: scale, rotation, position (Em_UpdateWorldMatrix, Em_Draw: Mtx_Copy into it); Vec_Rotate turns by it (EmTrader_JumpOut, Player_StateLedgeHang/15/1E/44); the effects typed Em keep a counter in its byte 1 (PlayerAttack_Update, BowgunShot_Fall)
 0x2B8 u8 unk2B8 // as Player.unk2B8 (same offset): Player_UpdateAutoTurn clears it
 0x2BC u8 motionStarted[4] // as Player.motionStarted (same offset): the lobby townspeople (Npc_UpdateMotion) begin the layer motion (Player_BeginLayerMotion) while it is 0, then set it

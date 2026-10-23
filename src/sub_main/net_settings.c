@@ -17,12 +17,6 @@
 
 void strncpy(char *dst, const char *src, u32 n);
 void * memset(void *p, s32 c, u32 n);
-extern s8 D_0046A8E0;
-extern s8 D_0046A8F0;
-extern s8 D_0046A900;
-extern s8 D_0046A910;
-extern u8 D_0046A918;
-extern u8 D_0046A928;
 extern s8 *gNetOptList;
 extern s8 *D_0059D684;
 extern s8 *D_0059D688;
@@ -78,12 +72,24 @@ void NetTcp_SetOption(s32 sock)
     NetTcp_SetOptions(sock, opts);
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_settings", D_0046A8E0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_settings", D_0046A8F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_settings", D_0046A900);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_settings", D_0046A910);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_settings", D_0046A918);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_settings", D_0046A928);
+const char D_0046A8E0[12] = {
+#include "sub_main/0046A8E0.inc"
+};
+const char D_0046A8F0[3] = {
+#include "sub_main/0046A8F0.inc"
+};
+const char D_0046A900[16] = {
+#include "sub_main/0046A900.inc"
+};
+const char D_0046A910[5] = {
+#include "sub_main/0046A910.inc"
+};
+const char D_0046A918[13] = {
+#include "sub_main/0046A918.inc"
+};
+const char D_0046A928[2] = {
+#include "sub_main/0046A928.inc"
+};
 
 /*
  * Clears the network settings: no device in use (gNetDevCur NULL, gNetDevs filled with
@@ -124,16 +130,16 @@ void NetCfg_Reset(void)
     D_0059D800 = -1;
     D_0059D808 = 0;
     memset((void *) &D_0059D700, 0, 256U);
-    strncpy((char *) &gNetOptMaxRetriesKey, (const char *) &D_0046A8E0, 32U);
-    strncpy((char *) &gNetOptMaxRetries, (const char *) &D_0046A8F0, 16U);
-    strncpy((char *) &gNetOptLatencyKey, (const char *) &D_0046A900, 32U);
-    strncpy((char *) &gNetOptLatency, (const char *) &D_0046A910, 16U);
+    strncpy((char *) &gNetOptMaxRetriesKey, D_0046A8E0, 32U);
+    strncpy((char *) &gNetOptMaxRetries, D_0046A8F0, 16U);
+    strncpy((char *) &gNetOptLatencyKey, D_0046A900, 32U);
+    strncpy((char *) &gNetOptLatency, D_0046A910, 16U);
     D_0059D698 = 0;
     gNetOptList = &gNetOptMaxRetriesKey;
     D_0059D684 = &gNetOptMaxRetries;
     D_0059D688 = &gNetOptLatencyKey;
     D_0059D68C = &gNetOptLatency;
-    D_0059D690 = &D_0046A918;
-    D_0059D694 = &D_0046A928;
+    D_0059D690 = (u8 *)D_0046A918;
+    D_0059D694 = (u8 *)D_0046A928;
     D_0059D69C = 0;
 }

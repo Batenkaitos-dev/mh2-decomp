@@ -32,7 +32,7 @@
 void vsnprintf(char *buf, s32 size, const char *fmt, va_list ap); /* vsnprintf */
 void Font_Printf(const char *fmt, ...);
 extern s32 gTextOff;
-extern char D_0046CC10[]; /* "%s" */
+extern const char D_0046CC10[]; /* "%s" */
 char *strcat(char *dst, char *src); /* strcat */
 s32 strlen(char *s); /* strlen */
 char *strncat(char *dst, const char *src, u32 n); /* strncat */
@@ -47,7 +47,7 @@ extern u8 gKbdDakutenSjis;
 extern u8 gKbdDakutenSjis_1;
 extern u8 gKbdHandakutenSjis;
 extern u8 gKbdHandakutenSjis_1;
-extern char D_0046CC08[]; /* a full-width space */
+extern const char D_0046CC08[]; /* a full-width space */
 s32 strncmp(const char *a, const char *b, u32 n);
 extern u8 gKbdPhrasePage;
 extern u8 gKbdSavedKanaInput;

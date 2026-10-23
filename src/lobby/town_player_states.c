@@ -16,7 +16,6 @@
 #include "lobby_menu.h"
 #include "quest.h"
 #include "player.h"
-#include "m2c_macros.h"
 #include "em.h"
 #include "item.h"
 #include "scene.h"

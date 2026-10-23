@@ -45,7 +45,7 @@ Things to know about it:
 
 Which C gives which instructions with MWCC 3.0b52, sorted by what the diff
 shows. It gathers the "MWCC patterns" of the project's history and of the workers'
-session notes (rounds 1 to 25). Where the notes disagreed, the entry
+session notes. Where the notes disagreed, the entry
 gives the reading that holds now. "(tested)" marks rules checked by
 compiling small test functions with the project's compiler. Read the
 index below first, then open the one entry you need.
@@ -65,8 +65,8 @@ switches, branch layout, loops and prototypes.
 **Checking a match.** A score of 0 isn't a match until the build agrees:
 - adiff ignores branch targets and relocations: `full=0` can hide a
   missing `default:` (Bowgun_State01) or another symbol (func_007B0050),
-  or `if (a || b) return;` where the game has two ifs (Quest_OnRemoteKill,
-  round 9: mn=0 and full=0, branch targets different). Confirm with
+  or `if (a || b) return;` where the game has two ifs (Quest_OnRemoteKill:
+  mn=0 and full=0, branch targets different). Confirm with
   `func_diff.py -C 0 MODULE FILE.c FUNC`.
 - func_diff compares which symbols the relocations name, not where the
   data lands: a `.rodata` object that moves every later string by 8 bytes
@@ -318,10 +318,10 @@ Not from C). Open the entry itself for the forms and examples.
 - Two locals sharing one stack slot: few forms known (Stack)
 - Another value spilled: change which value lives long (Stack)
 - A stack struct's fields through saved registers: pointer locals to its fields (Stack)
-- A link error after claiming `.rodata`: INCLUDE_RODATA, `force_not_migration` (Data)
+- A link error after claiming `.rodata`: define the object in place, `force_not_migration` (Data)
 - A module 8 or 16 bytes long or short: shared literals, padding objects (Data)
 - A string symbol that won't link in a `.rodata`-owning file: write the literal (Data)
-- A string before the jump table of a later user: INCLUDE_RODATA it in place (Data)
+- A string before the jump table of a later user: define it by name in place (Data)
 - Jump tables in another order: emitted last-created first (Data)
 - A relocation `sym + offset` vs another label: give the symbol a `size:` (Data)
 - A link error for another module's data: an address macro or a local symbol (Data)
@@ -342,7 +342,7 @@ Not from C). Open the entry itself for the forms and examples.
 
 ### Saved registers in another order
 
-**How MWCC picks saved registers** (round 12, from experiments: black-box
+**How MWCC picks saved registers** (from experiments: black-box
 test functions). The allocator is a
 Chaitin-style graph colourer, and every rule below is one of its steps:
 
@@ -366,13 +366,13 @@ Chaitin-style graph colourer, and every rule below is one of its steps:
    address (`addiu x,sp,N`). Each counts once, is never removed and takes
    no register; the parameters' own registers don't count. Constants are
    read up to the end of most functions, so the effective limit is
-   usually 7, the figure round 12 measured and the one the rules below
+   usually 7, the figure first measured and the one the rules below
    use. sp's last read is the last use of a stack buffer, so values
    defined before it have one neighbour more than values defined after it
-   (round 30, ShortMail_DrawForm: black-box cliques of 8 and 9 values,
+   (ShortMail_DrawForm: black-box cliques of 8 and 9 values,
    and a replay with this rule that reproduces all five of that
-   function's builds; tests in docs/notes/nm/ShortMail_DrawForm.md).
-   Round 12's first calibration said 6: its test call had 9 arguments,
+   function's builds; tests in docs/notes/hard-matches/ShortMail_DrawForm.md).
+   A first calibration said 6: its test call had 9 arguments,
    and a call with more than 8 arguments adds one neighbour to the values
    live into it (probably sp: the 9th argument is stored through it).
    Temporaries count: loaded values, constants (stored or
@@ -417,7 +417,7 @@ across calls stay in order, f27..f20).
 `python3 regalloc_predict.py MODULE FUNC --c FILE.c -D NON_MATCHING`
 replays this on the original's and on our assembly: it splits the
 registers into webs (named `s2@20`: register and first instruction),
-counts each saved-register web's neighbours (round 31: with the limit 8
+counts each saved-register web's neighbours (with the limit 8
 and zero and sp as neighbours, rule 2; a parameter's copy counted at the
 entry and a delay slot's definition before its branch, as MWCC had them
 before scheduling), searches the orders of the saved-register webs (all
@@ -428,12 +428,12 @@ webs with the original's by first instruction and prints, per value, both
 registers, the pass each is removed in, and the pairs our build numbers
 the other way round (`ours numbers these the other way round (the
 original needs A before B): s0@128 < s5@127`). `--opt NAME=VALUE`
-switches the counting rules (OPTS in the script); `--opt r12=1` is round
-12's model (limit 7, no zero/sp). `python3 rabench.py` scores the
+switches the counting rules (OPTS in the script); `--opt r12=1` is the
+first model (limit 7, no zero/sp). `python3 rabench.py` scores the
 model on matched functions: it numbers each function's saved webs the
 C's own way (declaration order from MWCC's DWARF, `-g`) and compares the
-replay with the build. Round 31: functions fully right, round 12's model
-against the new: black-box tests 222 -> 262 of 305, sub_main 799 -> 822 of
+replay with the build. Functions fully right, the first model against
+the current one: black-box tests 222 -> 262 of 305, sub_main 799 -> 822 of
 1177, lobby 943 -> 951 of 1368, game 1182 -> 1237 of 1509.
 Read
 the result as: which values must be
@@ -454,8 +454,8 @@ model asks for a value numbered elsewhere, try each integer local as u8,
 s8, u16, s16, s32 and u32, one at a time and then combined:
 `python3 regalloc_typesweep.py 0 60 OUT.log` does it for every
 unapplied near miss in the near-miss sweep's results (a greedy three rounds, one
-line per kept change, about 10 minutes in 4 shards: add `SHARD 4`). In
-round 12 it matched these two and func_00348190 (`s16 full` for `s32
+line per kept change, about 10 minutes in 4 shards: add `SHARD 4`). It
+matched these two and func_00348190 (`s16 full` for `s32
 full`), and lowered about 20 others (their CSV notes say which type). Open
 cases of the same kind: func_00D67C30
 (plsel: the original numbers the strength-reduced `&recs[n]` walker before
@@ -465,7 +465,7 @@ sweep's results say what was tried. The tool works from the final schedule and
 guesses which webs are MWCC temporaries: on 80 matched functions of
 sub_main, main and game with 3 or more saved webs, some order reproduces
 the registers for 62 (78%; 51 of the 57 with at most 3 free webs); on 80
-of select, lobby, plsel and gm_sub, for 53 (66%; 33 of 39). Round 31's
+of select, lobby, plsel and gm_sub, for 53 (66%; 33 of 39). The
 benchmark (rabench.py) measures it another way: with the C's own numbering
 the replay is fully right on 3,010 of 4,054 matched functions with two or
 more saved webs in sub_main, lobby and game. Most misses
@@ -475,17 +475,17 @@ either way (func_00770410, lobby: the params only go in order if the `lui`
 of a constant argument and the address chain count less; switching that
 rule on fixes it and breaks as many others), and one pattern looked outside
 the model: func_003D6CF0 (sub_main, now Patch_CopyFile) keeps `buf` in s0
-below `hdr = buf + 0x40` in s1. It matched in round 17 with a typed local
+below `hdr = buf + 0x40` in s1. It matched with a typed local
 copy of an s32 parameter (`u8 *buf = (u8 *)addr;`): a copy is numbered as
 a local ("A parameter's register decided by a copy of it"). Treat the
-tool as a guide. Round 18 checked it against eight 2-word register misses:
+tool as a guide. A check against eight 2-word register misses:
 none needed a new numbering rule; their causes were prototype argument
 types, the order loop walkers are bumped, placement around a loop's guard,
 branch layout, `at` against v0 in a compare, and a stack slot. `--test FILE.c all` runs it on a
 test file's functions.
 
-**How MWCC colours temporaries** (round 28, from black-box tests compiled with the build's flags; the tests named here, t1 to
-t11 and q1 to q6, are described in round 28's notes. Read with "How MWCC
+**How MWCC colours temporaries** (from black-box tests compiled with the build's flags; the tests named here, t1 to
+t11 and q1 to q6, are described in the session notes, which are not in this repository. Read with "How MWCC
 picks saved registers": it is the same allocator.)
 
 1. **The pipeline.** Code generation numbers the values (parameters, then locals in declaration
@@ -515,7 +515,7 @@ picks saved registers": it is the same allocator.)
      declaration order"); a value with 23 or more neighbours (a long-lived local, pointer or
      count over a big block) waits and is coloured before all of them: MovieSfd_FramePacket's th
      (39 neighbours) holds v0 for 120 instructions; Font_AddGlyphSprite's tw, th, p and
-     gFontCache have 71-90. round 12's regalloc_predict.py used 22 for this limit (tthresh).
+     gFontCache have 71-90. regalloc_predict.py first used 22 for this limit (tthresh).
 5. **Creation order.** An expression's operands before its result; call arguments left to right
    (q6); a relational compare is not reordered as + and * are: `a[j] > a[g]` creates a[j] first,
    `a[g] < a[j]` a[g] (Plsel_UpdateSizeRecords: three compares turned round match it); so are `==` and `+` of two
@@ -532,7 +532,7 @@ picks saved registers": it is the same allocator.)
    final code (Font_AddGlyphSprite: 15 such webs). Over matched functions this is rare
    (below).
 
-**Checks on matched functions** (tempcolor.py's analysis; round 28 nm's scripts):
+**Checks on matched functions** (tempcolor.py's analysis; the same session's scripts):
 - corpus.py, 150 random matched functions of sub_main, main and game, final code: a numbering
   that explains every colouring constraint exists for 150 of 150; in 132 every skipped
   register is held by a neighbour (the 18 others: values the final schedule separated).
@@ -558,9 +558,9 @@ declared) or computed inline (numbered as created), or a later web of a variable
 the code generator's temporaries). `--test FILE.c [FUNC] --order --pragma "schedule off"`
 prints a test function's numbering.
 
-**How MWCC numbers the values later passes create** (round 29, nm-sub)
+**How MWCC numbers the values later passes create**
 
-Rules found this round, each with the function it was checked on. "Numbered later" = coloured
+Rules found, each with the function it was checked on. "Numbered later" = coloured
 earlier = the lower saved register when the values go in the same pass.
 
 1. **A variable's later web is numbered after the loop optimizer's values** (strength-reduced
@@ -582,13 +582,13 @@ earlier = the lower saved register when the values go in the same pass.
      own block-scope `n` and `c`. Counting the box loop with `i` and walking the function-scope
      `c` makes the page loop's i and c later webs: right registers at once. Then the order of
      the two first webs (box loop: count s2, c s1) is the declaration order (c after i).
-   - Which locals have a number of their own (from nm-temps, round 29): MWCC substitutes away
+   - Which locals have a number of their own (see below): MWCC substitutes away
      a value that is only a plain copy or an expression assigned once, so it is numbered where
      MWCC creates it, not at its declaration; a local changed in place (`p += i`) or a pointer
      derived from another (`&h[2]`) keeps its own number, at its declaration. With rule 1: a
      declared variable's first web is numbered at its declaration only if it is not
      substituted away; a reuse (later web) or an in-place change keeps it a variable.
-   - nm-lobby matched Page_DrawDropList with this lever (round 29).
+   - Page_DrawDropList matched with this lever.
 
 2. **A common subexpression carried across a loop or branch** (EmSlot_FreeModels, EmSlot_LoadModels:
    the game keeps `n * 2` in s0 from before a loop to the block after it). Black-box tests
@@ -604,7 +604,7 @@ earlier = the lower saved register when the values go in the same pass.
      (`s->a[n] = m; Free(4); s->b[n] = 1;`) and two later blocks each have two accesses, all
      reuse it (x6, y1-y3, y7, y8); with the call removed (y4) or one more call-separated pair
      in a later block (y5), each block recomputes. Not yet understood.
-   - Session 2 (t/cse16.c, t/cse18.c; count of `sll x,n,1` over the function): what decides
+   - Further tests (t/cse16.c, t/cse18.c; count of `sll x,n,1` over the function): what decides
      it is the first block's **first stretch between calls** that holds `n * 2`. One
      occurrence there (`s->a[n] = m; Free(4); s->b[n] = 1;`, or a bare `Use(n * 2);` before
      two accesses) and every later block reuses the value, even blocks with two accesses.
@@ -629,7 +629,7 @@ earlier = the lower saved register when the values go in the same pass.
      the game computes each once and keeps them (s0, s3). The draft's byte offset `o = slot * 2`
      gives the game's size; the game's own form is still unknown.
 
-3. **Spill slots of parameter copies** (EquipFx_ChainUpdate, session 2). A local that is a
+3. **Spill slots of parameter copies** (EquipFx_ChainUpdate). A local that is a
    plain copy of a parameter and never changed (`EmBone *b1 = pb1;`) is propagated away: if it
    spills, it spills as the parameter, in a packed 4-byte slot. A copy that is changed (`a +=
    0x20`) or an extension (`s32 n = pn` of an s16) stays a local and spills to a 16-byte slot
@@ -649,7 +649,7 @@ earlier = the lower saved register when the values go in the same pass.
    The saved registers came from a full sweep of the six scalar declarations (720 orders:
    30 at 5 words, all with p, i, col, ty first in that order).
 
-5. **An s16 parameter changed in place: `x += c` and `x = x + c` differ** (nm-lobby's find in
+5. **An s16 parameter changed in place: `x += c` and `x = x + c` differ** (found in
    DojoMenu_DrawMenu; confirmed by t/padd.c). With s16 x and s32 c, `x += c` narrows c
    (`dsll32/dsra32` on c), adds it to the raw x and extends the sum back into x's register;
    `x = x + c` extends x first, then adds c. The saved registers were the same in the test.
@@ -657,10 +657,10 @@ earlier = the lower saved register when the values go in the same pass.
    place of a copy `cy = y; ... cy += 0xC` (the game extends y in the prologue). The same
    function's `sel` (the game adds 1 to the raw sel, then extends) is the `sel += 1` form, but
    that moves four parameters to other registers (59 at best). regalloc_predict.py does not
-   model a parameter's later web (nm-lobby): no order reproduces the game there.
+   model a parameter's later web: no order reproduces the game there.
 
-6. **A narrow local's value lives in MWCC's extension, a compiler temporary** (WindowFrame_Draw,
-   session 3). Spill slots are given from the top down: declared locals first (reverse
+6. **A narrow local's value lives in MWCC's extension, a compiler temporary** (WindowFrame_Draw).
+   Spill slots are given from the top down: declared locals first (reverse
    declaration order: the first declared is highest), then compiler temporaries (extensions,
    CSEs, hoisted addresses) in their own order. `s32 style = f->style & 7;` spilled is a
    declared local (the highest slot); `u8 style` (or u16) makes the uses read MWCC's s32
@@ -670,7 +670,7 @@ earlier = the lower saved register when the values go in the same pass.
    the C needs as a variable: try the variable one size narrower (unsigned when the value is
    masked).
 
-**Which locals are values of their own** (round 29, nm-temps)
+**Which locals are values of their own**
 
 - **A temporary in another register: which values are locals of their own.** MWCC numbers a
   declared local's first web where it is declared (before every value it creates), and colours
@@ -683,18 +683,18 @@ earlier = the lower saved register when the values go in the same pass.
   and `sx + w` for the far one), where writing the expression out twice gives a CSE temporary
   that is numbered where it is created. So when tempcolor.py says a value must be numbered
   earlier, give it a local of one of these three kinds; when it must be numbered later, write
-  it out (or use a later web of a dead variable, nm-sub's rule 1). Matched by it: Quest_StepScript
+  it out (or use a later web of a dead variable, later-passes rule 1). Matched by it: Quest_StepScript
   (b), SaveFile_Encrypt (a, b, and a separate u16 key instead of a later web of the version),
   Color_Lerp (a: `u32 s` shifted in place), Loading_WriteSprite (c, with GS_XYZ's
-  `(x | y << 16) | z << 32` order). Seen in: round 29, nm-temps.
-- **A variable whose webs each have one definition is substituted** (round 30,
-  ShortMail_DrawForm). `ly = sy + 0x60;` in one block and `ly = sy + 0x8C;` in another are each
+  `(x | y << 16) | z << 32` order).
+- **A variable whose webs each have one definition is substituted**
+  (ShortMail_DrawForm). `ly = sy + 0x60;` in one block and `ly = sy + 0x8C;` in another are each
   substituted into their uses: ly's first web is numbered after the locals, wherever ly is
   declared, and two separate s16 locals assigned once each are substituted the same way. An
   `s32 ly` assigned `ly = (s16)(sy + 0x60);` (an int holding the narrowed value) is a value of its
   own, numbered at its declaration, with the same code.
 
-**Moving an s16 parameter in place** (round 29, nm-lobby)
+**Moving an s16 parameter in place**
 
 - **`x = x + c` and `x += c` on an s16 parameter are different code.** `x = x + c` extends x,
   adds, and extends the sum back into x's own register (the sum is a later web of the
@@ -712,16 +712,16 @@ earlier = the lower saved register when the values go in the same pass.
   at each use), t3 `lx = x + 0xAA` (lx in y's dead register), t4-t6 (parameter form vs a local
   declared before/after another local), t7-t9 (`sx += 0x28`, `sx = sx + 0x28`, `x += 0x28`: sum
   recomputed per use), t10 (`tx = sx + 0x28`: one `addiu s0,s0,40` in place).
-- Matched by it: DojoMenu_DrawMenu (round 29: the cases' row positions as `x = x + 0xAA`,
+- Matched by it: DojoMenu_DrawMenu (the cases' row positions as `x = x + 0xAA`,
   `y = y + c` on the parameters). Explains QuestDesk_DrawFieldGuide's game `addiu s4,s4,0x28`
   (a separate tx, not sx += 0x28). regalloc_predict does not model a parameter's later web as
-  part of the parameter's node (for nm-sub).
+  part of the parameter's node.
 - Where it does not help: a parameter still read after the move (GroupBoard: x and y are passed
   unchanged to Menu_DrawStamp at the end; CombShop: x/y as ly/tx push the params to s6/s4, 110-134).
 
-**Values with 23 or more neighbours** (round 29, nm-wait)
+**Values with 23 or more neighbours**
 
-(Round 29, from black-box tests compiled with the build's flags: scratch t2.py to t8.py, each
+(From black-box tests compiled with the build's flags: scratch t2.py to t8.py, each
 case a void function with two to five pointers, each loaded or computed once and storing 20 to
 75 constants, so that every pointer has 23 or more neighbours. Read with "How
 MWCC colours temporaries", rule 4.)
@@ -746,9 +746,9 @@ MWCC colours temporaries", rule 4.)
 3. **Narrow locals**: a u16 local holding a loaded halfword is numbered like a created value
    wherever it is declared; as u32/s32 it takes its declaration's place (Browser_ListCursor:
    every declaration order of `u16 pressed` gave the same registers; `u32 pressed` declared first
-   matched). Round 12 saw the same for a u8 (func_0034DA40).
+   matched). The same was seen for a u8 (func_0034DA40).
 4. **A later web** (a dead variable reused) is numbered after the code generator's
-   temporaries (nm-sub's notes, rule 1): AreaSky_Draw matched by holding the choice count in the
+   temporaries (later-passes rule 1): AreaSky_Draw matched by holding the choice count in the
    model loop's dead counter `k`, so that it is numbered after lvl's andi and coloured first.
 5. **Many "wait" rows were not waiting values.** tempcolor.py runs with `rp.CALL_RD = True`:
    a call reads each argument register (a0-a3, t0-t3) that any path sets since the entry, so a
@@ -763,7 +763,7 @@ MWCC colours temporaries", rule 4.)
    ModelChunk* readers, unrolled loops (x8) where the listing's webs of the walker are not
    MWCC's, so the graph, not the order rule, is off there. No rule beyond 1-4 was found.
 7. **A field address shared by a load and stores is numbered after its base; a pointer local
-   numbers it first** (session 2). MWCC keeps `&gLobbyMenu->step` in a register when the field is
+   numbers it first**. MWCC keeps `&gLobbyMenu->step` in a register when the field is
    read and stored several times in one block (the load folds the offset, `lbu a1,47(a2)`, the
    stores use `addiu a3,a2,47` / `sb ..,0(a3)`); that address is created after the gLobbyMenu
    load. IdMenu_Choose (matched) numbers it before: `u8 *sp = &gLobbyMenu->step;` as a declared
@@ -773,20 +773,20 @@ MWCC colours temporaries", rule 4.)
    The same block shows rule 3's other side: a 32-bit copy `s32 b = pad;` of a u16 local is a
    first web of its own (numbered at its declaration) and gives the game's second `andi` of the
    buttons, where the old `pad = (u16)pad` no-op kept pad's single number.
-   Checks that failed (session 2): the same move (a value made a declared 32-bit local to number
+   Checks that failed: the same move (a value made a declared 32-bit local to number
    it first) put hd right in Em_TurnToward but moved diff and hold (59), and gives 83+ for an
    explicit walker in NgWord_Check (the walker changes the code there).
-8. **A value the game numbers after a rule-2 local must be a declared local too** (session 2,
-   Page_DrawObjBack, matched). `st = gBrowserState` (rule 2: numbered as its load) is numbered
+8. **A value the game numbers after a rule-2 local must be a declared local too**
+   (Page_DrawObjBack, matched). `st = gBrowserState` (rule 2: numbered as its load) is numbered
    after every declared local's first web, and before the code generator's later values (the
    CSE of e->color in case 16). The game numbers st after the colour load: so the colour is a
    declared s32 local (`color = e->color;` for the test and the first rectangle), as are kind
    (both switches) and sx (= st->x), in the order sx < kind (rule 1's declaration order).
    Test: the 24 declaration orders of sx, kind, color, st: the 12 with sx before kind match;
-   without the color local every order gives 15 (session 1's 6-order search), the color local
+   without the color local every order gives 15 (an earlier 6-order search), the color local
    alone 10, color in all four rectangles 510 (kept across calls).
-9. **Block-scoped locals are numbered after every function-scope local** (session 3,
-   CseBank_Merge 101 -> 31). A u16 `vbase` declared at function scope (any of 20 places) was
+9. **Block-scoped locals are numbered after every function-scope local**
+   (CseBank_Merge 101 -> 31). A u16 `vbase` declared at function scope (any of 20 places) was
    numbered before the Smpl loop's block-scoped ss, d, vs; as the reused `base` (a later web)
    it was numbered after the loop's in[] walker. The game numbers it between (after vs, before
    the walker): so ss, d, vs and vbase are all function-scope first webs, declared in that
@@ -810,10 +810,10 @@ Using it: run tcx.py (or tempcolor.py) on a block; for each flip "A < B" make A 
 earlier: a 32-bit declared local (first web) before created values, a narrow local or a copy
 of a global used at once (rule 2) as created, a later web of a dead variable after them.
 
-**How MWCC schedules** (round 29, nm-sched)
+**How MWCC schedules**
 
-Black-box tests in scratch t/ (compiled with the build's flags through sc.py). What is known
-from round 28: a first pass orders each block before colouring, a second one after, and `#pragma
+Black-box tests in scratch t/ (compiled with the build's flags through sc.py). What was known
+already: a first pass orders each block before colouring, a second one after, and `#pragma
 schedule off` turns both off and shows the creation order.
 
 0. **Heights first.** The scheduler places first the instruction with the longest path to the
@@ -874,7 +874,7 @@ schedule off` turns both off and shows the creation order.
      for s32/s16/u8/f32 loads, globals, the same base), t/k4.c W1-WE (`ga = 0; gb = x;` gives gb
      first; `ga = 1; gb = x;` too, the li hoisted; `ga = x; gb = y;`, `ga = 1; gb = 2;`, `ga = x +
      1; gb = y + 2;` keep source order).
-   - Matched by it: Chara_SetupNewPlayer and Chara_SetupSavedPlayer (session 2), whose stores
+   - Matched by it: Chara_SetupNewPlayer and Chara_SetupSavedPlayer, whose stores
      the game makes in another order than ours (motionLayerCount after alpha, rot[1] = 0 after the
      start position): the statements in the game's store order matched both at once.
 4. **The model: top-down, two instructions per cycle.** The tests fit a list scheduler that
@@ -911,7 +911,7 @@ schedule off` turns both off and shows the creation order.
      c created first (K3); `d = t - k0; c = k1 - k0;` with t used later gives c first (K5: d +1,
      c +0), with t and k1 both used later creation order (K6); two in-place updates keep creation
      order (K8, K9).
-   - Matched by it: Color_EvalKeys (session 3). The game's `t - k0` before `k1 - k0` is a new
+   - Matched by it: Color_EvalKeys. The game's `t - k0` before `k1 - k0` is a new
      value that is t's last use (+0, ends t) created first, beside the denominator (+0, ends k1):
      creation order. Written `c0 = t - k0;` (c0, the u32 local later loaded with k[1]) it also
      takes the game's registers; a new `s32 d` gave the order but not the registers (6).
@@ -928,13 +928,13 @@ schedule off` turns both off and shows the creation order.
    unsigned variable, with no cast.
    - t/n1.c-n6.c (T1-T8, U1-U9, W1-WC, X1-X3; the same at level 4): every `(u32)` form
      hoisted, every form on a u32 variable (a parameter, a copy of a u8, a load) not.
-   - Matched by it: EquipPreview_Draw (session 3): `u32 k;` and `(k == 3 || k == 4 || k == 6)`.
+   - Matched by it: EquipPreview_Draw: `u32 k;` and `(k == 3 || k == 4 || k == 6)`.
    - Trap met on the way: vtry.py replaces the first occurrence in the file; a declaration
      like `    s32 k;
 ` must be anchored on its neighbours, or the change lands in another
      function (four functions of player_draw.c declare `s32 k`).
 
-**What round 30's single-function agents found** (round 30; each function's notes, docs/notes/nm/FUNC.md)
+**What the single-function work found** (each function's notes, docs/notes/hard-matches/FUNC.md)
 
 - **The first scheduling pass decides which values can share a register** (AreaObj_K11_Draw,
   BoxMenu_ArrangeMenu). Before colouring, the scheduler fills two issue slots a cycle, a load's
@@ -1013,7 +1013,7 @@ schedule off` turns both off and shows the creation order.
   `andi` the game keeps live longer than any first-pass order allows can be an unsigned `%` by a
   power of two in the source.
 - **A const view of a global** (Page_Click): a `const T *` copy of a `T *` global is a local of its
-  own, numbered at its declaration; a plain copy is propagated away (round 29's 96 plain copies all
+  own, numbered at its declaration; a plain copy is propagated away (96 plain copies tried all
   stayed at 21 words).
 - **State left by an earlier function in the file** (Browser_ReadPad): once a function earlier in
   the same .c file has compiled a two-argument runtime call (dpsub, dpadd, _dpflt, __divdi3...),
@@ -1045,8 +1045,8 @@ schedule off` turns both off and shows the creation order.
   init comes before the loop's guard; indexing the array lets the loop optimizer start its walker
   after the guard, where the game has it.
 - **tempcolor and jump tables** (GmEm_SetMeshAlphas): with jump-table cases every t-register looks
-  live from the entry, so tempcolor.py can't read such a function (round 28's 500-1174
-  neighbours came from that). Float values don't count as integer values' neighbours.
+  live from the entry, so tempcolor.py can't read such a function (the 500-1174
+  neighbours it once counted came from that). Float values don't count as integer values' neighbours.
 - **Loop variables decide spills and rotations** (WindowFrame_Draw, 482 words to 0): which loops
   share a counter, end or step variable, and which use is a variable's first web, decided both
   which value spills (h spilled as in the game only once an inner counter was a later web) and
@@ -1064,7 +1064,7 @@ schedule off` turns both off and shows the creation order.
   propagated away and spills as the parameter, in a 4-byte slot; a copy that a second definition
   reaches stays a variable with a 16-byte local slot. Arrays declared in another order move to
   other offsets.
-- **Check a block's meaning** (QuestDesk_DrawFieldGuide): round 29's 44-word block reused a
+- **Check a block's meaning** (QuestDesk_DrawFieldGuide): an earlier 44-word block reused a
   variable across a loop that overwrites it, so its final compare tested the loop counter instead
   of the flag; with the flag restored the block was 128 words. A NON_MATCHING block must do what
   the game does: check a find's meaning before keeping it, above all a reuse of a variable that
@@ -1167,9 +1167,9 @@ schedule off` turns both off and shows the creation order.
   and Plsel_BuildItemText (plsel), GmEm_Setup and QSync_OnPlayer (gm_sub),
   ArenaFeed_LoadPage, Html_ParseColor, Html_AttrAreaCoords, Layout_DrawImage
   and Layout_SpreadColumns (lobby), func_0080E490 and EmKushala_BreathAttack
-  (game); in round 8 Portal_PageReady, WeaponForge_OpenUpgrades (the box
+  (game); Portal_PageReady, WeaponForge_OpenUpgrades (the box
   index in the first loop's counter), func_007CA930 and func_007C2750
-  (lobby). Round 9: at level 4, a pointer local per loop (`c = l->unk01C;`
+  (lobby). At level 4, a pointer local per loop (`c = l->unk01C;`
   before the loop, then `c[i]` or `*c++`) gives the loop an induction register
   starting at `base + offset`, and a second loop over the same array needs its
   own pointer variable (func_00D6AC30, plsel); loop 2's index needs its own
@@ -1194,7 +1194,7 @@ schedule off` turns both off and shows the creation order.
   value MWCC creates: its copy takes the lowest register, like the created
   values above, below the other parameters; kept raw and converted at each
   use, it follows the parameter order (tested: `(u8 from, u8 *msg)` gives from
-  s0 in one function and s1 in another, by how from is used; two round 7 notes
+  s0 in one function and s1 in another, by how from is used; two early notes
   disagreed on this). Fix: switch on a cast (`switch ((u8)kind)`), or move a
   store after another; change how the narrow parameter is used. Seen in:
   QSync_SendPlayer (gm_sub).
@@ -1407,7 +1407,7 @@ temporary still live where another is made pushes it up.
   slot is a third parameter of a state function shared by several states
   (`(Em *em, EmWork *work, s32 kind)`). Fix: take the parameter and pass it
   on (`F(em, work)`, `f(t)`); m2c drops it. Seen in: the families' state
-  dispatchers (game: all are C since round 7), the lobby's task
+  dispatchers (game: all are C), the lobby's task
   dispatchers.
 - **Two registers swapped where the code is otherwise right.** Fix: vary one
   cast or operand at a time (an index, a modulo, the stored value, operand
@@ -1415,7 +1415,7 @@ temporary still live where another is made pushes it up.
   a1 back in place; `(x & K) != 0` for a bare `x & K`, `x = x - K` for
   `x -= K`; a value computed in two statements (`d = 0x10000 - h;
   d = (d - em->unkA0) & 0xFFFF;`); a no-op cast (`(u32)h->start` on a u32
-  field) changes the load order. Round 8: `m->list[(u32)cur]` on one of
+  field) changes the load order. `m->list[(u32)cur]` on one of
   two accesses (or a `static inline` accessor with a u32 index: probably
   the game's macro), `e.id = (u16)id;` storing an int into an s16 field,
   a u16 built in steps (`n = hdr[4] << 8; n += hdr[5]; n -= used;`), the
@@ -1432,7 +1432,7 @@ temporary still live where another is made pushes it up.
   Early returns of constants are if-converted too (`if (c == 0) return K;
   return 0;` gives a `movz`). Seen in: EmBulldrome_State1_01 and
   func_00798240 (game), Plsel_SelectTask (plsel), Tim2_Align (main),
-  func_0076CAA0, GroupBoard_DrawResults and func_00773D40 (lobby). Round 9: in
+  func_0076CAA0, GroupBoard_DrawResults and func_00773D40 (lobby). In
   a large function the ternary that gives the original's `li 3; li 9; movn`
   (`last = D_006ADCF1 != 0 ? 9 : 3`) rotated every saved register and added 4
   words, where the if/else form keeps them: weigh the whole function before
@@ -1455,7 +1455,7 @@ temporary still live where another is made pushes it up.
   0xFFFFFF;` in one, `... | (c = 0xFFFFFF)` in the other, then `d[1].color
   = c;`. Seen in: func_0079ECF0, func_006FA980 and Layout_CellColSpan
   (lobby), Psp_DrawActor (select), EmFxTri_Draw (game). func_007D1150
-  (lobby) used this form until round 16 matched it with an Rgba-style
+  (lobby) used this form until it matched with an Rgba-style
   inline (Addresses).
 - **The caller passes a copy in a0 where the original passes the variable
   itself.** Cause: the callee's parameter was s16, not an int with a cast
@@ -1473,7 +1473,7 @@ temporary still live where another is made pushes it up.
   (`Quest_UpdateTimers(1)` declared `(void)`; `func_332780(lines, item,
   1)`). An argument register set in a branch's delay slot before a call
   that takes nothing is the other branch's argument, scheduled into the
-  slot. Fix: read the callee and the other branches first. Seen in: round 1,
+  slot. Fix: read the callee and the other branches first. Seen in: the first batch,
   CombShop_BuildList and SrvMenu_Run (lobby), Load_Idle (main).
 
 - **Every temporary one register up.** Cause: the function returns a value
@@ -1501,7 +1501,7 @@ temporary still live where another is made pushes it up.
   saved register take t registers in declaration order, and when they are
   all live together the earlier-declared one gets the higher register.
   Fix: reorder the declarations by the game's t registers, highest first.
-  Seen in: Layout_MeasureColumns (lobby, nmlobby-h1).
+  Seen in: Layout_MeasureColumns (lobby).
 - **A long-lived value in a low temporary in the game (v1), a high one in
   yours: the variable's later web.** MWCC numbers a variable's first web
   (its first live range) as declared, and its later webs like values it
@@ -1522,7 +1522,7 @@ temporary still live where another is made pushes it up.
   showed the original had those copies. A macro for the cases that copies
   its argument once, `EM_AGGRO_ADD(cond, rank, row) { s32 k = (rank); if
   (cond) ... }` with the conditions on the parameter, matches too and is
-  natural (round 24).
+  natural.
 
 ### An instruction or constant load in another place
 
@@ -1605,7 +1605,7 @@ temporary still live where another is made pushes it up.
   byte through a pointer: `p->f--; t = &p->f; if (*(s8 *)t <= 0) { *t =
   30; ...`. Seen in: QSync_OnPlayer (gm_sub), func_006BD050 (select),
   LobbyActor_StartScript, func_007D77A0 and func_007C2FD0 (lobby), the
-  families' Init functions (game), net_sockets.c (sub_main). Round 9: `--x ==
+  families' Init functions (game), net_sockets.c (sub_main). `--x ==
   0` in the game (the counter stored, then loaded again) is `x--;` then `if (x
   == 0 ...)` (Plsel_ResultsUpdate, plsel); a value stored twice in a row and
   reloaded between is `*d++ = c[i]; *p++ = c[i];`, where `*p++ = *d++ = c[i]`
@@ -1650,8 +1650,8 @@ temporary still live where another is made pushes it up.
 - **Per-kind table loads up front in the original, each moved down to its
   use in yours.** Fix: read the field in every initialiser
   (`p1 = tblA[em->type]; p2 = tblB[em->type];`) instead of a `u8 type`
-  local. Seen in: the second batch's game files (unk_705AC0.c to
-  em_helpers.c).
+  local. Seen in: the game files from unk_705AC0.c to
+  em_helpers.c.
 - **A constant in a `jal`'s delay slot where yours has it in the next `b`'s
   (2 words longer, or the reverse).** Cause: a constant assigned before a
   call goes into the call's slot; assigned after it, into the next branch's.
@@ -1794,7 +1794,7 @@ temporary still live where another is made pushes it up.
   statement at a time within its run of simple assignments, keep each move
   that lowers the score, and repeat until none does. Float constants are
   loaded in source order, so first put each case's constant assignments in
-  the game's order. Seen in: Gs_SetupDisplay (main), Player_DrawWeaponPart
+  the game's order. Seen in: Gs_SetupDisplay (main), Player_DrawHeldProp
   (sub_main: 410 words to 233).
 - **A copy of a matched function, written with raw addresses, scheduled
   differently.** Cause: `*(T *)0xADDR` stores may alias the loads around
@@ -1889,8 +1889,8 @@ temporary still live where another is made pushes it up.
   cast (`(s16)f()`) always converts. In the callee, returning an s16
   variable as s16 needs no extension; as an int it does. Fix: to drop it,
   test bare or declare the callee as returning int in that file; to get it,
-  compare or cast. This settles the older notes: round 2's "a result
-  declared u8 isn't masked" holds for bare tests only, and round 4's "an s16
+  compare or cast. This settles the older notes: "a result
+  declared u8 isn't masked" holds for bare tests only, and "an s16
   prototype makes MWCC trust the callee" too. Callers that use a narrow
   result unconverted mean the callee returns int: `s32 f(...)` with
   `return (s16)(...);` or `return *(u8 *)X;` (still `lbu`) compiles the
@@ -1902,7 +1902,7 @@ temporary still live where another is made pushes it up.
   ternary. Seen in: the curve updates' callers, Hammer_CheckChargeInput and
   EmAnteka_Init (game), Plsel_StateReady (plsel), LobbyMsg_DrawPart,
   func_007CA110, func_007CF4F0, func_007CA130, Page_Load and Url_GetScheme
-  (lobby), Sound_PlaySePos (main). Round 9: an `andi
+  (lobby), Sound_PlaySePos (main). An `andi
   0xFF` of v0 right after a call means the callee returns u8 in the caller's
   file (sub_main; Notice_Push, found by a helper).
 - **An `andi` or `dsll32` before a call's argument, or none.** Cause: a value
@@ -1936,7 +1936,7 @@ temporary still live where another is made pushes it up.
   func_006C6E40 and func_00720340 (game), QuestNet_OnGameMsg (gm_sub),
   Layout_Input, Html_ParseLength, Deco_DrawRemovePanel, LobbyStep_Level1Open,
   func_0071F8A0, MailMenu_Update, func_007A1A50 and func_00766A50 (lobby).
-  Round 9: a `dsll32`/`dsra32` of an argument before the `jal` means that the
+  A `dsll32`/`dsra32` of an argument before the `jal` means that the
   prototype the caller's file sees takes s16 there, even where the callee's
   definition in its own file takes s32 (sub_main; each file keeps its own
   declaration, see "A function that matches alone but not in its file"); an
@@ -1959,7 +1959,7 @@ temporary still live where another is made pushes it up.
   then `lx + 14` at each use and `(s16)(lx + 14) + 144` where the original
   extends twice; an s16 parameter changed in place (`x -= 130;`, `by = y;
   y += 14;`) or an s16 copy is extended again after every join, and
-  `(s16)(x - 0x96) + 8` written at each use extends there. Round 8:
+  `(s16)(x - 0x96) + 8` written at each use extends there.
   `s32 wy = y;` once after the first calls gave one extension for all the
   `y + K`; an s32 local holding `x & mask` with `(s16)` casts at the uses
   re-extends at each use, an s16 local shares one extension; an s32
@@ -2000,7 +2000,7 @@ temporary still live where another is made pushes it up.
   first value (level 4); `base += ofs;` on two u16 locals gives one `andi`
   after the add. Seen in: Em_AddStatus5, func_006E2180 and
   EmGravios_State0_24 (game), Layout_RowSpanCell, TownMsg_OnActor,
-  Form_Submit and Layout_SelectEnd (lobby). Round 9: `*p += f()` and `*p -=
+  Form_Submit and Layout_SelectEnd (lobby). `*p += f()` and `*p -=
   f()` on a u16 mask f's s32 result first (`andi 0xFFFF`); `*p = *p + f()`
   doesn't (Kbd_CursorRight and Kbd_Backspace, sub_main).
 - **`andi rX, zero, 0xFF` or `dsll32 rX, zero, 16`: an extended zero.**
@@ -2008,7 +2008,7 @@ temporary still live where another is made pushes it up.
   `px = py = 0;` with an s16 `px`, `used = given = 0;` with u16s, `mx = my =
   0` with s8s gives `dsll32 a3, zero, 24`). Seen in: Psp_DrawActor
   (select), func_00D64580 (plsel), Layout_SpreadColumns and
-  Page_ScrollInput (lobby). Round 9: `btn = pad = HW->unkAE = 0;` (`andi s1,
+  Page_ScrollInput (lobby). `btn = pad = HW->unkAE = 0;` (`andi s1,
   zero, 0xffff; move s2, s1`, func_0033E730, sub_main).
 - **An `andi` on a u8 or u16 value tested as a condition, or none.** Cause:
   a u8 tested bare (`if (flag && ...)`, `!flag`) isn't masked; `flag != 0`
@@ -2121,11 +2121,11 @@ temporary still live where another is made pushes it up.
 - **`daddiu reg, zero, N` where yours has `li` (`addiu`).** Cause: a
   constant assigned to an unsigned narrow variable: a u8 or u16 local, or a
   u8 or u16 parameter reassigned in place (`state = 5;`); int, char, short
-  and u32 locals get `li` (tested in round 4). Fix: declare the variable u8
+  and u32 locals get `li` (tested). Fix: declare the variable u8
   or u16, and the callee it is passed to with the same type (the families'
   `Em_SetStateSync(Em *, u16 group, u16 state, u8 mode)`). A u8 result
   variable returned as u8 (`u8 ret`, a u8 return type) gives `daddiu v0,
-  zero, 2` and no `andi` at the end. Rounds 3 and 4 first listed this as
+  zero, 2` and no `andi` at the end. Early notes listed this as
   unknown. The `daddiu` loads mark the 16-bit and 8-bit locals when you
   retype a draft. Seen in: func_006D4520 and LobbyStep_ChatColorMode (lobby),
   EmChameleos_SetGroup0State, EmAnteka_Update (a u8 flag set to 1 in a
@@ -2135,7 +2135,7 @@ temporary still live where another is made pushes it up.
 ### Compare forms
 
 - **`slti at, x, K` and `bnez at` in the original, `slti v0` in yours (or
-  the reverse).** (tested in round 8) Cause: MWCC computes a compare into a
+  the reverse).** (tested) Cause: MWCC computes a compare into a
   real register only when it branches on `x < y` as written being true
   (`bnez`): `if (x >= K)` (it skips the body when x < K), `if (x < K ||
   ...)`, `if (x >= K && ...)`, and a loop's bottom test `while (i < n)`.
@@ -2147,7 +2147,7 @@ temporary still live where another is made pushes it up.
   > 1` for `a >= 2`, `k <= 10` for `k < 11` in a loop), and back;
   `(u32)(x - N) <= 1` for m2c's `< 2U`, `(u32)(x - 0xC) > 1` for `addiu;
   sltiu at, 2; bnez at`; `diff <= 0x2000U` where `diff < 0x2001U` computes
-  into v0 (in a test that branches on it being true). The round 7 reading
+  into v0 (in a test that branches on it being true). The earlier reading
   "`<` computes into a normal register" holds only in those positions.
   Seen in: Sjis_CharBytes, func_003D42B0 (sub_main), Parts_Animate
   (select), func_006C6600 and EmKirin_State1_0C (game), Png_ReadImage,
@@ -2224,8 +2224,8 @@ temporary still live where another is made pushes it up.
   order. The chain 1, 2, 0 of `case 0: case 2: case 1:` shows that it is
   source order, not value order (one note's "from the highest value down" is
   the same thing for ascending cases). For generated C: the blocks in
-  address order, each block's labels in reverse compare order. Round 8
-  confirmed it everywhere: `case B: case A:` gives `beq A; beq B`; `case 1:
+  address order, each block's labels in reverse compare order. Confirmed
+  everywhere: `case B: case A:` gives `beq A; beq B`; `case 1:
   case 5: ... case 0x5B:` compares 0x5B first; a chain 6, 4, 5 is `case 5:
   case 4: case 6:`; `case 0: break; case 1: ...` gives `beq 1` first. m2c
   lists the cases in source order, so reverse both the labels and the
@@ -2234,7 +2234,7 @@ temporary still live where another is made pushes it up.
   on the first try), func_007AC5C0 (game), func_00780970, func_00780A80,
   func_00780100 (34 kinds), TownMsg_SendState, func_00761790,
   func_007BBF70, func_007D9410, Form_Submit and BrowserDlg_DrawStatus
-  (lobby), Pad_ReadPort (main). Round 9 confirmed it again: Kbd_SetLayout and
+  (lobby), Pad_ReadPort (main). Confirmed again: Kbd_SetLayout and
   func_00317270 (sub_main), QuestBoard_Draw (cases 12, 9, 10, 11 compare 11,
   10, 9, 12), PoogiePet_Update, Npc_IsPresent and the townsperson motion
   tables func_0075B8A0 and func_0075C8C0 (lobby), func_006FFE50 (game),
@@ -2281,7 +2281,7 @@ temporary still live where another is made pushes it up.
   func_003E6F20 and func_003C4880 (sub_main), func_006BE8E0,
   func_007580B0, func_00720310 (five sites), CombShop_Steps and the dojo
   menu states (lobby), func_006ECE20, func_006C6600, func_006F3170 and
-  func_00796FA0 (game). Round 9: steps whose code is `beqz v0; b end` are
+  func_00796FA0 (game). Steps whose code is `beqz v0; b end` are
   one-case `switch (f()) { case 0: ...; break; }`, and `if (r[0x16] != 4)` is
   `switch (r[0x16]) { case 4: ...; default: ... }` (QuestCounter_Step, lobby).
 - **`beq` to one block and `b` to another (a two-way switch).** Cause:
@@ -2298,7 +2298,7 @@ temporary still live where another is made pushes it up.
   Seen in: StageObj_K11_Draw, EmBlangonga_Turn, EmDrome_State3_06,
   Player_State2_21, Player_State5_05 and Player_State3_00 (game),
   QSync_OnPlayer (gm_sub), LobbyStep_ChatColorMode and HunterInfo_DrawActions
-  (lobby). Round 9: `beqz s1, A; b B` with A before B is `switch (k) { case 0:
+  (lobby). `beqz s1, A; b B` with A before B is `switch (k) { case 0:
   A; break; default: B; }` (func_00341D20, sub_main).
 - **`beq A, L; beq B, L; b else`, or `beq A; beq B; bne C, else`.** Cause:
   `if (t == 1 || t == 0x2A || t == 0x25) {...} else {...}` gives `beq`,
@@ -2314,7 +2314,7 @@ temporary still live where another is made pushes it up.
   compiled `beq; beq; b` is a switch. Seen in: EmRathalos_VersusPoseC,
   EmChameleos_Update, EmBulldrome_Update, Player_State2_0F and
   Player_State0_01 (game), func_0070C800, func_007C90C0 and Form_Submit
-  (lobby). Round 9: a guard `if (t != 6 && t != 7 && t != 4) return;` gives
+  (lobby). A guard `if (t != 6 && t != 7 && t != 4) return;` gives
   `bne`; the game's `beq` chain and `b end` is `switch (t) { case 4: case 7:
   case 6: <the rest of the function> }` (func_006FFE50, game); a trailing `if
   (a == 5 || a == 4 || a == 13)` whose last test is a `beq` and a `b` is a
@@ -2337,7 +2337,7 @@ temporary still live where another is made pushes it up.
   func_0078A2E0, DualSwords_State04 (`case 0: default: case 2:`),
   Player_State2_08, EmGravios_SetGroup1State, func_006C4FF0,
   HuntingHorn_PlaySong, func_006EFDE0 and EmBlangonga_MotionEffects
-  (game), BrowserDlg_DrawStatus (lobby). Round 9: the group's place decides
+  (game), BrowserDlg_DrawStatus (lobby). The group's place decides
   too: `case 0: default:` written before the other cases drops the compare of
   0, written after them keeps it (PoogiePet_Update, lobby).
 - **One exit block per case, or one shared exit.** Cause: `return` in a case
@@ -2371,7 +2371,7 @@ temporary still live where another is made pushes it up.
   with `goto normal;` into its default). Seen in: EmGaruga_SetGroup1State,
   EmLaoshan_Update, EmScript_Op03 and the Rathalos, Diablos and Kushala
   Updates (game), Plsel_SaveRecordMenu (plsel), func_00781150,
-  AreaMenu_Update and DlgMsg_Draw (lobby). Round 9 confirmed it: the cases of
+  AreaMenu_Update and DlgMsg_Draw (lobby). Confirmed: the cases of
   a switch inside a loop that end with the same code jump into one copy, so
   the earlier cases `goto widen;` and the label sits inside the last one's
   `if` (Plsel_BuildRewardLines, plsel); two identical tails, one reached by a
@@ -2407,7 +2407,7 @@ temporary still live where another is made pushes it up.
   every other branch writes it too (Npc_UpdateState's `flag = 1`); a
   FAKEMATCH when it is the only such store (Player_UpdateHunger's
   `rate = 0`). Seen in: Npc_UpdateState (lobby), Player_UpdateHunger
-  (sub_main), round 26.
+  (sub_main).
 
 - **Branches, alignment nops and a `sltu` or `xori`/`sltiu` tail in the
   original's boolean function, straight-line code in yours.** Cause:
@@ -2435,7 +2435,7 @@ temporary still live where another is made pushes it up.
 - **An if-body placed after the function's last block and jumped back
   to.** Cause: a `goto` to a block written after an explicit `return;`,
   with every early exit its own `return;`. Seen in: func_0030EB20
-  (sub_main). Round 9: `if (A == 0 || B == 0) {X} else {Y}` places B's test
+  (sub_main). `if (A == 0 || B == 0) {X} else {Y}` places B's test
   after X, where the game has A's test branch to B's test after the block: `if
   (A != 0) goto check; stop: X; return; check: if (B == 0) goto stop; Y;`
   (Chara_CreateTask, select).
@@ -2453,7 +2453,7 @@ temporary still live where another is made pushes it up.
   that is one `if (x) { ... }` before `return 0;` branches to the shared
   return, where `if (!x) return 0;` first gets a block of its own. Seen
   in: func_00D71BD0 (plsel), func_002F7000 (sub_main), Layout_CellColSpan
-  and Layout_DrawCellBox (lobby). Round 9: `if (a) return; if (b) return;`
+  and Layout_DrawCellBox (lobby). `if (a) return; if (b) return;`
   branches straight to the epilogue, where `if (a || b) return;` and nested
   ifs go through a `b` stub (Quest_OnRemoteKill, sub_main; adiff's `full=0`
   hid it); a case's failure branch straight to the epilogue is `goto end;`
@@ -2575,8 +2575,8 @@ temporary still live where another is made pushes it up.
 
 - **An empty delay slot in the original where yours is filled (usually from
   the fall-through block).** Cause: MWCC fills slots in optimized C, but
-  some forms leave them empty (round 5 first concluded, from reading the
-  compiler's delay-slot pass, that none does; these matches corrected it).
+  some forms leave them empty (an early reading of the
+  compiler's delay-slot pass said that none does; these matches corrected it).
   First check that MWCC would fill it at all: it fills a conditional
   branch's slot only with an instruction from before the branch that the
   test doesn't depend on, or with a harmless one from the fall-through
@@ -2607,7 +2607,7 @@ temporary still live where another is made pushes it up.
     the function written as the default-first switch. When a default-first
     switch gives the schedule but a wrong alignment nop, look for another
     if/else in the function that can be it (EmHermitaur_Update). A
-    jump-table switch doesn't do it in test functions (round 8, with and
+    jump-table switch doesn't do it in test functions (with and
     without table entries that reach the default), but EmFxTri_Draw's
     draft (game, a table switch with `default:` first) had its slots empty
     until the default body got case labels (`case 0: case 5: default:`):
@@ -2618,12 +2618,12 @@ temporary still live where another is made pushes it up.
     shared `li v0, 1`. Seen in EmBlangonga_ChangeState, Lance_State01,
     Player_State0_47, EmGravios_State5_04 and EmChameleos_State0_0A (game),
     QuestNet_Send (gm_sub), Player_UpdateStatus and func_00387870
-    (sub_main): round 5 had written the last three off as function-level
+    (sub_main), the last three once written off as function-level
     asm; func_00786B30, WeaponForge_DrawUpgradeBox and Lobby_ReceiveAll
-    (lobby); in round 8 func_006E8C70, func_006F8B10, func_006FC350,
+    (lobby); func_006E8C70, func_006F8B10, func_006FC350,
     func_006FE4B0, Gunlance_State02, Player_State0_06, Player_State2_21,
-    func_0079EFE0, EmMelynx_UpdateFace and EmHermitaur_Update (game); in
-    round 9 func_00906210 (gm_sub, 4,134 words: one `switch (n16)` with
+    func_0079EFE0, EmMelynx_UpdateFace and EmHermitaur_Update (game);
+    func_00906210 (gm_sub, 4,134 words: one `switch (n16)` with
     `default:` first, in case 9 of the 0x48-case kind switch, empties the
     conditional slots of the whole function), func_00782A60 (lobby: only
     a first `default: return;` in the inner switch did it, a first empty
@@ -2684,11 +2684,11 @@ temporary still live where another is made pushes it up.
   padding). Seen in: LobbyStep_DownloadQuests (lobby, 299 words to 2).
 
 - **An empty slot where the fall-through's first instruction writes a register
-  read earlier in the branch's block** (round 30, EmSlot_FreeModels): MWCC
+  read earlier in the branch's block** (EmSlot_FreeModels): MWCC
   doesn't move such an instruction into the slot. Fix the registers first;
   the slot then follows.
 - **An empty slot after `x = K; li vR,C; bne`** (x set before the compare
-  constant, in the same block; round 30, Gs_UploadImagePacket). Cause: a
+  constant, in the same block; Gs_UploadImagePacket). Cause: a
   block boundary between them. A redundant `if (cond) x = K;` that repeats
   x's current value makes that boundary with no code (`if (fmt == 0) bits =
   8;` in a full table of formats, every case writing bits).
@@ -2713,7 +2713,7 @@ temporary still live where another is made pushes it up.
   NetMenu_SetState and Math_GetSinCos (sub_main), Chara_FilterParts (select),
   EmYamaTsukami_State3_01 and Player_State2_15 (game), func_00780970,
   Bmp_CreateTexture, LobbyBgm_Restart and LobbyLogin_StateConnect (lobby).
-  Round 8 confirmed it many times: a0 or a3 kept across the call
+  Confirmed many times: a0 or a3 kept across the call
   (func_00711030, func_00712090, func_0070D320's caller), t0 (func_006F2B30's
   caller, `andi t0, v0, 0xFF` in the `jal`'s slot before Plsel_SlotCount),
   t3-t6 (func_007D9190's callers match only once it is C), v1 (a chain's
@@ -2737,8 +2737,8 @@ temporary still live where another is made pushes it up.
   `staticregs.py` (autodecomp) rewrites such drafts and `static.py`
   tries callees static in their file. When callers in two files keep
   registers across the same callee, the two files are one of the game's
-  units (model_file.c and unk_2F7420.c, sub_main; round 7 found eight more
-  such pairs; round 8 joined more,
+  units (model_file.c and unk_2F7420.c, sub_main; eight more
+  such pairs were found, and later joins added more,
   such as town_players.c and unk_7952C0.c, lobby). To check before the
   files are joined, put a static copy of the callee at the top of a scratch
   copy of the caller's file: func_007960D0 and Png_ReadRow (lobby) match
@@ -2749,12 +2749,12 @@ temporary still live where another is made pushes it up.
   call. Static and global functions are not inlined at -O3,p (tested).
   sub_main's Save_GetEquipFlags was listed here as inlined whatever the
   pragmas: it is not. Its callers' drafts had lost the call; made static,
-  its three callers match (round 17; IPA keeps a0-a3 across the call).
+  its three callers match (IPA keeps a0-a3 across the call).
 
 - **A caller that matches only with its callee `static`, the callee being
   in another file.** A static function can only be called from its own
-  unit, so the two files are one of the game's units: merge them. Round 18
-  proved four this way (merged in rounds 19 and 20):
+  unit, so the two files are one of the game's units: merge them. Four
+  were proved this way, and merged:
   Player_Update/Player_PickStatusState (game, player_states.c to
   unk_722400.c), Npc_StateA1/Npc_StartTurnBack (lobby, npc_states.c to
   unk_7873F0.c), Deco_FitsEquip/Armor_GetData (equip_save.c to
@@ -2762,10 +2762,10 @@ temporary still live where another is made pushes it up.
   unk_3AAD20.c, sub_main). A sweep making each same-file callee static
   matched Font_SetColorIndex, Quest_AddReward and Player_CalcResists
   (sub_main).
-  - Round 19 merged three: npc_states.c (lobby, five files), equip_save.c
+  - Three merges: npc_states.c (lobby, five files), equip_save.c
     (three) and unk_3A6130.c (with unk_3AAD20.c). A merge joins only
     adjacent files (a C file's text is contiguous).
-  - Round 20 merged the other two: player_states.c (game, with unk_716360.c
+  - The other two: player_states.c (game, with unk_716360.c
     and unk_722400.c: Player_Update 47 words off to 24, then matched with
     `f32 buf[3]` and a FAKEMATCH mask) and quest.c
     (sub_main, with mine_point.c and unk_3A6130.c: quest.c calls
@@ -2781,7 +2781,7 @@ temporary still live where another is made pushes it up.
     state: with s32, `*(u16 *)` arguments load with `lw`). Data that two
     files typed differently gets the user's type with the same bytes
     (u32 arrays as u16 arrays, pointer pairs as one pointer table).
-    Round 20 added: a caller that saw a narrower return keeps its `andi`
+    Also: a caller that saw a narrower return keeps its `andi`
     with a cast on the result (`(u8)Obj_InCurrentArea(em)`,
     `(u16)QuestGoal_DeliverItem(i)`); a caller that saw `s32` where the
     definition returns `u16` needs the definition widened if it still
@@ -2794,15 +2794,15 @@ temporary still live where another is made pushes it up.
     with fewer arguments than others (Em_StartScript, EmScript_NextCmd,
     Player_InSceneEvent) stays or becomes a K&R declaration or definition.
   - A sweep of every NON_MATCHING block with each callee from another
-    file of its module copied in as `static` before it (round 19)
+    file of its module copied in as `static` before it
     matched nothing new; 297 of 816 copies
     didn't compile (the callee needs its own file's types).
-    Round 21 ran it again (377 copies, 223 didn't compile): nothing. An
+    A second run (377 copies, 223 didn't compile): nothing. An
     assembly-level check needs no compile: after each `jal` to a function
     of another file, does the caller read a0-a3, t0-t9, v1 or an f-register
     before setting it? Over every module: none (149 such reads, all to
     callees already static in their file).
-- **Prototype conflicts are weak evidence of units** (round 21).
+- **Prototype conflicts are weak evidence of units.**
   The idea: one C file declares a callee one
   way, so callers that need two declarations are two units. In practice:
   - most conflicts are a caller's wrong local or parameter type. Equip_Color
@@ -2821,7 +2821,7 @@ temporary still live where another is made pushes it up.
   evidence (a static callee, data, level), never on the conflict alone.
 - **Pooled string literals prove one unit.** MWCC pools identical literals
   only inside a unit, so one literal used on both sides of a candidate cut
-  means no cut there (round 23, nmsub): "%4d" and "%3d" in menu_windows.c
+  means no cut there: "%4d" and "%3d" in menu_windows.c
   (sub_main) are stored once and used by StatusPage_DrawStats and by
   EquipWindow_DrawDetails, so no split lies between them. The file's .data
   order said the same. In that unit the game's calls pass s16 to
@@ -2838,11 +2838,10 @@ temporary still live where another is made pushes it up.
   and integer parameters in any relative order, and so do callers whose
   declaration has another order. The order the callers load their
   arguments in tells the real one. Make every declaration agree with the
-  definition: a C-built port passes arguments by position. Round 23
+  definition: a C-built port passes arguments by position. A pass
   aligned the lobby's Draw_RectClipped (colour first), Page_DrawTextLine,
   Page_DrawIcon and about 20 others this way, with every function
-  unchanged; the disagreements left are in
-  round 23's nm-lobby notes ("Prototype disagreements").
+  unchanged; none is left (tools/proto_check.py).
 
 ### Prototypes
 
@@ -2890,7 +2889,7 @@ temporary still live where another is made pushes it up.
   differed between files or were missing. Fix: a declaration without
   parameters (`void f();`, only for callees without float parameters) and a
   K&R definition after it (`void f(em) Em *em; { ... }`), which compiles
-  like a prototyped one for int and pointer parameters (tested in round 4).
+  like a prototyped one for int and pointer parameters (tested).
   The same fits a file whose prototype has int parameters where the
   function wants pointers, and a callee called both as `(em)` and
   `(em, p)` in one file (it reads a1 as the caller left it). A callee that
@@ -2906,8 +2905,8 @@ temporary still live where another is made pushes it up.
   EmScript_NextCmd and func_008625F0 (game), func_003D6F50, func_00338830,
   HitId_Next and Pad_StickToDpad (sub_main), Offer_IndexOf, func_0076CAA0,
   LobbyLevel2_Refresh, func_00711520, func_007CF630, and the callers
-  of func_8FB280, LobbyLogin_DrawWaveTitle and Page_Margins (lobby). Round 9:
-  a call with no argument in a file whose other calls pass one has no
+  of func_8FB280, LobbyLogin_DrawWaveTitle and Page_Margins (lobby).
+  A call with no argument in a file whose other calls pass one has no
   declaration before it (MWCC's implicit `int f()`); MWCC takes a `()`
   declaration as `(...)` and rejects a later prototype, so the file's other
   callers declare `s32 SavePouch_Count(u16 item);` in their own blocks
@@ -2941,7 +2940,7 @@ temporary still live where another is made pushes it up.
 - **Varargs.** Declare variadic callees as such (Text_Printf). A variadic C
   function needs MWCC's `va_start`: `#define va_start(ap, last) ((ap) =
   (char *)__builtin_next_arg(last) - (__builtin_args_info(2) >= 8 ? 0 : (8 -
-  __builtin_args_info(2)) * 8))`. Since round 31 it is in one header,
+  __builtin_args_info(2)) * 8))`. It is in one header,
   include/ee_stdarg.h (with the host compiler's builtins under MH2_NATIVE):
   include that, don't copy the define. Seen in: card_task.c (sub_main),
   member_list.c (lobby, Text_Printf).
@@ -2975,7 +2974,7 @@ temporary still live where another is made pushes it up.
   Item_DrawIcon's size as s16 (one file still had s32) and Text_CenterX as
   `(char *, s16, s16)`.
 
-- **Declarations that disagree with their definitions** (round 24).
+- **Declarations that disagree with their definitions.**
   `python3 tools/proto_check.py [REPO]` checks every declaration (file
   scope and block scope, headers included) against the definition it links
   to (the same file's static function, the module's own, or main's and
@@ -3035,7 +3034,7 @@ temporary still live where another is made pushes it up.
   TownMsg_SendState, LockOn_Update, func_00763070, func_00774240,
   Link_Follow, Layout_TextFull, Layout_DrawRun and func_0070F910 (lobby),
   func_006EF770,
-  func_0070F6E0, func_006FF450, Em_SetLayerMotion and (round 7's two open
+  func_0070F6E0, func_006FF450, Em_SetLayerMotion and (two long-open
   cases) func_007038F0 and EmPlesioth_UpdateFinFold (game),
   DmaQueue_Add and DmaQueue_AddChain (main).
 - **Other operand orders in integer arithmetic.** Fix: split the expression:
@@ -3085,7 +3084,7 @@ temporary still live where another is made pushes it up.
   gets its own `%lo`. Seen in: func_0031BC10 (sub_main), the village menus
   (lobby, `(u8 *)D_008BDC20`), func_0070CE10 (game), Pad_EndLibs (main),
   func_007D90A0 and the network screen's steps (`st = &D_5D46A0; switch
-  (st->unk1)`, func_007CDBE0; lobby). Round 9: where `p = D_008C219D` (an
+  (st->unk1)`, func_007CDBE0; lobby). Where `p = D_008C219D` (an
   array) still propagated into `%lo(D+off)` accesses, `p = (u8
   *)(s32)D_008C219D;` kept it (lobby village 1); also `t = (f32 *)D_0043CB58;`
   (func_00374340, sub_main) and `u8 *w = (u8 *)&D_008BDC20;` with the cast
@@ -3118,7 +3117,7 @@ temporary still live where another is made pushes it up.
   func_006C6D40, EmScript_Op14, EmKushala_BreathAttack and
   EmVelociprey_Reappear (game), Ending_DrawPictures (plsel),
   Pad_SetVibration (main), LobbyLevel2_EnterFree, TownMsg_Recv,
-  LobbyScreen_EnterArea and func_007C33B0 (lobby). Round 9: a table read at
+  LobbyScreen_EnterArea and func_007C33B0 (lobby). A table read at
   each use with the byte offset in a local, `k = item * 0x18;` then
   `(&gItemData[0].max)[k]` and `(&gItemData[0].unk02)[k]`, gives the game's
   `%lo(gItemData + 3)` form (ItemInfo_Draw, lobby); `((u8
@@ -3131,7 +3130,7 @@ temporary still live where another is made pushes it up.
   of a typed pointer local, a struct member, or a padding element
   (`*(s16 *)&em->unk706[0]`) is addressed from the base each time. Fix: add
   the field to the struct (the `.spec` files), or use a typed local pointer
-  or a small per-file typedef; or the reverse. This is round 7's most
+  or a small per-file typedef; or the reverse. This was once the most
   common fix: a draft reading Player fields through `em` casts matched as
   `Player *p = (Player *)em; p->input.pressed`; a work area as a view
   struct (EmChameleosFxWork, the bulldrome effect objects' EmFx); a
@@ -3139,7 +3138,7 @@ temporary still live where another is made pushes it up.
   as `LobbyMenu *`. It changes register allocation and scheduling too, not
   only the addressing. A block-local `HtmlState *s = D_008B2748;` in one
   branch is addressed from the base where `D_008B2748->center` read and
-  written kept `&center` in a register. Round 8: a work area's field
+  written kept `&center` in a register. A work area's field
   written through a cast next to `&work->unk01C`, or a view struct cast
   inside the function (`((View *)p)->f` in many statements added three
   saved registers), makes MWCC keep the address; `*(s32 *)&work->unk01C =
@@ -3233,7 +3232,7 @@ temporary still live where another is made pushes it up.
   whose address is taken, so it stays in place around that local's stores;
   a named global moves freely. Fix: look the address up in
   config/symbols/*.txt and use the object. Seen in: Chara_DrawEquipment and
-  func_006BDA00 (select); CardGame_AskQuit (sub_main, round 25), whose
+  func_006BDA00 (select); CardGame_AskQuit (sub_main), whose
   `*(u8 **)0x8B43F0` was the block's whole difference: gSubMenuWork
   matched it.
 
@@ -3243,7 +3242,7 @@ temporary still live where another is made pushes it up.
 
 - **A raw address that a name schedules differently.** A cast of the named
   object's field address (`*(s32 *)&gQuestRecord.unk08`) schedules like
-  the raw address, so the name can stay. Round 22 named 196 of the C's 224
+  the raw address, so the name can stay. One pass named 196 of the C's then 224
   raw RAM addresses this way or plainly; four of the six functions listed
   as "must stay raw" now use names.
 
@@ -3263,8 +3262,8 @@ temporary still live where another is made pushes it up.
   relocation, while the game loads the base once. Keep a pointer to the
   member made by a cast of the union's address
   (`HairMenuWork *w = (HairMenuWork *)&gMenuWork;`), with a comment.
-  Seen in: HairMenu_MovePlayer and HairMenu_Update (lobby hair_menu.c,
-  round 31).
+  Seen in: HairMenu_MovePlayer and HairMenu_Update (lobby
+  hair_menu.c).
 
 - **A field's offset folded into the address (`lbu v, %lo(gSave+0x1234)(t)`)
   where yours loads from the struct with the offset in the load.** An
@@ -3274,7 +3273,7 @@ temporary still live where another is made pushes it up.
   `((u8 *)gSave.recipeBits)[i]`, `((u8 *)&gPlayers[0].area)[i *
   sizeof(Player)]`. In a one-line function a local view pointer changes the
   code: write the cast at the use. Seen in: the save's recipe and monster
-  note bits, EmScript_Op06's player area (round 31, the types lane).
+  note bits, EmScript_Op06's player area.
 
 ### Loops and pointer bumps
 
@@ -3295,7 +3294,7 @@ temporary still live where another is made pushes it up.
   unrolled by two; a copy written `*obj->s2 = c; obj->s2++;` unrolls 8
   times like the game's. Seen in: func_003D6990, func_003B09C0 and
   func_003B0AF0 (sub_main), ScreenTex_Reserve (main), func_00860E20
-  (game), LobbyWorld_GetTime and DlgInput_Draw (lobby). Round 9: a 4-pass fill
+  (game), LobbyWorld_GetTime and DlgInput_Draw (lobby). A 4-pass fill
   loop `for (i = 0; i < 4; i++)` was unrolled with a u32 i and not with an s32
   one (func_006F6DF0, lobby).
 - **A loop unrolled in the original (by 7 for 21 passes) that stays a loop
@@ -3307,7 +3306,7 @@ temporary still live where another is made pushes it up.
   instead of indexed, reads without casts. The pragmas `opt_unroll_count`,
   `opt_unroll_instr_count` and `opt_full_unroll_limit`, and level 4, don't
   change it. Seen in: Player_InitRecords (sub_main, was func_00337D30,
-  parked from round 9 to round 16).
+  long parked).
 - **A later loop's counter or pointer in other registers.** Cause: the
   locals the loop shares with the rest of the function. Fix: try the
   function's counter reused for the loop with a pointer local of the
@@ -3337,7 +3336,7 @@ temporary still live where another is made pushes it up.
   offsets in yours (or the reverse).** Cause: MWCC folds `p[2]` and
   `p += 2; *p` into the offsets; post-increments (`a = *p++; b = *p++;`) and
   steps inside an expression (`*(p += 2)`, `(++p)->x`) keep their `addiu`,
-  but which one does varies: try each. Forms that kept it in round 7:
+  but which one does varies: try each. Forms that kept it:
   `x = *(p += 2);` when p is used after; `s.u1 = (++uv)->u; s.v1 = uv->v;`;
   `t += i; x = *t;` (`t[i]` folds); `*p++ = d[0]; *p++ = d[1]; *p = 0;`
   (with `p += 2` after the stores it folds); `p[2] = *src++; p[1] =
@@ -3345,7 +3344,7 @@ temporary still live where another is made pushes it up.
   `for (...; i++, src++)` orders the increments differently from `src++`
   at the end of the body; a parameter can be the walker
   (`f = (u8 *)f + 0xC;`, `tim2 += Tim2_Align(...)`), which keeps the
-  parameter's register where a separate walker swaps them. Round 8:
+  parameter's register where a separate walker swaps them.
   `pos[0] = *f++; pos[1] = *f++; pos[2] = *f;` gives `addiu a1, a1, 8`
   before the third load; `p++; p++;` before a test is shared by two returns
   where `p += 2;` is folded into each; `for (...; p++, i++)` against `i++,
@@ -3386,7 +3385,7 @@ temporary still live where another is made pushes it up.
   QuestList_Build, func_00797040 and WordFilter_Scan (lobby),
   Plsel_CheckAwardsOffline (plsel), EmChameleos_StealItem,
   func_007037F0, HuntingHorn_CheckSongs and StageObj_K0E_RunParts (game),
-  em_body.c (sub_main). Round 9: MWCC strength-reduces `r[i]` of a pointer
+  em_body.c (sub_main). MWCC strength-reduces `r[i]` of a pointer
   held in a register into a walker; the game's base-plus-offset walk (an
   `addu` of base and offset at each use) came from reading the route pointer
   through memory at each use, `(*(NpcRoutePt **)(w + 0xC))[i]`, which MWCC
@@ -3424,7 +3423,7 @@ temporary still live where another is made pushes it up.
   (i < a->first + a->count);`. Seen in: Psp_LoadFiles (select), Adx_Init
   (main), Talk_FindScript, func_00770250, Npc_Draw and
   ArmorForge_DrawMakeList (lobby), func_00330570 and
-  func_0033CDA0 (sub_main), Eff06_Scatter (game). Round 9: a loop whose first
+  func_0033CDA0 (sub_main), Eff06_Scatter (game). A loop whose first
   test is on a call's result (`slti at, v0, K; beqz` with `move s4, v0` in the
   slot) is `if ((n = f()) < K) { do {...} while (++n < K); }`
   (Plsel_BuildResultText, plsel); an entry test that reads the table through
@@ -3442,7 +3441,7 @@ temporary still live where another is made pushes it up.
   branch-layout problem. Fix: count the nops between the label and the
   next C statement in each loop; the alignment nop before an 8-aligned
   label is not part of the asm. Seen in: Yn_UnloadModule (yn, eight),
-  Yn_LoadModule (yn, seven in its retry loops), and in round 9 Net_LoadIrx
+  Yn_LoadModule (yn, seven in its retry loops), and Net_LoadIrx
   (sub_main, was func_00309D00: Yn_LoadModule's form, seven in both retry
   loops, with a dead `i = 0` on success).
 
@@ -3501,7 +3500,7 @@ temporary still live where another is made pushes it up.
   a struct type declared with the attribute), an `ld`/`sd` loop when 8-aligned
   (an s64 member), unrolled `lwc1`/`swc1` groups when 4-aligned up to 0x30
   bytes whatever the field types and an `lw`/`sw` loop above that (tested;
-  round 6 had written 0x20, but 0x24 and 0x30 give `lwc1`/`swc1` too), an
+  an earlier note had 0x20, but 0x24 and 0x30 give `lwc1`/`swc1` too), an
   `lh`/`sh` loop when 2-aligned (s16 and u8 members only), a byte loop when
   1-aligned; a 64-byte matrix is an 8 x 8-byte loop, and a struct-typed global
   copied into a local mixes them by size (0x1C bytes: `lq`, `ld`, `lwc1`). An
@@ -3539,8 +3538,8 @@ temporary still live where another is made pushes it up.
   `register`, casts and an `__asm__` in the body don't do it; `if (*d++ =
   *s++) {}` copies both pointers. The script commands' `switch (*p++)`
   (game) is the same shape; a backward copy uses `s--`. Seen in: Mem_Copy
-  (was func_0017FEB0) and Heap_Move (main), the 12 script commands (game,
-  round 7).
+  (was func_0017FEB0) and Heap_Move (main), the 12 script commands
+  (game).
 - **A record copied to the stack and read through a register holding the
   copy's address.** Fix: `*(rp = &r) = table[id];`, then `rp->f`
   (`r = table[id]; r.f` addresses the copy from sp). Seen in:
@@ -3556,13 +3555,13 @@ temporary still live where another is made pushes it up.
   so `*(f32 *)&x = 10.0f` and an int store compile the same. A float zero
   store is `sw zero`, like an int's; it is `swc1` only from an FPR that
   already holds 0.0 (after a compare with 0.0f) (tested; earlier notes said
-  `swc1`, round 7's matches showed `sw zero`). An `f32[3]` set field by field
+  `swc1`, matches showed `sw zero`). An `f32[3]` set field by field
   gives `sw zero` and `lui`/`sw`; an initializer (`= {0.0f, 20.0f, 0.0f}`)
   gives other code. A constant used in both arms of an if and after the
   join stays in one FPR when a local is set to it in each arm (`turn =
   65536.0f;`). Seen in: the families' state setters, func_0085E400,
-  Player_State0_34 and func_006F2360 (game), unk_2E6F40.c (sub_main). Round 9:
-  constants one bit above the nearest float (0x3C23D70B for 0.01, 0x39D1B718
+  Player_State0_34 and func_006F2360 (game), unk_2E6F40.c (sub_main).
+  Constants one bit above the nearest float (0x3C23D70B for 0.01, 0x39D1B718
   for 0.0004) are folded quotients, `0.3f / 30.0f` and `0.4f / 1000.0f`
   (func_003C8EA0, sub_main).
 - **`mul.s` or `add.s` operands the other way round.** Cause: in a plain
@@ -3602,7 +3601,7 @@ temporary still live where another is made pushes it up.
   gives `lh; cvt.w.s; mfc1; addu; sh` with the loaded value first;
   `x = x + (s32)f` and `(s32)f + x` order the registers or operands
   differently, and `x += (s32)f` extends the converted value. Seen in: the
-  monster families (game, round 4).
+  monster families (game).
 - **The unsigned int-to-float sequence in yours where the original converts
   signed (or the reverse).** Cause: any unsigned value converted to float
   (u32, u16, a u8 field or a u8 local) gives the unsigned sequence
@@ -3625,14 +3624,14 @@ temporary still live where another is made pushes it up.
   LockOn_SetSector (lobby).
 - **`trunc.w.s` in our objdump listing, `cvt.w.s` in splat's.** It is the
   same instruction (0x46000024; the EE's `cvt.w.s` truncates), and MWCC
-  emits it: not a compiler difference (round 4's `mwcc_fixup.py` changed
+  emits it: not a compiler difference (an early `mwcc_fixup.py` changed
   nothing and is gone). `(u16)(s32)(expr)` gives `cvt.w.s` and `andi`;
   `u32 a = 255.0f * f;` then `(u8)a` at each use gives a conversion once and
   masks.
 - **A float constant converted to int at run time (`lui; mtc1; cvt.w.s; mfc1`)
   inside a loop.** Cause: MWCC folds `(s32)14.0f`, and hoists a float
   variable's conversion out of the loop. Fix: in a level-4 file, a float local
-  converted at each use to a narrow type (`x += (s16)space;`). Round 4 took
+  converted at each use to a narrow type (`x += (s16)space;`). Early notes took
   this for another compiler. Seen in: Ending_DrawTitle (plsel).
 - **One conversion or negation where the original has several (or the
   reverse).** Cause: `x / (f32)n` written three times converts once, and an
@@ -3640,7 +3639,7 @@ temporary still live where another is made pushes it up.
   local set to 320.0f is a run-time `neg.s` where `-320.0f` folds. Seen in:
   func_00795620 (lobby), Frustum_Build (sub_main).
 - **`mula.s` and `madd.s` in the original.** Cause: MWCC emits them for
-  `a * t + b * s`: plain C (m2c can't read them, and round 3 took them for
+  `a * t + b * s`: plain C (m2c can't read them, and early notes took them for
   VU0 code). Indexed 2D weight tables (`D_008CDA90[k][0]`) give the game's
   `madd` operand order where pointer walkers don't. Seen in: Vec_Lerp
   (sub_main), func_00861B70 (game). Real VU0 code (`vadd`, `lqc2`...) is
@@ -3670,7 +3669,7 @@ temporary still live where another is made pushes it up.
   (tested with arrays, structs and scalars of those sizes). Within a group
   they take their slots from the top down in declaration order: the first
   declared gets the highest address. So a large array is below the small
-  locals wherever it is declared (round 7's "the largest array takes the
+  locals wherever it is declared (the older notes' "the largest array takes the
   lowest slot" and "two same-size arrays in reverse order" are both this).
   Fix: reorder the declarations within the group; change a size (`f32 v[3]`
   against `f32 v[4]`) to move a local between groups. Two locals of one
@@ -3678,7 +3677,7 @@ temporary still live where another is made pushes it up.
   (`PspTri t[2]`; two locals got an 8-aligned gap). Seen in:
   Bone_SetMatricesRel (sub_main), func_0070AFE0, EmKutku_SetEscapePoint and
   Player_State2_02 (game), func_0079C360 and Layout_SpreadColumns (lobby),
-  func_006C5ED0 (select). Round 9: stack arrays and spilled locals follow the
+  func_006C5ED0 (select). Stack arrays and spilled locals follow the
   same rule, the last declared at the lowest address (Npc_DrawProps, lobby).
 - **A frame 0x30 bytes bigger than yours, or a lone f32 at another offset.**
   Cause: a 4x4 matrix (`f32 m[16]`) where m2c declared `f32[4]`; a local
@@ -3779,15 +3778,17 @@ strings", "Data in C"); these are the symptoms.
   only the run of objects after that function's previous migrated object, so
   an object after a shared one lands in no `.s`, and an object no
   instruction names (16 zero bytes after some strings) isn't migrated
-  either. Fix: an `INCLUDE_RODATA` line right after the function that emits
-  the object before it; `force_not_migration` in the symbol file for a
+  either. Fix: define the object by name, a `char` array of its bytes, right
+  after the function that emits the object before it (`const`, or between
+  `#pragma rodata on` and `off` when its code takes a `char *`);
+  `force_not_migration` in the symbol file for a
   single-user object whose owner comes earlier in the text than the previous
   owner. A string right after the jump tables of C functions lands in no
-  `.s` either: `INCLUDE_RODATA` it before its user. Seen in: area_objects.c
+  `.s` either: define it by name before its user. Seen in: area_objects.c
   (game, D_008EC0A0), select_option.c (select), layout_text.c (lobby, a "").
 - **A module 8 or 16 bytes too long or too short.** Cause: a literal of your
-  own where the original shares one (while one user is still assembly, use
-  the `INCLUDE_RODATA`'d name; with every user in C the literal is shared);
+  own where the original shares one (with every user in C the literal is
+  shared);
   a string that two of the game's units in your file both use (the game has
   one copy per unit: give the second by name, or as an array of its own,
   `const char D_00825EE8[] = "%d";`, where splat won't migrate it); the zero
@@ -3798,8 +3799,8 @@ strings", "Data in C"); these are the symptoms.
   ("%s%s" then two "", 16 bytes: the literal, then `const u8
   D_008DD028[8] = {0};` after the function); the zeros after an overlay's
   last jump table (`const u32 D_00849F60[8] = {0};` after its function);
-  a literal followed by padding (INCLUDE_RODATA plus
-  `force_not_migration`). The reverse: 4 zero bytes after a string that are
+  a literal followed by padding (one array of the string and its padding,
+  defined by name, plus `force_not_migration`). The reverse: 4 zero bytes after a string that are
   only the 8-byte alignment mwcc_cc.py gives the next literal; defining
   them moves every later string by 8. Seen in: QNetIf_OnPlayerLeft
   (gm_sub), gallery_objects.c, func_00775240, func_00770250, func_006FCEF0 and
@@ -3808,12 +3809,12 @@ strings", "Data in C"); these are the symptoms.
 - **A string symbol in a function of a file that owns its `.rodata` doesn't
   link.** Fix: write the literal; an extern of splat's label fails once the
   function is C. File-scope const arrays used before any literal come
-  first in the file (the PNG chunk names of unk_7513C0.c). Seen in:
+  first in the file (the PNG chunk names of image_decode.c). Seen in:
   func_00729AC0 (lobby), SeasonBanner_Draw (sub_main: `"%s"`, and two
   strings joined by a full-width space).
 - **A string before the jump table of a function that uses it later.**
   Cause: its first user was probably dropped by the linker. Fix:
-  `INCLUDE_RODATA` it where it is. Seen in: quest_results.c (plsel, "%s"),
+  define it by name where it is. Seen in: quest_results.c (plsel, "%s"),
   yn_main.c (" " and "").
 - **A function's jump tables in another order.** Cause: MWCC emits them
   last-created first. Seen in: func_00308450 (sub_main).
@@ -3840,12 +3841,12 @@ strings", "Data in C"); these are the symptoms.
   the build, the zero padding after the last function of `.text` needs a
   `text_end` data piece in the YAML once the function is C (0x80 bytes
   after LobbyActor_Draw; 32 nops before sub_main's vu1_microcode; Yn_LoadModule,
-  0x913C). Until round 25, func_diff read whatever followed a file's last
+  0x913C). func_diff once read whatever followed a file's last
   function, up to the next function start it knew, as that function's tail,
   and reported a DIFF where the binary matched (Sound_ReadBank,
   LobbyActor_Draw, func_003E7E00, Yn_LoadModule, StageObj_BowArc_Create,
-  Letterbox_Draw; a worker's script reverted good renames on it). Since
-  round 26 the tail also ends at the next piece of the module's YAML.
+  Letterbox_Draw; a worker's script reverted good renames on it). Now
+  the tail also ends at the next piece of the module's YAML.
 
 ### Optimization level 4 files
 
@@ -3857,11 +3858,11 @@ strings", "Data in C"); these are the symptoms.
   into a second saved register at level 3. Compound assignments behave
   differently at level 4: `x += ...` kept a u16 in one register from its
   first value (Layout_SelectEnd), and `D->y += ...` computes the field's
-  address once for the store (Page_PointTo). Round 9: spilled, CSE'd field
+  address once for the store (Page_PointTo). Spilled, CSE'd field
   addresses in saved registers or hoisted invariants (func_006FF990: 180
   words off at level 3, 16 at 4: try level 4 early for these), a u8 loop
   bound copied with `andi` in yours and kept in its register in the
-  original (round 8's near misses in unk_722400.c), parameters extended
+  original (near misses in unk_722400.c), parameters extended
   late in place (func_0076F0E0).
 - **Cause:** the game compiled some files at optimization level 4. `-O4,p`,
   `-O4,p -opt nointrinsics` and `-O3,p` with the pragma give the same code.
@@ -3869,11 +3870,11 @@ strings", "Data in C"); these are the symptoms.
   then check with `func_diff.py` that every function of the file that matched
   still matches. A file that needs both levels is often two of the game's units
   (but not always: "The level can change inside one of Capcom's units"
-  below): split it there when other evidence agrees (round 7 split tex_pack.c at func_00334260, now
+  below): split it there when other evidence agrees (tex_pack.c was split at func_00334260, now
   file_load.c at level 3); `#pragma optimization_level reset` before the
   level-3 part works in the meantime (Layout_TextFull's NON_MATCHING block
   is closer at level 3 and carries the pair around it). A pragma region in
-  the middle of a file marks a unit of its own: in round 9 area_scenery.c's
+  the middle of a file marks a unit of its own: area_scenery.c's
   level-4 functions 0x6FF630-0x701810 became em_sight.c (with a
   `.rodata` split), the rest em_common.c at level 3. A pragma pair around
   one NON_MATCHING block keeps a draft's best level until its file is
@@ -3888,11 +3889,11 @@ strings", "Data in C"); these are the symptoms.
   joined pad.c). A file whose functions all match at both levels
   goes to level 4 when one of them needs it (unk_733AB0.c,
   page_frame.c and page_input.c: Portal_ParseStep, Dialog_PageStep and
-  Link_Follow match only at 4; in round 9 page_focus.c for
+  Link_Follow match only at 4; page_focus.c for
   Page_Navigate). In the game, player_states.c's 0x722400 part and
   em_sight.c are at level 4; weapon_states.c, area_objects.c, player_hit.c and player_effects.c match whole
   at both levels.
-- **At level 4 now** (75 files, after round 20):
+- **At level 4 now** (75 files):
   dma_packets.c, texconv.c, gs_tex_regs.c, pad.c, pad_port.c (main);
   sys_main.c, bones.c, net_sockets.c, kbd_cand_box.c, kbd.c,
   tex_pack.c, hud.c, menu_windows.c, equip_parts.c, draw_helpers.c,
@@ -3908,7 +3909,7 @@ strings", "Data in C"); these are the symptoms.
   drink_contest.c, hunter_info.c, minigame_draw.c, unk_7115D0.c,
   arena_cup.c, browser_dialogs.c, unk_733AB0.c, page_frame.c, page_focus.c, page_input.c,
   html_parse.c, html_attr_readers.c, layout_text.c, layout_tables.c, layout_cells.c,
-  unk_753C10.c (zlib's inflate), box_menu_draw.c, town_players.c and area_list.c
+  inflate.c (zlib), box_menu_draw.c, town_players.c and area_list.c
   (lobby).
   Level-3 pairs inside level-4 files, kept as Capcom's own pragmas (next
   bullet): hud.c (Map_DrawZoomed, the zoomed twin of Map_DrawArea,
@@ -3916,7 +3917,7 @@ strings", "Data in C"); these are the symptoms.
   (StageObj_K1C_NextStepD, one of the K1C family's step helpers, called by
   the level-4 StageObj_K1C_RunSeq) (game). layout_text.c (around
   Layout_TextFull's NON_MATCHING draft) (lobby).
-- **The level can change inside one of Capcom's units** (round 18), so a
+- **The level can change inside one of Capcom's units**, so a
   level change alone doesn't prove a unit boundary. The proof:
   Player_PickStatusState (0x70DFD0) has one caller, Player_Update
   (0x7227F0), which keeps a0 across the call.
@@ -3927,40 +3928,40 @@ strings", "Data in C"); these are the symptoms.
   (Player_State0_53 and Player_State0_55) as well as level-4-only ones
   (Player_Update: 452 words off at 3; Player_CheckTeamCombo). Capcom's
   source switched levels inside the unit, with `#pragma
-  optimization_level` or the like. Round 20 merged it: player_states.c
+  optimization_level` or the like. It is one file now: player_states.c
   (game, 0x70A290-0x72E450, the old unk_716360.c and unk_722400.c) is at 3
-  up to 0x722400 and at 4 from there. Round 19's merges add one: the Deco
+  up to 0x722400 and at 4 from there. The merges add one more: the Deco
   unit (equip_save.c, sub_main) is at 4 up to 0x3BD380 and at 3 from there
   (`reset`; Equip_CompactDecorations needs 3). The Quest unit
-  (quest.c, sub_main, 0x3A1070-0x3AC3A0, merged in round 20 with the
+  (quest.c, sub_main, 0x3A1070-0x3AC3A0, merged with the
   old mine_point.c and unk_3A6130.c) is at 4 throughout.
   So:
   - a one-function island of the other level inside one function family is
     a pragma: keep its pair (Map_DrawZoomed, StageObj_K1C_NextStepD);
   - split a pair file only where something besides the level places the
-    cut: a closed function family with its own .data (EffEm33 in round 18,
-    the round 17 splits below), static callees, data a family points back
-    at. Round 18's level-only cuts were reverted at the merge (below).
+    cut: a closed function family with its own .data (EffEm33,
+    the pair-file splits below), static callees, data a family points back
+    at. Cuts on the level alone were reverted at the merge (below).
 - **Level-4 pairs in level-3 files** (kept: nothing but the level places a
   cut there): area_collision.c (sub_main), area_scenery.c (game: around
   AreaObj_K13_Draw), unk_70E2A0.c and browser_cache.c (lobby), around matched
   functions and drafts; menu_sheets.c and quest_counter.c (lobby), inside
   NON_MATCHING blocks only.
-- **Split for this in round 18:** elder_attacks.c (game): EffEm33_*
+- **Split for this (closed families):** elder_attacks.c (game): EffEm33_*
   (0x6E3B00-0x6EA220, its .data 0x8AB600-0x8AD3A0 and jump tables closed)
   is em_effect_attack.c at level 4; EffShakalaka34_* to EffEm02_* are
-  shakalaka_teostra_bulldrome.c. The units batch also cut area_scenery.c, unk_70E2A0.c,
+  shakalaka_teostra_bulldrome.c. A units pass also cut area_scenery.c, unk_70E2A0.c,
   browser_cache.c and area_collision.c on the level alone; the lead reverted those
   four at the merge, since the level can change inside a unit (above). Their
-  level scans and cut points are in round 18's notes.
-- **Split for this in rounds 11-12:** kbd_input.c (Kbd_DrawCandidateBox is now
+  level scans and cut points are in the session notes (not in this repository).
+- **Split for this too:** kbd_input.c (Kbd_DrawCandidateBox is now
   kbd_cand_box.c), em_body.c (the fishing code, level 3, is now
   fishing.c), sys_main.c (the bones are now bones.c), gs_regs.c
-  (its level-4 tail is now gs_tex_regs.c), arena_cup.c (round 8's join took in
+  (its level-4 tail is now gs_tex_regs.c), arena_cup.c (an earlier join took in
   the browser's page code, now browser_cache.c, level 3), quest_counter.c (from
   func_00770410 on, now quest_counter_draw.c: its caller passes a y that
   func_0076FA10's s16 parameter would re-extend).
-- **Split for this in round 17** (the two pair files with no NON_MATCHING
+- **Split for this as well** (the two pair files with no NON_MATCHING
   block left): bone_effects.c (sub_main) is now bone_effects.c (Effect06_*),
   part_effects.c (PartFx_*, level 4: PartFx_Run) and lock_on_mark.c (the
   ground effects and Effect1A_*); bowgun_shot.c (game) is now bowgun_shot.c
@@ -3971,31 +3972,31 @@ strings", "Data in C"); these are the symptoms.
   tables, so the data cuts are exact); a function that matches at both
   levels between two families can't be placed by its level. Each new file
   repeats the declarations it uses from the parts before it.
-- **Level 3 needed:** in round 5's scan, level 4 broke one matched function
+- **Level 3 needed:** in a scan, level 4 broke one matched function
   in each of bowgun_shot.c, attack_families.c, em_status.c (game), unk_715CA0.c
   (lobby), cam_script.c, player_looks.c, unk_3BD5E0.c and fishing.c
-  (sub_main; split from em_body.c in round 11).
+  (sub_main; split from em_body.c).
 - **Seen in:** Ending_DrawStaffRoll (plsel), Yn_Connect (yn), Tex_VramBlocks
-  (main); in round 7 Html_ParseSome, Html_PageKeyword, Lbs_Sort, Html_Csv
+  (main); Html_ParseSome, Html_PageKeyword, Lbs_Sort, Html_Csv
   and Page_SetKind (lobby), Vec_RotateX (sub_main), the pad helpers
-  (main) and func_00D67C30 (plsel, 65 to 10 words); in round 8
+  (main) and func_00D67C30 (plsel, 65 to 10 words);
   Sel_DrawHeader (select), Plsel_DrawItemBox (plsel), Portal_ParseStep,
   Dialog_PageStep, Link_Follow, Page_PointTo and Layout_SelectEnd (lobby);
-  in round 9 func_006FF990, func_006FFE50, Em_SeePlayers and EmScript_Op5F
+  func_006FF990, func_006FFE50, Em_SeePlayers and EmScript_Op5F
   (game), Page_Navigate (lobby, 86 to 52 words), func_0076F0E0 (lobby, 40
   to 20) and func_00712370 (below).
 - **A function that matches only when a neighbour is C too.** At level 4,
   MWCC's allocation in one function can depend on the other functions of
   the file compiled from C: func_00712370 (lobby, unk_7115D0.c) matches
   under `-D NON_MATCHING` with func_007120F0's C in the file, and is 95
-  words off with func_007120F0 as `INCLUDE_ASM` (at level 3 no order fixed
+  words off with func_007120F0 still assembly (at level 3 no order fixed
   its saved registers). Fix: test a NON_MATCHING function with its
   neighbours' drafts compiled too, not alone, and match them together;
   func_00712370 waits for func_007120F0 (15 words, one `movz`). Seen in:
   func_00712370 (lobby).
 
 - **Scan the level first.** A block tuned at the wrong level looks like a
-  hopeless register problem. In round 16 a scan of every NON_MATCHING
+  hopeless register problem. A scan of every NON_MATCHING
   block at levels 2, 3 and 4 (a pragma pair around the block alone)
   matched Gallery_DrawPrizeList (lobby) and PartFx_Run (sub_main) at
   level 4, took StageObj_K0A_Run (game) from 26 words to 2 at level 3, and
@@ -4005,7 +4006,7 @@ strings", "Data in C"); these are the symptoms.
   else on a near miss.
 - **Scan again after the code changes.** A block's own level pair can be
   the last obstacle: func_003294A0 (sub_main) carried a level-4 pair, and
-  once its compare was right it matched only at 3 (round 19). A rescan of
+  once its compare was right it matched only at 3. A rescan of
   13 sub_main files' blocks found five closer at the other level.
 
 - **Other CodeWarrior settings for a whole file.** `#pragma opt_propagation
@@ -4048,14 +4049,14 @@ strings", "Data in C"); these are the symptoms.
   stackSize and initPriority stores it lands in CreateThread's delay slot
   (Psp_StartThread, select). A CodeWarrior `asm { move g, gp }` block and
   `&_gp` stay 6 words off, and MWCC rejects `register ... asm("gp")`.
-- **Empty delay slots don't prove asm.** Round 5 showed that function-level
+- **Empty delay slots don't prove asm.** Tests showed that function-level
   asm with `.set reorder` gives the pattern (conditional-branch slots empty,
   `jal` and `jr` slots filled from before) but can't align labels, and the
   originals have the alignment nops of compiled code. QuestNet_Send and
   QSync_OnPlayer (gm_sub), Player_UpdateStatus and func_00387870 (sub_main)
   were classed as asm before the C forms of "Delay slots filled or empty"
   were found; all but QSync_OnPlayer (s0 and s1 swapped) match now.
-- **Proving that no C gives it.** What round 5 did for the delay slots: all
+- **Proving that no C gives it.** What was done for the delay slots: all
   21 MWCC builds of Phase 2's harness at -O2 to -O4, every MIPS back-end
   pragma and about 60 front-end `opt_*` pragmas on and off, the command-line
   options, then the compiler's own code for the pass in question. MWCC
@@ -4090,14 +4091,14 @@ strings", "Data in C"); these are the symptoms.
   (OfferMenu_AddRequest), `(tbl = T)[kind]` became a pointer step
   (Talk_FirstByte), an empty `if` became a compiled-out range check
   (Rate_ListAdd), a duplicated assignment pointed at the element indexed in
-  full (func_0070F6E0). Round 8's real finds: a pointer declared last and
+  full (func_0070F6E0). Real finds: a pointer declared last and
   set inside a hit test (DlgCursor_Draw), a `u8` local reused for two tests
   (Page_PointAt), `t += id * 14` right after t's load (func_00D61400), a
   reused s16 or float local (func_0070D360, func_006F2360), a statement
   order before a loop (func_002E4B60), an element read again instead of a
   local (Page_DrawFocus). Dead code is fine when the assembly shows it: a
   redundant test or `else`, an empty compound `if`.
-- **Solved in round 7**, from this list: the constants loaded just before
+- **Solved**, from this list: the constants loaded just before
   each store (Plsel_DrawArrow: named objects; a default-first switch also
   gives it), the switch value in a0 (NetMenu_Draw: a u8 local), an s16
   parameter added to unextended (EquipShop_DrawLine, func_0076F720: steps
@@ -4105,7 +4106,7 @@ strings", "Data in C"); these are the symptoms.
   default-first switch), a case's empty then-branch jump (func_006BE8E0: a
   nested one-case switch); `or`/`and` operand order on a u16
   (Lobby_SetReadyBit) matches too.
-- **Solved in round 8**, from this list: the byte copy (Mem_Copy and
+- **Solved too**, from this list: the byte copy (Mem_Copy and
   Heap_Move: the read inside an empty `if`, see "Struct copies and
   clears"); the `lw`/`sw` copy with 8-byte steps (func_003B0AF0: a word
   loop unrolled by two); the if-body after the last block (func_0030EB20:
@@ -4128,9 +4129,9 @@ strings", "Data in C"); these are the symptoms.
   by 4 twice between loads (func_007D44C0 and func_007D45E0, lobby); two
   loop counters where MWCC keeps one (func_007C1900, lobby); a pointer
   spilled 12 bytes off (StageObj_K1C_RunChain, EffEm33_RunChain, game; see
-  "A stack slot 12 bytes off"). Explained since: func_007D2030 (round 16),
-  EmScript_Op0C and Op0D (round 16, Placement), ActSpot_IsUsable (round 17,
-  Delay slots), Save_GetEquipFlags (round 17: not inlined, Static callees).
+  "A stack slot 12 bytes off"). Explained since: func_007D2030,
+  EmScript_Op0C and Op0D (Placement), ActSpot_IsUsable (Delay slots),
+  Save_GetEquipFlags (not inlined, Static callees).
 
 ## decomp-permuter
 
@@ -4165,7 +4166,7 @@ means a match.
 
 **Before the permuter**, when only registers differ, run a
 declaration-order search: every order of the declaration lines (up to six
-or so), or a hill climb over swaps of two lines. In round 9 it fixed
+or so), or a hill climb over swaps of two lines. It fixed
 register-only drafts in minutes where the permuter found nothing
 (func_006C67E0 245 to 4 words; three sub_main drafts matched): scratch
 tools such as sub_main's declperm.py, game's hc.sh and lobby's dperm2.py,

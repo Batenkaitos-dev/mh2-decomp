@@ -29,7 +29,7 @@ member). Values are written so that MWCC compiles them to the same bytes:
   in first-use order, as the original source's literal did;
 - any other word is a number.
 Every generated file is ASCII: the game's Shift-JIS text is octal escapes,
-which MWCC (and clang, for the port) copy as bytes.
+which MWCC and clang copy as bytes.
 
 The include directory is build/gen (MWCC's `-i build/gen`, clang's
 `-I build/gen`). A file is rewritten only when its text changes.

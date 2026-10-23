@@ -1,6 +1,6 @@
 # ---------------------------------------------------------------------------
 # GAME DATA POLICY: nothing from the disc, and nothing derived from it, may be
-# committed. The build and the port read the user's own copy (see README).
+# committed. The build reads the user's own copy (see README).
 # Patterns use [xX] classes so they also match on case-sensitive filesystems.
 # ---------------------------------------------------------------------------
 

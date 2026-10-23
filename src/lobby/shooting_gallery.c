@@ -19,7 +19,6 @@
  * fields' offsets).
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
@@ -1268,9 +1267,10 @@ void Gallery_DrawShotMarks(s8 count, s8 lit)
     }
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/shooting_gallery", gGalleryLabelText);
+const char gGalleryLabelText[5] = {
+#include "lobby/00838788.inc"
+};
 
-extern u8 gGalleryLabelText[];
 extern s16 gGalleryCourseBest[];
 extern u8 gGalleryCourseLevels[];
 
@@ -1365,12 +1365,16 @@ void Gallery_DrawCourseCard(s16 x, s16 y, s16 time, s8 shots, s16 best, u8 level
     Lobby_DrawButtonIcon(x + 190, y + 45, 3);
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/shooting_gallery", gGalleryPrizeHeadText);
+#pragma rodata on
+char gGalleryPrizeHeadText[15] = {
+#include "lobby/008387F8.inc"
+};
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/shooting_gallery", gGalleryPrizeRowFmt);
+char gGalleryPrizeRowFmt[10] = {
+#include "lobby/00838808.inc"
+};
+#pragma rodata off
 
-extern char gGalleryPrizeHeadText[];
-extern char gGalleryPrizeRowFmt[];
 extern char *gItemNames[];
 
 /*

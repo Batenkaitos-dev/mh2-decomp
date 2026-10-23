@@ -14,8 +14,8 @@ Usage (after `source tools/env.sh`):
     python tools/configure.py --split    # re-run splat for every target
     ninja                                # build all 13 targets and check them
 
-`--split-only` stops after step 2. It also runs on Windows and is all the
-PC port needs (it reads asm/ and build/orig/).
+`--split-only` stops after step 2 (asm/, build/orig/, build/gen/); it also
+runs on Windows.
 """
 
 from __future__ import annotations
@@ -82,15 +82,19 @@ SYM_LINE = re.compile(r"^\s*([A-Za-z_.$][\w.$]*)\s*=\s*(0x[0-9A-Fa-f]+)\s*;(.*)$
 # - middleware: CRI's Sofdec and ADX (cri/);
 # - access: ACCESS's kana-kanji engine in sub_main, 0x2F9D80-0x305E60
 #   (asm, data and rodata pieces named access/);
-# - vu1: the VU1 microcode (sub_main's vu1_microcode).
+# - vu1: the VU1 microcode (sub_main's vu1_microcode);
+# - zlib: zlib 1.1.4, third-party, decompiled: the lobby's inflate and
+#   adler32 (ZLIB_UNITS), whose C stays under zlib's licence (README,
+#   "Legal").
 # Their ids are origin/<name> (the game overlay's module id is 'game').
-KIND_CATEGORIES = [("origin/" + k, k) for k in ("game", "sdk", "middleware", "access", "vu1")]
+KIND_CATEGORIES = [("origin/" + k, k) for k in ("game", "sdk", "middleware", "access", "vu1", "zlib")]
 # Padding is not code: the 0x40 zero bytes every overlay's text starts with
 # (an asm piece 'text' before the first unit) and lbguild's and test's empty
 # text (a textbin 'text'). These units get only the 'padding' category, so no
 # module or origin row counts them (tools/progress.py takes them out of TOTAL).
 PADDING = "padding"
 PADDING_UNITS = {"text", "data/text"}
+ZLIB_UNITS = {f"lobby/{n}" for n in ("adler32", "infblock", "inflate", "infutil")}
 
 
 def unit_kind(unit_name: str) -> str:
@@ -107,6 +111,8 @@ def unit_kind(unit_name: str) -> str:
         return "origin/vu1"
     if rest.startswith("access/"):
         return "origin/access"
+    if f"{module}/{rest}" in ZLIB_UNITS:
+        return "origin/zlib"
     return "origin/game"
 
 
@@ -236,13 +242,6 @@ def splat_fingerprint(t: Target) -> str:
     h.update((ROOT / t.yaml).read_bytes())
     for path in _symbol_files(t):
         h.update(path.read_bytes())
-    # splat writes nonmatchings/<file>/<symbol>.s for the INCLUDE_ASM and
-    # INCLUDE_RODATA lines it finds, so adding one must re-run it (a function
-    # can go back to assembly: a NON_MATCHING fallback).
-    for path in sorted((ROOT / "src" / t.module).glob("*.c")):
-        for line in path.read_text(encoding="utf-8").splitlines():
-            if line.lstrip().startswith(("INCLUDE_RODATA(", "INCLUDE_ASM(")):
-                h.update(f"{path.name}:{line.strip()}".encode())
     return h.hexdigest()
 
 
@@ -283,8 +282,8 @@ def source_for(t: Target, obj: str) -> tuple[str, str]:
 
     An asm piece with a committed source, src/<module>/<piece>.s (Capcom's
     hand-written assembly), is built from it; splat's disassembly of the
-    piece (asm/<module>/<piece>.s) stays what objdiff compares it with and
-    what the port's recompiler reads. Likewise a textbin piece with a
+    piece (asm/<module>/<piece>.s) stays what objdiff compares it with.
+    Likewise a textbin piece with a
     src/<module>/<piece>.vsm (the VU1 microcode, tools/vu1as.py)."""
     rel = obj.removeprefix(f"build/{t.module}/").removesuffix(".o")
     rel = re.sub(r"\.(s|c|bin)$", "", rel)
@@ -310,15 +309,12 @@ def asset_description(rel: str) -> str | None:
 
 
 def included_asm(c_src: str) -> list[str]:
-    """Assembly files a C file splices in via INCLUDE_ASM / INCLUDE_RODATA / INCLUDE_DATA / GLOBAL_ASM."""
+    """Data assembly files a C file splices in via INCLUDE_DATA."""
     deps = []
     for line in (ROOT / c_src).read_text(encoding="utf-8").splitlines():
-        m = re.match(r'\s*INCLUDE_(?:ASM|RODATA|DATA)\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)', line)
+        m = re.match(r'\s*INCLUDE_DATA\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)', line)
         if m:
             deps.append(f"{m.group(1)}/{m.group(2)}.s")
-        m = re.match(r'\s*#\s*pragma\s+GLOBAL_ASM\(\s*"([^"]+)"\s*\)', line)
-        if m:
-            deps.append(m.group(1))
     return deps
 
 
@@ -394,6 +390,15 @@ def write_ninja(targets: list[Target]) -> None:
         "rule check",
         "  command = $python tools/check_targets.py $in && touch $out",
         "  description = CHECK $in",
+        "rule provcheck",
+        "  command = $python tools/provenance.py --check --quiet && touch $out",
+        "  description = PROVENANCE (every byte of code from src/ or a labelled library piece)",
+        "rule provenance",
+        "  command = $python tools/provenance.py",
+        "  description = PROVENANCE",
+        "rule plaincheck",
+        "  command = $python tools/plain_check.py && touch $out",
+        "  description = PLAIN MWCC (every function as the wrapper compiles it)",
         "rule configure",
         "  command = $python tools/configure.py",
         "  generator = 1",
@@ -513,7 +518,13 @@ def write_ninja(targets: list[Target]) -> None:
         for p in list((ROOT / "config").rglob("*.yaml")) + list((ROOT / "config" / "symbols").glob("*.txt"))
         + list((ROOT / "config" / "functions").glob("*.txt")) + list((ROOT / "config" / "ld").glob("*.ld")))
     lines.append(f"build build.ninja: configure | {' '.join(regen)}")
-    lines.append(f"build all: phony {' '.join(checks + expected)}")
+    maps = [f"build/{t.module}.map" for t in targets]
+    lines.append(f"build build/provenance.ok: provcheck {' '.join(maps)} | tools/provenance.py")
+    c_objs = sorted(f"build/{p.parent.name}/src/{p.parent.name}/{p.stem}.o" for p in (ROOT / "src").glob("*/*.c"))
+    lines.append(f"build build/plaincheck.ok: plaincheck {' '.join(c_objs)} | tools/plain_check.py")
+    lines.append("build plaincheck: phony build/plaincheck.ok")
+    lines.append("build provenance: provenance | build/provenance.ok")
+    lines.append(f"build all: phony {' '.join(checks + expected)} build/provenance.ok build/plaincheck.ok")
     lines.append("rule progress")
     lines.append(f"  command = {tool('objdiff-cli')} report generate -p . -o $out --format json"
                  " && $python tools/progress.py $out")
@@ -553,11 +564,11 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--split", action="store_true", help="re-run splat for every target")
     ap.add_argument("--split-only", action="store_true",
-                    help="extract and split only (no build.ninja); works on Windows, enough for the PC port")
+                    help="extract and split only (no build.ninja); works on Windows")
     args = ap.parse_args()
     if os.name == "nt" and not args.split_only:
         sys.exit("The matching build runs under Linux. On Windows, run it inside WSL (see README),\n"
-                 "or use --split-only to prepare the inputs of the PC port.")
+                 "or use --split-only to extract and split only.")
     os.chdir(ROOT)
     targets = load_targets()
 
@@ -567,7 +578,7 @@ def main() -> int:
     for t in targets:
         run_splat(t, args.split)
     if args.split_only:
-        # the port's native build parses src/: it needs the content too
+        # the content too, for the tools that parse src/ with clang
         if subprocess.run([sys.executable, str(TOOLS / "content_gen.py")]).returncode != 0:
             return 1
         print("split done (asm/, build/orig/, build/gen/)")

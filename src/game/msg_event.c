@@ -50,7 +50,6 @@ void ListPanel_Draw(struct ListPanel *b, s16 *pos, char *title, s16 sel);
 s32 Str_Length(s8 *text);
 void Text_Draw(s8 *text);
 extern ListPanel gMsgEventListPanel;
-extern char gMsgEventListItems[];
 void Text_PrintfColored(char *fmt, ...);
 void Text_Printf(const char *fmt, ...);
 void Text_PrintfStyled(s32 a, const char *fmt, ...);
@@ -353,382 +352,1138 @@ void MsgEvent_DrawPopup(void)
 /* The texts of the advice messages, reached only through gMsgEventTitles and the gMsgEventLines
  * tables; they stay here, in the game's order, at the start of the file's constants, before
  * MsgEvent_DrawList's. */
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE300);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE320);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE340);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE360);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE390);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE3C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE3E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE3F8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE410);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE430);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE450);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE470);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE490);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE4B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE4C8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE4E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE500);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE520);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE550);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE570);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE590);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE5B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE5E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE600);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE620);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE640);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE660);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE680);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE6A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE6B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE6D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE6E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE700);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE718);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE730);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE750);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE760);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE780);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE790);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE7A8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE7C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE7D8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE7F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE810);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE830);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE850);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE870);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE890);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE8B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE8D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE8E8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE8F8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE910);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE930);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE940);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE960);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE970);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE990);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE9B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE9D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE9E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE9E8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DE9F8);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEA08);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEA18);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEA30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEA50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEA70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEA90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEAB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEAD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEAE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEB00);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEB20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEB40);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEB58);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEB70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEC20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DECD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DED80);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEE60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEF30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DEFE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF0A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF170);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF1E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF2A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF360);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF400);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF4B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF580);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF660);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF730);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF7D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF880);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DF920);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFA10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFAB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFB60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFC10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFD10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFDD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFE60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008DFF30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0040);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0100);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0190);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0290);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0320);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0400);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E04C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0580);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0620);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0710);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E07A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0850);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0930);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0A30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0AE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0B40);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0C20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0CB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0D60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0E20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0ED0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E0F90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1070);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1130);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E11E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1260);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1310);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E13C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1480);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1530);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1610);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1690);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1750);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1810);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E18B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E19B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1A40);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1AE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1B80);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1C00);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1C90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1D30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1DC0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1E80);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E1F60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2040);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E20E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E21B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2240);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2300);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2360);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E23F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2480);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2530);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2610);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E26D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E27B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2890);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2920);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E29D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2AA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2B60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2C50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2CF0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2DA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2E70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2F70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E2FF0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3090);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3120);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3200);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E32C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3380);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3420);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E34C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3550);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E35D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3670);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3770);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E37F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E38B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3980);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3A30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3AD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3B70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3C10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3CD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3D60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3DE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3EC0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E3F90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4070);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4120);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E41E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E42B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4380);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4450);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E44E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E45A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4670);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4750);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4800);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4890);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4960);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4A20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4AA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4B80);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4C60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4D50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4E10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4EA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4F50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E4FD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5090);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5130);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E51E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E52C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E53A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5470);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5560);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E55E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5690);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5760);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5830);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5920);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E59E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5AA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5B60);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5BE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5CB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5D90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5E50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E5F40);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6010);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E60F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E61E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6270);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6340);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6410);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E64F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E65C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6680);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6750);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E67F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E68C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E69A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6A80);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6B50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6C00);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6C90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6D40);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6DD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6E70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6F40);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E6FE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7060);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7130);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E71A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7230);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E72C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7390);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7450);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E74F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E75C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E76A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7720);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E77E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E78C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E79A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7A50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7B00);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7BA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7C70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7D10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7DE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7E90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7F20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E7FD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8060);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8100);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8180);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8240);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8330);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8400);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E84D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8590);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8660);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8750);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E87E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E88D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8960);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8A20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8B10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8BE0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8C90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8D20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8DB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8E70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E8F20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9000);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E90F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E91C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E92A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9370);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9420);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E94D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E95A0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9680);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9700);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E97E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E98C0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9980);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9A00);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9AA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9B30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9C00);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9CC0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9DA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9E90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008E9F70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA050);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA120);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA190);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA230);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA300);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA3E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA4B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA550);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA610);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA680);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA760);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA800);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA8F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EA9B0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAA70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAB30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EABF0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EACB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAD50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAE10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAEA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAF30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EAFB0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB030);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB0D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB190);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB260);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB300);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB3E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB440);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB500);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB570);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB5D0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB660);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB6F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB770);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB800);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB850);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB8F0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB970);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EB9E0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBA20);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBA90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBB10);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBBA0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBC70);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBD30);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBDD0);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBE90);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EBF50);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", D_008EC020);
-INCLUDE_RODATA("asm/game/nonmatchings/msg_event", gMsgEventListItems);
+#pragma rodata on
+char D_008DE300[25] = {
+#include "game/008DE300.inc"
+};
+char D_008DE320[27] = {
+#include "game/008DE320.inc"
+};
+char D_008DE340[23] = {
+#include "game/008DE340.inc"
+};
+char D_008DE360[35] = {
+#include "game/008DE360.inc"
+};
+char D_008DE390[37] = {
+#include "game/008DE390.inc"
+};
+char D_008DE3C0[31] = {
+#include "game/008DE3C0.inc"
+};
+char D_008DE3E0[23] = {
+#include "game/008DE3E0.inc"
+};
+char D_008DE3F8[15] = {
+#include "game/008DE3F8.inc"
+};
+char D_008DE410[29] = {
+#include "game/008DE410.inc"
+};
+char D_008DE430[23] = {
+#include "game/008DE430.inc"
+};
+char D_008DE450[21] = {
+#include "game/008DE450.inc"
+};
+char D_008DE470[31] = {
+#include "game/008DE470.inc"
+};
+char D_008DE490[25] = {
+#include "game/008DE490.inc"
+};
+char D_008DE4B0[23] = {
+#include "game/008DE4B0.inc"
+};
+char D_008DE4C8[15] = {
+#include "game/008DE4C8.inc"
+};
+char D_008DE4E0[31] = {
+#include "game/008DE4E0.inc"
+};
+char D_008DE500[21] = {
+#include "game/008DE500.inc"
+};
+char D_008DE520[37] = {
+#include "game/008DE520.inc"
+};
+char D_008DE550[25] = {
+#include "game/008DE550.inc"
+};
+char D_008DE570[25] = {
+#include "game/008DE570.inc"
+};
+char D_008DE590[17] = {
+#include "game/008DE590.inc"
+};
+char D_008DE5B0[33] = {
+#include "game/008DE5B0.inc"
+};
+char D_008DE5E0[31] = {
+#include "game/008DE5E0.inc"
+};
+char D_008DE600[25] = {
+#include "game/008DE600.inc"
+};
+char D_008DE620[29] = {
+#include "game/008DE620.inc"
+};
+char D_008DE640[23] = {
+#include "game/008DE640.inc"
+};
+char D_008DE660[25] = {
+#include "game/008DE660.inc"
+};
+char D_008DE680[31] = {
+#include "game/008DE680.inc"
+};
+char D_008DE6A0[13] = {
+#include "game/008DE6A0.inc"
+};
+char D_008DE6B0[25] = {
+#include "game/008DE6B0.inc"
+};
+char D_008DE6D0[11] = {
+#include "game/008DE6D0.inc"
+};
+char D_008DE6E0[23] = {
+#include "game/008DE6E0.inc"
+};
+char D_008DE700[21] = {
+#include "game/008DE700.inc"
+};
+char D_008DE718[15] = {
+#include "game/008DE718.inc"
+};
+char D_008DE730[29] = {
+#include "game/008DE730.inc"
+};
+char D_008DE750[13] = {
+#include "game/008DE750.inc"
+};
+char D_008DE760[27] = {
+#include "game/008DE760.inc"
+};
+char D_008DE780[11] = {
+#include "game/008DE780.inc"
+};
+char D_008DE790[23] = {
+#include "game/008DE790.inc"
+};
+char D_008DE7A8[11] = {
+#include "game/008DE7A8.inc"
+};
+char D_008DE7C0[21] = {
+#include "game/008DE7C0.inc"
+};
+char D_008DE7D8[13] = {
+#include "game/008DE7D8.inc"
+};
+char D_008DE7F0[23] = {
+#include "game/008DE7F0.inc"
+};
+char D_008DE810[17] = {
+#include "game/008DE810.inc"
+};
+char D_008DE830[19] = {
+#include "game/008DE830.inc"
+};
+char D_008DE850[19] = {
+#include "game/008DE850.inc"
+};
+char D_008DE870[21] = {
+#include "game/008DE870.inc"
+};
+char D_008DE890[27] = {
+#include "game/008DE890.inc"
+};
+char D_008DE8B0[21] = {
+#include "game/008DE8B0.inc"
+};
+char D_008DE8D0[23] = {
+#include "game/008DE8D0.inc"
+};
+char D_008DE8E8[9] = {
+#include "game/008DE8E8.inc"
+};
+char D_008DE8F8[11] = {
+#include "game/008DE8F8.inc"
+};
+char D_008DE910[25] = {
+#include "game/008DE910.inc"
+};
+char D_008DE930[15] = {
+#include "game/008DE930.inc"
+};
+char D_008DE940[27] = {
+#include "game/008DE940.inc"
+};
+char D_008DE960[13] = {
+#include "game/008DE960.inc"
+};
+char D_008DE970[23] = {
+#include "game/008DE970.inc"
+};
+char D_008DE990[23] = {
+#include "game/008DE990.inc"
+};
+char D_008DE9B0[25] = {
+#include "game/008DE9B0.inc"
+};
+char D_008DE9D0[15] = {
+#include "game/008DE9D0.inc"
+};
+char D_008DE9E0[7] = {
+#include "game/008DE9E0.inc"
+};
+char D_008DE9E8[9] = {
+#include "game/008DE9E8.inc"
+};
+char D_008DE9F8[11] = {
+#include "game/008DE9F8.inc"
+};
+char D_008DEA08[11] = {
+#include "game/008DEA08.inc"
+};
+char D_008DEA18[9] = {
+#include "game/008DEA18.inc"
+};
+char D_008DEA30[21] = {
+#include "game/008DEA30.inc"
+};
+char D_008DEA50[19] = {
+#include "game/008DEA50.inc"
+};
+char D_008DEA70[19] = {
+#include "game/008DEA70.inc"
+};
+char D_008DEA90[17] = {
+#include "game/008DEA90.inc"
+};
+char D_008DEAB0[27] = {
+#include "game/008DEAB0.inc"
+};
+char D_008DEAD0[13] = {
+#include "game/008DEAD0.inc"
+};
+char D_008DEAE0[31] = {
+#include "game/008DEAE0.inc"
+};
+char D_008DEB00[26] = {
+#include "game/008DEB00.inc"
+};
+char D_008DEB20[21] = {
+#include "game/008DEB20.inc"
+};
+char D_008DEB40[17] = {
+#include "game/008DEB40.inc"
+};
+char D_008DEB58[15] = {
+#include "game/008DEB58.inc"
+};
+char D_008DEB70[167] = {
+#include "game/008DEB70.inc"
+};
+char D_008DEC20[161] = {
+#include "game/008DEC20.inc"
+};
+char D_008DECD0[161] = {
+#include "game/008DECD0.inc"
+};
+char D_008DED80[224] = {
+#include "game/008DED80.inc"
+};
+char D_008DEE60[199] = {
+#include "game/008DEE60.inc"
+};
+char D_008DEF30[167] = {
+#include "game/008DEF30.inc"
+};
+char D_008DEFE0[180] = {
+#include "game/008DEFE0.inc"
+};
+char D_008DF0A0[205] = {
+#include "game/008DF0A0.inc"
+};
+char D_008DF170[107] = {
+#include "game/008DF170.inc"
+};
+char D_008DF1E0[179] = {
+#include "game/008DF1E0.inc"
+};
+char D_008DF2A0[185] = {
+#include "game/008DF2A0.inc"
+};
+char D_008DF360[146] = {
+#include "game/008DF360.inc"
+};
+char D_008DF400[176] = {
+#include "game/008DF400.inc"
+};
+char D_008DF4B0[199] = {
+#include "game/008DF4B0.inc"
+};
+char D_008DF580[218] = {
+#include "game/008DF580.inc"
+};
+char D_008DF660[197] = {
+#include "game/008DF660.inc"
+};
+char D_008DF730[157] = {
+#include "game/008DF730.inc"
+};
+char D_008DF7D0[165] = {
+#include "game/008DF7D0.inc"
+};
+char D_008DF880[156] = {
+#include "game/008DF880.inc"
+};
+char D_008DF920[227] = {
+#include "game/008DF920.inc"
+};
+char D_008DFA10[155] = {
+#include "game/008DFA10.inc"
+};
+char D_008DFAB0[172] = {
+#include "game/008DFAB0.inc"
+};
+char D_008DFB60[168] = {
+#include "game/008DFB60.inc"
+};
+char D_008DFC10[249] = {
+#include "game/008DFC10.inc"
+};
+char D_008DFD10[189] = {
+#include "game/008DFD10.inc"
+};
+char D_008DFDD0[134] = {
+#include "game/008DFDD0.inc"
+};
+char D_008DFE60[203] = {
+#include "game/008DFE60.inc"
+};
+char D_008DFF30[257] = {
+#include "game/008DFF30.inc"
+};
+char D_008E0040[178] = {
+#include "game/008E0040.inc"
+};
+char D_008E0100[129] = {
+#include "game/008E0100.inc"
+};
+char D_008E0190[250] = {
+#include "game/008E0190.inc"
+};
+char D_008E0290[136] = {
+#include "game/008E0290.inc"
+};
+char D_008E0320[211] = {
+#include "game/008E0320.inc"
+};
+char D_008E0400[177] = {
+#include "game/008E0400.inc"
+};
+char D_008E04C0[183] = {
+#include "game/008E04C0.inc"
+};
+char D_008E0580[160] = {
+#include "game/008E0580.inc"
+};
+char D_008E0620[235] = {
+#include "game/008E0620.inc"
+};
+char D_008E0710[130] = {
+#include "game/008E0710.inc"
+};
+char D_008E07A0[162] = {
+#include "game/008E07A0.inc"
+};
+char D_008E0850[209] = {
+#include "game/008E0850.inc"
+};
+char D_008E0930[242] = {
+#include "game/008E0930.inc"
+};
+char D_008E0A30[172] = {
+#include "game/008E0A30.inc"
+};
+char D_008E0AE0[86] = {
+#include "game/008E0AE0.inc"
+};
+char D_008E0B40[219] = {
+#include "game/008E0B40.inc"
+};
+char D_008E0C20[132] = {
+#include "game/008E0C20.inc"
+};
+char D_008E0CB0[168] = {
+#include "game/008E0CB0.inc"
+};
+char D_008E0D60[182] = {
+#include "game/008E0D60.inc"
+};
+char D_008E0E20[166] = {
+#include "game/008E0E20.inc"
+};
+char D_008E0ED0[179] = {
+#include "game/008E0ED0.inc"
+};
+char D_008E0F90[223] = {
+#include "game/008E0F90.inc"
+};
+char D_008E1070[192] = {
+#include "game/008E1070.inc"
+};
+char D_008E1130[169] = {
+#include "game/008E1130.inc"
+};
+char D_008E11E0[123] = {
+#include "game/008E11E0.inc"
+};
+char D_008E1260[171] = {
+#include "game/008E1260.inc"
+};
+char D_008E1310[172] = {
+#include "game/008E1310.inc"
+};
+char D_008E13C0[190] = {
+#include "game/008E13C0.inc"
+};
+char D_008E1480[171] = {
+#include "game/008E1480.inc"
+};
+char D_008E1530[223] = {
+#include "game/008E1530.inc"
+};
+char D_008E1610[126] = {
+#include "game/008E1610.inc"
+};
+char D_008E1690[191] = {
+#include "game/008E1690.inc"
+};
+char D_008E1750[189] = {
+#include "game/008E1750.inc"
+};
+char D_008E1810[150] = {
+#include "game/008E1810.inc"
+};
+char D_008E18B0[243] = {
+#include "game/008E18B0.inc"
+};
+char D_008E19B0[130] = {
+#include "game/008E19B0.inc"
+};
+char D_008E1A40[156] = {
+#include "game/008E1A40.inc"
+};
+char D_008E1AE0[150] = {
+#include "game/008E1AE0.inc"
+};
+char D_008E1B80[119] = {
+#include "game/008E1B80.inc"
+};
+char D_008E1C00[138] = {
+#include "game/008E1C00.inc"
+};
+char D_008E1C90[150] = {
+#include "game/008E1C90.inc"
+};
+char D_008E1D30[136] = {
+#include "game/008E1D30.inc"
+};
+char D_008E1DC0[178] = {
+#include "game/008E1DC0.inc"
+};
+char D_008E1E80[213] = {
+#include "game/008E1E80.inc"
+};
+char D_008E1F60[210] = {
+#include "game/008E1F60.inc"
+};
+char D_008E2040[158] = {
+#include "game/008E2040.inc"
+};
+char D_008E20E0[199] = {
+#include "game/008E20E0.inc"
+};
+char D_008E21B0[137] = {
+#include "game/008E21B0.inc"
+};
+char D_008E2240[192] = {
+#include "game/008E2240.inc"
+};
+char D_008E2300[96] = {
+#include "game/008E2300.inc"
+};
+char D_008E2360[137] = {
+#include "game/008E2360.inc"
+};
+char D_008E23F0[131] = {
+#include "game/008E23F0.inc"
+};
+char D_008E2480[162] = {
+#include "game/008E2480.inc"
+};
+char D_008E2530[215] = {
+#include "game/008E2530.inc"
+};
+char D_008E2610[178] = {
+#include "game/008E2610.inc"
+};
+char D_008E26D0[215] = {
+#include "game/008E26D0.inc"
+};
+char D_008E27B0[221] = {
+#include "game/008E27B0.inc"
+};
+char D_008E2890[130] = {
+#include "game/008E2890.inc"
+};
+char D_008E2920[162] = {
+#include "game/008E2920.inc"
+};
+char D_008E29D0[196] = {
+#include "game/008E29D0.inc"
+};
+char D_008E2AA0[183] = {
+#include "game/008E2AA0.inc"
+};
+char D_008E2B60[239] = {
+#include "game/008E2B60.inc"
+};
+char D_008E2C50[151] = {
+#include "game/008E2C50.inc"
+};
+char D_008E2CF0[168] = {
+#include "game/008E2CF0.inc"
+};
+char D_008E2DA0[200] = {
+#include "game/008E2DA0.inc"
+};
+char D_008E2E70[251] = {
+#include "game/008E2E70.inc"
+};
+char D_008E2F70[126] = {
+#include "game/008E2F70.inc"
+};
+char D_008E2FF0[152] = {
+#include "game/008E2FF0.inc"
+};
+char D_008E3090[142] = {
+#include "game/008E3090.inc"
+};
+char D_008E3120[217] = {
+#include "game/008E3120.inc"
+};
+char D_008E3200[187] = {
+#include "game/008E3200.inc"
+};
+char D_008E32C0[181] = {
+#include "game/008E32C0.inc"
+};
+char D_008E3380[156] = {
+#include "game/008E3380.inc"
+};
+char D_008E3420[157] = {
+#include "game/008E3420.inc"
+};
+char D_008E34C0[134] = {
+#include "game/008E34C0.inc"
+};
+char D_008E3550[113] = {
+#include "game/008E3550.inc"
+};
+char D_008E35D0[152] = {
+#include "game/008E35D0.inc"
+};
+char D_008E3670[241] = {
+#include "game/008E3670.inc"
+};
+char D_008E3770[128] = {
+#include "game/008E3770.inc"
+};
+char D_008E37F0[179] = {
+#include "game/008E37F0.inc"
+};
+char D_008E38B0[193] = {
+#include "game/008E38B0.inc"
+};
+char D_008E3980[170] = {
+#include "game/008E3980.inc"
+};
+char D_008E3A30[156] = {
+#include "game/008E3A30.inc"
+};
+char D_008E3AD0[156] = {
+#include "game/008E3AD0.inc"
+};
+char D_008E3B70[156] = {
+#include "game/008E3B70.inc"
+};
+char D_008E3C10[185] = {
+#include "game/008E3C10.inc"
+};
+char D_008E3CD0[136] = {
+#include "game/008E3CD0.inc"
+};
+char D_008E3D60[126] = {
+#include "game/008E3D60.inc"
+};
+char D_008E3DE0[218] = {
+#include "game/008E3DE0.inc"
+};
+char D_008E3EC0[207] = {
+#include "game/008E3EC0.inc"
+};
+char D_008E3F90[215] = {
+#include "game/008E3F90.inc"
+};
+char D_008E4070[164] = {
+#include "game/008E4070.inc"
+};
+char D_008E4120[187] = {
+#include "game/008E4120.inc"
+};
+char D_008E41E0[207] = {
+#include "game/008E41E0.inc"
+};
+char D_008E42B0[205] = {
+#include "game/008E42B0.inc"
+};
+char D_008E4380[197] = {
+#include "game/008E4380.inc"
+};
+char D_008E4450[130] = {
+#include "game/008E4450.inc"
+};
+char D_008E44E0[183] = {
+#include "game/008E44E0.inc"
+};
+char D_008E45A0[201] = {
+#include "game/008E45A0.inc"
+};
+char D_008E4670[213] = {
+#include "game/008E4670.inc"
+};
+char D_008E4750[173] = {
+#include "game/008E4750.inc"
+};
+char D_008E4800[135] = {
+#include "game/008E4800.inc"
+};
+char D_008E4890[199] = {
+#include "game/008E4890.inc"
+};
+char D_008E4960[185] = {
+#include "game/008E4960.inc"
+};
+char D_008E4A20[128] = {
+#include "game/008E4A20.inc"
+};
+char D_008E4AA0[216] = {
+#include "game/008E4AA0.inc"
+};
+char D_008E4B80[215] = {
+#include "game/008E4B80.inc"
+};
+char D_008E4C60[229] = {
+#include "game/008E4C60.inc"
+};
+char D_008E4D50[187] = {
+#include "game/008E4D50.inc"
+};
+char D_008E4E10[142] = {
+#include "game/008E4E10.inc"
+};
+char D_008E4EA0[165] = {
+#include "game/008E4EA0.inc"
+};
+char D_008E4F50[126] = {
+#include "game/008E4F50.inc"
+};
+char D_008E4FD0[182] = {
+#include "game/008E4FD0.inc"
+};
+char D_008E5090[152] = {
+#include "game/008E5090.inc"
+};
+char D_008E5130[162] = {
+#include "game/008E5130.inc"
+};
+char D_008E51E0[217] = {
+#include "game/008E51E0.inc"
+};
+char D_008E52C0[215] = {
+#include "game/008E52C0.inc"
+};
+char D_008E53A0[198] = {
+#include "game/008E53A0.inc"
+};
+char D_008E5470[231] = {
+#include "game/008E5470.inc"
+};
+char D_008E5560[126] = {
+#include "game/008E5560.inc"
+};
+char D_008E55E0[174] = {
+#include "game/008E55E0.inc"
+};
+char D_008E5690[205] = {
+#include "game/008E5690.inc"
+};
+char D_008E5760[193] = {
+#include "game/008E5760.inc"
+};
+char D_008E5830[233] = {
+#include "game/008E5830.inc"
+};
+char D_008E5920[177] = {
+#include "game/008E5920.inc"
+};
+char D_008E59E0[177] = {
+#include "game/008E59E0.inc"
+};
+char D_008E5AA0[185] = {
+#include "game/008E5AA0.inc"
+};
+char D_008E5B60[128] = {
+#include "game/008E5B60.inc"
+};
+char D_008E5BE0[197] = {
+#include "game/008E5BE0.inc"
+};
+char D_008E5CB0[221] = {
+#include "game/008E5CB0.inc"
+};
+char D_008E5D90[191] = {
+#include "game/008E5D90.inc"
+};
+char D_008E5E50[225] = {
+#include "game/008E5E50.inc"
+};
+char D_008E5F40[203] = {
+#include "game/008E5F40.inc"
+};
+char D_008E6010[211] = {
+#include "game/008E6010.inc"
+};
+char D_008E60F0[228] = {
+#include "game/008E60F0.inc"
+};
+char D_008E61E0[133] = {
+#include "game/008E61E0.inc"
+};
+char D_008E6270[202] = {
+#include "game/008E6270.inc"
+};
+char D_008E6340[203] = {
+#include "game/008E6340.inc"
+};
+char D_008E6410[213] = {
+#include "game/008E6410.inc"
+};
+char D_008E64F0[199] = {
+#include "game/008E64F0.inc"
+};
+char D_008E65C0[181] = {
+#include "game/008E65C0.inc"
+};
+char D_008E6680[201] = {
+#include "game/008E6680.inc"
+};
+char D_008E6750[146] = {
+#include "game/008E6750.inc"
+};
+char D_008E67F0[199] = {
+#include "game/008E67F0.inc"
+};
+char D_008E68C0[213] = {
+#include "game/008E68C0.inc"
+};
+char D_008E69A0[211] = {
+#include "game/008E69A0.inc"
+};
+char D_008E6A80[197] = {
+#include "game/008E6A80.inc"
+};
+char D_008E6B50[164] = {
+#include "game/008E6B50.inc"
+};
+char D_008E6C00[137] = {
+#include "game/008E6C00.inc"
+};
+char D_008E6C90[176] = {
+#include "game/008E6C90.inc"
+};
+char D_008E6D40[134] = {
+#include "game/008E6D40.inc"
+};
+char D_008E6DD0[154] = {
+#include "game/008E6DD0.inc"
+};
+char D_008E6E70[205] = {
+#include "game/008E6E70.inc"
+};
+char D_008E6F40[154] = {
+#include "game/008E6F40.inc"
+};
+char D_008E6FE0[127] = {
+#include "game/008E6FE0.inc"
+};
+char D_008E7060[207] = {
+#include "game/008E7060.inc"
+};
+char D_008E7130[105] = {
+#include "game/008E7130.inc"
+};
+char D_008E71A0[137] = {
+#include "game/008E71A0.inc"
+};
+char D_008E7230[130] = {
+#include "game/008E7230.inc"
+};
+char D_008E72C0[195] = {
+#include "game/008E72C0.inc"
+};
+char D_008E7390[189] = {
+#include "game/008E7390.inc"
+};
+char D_008E7450[154] = {
+#include "game/008E7450.inc"
+};
+char D_008E74F0[201] = {
+#include "game/008E74F0.inc"
+};
+char D_008E75C0[223] = {
+#include "game/008E75C0.inc"
+};
+char D_008E76A0[124] = {
+#include "game/008E76A0.inc"
+};
+char D_008E7720[183] = {
+#include "game/008E7720.inc"
+};
+char D_008E77E0[221] = {
+#include "game/008E77E0.inc"
+};
+char D_008E78C0[222] = {
+#include "game/008E78C0.inc"
+};
+char D_008E79A0[164] = {
+#include "game/008E79A0.inc"
+};
+char D_008E7A50[162] = {
+#include "game/008E7A50.inc"
+};
+char D_008E7B00[152] = {
+#include "game/008E7B00.inc"
+};
+char D_008E7BA0[199] = {
+#include "game/008E7BA0.inc"
+};
+char D_008E7C70[152] = {
+#include "game/008E7C70.inc"
+};
+char D_008E7D10[195] = {
+#include "game/008E7D10.inc"
+};
+char D_008E7DE0[176] = {
+#include "game/008E7DE0.inc"
+};
+char D_008E7E90[139] = {
+#include "game/008E7E90.inc"
+};
+char D_008E7F20[171] = {
+#include "game/008E7F20.inc"
+};
+char D_008E7FD0[141] = {
+#include "game/008E7FD0.inc"
+};
+char D_008E8060[156] = {
+#include "game/008E8060.inc"
+};
+char D_008E8100[125] = {
+#include "game/008E8100.inc"
+};
+char D_008E8180[192] = {
+#include "game/008E8180.inc"
+};
+char D_008E8240[239] = {
+#include "game/008E8240.inc"
+};
+char D_008E8330[195] = {
+#include "game/008E8330.inc"
+};
+char D_008E8400[207] = {
+#include "game/008E8400.inc"
+};
+char D_008E84D0[189] = {
+#include "game/008E84D0.inc"
+};
+char D_008E8590[205] = {
+#include "game/008E8590.inc"
+};
+char D_008E8660[235] = {
+#include "game/008E8660.inc"
+};
+char D_008E8750[137] = {
+#include "game/008E8750.inc"
+};
+char D_008E87E0[233] = {
+#include "game/008E87E0.inc"
+};
+char D_008E88D0[138] = {
+#include "game/008E88D0.inc"
+};
+char D_008E8960[188] = {
+#include "game/008E8960.inc"
+};
+char D_008E8A20[233] = {
+#include "game/008E8A20.inc"
+};
+char D_008E8B10[203] = {
+#include "game/008E8B10.inc"
+};
+char D_008E8BE0[162] = {
+#include "game/008E8BE0.inc"
+};
+char D_008E8C90[132] = {
+#include "game/008E8C90.inc"
+};
+char D_008E8D20[142] = {
+#include "game/008E8D20.inc"
+};
+char D_008E8DB0[191] = {
+#include "game/008E8DB0.inc"
+};
+char D_008E8E70[166] = {
+#include "game/008E8E70.inc"
+};
+char D_008E8F20[213] = {
+#include "game/008E8F20.inc"
+};
+char D_008E9000[233] = {
+#include "game/008E9000.inc"
+};
+char D_008E90F0[195] = {
+#include "game/008E90F0.inc"
+};
+char D_008E91C0[217] = {
+#include "game/008E91C0.inc"
+};
+char D_008E92A0[207] = {
+#include "game/008E92A0.inc"
+};
+char D_008E9370[167] = {
+#include "game/008E9370.inc"
+};
+char D_008E9420[168] = {
+#include "game/008E9420.inc"
+};
+char D_008E94D0[199] = {
+#include "game/008E94D0.inc"
+};
+char D_008E95A0[211] = {
+#include "game/008E95A0.inc"
+};
+char D_008E9680[116] = {
+#include "game/008E9680.inc"
+};
+char D_008E9700[213] = {
+#include "game/008E9700.inc"
+};
+char D_008E97E0[217] = {
+#include "game/008E97E0.inc"
+};
+char D_008E98C0[189] = {
+#include "game/008E98C0.inc"
+};
+char D_008E9980[118] = {
+#include "game/008E9980.inc"
+};
+char D_008E9A00[146] = {
+#include "game/008E9A00.inc"
+};
+char D_008E9AA0[140] = {
+#include "game/008E9AA0.inc"
+};
+char D_008E9B30[203] = {
+#include "game/008E9B30.inc"
+};
+char D_008E9C00[189] = {
+#include "game/008E9C00.inc"
+};
+char D_008E9CC0[221] = {
+#include "game/008E9CC0.inc"
+};
+char D_008E9DA0[235] = {
+#include "game/008E9DA0.inc"
+};
+char D_008E9E90[213] = {
+#include "game/008E9E90.inc"
+};
+char D_008E9F70[224] = {
+#include "game/008E9F70.inc"
+};
+char D_008EA050[202] = {
+#include "game/008EA050.inc"
+};
+char D_008EA120[107] = {
+#include "game/008EA120.inc"
+};
+char D_008EA190[158] = {
+#include "game/008EA190.inc"
+};
+char D_008EA230[205] = {
+#include "game/008EA230.inc"
+};
+char D_008EA300[210] = {
+#include "game/008EA300.inc"
+};
+char D_008EA3E0[205] = {
+#include "game/008EA3E0.inc"
+};
+char D_008EA4B0[160] = {
+#include "game/008EA4B0.inc"
+};
+char D_008EA550[187] = {
+#include "game/008EA550.inc"
+};
+char D_008EA610[111] = {
+#include "game/008EA610.inc"
+};
+char D_008EA680[215] = {
+#include "game/008EA680.inc"
+};
+char D_008EA760[147] = {
+#include "game/008EA760.inc"
+};
+char D_008EA800[239] = {
+#include "game/008EA800.inc"
+};
+char D_008EA8F0[189] = {
+#include "game/008EA8F0.inc"
+};
+char D_008EA9B0[177] = {
+#include "game/008EA9B0.inc"
+};
+char D_008EAA70[177] = {
+#include "game/008EAA70.inc"
+};
+char D_008EAB30[189] = {
+#include "game/008EAB30.inc"
+};
+char D_008EABF0[178] = {
+#include "game/008EABF0.inc"
+};
+char D_008EACB0[155] = {
+#include "game/008EACB0.inc"
+};
+char D_008EAD50[178] = {
+#include "game/008EAD50.inc"
+};
+char D_008EAE10[142] = {
+#include "game/008EAE10.inc"
+};
+char D_008EAEA0[142] = {
+#include "game/008EAEA0.inc"
+};
+char D_008EAF30[123] = {
+#include "game/008EAF30.inc"
+};
+char D_008EAFB0[128] = {
+#include "game/008EAFB0.inc"
+};
+char D_008EB030[160] = {
+#include "game/008EB030.inc"
+};
+char D_008EB0D0[177] = {
+#include "game/008EB0D0.inc"
+};
+char D_008EB190[196] = {
+#include "game/008EB190.inc"
+};
+char D_008EB260[157] = {
+#include "game/008EB260.inc"
+};
+char D_008EB300[215] = {
+#include "game/008EB300.inc"
+};
+char D_008EB3E0[86] = {
+#include "game/008EB3E0.inc"
+};
+char D_008EB440[178] = {
+#include "game/008EB440.inc"
+};
+char D_008EB500[107] = {
+#include "game/008EB500.inc"
+};
+char D_008EB570[96] = {
+#include "game/008EB570.inc"
+};
+char D_008EB5D0[141] = {
+#include "game/008EB5D0.inc"
+};
+char D_008EB660[135] = {
+#include "game/008EB660.inc"
+};
+char D_008EB6F0[123] = {
+#include "game/008EB6F0.inc"
+};
+char D_008EB770[133] = {
+#include "game/008EB770.inc"
+};
+char D_008EB800[73] = {
+#include "game/008EB800.inc"
+};
+char D_008EB850[157] = {
+#include "game/008EB850.inc"
+};
+char D_008EB8F0[123] = {
+#include "game/008EB8F0.inc"
+};
+char D_008EB970[103] = {
+#include "game/008EB970.inc"
+};
+char D_008EB9E0[52] = {
+#include "game/008EB9E0.inc"
+};
+char D_008EBA20[112] = {
+#include "game/008EBA20.inc"
+};
+char D_008EBA90[113] = {
+#include "game/008EBA90.inc"
+};
+char D_008EBB10[141] = {
+#include "game/008EBB10.inc"
+};
+char D_008EBBA0[195] = {
+#include "game/008EBBA0.inc"
+};
+char D_008EBC70[192] = {
+#include "game/008EBC70.inc"
+};
+char D_008EBD30[149] = {
+#include "game/008EBD30.inc"
+};
+char D_008EBDD0[178] = {
+#include "game/008EBDD0.inc"
+};
+char D_008EBE90[187] = {
+#include "game/008EBE90.inc"
+};
+char D_008EBF50[206] = {
+#include "game/008EBF50.inc"
+};
+char D_008EC020[121] = {
+#include "game/008EC020.inc"
+};
+#pragma explicit_zero_data on
+char gMsgEventListItems[1] = {
+#include "game/008EC0A0.inc"
+};
+#pragma explicit_zero_data reset
+#pragma rodata off
 
 /* The texts of the advice window's frame, by their index in gMsgEventTexts. */
 enum MsgEventText {
@@ -1189,372 +1944,6 @@ u8 MsgEvent_PageCount(u8 msgSet, u8 msgNo)
 }
 
 /* This file's initialised data. */
-extern u32 D_008DE300[];
-extern u32 D_008DE320[];
-extern u32 D_008DE340[];
-extern u32 D_008DE360[];
-extern u32 D_008DE390[];
-extern u32 D_008DE3C0[];
-extern u32 D_008DE3E0[];
-extern u32 D_008DE3F8[];
-extern u32 D_008DE410[];
-extern u32 D_008DE430[];
-extern u32 D_008DE450[];
-extern u32 D_008DE470[];
-extern u32 D_008DE490[];
-extern u32 D_008DE4B0[];
-extern u32 D_008DE4C8[];
-extern u32 D_008DE4E0[];
-extern u32 D_008DE500[];
-extern u32 D_008DE520[];
-extern u32 D_008DE550[];
-extern u32 D_008DE570[];
-extern u32 D_008DE590[];
-extern u32 D_008DE5B0[];
-extern u32 D_008DE5E0[];
-extern u32 D_008DE600[];
-extern u32 D_008DE620[];
-extern u32 D_008DE640[];
-extern u32 D_008DE660[];
-extern u32 D_008DE680[];
-extern u32 D_008DE6A0[];
-extern u32 D_008DE6B0[];
-extern u32 D_008DE6D0[];
-extern u32 D_008DE6E0[];
-extern u32 D_008DE700[];
-extern u32 D_008DE718[];
-extern u32 D_008DE730[];
-extern u32 D_008DE750[];
-extern u32 D_008DE760[];
-extern u32 D_008DE780[];
-extern u32 D_008DE790[];
-extern u32 D_008DE7A8[];
-extern u32 D_008DE7C0[];
-extern u32 D_008DE7D8[];
-extern u32 D_008DE7F0[];
-extern u32 D_008DE810[];
-extern u32 D_008DE830[];
-extern u32 D_008DE850[];
-extern u32 D_008DE870[];
-extern u32 D_008DE890[];
-extern u32 D_008DE8B0[];
-extern u32 D_008DE8D0[];
-extern u32 D_008DE8E8[];
-extern u32 D_008DE8F8[];
-extern u32 D_008DE910[];
-extern u32 D_008DE930[];
-extern u32 D_008DE940[];
-extern u32 D_008DE960[];
-extern u32 D_008DE970[];
-extern u32 D_008DE990[];
-extern u32 D_008DE9B0[];
-extern u32 D_008DE9D0[];
-extern u32 D_008DE9E0[];
-extern u32 D_008DE9E8[];
-extern u32 D_008DE9F8[];
-extern u32 D_008DEA08[];
-extern u32 D_008DEA18[];
-extern u32 D_008DEA30[];
-extern u32 D_008DEA50[];
-extern u32 D_008DEA70[];
-extern u32 D_008DEA90[];
-extern u32 D_008DEAB0[];
-extern u32 D_008DEAD0[];
-extern u32 D_008DEAE0[];
-extern u32 D_008DEB00[];
-extern u32 D_008DEB20[];
-extern u32 D_008DEB40[];
-extern u32 D_008DEB58[];
-extern u32 D_008DEB70[];
-extern u32 D_008DEC20[];
-extern u32 D_008DECD0[];
-extern u32 D_008DED80[];
-extern u32 D_008DEE60[];
-extern u32 D_008DEF30[];
-extern u32 D_008DEFE0[];
-extern u32 D_008DF0A0[];
-extern u32 D_008DF170[];
-extern u32 D_008DF1E0[];
-extern u32 D_008DF2A0[];
-extern u32 D_008DF360[];
-extern u32 D_008DF400[];
-extern u32 D_008DF4B0[];
-extern u32 D_008DF580[];
-extern u32 D_008DF660[];
-extern u32 D_008DF730[];
-extern u32 D_008DF7D0[];
-extern u32 D_008DF880[];
-extern u32 D_008DF920[];
-extern u32 D_008DFA10[];
-extern u32 D_008DFAB0[];
-extern u32 D_008DFB60[];
-extern u32 D_008DFC10[];
-extern u32 D_008DFD10[];
-extern u32 D_008DFDD0[];
-extern u32 D_008DFE60[];
-extern u32 D_008DFF30[];
-extern u32 D_008E0040[];
-extern u32 D_008E0100[];
-extern u32 D_008E0190[];
-extern u32 D_008E0290[];
-extern u32 D_008E0320[];
-extern u32 D_008E0400[];
-extern u32 D_008E04C0[];
-extern u32 D_008E0580[];
-extern u32 D_008E0620[];
-extern u32 D_008E0710[];
-extern u32 D_008E07A0[];
-extern u32 D_008E0850[];
-extern u32 D_008E0930[];
-extern u32 D_008E0A30[];
-extern u32 D_008E0AE0[];
-extern u32 D_008E0B40[];
-extern u32 D_008E0C20[];
-extern u32 D_008E0CB0[];
-extern u32 D_008E0D60[];
-extern u32 D_008E0E20[];
-extern u32 D_008E0ED0[];
-extern u32 D_008E0F90[];
-extern u32 D_008E1070[];
-extern u32 D_008E1130[];
-extern u32 D_008E11E0[];
-extern u32 D_008E1260[];
-extern u32 D_008E1310[];
-extern u32 D_008E13C0[];
-extern u32 D_008E1480[];
-extern u32 D_008E1530[];
-extern u32 D_008E1610[];
-extern u32 D_008E1690[];
-extern u32 D_008E1750[];
-extern u32 D_008E1810[];
-extern u32 D_008E18B0[];
-extern u32 D_008E19B0[];
-extern u32 D_008E1A40[];
-extern u32 D_008E1AE0[];
-extern u32 D_008E1B80[];
-extern u32 D_008E1C00[];
-extern u32 D_008E1C90[];
-extern u32 D_008E1D30[];
-extern u32 D_008E1DC0[];
-extern u32 D_008E1E80[];
-extern u32 D_008E1F60[];
-extern u32 D_008E2040[];
-extern u32 D_008E20E0[];
-extern u32 D_008E21B0[];
-extern u32 D_008E2240[];
-extern u32 D_008E2300[];
-extern u32 D_008E2360[];
-extern u32 D_008E23F0[];
-extern u32 D_008E2480[];
-extern u32 D_008E2530[];
-extern u32 D_008E2610[];
-extern u32 D_008E26D0[];
-extern u32 D_008E27B0[];
-extern u32 D_008E2890[];
-extern u32 D_008E2920[];
-extern u32 D_008E29D0[];
-extern u32 D_008E2AA0[];
-extern u32 D_008E2B60[];
-extern u32 D_008E2C50[];
-extern u32 D_008E2CF0[];
-extern u32 D_008E2DA0[];
-extern u32 D_008E2E70[];
-extern u32 D_008E2F70[];
-extern u32 D_008E2FF0[];
-extern u32 D_008E3090[];
-extern u32 D_008E3120[];
-extern u32 D_008E3200[];
-extern u32 D_008E32C0[];
-extern u32 D_008E3380[];
-extern u32 D_008E3420[];
-extern u32 D_008E34C0[];
-extern u32 D_008E3550[];
-extern u32 D_008E35D0[];
-extern u32 D_008E3670[];
-extern u32 D_008E3770[];
-extern u32 D_008E37F0[];
-extern u32 D_008E38B0[];
-extern u32 D_008E3980[];
-extern u32 D_008E3A30[];
-extern u32 D_008E3AD0[];
-extern u32 D_008E3B70[];
-extern u32 D_008E3C10[];
-extern u32 D_008E3CD0[];
-extern u32 D_008E3D60[];
-extern u32 D_008E3DE0[];
-extern u32 D_008E3EC0[];
-extern u32 D_008E3F90[];
-extern u32 D_008E4070[];
-extern u32 D_008E4120[];
-extern u32 D_008E41E0[];
-extern u32 D_008E42B0[];
-extern u32 D_008E4380[];
-extern u32 D_008E4450[];
-extern u32 D_008E44E0[];
-extern u32 D_008E45A0[];
-extern u32 D_008E4670[];
-extern u32 D_008E4750[];
-extern u32 D_008E4800[];
-extern u32 D_008E4890[];
-extern u32 D_008E4960[];
-extern u32 D_008E4A20[];
-extern u32 D_008E4AA0[];
-extern u32 D_008E4B80[];
-extern u32 D_008E4C60[];
-extern u32 D_008E4D50[];
-extern u32 D_008E4E10[];
-extern u32 D_008E4EA0[];
-extern u32 D_008E4F50[];
-extern u32 D_008E4FD0[];
-extern u32 D_008E5090[];
-extern u32 D_008E5130[];
-extern u32 D_008E51E0[];
-extern u32 D_008E52C0[];
-extern u32 D_008E53A0[];
-extern u32 D_008E5470[];
-extern u32 D_008E5560[];
-extern u32 D_008E55E0[];
-extern u32 D_008E5690[];
-extern u32 D_008E5760[];
-extern u32 D_008E5830[];
-extern u32 D_008E5920[];
-extern u32 D_008E59E0[];
-extern u32 D_008E5AA0[];
-extern u32 D_008E5B60[];
-extern u32 D_008E5BE0[];
-extern u32 D_008E5CB0[];
-extern u32 D_008E5D90[];
-extern u32 D_008E5E50[];
-extern u32 D_008E5F40[];
-extern u32 D_008E6010[];
-extern u32 D_008E60F0[];
-extern u32 D_008E61E0[];
-extern u32 D_008E6270[];
-extern u32 D_008E6340[];
-extern u32 D_008E6410[];
-extern u32 D_008E64F0[];
-extern u32 D_008E65C0[];
-extern u32 D_008E6680[];
-extern u32 D_008E6750[];
-extern u32 D_008E67F0[];
-extern u32 D_008E68C0[];
-extern u32 D_008E69A0[];
-extern u32 D_008E6A80[];
-extern u32 D_008E6B50[];
-extern u32 D_008E6C00[];
-extern u32 D_008E6C90[];
-extern u32 D_008E6D40[];
-extern u32 D_008E6DD0[];
-extern u32 D_008E6E70[];
-extern u32 D_008E6F40[];
-extern u32 D_008E6FE0[];
-extern u32 D_008E7060[];
-extern u32 D_008E7130[];
-extern u32 D_008E71A0[];
-extern u32 D_008E7230[];
-extern u32 D_008E72C0[];
-extern u32 D_008E7390[];
-extern u32 D_008E7450[];
-extern u32 D_008E74F0[];
-extern u32 D_008E75C0[];
-extern u32 D_008E76A0[];
-extern u32 D_008E7720[];
-extern u32 D_008E77E0[];
-extern u32 D_008E78C0[];
-extern u32 D_008E79A0[];
-extern u32 D_008E7A50[];
-extern u32 D_008E7B00[];
-extern u32 D_008E7BA0[];
-extern u32 D_008E7C70[];
-extern u32 D_008E7D10[];
-extern u32 D_008E7DE0[];
-extern u32 D_008E7E90[];
-extern u32 D_008E7F20[];
-extern u32 D_008E7FD0[];
-extern u32 D_008E8060[];
-extern u32 D_008E8100[];
-extern u32 D_008E8180[];
-extern u32 D_008E8400[];
-extern u32 D_008E84D0[];
-extern u32 D_008E8590[];
-extern u32 D_008E8660[];
-extern u32 D_008E8750[];
-extern u32 D_008E87E0[];
-extern u32 D_008E88D0[];
-extern u32 D_008E8960[];
-extern u32 D_008E8A20[];
-extern u32 D_008E8B10[];
-extern u32 D_008E8BE0[];
-extern u32 D_008E8C90[];
-extern u32 D_008E8D20[];
-extern u32 D_008E8DB0[];
-extern u32 D_008E9000[];
-extern u32 D_008E90F0[];
-extern u32 D_008E92A0[];
-extern u32 D_008E95A0[];
-extern u32 D_008E9680[];
-extern u32 D_008E9700[];
-extern u32 D_008E97E0[];
-extern u32 D_008E98C0[];
-extern u32 D_008E9980[];
-extern u32 D_008E9A00[];
-extern u32 D_008E9AA0[];
-extern u32 D_008E9B30[];
-extern u32 D_008E9C00[];
-extern u32 D_008E9CC0[];
-extern u32 D_008E9DA0[];
-extern u32 D_008E9E90[];
-extern u32 D_008EA050[];
-extern u32 D_008EA120[];
-extern u32 D_008EA190[];
-extern u32 D_008EA230[];
-extern u32 D_008EA300[];
-extern u32 D_008EA3E0[];
-extern u32 D_008EA4B0[];
-extern u32 D_008EA550[];
-extern u32 D_008EA610[];
-extern u32 D_008EA680[];
-extern u32 D_008EA760[];
-extern u32 D_008EA800[];
-extern u32 D_008EA8F0[];
-extern u32 D_008EA9B0[];
-extern u32 D_008EAA70[];
-extern u32 D_008EAB30[];
-extern u32 D_008EABF0[];
-extern u32 D_008EACB0[];
-extern u32 D_008EAD50[];
-extern u32 D_008EAE10[];
-extern u32 D_008EAEA0[];
-extern u32 D_008EAF30[];
-extern u32 D_008EAFB0[];
-extern u32 D_008EB030[];
-extern u32 D_008EB0D0[];
-extern u32 D_008EB190[];
-extern u32 D_008EB260[];
-extern u32 D_008EB300[];
-extern u32 D_008EB3E0[];
-extern u32 D_008EB440[];
-extern u32 D_008EB500[];
-extern u32 D_008EB570[];
-extern u32 D_008EB5D0[];
-extern u32 D_008EB660[];
-extern u32 D_008EB6F0[];
-extern u32 D_008EB770[];
-extern u32 D_008EB800[];
-extern u32 D_008EB850[];
-extern u32 D_008EB8F0[];
-extern u32 D_008EB970[];
-extern u32 D_008EB9E0[];
-extern u32 D_008EBA20[];
-extern u32 D_008EBA90[];
-extern u32 D_008EBB10[];
-extern u32 D_008EBBA0[];
-extern u32 D_008EBC70[];
-extern u32 D_008EBD30[];
-extern u32 D_008EBDD0[];
-extern u32 D_008EBE90[];
-extern u32 D_008EBF50[];
-extern u32 D_008EC020[];
 char *gMsgEventTitles[80] = {
     (char *)D_008DE300, (char *)D_008DE320, (char *)D_008DE340, (char *)D_008DE360,
     (char *)D_008DE390, (char *)D_008DE3C0, (char *)D_008DE3E0, (char *)D_008DE3F8,
@@ -1764,15 +2153,6 @@ char *gMsgEventLines_53[4] = {
 char *gMsgEventLines_54[4] = {
     (char *)D_008E8060, (char *)D_008E8100, (char *)D_008E8180, NULL,
 };
-extern char D_008E8240[];
-extern char D_008E8330[];
-extern char D_008E8E70[];
-extern char D_008E8F20[];
-extern char D_008E91C0[];
-extern char D_008E9370[];
-extern char D_008E9420[];
-extern char D_008E94D0[];
-extern char D_008E9F70[];
 char *gMsgEventLines_55[6] = {
     D_008E8240, D_008E8330, (char *)D_008E8400, (char *)D_008E84D0,
     (char *)D_008E8590, NULL,

@@ -25,6 +25,9 @@ Run the tools from the repository's root, in a shell prepared by
 | `content_gen.py` | the values of the C's data and the game's texts, written from your copy into `build/gen/` at build time |
 | `export_readable.py` | a copy of the tree with your copy's data and text written out in C (default `build/readable/`; CONTRIBUTING.md, "The readable export"). It holds the game's content: keep it on your machine |
 | `check_targets.py` | compare the 13 built files with `config/targets.sha1` |
+| `plain_check.py` | every C file compiled with plain MWCC (no wrapper), each function compared with the build's: the wrapper never touches code (every build runs it; `ninja plaincheck`) |
+| `provenance.py` | where each byte of the 13 files comes from, by origin, from the link maps (`ninja provenance`); `--check`, run by every build, fails on code from an unlabelled source |
+| `module_symbols.py` | a module's symbol files, from its YAML (the data tools' and the diff tools' shared helper) |
 | `progress.py` | `ninja progress`: matched code per module and origin |
 
 ## Checking and working on the code
@@ -33,9 +36,7 @@ Run the tools from the repository's root, in a shell prepared by
 |---|---|
 | `proto_check.py` | function declarations that disagree with their definitions |
 | `content_scan.py` | game content in the source: non-ASCII text, data initializers with values |
-| `content_conv.py` | take a C file's data values and game texts out into generated includes |
 | `data_blobcheck.py` | blob-like data and tracked build outputs |
-| `data_progress.py` | the data C owns, per module |
 | `func_diff.py`, `adiff.py` | compile a C file and compare each function with the original; an aligned diff of one function |
 | `asm_funcs.py` | browse splat's assembly by function |
 | `gen_struct.py` | write a header's padded struct from its `include/*.spec` |

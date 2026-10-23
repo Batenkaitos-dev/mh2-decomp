@@ -22,7 +22,6 @@
 #include "pad.h"
 #include "render_state.h"
 #include "net_save.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #pragma optimization_level 4
 #include "item.h"

@@ -9,7 +9,7 @@ documentation are its work.
 
 The project's owner, Batenkaitos, orchestrated the work, tested the results,
 and steered the decisions when important questions came up: the compiler,
-the porting strategy, the decomp's scope, and what goes in the repository.
+the decomp's scope, and what goes in the repository.
 
 ## What the checks guarantee, and what they don't
 
@@ -18,6 +18,9 @@ the porting strategy, the decomp's scope, and what goes in the repository.
   byte-identical to the originals (SHA-1, `config/targets.sha1`). A function
   counted as matched compiles to exactly the original's bytes with the
   original compiler.
+- Every C function compiles to the same code with plain MWCC as in the
+  build, without the build's wrapper (`tools/plain_check.py`), and no code
+  comes from an unlabelled source (`tools/provenance.py --check`).
 - None of the game's data values, text or assets, and nothing generated
   from the game, is committed (`tools/content_scan.py`,
   `tools/data_blobcheck.py`; CONTRIBUTING.md, "What goes in the
@@ -32,15 +35,6 @@ Corrections are welcome.
 
 ## What it didn't do
 
-- **Copy code** from other decompilation projects or from leaked sources.
-  The C is reconstructed from the owner's own copy of the game.
-- **Work in projects that ask AI to stay away.** 2Tie/mh1j (Monster
-  Hunter 1) was read no further than its README;
-  dreamingmoths/memory-of-alessa (Silent Hill 2), whose policy asks LLMs not
-  to work in it, isn't used; decomp.me, which asks that no LLM be hooked up
-  to it, was never automated.
-- **Submit work** to other projects. Many decomp communities don't accept
-  AI-generated contributions, and this project respects that.
 - **Download** game data, SDKs or BIOS files, or connect to game servers.
 
 ## The record

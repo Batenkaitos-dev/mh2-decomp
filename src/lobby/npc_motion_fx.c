@@ -7,7 +7,6 @@
  * Npc_PlayTownSeAt, the shared bank's through Npc_PlayCommonSeAt; their
  * numbers stay numbers, since the code doesn't show what they are. */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "scene.h"
 #include "lobby_globals.h"

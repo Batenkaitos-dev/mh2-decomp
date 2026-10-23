@@ -22,7 +22,6 @@
 #include "common.h"
 #include "window.h"
 #include "syssettings.h"
-#include "m2c_macros.h"
 #include "select.h"
 #include "syssave.h"
 #include "render_state.h"

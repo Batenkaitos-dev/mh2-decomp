@@ -30,9 +30,8 @@
  *
  * Built from this file (tools/configure.py prefers a committed
  * src/<module>/<piece>.s over splat's asm/). splat still writes its own
- * disassembly of the range to asm/main/mem_loops.s: the PC port's
- * recompiler reads function boundaries from it, and objdiff compares this
- * file's object against it.
+ * disassembly of the range to asm/main/mem_loops.s, and objdiff compares
+ * this file's object against it.
  */
 
 .include "macro.inc"

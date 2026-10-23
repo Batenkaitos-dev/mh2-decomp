@@ -54,7 +54,7 @@ gScreenPosTexts = 0x006CDD60; // size:0x8
 gBackResetTexts = 0x006CDD68; // size:0x8 [0] the back label, [1] the reset-to-defaults label, under both option pages (select_option)
 
 // A .rodata object out of its first-use order, so it stays in the assembly.
-gSelectFmtString = 0x006CDFB8; // force_not_migration:True size:0x8 the text format that prints one string
+gSelectFmtString = 0x006CDFB8; // force_not_migration:True size:0x3 the text format that prints one string
 // A literal with 13 bytes of zero padding after it (Gallery_DrawEntryPage).
 D_006D06F0 = 0x006D06F0; // force_not_migration:True
 

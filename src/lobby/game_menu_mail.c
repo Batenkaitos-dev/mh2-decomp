@@ -14,7 +14,6 @@
 #include "pad.h"
 #include "sound.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "lobby_state.h"
 #include "window.h"

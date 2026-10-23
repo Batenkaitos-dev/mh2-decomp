@@ -1791,7 +1791,11 @@ void QuestMenu_DrawTimeLimit(s32 unused)
     Text_PrintfColored(gQuestMenuStatusTexts[0], out);
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtInt);
+#pragma rodata on
+char gHudFmtInt[3] = {
+#include "sub_main/0046CFD0.inc"
+};
+#pragma rodata off
 
 /* Draws a quest time (Quest_GetTime(which): 0 the time left, 1 the time
  * taken) as minutes and seconds in full-width characters. */
@@ -2934,8 +2938,14 @@ s32 CombineMenu_Open(void)
     return 0;
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtInt2);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtFraction);
+#pragma rodata on
+char gHudFmtInt2[4] = {
+#include "sub_main/0046CFF0.inc"
+};
+char gHudFmtFraction[6] = {
+#include "sub_main/0046CFF8.inc"
+};
+#pragma rodata off
 
 /* The combine menu's input step: the ingredient picks (state 1), the confirmation (2), the
    result (3-5) and the checks after it (6); returns the buttons left for the caller. */
@@ -5525,12 +5535,28 @@ void Hud_DrawPouchSelector(void)
     Draw_Icons((void *)icons, 2U);
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gSideNameNone);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gSideNameA);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gSideNameB);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtSideName);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtCount);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/hud", gHudFmtString);
+#pragma rodata on
+#pragma explicit_zero_data on
+char gSideNameNone[1] = {
+#include "sub_main/0046D0B0.inc"
+};
+#pragma explicit_zero_data reset
+char gSideNameA[6] = {
+#include "sub_main/0046D0B8.inc"
+};
+char gSideNameB[6] = {
+#include "sub_main/0046D0C0.inc"
+};
+char gHudFmtSideName[5] = {
+#include "sub_main/0046D0C8.inc"
+};
+char gHudFmtCount[8] = {
+#include "sub_main/0046D0D0.inc"
+};
+char gHudFmtString[3] = {
+#include "sub_main/0046D0D8.inc"
+};
+#pragma rodata off
 
 extern Icon gPouchBarIcons[];
 extern s16 gPouchBarXA[];
@@ -8569,9 +8595,6 @@ void CommentEdit_Draw(void)
 
 /* The HUD's and the menus' initialised data. */
 extern char gEmptyNameStr[];
-extern u32 gSideNameNone[];
-extern u32 gSideNameA[];
-extern u32 gSideNameB[];
 extern u32 gHeapBlocks[];
 s32 PhraseMenu_Open(void *m);
 u32 gPlayerMapColors[4] = {

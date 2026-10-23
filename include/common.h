@@ -29,28 +29,16 @@ typedef struct Vec3f {
 #define ANGLE_TURN 0x10000
 
 /*
- * INCLUDE_ASM(dir, name): the function `name` is still assembly, in
- * dir/name.s. The compiler never sees this macro. tools/mwcc_cc.py replaces
- * each use with a marker, compiles the C, and splices the assembled function
- * into the object in its original position (with its jump tables and
- * strings, when the file owns its .rodata). For other tools (IDEs, m2c
- * context) it expands to nothing.
- *
- * INCLUDE_RODATA(dir, name): the same for a data object of the file's
- * .rodata that is still assembly (one that several functions share, or
- * that splat doesn't migrate into its function's .s): it goes where the
- * line is. CONTRIBUTING.md, "Functions with switch tables or strings".
- *
  * INCLUDE_DATA(dir, name): a .data object that must never enter the
  * repository (compressed data, a library's data), among a file's .data
- * definitions. The build writes dir/name.s (dir is build/blobs/MODULE,
- * git-ignored) with tools/data_blob.py, which takes the bytes from the
- * user's original, and mwcc_cc.py splices it in where the line is. The file
- * declares the object with an extern for its code.
- * CONTRIBUTING.md, "Data in C".
+ * definitions. The compiler never sees this macro: the build writes
+ * dir/name.s (dir is build/blobs/MODULE, git-ignored) with tools/data_blob.py,
+ * which takes the bytes from the user's original, and tools/mwcc_cc.py
+ * replaces the line with a marker, compiles the C, and splices the assembled
+ * data into the object where the line is. For other tools it expands to
+ * nothing. The file declares the object with an extern for its code.
+ * Every .rodata object is C. CONTRIBUTING.md, "Data in C".
  */
-#define INCLUDE_ASM(dir, name)
-#define INCLUDE_RODATA(dir, name)
 #define INCLUDE_DATA(dir, name)
 
 /*

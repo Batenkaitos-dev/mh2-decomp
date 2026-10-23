@@ -29,7 +29,6 @@
 #include "player.h"
 #include "save.h"
 #include "pad.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "window.h"
 #include "lobby_labels.h"

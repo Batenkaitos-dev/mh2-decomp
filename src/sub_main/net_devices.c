@@ -227,15 +227,20 @@ loop_4:
     return NetDev_MatchesDefault(vendor, product) != 0;
 }
 
-extern char D_0046A560[];
-extern char D_0046A580[];
-extern char D_0046A5A0[];
 extern s32 gNetStopReq;
 extern s32 gNetIrxUsbsrch;
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A560);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A580);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A5A0);
+#pragma rodata on
+char D_0046A560[23] = {
+#include "sub_main/0046A560.inc"
+};
+char D_0046A580[19] = {
+#include "sub_main/0046A580.inc"
+};
+char D_0046A5A0[17] = {
+#include "sub_main/0046A5A0.inc"
+};
+#pragma rodata off
 
 /*
  * Releases the Ethernet device in use (sets gNetStopReq). For the LANEGG or SMAP driver
@@ -284,17 +289,22 @@ s32 Net_StopDevice(void)
     return 0;
 }
 
-extern char D_0046A5C0[];
-extern char D_0046A5E0[];
-extern char D_0046A5E8[];
 extern s32 gNetIrxAn986;
 extern s32 gNetIrxLanegg;
 extern s32 gNetIrxSmap;
 extern s32 gNetIrxAvewrape;
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A5C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A5E0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A5E8);
+#pragma rodata on
+char D_0046A5C0[27] = {
+#include "sub_main/0046A5C0.inc"
+};
+char D_0046A5E0[8] = {
+#include "sub_main/0046A5E0.inc"
+};
+char D_0046A5E8[9] = {
+#include "sub_main/0046A5E8.inc"
+};
+#pragma rodata off
 
 /*
  * Unloads the USB device searcher if it is loaded. For an Ethernet device, loads its driver
@@ -338,9 +348,14 @@ extern s32 gNetIrxAveppp;
 extern s32 gNetIrxAvewrapm;
 extern s32 gNetIrxAvedhcp;
 extern s32 gNetIrxDevglue;
-extern char D_0046A5F8[];
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A5F8);
+#pragma rodata on
+#pragma explicit_zero_data on
+char D_0046A5F8[1] = {
+#include "sub_main/0046A5F8.inc"
+};
+#pragma explicit_zero_data reset
+#pragma rodata off
 
 /*
  * Loads the support modules for the device in use, unless gNetStopReq is set. First unloads
@@ -459,21 +474,48 @@ s32 Net_Init(void)
 
 extern s32 D_0059CC30;
 extern s32 gNetIrxAvetcp;
-extern char D_0046A600[];
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A600);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A610);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A640);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A670);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A6A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A6D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A700);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A730);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A760);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A790);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A7C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A7F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_devices", D_0046A820);
+#pragma rodata on
+char D_0046A600[5] = {
+#include "sub_main/0046A600.inc"
+};
+char D_0046A610[40] = {
+#include "sub_main/0046A610.inc"
+};
+char D_0046A640[42] = {
+#include "sub_main/0046A640.inc"
+};
+char D_0046A670[40] = {
+#include "sub_main/0046A670.inc"
+};
+char D_0046A6A0[40] = {
+#include "sub_main/0046A6A0.inc"
+};
+char D_0046A6D0[42] = {
+#include "sub_main/0046A6D0.inc"
+};
+char D_0046A700[41] = {
+#include "sub_main/0046A700.inc"
+};
+char D_0046A730[44] = {
+#include "sub_main/0046A730.inc"
+};
+char D_0046A760[43] = {
+#include "sub_main/0046A760.inc"
+};
+char D_0046A790[43] = {
+#include "sub_main/0046A790.inc"
+};
+char D_0046A7C0[41] = {
+#include "sub_main/0046A7C0.inc"
+};
+char D_0046A7F0[42] = {
+#include "sub_main/0046A7F0.inc"
+};
+char D_0046A820[40] = {
+#include "sub_main/0046A820.inc"
+};
+#pragma rodata off
 
 /*
  * Starts the network. Resets the settings and device list, loads the AVE TCP module, and adds
@@ -509,18 +551,6 @@ extern char gNetUsbLanProduct1[];
 extern char gNetUsbLanProduct2[];
 extern char gNetAdaptorVendor[];
 extern char gNetAdaptorProduct[];
-extern u32 D_0046A610[];
-extern u32 D_0046A640[];
-extern u32 D_0046A670[];
-extern u32 D_0046A6A0[];
-extern u32 D_0046A6D0[];
-extern u32 D_0046A700[];
-extern u32 D_0046A730[];
-extern u32 D_0046A760[];
-extern u32 D_0046A790[];
-extern u32 D_0046A7C0[];
-extern u32 D_0046A7F0[];
-extern u32 D_0046A820[];
 NetDevice gNetDevNames[3] = {
 #include "sub_main/004053C0.inc"
 };

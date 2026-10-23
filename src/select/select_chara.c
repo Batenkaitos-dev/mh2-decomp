@@ -27,7 +27,6 @@ extern u8 gOldGameKind;
 #include "camera.h"
 #include "scene.h"
 #include "pad.h"
-#include "m2c_macros.h"
 #include "select.h"
 #include "player.h"
 #include "sprite.h"

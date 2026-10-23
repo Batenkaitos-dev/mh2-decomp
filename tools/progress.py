@@ -21,7 +21,7 @@ from collections import Counter
 from pathlib import Path
 
 AUTO_NAME = re.compile(r"(func|sub)_[0-9A-Fa-f]+$")
-KINDS = {"origin/" + k for k in ("game", "sdk", "middleware", "access", "vu1")}   # origin categories (tools/configure.py)
+KINDS = {"origin/" + k for k in ("game", "sdk", "middleware", "access", "vu1", "zlib")}   # origin categories (tools/configure.py)
 PADDING = "padding"   # the overlays' leading zeros and empty text pieces: not counted (tools/configure.py)
 MEASURES = ("total_code", "matched_code", "total_functions", "matched_functions")
 

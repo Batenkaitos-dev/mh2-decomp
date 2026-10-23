@@ -44,7 +44,6 @@
 void vsnprintf(char *buf, s32 size, const char *fmt, va_list ap); /* vsnprintf */
 void Font_Printf(const char *fmt, ...);
 extern s32 gTextOff;
-extern char D_0046CC10[]; /* "%s" */
 char *strcat(char *dst, char *src); /* strcat */
 char *strcpy(char *dst, const char *src); /* strcpy */
 s32 strlen(char *s); /* strlen */
@@ -54,7 +53,6 @@ extern u8 gKbdDakutenSjis[];
 extern u8 gKbdDakutenSjis_1;
 extern u8 gKbdHandakutenSjis[];
 extern u8 gKbdHandakutenSjis_1;
-extern char D_0046CC08[]; /* a full-width space */
 s32 strncmp(const char *a, const char *b, u32 n);
 extern u8 gKbdPhrasePage;
 extern u8 gKbdSavedKanaInput;
@@ -878,9 +876,15 @@ void Kbd_TypeKey(KbdKey *key)
     }
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CAE0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CBB0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CC08);
+const char D_0046CAE0[205] = {
+#include "sub_main/0046CAE0.inc"
+};
+const char D_0046CBB0[81] = {
+#include "sub_main/0046CBB0.inc"
+};
+const char D_0046CC08[3] = {
+#include "sub_main/0046CC08.inc"
+};
 
 extern void *gKanaDakutenTable; /* conversion tables for Kana_SwapBeforeCursor */
 extern void *gKanaHandakutenTable;
@@ -1631,7 +1635,9 @@ s32 Kbd_KeysShown(void)
     return 1;
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd", D_0046CC10);
+const char D_0046CC10[3] = {
+#include "sub_main/0046CC10.inc"
+};
 
 typedef struct KbdColor {
     u32 rgb : 24;
@@ -2693,8 +2699,6 @@ extern char D_0046CAA0[];
 extern char D_0046CAA8[];
 extern char D_0046CAB0[];
 extern char D_0046CAB8[];
-extern u32 D_0046CAE0[];
-extern u32 D_0046CBB0[];
 RomajiEntry gRomajiKanaTbl[240] = {
     {gRomajiKanaTbl_0_romaji, {gRomajiKanaTbl_0_kana_0, gRomajiKanaTbl_0_kana_1, gRomajiKanaTbl_0_kana_2}},
     {gRomajiKanaTbl_1_romaji, {D_0046A958, D_0046A960, D_0046A968}},

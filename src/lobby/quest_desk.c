@@ -22,7 +22,6 @@
 #include "lobby_globals.h"
 #include "scene.h"
 #include "lobby_menu.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "quest.h"
 #include "area.h"

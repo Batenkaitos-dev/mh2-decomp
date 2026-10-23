@@ -7,7 +7,6 @@
  * gCurServerName; a failed reply leaves the lobby.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_net.h"
 #include "lobby_state.h"
 #include "server_name.h"

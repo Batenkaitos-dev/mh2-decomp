@@ -23,7 +23,6 @@
 #include "common.h"
 #include "window.h"
 #include "net_mode.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "sprite.h"
 #include "render_state.h"

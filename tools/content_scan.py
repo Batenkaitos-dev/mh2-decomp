@@ -9,7 +9,7 @@ game's data values and texts come from the user's copy at build time
 - any non-ASCII character in src/ or include/: in a string literal, a
   comment or anywhere else (the game's text, or a comment quoting it), and
   in the other files the repository publishes: config/, tools/,
-  CONTRIBUTING.md, README.md, docs/mwcc-matching.md, docs/notes/nm/ and
+  CONTRIBUTING.md, README.md, docs/mwcc-matching.md, docs/notes/hard-matches/ and
   docs/ai-workflow/;
 - a data initializer in src/ with values: a definition at file scope (or a
   `static` one in a function) whose initializer holds a number other than 0
@@ -42,7 +42,7 @@ ROOT = Path(__file__).resolve().parent.parent
 EXCEPTIONS = ROOT / "config" / "content_exceptions.txt"
 # the files the repository publishes besides src/ and include/: checked for non-ASCII text
 PUBLISHED = ["config", "tools", "CONTRIBUTING.md", "README.md", "docs/mwcc-matching.md",
-             "docs/notes/nm", "docs/ai-workflow"]
+             "docs/notes/hard-matches", "docs/ai-workflow"]
 
 TOKEN = re.compile(r"""
     (?P<comment>/\*.*?\*/|//[^\n]*)

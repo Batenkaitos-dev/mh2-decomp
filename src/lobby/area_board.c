@@ -732,8 +732,8 @@ s32 AreaBoard_LeaveEntry(u16 pad)
     return LOBBY_STEP_BUSY;
 }
 
-extern char gAreaBoardTextFmt[];
-extern char gAreaBoardUsersFmt[];
+extern const char gAreaBoardTextFmt[];
+extern const char gAreaBoardUsersFmt[];
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: s16 coordinates and an s32 kind here; with the definition's s32 coordinates and s16 kind, the entry list and the text picker compile differently */
 void Menu_DrawRowHighlight(s16 x, s16 y0, s16 w, s16 y1, s8 flag);
 /*
@@ -837,8 +837,12 @@ void AreaBoard_DrawList(s16 x, s16 y)
     }
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/area_board", gAreaBoardTextFmt);
-INCLUDE_RODATA("asm/lobby/nonmatchings/area_board", gAreaBoardUsersFmt);
+const char gAreaBoardTextFmt[3] = {
+#include "lobby/00838208.inc"
+};
+const char gAreaBoardUsersFmt[8] = {
+#include "lobby/00838210.inc"
+};
 
 struct EquipItem;
 /* AreaBoard_DrawMembers passes the weapon's class as an s32 to Icon_DrawWeaponClass's u8 parameter: that way the compiler masks it to a byte as the game's code does */

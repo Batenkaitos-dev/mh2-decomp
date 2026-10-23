@@ -22,7 +22,6 @@
 #include "html.h"
 #include "lobby_globals.h"
 #include "kbd.h"
-#include "m2c_macros.h"
 #include "net_mode.h"
 #include "nethttp.h"
 #include "text.h"

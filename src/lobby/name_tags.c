@@ -30,7 +30,6 @@
 #include "player.h"
 #include "save.h"
 #include "pad.h"
-#include "m2c_macros.h"
 #include "sprite.h"
 #include "lobby_state.h"
 #include "quest.h"

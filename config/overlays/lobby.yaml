@@ -55,17 +55,17 @@ segments:
       - [0x40, asm, text]           # the 0x40 zero bytes every overlay's text starts with
       - [0x80, c, wanted]           # 0x6AF280: starts with TownMode_WaitCancel
       - [0x450, c, records_lists]    # 0x6AF650: starts with Records_RecvPage
-      - [0x1370, c, records_menu]  # automatch: 4 of 16
+      - [0x1370, c, records_menu]
       - [0x2b70, c, records_draw]
-      - [0x6100, c, ship_mine_menus]  # automatch: 5 of 12
+      - [0x6100, c, ship_mine_menus]
       - [0x6c70, c, mine_model_objects]
       - [0x8d40, c, gallery_board]
       - [0x98c0, c, gallery_targets]
-      - [0x9f60, c, gallery_objects]  # automatch: 14 of 46
+      - [0x9f60, c, gallery_objects]
       - [0xDB30, c, mail_block_list]
-      - [0xE330, c, bird_flock]  # automatch: 3 of 4
+      - [0xE330, c, bird_flock]
       - [0xF690, c, place_info]
-      - [0x10190, c, place_info_draw]  # automatch: 1 of 1
+      - [0x10190, c, place_info_draw]
       - [0x10240, c, forge_upgrades]
       - [0x10900, c, drink_mug]
       - [0x122B0, c, offer_menu]
@@ -84,9 +84,9 @@ segments:
       - [0x30120, c, weapon_forge]
       - [0x35BD0, c, song_menu]
       - [0x36400, c, friend_list]
-      - [0x37600, c, friend_add]  # automatch: 3 of 5
+      - [0x37600, c, friend_add]
       - [0x38090, c, village_offers]
-      - [0x38F60, c, village_board]  # automatch: 3 of 15
+      - [0x38F60, c, village_board]
       - [0x39e40, c, group_board]
       - [0x3ded0, c, id_search]
       - [0x3e700, c, name_search]
@@ -97,29 +97,29 @@ segments:
       - [0x44c30, c, house_access]
       - [0x45600, c, quit_menu]
       - [0x45880, c, move_menu]
-      - [0x46880, c, area_menu]   # automatch: 2 of 4
+      - [0x46880, c, area_menu] 
       - [0x46f70, c, village_clock]
       - [0x48200, c, arm_wrestling]
       - [0x49930, c, drink_contest]
-      - [0x4bf50, c, hunter_info]  # automatch: 2 of 4
+      - [0x4bf50, c, hunter_info]
       - [0x4d740, c, mail_menu]
       - [0x4e390, c, short_mail]
       - [0x4f480, c, elder_forecast]
       - [0x509a0, c, minigame_draw]
-      - [0x518f0, c, net_chat]            # automatch: 20 of 96
+      - [0x518f0, c, net_chat]          
       - [0x51fa0, c, net_downloads]
       - [0x539e0, c, net_level1_list]
-      - [0x54ed0, c, net_levels_enter]  # automatch: 6 of 12
+      - [0x54ed0, c, net_levels_enter]
       - [0x554a0, c, net_level_requests]
-      - [0x55bb0, c, net_level1_users_reply]  # automatch: 5 of 13
+      - [0x55bb0, c, net_level1_users_reply]
       - [0x561b0, c, net_level1_allowed_task]
       - [0x56b50, c, net_level1_settings_task]
-      - [0x571c0, c, net_level1_settings]  # automatch: 4 of 10
-      - [0x57b10, c, net_login_start]  # automatch: 5 of 20
+      - [0x571c0, c, net_level1_settings]
+      - [0x57b10, c, net_login_start]
       - [0x58030, c, net_login]
-      - [0x59710, c, net_users]   # automatch: 22 of 84
+      - [0x59710, c, net_users] 
       - [0x5ae50, c, net_party]
-      - [0x5ba80, c, net_patch]         # automatch: 20 of 56
+      - [0x5ba80, c, net_patch]       
       - [0x5bf50, c, net_level0_list]
       - [0x5d040, c, bed_menu]
       - [0x5d970, c, shooting_gallery]
@@ -136,37 +136,38 @@ segments:
       - [0x76160, c, browser_draw]
       - [0x7ba00, c, page_draw_cmds]
       - [0x7d940, c, browser_dialogs]
-      - [0x80e20, c, browser_prims]  # automatch: 3 of 9
+      - [0x80e20, c, browser_prims]
       - [0x810f0, c, browser_util]
       - [0x81890, c, browser_urls]
       - [0x82940, c, page_objects]
       - [0x83040, c, browser_frame]
       - [0x83ec0, c, portal_steps]
-      - [0x85570, c, page_frame]         # automatch: 9 of 30
+      - [0x85570, c, page_frame]       
       - [0x89e70, c, dialog_steps]
       - [0x8baf0, c, page_focus]
       - [0x8d020, c, page_input]
-      - [0x91b10, c, browser_nav]  # automatch: 5 of 11
+      - [0x91b10, c, browser_nav]
       - [0x92180, c, browser_error_page]
       - [0x92700, c, browser_packets]
       - [0x930F0, c, html_parse]      # 0x7422F0
       - [0x95C80, c, html_text_tags]
-      - [0x96630, c, html_image_tags]  # automatch: 2 of 4
+      - [0x96630, c, html_image_tags]
       - [0x96C90, c, html_body_attrs]
       - [0x96da0, c, html_form_tags]
-      - [0x971B0, c, html_link_font_select_tags]  # automatch: 7 of 34
+      - [0x971B0, c, html_link_font_select_tags]
       - [0x978A0, c, html_table_tags]
       - [0x99CB0, c, html_attr_readers]
       - [0x9A8A0, c, layout_text]
       - [0x9D390, c, layout_tables]  # 0x74C590
       - [0x9e1f0, c, layout_cells]
-      - [0xa21c0, c, unk_7513C0]  # automatch: 4 of 8
-      - [0xa4950, c, unk_753B50]  # automatch: 1 of 1
-      - [0xa4a10, c, unk_753C10]
-      - [0xa7dd0, c, unk_756FD0]  # automatch: 9 of 24
+      - [0xa21c0, c, image_decode]
+      - [0xa47b0, c, adler32]
+      - [0xa4950, c, infblock]
+      - [0xa4a10, c, inflate]
+      - [0xa7dd0, c, infutil]
       - [0xa7fd0, c, lobby_util]
       - [0xA8D90, c, equip_shop]
-      - [0xac160, c, npc_motion_fx]  # automatch: 9 of 21
+      - [0xac160, c, npc_motion_fx]
       - [0xae590, c, village_cond]
       - [0xaf220, c, village_progress]
       - [0xb0100, c, quest_lookup]
@@ -222,16 +223,16 @@ segments:
       - [0xFF630, c, talk]          # 0x7AE830
       - [0x1003e0, c, lobby_connect]
       - [0x100EE0, c, server_list]
-      - [0x101EB0, c, quest_connect]  # automatch: 12 of 37
+      - [0x101EB0, c, quest_connect]
       - [0x1025D0, c, lobby_dialog_box]
       - [0x1039F0, c, lobby_frame]
       - [0x103f40, c, lobby_steps]
-      - [0x106fe0, c, server_name]  # automatch: 3 of 5
+      - [0x106fe0, c, server_name]
       - [0x1071a0, c, lobby_leave_menus]
       - [0x1082E0, c, server_menu]
       - [0x109410, c, chat_log]
       - [0x10A570, c, lobby_screen]
-      - [0x10d1a0, c, lobby_state]  # automatch: 18 of 35
+      - [0x10d1a0, c, lobby_state]
       - [0x10DA80, c, lobby_disconnect]
       - [0x10E810, c, lobby_room]
       - [0x10f2f0, c, tag_text]
@@ -242,11 +243,11 @@ segments:
       - [0x115d80, c, lobby_web_users]
       - [0x1170c0, c, lobby_village]
       - [0x117ec0, c, lobby_town]
-      - [0x119da0, c, net_scene]   # automatch: 31 of 95
+      - [0x119da0, c, net_scene] 
       - [0x11af20, c, net_setup]
       - [0x11bc70, c, net_setup_steps]
       - [0x11fd20, c, login_input]
-      - [0x120140, c, net_screen]  # automatch: 9 of 15
+      - [0x120140, c, net_screen]
       - [0x1206b0, c, net_boxes]
       - [0x1209F0, c, net_kbd]
       - [0x120d40, c, net_screen_draw]
@@ -305,8 +306,8 @@ segments:
       - [0x140C70, .data, html_form_tags]
       - [0x140CC0, .data, html_table_tags]
       - [0x140D00, .data, html_attr_readers]
-      - [0x1414E0, .data, unk_7513C0]
-      - [0x141500, .data, unk_756FD0]
+      - [0x1414E0, .data, image_decode]
+      - [0x141500, .data, infutil]
       - [0x142658, .data, equip_shop]
       - [0x142790, .data, village_progress]
       - [0x1427D0, .data, menu_sheets]
@@ -437,8 +438,8 @@ segments:
       - [0x18AC90, .rodata, html_attr_readers]
       - [0x18B4F0, .rodata, layout_text]
       - [0x18B540, .rodata, layout_cells]
-      - [0x18B560, .rodata, unk_7513C0]
-      - [0x18B690, .rodata, unk_753C10]
+      - [0x18B560, .rodata, image_decode]
+      - [0x18B690, .rodata, inflate]
       - [0x18BC50, .rodata, lobby_util]
       - [0x18BD50, .rodata, equip_shop]
       - [0x18BDF0, .rodata, npc_motion_fx]

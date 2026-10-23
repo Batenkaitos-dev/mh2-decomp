@@ -95,9 +95,17 @@ u8 SavePouch_Add(u16 item, s16 n);
 struct Em;
 /* end of prototypes */
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/pets", gPetChoicePetText);
-INCLUDE_RODATA("asm/lobby/nonmatchings/pets", gPetChoiceFeedText);
-INCLUDE_RODATA("asm/lobby/nonmatchings/pets", gPetChoiceOutfitText);
+#pragma rodata on
+char gPetChoicePetText[11] = {
+#include "lobby/0082C840.inc"
+};
+char gPetChoiceFeedText[13] = {
+#include "lobby/0082C850.inc"
+};
+char gPetChoiceOutfitText[11] = {
+#include "lobby/0082C860.inc"
+};
+#pragma rodata off
 
 extern u8 gPetFollows;
 extern u8 gPoogieHappy;
@@ -2248,9 +2256,6 @@ u8 Pet_AreaKind(void)
 }
 
 /* The file's initialised data, in the game's order */
-extern char gPetChoicePetText[];
-extern char gPetChoiceFeedText[];
-extern char gPetChoiceOutfitText[];
 f32 gPoogieDigZones[28] = {
 #include "lobby/007E7F10.inc"
 };

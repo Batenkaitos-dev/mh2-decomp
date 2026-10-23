@@ -19,7 +19,7 @@ Exit status 0 only on a full match.
 difference; -D defines a macro (-D NON_MATCHING for a function under
 #ifdef NON_MATCHING). The file's `#pragma optimization_level` applies,
 as in func_diff.py. Needs MWCC, so it runs where the matching build does.
-Written by the round 6 game core worker (its scratch triage tool).
+First written as a scratch triage tool for the game module.
 """
 
 import argparse
@@ -42,7 +42,7 @@ BRANCH = re.compile(r"^(b|beq|bne|beqz|bnez|bgez|bgtz|blez|bltz|bc1t|bc1f|bltzal
 def compile_obj(cfile, defines=()):
     lines = Path(cfile).read_text(encoding="utf-8").splitlines()
     text = "".join(f"#define {d}\n" for d in defines)
-    text += "\n".join("" if fd.INCLUDE_ASM.match(l) else l for l in lines) + "\n"
+    text += "\n".join("" if fd.SPLICE_LINE.match(l) else l for l in lines) + "\n"
     (ROOT / "build").mkdir(exist_ok=True)
     td = Path(tempfile.mkdtemp(prefix="adiff-", dir=ROOT / "build"))
     try:

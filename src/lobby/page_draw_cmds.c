@@ -254,9 +254,11 @@ void Draw_ImageMap(u16 x, u16 y, u16 right, u16 bottom, u8 *src, u8 *href, u8 *a
     }
 }
 
-/* The anchor's name format ("#" and the name), 8 bytes with a stray newline: included whole. */
-INCLUDE_RODATA("asm/lobby/nonmatchings/page_draw_cmds", gAnchorNameFormat);
-extern char gAnchorNameFormat[];
+/* The anchor's name format ("#" and the name), then a newline string 4 bytes in: one array of
+ * 8 bytes, since an object of its own would sit 8 bytes in. */
+const char gAnchorNameFormat[8] = {
+#include "lobby/00838EE8.inc"
+};
 
 /* A named place in the page, kept as "#name". */
 void Draw_Anchor(u16 x, u16 y, u8 *name)

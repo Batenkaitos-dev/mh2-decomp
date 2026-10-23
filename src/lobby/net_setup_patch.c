@@ -24,7 +24,6 @@
 #include "card.h"
 #include "syssettings.h"
 #include "net_mode.h"
-#include "m2c_macros.h"
 #include "lobby_vobj.h"
 #include "ram_areas.h"
 #include "pad.h"

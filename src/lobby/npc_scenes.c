@@ -14,7 +14,6 @@
 #include "common.h"
 #include "sprite.h"
 #include "lobby_npc.h"
-#include "m2c_macros.h"
 #include "em.h"
 #include "lobby_globals.h"
 #include "scene.h"

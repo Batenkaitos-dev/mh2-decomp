@@ -16,7 +16,6 @@
  */
 #include "common.h"
 #include "lobby_net.h"
-#include "m2c_macros.h"
 #include "libc.h"
 
 /* the selection byte of level 0-2 */

@@ -19,7 +19,6 @@
 #include "window.h"
 #include "syssettings.h"
 #include "pad.h"
-#include "m2c_macros.h"
 #include "select.h"
 #include "syssave.h"
 #include "render_state.h"
@@ -1446,7 +1445,9 @@ void NetOption_Update(TaskSlot *task, s32 unused)
 /* gSelectFmtString, a format that prints one string, sits here in the game's
  * .rodata, before NetOption_Input's jump table, though only
  * NetOption_DrawConfirm uses it. */
-INCLUDE_RODATA("asm/select/nonmatchings/select_option", gSelectFmtString);
+const char gSelectFmtString[3] = {
+#include "select/006CDFB8.inc"
+};
 
 /*
  * The network options' input: two settings that wrap, two rows that open
@@ -1707,7 +1708,6 @@ void NetOption_DrawNetMenuPage(void)
 }
 
 extern char *gNetOptConfirmTexts[];      /* the network options' notice (select_psp.c) */
-extern char gSelectFmtString[];
 void Menu_DrawGlowBar(s16 x, s16 y, s16 w, s16 h, u32 color);
 struct Window;
 void Window_DrawTextAlpha(struct Window *w, u8 *text, u8 alpha);

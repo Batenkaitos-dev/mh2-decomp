@@ -66,7 +66,6 @@ extern u8 gMenuWork[];
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
-extern char gKitchenTextFmt[];
 
 void NpcScene_Start(s8 kind, s32 seatMask, s32 level);
 extern u8 gMenuInputLock;
@@ -529,7 +528,9 @@ void Kitchen_Update(void)
     }
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/kitchen", gKitchenTextFmt);
+const char gKitchenTextFmt[3] = {
+#include "lobby/008260B0.inc"
+};
 
 /* 1 when the item is an ingredient (in one of gKitchenIngredients'
  * groups), else 0. The Poogie's menu filters the pouch with it too. */

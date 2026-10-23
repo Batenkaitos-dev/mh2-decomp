@@ -145,7 +145,6 @@ D_008BCC58 = gEmRateStatus + 0x488;
 D_008BCC68 = gEmRateStatus + 0x498;
 D_008BCC78 = gEmRateStatus + 0x4A8;
 D_008BCC88 = gEmRateStatus + 0x4B8;
-/* Round 20 (ndata): names the code uses inside named objects */
+/* Names the code uses inside named objects */
 gAmmoRapidShots = gAmmoLevels + 0x2;
 gRapidFireAmmo = gWeaponClassAttack + 0x20;
-/* Round 31 (names) compat: old spellings in the units worker's files, until the merge re-applies the renames there */

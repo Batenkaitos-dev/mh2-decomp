@@ -10,7 +10,6 @@
  * id is never added. The question and its answers are LOBBY_TEXT_FRIEND_*
  * and LOBBY_TEXT_BLOCK_* messages over the lobby menu (gLobbyMenu). */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
 #include "lobby_state.h"

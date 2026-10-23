@@ -17,7 +17,6 @@
 #include "pad.h"
 #include "hud.h"
 #include "game_menu.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "player.h"
 #include "lobby_globals.h"

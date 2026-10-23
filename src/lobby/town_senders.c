@@ -25,7 +25,6 @@
  */
 #include "common.h"
 #include "lobby_state.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "lobby_net.h"
 #include "lobby_menu.h"
@@ -53,10 +52,10 @@
 
 extern s16 gMenuOffsetY;
 extern s16 gMenuOffsetX;
-extern M2C_UNK gClockWobble;
-extern M2C_UNK gTownMode;
-extern M2C_UNK *gLobbyMenu;
-extern M2C_UNK gLobbyMenuData;
+extern s16 gClockWobble;
+extern s32 gTownMode;
+extern LobbyMenu *gLobbyMenu;
+extern LobbyMenu gLobbyMenuData;
 
 void *memcpy(void *dst, const void *src, u32 n);
 extern u16 gTownMoveFrames;

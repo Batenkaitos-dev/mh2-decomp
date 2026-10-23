@@ -72,7 +72,7 @@ size 0xD4
 0x075 u8 mvFramesA // frames of the first motion-value phase, counted down while the window is open (255: held); ObjAttach_DamageEm picks motion-value kind 0 at 255, 1 while it runs
 0x076 u8 mvFramesB // frames of the second phase, counted down once mvFramesA is 0; ObjAttach_DamageEm picks kind 2 while it runs (3 on a shape of zone 1)
 0x074 u8 stun // the stun amount: the target status5Hit (ObjAttach_DamageEm), stun (ObjAttach_DamagePlayer)
-# Round 31 session 31 (types): the hit fields (sub_main hit_detection.c)
+# the hit fields (sub_main hit_detection.c)
 0x066 s8 hitYawOfs // degrees added to the object's yaw for the target's hitAngle, unless attrs 0x10 (ObjAttach_SetHitHeading)
 0x068 u8 hitForce // copied to the target's hitForce (ObjAttach_DamagePlayer, ObjAttach_DamageEm)
 0x069 u8 hitMarks // mark bits ORed into the target's partFlags: 1 a critical hit (with flag 0x40), 2, 8; on a player 4 fire, 0x10 water, 0x40 thunder, 0x20 ice, 0x80 dragon pick the resistance (ObjAttach_DamagePlayer)

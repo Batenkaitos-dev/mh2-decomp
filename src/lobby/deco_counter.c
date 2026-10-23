@@ -16,7 +16,6 @@
 #include "common.h"
 #include "lobby_state.h"
 #include "lobby_text.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
 #include "scene.h"
@@ -1510,9 +1509,10 @@ void Deco_DrawRemoveEquip(DecoWork *counter, s32 x, s16 y)
 
 u8 Equip_GetRarity(u8 type, u16 id);
 void Item_DrawRarity(s16 x, s16 y, u8 rarity);
-INCLUDE_RODATA("asm/lobby/nonmatchings/deco_counter", gDecoTextFmt);
+const char gDecoTextFmt[3] = {
+#include "lobby/0082E980.inc"
+};
 
-extern char gDecoTextFmt[];
 /*
  * Draws the removal panel: the piece's icon, rarity and name, its three
  * decoration slots with each removal fee (dimmed when it can't be paid),

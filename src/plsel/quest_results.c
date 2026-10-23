@@ -26,7 +26,6 @@ extern s16 gHelpLine;
 #include "syssettings.h"
 extern u16 gFrameTick; /* sub_main: the frame counter */
 #include "pad.h"
-#include "m2c_macros.h"
 #include "plsel.h"
 #include "player.h"
 #include "scene.h"
@@ -86,14 +85,11 @@ struct TexRect;
 extern NextQuest gNextQuest;
 
 void Text_PrintfColored(const char *fmt, ...);
-extern char gPlselArrowUp[];
-extern char gPlselArrowDown[];
 
 /* unit's own declaration: declared here returning u16; with the definition's u8 Plsel_ItemBoxMenu compiles differently */
 u16 Pouch_Add(Player *, u16, s16);
 extern Player gPlayers[];
 
-extern const char gPlselStrFmt[];
 
 void Text_Draw(char *);
 
@@ -106,7 +102,6 @@ extern PlselKind gRecordCountEntries[];
 
 s32 Str_Length(char *);
 
-extern char gPlselPageFmt[];
 
 /* The file's .bss, declared from the highest address down: the compiler
  * places them last-declared first. */
@@ -1846,7 +1841,9 @@ void Plsel_DrawItemBox(s16 sel, u8 dim, s8 flag)
 /* "%s" comes here in the game's .rodata, before Plsel_CategoryIsShared's jump table,
  * although its first user is Plsel_BuildRewardLines: probably first used by a function
  * the linker dead-stripped. */
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselStrFmt);
+const char gPlselStrFmt[3] = {
+#include "plsel/00D7BB38.inc"
+};
 
 /* Whether reward category i is shared among the players (divided by
  * gScene.playerCount). */
@@ -2051,11 +2048,11 @@ void PlselRes_BeginClose(void)
     w->closeTimer = 30;
 }
 
-extern char gPlselPadSpace[];
-extern char gPlselValueSep[];
-extern char gPlselNameCountFmt[];
-extern char gPlselPointsFmt[];
-extern char gPlselPercentMark[];
+extern const char gPlselPadSpace[];
+extern const char gPlselValueSep[];
+extern const char gPlselNameCountFmt[];
+extern const char gPlselPointsFmt[];
+extern const char gPlselPercentMark[];
 
 #define LINE(l) ((char *)&(l)->ent[(l)->lineCount])
 
@@ -2358,15 +2355,25 @@ void Plsel_BuildRewardLines(PlselList *list)
     }
 }
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselPadSpace);
+const char gPlselPadSpace[2] = {
+#include "plsel/00D7BB88.inc"
+};
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselValueSep);
+const char gPlselValueSep[3] = {
+#include "plsel/00D7BB90.inc"
+};
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselNameCountFmt);
+const char gPlselNameCountFmt[7] = {
+#include "plsel/00D7BB98.inc"
+};
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselPointsFmt);
+const char gPlselPointsFmt[7] = {
+#include "plsel/00D7BBA0.inc"
+};
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselPercentMark);
+const char gPlselPercentMark[3] = {
+#include "plsel/00D7BBA8.inc"
+};
 
 /*
  * One frame of the drill's rewards list (PLRES_REWARD_LIST; task is gScene):
@@ -2522,9 +2529,13 @@ s32 Plsel_RewardListTask(SceneState *task)
     return 0;
 }
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselArrowUp);
+const char gPlselArrowUp[3] = {
+#include "plsel/00D7BBB0.inc"
+};
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselArrowDown);
+const char gPlselArrowDown[3] = {
+#include "plsel/00D7BBB8.inc"
+};
 
 /*
  * Draw hook of the rewards list: the results background and, on the reward
@@ -2562,7 +2573,9 @@ void Plsel_RewardListDraw(void)
     }
 }
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/quest_results", gPlselPageFmt);
+const char gPlselPageFmt[6] = {
+#include "plsel/00D7BBC0.inc"
+};
 
 
 /* The rewards screen text: the page title, the lines shown, the page's
@@ -2738,7 +2751,7 @@ void Plsel_RewardListDrawText(SceneState *task)
  * linker dead-stripped (tools/mwcc_cc.py compiles it and drops its code). Its
  * body is unknown: what shows is that the file compiled a two-argument runtime
  * call before Plsel_BuildResultText, which changes that function's code
- * (docs/notes/nm/Plsel_BuildResultText.md). The "%s" before
+ * (docs/notes/hard-matches/Plsel_BuildResultText.md). The "%s" before
  * Plsel_CategoryIsShared's jump table, first used only later, is another
  * sign of a stripped function here. */
 static f64 Stripped_Sub(f64 lhs, f64 rhs)

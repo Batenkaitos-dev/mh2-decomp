@@ -11,7 +11,6 @@
  */
 #include "common.h"
 #include "lobby_state.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "em.h"

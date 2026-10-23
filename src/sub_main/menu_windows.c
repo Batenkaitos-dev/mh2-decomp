@@ -117,7 +117,7 @@ extern u8 gChatWinHold;
 s32 sprintf(char *buf, const char *fmt, ...);
 extern u8 gChatLines;
 extern u16 gFrameTick;
-extern char gWindowFmtString[];
+extern const char gWindowFmtString[];
 /* end of prototypes */
 
 /* A frame style of gFrameStyles (styles 0-3): tiled edges and corners from the icon texture (TEX_SLOT_ICONS). */
@@ -12566,8 +12566,12 @@ void Chat_PlayAct(s32 text)
     }
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/menu_windows", gStatusFmtInt);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/menu_windows", gWindowFmtString);
+const char gStatusFmtInt[3] = {
+#include "sub_main/004908A0.inc"
+};
+const char gWindowFmtString[3] = {
+#include "sub_main/004908A8.inc"
+};
 
 /* Blanks the "<actNN>" tags of a chat message (Chat_ParseActTag) and closes the gaps; returns the first tag's number, 0 if none. */
 s32 Chat_StripActTags(s8 *src)
@@ -13628,7 +13632,6 @@ s16 StatusPage_DrawSymbolColor(s16 x, s16 y)
 }
 
 extern char *gHunterRankLabels;
-extern char gStatusFmtInt[];
 
 /* The hunter rank lines of the status page, once the hunter has a rank: the rank, then the
  * rank points and the points to the next rank (the points alone at rank 999); returns the
@@ -13698,11 +13701,13 @@ s16 StatusPage_DrawOnline(s16 x, s16 y)
     return y;
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/menu_windows", gStatusFmtInt4);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/menu_windows", gStatusFmtInt3);
+const char gStatusFmtInt4[4] = {
+#include "sub_main/00490900.inc"
+};
+const char gStatusFmtInt3[4] = {
+#include "sub_main/00490908.inc"
+};
 
-extern char gStatusFmtInt4[];
-extern char gStatusFmtInt3[];
 
 
 /* The stats block of the status page: the labels, then pl's health, stamina / 3, attack,

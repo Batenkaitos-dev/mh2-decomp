@@ -24,7 +24,6 @@
 #include "game_menu.h"
 #include "syssettings.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "player.h"

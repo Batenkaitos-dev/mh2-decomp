@@ -1330,7 +1330,9 @@ s32 DojoMenu_PostOnline(u16 pad)
     return MENU_RUNNING;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/dojo_menu", gDojoTextFmt);
+const char gDojoTextFmt[3] = {
+#include "lobby/0082C798.inc"
+};
 
 extern LobbyRecs gLobbyRecs;
 
@@ -1681,7 +1683,6 @@ void DojoMenu_DrawDrillsMenu(s16 x, s16 y, s8 byNext)
 }
 
 u16 Map_Group(u16 id);
-extern char gDojoTextFmt[];
 
 /* Draws the third page of a drill's sheet: its title, client, map, the best
  * score and the best time (a dash until the drill is cleared), its details,

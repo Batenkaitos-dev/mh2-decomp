@@ -28,7 +28,6 @@
 #include "save.h"
 #include "pad.h"
 #include "lobby_vobj.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "quest.h"
 #include "lobby_menu.h"
@@ -944,11 +943,18 @@ void ArenaCup_DrawForm(s16 x, s16 y)
     }
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/arena_cup", gArenaStrFmt);
-INCLUDE_RODATA("asm/lobby/nonmatchings/arena_cup", gArenaPassArrowsText);
-INCLUDE_RODATA("asm/lobby/nonmatchings/arena_cup", gArenaIntFmt);
+#pragma rodata on
+char gArenaStrFmt[3] = {
+#include "lobby/00838C60.inc"
+};
+char gArenaPassArrowsText[16] = {
+#include "lobby/00838C70.inc"
+};
+char gArenaIntFmt[3] = {
+#include "lobby/00838C80.inc"
+};
+#pragma rodata off
 
-extern char gArenaIntFmt[];
 extern char gMyName[];
 s32 sprintf(char *buf, char *fmt, ...);
 

@@ -21,7 +21,6 @@
 #include "syssettings.h"
 #include "net_mode.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "item.h"
 #include "scene.h"

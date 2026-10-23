@@ -23,7 +23,6 @@
 #include "save.h"
 #include "sprite.h"
 #include "player.h"
-#include "m2c_macros.h"
 #include "lobby_vobj.h"
 #include "lobby_globals.h"
 #include "pad.h"

@@ -6,7 +6,7 @@ original, never its bytes.
 
 Some of the game's initialized data must never enter the repository, not
 even as C: compressed or encrypted data, embedded images or sounds, and data
-a proprietary library uses (round 14: the DNAS authentication data). A C
+a proprietary library uses (the DNAS authentication data, for one). A C
 file that owns its .data still holds such an object in its place with a line
 
     INCLUDE_DATA("build/blobs/MODULE", NAME);
@@ -16,8 +16,7 @@ this script writes build/blobs/MODULE/NAME.s (git-ignored, like all of
 build/), whose `.incbin` takes the object's bytes from the split target of
 the module (build/orig/MODULE.bin, extracted from the user's own copy of the
 game) when the file is assembled; tools/mwcc_cc.py splices it into the C
-object's .data where the INCLUDE_DATA line is (as INCLUDE_RODATA does for
-.rodata). NAME needs a line in the module's symbol file with its size:
+object's .data where the INCLUDE_DATA line is. NAME needs a line in the module's symbol file with its size:
 
     D_004054E0 = 0x4054E0; // size:0xAB60
 

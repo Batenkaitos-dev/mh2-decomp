@@ -39,7 +39,6 @@
 #include "player.h"
 #include "save.h"
 #include "quest.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "scene.h"

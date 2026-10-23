@@ -1129,13 +1129,13 @@ SaveMenu_CopyCharacterSlot = 0x003D6F00; // type:func
 SaveMenu_ClearCharacter = 0x003D6EC0; // type:func
 NetMenu_StartCardRead = 0x003D7EA0; // type:func
 
-// Read-only data kept out of the C files' .rodata, each piece spliced with
-// INCLUDE_RODATA in its file's order
+// Read-only data the C files define by name (char arrays), each where its
+// file's order puts it
 // force_not_migration:True
-gStatusFmtInt = 0x004908A0; // size:0x8 a format for one number (the status page)
-gWindowFmtString = 0x004908A8; // size:0x8 a format for one string (the windows draw their lines with it)
-gStatusFmtInt4 = 0x00490900; // size:0x8 a format for one number 4 wide (the status page stats)
-gStatusFmtInt3 = 0x00490908; // size:0x8 a format for one number 3 wide (the status page resistances)
+gStatusFmtInt = 0x004908A0; // size:0x3 a format for one number (the status page)
+gWindowFmtString = 0x004908A8; // size:0x3 a format for one string (the windows draw their lines with it)
+gStatusFmtInt4 = 0x00490900; // size:0x4 a format for one number 4 wide (the status page stats)
+gStatusFmtInt3 = 0x00490908; // size:0x4 a format for one number 3 wide (the status page resistances)
 
 // Menu and HUD drawing, Shift-JIS and string helpers, the matrix slots
 Player_GetEquipBySlot = 0x00346590; // type:func
@@ -1837,7 +1837,7 @@ gAccountId = 0x005CAEE1;
 // NETWORK: the lobby's server socket
 gNetSock = 0x0059D650;
 // NETWORK: the socket code's own read-only data, which its C functions name
-// (spliced with INCLUDE_RODATA)
+// (char arrays the C files define)
 D_0046A560 = 0x0046A560; // force_not_migration:True
 D_0046A580 = 0x0046A580; // force_not_migration:True
 D_0046A5A0 = 0x0046A5A0; // force_not_migration:True
@@ -5482,9 +5482,9 @@ Loading_CaptionStub = 0x003D54B0; // type:func empty, Loading_SetMessage calls i
 TownReload_CheckStub = 0x003D54C0; // type:func returns 0, the lobby reloading the local player tests it
 TownReload_MarkStub = 0x003D54D0; // type:func empty, the lobby reloading the local player calls it
 NetMenu_GameSaveStub = 0x003D5B70; // type:func empty, NetMenu_Open calls it for the in-game save modes
-gPatchMagic = 0x004B0240; // size:0xC the magic at the start of the patch records
+gPatchMagic = 0x004B0240; // size:0x9 the magic at the start of the patch records
 gCardSlotFmtName = 0x004B0298; // size:0x8 the card slot windows format for the slot number and name
-gCardSlotFmtTime = 0x004B02A0; // size:0x18 the card slot windows format for the play time and sex
+gCardSlotFmtTime = 0x004B02A0; // size:0x16 the card slot windows format for the play time and sex
 gCardSlotFmtMoney = 0x004B02B8; // size:0xC the card slot windows format for the money
 gCardSlotPosMid = 0x00468848; // size:0x8 the middle slot position when the last slot is selected
 gSinVu0Coefs = 0x00402550; // size:0x10
@@ -8184,15 +8184,15 @@ gHudFadeSetsC_0_10 = 0x00431D70; // size:0x20 entry 10 of gHudFadeSetsC_0
 gHudFadeSetsC_1_10 = 0x00431D90; // size:0x20 entry 10 of gHudFadeSetsC_1
 gHudFadeSetsC_2_6 = 0x00431DB0; // size:0x20 entry 6 of gHudFadeSetsC_2
 gHudFadeSetsC_3_6 = 0x00431DD0; // size:0x20 entry 6 of gHudFadeSetsC_3
-gHudFmtInt = 0x0046CFD0; // size:0x8
-gHudFmtInt2 = 0x0046CFF0; // size:0x8
-gHudFmtFraction = 0x0046CFF8; // size:0x8
-gSideNameNone = 0x0046D0B0; // size:0x8
-gSideNameA = 0x0046D0B8; // size:0x8
-gSideNameB = 0x0046D0C0; // size:0x8
-gHudFmtSideName = 0x0046D0C8; // size:0x8
+gHudFmtInt = 0x0046CFD0; // size:0x3
+gHudFmtInt2 = 0x0046CFF0; // size:0x4
+gHudFmtFraction = 0x0046CFF8; // size:0x6
+gSideNameNone = 0x0046D0B0; // size:0x1
+gSideNameA = 0x0046D0B8; // size:0x6
+gSideNameB = 0x0046D0C0; // size:0x6
+gHudFmtSideName = 0x0046D0C8; // size:0x5
 gHudFmtCount = 0x0046D0D0; // size:0x8
-gHudFmtString = 0x0046D0D8; // size:0x8
+gHudFmtString = 0x0046D0D8; // size:0x3
 gHelpTexts_1_8 = 0x0046D110; // size:0x8 entry 8 of gHelpTexts_1
 gHelpTexts_1_216 = 0x0046FFC0; // size:0x40 entry 216 of gHelpTexts_1
 gHelpTexts_1_219 = 0x004700C0; // size:0x40 entry 219 of gHelpTexts_1
@@ -9074,9 +9074,9 @@ gCardLocked = 0x006AF050; // size:0x4 the memory card lock (Card_Lock, Card_Unlo
 gCardDirEntry = 0x006AF0C0; // size:0x40 the sceMcGetDir entry read for a card file or directory, its name at 0x20 (Card_GetDirEntry, Card_DeleteDir)
 gCardDeletePath = 0x006AF060; // size:0x60 the path of the file or directory Card_DeleteDir deletes
 gCardFileAttr = 0x00468B40; // size:0x40 the directory entry Card_SetFileInfo reads and writes back with the no-copy attribute
-gCardDirListFmt = 0x004B06A0; // size:0x8 the path format of a directory's entries (Card_DeleteDir, CardTask_StartList)
-gCardPathFmt = 0x004B06A8; // size:0x8 the path format of a file in a directory (CardTask_StartRead, CardTask_SelectFile)
-gCardNameFmt = 0x004B06B0; // size:0x8 the path format of a directory alone (Card_DeleteDir, CardTask_SaveStep)
+gCardDirListFmt = 0x004B06A0; // size:0x5 the path format of a directory's entries (Card_DeleteDir, CardTask_StartList)
+gCardPathFmt = 0x004B06A8; // size:0x6 the path format of a file in a directory (CardTask_StartRead, CardTask_SelectFile)
+gCardNameFmt = 0x004B06B0; // size:0x3 the path format of a directory alone (Card_DeleteDir, CardTask_SaveStep)
 gCardSaveTitle1 = 0x004B0570; // size:0x18 the save's title, first line (CardOp.title1 of CARD_OP_SAVE)
 gCardSaveTitle2 = 0x004B0588; // size:0xD the save's title, second line
 gCardIconSysName = 0x004B0598; // size:0xC the name of the icon.sys file of both saves

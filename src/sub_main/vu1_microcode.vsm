@@ -1,7 +1,7 @@
 ; VU1 microcode, sub_main 0x3E7F80-0x4021C0 (107,072 bytes): the 60 VU1 programs
 ; of Capcom's model renderer, as 60 DMA packets.
 ;
-; Capcom's own code (the owner's decision, 2026-10-12): the only VU code
+; Capcom's own code: the only VU code
 ; on the disc, in Capcom's overlay, used only by Capcom's descriptors and setups.
 ;
 ; Built by tools/vu1as.py, our own assembler (no Sony toolchain), into GNU as

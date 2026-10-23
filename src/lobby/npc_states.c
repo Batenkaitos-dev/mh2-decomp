@@ -36,7 +36,6 @@
 #include "lobby_npc.h"
 #include "npc_motion.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "player.h"

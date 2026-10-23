@@ -20,7 +20,6 @@
 #include "player.h"
 #include "save.h"
 #include "pad.h"
-#include "m2c_macros.h"
 
 char *strcpy(char *, const char *);
 s32 memcmp(void *a, void *b, u32 n);  /* memcmp */

@@ -317,7 +317,7 @@ size 0x970
 0x636 u16 tradeGiveItem // the trader kind 0x0A: the item the player hands over (Pouch_Add with tradeGiveCount; cleared from gQuest.unk158 when it matches)
 0x58A u8 rideBone // the bone of the monster rideEm the player stands on (Em_CarryRiders: Em_PosInFrame with it)
 0x86E u8 questStatus // the lobby: low bits the quest category (QuestFlags_GetCategory), QUEST_STATUS_PAID accepted and paid, QUEST_STATUS_TAKEN accepted (QuestDesk_Accept), QUEST_STATUS_SET_OUT set out (Town_UpdateMode); cleared by QuestDesk_Drop; on the hunter card (HunterCard_Build)
-# Round 31 session 31 (types): the hit fields (sub_main hit_detection.c)
+# the hit fields (sub_main hit_detection.c)
 0x414 u8 hitPhase // the player's hit window: 0 off, 1 waiting hitDelay frames, 2 open for hitFrames (Player_UpdateHitTimers; as ObjAttach.hitPhase)
 0x424 f32 hitPos[3] // where the last hit taken landed (ObjAttach_DamagePlayer)
 0x4BC struct ObjAttach * hitAttach // the attack object of the last hit taken (ObjAttach_DamagePlayer; as Em.hitAttach)

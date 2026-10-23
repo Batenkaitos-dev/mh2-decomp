@@ -108,22 +108,22 @@ segments:
       - [0x7A010, c, dma_queue]  # 0x179D90: the DMA queue and its handlers, image downloads from GS memory
       - [0x7B430, c, texture]  # 0x17B1B0: texture and palette handles (flCreatePaletteHandle)
       - [0x7D6D0, c, texconv]  # 0x17D450: texture sizes and conversion (flPS2ConvertTextureFromContext), swizzle tables
-      - [0x7EB60, c, vram_slots]  # automatch: 2 of 12
+      - [0x7EB60, c, vram_slots]
       - [0x7F570, c, screen_tex]
       - [0x800A0, c, mem_util]     # 0x17FE20: byte fill/copy, heap wrappers
       - [0x80330, c, packet_tim2]
       - [0x808c0, c, display]  # 0x180640: display and GS setup at boot (InitDisplay), the VBlank handler
       - [0x80CD0, c, gs_setup]
-      - [0x82290, c, packet_mode]  # automatch: 3 of 3
+      - [0x82290, c, packet_mode]
       - [0x822C0, c, iop]  # 0x182040: IOP reboot and module loading
       - [0x826D0, asm, mem_loops]  # 0x182450: Capcom's hand-written copy, clear and fill loops (Mem_*), built from src/main/mem_loops.s
       - [0x828C0, c, main_heap]
       - [0x82950, c, heap]
       - [0x83860, c, image_pixels]
-      - [0x83fa0, c, render_state]  # automatch: 3 of 6
+      - [0x83fa0, c, render_state]
       - [0x856E0, c, gs_regs]
       - [0x86760, c, gs_tex_regs]
-      - [0x86f90, c, display_util]  # automatch: 2 of 3
+      - [0x86f90, c, display_util]
       - [0x870A0, c, prim]
       - [0x89FC0, c, power_off]
       - [0x8a210, c, cri_setup]
@@ -131,7 +131,7 @@ segments:
       - [0x8B260, c, pad_port]
       - [0x8C560, c, tim2_file]
       - [0x8ce90, c, main]  # 0x18CC10: main, the file systems, file loading by id, LoadOverlay
-      - [0x8d620, c, save_helpers]  # automatch: 8 of 23
+      - [0x8d620, c, save_helpers]
       - [0x8EE20, c, sound]          # 0x18EBA0: the game's sound manager (bank slots, SE requests)
       - [0x8FE20, c, cse_spumap]     # 0x18FBA0: CSE SPU memory map (SPUMAPDT)
       - [0x90170, c, cse_rpc]        # 0x18FEF0: CSE SIF RPC client (COMM, STAT, THMN)
@@ -141,11 +141,11 @@ segments:
       - [0x922A0, c, ml_rpc_queue]   # 0x192020: mlRpcQueue (request queue)
       - [0x92710, c, cse_cmd]        # 0x192490: CSE requests (COMM commands)
       - [0x93160, c, adx_init]
-      - [0x93360, c, file_queue]  # automatch: 2 of 12
+      - [0x93360, c, file_queue]
       - [0x93A20, c, stream_play]
       - [0x94300, c, afs_files]
       - [0x94AB0, c, sound_effects]
-      - [0x954b0, c, sound_banks]  # automatch: 3 of 8
+      - [0x954b0, c, sound_banks]
       - [0x95E80, data, data]            # .data (0x195C00)
       - [0xBA390, .data, dma_queue]
       - [0xBA3D0, .data, texconv]

@@ -15,7 +15,6 @@ extern u8 gHelpShow;
 extern u8 gHelpPage;
 extern s8 gHelpColumn;
 #include "scene.h"
-#include "m2c_macros.h"
 #include "plsel.h"
 #include "player.h"
 #include "save.h"

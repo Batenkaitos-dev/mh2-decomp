@@ -19,7 +19,6 @@
 #include "stageobj.h"
 #include "lobby_state.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_vobj.h"
 #include "player.h"
 #include "save.h"
@@ -65,7 +64,6 @@ s32 SavePouch_Count(u16 item);
 
 extern LobbyMenu *gLobbyMenu;
 void Text_Printf(char *s, ...);
-extern char gItemNeedFmt[];
 extern char *D_0080C044;
 extern char *gItemNames[];
 void Text_PrintfColored(char *s, ...);
@@ -734,7 +732,11 @@ void OfferMenu_Deliver(void)
 
 /* The need lines' format: the name, a separator, the pouch and box counts,
  * the count needed and a mark. */
-INCLUDE_RODATA("asm/lobby/nonmatchings/offer_menu", gItemNeedFmt);
+#pragma rodata on
+char gItemNeedFmt[22] = {
+#include "lobby/00826000.inc"
+};
+#pragma rodata off
 
 /* 1 when the pouch and the item box hold count of item together (always for
  * item 0), else 0. */

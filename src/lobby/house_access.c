@@ -9,7 +9,6 @@
  * it (enum HouseVisitStep), HouseAccess_Draw draws the list.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "scene.h"

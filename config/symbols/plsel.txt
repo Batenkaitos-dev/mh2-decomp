@@ -60,15 +60,15 @@ Plsel_DrawItemBoxMenu = 0x00D69F10; // type:func
 PlselRes_EmptyCloseHook = 0x00D72F10; // type:func empty, PlselRes_BeginClose calls it first
 
 // .rodata of the results screen: the strings it formats with.
-gPlselStrFmt = 0x00D7BB38; // size:0x8 the plain string format
-gPlselPadSpace = 0x00D7BB88; // size:0x8 a full-width space that pads a name to its column
-gPlselValueSep = 0x00D7BB90; // size:0x8 the full-width separator between a name and its value
-gPlselNameCountFmt = 0x00D7BB98; // size:0x8 the format of a name and a count
-gPlselPointsFmt = 0x00D7BBA0; // size:0x8 the format of a value in points
-gPlselPercentMark = 0x00D7BBA8; // size:0x8 the full-width percent sign
-gPlselArrowUp = 0x00D7BBB0; // size:0x8 the up arrow drawn over a list that scrolls
-gPlselArrowDown = 0x00D7BBB8; // size:0x8 the down arrow drawn under it
-gPlselPageFmt = 0x00D7BBC0; // size:0x8 the format of the page number and count
+gPlselStrFmt = 0x00D7BB38; // size:0x3 the plain string format
+gPlselPadSpace = 0x00D7BB88; // size:0x2 a full-width space that pads a name to its column
+gPlselValueSep = 0x00D7BB90; // size:0x3 the full-width separator between a name and its value
+gPlselNameCountFmt = 0x00D7BB98; // size:0x7 the format of a name and a count
+gPlselPointsFmt = 0x00D7BBA0; // size:0x7 the format of a value in points
+gPlselPercentMark = 0x00D7BBA8; // size:0x3 the full-width percent sign
+gPlselArrowUp = 0x00D7BBB0; // size:0x3 the up arrow drawn over a list that scrolls
+gPlselArrowDown = 0x00D7BBB8; // size:0x3 the down arrow drawn under it
+gPlselPageFmt = 0x00D7BBC0; // size:0x6 the format of the page number and count
 // Functions: the results' rewards, awards, pages and texts, the ending's
 // objects and the gallery's scene tasks.
 Plsel_SumQuestRewards = 0x00D6F8D0; // type:func
@@ -317,8 +317,8 @@ gPlselResPanels_7 = 0x00D78BF0; // size:0x20 entry 7 of gPlselResPanels
 // The size records after a quest, the training payout, and two text formats.
 Plsel_UpdateSizeRecords = 0x00D676E0; // type:func the largest and smallest monster records after a quest, keeping the old ones for the results
 Plsel_DrillPayout = 0x00D6ABF0; // type:func the payout of a training quest, -1 for other quests (Quest_RollRewards)
-gPlselFmtConcat = 0x00D79598; // size:0x8 the text format that prints two strings one after the other
-gPlselFmtString = 0x00D795A8; // size:0x8 the text format that prints one string
+gPlselFmtConcat = 0x00D79598; // size:0x5 the text format that prints two strings one after the other
+gPlselFmtString = 0x00D795A8; // size:0x3 the text format that prints one string
 
 // gm_sub's functions that plsel calls (gm_sub isn't linked with it).
 QSync_SendState = 0x00901790; // type:func gm_sub, sends game message 10 (the quest setup, the preset picks)

@@ -11,7 +11,6 @@
 #include "em.h"
 #include "lobby_net.h"
 #include "lobby_cmd.h"
-#include "m2c_macros.h"
 
 extern char gNoPassword[];
 

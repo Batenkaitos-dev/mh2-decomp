@@ -340,8 +340,10 @@ void OfficialDesk_Update(void)
 }
 
 /* The plain-string format follows OfficialDesk_Update's jump table in
- * .rodata, so it is included after that function. */
-INCLUDE_RODATA("asm/lobby/nonmatchings/official_desk", gOfficialDeskTextFmt);
+ * .rodata, so it is defined after that function. */
+const char gOfficialDeskTextFmt[3] = {
+#include "lobby/00826148.inc"
+};
 
 extern s8 gRoomPassOn;
 extern s8 gRoomPassword[9];
@@ -674,7 +676,6 @@ void OfficialDesk_DrawRows(s16 x, s16 y)
     }
 }
 
-extern char gOfficialDeskTextFmt[];
 
 /* Page QUEST_SHEET_OVERVIEW of a must-order quest's sheet
  * (QUEST_FLAG_MUST_ORDER): the name, texts 1-3, the stars, the order

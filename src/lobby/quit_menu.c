@@ -5,7 +5,6 @@
  * QuitMenu_Update runs it a frame at a time; its state is gQuitMenu.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "lobby_state.h"
 #include "lobby_menu.h"

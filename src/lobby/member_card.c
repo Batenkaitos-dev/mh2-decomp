@@ -20,7 +20,6 @@
 #include "window.h"
 #include "chat_log.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "player.h"

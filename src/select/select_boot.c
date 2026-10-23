@@ -19,7 +19,6 @@
 #include "card.h"
 #include "padio.h"
 #include "pad.h"
-#include "m2c_macros.h"
 #include "select.h"
 #include "syssettings.h"
 #include "movie.h"

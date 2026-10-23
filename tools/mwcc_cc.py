@@ -1,30 +1,30 @@
 #!/usr/bin/env python3
-"""Compile a C file with MWCC (via wibo), splicing in functions and data that
-are still assembly.
+"""Compile a C file with MWCC (via wibo), splicing in data objects that are
+not C.
 
-A C file may mix decompiled functions with `INCLUDE_ASM("dir", name);` (or
-`#pragma GLOBAL_ASM("path.s")`) lines for functions not yet decompiled, and
-`INCLUDE_RODATA("dir", name);` lines for data objects not yet in C, and
-`INCLUDE_DATA("dir", name);` lines for .data objects that must stay out of the
-repository (their .s file, written at build time by tools/data_blob.py, takes
-the bytes from the user's original). MWCC has no inline way to include
-GNU-syntax assembly, so:
+Every function is compiled from the C: no code is ever spliced in, and a
+spliced file that holds code is an error. Every .rodata object is C too. A C
+file may have `INCLUDE_DATA("dir", name);` lines for .data objects that must
+stay out of the repository (their .s file, written at build time by
+tools/data_blob.py, takes the bytes from the user's original). MWCC has no
+inline way to include GNU-syntax assembly, so:
 
-  1. each INCLUDE_ASM line is replaced by an empty marker function, and each
-     INCLUDE_RODATA line by a marker variable (INCLUDE_DATA: one in .data). MWCC emits every function and
-     every variable, string literal and jump table in its own section, in
-     source order: a function's literals and tables come right before its
-     code;
+  1. each INCLUDE_DATA line is replaced by a marker variable in .data. MWCC
+     emits every function and every variable, string literal and jump table
+     in its own section, in source order: a function's literals and tables
+     come right before its code;
   2. the C file is converted to Shift-JIS (the game's encoding) and compiled;
   3. each included .s file is assembled with its sections renamed after its
-     marker. A function's .s file can hold its jump tables and strings too
-     (`.section .rodata`, which splat writes there when the C file owns its
-     .rodata: the file has a `.rodata` subsegment in the YAML);
+     marker;
   4. `ld -r` puts everything back together in source order: the functions
      into one .text section, and each data section of the C object in turn,
-     with the assembled data of a marker taking the marker's place. A marker
-     function's data goes where the function's own would have been, right
-     before its code.
+     with the assembled data of a marker taking the marker's place.
+
+What the wrapper changes in MWCC's output, none of it a code byte: the
+marker variables and the `#pragma rodata` markers go; static functions are
+made global (their symbols only); every data object stays a section of its
+own, with its alignment raised to at least 8; `#pragma rodata on/off` moves
+the variables between them to .rodata; and `Stripped_` functions are dropped.
 
 A function named `Stripped_...` stands in for one the game's linker
 dead-stripped: MWCC compiles it, since what it compiles can change the code
@@ -58,13 +58,9 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
-INCLUDE_ASM = re.compile(r'^\s*INCLUDE_ASM\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)\s*;?\s*$')
-INCLUDE_RODATA = re.compile(r'^\s*INCLUDE_RODATA\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)\s*;?\s*$')
 INCLUDE_DATA = re.compile(r'^\s*INCLUDE_DATA\(\s*"([^"]+)"\s*,\s*(\w+)\s*\)\s*;?\s*$')
-GLOBAL_ASM = re.compile(r'^\s*#\s*pragma\s+GLOBAL_ASM\(\s*"([^"]+)"\s*\)\s*$')
 RODATA_PRAGMA = re.compile(r"^\s*#\s*pragma\s+rodata\s+(on|off)\s*$")
 RO_MARKER = "__mwcc_ro_"
-FUNC_MARKER = "__mwcc_gasm_"
 DATA_MARKER = "__mwcc_gdata_"
 STRIPPED = "Stripped_"   # a stand-in for a function the game's linker stripped: compiled, then dropped
 DATA_KINDS = (".data", ".rodata", ".bss")
@@ -75,12 +71,6 @@ DATA_KINDS = (".data", ".rodata", ".bss")
 # to 8. Larger objects already get 8 or 16 from MWCC, as in the game.
 MIN_DATA_ALIGN = 8
 SECTION = re.compile(r"^\s*\.section\s+([^\s,]+)")
-VRAM_COMMENT = re.compile(r"/\*\s*[0-9A-F]+\s+([0-9A-F]{8})\s")
-# splat writes the VU0 macro instructions' special registers without the `$`
-# in per-function files (`vmulax.xyzw ACC, $vf4, $vf8x`, `vdiv Q, ...`), which
-# gas rejects; its full disassembly has `$ACC`, `$Q`, `$I`.
-VU0_INSN = re.compile(r"^(\s*/\*[^*]*\*/\s+v[a-z0-9]+(?:\.[xyzw]+)?\s+)(.*?)(\s*)$")
-VU0_SPECIAL = re.compile(r"(?<![\w$])(ACC|Q|I|R)(?!\w)")
 DISCARD = "*(.mwcats) *(.rel.mwcats) *(.comment) *(.reginfo) *(.MIPS.abiflags) *(.pdr) *(.gnu.attributes) *(.mdebug*)"
 
 
@@ -146,21 +136,11 @@ class Elf:
         self.path.write_bytes(self.data)
 
 
-def alignment_for(asm_text: str) -> int:
-    """Alignment (log2) of a spliced function, from its original address."""
-    m = VRAM_COMMENT.search(asm_text)
-    if not m:
-        return 4
-    addr = int(m.group(1), 16)
-    for p in (4, 3, 2):
-        if addr % (1 << p) == 0:
-            return p
-    return 2
-
-
 def section_kind(name: str) -> str:
-    """.text, .data, .rodata or .bss for a section name in a spliced file."""
-    for kind in (".text",) + DATA_KINDS:
+    """.data, .rodata or .bss for a section name in a spliced file; code is refused."""
+    if name == ".text" or name.startswith(".text."):
+        sys.exit("mwcc_cc.py: a spliced file holds code (.text): every function must be compiled from C")
+    for kind in DATA_KINDS:
         if name == kind or name.startswith(kind + "."):
             return kind
     if name in (".rdata", ".late_rodata"):
@@ -170,18 +150,12 @@ def section_kind(name: str) -> str:
 
 def splice_source(marker: str, text: str, default_kind: str) -> tuple[str, list[tuple[str, str]]]:
     """Rewrite a spliced .s file so that each of its sections is named after
-    the marker: .text.<marker>, and .rodata.<marker>.<n> etc. for its data.
-    Returns the wrapper source and [(kind, section name)] in file order."""
+    the marker: .rodata.<marker>.<n> etc. Returns the wrapper source and
+    [(kind, section name)] in file order."""
     out = ['.include "macro.inc"\n', ".set noat\n", ".set noreorder\n"]
     sections: list[tuple[str, str]] = []
 
     def begin(kind: str) -> None:
-        if kind == ".text":
-            name = f".text.{marker}"
-            if (kind, name) not in sections:
-                sections.append((kind, name))
-            out.append(f'.section {name}, "ax"\n.align {alignment_for(text)}\n')
-            return
         name = f"{kind}.{marker}.{len(sections)}"
         sections.append((kind, name))
         flags = '"a"' if kind == ".rodata" else '"wa", @nobits' if kind == ".bss" else '"wa"'
@@ -194,9 +168,8 @@ def splice_source(marker: str, text: str, default_kind: str) -> tuple[str, list[
             begin(section_kind(m.group(1)))
             out.append("\n")        # keeps the line count close for error messages
             continue
-        m = VU0_INSN.match(line)
-        if m:
-            line = m.group(1) + VU0_SPECIAL.sub(r"$\1", m.group(2)) + m.group(3)
+        if re.match(r"\s*(?:/\*[^*]*\*/\s*)?glabel\b", line):
+            sys.exit("mwcc_cc.py: a spliced file holds a function label: every function must be compiled from C")
         out.append(line)
     out.append("\n")
     return "".join(out), sections
@@ -213,19 +186,8 @@ def main() -> int:
     lines = src.read_text(encoding="utf-8").splitlines(keepends=True)
     splices: list[tuple[str, Path, str]] = []          # (marker, .s path, default section kind)
     for i, line in enumerate(lines):
-        m = INCLUDE_ASM.match(line) or GLOBAL_ASM.match(line)
-        if m:
-            path = Path(m.group(1)) / f"{m.group(2)}.s" if m.re is INCLUDE_ASM else Path(m.group(1))
-            marker = f"{FUNC_MARKER}{len(splices)}"
-            splices.append((marker, path, ".text"))
-            lines[i] = f"void {marker}(void) {{}}\n"
-            continue
-        m = INCLUDE_RODATA.match(line)
-        if m:
-            marker = f"{DATA_MARKER}{len(splices)}"
-            splices.append((marker, Path(m.group(1)) / f"{m.group(2)}.s", ".rodata"))
-            lines[i] = f"const int {marker} = 1;\n"
-            continue
+        if re.match(r"\s*(?:INCLUDE_ASM\s*\(|#\s*pragma\s+GLOBAL_ASM\b)", line):
+            sys.exit(f"mwcc_cc.py: {src}:{i + 1}: assembly functions can't be spliced in; every function is C")
         m = INCLUDE_DATA.match(line)
         if m:
             # a .data object from the user's original (tools/data_blob.py writes its .s)
@@ -248,10 +210,8 @@ def main() -> int:
         env = dict(os.environ, MWCIncludes=".")
         run([args.wibo, args.mwcc, *shlex.split(args.cflags), "-o", str(cobj), str(csrc)], env=env)
 
-        # `static` functions: MWCC gives their callers in the file code that relies on the
-        # registers the callee leaves alone, which is how the game's static functions show.
-        # Their symbols are local, so the assembly still spliced in (and the data assembly)
-        # could not call them: make them global. The code doesn't change.
+        # `static` functions: their symbols are local, so the spliced data (a table that
+        # names one) could not refer to them: make them global. The code doesn't change.
         local_funcs = [name for name, _v, info, shndx in Elf(cobj).symbols()
                        if (info & 0xF) == 2 and (info >> 4) == 0 and shndx and re.fullmatch(r"[A-Za-z_]\w*", name)
                        and not name.startswith(STRIPPED)]
@@ -308,9 +268,8 @@ def main() -> int:
         if missing:
             sys.exit(f"mwcc_cc.py: MWCC did not emit the markers {missing}")
 
-        # A `static` function that spliced assembly still calls: MWCC has compiled
-        # its C callers knowing which registers it leaves alone (docs/mwcc-matching.md);
-        # the assembly only needs the symbol, so it is made global in the object.
+        # A `static` function that spliced data names: it only needs the symbol, so it
+        # is made global in the object.
         undef = {name for o, _s in spliced.values() for name, _v, _i, shndx in Elf(o).symbols() if name and shndx == 0}
         static = sorted({name for name, _v, info, shndx in syms
                          if (info >> 4) == 0 and (info & 0xF) == 2 and shndx != 0 and name in undef})
@@ -326,17 +285,13 @@ def main() -> int:
         def add_spliced(marker: str) -> None:
             o, sections = spliced[marker]
             for kind, name in sections:
-                if kind == ".text":
-                    text_items.append(f"{o}({name})")
-                else:
-                    data_items.append((kind, f"{o}({name})"))
+                data_items.append((kind, f"{o}({name})"))
 
         for kind, i, key in order:
             if kind == "marker":
                 discard.append(f"{cobj}({renames[i]})")
             elif key in spliced:
-                # A marker: its assembly, data first (a function's literals and
-                # tables precede its code, as MWCC emits them), replaces it.
+                # A marker: its assembled data replaces it.
                 discard.append(f"{cobj}({renames[i]})")
                 add_spliced(key)
             elif kind == ".text":

@@ -14,7 +14,6 @@
  */
 #include "common.h"
 #include "lobby_text.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
 #include "lobby_menu.h"
@@ -39,7 +38,6 @@ extern s8 gMenuInputLock;
 extern s8 gLobbyLevel1Sel;
 extern s16 gVillageBoardCounts[];
 extern VillageBoardArticle *gVillageBoardArticles[];
-extern char gVillageBoardTextFmt[];
 extern u8 gMenuWork;
 void *memset(void *dst, s32 c, u32 n);
 
@@ -707,7 +705,9 @@ void VillageBoard_Update(void)
     }
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/village_board", gVillageBoardTextFmt);
+const char gVillageBoardTextFmt[3] = {
+#include "lobby/00838078.inc"
+};
 
 /* The article's input: cross goes back to the titles (MENU_CANCEL);
  * MENU_RUNNING before. The board isn't read. */

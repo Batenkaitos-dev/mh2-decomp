@@ -18,7 +18,6 @@
 #include "save.h"
 #include "pad.h"
 #include "lobby_vobj.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "nethttp.h"
@@ -245,7 +244,11 @@ void Page_DrawWidget(u8 kind, f32 x, f32 y, f32 w, f32 h, s32 color)
     }
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/browser_draw", gPageEmptyText);
+#pragma explicit_zero_data on
+const char gPageEmptyText[1] = {
+#include "lobby/00838E30.inc"
+};
+#pragma explicit_zero_data reset
 
 /*
  * Draws a page image: the texture in the given slot of the page textures
@@ -401,7 +404,6 @@ void Page_DrawThinFrame(s32 color, f32 x0, f32 y0, f32 x1, f32 y1)
 }
 
 char *strchr(char *s, s32 c);
-extern char gPageEmptyText[];
 
 /*
  * Draws one line of text at (x, y) in the given size and colour, unless

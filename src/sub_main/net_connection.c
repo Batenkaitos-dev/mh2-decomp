@@ -344,9 +344,12 @@ s32 NetPpp_NextLineMode(void)
 
 typedef s32 (*NetMsgFn)(s8 *handler, s8 *step, s8 *discStep, s16 *timer, u16 *cancelHold, u16 *retries, u16 *retries2, s8 *err);
 extern NetMsgFn gNetMsgHandlers[];
-extern char D_0046A860[];
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_connection", D_0046A860);
+#pragma rodata on
+char D_0046A860[33] = {
+#include "sub_main/0046A860.inc"
+};
+#pragma rodata off
 
 /*
  * Logs (Net_DebugLog, compiled out) and runs the connection handler gNetMsgHandlers[*handler]
@@ -381,9 +384,14 @@ s32 NetIf_Up(s32 mode, s32 kind);
     *retries = 0;          \
     *retries2 = 0
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_connection", D_0046A888);
+#pragma rodata on
+#pragma explicit_zero_data on
+char D_0046A888[1] = {
+#include "sub_main/0046A888.inc"
+};
+#pragma explicit_zero_data reset
+#pragma rodata off
 
-extern char D_0046A888[];
 extern s16 gNetPppPhase;
 extern s16 gNetPppError;
 
@@ -951,9 +959,12 @@ s32 Net_Disconnect(s8 *handler, s8 *step, s8 *discStep, s16 *timer, s16 *cancelH
     }
 }
 
-extern char D_0046A8C0[];
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_connection", D_0046A8C0);
+#pragma rodata on
+char D_0046A8C0[26] = {
+#include "sub_main/0046A8C0.inc"
+};
+#pragma rodata off
 
 /* NETWORK: the disconnect steps (state *st, timer *t): closes the socket (gNetSock), stops the
  * device by its type and returns 1 when done. */

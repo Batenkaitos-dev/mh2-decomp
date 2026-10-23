@@ -175,7 +175,7 @@ extern f32 gEquipFxPulls[];
  * give no code. (2) The clamp reads dir[1] and dir[2] through dy and dz,
  * set before the loop: the game numbers its two hoisted addresses before
  * bone and swingRec (s4, s3 over s2, s1), which MWCC's own hoisting
- * doesn't (docs/notes/nm/EquipFx_ChainUpdate.md).
+ * doesn't (docs/notes/hard-matches/EquipFx_ChainUpdate.md).
  */
 s32 EquipFx_ChainUpdate(EquipFxSwing *swingsIn, EmBone *baseBoneIn, EmBone *pushBoneIn, EmBone *bonesIn, f32 **list, s16 countIn)
 {

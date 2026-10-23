@@ -847,8 +847,12 @@ s32 GroupBoard_AreaGroups(u16 pad)
     return MENU_RUNNING;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/group_board", gGroupBoardNumFmt);
-INCLUDE_RODATA("asm/lobby/nonmatchings/group_board", gGroupBoardStrFmt);
+const char gGroupBoardNumFmt[4] = {
+#include "lobby/00838138.inc"
+};
+const char gGroupBoardStrFmt[3] = {
+#include "lobby/00838140.inc"
+};
 
 extern u16 gRecruitFrames;
 s32 LobbyStep_Level1Open(u16 id); /* unit's own declaration: the entry is passed as a u16 here; with the definition's s32, GroupBoard_NewGroup compiles differently */
@@ -1054,8 +1058,6 @@ s32 GroupBoard_ListInput(u16 pad)
     return MENU_RUNNING;
 }
 
-extern char gGroupBoardNumFmt[];
-extern char gGroupBoardStrFmt[];
 void Win_Draw(s16, s16, s16, s16, s32, s32, s32); /* unit's own declaration: s16 coordinates and an s32 kind here; with the definition's s32 coordinates and s16 kind, the list and picker draws compile differently */
 void Font_SetColor(s32 color);
 /*

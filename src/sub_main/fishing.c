@@ -1512,140 +1512,414 @@ void Effect2C_Spawn(s16 frames)
     }
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0798);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07B8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B07F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0820);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0840);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0860);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0868);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0870);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0898);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B08A8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B08C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B08E0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0900);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0920);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0940);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0960);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0988);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B09A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B09C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A40);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0A80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0AA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0AC0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0AE0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B40);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B60);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0B90);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BB0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BD0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0BF0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C10);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C30);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C50);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C70);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0C88);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CB8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CC8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CD8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0CE8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D40);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D60);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0D80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0DA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0DC0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0DE0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E40);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E60);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0E80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0EA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0EC0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0EE0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F58);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F60);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0F80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FC0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FE0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FE8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B0FF0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1000);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1030);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1070);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B10A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B10D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B10F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1110);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1130);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1160);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1190);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B11C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B11F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1220);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1250);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1280);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B12A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B12C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B12F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1320);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1350);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1380);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B13A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B13C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B13F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1410);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1440);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1470);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1490);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B14B0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B14D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B14F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1510);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1530);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1550);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1570);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1590);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B15B0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B15D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B15F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1620);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1650);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1670);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1690);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16A8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16B8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16C8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16D8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B16E0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1730);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1780);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B17A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B17D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1800);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1830);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1848);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1860);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1878);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1888);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/fishing", D_004B1890);
+/* The texts gPlselTexts and gHelpTexts_6 (below) point to; no code loads them. Not const:
+ * those tables are char *. */
+#pragma rodata on
+#pragma explicit_zero_data on
+char D_004B0798[1] = {
+#include "sub_main/004B0798.inc"
+};
+#pragma explicit_zero_data reset
+char D_004B07A0[18] = {
+#include "sub_main/004B07A0.inc"
+};
+char D_004B07B8[11] = {
+#include "sub_main/004B07B8.inc"
+};
+char D_004B07D0[27] = {
+#include "sub_main/004B07D0.inc"
+};
+char D_004B07F0[33] = {
+#include "sub_main/004B07F0.inc"
+};
+char D_004B0820[19] = {
+#include "sub_main/004B0820.inc"
+};
+char D_004B0840[25] = {
+#include "sub_main/004B0840.inc"
+};
+char D_004B0860[6] = {
+#include "sub_main/004B0860.inc"
+};
+char D_004B0868[8] = {
+#include "sub_main/004B0868.inc"
+};
+char D_004B0870[33] = {
+#include "sub_main/004B0870.inc"
+};
+char D_004B0898[14] = {
+#include "sub_main/004B0898.inc"
+};
+char D_004B08A8[12] = {
+#include "sub_main/004B08A8.inc"
+};
+char D_004B08C0[31] = {
+#include "sub_main/004B08C0.inc"
+};
+char D_004B08E0[31] = {
+#include "sub_main/004B08E0.inc"
+};
+char D_004B0900[31] = {
+#include "sub_main/004B0900.inc"
+};
+char D_004B0920[31] = {
+#include "sub_main/004B0920.inc"
+};
+char D_004B0940[31] = {
+#include "sub_main/004B0940.inc"
+};
+char D_004B0960[37] = {
+#include "sub_main/004B0960.inc"
+};
+char D_004B0988[12] = {
+#include "sub_main/004B0988.inc"
+};
+char D_004B09A0[25] = {
+#include "sub_main/004B09A0.inc"
+};
+char D_004B09C0[57] = {
+#include "sub_main/004B09C0.inc"
+};
+char D_004B0A00[31] = {
+#include "sub_main/004B0A00.inc"
+};
+char D_004B0A20[25] = {
+#include "sub_main/004B0A20.inc"
+};
+char D_004B0A40[57] = {
+#include "sub_main/004B0A40.inc"
+};
+char D_004B0A80[31] = {
+#include "sub_main/004B0A80.inc"
+};
+char D_004B0AA0[31] = {
+#include "sub_main/004B0AA0.inc"
+};
+char D_004B0AC0[31] = {
+#include "sub_main/004B0AC0.inc"
+};
+char D_004B0AE0[31] = {
+#include "sub_main/004B0AE0.inc"
+};
+char D_004B0B00[31] = {
+#include "sub_main/004B0B00.inc"
+};
+char D_004B0B20[31] = {
+#include "sub_main/004B0B20.inc"
+};
+char D_004B0B40[29] = {
+#include "sub_main/004B0B40.inc"
+};
+char D_004B0B60[31] = {
+#include "sub_main/004B0B60.inc"
+};
+char D_004B0B80[10] = {
+#include "sub_main/004B0B80.inc"
+};
+char D_004B0B90[11] = {
+#include "sub_main/004B0B90.inc"
+};
+char D_004B0BA0[15] = {
+#include "sub_main/004B0BA0.inc"
+};
+char D_004B0BB0[17] = {
+#include "sub_main/004B0BB0.inc"
+};
+char D_004B0BD0[18] = {
+#include "sub_main/004B0BD0.inc"
+};
+char D_004B0BF0[18] = {
+#include "sub_main/004B0BF0.inc"
+};
+char D_004B0C10[19] = {
+#include "sub_main/004B0C10.inc"
+};
+char D_004B0C30[19] = {
+#include "sub_main/004B0C30.inc"
+};
+char D_004B0C50[18] = {
+#include "sub_main/004B0C50.inc"
+};
+char D_004B0C70[19] = {
+#include "sub_main/004B0C70.inc"
+};
+char D_004B0C88[9] = {
+#include "sub_main/004B0C88.inc"
+};
+char D_004B0CA0[21] = {
+#include "sub_main/004B0CA0.inc"
+};
+char D_004B0CB8[11] = {
+#include "sub_main/004B0CB8.inc"
+};
+char D_004B0CC8[11] = {
+#include "sub_main/004B0CC8.inc"
+};
+char D_004B0CD8[11] = {
+#include "sub_main/004B0CD8.inc"
+};
+char D_004B0CE8[11] = {
+#include "sub_main/004B0CE8.inc"
+};
+char D_004B0D00[18] = {
+#include "sub_main/004B0D00.inc"
+};
+char D_004B0D20[29] = {
+#include "sub_main/004B0D20.inc"
+};
+char D_004B0D40[27] = {
+#include "sub_main/004B0D40.inc"
+};
+char D_004B0D60[29] = {
+#include "sub_main/004B0D60.inc"
+};
+char D_004B0D80[29] = {
+#include "sub_main/004B0D80.inc"
+};
+char D_004B0DA0[29] = {
+#include "sub_main/004B0DA0.inc"
+};
+char D_004B0DC0[29] = {
+#include "sub_main/004B0DC0.inc"
+};
+char D_004B0DE0[29] = {
+#include "sub_main/004B0DE0.inc"
+};
+char D_004B0E00[29] = {
+#include "sub_main/004B0E00.inc"
+};
+char D_004B0E20[29] = {
+#include "sub_main/004B0E20.inc"
+};
+char D_004B0E40[29] = {
+#include "sub_main/004B0E40.inc"
+};
+char D_004B0E60[31] = {
+#include "sub_main/004B0E60.inc"
+};
+char D_004B0E80[29] = {
+#include "sub_main/004B0E80.inc"
+};
+char D_004B0EA0[18] = {
+#include "sub_main/004B0EA0.inc"
+};
+char D_004B0EC0[18] = {
+#include "sub_main/004B0EC0.inc"
+};
+char D_004B0EE0[19] = {
+#include "sub_main/004B0EE0.inc"
+};
+char D_004B0F00[19] = {
+#include "sub_main/004B0F00.inc"
+};
+char D_004B0F20[53] = {
+#include "sub_main/004B0F20.inc"
+};
+char D_004B0F58[5] = {
+#include "sub_main/004B0F58.inc"
+};
+char D_004B0F60[24] = {
+#include "sub_main/004B0F60.inc"
+};
+char D_004B0F80[24] = {
+#include "sub_main/004B0F80.inc"
+};
+char D_004B0FA0[24] = {
+#include "sub_main/004B0FA0.inc"
+};
+char D_004B0FC0[27] = {
+#include "sub_main/004B0FC0.inc"
+};
+char D_004B0FE0[6] = {
+#include "sub_main/004B0FE0.inc"
+};
+char D_004B0FE8[5] = {
+#include "sub_main/004B0FE8.inc"
+};
+char D_004B0FF0[14] = {
+#include "sub_main/004B0FF0.inc"
+};
+char D_004B1000[47] = {
+#include "sub_main/004B1000.inc"
+};
+char D_004B1030[49] = {
+#include "sub_main/004B1030.inc"
+};
+char D_004B1070[35] = {
+#include "sub_main/004B1070.inc"
+};
+char D_004B10A0[39] = {
+#include "sub_main/004B10A0.inc"
+};
+char D_004B10D0[27] = {
+#include "sub_main/004B10D0.inc"
+};
+char D_004B10F0[21] = {
+#include "sub_main/004B10F0.inc"
+};
+char D_004B1110[26] = {
+#include "sub_main/004B1110.inc"
+};
+char D_004B1130[35] = {
+#include "sub_main/004B1130.inc"
+};
+char D_004B1160[35] = {
+#include "sub_main/004B1160.inc"
+};
+char D_004B1190[35] = {
+#include "sub_main/004B1190.inc"
+};
+char D_004B11C0[39] = {
+#include "sub_main/004B11C0.inc"
+};
+char D_004B11F0[35] = {
+#include "sub_main/004B11F0.inc"
+};
+char D_004B1220[35] = {
+#include "sub_main/004B1220.inc"
+};
+char D_004B1250[35] = {
+#include "sub_main/004B1250.inc"
+};
+char D_004B1280[24] = {
+#include "sub_main/004B1280.inc"
+};
+char D_004B12A0[26] = {
+#include "sub_main/004B12A0.inc"
+};
+char D_004B12C0[35] = {
+#include "sub_main/004B12C0.inc"
+};
+char D_004B12F0[35] = {
+#include "sub_main/004B12F0.inc"
+};
+char D_004B1320[35] = {
+#include "sub_main/004B1320.inc"
+};
+char D_004B1350[33] = {
+#include "sub_main/004B1350.inc"
+};
+char D_004B1380[19] = {
+#include "sub_main/004B1380.inc"
+};
+char D_004B13A0[17] = {
+#include "sub_main/004B13A0.inc"
+};
+char D_004B13C0[33] = {
+#include "sub_main/004B13C0.inc"
+};
+char D_004B13F0[31] = {
+#include "sub_main/004B13F0.inc"
+};
+char D_004B1410[35] = {
+#include "sub_main/004B1410.inc"
+};
+char D_004B1440[35] = {
+#include "sub_main/004B1440.inc"
+};
+char D_004B1470[31] = {
+#include "sub_main/004B1470.inc"
+};
+char D_004B1490[31] = {
+#include "sub_main/004B1490.inc"
+};
+char D_004B14B0[23] = {
+#include "sub_main/004B14B0.inc"
+};
+char D_004B14D0[19] = {
+#include "sub_main/004B14D0.inc"
+};
+char D_004B14F0[31] = {
+#include "sub_main/004B14F0.inc"
+};
+char D_004B1510[31] = {
+#include "sub_main/004B1510.inc"
+};
+char D_004B1530[31] = {
+#include "sub_main/004B1530.inc"
+};
+char D_004B1550[31] = {
+#include "sub_main/004B1550.inc"
+};
+char D_004B1570[31] = {
+#include "sub_main/004B1570.inc"
+};
+char D_004B1590[31] = {
+#include "sub_main/004B1590.inc"
+};
+char D_004B15B0[31] = {
+#include "sub_main/004B15B0.inc"
+};
+char D_004B15D0[31] = {
+#include "sub_main/004B15D0.inc"
+};
+char D_004B15F0[47] = {
+#include "sub_main/004B15F0.inc"
+};
+char D_004B1620[48] = {
+#include "sub_main/004B1620.inc"
+};
+char D_004B1650[21] = {
+#include "sub_main/004B1650.inc"
+};
+char D_004B1670[21] = {
+#include "sub_main/004B1670.inc"
+};
+char D_004B1690[23] = {
+#include "sub_main/004B1690.inc"
+};
+char D_004B16A8[11] = {
+#include "sub_main/004B16A8.inc"
+};
+char D_004B16B8[11] = {
+#include "sub_main/004B16B8.inc"
+};
+char D_004B16C8[5] = {
+#include "sub_main/004B16C8.inc"
+};
+char D_004B16D0[5] = {
+#include "sub_main/004B16D0.inc"
+};
+char D_004B16D8[5] = {
+#include "sub_main/004B16D8.inc"
+};
+char D_004B16E0[69] = {
+#include "sub_main/004B16E0.inc"
+};
+char D_004B1730[71] = {
+#include "sub_main/004B1730.inc"
+};
+char D_004B1780[27] = {
+#include "sub_main/004B1780.inc"
+};
+char D_004B17A0[36] = {
+#include "sub_main/004B17A0.inc"
+};
+char D_004B17D0[38] = {
+#include "sub_main/004B17D0.inc"
+};
+char D_004B1800[40] = {
+#include "sub_main/004B1800.inc"
+};
+char D_004B1830[19] = {
+#include "sub_main/004B1830.inc"
+};
+char D_004B1848[13] = {
+#include "sub_main/004B1848.inc"
+};
+char D_004B1860[17] = {
+#include "sub_main/004B1860.inc"
+};
+char D_004B1878[9] = {
+#include "sub_main/004B1878.inc"
+};
+char D_004B1888[4] = {
+#include "sub_main/004B1888.inc"
+};
+char D_004B1890[5] = {
+#include "sub_main/004B1890.inc"
+};
+#pragma rodata off
 
 
 /* The countdown's last seconds: the number (3, 2, 1) with its sound at the start of each second,
@@ -1862,19 +2136,6 @@ const u32 D_004B18C0[16] = { 0 };
 
 /* The file's .data: the fish kinds, the town's stage data, the fishing tables and two text
  * tables. The externs are this file's .rodata texts. */
-extern char D_004B0FE8[];
-extern char D_004B16E0[];
-extern char D_004B1730[];
-extern char D_004B1780[];
-extern char D_004B17A0[];
-extern char D_004B17D0[];
-extern char D_004B1800[];
-extern char D_004B1830[];
-extern char D_004B1848[];
-extern char D_004B1860[];
-extern char D_004B1878[];
-extern char D_004B1888[];
-extern char D_004B1890[];
 FishKind gFishKindsQuest[24] = {
 #include "sub_main/004698E0.inc"
 };
@@ -1914,127 +2175,6 @@ u32 gLureColorPulled = {
 f32 gRodTipOffsets[4][3] = {
 #include "sub_main/00469DD0.inc"
 };
-extern char D_004B0798[];
-extern char D_004B07A0[];
-extern char D_004B07B8[];
-extern char D_004B07D0[];
-extern char D_004B07F0[];
-extern char D_004B0820[];
-extern char D_004B0840[];
-extern char D_004B0860[];
-extern char D_004B0868[];
-extern char D_004B0870[];
-extern char D_004B0898[];
-extern char D_004B08A8[];
-extern char D_004B08C0[];
-extern char D_004B08E0[];
-extern char D_004B0900[];
-extern char D_004B0920[];
-extern char D_004B0940[];
-extern char D_004B0960[];
-extern char D_004B0988[];
-extern char D_004B09A0[];
-extern char D_004B09C0[];
-extern char D_004B0A00[];
-extern char D_004B0A20[];
-extern char D_004B0A40[];
-extern char D_004B0A80[];
-extern char D_004B0AA0[];
-extern char D_004B0AC0[];
-extern char D_004B0AE0[];
-extern char D_004B0B00[];
-extern char D_004B0B20[];
-extern char D_004B0B40[];
-extern char D_004B0B60[];
-extern char D_004B0B80[];
-extern char D_004B0B90[];
-extern char D_004B0BA0[];
-extern char D_004B0BB0[];
-extern char D_004B0BD0[];
-extern char D_004B0BF0[];
-extern char D_004B0C10[];
-extern char D_004B0C30[];
-extern char D_004B0C50[];
-extern char D_004B0C70[];
-extern char D_004B0C88[];
-extern char D_004B0CA0[];
-extern char D_004B0CB8[];
-extern char D_004B0CC8[];
-extern char D_004B0CD8[];
-extern char D_004B0CE8[];
-extern char D_004B0D00[];
-extern char D_004B0D20[];
-extern char D_004B0D40[];
-extern char D_004B0D60[];
-extern char D_004B0D80[];
-extern char D_004B0DA0[];
-extern char D_004B0DC0[];
-extern char D_004B0DE0[];
-extern char D_004B0E00[];
-extern char D_004B0E20[];
-extern char D_004B0E40[];
-extern char D_004B0E60[];
-extern char D_004B0E80[];
-extern char D_004B0EA0[];
-extern char D_004B0EC0[];
-extern char D_004B0EE0[];
-extern char D_004B0F00[];
-extern char D_004B0F20[];
-extern char D_004B0F58[];
-extern char D_004B0F60[];
-extern char D_004B0F80[];
-extern char D_004B0FA0[];
-extern char D_004B0FC0[];
-extern char D_004B0FE0[];
-extern char D_004B0FF0[];
-extern char D_004B1000[];
-extern char D_004B1030[];
-extern char D_004B1070[];
-extern char D_004B10A0[];
-extern char D_004B10D0[];
-extern char D_004B10F0[];
-extern char D_004B1110[];
-extern char D_004B1130[];
-extern char D_004B1160[];
-extern char D_004B1190[];
-extern char D_004B11C0[];
-extern char D_004B11F0[];
-extern char D_004B1220[];
-extern char D_004B1250[];
-extern char D_004B1280[];
-extern char D_004B12A0[];
-extern char D_004B12C0[];
-extern char D_004B12F0[];
-extern char D_004B1320[];
-extern char D_004B1350[];
-extern char D_004B1380[];
-extern char D_004B13A0[];
-extern char D_004B13C0[];
-extern char D_004B13F0[];
-extern char D_004B1410[];
-extern char D_004B1440[];
-extern char D_004B1470[];
-extern char D_004B1490[];
-extern char D_004B14B0[];
-extern char D_004B14D0[];
-extern char D_004B14F0[];
-extern char D_004B1510[];
-extern char D_004B1530[];
-extern char D_004B1550[];
-extern char D_004B1570[];
-extern char D_004B1590[];
-extern char D_004B15B0[];
-extern char D_004B15D0[];
-extern char D_004B15F0[];
-extern char D_004B1620[];
-extern char D_004B1650[];
-extern char D_004B1670[];
-extern char D_004B1690[];
-extern char D_004B16A8[];
-extern char D_004B16B8[];
-extern char D_004B16C8[];
-extern char D_004B16D0[];
-extern char D_004B16D8[];
 /* 168 text pointers (into this file's .rodata) that no code names. */
 char *gPlselTexts[168] = {
     D_004B0798, D_004B0798, D_004B0798, D_004B0798,

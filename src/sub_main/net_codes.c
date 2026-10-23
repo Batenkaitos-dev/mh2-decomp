@@ -12,7 +12,9 @@
 /* The game built this file at optimization level 4. */
 #pragma optimization_level 4
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/net_codes", D_0046A848);
+const char D_0046A848[9] = {
+#include "sub_main/0046A848.inc"
+};
 
 extern u8 *gLockrockKey;              /* the 8-byte key */
 
@@ -80,5 +82,4 @@ s32 Net_ChallengeReply(char *out, s8 *challenge, u16 key)
 }
 
 /* This file's initialised data. */
-extern u32 D_0046A848[];
 u8 *gLockrockKey = (u8 *)D_0046A848;

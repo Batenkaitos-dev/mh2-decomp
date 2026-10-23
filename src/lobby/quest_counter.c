@@ -738,12 +738,13 @@ s32 QuestCounter_OpenWindows(s32 fromX, s32 toX)
     return MENU_RUNNING;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/quest_counter", gQuestCounterLabelFmt);
+const char gQuestCounterLabelFmt[5] = {
+#include "lobby/0083B428.inc"
+};
 
 void Font_SetSpacing(u8 a, u8 b);
 void Font_SetPos(s16, s16);
 void Sjis_Widen(char *, char *);
-extern char gQuestCounterLabelFmt[];
 
 #pragma optimization_level 4
 /* Draws the text of board row `row`: the room's label, then for an open room with

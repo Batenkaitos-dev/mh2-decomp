@@ -23,7 +23,6 @@
 #include "chat_log.h"
 #include "libc_ctype.h"
 #include "quest.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "em.h"

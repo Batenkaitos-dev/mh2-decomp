@@ -21,7 +21,6 @@
 #include "lobby_text.h"
 #include "pad.h"
 #include "player.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "lobby_globals.h"
 #include "scene.h"

@@ -10,7 +10,6 @@
  * same check for chat.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "select.h"
 
 extern s8 gCtypeTable[];       /* main: the ctype table (1 + c: 2 lower case, 7 letter or digit) */

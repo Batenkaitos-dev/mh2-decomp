@@ -27,7 +27,6 @@
 #include "lobby_text.h"
 #include "pad.h"
 #include "quest.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "item.h"
 #include "lobby_globals.h"
@@ -570,7 +569,6 @@ u8 Lobby_FindMember(u8 *id)
 }
 
 extern u8 gPoogieLeft;
-extern M2C_UNK D_008C0148;
 typedef struct ActMsg {
     /* 0x0 */ s16 x;
     /* 0x2 */ s16 z;

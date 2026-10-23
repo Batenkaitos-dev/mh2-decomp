@@ -43,9 +43,6 @@ void func_161ED8(void);
 char *strcpy(char *dst, const char *src);
 s32 sceMcSetFileInfo(s32 port, s32 slot, char *name, McDirEntry *info, s32 flags);
 char *strcat(char *dst, const char *src);
-extern char gCardDirListFmt[];
-extern char gCardPathFmt[];
-extern char gCardNameFmt[];
 static s32 Card_StubFail(void);
 s32 sprintf(char *buf, char *fmt, ...);
 static void CardState_SetFlags(s32 a);
@@ -516,9 +513,17 @@ static s32 Card_StubFail(void)
 }
 
 /* The path formats: a directory's entries, a file in a directory, a name alone. */
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_task", gCardDirListFmt);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_task", gCardPathFmt);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_task", gCardNameFmt);
+#pragma rodata on
+char gCardDirListFmt[5] = {
+#include "sub_main/004B06A0.inc"
+};
+char gCardPathFmt[6] = {
+#include "sub_main/004B06A8.inc"
+};
+char gCardNameFmt[3] = {
+#include "sub_main/004B06B0.inc"
+};
+#pragma rodata off
 
 /* Deletes the task's directory: with deleteFiles, first each of its files but the "." entries
  * (sceMcGetDir and sceMcDelete one by one), then the directory itself. */

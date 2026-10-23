@@ -21,7 +21,6 @@
 #include "card.h"
 #include "net_mode.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_vobj.h"
 #include "task.h"
 #include "text.h"
@@ -46,7 +45,7 @@ extern u8 gLbsConnectStep;
 extern u8 gNetScreenStep;
 u8 NetMenu_Update(void);
 extern u8 gNetConnStep;
-extern M2C_UNK Gfx_DrawBlackLineFixed;
+void Gfx_DrawBlackLineFixed(void);
 extern s16 gNetConnTries;
 
 /* The portal's quit page's wait, each frame from its 90th: the text is
@@ -262,7 +261,7 @@ s32 LobbyLogin_SaveAndExit(void)
     case 0:
         Game_ResetSubsystems();
         NetMode_ReleaseTextures(0);
-        LobbyMenu_SetDraw(0, 0, &Gfx_DrawBlackLineFixed, 0);
+        LobbyMenu_SetDraw(0, 0, Gfx_DrawBlackLineFixed, 0);
         FadeA_Start(FADE_IN_BLACK);
         LobbyStream_Stop();
         NetMenu_Open(NETMENU_MODE_GAME_SAVE_LOGOUT);

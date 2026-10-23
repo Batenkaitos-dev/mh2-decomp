@@ -18,7 +18,6 @@
  * read one of them (gPricePageCounts).
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "save.h"
 #include "scene.h"
@@ -133,7 +132,6 @@ typedef struct Colours3 {
 } Colours3;
 extern Colours3 gPriceLegendColors;             /* the legend's colours */
 extern u8 gLobbyRateStates[];                 /* the entries' levels and marks */
-extern char gPriceStrFmt[];               /* "%s" */
 extern u32 gPriceBoardColors[];                /* the board texts' colours */
 void Icon_DrawRotated(s16 x, s16 y, s16 w, s16 h, u32 colour, u16 flags, s32 spr); /* unit's own declaration: declared with s16 sizes, a u32 colour and u16 flags, as PriceInfo_DrawRate passes them; with the definition's s32 parameters the call compiles differently */
 void Icon_DrawMode(s16 x, s16 y, s16 w, s16 h, u32 colour, s32 spr, u8 a);
@@ -945,7 +943,11 @@ void PriceInfo_DrawWanted(s16 x, s32 y, s16 line, s32 color)
     Text_DrawShadowed(textX, y, 0xFF000000, color, *text);
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/market", gPriceStrFmt);
+#pragma rodata on
+char gPriceStrFmt[3] = {
+#include "lobby/00838858.inc"
+};
+#pragma rodata off
 void Tex_Bind(s32 i);
 
 /*

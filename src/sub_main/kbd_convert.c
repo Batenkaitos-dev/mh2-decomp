@@ -12,7 +12,7 @@
  *   converted. In the symbol mode the candidates are symbols.
  *
  * The keys' strings that kbd.c's tables point at lie among this file's
- * read-only data (the INCLUDE_RODATA lines).
+ * read-only data (the char arrays after Kbd_CountCands).
  */
 #include "common.h"
 #include "kbd.h"
@@ -371,44 +371,122 @@ s32 Kbd_CountCands(void)
 }
 
 s32 ConvCmd_Start(char *src, char *a, char *b);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C990);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C998);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9A0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9A8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9B0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9B8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9C0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9C8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9D0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9D8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9E0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9E8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9F0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046C9F8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA00);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA08);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA10);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA18);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA20);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA28);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA30);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA38);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA40);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA48);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA50);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA58);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA60);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA68);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA70);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA78);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA80);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA88);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA90);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CA98);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CAA0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CAA8);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CAB0);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/kbd_convert", D_0046CAB8);
+#pragma rodata on
+char D_0046C990[3] = {
+#include "sub_main/0046C990.inc"
+};
+char D_0046C998[3] = {
+#include "sub_main/0046C998.inc"
+};
+char D_0046C9A0[2] = {
+#include "sub_main/0046C9A0.inc"
+};
+char D_0046C9A8[2] = {
+#include "sub_main/0046C9A8.inc"
+};
+char D_0046C9B0[2] = {
+#include "sub_main/0046C9B0.inc"
+};
+char D_0046C9B8[2] = {
+#include "sub_main/0046C9B8.inc"
+};
+char D_0046C9C0[2] = {
+#include "sub_main/0046C9C0.inc"
+};
+char D_0046C9C8[2] = {
+#include "sub_main/0046C9C8.inc"
+};
+char D_0046C9D0[2] = {
+#include "sub_main/0046C9D0.inc"
+};
+char D_0046C9D8[2] = {
+#include "sub_main/0046C9D8.inc"
+};
+char D_0046C9E0[2] = {
+#include "sub_main/0046C9E0.inc"
+};
+char D_0046C9E8[2] = {
+#include "sub_main/0046C9E8.inc"
+};
+char D_0046C9F0[2] = {
+#include "sub_main/0046C9F0.inc"
+};
+char D_0046C9F8[2] = {
+#include "sub_main/0046C9F8.inc"
+};
+char D_0046CA00[2] = {
+#include "sub_main/0046CA00.inc"
+};
+char D_0046CA08[2] = {
+#include "sub_main/0046CA08.inc"
+};
+char D_0046CA10[2] = {
+#include "sub_main/0046CA10.inc"
+};
+char D_0046CA18[2] = {
+#include "sub_main/0046CA18.inc"
+};
+char D_0046CA20[2] = {
+#include "sub_main/0046CA20.inc"
+};
+char D_0046CA28[2] = {
+#include "sub_main/0046CA28.inc"
+};
+char D_0046CA30[2] = {
+#include "sub_main/0046CA30.inc"
+};
+char D_0046CA38[2] = {
+#include "sub_main/0046CA38.inc"
+};
+char D_0046CA40[2] = {
+#include "sub_main/0046CA40.inc"
+};
+char D_0046CA48[2] = {
+#include "sub_main/0046CA48.inc"
+};
+char D_0046CA50[2] = {
+#include "sub_main/0046CA50.inc"
+};
+char D_0046CA58[2] = {
+#include "sub_main/0046CA58.inc"
+};
+char D_0046CA60[2] = {
+#include "sub_main/0046CA60.inc"
+};
+char D_0046CA68[2] = {
+#include "sub_main/0046CA68.inc"
+};
+char D_0046CA70[2] = {
+#include "sub_main/0046CA70.inc"
+};
+char D_0046CA78[2] = {
+#include "sub_main/0046CA78.inc"
+};
+char D_0046CA80[2] = {
+#include "sub_main/0046CA80.inc"
+};
+char D_0046CA88[2] = {
+#include "sub_main/0046CA88.inc"
+};
+char D_0046CA90[2] = {
+#include "sub_main/0046CA90.inc"
+};
+char D_0046CA98[2] = {
+#include "sub_main/0046CA98.inc"
+};
+char D_0046CAA0[3] = {
+#include "sub_main/0046CAA0.inc"
+};
+char D_0046CAA8[3] = {
+#include "sub_main/0046CAA8.inc"
+};
+char D_0046CAB0[3] = {
+#include "sub_main/0046CAB0.inc"
+};
+char D_0046CAB8[3] = {
+#include "sub_main/0046CAB8.inc"
+};
+#pragma rodata off
 
 /*
  * Starts the conversion. In the symbol mode, kana becomes a space, cand

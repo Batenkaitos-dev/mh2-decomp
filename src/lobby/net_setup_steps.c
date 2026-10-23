@@ -29,7 +29,6 @@
 #include "syssettings.h"
 #include "net_mode.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_state.h"
 #include "item.h"
 #include "scene.h"
@@ -235,7 +234,7 @@ extern s8 gNetEntryMode;
 struct NetSprDef;
 void NetMode_DrawSprites(struct NetSprDef *d, s32 n, s32 dy);
 extern NetSprDef gLoginFrameSprites[];
-extern M2C_UNK D_008FAAA0;
+extern u8 D_008FAAA0[26];
 
 /*
  * The set-up's memory card step (NET_SETUP_CARD), by gNetMode.step (enum
@@ -1176,7 +1175,7 @@ s32 NetSetup_Connect(void)
 void NetSetup_ResetLobby(void)
 {
     gLobby = &gLobbyState;
-    memset(&D_008FAAA0, 0, 26);
+    memset(D_008FAAA0, 0, sizeof(D_008FAAA0));
     Lobby_BackupWork();
 }
 

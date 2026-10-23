@@ -4,22 +4,22 @@
 
 # zlib 1.1.4's own tables (inflate's code lengths and extra bits, the fixed
 # Huffman tables, the bit masks), part of zlib's code under zlib's license.
-src/lobby/unk_753C10.c border       # zlib (infblock.c): the order of the code-length codes
-src/lobby/unk_753C10.c cplens       # zlib (inftrees.c): length base values
-src/lobby/unk_753C10.c cplext       # zlib (inftrees.c): length extra bits
-src/lobby/unk_753C10.c cpdist       # zlib (inftrees.c): distance base values
-src/lobby/unk_753C10.c cpdext       # zlib (inftrees.c): distance extra bits
-src/lobby/unk_756FD0.c fixed_bl     # zlib (inffixed.h): the fixed literal table's bits
-src/lobby/unk_756FD0.c fixed_bd     # zlib (inffixed.h): the fixed distance table's bits
-src/lobby/unk_756FD0.c fixed_tl     # zlib (inffixed.h): the fixed literal/length table
-src/lobby/unk_756FD0.c fixed_td     # zlib (inffixed.h): the fixed distance table
-src/lobby/unk_756FD0.c inflate_mask # zlib (infutil.c): the bit masks
+src/lobby/inflate.c border       # zlib (infblock.c): the order of the code-length codes
+src/lobby/inflate.c cplens       # zlib (inftrees.c): length base values
+src/lobby/inflate.c cplext       # zlib (inftrees.c): length extra bits
+src/lobby/inflate.c cpdist       # zlib (inftrees.c): distance base values
+src/lobby/inflate.c cpdext       # zlib (inftrees.c): distance extra bits
+src/lobby/infutil.c fixed_bl     # zlib (inffixed.h): the fixed literal table's bits
+src/lobby/infutil.c fixed_bd     # zlib (inffixed.h): the fixed distance table's bits
+src/lobby/infutil.c fixed_tl     # zlib (inffixed.h): the fixed literal/length table
+src/lobby/infutil.c fixed_td     # zlib (inffixed.h): the fixed distance table
+src/lobby/infutil.c inflate_mask # zlib (infutil.c): the bit masks
 
 # The PNG format's constants (the PNG specification's file signature and
 # chunk types), which the image decoder compares a file's bytes with.
-src/lobby/unk_7513C0.c gPngSignature  # the PNG file signature
-src/lobby/unk_7513C0.c gPngIHDR       # a PNG chunk type
-src/lobby/unk_7513C0.c gPngIDAT       # a PNG chunk type
-src/lobby/unk_7513C0.c gPngIEND       # a PNG chunk type
-src/lobby/unk_7513C0.c gPngtRNS       # a PNG chunk type
-src/lobby/unk_7513C0.c gPngPLTE       # a PNG chunk type
+src/lobby/image_decode.c gPngSignature  # the PNG file signature
+src/lobby/image_decode.c gPngIHDR       # a PNG chunk type
+src/lobby/image_decode.c gPngIDAT       # a PNG chunk type
+src/lobby/image_decode.c gPngIEND       # a PNG chunk type
+src/lobby/image_decode.c gPngtRNS       # a PNG chunk type
+src/lobby/image_decode.c gPngPLTE       # a PNG chunk type

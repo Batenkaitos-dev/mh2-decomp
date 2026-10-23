@@ -9,7 +9,6 @@
  * background colour.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "model.h"
 #include "light.h"
 #include "render_state.h"

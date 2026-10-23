@@ -22,7 +22,6 @@ extern s8 gChatTarget;
 extern s32 gTexHandles[];
 #include "camera.h"
 #include "pad.h"
-#include "m2c_macros.h"
 #include "plsel.h"
 #include "task.h"
 #include "player.h"
@@ -105,7 +104,7 @@ u8 Equip_GetClass(EquipItem *e);
 extern char gMyUserId[];
 extern char gMyName[];
 
-extern char gPlselFmtString[];
+extern const char gPlselFmtString[];
 
 /* The overlay's data: the preset hunters' looks, the weapon icons' tints
  * and texture corners, the slot colours, the panels. */
@@ -987,7 +986,9 @@ void Plsel_DrawArrow(s32 flag, s16 x, s16 y)
     Sprite_Draw(&spr);
 }
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/plsel", gPlselFmtConcat);
+const char gPlselFmtConcat[5] = {
+#include "plsel/00D79598.inc"
+};
 
 /*
  * Draws the local player's panel (the weapon-class icon of the preset under
@@ -1041,9 +1042,10 @@ void Plsel_DrawPlayerList(void)
     }
 }
 
-INCLUDE_RODATA("asm/plsel/nonmatchings/plsel", gPlselFmtString);
+const char gPlselFmtString[3] = {
+#include "plsel/00D795A8.inc"
+};
 
-extern char gPlselFmtConcat[];
 
 /* The equipment page, a draw callback (hook is the draw slot, its owner the
  * select task): the preset's name and number, the weapon and the armour

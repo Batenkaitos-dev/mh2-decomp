@@ -1127,8 +1127,12 @@ u16 WeaponForge_ApplyGunMod(u16 levelByte, u16 mod)
     return levelByte;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/weapon_forge", gForgePriceFmt);
-INCLUDE_RODATA("asm/lobby/nonmatchings/weapon_forge", gForgeTextFmt);
+const char gForgePriceFmt[5] = {
+#include "lobby/0082EA20.inc"
+};
+const char gForgeTextFmt[3] = {
+#include "lobby/0082EA28.inc"
+};
 
 /*
  * Loads what the box piece under the cursor can become: for a blade or a
@@ -1681,7 +1685,6 @@ void WeaponForge_DrawUpgradeDetail(WeaponForgeWork *forge, s32 x, s16 y)
     }
 }
 
-extern char gForgePriceFmt[];
 /*
  * Draws the list of what the box piece can become at (x, y): the header,
  * each upgrade's name and price (greyed when it can't be paid for, the new
@@ -1768,7 +1771,6 @@ void WeaponForge_DrawGunMods(WeaponForgeWork *forge, s32 idx, s16 x, s16 y)
     }
 }
 
-extern char gForgeTextFmt[];
 void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e); /* unit's own declaration: declared with s16 coordinates as the forge's draws pass them; with the definition's s32 ones the calls compile differently */
 s32 Box_CountEquip(u8 type, u16 id);
 /*

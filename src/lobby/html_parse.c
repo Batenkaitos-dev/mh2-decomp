@@ -20,7 +20,6 @@
  * BrowserWork and BrowserState are the browser's.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "browser.h"
 #include "html.h"
 #include "lobby_globals.h"

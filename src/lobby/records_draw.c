@@ -192,9 +192,17 @@ s32 Records_MenuInput(RecordMenu *menu, u16 pad)
     return MENU_RUNNING;
 }
 
-INCLUDE_RODATA("asm/lobby/nonmatchings/records_draw", gRecordsFmtString);
-INCLUDE_RODATA("asm/lobby/nonmatchings/records_draw", gRecordsFmtRowNumber);
-INCLUDE_RODATA("asm/lobby/nonmatchings/records_draw", gRecordsFmtEquipName);
+#pragma rodata on
+char gRecordsFmtString[3] = {
+#include "lobby/00825C30.inc"
+};
+char gRecordsFmtRowNumber[5] = {
+#include "lobby/00825C38.inc"
+};
+char gRecordsFmtEquipName[6] = {
+#include "lobby/00825C40.inc"
+};
+#pragma rodata off
 
 extern u8 gHouseAccess;
 extern char gHousePassword[];
@@ -356,7 +364,6 @@ void Records_DrawMenu(RecordMenu *menu, s16 x, s16 y)
     }
 }
 
-extern char gRecordsFmtString[];
 s32 sprintf(char *buf, char *fmt, ...);
 /* Draws the items' first page: the kind's title bar, the item categories
  * with arrows on sel, and the prompt; the list starts a line lower while
@@ -483,7 +490,6 @@ void Records_DrawTitleTabs(RecordMenu *menu, s16 x, s16 y)
 
 void Menu_DrawCursorRow(s16 x, s16 y, s16 w, s16 h, u32 c1, u32 c2);
 void Win_Draw(s32 x, s32 y, s32 w, s32 h, s32 color, s32 color2, s16 kind);
-extern char gRecordsFmtRowNumber[];
 
 /*
  * Draws a title tab's page: the title worn (the player's own, or the
@@ -642,7 +648,6 @@ void Records_DrawEquipDetail(RecordMenu *menu)
     EquipWindow_DrawLocal(&menu->items[menu->sel], gMenuOffsetX + 310, gMenuOffsetY + 216, menu->subCursor | 0x40, NULL);
 }
 
-extern char gRecordsFmtEquipName[];
 /* unit's own declaration: as the callers use it; with the definition's void (s32 x, s32 y, s32 w, s32 h, EquipItem *e), the calls in Records_DrawWeaponList and Records_DrawArmorList compile differently */
 void Lobby_DrawEquipIcon(s16 x, s16 y, s32 w, s32 h, EquipItem *e);
 void Menu_DrawDashLine(s16 x, s16 y, s16 w, u32 color);

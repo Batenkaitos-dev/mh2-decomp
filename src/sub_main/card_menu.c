@@ -90,7 +90,6 @@ extern s32 gCardFileKind;
 s32 strncmp(const char *a, const char *b, u32 n);
 void strncpy(char *dst, const char *src, u32 n);
 void printf(const char *s);
-extern char gPatchMagic[];
 extern char gVersionString[];
 
 /* A Window (window.h) with 16 bytes after it, as CardMenu_DrawSlots and CardMenu_DrawSlotFrames
@@ -113,9 +112,9 @@ struct Window;
 void Window_DrawTextAlpha(struct Window *w, u8 *text, u8 alpha);
 extern NetMenu gCardMenu;
 extern char *gGenderLabels[];
-extern char gCardSlotFmtName[];
-extern char gCardSlotFmtTime[];
-extern char gCardSlotFmtMoney[];
+extern const char gCardSlotFmtName[];
+extern const char gCardSlotFmtTime[];
+extern const char gCardSlotFmtMoney[];
 
 
 extern s32 gCardMenuTex;
@@ -604,7 +603,9 @@ void Patch_Init(void)
     strncpy(((PatchHeader *)PATCH_HEADER)->number, "1000", 4);
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", gPatchMagic);
+const char gPatchMagic[9] = {
+#include "sub_main/004B0240.inc"
+};
 
 /* Applies the patch records (PATCH_RECS: PatchRecords) whose id is (mode << 4) | sub, then
  * flushes the cache. Does nothing unless the header's recsSize is nonzero and the records start
@@ -773,9 +774,15 @@ void NetMenu_GameSaveStub(void)
 {
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", D_004B0278);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", D_004B0280);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", D_004B0288);
+const char D_004B0278[6] = {
+#include "sub_main/004B0278.inc"
+};
+const char D_004B0280[7] = {
+#include "sub_main/004B0280.inc"
+};
+const char D_004B0288[5] = {
+#include "sub_main/004B0288.inc"
+};
 
 extern s16 gCardSlotPos[];
 extern s16 gCardSlotPosMid[];
@@ -902,9 +909,15 @@ void CardMenu_DrawSlots(NetMenu *menu, s32 mode, u8 selectMode, s32 unused, s32 
     }
 }
 
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", gCardSlotFmtName);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", gCardSlotFmtTime);
-INCLUDE_RODATA("asm/sub_main/nonmatchings/card_menu", gCardSlotFmtMoney);
+const char gCardSlotFmtName[8] = {
+#include "sub_main/004B0298.inc"
+};
+const char gCardSlotFmtTime[22] = {
+#include "sub_main/004B02A0.inc"
+};
+const char gCardSlotFmtMoney[12] = {
+#include "sub_main/004B02B8.inc"
+};
 
 
 /* 1 when character slot i of gCardSlots is used, else 0. select_title.c calls it. */
@@ -5318,9 +5331,6 @@ extern char D_004B01A0[];
 extern char D_004B01D0[];
 extern char D_004B0200[];
 extern char D_004B0210[];
-extern u32 D_004B0278[];
-extern u32 D_004B0280[];
-extern u32 D_004B0288[];
 char *gNetMenuYesNoLabels[2] = {
     gNetMenuYesNoLabels_0, gNetMenuYesNoLabels_1,
 };

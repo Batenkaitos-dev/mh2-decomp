@@ -9,7 +9,6 @@
  * Network code: it stays byte for byte, as the whole build does.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "em.h"

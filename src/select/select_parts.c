@@ -17,7 +17,6 @@
 #include "common.h"
 #include "syssettings.h"
 extern u16 gFrameTick; /* sub_main: the frame counter */
-#include "m2c_macros.h"
 #include "select.h"
 #include "select/select_parts.h"   /* the texts this file uses (tools/content_gen.py) */
 #include "render_state.h"

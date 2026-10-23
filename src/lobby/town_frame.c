@@ -23,7 +23,6 @@
 #include "common.h"
 #include "sprite.h"
 #include "syssettings.h"
-#include "m2c_macros.h"
 #include "item.h"
 #include "scene.h"
 #include "em.h"

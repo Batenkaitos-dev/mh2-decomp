@@ -16,7 +16,6 @@
 #include "net_save.h"
 #include "pad.h"
 #include "em.h"
-#include "m2c_macros.h"
 #include "lobby_globals.h"
 #include "lobby_menu.h"
 #include "scene.h"
@@ -32,8 +31,8 @@
 #include "screen_fade.h"
 #include "libc.h"
 
-extern M2C_UNK gMailBlockList;
-extern M2C_UNK gFriendList;
+extern BlockedUser gMailBlockList[MAIL_BLOCK_LIST_LEN];
+extern FriendEntry gFriendList[];
 extern s32 gTownMode;
 extern s32 gTownMenuOpen;
 
@@ -136,16 +135,16 @@ s32 LobbyPad_Held(s32 mask)
  * lists (gFriendList, gMailBlockList). */
 void Lobby_BackupWork(void)
 {
-    memcpy(&gFriendList, gNetSaveData.friends, sizeof(gNetSaveData.friends));
-    memcpy(&gMailBlockList, gNetSaveData.blocked, sizeof(gNetSaveData.blocked));
+    memcpy(gFriendList, gNetSaveData.friends, sizeof(gNetSaveData.friends));
+    memcpy(gMailBlockList, gNetSaveData.blocked, sizeof(gNetSaveData.blocked));
 }
 
 /* Copies the lobby's friend list and mail block list back into the
  * save. */
 void Lobby_RestoreWork(void)
 {
-    memcpy(gNetSaveData.friends, &gFriendList, sizeof(gNetSaveData.friends));
-    memcpy(gNetSaveData.blocked, &gMailBlockList, sizeof(gNetSaveData.blocked));
+    memcpy(gNetSaveData.friends, gFriendList, sizeof(gNetSaveData.friends));
+    memcpy(gNetSaveData.blocked, gMailBlockList, sizeof(gNetSaveData.blocked));
 }
 
 /* Stops the stream. */

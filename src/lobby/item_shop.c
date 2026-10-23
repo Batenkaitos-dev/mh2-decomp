@@ -19,7 +19,6 @@
  * screen's labels or one list, read by enum.
  */
 #include "common.h"
-#include "m2c_macros.h"
 #include "pad.h"
 #include "save.h"
 #include "item.h"

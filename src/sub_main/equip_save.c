@@ -5458,866 +5458,866 @@ extern char gArmorLegsNames_232[];
 extern char gArmorLegsNames_233[];
 extern char gArmorLegsNames_234[];
 extern char gArmorLegsNames_235[];
-extern const char D_004AB180[];
-extern const char D_004AB190[];
-extern const char D_004AB1A0[];
-extern const char D_004AB1B0[];
-extern const char D_004AB1C0[];
-extern const char D_004AB1D0[];
-extern const char D_004AB1E0[];
-extern const char D_004AB1F8[];
-extern const char D_004AB200[];
-extern const char D_004AB210[];
-extern const char D_004AB218[];
-extern const char D_004AB228[];
-extern const char D_004AB230[];
-extern const char D_004AB238[];
-extern const char D_004AB240[];
-extern const char D_004AB250[];
-extern const char D_004AB258[];
-extern const char D_004AB268[];
-extern const char D_004AB278[];
-extern const char D_004AB280[];
-extern const char D_004AB290[];
-extern const char D_004AB2A0[];
-extern const char D_004AB2B8[];
-extern const char D_004AB2C8[];
-extern const char D_004AB2E0[];
-extern const char D_004AB300[];
-extern const char D_004AB318[];
-extern const char D_004AB320[];
-extern const char D_004AB328[];
-extern const char D_004AB338[];
-extern const char D_004AB340[];
-extern const char D_004AB350[];
-extern const char D_004AB360[];
-extern const char D_004AB368[];
-extern const char D_004AB378[];
-extern const char D_004AB388[];
-extern const char D_004AB398[];
-extern const char D_004AB3A0[];
-extern const char D_004AB3B0[];
-extern const char D_004AB3C0[];
-extern const char D_004AB3D0[];
-extern const char D_004AB3D8[];
-extern const char D_004AB3E0[];
-extern const char D_004AB3F0[];
-extern const char D_004AB400[];
-extern const char D_004AB408[];
-extern const char D_004AB418[];
-extern const char D_004AB428[];
-extern const char D_004AB438[];
-extern const char D_004AB448[];
-extern const char D_004AB458[];
-extern const char D_004AB460[];
-extern const char D_004AB470[];
-extern const char D_004AB480[];
-extern const char D_004AB490[];
-extern const char D_004AB4A8[];
-extern const char D_004AB4B8[];
-extern const char D_004AB4C8[];
-extern const char D_004AB4D8[];
-extern const char D_004AB4E8[];
-extern const char D_004AB4F8[];
-extern const char D_004AB510[];
-extern const char D_004AB528[];
-extern const char D_004AB530[];
-extern const char D_004AB540[];
-extern const char D_004AB550[];
-extern const char D_004AB560[];
-extern const char D_004AB570[];
-extern const char D_004AB580[];
-extern const char D_004AB598[];
-extern const char D_004AB5A0[];
-extern const char D_004AB5B0[];
-extern const char D_004AB5B8[];
-extern const char D_004AB5C0[];
-extern const char D_004AB5D8[];
-extern const char D_004AB5E8[];
-extern const char D_004AB5F8[];
-extern const char D_004AB608[];
-extern const char D_004AB618[];
-extern const char D_004AB620[];
-extern const char D_004AB630[];
-extern const char D_004AB640[];
-extern const char D_004AB648[];
-extern const char D_004AB658[];
-extern const char D_004AB668[];
-extern const char D_004AB678[];
-extern const char D_004AB680[];
-extern const char D_004AB690[];
-extern const char D_004AB698[];
-extern const char D_004AB6A0[];
-extern const char D_004AB6B0[];
-extern const char D_004AB6C0[];
-extern const char D_004AB6D0[];
-extern const char D_004AB6E0[];
-extern const char D_004AB6F0[];
-extern const char D_004AB708[];
-extern const char D_004AB718[];
-extern const char D_004AB728[];
-extern const char D_004AB738[];
-extern const char D_004AB748[];
-extern const char D_004AB758[];
-extern const char D_004AB768[];
-extern const char D_004AB778[];
-extern const char D_004AB788[];
-extern const char D_004AB798[];
-extern const char D_004AB7A8[];
-extern const char D_004AB7B8[];
-extern const char D_004AB7C8[];
-extern const char D_004AB7D8[];
-extern const char D_004AB7E8[];
-extern const char D_004AB7F8[];
-extern const char D_004AB808[];
-extern const char D_004AB818[];
-extern const char D_004AB828[];
-extern const char D_004AB838[];
-extern const char D_004AB848[];
-extern const char D_004AB850[];
-extern const char D_004AB858[];
-extern const char D_004AB860[];
-extern const char D_004AB868[];
-extern const char D_004AB870[];
-extern const char D_004AB880[];
-extern const char D_004AB890[];
-extern const char D_004AB8A0[];
-extern const char D_004AB8B0[];
-extern const char D_004AB8C0[];
-extern const char D_004AB8D0[];
-extern const char D_004AB8E0[];
-extern const char D_004AB8F0[];
-extern const char D_004AB900[];
-extern const char D_004AB910[];
-extern const char D_004AB918[];
-extern const char D_004AB920[];
-extern const char D_004AB930[];
-extern const char D_004AB940[];
-extern const char D_004AB950[];
-extern const char D_004AB958[];
-extern const char D_004AB968[];
-extern const char D_004AB978[];
-extern const char D_004AB988[];
-extern const char D_004AB998[];
-extern const char D_004AB9A8[];
-extern const char D_004AB9B8[];
-extern const char D_004AB9C8[];
-extern const char D_004AB9D8[];
-extern const char D_004AB9E8[];
-extern const char D_004AB9F8[];
-extern const char D_004ABA08[];
-extern const char D_004ABA20[];
-extern const char D_004ABA38[];
-extern const char D_004ABA48[];
-extern const char D_004ABA50[];
-extern const char D_004ABA60[];
-extern const char D_004ABA70[];
-extern const char D_004ABA90[];
-extern const char D_004ABAB0[];
-extern const char D_004ABAD0[];
-extern const char D_004ABAF0[];
-extern const char D_004ABB10[];
-extern const char D_004ABB28[];
-extern const char D_004ABB38[];
-extern const char D_004ABB48[];
-extern const char D_004ABB50[];
-extern const char D_004ABB58[];
-extern const char D_004ABB68[];
-extern const char D_004ABB70[];
-extern const char D_004ABB78[];
-extern const char D_004ABB80[];
-extern const char D_004ABB88[];
-extern const char D_004ABB90[];
-extern const char D_004ABBA0[];
-extern const char D_004ABBA8[];
-extern const char D_004ABBB0[];
-extern const char D_004ABBB8[];
-extern const char D_004ABBC8[];
-extern const char D_004ABBD0[];
-extern const char D_004ABBE0[];
-extern const char D_004ABBF0[];
-extern const char D_004ABC00[];
-extern const char D_004ABC10[];
-extern const char D_004ABC20[];
-extern const char D_004ABC30[];
-extern const char D_004ABC40[];
-extern const char D_004ABC50[];
-extern const char D_004ABC60[];
-extern const char D_004ABC70[];
-extern const char D_004ABC80[];
-extern const char D_004ABC90[];
-extern const char D_004ABCA0[];
-extern const char D_004ABCB0[];
-extern const char D_004ABCC0[];
-extern const char D_004ABCD0[];
-extern const char D_004ABCF0[];
-extern const char D_004ABD08[];
-extern const char D_004ABD18[];
-extern const char D_004ABD28[];
-extern const char D_004ABD38[];
-extern const char D_004ABD48[];
-extern const char D_004ABD58[];
-extern const char D_004ABD68[];
-extern const char D_004ABD78[];
-extern const char D_004ABD88[];
-extern const char D_004ABD98[];
-extern const char D_004ABDA0[];
-extern const char D_004ABDA8[];
-extern const char D_004ABDB0[];
-extern const char D_004ABDB8[];
-extern const char D_004ABDC8[];
-extern const char D_004ABDE0[];
-extern const char D_004ABE00[];
-extern const char D_004ABE18[];
-extern const char D_004ABE28[];
-extern const char D_004ABE30[];
-extern const char D_004ABE40[];
-extern const char D_004ABE60[];
-extern const char D_004ABE78[];
-extern const char D_004ABE80[];
-extern const char D_004ABE88[];
-extern const char D_004ABE98[];
-extern const char D_004ABEA8[];
-extern const char D_004ABEB8[];
-extern const char D_004ABEC8[];
-extern const char D_004ABED8[];
-extern const char D_004ABEE8[];
-extern const char D_004ABEF0[];
-extern const char D_004ABF00[];
-extern const char D_004ABF10[];
-extern const char D_004ABF28[];
-extern const char D_004ABF40[];
-extern const char D_004ABF58[];
-extern const char D_004ABF68[];
-extern const char D_004ABF78[];
-extern const char D_004ABF90[];
-extern const char D_004ABFA8[];
-extern const char D_004ABFB8[];
-extern const char D_004ABFD0[];
-extern const char D_004ABFE8[];
-extern const char D_004ABFF0[];
-extern const char D_004AC000[];
-extern const char D_004AC008[];
-extern const char D_004AC010[];
-extern const char D_004AC018[];
-extern const char D_004AC028[];
-extern const char D_004AC038[];
-extern const char D_004AC048[];
-extern const char D_004AC058[];
-extern const char D_004AC068[];
-extern const char D_004AC070[];
-extern const char D_004AC078[];
-extern const char D_004AC080[];
-extern const char D_004AC088[];
-extern const char D_004AC098[];
-extern const char D_004AC0A8[];
-extern const char D_004AC0B8[];
-extern const char D_004AC0C8[];
-extern const char D_004AC0D8[];
-extern const char D_004AC0F0[];
-extern const char D_004AC108[];
-extern const char D_004AC118[];
-extern const char D_004AC128[];
-extern const char D_004AC138[];
-extern const char D_004AC150[];
-extern const char D_004AC168[];
-extern const char D_004AC178[];
-extern const char D_004AC188[];
-extern const char D_004AC190[];
-extern const char D_004AC1A0[];
-extern const char D_004AC1B0[];
-extern const char D_004AC1C0[];
-extern const char D_004AC1D0[];
-extern const char D_004AC1E0[];
-extern const char D_004AC1F0[];
-extern const char D_004AC208[];
-extern const char D_004AC210[];
-extern const char D_004AC220[];
-extern const char D_004AC230[];
-extern const char D_004AC240[];
-extern const char D_004AC250[];
-extern const char D_004AC260[];
-extern const char D_004AC270[];
-extern const char D_004AC288[];
-extern const char D_004AC298[];
-extern const char D_004AC2A8[];
-extern const char D_004AC2B0[];
-extern const char D_004AC2C0[];
-extern const char D_004AC2D0[];
-extern const char D_004AC2E8[];
-extern const char D_004AC2F8[];
-extern const char D_004AC300[];
-extern const char D_004AC308[];
-extern const char D_004AC310[];
-extern const char D_004AC318[];
-extern const char D_004AC320[];
-extern const char D_004AC328[];
-extern const char D_004AC338[];
-extern const char D_004AC348[];
-extern const char D_004AC358[];
-extern const char D_004AC368[];
-extern const char D_004AC378[];
-extern const char D_004AC380[];
-extern const char D_004AC388[];
-extern const char D_004AC398[];
-extern const char D_004AC3A8[];
-extern const char D_004AC3B8[];
-extern const char D_004AC3C8[];
-extern const char D_004AC3D8[];
-extern const char D_004AC3E0[];
-extern const char D_004AC3E8[];
-extern const char D_004AC3F0[];
-extern const char D_004AC400[];
-extern const char D_004AC410[];
-extern const char D_004AC420[];
-extern const char D_004AC428[];
-extern const char D_004AC438[];
-extern const char D_004AC440[];
-extern const char D_004AC450[];
-extern const char D_004AC460[];
-extern const char D_004AC470[];
-extern const char D_004AC480[];
-extern const char D_004AC490[];
-extern const char D_004AC4A0[];
-extern const char D_004AC4B0[];
-extern const char D_004AC4C0[];
-extern const char D_004AC4D0[];
-extern const char D_004AC4E0[];
-extern const char D_004AC4F0[];
-extern const char D_004AC500[];
-extern const char D_004AC510[];
-extern const char D_004AC520[];
-extern const char D_004AC540[];
-extern const char D_004AC558[];
-extern const char D_004AC570[];
-extern const char D_004AC588[];
-extern const char D_004AC598[];
-extern const char D_004AC5B0[];
-extern const char D_004AC5C8[];
-extern const char D_004AC5D8[];
-extern const char D_004AC5E8[];
-extern const char D_004AC600[];
-extern const char D_004AC620[];
-extern const char D_004AC638[];
-extern const char D_004AC648[];
-extern const char D_004AC658[];
-extern const char D_004AC668[];
-extern const char D_004AC680[];
-extern const char D_004AC6A0[];
-extern const char D_004AC6B8[];
-extern const char D_004AC6C8[];
-extern const char D_004AC6D8[];
-extern const char D_004AC6E8[];
-extern const char D_004AC6F8[];
-extern const char D_004AC708[];
-extern const char D_004AC718[];
-extern const char D_004AC728[];
-extern const char D_004AC738[];
-extern const char D_004AC748[];
-extern const char D_004AC758[];
-extern const char D_004AC768[];
-extern const char D_004AC778[];
-extern const char D_004AC788[];
-extern const char D_004AC798[];
-extern const char D_004AC7A8[];
-extern const char D_004AC7B8[];
-extern const char D_004AC7C8[];
-extern const char D_004AC7D8[];
-extern const char D_004AC7E8[];
-extern const char D_004AC7F8[];
-extern const char D_004AC808[];
-extern const char D_004AC818[];
-extern const char D_004AC828[];
-extern const char D_004AC838[];
-extern const char D_004AC848[];
-extern const char D_004AC858[];
-extern const char D_004AC868[];
-extern const char D_004AC878[];
-extern const char D_004AC888[];
-extern const char D_004AC898[];
-extern const char D_004AC8A8[];
-extern const char D_004AC8B8[];
-extern const char D_004AC8C8[];
-extern const char D_004AC8D8[];
-extern const char D_004AC8E8[];
-extern const char D_004AC8F8[];
-extern const char D_004AC908[];
-extern const char D_004AC918[];
-extern const char D_004AC928[];
-extern const char D_004AC938[];
-extern const char D_004AC948[];
-extern const char D_004AC958[];
-extern const char D_004AC968[];
-extern const char D_004AC978[];
-extern const char D_004AC988[];
-extern const char D_004AC998[];
-extern const char D_004AC9A8[];
-extern const char D_004AC9B8[];
-extern const char D_004AC9C8[];
-extern const char D_004AC9D8[];
-extern const char D_004AC9E8[];
-extern const char D_004AC9F8[];
-extern const char D_004ACA08[];
-extern const char D_004ACA18[];
-extern const char D_004ACA28[];
-extern const char D_004ACA38[];
-extern const char D_004ACA48[];
-extern const char D_004ACA58[];
-extern const char D_004ACA68[];
-extern const char D_004ACA78[];
-extern const char D_004ACA88[];
-extern const char D_004ACA98[];
-extern const char D_004ACAA8[];
-extern const char D_004ACAB8[];
-extern const char D_004ACAC8[];
-extern const char D_004ACAD8[];
-extern const char D_004ACAF0[];
-extern const char D_004ACB10[];
-extern const char D_004ACB28[];
-extern const char D_004ACB38[];
-extern const char D_004ACB48[];
-extern const char D_004ACB58[];
-extern const char D_004ACB68[];
-extern const char D_004ACB78[];
-extern const char D_004ACB88[];
-extern const char D_004ACB98[];
-extern const char D_004ACBA8[];
-extern const char D_004ACBB8[];
-extern const char D_004ACBC8[];
-extern const char D_004ACBD8[];
-extern const char D_004ACBE8[];
-extern const char D_004ACC00[];
-extern const char D_004ACC18[];
-extern const char D_004ACC28[];
-extern const char D_004ACC38[];
-extern const char D_004ACC48[];
-extern const char D_004ACC58[];
-extern const char D_004ACC68[];
-extern const char D_004ACC78[];
-extern const char D_004ACC88[];
-extern const char D_004ACC98[];
-extern const char D_004ACCA8[];
-extern const char D_004ACCB8[];
-extern const char D_004ACCC8[];
-extern const char D_004ACCE0[];
-extern const char D_004ACD00[];
-extern const char D_004ACD18[];
-extern const char D_004ACD30[];
-extern const char D_004ACD50[];
-extern const char D_004ACD68[];
-extern const char D_004ACD78[];
-extern const char D_004ACD90[];
-extern const char D_004ACDA8[];
-extern const char D_004ACDB8[];
-extern const char D_004ACDC8[];
-extern const char D_004ACDD8[];
-extern const char D_004ACDE8[];
-extern const char D_004ACDF8[];
-extern const char D_004ACE08[];
-extern const char D_004ACE20[];
-extern const char D_004ACE38[];
-extern const char D_004ACE48[];
-extern const char D_004ACE58[];
-extern const char D_004ACE68[];
-extern const char D_004ACE78[];
-extern const char D_004ACE88[];
-extern const char D_004ACEA0[];
-extern const char D_004ACEB8[];
-extern const char D_004ACEC8[];
-extern const char D_004ACED8[];
-extern const char D_004ACEE8[];
-extern const char D_004ACEF8[];
-extern const char D_004ACF08[];
-extern const char D_004ACF18[];
-extern const char D_004ACF28[];
-extern const char D_004ACF38[];
-extern const char D_004ACF48[];
-extern const char D_004ACF58[];
-extern const char D_004ACF68[];
-extern const char D_004ACF78[];
-extern const char D_004ACF88[];
-extern const char D_004ACF98[];
-extern const char D_004ACFA8[];
-extern const char D_004ACFB8[];
-extern const char D_004ACFC8[];
-extern const char D_004ACFD8[];
-extern const char D_004ACFE8[];
-extern const char D_004ACFF8[];
-extern const char D_004AD008[];
-extern const char D_004AD018[];
-extern const char D_004AD028[];
-extern const char D_004AD038[];
-extern const char D_004AD048[];
-extern const char D_004AD058[];
-extern const char D_004AD068[];
-extern const char D_004AD078[];
-extern const char D_004AD088[];
-extern const char D_004AD098[];
-extern const char D_004AD0A8[];
-extern const char D_004AD0B8[];
-extern const char D_004AD0C8[];
-extern const char D_004AD0D8[];
-extern const char D_004AD0E8[];
-extern const char D_004AD0F8[];
-extern const char D_004AD108[];
-extern const char D_004AD118[];
-extern const char D_004AD128[];
-extern const char D_004AD138[];
-extern const char D_004AD148[];
-extern const char D_004AD158[];
-extern const char D_004AD168[];
-extern const char D_004AD178[];
-extern const char D_004AD180[];
-extern const char D_004AD190[];
-extern const char D_004AD1A0[];
-extern const char D_004AD1B0[];
-extern const char D_004AD1C0[];
-extern const char D_004AD1D0[];
-extern const char D_004AD1E0[];
-extern const char D_004AD1F0[];
-extern const char D_004AD200[];
-extern const char D_004AD210[];
-extern const char D_004AD220[];
-extern const char D_004AD230[];
-extern const char D_004AD240[];
-extern const char D_004AD250[];
-extern const char D_004AD260[];
-extern const char D_004AD270[];
-extern const char D_004AD280[];
-extern const char D_004AD290[];
-extern const char D_004AD2A0[];
-extern const char D_004AD2B0[];
-extern const char D_004AD2C0[];
-extern const char D_004AD2D0[];
-extern const char D_004AD2E0[];
-extern const char D_004AD2F0[];
-extern const char D_004AD300[];
-extern const char D_004AD310[];
-extern const char D_004AD320[];
-extern const char D_004AD330[];
-extern const char D_004AD340[];
-extern const char D_004AD350[];
-extern const char D_004AD360[];
-extern const char D_004AD370[];
-extern const char D_004AD380[];
-extern const char D_004AD390[];
-extern const char D_004AD3A0[];
-extern const char D_004AD3B0[];
-extern const char D_004AD3C0[];
-extern const char D_004AD3D0[];
-extern const char D_004AD3E0[];
-extern const char D_004AD3F0[];
-extern const char D_004AD400[];
-extern const char D_004AD410[];
-extern const char D_004AD420[];
-extern const char D_004AD430[];
-extern const char D_004AD448[];
-extern const char D_004AD458[];
-extern const char D_004AD468[];
-extern const char D_004AD478[];
-extern const char D_004AD488[];
-extern const char D_004AD4A0[];
-extern const char D_004AD4B8[];
-extern const char D_004AD4C8[];
-extern const char D_004AD4D8[];
-extern const char D_004AD4E8[];
-extern const char D_004AD4F8[];
-extern const char D_004AD508[];
-extern const char D_004AD518[];
-extern const char D_004AD528[];
-extern const char D_004AD530[];
-extern const char D_004AD538[];
-extern const char D_004AD548[];
-extern const char D_004AD558[];
-extern const char D_004AD568[];
-extern const char D_004AD578[];
-extern const char D_004AD588[];
-extern const char D_004AD598[];
-extern const char D_004AD5A8[];
-extern const char D_004AD5B8[];
-extern const char D_004AD5C8[];
-extern const char D_004AD5E0[];
-extern const char D_004AD5F8[];
-extern const char D_004AD608[];
-extern const char D_004AD618[];
-extern const char D_004AD628[];
-extern const char D_004AD638[];
-extern const char D_004AD648[];
-extern const char D_004AD658[];
-extern const char D_004AD668[];
-extern const char D_004AD678[];
-extern const char D_004AD688[];
-extern const char D_004AD698[];
-extern const char D_004AD6A8[];
-extern const char D_004AD6B8[];
-extern const char D_004AD6C8[];
-extern const char D_004AD6D8[];
-extern const char D_004AD6E8[];
-extern const char D_004AD700[];
-extern const char D_004AD720[];
-extern const char D_004AD740[];
-extern const char D_004AD760[];
-extern const char D_004AD778[];
-extern const char D_004AD790[];
-extern const char D_004AD7A8[];
-extern const char D_004AD7B8[];
-extern const char D_004AD7C8[];
-extern const char D_004AD7D8[];
-extern const char D_004AD7F0[];
-extern const char D_004AD810[];
-extern const char D_004AD830[];
-extern const char D_004AD848[];
-extern const char D_004AD858[];
-extern const char D_004AD868[];
-extern const char D_004AD880[];
-extern const char D_004AD8A0[];
-extern const char D_004AD8C0[];
-extern const char D_004AD8D8[];
-extern const char D_004AD8F0[];
-extern const char D_004AD908[];
-extern const char D_004AD918[];
-extern const char D_004AD930[];
-extern const char D_004AD948[];
-extern const char D_004AD960[];
-extern const char D_004AD980[];
-extern const char D_004AD9A0[];
-extern const char D_004AD9B8[];
-extern const char D_004AD9D0[];
-extern const char D_004AD9E8[];
-extern const char D_004AD9F8[];
-extern const char D_004ADA08[];
-extern const char D_004ADA10[];
-extern const char D_004ADA18[];
-extern const char D_004ADA30[];
-extern const char D_004ADA48[];
-extern const char D_004ADA58[];
-extern const char D_004ADA68[];
-extern const char D_004ADA78[];
-extern const char D_004ADA90[];
-extern const char D_004ADAB0[];
-extern const char D_004ADAC8[];
-extern const char D_004ADAD8[];
-extern const char D_004ADAE8[];
-extern const char D_004ADAF8[];
-extern const char D_004ADB08[];
-extern const char D_004ADB18[];
-extern const char D_004ADB28[];
-extern const char D_004ADB38[];
-extern const char D_004ADB48[];
-extern const char D_004ADB50[];
-extern const char D_004ADB60[];
-extern const char D_004ADB70[];
-extern const char D_004ADB80[];
-extern const char D_004ADB90[];
-extern const char D_004ADBA0[];
-extern const char D_004ADBB0[];
-extern const char D_004ADBC0[];
-extern const char D_004ADBD0[];
-extern const char D_004ADBE0[];
-extern const char D_004ADBF0[];
-extern const char D_004ADC00[];
-extern const char D_004ADC10[];
-extern const char D_004ADC18[];
-extern const char D_004ADC20[];
-extern const char D_004ADC28[];
-extern const char D_004ADC30[];
-extern const char D_004ADC38[];
-extern const char D_004ADC40[];
-extern const char D_004ADC48[];
-extern const char D_004ADC58[];
-extern const char D_004ADC68[];
-extern const char D_004ADC78[];
-extern const char D_004ADC80[];
-extern const char D_004ADC88[];
-extern const char D_004ADC98[];
-extern const char D_004ADCA8[];
-extern const char D_004ADCB8[];
-extern const char D_004ADCC8[];
-extern const char D_004ADCE0[];
-extern const char D_004ADCF8[];
-extern const char D_004ADD08[];
-extern const char D_004ADD18[];
-extern const char D_004ADD28[];
-extern const char D_004ADD38[];
-extern const char D_004ADD48[];
-extern const char D_004ADD58[];
-extern const char D_004ADD68[];
-extern const char D_004ADD78[];
-extern const char D_004ADD88[];
-extern const char D_004ADD98[];
-extern const char D_004ADDA8[];
-extern const char D_004ADDB8[];
-extern const char D_004ADDD0[];
-extern const char D_004ADDE8[];
-extern const char D_004ADE00[];
-extern const char D_004ADE18[];
-extern const char D_004ADE28[];
-extern const char D_004ADE38[];
-extern const char D_004ADE48[];
-extern const char D_004ADE58[];
-extern const char D_004ADE70[];
-extern const char D_004ADE90[];
-extern const char D_004ADEB0[];
-extern const char D_004ADEC8[];
-extern const char D_004ADED8[];
-extern const char D_004ADEE8[];
-extern const char D_004ADEF8[];
-extern const char D_004ADF08[];
-extern const char D_004ADF18[];
-extern const char D_004ADF20[];
-extern const char D_004ADF30[];
-extern const char D_004ADF40[];
-extern const char D_004ADF50[];
-extern const char D_004ADF60[];
-extern const char D_004ADF70[];
-extern const char D_004ADF80[];
-extern const char D_004ADF88[];
-extern const char D_004ADF98[];
-extern const char D_004ADFA8[];
-extern const char D_004ADFB8[];
-extern const char D_004ADFD0[];
-extern const char D_004ADFE8[];
-extern const char D_004AE000[];
-extern const char D_004AE018[];
-extern const char D_004AE028[];
-extern const char D_004AE040[];
-extern const char D_004AE058[];
-extern const char D_004AE070[];
-extern const char D_004AE090[];
-extern const char D_004AE0B0[];
-extern const char D_004AE0C8[];
-extern const char D_004AE0D8[];
-extern const char D_004AE0F0[];
-extern const char D_004AE110[];
-extern const char D_004AE130[];
-extern const char D_004AE150[];
-extern const char D_004AE168[];
-extern const char D_004AE178[];
-extern const char D_004AE188[];
-extern const char D_004AE198[];
-extern const char D_004AE1A8[];
-extern const char D_004AE1B0[];
-extern const char D_004AE1C0[];
-extern const char D_004AE1C8[];
-extern const char D_004AE1D0[];
-extern const char D_004AE1D8[];
-extern const char D_004AE1E0[];
-extern const char D_004AE1E8[];
-extern const char D_004AE1F0[];
-extern const char D_004AE1F8[];
-extern const char D_004AE200[];
-extern const char D_004AE208[];
-extern const char D_004AE210[];
-extern const char D_004AE218[];
-extern const char D_004AE220[];
-extern const char D_004AE228[];
-extern const char D_004AE230[];
-extern const char D_004AE238[];
-extern const char D_004AE240[];
-extern const char D_004AE248[];
-extern const char D_004AE250[];
-extern const char D_004AE258[];
-extern const char D_004AE260[];
-extern const char D_004AE268[];
-extern const char D_004AE270[];
-extern const char D_004AE278[];
-extern const char D_004AE280[];
-extern const char D_004AE288[];
-extern const char D_004AE290[];
-extern const char D_004AE298[];
-extern const char D_004AE2A0[];
-extern const char D_004AE2A8[];
-extern const char D_004AE2B0[];
-extern const char D_004AE2B8[];
-extern const char D_004AE2C0[];
-extern const char D_004AE2C8[];
-extern const char D_004AE2D0[];
-extern const char D_004AE2D8[];
-extern const char D_004AE2E0[];
-extern const char D_004AE2E8[];
-extern const char D_004AE2F0[];
-extern const char D_004AE2F8[];
-extern const char D_004AE300[];
-extern const char D_004AE308[];
-extern const char D_004AE310[];
-extern const char D_004AE318[];
-extern const char D_004AE320[];
-extern const char D_004AE328[];
-extern const char D_004AE330[];
-extern const char D_004AE338[];
-extern const char D_004AE340[];
-extern const char D_004AE348[];
-extern const char D_004AE350[];
-extern const char D_004AE358[];
-extern const char D_004AE360[];
-extern const char D_004AE368[];
-extern const char D_004AE370[];
-extern const char D_004AE378[];
-extern const char D_004AE380[];
-extern const char D_004AE388[];
-extern const char D_004AE390[];
-extern const char D_004AE398[];
-extern const char D_004AE3A0[];
-extern const char D_004AE3A8[];
-extern const char D_004AE3B0[];
-extern const char D_004AE3B8[];
-extern const char D_004AE3C0[];
-extern const char D_004AE3C8[];
-extern const char D_004AE3D0[];
-extern const char D_004AE3D8[];
-extern const char D_004AE3E0[];
-extern const char D_004AE3E8[];
-extern const char D_004AE3F0[];
-extern const char D_004AE3F8[];
-extern const char D_004AE400[];
-extern const char D_004AE408[];
-extern const char D_004AE410[];
-extern const char D_004AE420[];
-extern const char D_004AE428[];
-extern const char D_004AE430[];
-extern const char D_004AE438[];
-extern const char D_004AE440[];
-extern const char D_004AE448[];
-extern const char D_004AE450[];
-extern const char D_004AE458[];
-extern const char D_004AE460[];
-extern const char D_004AE468[];
-extern const char D_004AE470[];
-extern const char D_004AE478[];
-extern const char D_004AE480[];
-extern const char D_004AE488[];
-extern const char D_004AE490[];
-extern const char D_004AE498[];
-extern const char D_004AE4A0[];
-extern const char D_004AE4A8[];
-extern const char D_004AE4B0[];
-extern const char D_004AE4B8[];
-extern const char D_004AE4C0[];
-extern const char D_004AE4C8[];
-extern const char D_004AE4D0[];
-extern const char D_004AE4D8[];
-extern const char D_004AE4E0[];
-extern const char D_004AE4E8[];
-extern const char D_004AE4F0[];
-extern const char D_004AE4F8[];
-extern const char D_004AE500[];
-extern const char D_004AE508[];
-extern const char D_004AE510[];
-extern const char D_004AE518[];
-extern const char D_004AE520[];
-extern const char D_004AE528[];
-extern const char D_004AE530[];
-extern const char D_004AE538[];
-extern const char D_004AE540[];
-extern const char D_004AE548[];
-extern const char D_004AE550[];
-extern const char D_004AE558[];
-extern const char D_004AE560[];
-extern const char D_004AE568[];
-extern const char D_004AE570[];
-extern const char D_004AE578[];
-extern const char D_004AE580[];
-extern const char D_004AE588[];
+extern char gItemNames_0[];
+extern char gItemNames_1[];
+extern char gItemNames_2[];
+extern char gItemNames_3[];
+extern char gItemNames_4[];
+extern char gItemNames_5[];
+extern char gItemNames_6[];
+extern char gItemNames_7[];
+extern char gItemNames_8[];
+extern char gItemNames_9[];
+extern char gItemNames_10[];
+extern char gItemNames_11[];
+extern char gItemNames_12[];
+extern char gItemNames_13[];
+extern char gItemNames_14[];
+extern char gItemNames_15[];
+extern char gItemNames_16[];
+extern char gItemNames_17[];
+extern char gItemNames_18[];
+extern char gItemNames_19[];
+extern char gItemNames_20[];
+extern char gItemNames_21[];
+extern char gItemNames_22[];
+extern char gItemNames_23[];
+extern char gItemNames_24[];
+extern char gItemNames_25[];
+extern char gItemNames_26[];
+extern char gItemNames_27[];
+extern char gItemNames_28[];
+extern char gItemNames_29[];
+extern char gItemNames_30[];
+extern char D_004AB350[];
+extern char gItemNames_32[];
+extern char gItemNames_33[];
+extern char gItemNames_34[];
+extern char gItemNames_35[];
+extern char gItemNames_36[];
+extern char gItemNames_37[];
+extern char gItemNames_38[];
+extern char gItemNames_39[];
+extern char gItemNames_40[];
+extern char gItemNames_41[];
+extern char gItemNames_42[];
+extern char gItemNames_43[];
+extern char gItemNames_44[];
+extern char gItemNames_45[];
+extern char gItemNames_46[];
+extern char gItemNames_47[];
+extern char gItemNames_48[];
+extern char gItemNames_49[];
+extern char gItemNames_50[];
+extern char gItemNames_51[];
+extern char gItemNames_52[];
+extern char gItemNames_53[];
+extern char gItemNames_54[];
+extern char gItemNames_55[];
+extern char gItemNames_56[];
+extern char gItemNames_57[];
+extern char gItemNames_58[];
+extern char gItemNames_59[];
+extern char gItemNames_60[];
+extern char gItemNames_61[];
+extern char gItemNames_62[];
+extern char gItemNames_64[];
+extern char gItemNames_65[];
+extern char gItemNames_66[];
+extern char gItemNames_67[];
+extern char gItemNames_68[];
+extern char gItemNames_69[];
+extern char gItemNames_70[];
+extern char gItemNames_71[];
+extern char gItemNames_72[];
+extern char gItemNames_73[];
+extern char gItemNames_74[];
+extern char gItemNames_75[];
+extern char gItemNames_76[];
+extern char gItemNames_77[];
+extern char gItemNames_78[];
+extern char gItemNames_79[];
+extern char gItemNames_80[];
+extern char gItemNames_81[];
+extern char gItemNames_82[];
+extern char gItemNames_83[];
+extern char gItemNames_84[];
+extern char gItemNames_85[];
+extern char gItemNames_86[];
+extern char gItemNames_88[];
+extern char gItemNames_89[];
+extern char gItemNames_90[];
+extern char gItemNames_91[];
+extern char gItemNames_92[];
+extern char gItemNames_93[];
+extern char gItemNames_94[];
+extern char gItemNames_95[];
+extern char gItemNames_96[];
+extern char gItemNames_97[];
+extern char gItemNames_98[];
+extern char gItemNames_99[];
+extern char gItemNames_100[];
+extern char gItemNames_101[];
+extern char gItemNames_102[];
+extern char gItemNames_103[];
+extern char gItemNames_104[];
+extern char gItemNames_105[];
+extern char gItemNames_106[];
+extern char gItemNames_107[];
+extern char gItemNames_108[];
+extern char gItemNames_109[];
+extern char gItemNames_110[];
+extern char gItemNames_111[];
+extern char gItemNames_112[];
+extern char gItemNames_113[];
+extern char gItemNames_114[];
+extern char gItemNames_115[];
+extern char gItemNames_116[];
+extern char gItemNames_117[];
+extern char gItemNames_118[];
+extern char gItemNames_119[];
+extern char gItemNames_120[];
+extern char gItemNames_121[];
+extern char gItemNames_122[];
+extern char gItemNames_123[];
+extern char gItemNames_124[];
+extern char gItemNames_125[];
+extern char gItemNames_126[];
+extern char gItemNames_127[];
+extern char gItemNames_128[];
+extern char gItemNames_129[];
+extern char gItemNames_130[];
+extern char gItemNames_131[];
+extern char gItemNames_132[];
+extern char gItemNames_133[];
+extern char gItemNames_135[];
+extern char gItemNames_136[];
+extern char gItemNames_137[];
+extern char gItemNames_138[];
+extern char gItemNames_139[];
+extern char gItemNames_140[];
+extern char gItemNames_142[];
+extern char gItemNames_143[];
+extern char gItemNames_144[];
+extern char gItemNames_145[];
+extern char gItemNames_146[];
+extern char gItemNames_147[];
+extern char gItemNames_148[];
+extern char gItemNames_149[];
+extern char gItemNames_150[];
+extern char gItemNames_151[];
+extern char gItemNames_152[];
+extern char gItemNames_153[];
+extern char gItemNames_154[];
+extern char gItemNames_155[];
+extern char gItemNames_156[];
+extern char gItemNames_157[];
+extern char gItemNames_158[];
+extern char gItemNames_159[];
+extern char gItemNames_160[];
+extern char gItemNames_161[];
+extern char gItemNames_162[];
+extern char D_004ABB28[];
+extern char D_004ABB38[];
+extern char gItemNames_172[];
+extern char gItemNames_173[];
+extern char gItemNames_174[];
+extern char gItemNames_175[];
+extern char gItemNames_176[];
+extern char gItemNames_177[];
+extern char gItemNames_178[];
+extern char gItemNames_179[];
+extern char gItemNames_180[];
+extern char gItemNames_181[];
+extern char gItemNames_182[];
+extern char gItemNames_183[];
+extern char gItemNames_184[];
+extern char gItemNames_185[];
+extern char gItemNames_186[];
+extern char gItemNames_187[];
+extern char gItemNames_188[];
+extern char gItemNames_189[];
+extern char gItemNames_190[];
+extern char gItemNames_191[];
+extern char gItemNames_192[];
+extern char gItemNames_193[];
+extern char gItemNames_194[];
+extern char gItemNames_195[];
+extern char gItemNames_196[];
+extern char gItemNames_197[];
+extern char gItemNames_198[];
+extern char gItemNames_199[];
+extern char gItemNames_200[];
+extern char gItemNames_201[];
+extern char gItemNames_202[];
+extern char gItemNames_203[];
+extern char gItemNames_204[];
+extern char gItemNames_205[];
+extern char gItemNames_206[];
+extern char gItemNames_207[];
+extern char gItemNames_208[];
+extern char gItemNames_209[];
+extern char gItemNames_210[];
+extern char gItemNames_211[];
+extern char gItemNames_212[];
+extern char gItemNames_213[];
+extern char gItemNames_214[];
+extern char gItemNames_215[];
+extern char gItemNames_216[];
+extern char gItemNames_217[];
+extern char gItemNames_218[];
+extern char gItemNames_219[];
+extern char gItemNames_220[];
+extern char gItemNames_221[];
+extern char gItemNames_222[];
+extern char gItemNames_224[];
+extern char gItemNames_225[];
+extern char gItemNames_226[];
+extern char gItemNames_227[];
+extern char gItemNames_228[];
+extern char gItemNames_230[];
+extern char gItemNames_231[];
+extern char gItemNames_232[];
+extern char gItemNames_233[];
+extern char gItemNames_234[];
+extern char gItemNames_235[];
+extern char gItemNames_236[];
+extern char gItemNames_237[];
+extern char gItemNames_238[];
+extern char gItemNames_239[];
+extern char gItemNames_240[];
+extern char gItemNames_241[];
+extern char gItemNames_242[];
+extern char gItemNames_243[];
+extern char gItemNames_244[];
+extern char gItemNames_245[];
+extern char gItemNames_246[];
+extern char gItemNames_247[];
+extern char gItemNames_248[];
+extern char gItemNames_249[];
+extern char gItemNames_250[];
+extern char gItemNames_251[];
+extern char gItemNames_252[];
+extern char gItemNames_253[];
+extern char gItemNames_254[];
+extern char gItemNames_255[];
+extern char gItemNames_256[];
+extern char gItemNames_257[];
+extern char gItemNames_258[];
+extern char gItemNames_259[];
+extern char gItemNames_260[];
+extern char gItemNames_261[];
+extern char gItemNames_262[];
+extern char gItemNames_263[];
+extern char gItemNames_264[];
+extern char gItemNames_266[];
+extern char gItemNames_267[];
+extern char gItemNames_268[];
+extern char gItemNames_269[];
+extern char gItemNames_270[];
+extern char gItemNames_271[];
+extern char gItemNames_272[];
+extern char gItemNames_273[];
+extern char gItemNames_274[];
+extern char gItemNames_275[];
+extern char gItemNames_276[];
+extern char gItemNames_277[];
+extern char gItemNames_278[];
+extern char gItemNames_279[];
+extern char gItemNames_280[];
+extern char gItemNames_281[];
+extern char gItemNames_282[];
+extern char gItemNames_283[];
+extern char gItemNames_284[];
+extern char gItemNames_285[];
+extern char gItemNames_286[];
+extern char gItemNames_287[];
+extern char gItemNames_288[];
+extern char gItemNames_289[];
+extern char gItemNames_290[];
+extern char gItemNames_291[];
+extern char gItemNames_292[];
+extern char gItemNames_293[];
+extern char gItemNames_294[];
+extern char gItemNames_295[];
+extern char gItemNames_296[];
+extern char gItemNames_297[];
+extern char gItemNames_298[];
+extern char gItemNames_299[];
+extern char gItemNames_300[];
+extern char gItemNames_302[];
+extern char gItemNames_303[];
+extern char gItemNames_304[];
+extern char gItemNames_306[];
+extern char gItemNames_308[];
+extern char gItemNames_309[];
+extern char gItemNames_310[];
+extern char gItemNames_311[];
+extern char gItemNames_312[];
+extern char gItemNames_313[];
+extern char gItemNames_314[];
+extern char gItemNames_315[];
+extern char gItemNames_316[];
+extern char gItemNames_317[];
+extern char gItemNames_318[];
+extern char gItemNames_319[];
+extern char gItemNames_320[];
+extern char gItemNames_321[];
+extern char gItemNames_322[];
+extern char gItemNames_323[];
+extern char gItemNames_324[];
+extern char gItemNames_325[];
+extern char gItemNames_326[];
+extern char gItemNames_327[];
+extern char gItemNames_328[];
+extern char gItemNames_329[];
+extern char gItemNames_330[];
+extern char gItemNames_331[];
+extern char gItemNames_332[];
+extern char gItemNames_333[];
+extern char gItemNames_334[];
+extern char gItemNames_335[];
+extern char gItemNames_336[];
+extern char gItemNames_337[];
+extern char gItemNames_338[];
+extern char gItemNames_339[];
+extern char gItemNames_340[];
+extern char gItemNames_341[];
+extern char gItemNames_342[];
+extern char gItemNames_343[];
+extern char gItemNames_344[];
+extern char gItemNames_345[];
+extern char gItemNames_346[];
+extern char gItemNames_347[];
+extern char gItemNames_348[];
+extern char gItemNames_349[];
+extern char gItemNames_350[];
+extern char gItemNames_351[];
+extern char gItemNames_352[];
+extern char gItemNames_353[];
+extern char gItemNames_354[];
+extern char gItemNames_355[];
+extern char gItemNames_356[];
+extern char gItemNames_357[];
+extern char gItemNames_358[];
+extern char gItemNames_359[];
+extern char gItemNames_360[];
+extern char gItemNames_361[];
+extern char gItemNames_362[];
+extern char gItemNames_363[];
+extern char gItemNames_364[];
+extern char gItemNames_365[];
+extern char gItemNames_366[];
+extern char gItemNames_367[];
+extern char gItemNames_368[];
+extern char gItemNames_369[];
+extern char gItemNames_370[];
+extern char gItemNames_371[];
+extern char gItemNames_372[];
+extern char gItemNames_373[];
+extern char gItemNames_374[];
+extern char gItemNames_375[];
+extern char gItemNames_376[];
+extern char gItemNames_377[];
+extern char gItemNames_378[];
+extern char gItemNames_379[];
+extern char gItemNames_380[];
+extern char gItemNames_381[];
+extern char gItemNames_382[];
+extern char gItemNames_383[];
+extern char gItemNames_384[];
+extern char gItemNames_385[];
+extern char gItemNames_386[];
+extern char gItemNames_387[];
+extern char gItemNames_388[];
+extern char gItemNames_389[];
+extern char gItemNames_390[];
+extern char gItemNames_391[];
+extern char gItemNames_392[];
+extern char gItemNames_393[];
+extern char gItemNames_394[];
+extern char gItemNames_395[];
+extern char gItemNames_396[];
+extern char gItemNames_397[];
+extern char gItemNames_398[];
+extern char gItemNames_399[];
+extern char gItemNames_400[];
+extern char gItemNames_401[];
+extern char gItemNames_402[];
+extern char gItemNames_403[];
+extern char gItemNames_404[];
+extern char gItemNames_405[];
+extern char gItemNames_406[];
+extern char gItemNames_407[];
+extern char gItemNames_408[];
+extern char gItemNames_409[];
+extern char gItemNames_410[];
+extern char gItemNames_411[];
+extern char gItemNames_412[];
+extern char gItemNames_413[];
+extern char gItemNames_414[];
+extern char gItemNames_415[];
+extern char gItemNames_416[];
+extern char gItemNames_417[];
+extern char gItemNames_418[];
+extern char gItemNames_419[];
+extern char gItemNames_420[];
+extern char gItemNames_421[];
+extern char gItemNames_422[];
+extern char gItemNames_423[];
+extern char gItemNames_424[];
+extern char gItemNames_425[];
+extern char gItemNames_426[];
+extern char gItemNames_427[];
+extern char gItemNames_428[];
+extern char gItemNames_429[];
+extern char gItemNames_430[];
+extern char gItemNames_431[];
+extern char gItemNames_432[];
+extern char gItemNames_433[];
+extern char gItemNames_434[];
+extern char gItemNames_435[];
+extern char gItemNames_436[];
+extern char gItemNames_437[];
+extern char gItemNames_438[];
+extern char gItemNames_439[];
+extern char gItemNames_440[];
+extern char gItemNames_441[];
+extern char gItemNames_442[];
+extern char gItemNames_443[];
+extern char gItemNames_444[];
+extern char gItemNames_445[];
+extern char gItemNames_446[];
+extern char gItemNames_447[];
+extern char gItemNames_448[];
+extern char gItemNames_449[];
+extern char gItemNames_450[];
+extern char gItemNames_451[];
+extern char gItemNames_452[];
+extern char gItemNames_453[];
+extern char gItemNames_454[];
+extern char gItemNames_455[];
+extern char gItemNames_456[];
+extern char gItemNames_457[];
+extern char gItemNames_458[];
+extern char gItemNames_459[];
+extern char gItemNames_460[];
+extern char gItemNames_461[];
+extern char gItemNames_462[];
+extern char gItemNames_463[];
+extern char gItemNames_464[];
+extern char gItemNames_465[];
+extern char gItemNames_466[];
+extern char gItemNames_467[];
+extern char gItemNames_468[];
+extern char gItemNames_469[];
+extern char gItemNames_470[];
+extern char gItemNames_471[];
+extern char gItemNames_472[];
+extern char gItemNames_473[];
+extern char gItemNames_474[];
+extern char gItemNames_475[];
+extern char gItemNames_476[];
+extern char gItemNames_477[];
+extern char gItemNames_478[];
+extern char gItemNames_479[];
+extern char gItemNames_480[];
+extern char gItemNames_481[];
+extern char gItemNames_482[];
+extern char gItemNames_483[];
+extern char gItemNames_484[];
+extern char gItemNames_485[];
+extern char gItemNames_486[];
+extern char gItemNames_487[];
+extern char gItemNames_488[];
+extern char gItemNames_489[];
+extern char gItemNames_490[];
+extern char gItemNames_491[];
+extern char gItemNames_492[];
+extern char gItemNames_493[];
+extern char gItemNames_494[];
+extern char gItemNames_495[];
+extern char gItemNames_496[];
+extern char gItemNames_497[];
+extern char gItemNames_498[];
+extern char gItemNames_499[];
+extern char gItemNames_500[];
+extern char gItemNames_501[];
+extern char gItemNames_502[];
+extern char gItemNames_503[];
+extern char gItemNames_504[];
+extern char gItemNames_507[];
+extern char gItemNames_508[];
+extern char gItemNames_509[];
+extern char gItemNames_510[];
+extern char gItemNames_511[];
+extern char gItemNames_512[];
+extern char gItemNames_513[];
+extern char gItemNames_514[];
+extern char gItemNames_515[];
+extern char gItemNames_516[];
+extern char gItemNames_517[];
+extern char gItemNames_518[];
+extern char gItemNames_519[];
+extern char gItemNames_521[];
+extern char gItemNames_522[];
+extern char gItemNames_523[];
+extern char gItemNames_524[];
+extern char gItemNames_525[];
+extern char gItemNames_526[];
+extern char gItemNames_527[];
+extern char gItemNames_528[];
+extern char gItemNames_529[];
+extern char gItemNames_530[];
+extern char gItemNames_531[];
+extern char gItemNames_532[];
+extern char gItemNames_533[];
+extern char gItemNames_535[];
+extern char gItemNames_536[];
+extern char gItemNames_537[];
+extern char gItemNames_538[];
+extern char gItemNames_539[];
+extern char gItemNames_540[];
+extern char gItemNames_541[];
+extern char gItemNames_543[];
+extern char gItemNames_544[];
+extern char gItemNames_545[];
+extern char gItemNames_546[];
+extern char gItemNames_548[];
+extern char gItemNames_549[];
+extern char gItemNames_550[];
+extern char gItemNames_551[];
+extern char gItemNames_552[];
+extern char gItemNames_553[];
+extern char gItemNames_554[];
+extern char gItemNames_555[];
+extern char gItemNames_556[];
+extern char gItemNames_557[];
+extern char gItemNames_558[];
+extern char gItemNames_559[];
+extern char gItemNames_560[];
+extern char gItemNames_561[];
+extern char gItemNames_562[];
+extern char gItemNames_563[];
+extern char gItemNames_564[];
+extern char gItemNames_565[];
+extern char gItemNames_566[];
+extern char gItemNames_567[];
+extern char gItemNames_569[];
+extern char gItemNames_570[];
+extern char gItemNames_571[];
+extern char gItemNames_572[];
+extern char gItemNames_573[];
+extern char gItemNames_574[];
+extern char gItemNames_575[];
+extern char gItemNames_576[];
+extern char gItemNames_577[];
+extern char gItemNames_578[];
+extern char gItemNames_579[];
+extern char gItemNames_581[];
+extern char gItemNames_582[];
+extern char gItemNames_583[];
+extern char gItemNames_584[];
+extern char gItemNames_585[];
+extern char gItemNames_586[];
+extern char gItemNames_587[];
+extern char gItemNames_588[];
+extern char gItemNames_589[];
+extern char gItemNames_590[];
+extern char gItemNames_591[];
+extern char gItemNames_592[];
+extern char gItemNames_594[];
+extern char gItemNames_595[];
+extern char gItemNames_596[];
+extern char gItemNames_597[];
+extern char gItemNames_598[];
+extern char gItemNames_599[];
+extern char gItemNames_600[];
+extern char gItemNames_601[];
+extern char gItemNames_602[];
+extern char gItemNames_603[];
+extern char gItemNames_604[];
+extern char gItemNames_605[];
+extern char gItemNames_606[];
+extern char gItemNames_607[];
+extern char gItemNames_608[];
+extern char gItemNames_609[];
+extern char gItemNames_610[];
+extern char gItemNames_611[];
+extern char gItemNames_612[];
+extern char gItemNames_613[];
+extern char gItemNames_614[];
+extern char gItemNames_615[];
+extern char gItemNames_616[];
+extern char gItemNames_617[];
+extern char gItemNames_618[];
+extern char gItemNames_619[];
+extern char gItemNames_620[];
+extern char gItemNames_621[];
+extern char gItemNames_622[];
+extern char gItemNames_623[];
+extern char gItemNames_624[];
+extern char gItemNames_625[];
+extern char gItemNames_626[];
+extern char gItemNames_627[];
+extern char gItemNames_628[];
+extern char gItemNames_629[];
+extern char gItemNames_630[];
+extern char gItemNames_631[];
+extern char gItemNames_632[];
+extern char gItemNames_633[];
+extern char gItemNames_634[];
+extern char gItemNames_635[];
+extern char gItemNames_636[];
+extern char gItemNames_637[];
+extern char gItemNames_638[];
+extern char gItemNames_639[];
+extern char gItemNames_640[];
+extern char gItemNames_641[];
+extern char gItemNames_642[];
+extern char gItemNames_643[];
+extern char gItemNames_644[];
+extern char gItemNames_645[];
+extern char gItemNames_646[];
+extern char gItemNames_647[];
+extern char gItemNames_648[];
+extern char gItemNames_649[];
+extern char gItemNames_650[];
+extern char gItemNames_655[];
+extern char gItemNames_656[];
+extern char gItemNames_657[];
+extern char gItemNames_658[];
+extern char gItemNames_659[];
+extern char gItemNames_660[];
+extern char gItemNames_661[];
+extern char gItemNames_662[];
+extern char gItemNames_663[];
+extern char gItemNames_664[];
+extern char gItemNames_665[];
+extern char gItemNames_666[];
+extern char gItemNames_667[];
+extern char gItemNames_668[];
+extern char gItemNames_669[];
+extern char gItemNames_670[];
+extern char gItemNames_671[];
+extern char gItemNames_672[];
+extern char gItemNames_673[];
+extern char gItemNames_674[];
+extern char gItemNames_675[];
+extern char gItemNames_676[];
+extern char gItemNames_677[];
+extern char gItemNames_678[];
+extern char gItemNames_679[];
+extern char gItemNames_680[];
+extern char gItemNames_681[];
+extern char gItemNames_682[];
+extern char gItemNames_683[];
+extern char gItemNames_684[];
+extern char gItemNames_685[];
+extern char gItemNames_686[];
+extern char gItemNames_687[];
+extern char gItemNames_688[];
+extern char gItemNames_689[];
+extern char gItemNames_690[];
+extern char gItemNames_691[];
+extern char gItemNames_692[];
+extern char gItemNames_693[];
+extern char gItemNames_694[];
+extern char gItemNames_695[];
+extern char gItemNames_696[];
+extern char gItemNames_698[];
+extern char gItemNames_699[];
+extern char gItemNames_700[];
+extern char gItemNames_701[];
+extern char gItemNames_702[];
+extern char gItemNames_703[];
+extern char gItemNames_704[];
+extern char gItemNames_705[];
+extern char gItemNames_706[];
+extern char gItemNames_707[];
+extern char gItemNames_708[];
+extern char gItemNames_709[];
+extern char gItemNames_710[];
+extern char gItemNames_711[];
+extern char gItemNames_712[];
+extern char gItemNames_713[];
+extern char gItemNames_714[];
+extern char gItemNames_715[];
+extern char gItemNames_716[];
+extern char gItemNames_717[];
+extern char gItemNames_718[];
+extern char gItemNames_719[];
+extern char gItemNames_720[];
+extern char gItemNames_721[];
+extern char gItemNames_722[];
+extern char gItemNames_723[];
+extern char gItemNames_724[];
+extern char gItemNames_725[];
+extern char gItemNames_726[];
+extern char gItemNames_727[];
+extern char gItemNames_728[];
+extern char gItemNames_729[];
+extern char gItemNames_730[];
+extern char gItemNames_731[];
+extern char gItemNames_732[];
+extern char gItemNames_733[];
+extern char gItemNames_734[];
+extern char gItemNames_735[];
+extern char gItemNames_736[];
+extern char gItemNames_737[];
+extern char gItemNames_738[];
+extern char gItemNames_739[];
+extern char gItemNames_740[];
+extern char gItemNames_741[];
+extern char gItemNames_742[];
+extern char gItemNames_743[];
+extern char gItemNames_744[];
+extern char gItemNames_745[];
+extern char gItemNames_746[];
+extern char gItemNames_747[];
+extern char gItemNames_748[];
+extern char gItemNames_749[];
+extern char gItemNames_750[];
+extern char gItemNames_751[];
+extern char gItemNames_752[];
+extern char gItemNames_753[];
+extern char gItemNames_754[];
+extern char gItemNames_755[];
+extern char gItemNames_756[];
+extern char gItemNames_757[];
+extern char gItemNames_758[];
+extern char gItemNames_759[];
+extern char D_004AE0F0[];
+extern char D_004AE110[];
+extern char D_004AE130[];
+extern char gItemNames_782[];
+extern char gItemNames_794[];
+extern char gItemNames_795[];
+extern char gItemNames_796[];
+extern char gItemNames_797[];
+extern char gItemNames_798[];
+extern char gItemNames_799[];
+extern char gItemNames_800[];
+extern char gItemNames_801[];
+extern char gItemNames_802[];
+extern char gItemNames_803[];
+extern char gItemNames_804[];
+extern char gItemNames_805[];
+extern char gItemNames_806[];
+extern char gItemNames_807[];
+extern char gItemNames_808[];
+extern char gItemNames_809[];
+extern char gItemNames_810[];
+extern char gItemNames_811[];
+extern char gItemNames_812[];
+extern char gItemNames_813[];
+extern char gItemNames_814[];
+extern char gItemNames_815[];
+extern char gItemNames_816[];
+extern char gItemNames_817[];
+extern char gItemNames_818[];
+extern char gItemNames_819[];
+extern char gItemNames_820[];
+extern char gItemNames_821[];
+extern char gItemNames_822[];
+extern char gItemNames_823[];
+extern char gItemNames_824[];
+extern char gItemNames_825[];
+extern char gItemNames_826[];
+extern char gItemNames_827[];
+extern char gItemNames_828[];
+extern char gItemNames_829[];
+extern char gItemNames_830[];
+extern char gItemNames_831[];
+extern char gItemNames_832[];
+extern char gItemNames_833[];
+extern char gItemNames_834[];
+extern char gItemNames_835[];
+extern char gItemNames_836[];
+extern char gItemNames_837[];
+extern char gItemNames_838[];
+extern char gItemNames_839[];
+extern char gItemNames_840[];
+extern char gItemNames_841[];
+extern char gItemNames_842[];
+extern char gItemNames_843[];
+extern char gItemNames_844[];
+extern char gItemNames_845[];
+extern char gItemNames_846[];
+extern char gItemNames_847[];
+extern char gItemNames_848[];
+extern char gItemNames_849[];
+extern char gItemNames_850[];
+extern char gItemNames_851[];
+extern char gItemNames_852[];
+extern char gItemNames_853[];
+extern char gItemNames_854[];
+extern char gItemNames_855[];
+extern char gItemNames_856[];
+extern char gItemNames_857[];
+extern char gItemNames_858[];
+extern char gItemNames_859[];
+extern char gItemNames_860[];
+extern char gItemNames_861[];
+extern char gItemNames_862[];
+extern char gItemNames_863[];
+extern char gItemNames_864[];
+extern char gItemNames_865[];
+extern char gItemNames_866[];
+extern char gItemNames_867[];
+extern char gItemNames_868[];
+extern char gItemNames_869[];
+extern char gItemNames_870[];
+extern char gItemNames_871[];
+extern char gItemNames_872[];
+extern char gItemNames_873[];
+extern char gItemNames_874[];
+extern char gItemNames_875[];
+extern char gItemNames_876[];
+extern char gItemNames_877[];
+extern char gItemNames_878[];
+extern char gItemNames_879[];
+extern char gItemNames_880[];
+extern char gItemNames_881[];
+extern char gItemNames_882[];
+extern char gItemNames_883[];
+extern char gItemNames_884[];
+extern char gItemNames_885[];
+extern char gItemNames_886[];
+extern char gItemNames_887[];
+extern char gItemNames_888[];
+extern char gItemNames_889[];
+extern char gItemNames_890[];
+extern char gItemNames_891[];
+extern char gItemNames_892[];
+extern char gItemNames_893[];
+extern char gItemNames_894[];
+extern char gItemNames_895[];
+extern char gItemNames_896[];
+extern char gItemNames_897[];
+extern char gItemNames_898[];
+extern char gItemNames_899[];
+extern char gItemNames_900[];
+extern char gItemNames_901[];
+extern char gItemNames_902[];
+extern char gItemNames_903[];
+extern char gItemNames_904[];
+extern char gItemNames_905[];
+extern char gItemNames_906[];
+extern char gItemNames_907[];
+extern char gItemNames_908[];
+extern char gItemNames_909[];
+extern char gItemNames_910[];
+extern char gItemNames_911[];
+extern char gItemNames_912[];
+extern char gItemNames_913[];
+extern char gItemNames_914[];
+extern char gItemNames_915[];
+extern char gItemNames_916[];
+extern char gItemNames_917[];
+extern char gItemNames_918[];
+extern char gItemNames_919[];
+extern char gItemNames_920[];
 s16 gStageFileTbls_4[12] = {
 #include "sub_main/0044BF30.inc"
 };
@@ -7201,238 +7201,238 @@ f32 gAreaLightColors_170[6][4] = {
 ItemData gItemData[921] = {
 #include "sub_main/0045F110.inc"
 };
-u32 gItemNames[924] = {
-    (u32)D_004AB180, (u32)D_004AB190, (u32)D_004AB1A0, (u32)D_004AB1B0,
-    (u32)D_004AB1C0, (u32)D_004AB1D0, (u32)D_004AB1E0, (u32)D_004AB1F8,
-    (u32)D_004AB200, (u32)D_004AB210, (u32)D_004AB218, (u32)D_004AB228,
-    (u32)D_004AB230, (u32)D_004AB238, (u32)D_004AB240, (u32)D_004AB250,
-    (u32)D_004AB258, (u32)D_004AB268, (u32)D_004AB278, (u32)D_004AB280,
-    (u32)D_004AB290, (u32)D_004AB2A0, (u32)D_004AB2B8, (u32)D_004AB2C8,
-    (u32)D_004AB2E0, (u32)D_004AB300, (u32)D_004AB318, (u32)D_004AB320,
-    (u32)D_004AB328, (u32)D_004AB338, (u32)D_004AB340, (u32)D_004AB350,
-    (u32)D_004AB360, (u32)D_004AB368, (u32)D_004AB378, (u32)D_004AB388,
-    (u32)D_004AB398, (u32)D_004AB3A0, (u32)D_004AB3B0, (u32)D_004AB3C0,
-    (u32)D_004AB3D0, (u32)D_004AB3D8, (u32)D_004AB3E0, (u32)D_004AB3F0,
-    (u32)D_004AB400, (u32)D_004AB408, (u32)D_004AB418, (u32)D_004AB428,
-    (u32)D_004AB438, (u32)D_004AB448, (u32)D_004AB458, (u32)D_004AB460,
-    (u32)D_004AB470, (u32)D_004AB480, (u32)D_004AB490, (u32)D_004AB4A8,
-    (u32)D_004AB4B8, (u32)D_004AB4C8, (u32)D_004AB4D8, (u32)D_004AB4E8,
-    (u32)D_004AB4F8, (u32)D_004AB510, (u32)D_004AB528, (u32)D_004AB350,
-    (u32)D_004AB530, (u32)D_004AB540, (u32)D_004AB550, (u32)D_004AB560,
-    (u32)D_004AB570, (u32)D_004AB580, (u32)D_004AB598, (u32)D_004AB5A0,
-    (u32)D_004AB5B0, (u32)D_004AB5B8, (u32)D_004AB5C0, (u32)D_004AB5D8,
-    (u32)D_004AB5E8, (u32)D_004AB5F8, (u32)D_004AB608, (u32)D_004AB618,
-    (u32)D_004AB620, (u32)D_004AB630, (u32)D_004AB640, (u32)D_004AB648,
-    (u32)D_004AB658, (u32)D_004AB668, (u32)D_004AB678, (u32)D_004AB350,
-    (u32)D_004AB680, (u32)D_004AB690, (u32)D_004AB698, (u32)D_004AB6A0,
-    (u32)D_004AB6B0, (u32)D_004AB6C0, (u32)D_004AB6D0, (u32)D_004AB6E0,
-    (u32)D_004AB6F0, (u32)D_004AB708, (u32)D_004AB718, (u32)D_004AB728,
-    (u32)D_004AB738, (u32)D_004AB748, (u32)D_004AB758, (u32)D_004AB768,
-    (u32)D_004AB778, (u32)D_004AB788, (u32)D_004AB798, (u32)D_004AB7A8,
-    (u32)D_004AB7B8, (u32)D_004AB7C8, (u32)D_004AB7D8, (u32)D_004AB7E8,
-    (u32)D_004AB7F8, (u32)D_004AB808, (u32)D_004AB818, (u32)D_004AB828,
-    (u32)D_004AB838, (u32)D_004AB848, (u32)D_004AB850, (u32)D_004AB858,
-    (u32)D_004AB860, (u32)D_004AB868, (u32)D_004AB870, (u32)D_004AB880,
-    (u32)D_004AB890, (u32)D_004AB8A0, (u32)D_004AB8B0, (u32)D_004AB8C0,
-    (u32)D_004AB8D0, (u32)D_004AB8E0, (u32)D_004AB8F0, (u32)D_004AB900,
-    (u32)D_004AB910, (u32)D_004AB918, (u32)D_004AB350, (u32)D_004AB920,
-    (u32)D_004AB930, (u32)D_004AB940, (u32)D_004AB950, (u32)D_004AB958,
-    (u32)D_004AB968, (u32)D_004AB350, (u32)D_004AB978, (u32)D_004AB988,
-    (u32)D_004AB998, (u32)D_004AB9A8, (u32)D_004AB9B8, (u32)D_004AB9C8,
-    (u32)D_004AB9D8, (u32)D_004AB9E8, (u32)D_004AB9F8, (u32)D_004ABA08,
-    (u32)D_004ABA20, (u32)D_004ABA38, (u32)D_004ABA48, (u32)D_004ABA50,
-    (u32)D_004ABA60, (u32)D_004ABA70, (u32)D_004ABA90, (u32)D_004ABAB0,
-    (u32)D_004ABAD0, (u32)D_004ABAF0, (u32)D_004ABB10, (u32)D_004ABB28,
-    (u32)D_004ABB28, (u32)D_004ABB28, (u32)D_004ABB28, (u32)D_004ABB28,
-    (u32)D_004ABB38, (u32)D_004ABB38, (u32)D_004AB350, (u32)D_004AB350,
-    (u32)D_004ABB48, (u32)D_004ABB50, (u32)D_004ABB58, (u32)D_004ABB68,
-    (u32)D_004ABB70, (u32)D_004ABB78, (u32)D_004ABB80, (u32)D_004ABB88,
-    (u32)D_004ABB90, (u32)D_004ABBA0, (u32)D_004ABBA8, (u32)D_004ABBB0,
-    (u32)D_004ABBB8, (u32)D_004ABBC8, (u32)D_004ABBD0, (u32)D_004ABBE0,
-    (u32)D_004ABBF0, (u32)D_004ABC00, (u32)D_004ABC10, (u32)D_004ABC20,
-    (u32)D_004ABC30, (u32)D_004ABC40, (u32)D_004ABC50, (u32)D_004ABC60,
-    (u32)D_004ABC70, (u32)D_004ABC80, (u32)D_004ABC90, (u32)D_004ABCA0,
-    (u32)D_004ABCB0, (u32)D_004ABCC0, (u32)D_004ABCD0, (u32)D_004ABCF0,
-    (u32)D_004ABD08, (u32)D_004ABD18, (u32)D_004ABD28, (u32)D_004ABD38,
-    (u32)D_004ABD48, (u32)D_004ABD58, (u32)D_004ABD68, (u32)D_004ABD78,
-    (u32)D_004ABD88, (u32)D_004ABD98, (u32)D_004ABDA0, (u32)D_004ABDA8,
-    (u32)D_004ABDB0, (u32)D_004ABDB8, (u32)D_004ABDC8, (u32)D_004ABDE0,
-    (u32)D_004ABE00, (u32)D_004ABE18, (u32)D_004ABE28, (u32)D_004AB350,
-    (u32)D_004ABE30, (u32)D_004ABE40, (u32)D_004ABE60, (u32)D_004ABE78,
-    (u32)D_004ABE80, (u32)D_004AB350, (u32)D_004ABE88, (u32)D_004ABE98,
-    (u32)D_004ABEA8, (u32)D_004ABEB8, (u32)D_004ABEC8, (u32)D_004ABED8,
-    (u32)D_004ABEE8, (u32)D_004ABEF0, (u32)D_004ABF00, (u32)D_004ABF10,
-    (u32)D_004ABF28, (u32)D_004ABF40, (u32)D_004ABF58, (u32)D_004ABF68,
-    (u32)D_004ABF78, (u32)D_004ABF90, (u32)D_004ABFA8, (u32)D_004ABFB8,
-    (u32)D_004ABFD0, (u32)D_004ABFE8, (u32)D_004ABFF0, (u32)D_004AC000,
-    (u32)D_004AC008, (u32)D_004AC010, (u32)D_004AC018, (u32)D_004AC028,
-    (u32)D_004AC038, (u32)D_004AC048, (u32)D_004AC058, (u32)D_004AC068,
-    (u32)D_004AC070, (u32)D_004AC078, (u32)D_004AC080, (u32)D_004AC088,
-    (u32)D_004AC098, (u32)D_004AB350, (u32)D_004AC0A8, (u32)D_004AC0B8,
-    (u32)D_004AC0C8, (u32)D_004AC0D8, (u32)D_004AC0F0, (u32)D_004AC108,
-    (u32)D_004AC118, (u32)D_004AC128, (u32)D_004AC138, (u32)D_004AC150,
-    (u32)D_004AC168, (u32)D_004AC178, (u32)D_004AC188, (u32)D_004AC190,
-    (u32)D_004AC1A0, (u32)D_004AC1B0, (u32)D_004AC1C0, (u32)D_004AC1D0,
-    (u32)D_004AC1E0, (u32)D_004AC1F0, (u32)D_004AC208, (u32)D_004AC210,
-    (u32)D_004AC220, (u32)D_004AC230, (u32)D_004AC240, (u32)D_004AC250,
-    (u32)D_004AC260, (u32)D_004AC270, (u32)D_004AC288, (u32)D_004AC298,
-    (u32)D_004AC2A8, (u32)D_004AC2B0, (u32)D_004AC2C0, (u32)D_004AC2D0,
-    (u32)D_004AC2E8, (u32)D_004AB350, (u32)D_004AC2F8, (u32)D_004AC300,
-    (u32)D_004AC308, (u32)D_004AB350, (u32)D_004AC310, (u32)D_004AB350,
-    (u32)D_004AC318, (u32)D_004AC320, (u32)D_004AC328, (u32)D_004AC338,
-    (u32)D_004AC348, (u32)D_004AC358, (u32)D_004AC368, (u32)D_004AC378,
-    (u32)D_004AC380, (u32)D_004AC388, (u32)D_004AC398, (u32)D_004AC3A8,
-    (u32)D_004AC3B8, (u32)D_004AC3C8, (u32)D_004AC3D8, (u32)D_004AC3E0,
-    (u32)D_004AC3E8, (u32)D_004AC3F0, (u32)D_004AC400, (u32)D_004AC410,
-    (u32)D_004AC420, (u32)D_004AC428, (u32)D_004AC438, (u32)D_004AC440,
-    (u32)D_004AC450, (u32)D_004AC460, (u32)D_004AC470, (u32)D_004AC480,
-    (u32)D_004AC490, (u32)D_004AC4A0, (u32)D_004AC4B0, (u32)D_004AC4C0,
-    (u32)D_004AC4D0, (u32)D_004AC4E0, (u32)D_004AC4F0, (u32)D_004AC500,
-    (u32)D_004AC510, (u32)D_004AC520, (u32)D_004AC540, (u32)D_004AC558,
-    (u32)D_004AC570, (u32)D_004AC588, (u32)D_004AC598, (u32)D_004AC5B0,
-    (u32)D_004AC5C8, (u32)D_004AC5D8, (u32)D_004AC5E8, (u32)D_004AC600,
-    (u32)D_004AC620, (u32)D_004AC638, (u32)D_004AC648, (u32)D_004AC658,
-    (u32)D_004AC668, (u32)D_004AC680, (u32)D_004AC6A0, (u32)D_004AC6B8,
-    (u32)D_004AC6C8, (u32)D_004AC6D8, (u32)D_004AC6E8, (u32)D_004AC6F8,
-    (u32)D_004AC708, (u32)D_004AC718, (u32)D_004AC728, (u32)D_004AC738,
-    (u32)D_004AC748, (u32)D_004AC758, (u32)D_004AC768, (u32)D_004AC778,
-    (u32)D_004AC788, (u32)D_004AC798, (u32)D_004AC7A8, (u32)D_004AC7B8,
-    (u32)D_004AC7C8, (u32)D_004AC7D8, (u32)D_004AC7E8, (u32)D_004AC7F8,
-    (u32)D_004AC808, (u32)D_004AC818, (u32)D_004AC828, (u32)D_004AC838,
-    (u32)D_004AC848, (u32)D_004AC858, (u32)D_004AC868, (u32)D_004AC878,
-    (u32)D_004AC888, (u32)D_004AC898, (u32)D_004AC8A8, (u32)D_004AC8B8,
-    (u32)D_004AC8C8, (u32)D_004AC8D8, (u32)D_004AC8E8, (u32)D_004AC8F8,
-    (u32)D_004AC908, (u32)D_004AC918, (u32)D_004AC928, (u32)D_004AC938,
-    (u32)D_004AC948, (u32)D_004AC958, (u32)D_004AC968, (u32)D_004AC978,
-    (u32)D_004AC988, (u32)D_004AC998, (u32)D_004AC9A8, (u32)D_004AC9B8,
-    (u32)D_004AC9C8, (u32)D_004AC9D8, (u32)D_004AC9E8, (u32)D_004AC9F8,
-    (u32)D_004ACA08, (u32)D_004ACA18, (u32)D_004ACA28, (u32)D_004ACA38,
-    (u32)D_004ACA48, (u32)D_004ACA58, (u32)D_004ACA68, (u32)D_004ACA78,
-    (u32)D_004ACA88, (u32)D_004ACA98, (u32)D_004ACAA8, (u32)D_004ACAB8,
-    (u32)D_004ACAC8, (u32)D_004ACAD8, (u32)D_004ACAF0, (u32)D_004ACB10,
-    (u32)D_004ACB28, (u32)D_004ACB38, (u32)D_004ACB48, (u32)D_004ACB58,
-    (u32)D_004ACB68, (u32)D_004ACB78, (u32)D_004ACB88, (u32)D_004ACB98,
-    (u32)D_004ACBA8, (u32)D_004ACBB8, (u32)D_004ACBC8, (u32)D_004ACBD8,
-    (u32)D_004ACBE8, (u32)D_004ACC00, (u32)D_004ACC18, (u32)D_004ACC28,
-    (u32)D_004ACC38, (u32)D_004ACC48, (u32)D_004ACC58, (u32)D_004ACC68,
-    (u32)D_004ACC78, (u32)D_004ACC88, (u32)D_004ACC98, (u32)D_004ACCA8,
-    (u32)D_004ACCB8, (u32)D_004ACCC8, (u32)D_004ACCE0, (u32)D_004ACD00,
-    (u32)D_004ACD18, (u32)D_004ACD30, (u32)D_004ACD50, (u32)D_004ACD68,
-    (u32)D_004ACD78, (u32)D_004ACD90, (u32)D_004ACDA8, (u32)D_004ACDB8,
-    (u32)D_004ACDC8, (u32)D_004ACDD8, (u32)D_004ACDE8, (u32)D_004ACDF8,
-    (u32)D_004ACE08, (u32)D_004ACE20, (u32)D_004ACE38, (u32)D_004ACE48,
-    (u32)D_004ACE58, (u32)D_004ACE68, (u32)D_004ACE78, (u32)D_004ACE88,
-    (u32)D_004ACEA0, (u32)D_004ACEB8, (u32)D_004ACEC8, (u32)D_004ACED8,
-    (u32)D_004ACEE8, (u32)D_004ACEF8, (u32)D_004ACF08, (u32)D_004ACF18,
-    (u32)D_004ACF28, (u32)D_004ACF38, (u32)D_004ACF48, (u32)D_004ACF58,
-    (u32)D_004ACF68, (u32)D_004ACF78, (u32)D_004ACF88, (u32)D_004ACF98,
-    (u32)D_004ACFA8, (u32)D_004ACFB8, (u32)D_004ACFC8, (u32)D_004ACFD8,
-    (u32)D_004ACFE8, (u32)D_004ACFF8, (u32)D_004AD008, (u32)D_004AD018,
-    (u32)D_004AD028, (u32)D_004AB350, (u32)D_004AB350, (u32)D_004AD038,
-    (u32)D_004AD048, (u32)D_004AD058, (u32)D_004AD068, (u32)D_004AD078,
-    (u32)D_004AD088, (u32)D_004AD098, (u32)D_004AD0A8, (u32)D_004AD0B8,
-    (u32)D_004AD0C8, (u32)D_004AD0D8, (u32)D_004AD0E8, (u32)D_004AD0F8,
-    (u32)D_004AB350, (u32)D_004AD108, (u32)D_004AD118, (u32)D_004AD128,
-    (u32)D_004AD138, (u32)D_004AD148, (u32)D_004AD158, (u32)D_004AD168,
-    (u32)D_004AD178, (u32)D_004AD180, (u32)D_004AD190, (u32)D_004AD1A0,
-    (u32)D_004AD1B0, (u32)D_004AD1C0, (u32)D_004AB350, (u32)D_004AD1D0,
-    (u32)D_004AD1E0, (u32)D_004AD1F0, (u32)D_004AD200, (u32)D_004AD210,
-    (u32)D_004AD220, (u32)D_004AD230, (u32)D_004AB350, (u32)D_004AD240,
-    (u32)D_004AD250, (u32)D_004AD260, (u32)D_004AD270, (u32)D_004AB350,
-    (u32)D_004AD280, (u32)D_004AD290, (u32)D_004AD2A0, (u32)D_004AD2B0,
-    (u32)D_004AD2C0, (u32)D_004AD2D0, (u32)D_004AD2E0, (u32)D_004AD2F0,
-    (u32)D_004AD300, (u32)D_004AD310, (u32)D_004AD320, (u32)D_004AD330,
-    (u32)D_004AD340, (u32)D_004AD350, (u32)D_004AD360, (u32)D_004AD370,
-    (u32)D_004AD380, (u32)D_004AD390, (u32)D_004AD3A0, (u32)D_004AD3B0,
-    (u32)D_004AB350, (u32)D_004AD3C0, (u32)D_004AD3D0, (u32)D_004AD3E0,
-    (u32)D_004AD3F0, (u32)D_004AD400, (u32)D_004AD410, (u32)D_004AD420,
-    (u32)D_004AD430, (u32)D_004AD448, (u32)D_004AD458, (u32)D_004AD468,
-    (u32)D_004AB350, (u32)D_004AD478, (u32)D_004AD488, (u32)D_004AD4A0,
-    (u32)D_004AD4B8, (u32)D_004AD4C8, (u32)D_004AD4D8, (u32)D_004AD4E8,
-    (u32)D_004AD4F8, (u32)D_004AD508, (u32)D_004AD518, (u32)D_004AD528,
-    (u32)D_004AD530, (u32)D_004AB350, (u32)D_004AD538, (u32)D_004AD548,
-    (u32)D_004AD558, (u32)D_004AD568, (u32)D_004AD578, (u32)D_004AD588,
-    (u32)D_004AD598, (u32)D_004AD5A8, (u32)D_004AD5B8, (u32)D_004AD5C8,
-    (u32)D_004AD5E0, (u32)D_004AD5F8, (u32)D_004AD608, (u32)D_004AD618,
-    (u32)D_004AD628, (u32)D_004AD638, (u32)D_004AD648, (u32)D_004AD658,
-    (u32)D_004AD668, (u32)D_004AD678, (u32)D_004AD688, (u32)D_004AD698,
-    (u32)D_004AD6A8, (u32)D_004AD6B8, (u32)D_004AD6C8, (u32)D_004AD6D8,
-    (u32)D_004AD6E8, (u32)D_004AD700, (u32)D_004AD720, (u32)D_004AD740,
-    (u32)D_004AD760, (u32)D_004AD778, (u32)D_004AD790, (u32)D_004AD7A8,
-    (u32)D_004AD7B8, (u32)D_004AD7C8, (u32)D_004AD7D8, (u32)D_004AD7F0,
-    (u32)D_004AD810, (u32)D_004AD830, (u32)D_004AD848, (u32)D_004AD858,
-    (u32)D_004AD868, (u32)D_004AD880, (u32)D_004AD8A0, (u32)D_004AD8C0,
-    (u32)D_004AD8D8, (u32)D_004AD8F0, (u32)D_004AD908, (u32)D_004AD918,
-    (u32)D_004AD930, (u32)D_004AD948, (u32)D_004AD960, (u32)D_004AD980,
-    (u32)D_004AD9A0, (u32)D_004AD9B8, (u32)D_004AD9D0, (u32)D_004AB350,
-    (u32)D_004AB350, (u32)D_004AB350, (u32)D_004AB350, (u32)D_004AD9E8,
-    (u32)D_004AD9F8, (u32)D_004ADA08, (u32)D_004ADA10, (u32)D_004ADA18,
-    (u32)D_004ADA30, (u32)D_004ADA48, (u32)D_004ADA58, (u32)D_004ADA68,
-    (u32)D_004ADA78, (u32)D_004ADA90, (u32)D_004ADAB0, (u32)D_004ADAC8,
-    (u32)D_004ADAD8, (u32)D_004ADAE8, (u32)D_004ADAF8, (u32)D_004ADB08,
-    (u32)D_004ADB18, (u32)D_004ADB28, (u32)D_004ADB38, (u32)D_004ADB48,
-    (u32)D_004ADB50, (u32)D_004ADB60, (u32)D_004ADB70, (u32)D_004ADB80,
-    (u32)D_004ADB90, (u32)D_004ADBA0, (u32)D_004ADBB0, (u32)D_004ADBC0,
-    (u32)D_004ADBD0, (u32)D_004ADBE0, (u32)D_004ADBF0, (u32)D_004ADC00,
-    (u32)D_004ADC10, (u32)D_004ADC18, (u32)D_004ADC20, (u32)D_004ADC28,
-    (u32)D_004ADC30, (u32)D_004ADC38, (u32)D_004ADC40, (u32)D_004ADC48,
-    (u32)D_004ADC58, (u32)D_004AB350, (u32)D_004ADC68, (u32)D_004ADC78,
-    (u32)D_004ADC80, (u32)D_004ADC88, (u32)D_004ADC98, (u32)D_004ADCA8,
-    (u32)D_004ADCB8, (u32)D_004ADCC8, (u32)D_004ADCE0, (u32)D_004ADCF8,
-    (u32)D_004ADD08, (u32)D_004ADD18, (u32)D_004ADD28, (u32)D_004ADD38,
-    (u32)D_004ADD48, (u32)D_004ADD58, (u32)D_004ADD68, (u32)D_004ADD78,
-    (u32)D_004ADD88, (u32)D_004ADD98, (u32)D_004ADDA8, (u32)D_004ADDB8,
-    (u32)D_004ADDD0, (u32)D_004ADDE8, (u32)D_004ADE00, (u32)D_004ADE18,
-    (u32)D_004ADE28, (u32)D_004ADE38, (u32)D_004ADE48, (u32)D_004ADE58,
-    (u32)D_004ADE70, (u32)D_004ADE90, (u32)D_004ADEB0, (u32)D_004ADEC8,
-    (u32)D_004ADED8, (u32)D_004ADEE8, (u32)D_004ADEF8, (u32)D_004ADF08,
-    (u32)D_004ADF18, (u32)D_004ADF20, (u32)D_004ADF30, (u32)D_004ADF40,
-    (u32)D_004ADF50, (u32)D_004ADF60, (u32)D_004ADF70, (u32)D_004ADF80,
-    (u32)D_004ADF88, (u32)D_004ADF98, (u32)D_004ADFA8, (u32)D_004ADFB8,
-    (u32)D_004ADFD0, (u32)D_004ADFE8, (u32)D_004AE000, (u32)D_004AE018,
-    (u32)D_004AE028, (u32)D_004AE040, (u32)D_004AE058, (u32)D_004AE070,
-    (u32)D_004AE090, (u32)D_004AE0B0, (u32)D_004AE0C8, (u32)D_004AE0D8,
-    (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE0F0,
-    (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE0F0,
-    (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE0F0,
-    (u32)D_004AE0F0, (u32)D_004AE0F0, (u32)D_004AE110, (u32)D_004AE110,
-    (u32)D_004AE110, (u32)D_004AE110, (u32)D_004AE130, (u32)D_004AE130,
-    (u32)D_004AE130, (u32)D_004AE130, (u32)D_004AE150, (u32)D_004AE130,
-    (u32)D_004AE130, (u32)D_004AE130, (u32)D_004AE130, (u32)D_004AE130,
-    (u32)D_004AE130, (u32)D_004AE130, (u32)D_004AE130, (u32)D_004AE130,
-    (u32)D_004AE130, (u32)D_004AE130, (u32)D_004AE168, (u32)D_004AE178,
-    (u32)D_004AE188, (u32)D_004AE198, (u32)D_004AE1A8, (u32)D_004AE1B0,
-    (u32)D_004AE1C0, (u32)D_004AE1C8, (u32)D_004AE1D0, (u32)D_004AE1D8,
-    (u32)D_004AE1E0, (u32)D_004AE1E8, (u32)D_004AE1F0, (u32)D_004AE1F8,
-    (u32)D_004AE200, (u32)D_004AE208, (u32)D_004AE210, (u32)D_004AE218,
-    (u32)D_004AE220, (u32)D_004AE228, (u32)D_004AE230, (u32)D_004AE238,
-    (u32)D_004AE240, (u32)D_004AE248, (u32)D_004AE250, (u32)D_004AE258,
-    (u32)D_004AE260, (u32)D_004AE268, (u32)D_004AE270, (u32)D_004AE278,
-    (u32)D_004AE280, (u32)D_004AE288, (u32)D_004AE290, (u32)D_004AE298,
-    (u32)D_004AE2A0, (u32)D_004AE2A8, (u32)D_004AE2B0, (u32)D_004AE2B8,
-    (u32)D_004AE2C0, (u32)D_004AE2C8, (u32)D_004AE2D0, (u32)D_004AE2D8,
-    (u32)D_004AE2E0, (u32)D_004AE2E8, (u32)D_004AE2F0, (u32)D_004AE2F8,
-    (u32)D_004AE300, (u32)D_004AE308, (u32)D_004AE310, (u32)D_004AE318,
-    (u32)D_004AE320, (u32)D_004AE328, (u32)D_004AE330, (u32)D_004AE338,
-    (u32)D_004AE340, (u32)D_004AE348, (u32)D_004AE350, (u32)D_004AE358,
-    (u32)D_004AE360, (u32)D_004AE368, (u32)D_004AE370, (u32)D_004AE378,
-    (u32)D_004AE380, (u32)D_004AE388, (u32)D_004AE390, (u32)D_004AE398,
-    (u32)D_004AE3A0, (u32)D_004AE3A8, (u32)D_004AE3B0, (u32)D_004AE3B8,
-    (u32)D_004AE3C0, (u32)D_004AE3C8, (u32)D_004AE3D0, (u32)D_004AE3D8,
-    (u32)D_004AE3E0, (u32)D_004AE3E8, (u32)D_004AE3F0, (u32)D_004AE3F8,
-    (u32)D_004AE400, (u32)D_004AE408, (u32)D_004AE410, (u32)D_004AE420,
-    (u32)D_004AE428, (u32)D_004AE430, (u32)D_004AE438, (u32)D_004AE440,
-    (u32)D_004AE448, (u32)D_004AE450, (u32)D_004AE458, (u32)D_004AE460,
-    (u32)D_004AE468, (u32)D_004AE470, (u32)D_004AE478, (u32)D_004AE480,
-    (u32)D_004AE488, (u32)D_004AE490, (u32)D_004AE498, (u32)D_004AE4A0,
-    (u32)D_004AE4A8, (u32)D_004AE4B0, (u32)D_004AE4B8, (u32)D_004AE4C0,
-    (u32)D_004AE4C8, (u32)D_004AE4D0, (u32)D_004AE4D8, (u32)D_004AE4E0,
-    (u32)D_004AE4E8, (u32)D_004AE4F0, (u32)D_004AE4F8, (u32)D_004AE500,
-    (u32)D_004AE508, (u32)D_004AE510, (u32)D_004AE518, (u32)D_004AE520,
-    (u32)D_004AE528, (u32)D_004AE530, (u32)D_004AE538, (u32)D_004AE540,
-    (u32)D_004AE548, (u32)D_004AE550, (u32)D_004AE558, (u32)D_004AE560,
-    (u32)D_004AE568, (u32)D_004AE570, (u32)D_004AE578, (u32)D_004AE580,
-    (u32)D_004AE588, 0, 0, 0,
+char *gItemNames[924] = {
+    gItemNames_0, gItemNames_1, gItemNames_2, gItemNames_3,
+    gItemNames_4, gItemNames_5, gItemNames_6, gItemNames_7,
+    gItemNames_8, gItemNames_9, gItemNames_10, gItemNames_11,
+    gItemNames_12, gItemNames_13, gItemNames_14, gItemNames_15,
+    gItemNames_16, gItemNames_17, gItemNames_18, gItemNames_19,
+    gItemNames_20, gItemNames_21, gItemNames_22, gItemNames_23,
+    gItemNames_24, gItemNames_25, gItemNames_26, gItemNames_27,
+    gItemNames_28, gItemNames_29, gItemNames_30, D_004AB350,
+    gItemNames_32, gItemNames_33, gItemNames_34, gItemNames_35,
+    gItemNames_36, gItemNames_37, gItemNames_38, gItemNames_39,
+    gItemNames_40, gItemNames_41, gItemNames_42, gItemNames_43,
+    gItemNames_44, gItemNames_45, gItemNames_46, gItemNames_47,
+    gItemNames_48, gItemNames_49, gItemNames_50, gItemNames_51,
+    gItemNames_52, gItemNames_53, gItemNames_54, gItemNames_55,
+    gItemNames_56, gItemNames_57, gItemNames_58, gItemNames_59,
+    gItemNames_60, gItemNames_61, gItemNames_62, D_004AB350,
+    gItemNames_64, gItemNames_65, gItemNames_66, gItemNames_67,
+    gItemNames_68, gItemNames_69, gItemNames_70, gItemNames_71,
+    gItemNames_72, gItemNames_73, gItemNames_74, gItemNames_75,
+    gItemNames_76, gItemNames_77, gItemNames_78, gItemNames_79,
+    gItemNames_80, gItemNames_81, gItemNames_82, gItemNames_83,
+    gItemNames_84, gItemNames_85, gItemNames_86, D_004AB350,
+    gItemNames_88, gItemNames_89, gItemNames_90, gItemNames_91,
+    gItemNames_92, gItemNames_93, gItemNames_94, gItemNames_95,
+    gItemNames_96, gItemNames_97, gItemNames_98, gItemNames_99,
+    gItemNames_100, gItemNames_101, gItemNames_102, gItemNames_103,
+    gItemNames_104, gItemNames_105, gItemNames_106, gItemNames_107,
+    gItemNames_108, gItemNames_109, gItemNames_110, gItemNames_111,
+    gItemNames_112, gItemNames_113, gItemNames_114, gItemNames_115,
+    gItemNames_116, gItemNames_117, gItemNames_118, gItemNames_119,
+    gItemNames_120, gItemNames_121, gItemNames_122, gItemNames_123,
+    gItemNames_124, gItemNames_125, gItemNames_126, gItemNames_127,
+    gItemNames_128, gItemNames_129, gItemNames_130, gItemNames_131,
+    gItemNames_132, gItemNames_133, D_004AB350, gItemNames_135,
+    gItemNames_136, gItemNames_137, gItemNames_138, gItemNames_139,
+    gItemNames_140, D_004AB350, gItemNames_142, gItemNames_143,
+    gItemNames_144, gItemNames_145, gItemNames_146, gItemNames_147,
+    gItemNames_148, gItemNames_149, gItemNames_150, gItemNames_151,
+    gItemNames_152, gItemNames_153, gItemNames_154, gItemNames_155,
+    gItemNames_156, gItemNames_157, gItemNames_158, gItemNames_159,
+    gItemNames_160, gItemNames_161, gItemNames_162, D_004ABB28,
+    D_004ABB28, D_004ABB28, D_004ABB28, D_004ABB28,
+    D_004ABB38, D_004ABB38, D_004AB350, D_004AB350,
+    gItemNames_172, gItemNames_173, gItemNames_174, gItemNames_175,
+    gItemNames_176, gItemNames_177, gItemNames_178, gItemNames_179,
+    gItemNames_180, gItemNames_181, gItemNames_182, gItemNames_183,
+    gItemNames_184, gItemNames_185, gItemNames_186, gItemNames_187,
+    gItemNames_188, gItemNames_189, gItemNames_190, gItemNames_191,
+    gItemNames_192, gItemNames_193, gItemNames_194, gItemNames_195,
+    gItemNames_196, gItemNames_197, gItemNames_198, gItemNames_199,
+    gItemNames_200, gItemNames_201, gItemNames_202, gItemNames_203,
+    gItemNames_204, gItemNames_205, gItemNames_206, gItemNames_207,
+    gItemNames_208, gItemNames_209, gItemNames_210, gItemNames_211,
+    gItemNames_212, gItemNames_213, gItemNames_214, gItemNames_215,
+    gItemNames_216, gItemNames_217, gItemNames_218, gItemNames_219,
+    gItemNames_220, gItemNames_221, gItemNames_222, D_004AB350,
+    gItemNames_224, gItemNames_225, gItemNames_226, gItemNames_227,
+    gItemNames_228, D_004AB350, gItemNames_230, gItemNames_231,
+    gItemNames_232, gItemNames_233, gItemNames_234, gItemNames_235,
+    gItemNames_236, gItemNames_237, gItemNames_238, gItemNames_239,
+    gItemNames_240, gItemNames_241, gItemNames_242, gItemNames_243,
+    gItemNames_244, gItemNames_245, gItemNames_246, gItemNames_247,
+    gItemNames_248, gItemNames_249, gItemNames_250, gItemNames_251,
+    gItemNames_252, gItemNames_253, gItemNames_254, gItemNames_255,
+    gItemNames_256, gItemNames_257, gItemNames_258, gItemNames_259,
+    gItemNames_260, gItemNames_261, gItemNames_262, gItemNames_263,
+    gItemNames_264, D_004AB350, gItemNames_266, gItemNames_267,
+    gItemNames_268, gItemNames_269, gItemNames_270, gItemNames_271,
+    gItemNames_272, gItemNames_273, gItemNames_274, gItemNames_275,
+    gItemNames_276, gItemNames_277, gItemNames_278, gItemNames_279,
+    gItemNames_280, gItemNames_281, gItemNames_282, gItemNames_283,
+    gItemNames_284, gItemNames_285, gItemNames_286, gItemNames_287,
+    gItemNames_288, gItemNames_289, gItemNames_290, gItemNames_291,
+    gItemNames_292, gItemNames_293, gItemNames_294, gItemNames_295,
+    gItemNames_296, gItemNames_297, gItemNames_298, gItemNames_299,
+    gItemNames_300, D_004AB350, gItemNames_302, gItemNames_303,
+    gItemNames_304, D_004AB350, gItemNames_306, D_004AB350,
+    gItemNames_308, gItemNames_309, gItemNames_310, gItemNames_311,
+    gItemNames_312, gItemNames_313, gItemNames_314, gItemNames_315,
+    gItemNames_316, gItemNames_317, gItemNames_318, gItemNames_319,
+    gItemNames_320, gItemNames_321, gItemNames_322, gItemNames_323,
+    gItemNames_324, gItemNames_325, gItemNames_326, gItemNames_327,
+    gItemNames_328, gItemNames_329, gItemNames_330, gItemNames_331,
+    gItemNames_332, gItemNames_333, gItemNames_334, gItemNames_335,
+    gItemNames_336, gItemNames_337, gItemNames_338, gItemNames_339,
+    gItemNames_340, gItemNames_341, gItemNames_342, gItemNames_343,
+    gItemNames_344, gItemNames_345, gItemNames_346, gItemNames_347,
+    gItemNames_348, gItemNames_349, gItemNames_350, gItemNames_351,
+    gItemNames_352, gItemNames_353, gItemNames_354, gItemNames_355,
+    gItemNames_356, gItemNames_357, gItemNames_358, gItemNames_359,
+    gItemNames_360, gItemNames_361, gItemNames_362, gItemNames_363,
+    gItemNames_364, gItemNames_365, gItemNames_366, gItemNames_367,
+    gItemNames_368, gItemNames_369, gItemNames_370, gItemNames_371,
+    gItemNames_372, gItemNames_373, gItemNames_374, gItemNames_375,
+    gItemNames_376, gItemNames_377, gItemNames_378, gItemNames_379,
+    gItemNames_380, gItemNames_381, gItemNames_382, gItemNames_383,
+    gItemNames_384, gItemNames_385, gItemNames_386, gItemNames_387,
+    gItemNames_388, gItemNames_389, gItemNames_390, gItemNames_391,
+    gItemNames_392, gItemNames_393, gItemNames_394, gItemNames_395,
+    gItemNames_396, gItemNames_397, gItemNames_398, gItemNames_399,
+    gItemNames_400, gItemNames_401, gItemNames_402, gItemNames_403,
+    gItemNames_404, gItemNames_405, gItemNames_406, gItemNames_407,
+    gItemNames_408, gItemNames_409, gItemNames_410, gItemNames_411,
+    gItemNames_412, gItemNames_413, gItemNames_414, gItemNames_415,
+    gItemNames_416, gItemNames_417, gItemNames_418, gItemNames_419,
+    gItemNames_420, gItemNames_421, gItemNames_422, gItemNames_423,
+    gItemNames_424, gItemNames_425, gItemNames_426, gItemNames_427,
+    gItemNames_428, gItemNames_429, gItemNames_430, gItemNames_431,
+    gItemNames_432, gItemNames_433, gItemNames_434, gItemNames_435,
+    gItemNames_436, gItemNames_437, gItemNames_438, gItemNames_439,
+    gItemNames_440, gItemNames_441, gItemNames_442, gItemNames_443,
+    gItemNames_444, gItemNames_445, gItemNames_446, gItemNames_447,
+    gItemNames_448, gItemNames_449, gItemNames_450, gItemNames_451,
+    gItemNames_452, gItemNames_453, gItemNames_454, gItemNames_455,
+    gItemNames_456, gItemNames_457, gItemNames_458, gItemNames_459,
+    gItemNames_460, gItemNames_461, gItemNames_462, gItemNames_463,
+    gItemNames_464, gItemNames_465, gItemNames_466, gItemNames_467,
+    gItemNames_468, gItemNames_469, gItemNames_470, gItemNames_471,
+    gItemNames_472, gItemNames_473, gItemNames_474, gItemNames_475,
+    gItemNames_476, gItemNames_477, gItemNames_478, gItemNames_479,
+    gItemNames_480, gItemNames_481, gItemNames_482, gItemNames_483,
+    gItemNames_484, gItemNames_485, gItemNames_486, gItemNames_487,
+    gItemNames_488, gItemNames_489, gItemNames_490, gItemNames_491,
+    gItemNames_492, gItemNames_493, gItemNames_494, gItemNames_495,
+    gItemNames_496, gItemNames_497, gItemNames_498, gItemNames_499,
+    gItemNames_500, gItemNames_501, gItemNames_502, gItemNames_503,
+    gItemNames_504, D_004AB350, D_004AB350, gItemNames_507,
+    gItemNames_508, gItemNames_509, gItemNames_510, gItemNames_511,
+    gItemNames_512, gItemNames_513, gItemNames_514, gItemNames_515,
+    gItemNames_516, gItemNames_517, gItemNames_518, gItemNames_519,
+    D_004AB350, gItemNames_521, gItemNames_522, gItemNames_523,
+    gItemNames_524, gItemNames_525, gItemNames_526, gItemNames_527,
+    gItemNames_528, gItemNames_529, gItemNames_530, gItemNames_531,
+    gItemNames_532, gItemNames_533, D_004AB350, gItemNames_535,
+    gItemNames_536, gItemNames_537, gItemNames_538, gItemNames_539,
+    gItemNames_540, gItemNames_541, D_004AB350, gItemNames_543,
+    gItemNames_544, gItemNames_545, gItemNames_546, D_004AB350,
+    gItemNames_548, gItemNames_549, gItemNames_550, gItemNames_551,
+    gItemNames_552, gItemNames_553, gItemNames_554, gItemNames_555,
+    gItemNames_556, gItemNames_557, gItemNames_558, gItemNames_559,
+    gItemNames_560, gItemNames_561, gItemNames_562, gItemNames_563,
+    gItemNames_564, gItemNames_565, gItemNames_566, gItemNames_567,
+    D_004AB350, gItemNames_569, gItemNames_570, gItemNames_571,
+    gItemNames_572, gItemNames_573, gItemNames_574, gItemNames_575,
+    gItemNames_576, gItemNames_577, gItemNames_578, gItemNames_579,
+    D_004AB350, gItemNames_581, gItemNames_582, gItemNames_583,
+    gItemNames_584, gItemNames_585, gItemNames_586, gItemNames_587,
+    gItemNames_588, gItemNames_589, gItemNames_590, gItemNames_591,
+    gItemNames_592, D_004AB350, gItemNames_594, gItemNames_595,
+    gItemNames_596, gItemNames_597, gItemNames_598, gItemNames_599,
+    gItemNames_600, gItemNames_601, gItemNames_602, gItemNames_603,
+    gItemNames_604, gItemNames_605, gItemNames_606, gItemNames_607,
+    gItemNames_608, gItemNames_609, gItemNames_610, gItemNames_611,
+    gItemNames_612, gItemNames_613, gItemNames_614, gItemNames_615,
+    gItemNames_616, gItemNames_617, gItemNames_618, gItemNames_619,
+    gItemNames_620, gItemNames_621, gItemNames_622, gItemNames_623,
+    gItemNames_624, gItemNames_625, gItemNames_626, gItemNames_627,
+    gItemNames_628, gItemNames_629, gItemNames_630, gItemNames_631,
+    gItemNames_632, gItemNames_633, gItemNames_634, gItemNames_635,
+    gItemNames_636, gItemNames_637, gItemNames_638, gItemNames_639,
+    gItemNames_640, gItemNames_641, gItemNames_642, gItemNames_643,
+    gItemNames_644, gItemNames_645, gItemNames_646, gItemNames_647,
+    gItemNames_648, gItemNames_649, gItemNames_650, D_004AB350,
+    D_004AB350, D_004AB350, D_004AB350, gItemNames_655,
+    gItemNames_656, gItemNames_657, gItemNames_658, gItemNames_659,
+    gItemNames_660, gItemNames_661, gItemNames_662, gItemNames_663,
+    gItemNames_664, gItemNames_665, gItemNames_666, gItemNames_667,
+    gItemNames_668, gItemNames_669, gItemNames_670, gItemNames_671,
+    gItemNames_672, gItemNames_673, gItemNames_674, gItemNames_675,
+    gItemNames_676, gItemNames_677, gItemNames_678, gItemNames_679,
+    gItemNames_680, gItemNames_681, gItemNames_682, gItemNames_683,
+    gItemNames_684, gItemNames_685, gItemNames_686, gItemNames_687,
+    gItemNames_688, gItemNames_689, gItemNames_690, gItemNames_691,
+    gItemNames_692, gItemNames_693, gItemNames_694, gItemNames_695,
+    gItemNames_696, D_004AB350, gItemNames_698, gItemNames_699,
+    gItemNames_700, gItemNames_701, gItemNames_702, gItemNames_703,
+    gItemNames_704, gItemNames_705, gItemNames_706, gItemNames_707,
+    gItemNames_708, gItemNames_709, gItemNames_710, gItemNames_711,
+    gItemNames_712, gItemNames_713, gItemNames_714, gItemNames_715,
+    gItemNames_716, gItemNames_717, gItemNames_718, gItemNames_719,
+    gItemNames_720, gItemNames_721, gItemNames_722, gItemNames_723,
+    gItemNames_724, gItemNames_725, gItemNames_726, gItemNames_727,
+    gItemNames_728, gItemNames_729, gItemNames_730, gItemNames_731,
+    gItemNames_732, gItemNames_733, gItemNames_734, gItemNames_735,
+    gItemNames_736, gItemNames_737, gItemNames_738, gItemNames_739,
+    gItemNames_740, gItemNames_741, gItemNames_742, gItemNames_743,
+    gItemNames_744, gItemNames_745, gItemNames_746, gItemNames_747,
+    gItemNames_748, gItemNames_749, gItemNames_750, gItemNames_751,
+    gItemNames_752, gItemNames_753, gItemNames_754, gItemNames_755,
+    gItemNames_756, gItemNames_757, gItemNames_758, gItemNames_759,
+    D_004AE0F0, D_004AE0F0, D_004AE0F0, D_004AE0F0,
+    D_004AE0F0, D_004AE0F0, D_004AE0F0, D_004AE0F0,
+    D_004AE0F0, D_004AE0F0, D_004AE0F0, D_004AE0F0,
+    D_004AE0F0, D_004AE0F0, D_004AE110, D_004AE110,
+    D_004AE110, D_004AE110, D_004AE130, D_004AE130,
+    D_004AE130, D_004AE130, gItemNames_782, D_004AE130,
+    D_004AE130, D_004AE130, D_004AE130, D_004AE130,
+    D_004AE130, D_004AE130, D_004AE130, D_004AE130,
+    D_004AE130, D_004AE130, gItemNames_794, gItemNames_795,
+    gItemNames_796, gItemNames_797, gItemNames_798, gItemNames_799,
+    gItemNames_800, gItemNames_801, gItemNames_802, gItemNames_803,
+    gItemNames_804, gItemNames_805, gItemNames_806, gItemNames_807,
+    gItemNames_808, gItemNames_809, gItemNames_810, gItemNames_811,
+    gItemNames_812, gItemNames_813, gItemNames_814, gItemNames_815,
+    gItemNames_816, gItemNames_817, gItemNames_818, gItemNames_819,
+    gItemNames_820, gItemNames_821, gItemNames_822, gItemNames_823,
+    gItemNames_824, gItemNames_825, gItemNames_826, gItemNames_827,
+    gItemNames_828, gItemNames_829, gItemNames_830, gItemNames_831,
+    gItemNames_832, gItemNames_833, gItemNames_834, gItemNames_835,
+    gItemNames_836, gItemNames_837, gItemNames_838, gItemNames_839,
+    gItemNames_840, gItemNames_841, gItemNames_842, gItemNames_843,
+    gItemNames_844, gItemNames_845, gItemNames_846, gItemNames_847,
+    gItemNames_848, gItemNames_849, gItemNames_850, gItemNames_851,
+    gItemNames_852, gItemNames_853, gItemNames_854, gItemNames_855,
+    gItemNames_856, gItemNames_857, gItemNames_858, gItemNames_859,
+    gItemNames_860, gItemNames_861, gItemNames_862, gItemNames_863,
+    gItemNames_864, gItemNames_865, gItemNames_866, gItemNames_867,
+    gItemNames_868, gItemNames_869, gItemNames_870, gItemNames_871,
+    gItemNames_872, gItemNames_873, gItemNames_874, gItemNames_875,
+    gItemNames_876, gItemNames_877, gItemNames_878, gItemNames_879,
+    gItemNames_880, gItemNames_881, gItemNames_882, gItemNames_883,
+    gItemNames_884, gItemNames_885, gItemNames_886, gItemNames_887,
+    gItemNames_888, gItemNames_889, gItemNames_890, gItemNames_891,
+    gItemNames_892, gItemNames_893, gItemNames_894, gItemNames_895,
+    gItemNames_896, gItemNames_897, gItemNames_898, gItemNames_899,
+    gItemNames_900, gItemNames_901, gItemNames_902, gItemNames_903,
+    gItemNames_904, gItemNames_905, gItemNames_906, gItemNames_907,
+    gItemNames_908, gItemNames_909, gItemNames_910, gItemNames_911,
+    gItemNames_912, gItemNames_913, gItemNames_914, gItemNames_915,
+    gItemNames_916, gItemNames_917, gItemNames_918, gItemNames_919,
+    gItemNames_920, 0, 0, 0,
 };
 
 /* The equipment's texts and constants, read-only. */

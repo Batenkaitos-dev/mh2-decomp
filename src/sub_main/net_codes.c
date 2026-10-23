@@ -12,7 +12,7 @@
 /* The game built this file at optimization level 4. */
 #pragma optimization_level 4
 
-const char D_0046A848[9] = {
+const char gLockrockKey_0[9] = {
 #include "sub_main/0046A848.inc"
 };
 
@@ -82,4 +82,4 @@ s32 Net_ChallengeReply(char *out, s8 *challenge, u16 key)
 }
 
 /* This file's initialised data. */
-u8 *gLockrockKey = (u8 *)D_0046A848;
+u8 *gLockrockKey = (u8 *)gLockrockKey_0;

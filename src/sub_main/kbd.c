@@ -876,10 +876,10 @@ void Kbd_TypeKey(KbdKey *key)
     }
 }
 
-const char D_0046CAE0[205] = {
+const char gKanaDakutenTable_0[205] = {
 #include "sub_main/0046CAE0.inc"
 };
-const char D_0046CBB0[81] = {
+const char gKanaHandakutenTable_0[81] = {
 #include "sub_main/0046CBB0.inc"
 };
 const char D_0046CC08[3] = {
@@ -2661,44 +2661,44 @@ void Kbd_Printf(const char *fmt, ...)
 }
 
 /* This file's initialised data. */
-extern char D_0046C990[];
-extern char D_0046C998[];
-extern char D_0046C9A0[];
-extern char D_0046C9A8[];
-extern char D_0046C9B0[];
-extern char D_0046C9B8[];
-extern char D_0046C9C0[];
-extern char D_0046C9C8[];
-extern char D_0046C9D0[];
-extern char D_0046C9D8[];
-extern char D_0046C9E0[];
-extern char D_0046C9E8[];
-extern char D_0046C9F0[];
-extern char D_0046C9F8[];
-extern char D_0046CA00[];
-extern char D_0046CA08[];
-extern char D_0046CA10[];
-extern char D_0046CA18[];
-extern char D_0046CA20[];
-extern char D_0046CA28[];
-extern char D_0046CA30[];
-extern char D_0046CA38[];
-extern char D_0046CA40[];
-extern char D_0046CA48[];
-extern char D_0046CA50[];
-extern char D_0046CA58[];
-extern char D_0046CA60[];
-extern char D_0046CA68[];
-extern char D_0046CA70[];
-extern char D_0046CA78[];
-extern char D_0046CA80[];
-extern char D_0046CA88[];
-extern char D_0046CA90[];
-extern char D_0046CA98[];
-extern char D_0046CAA0[];
-extern char D_0046CAA8[];
-extern char D_0046CAB0[];
-extern char D_0046CAB8[];
+extern char gKanaNChars_0[];
+extern char gKanaNChars_1[];
+extern char gKanaNChars_2[];
+extern char gKbdSymbolCands_0[];
+extern char gKbdSymbolCands_1[];
+extern char gKbdSymbolCands_2[];
+extern char gKbdSymbolCands_3[];
+extern char gKbdSymbolCands_4[];
+extern char gKbdSymbolCands_5[];
+extern char gKbdSymbolCands_6[];
+extern char gKbdSymbolCands_7[];
+extern char gKbdSymbolCands_8[];
+extern char gKbdSymbolCands_9[];
+extern char gKbdSymbolCands_10[];
+extern char gKbdSymbolCands_11[];
+extern char gKbdSymbolCands_12[];
+extern char gKbdSymbolCands_13[];
+extern char gKbdSymbolCands_14[];
+extern char gKbdSymbolCands_15[];
+extern char gKbdSymbolCands_16[];
+extern char gKbdSymbolCands_17[];
+extern char gKbdSymbolCands_18[];
+extern char gKbdSymbolCands_19[];
+extern char gKbdSymbolCands_20[];
+extern char gKbdSymbolCands_21[];
+extern char gKbdSymbolCands_22[];
+extern char gKbdSymbolCands_23[];
+extern char gKbdSymbolCands_24[];
+extern char gKbdSymbolCands_25[];
+extern char gKbdSymbolCands_26[];
+extern char gKbdSymbolCands_27[];
+extern char gKbdSymbolCands_28[];
+extern char gKbdSymbolCands_29[];
+extern char gKbdSymbolCands_30[];
+extern char gKbdSymbolCands_31[];
+extern char gKbdSymbolCands_32[];
+extern char gKbdSymbolCands_33[];
+extern char gKbdSymbolCands_34[];
 RomajiEntry gRomajiKanaTbl[240] = {
     {gRomajiKanaTbl_0_romaji, {gRomajiKanaTbl_0_kana_0, gRomajiKanaTbl_0_kana_1, gRomajiKanaTbl_0_kana_2}},
     {gRomajiKanaTbl_1_romaji, {D_0046A958, D_0046A960, D_0046A968}},
@@ -2966,18 +2966,18 @@ char gKbdKind8Chars[536] = {
 #include "sub_main/00416460.inc"
 };
 char *gKanaNChars[3] = {
-    D_0046C990, D_0046C998, D_0046C9A0,
+    gKanaNChars_0, gKanaNChars_1, gKanaNChars_2,
 };
 char *gKbdSymbolCands[36] = {
-    D_0046C9A8, D_0046C9B0, D_0046C9B8, D_0046C9C0,
-    D_0046C9C8, D_0046C9D0, D_0046C9D8, D_0046C9E0,
-    D_0046C9E8, D_0046C9F0, D_0046C9F8, D_0046CA00,
-    D_0046CA08, D_0046CA10, D_0046CA18, D_0046CA20,
-    D_0046CA28, D_0046CA30, D_0046CA38, D_0046CA40,
-    D_0046CA48, D_0046CA50, D_0046CA58, D_0046CA60,
-    D_0046CA68, D_0046CA70, D_0046CA78, D_0046CA80,
-    D_0046CA88, D_0046CA90, D_0046CA98, D_0046CAA0,
-    D_0046CAA8, D_0046CAB0, D_0046CAB8, NULL,
+    gKbdSymbolCands_0, gKbdSymbolCands_1, gKbdSymbolCands_2, gKbdSymbolCands_3,
+    gKbdSymbolCands_4, gKbdSymbolCands_5, gKbdSymbolCands_6, gKbdSymbolCands_7,
+    gKbdSymbolCands_8, gKbdSymbolCands_9, gKbdSymbolCands_10, gKbdSymbolCands_11,
+    gKbdSymbolCands_12, gKbdSymbolCands_13, gKbdSymbolCands_14, gKbdSymbolCands_15,
+    gKbdSymbolCands_16, gKbdSymbolCands_17, gKbdSymbolCands_18, gKbdSymbolCands_19,
+    gKbdSymbolCands_20, gKbdSymbolCands_21, gKbdSymbolCands_22, gKbdSymbolCands_23,
+    gKbdSymbolCands_24, gKbdSymbolCands_25, gKbdSymbolCands_26, gKbdSymbolCands_27,
+    gKbdSymbolCands_28, gKbdSymbolCands_29, gKbdSymbolCands_30, gKbdSymbolCands_31,
+    gKbdSymbolCands_32, gKbdSymbolCands_33, gKbdSymbolCands_34, NULL,
 };
 Tbl17 gKbdSetIsWide = {
 #include "sub_main/00416720.inc"
@@ -3136,8 +3136,8 @@ KbdLayout gKbdSetLayouts[20] = {
 KbdLayout gKbdAltLayouts[4] = {
 #include "sub_main/004186C0.inc"
 };
-void *gKanaDakutenTable = (void *)D_0046CAE0;
-void *gKanaHandakutenTable = (void *)D_0046CBB0;
+void *gKanaDakutenTable = (void *)gKanaDakutenTable_0;
+void *gKanaHandakutenTable = (void *)gKanaHandakutenTable_0;
 u32 gKbdPulseAmp[2] = {
 #include "sub_main/00418720.inc"
 };

@@ -479,40 +479,40 @@ extern s32 gNetIrxAvetcp;
 char D_0046A600[5] = {
 #include "sub_main/0046A600.inc"
 };
-char D_0046A610[40] = {
+char gNetIrxCxtmdm_0[40] = {
 #include "sub_main/0046A610.inc"
 };
-char D_0046A640[42] = {
+char gNetIrxOstmdmA_0[42] = {
 #include "sub_main/0046A640.inc"
 };
-char D_0046A670[40] = {
+char gNetIrxAvetcp_0[40] = {
 #include "sub_main/0046A670.inc"
 };
-char D_0046A6A0[40] = {
+char gNetIrxAveppp_0[40] = {
 #include "sub_main/0046A6A0.inc"
 };
-char D_0046A6D0[42] = {
+char gNetIrxAvewrapm_0[42] = {
 #include "sub_main/0046A6D0.inc"
 };
-char D_0046A700[41] = {
+char gNetIrxUsbsrch_0[41] = {
 #include "sub_main/0046A700.inc"
 };
-char D_0046A730[44] = {
+char gNetIrxAvewrape_0[44] = {
 #include "sub_main/0046A730.inc"
 };
-char D_0046A760[43] = {
+char gNetIrxAvedhcp_0[43] = {
 #include "sub_main/0046A760.inc"
 };
-char D_0046A790[43] = {
+char gNetIrxDevglue_0[43] = {
 #include "sub_main/0046A790.inc"
 };
-char D_0046A7C0[41] = {
+char gNetIrxAn986_0[41] = {
 #include "sub_main/0046A7C0.inc"
 };
-char D_0046A7F0[42] = {
+char gNetIrxLanegg_0[42] = {
 #include "sub_main/0046A7F0.inc"
 };
-char D_0046A820[40] = {
+char gNetIrxSmap_0[40] = {
 #include "sub_main/0046A820.inc"
 };
 #pragma rodata off
@@ -557,15 +557,15 @@ NetDevice gNetDevNames[3] = {
 NetDevice gNetDefaultDev[2] = {
 #include "sub_main/00405420.inc"
 };
-s32 gNetIrxCxtmdm = (s32)D_0046A610;
-s32 gNetIrxOstmdmA = (s32)D_0046A640;
-s32 gNetIrxAvetcp = (s32)D_0046A670;
-s32 gNetIrxAveppp = (s32)D_0046A6A0;
-s32 gNetIrxAvewrapm = (s32)D_0046A6D0;
-s32 gNetIrxUsbsrch = (s32)D_0046A700;
-s32 gNetIrxAvewrape = (s32)D_0046A730;
-s32 gNetIrxAvedhcp = (s32)D_0046A760;
-s32 gNetIrxDevglue = (s32)D_0046A790;
-s32 gNetIrxAn986 = (s32)D_0046A7C0;
-s32 gNetIrxLanegg = (s32)D_0046A7F0;
-s32 gNetIrxSmap = (s32)D_0046A820;
+s32 gNetIrxCxtmdm = (s32)gNetIrxCxtmdm_0;
+s32 gNetIrxOstmdmA = (s32)gNetIrxOstmdmA_0;
+s32 gNetIrxAvetcp = (s32)gNetIrxAvetcp_0;
+s32 gNetIrxAveppp = (s32)gNetIrxAveppp_0;
+s32 gNetIrxAvewrapm = (s32)gNetIrxAvewrapm_0;
+s32 gNetIrxUsbsrch = (s32)gNetIrxUsbsrch_0;
+s32 gNetIrxAvewrape = (s32)gNetIrxAvewrape_0;
+s32 gNetIrxAvedhcp = (s32)gNetIrxAvedhcp_0;
+s32 gNetIrxDevglue = (s32)gNetIrxDevglue_0;
+s32 gNetIrxAn986 = (s32)gNetIrxAn986_0;
+s32 gNetIrxLanegg = (s32)gNetIrxLanegg_0;
+s32 gNetIrxSmap = (s32)gNetIrxSmap_0;

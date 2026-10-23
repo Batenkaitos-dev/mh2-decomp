@@ -115,7 +115,7 @@ extern u8 gFieldMenuHelpLines[];
 extern ListPanel gInfoMenuPanel;
 extern char **gInfoMenuLabelSets[];
 extern ListPanel gChatMenuPanel;
-extern s32 gItemNames[];
+extern char *gItemNames[];
 extern s16 gItemGetWait;
 extern u16 gItemGetSerial;
 extern u8 gPhraseMenuCursor;
@@ -1093,7 +1093,7 @@ void ItemList_DrawPage(void)
     for (i = count; i > 0; i--) {
         itemData = &gItemData[*items];
         if (*items != 0) {
-            name = (char *)gItemNames[*items];
+            name = gItemNames[*items];
             iconSprite.u0 = (((itemData->icon + 1) & 7) << 5) + 1;
             iconSprite.v0 = (((itemData->icon + 1) >> 3) << 5) + 1;
             iconSprite.u1 = iconSprite.u0 + 30;
@@ -1339,7 +1339,7 @@ void MonsterNote_DrawPage(void)
                     if (known & 1) {
                         ItemData *itemData;
 
-                        Text_PrintfColored((char *)gItemNames[*material]);
+                        Text_PrintfColored(gItemNames[*material]);
                         itemData = &gItemData[*material];
                         iconSprite.u0 = (((itemData->icon + 1) & 7) << 5) + 1;
                         iconSprite.v0 = (((itemData->icon + 1) >> 3) << 5) + 1;
@@ -3407,7 +3407,7 @@ void CombineMenu_DrawInfo(void)
         Font_SetColor(0x807F7F7F);
         Font_SetPos(270, gCombineResultWindow.y + 20);
         if (gHudState->combineResult > 0) {
-            Text_Draw((char *)gItemNames[((RecipeView *)gHudState->combineRecipe)->result]);
+            Text_Draw(gItemNames[((RecipeView *)gHudState->combineRecipe)->result]);
         } else {
             Text_Draw(gCombineUnknownText);
         }
@@ -3439,7 +3439,7 @@ void CombineMenu_DrawInfo(void)
         }
         Font_SetColor(0x807F7F7F);
         Font_SetPos(270, gCombineResultWindow.y + 20);
-        Text_Draw((char *)gItemNames[gHudState->combineMadeItem]);
+        Text_Draw(gItemNames[gHudState->combineMadeItem]);
         Font_SetPos(360, gCombineResultWindow.y + 40);
         Text_PrintfColored(gHudFmtInt, n);
         Font_SetPos(360, gCombineResultWindow.y + 60);
@@ -4634,7 +4634,7 @@ void ItemList_Draw(ItemStack *list_in, s32 cursor, s32 highlight, s32 flags)
         if (list->item == 0) {
             Text_Draw(gItemListEmptyText);
         } else {
-            Text_Draw((char *)gItemNames[list->item]);
+            Text_Draw(gItemNames[list->item]);
             if (gItemData[list->item].max > 1) {
                 Font_SetPos(countX, y);
                 if (gItemData[list->item].max == 255) {
@@ -5448,7 +5448,7 @@ void Hud_DrawPouchItem(void)
             Text_PrintfColored(gHudFmtInt2, stack);
         }
         Font_SetSpacing(20, 19);
-        Font_SetPos(419.0f + (186.0f - Str_Length((char *)gItemNames[pl->pouch[pl->pouchCursor].item]) * 10) / 2.0f, 396);
+        Font_SetPos(419.0f + (186.0f - Str_Length(gItemNames[pl->pouch[pl->pouchCursor].item]) * 10) / 2.0f, 396);
         Font_SetColor(0x807F7F7F);
         Text_PrintfColored(gHudFmtString, gItemNames[item]);
     }
@@ -6104,7 +6104,7 @@ s32 Hud_DrawPouchSlotName(u8 slot, s16 y)
     }
     Font_SetColor(color);
     if (item == 135) {
-        sprintf(buf, (char *)gItemNames[item]);
+        sprintf(buf, gItemNames[item]);
     } else if (itemData->max == 255) {
         sprintf(buf, gPouchInfiniteFmt[0], gItemNames[item]);
     } else {
@@ -7603,7 +7603,7 @@ void SupplyBox_Draw(void)
     } else {
         switch (gItemData[item].max) {
         case 1:
-            sprintf(buf, (char *)gItemNames[item]);
+            sprintf(buf, gItemNames[item]);
             break;
         case 255:
             sprintf(buf, gSupplyInfiniteFmt, gItemNames[item]);

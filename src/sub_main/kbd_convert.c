@@ -372,118 +372,118 @@ s32 Kbd_CountCands(void)
 
 s32 ConvCmd_Start(char *src, char *a, char *b);
 #pragma rodata on
-char D_0046C990[3] = {
+char gKanaNChars_0[3] = {
 #include "sub_main/0046C990.inc"
 };
-char D_0046C998[3] = {
+char gKanaNChars_1[3] = {
 #include "sub_main/0046C998.inc"
 };
-char D_0046C9A0[2] = {
+char gKanaNChars_2[2] = {
 #include "sub_main/0046C9A0.inc"
 };
-char D_0046C9A8[2] = {
+char gKbdSymbolCands_0[2] = {
 #include "sub_main/0046C9A8.inc"
 };
-char D_0046C9B0[2] = {
+char gKbdSymbolCands_1[2] = {
 #include "sub_main/0046C9B0.inc"
 };
-char D_0046C9B8[2] = {
+char gKbdSymbolCands_2[2] = {
 #include "sub_main/0046C9B8.inc"
 };
-char D_0046C9C0[2] = {
+char gKbdSymbolCands_3[2] = {
 #include "sub_main/0046C9C0.inc"
 };
-char D_0046C9C8[2] = {
+char gKbdSymbolCands_4[2] = {
 #include "sub_main/0046C9C8.inc"
 };
-char D_0046C9D0[2] = {
+char gKbdSymbolCands_5[2] = {
 #include "sub_main/0046C9D0.inc"
 };
-char D_0046C9D8[2] = {
+char gKbdSymbolCands_6[2] = {
 #include "sub_main/0046C9D8.inc"
 };
-char D_0046C9E0[2] = {
+char gKbdSymbolCands_7[2] = {
 #include "sub_main/0046C9E0.inc"
 };
-char D_0046C9E8[2] = {
+char gKbdSymbolCands_8[2] = {
 #include "sub_main/0046C9E8.inc"
 };
-char D_0046C9F0[2] = {
+char gKbdSymbolCands_9[2] = {
 #include "sub_main/0046C9F0.inc"
 };
-char D_0046C9F8[2] = {
+char gKbdSymbolCands_10[2] = {
 #include "sub_main/0046C9F8.inc"
 };
-char D_0046CA00[2] = {
+char gKbdSymbolCands_11[2] = {
 #include "sub_main/0046CA00.inc"
 };
-char D_0046CA08[2] = {
+char gKbdSymbolCands_12[2] = {
 #include "sub_main/0046CA08.inc"
 };
-char D_0046CA10[2] = {
+char gKbdSymbolCands_13[2] = {
 #include "sub_main/0046CA10.inc"
 };
-char D_0046CA18[2] = {
+char gKbdSymbolCands_14[2] = {
 #include "sub_main/0046CA18.inc"
 };
-char D_0046CA20[2] = {
+char gKbdSymbolCands_15[2] = {
 #include "sub_main/0046CA20.inc"
 };
-char D_0046CA28[2] = {
+char gKbdSymbolCands_16[2] = {
 #include "sub_main/0046CA28.inc"
 };
-char D_0046CA30[2] = {
+char gKbdSymbolCands_17[2] = {
 #include "sub_main/0046CA30.inc"
 };
-char D_0046CA38[2] = {
+char gKbdSymbolCands_18[2] = {
 #include "sub_main/0046CA38.inc"
 };
-char D_0046CA40[2] = {
+char gKbdSymbolCands_19[2] = {
 #include "sub_main/0046CA40.inc"
 };
-char D_0046CA48[2] = {
+char gKbdSymbolCands_20[2] = {
 #include "sub_main/0046CA48.inc"
 };
-char D_0046CA50[2] = {
+char gKbdSymbolCands_21[2] = {
 #include "sub_main/0046CA50.inc"
 };
-char D_0046CA58[2] = {
+char gKbdSymbolCands_22[2] = {
 #include "sub_main/0046CA58.inc"
 };
-char D_0046CA60[2] = {
+char gKbdSymbolCands_23[2] = {
 #include "sub_main/0046CA60.inc"
 };
-char D_0046CA68[2] = {
+char gKbdSymbolCands_24[2] = {
 #include "sub_main/0046CA68.inc"
 };
-char D_0046CA70[2] = {
+char gKbdSymbolCands_25[2] = {
 #include "sub_main/0046CA70.inc"
 };
-char D_0046CA78[2] = {
+char gKbdSymbolCands_26[2] = {
 #include "sub_main/0046CA78.inc"
 };
-char D_0046CA80[2] = {
+char gKbdSymbolCands_27[2] = {
 #include "sub_main/0046CA80.inc"
 };
-char D_0046CA88[2] = {
+char gKbdSymbolCands_28[2] = {
 #include "sub_main/0046CA88.inc"
 };
-char D_0046CA90[2] = {
+char gKbdSymbolCands_29[2] = {
 #include "sub_main/0046CA90.inc"
 };
-char D_0046CA98[2] = {
+char gKbdSymbolCands_30[2] = {
 #include "sub_main/0046CA98.inc"
 };
-char D_0046CAA0[3] = {
+char gKbdSymbolCands_31[3] = {
 #include "sub_main/0046CAA0.inc"
 };
-char D_0046CAA8[3] = {
+char gKbdSymbolCands_32[3] = {
 #include "sub_main/0046CAA8.inc"
 };
-char D_0046CAB0[3] = {
+char gKbdSymbolCands_33[3] = {
 #include "sub_main/0046CAB0.inc"
 };
-char D_0046CAB8[3] = {
+char gKbdSymbolCands_34[3] = {
 #include "sub_main/0046CAB8.inc"
 };
 #pragma rodata off

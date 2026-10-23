@@ -353,568 +353,568 @@ void MsgEvent_DrawPopup(void)
  * tables; they stay here, in the game's order, at the start of the file's constants, before
  * MsgEvent_DrawList's. */
 #pragma rodata on
-char D_008DE300[25] = {
+char gMsgEventTitles_0[25] = {
 #include "game/008DE300.inc"
 };
-char D_008DE320[27] = {
+char gMsgEventTitles_1[27] = {
 #include "game/008DE320.inc"
 };
-char D_008DE340[23] = {
+char gMsgEventTitles_2[23] = {
 #include "game/008DE340.inc"
 };
-char D_008DE360[35] = {
+char gMsgEventTitles_3[35] = {
 #include "game/008DE360.inc"
 };
-char D_008DE390[37] = {
+char gMsgEventTitles_4[37] = {
 #include "game/008DE390.inc"
 };
-char D_008DE3C0[31] = {
+char gMsgEventTitles_5[31] = {
 #include "game/008DE3C0.inc"
 };
-char D_008DE3E0[23] = {
+char gMsgEventTitles_6[23] = {
 #include "game/008DE3E0.inc"
 };
-char D_008DE3F8[15] = {
+char gMsgEventTitles_7[15] = {
 #include "game/008DE3F8.inc"
 };
-char D_008DE410[29] = {
+char gMsgEventTitles_8[29] = {
 #include "game/008DE410.inc"
 };
-char D_008DE430[23] = {
+char gMsgEventTitles_9[23] = {
 #include "game/008DE430.inc"
 };
-char D_008DE450[21] = {
+char gMsgEventTitles_10[21] = {
 #include "game/008DE450.inc"
 };
-char D_008DE470[31] = {
+char gMsgEventTitles_11[31] = {
 #include "game/008DE470.inc"
 };
-char D_008DE490[25] = {
+char gMsgEventTitles_12[25] = {
 #include "game/008DE490.inc"
 };
-char D_008DE4B0[23] = {
+char gMsgEventTitles_13[23] = {
 #include "game/008DE4B0.inc"
 };
-char D_008DE4C8[15] = {
+char gMsgEventTitles_14[15] = {
 #include "game/008DE4C8.inc"
 };
-char D_008DE4E0[31] = {
+char gMsgEventTitles_15[31] = {
 #include "game/008DE4E0.inc"
 };
-char D_008DE500[21] = {
+char gMsgEventTitles_16[21] = {
 #include "game/008DE500.inc"
 };
-char D_008DE520[37] = {
+char gMsgEventTitles_17[37] = {
 #include "game/008DE520.inc"
 };
-char D_008DE550[25] = {
+char gMsgEventTitles_18[25] = {
 #include "game/008DE550.inc"
 };
-char D_008DE570[25] = {
+char gMsgEventTitles_19[25] = {
 #include "game/008DE570.inc"
 };
-char D_008DE590[17] = {
+char gMsgEventTitles_20[17] = {
 #include "game/008DE590.inc"
 };
-char D_008DE5B0[33] = {
+char gMsgEventTitles_21[33] = {
 #include "game/008DE5B0.inc"
 };
-char D_008DE5E0[31] = {
+char gMsgEventTitles_22[31] = {
 #include "game/008DE5E0.inc"
 };
-char D_008DE600[25] = {
+char gMsgEventTitles_23[25] = {
 #include "game/008DE600.inc"
 };
-char D_008DE620[29] = {
+char gMsgEventTitles_24[29] = {
 #include "game/008DE620.inc"
 };
-char D_008DE640[23] = {
+char gMsgEventTitles_25[23] = {
 #include "game/008DE640.inc"
 };
-char D_008DE660[25] = {
+char gMsgEventTitles_26[25] = {
 #include "game/008DE660.inc"
 };
-char D_008DE680[31] = {
+char gMsgEventTitles_27[31] = {
 #include "game/008DE680.inc"
 };
-char D_008DE6A0[13] = {
+char gMsgEventTitles_28[13] = {
 #include "game/008DE6A0.inc"
 };
-char D_008DE6B0[25] = {
+char gMsgEventTitles_29[25] = {
 #include "game/008DE6B0.inc"
 };
-char D_008DE6D0[11] = {
+char gMsgEventTitles_30[11] = {
 #include "game/008DE6D0.inc"
 };
-char D_008DE6E0[23] = {
+char gMsgEventTitles_31[23] = {
 #include "game/008DE6E0.inc"
 };
-char D_008DE700[21] = {
+char gMsgEventTitles_32[21] = {
 #include "game/008DE700.inc"
 };
-char D_008DE718[15] = {
+char gMsgEventTitles_33[15] = {
 #include "game/008DE718.inc"
 };
-char D_008DE730[29] = {
+char gMsgEventTitles_34[29] = {
 #include "game/008DE730.inc"
 };
-char D_008DE750[13] = {
+char gMsgEventTitles_35[13] = {
 #include "game/008DE750.inc"
 };
-char D_008DE760[27] = {
+char gMsgEventTitles_36[27] = {
 #include "game/008DE760.inc"
 };
-char D_008DE780[11] = {
+char gMsgEventTitles_37[11] = {
 #include "game/008DE780.inc"
 };
-char D_008DE790[23] = {
+char gMsgEventTitles_38[23] = {
 #include "game/008DE790.inc"
 };
-char D_008DE7A8[11] = {
+char gMsgEventTitles_39[11] = {
 #include "game/008DE7A8.inc"
 };
-char D_008DE7C0[21] = {
+char gMsgEventTitles_40[21] = {
 #include "game/008DE7C0.inc"
 };
-char D_008DE7D8[13] = {
+char gMsgEventTitles_41[13] = {
 #include "game/008DE7D8.inc"
 };
-char D_008DE7F0[23] = {
+char gMsgEventTitles_42[23] = {
 #include "game/008DE7F0.inc"
 };
-char D_008DE810[17] = {
+char gMsgEventTitles_43[17] = {
 #include "game/008DE810.inc"
 };
-char D_008DE830[19] = {
+char gMsgEventTitles_44[19] = {
 #include "game/008DE830.inc"
 };
-char D_008DE850[19] = {
+char gMsgEventTitles_45[19] = {
 #include "game/008DE850.inc"
 };
-char D_008DE870[21] = {
+char gMsgEventTitles_46[21] = {
 #include "game/008DE870.inc"
 };
-char D_008DE890[27] = {
+char gMsgEventTitles_47[27] = {
 #include "game/008DE890.inc"
 };
-char D_008DE8B0[21] = {
+char gMsgEventTitles_48[21] = {
 #include "game/008DE8B0.inc"
 };
-char D_008DE8D0[23] = {
+char gMsgEventTitles_49[23] = {
 #include "game/008DE8D0.inc"
 };
-char D_008DE8E8[9] = {
+char gMsgEventTitles_50[9] = {
 #include "game/008DE8E8.inc"
 };
-char D_008DE8F8[11] = {
+char gMsgEventTitles_51[11] = {
 #include "game/008DE8F8.inc"
 };
-char D_008DE910[25] = {
+char gMsgEventTitles_52[25] = {
 #include "game/008DE910.inc"
 };
-char D_008DE930[15] = {
+char gMsgEventTitles_53[15] = {
 #include "game/008DE930.inc"
 };
-char D_008DE940[27] = {
+char gMsgEventTitles_54[27] = {
 #include "game/008DE940.inc"
 };
-char D_008DE960[13] = {
+char gMsgEventTitles_55[13] = {
 #include "game/008DE960.inc"
 };
-char D_008DE970[23] = {
+char gMsgEventTitles_56[23] = {
 #include "game/008DE970.inc"
 };
-char D_008DE990[23] = {
+char gMsgEventTitles_57[23] = {
 #include "game/008DE990.inc"
 };
-char D_008DE9B0[25] = {
+char gMsgEventTitles_58[25] = {
 #include "game/008DE9B0.inc"
 };
-char D_008DE9D0[15] = {
+char gMsgEventTitles_59[15] = {
 #include "game/008DE9D0.inc"
 };
-char D_008DE9E0[7] = {
+char gMsgEventTitles_60[7] = {
 #include "game/008DE9E0.inc"
 };
-char D_008DE9E8[9] = {
+char gMsgEventTitles_61[9] = {
 #include "game/008DE9E8.inc"
 };
-char D_008DE9F8[11] = {
+char gMsgEventTitles_62[11] = {
 #include "game/008DE9F8.inc"
 };
-char D_008DEA08[11] = {
+char gMsgEventTitles_63[11] = {
 #include "game/008DEA08.inc"
 };
-char D_008DEA18[9] = {
+char gMsgEventTitles_64[9] = {
 #include "game/008DEA18.inc"
 };
-char D_008DEA30[21] = {
+char gMsgEventTitles_65[21] = {
 #include "game/008DEA30.inc"
 };
 char D_008DEA50[19] = {
 #include "game/008DEA50.inc"
 };
-char D_008DEA70[19] = {
+char gMsgEventTitles_68[19] = {
 #include "game/008DEA70.inc"
 };
-char D_008DEA90[17] = {
+char gMsgEventTitles_69[17] = {
 #include "game/008DEA90.inc"
 };
-char D_008DEAB0[27] = {
+char gMsgEventTitles_70[27] = {
 #include "game/008DEAB0.inc"
 };
-char D_008DEAD0[13] = {
+char gMsgEventTitles_71[13] = {
 #include "game/008DEAD0.inc"
 };
-char D_008DEAE0[31] = {
+char gMsgEventTitles_72[31] = {
 #include "game/008DEAE0.inc"
 };
-char D_008DEB00[26] = {
+char gMsgEventTitles_73[26] = {
 #include "game/008DEB00.inc"
 };
-char D_008DEB20[21] = {
+char gMsgEventTitles_74[21] = {
 #include "game/008DEB20.inc"
 };
-char D_008DEB40[17] = {
+char gMsgEventTitles_75[17] = {
 #include "game/008DEB40.inc"
 };
-char D_008DEB58[15] = {
+char gMsgEventTitles_76[15] = {
 #include "game/008DEB58.inc"
 };
-char D_008DEB70[167] = {
+char gMsgEventLines_0_0[167] = {
 #include "game/008DEB70.inc"
 };
-char D_008DEC20[161] = {
+char gMsgEventLines_0_1[161] = {
 #include "game/008DEC20.inc"
 };
-char D_008DECD0[161] = {
+char gMsgEventLines_0_2[161] = {
 #include "game/008DECD0.inc"
 };
-char D_008DED80[224] = {
+char gMsgEventLines_0_3[224] = {
 #include "game/008DED80.inc"
 };
-char D_008DEE60[199] = {
+char gMsgEventLines_0_4[199] = {
 #include "game/008DEE60.inc"
 };
-char D_008DEF30[167] = {
+char gMsgEventLines_1_0[167] = {
 #include "game/008DEF30.inc"
 };
-char D_008DEFE0[180] = {
+char gMsgEventLines_1_1[180] = {
 #include "game/008DEFE0.inc"
 };
-char D_008DF0A0[205] = {
+char gMsgEventLines_1_2[205] = {
 #include "game/008DF0A0.inc"
 };
-char D_008DF170[107] = {
+char gMsgEventLines_2_0[107] = {
 #include "game/008DF170.inc"
 };
-char D_008DF1E0[179] = {
+char gMsgEventLines_2_1[179] = {
 #include "game/008DF1E0.inc"
 };
-char D_008DF2A0[185] = {
+char gMsgEventLines_2_2[185] = {
 #include "game/008DF2A0.inc"
 };
-char D_008DF360[146] = {
+char gMsgEventLines_2_3[146] = {
 #include "game/008DF360.inc"
 };
-char D_008DF400[176] = {
+char gMsgEventLines_3_0[176] = {
 #include "game/008DF400.inc"
 };
-char D_008DF4B0[199] = {
+char gMsgEventLines_3_1[199] = {
 #include "game/008DF4B0.inc"
 };
-char D_008DF580[218] = {
+char gMsgEventLines_3_2[218] = {
 #include "game/008DF580.inc"
 };
-char D_008DF660[197] = {
+char gMsgEventLines_4_0[197] = {
 #include "game/008DF660.inc"
 };
-char D_008DF730[157] = {
+char gMsgEventLines_4_1[157] = {
 #include "game/008DF730.inc"
 };
-char D_008DF7D0[165] = {
+char gMsgEventLines_4_2[165] = {
 #include "game/008DF7D0.inc"
 };
-char D_008DF880[156] = {
+char gMsgEventLines_5_0[156] = {
 #include "game/008DF880.inc"
 };
-char D_008DF920[227] = {
+char gMsgEventLines_5_1[227] = {
 #include "game/008DF920.inc"
 };
-char D_008DFA10[155] = {
+char gMsgEventLines_5_2[155] = {
 #include "game/008DFA10.inc"
 };
-char D_008DFAB0[172] = {
+char gMsgEventLines_5_3[172] = {
 #include "game/008DFAB0.inc"
 };
-char D_008DFB60[168] = {
+char gMsgEventLines_6_0[168] = {
 #include "game/008DFB60.inc"
 };
-char D_008DFC10[249] = {
+char gMsgEventLines_6_1[249] = {
 #include "game/008DFC10.inc"
 };
-char D_008DFD10[189] = {
+char gMsgEventLines_6_2[189] = {
 #include "game/008DFD10.inc"
 };
-char D_008DFDD0[134] = {
+char gMsgEventLines_7_0[134] = {
 #include "game/008DFDD0.inc"
 };
-char D_008DFE60[203] = {
+char gMsgEventLines_7_1[203] = {
 #include "game/008DFE60.inc"
 };
-char D_008DFF30[257] = {
+char gMsgEventLines_7_2[257] = {
 #include "game/008DFF30.inc"
 };
-char D_008E0040[178] = {
+char gMsgEventLines_7_3[178] = {
 #include "game/008E0040.inc"
 };
-char D_008E0100[129] = {
+char gMsgEventLines_7_4[129] = {
 #include "game/008E0100.inc"
 };
-char D_008E0190[250] = {
+char gMsgEventLines_7_5[250] = {
 #include "game/008E0190.inc"
 };
-char D_008E0290[136] = {
+char gMsgEventLines_7_6[136] = {
 #include "game/008E0290.inc"
 };
-char D_008E0320[211] = {
+char gMsgEventLines_8_0[211] = {
 #include "game/008E0320.inc"
 };
-char D_008E0400[177] = {
+char gMsgEventLines_8_1[177] = {
 #include "game/008E0400.inc"
 };
-char D_008E04C0[183] = {
+char gMsgEventLines_8_2[183] = {
 #include "game/008E04C0.inc"
 };
-char D_008E0580[160] = {
+char gMsgEventLines_8_3[160] = {
 #include "game/008E0580.inc"
 };
-char D_008E0620[235] = {
+char gMsgEventLines_9_0[235] = {
 #include "game/008E0620.inc"
 };
-char D_008E0710[130] = {
+char gMsgEventLines_10_0[130] = {
 #include "game/008E0710.inc"
 };
-char D_008E07A0[162] = {
+char gMsgEventLines_10_1[162] = {
 #include "game/008E07A0.inc"
 };
-char D_008E0850[209] = {
+char gMsgEventLines_10_2[209] = {
 #include "game/008E0850.inc"
 };
-char D_008E0930[242] = {
+char gMsgEventLines_10_3[242] = {
 #include "game/008E0930.inc"
 };
-char D_008E0A30[172] = {
+char gMsgEventLines_10_4[172] = {
 #include "game/008E0A30.inc"
 };
-char D_008E0AE0[86] = {
+char gMsgEventLines_11_0[86] = {
 #include "game/008E0AE0.inc"
 };
-char D_008E0B40[219] = {
+char gMsgEventLines_11_1[219] = {
 #include "game/008E0B40.inc"
 };
-char D_008E0C20[132] = {
+char gMsgEventLines_11_2[132] = {
 #include "game/008E0C20.inc"
 };
-char D_008E0CB0[168] = {
+char gMsgEventLines_11_3[168] = {
 #include "game/008E0CB0.inc"
 };
-char D_008E0D60[182] = {
+char gMsgEventLines_11_4[182] = {
 #include "game/008E0D60.inc"
 };
-char D_008E0E20[166] = {
+char gMsgEventLines_12_0[166] = {
 #include "game/008E0E20.inc"
 };
-char D_008E0ED0[179] = {
+char gMsgEventLines_12_1[179] = {
 #include "game/008E0ED0.inc"
 };
-char D_008E0F90[223] = {
+char gMsgEventLines_12_2[223] = {
 #include "game/008E0F90.inc"
 };
-char D_008E1070[192] = {
+char gMsgEventLines_12_3[192] = {
 #include "game/008E1070.inc"
 };
-char D_008E1130[169] = {
+char gMsgEventLines_12_4[169] = {
 #include "game/008E1130.inc"
 };
-char D_008E11E0[123] = {
+char gMsgEventLines_12_5[123] = {
 #include "game/008E11E0.inc"
 };
-char D_008E1260[171] = {
+char gMsgEventLines_13_0[171] = {
 #include "game/008E1260.inc"
 };
-char D_008E1310[172] = {
+char gMsgEventLines_13_1[172] = {
 #include "game/008E1310.inc"
 };
-char D_008E13C0[190] = {
+char gMsgEventLines_13_2[190] = {
 #include "game/008E13C0.inc"
 };
-char D_008E1480[171] = {
+char gMsgEventLines_13_3[171] = {
 #include "game/008E1480.inc"
 };
-char D_008E1530[223] = {
+char gMsgEventLines_13_4[223] = {
 #include "game/008E1530.inc"
 };
-char D_008E1610[126] = {
+char gMsgEventLines_14_0[126] = {
 #include "game/008E1610.inc"
 };
-char D_008E1690[191] = {
+char gMsgEventLines_14_1[191] = {
 #include "game/008E1690.inc"
 };
-char D_008E1750[189] = {
+char gMsgEventLines_14_2[189] = {
 #include "game/008E1750.inc"
 };
-char D_008E1810[150] = {
+char gMsgEventLines_14_3[150] = {
 #include "game/008E1810.inc"
 };
-char D_008E18B0[243] = {
+char gMsgEventLines_15_0[243] = {
 #include "game/008E18B0.inc"
 };
-char D_008E19B0[130] = {
+char gMsgEventLines_16_0[130] = {
 #include "game/008E19B0.inc"
 };
-char D_008E1A40[156] = {
+char gMsgEventLines_16_1[156] = {
 #include "game/008E1A40.inc"
 };
-char D_008E1AE0[150] = {
+char gMsgEventLines_16_2[150] = {
 #include "game/008E1AE0.inc"
 };
-char D_008E1B80[119] = {
+char gMsgEventLines_17_0[119] = {
 #include "game/008E1B80.inc"
 };
-char D_008E1C00[138] = {
+char gMsgEventLines_17_1[138] = {
 #include "game/008E1C00.inc"
 };
-char D_008E1C90[150] = {
+char gMsgEventLines_17_2[150] = {
 #include "game/008E1C90.inc"
 };
-char D_008E1D30[136] = {
+char gMsgEventLines_17_3[136] = {
 #include "game/008E1D30.inc"
 };
-char D_008E1DC0[178] = {
+char gMsgEventLines_18_0[178] = {
 #include "game/008E1DC0.inc"
 };
-char D_008E1E80[213] = {
+char gMsgEventLines_18_1[213] = {
 #include "game/008E1E80.inc"
 };
-char D_008E1F60[210] = {
+char gMsgEventLines_18_2[210] = {
 #include "game/008E1F60.inc"
 };
-char D_008E2040[158] = {
+char gMsgEventLines_18_3[158] = {
 #include "game/008E2040.inc"
 };
-char D_008E20E0[199] = {
+char gMsgEventLines_18_4[199] = {
 #include "game/008E20E0.inc"
 };
-char D_008E21B0[137] = {
+char gMsgEventLines_19_0[137] = {
 #include "game/008E21B0.inc"
 };
-char D_008E2240[192] = {
+char gMsgEventLines_19_1[192] = {
 #include "game/008E2240.inc"
 };
-char D_008E2300[96] = {
+char gMsgEventLines_19_2[96] = {
 #include "game/008E2300.inc"
 };
-char D_008E2360[137] = {
+char gMsgEventLines_19_3[137] = {
 #include "game/008E2360.inc"
 };
-char D_008E23F0[131] = {
+char gMsgEventLines_20_0[131] = {
 #include "game/008E23F0.inc"
 };
-char D_008E2480[162] = {
+char gMsgEventLines_20_1[162] = {
 #include "game/008E2480.inc"
 };
-char D_008E2530[215] = {
+char gMsgEventLines_20_2[215] = {
 #include "game/008E2530.inc"
 };
-char D_008E2610[178] = {
+char gMsgEventLines_20_3[178] = {
 #include "game/008E2610.inc"
 };
-char D_008E26D0[215] = {
+char gMsgEventLines_20_4[215] = {
 #include "game/008E26D0.inc"
 };
-char D_008E27B0[221] = {
+char gMsgEventLines_21_0[221] = {
 #include "game/008E27B0.inc"
 };
-char D_008E2890[130] = {
+char gMsgEventLines_22_0[130] = {
 #include "game/008E2890.inc"
 };
-char D_008E2920[162] = {
+char gMsgEventLines_22_1[162] = {
 #include "game/008E2920.inc"
 };
-char D_008E29D0[196] = {
+char gMsgEventLines_22_2[196] = {
 #include "game/008E29D0.inc"
 };
-char D_008E2AA0[183] = {
+char gMsgEventLines_22_3[183] = {
 #include "game/008E2AA0.inc"
 };
-char D_008E2B60[239] = {
+char gMsgEventLines_22_4[239] = {
 #include "game/008E2B60.inc"
 };
-char D_008E2C50[151] = {
+char gMsgEventLines_23_0[151] = {
 #include "game/008E2C50.inc"
 };
-char D_008E2CF0[168] = {
+char gMsgEventLines_23_1[168] = {
 #include "game/008E2CF0.inc"
 };
-char D_008E2DA0[200] = {
+char gMsgEventLines_23_2[200] = {
 #include "game/008E2DA0.inc"
 };
-char D_008E2E70[251] = {
+char gMsgEventLines_24_0[251] = {
 #include "game/008E2E70.inc"
 };
-char D_008E2F70[126] = {
+char gMsgEventLines_25_0[126] = {
 #include "game/008E2F70.inc"
 };
-char D_008E2FF0[152] = {
+char gMsgEventLines_25_1[152] = {
 #include "game/008E2FF0.inc"
 };
-char D_008E3090[142] = {
+char gMsgEventLines_25_2[142] = {
 #include "game/008E3090.inc"
 };
-char D_008E3120[217] = {
+char gMsgEventLines_25_3[217] = {
 #include "game/008E3120.inc"
 };
-char D_008E3200[187] = {
+char gMsgEventLines_25_4[187] = {
 #include "game/008E3200.inc"
 };
-char D_008E32C0[181] = {
+char gMsgEventLines_26_0[181] = {
 #include "game/008E32C0.inc"
 };
-char D_008E3380[156] = {
+char gMsgEventLines_26_1[156] = {
 #include "game/008E3380.inc"
 };
-char D_008E3420[157] = {
+char gMsgEventLines_26_2[157] = {
 #include "game/008E3420.inc"
 };
-char D_008E34C0[134] = {
+char gMsgEventLines_26_3[134] = {
 #include "game/008E34C0.inc"
 };
-char D_008E3550[113] = {
+char gMsgEventLines_26_4[113] = {
 #include "game/008E3550.inc"
 };
-char D_008E35D0[152] = {
+char gMsgEventLines_26_5[152] = {
 #include "game/008E35D0.inc"
 };
-char D_008E3670[241] = {
+char gMsgEventLines_27_0[241] = {
 #include "game/008E3670.inc"
 };
-char D_008E3770[128] = {
+char gMsgEventLines_28_0[128] = {
 #include "game/008E3770.inc"
 };
 char D_008E37F0[179] = {
 #include "game/008E37F0.inc"
 };
-char D_008E38B0[193] = {
+char gMsgEventLines_28_2[193] = {
 #include "game/008E38B0.inc"
 };
-char D_008E3980[170] = {
+char gMsgEventLines_28_3[170] = {
 #include "game/008E3980.inc"
 };
-char D_008E3A30[156] = {
+char gMsgEventLines_28_4[156] = {
 #include "game/008E3A30.inc"
 };
-char D_008E3AD0[156] = {
+char gMsgEventLines_28_5[156] = {
 #include "game/008E3AD0.inc"
 };
 char D_008E3B70[156] = {
@@ -923,289 +923,289 @@ char D_008E3B70[156] = {
 char D_008E3C10[185] = {
 #include "game/008E3C10.inc"
 };
-char D_008E3CD0[136] = {
+char gMsgEventLines_29_2[136] = {
 #include "game/008E3CD0.inc"
 };
-char D_008E3D60[126] = {
+char gMsgEventLines_30_0[126] = {
 #include "game/008E3D60.inc"
 };
-char D_008E3DE0[218] = {
+char gMsgEventLines_30_2[218] = {
 #include "game/008E3DE0.inc"
 };
-char D_008E3EC0[207] = {
+char gMsgEventLines_30_3[207] = {
 #include "game/008E3EC0.inc"
 };
-char D_008E3F90[215] = {
+char gMsgEventLines_30_4[215] = {
 #include "game/008E3F90.inc"
 };
-char D_008E4070[164] = {
+char gMsgEventLines_31_0[164] = {
 #include "game/008E4070.inc"
 };
-char D_008E4120[187] = {
+char gMsgEventLines_31_1[187] = {
 #include "game/008E4120.inc"
 };
-char D_008E41E0[207] = {
+char gMsgEventLines_31_2[207] = {
 #include "game/008E41E0.inc"
 };
-char D_008E42B0[205] = {
+char gMsgEventLines_32_0[205] = {
 #include "game/008E42B0.inc"
 };
-char D_008E4380[197] = {
+char gMsgEventLines_32_1[197] = {
 #include "game/008E4380.inc"
 };
-char D_008E4450[130] = {
+char gMsgEventLines_33_0[130] = {
 #include "game/008E4450.inc"
 };
-char D_008E44E0[183] = {
+char gMsgEventLines_33_2[183] = {
 #include "game/008E44E0.inc"
 };
-char D_008E45A0[201] = {
+char gMsgEventLines_33_3[201] = {
 #include "game/008E45A0.inc"
 };
-char D_008E4670[213] = {
+char gMsgEventLines_33_4[213] = {
 #include "game/008E4670.inc"
 };
-char D_008E4750[173] = {
+char gMsgEventLines_33_5[173] = {
 #include "game/008E4750.inc"
 };
-char D_008E4800[135] = {
+char gMsgEventLines_34_0[135] = {
 #include "game/008E4800.inc"
 };
-char D_008E4890[199] = {
+char gMsgEventLines_34_1[199] = {
 #include "game/008E4890.inc"
 };
-char D_008E4960[185] = {
+char gMsgEventLines_34_2[185] = {
 #include "game/008E4960.inc"
 };
-char D_008E4A20[128] = {
+char gMsgEventLines_35_0[128] = {
 #include "game/008E4A20.inc"
 };
-char D_008E4AA0[216] = {
+char gMsgEventLines_35_2[216] = {
 #include "game/008E4AA0.inc"
 };
-char D_008E4B80[215] = {
+char gMsgEventLines_35_3[215] = {
 #include "game/008E4B80.inc"
 };
-char D_008E4C60[229] = {
+char gMsgEventLines_35_4[229] = {
 #include "game/008E4C60.inc"
 };
-char D_008E4D50[187] = {
+char gMsgEventLines_35_5[187] = {
 #include "game/008E4D50.inc"
 };
-char D_008E4E10[142] = {
+char gMsgEventLines_36_2[142] = {
 #include "game/008E4E10.inc"
 };
-char D_008E4EA0[165] = {
+char gMsgEventLines_36_3[165] = {
 #include "game/008E4EA0.inc"
 };
-char D_008E4F50[126] = {
+char gMsgEventLines_37_0[126] = {
 #include "game/008E4F50.inc"
 };
-char D_008E4FD0[182] = {
+char gMsgEventLines_37_2[182] = {
 #include "game/008E4FD0.inc"
 };
-char D_008E5090[152] = {
+char gMsgEventLines_37_3[152] = {
 #include "game/008E5090.inc"
 };
-char D_008E5130[162] = {
+char gMsgEventLines_37_4[162] = {
 #include "game/008E5130.inc"
 };
-char D_008E51E0[217] = {
+char gMsgEventLines_37_5[217] = {
 #include "game/008E51E0.inc"
 };
-char D_008E52C0[215] = {
+char gMsgEventLines_38_0[215] = {
 #include "game/008E52C0.inc"
 };
-char D_008E53A0[198] = {
+char gMsgEventLines_38_1[198] = {
 #include "game/008E53A0.inc"
 };
-char D_008E5470[231] = {
+char gMsgEventLines_38_2[231] = {
 #include "game/008E5470.inc"
 };
-char D_008E5560[126] = {
+char gMsgEventLines_39_0[126] = {
 #include "game/008E5560.inc"
 };
-char D_008E55E0[174] = {
+char gMsgEventLines_39_2[174] = {
 #include "game/008E55E0.inc"
 };
-char D_008E5690[205] = {
+char gMsgEventLines_39_3[205] = {
 #include "game/008E5690.inc"
 };
-char D_008E5760[193] = {
+char gMsgEventLines_39_4[193] = {
 #include "game/008E5760.inc"
 };
-char D_008E5830[233] = {
+char gMsgEventLines_40_0[233] = {
 #include "game/008E5830.inc"
 };
-char D_008E5920[177] = {
+char gMsgEventLines_40_1[177] = {
 #include "game/008E5920.inc"
 };
-char D_008E59E0[177] = {
+char gMsgEventLines_40_2[177] = {
 #include "game/008E59E0.inc"
 };
-char D_008E5AA0[185] = {
+char gMsgEventLines_40_3[185] = {
 #include "game/008E5AA0.inc"
 };
-char D_008E5B60[128] = {
+char gMsgEventLines_41_0[128] = {
 #include "game/008E5B60.inc"
 };
-char D_008E5BE0[197] = {
+char gMsgEventLines_41_2[197] = {
 #include "game/008E5BE0.inc"
 };
-char D_008E5CB0[221] = {
+char gMsgEventLines_41_3[221] = {
 #include "game/008E5CB0.inc"
 };
-char D_008E5D90[191] = {
+char gMsgEventLines_41_4[191] = {
 #include "game/008E5D90.inc"
 };
-char D_008E5E50[225] = {
+char gMsgEventLines_42_0[225] = {
 #include "game/008E5E50.inc"
 };
-char D_008E5F40[203] = {
+char gMsgEventLines_42_1[203] = {
 #include "game/008E5F40.inc"
 };
-char D_008E6010[211] = {
+char gMsgEventLines_42_2[211] = {
 #include "game/008E6010.inc"
 };
-char D_008E60F0[228] = {
+char gMsgEventLines_42_3[228] = {
 #include "game/008E60F0.inc"
 };
-char D_008E61E0[133] = {
+char gMsgEventLines_43_0[133] = {
 #include "game/008E61E0.inc"
 };
-char D_008E6270[202] = {
+char gMsgEventLines_43_2[202] = {
 #include "game/008E6270.inc"
 };
-char D_008E6340[203] = {
+char gMsgEventLines_43_3[203] = {
 #include "game/008E6340.inc"
 };
-char D_008E6410[213] = {
+char gMsgEventLines_43_4[213] = {
 #include "game/008E6410.inc"
 };
-char D_008E64F0[199] = {
+char gMsgEventLines_43_5[199] = {
 #include "game/008E64F0.inc"
 };
-char D_008E65C0[181] = {
+char gMsgEventLines_44_0[181] = {
 #include "game/008E65C0.inc"
 };
-char D_008E6680[201] = {
+char gMsgEventLines_44_1[201] = {
 #include "game/008E6680.inc"
 };
-char D_008E6750[146] = {
+char gMsgEventLines_44_2[146] = {
 #include "game/008E6750.inc"
 };
-char D_008E67F0[199] = {
+char gMsgEventLines_44_3[199] = {
 #include "game/008E67F0.inc"
 };
-char D_008E68C0[213] = {
+char gMsgEventLines_45_0[213] = {
 #include "game/008E68C0.inc"
 };
-char D_008E69A0[211] = {
+char gMsgEventLines_45_1[211] = {
 #include "game/008E69A0.inc"
 };
-char D_008E6A80[197] = {
+char gMsgEventLines_45_2[197] = {
 #include "game/008E6A80.inc"
 };
-char D_008E6B50[164] = {
+char gMsgEventLines_45_3[164] = {
 #include "game/008E6B50.inc"
 };
-char D_008E6C00[137] = {
+char gMsgEventLines_46_0[137] = {
 #include "game/008E6C00.inc"
 };
 char D_008E6C90[176] = {
 #include "game/008E6C90.inc"
 };
-char D_008E6D40[134] = {
+char gMsgEventLines_46_2[134] = {
 #include "game/008E6D40.inc"
 };
-char D_008E6DD0[154] = {
+char gMsgEventLines_46_3[154] = {
 #include "game/008E6DD0.inc"
 };
-char D_008E6E70[205] = {
+char gMsgEventLines_46_4[205] = {
 #include "game/008E6E70.inc"
 };
-char D_008E6F40[154] = {
+char gMsgEventLines_47_0[154] = {
 #include "game/008E6F40.inc"
 };
-char D_008E6FE0[127] = {
+char gMsgEventLines_47_1[127] = {
 #include "game/008E6FE0.inc"
 };
-char D_008E7060[207] = {
+char gMsgEventLines_47_2[207] = {
 #include "game/008E7060.inc"
 };
 char D_008E7130[105] = {
 #include "game/008E7130.inc"
 };
-char D_008E71A0[137] = {
+char gMsgEventLines_48_0[137] = {
 #include "game/008E71A0.inc"
 };
-char D_008E7230[130] = {
+char gMsgEventLines_48_2[130] = {
 #include "game/008E7230.inc"
 };
-char D_008E72C0[195] = {
+char gMsgEventLines_48_3[195] = {
 #include "game/008E72C0.inc"
 };
-char D_008E7390[189] = {
+char gMsgEventLines_48_4[189] = {
 #include "game/008E7390.inc"
 };
-char D_008E7450[154] = {
+char gMsgEventLines_49_0[154] = {
 #include "game/008E7450.inc"
 };
-char D_008E74F0[201] = {
+char gMsgEventLines_49_1[201] = {
 #include "game/008E74F0.inc"
 };
-char D_008E75C0[223] = {
+char gMsgEventLines_49_2[223] = {
 #include "game/008E75C0.inc"
 };
-char D_008E76A0[124] = {
+char gMsgEventLines_50_0[124] = {
 #include "game/008E76A0.inc"
 };
-char D_008E7720[183] = {
+char gMsgEventLines_50_1[183] = {
 #include "game/008E7720.inc"
 };
-char D_008E77E0[221] = {
+char gMsgEventLines_50_2[221] = {
 #include "game/008E77E0.inc"
 };
-char D_008E78C0[222] = {
+char gMsgEventLines_50_3[222] = {
 #include "game/008E78C0.inc"
 };
-char D_008E79A0[164] = {
+char gMsgEventLines_50_4[164] = {
 #include "game/008E79A0.inc"
 };
-char D_008E7A50[162] = {
+char gMsgEventLines_51_0[162] = {
 #include "game/008E7A50.inc"
 };
-char D_008E7B00[152] = {
+char gMsgEventLines_51_1[152] = {
 #include "game/008E7B00.inc"
 };
-char D_008E7BA0[199] = {
+char gMsgEventLines_52_0[199] = {
 #include "game/008E7BA0.inc"
 };
-char D_008E7C70[152] = {
+char gMsgEventLines_52_1[152] = {
 #include "game/008E7C70.inc"
 };
-char D_008E7D10[195] = {
+char gMsgEventLines_52_2[195] = {
 #include "game/008E7D10.inc"
 };
-char D_008E7DE0[176] = {
+char gMsgEventLines_52_3[176] = {
 #include "game/008E7DE0.inc"
 };
-char D_008E7E90[139] = {
+char gMsgEventLines_53_0[139] = {
 #include "game/008E7E90.inc"
 };
-char D_008E7F20[171] = {
+char gMsgEventLines_53_1[171] = {
 #include "game/008E7F20.inc"
 };
-char D_008E7FD0[141] = {
+char gMsgEventLines_53_2[141] = {
 #include "game/008E7FD0.inc"
 };
-char D_008E8060[156] = {
+char gMsgEventLines_54_0[156] = {
 #include "game/008E8060.inc"
 };
-char D_008E8100[125] = {
+char gMsgEventLines_54_1[125] = {
 #include "game/008E8100.inc"
 };
-char D_008E8180[192] = {
+char gMsgEventLines_54_2[192] = {
 #include "game/008E8180.inc"
 };
 char D_008E8240[239] = {
@@ -1214,46 +1214,46 @@ char D_008E8240[239] = {
 char D_008E8330[195] = {
 #include "game/008E8330.inc"
 };
-char D_008E8400[207] = {
+char gMsgEventLines_55_0[207] = {
 #include "game/008E8400.inc"
 };
-char D_008E84D0[189] = {
+char gMsgEventLines_55_1[189] = {
 #include "game/008E84D0.inc"
 };
-char D_008E8590[205] = {
+char gMsgEventLines_55_2[205] = {
 #include "game/008E8590.inc"
 };
-char D_008E8660[235] = {
+char gMsgEventLines_56_0[235] = {
 #include "game/008E8660.inc"
 };
-char D_008E8750[137] = {
+char gMsgEventLines_57_0[137] = {
 #include "game/008E8750.inc"
 };
-char D_008E87E0[233] = {
+char gMsgEventLines_57_1[233] = {
 #include "game/008E87E0.inc"
 };
-char D_008E88D0[138] = {
+char gMsgEventLines_57_2[138] = {
 #include "game/008E88D0.inc"
 };
-char D_008E8960[188] = {
+char gMsgEventLines_57_3[188] = {
 #include "game/008E8960.inc"
 };
-char D_008E8A20[233] = {
+char gMsgEventLines_57_4[233] = {
 #include "game/008E8A20.inc"
 };
-char D_008E8B10[203] = {
+char gMsgEventLines_57_5[203] = {
 #include "game/008E8B10.inc"
 };
-char D_008E8BE0[162] = {
+char gMsgEventLines_57_6[162] = {
 #include "game/008E8BE0.inc"
 };
-char D_008E8C90[132] = {
+char gMsgEventLines_58_0[132] = {
 #include "game/008E8C90.inc"
 };
-char D_008E8D20[142] = {
+char gMsgEventLines_58_1[142] = {
 #include "game/008E8D20.inc"
 };
-char D_008E8DB0[191] = {
+char gMsgEventLines_58_2[191] = {
 #include "game/008E8DB0.inc"
 };
 char D_008E8E70[166] = {
@@ -1262,16 +1262,16 @@ char D_008E8E70[166] = {
 char D_008E8F20[213] = {
 #include "game/008E8F20.inc"
 };
-char D_008E9000[233] = {
+char gMsgEventLines_59_0[233] = {
 #include "game/008E9000.inc"
 };
-char D_008E90F0[195] = {
+char gMsgEventLines_59_1[195] = {
 #include "game/008E90F0.inc"
 };
 char D_008E91C0[217] = {
 #include "game/008E91C0.inc"
 };
-char D_008E92A0[207] = {
+char gMsgEventLines_60_0[207] = {
 #include "game/008E92A0.inc"
 };
 char D_008E9370[167] = {
@@ -1283,199 +1283,199 @@ char D_008E9420[168] = {
 char D_008E94D0[199] = {
 #include "game/008E94D0.inc"
 };
-char D_008E95A0[211] = {
+char gMsgEventLines_62_0[211] = {
 #include "game/008E95A0.inc"
 };
-char D_008E9680[116] = {
+char gMsgEventLines_62_1[116] = {
 #include "game/008E9680.inc"
 };
-char D_008E9700[213] = {
+char gMsgEventLines_63_0[213] = {
 #include "game/008E9700.inc"
 };
-char D_008E97E0[217] = {
+char gMsgEventLines_63_1[217] = {
 #include "game/008E97E0.inc"
 };
-char D_008E98C0[189] = {
+char gMsgEventLines_64_0[189] = {
 #include "game/008E98C0.inc"
 };
-char D_008E9980[118] = {
+char gMsgEventLines_64_1[118] = {
 #include "game/008E9980.inc"
 };
-char D_008E9A00[146] = {
+char gMsgEventLines_65_0[146] = {
 #include "game/008E9A00.inc"
 };
-char D_008E9AA0[140] = {
+char gMsgEventLines_65_1[140] = {
 #include "game/008E9AA0.inc"
 };
-char D_008E9B30[203] = {
+char gMsgEventLines_65_2[203] = {
 #include "game/008E9B30.inc"
 };
-char D_008E9C00[189] = {
+char gMsgEventLines_65_3[189] = {
 #include "game/008E9C00.inc"
 };
-char D_008E9CC0[221] = {
+char gMsgEventLines_65_4[221] = {
 #include "game/008E9CC0.inc"
 };
-char D_008E9DA0[235] = {
+char gMsgEventLines_66_0[235] = {
 #include "game/008E9DA0.inc"
 };
-char D_008E9E90[213] = {
+char gMsgEventLines_67_0[213] = {
 #include "game/008E9E90.inc"
 };
 char D_008E9F70[224] = {
 #include "game/008E9F70.inc"
 };
-char D_008EA050[202] = {
+char gMsgEventLines_68_0[202] = {
 #include "game/008EA050.inc"
 };
-char D_008EA120[107] = {
+char gMsgEventLines_68_1[107] = {
 #include "game/008EA120.inc"
 };
-char D_008EA190[158] = {
+char gMsgEventLines_69_0[158] = {
 #include "game/008EA190.inc"
 };
-char D_008EA230[205] = {
+char gMsgEventLines_69_1[205] = {
 #include "game/008EA230.inc"
 };
-char D_008EA300[210] = {
+char gMsgEventLines_69_2[210] = {
 #include "game/008EA300.inc"
 };
-char D_008EA3E0[205] = {
+char gMsgEventLines_69_3[205] = {
 #include "game/008EA3E0.inc"
 };
-char D_008EA4B0[160] = {
+char gMsgEventLines_69_4[160] = {
 #include "game/008EA4B0.inc"
 };
-char D_008EA550[187] = {
+char gMsgEventLines_70_0[187] = {
 #include "game/008EA550.inc"
 };
-char D_008EA610[111] = {
+char gMsgEventLines_70_1[111] = {
 #include "game/008EA610.inc"
 };
-char D_008EA680[215] = {
+char gMsgEventLines_70_2[215] = {
 #include "game/008EA680.inc"
 };
-char D_008EA760[147] = {
+char gMsgEventLines_70_3[147] = {
 #include "game/008EA760.inc"
 };
-char D_008EA800[239] = {
+char gMsgEventLines_70_4[239] = {
 #include "game/008EA800.inc"
 };
-char D_008EA8F0[189] = {
+char gMsgEventLines_70_5[189] = {
 #include "game/008EA8F0.inc"
 };
-char D_008EA9B0[177] = {
+char gMsgEventLines_70_6[177] = {
 #include "game/008EA9B0.inc"
 };
-char D_008EAA70[177] = {
+char gMsgEventLines_70_7[177] = {
 #include "game/008EAA70.inc"
 };
-char D_008EAB30[189] = {
+char gMsgEventLines_71_0[189] = {
 #include "game/008EAB30.inc"
 };
-char D_008EABF0[178] = {
+char gMsgEventLines_71_1[178] = {
 #include "game/008EABF0.inc"
 };
-char D_008EACB0[155] = {
+char gMsgEventLines_71_2[155] = {
 #include "game/008EACB0.inc"
 };
-char D_008EAD50[178] = {
+char gMsgEventLines_71_3[178] = {
 #include "game/008EAD50.inc"
 };
-char D_008EAE10[142] = {
+char gMsgEventLines_71_4[142] = {
 #include "game/008EAE10.inc"
 };
-char D_008EAEA0[142] = {
+char gMsgEventLines_71_5[142] = {
 #include "game/008EAEA0.inc"
 };
-char D_008EAF30[123] = {
+char gMsgEventLines_71_6[123] = {
 #include "game/008EAF30.inc"
 };
-char D_008EAFB0[128] = {
+char gMsgEventLines_71_7[128] = {
 #include "game/008EAFB0.inc"
 };
-char D_008EB030[160] = {
+char gMsgEventLines_72_0[160] = {
 #include "game/008EB030.inc"
 };
-char D_008EB0D0[177] = {
+char gMsgEventLines_72_1[177] = {
 #include "game/008EB0D0.inc"
 };
-char D_008EB190[196] = {
+char gMsgEventLines_72_2[196] = {
 #include "game/008EB190.inc"
 };
-char D_008EB260[157] = {
+char gMsgEventLines_72_3[157] = {
 #include "game/008EB260.inc"
 };
-char D_008EB300[215] = {
+char gMsgEventLines_73_0[215] = {
 #include "game/008EB300.inc"
 };
-char D_008EB3E0[86] = {
+char gMsgEventLines_73_1[86] = {
 #include "game/008EB3E0.inc"
 };
-char D_008EB440[178] = {
+char gMsgEventLines_73_2[178] = {
 #include "game/008EB440.inc"
 };
-char D_008EB500[107] = {
+char gMsgEventLines_73_3[107] = {
 #include "game/008EB500.inc"
 };
-char D_008EB570[96] = {
+char gMsgEventLines_74_0[96] = {
 #include "game/008EB570.inc"
 };
-char D_008EB5D0[141] = {
+char gMsgEventLines_74_1[141] = {
 #include "game/008EB5D0.inc"
 };
-char D_008EB660[135] = {
+char gMsgEventLines_74_2[135] = {
 #include "game/008EB660.inc"
 };
-char D_008EB6F0[123] = {
+char gMsgEventLines_74_3[123] = {
 #include "game/008EB6F0.inc"
 };
-char D_008EB770[133] = {
+char gMsgEventLines_74_4[133] = {
 #include "game/008EB770.inc"
 };
-char D_008EB800[73] = {
+char gMsgEventLines_75_0[73] = {
 #include "game/008EB800.inc"
 };
-char D_008EB850[157] = {
+char gMsgEventLines_75_1[157] = {
 #include "game/008EB850.inc"
 };
-char D_008EB8F0[123] = {
+char gMsgEventLines_75_2[123] = {
 #include "game/008EB8F0.inc"
 };
-char D_008EB970[103] = {
+char gMsgEventLines_75_3[103] = {
 #include "game/008EB970.inc"
 };
-char D_008EB9E0[52] = {
+char gMsgEventLines_75_4[52] = {
 #include "game/008EB9E0.inc"
 };
-char D_008EBA20[112] = {
+char gMsgEventLines_75_5[112] = {
 #include "game/008EBA20.inc"
 };
-char D_008EBA90[113] = {
+char gMsgEventLines_76_0[113] = {
 #include "game/008EBA90.inc"
 };
-char D_008EBB10[141] = {
+char gMsgEventLines_76_1[141] = {
 #include "game/008EBB10.inc"
 };
-char D_008EBBA0[195] = {
+char gMsgEventLines_76_2[195] = {
 #include "game/008EBBA0.inc"
 };
-char D_008EBC70[192] = {
+char gMsgEventLines_76_3[192] = {
 #include "game/008EBC70.inc"
 };
-char D_008EBD30[149] = {
+char gMsgEventLines_76_4[149] = {
 #include "game/008EBD30.inc"
 };
-char D_008EBDD0[178] = {
+char gMsgEventLines_76_5[178] = {
 #include "game/008EBDD0.inc"
 };
-char D_008EBE90[187] = {
+char gMsgEventLines_76_6[187] = {
 #include "game/008EBE90.inc"
 };
-char D_008EBF50[206] = {
+char gMsgEventLines_76_7[206] = {
 #include "game/008EBF50.inc"
 };
-char D_008EC020[121] = {
+char gMsgEventLines_76_8[121] = {
 #include "game/008EC020.inc"
 };
 #pragma explicit_zero_data on
@@ -1945,289 +1945,289 @@ u8 MsgEvent_PageCount(u8 msgSet, u8 msgNo)
 
 /* This file's initialised data. */
 char *gMsgEventTitles[80] = {
-    (char *)D_008DE300, (char *)D_008DE320, (char *)D_008DE340, (char *)D_008DE360,
-    (char *)D_008DE390, (char *)D_008DE3C0, (char *)D_008DE3E0, (char *)D_008DE3F8,
-    (char *)D_008DE410, (char *)D_008DE430, (char *)D_008DE450, (char *)D_008DE470,
-    (char *)D_008DE490, (char *)D_008DE4B0, (char *)D_008DE4C8, (char *)D_008DE4E0,
-    (char *)D_008DE500, (char *)D_008DE520, (char *)D_008DE550, (char *)D_008DE570,
-    (char *)D_008DE590, (char *)D_008DE5B0, (char *)D_008DE5E0, (char *)D_008DE600,
-    (char *)D_008DE620, (char *)D_008DE640, (char *)D_008DE660, (char *)D_008DE680,
-    (char *)D_008DE6A0, (char *)D_008DE6B0, (char *)D_008DE6D0, (char *)D_008DE6E0,
-    (char *)D_008DE700, (char *)D_008DE718, (char *)D_008DE730, (char *)D_008DE750,
-    (char *)D_008DE760, (char *)D_008DE780, (char *)D_008DE790, (char *)D_008DE7A8,
-    (char *)D_008DE7C0, (char *)D_008DE7D8, (char *)D_008DE7F0, (char *)D_008DE810,
-    (char *)D_008DE830, (char *)D_008DE850, (char *)D_008DE870, (char *)D_008DE890,
-    (char *)D_008DE8B0, (char *)D_008DE8D0, (char *)D_008DE8E8, (char *)D_008DE8F8,
-    (char *)D_008DE910, (char *)D_008DE930, (char *)D_008DE940, (char *)D_008DE960,
-    (char *)D_008DE970, (char *)D_008DE990, (char *)D_008DE9B0, (char *)D_008DE9D0,
-    (char *)D_008DE9E0, (char *)D_008DE9E8, (char *)D_008DE9F8, (char *)D_008DEA08,
-    (char *)D_008DEA18, (char *)D_008DEA30, (char *)D_008DEA50, (char *)D_008DEA50,
-    (char *)D_008DEA70, (char *)D_008DEA90, (char *)D_008DEAB0, (char *)D_008DEAD0,
-    (char *)D_008DEAE0, (char *)D_008DEB00, (char *)D_008DEB20, (char *)D_008DEB40,
-    (char *)D_008DEB58, NULL, NULL, NULL,
+    (char *)gMsgEventTitles_0, (char *)gMsgEventTitles_1, (char *)gMsgEventTitles_2, (char *)gMsgEventTitles_3,
+    (char *)gMsgEventTitles_4, (char *)gMsgEventTitles_5, (char *)gMsgEventTitles_6, (char *)gMsgEventTitles_7,
+    (char *)gMsgEventTitles_8, (char *)gMsgEventTitles_9, (char *)gMsgEventTitles_10, (char *)gMsgEventTitles_11,
+    (char *)gMsgEventTitles_12, (char *)gMsgEventTitles_13, (char *)gMsgEventTitles_14, (char *)gMsgEventTitles_15,
+    (char *)gMsgEventTitles_16, (char *)gMsgEventTitles_17, (char *)gMsgEventTitles_18, (char *)gMsgEventTitles_19,
+    (char *)gMsgEventTitles_20, (char *)gMsgEventTitles_21, (char *)gMsgEventTitles_22, (char *)gMsgEventTitles_23,
+    (char *)gMsgEventTitles_24, (char *)gMsgEventTitles_25, (char *)gMsgEventTitles_26, (char *)gMsgEventTitles_27,
+    (char *)gMsgEventTitles_28, (char *)gMsgEventTitles_29, (char *)gMsgEventTitles_30, (char *)gMsgEventTitles_31,
+    (char *)gMsgEventTitles_32, (char *)gMsgEventTitles_33, (char *)gMsgEventTitles_34, (char *)gMsgEventTitles_35,
+    (char *)gMsgEventTitles_36, (char *)gMsgEventTitles_37, (char *)gMsgEventTitles_38, (char *)gMsgEventTitles_39,
+    (char *)gMsgEventTitles_40, (char *)gMsgEventTitles_41, (char *)gMsgEventTitles_42, (char *)gMsgEventTitles_43,
+    (char *)gMsgEventTitles_44, (char *)gMsgEventTitles_45, (char *)gMsgEventTitles_46, (char *)gMsgEventTitles_47,
+    (char *)gMsgEventTitles_48, (char *)gMsgEventTitles_49, (char *)gMsgEventTitles_50, (char *)gMsgEventTitles_51,
+    (char *)gMsgEventTitles_52, (char *)gMsgEventTitles_53, (char *)gMsgEventTitles_54, (char *)gMsgEventTitles_55,
+    (char *)gMsgEventTitles_56, (char *)gMsgEventTitles_57, (char *)gMsgEventTitles_58, (char *)gMsgEventTitles_59,
+    (char *)gMsgEventTitles_60, (char *)gMsgEventTitles_61, (char *)gMsgEventTitles_62, (char *)gMsgEventTitles_63,
+    (char *)gMsgEventTitles_64, (char *)gMsgEventTitles_65, (char *)D_008DEA50, (char *)D_008DEA50,
+    (char *)gMsgEventTitles_68, (char *)gMsgEventTitles_69, (char *)gMsgEventTitles_70, (char *)gMsgEventTitles_71,
+    (char *)gMsgEventTitles_72, (char *)gMsgEventTitles_73, (char *)gMsgEventTitles_74, (char *)gMsgEventTitles_75,
+    (char *)gMsgEventTitles_76, NULL, NULL, NULL,
 };
 char *gMsgEventLines_0[6] = {
-    (char *)D_008DEB70, (char *)D_008DEC20, (char *)D_008DECD0, (char *)D_008DED80,
-    (char *)D_008DEE60, NULL,
+    (char *)gMsgEventLines_0_0, (char *)gMsgEventLines_0_1, (char *)gMsgEventLines_0_2, (char *)gMsgEventLines_0_3,
+    (char *)gMsgEventLines_0_4, NULL,
 };
 char *gMsgEventLines_1[3] = {
-    (char *)D_008DEF30, (char *)D_008DEFE0, (char *)D_008DF0A0,
+    (char *)gMsgEventLines_1_0, (char *)gMsgEventLines_1_1, (char *)gMsgEventLines_1_2,
 };
 char *gMsgEventLines_2[4] = {
-    (char *)D_008DF170, (char *)D_008DF1E0, (char *)D_008DF2A0, (char *)D_008DF360,
+    (char *)gMsgEventLines_2_0, (char *)gMsgEventLines_2_1, (char *)gMsgEventLines_2_2, (char *)gMsgEventLines_2_3,
 };
 char *gMsgEventLines_3[4] = {
-    (char *)D_008DF400, (char *)D_008DF4B0, (char *)D_008DF580, NULL,
+    (char *)gMsgEventLines_3_0, (char *)gMsgEventLines_3_1, (char *)gMsgEventLines_3_2, NULL,
 };
 char *gMsgEventLines_4[4] = {
-    (char *)D_008DF660, (char *)D_008DF730, (char *)D_008DF7D0, NULL,
+    (char *)gMsgEventLines_4_0, (char *)gMsgEventLines_4_1, (char *)gMsgEventLines_4_2, NULL,
 };
 char *gMsgEventLines_5[4] = {
-    (char *)D_008DF880, (char *)D_008DF920, (char *)D_008DFA10, (char *)D_008DFAB0,
+    (char *)gMsgEventLines_5_0, (char *)gMsgEventLines_5_1, (char *)gMsgEventLines_5_2, (char *)gMsgEventLines_5_3,
 };
 char *gMsgEventLines_6[4] = {
-    (char *)D_008DFB60, (char *)D_008DFC10, (char *)D_008DFD10, NULL,
+    (char *)gMsgEventLines_6_0, (char *)gMsgEventLines_6_1, (char *)gMsgEventLines_6_2, NULL,
 };
 char *gMsgEventLines_7[8] = {
-    (char *)D_008DFDD0, (char *)D_008DFE60, (char *)D_008DFF30, (char *)D_008E0040,
-    (char *)D_008E0100, (char *)D_008E0190, (char *)D_008E0290, NULL,
+    (char *)gMsgEventLines_7_0, (char *)gMsgEventLines_7_1, (char *)gMsgEventLines_7_2, (char *)gMsgEventLines_7_3,
+    (char *)gMsgEventLines_7_4, (char *)gMsgEventLines_7_5, (char *)gMsgEventLines_7_6, NULL,
 };
 char *gMsgEventLines_8[4] = {
-    (char *)D_008E0320, (char *)D_008E0400, (char *)D_008E04C0, (char *)D_008E0580,
+    (char *)gMsgEventLines_8_0, (char *)gMsgEventLines_8_1, (char *)gMsgEventLines_8_2, (char *)gMsgEventLines_8_3,
 };
 char *gMsgEventLines_9[4] = {
-    (char *)D_008E0620, NULL, NULL, NULL,
+    (char *)gMsgEventLines_9_0, NULL, NULL, NULL,
 };
 char *gMsgEventLines_10[8] = {
-    (char *)D_008E0710, (char *)D_008E07A0, (char *)D_008E0850, (char *)D_008E0930,
-    (char *)D_008E0A30, NULL, NULL, NULL,
+    (char *)gMsgEventLines_10_0, (char *)gMsgEventLines_10_1, (char *)gMsgEventLines_10_2, (char *)gMsgEventLines_10_3,
+    (char *)gMsgEventLines_10_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_11[8] = {
-    (char *)D_008E0AE0, (char *)D_008E0B40, (char *)D_008E0C20, (char *)D_008E0CB0,
-    (char *)D_008E0D60, NULL, NULL, NULL,
+    (char *)gMsgEventLines_11_0, (char *)gMsgEventLines_11_1, (char *)gMsgEventLines_11_2, (char *)gMsgEventLines_11_3,
+    (char *)gMsgEventLines_11_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_12[8] = {
-    (char *)D_008E0E20, (char *)D_008E0ED0, (char *)D_008E0F90, (char *)D_008E1070,
-    (char *)D_008E1130, (char *)D_008E11E0, NULL, NULL,
+    (char *)gMsgEventLines_12_0, (char *)gMsgEventLines_12_1, (char *)gMsgEventLines_12_2, (char *)gMsgEventLines_12_3,
+    (char *)gMsgEventLines_12_4, (char *)gMsgEventLines_12_5, NULL, NULL,
 };
 char *gMsgEventLines_13[8] = {
-    (char *)D_008E1260, (char *)D_008E1310, (char *)D_008E13C0, (char *)D_008E1480,
-    (char *)D_008E1530, NULL, NULL, NULL,
+    (char *)gMsgEventLines_13_0, (char *)gMsgEventLines_13_1, (char *)gMsgEventLines_13_2, (char *)gMsgEventLines_13_3,
+    (char *)gMsgEventLines_13_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_14[4] = {
-    (char *)D_008E1610, (char *)D_008E1690, (char *)D_008E1750, (char *)D_008E1810,
+    (char *)gMsgEventLines_14_0, (char *)gMsgEventLines_14_1, (char *)gMsgEventLines_14_2, (char *)gMsgEventLines_14_3,
 };
 char *gMsgEventLines_15[2] = {
-    (char *)D_008E18B0, NULL,
+    (char *)gMsgEventLines_15_0, NULL,
 };
 char *gMsgEventLines_16[3] = {
-    (char *)D_008E19B0, (char *)D_008E1A40, (char *)D_008E1AE0,
+    (char *)gMsgEventLines_16_0, (char *)gMsgEventLines_16_1, (char *)gMsgEventLines_16_2,
 };
 char *gMsgEventLines_17[4] = {
-    (char *)D_008E1B80, (char *)D_008E1C00, (char *)D_008E1C90, (char *)D_008E1D30,
+    (char *)gMsgEventLines_17_0, (char *)gMsgEventLines_17_1, (char *)gMsgEventLines_17_2, (char *)gMsgEventLines_17_3,
 };
 char *gMsgEventLines_18[8] = {
-    (char *)D_008E1DC0, (char *)D_008E1E80, (char *)D_008E1F60, (char *)D_008E2040,
-    (char *)D_008E20E0, NULL, NULL, NULL,
+    (char *)gMsgEventLines_18_0, (char *)gMsgEventLines_18_1, (char *)gMsgEventLines_18_2, (char *)gMsgEventLines_18_3,
+    (char *)gMsgEventLines_18_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_19[4] = {
-    (char *)D_008E21B0, (char *)D_008E2240, (char *)D_008E2300, (char *)D_008E2360,
+    (char *)gMsgEventLines_19_0, (char *)gMsgEventLines_19_1, (char *)gMsgEventLines_19_2, (char *)gMsgEventLines_19_3,
 };
 char *gMsgEventLines_20[6] = {
-    (char *)D_008E23F0, (char *)D_008E2480, (char *)D_008E2530, (char *)D_008E2610,
-    (char *)D_008E26D0, NULL,
+    (char *)gMsgEventLines_20_0, (char *)gMsgEventLines_20_1, (char *)gMsgEventLines_20_2, (char *)gMsgEventLines_20_3,
+    (char *)gMsgEventLines_20_4, NULL,
 };
 char *gMsgEventLines_21[2] = {
-    (char *)D_008E27B0, NULL,
+    (char *)gMsgEventLines_21_0, NULL,
 };
 char *gMsgEventLines_22[6] = {
-    (char *)D_008E2890, (char *)D_008E2920, (char *)D_008E29D0, (char *)D_008E2AA0,
-    (char *)D_008E2B60, NULL,
+    (char *)gMsgEventLines_22_0, (char *)gMsgEventLines_22_1, (char *)gMsgEventLines_22_2, (char *)gMsgEventLines_22_3,
+    (char *)gMsgEventLines_22_4, NULL,
 };
 char *gMsgEventLines_23[3] = {
-    (char *)D_008E2C50, (char *)D_008E2CF0, (char *)D_008E2DA0,
+    (char *)gMsgEventLines_23_0, (char *)gMsgEventLines_23_1, (char *)gMsgEventLines_23_2,
 };
 char *gMsgEventLines_24[2] = {
-    (char *)D_008E2E70, NULL,
+    (char *)gMsgEventLines_24_0, NULL,
 };
 char *gMsgEventLines_25[8] = {
-    (char *)D_008E2F70, (char *)D_008E2FF0, (char *)D_008E3090, (char *)D_008E3120,
-    (char *)D_008E3200, NULL, NULL, NULL,
+    (char *)gMsgEventLines_25_0, (char *)gMsgEventLines_25_1, (char *)gMsgEventLines_25_2, (char *)gMsgEventLines_25_3,
+    (char *)gMsgEventLines_25_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_26[6] = {
-    (char *)D_008E32C0, (char *)D_008E3380, (char *)D_008E3420, (char *)D_008E34C0,
-    (char *)D_008E3550, (char *)D_008E35D0,
+    (char *)gMsgEventLines_26_0, (char *)gMsgEventLines_26_1, (char *)gMsgEventLines_26_2, (char *)gMsgEventLines_26_3,
+    (char *)gMsgEventLines_26_4, (char *)gMsgEventLines_26_5,
 };
 char *gMsgEventLines_27[2] = {
-    (char *)D_008E3670, NULL,
+    (char *)gMsgEventLines_27_0, NULL,
 };
 char *gMsgEventLines_28[6] = {
-    (char *)D_008E3770, (char *)D_008E37F0, (char *)D_008E38B0, (char *)D_008E3980,
-    (char *)D_008E3A30, (char *)D_008E3AD0,
+    (char *)gMsgEventLines_28_0, (char *)D_008E37F0, (char *)gMsgEventLines_28_2, (char *)gMsgEventLines_28_3,
+    (char *)gMsgEventLines_28_4, (char *)gMsgEventLines_28_5,
 };
 char *gMsgEventLines_29[3] = {
-    (char *)D_008E3B70, (char *)D_008E3C10, (char *)D_008E3CD0,
+    (char *)D_008E3B70, (char *)D_008E3C10, (char *)gMsgEventLines_29_2,
 };
 char *gMsgEventLines_30[6] = {
-    (char *)D_008E3D60, (char *)D_008E37F0, (char *)D_008E3DE0, (char *)D_008E3EC0,
-    (char *)D_008E3F90, NULL,
+    (char *)gMsgEventLines_30_0, (char *)D_008E37F0, (char *)gMsgEventLines_30_2, (char *)gMsgEventLines_30_3,
+    (char *)gMsgEventLines_30_4, NULL,
 };
 char *gMsgEventLines_31[3] = {
-    (char *)D_008E4070, (char *)D_008E4120, (char *)D_008E41E0,
+    (char *)gMsgEventLines_31_0, (char *)gMsgEventLines_31_1, (char *)gMsgEventLines_31_2,
 };
 char *gMsgEventLines_32[2] = {
-    (char *)D_008E42B0, (char *)D_008E4380,
+    (char *)gMsgEventLines_32_0, (char *)gMsgEventLines_32_1,
 };
 char *gMsgEventLines_33[6] = {
-    (char *)D_008E4450, (char *)D_008E37F0, (char *)D_008E44E0, (char *)D_008E45A0,
-    (char *)D_008E4670, (char *)D_008E4750,
+    (char *)gMsgEventLines_33_0, (char *)D_008E37F0, (char *)gMsgEventLines_33_2, (char *)gMsgEventLines_33_3,
+    (char *)gMsgEventLines_33_4, (char *)gMsgEventLines_33_5,
 };
 char *gMsgEventLines_34[3] = {
-    (char *)D_008E4800, (char *)D_008E4890, (char *)D_008E4960,
+    (char *)gMsgEventLines_34_0, (char *)gMsgEventLines_34_1, (char *)gMsgEventLines_34_2,
 };
 char *gMsgEventLines_35[8] = {
-    (char *)D_008E4A20, (char *)D_008E37F0, (char *)D_008E4AA0, (char *)D_008E4B80,
-    (char *)D_008E4C60, (char *)D_008E4D50, NULL, NULL,
+    (char *)gMsgEventLines_35_0, (char *)D_008E37F0, (char *)gMsgEventLines_35_2, (char *)gMsgEventLines_35_3,
+    (char *)gMsgEventLines_35_4, (char *)gMsgEventLines_35_5, NULL, NULL,
 };
 char *gMsgEventLines_36[4] = {
-    (char *)D_008E3B70, (char *)D_008E3C10, (char *)D_008E4E10, (char *)D_008E4EA0,
+    (char *)D_008E3B70, (char *)D_008E3C10, (char *)gMsgEventLines_36_2, (char *)gMsgEventLines_36_3,
 };
 char *gMsgEventLines_37[6] = {
-    (char *)D_008E4F50, (char *)D_008E37F0, (char *)D_008E4FD0, (char *)D_008E5090,
-    (char *)D_008E5130, (char *)D_008E51E0,
+    (char *)gMsgEventLines_37_0, (char *)D_008E37F0, (char *)gMsgEventLines_37_2, (char *)gMsgEventLines_37_3,
+    (char *)gMsgEventLines_37_4, (char *)gMsgEventLines_37_5,
 };
 char *gMsgEventLines_38[3] = {
-    (char *)D_008E52C0, (char *)D_008E53A0, (char *)D_008E5470,
+    (char *)gMsgEventLines_38_0, (char *)gMsgEventLines_38_1, (char *)gMsgEventLines_38_2,
 };
 char *gMsgEventLines_39[8] = {
-    (char *)D_008E5560, (char *)D_008E37F0, (char *)D_008E55E0, (char *)D_008E5690,
-    (char *)D_008E5760, NULL, NULL, NULL,
+    (char *)gMsgEventLines_39_0, (char *)D_008E37F0, (char *)gMsgEventLines_39_2, (char *)gMsgEventLines_39_3,
+    (char *)gMsgEventLines_39_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_40[4] = {
-    (char *)D_008E5830, (char *)D_008E5920, (char *)D_008E59E0, (char *)D_008E5AA0,
+    (char *)gMsgEventLines_40_0, (char *)gMsgEventLines_40_1, (char *)gMsgEventLines_40_2, (char *)gMsgEventLines_40_3,
 };
 char *gMsgEventLines_41[8] = {
-    (char *)D_008E5B60, (char *)D_008E37F0, (char *)D_008E5BE0, (char *)D_008E5CB0,
-    (char *)D_008E5D90, NULL, NULL, NULL,
+    (char *)gMsgEventLines_41_0, (char *)D_008E37F0, (char *)gMsgEventLines_41_2, (char *)gMsgEventLines_41_3,
+    (char *)gMsgEventLines_41_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_42[4] = {
-    (char *)D_008E5E50, (char *)D_008E5F40, (char *)D_008E6010, (char *)D_008E60F0,
+    (char *)gMsgEventLines_42_0, (char *)gMsgEventLines_42_1, (char *)gMsgEventLines_42_2, (char *)gMsgEventLines_42_3,
 };
 char *gMsgEventLines_43[8] = {
-    (char *)D_008E61E0, (char *)D_008E37F0, (char *)D_008E6270, (char *)D_008E6340,
-    (char *)D_008E6410, (char *)D_008E64F0, NULL, NULL,
+    (char *)gMsgEventLines_43_0, (char *)D_008E37F0, (char *)gMsgEventLines_43_2, (char *)gMsgEventLines_43_3,
+    (char *)gMsgEventLines_43_4, (char *)gMsgEventLines_43_5, NULL, NULL,
 };
 char *gMsgEventLines_44[4] = {
-    (char *)D_008E65C0, (char *)D_008E6680, (char *)D_008E6750, (char *)D_008E67F0,
+    (char *)gMsgEventLines_44_0, (char *)gMsgEventLines_44_1, (char *)gMsgEventLines_44_2, (char *)gMsgEventLines_44_3,
 };
 char *gMsgEventLines_45[4] = {
-    (char *)D_008E68C0, (char *)D_008E69A0, (char *)D_008E6A80, (char *)D_008E6B50,
+    (char *)gMsgEventLines_45_0, (char *)gMsgEventLines_45_1, (char *)gMsgEventLines_45_2, (char *)gMsgEventLines_45_3,
 };
 char *gMsgEventLines_46[8] = {
-    (char *)D_008E6C00, (char *)D_008E6C90, (char *)D_008E6D40, (char *)D_008E6DD0,
-    (char *)D_008E6E70, NULL, NULL, NULL,
+    (char *)gMsgEventLines_46_0, (char *)D_008E6C90, (char *)gMsgEventLines_46_2, (char *)gMsgEventLines_46_3,
+    (char *)gMsgEventLines_46_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_47[4] = {
-    (char *)D_008E6F40, (char *)D_008E6FE0, (char *)D_008E7060, (char *)D_008E7130,
+    (char *)gMsgEventLines_47_0, (char *)gMsgEventLines_47_1, (char *)gMsgEventLines_47_2, (char *)D_008E7130,
 };
 char *gMsgEventLines_48[8] = {
-    (char *)D_008E71A0, (char *)D_008E6C90, (char *)D_008E7230, (char *)D_008E72C0,
-    (char *)D_008E7390, NULL, NULL, NULL,
+    (char *)gMsgEventLines_48_0, (char *)D_008E6C90, (char *)gMsgEventLines_48_2, (char *)gMsgEventLines_48_3,
+    (char *)gMsgEventLines_48_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_49[4] = {
-    (char *)D_008E7450, (char *)D_008E74F0, (char *)D_008E75C0, (char *)D_008E7130,
+    (char *)gMsgEventLines_49_0, (char *)gMsgEventLines_49_1, (char *)gMsgEventLines_49_2, (char *)D_008E7130,
 };
 char *gMsgEventLines_50[6] = {
-    (char *)D_008E76A0, (char *)D_008E7720, (char *)D_008E77E0, (char *)D_008E78C0,
-    (char *)D_008E79A0, NULL,
+    (char *)gMsgEventLines_50_0, (char *)gMsgEventLines_50_1, (char *)gMsgEventLines_50_2, (char *)gMsgEventLines_50_3,
+    (char *)gMsgEventLines_50_4, NULL,
 };
 char *gMsgEventLines_51[2] = {
-    (char *)D_008E7A50, (char *)D_008E7B00,
+    (char *)gMsgEventLines_51_0, (char *)gMsgEventLines_51_1,
 };
 char *gMsgEventLines_52[4] = {
-    (char *)D_008E7BA0, (char *)D_008E7C70, (char *)D_008E7D10, (char *)D_008E7DE0,
+    (char *)gMsgEventLines_52_0, (char *)gMsgEventLines_52_1, (char *)gMsgEventLines_52_2, (char *)gMsgEventLines_52_3,
 };
 char *gMsgEventLines_53[4] = {
-    (char *)D_008E7E90, (char *)D_008E7F20, (char *)D_008E7FD0, NULL,
+    (char *)gMsgEventLines_53_0, (char *)gMsgEventLines_53_1, (char *)gMsgEventLines_53_2, NULL,
 };
 char *gMsgEventLines_54[4] = {
-    (char *)D_008E8060, (char *)D_008E8100, (char *)D_008E8180, NULL,
+    (char *)gMsgEventLines_54_0, (char *)gMsgEventLines_54_1, (char *)gMsgEventLines_54_2, NULL,
 };
 char *gMsgEventLines_55[6] = {
-    D_008E8240, D_008E8330, (char *)D_008E8400, (char *)D_008E84D0,
-    (char *)D_008E8590, NULL,
+    D_008E8240, D_008E8330, (char *)gMsgEventLines_55_0, (char *)gMsgEventLines_55_1,
+    (char *)gMsgEventLines_55_2, NULL,
 };
 char *gMsgEventLines_56[2] = {
-    (char *)D_008E8660, NULL,
+    (char *)gMsgEventLines_56_0, NULL,
 };
 char *gMsgEventLines_57[8] = {
-    (char *)D_008E8750, (char *)D_008E87E0, (char *)D_008E88D0, (char *)D_008E8960,
-    (char *)D_008E8A20, (char *)D_008E8B10, (char *)D_008E8BE0, NULL,
+    (char *)gMsgEventLines_57_0, (char *)gMsgEventLines_57_1, (char *)gMsgEventLines_57_2, (char *)gMsgEventLines_57_3,
+    (char *)gMsgEventLines_57_4, (char *)gMsgEventLines_57_5, (char *)gMsgEventLines_57_6, NULL,
 };
 char *gMsgEventLines_58[4] = {
-    (char *)D_008E8C90, (char *)D_008E8D20, (char *)D_008E8DB0, NULL,
+    (char *)gMsgEventLines_58_0, (char *)gMsgEventLines_58_1, (char *)gMsgEventLines_58_2, NULL,
 };
 char *gMsgEventLines_59[4] = {
-    D_008E8E70, D_008E8F20, (char *)D_008E9000, (char *)D_008E90F0,
+    D_008E8E70, D_008E8F20, (char *)gMsgEventLines_59_0, (char *)gMsgEventLines_59_1,
 };
 char *gMsgEventLines_60[2] = {
-    D_008E91C0, (char *)D_008E92A0,
+    D_008E91C0, (char *)gMsgEventLines_60_0,
 };
 char *gMsgEventLines_61[3] = {
     D_008E9370, D_008E9420, D_008E94D0,
 };
 char *gMsgEventLines_62[2] = {
-    (char *)D_008E95A0, (char *)D_008E9680,
+    (char *)gMsgEventLines_62_0, (char *)gMsgEventLines_62_1,
 };
 char *gMsgEventLines_63[2] = {
-    (char *)D_008E9700, (char *)D_008E97E0,
+    (char *)gMsgEventLines_63_0, (char *)gMsgEventLines_63_1,
 };
 char *gMsgEventLines_64[2] = {
-    (char *)D_008E98C0, (char *)D_008E9980,
+    (char *)gMsgEventLines_64_0, (char *)gMsgEventLines_64_1,
 };
 char *gMsgEventLines_65[6] = {
-    (char *)D_008E9A00, (char *)D_008E9AA0, (char *)D_008E9B30, (char *)D_008E9C00,
-    (char *)D_008E9CC0, NULL,
+    (char *)gMsgEventLines_65_0, (char *)gMsgEventLines_65_1, (char *)gMsgEventLines_65_2, (char *)gMsgEventLines_65_3,
+    (char *)gMsgEventLines_65_4, NULL,
 };
 char *gMsgEventLines_66[2] = {
-    (char *)D_008E9DA0, NULL,
+    (char *)gMsgEventLines_66_0, NULL,
 };
 char *gMsgEventLines_67[2] = {
-    (char *)D_008E9E90, NULL,
+    (char *)gMsgEventLines_67_0, NULL,
 };
 char *gMsgEventLines_68[3] = {
-    D_008E9F70, (char *)D_008EA050, (char *)D_008EA120,
+    D_008E9F70, (char *)gMsgEventLines_68_0, (char *)gMsgEventLines_68_1,
 };
 char *gMsgEventLines_69[8] = {
-    (char *)D_008EA190, (char *)D_008EA230, (char *)D_008EA300, (char *)D_008EA3E0,
-    (char *)D_008EA4B0, NULL, NULL, NULL,
+    (char *)gMsgEventLines_69_0, (char *)gMsgEventLines_69_1, (char *)gMsgEventLines_69_2, (char *)gMsgEventLines_69_3,
+    (char *)gMsgEventLines_69_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_70[8] = {
-    (char *)D_008EA550, (char *)D_008EA610, (char *)D_008EA680, (char *)D_008EA760,
-    (char *)D_008EA800, (char *)D_008EA8F0, (char *)D_008EA9B0, (char *)D_008EAA70,
+    (char *)gMsgEventLines_70_0, (char *)gMsgEventLines_70_1, (char *)gMsgEventLines_70_2, (char *)gMsgEventLines_70_3,
+    (char *)gMsgEventLines_70_4, (char *)gMsgEventLines_70_5, (char *)gMsgEventLines_70_6, (char *)gMsgEventLines_70_7,
 };
 char *gMsgEventLines_71[8] = {
-    (char *)D_008EAB30, (char *)D_008EABF0, (char *)D_008EACB0, (char *)D_008EAD50,
-    (char *)D_008EAE10, (char *)D_008EAEA0, (char *)D_008EAF30, (char *)D_008EAFB0,
+    (char *)gMsgEventLines_71_0, (char *)gMsgEventLines_71_1, (char *)gMsgEventLines_71_2, (char *)gMsgEventLines_71_3,
+    (char *)gMsgEventLines_71_4, (char *)gMsgEventLines_71_5, (char *)gMsgEventLines_71_6, (char *)gMsgEventLines_71_7,
 };
 char *gMsgEventLines_72[4] = {
-    (char *)D_008EB030, (char *)D_008EB0D0, (char *)D_008EB190, (char *)D_008EB260,
+    (char *)gMsgEventLines_72_0, (char *)gMsgEventLines_72_1, (char *)gMsgEventLines_72_2, (char *)gMsgEventLines_72_3,
 };
 char *gMsgEventLines_73[4] = {
-    (char *)D_008EB300, (char *)D_008EB3E0, (char *)D_008EB440, (char *)D_008EB500,
+    (char *)gMsgEventLines_73_0, (char *)gMsgEventLines_73_1, (char *)gMsgEventLines_73_2, (char *)gMsgEventLines_73_3,
 };
 char *gMsgEventLines_74[8] = {
-    (char *)D_008EB570, (char *)D_008EB5D0, (char *)D_008EB660, (char *)D_008EB6F0,
-    (char *)D_008EB770, NULL, NULL, NULL,
+    (char *)gMsgEventLines_74_0, (char *)gMsgEventLines_74_1, (char *)gMsgEventLines_74_2, (char *)gMsgEventLines_74_3,
+    (char *)gMsgEventLines_74_4, NULL, NULL, NULL,
 };
 char *gMsgEventLines_75[8] = {
-    (char *)D_008EB800, (char *)D_008EB850, (char *)D_008EB8F0, (char *)D_008EB970,
-    (char *)D_008EB9E0, (char *)D_008EBA20, NULL, NULL,
+    (char *)gMsgEventLines_75_0, (char *)gMsgEventLines_75_1, (char *)gMsgEventLines_75_2, (char *)gMsgEventLines_75_3,
+    (char *)gMsgEventLines_75_4, (char *)gMsgEventLines_75_5, NULL, NULL,
 };
 char *gMsgEventLines_76[12] = {
-    (char *)D_008EBA90, (char *)D_008EBB10, (char *)D_008EBBA0, (char *)D_008EBC70,
-    (char *)D_008EBD30, (char *)D_008EBDD0, (char *)D_008EBE90, (char *)D_008EBF50,
-    (char *)D_008EC020, NULL, NULL, NULL,
+    (char *)gMsgEventLines_76_0, (char *)gMsgEventLines_76_1, (char *)gMsgEventLines_76_2, (char *)gMsgEventLines_76_3,
+    (char *)gMsgEventLines_76_4, (char *)gMsgEventLines_76_5, (char *)gMsgEventLines_76_6, (char *)gMsgEventLines_76_7,
+    (char *)gMsgEventLines_76_8, NULL, NULL, NULL,
 };
 char* *gMsgEventLines[80] = {
     gMsgEventLines_0, gMsgEventLines_1, gMsgEventLines_2, gMsgEventLines_3,

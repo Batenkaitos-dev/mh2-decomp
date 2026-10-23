@@ -774,13 +774,13 @@ void NetMenu_GameSaveStub(void)
 {
 }
 
-const char D_004B0278[6] = {
+const char gGenderLabels_0[6] = {
 #include "sub_main/004B0278.inc"
 };
 const char D_004B0280[7] = {
 #include "sub_main/004B0280.inc"
 };
-const char D_004B0288[5] = {
+const char gGenderLabels_2[5] = {
 #include "sub_main/004B0288.inc"
 };
 
@@ -5648,7 +5648,7 @@ ListWin *gNetMenuPanels[8] = {
     &gNetMenuPanels_4, NULL, NULL, &gNetMenuPanels_7,
 };
 char *gGenderLabels[4] = {
-    (char *)D_004B0278, (char *)D_004B0280, (char *)D_004B0288, (char *)D_004B0280,
+    (char *)gGenderLabels_0, (char *)D_004B0280, (char *)gGenderLabels_2, (char *)D_004B0280,
 };
 s16 gCardSlotPos[12] = {
 #include "sub_main/00468830.inc"

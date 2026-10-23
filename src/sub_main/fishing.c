@@ -1712,22 +1712,22 @@ char D_004B0EE0[19] = {
 char D_004B0F00[19] = {
 #include "sub_main/004B0F00.inc"
 };
-char D_004B0F20[53] = {
+char gResultRuleText_0[53] = {
 #include "sub_main/004B0F20.inc"
 };
 char D_004B0F58[5] = {
 #include "sub_main/004B0F58.inc"
 };
-char D_004B0F60[24] = {
+char gWtdClassAText_0[24] = {
 #include "sub_main/004B0F60.inc"
 };
-char D_004B0F80[24] = {
+char gWtdClassBText_0[24] = {
 #include "sub_main/004B0F80.inc"
 };
-char D_004B0FA0[24] = {
+char gWtdClassCText_0[24] = {
 #include "sub_main/004B0FA0.inc"
 };
-char D_004B0FC0[27] = {
+char gHighClassBonusText_0[27] = {
 #include "sub_main/004B0FC0.inc"
 };
 char D_004B0FE0[6] = {
@@ -1739,19 +1739,19 @@ char D_004B0FE8[5] = {
 char D_004B0FF0[14] = {
 #include "sub_main/004B0FF0.inc"
 };
-char D_004B1000[47] = {
+char gHrpNotMetText_0[47] = {
 #include "sub_main/004B1000.inc"
 };
-char D_004B1030[49] = {
+char gHrpNoLossText_0[49] = {
 #include "sub_main/004B1030.inc"
 };
-char D_004B1070[35] = {
+char gHrMaxText_0[35] = {
 #include "sub_main/004B1070.inc"
 };
-char D_004B10A0[39] = {
+char gHrUpText_0[39] = {
 #include "sub_main/004B10A0.inc"
 };
-char D_004B10D0[27] = {
+char gDeathPenaltyText_0[27] = {
 #include "sub_main/004B10D0.inc"
 };
 char D_004B10F0[21] = {
@@ -1883,22 +1883,22 @@ char D_004B16D0[5] = {
 char D_004B16D8[5] = {
 #include "sub_main/004B16D8.inc"
 };
-char D_004B16E0[69] = {
+char gHelpTexts_6_0[69] = {
 #include "sub_main/004B16E0.inc"
 };
-char D_004B1730[71] = {
+char gHelpTexts_6_1[71] = {
 #include "sub_main/004B1730.inc"
 };
-char D_004B1780[27] = {
+char gHelpTexts_6_2[27] = {
 #include "sub_main/004B1780.inc"
 };
-char D_004B17A0[36] = {
+char gHelpTexts_6_3[36] = {
 #include "sub_main/004B17A0.inc"
 };
-char D_004B17D0[38] = {
+char gHelpTexts_6_4[38] = {
 #include "sub_main/004B17D0.inc"
 };
-char D_004B1800[40] = {
+char gHelpTexts_6_5[40] = {
 #include "sub_main/004B1800.inc"
 };
 char D_004B1830[19] = {
@@ -2203,10 +2203,10 @@ char *gPlselTexts[168] = {
     D_004B0DE0, D_004B0E00, D_004B0E20, D_004B0E40,
     D_004B0E60, D_004B0E80, D_004B0EA0, D_004B0EC0,
     D_004B0EE0, D_004B0F00, NULL, NULL,
-    D_004B0F20, D_004B0F58, D_004B0F60, D_004B0F80,
-    D_004B0FA0, D_004B0FC0, D_004B0FE0, (char *)D_004B0FE8,
-    D_004B0FF0, D_004B1000, D_004B1030, D_004B1070,
-    D_004B10A0, D_004B10D0, NULL, NULL,
+    gResultRuleText_0, D_004B0F58, gWtdClassAText_0, gWtdClassBText_0,
+    gWtdClassCText_0, gHighClassBonusText_0, D_004B0FE0, (char *)D_004B0FE8,
+    D_004B0FF0, gHrpNotMetText_0, gHrpNoLossText_0, gHrMaxText_0,
+    gHrUpText_0, gDeathPenaltyText_0, NULL, NULL,
     D_004B10F0, D_004B1110, D_004B1130, D_004B1160,
     D_004B1190, D_004B11C0, D_004B11F0, D_004B1220,
     D_004B1250, D_004B1250, D_004B1220, D_004B1280,
@@ -2221,8 +2221,8 @@ char *gPlselTexts[168] = {
     D_004B16D0, D_004B16D8, NULL, NULL,
 };
 char *gHelpTexts_6[24] = {
-    D_004B16E0, D_004B1730, D_004B1780, D_004B17A0,
-    D_004B17D0, D_004B1800, NULL, NULL,
+    gHelpTexts_6_0, gHelpTexts_6_1, gHelpTexts_6_2, gHelpTexts_6_3,
+    gHelpTexts_6_4, gHelpTexts_6_5, NULL, NULL,
     D_004B1830, D_004B1848, D_004B1830, D_004B0FE8,
     NULL, NULL, NULL, NULL,
     D_004B1860, D_004B1878, D_004B1888, D_004B1890,

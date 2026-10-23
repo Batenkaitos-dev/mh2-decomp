@@ -1128,2586 +1128,2588 @@ void ObjAttach_DamageEm(ObjAttach *attach, Player *attacker, Em *em, HitShape *l
 
 /* The rest of this unit's .rodata: the item names, which no code loads; equip_save.c's
  * gItemNames points to them. */
-const char D_004AB180[13] = {
+#pragma rodata on
+char gItemNames_0[13] = {
 #include "sub_main/004AB180.inc"
 };
-const char D_004AB190[15] = {
+char gItemNames_1[15] = {
 #include "sub_main/004AB190.inc"
 };
-const char D_004AB1A0[15] = {
+char gItemNames_2[15] = {
 #include "sub_main/004AB1A0.inc"
 };
-const char D_004AB1B0[15] = {
+char gItemNames_3[15] = {
 #include "sub_main/004AB1B0.inc"
 };
-const char D_004AB1C0[15] = {
+char gItemNames_4[15] = {
 #include "sub_main/004AB1C0.inc"
 };
-const char D_004AB1D0[15] = {
+char gItemNames_5[15] = {
 #include "sub_main/004AB1D0.inc"
 };
-const char D_004AB1E0[17] = {
+char gItemNames_6[17] = {
 #include "sub_main/004AB1E0.inc"
 };
-const char D_004AB1F8[7] = {
+char gItemNames_7[7] = {
 #include "sub_main/004AB1F8.inc"
 };
-const char D_004AB200[15] = {
+char gItemNames_8[15] = {
 #include "sub_main/004AB200.inc"
 };
-const char D_004AB210[7] = {
+char gItemNames_9[7] = {
 #include "sub_main/004AB210.inc"
 };
-const char D_004AB218[15] = {
+char gItemNames_10[15] = {
 #include "sub_main/004AB218.inc"
 };
-const char D_004AB228[7] = {
+char gItemNames_11[7] = {
 #include "sub_main/004AB228.inc"
 };
-const char D_004AB230[7] = {
+char gItemNames_12[7] = {
 #include "sub_main/004AB230.inc"
 };
-const char D_004AB238[7] = {
+char gItemNames_13[7] = {
 #include "sub_main/004AB238.inc"
 };
-const char D_004AB240[15] = {
+char gItemNames_14[15] = {
 #include "sub_main/004AB240.inc"
 };
-const char D_004AB250[7] = {
+char gItemNames_15[7] = {
 #include "sub_main/004AB250.inc"
 };
-const char D_004AB258[15] = {
+char gItemNames_16[15] = {
 #include "sub_main/004AB258.inc"
 };
-const char D_004AB268[11] = {
+char gItemNames_17[11] = {
 #include "sub_main/004AB268.inc"
 };
-const char D_004AB278[7] = {
+char gItemNames_18[7] = {
 #include "sub_main/004AB278.inc"
 };
-const char D_004AB280[15] = {
+char gItemNames_19[15] = {
 #include "sub_main/004AB280.inc"
 };
-const char D_004AB290[11] = {
+char gItemNames_20[11] = {
 #include "sub_main/004AB290.inc"
 };
-const char D_004AB2A0[17] = {
+char gItemNames_21[17] = {
 #include "sub_main/004AB2A0.inc"
 };
-const char D_004AB2B8[15] = {
+char gItemNames_22[15] = {
 #include "sub_main/004AB2B8.inc"
 };
-const char D_004AB2C8[11] = {
+char gItemNames_23[11] = {
 #include "sub_main/004AB2C8.inc"
 };
-const char D_004AB2E0[17] = {
+char gItemNames_24[17] = {
 #include "sub_main/004AB2E0.inc"
 };
-const char D_004AB300[17] = {
+char gItemNames_25[17] = {
 #include "sub_main/004AB300.inc"
 };
-const char D_004AB318[7] = {
+char gItemNames_26[7] = {
 #include "sub_main/004AB318.inc"
 };
-const char D_004AB320[5] = {
+char gItemNames_27[5] = {
 #include "sub_main/004AB320.inc"
 };
-const char D_004AB328[15] = {
+char gItemNames_28[15] = {
 #include "sub_main/004AB328.inc"
 };
-const char D_004AB338[7] = {
+char gItemNames_29[7] = {
 #include "sub_main/004AB338.inc"
 };
-const char D_004AB340[13] = {
+char gItemNames_30[13] = {
 #include "sub_main/004AB340.inc"
 };
-const char D_004AB350[11] = {
+char D_004AB350[11] = {
 #include "sub_main/004AB350.inc"
 };
-const char D_004AB360[5] = {
+char gItemNames_32[5] = {
 #include "sub_main/004AB360.inc"
 };
-const char D_004AB368[9] = {
+char gItemNames_33[9] = {
 #include "sub_main/004AB368.inc"
 };
-const char D_004AB378[11] = {
+char gItemNames_34[11] = {
 #include "sub_main/004AB378.inc"
 };
-const char D_004AB388[9] = {
+char gItemNames_35[9] = {
 #include "sub_main/004AB388.inc"
 };
-const char D_004AB398[7] = {
+char gItemNames_36[7] = {
 #include "sub_main/004AB398.inc"
 };
-const char D_004AB3A0[11] = {
+char gItemNames_37[11] = {
 #include "sub_main/004AB3A0.inc"
 };
-const char D_004AB3B0[9] = {
+char gItemNames_38[9] = {
 #include "sub_main/004AB3B0.inc"
 };
-const char D_004AB3C0[13] = {
+char gItemNames_39[13] = {
 #include "sub_main/004AB3C0.inc"
 };
-const char D_004AB3D0[5] = {
+char gItemNames_40[5] = {
 #include "sub_main/004AB3D0.inc"
 };
-const char D_004AB3D8[7] = {
+char gItemNames_41[7] = {
 #include "sub_main/004AB3D8.inc"
 };
-const char D_004AB3E0[15] = {
+char gItemNames_42[15] = {
 #include "sub_main/004AB3E0.inc"
 };
-const char D_004AB3F0[11] = {
+char gItemNames_43[11] = {
 #include "sub_main/004AB3F0.inc"
 };
-const char D_004AB400[7] = {
+char gItemNames_44[7] = {
 #include "sub_main/004AB400.inc"
 };
-const char D_004AB408[11] = {
+char gItemNames_45[11] = {
 #include "sub_main/004AB408.inc"
 };
-const char D_004AB418[9] = {
+char gItemNames_46[9] = {
 #include "sub_main/004AB418.inc"
 };
-const char D_004AB428[9] = {
+char gItemNames_47[9] = {
 #include "sub_main/004AB428.inc"
 };
-const char D_004AB438[11] = {
+char gItemNames_48[11] = {
 #include "sub_main/004AB438.inc"
 };
-const char D_004AB448[13] = {
+char gItemNames_49[13] = {
 #include "sub_main/004AB448.inc"
 };
-const char D_004AB458[7] = {
+char gItemNames_50[7] = {
 #include "sub_main/004AB458.inc"
 };
-const char D_004AB460[13] = {
+char gItemNames_51[13] = {
 #include "sub_main/004AB460.inc"
 };
-const char D_004AB470[15] = {
+char gItemNames_52[15] = {
 #include "sub_main/004AB470.inc"
 };
-const char D_004AB480[15] = {
+char gItemNames_53[15] = {
 #include "sub_main/004AB480.inc"
 };
-const char D_004AB490[17] = {
+char gItemNames_54[17] = {
 #include "sub_main/004AB490.inc"
 };
-const char D_004AB4A8[11] = {
+char gItemNames_55[11] = {
 #include "sub_main/004AB4A8.inc"
 };
-const char D_004AB4B8[13] = {
+char gItemNames_56[13] = {
 #include "sub_main/004AB4B8.inc"
 };
-const char D_004AB4C8[9] = {
+char gItemNames_57[9] = {
 #include "sub_main/004AB4C8.inc"
 };
-const char D_004AB4D8[11] = {
+char gItemNames_58[11] = {
 #include "sub_main/004AB4D8.inc"
 };
-const char D_004AB4E8[15] = {
+char gItemNames_59[15] = {
 #include "sub_main/004AB4E8.inc"
 };
-const char D_004AB4F8[13] = {
+char gItemNames_60[13] = {
 #include "sub_main/004AB4F8.inc"
 };
-const char D_004AB510[17] = {
+char gItemNames_61[17] = {
 #include "sub_main/004AB510.inc"
 };
-const char D_004AB528[7] = {
+char gItemNames_62[7] = {
 #include "sub_main/004AB528.inc"
 };
-const char D_004AB530[11] = {
+char gItemNames_64[11] = {
 #include "sub_main/004AB530.inc"
 };
-const char D_004AB540[11] = {
+char gItemNames_65[11] = {
 #include "sub_main/004AB540.inc"
 };
-const char D_004AB550[13] = {
+char gItemNames_66[13] = {
 #include "sub_main/004AB550.inc"
 };
-const char D_004AB560[15] = {
+char gItemNames_67[15] = {
 #include "sub_main/004AB560.inc"
 };
-const char D_004AB570[15] = {
+char gItemNames_68[15] = {
 #include "sub_main/004AB570.inc"
 };
-const char D_004AB580[17] = {
+char gItemNames_69[17] = {
 #include "sub_main/004AB580.inc"
 };
-const char D_004AB598[7] = {
+char gItemNames_70[7] = {
 #include "sub_main/004AB598.inc"
 };
-const char D_004AB5A0[15] = {
+char gItemNames_71[15] = {
 #include "sub_main/004AB5A0.inc"
 };
-const char D_004AB5B0[7] = {
+char gItemNames_72[7] = {
 #include "sub_main/004AB5B0.inc"
 };
-const char D_004AB5B8[7] = {
+char gItemNames_73[7] = {
 #include "sub_main/004AB5B8.inc"
 };
-const char D_004AB5C0[17] = {
+char gItemNames_74[17] = {
 #include "sub_main/004AB5C0.inc"
 };
-const char D_004AB5D8[9] = {
+char gItemNames_75[9] = {
 #include "sub_main/004AB5D8.inc"
 };
-const char D_004AB5E8[9] = {
+char gItemNames_76[9] = {
 #include "sub_main/004AB5E8.inc"
 };
-const char D_004AB5F8[11] = {
+char gItemNames_77[11] = {
 #include "sub_main/004AB5F8.inc"
 };
-const char D_004AB608[9] = {
+char gItemNames_78[9] = {
 #include "sub_main/004AB608.inc"
 };
-const char D_004AB618[7] = {
+char gItemNames_79[7] = {
 #include "sub_main/004AB618.inc"
 };
-const char D_004AB620[13] = {
+char gItemNames_80[13] = {
 #include "sub_main/004AB620.inc"
 };
-const char D_004AB630[9] = {
+char gItemNames_81[9] = {
 #include "sub_main/004AB630.inc"
 };
-const char D_004AB640[7] = {
+char gItemNames_82[7] = {
 #include "sub_main/004AB640.inc"
 };
-const char D_004AB648[15] = {
+char gItemNames_83[15] = {
 #include "sub_main/004AB648.inc"
 };
-const char D_004AB658[9] = {
+char gItemNames_84[9] = {
 #include "sub_main/004AB658.inc"
 };
-const char D_004AB668[9] = {
+char gItemNames_85[9] = {
 #include "sub_main/004AB668.inc"
 };
-const char D_004AB678[7] = {
+char gItemNames_86[7] = {
 #include "sub_main/004AB678.inc"
 };
-const char D_004AB680[9] = {
+char gItemNames_88[9] = {
 #include "sub_main/004AB680.inc"
 };
-const char D_004AB690[7] = {
+char gItemNames_89[7] = {
 #include "sub_main/004AB690.inc"
 };
-const char D_004AB698[7] = {
+char gItemNames_90[7] = {
 #include "sub_main/004AB698.inc"
 };
-const char D_004AB6A0[11] = {
+char gItemNames_91[11] = {
 #include "sub_main/004AB6A0.inc"
 };
-const char D_004AB6B0[13] = {
+char gItemNames_92[13] = {
 #include "sub_main/004AB6B0.inc"
 };
-const char D_004AB6C0[11] = {
+char gItemNames_93[11] = {
 #include "sub_main/004AB6C0.inc"
 };
-const char D_004AB6D0[13] = {
+char gItemNames_94[13] = {
 #include "sub_main/004AB6D0.inc"
 };
-const char D_004AB6E0[15] = {
+char gItemNames_95[15] = {
 #include "sub_main/004AB6E0.inc"
 };
-const char D_004AB6F0[17] = {
+char gItemNames_96[17] = {
 #include "sub_main/004AB6F0.inc"
 };
-const char D_004AB708[11] = {
+char gItemNames_97[11] = {
 #include "sub_main/004AB708.inc"
 };
-const char D_004AB718[13] = {
+char gItemNames_98[13] = {
 #include "sub_main/004AB718.inc"
 };
-const char D_004AB728[9] = {
+char gItemNames_99[9] = {
 #include "sub_main/004AB728.inc"
 };
-const char D_004AB738[13] = {
+char gItemNames_100[13] = {
 #include "sub_main/004AB738.inc"
 };
-const char D_004AB748[13] = {
+char gItemNames_101[13] = {
 #include "sub_main/004AB748.inc"
 };
-const char D_004AB758[11] = {
+char gItemNames_102[11] = {
 #include "sub_main/004AB758.inc"
 };
-const char D_004AB768[11] = {
+char gItemNames_103[11] = {
 #include "sub_main/004AB768.inc"
 };
-const char D_004AB778[11] = {
+char gItemNames_104[11] = {
 #include "sub_main/004AB778.inc"
 };
-const char D_004AB788[11] = {
+char gItemNames_105[11] = {
 #include "sub_main/004AB788.inc"
 };
-const char D_004AB798[11] = {
+char gItemNames_106[11] = {
 #include "sub_main/004AB798.inc"
 };
-const char D_004AB7A8[11] = {
+char gItemNames_107[11] = {
 #include "sub_main/004AB7A8.inc"
 };
-const char D_004AB7B8[9] = {
+char gItemNames_108[9] = {
 #include "sub_main/004AB7B8.inc"
 };
-const char D_004AB7C8[9] = {
+char gItemNames_109[9] = {
 #include "sub_main/004AB7C8.inc"
 };
-const char D_004AB7D8[9] = {
+char gItemNames_110[9] = {
 #include "sub_main/004AB7D8.inc"
 };
-const char D_004AB7E8[13] = {
+char gItemNames_111[13] = {
 #include "sub_main/004AB7E8.inc"
 };
-const char D_004AB7F8[13] = {
+char gItemNames_112[13] = {
 #include "sub_main/004AB7F8.inc"
 };
-const char D_004AB808[13] = {
+char gItemNames_113[13] = {
 #include "sub_main/004AB808.inc"
 };
-const char D_004AB818[11] = {
+char gItemNames_114[11] = {
 #include "sub_main/004AB818.inc"
 };
-const char D_004AB828[11] = {
+char gItemNames_115[11] = {
 #include "sub_main/004AB828.inc"
 };
-const char D_004AB838[11] = {
+char gItemNames_116[11] = {
 #include "sub_main/004AB838.inc"
 };
-const char D_004AB848[7] = {
+char gItemNames_117[7] = {
 #include "sub_main/004AB848.inc"
 };
-const char D_004AB850[7] = {
+char gItemNames_118[7] = {
 #include "sub_main/004AB850.inc"
 };
-const char D_004AB858[7] = {
+char gItemNames_119[7] = {
 #include "sub_main/004AB858.inc"
 };
-const char D_004AB860[7] = {
+char gItemNames_120[7] = {
 #include "sub_main/004AB860.inc"
 };
-const char D_004AB868[7] = {
+char gItemNames_121[7] = {
 #include "sub_main/004AB868.inc"
 };
-const char D_004AB870[11] = {
+char gItemNames_122[11] = {
 #include "sub_main/004AB870.inc"
 };
-const char D_004AB880[11] = {
+char gItemNames_123[11] = {
 #include "sub_main/004AB880.inc"
 };
-const char D_004AB890[9] = {
+char gItemNames_124[9] = {
 #include "sub_main/004AB890.inc"
 };
-const char D_004AB8A0[9] = {
+char gItemNames_125[9] = {
 #include "sub_main/004AB8A0.inc"
 };
-const char D_004AB8B0[11] = {
+char gItemNames_126[11] = {
 #include "sub_main/004AB8B0.inc"
 };
-const char D_004AB8C0[11] = {
+char gItemNames_127[11] = {
 #include "sub_main/004AB8C0.inc"
 };
-const char D_004AB8D0[11] = {
+char gItemNames_128[11] = {
 #include "sub_main/004AB8D0.inc"
 };
-const char D_004AB8E0[11] = {
+char gItemNames_129[11] = {
 #include "sub_main/004AB8E0.inc"
 };
-const char D_004AB8F0[13] = {
+char gItemNames_130[13] = {
 #include "sub_main/004AB8F0.inc"
 };
-const char D_004AB900[11] = {
+char gItemNames_131[11] = {
 #include "sub_main/004AB900.inc"
 };
-const char D_004AB910[7] = {
+char gItemNames_132[7] = {
 #include "sub_main/004AB910.inc"
 };
-const char D_004AB918[7] = {
+char gItemNames_133[7] = {
 #include "sub_main/004AB918.inc"
 };
-const char D_004AB920[9] = {
+char gItemNames_135[9] = {
 #include "sub_main/004AB920.inc"
 };
-const char D_004AB930[9] = {
+char gItemNames_136[9] = {
 #include "sub_main/004AB930.inc"
 };
-const char D_004AB940[9] = {
+char gItemNames_137[9] = {
 #include "sub_main/004AB940.inc"
 };
-const char D_004AB950[7] = {
+char gItemNames_138[7] = {
 #include "sub_main/004AB950.inc"
 };
-const char D_004AB958[9] = {
+char gItemNames_139[9] = {
 #include "sub_main/004AB958.inc"
 };
-const char D_004AB968[9] = {
+char gItemNames_140[9] = {
 #include "sub_main/004AB968.inc"
 };
-const char D_004AB978[11] = {
+char gItemNames_142[11] = {
 #include "sub_main/004AB978.inc"
 };
-const char D_004AB988[11] = {
+char gItemNames_143[11] = {
 #include "sub_main/004AB988.inc"
 };
-const char D_004AB998[11] = {
+char gItemNames_144[11] = {
 #include "sub_main/004AB998.inc"
 };
-const char D_004AB9A8[11] = {
+char gItemNames_145[11] = {
 #include "sub_main/004AB9A8.inc"
 };
-const char D_004AB9B8[11] = {
+char gItemNames_146[11] = {
 #include "sub_main/004AB9B8.inc"
 };
-const char D_004AB9C8[11] = {
+char gItemNames_147[11] = {
 #include "sub_main/004AB9C8.inc"
 };
-const char D_004AB9D8[11] = {
+char gItemNames_148[11] = {
 #include "sub_main/004AB9D8.inc"
 };
-const char D_004AB9E8[15] = {
+char gItemNames_149[15] = {
 #include "sub_main/004AB9E8.inc"
 };
-const char D_004AB9F8[13] = {
+char gItemNames_150[13] = {
 #include "sub_main/004AB9F8.inc"
 };
-const char D_004ABA08[9] = {
+char gItemNames_151[9] = {
 #include "sub_main/004ABA08.inc"
 };
-const char D_004ABA20[17] = {
+char gItemNames_152[17] = {
 #include "sub_main/004ABA20.inc"
 };
-const char D_004ABA38[11] = {
+char gItemNames_153[11] = {
 #include "sub_main/004ABA38.inc"
 };
-const char D_004ABA48[7] = {
+char gItemNames_154[7] = {
 #include "sub_main/004ABA48.inc"
 };
-const char D_004ABA50[15] = {
+char gItemNames_155[15] = {
 #include "sub_main/004ABA50.inc"
 };
-const char D_004ABA60[13] = {
+char gItemNames_156[13] = {
 #include "sub_main/004ABA60.inc"
 };
-const char D_004ABA70[17] = {
+char gItemNames_157[17] = {
 #include "sub_main/004ABA70.inc"
 };
-const char D_004ABA90[17] = {
+char gItemNames_158[17] = {
 #include "sub_main/004ABA90.inc"
 };
-const char D_004ABAB0[17] = {
+char gItemNames_159[17] = {
 #include "sub_main/004ABAB0.inc"
 };
-const char D_004ABAD0[17] = {
+char gItemNames_160[17] = {
 #include "sub_main/004ABAD0.inc"
 };
-const char D_004ABAF0[17] = {
+char gItemNames_161[17] = {
 #include "sub_main/004ABAF0.inc"
 };
-const char D_004ABB10[17] = {
+char gItemNames_162[17] = {
 #include "sub_main/004ABB10.inc"
 };
-const char D_004ABB28[15] = {
+char D_004ABB28[15] = {
 #include "sub_main/004ABB28.inc"
 };
-const char D_004ABB38[15] = {
+char D_004ABB38[15] = {
 #include "sub_main/004ABB38.inc"
 };
-const char D_004ABB48[5] = {
+char gItemNames_172[5] = {
 #include "sub_main/004ABB48.inc"
 };
-const char D_004ABB50[7] = {
+char gItemNames_173[7] = {
 #include "sub_main/004ABB50.inc"
 };
-const char D_004ABB58[13] = {
+char gItemNames_174[13] = {
 #include "sub_main/004ABB58.inc"
 };
-const char D_004ABB68[5] = {
+char gItemNames_175[5] = {
 #include "sub_main/004ABB68.inc"
 };
-const char D_004ABB70[7] = {
+char gItemNames_176[7] = {
 #include "sub_main/004ABB70.inc"
 };
-const char D_004ABB78[7] = {
+char gItemNames_177[7] = {
 #include "sub_main/004ABB78.inc"
 };
-const char D_004ABB80[7] = {
+char gItemNames_178[7] = {
 #include "sub_main/004ABB80.inc"
 };
-const char D_004ABB88[7] = {
+char gItemNames_179[7] = {
 #include "sub_main/004ABB88.inc"
 };
-const char D_004ABB90[9] = {
+char gItemNames_180[9] = {
 #include "sub_main/004ABB90.inc"
 };
-const char D_004ABBA0[7] = {
+char gItemNames_181[7] = {
 #include "sub_main/004ABBA0.inc"
 };
-const char D_004ABBA8[7] = {
+char gItemNames_182[7] = {
 #include "sub_main/004ABBA8.inc"
 };
-const char D_004ABBB0[5] = {
+char gItemNames_183[5] = {
 #include "sub_main/004ABBB0.inc"
 };
-const char D_004ABBB8[9] = {
+char gItemNames_184[9] = {
 #include "sub_main/004ABBB8.inc"
 };
-const char D_004ABBC8[7] = {
+char gItemNames_185[7] = {
 #include "sub_main/004ABBC8.inc"
 };
-const char D_004ABBD0[9] = {
+char gItemNames_186[9] = {
 #include "sub_main/004ABBD0.inc"
 };
-const char D_004ABBE0[9] = {
+char gItemNames_187[9] = {
 #include "sub_main/004ABBE0.inc"
 };
-const char D_004ABBF0[13] = {
+char gItemNames_188[13] = {
 #include "sub_main/004ABBF0.inc"
 };
-const char D_004ABC00[9] = {
+char gItemNames_189[9] = {
 #include "sub_main/004ABC00.inc"
 };
-const char D_004ABC10[13] = {
+char gItemNames_190[13] = {
 #include "sub_main/004ABC10.inc"
 };
-const char D_004ABC20[13] = {
+char gItemNames_191[13] = {
 #include "sub_main/004ABC20.inc"
 };
-const char D_004ABC30[11] = {
+char gItemNames_192[11] = {
 #include "sub_main/004ABC30.inc"
 };
-const char D_004ABC40[11] = {
+char gItemNames_193[11] = {
 #include "sub_main/004ABC40.inc"
 };
-const char D_004ABC50[11] = {
+char gItemNames_194[11] = {
 #include "sub_main/004ABC50.inc"
 };
-const char D_004ABC60[11] = {
+char gItemNames_195[11] = {
 #include "sub_main/004ABC60.inc"
 };
-const char D_004ABC70[11] = {
+char gItemNames_196[11] = {
 #include "sub_main/004ABC70.inc"
 };
-const char D_004ABC80[11] = {
+char gItemNames_197[11] = {
 #include "sub_main/004ABC80.inc"
 };
-const char D_004ABC90[9] = {
+char gItemNames_198[9] = {
 #include "sub_main/004ABC90.inc"
 };
-const char D_004ABCA0[13] = {
+char gItemNames_199[13] = {
 #include "sub_main/004ABCA0.inc"
 };
-const char D_004ABCB0[13] = {
+char gItemNames_200[13] = {
 #include "sub_main/004ABCB0.inc"
 };
-const char D_004ABCC0[13] = {
+char gItemNames_201[13] = {
 #include "sub_main/004ABCC0.inc"
 };
-const char D_004ABCD0[17] = {
+char gItemNames_202[17] = {
 #include "sub_main/004ABCD0.inc"
 };
-const char D_004ABCF0[17] = {
+char gItemNames_203[17] = {
 #include "sub_main/004ABCF0.inc"
 };
-const char D_004ABD08[13] = {
+char gItemNames_204[13] = {
 #include "sub_main/004ABD08.inc"
 };
-const char D_004ABD18[13] = {
+char gItemNames_205[13] = {
 #include "sub_main/004ABD18.inc"
 };
-const char D_004ABD28[9] = {
+char gItemNames_206[9] = {
 #include "sub_main/004ABD28.inc"
 };
-const char D_004ABD38[9] = {
+char gItemNames_207[9] = {
 #include "sub_main/004ABD38.inc"
 };
-const char D_004ABD48[11] = {
+char gItemNames_208[11] = {
 #include "sub_main/004ABD48.inc"
 };
-const char D_004ABD58[13] = {
+char gItemNames_209[13] = {
 #include "sub_main/004ABD58.inc"
 };
-const char D_004ABD68[9] = {
+char gItemNames_210[9] = {
 #include "sub_main/004ABD68.inc"
 };
-const char D_004ABD78[13] = {
+char gItemNames_211[13] = {
 #include "sub_main/004ABD78.inc"
 };
-const char D_004ABD88[11] = {
+char gItemNames_212[11] = {
 #include "sub_main/004ABD88.inc"
 };
-const char D_004ABD98[7] = {
+char gItemNames_213[7] = {
 #include "sub_main/004ABD98.inc"
 };
-const char D_004ABDA0[7] = {
+char gItemNames_214[7] = {
 #include "sub_main/004ABDA0.inc"
 };
-const char D_004ABDA8[7] = {
+char gItemNames_215[7] = {
 #include "sub_main/004ABDA8.inc"
 };
-const char D_004ABDB0[7] = {
+char gItemNames_216[7] = {
 #include "sub_main/004ABDB0.inc"
 };
-const char D_004ABDB8[11] = {
+char gItemNames_217[11] = {
 #include "sub_main/004ABDB8.inc"
 };
-const char D_004ABDC8[15] = {
+char gItemNames_218[15] = {
 #include "sub_main/004ABDC8.inc"
 };
-const char D_004ABDE0[17] = {
+char gItemNames_219[17] = {
 #include "sub_main/004ABDE0.inc"
 };
-const char D_004ABE00[17] = {
+char gItemNames_220[17] = {
 #include "sub_main/004ABE00.inc"
 };
-const char D_004ABE18[13] = {
+char gItemNames_221[13] = {
 #include "sub_main/004ABE18.inc"
 };
-const char D_004ABE28[7] = {
+char gItemNames_222[7] = {
 #include "sub_main/004ABE28.inc"
 };
-const char D_004ABE30[7] = {
+char gItemNames_224[7] = {
 #include "sub_main/004ABE30.inc"
 };
-const char D_004ABE40[17] = {
+char gItemNames_225[17] = {
 #include "sub_main/004ABE40.inc"
 };
-const char D_004ABE60[17] = {
+char gItemNames_226[17] = {
 #include "sub_main/004ABE60.inc"
 };
-const char D_004ABE78[7] = {
+char gItemNames_227[7] = {
 #include "sub_main/004ABE78.inc"
 };
-const char D_004ABE80[7] = {
+char gItemNames_228[7] = {
 #include "sub_main/004ABE80.inc"
 };
-const char D_004ABE88[13] = {
+char gItemNames_230[13] = {
 #include "sub_main/004ABE88.inc"
 };
-const char D_004ABE98[13] = {
+char gItemNames_231[13] = {
 #include "sub_main/004ABE98.inc"
 };
-const char D_004ABEA8[13] = {
+char gItemNames_232[13] = {
 #include "sub_main/004ABEA8.inc"
 };
-const char D_004ABEB8[13] = {
+char gItemNames_233[13] = {
 #include "sub_main/004ABEB8.inc"
 };
-const char D_004ABEC8[9] = {
+char gItemNames_234[9] = {
 #include "sub_main/004ABEC8.inc"
 };
-const char D_004ABED8[11] = {
+char gItemNames_235[11] = {
 #include "sub_main/004ABED8.inc"
 };
-const char D_004ABEE8[5] = {
+char gItemNames_236[5] = {
 #include "sub_main/004ABEE8.inc"
 };
-const char D_004ABEF0[11] = {
+char gItemNames_237[11] = {
 #include "sub_main/004ABEF0.inc"
 };
-const char D_004ABF00[13] = {
+char gItemNames_238[13] = {
 #include "sub_main/004ABF00.inc"
 };
-const char D_004ABF10[17] = {
+char gItemNames_239[17] = {
 #include "sub_main/004ABF10.inc"
 };
-const char D_004ABF28[15] = {
+char gItemNames_240[15] = {
 #include "sub_main/004ABF28.inc"
 };
-const char D_004ABF40[17] = {
+char gItemNames_241[17] = {
 #include "sub_main/004ABF40.inc"
 };
-const char D_004ABF58[13] = {
+char gItemNames_242[13] = {
 #include "sub_main/004ABF58.inc"
 };
-const char D_004ABF68[9] = {
+char gItemNames_243[9] = {
 #include "sub_main/004ABF68.inc"
 };
-const char D_004ABF78[15] = {
+char gItemNames_244[15] = {
 #include "sub_main/004ABF78.inc"
 };
-const char D_004ABF90[17] = {
+char gItemNames_245[17] = {
 #include "sub_main/004ABF90.inc"
 };
-const char D_004ABFA8[13] = {
+char gItemNames_246[13] = {
 #include "sub_main/004ABFA8.inc"
 };
-const char D_004ABFB8[13] = {
+char gItemNames_247[13] = {
 #include "sub_main/004ABFB8.inc"
 };
-const char D_004ABFD0[17] = {
+char gItemNames_248[17] = {
 #include "sub_main/004ABFD0.inc"
 };
-const char D_004ABFE8[7] = {
+char gItemNames_249[7] = {
 #include "sub_main/004ABFE8.inc"
 };
-const char D_004ABFF0[13] = {
+char gItemNames_250[13] = {
 #include "sub_main/004ABFF0.inc"
 };
-const char D_004AC000[7] = {
+char gItemNames_251[7] = {
 #include "sub_main/004AC000.inc"
 };
-const char D_004AC008[7] = {
+char gItemNames_252[7] = {
 #include "sub_main/004AC008.inc"
 };
-const char D_004AC010[7] = {
+char gItemNames_253[7] = {
 #include "sub_main/004AC010.inc"
 };
-const char D_004AC018[9] = {
+char gItemNames_254[9] = {
 #include "sub_main/004AC018.inc"
 };
-const char D_004AC028[9] = {
+char gItemNames_255[9] = {
 #include "sub_main/004AC028.inc"
 };
-const char D_004AC038[13] = {
+char gItemNames_256[13] = {
 #include "sub_main/004AC038.inc"
 };
-const char D_004AC048[11] = {
+char gItemNames_257[11] = {
 #include "sub_main/004AC048.inc"
 };
-const char D_004AC058[13] = {
+char gItemNames_258[13] = {
 #include "sub_main/004AC058.inc"
 };
-const char D_004AC068[7] = {
+char gItemNames_259[7] = {
 #include "sub_main/004AC068.inc"
 };
-const char D_004AC070[7] = {
+char gItemNames_260[7] = {
 #include "sub_main/004AC070.inc"
 };
-const char D_004AC078[5] = {
+char gItemNames_261[5] = {
 #include "sub_main/004AC078.inc"
 };
-const char D_004AC080[7] = {
+char gItemNames_262[7] = {
 #include "sub_main/004AC080.inc"
 };
-const char D_004AC088[13] = {
+char gItemNames_263[13] = {
 #include "sub_main/004AC088.inc"
 };
-const char D_004AC098[15] = {
+char gItemNames_264[15] = {
 #include "sub_main/004AC098.inc"
 };
-const char D_004AC0A8[13] = {
+char gItemNames_266[13] = {
 #include "sub_main/004AC0A8.inc"
 };
-const char D_004AC0B8[11] = {
+char gItemNames_267[11] = {
 #include "sub_main/004AC0B8.inc"
 };
-const char D_004AC0C8[15] = {
+char gItemNames_268[15] = {
 #include "sub_main/004AC0C8.inc"
 };
-const char D_004AC0D8[15] = {
+char gItemNames_269[15] = {
 #include "sub_main/004AC0D8.inc"
 };
-const char D_004AC0F0[17] = {
+char gItemNames_270[17] = {
 #include "sub_main/004AC0F0.inc"
 };
-const char D_004AC108[13] = {
+char gItemNames_271[13] = {
 #include "sub_main/004AC108.inc"
 };
-const char D_004AC118[15] = {
+char gItemNames_272[15] = {
 #include "sub_main/004AC118.inc"
 };
-const char D_004AC128[13] = {
+char gItemNames_273[13] = {
 #include "sub_main/004AC128.inc"
 };
-const char D_004AC138[13] = {
+char gItemNames_274[13] = {
 #include "sub_main/004AC138.inc"
 };
-const char D_004AC150[17] = {
+char gItemNames_275[17] = {
 #include "sub_main/004AC150.inc"
 };
-const char D_004AC168[9] = {
+char gItemNames_276[9] = {
 #include "sub_main/004AC168.inc"
 };
-const char D_004AC178[11] = {
+char gItemNames_277[11] = {
 #include "sub_main/004AC178.inc"
 };
-const char D_004AC188[7] = {
+char gItemNames_278[7] = {
 #include "sub_main/004AC188.inc"
 };
-const char D_004AC190[15] = {
+char gItemNames_279[15] = {
 #include "sub_main/004AC190.inc"
 };
-const char D_004AC1A0[11] = {
+char gItemNames_280[11] = {
 #include "sub_main/004AC1A0.inc"
 };
-const char D_004AC1B0[13] = {
+char gItemNames_281[13] = {
 #include "sub_main/004AC1B0.inc"
 };
-const char D_004AC1C0[15] = {
+char gItemNames_282[15] = {
 #include "sub_main/004AC1C0.inc"
 };
-const char D_004AC1D0[15] = {
+char gItemNames_283[15] = {
 #include "sub_main/004AC1D0.inc"
 };
-const char D_004AC1E0[11] = {
+char gItemNames_284[11] = {
 #include "sub_main/004AC1E0.inc"
 };
-const char D_004AC1F0[17] = {
+char gItemNames_285[17] = {
 #include "sub_main/004AC1F0.inc"
 };
-const char D_004AC208[5] = {
+char gItemNames_286[5] = {
 #include "sub_main/004AC208.inc"
 };
-const char D_004AC210[15] = {
+char gItemNames_287[15] = {
 #include "sub_main/004AC210.inc"
 };
-const char D_004AC220[9] = {
+char gItemNames_288[9] = {
 #include "sub_main/004AC220.inc"
 };
-const char D_004AC230[15] = {
+char gItemNames_289[15] = {
 #include "sub_main/004AC230.inc"
 };
-const char D_004AC240[13] = {
+char gItemNames_290[13] = {
 #include "sub_main/004AC240.inc"
 };
-const char D_004AC250[13] = {
+char gItemNames_291[13] = {
 #include "sub_main/004AC250.inc"
 };
-const char D_004AC260[11] = {
+char gItemNames_292[11] = {
 #include "sub_main/004AC260.inc"
 };
-const char D_004AC270[17] = {
+char gItemNames_293[17] = {
 #include "sub_main/004AC270.inc"
 };
-const char D_004AC288[11] = {
+char gItemNames_294[11] = {
 #include "sub_main/004AC288.inc"
 };
-const char D_004AC298[15] = {
+char gItemNames_295[15] = {
 #include "sub_main/004AC298.inc"
 };
-const char D_004AC2A8[7] = {
+char gItemNames_296[7] = {
 #include "sub_main/004AC2A8.inc"
 };
-const char D_004AC2B0[13] = {
+char gItemNames_297[13] = {
 #include "sub_main/004AC2B0.inc"
 };
-const char D_004AC2C0[9] = {
+char gItemNames_298[9] = {
 #include "sub_main/004AC2C0.inc"
 };
-const char D_004AC2D0[17] = {
+char gItemNames_299[17] = {
 #include "sub_main/004AC2D0.inc"
 };
-const char D_004AC2E8[13] = {
+char gItemNames_300[13] = {
 #include "sub_main/004AC2E8.inc"
 };
-const char D_004AC2F8[7] = {
+char gItemNames_302[7] = {
 #include "sub_main/004AC2F8.inc"
 };
-const char D_004AC300[5] = {
+char gItemNames_303[5] = {
 #include "sub_main/004AC300.inc"
 };
-const char D_004AC308[7] = {
+char gItemNames_304[7] = {
 #include "sub_main/004AC308.inc"
 };
-const char D_004AC310[7] = {
+char gItemNames_306[7] = {
 #include "sub_main/004AC310.inc"
 };
-const char D_004AC318[7] = {
+char gItemNames_308[7] = {
 #include "sub_main/004AC318.inc"
 };
-const char D_004AC320[7] = {
+char gItemNames_309[7] = {
 #include "sub_main/004AC320.inc"
 };
-const char D_004AC328[11] = {
+char gItemNames_310[11] = {
 #include "sub_main/004AC328.inc"
 };
-const char D_004AC338[15] = {
+char gItemNames_311[15] = {
 #include "sub_main/004AC338.inc"
 };
-const char D_004AC348[11] = {
+char gItemNames_312[11] = {
 #include "sub_main/004AC348.inc"
 };
-const char D_004AC358[11] = {
+char gItemNames_313[11] = {
 #include "sub_main/004AC358.inc"
 };
-const char D_004AC368[11] = {
+char gItemNames_314[11] = {
 #include "sub_main/004AC368.inc"
 };
-const char D_004AC378[7] = {
+char gItemNames_315[7] = {
 #include "sub_main/004AC378.inc"
 };
-const char D_004AC380[7] = {
+char gItemNames_316[7] = {
 #include "sub_main/004AC380.inc"
 };
-const char D_004AC388[9] = {
+char gItemNames_317[9] = {
 #include "sub_main/004AC388.inc"
 };
-const char D_004AC398[11] = {
+char gItemNames_318[11] = {
 #include "sub_main/004AC398.inc"
 };
-const char D_004AC3A8[13] = {
+char gItemNames_319[13] = {
 #include "sub_main/004AC3A8.inc"
 };
-const char D_004AC3B8[9] = {
+char gItemNames_320[9] = {
 #include "sub_main/004AC3B8.inc"
 };
-const char D_004AC3C8[9] = {
+char gItemNames_321[9] = {
 #include "sub_main/004AC3C8.inc"
 };
-const char D_004AC3D8[7] = {
+char gItemNames_322[7] = {
 #include "sub_main/004AC3D8.inc"
 };
-const char D_004AC3E0[7] = {
+char gItemNames_323[7] = {
 #include "sub_main/004AC3E0.inc"
 };
-const char D_004AC3E8[5] = {
+char gItemNames_324[5] = {
 #include "sub_main/004AC3E8.inc"
 };
-const char D_004AC3F0[11] = {
+char gItemNames_325[11] = {
 #include "sub_main/004AC3F0.inc"
 };
-const char D_004AC400[15] = {
+char gItemNames_326[15] = {
 #include "sub_main/004AC400.inc"
 };
-const char D_004AC410[9] = {
+char gItemNames_327[9] = {
 #include "sub_main/004AC410.inc"
 };
-const char D_004AC420[7] = {
+char gItemNames_328[7] = {
 #include "sub_main/004AC420.inc"
 };
-const char D_004AC428[11] = {
+char gItemNames_329[11] = {
 #include "sub_main/004AC428.inc"
 };
-const char D_004AC438[7] = {
+char gItemNames_330[7] = {
 #include "sub_main/004AC438.inc"
 };
-const char D_004AC440[11] = {
+char gItemNames_331[11] = {
 #include "sub_main/004AC440.inc"
 };
-const char D_004AC450[9] = {
+char gItemNames_332[9] = {
 #include "sub_main/004AC450.inc"
 };
-const char D_004AC460[15] = {
+char gItemNames_333[15] = {
 #include "sub_main/004AC460.inc"
 };
-const char D_004AC470[13] = {
+char gItemNames_334[13] = {
 #include "sub_main/004AC470.inc"
 };
-const char D_004AC480[9] = {
+char gItemNames_335[9] = {
 #include "sub_main/004AC480.inc"
 };
-const char D_004AC490[13] = {
+char gItemNames_336[13] = {
 #include "sub_main/004AC490.inc"
 };
-const char D_004AC4A0[11] = {
+char gItemNames_337[11] = {
 #include "sub_main/004AC4A0.inc"
 };
-const char D_004AC4B0[11] = {
+char gItemNames_338[11] = {
 #include "sub_main/004AC4B0.inc"
 };
-const char D_004AC4C0[15] = {
+char gItemNames_339[15] = {
 #include "sub_main/004AC4C0.inc"
 };
-const char D_004AC4D0[13] = {
+char gItemNames_340[13] = {
 #include "sub_main/004AC4D0.inc"
 };
-const char D_004AC4E0[13] = {
+char gItemNames_341[13] = {
 #include "sub_main/004AC4E0.inc"
 };
-const char D_004AC4F0[13] = {
+char gItemNames_342[13] = {
 #include "sub_main/004AC4F0.inc"
 };
-const char D_004AC500[15] = {
+char gItemNames_343[15] = {
 #include "sub_main/004AC500.inc"
 };
-const char D_004AC510[13] = {
+char gItemNames_344[13] = {
 #include "sub_main/004AC510.inc"
 };
-const char D_004AC520[17] = {
+char gItemNames_345[17] = {
 #include "sub_main/004AC520.inc"
 };
-const char D_004AC540[17] = {
+char gItemNames_346[17] = {
 #include "sub_main/004AC540.inc"
 };
-const char D_004AC558[15] = {
+char gItemNames_347[15] = {
 #include "sub_main/004AC558.inc"
 };
-const char D_004AC570[17] = {
+char gItemNames_348[17] = {
 #include "sub_main/004AC570.inc"
 };
-const char D_004AC588[15] = {
+char gItemNames_349[15] = {
 #include "sub_main/004AC588.inc"
 };
-const char D_004AC598[15] = {
+char gItemNames_350[15] = {
 #include "sub_main/004AC598.inc"
 };
-const char D_004AC5B0[17] = {
+char gItemNames_351[17] = {
 #include "sub_main/004AC5B0.inc"
 };
-const char D_004AC5C8[13] = {
+char gItemNames_352[13] = {
 #include "sub_main/004AC5C8.inc"
 };
-const char D_004AC5D8[15] = {
+char gItemNames_353[15] = {
 #include "sub_main/004AC5D8.inc"
 };
-const char D_004AC5E8[13] = {
+char gItemNames_354[13] = {
 #include "sub_main/004AC5E8.inc"
 };
-const char D_004AC600[17] = {
+char gItemNames_355[17] = {
 #include "sub_main/004AC600.inc"
 };
-const char D_004AC620[17] = {
+char gItemNames_356[17] = {
 #include "sub_main/004AC620.inc"
 };
-const char D_004AC638[15] = {
+char gItemNames_357[15] = {
 #include "sub_main/004AC638.inc"
 };
-const char D_004AC648[13] = {
+char gItemNames_358[13] = {
 #include "sub_main/004AC648.inc"
 };
-const char D_004AC658[15] = {
+char gItemNames_359[15] = {
 #include "sub_main/004AC658.inc"
 };
-const char D_004AC668[13] = {
+char gItemNames_360[13] = {
 #include "sub_main/004AC668.inc"
 };
-const char D_004AC680[17] = {
+char gItemNames_361[17] = {
 #include "sub_main/004AC680.inc"
 };
-const char D_004AC6A0[17] = {
+char gItemNames_362[17] = {
 #include "sub_main/004AC6A0.inc"
 };
-const char D_004AC6B8[9] = {
+char gItemNames_363[9] = {
 #include "sub_main/004AC6B8.inc"
 };
-const char D_004AC6C8[11] = {
+char gItemNames_364[11] = {
 #include "sub_main/004AC6C8.inc"
 };
-const char D_004AC6D8[11] = {
+char gItemNames_365[11] = {
 #include "sub_main/004AC6D8.inc"
 };
-const char D_004AC6E8[9] = {
+char gItemNames_366[9] = {
 #include "sub_main/004AC6E8.inc"
 };
-const char D_004AC6F8[13] = {
+char gItemNames_367[13] = {
 #include "sub_main/004AC6F8.inc"
 };
-const char D_004AC708[15] = {
+char gItemNames_368[15] = {
 #include "sub_main/004AC708.inc"
 };
-const char D_004AC718[15] = {
+char gItemNames_369[15] = {
 #include "sub_main/004AC718.inc"
 };
-const char D_004AC728[11] = {
+char gItemNames_370[11] = {
 #include "sub_main/004AC728.inc"
 };
-const char D_004AC738[11] = {
+char gItemNames_371[11] = {
 #include "sub_main/004AC738.inc"
 };
-const char D_004AC748[13] = {
+char gItemNames_372[13] = {
 #include "sub_main/004AC748.inc"
 };
-const char D_004AC758[13] = {
+char gItemNames_373[13] = {
 #include "sub_main/004AC758.inc"
 };
-const char D_004AC768[11] = {
+char gItemNames_374[11] = {
 #include "sub_main/004AC768.inc"
 };
-const char D_004AC778[13] = {
+char gItemNames_375[13] = {
 #include "sub_main/004AC778.inc"
 };
-const char D_004AC788[11] = {
+char gItemNames_376[11] = {
 #include "sub_main/004AC788.inc"
 };
-const char D_004AC798[13] = {
+char gItemNames_377[13] = {
 #include "sub_main/004AC798.inc"
 };
-const char D_004AC7A8[13] = {
+char gItemNames_378[13] = {
 #include "sub_main/004AC7A8.inc"
 };
-const char D_004AC7B8[11] = {
+char gItemNames_379[11] = {
 #include "sub_main/004AC7B8.inc"
 };
-const char D_004AC7C8[9] = {
+char gItemNames_380[9] = {
 #include "sub_main/004AC7C8.inc"
 };
-const char D_004AC7D8[9] = {
+char gItemNames_381[9] = {
 #include "sub_main/004AC7D8.inc"
 };
-const char D_004AC7E8[11] = {
+char gItemNames_382[11] = {
 #include "sub_main/004AC7E8.inc"
 };
-const char D_004AC7F8[11] = {
+char gItemNames_383[11] = {
 #include "sub_main/004AC7F8.inc"
 };
-const char D_004AC808[11] = {
+char gItemNames_384[11] = {
 #include "sub_main/004AC808.inc"
 };
-const char D_004AC818[13] = {
+char gItemNames_385[13] = {
 #include "sub_main/004AC818.inc"
 };
-const char D_004AC828[9] = {
+char gItemNames_386[9] = {
 #include "sub_main/004AC828.inc"
 };
-const char D_004AC838[11] = {
+char gItemNames_387[11] = {
 #include "sub_main/004AC838.inc"
 };
-const char D_004AC848[11] = {
+char gItemNames_388[11] = {
 #include "sub_main/004AC848.inc"
 };
-const char D_004AC858[13] = {
+char gItemNames_389[13] = {
 #include "sub_main/004AC858.inc"
 };
-const char D_004AC868[11] = {
+char gItemNames_390[11] = {
 #include "sub_main/004AC868.inc"
 };
-const char D_004AC878[13] = {
+char gItemNames_391[13] = {
 #include "sub_main/004AC878.inc"
 };
-const char D_004AC888[11] = {
+char gItemNames_392[11] = {
 #include "sub_main/004AC888.inc"
 };
-const char D_004AC898[13] = {
+char gItemNames_393[13] = {
 #include "sub_main/004AC898.inc"
 };
-const char D_004AC8A8[13] = {
+char gItemNames_394[13] = {
 #include "sub_main/004AC8A8.inc"
 };
-const char D_004AC8B8[13] = {
+char gItemNames_395[13] = {
 #include "sub_main/004AC8B8.inc"
 };
-const char D_004AC8C8[13] = {
+char gItemNames_396[13] = {
 #include "sub_main/004AC8C8.inc"
 };
-const char D_004AC8D8[13] = {
+char gItemNames_397[13] = {
 #include "sub_main/004AC8D8.inc"
 };
-const char D_004AC8E8[11] = {
+char gItemNames_398[11] = {
 #include "sub_main/004AC8E8.inc"
 };
-const char D_004AC8F8[13] = {
+char gItemNames_399[13] = {
 #include "sub_main/004AC8F8.inc"
 };
-const char D_004AC908[11] = {
+char gItemNames_400[11] = {
 #include "sub_main/004AC908.inc"
 };
-const char D_004AC918[13] = {
+char gItemNames_401[13] = {
 #include "sub_main/004AC918.inc"
 };
-const char D_004AC928[13] = {
+char gItemNames_402[13] = {
 #include "sub_main/004AC928.inc"
 };
-const char D_004AC938[13] = {
+char gItemNames_403[13] = {
 #include "sub_main/004AC938.inc"
 };
-const char D_004AC948[13] = {
+char gItemNames_404[13] = {
 #include "sub_main/004AC948.inc"
 };
-const char D_004AC958[13] = {
+char gItemNames_405[13] = {
 #include "sub_main/004AC958.inc"
 };
-const char D_004AC968[11] = {
+char gItemNames_406[11] = {
 #include "sub_main/004AC968.inc"
 };
-const char D_004AC978[11] = {
+char gItemNames_407[11] = {
 #include "sub_main/004AC978.inc"
 };
-const char D_004AC988[9] = {
+char gItemNames_408[9] = {
 #include "sub_main/004AC988.inc"
 };
-const char D_004AC998[11] = {
+char gItemNames_409[11] = {
 #include "sub_main/004AC998.inc"
 };
-const char D_004AC9A8[11] = {
+char gItemNames_410[11] = {
 #include "sub_main/004AC9A8.inc"
 };
-const char D_004AC9B8[11] = {
+char gItemNames_411[11] = {
 #include "sub_main/004AC9B8.inc"
 };
-const char D_004AC9C8[11] = {
+char gItemNames_412[11] = {
 #include "sub_main/004AC9C8.inc"
 };
-const char D_004AC9D8[11] = {
+char gItemNames_413[11] = {
 #include "sub_main/004AC9D8.inc"
 };
-const char D_004AC9E8[11] = {
+char gItemNames_414[11] = {
 #include "sub_main/004AC9E8.inc"
 };
-const char D_004AC9F8[11] = {
+char gItemNames_415[11] = {
 #include "sub_main/004AC9F8.inc"
 };
-const char D_004ACA08[9] = {
+char gItemNames_416[9] = {
 #include "sub_main/004ACA08.inc"
 };
-const char D_004ACA18[11] = {
+char gItemNames_417[11] = {
 #include "sub_main/004ACA18.inc"
 };
-const char D_004ACA28[13] = {
+char gItemNames_418[13] = {
 #include "sub_main/004ACA28.inc"
 };
-const char D_004ACA38[13] = {
+char gItemNames_419[13] = {
 #include "sub_main/004ACA38.inc"
 };
-const char D_004ACA48[13] = {
+char gItemNames_420[13] = {
 #include "sub_main/004ACA48.inc"
 };
-const char D_004ACA58[13] = {
+char gItemNames_421[13] = {
 #include "sub_main/004ACA58.inc"
 };
-const char D_004ACA68[11] = {
+char gItemNames_422[11] = {
 #include "sub_main/004ACA68.inc"
 };
-const char D_004ACA78[13] = {
+char gItemNames_423[13] = {
 #include "sub_main/004ACA78.inc"
 };
-const char D_004ACA88[13] = {
+char gItemNames_424[13] = {
 #include "sub_main/004ACA88.inc"
 };
-const char D_004ACA98[13] = {
+char gItemNames_425[13] = {
 #include "sub_main/004ACA98.inc"
 };
-const char D_004ACAA8[13] = {
+char gItemNames_426[13] = {
 #include "sub_main/004ACAA8.inc"
 };
-const char D_004ACAB8[11] = {
+char gItemNames_427[11] = {
 #include "sub_main/004ACAB8.inc"
 };
-const char D_004ACAC8[15] = {
+char gItemNames_428[15] = {
 #include "sub_main/004ACAC8.inc"
 };
-const char D_004ACAD8[13] = {
+char gItemNames_429[13] = {
 #include "sub_main/004ACAD8.inc"
 };
-const char D_004ACAF0[17] = {
+char gItemNames_430[17] = {
 #include "sub_main/004ACAF0.inc"
 };
-const char D_004ACB10[17] = {
+char gItemNames_431[17] = {
 #include "sub_main/004ACB10.inc"
 };
-const char D_004ACB28[13] = {
+char gItemNames_432[13] = {
 #include "sub_main/004ACB28.inc"
 };
-const char D_004ACB38[13] = {
+char gItemNames_433[13] = {
 #include "sub_main/004ACB38.inc"
 };
-const char D_004ACB48[11] = {
+char gItemNames_434[11] = {
 #include "sub_main/004ACB48.inc"
 };
-const char D_004ACB58[11] = {
+char gItemNames_435[11] = {
 #include "sub_main/004ACB58.inc"
 };
-const char D_004ACB68[9] = {
+char gItemNames_436[9] = {
 #include "sub_main/004ACB68.inc"
 };
-const char D_004ACB78[11] = {
+char gItemNames_437[11] = {
 #include "sub_main/004ACB78.inc"
 };
-const char D_004ACB88[11] = {
+char gItemNames_438[11] = {
 #include "sub_main/004ACB88.inc"
 };
-const char D_004ACB98[11] = {
+char gItemNames_439[11] = {
 #include "sub_main/004ACB98.inc"
 };
-const char D_004ACBA8[11] = {
+char gItemNames_440[11] = {
 #include "sub_main/004ACBA8.inc"
 };
-const char D_004ACBB8[13] = {
+char gItemNames_441[13] = {
 #include "sub_main/004ACBB8.inc"
 };
-const char D_004ACBC8[13] = {
+char gItemNames_442[13] = {
 #include "sub_main/004ACBC8.inc"
 };
-const char D_004ACBD8[13] = {
+char gItemNames_443[13] = {
 #include "sub_main/004ACBD8.inc"
 };
-const char D_004ACBE8[11] = {
+char gItemNames_444[11] = {
 #include "sub_main/004ACBE8.inc"
 };
-const char D_004ACC00[17] = {
+char gItemNames_445[17] = {
 #include "sub_main/004ACC00.inc"
 };
-const char D_004ACC18[11] = {
+char gItemNames_446[11] = {
 #include "sub_main/004ACC18.inc"
 };
-const char D_004ACC28[11] = {
+char gItemNames_447[11] = {
 #include "sub_main/004ACC28.inc"
 };
-const char D_004ACC38[11] = {
+char gItemNames_448[11] = {
 #include "sub_main/004ACC38.inc"
 };
-const char D_004ACC48[11] = {
+char gItemNames_449[11] = {
 #include "sub_main/004ACC48.inc"
 };
-const char D_004ACC58[11] = {
+char gItemNames_450[11] = {
 #include "sub_main/004ACC58.inc"
 };
-const char D_004ACC68[9] = {
+char gItemNames_451[9] = {
 #include "sub_main/004ACC68.inc"
 };
-const char D_004ACC78[9] = {
+char gItemNames_452[9] = {
 #include "sub_main/004ACC78.inc"
 };
-const char D_004ACC88[13] = {
+char gItemNames_453[13] = {
 #include "sub_main/004ACC88.inc"
 };
-const char D_004ACC98[13] = {
+char gItemNames_454[13] = {
 #include "sub_main/004ACC98.inc"
 };
-const char D_004ACCA8[13] = {
+char gItemNames_455[13] = {
 #include "sub_main/004ACCA8.inc"
 };
-const char D_004ACCB8[13] = {
+char gItemNames_456[13] = {
 #include "sub_main/004ACCB8.inc"
 };
-const char D_004ACCC8[13] = {
+char gItemNames_457[13] = {
 #include "sub_main/004ACCC8.inc"
 };
-const char D_004ACCE0[17] = {
+char gItemNames_458[17] = {
 #include "sub_main/004ACCE0.inc"
 };
-const char D_004ACD00[17] = {
+char gItemNames_459[17] = {
 #include "sub_main/004ACD00.inc"
 };
-const char D_004ACD18[15] = {
+char gItemNames_460[15] = {
 #include "sub_main/004ACD18.inc"
 };
-const char D_004ACD30[17] = {
+char gItemNames_461[17] = {
 #include "sub_main/004ACD30.inc"
 };
-const char D_004ACD50[17] = {
+char gItemNames_462[17] = {
 #include "sub_main/004ACD50.inc"
 };
-const char D_004ACD68[15] = {
+char gItemNames_463[15] = {
 #include "sub_main/004ACD68.inc"
 };
-const char D_004ACD78[15] = {
+char gItemNames_464[15] = {
 #include "sub_main/004ACD78.inc"
 };
-const char D_004ACD90[17] = {
+char gItemNames_465[17] = {
 #include "sub_main/004ACD90.inc"
 };
-const char D_004ACDA8[11] = {
+char gItemNames_466[11] = {
 #include "sub_main/004ACDA8.inc"
 };
-const char D_004ACDB8[11] = {
+char gItemNames_467[11] = {
 #include "sub_main/004ACDB8.inc"
 };
-const char D_004ACDC8[13] = {
+char gItemNames_468[13] = {
 #include "sub_main/004ACDC8.inc"
 };
-const char D_004ACDD8[15] = {
+char gItemNames_469[15] = {
 #include "sub_main/004ACDD8.inc"
 };
-const char D_004ACDE8[9] = {
+char gItemNames_470[9] = {
 #include "sub_main/004ACDE8.inc"
 };
-const char D_004ACDF8[13] = {
+char gItemNames_471[13] = {
 #include "sub_main/004ACDF8.inc"
 };
-const char D_004ACE08[13] = {
+char gItemNames_472[13] = {
 #include "sub_main/004ACE08.inc"
 };
-const char D_004ACE20[17] = {
+char gItemNames_473[17] = {
 #include "sub_main/004ACE20.inc"
 };
-const char D_004ACE38[9] = {
+char gItemNames_474[9] = {
 #include "sub_main/004ACE38.inc"
 };
-const char D_004ACE48[15] = {
+char gItemNames_475[15] = {
 #include "sub_main/004ACE48.inc"
 };
-const char D_004ACE58[15] = {
+char gItemNames_476[15] = {
 #include "sub_main/004ACE58.inc"
 };
-const char D_004ACE68[13] = {
+char gItemNames_477[13] = {
 #include "sub_main/004ACE68.inc"
 };
-const char D_004ACE78[11] = {
+char gItemNames_478[11] = {
 #include "sub_main/004ACE78.inc"
 };
-const char D_004ACE88[13] = {
+char gItemNames_479[13] = {
 #include "sub_main/004ACE88.inc"
 };
-const char D_004ACEA0[17] = {
+char gItemNames_480[17] = {
 #include "sub_main/004ACEA0.inc"
 };
-const char D_004ACEB8[13] = {
+char gItemNames_481[13] = {
 #include "sub_main/004ACEB8.inc"
 };
-const char D_004ACEC8[13] = {
+char gItemNames_482[13] = {
 #include "sub_main/004ACEC8.inc"
 };
-const char D_004ACED8[13] = {
+char gItemNames_483[13] = {
 #include "sub_main/004ACED8.inc"
 };
-const char D_004ACEE8[11] = {
+char gItemNames_484[11] = {
 #include "sub_main/004ACEE8.inc"
 };
-const char D_004ACEF8[11] = {
+char gItemNames_485[11] = {
 #include "sub_main/004ACEF8.inc"
 };
-const char D_004ACF08[13] = {
+char gItemNames_486[13] = {
 #include "sub_main/004ACF08.inc"
 };
-const char D_004ACF18[13] = {
+char gItemNames_487[13] = {
 #include "sub_main/004ACF18.inc"
 };
-const char D_004ACF28[13] = {
+char gItemNames_488[13] = {
 #include "sub_main/004ACF28.inc"
 };
-const char D_004ACF38[13] = {
+char gItemNames_489[13] = {
 #include "sub_main/004ACF38.inc"
 };
-const char D_004ACF48[15] = {
+char gItemNames_490[15] = {
 #include "sub_main/004ACF48.inc"
 };
-const char D_004ACF58[9] = {
+char gItemNames_491[9] = {
 #include "sub_main/004ACF58.inc"
 };
-const char D_004ACF68[9] = {
+char gItemNames_492[9] = {
 #include "sub_main/004ACF68.inc"
 };
-const char D_004ACF78[11] = {
+char gItemNames_493[11] = {
 #include "sub_main/004ACF78.inc"
 };
-const char D_004ACF88[9] = {
+char gItemNames_494[9] = {
 #include "sub_main/004ACF88.inc"
 };
-const char D_004ACF98[11] = {
+char gItemNames_495[11] = {
 #include "sub_main/004ACF98.inc"
 };
-const char D_004ACFA8[11] = {
+char gItemNames_496[11] = {
 #include "sub_main/004ACFA8.inc"
 };
-const char D_004ACFB8[11] = {
+char gItemNames_497[11] = {
 #include "sub_main/004ACFB8.inc"
 };
-const char D_004ACFC8[11] = {
+char gItemNames_498[11] = {
 #include "sub_main/004ACFC8.inc"
 };
-const char D_004ACFD8[11] = {
+char gItemNames_499[11] = {
 #include "sub_main/004ACFD8.inc"
 };
-const char D_004ACFE8[11] = {
+char gItemNames_500[11] = {
 #include "sub_main/004ACFE8.inc"
 };
-const char D_004ACFF8[11] = {
+char gItemNames_501[11] = {
 #include "sub_main/004ACFF8.inc"
 };
-const char D_004AD008[11] = {
+char gItemNames_502[11] = {
 #include "sub_main/004AD008.inc"
 };
-const char D_004AD018[11] = {
+char gItemNames_503[11] = {
 #include "sub_main/004AD018.inc"
 };
-const char D_004AD028[9] = {
+char gItemNames_504[9] = {
 #include "sub_main/004AD028.inc"
 };
-const char D_004AD038[11] = {
+char gItemNames_507[11] = {
 #include "sub_main/004AD038.inc"
 };
-const char D_004AD048[11] = {
+char gItemNames_508[11] = {
 #include "sub_main/004AD048.inc"
 };
-const char D_004AD058[13] = {
+char gItemNames_509[13] = {
 #include "sub_main/004AD058.inc"
 };
-const char D_004AD068[11] = {
+char gItemNames_510[11] = {
 #include "sub_main/004AD068.inc"
 };
-const char D_004AD078[13] = {
+char gItemNames_511[13] = {
 #include "sub_main/004AD078.inc"
 };
-const char D_004AD088[11] = {
+char gItemNames_512[11] = {
 #include "sub_main/004AD088.inc"
 };
-const char D_004AD098[13] = {
+char gItemNames_513[13] = {
 #include "sub_main/004AD098.inc"
 };
-const char D_004AD0A8[11] = {
+char gItemNames_514[11] = {
 #include "sub_main/004AD0A8.inc"
 };
-const char D_004AD0B8[11] = {
+char gItemNames_515[11] = {
 #include "sub_main/004AD0B8.inc"
 };
-const char D_004AD0C8[11] = {
+char gItemNames_516[11] = {
 #include "sub_main/004AD0C8.inc"
 };
-const char D_004AD0D8[11] = {
+char gItemNames_517[11] = {
 #include "sub_main/004AD0D8.inc"
 };
-const char D_004AD0E8[13] = {
+char gItemNames_518[13] = {
 #include "sub_main/004AD0E8.inc"
 };
-const char D_004AD0F8[13] = {
+char gItemNames_519[13] = {
 #include "sub_main/004AD0F8.inc"
 };
-const char D_004AD108[13] = {
+char gItemNames_521[13] = {
 #include "sub_main/004AD108.inc"
 };
-const char D_004AD118[13] = {
+char gItemNames_522[13] = {
 #include "sub_main/004AD118.inc"
 };
-const char D_004AD128[13] = {
+char gItemNames_523[13] = {
 #include "sub_main/004AD128.inc"
 };
-const char D_004AD138[13] = {
+char gItemNames_524[13] = {
 #include "sub_main/004AD138.inc"
 };
-const char D_004AD148[13] = {
+char gItemNames_525[13] = {
 #include "sub_main/004AD148.inc"
 };
-const char D_004AD158[9] = {
+char gItemNames_526[9] = {
 #include "sub_main/004AD158.inc"
 };
-const char D_004AD168[9] = {
+char gItemNames_527[9] = {
 #include "sub_main/004AD168.inc"
 };
-const char D_004AD178[7] = {
+char gItemNames_528[7] = {
 #include "sub_main/004AD178.inc"
 };
-const char D_004AD180[11] = {
+char gItemNames_529[11] = {
 #include "sub_main/004AD180.inc"
 };
-const char D_004AD190[11] = {
+char gItemNames_530[11] = {
 #include "sub_main/004AD190.inc"
 };
-const char D_004AD1A0[9] = {
+char gItemNames_531[9] = {
 #include "sub_main/004AD1A0.inc"
 };
-const char D_004AD1B0[11] = {
+char gItemNames_532[11] = {
 #include "sub_main/004AD1B0.inc"
 };
-const char D_004AD1C0[11] = {
+char gItemNames_533[11] = {
 #include "sub_main/004AD1C0.inc"
 };
-const char D_004AD1D0[11] = {
+char gItemNames_535[11] = {
 #include "sub_main/004AD1D0.inc"
 };
-const char D_004AD1E0[11] = {
+char gItemNames_536[11] = {
 #include "sub_main/004AD1E0.inc"
 };
-const char D_004AD1F0[11] = {
+char gItemNames_537[11] = {
 #include "sub_main/004AD1F0.inc"
 };
-const char D_004AD200[9] = {
+char gItemNames_538[9] = {
 #include "sub_main/004AD200.inc"
 };
-const char D_004AD210[9] = {
+char gItemNames_539[9] = {
 #include "sub_main/004AD210.inc"
 };
-const char D_004AD220[9] = {
+char gItemNames_540[9] = {
 #include "sub_main/004AD220.inc"
 };
-const char D_004AD230[11] = {
+char gItemNames_541[11] = {
 #include "sub_main/004AD230.inc"
 };
-const char D_004AD240[11] = {
+char gItemNames_543[11] = {
 #include "sub_main/004AD240.inc"
 };
-const char D_004AD250[11] = {
+char gItemNames_544[11] = {
 #include "sub_main/004AD250.inc"
 };
-const char D_004AD260[9] = {
+char gItemNames_545[9] = {
 #include "sub_main/004AD260.inc"
 };
-const char D_004AD270[11] = {
+char gItemNames_546[11] = {
 #include "sub_main/004AD270.inc"
 };
-const char D_004AD280[11] = {
+char gItemNames_548[11] = {
 #include "sub_main/004AD280.inc"
 };
-const char D_004AD290[11] = {
+char gItemNames_549[11] = {
 #include "sub_main/004AD290.inc"
 };
-const char D_004AD2A0[9] = {
+char gItemNames_550[9] = {
 #include "sub_main/004AD2A0.inc"
 };
-const char D_004AD2B0[11] = {
+char gItemNames_551[11] = {
 #include "sub_main/004AD2B0.inc"
 };
-const char D_004AD2C0[9] = {
+char gItemNames_552[9] = {
 #include "sub_main/004AD2C0.inc"
 };
-const char D_004AD2D0[11] = {
+char gItemNames_553[11] = {
 #include "sub_main/004AD2D0.inc"
 };
-const char D_004AD2E0[9] = {
+char gItemNames_554[9] = {
 #include "sub_main/004AD2E0.inc"
 };
-const char D_004AD2F0[11] = {
+char gItemNames_555[11] = {
 #include "sub_main/004AD2F0.inc"
 };
-const char D_004AD300[11] = {
+char gItemNames_556[11] = {
 #include "sub_main/004AD300.inc"
 };
-const char D_004AD310[11] = {
+char gItemNames_557[11] = {
 #include "sub_main/004AD310.inc"
 };
-const char D_004AD320[11] = {
+char gItemNames_558[11] = {
 #include "sub_main/004AD320.inc"
 };
-const char D_004AD330[11] = {
+char gItemNames_559[11] = {
 #include "sub_main/004AD330.inc"
 };
-const char D_004AD340[9] = {
+char gItemNames_560[9] = {
 #include "sub_main/004AD340.inc"
 };
-const char D_004AD350[11] = {
+char gItemNames_561[11] = {
 #include "sub_main/004AD350.inc"
 };
-const char D_004AD360[9] = {
+char gItemNames_562[9] = {
 #include "sub_main/004AD360.inc"
 };
-const char D_004AD370[11] = {
+char gItemNames_563[11] = {
 #include "sub_main/004AD370.inc"
 };
-const char D_004AD380[9] = {
+char gItemNames_564[9] = {
 #include "sub_main/004AD380.inc"
 };
-const char D_004AD390[11] = {
+char gItemNames_565[11] = {
 #include "sub_main/004AD390.inc"
 };
-const char D_004AD3A0[11] = {
+char gItemNames_566[11] = {
 #include "sub_main/004AD3A0.inc"
 };
-const char D_004AD3B0[11] = {
+char gItemNames_567[11] = {
 #include "sub_main/004AD3B0.inc"
 };
-const char D_004AD3C0[9] = {
+char gItemNames_569[9] = {
 #include "sub_main/004AD3C0.inc"
 };
-const char D_004AD3D0[9] = {
+char gItemNames_570[9] = {
 #include "sub_main/004AD3D0.inc"
 };
-const char D_004AD3E0[11] = {
+char gItemNames_571[11] = {
 #include "sub_main/004AD3E0.inc"
 };
-const char D_004AD3F0[11] = {
+char gItemNames_572[11] = {
 #include "sub_main/004AD3F0.inc"
 };
-const char D_004AD400[9] = {
+char gItemNames_573[9] = {
 #include "sub_main/004AD400.inc"
 };
-const char D_004AD410[11] = {
+char gItemNames_574[11] = {
 #include "sub_main/004AD410.inc"
 };
-const char D_004AD420[13] = {
+char gItemNames_575[13] = {
 #include "sub_main/004AD420.inc"
 };
-const char D_004AD430[17] = {
+char gItemNames_576[17] = {
 #include "sub_main/004AD430.inc"
 };
-const char D_004AD448[13] = {
+char gItemNames_577[13] = {
 #include "sub_main/004AD448.inc"
 };
-const char D_004AD458[13] = {
+char gItemNames_578[13] = {
 #include "sub_main/004AD458.inc"
 };
-const char D_004AD468[11] = {
+char gItemNames_579[11] = {
 #include "sub_main/004AD468.inc"
 };
-const char D_004AD478[13] = {
+char gItemNames_581[13] = {
 #include "sub_main/004AD478.inc"
 };
-const char D_004AD488[13] = {
+char gItemNames_582[13] = {
 #include "sub_main/004AD488.inc"
 };
-const char D_004AD4A0[17] = {
+char gItemNames_583[17] = {
 #include "sub_main/004AD4A0.inc"
 };
-const char D_004AD4B8[13] = {
+char gItemNames_584[13] = {
 #include "sub_main/004AD4B8.inc"
 };
-const char D_004AD4C8[13] = {
+char gItemNames_585[13] = {
 #include "sub_main/004AD4C8.inc"
 };
-const char D_004AD4D8[11] = {
+char gItemNames_586[11] = {
 #include "sub_main/004AD4D8.inc"
 };
-const char D_004AD4E8[13] = {
+char gItemNames_587[13] = {
 #include "sub_main/004AD4E8.inc"
 };
-const char D_004AD4F8[13] = {
+char gItemNames_588[13] = {
 #include "sub_main/004AD4F8.inc"
 };
-const char D_004AD508[11] = {
+char gItemNames_589[11] = {
 #include "sub_main/004AD508.inc"
 };
-const char D_004AD518[13] = {
+char gItemNames_590[13] = {
 #include "sub_main/004AD518.inc"
 };
-const char D_004AD528[5] = {
+char gItemNames_591[5] = {
 #include "sub_main/004AD528.inc"
 };
-const char D_004AD530[5] = {
+char gItemNames_592[5] = {
 #include "sub_main/004AD530.inc"
 };
-const char D_004AD538[9] = {
+char gItemNames_594[9] = {
 #include "sub_main/004AD538.inc"
 };
-const char D_004AD548[11] = {
+char gItemNames_595[11] = {
 #include "sub_main/004AD548.inc"
 };
-const char D_004AD558[11] = {
+char gItemNames_596[11] = {
 #include "sub_main/004AD558.inc"
 };
-const char D_004AD568[9] = {
+char gItemNames_597[9] = {
 #include "sub_main/004AD568.inc"
 };
-const char D_004AD578[11] = {
+char gItemNames_598[11] = {
 #include "sub_main/004AD578.inc"
 };
-const char D_004AD588[13] = {
+char gItemNames_599[13] = {
 #include "sub_main/004AD588.inc"
 };
-const char D_004AD598[11] = {
+char gItemNames_600[11] = {
 #include "sub_main/004AD598.inc"
 };
-const char D_004AD5A8[15] = {
+char gItemNames_601[15] = {
 #include "sub_main/004AD5A8.inc"
 };
-const char D_004AD5B8[11] = {
+char gItemNames_602[11] = {
 #include "sub_main/004AD5B8.inc"
 };
-const char D_004AD5C8[13] = {
+char gItemNames_603[13] = {
 #include "sub_main/004AD5C8.inc"
 };
-const char D_004AD5E0[17] = {
+char gItemNames_604[17] = {
 #include "sub_main/004AD5E0.inc"
 };
-const char D_004AD5F8[11] = {
+char gItemNames_605[11] = {
 #include "sub_main/004AD5F8.inc"
 };
-const char D_004AD608[13] = {
+char gItemNames_606[13] = {
 #include "sub_main/004AD608.inc"
 };
-const char D_004AD618[9] = {
+char gItemNames_607[9] = {
 #include "sub_main/004AD618.inc"
 };
-const char D_004AD628[13] = {
+char gItemNames_608[13] = {
 #include "sub_main/004AD628.inc"
 };
-const char D_004AD638[9] = {
+char gItemNames_609[9] = {
 #include "sub_main/004AD638.inc"
 };
-const char D_004AD648[11] = {
+char gItemNames_610[11] = {
 #include "sub_main/004AD648.inc"
 };
-const char D_004AD658[9] = {
+char gItemNames_611[9] = {
 #include "sub_main/004AD658.inc"
 };
-const char D_004AD668[15] = {
+char gItemNames_612[15] = {
 #include "sub_main/004AD668.inc"
 };
-const char D_004AD678[15] = {
+char gItemNames_613[15] = {
 #include "sub_main/004AD678.inc"
 };
-const char D_004AD688[15] = {
+char gItemNames_614[15] = {
 #include "sub_main/004AD688.inc"
 };
-const char D_004AD698[15] = {
+char gItemNames_615[15] = {
 #include "sub_main/004AD698.inc"
 };
-const char D_004AD6A8[9] = {
+char gItemNames_616[9] = {
 #include "sub_main/004AD6A8.inc"
 };
-const char D_004AD6B8[15] = {
+char gItemNames_617[15] = {
 #include "sub_main/004AD6B8.inc"
 };
-const char D_004AD6C8[15] = {
+char gItemNames_618[15] = {
 #include "sub_main/004AD6C8.inc"
 };
-const char D_004AD6D8[15] = {
+char gItemNames_619[15] = {
 #include "sub_main/004AD6D8.inc"
 };
-const char D_004AD6E8[15] = {
+char gItemNames_620[15] = {
 #include "sub_main/004AD6E8.inc"
 };
-const char D_004AD700[17] = {
+char gItemNames_621[17] = {
 #include "sub_main/004AD700.inc"
 };
-const char D_004AD720[17] = {
+char gItemNames_622[17] = {
 #include "sub_main/004AD720.inc"
 };
-const char D_004AD740[17] = {
+char gItemNames_623[17] = {
 #include "sub_main/004AD740.inc"
 };
-const char D_004AD760[17] = {
+char gItemNames_624[17] = {
 #include "sub_main/004AD760.inc"
 };
-const char D_004AD778[11] = {
+char gItemNames_625[11] = {
 #include "sub_main/004AD778.inc"
 };
-const char D_004AD790[17] = {
+char gItemNames_626[17] = {
 #include "sub_main/004AD790.inc"
 };
-const char D_004AD7A8[11] = {
+char gItemNames_627[11] = {
 #include "sub_main/004AD7A8.inc"
 };
-const char D_004AD7B8[13] = {
+char gItemNames_628[13] = {
 #include "sub_main/004AD7B8.inc"
 };
-const char D_004AD7C8[11] = {
+char gItemNames_629[11] = {
 #include "sub_main/004AD7C8.inc"
 };
-const char D_004AD7D8[11] = {
+char gItemNames_630[11] = {
 #include "sub_main/004AD7D8.inc"
 };
-const char D_004AD7F0[19] = {
+char gItemNames_631[19] = {
 #include "sub_main/004AD7F0.inc"
 };
-const char D_004AD810[19] = {
+char gItemNames_632[19] = {
 #include "sub_main/004AD810.inc"
 };
-const char D_004AD830[19] = {
+char gItemNames_633[19] = {
 #include "sub_main/004AD830.inc"
 };
-const char D_004AD848[15] = {
+char gItemNames_634[15] = {
 #include "sub_main/004AD848.inc"
 };
-const char D_004AD858[15] = {
+char gItemNames_635[15] = {
 #include "sub_main/004AD858.inc"
 };
-const char D_004AD868[11] = {
+char gItemNames_636[11] = {
 #include "sub_main/004AD868.inc"
 };
-const char D_004AD880[19] = {
+char gItemNames_637[19] = {
 #include "sub_main/004AD880.inc"
 };
-const char D_004AD8A0[19] = {
+char gItemNames_638[19] = {
 #include "sub_main/004AD8A0.inc"
 };
-const char D_004AD8C0[19] = {
+char gItemNames_639[19] = {
 #include "sub_main/004AD8C0.inc"
 };
-const char D_004AD8D8[11] = {
+char gItemNames_640[11] = {
 #include "sub_main/004AD8D8.inc"
 };
-const char D_004AD8F0[17] = {
+char gItemNames_641[17] = {
 #include "sub_main/004AD8F0.inc"
 };
-const char D_004AD908[15] = {
+char gItemNames_642[15] = {
 #include "sub_main/004AD908.inc"
 };
-const char D_004AD918[11] = {
+char gItemNames_643[11] = {
 #include "sub_main/004AD918.inc"
 };
-const char D_004AD930[19] = {
+char gItemNames_644[19] = {
 #include "sub_main/004AD930.inc"
 };
-const char D_004AD948[15] = {
+char gItemNames_645[15] = {
 #include "sub_main/004AD948.inc"
 };
-const char D_004AD960[21] = {
+char gItemNames_646[21] = {
 #include "sub_main/004AD960.inc"
 };
-const char D_004AD980[21] = {
+char gItemNames_647[21] = {
 #include "sub_main/004AD980.inc"
 };
-const char D_004AD9A0[19] = {
+char gItemNames_648[19] = {
 #include "sub_main/004AD9A0.inc"
 };
-const char D_004AD9B8[15] = {
+char gItemNames_649[15] = {
 #include "sub_main/004AD9B8.inc"
 };
-const char D_004AD9D0[17] = {
+char gItemNames_650[17] = {
 #include "sub_main/004AD9D0.inc"
 };
-const char D_004AD9E8[11] = {
+char gItemNames_655[11] = {
 #include "sub_main/004AD9E8.inc"
 };
-const char D_004AD9F8[11] = {
+char gItemNames_656[11] = {
 #include "sub_main/004AD9F8.inc"
 };
-const char D_004ADA08[5] = {
+char gItemNames_657[5] = {
 #include "sub_main/004ADA08.inc"
 };
-const char D_004ADA10[7] = {
+char gItemNames_658[7] = {
 #include "sub_main/004ADA10.inc"
 };
-const char D_004ADA18[9] = {
+char gItemNames_659[9] = {
 #include "sub_main/004ADA18.inc"
 };
-const char D_004ADA30[17] = {
+char gItemNames_660[17] = {
 #include "sub_main/004ADA30.inc"
 };
-const char D_004ADA48[9] = {
+char gItemNames_661[9] = {
 #include "sub_main/004ADA48.inc"
 };
-const char D_004ADA58[13] = {
+char gItemNames_662[13] = {
 #include "sub_main/004ADA58.inc"
 };
-const char D_004ADA68[15] = {
+char gItemNames_663[15] = {
 #include "sub_main/004ADA68.inc"
 };
-const char D_004ADA78[13] = {
+char gItemNames_664[13] = {
 #include "sub_main/004ADA78.inc"
 };
-const char D_004ADA90[17] = {
+char gItemNames_665[17] = {
 #include "sub_main/004ADA90.inc"
 };
-const char D_004ADAB0[17] = {
+char gItemNames_666[17] = {
 #include "sub_main/004ADAB0.inc"
 };
-const char D_004ADAC8[13] = {
+char gItemNames_667[13] = {
 #include "sub_main/004ADAC8.inc"
 };
-const char D_004ADAD8[9] = {
+char gItemNames_668[9] = {
 #include "sub_main/004ADAD8.inc"
 };
-const char D_004ADAE8[11] = {
+char gItemNames_669[11] = {
 #include "sub_main/004ADAE8.inc"
 };
-const char D_004ADAF8[9] = {
+char gItemNames_670[9] = {
 #include "sub_main/004ADAF8.inc"
 };
-const char D_004ADB08[11] = {
+char gItemNames_671[11] = {
 #include "sub_main/004ADB08.inc"
 };
-const char D_004ADB18[11] = {
+char gItemNames_672[11] = {
 #include "sub_main/004ADB18.inc"
 };
-const char D_004ADB28[13] = {
+char gItemNames_673[13] = {
 #include "sub_main/004ADB28.inc"
 };
-const char D_004ADB38[13] = {
+char gItemNames_674[13] = {
 #include "sub_main/004ADB38.inc"
 };
-const char D_004ADB48[7] = {
+char gItemNames_675[7] = {
 #include "sub_main/004ADB48.inc"
 };
-const char D_004ADB50[15] = {
+char gItemNames_676[15] = {
 #include "sub_main/004ADB50.inc"
 };
-const char D_004ADB60[15] = {
+char gItemNames_677[15] = {
 #include "sub_main/004ADB60.inc"
 };
-const char D_004ADB70[15] = {
+char gItemNames_678[15] = {
 #include "sub_main/004ADB70.inc"
 };
-const char D_004ADB80[9] = {
+char gItemNames_679[9] = {
 #include "sub_main/004ADB80.inc"
 };
-const char D_004ADB90[13] = {
+char gItemNames_680[13] = {
 #include "sub_main/004ADB90.inc"
 };
-const char D_004ADBA0[11] = {
+char gItemNames_681[11] = {
 #include "sub_main/004ADBA0.inc"
 };
-const char D_004ADBB0[11] = {
+char gItemNames_682[11] = {
 #include "sub_main/004ADBB0.inc"
 };
-const char D_004ADBC0[9] = {
+char gItemNames_683[9] = {
 #include "sub_main/004ADBC0.inc"
 };
-const char D_004ADBD0[15] = {
+char gItemNames_684[15] = {
 #include "sub_main/004ADBD0.inc"
 };
-const char D_004ADBE0[13] = {
+char gItemNames_685[13] = {
 #include "sub_main/004ADBE0.inc"
 };
-const char D_004ADBF0[13] = {
+char gItemNames_686[13] = {
 #include "sub_main/004ADBF0.inc"
 };
-const char D_004ADC00[13] = {
+char gItemNames_687[13] = {
 #include "sub_main/004ADC00.inc"
 };
-const char D_004ADC10[7] = {
+char gItemNames_688[7] = {
 #include "sub_main/004ADC10.inc"
 };
-const char D_004ADC18[7] = {
+char gItemNames_689[7] = {
 #include "sub_main/004ADC18.inc"
 };
-const char D_004ADC20[7] = {
+char gItemNames_690[7] = {
 #include "sub_main/004ADC20.inc"
 };
-const char D_004ADC28[7] = {
+char gItemNames_691[7] = {
 #include "sub_main/004ADC28.inc"
 };
-const char D_004ADC30[7] = {
+char gItemNames_692[7] = {
 #include "sub_main/004ADC30.inc"
 };
-const char D_004ADC38[7] = {
+char gItemNames_693[7] = {
 #include "sub_main/004ADC38.inc"
 };
-const char D_004ADC40[7] = {
+char gItemNames_694[7] = {
 #include "sub_main/004ADC40.inc"
 };
-const char D_004ADC48[11] = {
+char gItemNames_695[11] = {
 #include "sub_main/004ADC48.inc"
 };
-const char D_004ADC58[15] = {
+char gItemNames_696[15] = {
 #include "sub_main/004ADC58.inc"
 };
-const char D_004ADC68[13] = {
+char gItemNames_698[13] = {
 #include "sub_main/004ADC68.inc"
 };
-const char D_004ADC78[7] = {
+char gItemNames_699[7] = {
 #include "sub_main/004ADC78.inc"
 };
-const char D_004ADC80[7] = {
+char gItemNames_700[7] = {
 #include "sub_main/004ADC80.inc"
 };
-const char D_004ADC88[11] = {
+char gItemNames_701[11] = {
 #include "sub_main/004ADC88.inc"
 };
-const char D_004ADC98[13] = {
+char gItemNames_702[13] = {
 #include "sub_main/004ADC98.inc"
 };
-const char D_004ADCA8[13] = {
+char gItemNames_703[13] = {
 #include "sub_main/004ADCA8.inc"
 };
-const char D_004ADCB8[11] = {
+char gItemNames_704[11] = {
 #include "sub_main/004ADCB8.inc"
 };
-const char D_004ADCC8[13] = {
+char gItemNames_705[13] = {
 #include "sub_main/004ADCC8.inc"
 };
-const char D_004ADCE0[17] = {
+char gItemNames_706[17] = {
 #include "sub_main/004ADCE0.inc"
 };
-const char D_004ADCF8[15] = {
+char gItemNames_707[15] = {
 #include "sub_main/004ADCF8.inc"
 };
-const char D_004ADD08[15] = {
+char gItemNames_708[15] = {
 #include "sub_main/004ADD08.inc"
 };
-const char D_004ADD18[15] = {
+char gItemNames_709[15] = {
 #include "sub_main/004ADD18.inc"
 };
-const char D_004ADD28[13] = {
+char gItemNames_710[13] = {
 #include "sub_main/004ADD28.inc"
 };
-const char D_004ADD38[13] = {
+char gItemNames_711[13] = {
 #include "sub_main/004ADD38.inc"
 };
-const char D_004ADD48[13] = {
+char gItemNames_712[13] = {
 #include "sub_main/004ADD48.inc"
 };
-const char D_004ADD58[13] = {
+char gItemNames_713[13] = {
 #include "sub_main/004ADD58.inc"
 };
-const char D_004ADD68[13] = {
+char gItemNames_714[13] = {
 #include "sub_main/004ADD68.inc"
 };
-const char D_004ADD78[13] = {
+char gItemNames_715[13] = {
 #include "sub_main/004ADD78.inc"
 };
-const char D_004ADD88[13] = {
+char gItemNames_716[13] = {
 #include "sub_main/004ADD88.inc"
 };
-const char D_004ADD98[13] = {
+char gItemNames_717[13] = {
 #include "sub_main/004ADD98.inc"
 };
-const char D_004ADDA8[13] = {
+char gItemNames_718[13] = {
 #include "sub_main/004ADDA8.inc"
 };
-const char D_004ADDB8[13] = {
+char gItemNames_719[13] = {
 #include "sub_main/004ADDB8.inc"
 };
-const char D_004ADDD0[17] = {
+char gItemNames_720[17] = {
 #include "sub_main/004ADDD0.inc"
 };
-const char D_004ADDE8[13] = {
+char gItemNames_721[13] = {
 #include "sub_main/004ADDE8.inc"
 };
-const char D_004ADE00[17] = {
+char gItemNames_722[17] = {
 #include "sub_main/004ADE00.inc"
 };
-const char D_004ADE18[11] = {
+char gItemNames_723[11] = {
 #include "sub_main/004ADE18.inc"
 };
-const char D_004ADE28[9] = {
+char gItemNames_724[9] = {
 #include "sub_main/004ADE28.inc"
 };
-const char D_004ADE38[9] = {
+char gItemNames_725[9] = {
 #include "sub_main/004ADE38.inc"
 };
-const char D_004ADE48[9] = {
+char gItemNames_726[9] = {
 #include "sub_main/004ADE48.inc"
 };
-const char D_004ADE58[9] = {
+char gItemNames_727[9] = {
 #include "sub_main/004ADE58.inc"
 };
-const char D_004ADE70[17] = {
+char gItemNames_728[17] = {
 #include "sub_main/004ADE70.inc"
 };
-const char D_004ADE90[17] = {
+char gItemNames_729[17] = {
 #include "sub_main/004ADE90.inc"
 };
-const char D_004ADEB0[17] = {
+char gItemNames_730[17] = {
 #include "sub_main/004ADEB0.inc"
 };
-const char D_004ADEC8[9] = {
+char gItemNames_731[9] = {
 #include "sub_main/004ADEC8.inc"
 };
-const char D_004ADED8[15] = {
+char gItemNames_732[15] = {
 #include "sub_main/004ADED8.inc"
 };
-const char D_004ADEE8[15] = {
+char gItemNames_733[15] = {
 #include "sub_main/004ADEE8.inc"
 };
-const char D_004ADEF8[15] = {
+char gItemNames_734[15] = {
 #include "sub_main/004ADEF8.inc"
 };
-const char D_004ADF08[11] = {
+char gItemNames_735[11] = {
 #include "sub_main/004ADF08.inc"
 };
-const char D_004ADF18[5] = {
+char gItemNames_736[5] = {
 #include "sub_main/004ADF18.inc"
 };
-const char D_004ADF20[13] = {
+char gItemNames_737[13] = {
 #include "sub_main/004ADF20.inc"
 };
-const char D_004ADF30[13] = {
+char gItemNames_738[13] = {
 #include "sub_main/004ADF30.inc"
 };
-const char D_004ADF40[9] = {
+char gItemNames_739[9] = {
 #include "sub_main/004ADF40.inc"
 };
-const char D_004ADF50[9] = {
+char gItemNames_740[9] = {
 #include "sub_main/004ADF50.inc"
 };
-const char D_004ADF60[13] = {
+char gItemNames_741[13] = {
 #include "sub_main/004ADF60.inc"
 };
-const char D_004ADF70[9] = {
+char gItemNames_742[9] = {
 #include "sub_main/004ADF70.inc"
 };
-const char D_004ADF80[7] = {
+char gItemNames_743[7] = {
 #include "sub_main/004ADF80.inc"
 };
-const char D_004ADF88[9] = {
+char gItemNames_744[9] = {
 #include "sub_main/004ADF88.inc"
 };
-const char D_004ADF98[13] = {
+char gItemNames_745[13] = {
 #include "sub_main/004ADF98.inc"
 };
-const char D_004ADFA8[15] = {
+char gItemNames_746[15] = {
 #include "sub_main/004ADFA8.inc"
 };
-const char D_004ADFB8[9] = {
+char gItemNames_747[9] = {
 #include "sub_main/004ADFB8.inc"
 };
-const char D_004ADFD0[17] = {
+char gItemNames_748[17] = {
 #include "sub_main/004ADFD0.inc"
 };
-const char D_004ADFE8[13] = {
+char gItemNames_749[13] = {
 #include "sub_main/004ADFE8.inc"
 };
-const char D_004AE000[17] = {
+char gItemNames_750[17] = {
 #include "sub_main/004AE000.inc"
 };
-const char D_004AE018[15] = {
+char gItemNames_751[15] = {
 #include "sub_main/004AE018.inc"
 };
-const char D_004AE028[15] = {
+char gItemNames_752[15] = {
 #include "sub_main/004AE028.inc"
 };
-const char D_004AE040[17] = {
+char gItemNames_753[17] = {
 #include "sub_main/004AE040.inc"
 };
-const char D_004AE058[15] = {
+char gItemNames_754[15] = {
 #include "sub_main/004AE058.inc"
 };
-const char D_004AE070[17] = {
+char gItemNames_755[17] = {
 #include "sub_main/004AE070.inc"
 };
-const char D_004AE090[17] = {
+char gItemNames_756[17] = {
 #include "sub_main/004AE090.inc"
 };
-const char D_004AE0B0[17] = {
+char gItemNames_757[17] = {
 #include "sub_main/004AE0B0.inc"
 };
-const char D_004AE0C8[15] = {
+char gItemNames_758[15] = {
 #include "sub_main/004AE0C8.inc"
 };
-const char D_004AE0D8[13] = {
+char gItemNames_759[13] = {
 #include "sub_main/004AE0D8.inc"
 };
-const char D_004AE0F0[17] = {
+char D_004AE0F0[17] = {
 #include "sub_main/004AE0F0.inc"
 };
-const char D_004AE110[17] = {
+char D_004AE110[17] = {
 #include "sub_main/004AE110.inc"
 };
-const char D_004AE130[17] = {
+char D_004AE130[17] = {
 #include "sub_main/004AE130.inc"
 };
-const char D_004AE150[17] = {
+char gItemNames_782[17] = {
 #include "sub_main/004AE150.inc"
 };
-const char D_004AE168[9] = {
+char gItemNames_794[9] = {
 #include "sub_main/004AE168.inc"
 };
-const char D_004AE178[9] = {
+char gItemNames_795[9] = {
 #include "sub_main/004AE178.inc"
 };
-const char D_004AE188[9] = {
+char gItemNames_796[9] = {
 #include "sub_main/004AE188.inc"
 };
-const char D_004AE198[9] = {
+char gItemNames_797[9] = {
 #include "sub_main/004AE198.inc"
 };
-const char D_004AE1A8[7] = {
+char gItemNames_798[7] = {
 #include "sub_main/004AE1A8.inc"
 };
-const char D_004AE1B0[9] = {
+char gItemNames_799[9] = {
 #include "sub_main/004AE1B0.inc"
 };
-const char D_004AE1C0[7] = {
+char gItemNames_800[7] = {
 #include "sub_main/004AE1C0.inc"
 };
-const char D_004AE1C8[7] = {
+char gItemNames_801[7] = {
 #include "sub_main/004AE1C8.inc"
 };
-const char D_004AE1D0[7] = {
+char gItemNames_802[7] = {
 #include "sub_main/004AE1D0.inc"
 };
-const char D_004AE1D8[7] = {
+char gItemNames_803[7] = {
 #include "sub_main/004AE1D8.inc"
 };
-const char D_004AE1E0[7] = {
+char gItemNames_804[7] = {
 #include "sub_main/004AE1E0.inc"
 };
-const char D_004AE1E8[7] = {
+char gItemNames_805[7] = {
 #include "sub_main/004AE1E8.inc"
 };
-const char D_004AE1F0[7] = {
+char gItemNames_806[7] = {
 #include "sub_main/004AE1F0.inc"
 };
-const char D_004AE1F8[7] = {
+char gItemNames_807[7] = {
 #include "sub_main/004AE1F8.inc"
 };
-const char D_004AE200[7] = {
+char gItemNames_808[7] = {
 #include "sub_main/004AE200.inc"
 };
-const char D_004AE208[7] = {
+char gItemNames_809[7] = {
 #include "sub_main/004AE208.inc"
 };
-const char D_004AE210[7] = {
+char gItemNames_810[7] = {
 #include "sub_main/004AE210.inc"
 };
-const char D_004AE218[7] = {
+char gItemNames_811[7] = {
 #include "sub_main/004AE218.inc"
 };
-const char D_004AE220[7] = {
+char gItemNames_812[7] = {
 #include "sub_main/004AE220.inc"
 };
-const char D_004AE228[7] = {
+char gItemNames_813[7] = {
 #include "sub_main/004AE228.inc"
 };
-const char D_004AE230[7] = {
+char gItemNames_814[7] = {
 #include "sub_main/004AE230.inc"
 };
-const char D_004AE238[7] = {
+char gItemNames_815[7] = {
 #include "sub_main/004AE238.inc"
 };
-const char D_004AE240[7] = {
+char gItemNames_816[7] = {
 #include "sub_main/004AE240.inc"
 };
-const char D_004AE248[7] = {
+char gItemNames_817[7] = {
 #include "sub_main/004AE248.inc"
 };
-const char D_004AE250[7] = {
+char gItemNames_818[7] = {
 #include "sub_main/004AE250.inc"
 };
-const char D_004AE258[7] = {
+char gItemNames_819[7] = {
 #include "sub_main/004AE258.inc"
 };
-const char D_004AE260[7] = {
+char gItemNames_820[7] = {
 #include "sub_main/004AE260.inc"
 };
-const char D_004AE268[7] = {
+char gItemNames_821[7] = {
 #include "sub_main/004AE268.inc"
 };
-const char D_004AE270[7] = {
+char gItemNames_822[7] = {
 #include "sub_main/004AE270.inc"
 };
-const char D_004AE278[7] = {
+char gItemNames_823[7] = {
 #include "sub_main/004AE278.inc"
 };
-const char D_004AE280[7] = {
+char gItemNames_824[7] = {
 #include "sub_main/004AE280.inc"
 };
-const char D_004AE288[7] = {
+char gItemNames_825[7] = {
 #include "sub_main/004AE288.inc"
 };
-const char D_004AE290[7] = {
+char gItemNames_826[7] = {
 #include "sub_main/004AE290.inc"
 };
-const char D_004AE298[5] = {
+char gItemNames_827[5] = {
 #include "sub_main/004AE298.inc"
 };
-const char D_004AE2A0[7] = {
+char gItemNames_828[7] = {
 #include "sub_main/004AE2A0.inc"
 };
-const char D_004AE2A8[7] = {
+char gItemNames_829[7] = {
 #include "sub_main/004AE2A8.inc"
 };
-const char D_004AE2B0[7] = {
+char gItemNames_830[7] = {
 #include "sub_main/004AE2B0.inc"
 };
-const char D_004AE2B8[7] = {
+char gItemNames_831[7] = {
 #include "sub_main/004AE2B8.inc"
 };
-const char D_004AE2C0[7] = {
+char gItemNames_832[7] = {
 #include "sub_main/004AE2C0.inc"
 };
-const char D_004AE2C8[7] = {
+char gItemNames_833[7] = {
 #include "sub_main/004AE2C8.inc"
 };
-const char D_004AE2D0[7] = {
+char gItemNames_834[7] = {
 #include "sub_main/004AE2D0.inc"
 };
-const char D_004AE2D8[7] = {
+char gItemNames_835[7] = {
 #include "sub_main/004AE2D8.inc"
 };
-const char D_004AE2E0[7] = {
+char gItemNames_836[7] = {
 #include "sub_main/004AE2E0.inc"
 };
-const char D_004AE2E8[7] = {
+char gItemNames_837[7] = {
 #include "sub_main/004AE2E8.inc"
 };
-const char D_004AE2F0[7] = {
+char gItemNames_838[7] = {
 #include "sub_main/004AE2F0.inc"
 };
-const char D_004AE2F8[7] = {
+char gItemNames_839[7] = {
 #include "sub_main/004AE2F8.inc"
 };
-const char D_004AE300[7] = {
+char gItemNames_840[7] = {
 #include "sub_main/004AE300.inc"
 };
-const char D_004AE308[7] = {
+char gItemNames_841[7] = {
 #include "sub_main/004AE308.inc"
 };
-const char D_004AE310[7] = {
+char gItemNames_842[7] = {
 #include "sub_main/004AE310.inc"
 };
-const char D_004AE318[7] = {
+char gItemNames_843[7] = {
 #include "sub_main/004AE318.inc"
 };
-const char D_004AE320[7] = {
+char gItemNames_844[7] = {
 #include "sub_main/004AE320.inc"
 };
-const char D_004AE328[7] = {
+char gItemNames_845[7] = {
 #include "sub_main/004AE328.inc"
 };
-const char D_004AE330[7] = {
+char gItemNames_846[7] = {
 #include "sub_main/004AE330.inc"
 };
-const char D_004AE338[7] = {
+char gItemNames_847[7] = {
 #include "sub_main/004AE338.inc"
 };
-const char D_004AE340[7] = {
+char gItemNames_848[7] = {
 #include "sub_main/004AE340.inc"
 };
-const char D_004AE348[7] = {
+char gItemNames_849[7] = {
 #include "sub_main/004AE348.inc"
 };
-const char D_004AE350[7] = {
+char gItemNames_850[7] = {
 #include "sub_main/004AE350.inc"
 };
-const char D_004AE358[7] = {
+char gItemNames_851[7] = {
 #include "sub_main/004AE358.inc"
 };
-const char D_004AE360[7] = {
+char gItemNames_852[7] = {
 #include "sub_main/004AE360.inc"
 };
-const char D_004AE368[7] = {
+char gItemNames_853[7] = {
 #include "sub_main/004AE368.inc"
 };
-const char D_004AE370[7] = {
+char gItemNames_854[7] = {
 #include "sub_main/004AE370.inc"
 };
-const char D_004AE378[7] = {
+char gItemNames_855[7] = {
 #include "sub_main/004AE378.inc"
 };
-const char D_004AE380[5] = {
+char gItemNames_856[5] = {
 #include "sub_main/004AE380.inc"
 };
-const char D_004AE388[7] = {
+char gItemNames_857[7] = {
 #include "sub_main/004AE388.inc"
 };
-const char D_004AE390[7] = {
+char gItemNames_858[7] = {
 #include "sub_main/004AE390.inc"
 };
-const char D_004AE398[7] = {
+char gItemNames_859[7] = {
 #include "sub_main/004AE398.inc"
 };
-const char D_004AE3A0[7] = {
+char gItemNames_860[7] = {
 #include "sub_main/004AE3A0.inc"
 };
-const char D_004AE3A8[7] = {
+char gItemNames_861[7] = {
 #include "sub_main/004AE3A8.inc"
 };
-const char D_004AE3B0[7] = {
+char gItemNames_862[7] = {
 #include "sub_main/004AE3B0.inc"
 };
-const char D_004AE3B8[5] = {
+char gItemNames_863[5] = {
 #include "sub_main/004AE3B8.inc"
 };
-const char D_004AE3C0[7] = {
+char gItemNames_864[7] = {
 #include "sub_main/004AE3C0.inc"
 };
-const char D_004AE3C8[7] = {
+char gItemNames_865[7] = {
 #include "sub_main/004AE3C8.inc"
 };
-const char D_004AE3D0[5] = {
+char gItemNames_866[5] = {
 #include "sub_main/004AE3D0.inc"
 };
-const char D_004AE3D8[5] = {
+char gItemNames_867[5] = {
 #include "sub_main/004AE3D8.inc"
 };
-const char D_004AE3E0[7] = {
+char gItemNames_868[7] = {
 #include "sub_main/004AE3E0.inc"
 };
-const char D_004AE3E8[7] = {
+char gItemNames_869[7] = {
 #include "sub_main/004AE3E8.inc"
 };
-const char D_004AE3F0[7] = {
+char gItemNames_870[7] = {
 #include "sub_main/004AE3F0.inc"
 };
-const char D_004AE3F8[7] = {
+char gItemNames_871[7] = {
 #include "sub_main/004AE3F8.inc"
 };
-const char D_004AE400[7] = {
+char gItemNames_872[7] = {
 #include "sub_main/004AE400.inc"
 };
-const char D_004AE408[7] = {
+char gItemNames_873[7] = {
 #include "sub_main/004AE408.inc"
 };
-const char D_004AE410[9] = {
+char gItemNames_874[9] = {
 #include "sub_main/004AE410.inc"
 };
-const char D_004AE420[7] = {
+char gItemNames_875[7] = {
 #include "sub_main/004AE420.inc"
 };
-const char D_004AE428[7] = {
+char gItemNames_876[7] = {
 #include "sub_main/004AE428.inc"
 };
-const char D_004AE430[7] = {
+char gItemNames_877[7] = {
 #include "sub_main/004AE430.inc"
 };
-const char D_004AE438[7] = {
+char gItemNames_878[7] = {
 #include "sub_main/004AE438.inc"
 };
-const char D_004AE440[7] = {
+char gItemNames_879[7] = {
 #include "sub_main/004AE440.inc"
 };
-const char D_004AE448[7] = {
+char gItemNames_880[7] = {
 #include "sub_main/004AE448.inc"
 };
-const char D_004AE450[7] = {
+char gItemNames_881[7] = {
 #include "sub_main/004AE450.inc"
 };
-const char D_004AE458[7] = {
+char gItemNames_882[7] = {
 #include "sub_main/004AE458.inc"
 };
-const char D_004AE460[7] = {
+char gItemNames_883[7] = {
 #include "sub_main/004AE460.inc"
 };
-const char D_004AE468[7] = {
+char gItemNames_884[7] = {
 #include "sub_main/004AE468.inc"
 };
-const char D_004AE470[7] = {
+char gItemNames_885[7] = {
 #include "sub_main/004AE470.inc"
 };
-const char D_004AE478[7] = {
+char gItemNames_886[7] = {
 #include "sub_main/004AE478.inc"
 };
-const char D_004AE480[7] = {
+char gItemNames_887[7] = {
 #include "sub_main/004AE480.inc"
 };
-const char D_004AE488[7] = {
+char gItemNames_888[7] = {
 #include "sub_main/004AE488.inc"
 };
-const char D_004AE490[7] = {
+char gItemNames_889[7] = {
 #include "sub_main/004AE490.inc"
 };
-const char D_004AE498[7] = {
+char gItemNames_890[7] = {
 #include "sub_main/004AE498.inc"
 };
-const char D_004AE4A0[7] = {
+char gItemNames_891[7] = {
 #include "sub_main/004AE4A0.inc"
 };
-const char D_004AE4A8[7] = {
+char gItemNames_892[7] = {
 #include "sub_main/004AE4A8.inc"
 };
-const char D_004AE4B0[7] = {
+char gItemNames_893[7] = {
 #include "sub_main/004AE4B0.inc"
 };
-const char D_004AE4B8[7] = {
+char gItemNames_894[7] = {
 #include "sub_main/004AE4B8.inc"
 };
-const char D_004AE4C0[7] = {
+char gItemNames_895[7] = {
 #include "sub_main/004AE4C0.inc"
 };
-const char D_004AE4C8[7] = {
+char gItemNames_896[7] = {
 #include "sub_main/004AE4C8.inc"
 };
-const char D_004AE4D0[7] = {
+char gItemNames_897[7] = {
 #include "sub_main/004AE4D0.inc"
 };
-const char D_004AE4D8[7] = {
+char gItemNames_898[7] = {
 #include "sub_main/004AE4D8.inc"
 };
-const char D_004AE4E0[7] = {
+char gItemNames_899[7] = {
 #include "sub_main/004AE4E0.inc"
 };
-const char D_004AE4E8[7] = {
+char gItemNames_900[7] = {
 #include "sub_main/004AE4E8.inc"
 };
-const char D_004AE4F0[7] = {
+char gItemNames_901[7] = {
 #include "sub_main/004AE4F0.inc"
 };
-const char D_004AE4F8[7] = {
+char gItemNames_902[7] = {
 #include "sub_main/004AE4F8.inc"
 };
-const char D_004AE500[7] = {
+char gItemNames_903[7] = {
 #include "sub_main/004AE500.inc"
 };
-const char D_004AE508[7] = {
+char gItemNames_904[7] = {
 #include "sub_main/004AE508.inc"
 };
-const char D_004AE510[7] = {
+char gItemNames_905[7] = {
 #include "sub_main/004AE510.inc"
 };
-const char D_004AE518[7] = {
+char gItemNames_906[7] = {
 #include "sub_main/004AE518.inc"
 };
-const char D_004AE520[7] = {
+char gItemNames_907[7] = {
 #include "sub_main/004AE520.inc"
 };
-const char D_004AE528[5] = {
+char gItemNames_908[5] = {
 #include "sub_main/004AE528.inc"
 };
-const char D_004AE530[7] = {
+char gItemNames_909[7] = {
 #include "sub_main/004AE530.inc"
 };
-const char D_004AE538[7] = {
+char gItemNames_910[7] = {
 #include "sub_main/004AE538.inc"
 };
-const char D_004AE540[7] = {
+char gItemNames_911[7] = {
 #include "sub_main/004AE540.inc"
 };
-const char D_004AE548[7] = {
+char gItemNames_912[7] = {
 #include "sub_main/004AE548.inc"
 };
-const char D_004AE550[7] = {
+char gItemNames_913[7] = {
 #include "sub_main/004AE550.inc"
 };
-const char D_004AE558[7] = {
+char gItemNames_914[7] = {
 #include "sub_main/004AE558.inc"
 };
-const char D_004AE560[7] = {
+char gItemNames_915[7] = {
 #include "sub_main/004AE560.inc"
 };
-const char D_004AE568[7] = {
+char gItemNames_916[7] = {
 #include "sub_main/004AE568.inc"
 };
-const char D_004AE570[7] = {
+char gItemNames_917[7] = {
 #include "sub_main/004AE570.inc"
 };
-const char D_004AE578[7] = {
+char gItemNames_918[7] = {
 #include "sub_main/004AE578.inc"
 };
-const char D_004AE580[7] = {
+char gItemNames_919[7] = {
 #include "sub_main/004AE580.inc"
 };
-const char D_004AE588[7] = {
+char gItemNames_920[7] = {
 #include "sub_main/004AE588.inc"
 };
+#pragma rodata off
 
 /* A hit by object o (owned by player p) on player t at pos: the reaction,
  * the damage (attack factor, defence, element resistance; halved in versus

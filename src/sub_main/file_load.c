@@ -550,12 +550,43 @@ void Load_AreaSubModelPack(s32 area, s32 sub)
 }
 
 /* The file ids the loaders read, by kind, area, part and gender. */
+/*
+ * Capcom's file names (notes only; nothing is renamed). Monster Hunter
+ * Frontier, forked from this game, carries these DATA.BIN files in the dat/
+ * tree of its PC 1.0 install ("A" below), under Capcom's own
+ * names: most of them byte for byte once MHF's JKR compression is undone,
+ * textures as PNG. The notes give the A path; "part p" is part p of an A
+ * pack (u32 count, then offset and size pairs, as Pack_GetPart reads).
+ * Counts are of a table's non-zero slots, checked by content: the slot's
+ * MH2 file (its models, skeletons and animations) found in the named file
+ * or part.
+ */
+/*
+ * Capcom: motion/wNN.mot, NN the slot (the weapon type): w00 to w10 are
+ * slots 0 to 10, byte-identical (11 of 11; sure). MHF adds w11 to w13.
+ */
 s32 gPlayerAnimFiles[12] = {
 #include "sub_main/0041ED50.inc"
 };
+/*
+ * Capcom: slots 0 to 5 are motion/plcom.mot, lbcom_off.mot, lbcom_on.mot,
+ * lbcom_coco.mot, selcom.mot and ac_com.mot. selcom and ac_com are
+ * byte-identical; A's plcom and lbcom_on are these files with motions added
+ * (99.8% of MH2's bytes in them; sure). lbcom_off and lbcom_coco aren't in
+ * A: their names come from the file-name table of MHF's 2019 mhfo.dll,
+ * whose entries 4 to 20 (plcom to w10) are DATA.BIN files 4947 to 4963 in
+ * order (likely).
+ */
 s32 gCommonAnimFiles[8] = {
 #include "sub_main/0041ED80.inc"
 };
+/*
+ * Capcom: parts/m00/m_<type>NNN.bin, <type> leg, face, hair, body, arm, wst
+ * and head for tables _0 to _6, NNN the slot (the female tables:
+ * parts/f00/f_<type>NNN.bin). The slot's file is in its own-number file for
+ * 1,122 of the male tables' 1,137 slots and 1,125 of the female tables'
+ * (sure); 21 slots have no file in A. MHF adds about 500 more part files.
+ */
 s32 gPartModelFilesMale_0[200] = {
 #include "sub_main/0041EDA0.inc"
 };
@@ -581,6 +612,7 @@ s32 *gPartModelFilesMale[8] = {
     gPartModelFilesMale_0, gPartModelFilesMale_1, gPartModelFilesMale_2, gPartModelFilesMale_3,
     gPartModelFilesMale_4, gPartModelFilesMale_5, gPartModelFilesMale_6, NULL,
 };
+/* Capcom: parts/f00/f_<type>NNN.bin (see gPartModelFilesMale_0). */
 s32 gPartModelFilesFemale_0[200] = {
 #include "sub_main/0041FFA0.inc"
 };
@@ -606,39 +638,72 @@ s32 *gPartModelFilesFemale[8] = {
     gPartModelFilesFemale_0, gPartModelFilesFemale_1, gPartModelFilesFemale_2, gPartModelFilesFemale_3,
     gPartModelFilesFemale_4, gPartModelFilesFemale_5, gPartModelFilesFemale_6, NULL,
 };
+/*
+ * Capcom: weapon/weNNN.bin, NNN the slot: the slot's file is in it for 332
+ * of 337 slots, part of it for 1, and 4 have no file in A (sure).
+ */
 s32 gWeaponModelPackFiles[340] = {
 #include "sub_main/004211A0.inc"
 };
+/*
+ * Capcom: emmodel/emNNN.pac, NNN the slot (the monster kind), a pack of
+ * five parts: part 0 is gEmMainModelPackFiles[NNN], part 1 the textures,
+ * part 2 gEmAnimFiles[NNN], part 3 gEmPartModelPackFiles[NNN]. The slot's
+ * file is in its part for 72 of the 73 main-model slots from 1 up (em029's
+ * model changed), 72 of 73 animation slots (em057's changed) and 43 of 43
+ * part-model slots (sure). Slot 0 repeats slot 1's files; A has no em000.
+ */
 s32 gEmMainModelPackFiles[76] = {
 #include "sub_main/004216F0.inc"
 };
+/* Capcom: part 2 of emmodel/emNNN.pac (see gEmMainModelPackFiles). */
 s32 gEmAnimFiles[76] = {
 #include "sub_main/00421820.inc"
 };
+/* Capcom: part 3 of emmodel/emNNN.pac (see gEmMainModelPackFiles). */
 s32 gEmPartModelPackFiles[76] = {
 #include "sub_main/00421950.inc"
 };
+/*
+ * Capcom: stage/stNNN.pac, NNN the slot (the area), a pack of up to 31
+ * parts: part 0 is gAreaPackFiles[NNN], part 2 gAreaTableFiles[NNN] (two
+ * "HITS" files), part 8 gAreaSubModelFiles[NNN]. MHF edited its stages: of
+ * the slots with a file in A (189, 189 and 181 for the three tables), the
+ * whole MH2 file is in its part for 34, 66 and 99, some of it for 155, 55
+ * and 61, and none of it for 0, 68 and 21. The scheme is sure; for a slot
+ * whose content changed, the name is likely.
+ */
 s32 gAreaPackFiles[200] = {
 #include "sub_main/00421A80.inc"
 };
+/* Capcom: part 2 of stage/stNNN.pac (see gAreaPackFiles). */
 u32 gAreaTableFiles[200] = {
 #include "sub_main/00421DA0.inc"
 };
+/* Capcom: part 8 of stage/stNNN.pac (see gAreaPackFiles). */
 s32 gAreaSubModelFiles[200] = {
 #include "sub_main/004220C0.inc"
 };
+/*
+ * Capcom: motion/npc01_00.mot to npc01_03.mot (slots 0 to 3; DATA.BIN files
+ * 4964 to 4967), byte-identical (sure).
+ */
 s32 gEmSlotAnimFiles_1[4] = {
 #include "sub_main/004223E0.inc"
 };
+/* Capcom: slot 0 is motion/npc07.mot, byte-identical (sure). */
 s32 gEmSlotAnimFiles_7[2] = {
 #include "sub_main/004223F0.inc"
 };
+/* Capcom: slot 0 is motion/npc08.mot, byte-identical (sure). */
 s32 gEmSlotAnimFiles_8[2] = {
 #include "sub_main/004223F8.inc"
 };
+/* Capcom: slot 0 is motion/npc10.mot, byte-identical (sure). */
 s32 gEmSlotAnimFiles_10[2] = {
 #include "sub_main/00422400.inc"
 };
+/* Capcom: slot 0 is motion/npc11.mot, byte-identical (sure). */
 s32 gEmSlotAnimFiles_11[2] = {
 #include "sub_main/00422408.inc"
 };
@@ -649,12 +714,22 @@ s32 *gEmSlotAnimFiles[20] = {
     gEmSlotAnimFiles_10, gEmSlotAnimFiles_10, gEmSlotAnimFiles_10, gEmSlotAnimFiles_10,
     gEmSlotAnimFiles_10, gEmSlotAnimFiles_10, NULL, NULL,
 };
+/*
+ * Capcom: npc/npcNN.bin, NN the slot: the slot's file is in it for 18 of 18
+ * slots (sure). MHF adds npc18 and npc19.
+ */
 s32 gEmSlotModelPackFiles[20] = {
 #include "sub_main/00422460.inc"
 };
 FilePair gStageFilePairs[2] = {
 #include "sub_main/004224B0.inc"
 };
+/*
+ * Capcom: A's effect.bin and my_gallery/effect.bin each bundle several of
+ * these files, so the name is the bundle's: slots 1, 2 and 5 are whole in
+ * both, slot 4 whole in my_gallery/effect.bin, slot 0's 704,092-byte part
+ * is in both (its other part isn't), and slot 3 is in neither (sure).
+ */
 s32 gCommonModelPackFiles[8] = {
 #include "sub_main/004224C0.inc"
 };

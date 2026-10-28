@@ -225,7 +225,7 @@ s8 Em_SeePlayers(Em *em)
         Em_BonePos(em, LAOSHAN_BONE_EYE, eyePos);
         eyeDir = (u16) (Mtx_Heading((f32 *)Em_Bone(em, LAOSHAN_BONE_EYE)) + 0x4000);
         break;
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
     case EM_KIND_SHAKALAKA:
         eyePos[0] = em->posX;
@@ -288,7 +288,7 @@ s8 Em_SeePlayers(Em *em)
                         Vec_Set(headPos, targetPos[0], 170.0f + targetPos[1], targetPos[2]);
                     }
                     sight.target = (s32) (headPtr = headPos);
-                    if (em->type != 56) {
+                    if (em->type != EM_KIND_THUNDERBUG) {
                         if (gScene.skipFlaggedTris != 0) {
                             blocked = AreaGrid_TestSegment(em, eyePos, headPtr, hit, 16640);
                         } else {
@@ -344,7 +344,7 @@ void Em_CheckFlash(Em *em, u8 player, EmSight *sight)
     emKind = em->type;
     if (emKind == 2 || emKind == 36 || emKind == 5 || emKind == 50 || emKind == 7 || emKind == 8
         || emKind == 15 || emKind == 39 || emKind == 20 || emKind == 21 || emKind == 45
-        || emKind == 46 || emKind == 24 || emKind == 29 || emKind == 33 || emKind == 34
+        || emKind == 46 || emKind == 24 || emKind == EM_KIND_ROCK || emKind == 33 || emKind == 34
         || emKind == 48 || emKind == 55 || emKind == 58 || emKind == 71 || emKind == 72
         || emKind == 73 || emKind == 66 || emKind == 67 || emKind == 68) {
         return;

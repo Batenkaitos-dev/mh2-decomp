@@ -42,8 +42,8 @@
 /* adler32: updates a running Adler-32 checksum with the bytes of buf. */
 uLong adler32(uLong adler, const Bytef *buf, uInt len)
 {
-    unsigned long s1 = adler & 0xffff;
-    unsigned long s2 = (adler >> 16) & 0xffff;
+    MWCC_ULONG s1 = adler & 0xffff;
+    MWCC_ULONG s2 = (adler >> 16) & 0xffff;
     int k;
 
     if (buf == Z_NULL) return 1L;

@@ -416,7 +416,7 @@ struct ModelEntry;
  * constants and starts it.
  */
 typedef struct Vu1ProgInfo {
-    s32 upload;                 /* 0x00: the DMA chain that loads the program's code, which Model_Draw CALLs */
+    u32 *upload;                /* 0x00: the DMA chain that loads the program's code, which Model_Draw CALLs */
     s32 start;                  /* 0x04: where the program starts, in bytes (0 in every descriptor) */
     s32 codeStart;              /* 0x08: where its code goes in VU1 memory, in bytes (0 in every descriptor) */
     s32 codeEnd;                /* 0x0C: the end of its code: (codeEnd - codeStart) >> 3 is gSysWork.vu1Size */

@@ -291,7 +291,7 @@ s8 Kbd_LookupKey(void)
     s32 idx;
 
     /* the grid index is col * 4 + row; the (long) cast is kept for the match (register allocation) */
-    idx = (long)(gKbd->col * 4);
+    idx = (MWCC_LONG)(gKbd->col * 4);
     idx += gKbd->row;
     gKbd->keyIdx = gKbd->layout->grid[idx];
     gKbd->keyPos = gKbd->layout->cursors + gKbd->keyIdx;
@@ -1426,7 +1426,7 @@ extern KbdKey gKbdKeysAsciiLower_6;
  */
 void Kbd_BindStartKeys(void)
 {
-    long k = (long)gKbd;
+    MWCC_LONG k = (MWCC_LONG)gKbd;
 
     gKbdKeysHira_4[0] = gKbdKeysSmallHira_4[0] = gKbdKeysKata_4[0] = gKbdKeysHalfKata_4[0] = gKbdKeysSmallKata_4[0] = gKbdKeysHalfSmallKata_4[0] = gKbdKeysWideUpper_4[0] =
         gKbdKeysWideLower_4[0] = gKbdKeysAsciiUpper_4[0] = gKbdKeysAsciiLower_4[0] = gKbdKeysSymbol_4[0] = gKbdKeysGesture_4[0] = gKbdKeysPhrase2_4[0] =

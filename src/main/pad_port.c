@@ -218,6 +218,7 @@ extern PadData gPadDataNone;              /* no pad */
 extern PadButton gPadMapAnalog[16];        /* analog and pressure pads */
 extern PadButton gPadMapDigital[16];        /* digital pads */
 
+
 /* Reads a port: the socket's state, then the first time the pad's profile
  * (its type, the button table, the actuators), afterwards the data into
  * gPadDataCur[port] (the previous frame's stays in gPadData). */

@@ -609,7 +609,7 @@ void Em_DrawParts(DrawSlot *drawSlot)
             continue;
         }
         switch (em->type) {
-        case 9:
+        case EM_KIND_FELYNE:
         case EM_KIND_MELYNX:
         case EM_KIND_FELYNE_CART:
             EmMelynx_SetMeshSetAlpha(em, i, (struct EmMelynxMeshSet *)sets);

@@ -84,8 +84,7 @@ void Chat_SystemMsg(s32 msg, char *arg);
 extern LevelEntry gLobbyLevel1Entries[];
 extern LevelEntry gLobbyLevel0Entries[];
 /* The game's own mismatch: LobbyRoute_Level0Name passes the entry's name
- * where the definition takes the reply handler, which NetReq_OnReply calls:
- * a native build must not call it. */
+ * where the definition takes the reply handler, which NetReq_OnReply calls. */
 s32 LobbyReq_Level0Name(u16 id, void *name); /* unit's own declaration: a name pointer, as the route passes it */
 s32 NetList0_GetUsers(u16 id, u16 *a, u16 *b);
 

@@ -123,4 +123,5 @@ void Pad_EndLibs(void);
 void Pad_ReadPort(s32 port);
 s32 Pad_SetVibration(s32 port, s32 level, s32 frames);
 
+
 #endif /* PAD_H */

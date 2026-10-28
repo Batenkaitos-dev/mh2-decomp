@@ -171,7 +171,7 @@ s32 Bgm_IsBattle(void)
             }
         }
         if (gEmIsLarge[em->type] == 1 && em->stateGroup != EM_GROUP_DEFEAT && em->combat == 1 &&
-            em->area == pl->area && em->type != 29) {
+            em->area == pl->area && em->type != EM_KIND_ROCK) {
             if (em->type == EM_KIND_CHAMELEOS) {
                 if (em->rage != 0) {
                     return FIGHT_LARGE_MONSTER;

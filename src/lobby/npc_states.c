@@ -91,7 +91,7 @@ void Npc_StepRouteMove(Em *obj);
  * The game's own bug: on the music actor's path the function jumps to the end with
  * flag and ret never set. The game keeps them in the registers s0 and s1, which
  * this function saves on entry, so it tests and returns the caller's values of s0
- * and s1; a native port reads the same two values. */
+ * and s1. */
 s32 Npc_UpdateState(Em *npc)
 {
     NpcWork *npcWork = (NpcWork *)&npc->work;

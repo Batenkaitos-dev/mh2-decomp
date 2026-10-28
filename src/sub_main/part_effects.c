@@ -1358,7 +1358,7 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
     switch (fx->type) {
     case 0:
         switch (em->type) {
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = 4.0f * em->scaleX;
@@ -1382,13 +1382,13 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
         case EM_KIND_MOSSWINE:
         case EM_KIND_BULLFANGO:
         case EM_KIND_BULLDROME:
-        case 32:
+        case EM_KIND_PIGLET:
             break;
-        case 9:
+        case EM_KIND_FELYNE:
         case EM_KIND_MELYNX:
             fx->scale = 2.0f * em->scaleX;
             break;
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
         case EM_KIND_KHEZU:
@@ -1434,7 +1434,7 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
         case EM_KIND_YIAN_GARUGA:
             fx->scale = 1.3f * em->scaleX;
             break;
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = 2.0f * em->scaleX;
@@ -1449,13 +1449,13 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
         case EM_KIND_MOSSWINE:
         case EM_KIND_BULLFANGO:
         case EM_KIND_BULLDROME:
-        case 32:
-        case 12:
+        case EM_KIND_PIGLET:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = em->scaleX;
             break;
-        case 9:
+        case EM_KIND_FELYNE:
         case EM_KIND_MELYNX:
             fx->scale = 0.5f * em->scaleX;
             break;
@@ -1517,7 +1517,7 @@ void PartFx_InitForEm(Em *em, s32 bone, s32 type, StageObj *fx)
          * changes kinds that types 19 and 40 do not list) */
     case 20:
         switch (em->type) {
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             fx->scale = 5.0f * em->scaleX;
@@ -1553,7 +1553,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
     switch ((s16)fxType) {
     case 0:
         switch (em->type) {
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             Em_BonePos(em, bone, pos);
@@ -1588,7 +1588,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
         case EM_KIND_MOSSWINE:
         case EM_KIND_BULLFANGO:
         case EM_KIND_BULLDROME:
-        case 32:
+        case EM_KIND_PIGLET:
             if ((s16)bone == 17) {
                 Em_BonePos(em, bone, pos);
                 Em_BonePos(em, 14, offset);
@@ -1599,7 +1599,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
             }
             pos[1] = em->floorY;
             break;
-        case 9:
+        case EM_KIND_FELYNE:
         case EM_KIND_MELYNX:
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
@@ -1623,7 +1623,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
             break;
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             pos[0] = em->posX;
@@ -1638,7 +1638,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
             break;
-        case 9:
+        case EM_KIND_FELYNE:
         case EM_KIND_MELYNX:
             Em_BonePos(em, bone, pos);
             break;
@@ -1668,7 +1668,7 @@ s32 PartFx_EmPos(f32 *pos, Em *em, s32 bone, s32 fxType)
             Em_BonePos(em, bone, pos);
             pos[1] = em->floorY;
             break;
-        case 12:
+        case EM_KIND_HERBIVORE_0:
         case EM_KIND_POPO:
         case EM_KIND_APCEROS:
             Em_BonePos(em, bone, pos);

@@ -11,15 +11,16 @@
 #include "objhead.h"
 #include "anim_curve.h"
 
+
 #pragma optimization_level 4
 
-extern s32 gAnimCurveKeys;
+extern u8 *gAnimCurveKeys;
 
 /* Sets the base the curves' key offsets count from (gAnimCurveKeys): the
  * current animation's data. */
 void Anim_SetCurveKeys(u8 *keys)
 {
-    gAnimCurveKeys = (s32) keys;
+    gAnimCurveKeys = keys;
 }
 
 /* The value of curve at time (*hint: the key found last time, kept by the caller). */
@@ -148,7 +149,7 @@ f32 Anim_EvalMixedS(AnimCurve *curve, s16 *hint, f32 time)
  */
 s16 Anim_FindKeysF2(AnimCurve *curve, KeyF2 **prevKeyOut, KeyF2 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyF2 *key = (KeyF2 *)(curve->keys + gAnimCurveKeys);
+    KeyF2 *key = (KeyF2 *)(curve->keys + (u32)gAnimCurveKeys);
 
     *prevKeyOut = NULL;
     *nextKeyOut = NULL;
@@ -192,7 +193,7 @@ s16 Anim_FindKeysF2(AnimCurve *curve, KeyF2 **prevKeyOut, KeyF2 **nextKeyOut, s1
 /* Anim_FindKeysF2 for KeyF4 keys. */
 s16 Anim_FindKeysF4(AnimCurve *curve, KeyF4 **prevKeyOut, KeyF4 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyF4 *key = (KeyF4 *)(curve->keys + gAnimCurveKeys);
+    KeyF4 *key = (KeyF4 *)(curve->keys + (u32)gAnimCurveKeys);
 
     *prevKeyOut = NULL;
     *nextKeyOut = NULL;
@@ -236,7 +237,7 @@ s16 Anim_FindKeysF4(AnimCurve *curve, KeyF4 **prevKeyOut, KeyF4 **nextKeyOut, s1
 /* Anim_FindKeysF2 for KeyFM keys. */
 s16 Anim_FindKeysFM(AnimCurve *curve, KeyFM **prevKeyOut, KeyFM **nextKeyOut, s16 hint, f32 time)
 {
-    KeyFM *key = (KeyFM *)(curve->keys + gAnimCurveKeys);
+    KeyFM *key = (KeyFM *)(curve->keys + (u32)gAnimCurveKeys);
 
     *prevKeyOut = NULL;
     *nextKeyOut = NULL;
@@ -280,7 +281,7 @@ s16 Anim_FindKeysFM(AnimCurve *curve, KeyFM **prevKeyOut, KeyFM **nextKeyOut, s1
 /* Anim_FindKeysF2 for KeyS2 keys. */
 s16 Anim_FindKeysS2(AnimCurve *curve, KeyS2 **prevKeyOut, KeyS2 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyS2 *key = (KeyS2 *)(curve->keys + gAnimCurveKeys);
+    KeyS2 *key = (KeyS2 *)(curve->keys + (u32)gAnimCurveKeys);
 
     *prevKeyOut = NULL;
     *nextKeyOut = NULL;
@@ -324,7 +325,7 @@ s16 Anim_FindKeysS2(AnimCurve *curve, KeyS2 **prevKeyOut, KeyS2 **nextKeyOut, s1
 /* Anim_FindKeysF2 for KeyS4 keys. */
 s16 Anim_FindKeysS4(AnimCurve *curve, KeyS4 **prevKeyOut, KeyS4 **nextKeyOut, s16 hint, f32 time)
 {
-    KeyS4 *key = (KeyS4 *)(curve->keys + gAnimCurveKeys);
+    KeyS4 *key = (KeyS4 *)(curve->keys + (u32)gAnimCurveKeys);
 
     *prevKeyOut = NULL;
     *nextKeyOut = NULL;
@@ -368,7 +369,7 @@ s16 Anim_FindKeysS4(AnimCurve *curve, KeyS4 **prevKeyOut, KeyS4 **nextKeyOut, s1
 /* Anim_FindKeysF2 for KeySM keys. */
 s16 Anim_FindKeysSM(AnimCurve *curve, KeySM **prevKeyOut, KeySM **nextKeyOut, s16 hint, f32 time)
 {
-    KeySM *key = (KeySM *)(curve->keys + gAnimCurveKeys);
+    KeySM *key = (KeySM *)(curve->keys + (u32)gAnimCurveKeys);
 
     *prevKeyOut = NULL;
     *nextKeyOut = NULL;

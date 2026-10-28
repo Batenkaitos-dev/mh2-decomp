@@ -16,7 +16,7 @@
 #include "libgcc.h"
 #include "libm.h"
 
-extern s32 gAnimKeyBase;
+extern u8 *gAnimKeyBase;
 
 /* The pixels of BMP file bmp (its header's offBits on from its start), or NULL with a
  * debug message when bmp has no BMP_SIGNATURE. The lobby calls it. */
@@ -34,7 +34,7 @@ u8 *Bmp_GetPixels(u8 *bmp)
 /* Sets gAnimKeyBase, the address the curves' key offsets (AnimCurve.keys) count from. */
 void Anim_SetKeyBase(void *buf)
 {
-    gAnimKeyBase = (s32) buf;
+    gAnimKeyBase = (u8 *)buf;
 }
 
 /* The cubic Hermite curve through (startTime, startValue) and (endTime, endValue), with the
@@ -74,7 +74,7 @@ f32 Math_Hermite(f32 time, f32 startValue, f32 startTime, f32 startTangent, f32 
 /* The time of curve's first key (0 for ANIM_KEY_NONE and ANIM_KEY_S16_NONE). */
 f32 AnimCurve_StartTime(AnimCurve *curve)
 {
-    u8 *keys = (u8 *)(curve->keys + gAnimKeyBase);
+    u8 *keys = (u8 *)(curve->keys + (u32)gAnimKeyBase);
     f32 time;
 
     switch (curve->type) {
@@ -115,7 +115,7 @@ f32 AnimCurve_GetEndTime(AnimCurve *curve)
 /* The time of curve's last key (0 for ANIM_KEY_NONE and ANIM_KEY_S16_NONE). */
 f32 AnimCurve_EndTime(AnimCurve *curve)
 {
-    u8 *keys = (u8 *)(curve->keys + gAnimKeyBase);
+    u8 *keys = (u8 *)(curve->keys + (u32)gAnimKeyBase);
     f32 time;
 
     switch (curve->type) {

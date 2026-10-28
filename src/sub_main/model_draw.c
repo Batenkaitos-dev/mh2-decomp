@@ -1191,7 +1191,7 @@ s32 Model_Draw(u32 handle, s32 flags)
         gSysWork.vu1Prog = entry->prog;
         progCall = Packet_Alloc(64, 16);
         progCall[0] = DMA_TAG_CALL | 1;
-        progCall[1] = entry->progInfo->upload;
+        progCall[1] = (u32)entry->progInfo->upload;
         *(u64 *)&progCall[2] = 0;
         last = progCall + 8;
         last[0] = DMA_TAG_IRQ | DMA_TAG_END | 1;

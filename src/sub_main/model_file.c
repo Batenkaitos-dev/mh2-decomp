@@ -403,7 +403,8 @@ s32 ModelPart_VertCount(ModelChunk *part)
  * place, which a ModelChunk pointer (MODEL_CHUNK_NEXT) doesn't give there.
  */
 static s32 ModelPart_StripMat(ModelChunk *part, s32 groupIdx, s32 stripIdx);
-/* main's allocator hook gSysAllocHook (SysHeap_Alloc, set in display.c): not a symbol main exports. */
+/* main's allocator hook gSysAllocHook (SysHeap_Alloc, set in display.c): not a symbol main exports,
+ * so the code reads it at its address. */
 #define gSysAllocHook (*(void *(**)(s32 size))0x2491E0)
 
 /* The material of strip stripIdx of strip group groupIdx of part: entry (the strips of

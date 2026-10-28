@@ -66,6 +66,7 @@
 #include "main.h"
 #include "rand.h"
 #include "vec_math.h"
+#include "ram_areas.h"   /* RAM_AREA: a pointer into an overlay window (gAreaPropData_43_0) */
 #include "gm_em.h"
 
 /* gm_sub's default stage data, which gDefaultStageHeader points to (its
@@ -11265,8 +11266,8 @@ char *gRecipeSwitchHint[2] = {
 char *gRecipeMaterialFmts[4] = {
     gRecipeMaterialFmts_0, gRecipeMaterialFmts_1, gRecipeMaterialFmts_2, NULL,
 };
-char gRecipeRateLines[16] = {
-#include "sub_main/00445D40.inc"
+char *gRecipeRateLines[4] = {
+    (char *)D_00492428, D_00492438, NULL, NULL,
 };
 char *gRecipeRateLabels[8] = {
     gRecipeRateLabels_0, gRecipeRateLabels_1, gRecipeRateLabels_2, gRecipeRateLabels_3,
@@ -11418,8 +11419,8 @@ char *gHunterTypeLabels[4] = {
 char *gEquipTypeLabels[4] = {
     D_00495CB0, D_00495C88, D_00495C98, NULL,
 };
-char gBladeDetailLabels[16] = {
-#include "sub_main/00446100.inc"
+char *gBladeDetailLabels[4] = {
+    D_00495CC8, (char *)D_00495CD8, NULL, NULL,
 };
 char *gBowgunDetailLabels[6] = {
 #include "sub_main/00446110.inc"

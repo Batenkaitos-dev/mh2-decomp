@@ -978,9 +978,9 @@ s32 Font_GlyphIndex(u32 code)
 s32 Font_SjisToJis(u32 sjis)
 {
     s32 jisHigh = (sjis >> 8) & 0xFF;
-    long lead = (sjis >> 8) & 0xFF;
+    MWCC_LONG lead = (sjis >> 8) & 0xFF;
     u32 jisLow = sjis & 0xFF;
-    long trail;
+    MWCC_LONG trail;
 
     if (jisHigh >= 129 && jisHigh < 160) {
         jisHigh -= 129;
@@ -997,7 +997,7 @@ s32 Font_SjisToJis(u32 sjis)
         jisLow -= 159;
         jisHigh++;
     }
-    return (((long)(u32)jisHigh + 1) << 8) + (long)jisLow + 8225;
+    return (((MWCC_LONG)(u32)jisHigh + 1) << 8) + (MWCC_LONG)jisLow + 8225;
 }
 
 /* Draws the glyphs of the page being filled (its slots pageFirst..pageEnd) into the page

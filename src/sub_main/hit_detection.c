@@ -202,7 +202,7 @@ void ObjAttach_HitEffects(ObjAttach *attach, Player *attacker, ObjHead *targetHe
                 PlayerFx_CreateAt(out, 16, 1, 1.0f);
             }
         }
-        if (target->isEm == 1 && target->weaponType == 29) {
+        if (target->isEm == 1 && target->weaponType == EM_KIND_ROCK) {
             HitSpark_SpawnForPlayer(target, 0, out);
             HitSplash_CreateOnEm((Em *) target, attach, 6, 1, out, 1.0f);
             return;
@@ -1066,7 +1066,7 @@ void ObjAttach_DamageEm(ObjAttach *attach, Player *attacker, Em *em, HitShape *l
         } else {
             damage = atk * (powerF * motionValue);
         }
-        if (attach->isEm != 0 && em->type != 29) {
+        if (attach->isEm != 0 && em->type != EM_KIND_ROCK) {
             damage /= 4;
         }
         if (damage == 0 && attach->power != 0) {

@@ -66,7 +66,7 @@ void EmApceros_PlaySeOnFrame(Em *em, s32 frame, s32 id, s32 bone)
     if (EmMotion_PassedFrameScaled(em, (f32) frame, 0U) != 0) {
         Mtx_GetTrans(pos, em->model->bones[bone].world);
         type = em->type;
-        if ((type == 12 && em->scaleX <= 0.5f) || (type == EM_KIND_POPO && em->scaleX <= 0.8f)) {
+        if ((type == EM_KIND_HERBIVORE_0 && em->scaleX <= 0.5f) || (type == EM_KIND_POPO && em->scaleX <= 0.8f)) {
             Em_PlaySeChecked(em, id + APC_SE_SMALL_SIZE, 0, pos, 4, 0);
             return;
         }
@@ -299,7 +299,7 @@ void EmApceros_Init(Em *em)
     }
     Em_SetMotionRow(em, APC_MOT_STAND, 0, 0);
     em->stance = EM_STANCE_GROUND;
-    if (em->type == 12) {
+    if (em->type == EM_KIND_HERBIVORE_0) {
         if (em->variant == 0 || em->variant == 5) {
             hp = Em_ComputeMaxHp(em, 1);
             em->hp = hp;
@@ -1831,7 +1831,7 @@ void EmApceros_Die(Em *em, s32 fallKind)
         if (EmMotion_ReachedFrame(em, 0, 50.0f) != 0) {
             em->step++;
             *(s32 *) &em->motionSpeed = 0;
-            if (em->type == 12 || em->type == EM_KIND_POPO) {
+            if (em->type == EM_KIND_HERBIVORE_0 || em->type == EM_KIND_POPO) {
                 em->timer = 2400;
             } else {
                 em->timer = 1800;
@@ -2345,7 +2345,7 @@ void EmApceros_Update(Em *em)
                     if (other->combat == 0) {
                         calmNear = 1;
                     }
-                } else if ((other->type == 12 || other->type == 70) && other->variant == 0 && other->stateGroup == EM_GROUP_EVENT) {
+                } else if ((other->type == EM_KIND_HERBIVORE_0 || other->type == 70) && other->variant == 0 && other->stateGroup == EM_GROUP_EVENT) {
                     popoInEvent = 1;
                 }
             }
@@ -2415,7 +2415,7 @@ void EmApceros_Update(Em *em)
         case EM_DMG_PART_FLINCH:
             hitSide = em->hitAngle - em->rotY;
             hurt = 1;
-            if ((em->type == 12 || em->type == EM_KIND_POPO) && em->hp > 0.2f * em->hpMax) {
+            if ((em->type == EM_KIND_HERBIVORE_0 || em->type == EM_KIND_POPO) && em->hp > 0.2f * em->hpMax) {
                 if (hitSide > 0x8000) {
                     EmApceros_ChangeState(em, EM_GROUP_REACT, APC_REACT_FLINCH_A, EM_SYNC_OWNER);
                 } else {
@@ -2561,7 +2561,7 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, APC_MOT_ATTACK_REAR):
         if (EmMotion_PassedFrameScaled(em, 30.0f, 0)) {
-            if (em->type == 12 || em->type == EM_KIND_POPO) {
+            if (em->type == EM_KIND_HERBIVORE_0 || em->type == EM_KIND_POPO) {
                 VespoidAttack_Create(em, 1);
             } else {
                 VespoidAttack_Create(em, 9);
@@ -2592,7 +2592,7 @@ void EmApceros_MotionEffects(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, APC_MOT_SPIN_ATTACK):
         if (EmMotion_PassedFrameScaled(em, 24.0f, 0)) {
-            if (em->type == 12 || em->type == EM_KIND_POPO) {
+            if (em->type == EM_KIND_HERBIVORE_0 || em->type == EM_KIND_POPO) {
                 VespoidAttack_Create(em, 3);
             } else {
                 VespoidAttack_Create(em, 10);

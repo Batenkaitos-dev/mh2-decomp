@@ -16,6 +16,7 @@
 #include "gs_regs.h"
 #include "libm.h"
 
+
 #pragma optimization_level 4
 
 extern s32 gDispWidth; /* main: display width (divided by 640 for the font scale) */

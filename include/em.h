@@ -25,98 +25,112 @@
  * to the target's name. EM_KIND_LAO_SHAN_LUNG, EM_KIND_SILVER_RATHALOS, EM_KIND_GOLD_RATHIAN, EM_KIND_ASHEN_LAO_SHAN_LUNG, EM_KIND_FATALIS_C and EM_KIND_YAMA_TSUKAMI_B have no quest;
  * their family (the per-kind setup dispatch Em_TypeSetup, gm_em.c's
  * dispatch) places them. EM_KIND_FELYNE_CART is the Felyne cart (Em.cartPlayer).
+ *
+ * The "Capcom:" notes are Capcom's names for the kinds, from Monster Hunter
+ * Frontier's engine (mhfo.dll), which was forked from this code: a table of
+ * 177 name strings there is indexed by the same kind numbers (0 is EM_NOT,
+ * no monster; 74 on are MHF's own monsters). The names are notes only.
  */
 enum EmKind {
-    EM_KIND_RATHIAN = 0x01,
-    EM_KIND_FATALIS = 0x02,
-    EM_KIND_KELBI = 0x03,               /* likely the Kelbi: the name is inferred, no quest names this kind. The code shows a kind that runs the Anteka family (EmAnteka_*) and is the only kind with Em.gender, male and female, with a smaller body */
-    EM_KIND_MOSSWINE = 0x04,
-    EM_KIND_BULLFANGO = 0x05,
-    EM_KIND_YIAN_KUT_KU = 0x06,
-    EM_KIND_LAO_SHAN_LUNG = 0x07,
-    EM_KIND_CEPHADROME = 0x08,
-    EM_KIND_TRADER = 0x0A,              /* the trader met in the field (EmTrader_Trades* tables; the quest code) */
-    EM_KIND_RATHALOS = 0x0B,
-    EM_KIND_GENPREY = 0x0D,
-    EM_KIND_DIABLOS = 0x0E,
-    EM_KIND_KHEZU = 0x0F,
-    EM_KIND_VELOCIPREY = 0x10,
-    EM_KIND_GRAVIOS = 0x11,
-    EM_KIND_FELYNE_CART = 0x12,
-    EM_KIND_VESPOID = 0x13,
-    EM_KIND_GYPCEROS = 0x14,
-    EM_KIND_PLESIOTH = 0x15,
-    EM_KIND_BASARIOS = 0x16,
-    EM_KIND_MELYNX = 0x17,
-    EM_KIND_HORNETAUR = 0x18,
-    EM_KIND_APCEROS = 0x19,
-    EM_KIND_MONOBLOS = 0x1A,
-    EM_KIND_VELOCIDROME = 0x1B,
-    EM_KIND_GENDROME = 0x1C,
-    EM_KIND_IOPREY = 0x1E,
-    EM_KIND_IODROME = 0x1F,
-    EM_KIND_KIRIN = 0x21,
-    EM_KIND_CEPHALOS = 0x22,
-    EM_KIND_GIAPREY = 0x23,
-    EM_KIND_FATALIS_B = 0x24,           /* a second Fatalis kind (its quests name it as Fatalis) */
-    EM_KIND_PINK_RATHIAN = 0x25,
-    EM_KIND_BLUE_YIAN_KUT_KU = 0x26,
-    EM_KIND_PURPLE_GYPCEROS = 0x27,
-    EM_KIND_YIAN_GARUGA = 0x28,
-    EM_KIND_SILVER_RATHALOS = 0x29,
-    EM_KIND_GOLD_RATHIAN = 0x2A,
-    EM_KIND_BLACK_DIABLOS = 0x2B,
-    EM_KIND_WHITE_MONOBLOS = 0x2C,
-    EM_KIND_RED_KHEZU = 0x2D,
-    EM_KIND_GREEN_PLESIOTH = 0x2E,
-    EM_KIND_BLACK_GRAVIOS = 0x2F,
-    EM_KIND_DAIMYO_HERMITAUR = 0x30,
-    EM_KIND_AZURE_RATHALOS = 0x31,
-    EM_KIND_ASHEN_LAO_SHAN_LUNG = 0x32,
-    EM_KIND_BLANGONGA = 0x33,
-    EM_KIND_CONGALALA = 0x34,
-    EM_KIND_RAJANG = 0x35,
-    EM_KIND_KUSHALA_DAORA = 0x36,
-    EM_KIND_SHEN_GAOREN = 0x37,
-    EM_KIND_SHAKALAKA = 0x39,
-    EM_KIND_YAMA_TSUKAMI = 0x3A,
-    EM_KIND_CHAMELEOS = 0x3B,
-    EM_KIND_RUSTED_KUSHALA_DAORA = 0x3C,
-    EM_KIND_BLANGO = 0x3D,
-    EM_KIND_CONGA = 0x3E,
-    EM_KIND_REMOBRA = 0x3F,
-    EM_KIND_LUNASTRA = 0x40,
-    EM_KIND_TEOSTRA = 0x41,
-    EM_KIND_HERMITAUR = 0x42,
-    EM_KIND_SHOGUN_CEANATAUR = 0x43,
-    EM_KIND_BULLDROME = 0x44,
-    EM_KIND_ANTEKA = 0x45,
-    EM_KIND_POPO = 0x46,
-    EM_KIND_FATALIS_C = 0x47,           /* a third Fatalis kind (gm_em.c's dispatch); no quest names it */
-    EM_KIND_YAMA_TSUKAMI_B = 0x48,      /* the second kind of Yama Tsukami's family */
-    EM_KIND_CEANATAUR = 0x49
-    /* Kinds 9, 12, 32 and 56 have no name: the per-kind table of
-     * family hooks runs them with the Melynx, Apceros and Mosswine families
-     * and kind 56's own (EmKind38_*: a hovering monster, the one Yama
-     * Tsukami calls up), and no code shows their species. */
+    EM_KIND_RATHIAN = 0x01,             /* Capcom: EM_FEMALE_WYVERN */
+    EM_KIND_FATALIS = 0x02,             /* Capcom: EM_F_DRAGON */
+    EM_KIND_KELBI = 0x03,               /* the Kelbi: no quest names this kind, but Capcom's name, EM_DEER, confirms it. The code shows a kind that runs the Anteka family (EmAnteka_*) and is the only kind with Em.gender, male and female, with a smaller body */
+    EM_KIND_MOSSWINE = 0x04,            /* Capcom: EM_PIG */
+    EM_KIND_BULLFANGO = 0x05,           /* Capcom: EM_BOAR */
+    EM_KIND_YIAN_KUT_KU = 0x06,         /* Capcom: EM_MIMI_WYVERN */
+    EM_KIND_LAO_SHAN_LUNG = 0x07,       /* Capcom: EM_RED_DRAGON */
+    EM_KIND_CEPHADROME = 0x08,          /* Capcom: EM_DESERT_WYVERN */
+    EM_KIND_FELYNE = 0x09,              /* the Felyne: the per-kind hooks run it in the Melynx family (Capcom's Melynx is EM_B_CATGOBLIN). Capcom: EM_CATGOBLIN */
+    EM_KIND_TRADER = 0x0A,              /* the trader met in the field (EmTrader_Trades* tables; the quest code). Capcom: EM_MT_HERB, probably "mountain herbs" (sansai): the Veggie Elder, who is the trader */
+    EM_KIND_RATHALOS = 0x0B,            /* Capcom: EM_MALE_WYVERN */
+    EM_KIND_HERBIVORE_0 = 0x0C,         /* a grazing herbivore of the Apceros family (em_apceros.c); no code shows the species. Capcom: EM_HERBIVOROUS0 */
+    EM_KIND_GENPREY = 0x0D,             /* Capcom: EM_MAHI_RAPTER */
+    EM_KIND_DIABLOS = 0x0E,             /* Capcom: EM_TSUNO_WYVERN */
+    EM_KIND_KHEZU = 0x0F,               /* Capcom: EM_MEKURA_WYVERN */
+    EM_KIND_VELOCIPREY = 0x10,          /* Capcom: EM_RAPTER */
+    EM_KIND_GRAVIOS = 0x11,             /* Capcom: EM_ARMOR_WYVERN */
+    EM_KIND_FELYNE_CART = 0x12,         /* Capcom: EM_NIGURUMA */
+    EM_KIND_VESPOID = 0x13,             /* Capcom: EM_INSECT */
+    EM_KIND_GYPCEROS = 0x14,            /* Capcom: EM_TOSAKA_WYVERN */
+    EM_KIND_PLESIOTH = 0x15,            /* Capcom: EM_FISH_WYVERN */
+    EM_KIND_BASARIOS = 0x16,            /* Capcom: EM_GITAI_WYVERN */
+    EM_KIND_MELYNX = 0x17,              /* Capcom: EM_B_CATGOBLIN */
+    EM_KIND_HORNETAUR = 0x18,           /* Capcom: EM_B_INSECT */
+    EM_KIND_APCEROS = 0x19,             /* Capcom: EM_ANKYLO */
+    EM_KIND_MONOBLOS = 0x1A,            /* Capcom: EM_TSUNO2_WYVERN */
+    EM_KIND_VELOCIDROME = 0x1B,         /* Capcom: EM_BOSS_RAPTER */
+    EM_KIND_GENDROME = 0x1C,            /* Capcom: EM_BOSS_MAHI_RAPTER */
+    EM_KIND_ROCK = 0x1D,                /* EmKind1D_*: never moves or attacks; a hit on it gives a guard spark (ObjAttach_HitEffects); five meshes by variant; dies with its variant's sound and effects. Capcom: EM_ROCK */
+    EM_KIND_IOPREY = 0x1E,              /* Capcom: EM_POISON_RAPTER */
+    EM_KIND_IODROME = 0x1F,             /* Capcom: EM_BOSS_POISON_RAPTER */
+    EM_KIND_PIGLET = 0x20,              /* a little pig of the Mosswine family (em_mosswine.c); not the Poogie, a town NPC (NPC_POOGIE). Capcom: EM_LITTLE_PIG */
+    EM_KIND_KIRIN = 0x21,               /* Capcom: EM_KYLIN */
+    EM_KIND_CEPHALOS = 0x22,            /* Capcom: EM_S_DESERT_WYVERN */
+    EM_KIND_GIAPREY = 0x23,             /* Capcom: EM_WHITE_RAPTER */
+    EM_KIND_FATALIS_B = 0x24,           /* a second Fatalis kind (its quests name it as Fatalis). Capcom: EM_F_DRAGON_RED */
+    EM_KIND_PINK_RATHIAN = 0x25,        /* Capcom: EM_TAMA_B_INSECT, which does not fit: the code runs this kind in the Rathian family */
+    EM_KIND_BLUE_YIAN_KUT_KU = 0x26,    /* Capcom: EM_BLUE_MIMI_WYVERN */
+    EM_KIND_PURPLE_GYPCEROS = 0x27,     /* Capcom: EM_TOSAKA2_WYVERN */
+    EM_KIND_YIAN_GARUGA = 0x28,         /* Capcom: EM_DOS_MIMI_WYVERN */
+    EM_KIND_SILVER_RATHALOS = 0x29,     /* Capcom: EM_SILVER_MALE_WYVERN */
+    EM_KIND_GOLD_RATHIAN = 0x2A,        /* Capcom: EM_GOLD_FEMALE_WYVERN */
+    EM_KIND_BLACK_DIABLOS = 0x2B,       /* Capcom: EM_MOS_TSUNO_WYVERN */
+    EM_KIND_WHITE_MONOBLOS = 0x2C,      /* Capcom: EM_WHITE_TSUNO2_WYVERN */
+    EM_KIND_RED_KHEZU = 0x2D,           /* Capcom: EM_MEKURA2_WYVERN */
+    EM_KIND_GREEN_PLESIOTH = 0x2E,      /* Capcom: EM_FISH2_WYVERN */
+    EM_KIND_BLACK_GRAVIOS = 0x2F,       /* Capcom: EM_BLACK_ARMOR_WYVERN */
+    EM_KIND_DAIMYO_HERMITAUR = 0x30,    /* Capcom: EM_YADOKARI */
+    EM_KIND_AZURE_RATHALOS = 0x31,      /* Capcom: EM_BLUE_MALE_WYVERN */
+    EM_KIND_ASHEN_LAO_SHAN_LUNG = 0x32, /* Capcom: EM_RED_DRAGON2 */
+    EM_KIND_BLANGONGA = 0x33,           /* Capcom: EM_GORILION */
+    EM_KIND_CONGALALA = 0x34,           /* Capcom: EM_PINK_GORILION */
+    EM_KIND_RAJANG = 0x35,              /* Capcom: EM_GOLD_GORILION */
+    EM_KIND_KUSHALA_DAORA = 0x36,       /* Capcom: EM_METAL_DRAGON */
+    EM_KIND_SHEN_GAOREN = 0x37,         /* Capcom: EM_RAO_YADOKARI */
+    EM_KIND_THUNDERBUG = 0x38,          /* EmKind38_*: the hovering monster Yama Tsukami calls up; Capcom's word is the Thunderbug's Japanese name (raikouchuu). Capcom: EM_RAIKOUCHUU */
+    EM_KIND_SHAKALAKA = 0x39,           /* Capcom: EM_HIGERU */
+    EM_KIND_YAMA_TSUKAMI = 0x3A,        /* Capcom: EM_GAS_DRAGON */
+    EM_KIND_CHAMELEOS = 0x3B,           /* Capcom: EM_STEALTH_DRAGON */
+    EM_KIND_RUSTED_KUSHALA_DAORA = 0x3C,/* Capcom: EM_SABI_METAL_DRAGON */
+    EM_KIND_BLANGO = 0x3D,              /* Capcom: EM_ZAKO_GORILION */
+    EM_KIND_CONGA = 0x3E,               /* Capcom: EM_ZAKO_PINK_GORILION */
+    EM_KIND_REMOBRA = 0x3F,             /* Capcom: EM_ZAKO_WYVERN */
+    EM_KIND_LUNASTRA = 0x40,            /* Capcom: EM_OFF_FIRE_DRAGON */
+    EM_KIND_TEOSTRA = 0x41,             /* Capcom: EM_ON_FIRE_DRAGON */
+    EM_KIND_HERMITAUR = 0x42,           /* Capcom: EM_ZAKO_YADOKARI */
+    EM_KIND_SHOGUN_CEANATAUR = 0x43,    /* Capcom: EM_BLADE_YADOKARI */
+    EM_KIND_BULLDROME = 0x44,           /* Capcom: EM_DOS_FANGO */
+    EM_KIND_ANTEKA = 0x45,              /* Capcom: EM_TONAKAI */
+    EM_KIND_POPO = 0x46,                /* Capcom: EM_MANMOS */
+    EM_KIND_FATALIS_C = 0x47,           /* a third Fatalis kind (gm_em.c's dispatch); no quest names it. Capcom: EM_F_DRAGON_WHITE */
+    EM_KIND_YAMA_TSUKAMI_B = 0x48,      /* the second kind of Yama Tsukami's family. Capcom: EM_GAS_DRAGON_DUMMY */
+    EM_KIND_CEANATAUR = 0x49            /* Capcom: EM_ZAKO_BLADE_YADOKARI */
+    /* Kinds 9, 12, 29, 32 and 56 are named from Capcom's names (above),
+     * with the code's evidence: the per-kind table of family hooks runs
+     * 9, 12 and 32 with the Melynx, Apceros and Mosswine families, and 29
+     * and 56 have their own (EmKind1D_*, EmKind38_*). No quest names them. */
 };
 
 /*
  * State groups (Em.stateGroup). Each family's RunState switches on the
  * group, then a per-group dispatcher on Em.state; the families' state
  * functions settle what each group holds (seen in Rathalos's and the
- * common code):
+ * common code). The "Capcom:" notes are likely Capcom's names: mhfo.dll
+ * (Monster Hunter Frontier, forked from this code; its tables at file
+ * offsets 0x1A33CCC and 0x1A5ABE4) lists EM_ACT .. EM_VSDEMO in this order, then EM_EXCEPT and EM_ACT_ST_NUM. The pairing is by order
+ * only, though each name's meaning fits the group; Capcom's group 9,
+ * EM_EXCEPT, has no counterpart here.
  */
 enum EmStateGroup {
-    EM_GROUP_IDLE = 0,      /* standing, idle actions, eating, resting, lying under a status */
-    EM_GROUP_MOVE = 1,      /* walking, running, limping and turning on the ground */
-    EM_GROUP_FLY = 2,       /* take-off, flight, hovering and landing (Diablos: underground) */
-    EM_GROUP_ATTACK = 3,    /* attacks and threats aimed at the target */
-    EM_GROUP_REACT = 4,     /* reactions to hits, traps and statuses (Em_UpdateDamage's results) */
-    EM_GROUP_DEFEAT = 5,    /* hunted (QuestEm_Hunted), captured, and appearing again */
-    EM_GROUP_EVENT = 6,     /* scripted scenes: the quest's opening flight, captures */
-    EM_GROUP_EVENT2 = 7,    /* most families run group 6's dispatcher; Remobra has its own (its reappearance) */
-    EM_GROUP_VERSUS = 8     /* the end of a versus match (Rathalos: Versus_DefeatCamera); GmEm_Update keeps the monster unhittable */
+    EM_GROUP_IDLE = 0,      /* standing, idle actions, eating, resting, lying under a status. Capcom (likely): EM_ACT */
+    EM_GROUP_MOVE = 1,      /* walking, running, limping and turning on the ground. Capcom (likely): EM_MOVE */
+    EM_GROUP_FLY = 2,       /* take-off, flight, hovering and landing (Diablos: underground). Capcom (likely): EM_FLY */
+    EM_GROUP_ATTACK = 3,    /* attacks and threats aimed at the target. Capcom (likely): EM_ATK */
+    EM_GROUP_REACT = 4,     /* reactions to hits, traps and statuses (Em_UpdateDamage's results). Capcom (likely): EM_DMG */
+    EM_GROUP_DEFEAT = 5,    /* hunted (QuestEm_Hunted), captured, and appearing again. Capcom (likely): EM_DIE */
+    EM_GROUP_EVENT = 6,     /* scripted scenes: the quest's opening flight, captures. Capcom (likely): EM_DEMO */
+    EM_GROUP_EVENT2 = 7,    /* most families run group 6's dispatcher; Remobra has its own (its reappearance). Capcom (likely): EM_REVIVAL */
+    EM_GROUP_VERSUS = 8     /* the end of a versus match (Rathalos: Versus_DefeatCamera); GmEm_Update keeps the monster unhittable. Capcom (likely): EM_VSDEMO */
 };
 
 /* Em.stance: where the monster's body is (set by the families' states). */
@@ -1205,10 +1219,10 @@ typedef struct Em {
     u8 fullCloak;               /* 0x43C: Chameleos: 1 allows the full cloak (EmChameleos_WantsInvisible then answers 2, invisible with a shimmer every 900 frames), 0 only the shimmering one; set by CHAM_IDLE_CLOAK_FULL, cleared by CHAM_IDLE_CLOAK_SHIMMER, the decloak reactions, the defeat and the leaving; work byte 4 (EmChameleosWork); EmKind1D_Update reads this byte and the next as a halfword */
     u8 unk43D;                  /* 0x43D */
     s16 unk43E;                 /* 0x43E */
-    u8 unk440;                  /* 0x440 */
+    u8 unk440;                  /* 0x440: the work area's word +8 (EmWork.accelAngX, a number; the townspeople's NpcWork.name, an address): left bytes */
     u8 minePoint;               /* 0x441: Gypceros: the mine point it leaves (MinePoint_AddUntimed; EmKutku_AddMinePoint) */
     s16 unk442;                 /* 0x442 */
-    s16 unk444;                 /* 0x444 */
+    s16 unk444;                 /* 0x444: the work area's word +0xC (EmWork.accelAngY, a number; NpcWork.route, an address) */
     s16 unk446;                 /* 0x446 */
     s16 unk448;                 /* 0x448 */
     u8 unk44A;                  /* 0x44A */
@@ -1310,7 +1324,7 @@ typedef struct Em {
     void *lightColors;          /* 0x664: as ObjHead.lightColors: the monster's own colours of lights 0 and 1 (Em_UpdateLightColors, for kind 9 and EM_KIND_MELYNX); NULL: the area's */
     u8 unk668;                  /* 0x668: at Player.mustCrouch's offset: Player_StateCrouchWalk/3D test it with the dodge button */
     u8 unk669[0x680 - 0x669];
-    u16 area;                   /* 0x680: the area (map zone) the monster is in (gScene.unk014 is the current one) */
+    u16 area;                   /* 0x680: the area (map zone) the monster is in (gScene.unk014 is the current one). Capcom: my_stage_no (mhfo.dll's trace in EmScript_IfInArea) */
     u8 areaMoveState;           /* 0x682: as Player.areaMoveState (same offset): only player code typed Em uses it */
     u8 unk683[0x684 - 0x683];
     u16 nextArea;               /* 0x684: the area the monster moves to (goalKind 3; GmEm and Em_PickRoutePoint move it there) */
@@ -1401,7 +1415,7 @@ typedef struct Em {
     u8 scriptCallEntry;         /* 0x776: entry of the EmScript_JumpEntry jump (script table k + 15); em_bulldrome.c reads 0x776..0x777 as one s16 */
     u8 scriptCallEntryHi;       /* 0x777: cleared when the Em is set up (gm_em.c); the high byte of em_bulldrome.c s16 read */
     u8 scriptCallDepth;         /* 0x778: cleared when a script starts; EmScript_CallScript sets 1 (saving the return at unk758 + 4 from 0), EmScript_JumpEntry sets 2 (saving it at unk758 + 8 from 1) */
-    u8 goalKind;                /* 0x779: what the goal is (Em_ComputeGoal): 1 a player, 2 a point of the area, 3 another area, 5 the kind's point, 6 relative to the heading, 8 objectPos, 9 a route point */
+    u8 goalKind;                /* 0x779: what the goal is (Em_ComputeGoal): 1 a player, 2 a point of the area, 3 another area, 5 the kind's point, 6 relative to the heading, 8 objectPos, 9 a route point. Capcom: T_KIND, target kind: 3 is T_KIND_AREA (EmScript_GoalDestArea), 9 T_KIND_AREA_ROUTE (EmScript_End); likely, by the order of mhfo.dll's name table, 0-13 are KIND_NOT, PLY, GND, ARA, ITM, DEM, MYP, SML, YOB, ART, APL, LND, DMG, EMY */
     s16 goalArg;                /* 0x77A: first argument of goalKind (table, route or player) */
     s16 goalNo;                 /* 0x77C: second argument of goalKind (point or player index) */
     u8 scriptCaseCount;         /* 0x77E: EmScript_SwitchTargetDist: the number of cases it skips through */
@@ -1410,7 +1424,7 @@ typedef struct Em {
     u8 loopMode;                /* 0x784: the script loop kind (EmScript_StartLoop byte 0: 0, 1, 2 loop over the area points; Op10 and OpFF switch on it) */
     u8 loopPointTable;          /* 0x785: the point list of the loop (EmScript_StartLoop; EmScript_LoopPointList, read by Op10 and OpFF) */
     u8 loopScript;              /* 0x786: the script table entry run at each loop point (EmScript_StartLoop; EmScript_LoopScript) */
-    u8 loopEndScript;           /* 0x787: the script table entry run when the loop ends (EmScript_StartLoop; EmScript_End, EmScript_LoopScript) */
+    u8 loopEndScript;           /* 0x787: the script table entry run when the loop ends (EmScript_StartLoop; EmScript_End, EmScript_LoopScript). Capcom: cmd_route_act, passed to route_ptr_set, our EmScript_LoopScript (mhfo.dll's EmScript_End, 0xFD) */
     u8 *trigger10Pos;           /* 0x788: the script of trigger EM_TRIGGER_PART_BUILDUP (EmScript_PickTrigger; scriptFlags 0x10) */
     u8 scriptCombat;            /* 0x78C: combat when the EmScript_IfCombatIs block started (Op0B, OpFF after Em_SetCombat) */
     u8 scriptPending;           /* 0x78D: 1: run the script once (Em_UpdatePendingScript calls EmScript_Run when scriptDelay is down to 0, then clears it); set by Init and the EndState functions, 0 by ChangeState and captured/hunted states */
@@ -1418,7 +1432,7 @@ typedef struct Em {
     u8 scriptFlags;             /* 0x78F: the running script thread: 0x20, 0x10 trigger scripts, 1 a loop (EmScript_StartLoop); EmScript_GetPos picks the resume position by it */
     u8 *trigger20Pos;           /* 0x790: the script of trigger EM_TRIGGER_NOTICED (EmScript_PickTrigger; scriptFlags 0x20) */
     u8 *subScriptReturn;        /* 0x794: the position after an EmScript_Call (it saves p + 1; EmScript_End command 3 returns there) */
-    u8 scriptPlayer;            /* 0x798: the player the script picked (s8, -1: none; low nibble a gPlayers index): EmScript_IfLonePlayerBait/Op52/Op53/Op5F pick it, Op46 and Op49 use it, Em_ComputeGoal makes it the goal in combat */
+    u8 scriptPlayer;            /* 0x798: the player the script picked (s8, -1: none; low nibble a gPlayers index): EmScript_IfLonePlayerBait/Op52/Op53/Op5F pick it, Op46 and Op49 use it, Em_ComputeGoal makes it the goal in combat. Capcom: cmd_pl_target, and -1 is NOT_FOUND_PL (mhfo.dll's EmScript_End, 0xF7) */
     u8 subScriptNo;             /* 0x799: the subscript EmScript_Call runs (EmScript_SubScript) */
     u8 areaSeqTable;            /* 0x79A: the area list of the area sequence (EmScript_SetAreaSeq byte 0; Op18 reads table 14 at areaSeqPos) */
     u8 areaSeqScript;           /* 0x79B: the script table entry of the area sequence (EmScript_SetAreaSeq; Op18, EmScript_AreaSeqScript) */
@@ -1437,7 +1451,7 @@ typedef struct Em {
     u8 routePointScript;        /* 0x7C0: the current route point's script table entry (point +0x12; EmScript_RoutePointScript picks the commands to run there: EmScript_StartRoute, EmScript_End) */
     u8 routeNo;                 /* 0x7C1: route index (EmScript_StartRoute; goalArg of the route goal, Em_ComputeGoal copies curGoalArg back); EmScript_End walks it */
     u8 routePoint;              /* 0x7C2: point index in the route (EmScript_StartRoute, EmScript_End steps it down to 0; goalNo of the route goal) */
-    u8 syncRequest;             /* 0x7C3: a request to send the monster state (QSync_SendEm sends it and clears it): 1 by Em_RequestSync, 2 by it or EmScript_End unless 1 is pending; Em_RestartScript runs only when 0 on the host */
+    u8 syncRequest;             /* 0x7C3: a request to send the monster state (QSync_SendEm sends it and clears it): 1 by Em_RequestSync, 2 by it or EmScript_End unless 1 is pending; Em_RestartScript runs only when 0 on the host. Capcom: setting 2 is em_g_init_flag_set(em,EM_NET_CMD) (mhfo.dll's EmScript_End, 0xFD) */
     u8 *scriptPos;              /* 0x7C4: the current script command (Em_StartScript) */
     s16 scriptOffset;           /* 0x7C8: EmScript_Run: the start of the script minus scriptPos when it stops */
     u8 mineBone;                /* 0x7CA: bone the carcass mine point follows, 0: the position (EmMine_Create) */
@@ -1452,8 +1466,8 @@ typedef struct Em {
     u8 status5Count;            /* 0x7D7 */
     s8 syncPulse[2];            /* 0x7D8: set to 2 by EmScript_GoalAlertedPlayer ([0]) and Op12 ([1]), or by the sync message bits 4 and 8 (QSync_OnEm); GmEm_Update counts them down; QSync_SendEm sends them while nonzero. Player code reads Player.chargeLevel/fishTimer here */
     s16 combatTimer;            /* 0x7DA: frames of combat left without a seen player (Em_UpdateCombatTimer counts it down; at 0 the monster calms down or leaves) */
-    u8 combat;                  /* 0x7DC: 1 while the monster fights the hunters (Em_SetCombat); back to 0 it forgets them (seen bits, alertBuildup, unk86C, unk7E4 cleared) */
-    u8 requested;               /* 0x7DD: 1 while a request (Em_SetRequest) is pending: the families' state choice leaves it alone */
+    u8 combat;                  /* 0x7DC: 1 while the monster fights the hunters (Em_SetCombat); back to 0 it forgets them (seen bits, alertBuildup, unk86C, unk7E4 cleared). Capcom: the "mode" Em_Mode_Chg (our Em_SetCombat) sets; 1 is EM_MODE_ATTACK (mhfo.dll's EmScript_End, 0xFC) */
+    u8 requested;               /* 0x7DD: 1 while a request (Em_SetRequest) is pending: the families' state choice leaves it alone. Capcom: the "mind" em_cmd_mind_ck tests (EmScript_IfRequestedIs; its trace calls 1 ESC, other values NML) */
     u8 requestId;               /* 0x7DE: the pending request: an id of the kind's gEmKindInfo entry (Em_PickRequest) */
     u8 blind;                   /* 0x7DF: nonzero: Em_SeePlayers sees nobody; counted down each frame (GmEm_Update), many states set 2 every frame */
     u8 seen;                    /* 0x7E0: players in sight this frame, one bit each (Em_SeePlayers); Em_UpdateNoticed makes them noticed */
@@ -1501,11 +1515,11 @@ typedef struct Em {
     s8 loopCount;               /* 0x87D: passes of the script loop (EmScript_StartLoop: at most the area entry's point count); EmScript_End loops while the pass count (+0x87E) is below it; -1: none */
     s8 loopIndex;               /* 0x87E: the script loop's pass count (EmScript_StartLoop clears it, OpFF steps it and compares it with loopCount) */
     s8 areaPointCount;          /* 0x87F: the number of points of the area entry (EmScript_StartLoop e[1]); EmScript_NextLoopPoint and OpFF bound loopPoint by it */
-    s8 areaSeqLen;              /* 0x880: length of the area sequence of EmScript_SetAreaSeq, -1: none; EmScript_StepAreaSeq and OpFF end the sequence when areaSeqPos reaches it */
+    s8 areaSeqLen;              /* 0x880: length of the area sequence of EmScript_SetAreaSeq, -1: none; EmScript_StepAreaSeq and OpFF end the sequence when areaSeqPos reaches it. Capcom: max_area_route_suu (mhfo.dll's trace in EmScript_StepAreaSeq; Capcom's "area route" is the area sequence) */
     s8 areaSeqPos;              /* 0x881: position in the area sequence (EmScript_StepAreaSeq reads the next area from table 14 at it and makes it destArea), -1: none */
     u16 prevArea;               /* 0x882: the area the monster came from, 0xFFFF: none: Em_EnterNextArea sets it to area before moving to nextArea; Em_PickRoutePoint skips routes back to it; EmScript_IfPrevArea/Op3E test it; sent online (QSync_SendEm) */
     f32 motionSpeed;            /* 0x884 */
-    f32 goal[3];                /* 0x888: the point the monster moves or turns to, computed from goalKind (Em_ComputeGoal) */
+    f32 goal[3];                /* 0x888: the point the monster moves or turns to, computed from goalKind (Em_ComputeGoal). Capcom: horm_pos (mhfo.dll's trace in EmScript_IfGoalValid, SMELL_SET_CK) */
     void **tables;              /* 0x894: the per-kind area tables (gEmKindTables[type]): [0] points, [6] route sets; Em_FindAreaEntry finds the entry of an area, Em_AreaEntryValue its points */
     u8 unk898[0x899 - 0x898];
     s8 demonMode;               /* 0x899: as Player.demonMode (same offset): only player code typed Em uses it (DualSwords_ComboInput) */
@@ -1557,7 +1571,7 @@ typedef struct Em {
     u8 hasCeiling;              /* 0x977: 1 when there is a ceiling over the monster (AreaGrid2_GetCeiling, height in surfaceY; 1 with 1500 in the special areas): Khezu and EM_KIND_SHOGUN_CEANATAUR (EmKhezu_Update, EmHermitaur_Update); ChangeState and ScriptQuery test it */
     u8 unk978[0x984 - 0x978];
     u16 sizePct;                /* 0x984: size in percent (quest entry +0x30, QuestEm_Spawn; 100 by default; versus team): quest size records (QuestEm_Hunted, QuestEm_Captured: gQuest.sizeMax/sizeMin), QuestEm_Appear grows it by 5, the mine radius and collision shapes scale with it */
-    s16 destArea;               /* 0x986: the area the monster travels to, AREA_NONE: none: set by EmScript_StepAreaSeq/Op1A (Area_IdForCurrentTime), goalArg of Em_ComputeGoal; the State2_08/2_0D travel states take it as nextArea, State2_09 clears it on arrival; Em_PickRoutePoint defaults it to nextArea */
+    s16 destArea;               /* 0x986: the area the monster travels to, AREA_NONE: none: set by EmScript_StepAreaSeq/Op1A (Area_IdForCurrentTime), goalArg of Em_ComputeGoal; the State2_08/2_0D travel states take it as nextArea, State2_09 clears it on arrival; Em_PickRoutePoint defaults it to nextArea. Capcom: maji_next_stage_no (mhfo.dll's traces in EmScript_StepAreaSeq and GoalDestArea) */
     u8 unk988[0x989 - 0x988];
     u8 hitzoneSet;              /* 0x989: which of the kind's damage tables ObjAttach_DamageEm uses (the hitzone tables, indexed [type][hitzoneSet]): 0 normal, 1 while Chameleos is invisible, the Kushala wind blows, after a part break with flag 1 (Em_SpawnPartEffects), Hermitaur 2 in State3_04; ChangeState and GmEm_ResetState clear it */
     s8 level;                   /* 0x98A: strength level from the quest monster entry (+0x36, QuestEm_Spawn; versus: Versus_AssignEmTeam): row of the size, hp and rage scale tables (Em_ComputeMaxHp, Em_LevelAttackFactor/2), part hp scaling for 11..17 (Em_ScalePartHp); QuestEm_Appear raises it up to 15; EmScript_IfLevelAtLeast compares it */

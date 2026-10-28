@@ -89,8 +89,8 @@ extern WallContact gEmWallContacts[][WALL_CONTACTS];
 extern s8 gAreaHitIdCount;
 extern s8 gAreaHitIds[];
 extern AreaWallKindRow *gAreaTriKindFlags[];
-extern u32 gAreaGrid2Data;
-extern u32 gAreaGridData;
+extern u8 *gAreaGrid2Data;
+extern u8 *gAreaGridData;
 extern s32 gAreaTableFiles[];
 extern u8 *gLoadBuf;
 extern void *gWorkArea;
@@ -135,13 +135,13 @@ void AreaTable_Relocate(u8 *file)
     gAreaGridRows = hdr->rows;
     gAreaGridCols = hdr->cols;
     gAreaGridCells = (s32 **)((u8 *)hdr + hdr->tblOff);
-    gAreaGridData = (u32)((u8 *)hdr + hdr->dataOff);
+    gAreaGridData = (u8 *)hdr + hdr->dataOff;
     for (i = 0; i < hdr->rows; i++) {
         for (j = 0; j < hdr->cols; j++) {
             cell = &gAreaGridCells[i * hdr->cols + j];
             *cell = (s32 *)((u8 *)*cell + (u32)hdr);
             for (k = 0; (*cell)[k] != -1; k++) {
-                (*cell)[k] += gAreaGridData;
+                (*cell)[k] += (u32)gAreaGridData;
             }
         }
     }
@@ -161,13 +161,13 @@ void AreaTable2_Relocate(u8 *file)
     gAreaGrid2Rows = hdr->rows;
     gAreaGrid2Cols = hdr->cols;
     gAreaGrid2Cells = (s32 **)((u8 *)hdr + hdr->tblOff);
-    gAreaGrid2Data = (u32)((u8 *)hdr + hdr->dataOff);
+    gAreaGrid2Data = (u8 *)hdr + hdr->dataOff;
     for (i = 0; i < hdr->rows; i++) {
         for (j = 0; j < hdr->cols; j++) {
             cell = &gAreaGrid2Cells[i * hdr->cols + j];
             *cell = (s32 *)((u8 *)*cell + (u32)hdr);
             for (k = 0; (*cell)[k] != -1; k++) {
-                (*cell)[k] += gAreaGrid2Data;
+                (*cell)[k] += (u32)gAreaGrid2Data;
             }
         }
     }
@@ -2970,11 +2970,11 @@ void Obj_UpdateFloorEffects(ObjHead *obj)
     Obj_UpdateFloorHazard(obj->floorKind, obj->pos, obj);
 }
 
-/* For monster kinds 9 and EM_KIND_MELYNX, each frame (GmEm_Update): the
+/* For EM_KIND_FELYNE and EM_KIND_MELYNX, each frame (GmEm_Update): the
  * monster's own light colours from the floor kind under it (Obj_UpdateLightColors). */
 void Em_UpdateLightColors(Em *em)
 {
-    if (em->type == 9 || em->type == EM_KIND_MELYNX) { /* kind 9 has no EmKind name */
+    if (em->type == EM_KIND_FELYNE || em->type == EM_KIND_MELYNX) {
         Obj_UpdateLightColors(em->floorKind, &em->posX, (ObjHead *)em);
     }
 }

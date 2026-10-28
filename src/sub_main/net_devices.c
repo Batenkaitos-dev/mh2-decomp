@@ -91,18 +91,18 @@ void Irx_Unload(s32 modId)
  * is given, the module is also started and its start result goes there. Retries forever when
  * tries is 0, otherwise at most tries times.
  */
-void Net_LoadIrx(s32 path, s32 argc, char *argv, s32 startResult, s32 tries)
+void Net_LoadIrx(char *path, s32 argc, char *argv, s32 startResult, s32 tries)
 {
     s32 i;
 
     if (startResult == 0) {
         if (tries == 0) {
-            while (sceSifLoadModule((char *)path, argc, argv) < 0) {
+            while (sceSifLoadModule(path, argc, argv) < 0) {
                 __asm__ volatile ("nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop");
             }
         } else {
             for (i = 0; i < tries; i++) {
-                if (0 <= sceSifLoadModule((char *)path, argc, argv)) {
+                if (0 <= sceSifLoadModule(path, argc, argv)) {
                     i = 0;
                     break;
                 }
@@ -111,12 +111,12 @@ void Net_LoadIrx(s32 path, s32 argc, char *argv, s32 startResult, s32 tries)
         }
     } else {
         if (tries == 0) {
-            while (sceSifLoadStartModule((char *)path, argc, argv, (void *)startResult) < 0) {
+            while (sceSifLoadStartModule(path, argc, argv, (void *)startResult) < 0) {
                 __asm__ volatile ("nop\n nop\n nop\n nop\n nop\n nop\n nop\n nop");
             }
         } else {
             for (i = 0; i < tries; i++) {
-                if (0 <= sceSifLoadStartModule((char *)path, argc, argv, (void *)startResult)) {
+                if (0 <= sceSifLoadStartModule(path, argc, argv, (void *)startResult)) {
                     i = 0;
                     break;
                 }
@@ -228,7 +228,7 @@ loop_4:
 }
 
 extern s32 gNetStopReq;
-extern s32 gNetIrxUsbsrch;
+extern char *gNetIrxUsbsrch;
 
 #pragma rodata on
 char D_0046A560[23] = {
@@ -289,10 +289,10 @@ s32 Net_StopDevice(void)
     return 0;
 }
 
-extern s32 gNetIrxAn986;
-extern s32 gNetIrxLanegg;
-extern s32 gNetIrxSmap;
-extern s32 gNetIrxAvewrape;
+extern char *gNetIrxAn986;
+extern char *gNetIrxLanegg;
+extern char *gNetIrxSmap;
+extern char *gNetIrxAvewrape;
 
 #pragma rodata on
 char D_0046A5C0[27] = {
@@ -342,12 +342,12 @@ s32 Net_LoadDriverType1(void)
     return 1;
 }
 
-extern s32 gNetIrxCxtmdm;
-extern s32 gNetIrxOstmdmA;
-extern s32 gNetIrxAveppp;
-extern s32 gNetIrxAvewrapm;
-extern s32 gNetIrxAvedhcp;
-extern s32 gNetIrxDevglue;
+extern char *gNetIrxCxtmdm;
+extern char *gNetIrxOstmdmA;
+extern char *gNetIrxAveppp;
+extern char *gNetIrxAvewrapm;
+extern char *gNetIrxAvedhcp;
+extern char *gNetIrxDevglue;
 
 #pragma rodata on
 #pragma explicit_zero_data on
@@ -473,7 +473,7 @@ s32 Net_Init(void)
 }
 
 extern s32 D_0059CC30;
-extern s32 gNetIrxAvetcp;
+extern char *gNetIrxAvetcp;
 
 #pragma rodata on
 char D_0046A600[5] = {
@@ -557,15 +557,15 @@ NetDevice gNetDevNames[3] = {
 NetDevice gNetDefaultDev[2] = {
 #include "sub_main/00405420.inc"
 };
-s32 gNetIrxCxtmdm = (s32)gNetIrxCxtmdm_0;
-s32 gNetIrxOstmdmA = (s32)gNetIrxOstmdmA_0;
-s32 gNetIrxAvetcp = (s32)gNetIrxAvetcp_0;
-s32 gNetIrxAveppp = (s32)gNetIrxAveppp_0;
-s32 gNetIrxAvewrapm = (s32)gNetIrxAvewrapm_0;
-s32 gNetIrxUsbsrch = (s32)gNetIrxUsbsrch_0;
-s32 gNetIrxAvewrape = (s32)gNetIrxAvewrape_0;
-s32 gNetIrxAvedhcp = (s32)gNetIrxAvedhcp_0;
-s32 gNetIrxDevglue = (s32)gNetIrxDevglue_0;
-s32 gNetIrxAn986 = (s32)gNetIrxAn986_0;
-s32 gNetIrxLanegg = (s32)gNetIrxLanegg_0;
-s32 gNetIrxSmap = (s32)gNetIrxSmap_0;
+char *gNetIrxCxtmdm = gNetIrxCxtmdm_0;
+char *gNetIrxOstmdmA = gNetIrxOstmdmA_0;
+char *gNetIrxAvetcp = gNetIrxAvetcp_0;
+char *gNetIrxAveppp = gNetIrxAveppp_0;
+char *gNetIrxAvewrapm = gNetIrxAvewrapm_0;
+char *gNetIrxUsbsrch = gNetIrxUsbsrch_0;
+char *gNetIrxAvewrape = gNetIrxAvewrape_0;
+char *gNetIrxAvedhcp = gNetIrxAvedhcp_0;
+char *gNetIrxDevglue = gNetIrxDevglue_0;
+char *gNetIrxAn986 = gNetIrxAn986_0;
+char *gNetIrxLanegg = gNetIrxLanegg_0;
+char *gNetIrxSmap = gNetIrxSmap_0;

@@ -384,12 +384,25 @@ s32 Player_QueueLookFiles(Player *pl)
 
 /* This file's initialised data. */
 extern u32 D_005B2458[];
+/*
+ * Capcom: part 29 of stage/stNNN.pac, NNN the slot: the slot's file is in
+ * it for 44 of 48 slots, and 4 have no file in A (sure). Capcom's file
+ * names come from Monster Hunter Frontier's PC 1.0 install ("A"); see
+ * gAreaPackFiles in file_load.c.
+ */
 s32 gAreaCamDataFiles[200] = {
 #include "sub_main/004224E0.inc"
 };
+/*
+ * Capcom: parts/m00/m_haircutNNN.bin (the female table:
+ * parts/f00/f_haircutNNN.bin), NNN the slot: the slot's file is in it for
+ * 21 of 21 slots in each table (sure). From Monster Hunter Frontier's PC 1.0
+ * install.
+ */
 u32 gEquipModelPackFilesMale[24] = {
 #include "sub_main/00422800.inc"
 };
+/* Capcom: parts/f00/f_haircutNNN.bin (see gEquipModelPackFilesMale). */
 u32 gEquipModelPackFilesFemale[24] = {
 #include "sub_main/00422860.inc"
 };

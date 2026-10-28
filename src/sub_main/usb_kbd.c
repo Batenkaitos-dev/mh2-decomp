@@ -4,7 +4,7 @@
  * given the step counter gUsbKbStep: a step advances it on success, resets it to 0
  * on failure, and returns 1 to go on (0 when it reset it, or at the end).
  * jtbl_00403140 holds the whole run, UsbKb_StepNext to UsbKb_StepDone (it keeps
- * splat's jump-table name: the port's recompiler finds tables by that name);
+ * splat's jump-table name);
  * gUsbKbSetupSteps the same steps from UsbKb_StepWaitConnect on, which UsbKb_Poll
  * runs until gUsbKbReady is set.
  * The data: those two step tables.

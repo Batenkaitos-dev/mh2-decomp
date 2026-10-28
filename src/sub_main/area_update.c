@@ -52,6 +52,7 @@
 #include "town_frame.h"
 #include "libc.h"
 #include "ambient_life.h"
+#include "ram_areas.h"   /* RAM_AREA: the rows of gAreaKindFlags in an overlay window */
 
 /* The objects of other files and modules this file's tables point to */
 extern AreaKindRow gAreaKindFlags_1[4];
@@ -995,7 +996,7 @@ u16 Area_DayId(u16 area)
     return area;
 }
 
-/* The id of the area's zone at the current time of day (online always by day). */
+/* The id of the area's zone at the current time of day (online always by day).. Capcom: Stage_no_at_quest (mhfo.dll's trace in EmScript_IfInArea) */
 u16 Area_IdForCurrentTime(u16 area)
 {
     s16 daytime;

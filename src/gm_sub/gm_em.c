@@ -86,7 +86,7 @@ s32 Player_UpdateMotion(Player *);
 extern void **gEmKindTables[];
 extern s32 *gEmRateTbl[];
 extern s32 *gEmDecay7ECRates[];
-extern u32 gGmEmCallbackTbl[76];
+extern void **gGmEmCallbackTbl[76];
 /* the calls that mask the value again (u8 or & 0xFF) cast it to s32 first: that keeps the game's masking instruction */
 
 
@@ -112,7 +112,7 @@ void GmEm_MotionSounds(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, 2):
         switch (em->type) {
-        case 32:
+        case EM_KIND_PIGLET:
             Em_PlaySeOnFrame(em, 12, Sound_RandomSe(0, 2, 1, 2));
             Em_PlaySeOnFrame(em, 42, Sound_RandomSe(1, 2, 2, 2));
             Em_PlaySeOnFrame(em, 6, 19);
@@ -221,7 +221,7 @@ void GmEm_MotionSounds(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, 15):
         switch (em->type) {
-        case 32:
+        case EM_KIND_PIGLET:
             Em_PlaySeOnFrame(em, 20, 8);
             Em_PlaySeOnFrame(em, 24, 19);
             Em_PlaySeOnFrame(em, 36, 19);
@@ -328,7 +328,7 @@ void GmEm_MotionSounds(Em *em, EmWork *work)
         break;
     case EM_MOTION_ID(0, 63):
         switch (em->type) {
-        case 32:
+        case EM_KIND_PIGLET:
             Em_PlaySeOnFrame(em, 14, 17);
             Em_PlaySeOnFrame(em, 64, 16);
             Em_PlaySeOnFrame(em, 70, Sound_RandomSe(7, 4, 8, 4));
@@ -439,7 +439,7 @@ void GmEm_SetupKind(Em *em)
     case EM_KIND_CEPHADROME:
         EmCephadrome_Start(em);
         break;
-    case 9:
+    case EM_KIND_FELYNE:
         EmMelynx_Start(em);
         break;
     case EM_KIND_TRADER:
@@ -450,7 +450,7 @@ void GmEm_SetupKind(Em *em)
     case EM_KIND_AZURE_RATHALOS:
         EmRathalos_Start(em);
         break;
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_POPO:
         EmApceros_Start(em);
         break;
@@ -509,7 +509,7 @@ void GmEm_SetupKind(Em *em)
     case EM_KIND_GENDROME:
         EmDrome_Start(em);
         break;
-    case 29:
+    case EM_KIND_ROCK:
         EmKind1D_Init(em);
         break;
     case EM_KIND_IOPREY:
@@ -518,7 +518,7 @@ void GmEm_SetupKind(Em *em)
     case EM_KIND_IODROME:
         EmDrome_Start(em);
         break;
-    case 32:
+    case EM_KIND_PIGLET:
         EmMosswine_Start(em);
         break;
     case EM_KIND_KIRIN:
@@ -553,7 +553,7 @@ void GmEm_SetupKind(Em *em)
     case EM_KIND_TEOSTRA:
         EmKushala_Start(em);
         break;
-    case 56:
+    case EM_KIND_THUNDERBUG:
         EmKind38_Start(em);
         break;
     case EM_KIND_SHAKALAKA:
@@ -901,7 +901,7 @@ void GmEm_UpdateKind(Em *em)
         break;
     case EM_KIND_MOSSWINE:
     case EM_KIND_BULLFANGO:
-    case 32:
+    case EM_KIND_PIGLET:
         EmMosswine_Update(em);
         break;
     case EM_KIND_LAO_SHAN_LUNG:
@@ -912,14 +912,14 @@ void GmEm_UpdateKind(Em *em)
     case EM_KIND_CEPHALOS:
         EmCephadrome_Update(em);
         break;
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
         EmMelynx_Update(em);
         break;
     case EM_KIND_TRADER:
         EmTrader_Update(em);
         break;
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_APCEROS:
     case EM_KIND_POPO:
         EmApceros_Update(em);
@@ -956,7 +956,7 @@ void GmEm_UpdateKind(Em *em)
     case EM_KIND_HORNETAUR:
         EmVespoid_Update(em);
         break;
-    case 29:
+    case EM_KIND_ROCK:
         EmKind1D_Update(em);
         break;
     case EM_KIND_KIRIN:
@@ -990,7 +990,7 @@ void GmEm_UpdateKind(Em *em)
     case EM_KIND_SHEN_GAOREN:
         EmShenGaoren_Update(em);
         break;
-    case 56:
+    case EM_KIND_THUNDERBUG:
         EmKind38_Update(em);
         break;
     case EM_KIND_YAMA_TSUKAMI:
@@ -1100,7 +1100,7 @@ void GmEm_Update(Em *em)
             }
             Em_PickRequest(em);
             noticed = (u8)Em_UpdateNoticed(em);
-            if ((em->type == 9 || em->type == EM_KIND_MOSSWINE) && em->combat == 0) {
+            if ((em->type == EM_KIND_FELYNE || em->type == EM_KIND_MOSSWINE) && em->combat == 0) {
                 noticed = 0;
             }
             if (em->combat == 0 && noticed != 0 && Em_ScriptFlagsFrom(em, EM_TRIGGER_NOTICED) == 0 && em->noAlert != 1 && em->noReact == 0) {
@@ -1894,7 +1894,7 @@ void GmEm_PrepareMeshSet(Em *em, s32 set, ModelMatSet *sets)
         break;
     /* The Felyne kinds (9, the cart, Melynx): a 10-step cycle picks the face
      * mesh (a blink). Em_DrawParts draws these kinds with their own function. */
-    case 9: case EM_KIND_FELYNE_CART: case EM_KIND_MELYNX:
+    case EM_KIND_FELYNE: case EM_KIND_FELYNE_CART: case EM_KIND_MELYNX:
         animFrame = (gFrameTick >> 1) % 10;
         for (i = 0; i < sets[set].count; i++) {
             material = &modelMats[sets[set].mat[i]];
@@ -2689,7 +2689,7 @@ void GmEm_PrepareMeshSet(Em *em, s32 set, ModelMatSet *sets)
         }
         break;
     /* Kind 0x20: every material gets the slot's texture 1. */
-    case 32:
+    case EM_KIND_PIGLET:
         for (i = 0; i < sets[set].count; i++) {
             material = &modelMats[sets[set].mat[i]];
             if (i == 0) {
@@ -3319,7 +3319,7 @@ void GmEm_SpawnBulldromeRageAura(Em *em, s16 motion)
  * and motion rows. Generated by tools/gen_data.py as u32 words with pointers
  * as C; typed as their readers read them,
  * the rest still words. */
-extern u32 gGmEmCallbackTbl_0[];
+extern void *gGmEmCallbackTbl_0[];
 
 EmPartHpRow gEmPartHp_Rathian = {
 #include "gm_sub/0090ACC0.inc"
@@ -4214,34 +4214,34 @@ f32 gEmSizeLevelFactors[EM_SIZE_LEVEL_FACTORS] = {
 u8 gEmMotionGroupCounts[80] = {
 #include "gm_sub/0090DDC0.inc"
 };
-u32 gGmEmCallbackTbl[76] = {
-    (u32)gGmEmCallbackTbl_0, (u32)EmRathalos_Callbacks, (u32)EmFatalis_Callbacks, (u32)EmAnteka_Callbacks,
-    (u32)EmMosswine_Callbacks, (u32)EmMosswine_Callbacks, (u32)EmKutku_Callbacks, (u32)EmLaoshan_Callbacks,
-    (u32)EmCephadrome_Callbacks, (u32)EmMelynx_Callbacks, (u32)EmTrader_Callbacks, (u32)EmRathalos_Callbacks,
-    (u32)EmApceros_Callbacks, (u32)EmVelociprey_Callbacks, (u32)EmDiablos_Callbacks, (u32)EmKhezu_Callbacks,
-    (u32)EmVelociprey_Callbacks, (u32)EmGravios_Callbacks, (u32)EmFelyneCart_Callbacks, (u32)EmVespoid_Callbacks,
-    (u32)EmKutku_Callbacks, (u32)EmPlesioth_Callbacks, (u32)EmGravios_Callbacks, (u32)EmMelynx_Callbacks,
-    (u32)EmVespoid_Callbacks, (u32)EmApceros_Callbacks, (u32)EmDiablos_Callbacks, (u32)EmDrome_Callbacks,
-    (u32)EmDrome_Callbacks, (u32)EmKind1D_Callbacks, (u32)EmVelociprey_Callbacks, (u32)EmDrome_Callbacks,
-    (u32)EmMosswine_Callbacks, (u32)EmKirin_Callbacks, (u32)EmCephadrome_Callbacks, (u32)EmVelociprey_Callbacks,
-    (u32)EmFatalis_Callbacks, (u32)EmRathalos_Callbacks, (u32)EmKutku_Callbacks, (u32)EmKutku_Callbacks,
-    (u32)EmGaruga_Callbacks, (u32)EmRathalos_Callbacks, (u32)EmRathalos_Callbacks, (u32)EmDiablos_Callbacks,
-    (u32)EmDiablos_Callbacks, (u32)EmKhezu_Callbacks, (u32)EmPlesioth_Callbacks, (u32)EmGravios_Callbacks,
-    (u32)EmHermitaur_Callbacks, (u32)EmRathalos_Callbacks, (u32)EmLaoshan_Callbacks, (u32)EmBlangonga_Callbacks,
-    (u32)EmBlangonga_Callbacks, (u32)EmBlangonga_Callbacks, (u32)EmKushala_Callbacks, (u32)EmShenGaoren_Callbacks,
-    (u32)EmKind38_Callbacks, (u32)EmShakalaka_Callbacks, (u32)EmYamaTsukami_Callbacks, (u32)EmChameleos_Callbacks,
-    (u32)EmKushala_Callbacks, (u32)EmBlangonga_Callbacks, (u32)EmBlangonga_Callbacks, (u32)EmRemobra_Callbacks,
-    (u32)EmKushala_Callbacks, (u32)EmKushala_Callbacks, (u32)EmHermitaur_Callbacks, (u32)EmHermitaur_Callbacks,
-    (u32)EmBulldrome_Callbacks, (u32)EmAnteka_Callbacks, (u32)EmApceros_Callbacks, (u32)EmFatalis_Callbacks,
-    (u32)EmYamaTsukami_Callbacks, (u32)EmHermitaur_Callbacks, 0, 0,
+void **gGmEmCallbackTbl[76] = {
+    gGmEmCallbackTbl_0, EmRathalos_Callbacks, EmFatalis_Callbacks, EmAnteka_Callbacks,
+    EmMosswine_Callbacks, EmMosswine_Callbacks, EmKutku_Callbacks, EmLaoshan_Callbacks,
+    EmCephadrome_Callbacks, EmMelynx_Callbacks, EmTrader_Callbacks, EmRathalos_Callbacks,
+    EmApceros_Callbacks, EmVelociprey_Callbacks, EmDiablos_Callbacks, EmKhezu_Callbacks,
+    EmVelociprey_Callbacks, EmGravios_Callbacks, EmFelyneCart_Callbacks, EmVespoid_Callbacks,
+    EmKutku_Callbacks, EmPlesioth_Callbacks, EmGravios_Callbacks, EmMelynx_Callbacks,
+    EmVespoid_Callbacks, EmApceros_Callbacks, EmDiablos_Callbacks, EmDrome_Callbacks,
+    EmDrome_Callbacks, EmKind1D_Callbacks, EmVelociprey_Callbacks, EmDrome_Callbacks,
+    EmMosswine_Callbacks, EmKirin_Callbacks, EmCephadrome_Callbacks, EmVelociprey_Callbacks,
+    EmFatalis_Callbacks, EmRathalos_Callbacks, EmKutku_Callbacks, EmKutku_Callbacks,
+    EmGaruga_Callbacks, EmRathalos_Callbacks, EmRathalos_Callbacks, EmDiablos_Callbacks,
+    EmDiablos_Callbacks, EmKhezu_Callbacks, EmPlesioth_Callbacks, EmGravios_Callbacks,
+    EmHermitaur_Callbacks, EmRathalos_Callbacks, EmLaoshan_Callbacks, EmBlangonga_Callbacks,
+    EmBlangonga_Callbacks, EmBlangonga_Callbacks, EmKushala_Callbacks, EmShenGaoren_Callbacks,
+    EmKind38_Callbacks, EmShakalaka_Callbacks, EmYamaTsukami_Callbacks, EmChameleos_Callbacks,
+    EmKushala_Callbacks, EmBlangonga_Callbacks, EmBlangonga_Callbacks, EmRemobra_Callbacks,
+    EmKushala_Callbacks, EmKushala_Callbacks, EmHermitaur_Callbacks, EmHermitaur_Callbacks,
+    EmBulldrome_Callbacks, EmAnteka_Callbacks, EmApceros_Callbacks, EmFatalis_Callbacks,
+    EmYamaTsukami_Callbacks, EmHermitaur_Callbacks, 0, 0,
 };
 /* The texture offsets of the 32 meshes of EM_KIND_FATALIS_B (GmEm_PrepareMeshSet). */
 s16 gGmEmFatalisBMatTex[40] = {
 #include "gm_sub/0090DF40.inc"
 };
-u32 gGmEmCallbackTbl_0[8] = {
-    (u32)GmEm_SpawnShadow, (u32)GmEm_SpawnShadow, (u32)GmEm_Nop, (u32)GmEm_Nop,
-    (u32)GmEm_ReturnZero, 0, 0, 0,
+void *gGmEmCallbackTbl_0[8] = {
+    (void *)GmEm_SpawnShadow, (void *)GmEm_SpawnShadow, (void *)GmEm_Nop, (void *)GmEm_Nop,
+    (void *)GmEm_ReturnZero, 0, 0, 0,
 };
 f32 gEmAreaPoints_Rathian_1_0[10][3] = {
 #include "gm_sub/0090DFB0.inc"

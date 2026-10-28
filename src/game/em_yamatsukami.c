@@ -2101,7 +2101,7 @@ void EmYamaTsukami_Summon(Em *em)
         em->timer = 140;
         Em_SetMotion(em, YAMA_MOT_SUMMON, 0, 0);
         for (i = 0, other = gEms; i < 20; i++, other++) {
-            if (other->type == 56 && other->active != 0 && em->stateVar0 > 0) {
+            if (other->type == EM_KIND_THUNDERBUG && other->active != 0 && em->stateVar0 > 0) {
                 em->stateVar0--;
             }
         }

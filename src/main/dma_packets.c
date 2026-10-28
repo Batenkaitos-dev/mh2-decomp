@@ -36,10 +36,10 @@ u128 *DmaTag_Cnt(u128 *tag, s32 qwc, s32 irq, s32 unused)
 u128 *DmaTag_Next(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 {
     u32 *words = (u32 *)tag;
-    u32 physAddr = addr & 0x0FFFFFFF;
+    u32 physAddr = DMA_TAG_ADDR(addr);
     u32 scratchpadBit = 0;
 
-    if ((addr & 0x70000000) == 0x70000000) {
+    if (DMA_ADDR_IS_SPR(addr)) {
         scratchpadBit = 0x80000000;
     }
     *tag = 0;
@@ -60,10 +60,10 @@ u128 *DmaTag_Next(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 u128 *DmaTag_Ref(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 {
     u32 *words = (u32 *)tag;
-    u32 physAddr = addr & 0x0FFFFFFF;
+    u32 physAddr = DMA_TAG_ADDR(addr);
     u32 scratchpadBit = 0;
 
-    if ((addr & 0x70000000) == 0x70000000) {
+    if (DMA_ADDR_IS_SPR(addr)) {
         scratchpadBit = 0x80000000;
     }
     *tag = 0;
@@ -83,10 +83,10 @@ u128 *DmaTag_Ref(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 u128 *DmaTag_RefE(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 {
     u32 *words = (u32 *)tag;
-    u32 physAddr = addr & 0x0FFFFFFF;
+    u32 physAddr = DMA_TAG_ADDR(addr);
     u32 scratchpadBit = 0;
 
-    if ((addr & 0x70000000) == 0x70000000) {
+    if (DMA_ADDR_IS_SPR(addr)) {
         scratchpadBit = 0x80000000;
     }
     *tag = 0;
@@ -107,10 +107,10 @@ u128 *DmaTag_RefE(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 u128 *DmaTag_Call(u128 *tag, s32 qwc, u32 addr, s32 irq, s32 unused)
 {
     u32 *words = (u32 *)tag;
-    u32 physAddr = addr & 0x0FFFFFFF;
+    u32 physAddr = DMA_TAG_ADDR(addr);
     u32 scratchpadBit = 0;
 
-    if ((addr & 0x70000000) == 0x70000000) {
+    if (DMA_ADDR_IS_SPR(addr)) {
         scratchpadBit = 0x80000000;
     }
     *tag = 0;

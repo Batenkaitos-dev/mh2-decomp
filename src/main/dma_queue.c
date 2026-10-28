@@ -32,6 +32,8 @@ extern u32 gDmaRecvQwc;
 extern u64 gDmaSavedImr;
 extern u128 D_001BA110;
 extern u32 *gDmaChcrRegs[10];
+/* A DMA channel's CHCR: gDmaChcrRegs holds the registers' addresses. */
+#define DMA_CHCR_RD(channel) (*gDmaChcrRegs[channel])
 s32 sceDmaRecvN(DmaChan *chan, void *addr, s32 size);
 s32 sceDmaSend(DmaChan *chan, void *tag);
 s32 sceDmaSync(DmaChan *chan, s32 mode, s32 timeout);
@@ -229,9 +231,9 @@ void Dma_StoreImage(u32 dst, u32 size, s16 sbp, s16 sbw, s16 psm, s16 srcX, s16 
         words[15] = 83;
         gDmaRecvQwc = (u32)bytes >> 4;
         gDmaRecvDst = dst;
-        GS_CSR = 2;
-        gDmaSavedImr = GS_IMR;
-        GS_IMR = ~0x200LL;
+        HW_WR64(GS_CSR, 2);
+        gDmaSavedImr = HW_RD64(GS_IMR);
+        HW_WR64(GS_IMR, ~0x200LL);
         EnableIntc(0);
         chan->chcr.tte = 0;
         chan->chcr.tie = 0;
@@ -241,11 +243,11 @@ void Dma_StoreImage(u32 dst, u32 size, s16 sbp, s16 sbw, s16 psm, s16 srcX, s16 
         while (gDmaRecvQwc != 0) {
         }
         sceGsSyncPath(0, 0);
-        VIF1_STAT = 0;
+        HW_WR32(VIF1_STAT, 0);
         srcY += rows;
-        GS_BUSDIR = 0;
-        GS_IMR = gDmaSavedImr;
-        VIF1_FIFO = D_001BA110;
+        HW_WR64(GS_BUSDIR, 0);
+        HW_WR64(GS_IMR, gDmaSavedImr);
+        HW_WR128(VIF1_FIFO, D_001BA110);
         dst += bytes;
         if (height < srcY + rows) {
             rows = height - srcY;
@@ -261,8 +263,8 @@ s32 Dma_GsFinishHandler(s32 cause)
 
     if (gDmaRecvQwc != 0) {
         chan = gDmaChan[1];
-        VIF1_STAT = 0x800000;
-        GS_BUSDIR = 1;
+        HW_WR32(VIF1_STAT, 0x800000);
+        HW_WR64(GS_BUSDIR, 1);
         iDisableIntc(0);
         chan->chcr.tte = 1;
         chan->chcr.tie = 0;
@@ -421,7 +423,7 @@ s32 DmaQueue_Handler(s32 channel)
 
     switch (channel) {
     case 1:
-        chcr = *gDmaChcrRegs[queue->chan];
+        chcr = DMA_CHCR_RD(queue->chan);
         if (chcr & 0x100) {
             break;
         }
@@ -445,10 +447,10 @@ s32 DmaQueue_Handler(s32 channel)
         switch ((entry & 0xF0000000) >> 28) {
         case 2:
             queue->unk30 = 0;
-            VIF1_STAT = 0;
-            GS_BUSDIR = 0;
-            GS_IMR = gDmaSavedImr;
-            VIF1_FIFO = D_001BA110;
+            HW_WR32(VIF1_STAT, 0);
+            HW_WR64(GS_BUSDIR, 0);
+            HW_WR64(GS_IMR, gDmaSavedImr);
+            HW_WR128(VIF1_FIFO, D_001BA110);
             break;
         }
         if (queue->write[bufIdx] != queue->read[bufIdx]) {
@@ -470,9 +472,9 @@ s32 DmaQueue_Handler(s32 channel)
                 case 2:
                     gDmaRecvDst = ((u32 *)entry)[32];
                     gDmaRecvQwc = ((u32 *)entry)[33];
-                    GS_CSR = 2;
-                    gDmaSavedImr = GS_IMR;
-                    GS_IMR = ~0x200LL;
+                    HW_WR64(GS_CSR, 2);
+                    gDmaSavedImr = HW_RD64(GS_IMR);
+                    HW_WR64(GS_IMR, ~0x200LL);
                     iEnableIntc(0);
                     queue->unk30 |= 1;
                     gDmaChan[queue->chan]->chcr.tte = 0;
@@ -521,9 +523,9 @@ void SendFrameDmaChain(void)
             addr = entry & 0x0FFFFFFF;
             gDmaRecvDst = ((u32 *)addr)[32];
             gDmaRecvQwc = ((u32 *)addr)[33];
-            GS_CSR = 2;
-            gDmaSavedImr = GS_IMR;
-            GS_IMR = ~0x200LL;
+            HW_WR64(GS_CSR, 2);
+            gDmaSavedImr = HW_RD64(GS_IMR);
+            HW_WR64(GS_IMR, ~0x200LL);
             EnableIntc(0);
             queue->unk30 |= 1;
             chan->chcr.tte = 0;

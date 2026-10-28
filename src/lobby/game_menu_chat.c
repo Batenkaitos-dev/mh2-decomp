@@ -508,7 +508,7 @@ s32 sprintf(char *, const char *, ...);
 extern ListPanel gSpeakerPanel;
 extern ListPanel gSpeakerActionPanel;
 extern ListPanel gMutedRemovePanel;
-extern char *gChatUserActTexts[][3];
+extern char *gChatUserActTexts[4][3];
 
 /* The hunter page's draw, by page (GameMenu.page):
  * - CHAT_PAGE_HUNTERS: a column of CHAT_LIST_ROWS of the hunters in the

@@ -23,7 +23,7 @@
 /* Optimization level 4, like the unit before it (these functions build the same at either level). */
 #pragma optimization_level 4
 
-extern s32 gAnimData;
+extern u8 *gAnimData;
 s32 Bone_SetPartAnim(EmBone *b, s32 h, s32 id);
 s32 Bone_PosePart(f32 t, EmBone *b, s32 id);
 s32 Bone_BlendPart(f32 wa, f32 wb, EmBone *a, EmBone *b, s32 id);
@@ -36,8 +36,8 @@ s32 Anim_EvalPoseMatrix(AnimHeader *hdr, f32 *base, f32 *pose, f32 *m, s16 *keys
 /* Makes the animation data in memory handle `handle` current (its keys too). */
 void Anim_SetData(s32 handle)
 {
-    gAnimData = (s32) (Mem_GetAddr((void *) handle));
-    Anim_SetCurveKeys((u8 *) gAnimData);
+    gAnimData = (u8 *)Mem_GetAddr((void *) handle);
+    Anim_SetCurveKeys(gAnimData);
 }
 
 /* A copy of a built skeleton (the block skel's header points at, its size
@@ -99,7 +99,7 @@ s32 Bone_GetAnimMove(f32 *out, EmBone *bone, f32 fromTime, f32 toTime)
     AnimHeader *boneAnim;
 
     Anim_SetData(bone->anim);
-    boneAnim = (AnimHeader *)(bone->animOfs + gAnimData);
+    boneAnim = (AnimHeader *)(bone->animOfs + (u32)gAnimData);
     Anim_EvalPoseMatrix(boneAnim, bone->base, pose, fromMtx, bone->keyHint, fromTime);
     Anim_EvalPoseMatrix(boneAnim, bone->base, pose, toMtx, bone->keyHint, toTime);
     out[0] = toMtx[12] - fromMtx[12];
@@ -263,8 +263,8 @@ s32 Bone_SetPartAnim(EmBone *tree, s32 motion, s32 id)
     EmBone *partRoot;
 
     set = Mem_GetAddr((void *)motion);
-    gAnimData = (s32)set;
-    boneAnims = (s32 *)(set->anims + gAnimData);
+    gAnimData = (u8 *)set;
+    boneAnims = (s32 *)(set->anims + (u32)gAnimData);
     gBonePartAnim = motion;
     partRoot = Bone_FindPart(tree, id);
     if (partRoot != NULL) {
@@ -366,7 +366,7 @@ s32 Anim_EvalPoseMatrix(AnimHeader *boneAnim, f32 *base, f32 *pose, f32 *mtx, s1
     if (boneAnim != NULL) {
         switch (boneAnim->flags & ANIM_TYPE_MASK) {
         case ANIM_TYPE_FLOAT:
-            curve = (AnimCurve *)(boneAnim->curves + gAnimData);
+            curve = (AnimCurve *)(boneAnim->curves + (u32)gAnimData);
             for (i = 0; i < boneAnim->count; i++, curve++) {
                 u16 valueIdx = curve->idx;
 
@@ -374,7 +374,7 @@ s32 Anim_EvalPoseMatrix(AnimHeader *boneAnim, f32 *base, f32 *pose, f32 *mtx, s1
             }
             break;
         case ANIM_TYPE_FIXED:
-            curve = (AnimCurve *)(boneAnim->curves + gAnimData);
+            curve = (AnimCurve *)(boneAnim->curves + (u32)gAnimData);
             for (i = 0; i < boneAnim->count; i++, curve++) {
                 u16 valueIdx = curve->idx;
                 f32 *value = &pose[valueIdx];
@@ -423,7 +423,7 @@ s32 Bone_PoseTree(f32 time, EmBone *bone, s32 id)
             bone->pose[i] = bone->base[i];
         }
         if (bone->anim != 0) {
-            Anim_EvalPose((AnimHeader *)(bone->animOfs + gAnimData), bone->base, bone->pose, bone->keyHint, time);
+            Anim_EvalPose((AnimHeader *)(bone->animOfs + (u32)gAnimData), bone->base, bone->pose, bone->keyHint, time);
         }
         Mtx_FromTransform(bone->local, bone->pose);
         if (bone->child != NULL) {
@@ -736,7 +736,7 @@ s32 Anim_EvalPose(AnimHeader *boneAnim, f32 *base, f32 *pose, s16 *keyHints, f32
     if (boneAnim != NULL) {
         switch (boneAnim->flags & ANIM_TYPE_MASK) {
         case ANIM_TYPE_FLOAT:
-            curve = (AnimCurve *)(boneAnim->curves + gAnimData);
+            curve = (AnimCurve *)(boneAnim->curves + (u32)gAnimData);
             for (i = 0; i < boneAnim->count; i++, curve++) {
                 u16 valueIdx = curve->idx;
 
@@ -744,7 +744,7 @@ s32 Anim_EvalPose(AnimHeader *boneAnim, f32 *base, f32 *pose, s16 *keyHints, f32
             }
             break;
         case ANIM_TYPE_FIXED:
-            curve = (AnimCurve *)(boneAnim->curves + gAnimData);
+            curve = (AnimCurve *)(boneAnim->curves + (u32)gAnimData);
             for (i = 0; i < boneAnim->count; i++, curve++) {
                 u16 valueIdx = curve->idx;
                 f32 *value = &pose[valueIdx];

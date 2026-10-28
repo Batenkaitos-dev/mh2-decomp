@@ -71,7 +71,7 @@ extern s32 gSaveBuf;
 extern u16 gPadDebugModeLast;
 extern u16 gPadDebugMode;
 extern u8 D_6B5CF0;
-extern s32 gAnimData;
+extern u8 *gAnimData;
 /* end of prototypes */
 
 /* This file's read-only data. */
@@ -521,8 +521,8 @@ void Mem_InitLayout(void)
     gSysSettings.memBase = (u8 *)MEM_AREAS_ADDR;
     Mem_Fill(gSysSettings.memBase, 0, MEM_AREAS_SIZE);
     gSysSettings.selWork = (u8 *)MEM_AREAS_ADDR;
-    gSysSettings.unk64 = 0xAE8000;
-    gSysSettings.unk68 = 0xAF5200;
+    gSysSettings.unk64 = (s32)RAM_AREA(0xAE8000);
+    gSysSettings.unk68 = (s32)RAM_AREA(0xAF5200);
     gSysSettings.bones = (void *)BONE_AREA_ADDR;
     gSysSettings.models = (struct Model *)MODEL_AREA_ADDR;
     gSysSettings.prims = PRIM_AREA_ADDR;

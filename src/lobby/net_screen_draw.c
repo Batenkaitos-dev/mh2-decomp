@@ -359,7 +359,7 @@ static NetSprDef *NetMode_GetSprDefs(s32 set)
 }
 
 /* Entry `set` of a menu sprite table (gNetMenuRows, gNetMenuLitRows); 3 and up read entry 0. */
-static s32 NetMode_PickRows(s32 *rows, s32 set)
+static NetSprDef *NetMode_PickRows(NetSprDef **rows, s32 set)
 {
     if (set >= 3) {
         set = 0;
@@ -760,9 +760,9 @@ typedef struct NetIcon {
 } NetIcon;
 
 
-extern s32 gNetMenuLitRows[];
+extern NetSprDef *gNetMenuLitRows[];
 extern u8 gNetMenuLitRowCounts[];
-extern s32 gNetMenuRows[];
+extern NetSprDef *gNetMenuRows[];
 extern u8 gNetMenuRowCounts[];
 extern NetIcon gNetModeIcons[];
 extern ListWin gNetModeWin;
@@ -778,7 +778,7 @@ void NetMode_DrawPart(s32 part)
 {
     NetSprDef *buf;
     NetModeState *st;
-    s32 rows;
+    NetSprDef *rows;
     s32 count;
     s32 rowsY;
     s32 i;
@@ -816,7 +816,7 @@ void NetMode_DrawPart(s32 part)
         /* the menus' row boxes share this drawing through gotos, laid out
          * as the game's code is */
         if (rowsY != 0) {
-            NetMode_CopySprDefs((NetSprDef *)rows, buf, count);
+            NetMode_CopySprDefs(rows, buf, count);
             NetMode_DrawSprites(buf, count, rowsY);
         }
         break;
@@ -1191,14 +1191,14 @@ NetSprDef gNetMenuRows_1[10] = {
 NetSprDef gNetMenuRows_2[7] = {
 #include "lobby/00819FF0.inc"
 };
-s32 gNetMenuLitRows[3] = {
-    (s32)gNetMenuLitRows_0, (s32)gNetMenuLitRows_1, (s32)gNetMenuLitRows_2,
+NetSprDef *gNetMenuLitRows[3] = {
+    gNetMenuLitRows_0, gNetMenuLitRows_1, gNetMenuLitRows_2,
 };
 u8 gNetMenuLitRowCounts[8] = {
 #include "lobby/0081A0A8.inc"
 };
-s32 gNetMenuRows[4] = {
-    (s32)gNetMenuRows_0, (s32)gNetMenuRows_1, (s32)gNetMenuRows_2, 0,
+NetSprDef *gNetMenuRows[4] = {
+    gNetMenuRows_0, gNetMenuRows_1, gNetMenuRows_2, 0,
 };
 u8 gNetMenuRowCounts[8] = {
 #include "lobby/0081A0C0.inc"

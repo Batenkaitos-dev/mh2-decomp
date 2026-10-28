@@ -1021,7 +1021,7 @@ typedef struct PlayerPend {
     f32 pos[3];
 } PlayerPend;
 
-struct Player; /* declared before PlayerVt, so that its handlers take the same struct (host compilers scope a tag first seen in a parameter list to it) */
+struct Player; /* declared before PlayerVt, so that its handlers take the same struct (C scopes a tag first seen in a parameter list to it) */
 
 /* The player's handlers (Player.handlers; the layout of EmVt's first
  * entries). The hunters' table (gPlayerHandlerTable) holds Player_NoHandler

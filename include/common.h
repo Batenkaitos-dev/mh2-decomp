@@ -11,6 +11,11 @@ typedef signed int s32;
 typedef unsigned int u32;
 typedef signed long long s64;
 typedef unsigned long long u64;
+
+/* MWCC's long is 64 bits. Where the game means that type, it writes
+ * MWCC_LONG or MWCC_ULONG. */
+#define MWCC_LONG long
+#define MWCC_ULONG unsigned long
 typedef float f32;
 typedef double f64;
 

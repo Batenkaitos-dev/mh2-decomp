@@ -93,11 +93,11 @@ Rate_GroupOf = 0x0018DC90; // type:func
 ColorEdit_Draw = 0x0018E000; // type:func
 
 // The game's sound manager, over the Snd_* calls.
-// gCameraPos is sub_main's camera position, which the sound volumes are
+// gCamPos is sub_main's camera position, which the sound volumes are
 // measured from. main names it itself, since the boot ELF's link doesn't read
 // sub_main's symbols; Sound_PlaySePos compiles to the game's code only with
 // it named.
-gCameraPos = 0x006A9DE0;
+gCamPos = 0x006A9DE0;
 Sound_Init = 0x0018EBA0; // type:func
 Sound_InitBuffers = 0x0018EBB0; // type:func
 Sound_LoadSpuMap = 0x0018ECE0; // type:func

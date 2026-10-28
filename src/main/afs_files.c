@@ -8,6 +8,7 @@
 #include "common.h"
 #include "syssettings.h"
 #include "stream.h"
+#include "ram_areas.h"
 #include "sound.h"
 #include "libc.h"
 

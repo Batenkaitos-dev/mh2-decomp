@@ -38,8 +38,8 @@ extern u8 gLobbyPageData[];     /* the registration record kept */
 
 /* The dialogs' steps (by BrowserSub.dlgStep, DLG_STEP_*) and the dialog
  * modes' steps (by BrowserSub.dlgMode, BDLG_MODE_*). The tables keep their
- * address names: the port's recompiler takes a table the code calls
- * through as a jump table, and finds it by that name. */
+ * address names, splat's names of the jump tables the code calls
+ * through. */
 extern void (*jtbl_007EEB78[])(void);
 extern void (*jtbl_007EEB90[])(void);
 

@@ -470,7 +470,7 @@ void Em_AdjustKindBones(Em *em, EmBone *boneList)
         bones[13].pose[2] = ((EmShenGaorenWork *)&em->work)->ease[2];
         bones[14].pose[2] = ((EmShenGaorenWork *)&em->work)->ease[3];
         break;
-    case 56:
+    case EM_KIND_THUNDERBUG:
         boneMtx = Em_BoneMatrixB(em, 2);
         Mtx_ClearRotation(boneMtx);
         phase = (6.2831855f * (f32)(gScene.frame << 13)) / 65536.0f;

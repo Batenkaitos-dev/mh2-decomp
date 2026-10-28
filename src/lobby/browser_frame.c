@@ -50,9 +50,8 @@ extern char gBrowserUrl[];                 /* the start URL */
 extern void (*gBrowserTopModes[])(void);
 extern void (*gBrowserModes[])(void);
 extern void (*gBrowserLobbySteps[])(void);
-/* The lobby's pages' modes. The table keeps its address name: the port's
- * recompiler takes a table it calls through as a jump table, and finds it
- * by that name. */
+/* The lobby's pages' modes. The table keeps its address name,
+ * splat's name of a jump table the code calls through. */
 extern void (*jtbl_007EEAE0[])(void);
 extern char gBrowserErrorMsg[];              /* the debug message Browser_RunError prints */
 

@@ -33,23 +33,44 @@
 #define BGM_BATTLE_FRAMES   150     /* frames: the battle music plays at least this long */
 
 /* The stream ids (afs00.afs's files) the music manager picks by role. */
-#define BGM_BATTLE          0xD3    /* a fight with no large monster in it (Bgm_IsBattle 1) */
-#define BGM_VERSUS          0xC4    /* the battle music of a versus quest */
-#define BGM_FAINT           0xB8    /* the local player fainted (Bgm_PlayFaintMusic) */
-#define BGM_GOAL_MET        0xB6    /* once the goal is met: Quest_GetOutcome(1) is 1 (MUSIC_GOAL_MET) */
-#define BGM_QUEST_LOST      0xD4    /* once the quest is lost: Quest_GetOutcome(1) is -1 (MUSIC_LOST) */
-#define BGM_QUEST_THEME  0xC3    /* all through a quest with gQuest.flags 0x800 */
-#define BGM_SERVER_MENU     0x123   /* the lobby's server choice menu (SrvMenu_SlideIn, SrvMenu_Intro) */
-#define BGM_AREA_LIST       0x124   /* the lobby's area list (AreaList_Init) */
-#define BGM_TUNE_NPC        0xB1    /* the town's menus opened at a character (the lobby's menus) */
-#define BGM_TUNE_RANDOM_START 0x30  /* a stage with a random start, entering an area of the hunt */
+/*
+ * Capcom: the names noted below are the .mus files in sound/mus/ of Monster
+ * Hunter Frontier's PC 1.0 install, matched by total
+ * sample count to the ADX stream (Ogg against ADX; the audio isn't
+ * compared): "sure" is an exact count that no other stream or file comes
+ * within 64 samples of, "likely" within 64 samples or tied. The tour tunes
+ * 0xD6 to 0xDA match no file.
+ */
+#define BGM_BATTLE          0xD3    /* a fight with no large monster in it (Bgm_IsBattle 1);
+                                       Capcom: s_found1.mus (sure) */
+#define BGM_VERSUS          0xC4    /* the battle music of a versus quest;
+                                       Capcom: sf_dmach.mus (likely: 30 samples off) */
+#define BGM_FAINT           0xB8    /* the local player fainted (Bgm_PlayFaintMusic);
+                                       Capcom: s_death1.mus (sure) */
+#define BGM_GOAL_MET        0xB6    /* once the goal is met: Quest_GetOutcome(1) is 1 (MUSIC_GOAL_MET);
+                                       Capcom: s_clear1.mus (likely: 10 samples off) */
+#define BGM_QUEST_LOST      0xD4    /* once the quest is lost: Quest_GetOutcome(1) is -1 (MUSIC_LOST);
+                                       Capcom: s_g_over.mus (likely: 7 samples off) */
+#define BGM_QUEST_THEME  0xC3    /* all through a quest with gQuest.flags 0x800;
+                                       Capcom: s_fightn.mus or sf_nekof.mus (likely:
+                                       both 21 samples off) */
+#define BGM_SERVER_MENU     0x123   /* the lobby's server choice menu (SrvMenu_SlideIn, SrvMenu_Intro);
+                                       Capcom: sn_lby_0.mus (likely: 13 samples off) */
+#define BGM_AREA_LIST       0x124   /* the lobby's area list (AreaList_Init);
+                                       Capcom: sn_lby_1.mus (likely: 27 samples off) */
+#define BGM_TUNE_NPC        0xB1    /* the town's menus opened at a character (the lobby's menus);
+                                       Capcom: sg_cut_1.mus (likely: 14 samples off) */
+#define BGM_TUNE_RANDOM_START 0x30  /* a stage with a random start, entering an area of the hunt;
+                                       Capcom: ef_acdnt.mus (sure) */
 /* The tunes the town's tours start with (Jingle_Play). */
 #define BGM_TUNE_TOUR_HUB_0xAA 0xD6 /* TOWN_TOUR_HUB_0xAA */
 #define BGM_TUNE_TOUR_HUB_0xAB 0xD7
 #define BGM_TUNE_TOUR_HUB_0xAC 0xD8
 #define BGM_TUNE_TOUR_SHIP  0xD9    /* TOWN_TOUR_SHIP */
 #define BGM_TUNE_TOUR_VILLAGE_RETURN 0xDA
-#define BGM_TUNE_TOUR_HOUSE 0xDB    /* TOWN_TOUR_HOUSE_1 and _2 */
+#define BGM_TUNE_TOUR_HOUSE 0xDB    /* TOWN_TOUR_HOUSE_1 and _2;
+                                       Capcom: efdemo16.mus (likely: exact, but
+                                       stream 0xDC is the same stream) */
 
 /* Bgm_IsBattle's answers: the fight in the local player's area. */
 #define FIGHT_NONE          0

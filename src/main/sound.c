@@ -401,7 +401,7 @@ extern s32 *gSePosVolCurves[];       /* volume curves */
 extern s32 *gSePosCurves2[];       /* second curves (CseOpt.v[7]), or NULL */
 extern SndVec gSndForwardAxis;       /* the listener's forward axis */
 extern u8 gViewMatrix[];           /* sub_main: the listener's rotation */
-extern SndVec gCameraPos;      /* sub_main's camera position, the listener */
+extern SndVec gCamPos;      /* sub_main's camera position, the listener */
 #define gSndOutputSetting (gSysSettings.soundMode)
 #define gSndSeVolSetting (gSysSettings.seVolume)
 /* sub_main's vector helpers (asm there, with f32 * parameters): declared
@@ -409,7 +409,7 @@ extern SndVec gCameraPos;      /* sub_main's camera position, the listener */
 
 /*
  * Plays or updates an SE placed at pos: the volume from the kind's curve by
- * the distance to the listener (gCameraPos, rotated into its frame), the pan
+ * the distance to the listener (gCamPos, rotated into its frame), the pan
  * and the front/back flags from the direction. update != 0 only moves the
  * pan of the playing SE. -1 when out of range or silent.
  */
@@ -442,9 +442,9 @@ s32 Sound_PlaySePos(u32 slot, u32 id, s32 prog, void *pos, s32 kind, s32 update)
     far = gSePosRanges[kind].far;
     id = (u32)((f32)id + gSePosRanges[kind].idOffset);
     curve2 = gSePosCurves2[kind];
-    toListener.x = gCameraPos.x - ((f32 *)pos)[0];
-    toListener.y = gCameraPos.y - ((f32 *)pos)[1];
-    toListener.z = gCameraPos.z - ((f32 *)pos)[2];
+    toListener.x = gCamPos.x - ((f32 *)pos)[0];
+    toListener.y = gCamPos.y - ((f32 *)pos)[1];
+    toListener.z = gCamPos.z - ((f32 *)pos)[2];
     Vec_RotateSelf((f32 *) &toListener, (f32 *) gViewMatrix);
     toListener.z -= 238.0f;
     dist = Math_Sqrtf(toListener.x * toListener.x + toListener.y * toListener.y + toListener.z * toListener.z);

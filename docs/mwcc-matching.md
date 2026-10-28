@@ -2941,7 +2941,7 @@ temporary still live where another is made pushes it up.
   function needs MWCC's `va_start`: `#define va_start(ap, last) ((ap) =
   (char *)__builtin_next_arg(last) - (__builtin_args_info(2) >= 8 ? 0 : (8 -
   __builtin_args_info(2)) * 8))`. It is in one header,
-  include/ee_stdarg.h (with the host compiler's builtins under MH2_NATIVE):
+  include/ee_stdarg.h:
   include that, don't copy the define. Seen in: card_task.c (sub_main),
   member_list.c (lobby, Text_Printf).
 - **A function that matches alone but not in its file.** Cause: a

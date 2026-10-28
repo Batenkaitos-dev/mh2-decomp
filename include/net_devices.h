@@ -12,7 +12,7 @@
  */
 
 void Net_GetDeviceState(s16 *outVendor, s16 *outProduct, s16 *outKbReady, s16 *outSpeed);
-void Net_LoadIrx(s32 path, s32 argc, char *argv, s32 startResult, s32 tries);
+void Net_LoadIrx(char *path, s32 argc, char *argv, s32 startResult, s32 tries);
 void NetDev_ClearList(void);
 s32 NetDev_MatchesDefault(s8 *vendor, s8 *product);
 s32 Net_StopDevice(void);

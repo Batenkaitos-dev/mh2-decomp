@@ -1399,7 +1399,7 @@ void EmKind38_SpawnAtEmBone(Em *em)
     f32 *mtx;
 
     if (em->area == gScene.area) {
-        entry.kind = 56;
+        entry.kind = EM_KIND_THUNDERBUG;
         entry.variant = 1;
         entry.hp = -1;
         entry.spawnParam = 1;

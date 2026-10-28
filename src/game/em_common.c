@@ -942,7 +942,7 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
         return;
     case EM_KIND_MOSSWINE:
     case EM_KIND_BULLFANGO:
-    case 32:
+    case EM_KIND_PIGLET:
         EmMosswine_ChangeState(em, group, state, mode);
         return;
     case EM_KIND_YIAN_KUT_KU:
@@ -959,14 +959,14 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
     case EM_KIND_CEPHALOS:
         EmCephadrome_ChangeState(em, group, state, mode);
         return;
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
         EmMelynx_ChangeState(em, group, state, mode);
         return;
     case EM_KIND_SHAKALAKA:
         EmShakalaka_ChangeState(em, group, state, mode);
         return;
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_APCEROS:
     case EM_KIND_POPO:
         EmApceros_ChangeState(em, group, state, mode);
@@ -1037,7 +1037,7 @@ void Em_ChangeState(Em *em, s32 group, s32 state, s32 mode)
     case EM_KIND_SHEN_GAOREN:
         EmShenGaoren_ChangeState(em, group, state, mode);
         return;
-    case 56:
+    case EM_KIND_THUNDERBUG:
         EmKind38_ChangeState(em, group, state, mode);
         return;
     case EM_KIND_YAMA_TSUKAMI:
@@ -3234,12 +3234,12 @@ u8 Em_SenseObjects(Em *em, EmObj *self)
             }
             break;
         case 1:
-            if (em->type != 9) {
+            if (em->type != EM_KIND_FELYNE) {
                 continue;
             }
             break;
         case 2:
-            if (em->type != 12 && em->type != EM_KIND_POPO && em->type != EM_KIND_APCEROS) {
+            if (em->type != EM_KIND_HERBIVORE_0 && em->type != EM_KIND_POPO && em->type != EM_KIND_APCEROS) {
                 continue;
             }
             break;

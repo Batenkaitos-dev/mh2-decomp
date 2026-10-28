@@ -2068,10 +2068,10 @@ void Psp_Draw(void)
     Gs_SetState(RS_ZWRITE, 1);
 }
 
-extern u32 gPspStepTexts[12];
-extern u32 gPspLines[2];
-extern u32 gPspPromptTexts[2];
-extern u32 gPspValueNames[8];
+extern char **gPspStepTexts[12];
+extern char **gPspLines[2];
+extern char **gPspPromptTexts[2];
+extern char **gPspValueNames[8];
 char *strcpy(char *, char *);
 char *strchr(char *, s32);                  /* strchr */
 /* unit's own declaration: x and y as s16, as Psp_DrawTexts passes them; with the definition's s32, the calls compile differently */
@@ -2117,9 +2117,9 @@ void Psp_DrawTexts(void)
         icon = gPspWork->cursorIcon;
         if (icon != -1) {
             kind = gPspIconIndex[icon];
-            str = ((char **)gPspValueNames[kind])[gPspWork->iconEntry[kind]];
+            str = (gPspValueNames[kind])[gPspWork->iconEntry[kind]];
         } else {
-            str = ((char **)gPspStepTexts[11])[0];
+            str = (gPspStepTexts[11])[0];
         }
         lines = NULL;
         if (str != NULL) {
@@ -2150,7 +2150,7 @@ void Psp_DrawTexts(void)
     Font_SetSpacing(20, 20);
     Font_SetPal(0);
     Font_SetColor(0x80808080);
-    lines = (char **)gPspStepTexts[gPspWork->textStep];
+    lines = gPspStepTexts[gPspWork->textStep];
     x = gPspStepTextPos[gPspWork->textStep][0];
     y = gPspStepTextPos[gPspWork->textStep][1];
     for (; *lines != NULL; lines++, y += 24) {
@@ -2160,7 +2160,7 @@ void Psp_DrawTexts(void)
             if (gFrameTick & 0x10) {
                 continue;
             }
-            prompt = (char **)gPspPromptTexts[1];
+            prompt = gPspPromptTexts[1];
             strcpy(buf, *prompt);
             textX = Str_Length(*prompt);
             textX = (640.0f - 10.0f * textX) / 2.0f;
@@ -2170,7 +2170,7 @@ void Psp_DrawTexts(void)
             if (gFrameTick & 0x10) {
                 continue;
             }
-            prompt = (char **)gPspPromptTexts[0];
+            prompt = gPspPromptTexts[0];
             strcpy(buf, *prompt);
             textX = Str_Length(*prompt);
             textX = (640.0f - 10.0f * textX) / 2.0f;
@@ -2209,7 +2209,7 @@ void Psp_DrawTexts(void)
         Text_Printf(str);
     }
     if (gPspWork->textStep == 2 && (gFrameTick & 0x10)) {
-        lines = (char **)gPspStepTexts[3];
+        lines = gPspStepTexts[3];
         x = gPspStepTextPos[3][0];
         y = gPspStepTextPos[3][1];
         for (; *lines != NULL; lines++, y += 24) {
@@ -2219,7 +2219,7 @@ void Psp_DrawTexts(void)
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                prompt = (char **)gPspPromptTexts[1];
+                prompt = gPspPromptTexts[1];
                 strcpy(buf, *prompt);
                 textX = Str_Length(*prompt);
                 textX = (640.0f - 10.0f * textX) / 2.0f;
@@ -2229,7 +2229,7 @@ void Psp_DrawTexts(void)
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                prompt = (char **)gPspPromptTexts[0];
+                prompt = gPspPromptTexts[0];
                 strcpy(buf, *prompt);
                 textX = Str_Length(*prompt);
                 textX = (640.0f - 10.0f * textX) / 2.0f;
@@ -2269,7 +2269,7 @@ void Psp_DrawTexts(void)
         }
     }
     if (gPspWork->textStep == 6 || gPspWork->textStep == 2) {
-        lines = (char **)gPspLines[0];
+        lines = gPspLines[0];
         x = gPspLinePos[0][0];
         y = gPspLinePos[0][1];
         for (; *lines != NULL; lines++, y += 24) {
@@ -2279,7 +2279,7 @@ void Psp_DrawTexts(void)
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                prompt = (char **)gPspPromptTexts[1];
+                prompt = gPspPromptTexts[1];
                 strcpy(buf, *prompt);
                 textX = Str_Length(*prompt);
                 textX = (640.0f - 10.0f * textX) / 2.0f;
@@ -2289,7 +2289,7 @@ void Psp_DrawTexts(void)
                 if (gFrameTick & 0x10) {
                     continue;
                 }
-                prompt = (char **)gPspPromptTexts[0];
+                prompt = gPspPromptTexts[0];
                 strcpy(buf, *prompt);
                 textX = Str_Length(*prompt);
                 textX = (640.0f - 10.0f * textX) / 2.0f;
@@ -2652,16 +2652,16 @@ char *gPspPromptTexts_0[2] = {
 char *gPspPromptTexts_1[2] = {
 #include "select/006CDB18.inc"
 };
-u32 gPspStepTexts[12] = {
-    0, (u32)gPspStepTexts_1, (u32)gPspStepTexts_2, (u32)gPspStepTexts_3,
-    (u32)gPspStepTexts_4, (u32)gPspStepTexts_5, (u32)gPspStepTexts_6, (u32)gPspStepTexts_7,
-    (u32)gPspStepTexts_8, (u32)gPspStepTexts_9, (u32)gPspStepTexts_10, (u32)gPspStepTexts_11,
+char **gPspStepTexts[12] = {
+    0, gPspStepTexts_1, gPspStepTexts_2, gPspStepTexts_3,
+    gPspStepTexts_4, gPspStepTexts_5, gPspStepTexts_6, gPspStepTexts_7,
+    gPspStepTexts_8, gPspStepTexts_9, gPspStepTexts_10, gPspStepTexts_11,
 };
-u32 gPspLines[2] = {
-    (u32)gPspLines_0, (u32)gPspLines_1,
+char **gPspLines[2] = {
+    gPspLines_0, gPspLines_1,
 };
-u32 gPspPromptTexts[2] = {
-    (u32)gPspPromptTexts_0, (u32)gPspPromptTexts_1,
+char **gPspPromptTexts[2] = {
+    gPspPromptTexts_0, gPspPromptTexts_1,
 };
 char *gPspValueNames_0[4] = {
 #include "select/006CDB60.inc"
@@ -2681,9 +2681,9 @@ char *gPspValueNames_1[4] = {
 char *gPspValueNames_4[4] = {
 #include "select/006CDBB0.inc"
 };
-u32 gPspValueNames[8] = {
-    (u32)gPspValueNames_0, (u32)gPspValueNames_1, (u32)gPspValueNames_2, (u32)gPspValueNames_3,
-    (u32)gPspValueNames_4, (u32)gPspValueNames_5, 0, 0,
+char **gPspValueNames[8] = {
+    gPspValueNames_0, gPspValueNames_1, gPspValueNames_2, gPspValueNames_3,
+    gPspValueNames_4, gPspValueNames_5, 0, 0,
 };
 char *gOptMainLabels[12] = {
 #include "select/006CDBE0.inc"

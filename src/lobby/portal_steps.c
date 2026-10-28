@@ -34,8 +34,8 @@
 
 void *memset(void *dst, s32 c, u32 n);
 /* The portal's start steps and its page steps. The two tables keep their
- * address names: the port's recompiler takes a table the code calls
- * through as a jump table, and finds it by that name. */
+ * address names, splat's names of the jump tables the code calls
+ * through. */
 extern void (*jtbl_007EEB10[])(void);
 u32 strlen(const char *s);
 s32 memcmp(const char *a, const char *b, u32 n);

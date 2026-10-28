@@ -451,37 +451,37 @@ void Gs_ShowFrame(s32 buf, s32 boot)
     displayX = gSysWork.dispX + gSysWork.dispAdjX * gSysWork.magH;
     displayY = gSysWork.dispY + gSysWork.dispAdjY;
     if (gSysWork.frameMode == FRAME_MODE_FIELD) {
-        GS_SMODE2 = 3;
-        GS_PMODE = 0x66;
+        HW_WR64(GS_SMODE2, 3);
+        HW_WR64(GS_PMODE, 0x66);
         if (buf == 0) {
-            GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm);
+            HW_WR64(GS_DISPFB2, GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm));
         } else {
-            GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
+            HW_WR64(GS_DISPFB2, GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm));
         }
-        GS_DISPLAY2 = GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        HW_WR64(GS_DISPLAY2, GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1));
     } else if (gSysWork.oneCircuit == 0) {
-        GS_SMODE2 = 1;
-        GS_PMODE = 0x7F27;
+        HW_WR64(GS_SMODE2, 1);
+        HW_WR64(GS_PMODE, 0x7F27);
         if (buf == 0) {
-            GS_DISPFB1 = GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm);
-            GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm);
+            HW_WR64(GS_DISPFB1, GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm));
+            HW_WR64(GS_DISPFB2, GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm));
         } else {
-            GS_DISPFB1 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
-            GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
+            HW_WR64(GS_DISPFB1, GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm));
+            HW_WR64(GS_DISPFB2, GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm));
         }
-        GS_DISPLAY1 = GS_SET_DISPLAY(displayX, displayY + 1, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
-        GS_DISPLAY2 = GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        HW_WR64(GS_DISPLAY1, GS_SET_DISPLAY(displayX, displayY + 1, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1));
+        HW_WR64(GS_DISPLAY2, GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1));
     } else {
-        GS_SMODE2 = 1;
-        GS_PMODE = 0x66;
+        HW_WR64(GS_SMODE2, 1);
+        HW_WR64(GS_PMODE, 0x66);
         if (buf == 0) {
-            GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm);
+            HW_WR64(GS_DISPFB2, GS_SET_DISPFB(gSysWork.fbBlock[0] >> 5, gDispWidth / 64, gSysWork.fbPsm));
         } else {
-            GS_DISPFB2 = GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm);
+            HW_WR64(GS_DISPFB2, GS_SET_DISPFB(gSysWork.fbBlock[1] >> 5, gDispWidth / 64, gSysWork.fbPsm));
         }
-        GS_DISPLAY2 = GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1);
+        HW_WR64(GS_DISPLAY2, GS_SET_DISPLAY(displayX, displayY, gSysWork.magH, 0x9FF, gSysWork.fbLines - 1));
     }
-    GS_EXTWRITE = 0;
+    HW_WR64(GS_EXTWRITE, 0);
 }
 
 /*

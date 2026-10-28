@@ -182,6 +182,7 @@ void NameTags_DrawLayer(MenuTask *task)
 void Icon_Draw(); /* unit's own declaration: without parameters, so that NameTags_Draw passes the values
  * of its (s16) casts as whole ints, as the game's code does; a prototype with s32 or
  * s16 parameters makes the compiler convert them differently */
+
 void Icon_DrawWeaponClass(s32, s32, s32, s32, s16, s8);
 u8 Equip_GetClass(EquipItem *e);
 extern s32 gPlayerColorWords[];

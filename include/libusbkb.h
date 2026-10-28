@@ -9,7 +9,7 @@
  */
 
 void sceUsbKbSetLEDStatus(s32 a, s32 b);
-void sceUsbKbSetRepeat(s32 a, s32 b, s32 c);
+s32 sceUsbKbSetRepeat(s32 a, s32 b, s32 c);
 void sceUsbKbClearRbuf(s32);
 
 #endif

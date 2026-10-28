@@ -79,8 +79,8 @@ s32 InitDisplay(s32 w, s32 h)
         field = sceGsSyncV(0);
         gSysField = field;
     } while (field != 0);
-    *(s32 *)&T1_MODE = 128;
-    *(s32 *)&T1_COUNT = 0;
+    HW_WR32(T1_MODE, 128);
+    HW_WR32(T1_COUNT, 0);
     return 1;
 }
 
@@ -165,8 +165,8 @@ s32 Sys_FlipFrame(s32 unused)
     SubMain_EndFrame();
     Dma_WaitIdle();
     Sys_WaitFlip();
-    *(s32 *)&T0_MODE = T_MODE_CUE | T_MODE_CLKS_HBLANK;
-    *(s32 *)&T0_COUNT = 0;
+    HW_WR32(T0_MODE, T_MODE_CUE | T_MODE_CLKS_HBLANK);
+    HW_WR32(T0_COUNT, 0);
     gSysVblanks = 0;
     gSysFlipCount += 1;
     SendFrameDmaChain();

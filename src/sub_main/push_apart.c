@@ -341,12 +341,12 @@ void Field_PushApart(void)
             wallFlag = (u16)((Em *)emA)->wallTouch != 0;
             for (j = i + 1, other = (Player *)&gEms[i + 1]; j < EM_COUNT; j++, other = (Player *)((u8 *)other + sizeof(Em))) {
                 if (other->active != 0 && other->visible != 0) {
-                    if (emA->weaponType == 29 && other->weaponType == 29) {
+                    if (emA->weaponType == EM_KIND_ROCK && other->weaponType == EM_KIND_ROCK) {
                         continue;
                     }
-                    if ((emA->weaponType == 29 || other->weaponType == 29 || (emA->startItemList == 0 && other->startItemList == 0))
+                    if ((emA->weaponType == EM_KIND_ROCK || other->weaponType == EM_KIND_ROCK || (emA->startItemList == 0 && other->startItemList == 0))
                         && other->noPushTimer == 0 && (u8)Obj_SameArea(emA, other)) {
-                        if ((wallFlag == 0 && (u16)((Em *)other)->wallTouch == 0) || emA->weaponType == 29 || other->weaponType == 29) {
+                        if ((wallFlag == 0 && (u16)((Em *)other)->wallTouch == 0) || emA->weaponType == EM_KIND_ROCK || other->weaponType == EM_KIND_ROCK) {
                             EmEm_PushApart(emA, other);
                         }
                     }

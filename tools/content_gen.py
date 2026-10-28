@@ -23,10 +23,17 @@ member). Values are written so that MWCC compiles them to the same bytes:
 - an array of 1-byte integers as a string literal (octal escapes);
 - a word (a pointer, or a u32/s32) that holds the address of a name the
   file declares becomes that name (`(T)&NAME`, `(T)((char *)&NAME + 4)`);
-  the default names (D_008DB7C0, func_0090A9C0) hold their address;
+  the names are the symbol files' and the VU1 programs' (Vu1Prog00..,
+  from their source: textbin_names); the default names (D_008DB7C0,
+  func_0090A9C0) hold their address;
 - a pointer into the file's own .rodata, outside every object the file
   declares, is a string literal there: MWCC emits it in the file's .rodata
   in first-use order, as the original source's literal did;
+- a pointer into an overlay window that no name the file declares covers (an
+  object of another module) is `RAM_AREA(0x0092A930)`, as below;
+- a word of an object in RAM_WORD_OBJECTS (the overlay windows' addresses) that
+  is an address of a fixed area of the RAM is `RAM_AREA(0x00AC8000)`
+  (include/ram_areas.h, which the file includes);
 - any other word is a number.
 Every generated file is ASCII: the game's Shift-JIS text is octal escapes,
 which MWCC and clang copy as bytes.
@@ -110,6 +117,51 @@ def cstr_lines(data: bytes, indent: str = "", width: int = 96) -> str:
 
 # --- the module: its original, its sections, its names ----------------------
 
+_TEXTBIN_NAMES: dict[str, dict[str, int]] = {}
+
+
+def textbin_names(module: str) -> dict[str, int]:
+    """The names a textbin piece's committed source defines, at their addresses: the programs of
+    src/MODULE/PIECE.vsm (tools/vu1as.py; Capcom's VU1 programs Vu1Prog00..59, which the descriptors'
+    upload words address). They are not in the symbol files: a symbol line at a textbin's start
+    becomes splat's name of the whole piece (its .incbin, objdiff's target), which objdiff then
+    pairs with the source's first program and fails. The build's object of the piece defines
+    them (vu1as), so the link sees them there."""
+    if module in _TEXTBIN_NAMES:
+        return _TEXTBIN_NAMES[module]
+    import yaml
+    import configure
+    import vu1as
+    names: dict[str, int] = {}
+    path = ROOT / configure.EXTERN_SYMBOLS.get(module, f"config/overlays/{module}.yaml")
+    if path.exists():
+        segs = yaml.safe_load(path.read_text(encoding="utf-8"))["segments"]
+        for seg in segs:
+            if not isinstance(seg, dict) or "vram" not in seg or "start" not in seg:
+                continue
+            subs = [(ss[0], str(ss[1]), str(ss[2]) if len(ss) > 2 else "") if isinstance(ss, list)
+                    else (ss.get("start"), str(ss.get("type")), str(ss.get("name", "")))
+                    for ss in seg.get("subsegments", [])]
+            for i, (off, kind, piece) in enumerate(subs):
+                src = ROOT / "src" / module / f"{piece}.vsm"
+                if kind != "textbin" or off is None or not src.exists():
+                    continue
+                try:
+                    progs = vu1as.parse(src.read_text(encoding="utf-8"))
+                    addr = seg["vram"] + off - seg["start"]
+                    for prog in progs:
+                        names[prog.name] = addr
+                        addr += 4 * len(prog.assemble())
+                except vu1as.AsmError as e:
+                    raise GenError(f"{src.relative_to(ROOT)}: {e}") from None
+                end = next((s[0] for s in subs[i + 1:] if s[0] is not None), None)
+                if end is not None and addr != seg["vram"] + end - seg["start"]:
+                    raise GenError(f"{src.relative_to(ROOT)}: its programs end at {addr:#x}, the piece at "
+                                   f"{seg['vram'] + end - seg['start']:#x}")
+    _TEXTBIN_NAMES[module] = names
+    return names
+
+
 class Module:
     def __init__(self, name: str) -> None:
         import yaml
@@ -149,6 +201,9 @@ class Module:
             m = configure.SYM_LINE.match(line)
             if m:
                 self.names.setdefault(m.group(1), int(m.group(2), 16))
+        for m in mods:
+            for k, v in textbin_names(m).items():
+                self.names.setdefault(k, v)
 
     @staticmethod
     def _extra_symbol_lines(y):
@@ -200,9 +255,11 @@ BUILTIN = {
     "long long": ("int", 8, True), "unsigned long long": ("int", 8, False),
     "_Bool": ("int", 1, False), "float": ("float", 4), "double": ("float", 8), "long double": ("float", 8),
 }
-# clang's names of an anonymous record: `struct (unnamed struct at F:L:C)`, and for one
-# nested in a named record `union TalkGift::(unnamed at F:L:C)`
-ANON = re.compile(r"(?:struct|union|enum) (?:\w+::)*\((?:unnamed|anonymous)(?: (?:struct|union|enum))? at ([^)]+)\)")
+# clang's names of an anonymous record: `struct (unnamed struct at F:L:C)` (clang 23: `struct
+# (unnamed at F:L:C)`), for one nested in a named record `union TalkGift::(unnamed at F:L:C)`, and
+# (clang 23) for one inside an anonymous union `struct HudState::(anonymous union)::(anonymous at F:L:C)`
+ANON = re.compile(r"(?:struct|union|enum) (?:(?:\w+|\((?:unnamed|anonymous) (?:struct|union)\))::)*"
+                  r"\((?:unnamed|anonymous)(?: (?:struct|union|enum))? at ([^)]+)\)")
 QUALS = re.compile(r"\b(?:const|volatile|__restrict|restrict)\b")
 # a default name (splat's), which holds the object's or function's address
 DEFAULT_NAME = re.compile(r"^(?:D|func|jtbl)_([0-9A-Fa-f]{6,8})$")
@@ -385,6 +442,16 @@ def int_type(size: int, signed: bool) -> str:
         "unsigned " + {1: "char", 2: "short", 4: "int", 8: "long long"}[size]
 
 
+# The objects whose 4-byte words are addresses in the RAM block (the PS2's EE RAM
+# the game addresses as fixed areas, include/ram_areas.h): a number that only
+# equals an address stays a number in every other object, so each object here
+# is listed after its reads were seen.
+RAM_WORD_OBJECTS = {"gOverlayWindowBase"}      # each overlay window's address (LoadOverlay)
+# The overlay windows (the first window's start to the end of the EE's RAM): a pointer
+# there that no name the file declares covers is RAM_AREA(addr)
+WINDOW_LO, WINDOW_HI = 0x6AF200, 0x2000000
+
+
 class Emitter:
     """The initializer of an object of a file, from the module's bytes."""
 
@@ -414,6 +481,7 @@ class Emitter:
             # every object the file declares (before or after), to tell a pointer
             # into one of them from a literal's address
             types.all_spans = sorted((addr, size or 1, name) for _, addr, name, size in types.declared)
+        self.ram_words = False         # set for an object of RAM_WORD_OBJECTS
         self.by_addr: dict[int, str] = {}
         self.spans: list[tuple[int, int, str]] = []
         for order, addr, name, size in types.declared:
@@ -461,11 +529,18 @@ class Emitter:
                 raise GenError(f"{a:#x}: not a finite float ({b.hex()})")
             return repr(f)
         v = int.from_bytes(b, "little")
+        if self.ram_words and len(b) == 4 and v >= 0x100000:
+            return f"RAM_AREA({v:#x})"
         if t[0] == "ptr":
             if v == 0:
                 return "0"
             cast = t[1] or "void *"
-            return self.word(v, cast) or f"({cast}){v:#010x}"
+            w = self.word(v, cast)
+            if w is None and WINDOW_LO <= v < WINDOW_HI:
+                # an overlay window's address that the file can't name (another module's
+                # object): RAM_AREA of the number; the file includes ram_areas.h
+                return f"({cast})RAM_AREA({v:#010x})"
+            return w or f"({cast}){v:#010x}"
         size, signed = t[1], t[2]
         if size == 4:
             # an integer field: an object's or a function's own address is a name (a
@@ -618,6 +693,7 @@ def gen_file(rel: str) -> list[str]:
         try:
             t = types.parse(qt)
             em = Emitter(mod, types, unit, top.get(cands[0]["id"], order.get(name, 1 << 30)))
+            em.ram_words = name in RAM_WORD_OBJECTS
             body = em.inner(t, int(addr, 16))
         except GenError as e:
             raise GenError(f"{rel}: {name} ({qt}) at {addr}: {e}") from None

@@ -6,7 +6,8 @@
  * Monster kind 29's vocabulary (EmKind1D_*, the kind in hex). No code shows
  * its species: it never moves or attacks, each of its groups has one or two
  * states that end at once or after a few frames, and its death plays its
- * variant's sound and effects.
+ * variant's sound and effects. Capcom's name for kind 29 is EM_ROCK
+ * (mhfo.dll's kind table), hence EM_KIND_ROCK.
  */
 #define KIND1D_MOT_IDLE 0x01  /* the one motion EmKind1D_Init sets */
 

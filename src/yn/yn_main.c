@@ -76,7 +76,7 @@ extern char gNetPppConfBuf[240];
 extern char D_59DD00[256];
 extern char gHttpsProxy[272];         /* the HTTPS proxy URL */
 extern char gHttpProxy[272];         /* the HTTP proxy URL */
-void Window_DrawTextAlpha(); /* unit's own declaration: the definition (sub_main) takes (Window *, u8 *text, u8 alpha); Yn_DrawBackground also passes &rect in a3, which it ignores (a native build drops it), and a fixed 4-parameter type reschedules that function */
+void Window_DrawTextAlpha(); /* unit's own declaration: the definition (sub_main) takes (Window *, u8 *text, u8 alpha); Yn_DrawBackground also passes &rect in a3, which it ignores, and a fixed 4-parameter type reschedules that function */
 s32 Prim_FillRect(PrimLine *rect);
 void Hud_DrawButtonIcon(s16 id, s16 x, s16 y, s16 depth, u32 color, f32 scale); /* unit's own declaration:
  * the definition (sub_main) takes s32 id, x, y, depth; Yn_DrawHelpBar narrows its arguments to

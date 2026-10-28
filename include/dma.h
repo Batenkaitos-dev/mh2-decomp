@@ -15,6 +15,14 @@
 #define DMA_TAG_END 0x70000000
 #define DMA_TAG_IRQ 0x80000000
 
+/* The address a DMA tag holds for the memory at addr (the DMA tag builders:
+ * DmaTag_Next, Ref, RefE and Call), and whether it is in the scratchpad, which
+ * the tag marks with the SPR bit (bit 31 of its second word).
+ * The scratchpad is at 0x70000000 (top nibble 7), and the tag holds the low
+ * 28 bits: the scratchpad's offset, or the RAM address. */
+#define DMA_ADDR_IS_SPR(addr) (((addr) & 0x70000000) == 0x70000000)
+#define DMA_TAG_ADDR(addr) ((addr) & 0x0FFFFFFF)
+
 /* VIF codes (a VIF packet's command words): the command in bits 24-31, NUM in
  * bits 16-23, the immediate in bits 0-15. */
 #define VIF_STCYCL(cl, wl) (0x01000000 | ((wl) << 8) | (cl))  /* write cycle: wl qwords per cl */
@@ -68,7 +76,7 @@ typedef struct DmaQueue {
     volatile u32 count[2]; /* 0x14 entries queued in each buffer */
     u32 write[2];       /* 0x1C */
     u32 read[2];        /* 0x24 */
-    s32 unk2C;
+    s32 unk2C;          /* 0x2C the entry last started (DmaQueue_Handler, SendFrameDmaChain): its chain's address with the kind in the top 4 bits, a tagged address kept an integer */
     s32 unk30;
     s32 chainStart;     /* 0x34 the first tag address of the queued chain (its top bits select the memory) */
     u32 *chainEnd;      /* 0x38 the last tag of the queued chain: the next chain links to it */

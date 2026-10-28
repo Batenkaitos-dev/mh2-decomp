@@ -10,7 +10,10 @@
  * command's own bytes. EmScript_Run reads the op and calls its handler,
  * named in each entry; the If and Switch commands skip the blocks they
  * don't run with EmScript_SkipBlock and EmScript_SkipToEnd, which take the
- * op to look for.
+ * op to look for. The "Capcom:" notes are the trace strings of Monster
+ * Hunter Frontier's engine (mhfo.dll, forked from this code), whose
+ * dispatcher (at 0x1084ec30) uses the same op numbers: each string sits in
+ * that op's handler.
  */
 enum EmScriptOp {
     EMOP_IF_SENSED = 0x01,                          /* EmScript_IfSensed */
@@ -26,27 +29,27 @@ enum EmScriptOp {
     EMOP_IF_COMBAT_IS = 0x0B,                       /* EmScript_IfCombatIs */
     EMOP_SET_VAR = 0x0C,                            /* EmScript_SetVar */
     EMOP_CLEAR_VAR = 0x0D,                          /* EmScript_ClearVar */
-    EMOP_IF_IN_AREA = 0x0E,                         /* EmScript_IfInArea */
+    EMOP_IF_IN_AREA = 0x0E,                         /* EmScript_IfInArea. Capcom: em_cmd_stage_no_ck */
     EMOP_START_LOOP = 0x0F,                         /* EmScript_StartLoop */
     EMOP_NEXT_LOOP_POINT = 0x10,                    /* EmScript_NextLoopPoint */
     EMOP_GOAL_ALERTED_PLAYER = 0x11,                /* EmScript_GoalAlertedPlayer */
     EMOP_GOAL_NOTICED_PLAYER = 0x12,                /* EmScript_GoalNoticedPlayer */
     EMOP_GOAL_SCRIPT_PLAYER = 0x13,                 /* EmScript_GoalScriptPlayer */
-    EMOP_IF_TARGET_OFF_HEADING = 0x14,              /* EmScript_IfTargetOffHeading */
+    EMOP_IF_TARGET_OFF_HEADING = 0x14,              /* EmScript_IfTargetOffHeading. Capcom: ANGLE_CK */
     EMOP_SWITCH_AREA = 0x15,                        /* EmScript_SwitchArea */
     EMOP_CALL = 0x16,                               /* EmScript_Call */
     EMOP_SET_AREA_SEQ = 0x17,                       /* EmScript_SetAreaSeq */
-    EMOP_STEP_AREA_SEQ = 0x18,                      /* EmScript_StepAreaSeq */
+    EMOP_STEP_AREA_SEQ = 0x18,                      /* EmScript_StepAreaSeq. Capcom: em_cmd_area_route_move */
     EMOP_GOAL_DEST_AREA = 0x19,                     /* EmScript_GoalDestArea */
     EMOP_GOAL_AREA_TOWARD = 0x1A,                   /* EmScript_GoalAreaToward */
-    EMOP_IF_REQUESTED_IS = 0x1B,                    /* EmScript_IfRequestedIs */
+    EMOP_IF_REQUESTED_IS = 0x1B,                    /* EmScript_IfRequestedIs. Capcom: em_cmd_mind_ck (Capcom's word for the request is "mind") */
     EMOP_SWITCH_HP_PERCENT = 0x1C,                  /* EmScript_SwitchHpPercent */
     EMOP_SWITCH_REQUEST_ID = 0x1D,                  /* EmScript_SwitchRequestId */
     EMOP_SET_REQUEST = 0x1E,                        /* EmScript_SetRequest */
     EMOP_IF_STANCE_FAMILY = 0x1F,                   /* EmScript_IfStanceFamily */
     EMOP_SWITCH_TARGET_ANGLE = 0x20,                /* EmScript_SwitchTargetAngle */
     EMOP_IF_NEED2_LOW = 0x21,                       /* EmScript_IfNeed2Low */
-    EMOP_IF_GOAL_NEAR_XZ = 0x22,                    /* EmScript_IfGoalNearXZ */
+    EMOP_IF_GOAL_NEAR_XZ = 0x22,                    /* EmScript_IfGoalNearXZ. Capcom: NEAR_POS_CK */
     EMOP_SWITCH_KIND_IN_AREA = 0x23,                /* EmScript_SwitchKindInArea */
     EMOP_REPEAT = 0x24,                             /* EmScript_Repeat */
     EMOP_STOP_REPEAT = 0x25,                        /* EmScript_StopRepeat */
@@ -104,7 +107,7 @@ enum EmScriptOp {
     EMOP_IF_SCRIPT_PLAYER_FLOOR_ATTR = 0x5A,        /* EmScript_IfScriptPlayerFloorAttr */
     EMOP_SET_NOTICE_TIMER = 0x5B,                   /* EmScript_SetNoticeTimer */
     EMOP_IF_CEILING_ABOVE = 0x5C,                   /* EmScript_IfCeilingAbove */
-    EMOP_IF_GOAL_VALID = 0x5D,                      /* EmScript_IfGoalValid */
+    EMOP_IF_GOAL_VALID = 0x5D,                      /* EmScript_IfGoalValid. Capcom: SMELL_SET_CK */
     EMOP_IF_FLOOR_ATTR = 0x5E,                      /* EmScript_IfFloorAttr */
     EMOP_PICK_NOTICED_PLAYER_SAME_FLOOR = 0x5F,     /* EmScript_PickNoticedPlayerSameFloor */
     EMOP_IF_GATE_OPEN = 0x60,                       /* EmScript_IfGateOpen */
@@ -169,21 +172,27 @@ enum EmScriptOp {
  * script when one runs (scriptFlags 0x01), else restart the main script.
  * 0xF5 and 0xF6 restart the main script as EMEND_MAIN does, 0xF7 also forgets
  * the script player's notice, 0xFC also resets the combat gauge: which
- * scripts end with them isn't known.
+ * scripts end with them isn't known. Capcom's trace strings in mhfo.dll's
+ * EmScript_End (MHF, forked from this code; at 0x1084cb00, its switch on
+ * the same values) name them: 0xF5 UNKO_END ("unko", dung), 0xF6
+ * NO_FLOOR_END, 0xF7 FIND_NG_END ("em->cmd_pl_target == NOT_FOUND_PL",
+ * then "hate&flag clear" for the notice), 0xFC FIND_END ("Em_Mode_Chg( em,
+ * EM_MODE_ATTACK )", at its Em_SetCombat). The "Capcom:" notes below are the
+ * same function's strings for the named ends; the others print none.
  */
 enum EmScriptEnd {
-    EMEND_MAIN = 0x00,          /* the main script: restarts it, scriptFlags cleared */
-    EMEND_CALL = 0x01,          /* returns from EMOP_CALL_SCRIPT (scriptCallReturn) */
-    EMEND_JUMP = 0x02,          /* returns from EMOP_JUMP_ENTRY (scriptJumpReturn) */
+    EMEND_MAIN = 0x00,          /* the main script: restarts it, scriptFlags cleared. Capcom: MAIN TBL END */
+    EMEND_CALL = 0x01,          /* returns from EMOP_CALL_SCRIPT (scriptCallReturn). Capcom: CONTENTS TBL END */
+    EMEND_JUMP = 0x02,          /* returns from EMOP_JUMP_ENTRY (scriptJumpReturn). Capcom: SUB CONTENTS TBL END */
     EMEND_SUBSCRIPT = 0x03,     /* returns from EMOP_CALL (subScriptReturn) */
-    EMEND_ROUTE_ENTER = 0x04,   /* steps along the route, moving a large monster into the route's area */
-    EMEND_ROUTE_STEP = 0x05,    /* steps along the route of EmScript_StartRoute */
+    EMEND_ROUTE_ENTER = 0x04,   /* steps along the route, moving a large monster into the route's area. Capcom: GROUND AREA MOVE TBL END */
+    EMEND_ROUTE_STEP = 0x05,    /* steps along the route of EmScript_StartRoute. Capcom: GROUND AREA MOVE TBL END */
     EMEND_RAGE = 0xF8,          /* the EM_TRIGGER_RAGE thread */
     EMEND_SENSED = 0xF9,        /* the EM_TRIGGER_SENSED thread */
     EMEND_AREA_OBJ = 0xFA,      /* the EM_TRIGGER_AREA_OBJ thread */
-    EMEND_AREA_SEQ_STEP = 0xFB, /* a step of the area sequence */
-    EMEND_PART_BUILDUP = 0xFD,  /* the EM_TRIGGER_PART_BUILDUP thread */
-    EMEND_LOOP_PASS = 0xFE,     /* a pass of the loop script */
+    EMEND_AREA_SEQ_STEP = 0xFB, /* a step of the area sequence. Capcom: AREA_END */
+    EMEND_PART_BUILDUP = 0xFD,  /* the EM_TRIGGER_PART_BUILDUP thread. Capcom: KEHAI_END ("kehai", a presence; the same bit, 0x10, is cleared) */
+    EMEND_LOOP_PASS = 0xFE,     /* a pass of the loop script. Capcom: ROUTE_MOVE_END */
     EMEND_LOOP = 0xFF           /* the loop script: repeats it for loopCount passes */
 };
 
@@ -315,7 +324,7 @@ u8 *EmScript_IfLevelAtLeast(Em *em, u8 *script);
 u8 *EmScript_IfVersus(Em *em, u8 *script);
 u8 *EmScript_SwitchItemUseKind(Em *em, u8 *script);
 u8 *EmScript_IfVersusItemUsed(Em *em, u8 *script);
-s32 Em_StartScript(Em *em);
+s32 Em_StartScript(Em *em); /* Capcom: em_cmd_top (mhfo.dll's EmScript_End trace) */
 u8 *EmScript_SkipBlock(Em *em, u8 *script, u8 opcode, u8 end);
 u8 *EmScript_NextCmd(Em *em, u8 *script);
 u8 *EmScript_SkipToEnd(Em *em, u8 *script, u8 opcode);
@@ -327,7 +336,7 @@ void Em_TargetPlayerInRange(Em *em);
 u8 *EmScript_PickWeighted(Em *em, u8 *script);
 u8 *EmScript_GetPos(Em *em);
 void EmScript_SetPos(Em *em, u8 *pos);
-void *EmScript_LoopScript(Em *em, u8 entry);
+void *EmScript_LoopScript(Em *em, u8 entry); /* Capcom: route_ptr_set (mhfo.dll's EmScript_End trace) */
 void *EmScript_SubScript(Em *em, u8 entry);
 void *EmScript_AreaSeqList(Em *em, u8 entry);
 void *EmScript_AreaSeqScript(Em *em, u8 entry);
@@ -335,7 +344,7 @@ void *EmScript_LoopPointList(Em *em, u8 entry);
 void *EmScript_RoutePointScript(Em *em, u8 entry);
 u8 *EmScript_PickTrigger(Em *em);
 void EmScript_Restart(Em *em);
-s32 Em_SetCombat(Em *em, u8 mode, s16 frames);
+s32 Em_SetCombat(Em *em, u8 mode, s16 frames); /* Capcom: Em_Mode_Chg (mhfo.dll's EmScript_End trace) */
 s32 Em_CanEnterArea(Em *em, u16 area);
 
 #endif /* EM_SCRIPT_H */

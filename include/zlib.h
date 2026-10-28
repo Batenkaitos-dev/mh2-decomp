@@ -37,10 +37,12 @@
 #ifndef ZLIB_H
 #define ZLIB_H
 
+#include "common.h"
+
 /* zconf.h */
 typedef unsigned char Byte;
 typedef unsigned int uInt;
-typedef unsigned long uLong; /* 64-bit with MWCC */
+typedef MWCC_ULONG uLong; /* 64-bit with MWCC */
 typedef Byte Bytef;
 typedef uInt uIntf;
 typedef uLong uLongf;
@@ -96,6 +98,10 @@ typedef z_stream *z_streamp;
 /* zlib's enums are one byte (the mode fields are read with lbu, stored with
  * sb): zlib was built with enums of the smallest size, not MWCC's int. */
 #pragma enumsalwaysint off
+/* ZENUM marks the three enums below, which the pragma makes the smallest
+ * size that holds them (one byte, unsigned): the mode fields' stores then
+ * leave the bytes after them alone, which the heap's contents show. */
+#define ZENUM
 
 /* zutil.h */
 #define local static
@@ -130,7 +136,7 @@ struct inflate_huft_s {
 #define MANY 1440
 
 /* infcodes.c */
-typedef enum {
+typedef enum ZENUM {
     START,   /* x: set up for LEN */
     LEN,     /* i: get length/literal/eob next */
     LENEXT,  /* i: getting length extra (have base) */
@@ -164,7 +170,7 @@ typedef struct inflate_codes_state {
 } inflate_codes_statef; /* 0x1C bytes */
 
 /* infutil.h */
-typedef enum {
+typedef enum ZENUM {
     TYPE,   /* get type bits (3, including end bit) */
     LENS,   /* get lengths for stored */
     STORED, /* processing stored block */
@@ -223,7 +229,7 @@ typedef struct inflate_blocks_state {
 #define LOAD {LOADIN LOADOUT}
 
 /* inflate.c */
-typedef enum {
+typedef enum ZENUM {
     METHOD, /* waiting for method byte */
     FLAG,   /* waiting for flag byte */
     DICT4,  /* four dictionary check bytes to go */

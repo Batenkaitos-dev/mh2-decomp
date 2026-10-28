@@ -431,8 +431,11 @@ def write_ninja(targets: list[Target]) -> None:
                     import yaml
                     orig = yaml.safe_load((ROOT / t.yaml).read_text(encoding="utf-8"))["options"]["target_path"]
                     stamp = "build/gen/" + src.removeprefix("src/").removesuffix(".c") + ".stamp"
+                    # (and the VU1 programs' source: content_gen takes their names from it)
                     deps = ["tools/content_gen.py", t.yaml.as_posix(), orig, *headers,
-                            *(p.relative_to(ROOT).as_posix() for p in _symbol_files(t) if p.exists())]
+                            *(p.relative_to(ROOT).as_posix() for p in _symbol_files(t) if p.exists()),
+                            "tools/vu1as.py",
+                            *(p.relative_to(ROOT).as_posix() for p in sorted(ROOT.glob("src/*/*.vsm")))]
                     lines.append(f"build {stamp}: content {src} | {' '.join(deps)}")
                     implicit += f" {stamp}"
                 blobs = included_data(src)

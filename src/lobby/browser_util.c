@@ -63,7 +63,7 @@ void Html_StopLoad(void)
 s16 *Html_LoadStep(s32 arg)
 {
     s32 result;
-    long start;
+    MWCC_LONG start;
     u32 sec;
     u32 usec;
 

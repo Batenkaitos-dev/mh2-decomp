@@ -58,7 +58,7 @@ void Sys_WaitFlip(void)
     Sound_Update();
     func_00162040();
     if (gSysVblanks <= gSysFlipAt) {
-        gSysField = (s32) ((s64) ((((u64) GS_CSR >> 13) & 1) << 32) >> 32);
+        gSysField = (s32) ((s64) ((((u64) HW_RD64(GS_CSR) >> 13) & 1) << 32) >> 32);
         Sys_FlipTick();
         do {
             func_00162188();

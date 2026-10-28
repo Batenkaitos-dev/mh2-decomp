@@ -5928,7 +5928,7 @@ void EmRathalos_QuestIntro(Em *em, EmWork *work)
 
     Stage_GetAreaRecord(em->area);
     for (i = 0, otherEm = gEms; i < 20; i++, otherEm++) {
-        if ((otherEm->type == 12 || otherEm->type == EM_KIND_POPO) && otherEm->active != 0 && otherEm->variant == 0) {
+        if ((otherEm->type == EM_KIND_HERBIVORE_0 || otherEm->type == EM_KIND_POPO) && otherEm->active != 0 && otherEm->variant == 0) {
             goto found;
         }
     }

@@ -7,7 +7,9 @@
  * monster with one contact attack (the charge). Nothing in the code names
  * the monster. It is placed by the quest or spawned by Yama Tsukami
  * (EmKind38_SpawnAtEmBone; then it bursts out, stays 1800 frames and dies).
- * Its C sets only the idle motion; the script plays the others.
+ * Its C sets only the idle motion; the script plays the others. Capcom's
+ * name for kind 56 is EM_RAIKOUCHUU, the Thunderbug (mhfo.dll's kind
+ * table), hence EM_KIND_THUNDERBUG.
  */
 enum EmKind38Motion {
     K38_MOT_IDLE = 0x01

@@ -849,6 +849,14 @@ u32 gDmcamFileIds_67[26] = {
 u32 gDmcamFileIds_0[2] = {
 #include "sub_main/0041C5D8.inc"
 };
+/*
+ * Capcom: the dmcam files (DATA.BIN file 6645's) are probably
+ * motion\evcam%04d.bin, with motion\evmot%04d.mot beside them: format
+ * strings in Monster Hunter Frontier's 2019 mhfo.dll (likely). MHF's PC 1.0
+ * install has none of these files, so the pairing and the numbering are
+ * unchecked. Long runs of 27 of the 68 built-in scripts above
+ * (gDmcamFileIds_*) are in mhfo.dll byte for byte.
+ */
 u32 *gDmcamFileIds[140] = {
 #include "sub_main/0041C5E0.inc"
 };

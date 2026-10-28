@@ -14,7 +14,7 @@
 #include "anim_file.h"
 #include "engine_util.h"
 
-extern s32 gAnimCurveBuf;          /* the base of the curves' keys */
+extern u8 *gAnimCurveBuf;         /* the base of the curves' keys */
 extern LinearHeap gAnimKeyHeap;   /* the heap of the keys */
 /* The 16-bit keys as the motion file stores them: KeyS2, KeyS4 and KeySM
  * (motion.h) read as unsigned halves. Anim_ConvertKeysS2/S4/SM copy them
@@ -145,7 +145,7 @@ s32 Anim_LoadSet(AnimSet *out, u8 *buf, void *file)
     f32 loopTime;
 
     size = Anim_ConvertedSize(file);
-    gAnimCurveBuf = (s32)buf;
+    gAnimCurveBuf = buf;
     Anim_SetKeyBase(buf);
     LinearHeap_Init(&gAnimKeyHeap, buf, size, 1);
     set = LinearHeap_Alloc(&gAnimKeyHeap, sizeof(AnimSet), 0);
@@ -178,9 +178,9 @@ s32 Anim_LoadSet(AnimSet *out, u8 *buf, void *file)
         set->loop = 0.0f;
     }
     for (i = 0; i < count; i++) {
-        ((s32 *)set->anims)[i] -= gAnimCurveBuf;
+        ((s32 *)set->anims)[i] -= (s32)gAnimCurveBuf;
     }
-    set->anims -= gAnimCurveBuf;
+    set->anims -= (s32)gAnimCurveBuf;
     *out = *set;
     out->base = (s32)buf;
     return 1;
@@ -275,7 +275,7 @@ void Anim_ConvertChunk(void *file, AnimHeader *anim, AnimFileChunk *chunk, s32 u
         }
         rec = (AnimFileCurve *)((u8 *)rec + rec->size);
     }
-    anim->curves -= gAnimCurveBuf;
+    anim->curves -= (s32)gAnimCurveBuf;
 }
 
 /* Converts curve record rec's keys into curve, by the record's key format. */
@@ -324,7 +324,7 @@ void Anim_ConvertKeysF2(AnimFileCurve *rec, AnimCurve *curve)
         src++;
         dst++;
     }
-    curve->keys -= gAnimCurveBuf;
+    curve->keys -= (s32)gAnimCurveBuf;
 }
 
 /* Curve curve, ANIM_KEY_F32_CUBIC, from record rec's keys (KeyF4), copied to gAnimKeyHeap. */
@@ -347,7 +347,7 @@ void Anim_ConvertKeysF4(AnimFileCurve *rec, AnimCurve *curve)
         src++;
         dst++;
     }
-    curve->keys -= gAnimCurveBuf;
+    curve->keys -= (s32)gAnimCurveBuf;
 }
 
 /* Curve curve, ANIM_KEY_F32_MIXED, from record rec's keys (KeyFM), copied to gAnimKeyHeap. */
@@ -371,7 +371,7 @@ void Anim_ConvertKeysFM(AnimFileCurve *rec, AnimCurve *curve)
         src++;
         dst++;
     }
-    curve->keys -= gAnimCurveBuf;
+    curve->keys -= (s32)gAnimCurveBuf;
 }
 
 /* Curve curve, ANIM_KEY_S16_LINEAR, from record rec's keys (KeyS2), copied to gAnimKeyHeap. */
@@ -392,7 +392,7 @@ void Anim_ConvertKeysS2(AnimFileCurve *rec, AnimCurve *curve)
         src++;
         dst++;
     }
-    curve->keys -= gAnimCurveBuf;
+    curve->keys -= (s32)gAnimCurveBuf;
 }
 
 /* Curve curve, ANIM_KEY_S16_CUBIC, from record rec's keys (KeyS4), copied to gAnimKeyHeap. */
@@ -415,7 +415,7 @@ void Anim_ConvertKeysS4(AnimFileCurve *rec, AnimCurve *curve)
         src++;
         dst++;
     }
-    curve->keys -= gAnimCurveBuf;
+    curve->keys -= (s32)gAnimCurveBuf;
 }
 
 /* Curve curve, ANIM_KEY_S16_MIXED, from record rec's keys (KeySM), copied to gAnimKeyHeap. */
@@ -439,7 +439,7 @@ void Anim_ConvertKeysSM(AnimFileCurve *rec, AnimCurve *curve)
         src++;
         dst++;
     }
-    curve->keys -= gAnimCurveBuf;
+    curve->keys -= (s32)gAnimCurveBuf;
 }
 
 /* The latest end time (AnimCurve_GetEndTime) of animation anim's curves, at least 0. */
@@ -450,7 +450,7 @@ f32 Anim_GetEndTime(AnimHeader *anim)
     f32 time;
 
     for (i = 0; i < anim->count; i++) {
-        time = AnimCurve_GetEndTime(&((AnimCurve *)(anim->curves + gAnimCurveBuf))[i]);
+        time = AnimCurve_GetEndTime(&((AnimCurve *)(anim->curves + (u32)gAnimCurveBuf))[i]);
         if (time > max) {
             max = time;
         }
@@ -466,7 +466,7 @@ f32 Anim_GetStartTime(AnimHeader *anim)
     f32 time;
 
     for (i = 0; i < anim->count; i++) {
-        time = AnimCurve_StartTime(&((AnimCurve *)(anim->curves + gAnimCurveBuf))[i]);
+        time = AnimCurve_StartTime(&((AnimCurve *)(anim->curves + (u32)gAnimCurveBuf))[i]);
         if (time < min) {
             min = time;
         }

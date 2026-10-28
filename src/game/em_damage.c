@@ -123,7 +123,7 @@ void Em_StartBlind(Em *em)
     case EM_KIND_FATALIS:
         StunStars_CreateEm(em, 2, 51, em->blindTimer, 150.0f, 3.0f);
         break;
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
         StunStars_CreateEm(em, 2, 0, em->blindTimer, 90.0f, 1.0f);
         break;
@@ -139,7 +139,7 @@ void Em_StartBlind(Em *em)
     case EM_KIND_GIAPREY:
         StunStars_CreateEm(em, 2, 14, em->blindTimer, 50.0f, 1.0f);
         break;
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_APCEROS:
         StunStars_CreateEm(em, 2, 15, em->blindTimer, 50.0f, 1.5f);
         break;
@@ -212,7 +212,7 @@ void Em_ApplyFlash(Em *em)
     case EM_KIND_YIAN_KUT_KU:
     case EM_KIND_CEPHADROME:
     case EM_KIND_RATHALOS:
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_GENPREY:
     case EM_KIND_VELOCIPREY:
     case EM_KIND_GRAVIOS:
@@ -260,7 +260,7 @@ void Em_ApplyFlash(Em *em)
         }
         return;
     case EM_KIND_MOSSWINE:
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
     case EM_KIND_SHAKALAKA:
         if (em->remote != 0) {
@@ -361,7 +361,7 @@ void Em_ApplyFlash(Em *em)
             flashState = 7;
         }
         break;
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
         if (em->stance == 0 && em->stateGroup != 4 && em->stateGroup != 5 && em->stateGroup != 6
             && Player_IsState((Player *) em, 4, 2) == 0) {
@@ -417,7 +417,7 @@ void Em_ApplyFlash(Em *em)
             flashState = 5;
         }
         break;
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_APCEROS:
     case EM_KIND_POPO:
         flashState = 5;
@@ -551,12 +551,12 @@ void Em_ForceState19(Em *em)
     case EM_KIND_CEPHALOS:
         EmCephadrome_ChangeState(em, 0, 7, 4);
         break;
-    case 9:
+    case EM_KIND_FELYNE:
     case EM_KIND_MELYNX:
     case EM_KIND_MOSSWINE:
     case EM_KIND_BULLFANGO:
     case EM_KIND_BULLDROME:
-    case 32:
+    case EM_KIND_PIGLET:
     case EM_KIND_GENPREY:
     case EM_KIND_VELOCIPREY:
     case EM_KIND_GIAPREY:
@@ -564,7 +564,7 @@ void Em_ForceState19(Em *em)
     case EM_KIND_VELOCIDROME:
     case EM_KIND_GENDROME:
     case EM_KIND_IODROME:
-    case 12:
+    case EM_KIND_HERBIVORE_0:
     case EM_KIND_POPO:
     case EM_KIND_APCEROS:
         break;
@@ -655,7 +655,7 @@ void Em_UpdateStatus(Em *em)
                 bone = ANTEKA_BONE_HEAD;
                 scale = 1.0f;
                 break;
-            case 12:
+            case EM_KIND_HERBIVORE_0:
             case EM_KIND_APCEROS:
             case EM_KIND_POPO:
                 pos[0] = 0.0f;
@@ -664,7 +664,7 @@ void Em_UpdateStatus(Em *em)
                 bone = APC_BONE_BREATH;
                 scale = 1.2f;
                 break;
-            case 9:
+            case EM_KIND_FELYNE:
             case EM_KIND_MELYNX:
             case EM_KIND_SHAKALAKA:
                 pos[0] = 0.0f;
@@ -688,7 +688,7 @@ void Em_UpdateStatus(Em *em)
                 break;
             case EM_KIND_MOSSWINE:
             case EM_KIND_BULLFANGO:
-            case 32:
+            case EM_KIND_PIGLET:
             case EM_KIND_BULLDROME:
                 pos[0] = 0.0f;
                 pos[1] = 10.0f;

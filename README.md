@@ -32,6 +32,32 @@ codebase of over 12,500 functions was written, compiled and laid out.
 structure of the game's data (types, names, sizes). Everything else comes
 from your own copy of the game when you build.
 
+## OpenMH2, the native PC port
+
+[OpenMH2](https://github.com/Batenkaitos-dev/openmh2), to be released
+soon, is a native PC port built from this decompilation. It is not a
+recompilation and not an emulator: the game's own code is this
+repository's decompiled C, compiled for Windows and Linux, and the console
+libraries the game calls, Sony's SDK and CRI's middleware among them, are
+replaced by new implementations written by hand for the port. It needs
+your own copy of the game: its launcher copies the game's files from your
+disc image or extracted files once, and the original files aren't needed
+after that.
+
+It is built to play exactly as the original does. Its enhancements are
+optional and off by default; planned are:
+
+- higher resolutions, with super-sampling, and true widescreen, for the
+  camera and the HUD, with the HUD's scale and placement;
+- high-resolution texture packs that players make, and texture dumping to
+  make them with;
+- a free camera, with the game paused, stepped frame by frame or running,
+  and a photo mode;
+- fast-forward and fast loading;
+- the camera on the right stick, remappable;
+- save states;
+- support for translation packs that players make, in any language.
+
 ## Status
 
 Where each byte of the 13 built files comes from (`ninja provenance`, from
@@ -295,6 +321,19 @@ decisions.
   AI's reading of the code, and can be wrong. Corrections are welcome.
 
 More in [docs/ai-workflow/](docs/ai-workflow/README.md).
+
+## Licence
+
+The project's own work in this repository is dedicated to the public
+domain under [CC0 1.0 Universal](LICENSE): the tools, the build, the
+documentation, and what the project added to the decompiled code (its
+names, types and comments).
+
+**Monster Hunter 2 is not covered.** The game's code, which the
+decompiled C reproduces, and its data and text are Capcom's. The project
+claims no rights in them, and CC0 does not apply to them, to anyone's
+trademarks, or to anything built or extracted from your copy of the game.
+zlib's code keeps its own licence (below).
 
 ## Legal
 

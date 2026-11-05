@@ -2751,7 +2751,7 @@ void Plsel_RewardListDrawText(SceneState *task)
  * linker dead-stripped (tools/mwcc_cc.py compiles it and drops its code). Its
  * body is unknown: what shows is that the file compiled a two-argument runtime
  * call before Plsel_BuildResultText, which changes that function's code
- * (docs/notes/hard-matches/Plsel_BuildResultText.md). The "%s" before
+ * (a hard match). The "%s" before
  * Plsel_CategoryIsShared's jump table, first used only later, is another
  * sign of a stripped function here. */
 static f64 Stripped_Sub(f64 lhs, f64 rhs)

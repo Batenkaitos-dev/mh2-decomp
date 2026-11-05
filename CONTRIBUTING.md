@@ -334,3 +334,10 @@ C variants that match. Its settings for this project are
 tools/permuter_settings.toml and tools/permuter_prelude.inc (it looks for
 them in `tools/`); how to use it here, and the false fixes it finds, are
 in docs/mwcc-matching.md, "decomp-permuter".
+
+## The terms of a contribution
+
+What you contribute is dedicated to the public domain under CC0 1.0, as
+the project's own work is ([README, Licence](README.md#licence)). It
+covers your work only: Monster Hunter 2's code, data and text are
+Capcom's, and a contribution must not include any of the game's data.

@@ -120,6 +120,7 @@ u8 *ObjBuf_GetBlock(s32 blk)
     return (u8 *)((s32)gObjBufBlocks + (blk << OBJ_BUF_BLOCK_SHIFT));
 }
 
+
 /* Marks the n work blocks from start as in use. */
 void ObjBuf_MarkUsed(s32 start, s32 n)
 {

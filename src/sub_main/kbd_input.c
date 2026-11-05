@@ -51,7 +51,6 @@ extern const char D_0046CC08[]; /* a full-width space */
 s32 strncmp(const char *a, const char *b, u32 n);
 extern u8 gKbdPhrasePage;
 extern u8 gKbdSavedKanaInput;
-extern u8 gKbdState;
 extern s8 D_005AEAD7;
 /* end of prototypes */
 
@@ -2577,7 +2576,7 @@ clear:
  * Caps Lock, Home, End, Delete, Page Up, Page Down and the arrows: their
  * Kbd_* handlers. Tab: Kbd_NextChatTarget. USB_KEY_LBRACKET and USB_KEY_RBRACKET (the '@' and
  * '[' keys of a Japanese keyboard): Kbd_DakutenKey, Kbd_HandakutenKey.
- * USB_KEY_GRAVE (Hankaku/Zenkaku): Kbd_ZenkakuKey. F1-F12: Kbd_FKey. The
+ * USB_KEY_GRAVE (Hankaku/Zenkaku): Kbd_ZenkakuKey. The function keys: Kbd_FKey. The
  * Katakana/Hiragana, Henkan and Muhenkan keys: Kbd_KanaKey,
  * Kbd_HenkanKey, Kbd_MuhenkanKey. Any other key is typed with
  * Kbd_TypeKey, which (active now being 0) calls Kbd_TypeHidKey.
@@ -3278,7 +3277,7 @@ void Kbd_CapsLock(void)
 }
 
 /*
- * Shift with F1..F12 (key, a USB code): inserts phrase number
+ * Shift with a function key (key, a USB code): inserts phrase number
  * key - USB_KEY_F1 of the first phrase page. Refused (SE_SYS_REFUSE)
  * while converting or with Ctrl held. Else sets KBD_KEYF_CYCLING and,
  * when Kbd_FindKind allows the page (else refused), records the page,
@@ -3312,7 +3311,7 @@ void Kbd_ShiftFKey(u8 key)
 }
 
 /*
- * Ctrl with F1..F12: as Kbd_ShiftFKey, on the second phrase page;
+ * Ctrl with a function key: as Kbd_ShiftFKey, on the second phrase page;
  * refused while converting or with Shift held.
  */
 void Kbd_CtrlFKey(u8 key)
@@ -3348,7 +3347,7 @@ extern s32 gKbdSettings;
 s32 Kbd_ShiftPair(s32 i);
 
 /*
- * F1..F12 (key, USB_KEY_F1..USB_KEY_F12). With Alt: when key 6 of the
+ * The function keys (key, USB_KEY_F1..USB_KEY_F12). With Alt: when key 6 of the
  * layout has a character, does gesture key - USB_KEY_F1
  * (Kbd_DoGesture). With Ctrl: Kbd_CtrlFKey. With Shift: Kbd_ShiftFKey,
  * when the kind has phrases (kindConf + 48) and the first phrase page
@@ -3360,7 +3359,7 @@ s32 Kbd_ShiftPair(s32 i);
  * Kbd_Confirm; F7 Kbd_ConvertForm2; F9, F10 the phrase pages
  * (Kbd_OpenPhrases1, Kbd_OpenPhrases2); F11 the gestures page with the
  * cursor on column 5, row 0 (refused while converting, when barred, or
- * when the kind has no gestures, kindConf + 40); F12 cycles the
+ * when the kind has no gestures, kindConf + 40); the last function key cycles the
  * gestures on the gestures page, else the phrases. The keys that switch
  * sets end a phrase cycle (KBD_KEYF_CYCLING). Refusals: SE_SYS_REFUSE.
  */

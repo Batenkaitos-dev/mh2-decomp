@@ -2016,6 +2016,7 @@ void DojoMenu_DrawBasics(DojoMenu *dojo, s16 x, s16 y)
     s16 tabs[DOJO_BASICS_PAGES];
     s16 i;
 
+
     for (i = 0; i < DOJO_BASICS_PAGES; i++) {
         tabs[i] = 16;
         if (dojo->page == i) {

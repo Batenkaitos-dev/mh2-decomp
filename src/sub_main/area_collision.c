@@ -84,7 +84,7 @@ typedef struct SweepCap {
 extern f32 gAreaQuadOffsets[][2];
 void AreaHit_CollideSweep(SweepCap *cap, u16 mask, s32 em, f32 r);
 void AreaHit_CollideCapsule(SweepCap *cap, u16 mask, Em *em, f32 r);
-extern s32 gAreaHitTris[];
+extern AreaTri *gAreaHitTris[];
 extern WallContact gEmWallContacts[][WALL_CONTACTS];
 extern s8 gAreaHitIdCount;
 extern s8 gAreaHitIds[];
@@ -251,7 +251,7 @@ void AreaHit_CollideCapsule(SweepCap *seg, u16 mask, Em *em, f32 radius)
                             && (nseen == 0 || List_Contains((s32)cellTri, seen, nseen) != 1)
                             && (nhit == 0 || AreaHitTris_Contains((s32)cellTri, nhit) != 1)) {
                             if (Capsule_TestTriLevel((f32 *)&cap, cellTri, from)) {
-                                gAreaHitTris[nhit++] = (s32)cellTri;
+                                gAreaHitTris[nhit++] = cellTri;
                             }
                             seen[nseen++] = (s32)cellTri;
                             if (nseen >= AREA_SEEN_TRIS) {
@@ -274,7 +274,7 @@ void AreaHit_CollideCapsule(SweepCap *seg, u16 mask, Em *em, f32 radius)
     if (gAreaHitIdCount != 0) {
         for (i = 0, contact = 0; i < gAreaHitIdCount; i++) {
             idx = gAreaHitIds[i];
-            tri = (AreaTri *)gAreaHitTris[idx];
+            tri = gAreaHitTris[idx];
             contactYaw = (u16)(Math_Heading(gAreaHitPoints[idx].x, gAreaHitPoints[idx].z, from[0], from[2]) + ANGLE_TURN / 4);
             contactYaw = (u16)(contactYaw - em->rotY);
             gEmWallContacts[em->index][contact].flags = WALL_CONTACT_HIT;
@@ -389,7 +389,7 @@ void AreaHit_CollideSweep(SweepCap *seg, u16 mask, s32 em_in, f32 radius)
                             && (nseen == 0 || List_Contains((s32)cellTri, seen, nseen) != 1)
                             && (nhit == 0 || AreaHitTris_Contains((s32)cellTri, nhit) != 1)) {
                             if (Capsule_TestTriLevel((f32 *)&cap, cellTri, from)) {
-                                gAreaHitTris[nhit++] = (s32)cellTri;
+                                gAreaHitTris[nhit++] = cellTri;
                             }
                             seen[nseen++] = (s32)cellTri;
                             if (nseen >= AREA_SEEN_TRIS) {
@@ -406,7 +406,7 @@ void AreaHit_CollideSweep(SweepCap *seg, u16 mask, s32 em_in, f32 radius)
     em->wallHitSpecial = 0;
     for (i = 0; i < gAreaHitIdCount; i++) {
         idx = gAreaHitIds[i];
-        hitTri = (AreaTri *)gAreaHitTris[idx];
+        hitTri = gAreaHitTris[idx];
         contactYaw = (u16)(Math_Heading(gAreaHitPoints[idx].x, gAreaHitPoints[idx].z, from[0], from[2]) + ANGLE_TURN / 4);
         em->wallHitDirs |= 1 << ((u32)(u16)(contactYaw - em->rotY) >> 11);
         if (gAreaTriKindFlags[gScene.area][hitTri->kind].emSpecial) {
@@ -483,7 +483,7 @@ s32 AreaGrid_SweepCells(f32 *from, f32 *target, f32 *out, u16 mask, f32 radius)
                             && (nseen == 0 || List_Contains((s32)cellTri, seen, nseen) != 1)
                             && (nhit == 0 || AreaHitTris_Contains((s32)cellTri, nhit) != 1)) {
                             if (Capsule_TestTri((f32 *)&cap, cellTri)) {
-                                gAreaHitTris[nhit++] = (s32)cellTri;
+                                gAreaHitTris[nhit++] = cellTri;
                             }
                             seen[nseen++] = (s32)cellTri;
                             if (nseen >= AREA_SEEN_TRIS) {
@@ -519,7 +519,7 @@ s32 AreaHitTris_Contains(s32 id, u32 n)
     u32 i;
 
     for (i = 0; i < n; i++) {
-        if (gAreaHitTris[i] == id) {
+        if ((s32)gAreaHitTris[i] == id) {
             return 1;
         }
     }
@@ -2870,7 +2870,7 @@ s32 AreaGrid_SweepSphere(f32 *from, f32 *target, f32 *out, u16 mask, f32 radius)
                             && (nhit == 0 || AreaHitTris_Contains((s32)cellTri, nhit) != 1)) {
                             if (Capsule_HitTri((f32 *)&cap, cellTri, out)) {
                                 cap.a = *(Vec3 *)out;
-                                gAreaHitTris[nhit++] = (s32)cellTri;
+                                gAreaHitTris[nhit++] = cellTri;
                             }
                             seen[nseen++] = (s32)cellTri;
                             if (nseen >= AREA_SEEN_TRIS) {

@@ -1144,6 +1144,7 @@ void Npc_StatePairStand(Em *npc, s8 variant)
     NpcWork *npcWork = (NpcWork *)&npc->work;
     Em *partner;
 
+
     switch (npc->step) {
     case 0:
         npc->step++;

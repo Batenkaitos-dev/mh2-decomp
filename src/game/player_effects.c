@@ -46,7 +46,6 @@
 #include "engine_math.h"
 #include "part_effects.h"
 #include "rand.h"
-#include "crt0.h"
 #include "area.h"
 #include "vec_math.h"
 
@@ -4692,8 +4691,8 @@ ColorKey PlayerFx_ColorKeys_55[5] = {
 s16 PlayerFx_BombFlameDelays[4] = {
 #include "game/008D9CF8.inc"
 };
-u32 PlayerFx_Durations_13[2] = {
-    (u32)__start, 0,
+s16 PlayerFx_Durations_13[4] = {
+#include "game/008D9D00.inc"
 };
 u16 PlayerFx_MeshTbl_14[6] = {
 #include "game/008D9D08.inc"
@@ -4812,7 +4811,7 @@ s16 *PlayerFx_Durations[36] = {
     PlayerFx_SlashDurations, (s16 *)&PlayerFx_ColorKeys_10[40], PlayerFx_BowChargeDurations, PlayerFx_BowShotDurations,
     PlayerFx_SlashDurations, PlayerFx_Durations_5, PlayerFx_Durations_6, PlayerFx_HornNoteDurations,
     PlayerFx_GreatSwordChargeDurations, PlayerFx_Durations_6, PlayerFx_ImpactDurations, PlayerFx_Durations_11,
-    PlayerFx_Durations_12, (s16 *)PlayerFx_Durations_13, PlayerFx_Durations_14, PlayerFx_Durations_15,
+    PlayerFx_Durations_12, PlayerFx_Durations_13, PlayerFx_Durations_14, PlayerFx_Durations_15,
     PlayerFx_Durations_16, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,
     NULL, NULL, NULL, NULL,

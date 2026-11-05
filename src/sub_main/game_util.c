@@ -304,7 +304,7 @@ u8 Kbd_UsbNewKey(void)
 
 /*
  * The chat's keyboard hotkeys, for the field and the lobby (HUD input):
- * Alt with F1 to F12 asks for gesture 1 to 12 when the chat is available,
+ * Alt with a function key asks for gesture 1 to 12 when the chat is available,
  * and returns 0. Otherwise returns 1 when the key pressed should open the
  * chat's input: with Ctrl or Shift held, or any key but Escape, F6, F7,
  * the Enter keys and the arrows (0 for those, and for no key).

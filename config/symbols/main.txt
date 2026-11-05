@@ -757,7 +757,7 @@ gIopLoadErrorFmt = 0x001C7C30; // size:0x18 the format Iop_LoadModule prints whe
 gCdromPrefix = 0x001C7C48; // size:0x8 the device File_Read and the other whole-file functions put before a name
 gCdromSuffix = 0x001C7C50; // size:0x10 the version suffix they put after it
 gPadConfigDefault = 0x001C7C60; // size:0x2C
-gPadBit = 0x001C7C90; // size:0x60
+gPadBit = 0x001C7C90; // size:0x60 can_reference:False
 
 // The render state's flag words (the Z, alpha and test bits the setters take; set by
 // InitDisplay, read and changed by Gs_SetState/Gs_GetState), and the frame's packet buffer

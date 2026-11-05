@@ -286,10 +286,10 @@ enum PlayerStateGroup {
 #define PL_MOT_HAMMER_CHARGE_WALK    0x3ED  /* Hammer_StateChargeWalk */
 #define PL_MOT_HAMMER_CHARGE_START   0x3EE  /* Hammer_StateCharge: raises the hammer; the charge starts */
 #define PL_MOT_HAMMER_CHARGE_HOLD    0x3EF  /* Hammer_StateCharge: holds the charge */
-#define PL_MOT_HAMMER_CHARGE_ENTRY   0x582  /* Hammer_StateCharge variant 2, HAMMER_CHARGE_AFTER_ATTACK: the lead-in, then PL_MOT_HAMMER_CHARGE_START */
+#define PL_MOT_HAMMER_CHARGE_ENTRY   0x582  /* Hammer_StateCharge variant 2, HAMMER_CHARGE_AFTER_ATTACK: the run-up, then PL_MOT_HAMMER_CHARGE_START */
 #define PL_MOT_BOW_CHARGE            0x57D  /* Bow_StateCharge: draws and holds the charge */
 #define PL_MOT_BOW_CHARGE_WALK       0x3F1  /* Bow_StateChargeWalk */
-#define PL_MOT_BOW_CHARGE_FROM_DRAW  0x3F4  /* Bow_StateCharge variant 5, BOW_DRAW_CHARGE: the lead-in, then PL_MOT_BOW_CHARGE */
+#define PL_MOT_BOW_CHARGE_FROM_DRAW  0x3F4  /* Bow_StateCharge variant 5, BOW_DRAW_CHARGE: the run-up, then PL_MOT_BOW_CHARGE */
 #define PL_MOT_BOW_CHARGE_FROM_STAB  0x3F5  /* Bow_StateCharge variant 4, BOW_CHARGE_AFTER_STAB */
 #define PL_MOT_BOW_CHARGE_FROM_SHOT  0x58A  /* Bow_StateCharge variant 3, BOW_CHARGE_AFTER_SHOT */
 /* The dual swords' demon mode, by the same rule: these ids are the dual

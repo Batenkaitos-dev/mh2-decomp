@@ -7959,6 +7959,7 @@ void AreaAtmos_Spawn(s32 type)
 }
 
 /* The update of an area atmosphere object: runs its state (Obj.state): 0 AreaAtmos_Setup, 1 AreaAtmos_Update, 2 AreaAtmos_End, 3 AreaAtmos_Free. */
+
 void AreaAtmos_Task(Obj *obj)
 {
     u8 step;

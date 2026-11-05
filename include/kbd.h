@@ -133,6 +133,7 @@ typedef struct KbdEntry {
 typedef char KbdEntry_size_check[(sizeof(KbdEntry) == 0x674) ? 1 : -1];
 
 extern KbdEntry *gKbd;
+extern KbdEntry gKbdState;
 
 /*
  * The USB keyboard's codes, as KbdEntry's usb fields hold them: the HID

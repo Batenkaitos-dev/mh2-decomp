@@ -56,7 +56,6 @@ extern u8 gKbdHandakutenSjis_1;
 s32 strncmp(const char *a, const char *b, u32 n);
 extern u8 gKbdPhrasePage;
 extern u8 gKbdSavedKanaInput;
-extern u8 gKbdState;
 extern s8 D_005AEAD7;
 typedef struct BoxSize {
     f32 w;
@@ -318,7 +317,7 @@ s8 Kbd_LookupKey(void)
  */
 void Kbd_InitState(s8 language)
 {
-    gKbd = (KbdEntry *)&gKbdState;
+    gKbd = &gKbdState;
     gKbd->polled = 0;
     gKbdSavedKanaInput = 0;
     Kbd_ClearUnk34(language);
@@ -1609,7 +1608,7 @@ void Kbd_DrawSprite(u32 color, s16 x, s16 y, s16 width, s16 height, s16 texLeft,
 
 /*
  * 1 when the whole keyboard is drawn: while it takes the input or shows a
- * phrase or gestures page, or when F9, F10 or F12 opened it (F11 for entry
+ * phrase or gestures page, or when F9, F10 or the last function key opened it (F11 for entry
  * kind 0; gKbdOpenKey). Otherwise only the text line is drawn: 0.
  * Chat_DrawKbdBox sizes its frame by it.
  */

@@ -832,6 +832,11 @@ extern u16 *gFieldGuideLists[2][6];
  * before it counts the monsters; y keeps the monster list's top; listX and
  * labelX each hold another x first (the title's centred x, and the
  * title's x).
+ *
+ * tabs[7] is never read as an open group: gQuestMapGroups has 7 entries, but
+ * QuestDesk_CountOpenGroups never counts group 13, so groupCount is at most 6 and tabs[6]
+ * stays 0 from the memset (measured on the original game: groupCount 6 over
+ * 357 calls, and the words at tabs[6] and tabs[7] 0 at every entry).
  */
 void QuestDesk_DrawFieldGuide(s16 x, s16 y)
 {

@@ -1892,6 +1892,7 @@ s32 MsgEvent_CheckSupplyBoxClosed(void)
     return 0;
 }
 
+
 /*
  * Returns the number of messages of set msgSet (the second half of its row of
  * gMsgEventSets).

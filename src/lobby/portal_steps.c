@@ -76,7 +76,7 @@ void Page_New(void)
     gBrowserState->pageKind = PAGE_KIND_NONE;
     gBrowserWork->focus = 0;
     gBrowserWork->texCount = 0;
-    /* opaque draws; the alpha test passes what differs from the reference */
+    /* opaque draws; the alpha test passes what differs from the original game */
     Browser_SetRenderState(RS_ALPHA_REF, BROWSER_BLACK);
     Browser_SetRenderState(RS_ALPHA_TEST, RS_CMP_NOTEQUAL);
     Browser_SetRenderState(RS_BLEND, RS_BLEND_OPAQUE);

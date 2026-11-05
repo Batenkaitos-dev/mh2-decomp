@@ -1542,6 +1542,8 @@ void Em_AddAlertBuildup(Em *em, u8 player, u8 range, s8 sector)
 
 extern EmReactionDists *gEmReactionDists[];
 extern EmReactionAngles *gEmReactionAngles[];
+extern EmReactionAngles gEmReactionAngles_0[2];
+#define EM_REACTION_ANGLE(p) (*(p))
 /*
  * Loads reaction set `k` of the monster's kind: the four distance limits
  * (reactDist[0..1], nearRadius and a fourth at the bytes shared with
@@ -1566,13 +1568,13 @@ void Em_LoadReactionSet(Em *em, u8 k)
     em->nearRadius = *dists++;
     *(f32 *) ((u8 *) em + 1904) = *dists++; /* limit 3: Em has the Player fields inBattle, prevInBattle here */
     em->reactRange[0] = *dists++;
-    em->sectorHalfAngle[0] = *angles++;
+    em->sectorHalfAngle[0] = EM_REACTION_ANGLE(angles++);
     em->reactRange[1] = *dists++;
-    em->sectorHalfAngle[1] = *angles++;
+    em->sectorHalfAngle[1] = EM_REACTION_ANGLE(angles++);
     em->reactRange[2] = *dists++;
-    em->sectorHalfAngle[2] = *angles++;
+    em->sectorHalfAngle[2] = EM_REACTION_ANGLE(angles++);
     *(f32 *) ((u8 *) em + 2116) = *dists++; /* range 3: Em has the Player field aimPitch at +0x846 */
-    em->sectorHalfAngle[3] = *angles++;
+    em->sectorHalfAngle[3] = EM_REACTION_ANGLE(angles++);
 }
 
 /* the monster's position tables (Em_AreaEntryValue, Em_FindAreaEntry) */

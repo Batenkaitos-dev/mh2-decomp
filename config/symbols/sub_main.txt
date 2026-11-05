@@ -2942,7 +2942,7 @@ PhraseMenu_OpenKbd = 0x00362DF0; // type:func
 PhraseMenu_KbdUpdate = 0x00362E80; // type:func
 Text_DrawTruncated = 0x00362F20; // type:func
 Kbd_UsbNewKey = 0x0036B820; // type:func
-// Alt with F1 to F12 plays that key's gesture
+// Alt with a function key plays that key's gesture
 Kbd_ActHotkeys = 0x0036B830; // type:func
 // Alt with an arrow key
 Kbd_IsModArrow = 0x0036B950; // type:func
@@ -3578,11 +3578,11 @@ Kbd_DakutenKey = 0x0030FD80; // type:func
 Kbd_HandakutenKey = 0x0030FDE0; // type:func
 // the Caps Lock key (HID 0x39): the case of the character set
 Kbd_CapsLock = 0x0030FE40; // type:func
-// the keys F1-F12 (HID 0x3A-0x45)
+// the function keys (HID 0x3A-0x45)
 Kbd_FKey = 0x00310280; // type:func
-// Shift+F1..F12
+// Shift with a function key
 Kbd_ShiftFKey = 0x00310020; // type:func
-// Ctrl+F1..F12
+// Ctrl with a function key
 Kbd_CtrlFKey = 0x00310150; // type:func
 Kbd_ClearText = 0x00310870; // type:func
 // the Home key (HID 0x4A)
@@ -5674,7 +5674,7 @@ gDmcamFileIds_15 = 0x00419690; // size:0xD0 entry 15 of gDmcamFileIds
 gDmcamFileIds_16 = 0x00419760; // size:0x110 entry 16 of gDmcamFileIds
 gDmcamFileIds_17 = 0x00419870; // size:0x110 entry 17 of gDmcamFileIds
 gDmcamFileIds_18 = 0x00419980; // size:0x110 entry 18 of gDmcamFileIds
-gDmcamFileIds_19 = 0x00419A90; // size:0x150 entry 19 of gDmcamFileIds
+gDmcamFileIds_19 = 0x00419A90; // size:0x150 can_reference:False entry 19 of gDmcamFileIds
 gDmcamFileIds_20 = 0x00419BE0; // size:0x190 entry 20 of gDmcamFileIds
 gDmcamFileIds_21 = 0x00419D70; // size:0x260 entry 21 of gDmcamFileIds
 gDmcamFileIds_22 = 0x00419FD0; // size:0x250 entry 22 of gDmcamFileIds
@@ -5702,7 +5702,7 @@ gDmcamFileIds_43 = 0x0041B110; // size:0x120 entry 43 of gDmcamFileIds
 gDmcamFileIds_44 = 0x0041B230; // size:0xC0 entry 44 of gDmcamFileIds
 gDmcamFileIds_45 = 0x0041B2F0; // size:0x100 entry 45 of gDmcamFileIds
 gDmcamFileIds_46 = 0x0041B3F0; // size:0xF0 entry 46 of gDmcamFileIds
-gDmcamFileIds_47 = 0x0041B4E0; // size:0x240 entry 47 of gDmcamFileIds
+gDmcamFileIds_47 = 0x0041B4E0; // size:0x240 can_reference:False entry 47 of gDmcamFileIds
 gDmcamFileIds_48 = 0x0041B720; // size:0xB0 entry 48 of gDmcamFileIds
 gDmcamFileIds_49 = 0x0041B7D0; // size:0x120 entry 49 of gDmcamFileIds
 gDmcamFileIds_50 = 0x0041B8F0; // size:0x100 entry 50 of gDmcamFileIds
@@ -5711,14 +5711,14 @@ gDmcamFileIds_52 = 0x0041BA50; // size:0x50 entry 52 of gDmcamFileIds
 gDmcamFileIds_53 = 0x0041BAA0; // size:0xA0 entry 53 of gDmcamFileIds
 gDmcamFileIds_54 = 0x0041BB40; // size:0xA0 entry 54 of gDmcamFileIds
 gDmcamFileIds_55 = 0x0041BBE0; // size:0x140 entry 55 of gDmcamFileIds
-gDmcamFileIds_56 = 0x0041BD20; // size:0x100 entry 56 of gDmcamFileIds
+gDmcamFileIds_56 = 0x0041BD20; // size:0x100 can_reference:False entry 56 of gDmcamFileIds
 gDmcamFileIds_57 = 0x0041BE20; // size:0x60 entry 57 of gDmcamFileIds
 gDmcamFileIds_58 = 0x0041BE80; // size:0xC0 entry 58 of gDmcamFileIds
 gDmcamFileIds_59 = 0x0041BF40; // size:0x120 entry 59 of gDmcamFileIds
 gDmcamFileIds_60 = 0x0041C060; // size:0xB0 entry 60 of gDmcamFileIds
 gDmcamFileIds_61 = 0x0041C110; // size:0xC0 entry 61 of gDmcamFileIds
 gDmcamFileIds_62 = 0x0041C1D0; // size:0x60 entry 62 of gDmcamFileIds
-gDmcamFileIds_63 = 0x0041C230; // size:0x100 entry 63 of gDmcamFileIds
+gDmcamFileIds_63 = 0x0041C230; // size:0x100 can_reference:False entry 63 of gDmcamFileIds
 gDmcamFileIds_64 = 0x0041C330; // size:0xC0 entry 64 of gDmcamFileIds
 gDmcamFileIds_65 = 0x0041C3F0; // size:0xC0 entry 65 of gDmcamFileIds
 gDmcamFileIds_66 = 0x0041C4B0; // size:0xC0 entry 66 of gDmcamFileIds
@@ -9145,7 +9145,7 @@ gDnasWait = 0x0059D4D0; // size:0x2 NETWORK, frames a DNAS step has waited, it g
 gDnasProxyHost = 0x0059D4E0; // size:0x110 NETWORK, the proxy host and port text of the DNAS setup, cut at the colon (Dnas_Step)
 gDnasStatusPrev = 0x0059D600; // size:0x10 NETWORK, the last DNAS status record, compared to advance the progress (Dnas_Step)
 gKbdReplayKey = 0x005AEA20; // size:0x1 the USB key held when the keyboard opened (Kbd_Open), which Kbd_Run replays as a new key and clears
-gKbdOpenKey = 0x005AEA48; // size:0x1 the USB key held at Kbd_Open, which Kbd_Draw and Kbd_KeysShown test for F9 to F12
+gKbdOpenKey = 0x005AEA48; // size:0x1 the USB key held at Kbd_Open, which Kbd_Draw and Kbd_KeysShown test for the last function keys
 gLoadingScrollX = 0x006AEF60; // size:0x4 the loading screen background scroll in pixels, wraps at 1248 (Loading_Draw)
 gLoadingFrame = 0x006AEF70; // size:0x4 the loading screen frame counter, its low bit blinks (Loading_Animate)
 gVu1ProgLayouts = 0x004024D0; // size:0x60 per VU1 program (progInfo 6), the vertices of a batch and the attribute bits (Model_SetupEntry, Model_BuildVifPackets)
@@ -9803,6 +9803,7 @@ gResultsIconTex = 0x006AE8EC; // size:0x4
 gKanaKeyChars = 0x00403520; // size:0x10
 gKanaKeyCodes = 0x00403530; // size:0xD0
 gJisHalfSymbols = 0x00403600; // size:0x2F
+D_00403630 = 0x00403630; // size:0x90 can_reference:False gJisHalfSymbols' records from JIS 0x2130 (numbers that equal .bss addresses)
 gConvConnBits = 0x004036C0; // size:0x3E0
 gConvConnRows = 0x00403AA0; // size:0x1D0
 gConvConnCols = 0x00403C70; // size:0x100

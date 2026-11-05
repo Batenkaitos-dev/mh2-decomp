@@ -91,7 +91,7 @@ KIND_CATEGORIES = [("origin/" + k, k) for k in ("game", "sdk", "middleware", "ac
 # Padding is not code: the 0x40 zero bytes every overlay's text starts with
 # (an asm piece 'text' before the first unit) and lbguild's and test's empty
 # text (a textbin 'text'). These units get only the 'padding' category, so no
-# module or origin row counts them (tools/progress.py takes them out of TOTAL).
+# module or origin row counts them (the progress report takes them out of TOTAL).
 PADDING = "padding"
 PADDING_UNITS = {"text", "data/text"}
 ZLIB_UNITS = {f"lobby/{n}" for n in ("adler32", "infblock", "inflate", "infutil")}

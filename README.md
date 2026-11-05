@@ -35,14 +35,21 @@ from your own copy of the game when you build.
 ## OpenMH2, the native PC port
 
 [OpenMH2](https://github.com/Batenkaitos-dev/openmh2), to be released
-soon, is a native PC port built from this decompilation. It is not a
-recompilation and not an emulator: the game's own code is this
-repository's decompiled C, compiled for Windows and Linux, and the console
-libraries the game calls, Sony's SDK and CRI's middleware among them, are
-replaced by new implementations written by hand for the port. It needs
-your own copy of the game: its launcher copies the game's files from your
-disc image or extracted files once, and the original files aren't needed
-after that.
+soon, is a native PC port built from the ground up on this decompilation.
+It is not a recompilation and not an emulator: the game's program in it is
+this repository's C source, compiled for Windows and Linux by an ordinary C
+compiler, and nothing translates or emulates the PS2's main processor.
+(Only the vector unit's microcode, the small programs that transform the
+game's 3D geometry, is translated from the PS2's own code, at build time.)
+
+None of the console's software is included either. The PS2 kernel's
+services and the libraries the game was linked against, Sony's SDK and
+CRI's middleware among them, are written from scratch for the PC under the
+same names, from their documentation and their observed behaviour rather
+than their code, so the decompiled game calls them as it called the
+originals; no PS2 BIOS is needed. It needs your own copy of the game: its
+launcher copies the game's files from your disc image or extracted files
+once, and the original files aren't needed after that.
 
 It is built to play exactly as the original does. Its enhancements are
 optional and off by default; planned are:

@@ -39,8 +39,10 @@ soon, is a native PC port built from the ground up on this decompilation.
 It is not a recompilation and not an emulator: the game's program in it is
 this repository's C source, compiled for Windows and Linux by an ordinary C
 compiler, and nothing translates or emulates the PS2's main processor.
-(Only the vector unit's microcode, the small programs that transform the
-game's 3D geometry, is translated from the PS2's own code, at build time.)
+The vector unit's microcode, the small programs that transform the game's
+3D geometry, was written in that unit's own assembly language, so this
+repository keeps it as assembly source, and the port's build compiles that
+source into C as well.
 
 None of the console's software is included either. The PS2 kernel's
 services and the libraries the game was linked against, Sony's SDK and

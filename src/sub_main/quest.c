@@ -1013,14 +1013,14 @@ s32 Quest_Update(void)
                  * quests, else a minute; 10 s after a sub goal */
                 if (gQuest.flags & 0x20000006) {
                     gQuest.timeLeft = 600; /* frames: 20 s */
-                    if (Game_IsOnline() == 1) {
+                    if (Game_RulesOnline() == 1) {
                         Notice_PushItem(gReturn20sTownText[0]);
                     } else {
                         Notice_PushItem(gReturn20sVillageText);
                     }
                 } else {
                     gQuest.timeLeft = 1800; /* frames: 1 min */
-                    if (Game_IsOnline() == 1) {
+                    if (Game_RulesOnline() == 1) {
                         Notice_PushItem(gReturn1mTownText[0]);
                     } else {
                         Notice_PushItem(gReturn1mVillageText);
@@ -1028,7 +1028,7 @@ s32 Quest_Update(void)
                 }
             } else {
                 gQuest.timeLeft = 300; /* frames: 10 s */
-                if (Game_IsOnline() == 1) {
+                if (Game_RulesOnline() == 1) {
                     Notice_PushItem(gReturn10sTownText[0]);
                 } else {
                     Notice_PushItem(gReturn10sVillageText);

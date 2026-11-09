@@ -231,7 +231,7 @@ void Quest_DrawOverview(s16 x, s16 y, QuestInfo *quest)
     s16 top;
     char stars[64];
 
-    if ((quest->flags & QUEST_FLAG_MUST_ORDER) != 0 && Game_IsOnline() == 1) {
+    if ((quest->flags & QUEST_FLAG_MUST_ORDER) != 0 && Game_RulesOnline() == 1) {
         Quest_DrawMustOrderOverview(x, y, quest);
         return;
     }
@@ -291,7 +291,7 @@ void Quest_DrawTerms(s16 x, s16 y, QuestInfo *quest)
     char wide[64];
     char line[64];
 
-    if ((quest->flags & QUEST_FLAG_MUST_ORDER) != 0 && Game_IsOnline() == 1) {
+    if ((quest->flags & QUEST_FLAG_MUST_ORDER) != 0 && Game_RulesOnline() == 1) {
         Quest_DrawMustOrderTerms(x, y, quest);
         return;
     }
@@ -774,7 +774,7 @@ s32 Monster_IsAvailableOnline(u16 em)
  */
 s32 Monster_IsAvailable(u16 em)
 {
-    if (Game_IsOnline() == 1) {
+    if (Game_RulesOnline() == 1) {
         return Monster_IsAvailableOnline(em);
     }
     return Monster_IsAvailableOffline(em);
@@ -900,7 +900,7 @@ void QuestDesk_DrawFieldGuide(s16 x, s16 y)
     y = rowY;
     for (j = 0; j < 7; j++) {
         if (monsters[1] != 0) {
-            if (((monsters[0] != 0xFFFF && Cond_Check(monsters[0]) == 1) || Game_IsOnline() == 0) && Monster_IsAvailable(monsters[1]) == 1) {
+            if (((monsters[0] != 0xFFFF && Cond_Check(monsters[0]) == 1) || Game_RulesOnline() == 0) && Monster_IsAvailable(monsters[1]) == 1) {
                 Font_SetPos(listX, rowY += 20);
                 Text_PrintfColored(gMonsterNames[monsters[1]]);
             }

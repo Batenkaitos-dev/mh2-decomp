@@ -339,9 +339,13 @@ def uses_content(c_src: str) -> bool:
 
 
 def tool(name: str) -> str:
+    """A program of the build: the one tools/setup.sh installed in tools/deps, else on PATH."""
+    for d in ("binutils", "wibo", "objdiff", "venv/bin", "uv"):
+        if (DEPS / d / name).is_file():
+            return str(DEPS / d / name)
     path = shutil.which(name)
     if not path:
-        sys.exit(f"{name} not found on PATH; run `source tools/env.sh` (after tools/setup.sh)")
+        sys.exit(f"{name} not found: run tools/setup.sh (or tools/build.sh, which does)")
     return path
 
 

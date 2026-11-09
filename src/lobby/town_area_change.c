@@ -234,7 +234,7 @@ u8 Town_EnterArea(u16 area, s32 newDrawSlots)
         }
         if (gLobby->areaLoaded == 0) {
             gLobby->areaLoaded = 1;
-            if (Game_IsOnline() == 1) {
+            if (Game_RulesOnline() == 1) {
                 Anim_LoadCommon(2);
             } else {
                 switch (area) {

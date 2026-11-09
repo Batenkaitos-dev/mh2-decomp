@@ -44,7 +44,7 @@ options:
   data_string_guesser_level: 2
 
   section_order: [.text, .data, .rodata, .bss]
-  # Each piece carries its own alignment (tools/sjis_as.py, tools/mwcc_cc.py), so
+  # Each piece carries its own alignment (the matching build's assembler and compiler wrappers), so
   # data can be split per C file at any address.
   emit_subalign: False
   ld_align_section_vram_end: False

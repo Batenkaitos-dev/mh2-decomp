@@ -170,14 +170,15 @@ Windows, it runs inside **WSL 2**. Everything is installed into the
 repository's `tools/deps/` (gitignored) at pinned versions:
 [tools/versions.txt](tools/versions.txt), whose downloads are checked
 against their SHA-256, and [uv.lock](uv.lock) for Python. That takes about
-400 MB, and a build about 210 MB more.
+600 MB, and a build about 210 MB more.
 
 ### Linux
 
-You need `git`, and `sudo` on Debian or Ubuntu, where the setup script
-installs `ca-certificates`, `curl`, `git`, `tar` and `clang` with apt
-(clang reads the C files' types for `tools/content_gen.py`). On another
-distribution, install those yourself and run `tools/setup.sh --no-apt`.
+You need `git`, `curl` (or `wget`), `tar` and `gzip`. The setup script
+installs nothing with apt and needs no `sudo`: it names a program that is
+missing, with the Debian package that has it. The clang that
+`tools/content_gen.py` reads the C files' types with is the one inside
+Zig's release, downloaded with the other tools; no system clang is needed.
 
 ```sh
 git clone <repository URL> mh2-decomp
@@ -191,6 +192,10 @@ ninja                            # generate the content, compile, assemble, link
 ninja progress                   # matched code per module and by origin
 ninja provenance                 # where each byte of the 13 files comes from
 ```
+
+Or all of it in one command, from anywhere and with no `source`:
+`tools/build.sh` (`-j 8` limits the jobs). It runs `tools/setup.sh` when
+anything is missing or out of date, then `configure.py` and `ninja`.
 
 `ninja` ends with one line per target:
 
@@ -220,6 +225,11 @@ tools/deps/downloads` before `tools/setup.sh`.
    `/mnt/c`.
 3. Follow the Linux steps. Your disc files can stay on Windows: for a copy
    in `D:\games\mh2`, `export MH2_ORIG_DIR=/mnt/d/games/mh2`.
+
+   Or, in PowerShell, `tools\build.ps1 -OrigDir D:\games\mh2`: it checks
+   that WSL and a distribution are there (it installs nothing), finds the
+   repository in WSL's file system or copies it there, and runs
+   `tools/build.sh` in it.
 
 The game's compiler is a Windows program; wibo runs it on Linux, and
 there is no native Windows build.
@@ -297,7 +307,7 @@ The project stands on these tools:
 | [m2c](https://github.com/matt-kempster/m2c) | matt-kempster | the first drafts of the C |
 | [uv](https://github.com/astral-sh/uv) | astral-sh | the pinned Python environment |
 | [ninja](https://github.com/ninja-build/ninja) | ninja-build | running the build |
-| [clang](https://github.com/llvm/llvm-project) | llvm | reading the C's types for the content generator |
+| [clang](https://github.com/llvm/llvm-project) | llvm | reading the C's types for the content generator (the clang inside [Zig](https://ziglang.org)'s release) |
 | [pyelftools](https://github.com/eliben/pyelftools), [pycdlib](https://github.com/clalancette/pycdlib) | eliben; clalancette | reading ELF files and the disc image |
 
 ## Contributing

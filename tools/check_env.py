@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Verify that every tool installed by tools/setup.sh runs.
+"""Verify that every tool installed by the setup scripts runs.
 
-Run it from the project environment (tools/setup.sh runs it at the end):
+Run it from the project environment (the setup scripts call it at the end):
 
     source tools/env.sh
     python tools/check_env.py [--markdown]
@@ -75,8 +75,8 @@ def tool_version(name: str, exe: str, args: list[str], pattern: str | None = Non
 
 def python_packages() -> list[Result]:
     results = []
-    for dist in ["splat64", "spimdisasm", "rabbitizer", "pyelftools", "pycdlib",
-                 "ninja"]:
+    dists = ["splat64", "spimdisasm", "rabbitizer", "pyelftools", "pycdlib", "ninja"]
+    for dist in dists:
         try:
             ver = importlib.metadata.version(dist)
         except importlib.metadata.PackageNotFoundError:
@@ -167,16 +167,46 @@ def mwcc_check() -> Result:
     return Result(name, True, ver, "compiled test function matches")
 
 
+def content_clang() -> Result:
+    """The clang tools/content_gen.py reads the C files' types with."""
+    sys.path.insert(0, str(ROOT / "tools"))
+    import content_gen
+    cmd = content_gen.clang_command()
+    try:
+        p = run([*cmd, "--version"])
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return Result("clang for content_gen", False, "", f"{cmd[0]}: {e}")
+    out = (p.stdout or "") + (p.stderr or "")
+    m = re.search(r"clang version (\S+)", out)
+    return Result("clang for content_gen", p.returncode == 0 and bool(m), m.group(1) if m else first_line(out),
+                  " ".join(cmd))
+
+
+def listing(d: Path) -> list[Path]:
+    """The entries of d; none if it cannot be read (the folder above a tree in AppData\\Local has protected ones)."""
+    try:
+        return list(d.iterdir())
+    except OSError:
+        return []
+
+
+def is_dir(p: Path) -> bool:
+    try:
+        return p.is_dir()
+    except OSError:
+        return False
+
+
 def orig_files() -> Result:
     env = os.environ.get("MH2_ORIG_DIR")
     base = Path(env) if env else ROOT.parent
-    if not base.is_dir():
+    if not is_dir(base):
         return Result("original disc files", False, str(base), "directory does not exist", False)
-    top = list(base.iterdir())
+    top = listing(base)
     cnf = next((p for p in top if p.name.upper() == "SYSTEM.CNF"), None)
     # The ISO may sit next to the extracted files or one directory below.
-    candidates = top + [c for d in top if d.is_dir() and d.name != ROOT.name for c in d.iterdir()]
-    isos = [p.name for p in candidates if p.is_file() and p.suffix.lower() == ".iso"]
+    candidates = top + [c for d in top if is_dir(d) and d.name != ROOT.name for c in listing(d)]
+    isos = [p.name for p in candidates if p.suffix.lower() == ".iso" and p.is_file()]
     src = "MH2_ORIG_DIR" if env else "default: parent of repo"
     if cnf or isos:
         what = ", ".join(filter(None, ["extracted files (SYSTEM.CNF)" if cnf else "",
@@ -208,8 +238,7 @@ def main() -> int:
     r.append(tool_version("objdiff-cli", "objdiff-cli", ["--version"], r"(\d+\.\d+\.\d+)"))
     gui = shutil.which("objdiff")
     r.append(Result("objdiff (GUI)", bool(gui), "present" if gui else "", "" if gui else "not found"))
-    # clang: tools/content_gen.py reads the C files' types with it
-    r.append(tool_version("clang", "clang", ["--version"], r"clang version (\S+)", True))
+    r.append(content_clang())
     r.append(orig_files())
 
     failed = [x for x in r if not x.ok and x.required]

@@ -15,7 +15,7 @@ among its definitions. configure.py gives ninja a rule for each such line:
 this script writes build/blobs/MODULE/NAME.s (git-ignored, like all of
 build/), whose `.incbin` takes the object's bytes from the split target of
 the module (build/orig/MODULE.bin, extracted from the user's own copy of the
-game) when the file is assembled; tools/mwcc_cc.py splices it into the C
+game) when the file is assembled; the matching build's compiler wrapper splices it into the C
 object's .data where the INCLUDE_DATA line is. NAME needs a line in the module's symbol file with its size:
 
     D_004054E0 = 0x4054E0; // size:0xAB60

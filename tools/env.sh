@@ -17,11 +17,15 @@ export UV_CACHE_DIR="$MH2_DEPS/uv-cache"
 export UV_PYTHON_PREFERENCE=only-managed
 export UV_LINK_MODE=copy
 
-for _mh2_p in objdiff wibo binutils uv venv/bin; do
+# The directories of the tools, the first one listed ending last on PATH.
+_mh2_dirs=()
+_mh2_dirs+=(objdiff wibo)
+_mh2_dirs+=(binutils uv venv/bin)
+for _mh2_p in "${_mh2_dirs[@]}"; do
     case ":$PATH:" in
         *":$MH2_DEPS/$_mh2_p:"*) ;;
         *) PATH="$MH2_DEPS/$_mh2_p:$PATH" ;;
     esac
 done
 export PATH
-unset _mh2_p
+unset _mh2_p _mh2_dirs

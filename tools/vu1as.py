@@ -35,7 +35,7 @@ import sys
 BC = "xyzw"
 FLAG_BITS = {"I": 31, "E": 30, "M": 29, "D": 28, "T": 27}
 
-# ---- the instruction set: opcode tables shared with tools/vu1dis.py ----
+# ---- the instruction set: opcode tables shared with the VU1 disassembler ----
 # Upper, bits 0-5 below 0x3C: name -> opcode (bc variants: x y z w in order).
 UPPER_OPS = {}
 for _i, _n in enumerate(("add", "sub", "madd", "msub", "max", "mini", "mul")):

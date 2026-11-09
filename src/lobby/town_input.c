@@ -189,6 +189,7 @@ extern LobbyState *gLobby;
 extern LobbyMenu *gLobbyMenu;
 extern u8 D_6ADB30[];
 
+
 /*
  * A town player's input, once a frame. From the stick (TownPc_MoveKind; the
  * other members' players by their sent move) it starts the walk, the dash,

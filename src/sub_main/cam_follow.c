@@ -312,8 +312,7 @@ void CamFollow_Update(CamCtl *ctl, CamView *view)
         off.y = work->dist->eyeHeight;
         off.z = work->dist->eyeBack;
         /* Kept for the match: an empty check of atY. It compiles to nothing but makes MWCC
-         * load the add's two operands in the original's order (docs/mwcc-matching.md,
-         * "Statements scheduled as if a check were still there"). */
+         * load the add's two operands in the original's order. */
         if (work->dist->atY < 0.0f || work->dist->atY > work->dist->eyeBack) {
         }
         work->atGoal[1] = pl->pos[1] + work->dist->atY;

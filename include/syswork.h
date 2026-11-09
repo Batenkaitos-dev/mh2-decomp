@@ -9,8 +9,7 @@
  * Sys_InitWork (display settings, DMA channels, frame buffers ...). Most
  * code reaches its fields directly by address (gSysFrameMode ..., gDmaChan);
  * the C still does, since a struct member is scheduled differently from a
- * plain extern (docs/mwcc-matching.md, "An instruction or constant load in
- * another place"). The display fields are set by the display setup,
+ * plain extern. The display fields are set by the display setup,
  * Gs_SetupDisplay(fbDepth, zDepth, frameMode, tvMode, narrow), which the game
  * calls once as (4, 4, 1, 0, 1): a 32-bit 512x448 NTSC frame, 32-bit Z.
  *

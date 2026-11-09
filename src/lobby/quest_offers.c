@@ -48,7 +48,7 @@ extern u16 gQuestLists[QUEST_SETS][QUEST_SET_LEN];
  */
 s32 MapGroup_IsOpen(u16 map)
 {
-    if (Game_IsOnline() == 0) {
+    if (Game_RulesOnline() == 0) {
         switch (map) {
         case MAP_JUNGLE:
             return 1;
@@ -215,7 +215,7 @@ s32 Quest_IsOffered(u16 id, s32 listKind, s32 withMustOrder)
     if (Quest_MatchesSeasonTime(id, season, isPm) == 0) {
         return 0;
     }
-    if (Game_IsOnline() == 0) {
+    if (Game_RulesOnline() == 0) {
         if (MapGroup_IsOpen(Map_Group(quest->map)) == 0) {
             return 0;
         }
@@ -383,7 +383,7 @@ extern s8 gQuestListRebuildPending;
  */
 s32 ElderForecast_IsUnlocked(void)
 {
-    if (Game_IsOnline() == 1) {
+    if (Game_RulesOnline() == 1) {
         if (Cond_Check(97) == 0) {
             return 0;
         }
@@ -484,7 +484,7 @@ void QuestList_Rebuild(void)
         return;
     }
     memset(&gQuestLists, 0, sizeof(gQuestLists));
-    if (Game_IsOnline() == 0) {
+    if (Game_RulesOnline() == 0) {
         if (gSave.awayFromVillage != 0) {
             QuestList_Build(QUEST_LIST_AWAY);
         } else {
@@ -523,7 +523,7 @@ s32 QuestList_PickShown(s8 set)
             break;
         }
         if (shownCount <= QUEST_BOARD_LEN - 1) {
-            if (Game_IsOnline() == 0) {
+            if (Game_RulesOnline() == 0) {
                 if ((Rand_Next(1) & 0xFFFF) % 100 < 40 || Cond_Check(7) == 0) {
                     gQuestDeskShown[set][shownCount++] = *id;
                 }
@@ -599,7 +599,7 @@ void QuestList_Build(s32 kind)
             break;
         }
     }
-    if (Game_IsOnline() == 1 || Cond_Check(7) == 1) {
+    if (Game_RulesOnline() == 1 || Cond_Check(7) == 1) {
         QuestList_DropRandom(set);
     }
     QuestList_PickShown(set);

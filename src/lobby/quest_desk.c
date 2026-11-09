@@ -135,7 +135,7 @@ s32 QuestDesk_HasEntry(s16 entry)
     case QUEST_DESK_GUIDE:
         return 1;
     case QUEST_DESK_FORECAST:
-        if (Game_IsOnline() == 0 && Cond_Check(13) == 0) {
+        if (Game_RulesOnline() == 0 && Cond_Check(13) == 0) {
             return 0;
         }
         if (gElderForecastHeard != 0) {
@@ -146,7 +146,7 @@ s32 QuestDesk_HasEntry(s16 entry)
     case QUEST_DESK_BOARD:
         return 1;
     case QUEST_DESK_BY_MAP:
-        if (Game_IsOnline() == 1) {
+        if (Game_RulesOnline() == 1) {
             return 1;
         }
         if (Cond_Check(7) == 1) {
@@ -154,7 +154,7 @@ s32 QuestDesk_HasEntry(s16 entry)
         }
         break;
     case QUEST_DESK_BY_TYPE:
-        if (Game_IsOnline() == 1) {
+        if (Game_RulesOnline() == 1) {
             return 1;
         }
         if (Cond_Check(10) == 1) {
@@ -510,7 +510,7 @@ void QuestDesk_Accept(u16 id, s16 money, s32 pay)
 
     Quest_ClearVersusDefeat();
     gRewardMoney = money;
-    if (Game_IsOnline() == 1) {
+    if (Game_RulesOnline() == 1) {
         gQuestReturnArea = gScene.area;
     }
     gQuestIsOfficial = 0;
@@ -1004,7 +1004,7 @@ s32 QuestDesk_Cancel(QuestDeskCancel *cancel, u16 pad)
     case 0:
         switch (Talk_Update()) {
         case MENU_DONE:
-            if (gLobby->questPaid != 0 && Game_IsOnline() == 1) {
+            if (gLobby->questPaid != 0 && Game_RulesOnline() == 1) {
                 cancel->step++;
                 Talk_Say(QUEST_DESK_TALK_ASK_DROP_PAID, 1);
                 break;
@@ -1176,7 +1176,7 @@ void QuestDesk_BuildLists(void)
  */
 s32 QuestDesk_CountMapLists(void)
 {
-    if (Game_IsOnline() == 0) {
+    if (Game_RulesOnline() == 0) {
         if (Cond_Check(79) == 1) {
             return gScene.area == AREA_HUB_0x57 ? 7 : 6;
         }

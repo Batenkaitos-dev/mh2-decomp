@@ -63,7 +63,20 @@ sys.path.insert(0, str(ROOT / "tools"))
 INC_LINE = re.compile(r'^[ \t]*#[ \t]*include[ \t]+"(\w+)/([0-9A-F]{8})\.inc"[ \t]*$', re.M)
 TXT_USE = re.compile(r"\bTXT\(\s*0x([0-9A-Fa-f]{1,8})\s*\)")
 TXT_HDR = re.compile(r'^[ \t]*#[ \t]*include[ \t]+"(\w+)/(\w+)\.h"[ \t]*$', re.M)
-CLANG = os.environ.get("CLANG", "clang")
+
+
+def clang_command() -> list[str]:
+    """The clang that reads the types: $CLANG when set; else the one tools/setup.sh unpacked
+    (Zig's, which carries a clang: tools/deps/linux-x64/zig); else `clang` on PATH."""
+    if os.environ.get("CLANG"):
+        return [os.environ["CLANG"]]
+    zig = ROOT / "tools" / "deps" / "linux-x64" / "zig" / "zig"
+    if zig.is_file():
+        return [str(zig), "clang"]
+    return ["clang"]
+
+
+CLANG = clang_command()
 # The EE's data layout: mipsel's (o32) sizes and alignments are the same for
 # every type the game's data uses (64-bit integers and doubles aligned to 8).
 CLANG_TARGET = os.environ.get("CONTENT_GEN_TARGET", "--target=mipsel-linux-gnu")
@@ -635,9 +648,12 @@ def parse_file(rel: str, incs, txts: list[str], tmp: Path) -> dict:
         p = tmp / hdr
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text("".join(f'#define TXT_0x{n} ""\n' for n in names))
-    p = subprocess.run([CLANG, CLANG_TARGET, "-fsyntax-only", *INCLUDES, "-I", str(tmp), *DEFS, "-w",
-                        "-ferror-limit=0", "-Xclang", "-ast-dump=json", "-x", "c", rel],
-                       cwd=ROOT, capture_output=True)
+    try:
+        p = subprocess.run([*CLANG, CLANG_TARGET, "-fsyntax-only", *INCLUDES, "-I", str(tmp), *DEFS, "-w",
+                            "-ferror-limit=0", "-Xclang", "-ast-dump=json", "-x", "c", rel],
+                           cwd=ROOT, capture_output=True)
+    except FileNotFoundError:
+        raise GenError(f"{CLANG[0]} not found: run tools/setup.sh (it unpacks the clang this tool uses)")
     if not p.stdout:
         raise GenError(f"clang failed on {rel}: {p.stderr.decode(errors='replace')[:2000]}")
     return json.loads(p.stdout)

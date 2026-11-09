@@ -386,6 +386,7 @@ s32 Game_IsOnline(void)
     return gOnlineFlag != 0;
 }
 
+
 /*
  * 1 when the quest is a drill (QUEST_FLAG_DRILL): online, the flag of the
  * quest chosen to start next (gNextQuest), once the quest menu's info is

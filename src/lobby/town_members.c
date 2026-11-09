@@ -259,7 +259,7 @@ void TownPc_LoadAllModels(void)
 
     if (gLobby->areaLoaded == 0) {
         gLobby->areaLoaded = 1;
-        if (Game_IsOnline() == 1) {
+        if (Game_RulesOnline() == 1) {
             Anim_LoadCommon(2);
         } else if (gSave.awayFromVillage != 0) {
             Anim_LoadCommon(3);

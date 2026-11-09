@@ -1,30 +1,32 @@
 #!/usr/bin/env bash
-# Installs the pinned, project-local toolchain of the matching build on
-# Linux x64.
+# Installs the pinned, project-local toolchain on Linux x64.
 #
-# Everything is installed under tools/deps/ (gitignored), except a few
-# distribution packages (curl, git, tar, clang), which are installed with apt on
-# Debian/Ubuntu (skip with --no-apt). Every download is verified against
-# the SHA-256 in tools/versions.txt and kept in tools/deps/downloads/, so a
-# re-run downloads nothing it already has. Safe to re-run.
+# Everything is installed under tools/deps/ (gitignored), with no administrator
+# rights and no system packages. Every download is verified against the SHA-256 in
+# tools/versions.txt and kept in tools/deps/downloads/, so a re-run
+# downloads nothing it already has. Safe to re-run.
 #
-# Usage: tools/setup.sh [--no-apt]
-#   --no-apt     don't install distribution packages (install them yourself)
+# What it needs from the system: a downloader (curl or wget), tar and gzip.
+# It checks for them and says what is missing; it installs nothing with apt.
+#
+# Usage: tools/setup.sh [--if-needed]
+#   --if-needed  do nothing, and print nothing, when the last run finished
+#                with this script, versions.txt and the Python lock unchanged
 set -euo pipefail
 
-usage() { sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; }
+usage() { sed -n '2,/^set /p' "$0" | sed '$d' | grep -v '^# @' | sed 's/^# \{0,1\}//'; }
 
-NO_APT=0
+IF_NEEDED=0
 for arg in "$@"; do
     case "$arg" in
-        --no-apt) NO_APT=1 ;;
+        --if-needed) IF_NEEDED=1 ;;
         -h | --help) usage; exit 0 ;;
         *) echo "unknown option: $arg" >&2; usage >&2; exit 2 ;;
     esac
 done
 
 if [ "$(uname -s)" != Linux ] || [ "$(uname -m)" != x86_64 ]; then
-    echo "setup.sh supports Linux x86_64 only (on Windows, run it inside WSL)" >&2
+    echo "setup.sh runs on 64-bit Linux only. On Windows, the README says how to set up." >&2
     exit 1
 fi
 
@@ -34,75 +36,107 @@ source "$TOOLS/env.sh"    # sets MH2_ROOT, MH2_DEPS, PATH, UV_* variables
 DOWNLOADS="$TOOLS/deps/downloads"
 GH=https://github.com
 
+# The stamp of a finished run: a hash of what the installed tools depend on, and
+# the scope of the run: with --if-needed, a run whose stamp is current does nothing.
+STAMP="$MH2_DEPS/.setup-stamp"
+SCOPE=full
+stamp_hash() { cat "${BASH_SOURCE[0]}" "$TOOLS/versions.txt" "$MH2_ROOT/pyproject.toml" "$MH2_ROOT/uv.lock" | sha256sum | cut -d' ' -f1; }
+if [ "$IF_NEEDED" = 1 ] && [ -f "$STAMP" ]; then
+    read -r s_hash s_scope <"$STAMP" || true
+    if [ "$s_hash" = "$(stamp_hash)" ] && { [ "$s_scope" = full ] || [ "$SCOPE" = basic ]; }; then
+        exit 0
+    fi
+fi
+
 # tools/versions.txt -> V_<KEY> shell variables
 while IFS='=' read -r key value; do
     value="${value%$'\r'}"
     if [[ "$key" =~ ^[A-Z0-9_]+$ ]]; then printf -v "V_$key" '%s' "$value"; fi
 done <"$TOOLS/versions.txt"
 
-# --- Distribution packages ---------------------------------------------------
-# clang: tools/content_gen.py reads the C files' types from its parse
-# (CONTRIBUTING, "Content")
-pkgs=(ca-certificates curl git tar clang)
-
-if [ "$NO_APT" = 0 ]; then
-    if ! command -v apt-get >/dev/null; then
-        echo "apt-get not found. Install the equivalents of these packages for your" >&2
-        echo "distribution, then re-run with --no-apt:" >&2
-        echo "  ${pkgs[*]}" >&2
-        exit 1
-    fi
-    SUDO=
-    if [ "$(id -u)" -ne 0 ]; then SUDO=sudo; fi
-    echo "[..]   apt packages"
-    $SUDO apt-get update -qq
-    $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends "${pkgs[@]}" >/dev/null
-    echo "[done] apt packages"
-else
-    echo "[skip] apt packages (--no-apt). Required: ${pkgs[*]}"
+# --- What the system must provide ---------------------------------------------
+# Nothing is installed from here: a missing program is named, with the Debian
+# or Ubuntu package that has it.
+missing=()          # what is missing, and the Debian or Ubuntu package that has each
+packages=()
+have() { command -v "$1" >/dev/null 2>&1; }
+need() { missing+=("$1"); packages+=("$2"); }
+if have curl; then DOWNLOADER=curl; elif have wget; then DOWNLOADER=wget; else
+    DOWNLOADER=
+    need "a downloader: curl or wget" curl
 fi
+have tar || need tar tar
+have gzip || need gzip gzip
+have sha256sum || need sha256sum coreutils
+if [ "${#missing[@]}" -gt 0 ]; then
+    echo "tools/setup.sh needs these programs, and can't find them:" >&2
+    printf '  - %s
+' "${missing[@]}" >&2
+    if have apt-get; then
+        echo "On Debian or Ubuntu:  sudo apt-get install ca-certificates ${packages[*]}" >&2
+    else
+        echo "Install them with your distribution's package manager, then run tools/setup.sh again." >&2
+    fi
+    exit 1
+fi
+
 
 # --- Helpers ------------------------------------------------------------------
 
-# get_pinned URL FILENAME SHA256: download into tools/deps/downloads (cached),
-# verify, and print the local path.
+# download URL FILE: curl, or wget when there is no curl
+download() {
+    if [ "$DOWNLOADER" = curl ]; then
+        curl -fsSL --retry 3 -o "$2" "$1"
+    else
+        wget -q --tries=3 -O "$2" "$1"
+    fi
+}
+
+# get_pinned URL FILENAME SHA256 [MIRROR_URL]: download into tools/deps/downloads (cached),
+# verify, and print the local path. If URL fails or the file does not match the SHA-256,
+# MIRROR_URL (when given) is tried, with the same check.
 get_pinned() {
-    local url=$1 name=$2 sha=$3
+    local url=$1 name=$2 sha=$3 mirror=${4:-} u
     local dest="$DOWNLOADS/$name"
     mkdir -p "$DOWNLOADS"
     if [ -f "$dest" ] && echo "$sha  $dest" | sha256sum -c --status; then
         echo "$dest"
         return
     fi
-    echo "       downloading $url" >&2
-    curl -fsSL --retry 3 -o "$dest.part" "$url"
-    if ! echo "$sha  $dest.part" | sha256sum -c --status; then
-        echo "SHA-256 mismatch for $name" >&2
-        echo "  expected $sha" >&2
-        echo "  got      $(sha256sum "$dest.part" | cut -d' ' -f1)" >&2
+    for u in "$url" "$mirror"; do
+        [ -n "$u" ] || continue
+        echo "       downloading $u" >&2
+        if download "$u" "$dest.part" && echo "$sha  $dest.part" | sha256sum -c --status; then
+            mv "$dest.part" "$dest"
+            echo "$dest"
+            return
+        fi
+        echo "       download failed, or its SHA-256 does not match (expected $sha): $u" >&2
         rm -f "$dest.part"
-        return 1
-    fi
-    mv "$dest.part" "$dest"
-    echo "$dest"
+    done
+    echo "could not get $name with the expected SHA-256" >&2
+    return 1
 }
 
-# install_step NAME DIR ID FUNCTION: run FUNCTION DIR unless DIR already holds
-# install id ID. DIR is emptied first.
+# install_step NAME DIR ID FUNCTION [OTHER_ID]: run FUNCTION DIR unless DIR already holds
+# install id ID (or OTHER_ID). DIR is emptied first. FUNCTION may set STEP_ID to the id
+# to record instead of ID.
 install_step() {
-    local name=$1 dir=$2 id=$3 fn=$4
+    local name=$1 dir=$2 id=$3 fn=$4 other=${5:-}
     case "$dir" in
         "$MH2_DEPS"/*) ;;
         *) echo "refusing to install outside tools/deps: $dir" >&2; exit 1 ;;
     esac
-    if [ -f "$dir/.mh2-installed" ] && [ "$(cat "$dir/.mh2-installed")" = "$id" ]; then
-        echo "[ok]   $name $id"
+    if [ -f "$dir/.mh2-installed" ] && { [ "$(cat "$dir/.mh2-installed")" = "$id" ] || [ "$(cat "$dir/.mh2-installed")" = "${other:-$id}" ]; }; then
+        echo "[ok]   $name $(cat "$dir/.mh2-installed")"
         return
     fi
     echo "[..]   $name $id"
     rm -rf "$dir"
     mkdir -p "$dir"
+    STEP_ID=""
     "$fn" "$dir"
+    id=${STEP_ID:-$id}
     echo "$id" >"$dir/.mh2-installed"
     echo "[done] $name $id"
 }
@@ -159,8 +193,32 @@ install_objdiff() {
 }
 install_step objdiff "$MH2_DEPS/objdiff" "$V_OBJDIFF_VERSION" install_objdiff
 
+
+# --- clang for tools/content_gen.py: the one in Zig's release ------------------
+# content_gen reads the C files' types from a clang parse (CONTRIBUTING,
+# "Content"). Zig's PyPI wheel (a zip) holds one program with a clang inside:
+# only that program is unpacked, to tools/deps/linux-x64/zig/zig, and
+# `zig clang` is clang's command line.
+install_zig() {
+    local f
+    f=$(get_pinned "$V_ZIG_URL_LINUX" "${V_ZIG_URL_LINUX##*/}" "$V_ZIG_SHA256_LINUX")
+    python -I -c 'import sys, zipfile
+with zipfile.ZipFile(sys.argv[1]) as z, open(sys.argv[2], "wb") as out:
+    out.write(z.read("ziglang/zig"))' "$f" "$1/zig"
+    chmod 755 "$1/zig"
+    "$1/zig" clang --version >/dev/null
+}
+install_step "clang (Zig)" "$MH2_DEPS/zig" "$V_ZIG_VERSION" install_zig
+
+
 # --- Verify -------------------------------------------------------------------
 echo
-python "$TOOLS/check_env.py"
+check_args=()
+python "$TOOLS/check_env.py" "${check_args[@]}"
+echo "$(stamp_hash) $SCOPE" >"$STAMP"
 echo
-echo "Setup complete. In each new shell, run:  source tools/env.sh"
+if [ -f "$TOOLS/build.sh" ]; then
+    echo "Setup complete. tools/build.sh builds with no further step; for the tools in your own shell: source tools/env.sh"
+else
+    echo "Setup complete. In each new shell, run:  source tools/env.sh"
+fi

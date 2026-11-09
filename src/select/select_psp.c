@@ -1885,8 +1885,7 @@ void Psp_DrawSwingActor(PspActor *actor, s32 icon)
  * corners[3][0] and corners[3][1], as in Psp_DrawSwingActor (the game keeps
  * those three addresses in saved registers); the natural form is not
  * known. The empty range check of k between the two centre reads is a
- * compiled-out check (docs/mwcc-matching.md, "Statements scheduled as if a
- * check were still there"): it splits the tail into blocks, so MWCC reuses
+ * compiled-out check: it splits the tail into blocks, so MWCC reuses
  * the k * 2 it made before the rotation loop for both reads, as the game
  * does.
  */

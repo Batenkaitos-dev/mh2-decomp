@@ -15,7 +15,7 @@ them), a pointer to a data object `(u32)D_...` (`&D_...[i]` inside one), a
 pointer to a function `(u32)func_...`. The objects are splat's labels,
 merged where MWCC could not have placed a separate object: MWCC aligns an
 object of 16 bytes or more to 16 and a smaller one to 8 (4 raised to 8 by
-mwcc_cc.py, as the game's linker did), so a label at an address that isn't
+the compiler wrapper, as the game's linker did), so a label at an address that isn't
 8-aligned, or at 8 mod 16 with 16 bytes or more of content, is part of the
 object before it. The declared size runs to the next object, except that
 an object at 8 mod 16 is cut to its content (under 16 bytes): the next

@@ -3,11 +3,35 @@
 Run the tools from the repository's root, in a shell prepared by
 `source tools/env.sh`. Each script's docstring (or `-h`) has its usage.
 
+## The matching build in one command
+
+`tools/build.sh` runs `tools/setup.sh` when anything is missing or out of date,
+then `tools/configure.py` and `ninja`, and ends with the 13 `OK` lines. It
+needs no `source tools/env.sh` and no other step. Your copy of the game is
+`MH2_ORIG_DIR`, or the repository's parent directory. On Windows,
+`tools\build.ps1` runs it inside WSL.
+
+- `tools/build.sh -j 8` limits the jobs; `tools/build.sh progress`,
+  `tools/build.sh provenance` and `tools/build.sh plaincheck` build that ninja
+  target instead of the default.
+- **What setup needs from the system:** `curl` or `wget`, `tar`, `gzip`, and
+  `git`. It installs nothing with apt and needs no sudo; a missing program is
+  named, with the Debian package that has it. Everything else is downloaded
+  into `tools/deps/`, each file checked against the SHA-256 in
+  `versions.txt` (about 600 MB in all). The clang that
+  `content_gen.py` reads the C files' types with is the one inside Zig's
+  release (one 185 MB program, from its PyPI wheel): no LLVM and no system
+  clang. `CLANG=...` in the environment overrides it.
+- **Downloads are kept** in `tools/deps/downloads/`, and setup fetches only
+  what is missing there. A second checkout reuses a first one's:
+  `mkdir -p tools/deps && ln -s /path/to/first/tools/deps/downloads
+  tools/deps/downloads` before `tools/build.sh`.
+
 ## Setting up
 
 | Tool | What it does |
 |---|---|
-| `setup.sh`, `versions.txt` | install the pinned toolchain into `tools/deps/` (gitignored) |
+| `setup.sh`, `versions.txt` | install the pinned toolchain into `tools/deps/` (gitignored); `build.sh` runs it when needed |
 | `env.sh` | put it on PATH, in every new shell |
 | `check_env.py` | run every installed tool once |
 

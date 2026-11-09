@@ -159,6 +159,7 @@ void AreaMenu_Update(void)
     }
 }
 
+
 extern SpawnPt gAreaGoSpawn89FromAA;
 extern SpawnPt gAreaGoSpawnTavern;
 extern SpawnPt gAreaGoSpawn85;

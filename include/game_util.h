@@ -36,6 +36,7 @@ void Sound_PlaySlotChange(void);
 void Sound_PlayCancel(void);
 void Jingle_CarryLost(Player *pl);
 s32 Game_IsOnline(void);
+#define Game_RulesOnline() Game_IsOnline()
 s32 Quest_IsDrill(void);
 s32 Scene_InField(void);
 s32 Quest_PhaseIsOver(s32 mode);

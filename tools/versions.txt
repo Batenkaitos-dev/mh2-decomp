@@ -1,10 +1,11 @@
 # Pinned tool versions and download checksums.
-# Single source of truth for tools/setup.sh.
+# Single source of truth for the setup scripts.
 # Format: KEY=VALUE, no spaces or quotes. Lines starting with '#' are comments.
 # Python packages are pinned separately in pyproject.toml / uv.lock.
 #
 # Anything marked AFFECTS BUILD OUTPUT must not change unless the build
 # still reproduces config/targets.sha1.
+#
 
 # uv: installs the pinned CPython and the project virtualenv
 UV_VERSION=0.12.18
@@ -20,7 +21,7 @@ BINUTILS_PS2_SHA256_LINUX=9fe31ea3ee1a37536f9f0e2e12c668e7c3cb99e59f5154bd2f1fc4
 
 # Matching compiler (Linux only): Metrowerks CodeWarrior for PS2, compiler
 # build 3.0b52-030722, from decomp.me's compiler archive, run through wibo.
-# Chosen by compiling candidates and comparing the output with the game's code.
+# Chosen in Phase 2 by compile-and-compare against the game's code.
 # AFFECTS BUILD OUTPUT.
 MWCC_PS2_VERSION=3.0b52-030722
 MWCC_PS2_SHA256=5c2f5f96c0a360cc6d4fc866226768f7ab9b290777bcd5cadeeba030b1d596a5
@@ -32,3 +33,13 @@ WIBO_SHA256=13f86a2d618f0dbe67179d349625345eabf9b46450295cb4c904e49f6aff85af
 OBJDIFF_VERSION=v3.8.1
 OBJDIFF_CLI_SHA256_LINUX=c8290281e82114bcc1a06ff73061110d3902a177822e750337de2537188e358f
 OBJDIFF_GUI_SHA256_LINUX=6e529cf35e93724479247c753936c4937abf1b1f82f1bb06656013c005f1c0f1
+
+# clang for tools/content_gen.py (Linux): the build parses the C files' types with it
+# (clang's -ast-dump=json, with -nostdinc: no headers, no libraries). Zig's release is
+# one 185 MB program with a clang inside (clang 22.1.8 in Zig 0.17.1), taken from its
+# PyPI wheel, https://pypi.org/project/ziglang/0.17.1/ ; only the program is unpacked,
+# into tools/deps/linux-x64/zig. The types are the same as the distributions' clang gives.
+ZIG_VERSION=0.17.1
+ZIG_URL_LINUX=https://files.pythonhosted.org/packages/59/e3/2a34676370a11c36b7cd04ffb2439c1089c0530cf4b01408c77cf7f8d9c3/ziglang-0.17.1-py3-none-manylinux_2_12_x86_64.manylinux2010_x86_64.musllinux_1_1_x86_64.whl
+ZIG_SHA256_LINUX=ea6cc5d87b033cf0aedfbc8f9549a908cae6c50ac31f1698188fa48a74524b54
+

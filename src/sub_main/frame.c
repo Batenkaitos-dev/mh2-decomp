@@ -113,6 +113,7 @@ void Callbacks_Run(void)
     }
     FadeA_Draw();
     Loading_DrawLetters();
+    
 }
 
 /* LoadOverlay for the scenes. */

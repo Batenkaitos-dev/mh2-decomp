@@ -38,7 +38,7 @@ typedef struct Vec3f {
  * repository (compressed data, a library's data), among a file's .data
  * definitions. The compiler never sees this macro: the build writes
  * dir/name.s (dir is build/blobs/MODULE, git-ignored) with tools/data_blob.py,
- * which takes the bytes from the user's original, and tools/mwcc_cc.py
+ * which takes the bytes from the user's original, and the matching build's compiler wrapper
  * replaces the line with a marker, compiles the C, and splices the assembled
  * data into the object where the line is. For other tools it expands to
  * nothing. The file declares the object with an extern for its code.

@@ -942,7 +942,7 @@ s32 LobbyScreen_LoadBanks(void)
         Sound_StopBank(SE_SLOT_EM);     /* the town has no monsters: its bank goes in their slot */
         if (gScene.area == AREA_HOUSE || gScene.area == AREA_HUB_0x57) {
             bank = SND_BANK_FILE(SND_BANK_HOUSE);
-        } else if (Game_IsOnline() == 1) {
+        } else if (Game_RulesOnline() == 1) {
             bank = SND_BANK_FILE(SND_BANK_TOWN_NET);
         } else {
             bank = SND_BANK_FILE(SND_BANK_TOWN);

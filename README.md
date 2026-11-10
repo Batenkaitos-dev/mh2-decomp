@@ -34,8 +34,7 @@ from your own copy of the game when you build.
 
 ## OpenMH2, the native PC port
 
-[OpenMH2](https://github.com/Batenkaitos-dev/openmh2), to be released
-soon, is a native PC port built from the ground up on this decompilation.
+[OpenMH2](https://github.com/Batenkaitos-dev/openmh2) is a native PC port built from the ground up on this decompilation.
 It is not a recompilation and not an emulator: the game's program in it is
 this repository's C source, compiled for Windows and Linux by an ordinary C
 compiler, and nothing translates or emulates the PS2's main processor.

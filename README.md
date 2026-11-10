@@ -45,7 +45,7 @@ source into C as well.
 
 None of the console's software is included either. The PS2 kernel's
 services and the libraries the game was linked against, Sony's SDK and
-CRI's middleware among them, are written from scratch for the PC under the
+CRI's middleware among them, use replacements written from scratch for the PC under the
 same names, from their documentation and their observed behaviour rather
 than their code, so the decompiled game calls them as it called the
 originals; no PS2 BIOS is needed. It needs your own copy of the game: its
